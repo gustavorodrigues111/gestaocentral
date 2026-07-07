@@ -39,7 +39,7 @@ export function ChatPage() {
   const isMaster = !!pessoa?.isMaster;
   const { can } = useCanAcao(activeRestaurant?.id || "");
   const podeWhats = isMaster || can("whatsappInbox", "ver");
-  const podeConfig = isMaster || can("whatsappInbox", "responder");
+  const podeConfig = isMaster || can("whatsappInbox", "configurar");
 
   const multiRest = restaurants.length > 1;
   const [aba, setAba] = useState<AbaCentral>("avisos");

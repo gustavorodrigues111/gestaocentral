@@ -44,6 +44,8 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
   const { can } = useCanAcao(rid || "");
   const podeVer = isMaster || can("whatsappInbox", "ver");
   const podeResponder = isMaster || can("whatsappInbox", "responder");
+  const podeVincular = isMaster || can("whatsappInbox", "vincular");
+  const podeTags = isMaster || can("whatsappInbox", "gerenciarTags");
 
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
@@ -205,12 +207,9 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
   return (
     <div className={embutido ? "" : "max-w-4xl"}>
       {!embutido && (
-        <div className="mb-3 flex items-start justify-between gap-2">
-          <div>
-            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">💬 WhatsApp</h1>
-            <p className="text-xs text-gray-500">Mensagens recebidas no número da plataforma (número único, não por restaurante).</p>
-          </div>
-          {tab === "conversas" && !sel && <button type="button" onClick={() => setGerenciarTags(true)} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 shrink-0">🏷 Tags</button>}
+        <div className="mb-3">
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">💬 WhatsApp</h1>
+          <p className="text-xs text-gray-500">Mensagens recebidas no número da plataforma (número único, não por restaurante).</p>
         </div>
       )}
 
@@ -229,13 +228,14 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
       <>
       {!sel && (
         <>
-          {/* Filtro por restaurante */}
-          <div className="flex flex-wrap gap-1.5 mb-2">
+          {/* Filtro por restaurante + gerenciar tags */}
+          <div className="flex flex-wrap items-center gap-1.5 mb-2">
             <FiltroChip ativo={filtroRest === "all"} onClick={() => setFiltroRest("all")}>Todos</FiltroChip>
             {restaurants.map(r => (
               <FiltroChip key={r.id} ativo={filtroRest === r.id} onClick={() => setFiltroRest(r.id)}>{r.nome}</FiltroChip>
             ))}
             <FiltroChip ativo={filtroRest === "none"} onClick={() => setFiltroRest("none")}>Sem vínculo</FiltroChip>
+            {podeTags && <button type="button" onClick={() => setGerenciarTags(true)} className="ml-auto text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 shrink-0">🏷 Tags</button>}
           </div>
           {/* Filtro por tag */}
           {tags.length > 0 && (
@@ -292,11 +292,11 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
               </div>
               <div className="text-[11px] text-gray-400">{foneBonito(sel)}{pessoaSel && <> · 👤 {pessoaSel.nome}</>}</div>
             </div>
-            <button type="button" onClick={() => setDetalhes(v => !v)} className={`text-xs px-2 py-1 rounded-lg border ${detalhes ? "border-indigo-400 text-indigo-600 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"}`}>ⓘ Detalhes</button>
+            {podeVincular && <button type="button" onClick={() => setDetalhes(v => !v)} className={`text-xs px-2 py-1 rounded-lg border ${detalhes ? "border-indigo-400 text-indigo-600 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"}`}>ⓘ Detalhes</button>}
           </div>
 
           {/* Painel de detalhes: vínculo + restaurante + tags */}
-          {detalhes && (
+          {detalhes && podeVincular && (
             <div className="px-3 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30 space-y-3 text-sm">
               <div>
                 <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Pessoa vinculada</label>

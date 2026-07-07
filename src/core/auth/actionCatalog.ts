@@ -386,12 +386,15 @@ export const CATALOGO: CatalogoModulo[] = [
   {
     id: "whatsappInbox",
     icon: "💬",
-    label: "WhatsApp (caixa de entrada)",
-    desc: "Ver e responder as mensagens recebidas no WhatsApp da plataforma",
-    area: "time",
+    label: "Central de Avisos · WhatsApp",
+    desc: "WhatsApp e configurações dentro da Central de Avisos (caixa de entrada da plataforma)",
+    area: "gestao",
     acoes: [
-      { id: "ver",       label: "Ver conversas recebidas" },
-      { id: "responder", label: "Responder mensagens" },
+      { id: "ver",           label: "Ver as conversas recebidas" },
+      { id: "responder",     label: "Responder mensagens" },
+      { id: "vincular",      label: "Vincular conversa a pessoa/restaurante e aplicar tags" },
+      { id: "gerenciarTags", label: "Criar/editar as tags de conversa", sensivel: true },
+      { id: "configurar",    label: "Configurações (templates + canais dos avisos)", sensivel: true },
     ],
   },
 
