@@ -116,9 +116,15 @@ export function FaturasPage() {
 function Visualizacao({ minhas, outras: outrasRaw, catNome, restNome, meId, meNome }: { minhas: CartaoLancamento[]; outras: CartaoLancamento[]; catNome: (id?: string | null) => string; restNome: Record<string, string>; meId?: string; meNome?: string }) {
   const [sub, setSub] = useState<"minhas" | "outras">("minhas");
   const [pagando, setPagando] = useState("");
+  // Filtro multi-cartão (vazio = todos).
+  const [cartoesSel, setCartoesSel] = useState<Set<string>>(() => new Set());
+  const cartoesDisp = useMemo(() => [...new Set([...minhas, ...outrasRaw].map(l => l.cartao).filter(Boolean))].sort(), [minhas, outrasRaw]);
+  const passaCartao = (l: CartaoLancamento) => cartoesSel.size === 0 || cartoesSel.has(l.cartao);
+  const toggleCartao = (c: string) => setCartoesSel(prev => { const n = new Set(prev); n.has(c) ? n.delete(c) : n.add(c); return n; });
+
   // Só reembolsos de faturas FECHADAS (publicadas) aparecem pra outra empresa.
-  const outras = outrasRaw.filter(l => l.publicado);
-  const minhasProprias = minhas.filter(l => l.destinoTipo === "propria");
+  const outras = outrasRaw.filter(l => l.publicado && passaCartao(l));
+  const minhasProprias = minhas.filter(l => l.destinoTipo === "propria" && passaCartao(l));
   const totalMinhas = minhasProprias.reduce((s, l) => s + (l.valor || 0), 0);
   const outrasPend = outras.filter(l => l.reembolsoStatus !== "pago");
   const totalOutrasPend = outrasPend.reduce((s, l) => s + (l.valor || 0), 0);
@@ -149,6 +155,13 @@ function Visualizacao({ minhas, outras: outrasRaw, catNome, restNome, meId, meNo
 
   return (
     <div>
+      {cartoesDisp.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+          <span className="text-[11px] text-gray-400 mr-0.5">Cartões:</span>
+          <SubChip ativo={cartoesSel.size === 0} onClick={() => setCartoesSel(new Set())}>Todos</SubChip>
+          {cartoesDisp.map(c => <SubChip key={c} ativo={cartoesSel.has(c)} onClick={() => toggleCartao(c)}>{c}</SubChip>)}
+        </div>
+      )}
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <div className="flex gap-1.5">
           <SubChip ativo={sub === "minhas"} onClick={() => setSub("minhas")}>Minhas faturas · {fmtBRL(totalMinhas)}</SubChip>
