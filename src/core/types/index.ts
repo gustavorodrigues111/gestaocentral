@@ -5619,6 +5619,10 @@ export type CartaoFatura = {
   vencimento?: string | null; // "YYYY-MM-DD" (extraído da fatura)
   totalFatura?: number | null;// total da fatura (extraído) — pra conferência
   arquivoPath?: string | null;// path no Storage do PDF
+  // Ciclo: rascunho (editável, NÃO publica reembolsos) → fechada (publica).
+  status?: "rascunho" | "fechada";
+  fechadaEm?: string | null;  // ISO — quando foi fechada/publicada
+  fechadaPor?: string | null; // pessoaId
   criadoEm: string;
   criadoPor?: string | null;
 };
@@ -5639,6 +5643,9 @@ export type CartaoLancamento = {
   destinoTipo: "propria" | "empresa";
   empresaAtribuidaId?: string | null;   // se destinoTipo="empresa"
   categoriaId?: string | null;          // categoria (na lista do destino)
+  // Publicado = a fatura pai foi FECHADA. Só publicado dispara reembolso/aviso
+  // pra outra empresa. Enquanto rascunho, publicado=false (invisível pras outras).
+  publicado?: boolean;
   // Reembolso (quando destinoTipo="empresa"): ciclo de pagamento.
   reembolsoStatus?: "pendente" | "pago" | null;
   reembolsoDataPagamento?: string | null;  // "YYYY-MM-DD" — até quando pagar

@@ -137,20 +137,21 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
 
   // ── Reembolsos de cartão: lançamentos atribuídos ao MEU restaurante (sou o
   //    pagador) e lançamentos MEUS já marcados como pagos (sou o solicitante). ──
-  type ReembLanc = { id: string; restaurantId: string; empresaAtribuidaId?: string | null; destinoTipo?: string; valor?: number; reembolsoStatus?: string | null; reembolsoDataPagamento?: string | null; pagoEm?: string | null; pagoPorNome?: string | null; criadoEm?: string };
+  type ReembLanc = { id: string; restaurantId: string; empresaAtribuidaId?: string | null; destinoTipo?: string; valor?: number; publicado?: boolean; reembolsoStatus?: string | null; reembolsoDataPagamento?: string | null; pagoEm?: string | null; pagoPorNome?: string | null; criadoEm?: string };
   const [reembReceber, setReembReceber] = useState<ReembLanc[]>([]);
   const [reembPagos, setReembPagos] = useState<ReembLanc[]>([]);
   useEffect(() => {
     const rids = ridsKeyAll ? ridsKeyAll.split(",").slice(0, 10) : [];
     if (!rids.length) { setReembReceber([]); setReembPagos([]); return; }
+    // Só faturas FECHADAS (publicado=true) geram aviso; rascunho não vaza pras outras.
     const u1 = onSnapshot(
       query(collection(db, "cartaoLancamentos"), where("empresaAtribuidaId", "in", rids)),
-      (snap) => setReembReceber(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ReembLanc).filter((l) => l.reembolsoStatus !== "pago")),
+      (snap) => setReembReceber(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ReembLanc).filter((l) => l.publicado && l.reembolsoStatus !== "pago")),
       () => setReembReceber([]),
     );
     const u2 = onSnapshot(
       query(collection(db, "cartaoLancamentos"), where("restaurantId", "in", rids)),
-      (snap) => setReembPagos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ReembLanc).filter((l) => l.destinoTipo === "empresa" && l.reembolsoStatus === "pago")),
+      (snap) => setReembPagos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ReembLanc).filter((l) => l.destinoTipo === "empresa" && l.publicado && l.reembolsoStatus === "pago")),
       () => setReembPagos([]),
     );
     return () => { u1(); u2(); };

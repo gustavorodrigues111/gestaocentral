@@ -14,7 +14,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { exportarFaturasXLSX, exportarFaturasPDF } from "./exportFaturas";
-import type { CartaoCategoria, CartaoLancamento } from "../../core/types";
+import type { CartaoCategoria, CartaoFatura, CartaoLancamento } from "../../core/types";
 
 const CARTOES = ["Master Itaú", "Visa Itaú", "Master Santander", "Visa Santander"];
 // Categorias sugeridas (quick-add) — cobrem gastos comuns de restaurante + pessoal.
@@ -56,6 +56,7 @@ export function FaturasPage() {
   const [categorias, setCategorias] = useState<CartaoCategoria[]>([]);
   const [minhas, setMinhas] = useState<CartaoLancamento[]>([]);
   const [outras, setOutras] = useState<CartaoLancamento[]>([]);
+  const [faturas, setFaturas] = useState<CartaoFatura[]>([]);
 
   const ridsKey = restaurants.map(r => r.id).join(",");
   const restNome = useMemo(() => Object.fromEntries(restaurants.map(r => [r.id, r.nome])), [restaurants]);
@@ -77,7 +78,9 @@ export function FaturasPage() {
       setMinhas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as CartaoLancamento)));
     const u2 = onSnapshot(query(collection(db, "cartaoLancamentos"), where("empresaAtribuidaId", "==", rid)), snap =>
       setOutras(snap.docs.map(d => ({ id: d.id, ...d.data() }) as CartaoLancamento)));
-    return () => { u1(); u2(); };
+    const u3 = onSnapshot(query(collection(db, "cartaoFaturas"), where("restaurantId", "==", rid)), snap =>
+      setFaturas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as CartaoFatura)));
+    return () => { u1(); u2(); u3(); };
   }, [rid]);
 
   const catsDe = (entId: string) => categorias.filter(c => c.restaurantId === entId).sort((a, b) => a.nome.localeCompare(b.nome));
@@ -102,7 +105,7 @@ export function FaturasPage() {
 
       {aba === "visualizacao" && <Visualizacao minhas={minhas} outras={outras} catNome={catNome} restNome={restNome} meId={me?.id} meNome={me?.nome} />}
       {aba === "classificacao" && podeClassificar && (
-        <Classificacao rid={rid} meId={me?.id} pixPadrao={activeRestaurant?.cartaoChavePixPadrao} cartoes={activeRestaurant?.cartoesCadastrados || []} empresaPropriaNome={activeRestaurant?.nome || restNome[rid] || ""} outrasEmpresas={outrasEmpresas} catsDe={catsDe} minhas={minhas} />
+        <Classificacao rid={rid} meId={me?.id} pixPadrao={activeRestaurant?.cartaoChavePixPadrao} cartoes={activeRestaurant?.cartoesCadastrados || []} empresaPropriaNome={activeRestaurant?.nome || restNome[rid] || ""} outrasEmpresas={outrasEmpresas} catsDe={catsDe} minhas={minhas} faturas={faturas} />
       )}
       {aba === "categorias" && podeCategorias && <Categorias rid={rid} categorias={catsDe(rid)} pixPadrao={activeRestaurant?.cartaoChavePixPadrao || ""} cartoes={activeRestaurant?.cartoesCadastrados || []} />}
     </div>
@@ -110,9 +113,11 @@ export function FaturasPage() {
 }
 
 // ─── Visualização ────────────────────────────────────────────────────────────
-function Visualizacao({ minhas, outras, catNome, restNome, meId, meNome }: { minhas: CartaoLancamento[]; outras: CartaoLancamento[]; catNome: (id?: string | null) => string; restNome: Record<string, string>; meId?: string; meNome?: string }) {
+function Visualizacao({ minhas, outras: outrasRaw, catNome, restNome, meId, meNome }: { minhas: CartaoLancamento[]; outras: CartaoLancamento[]; catNome: (id?: string | null) => string; restNome: Record<string, string>; meId?: string; meNome?: string }) {
   const [sub, setSub] = useState<"minhas" | "outras">("minhas");
   const [pagando, setPagando] = useState("");
+  // Só reembolsos de faturas FECHADAS (publicadas) aparecem pra outra empresa.
+  const outras = outrasRaw.filter(l => l.publicado);
   const minhasProprias = minhas.filter(l => l.destinoTipo === "propria");
   const totalMinhas = minhasProprias.reduce((s, l) => s + (l.valor || 0), 0);
   const outrasPend = outras.filter(l => l.reembolsoStatus !== "pago");
@@ -220,11 +225,12 @@ function LancTabela({ lancs, catNome, mostrarStatus }: { lancs: CartaoLancamento
   );
 }
 
-// ─── Classificação (subir + extrair + classificar + salvar) ──────────────────
-function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outrasEmpresas, catsDe, minhas }: {
+// ─── Classificação (subir + extrair + classificar + rascunho/fechar) ─────────
+function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outrasEmpresas, catsDe, minhas, faturas }: {
   rid: string; meId?: string; pixPadrao?: string; cartoes: string[]; empresaPropriaNome: string; outrasEmpresas: { id: string; nome: string }[];
-  catsDe: (entId: string) => CartaoCategoria[]; minhas: CartaoLancamento[];
+  catsDe: (entId: string) => CartaoCategoria[]; minhas: CartaoLancamento[]; faturas: CartaoFatura[];
 }) {
+  const [faturaId, setFaturaId] = useState<string | null>(null);  // fatura sendo editada (null = nova)
   const [cartao, setCartao] = useState("");        // identificado pela IA; editável
   const [subindo, setSubindo] = useState(false);
   const [erro, setErro] = useState("");
@@ -235,6 +241,31 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   // Competência derivada do vencimento (mês/ano da fatura) — sem input manual.
   const competencia = venc && /^\d{4}-\d{2}/.test(venc) ? venc.slice(0, 7) : mesAtual();
 
+  const rascunhos = faturas.filter(f => (f.status || "rascunho") === "rascunho").sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+  const editando = linhas.length > 0;
+
+  // Carrega um rascunho salvo de volta pro editor.
+  function carregarRascunho(f: CartaoFatura) {
+    const lancs = minhas.filter(l => l.faturaId === f.id).sort((a, b) => (a.data || "").localeCompare(b.data || ""));
+    setFaturaId(f.id); setCartao(f.cartao || ""); setVenc(f.vencimento || null); setTotalFatura(f.totalFatura ?? null); setErro("");
+    setLinhas(lancs.map(l => ({
+      data: l.dataOriginal || (l.data ? l.data.slice(8, 10) + "/" + l.data.slice(5, 7) : ""),
+      descricao: l.descricao, valor: l.valor, parcela: l.parcela || null,
+      destinoTipo: l.destinoTipo, empresaAtribuidaId: l.empresaAtribuidaId || null, categoriaId: l.categoriaId || null,
+    })));
+  }
+  function limpar() { setLinhas([]); setVenc(null); setTotalFatura(null); setCartao(""); setFaturaId(null); setErro(""); }
+  async function descartar() {
+    if (!confirm(faturaId ? "Descartar este rascunho? Os lançamentos salvos serão apagados." : "Descartar esta fatura não salva?")) return;
+    if (faturaId) {
+      const batch = writeBatch(db);
+      batch.delete(doc(db, "cartaoFaturas", faturaId));
+      for (const old of minhas.filter(l => l.faturaId === faturaId)) batch.delete(doc(db, "cartaoLancamentos", old.id));
+      await batch.commit();
+    }
+    limpar();
+  }
+
   // Memória de comerciante: por nome normalizado → última classificação usada.
   const memoria = useMemo(() => {
     const m = new Map<string, { destinoTipo: "propria" | "empresa"; empresaAtribuidaId: string | null; categoriaId: string | null }>();
@@ -243,7 +274,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   }, [minhas]);
 
   async function subirEExtrair(file: File) {
-    setErro(""); setSubindo(true);
+    setErro(""); setSubindo(true); setFaturaId(null);  // PDF novo = fatura nova
     try {
       const path = `faturas-cartao/${rid}/${Date.now()}_${file.name.replace(/[^\w.\-]+/g, "_")}`;
       const snap = await uploadBytes(storageRef(storage, path), file, { contentType: "application/pdf" });
@@ -296,32 +327,51 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
     return `${competencia.slice(0, 4)}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
   }
 
-  async function salvar() {
+  // Salva rascunho (fechar=false, não publica) ou fecha a fatura (fechar=true,
+  // publica os reembolsos pras outras empresas). Idempotente por faturaId.
+  async function persistir(fechar: boolean) {
     if (linhas.length === 0) return;
+    if (cartoes.length > 0 && !cartao) { alert("Escolha o cartão antes de salvar."); return; }
+    if (fechar) {
+      const semCat = linhas.filter(l => !l.categoriaId).length;
+      const msg = semCat > 0
+        ? `Fechar a fatura vai publicar os reembolsos pras outras empresas. Ainda há ${semCat} lançamento(s) sem categoria. Fechar assim mesmo?`
+        : "Fechar a fatura? Os gastos atribuídos a outras empresas serão publicados pra elas como reembolso.";
+      if (!confirm(msg)) return;
+    }
     setSalvando(true);
     try {
-      const faturaId = `fat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const agora = new Date().toISOString();
+      const fid = faturaId || `fat_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const faturaAtual = faturas.find(f => f.id === fid);
       const batch = writeBatch(db);
-      batch.set(doc(db, "cartaoFaturas", faturaId), sanitizeForFirestore({
-        id: faturaId, restaurantId: rid, cartao, competencia, vencimento: venc, totalFatura,
-        criadoEm: new Date().toISOString(), criadoPor: meId || null,
+      batch.set(doc(db, "cartaoFaturas", fid), sanitizeForFirestore({
+        id: fid, restaurantId: rid, cartao, competencia, vencimento: venc, totalFatura,
+        status: fechar ? "fechada" : "rascunho",
+        fechadaEm: fechar ? agora : null, fechadaPor: fechar ? (meId || null) : null,
+        criadoEm: faturaAtual?.criadoEm || agora, criadoPor: faturaAtual?.criadoPor || meId || null,
       }));
-      for (const l of linhas) {
-        const id = `lan_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      // Apaga lançamentos antigos desta fatura e regrava os atuais (ids determinísticos).
+      for (const old of minhas.filter(l => l.faturaId === fid)) batch.delete(doc(db, "cartaoLancamentos", old.id));
+      linhas.forEach((l, i) => {
+        const id = `${fid}_${i}`;
+        const ehEmpresa = l.destinoTipo === "empresa";
         batch.set(doc(db, "cartaoLancamentos", id), sanitizeForFirestore({
-          id, restaurantId: rid, faturaId, cartao,
+          id, restaurantId: rid, faturaId: fid, cartao,
           data: ymdDe(l.data), dataOriginal: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, obs: null,
-          destinoTipo: l.destinoTipo, empresaAtribuidaId: l.destinoTipo === "empresa" ? l.empresaAtribuidaId : null,
-          categoriaId: l.categoriaId, reembolsoStatus: l.destinoTipo === "empresa" ? "pendente" : null,
-          reembolsoDataPagamento: l.destinoTipo === "empresa" ? (venc || null) : null,
-          reembolsoChavePix: l.destinoTipo === "empresa" ? (pixPadrao || null) : null,
-          pagoEm: null, pagoPor: null,
-          criadoEm: new Date().toISOString(), criadoPor: meId || null,
+          destinoTipo: l.destinoTipo, empresaAtribuidaId: ehEmpresa ? l.empresaAtribuidaId : null,
+          categoriaId: l.categoriaId,
+          publicado: fechar,                                 // só publica ao fechar
+          reembolsoStatus: fechar && ehEmpresa ? "pendente" : null,
+          reembolsoDataPagamento: fechar && ehEmpresa ? (venc || null) : null,
+          reembolsoChavePix: fechar && ehEmpresa ? (pixPadrao || null) : null,
+          pagoEm: null, pagoPor: null, pagoPorNome: null,
+          criadoEm: agora, criadoPor: meId || null,
         }));
-      }
+      });
       await batch.commit();
-      setLinhas([]); setVenc(null); setTotalFatura(null);
-      alert("✅ Fatura salva e classificada.");
+      if (fechar) { limpar(); alert("✅ Fatura fechada. Reembolsos publicados pras outras empresas."); }
+      else { setFaturaId(fid); alert("💾 Rascunho salvo. Dá pra continuar editando depois na lista de rascunhos."); }
     } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); }
     finally { setSalvando(false); }
   }
@@ -341,7 +391,29 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         {erro && <p className="text-xs text-rose-600 mt-2">{erro}</p>}
       </div>
 
-      {linhas.length > 0 && (
+      {/* Rascunhos em aberto — continuar editando (só quando não está editando) */}
+      {!editando && rascunhos.length > 0 && (
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-2">
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">📝 Rascunhos em aberto</div>
+          <p className="text-xs text-gray-500">Faturas salvas mas ainda não fechadas — nada foi publicado pras outras empresas.</p>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800">
+            {rascunhos.map(f => {
+              const n = minhas.filter(l => l.faturaId === f.id).length;
+              return (
+                <div key={f.id} className="flex items-center justify-between gap-2 py-2">
+                  <div className="min-w-0 text-sm">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">{f.cartao || "Cartão —"}</span>
+                    <span className="text-gray-400"> · {n} lançamento{n === 1 ? "" : "s"}{f.vencimento ? ` · venc ${f.vencimento.split("-").reverse().join("/")}` : ""}</span>
+                  </div>
+                  <Button size="sm" variant="secondary" onClick={() => carregarRascunho(f)}>Continuar</Button>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {editando && (
         <>
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3 flex-wrap text-xs">
@@ -360,8 +432,13 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
               <span className="text-gray-500">Classificado: <b className="text-gray-800 dark:text-gray-200">{fmtBRL(somaClass)}</b></span>
               {diff != null && <span className={Math.abs(diff) < 0.01 ? "text-emerald-600" : "text-amber-600"}>Diferença: <b>{fmtBRL(diff)}</b></span>}
               {naoClassificados > 0 && <span className="text-amber-600">{naoClassificados} sem categoria</span>}
+              {faturaId && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">rascunho</span>}
             </div>
-            <Button size="sm" onClick={() => void salvar()} disabled={salvando || (cartoes.length > 0 && !cartao)}>{salvando ? "Salvando…" : "✓ Salvar fatura"}</Button>
+            <div className="flex items-center gap-1.5">
+              <Button size="sm" variant="ghost" onClick={() => void descartar()} disabled={salvando}>Descartar</Button>
+              <Button size="sm" variant="secondary" onClick={() => void persistir(false)} disabled={salvando}>{salvando ? "…" : "💾 Salvar rascunho"}</Button>
+              <Button size="sm" onClick={() => void persistir(true)} disabled={salvando || (cartoes.length > 0 && !cartao)}>{salvando ? "…" : "✓ Fechar fatura"}</Button>
+            </div>
           </div>
           <p className="text-[11px] text-gray-500 flex items-center gap-1">✨ A IA já sugeriu <b className="text-violet-600 dark:text-violet-300">destino</b> e <b className="text-indigo-600 dark:text-indigo-300">categoria</b> — clique nas pílulas pra ajustar o que precisar.</p>
           <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
