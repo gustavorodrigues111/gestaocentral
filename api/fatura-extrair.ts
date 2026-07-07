@@ -32,7 +32,8 @@ function montarPrompt(cartoes: string[], empresaPropria: string, empresas: strin
   "1) Para CADA lançamento (compra, estorno, encargo, anuidade, IOF): data ('DD/MM'), descricao (nome do estabelecimento, SEM o código de parcela grudado), valor (número), parcela.\n" +
   "2) valor = número em reais. Use ponto decimal. ESTORNOS/CRÉDITOS/PAGAMENTOS a favor do cliente = valor NEGATIVO. Ex: '1.977,50' → 1977.50 ; '-30,98' → -30.98.\n" +
   "3) parcela = se a descrição tiver marca de parcela (ex: 'MURR CADEIRAS LTDA03/03', 'AGP*BARFACIL*T08/12'), extraia como '03/03' / '08/12' e TIRE ela da descricao. Se não for parcelado, parcela = null.\n" +
-  "4) NÃO inclua linhas de resumo/subtotal ('Total desta fatura', 'Lançamentos atuais', 'Total da fatura anterior', 'Pagamento efetuado'), nem textos legais/instruções. SÓ os lançamentos reais.\n" +
+  "4) NÃO inclua linhas de resumo/subtotal ('Total desta fatura', 'Lançamentos atuais', 'Total da fatura anterior'), nem textos legais/instruções. SÓ os lançamentos reais.\n" +
+  "4b) NÃO inclua o PAGAMENTO DA PRÓPRIA FATURA (quitação da fatura anterior). Costuma aparecer como valor negativo grande com descrição tipo 'PAGAMENTO DE FATURA', 'PAGTO FATURA', 'PAGAMENTO ONLINE', 'PAGAMENTO EFETUADO', 'PAGAMENTO RECEBIDO', 'PGTO DEBITO CONTA'. ISSO NÃO É GASTO — descarte. (ATENÇÃO: estorno/crédito de uma COMPRA específica de estabelecimento, esse SIM mantém, negativo.)\n" +
   "5) vencimento = data de vencimento da fatura no formato 'YYYY-MM-DD'.\n" +
   "6) totalFatura = o valor do 'Total desta fatura' (número, ponto decimal).\n" +
   "7) NÃO invente nada. Se um campo não existir, use null.\n" +

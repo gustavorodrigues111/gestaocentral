@@ -43,7 +43,7 @@ const chipSelect = (v: "empresa" | "neutro" | "ok" | "vazio"): string => {
   return base + styles[v];
 };
 
-type Extraido = { data: string; descricao: string; valor: number; parcela: string | null; rateio: RateioSimples[]; categoriaId: string | null };
+type Extraido = { data: string; descricao: string; valor: number; parcela: string | null; rateio: RateioSimples[]; categoriaId: string | null; ignorar?: boolean };
 
 export function FaturasPage() {
   const { pessoa: me } = useAuth();
@@ -380,7 +380,9 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
           const mem = memoria.get(normNome(l.descricao));
           if (mem) { categoriaId = mem.categoriaId; rateio = mem.rateio.length ? mem.rateio : catRateioPadrao(mem.categoriaId); }
         }
-        return { data: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, rateio, categoriaId };
+        // pré-ignora pagamento da própria fatura (quitação anterior) se a IA deixar passar
+        const ignorar = l.valor < 0 && /pagamento de fatura|pagto\.?\s*fatura|pagamento efetuad|pagamento recebid|pagamento online|pgto.*d[eé]bito|d[eé]bito autom[aá]tico/i.test(l.descricao) ? true : undefined;
+        return { data: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, rateio, categoriaId, ignorar };
       });
       setLinhas(novas);
     } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao subir/extrair."); }
@@ -400,9 +402,11 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
     }));
   }
 
-  const somaClass = linhas.reduce((s, l) => s + (l.valor || 0), 0);
+  const toggleIgnorar = (i: number) => setLinhas(prev => prev.map((l, j) => j === i ? { ...l, ignorar: !l.ignorar } : l));
+  const linhasValidas = linhas.filter(l => !l.ignorar);
+  const somaClass = linhasValidas.reduce((s, l) => s + (l.valor || 0), 0);
   const diff = totalFatura != null ? Math.round((somaClass - totalFatura) * 100) / 100 : null;
-  const naoClassificados = linhas.filter(l => !l.categoriaId).length;
+  const naoClassificados = linhasValidas.filter(l => !l.categoriaId).length;
 
   function ymdDe(dataDDMM: string): string {
     const [d, m] = (dataDDMM || "").split("/");
@@ -436,8 +440,9 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         criadoEm: faturaAtual?.criadoEm || agora, criadoPor: faturaAtual?.criadoPor || meId || null,
       }));
       // Apaga lançamentos antigos desta fatura e regrava os atuais (ids determinísticos).
+      // Linhas ignoradas (ex: pagamento da fatura anterior) NÃO são gravadas.
       for (const old of minhas.filter(l => l.faturaId === fid)) batch.delete(doc(db, "cartaoLancamentos", old.id));
-      linhas.forEach((l, i) => {
+      linhas.filter(l => !l.ignorar).forEach((l, i) => {
         const id = `${fid}_${i}`;
         // Rateio: normaliza (%>0) e calcula o valor de cada fatia.
         const partes: CartaoRateioParte[] = (l.rateio || []).filter(p => p.empresaId && p.percentual > 0).map(p => ({
@@ -538,19 +543,28 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
               </tr></thead>
               <tbody>
                 {linhas.map((l, i) => (
-                    <tr key={i} className="border-t border-gray-100 dark:border-gray-800">
+                    <tr key={i} className={`border-t border-gray-100 dark:border-gray-800 ${l.ignorar ? "opacity-45" : ""}`}>
                       <td className="px-2 py-1.5 whitespace-nowrap text-gray-500">{l.data}</td>
-                      <td className="px-2 py-1.5">{l.descricao}{l.parcela && <span className="ml-1 text-[10px] text-gray-400">({l.parcela})</span>}</td>
-                      <td className={`px-2 py-1.5 text-right tabular-nums ${l.valor < 0 ? "text-emerald-600" : ""}`}>{fmtBRL(l.valor)}</td>
                       <td className="px-2 py-1.5">
-                        <button type="button" onClick={() => setRateioRow(i)} className={chipSelect(l.rateio.length ? "empresa" : "neutro") + " pr-2.5"}>{resumoRateio(l.rateio)} ▾</button>
+                        <span className={l.ignorar ? "line-through" : ""}>{l.descricao}</span>{l.parcela && <span className="ml-1 text-[10px] text-gray-400">({l.parcela})</span>}
+                        <button type="button" onClick={() => toggleIgnorar(i)} className="ml-2 text-[10px] text-gray-400 hover:text-rose-600 align-middle">{l.ignorar ? "↩ reincluir" : "✕ ignorar"}</button>
                       </td>
-                      <td className="px-2 py-1.5">
-                        <select value={l.categoriaId || ""} onChange={e => setCategoria(i, e.target.value || null)} className={chipSelect(l.categoriaId ? "ok" : "vazio")}>
-                          <option value="">+ categoria</option>
-                          {catsDe(rid).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                        </select>
-                      </td>
+                      <td className={`px-2 py-1.5 text-right tabular-nums ${l.ignorar ? "line-through text-gray-400" : l.valor < 0 ? "text-emerald-600" : ""}`}>{fmtBRL(l.valor)}</td>
+                      {l.ignorar ? (
+                        <td className="px-2 py-1.5 text-[11px] text-gray-400 italic" colSpan={2}>ignorado — não entra na fatura</td>
+                      ) : (
+                        <>
+                          <td className="px-2 py-1.5">
+                            <button type="button" onClick={() => setRateioRow(i)} className={chipSelect(l.rateio.length ? "empresa" : "neutro") + " pr-2.5"}>{resumoRateio(l.rateio)} ▾</button>
+                          </td>
+                          <td className="px-2 py-1.5">
+                            <select value={l.categoriaId || ""} onChange={e => setCategoria(i, e.target.value || null)} className={chipSelect(l.categoriaId ? "ok" : "vazio")}>
+                              <option value="">+ categoria</option>
+                              {catsDe(rid).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                            </select>
+                          </td>
+                        </>
+                      )}
                     </tr>
                 ))}
               </tbody>
