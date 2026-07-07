@@ -2,7 +2,7 @@
 // você classifica cada um por CATEGORIA e DESTINO (própria entidade ou outra
 // empresa = reembolso). Duas abas: Visualização (Minhas faturas / Outras
 // faturas a reembolsar) e Classificação. Categorias são por entidade.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -351,6 +351,16 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   const statusFatura = (id: string | null) => faturas.find(f => f.id === id)?.status;
   const ehFechada = statusFatura(faturaId) === "fechada";
   const editando = linhas.length > 0;
+
+  // Ao abrir a Classificação, carrega automaticamente a 1ª fatura da lista (uma vez).
+  const autoLoaded = useRef(false);
+  useEffect(() => {
+    if (!autoLoaded.current && faturasLista.length > 0 && !editando && !faturaId) {
+      autoLoaded.current = true;
+      carregarRascunho(faturasLista[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [faturasLista.length]);
 
   // Carrega um rascunho salvo de volta pro editor.
   function carregarRascunho(f: CartaoFatura) {
