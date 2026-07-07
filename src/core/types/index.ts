@@ -57,6 +57,8 @@ export type ModuleId =
   | "tarefas" | "contasFixas" | "manutencoes"
   // Vendas — registro de vendas fora do sistema fiscal (entre empresas, permutas)
   | "vendas"
+  // Faturas — faturas de cartão: subir, IA extrai/classifica, reembolso entre entidades
+  | "faturas"
   // Exames médicos do empregado (Fase 7)
   | "exames"
   // Processo de Demissão (Fase 8)
@@ -5587,6 +5589,53 @@ export type WhatsappTag = {
   nome: string;
   cor?: string;        // hex (ex "#6366f1")
   criadoEm?: string;
+};
+
+// ── Módulo Faturas (cartão de crédito) ──────────────────────────────────────
+// Categoria por entidade (cada empresa/pessoa tem a sua lista).
+export type CartaoCategoria = {
+  id: string;
+  restaurantId: string;       // entidade dona da categoria
+  nome: string;
+  cor?: string;
+  ordem?: number;
+  ativo?: boolean;
+  criadoEm?: string;
+};
+
+// Uma fatura subida (de um cartão, num mês).
+export type CartaoFatura = {
+  id: string;
+  restaurantId: string;       // entidade dona do cartão
+  cartao: string;             // "Master Itaú" | "Visa Itaú" | ...
+  competencia: string;        // "YYYY-MM"
+  vencimento?: string | null; // "YYYY-MM-DD" (extraído da fatura)
+  totalFatura?: number | null;// total da fatura (extraído) — pra conferência
+  arquivoPath?: string | null;// path no Storage do PDF
+  criadoEm: string;
+  criadoPor?: string | null;
+};
+
+// Cada lançamento (gasto) de uma fatura.
+export type CartaoLancamento = {
+  id: string;
+  restaurantId: string;       // entidade DONA do cartão
+  faturaId?: string | null;
+  cartao: string;
+  data: string;               // "YYYY-MM-DD" (ou "DD/MM" original em `dataOriginal`)
+  dataOriginal?: string;
+  descricao: string;
+  valor: number;              // negativo = estorno
+  parcela?: string | null;    // "03/12"
+  obs?: string | null;
+  // Destino: própria entidade OU atribuído a outra empresa (reembolso).
+  destinoTipo: "propria" | "empresa";
+  empresaAtribuidaId?: string | null;   // se destinoTipo="empresa"
+  categoriaId?: string | null;          // categoria (na lista do destino)
+  // Reembolso (quando destinoTipo="empresa") — ciclo de pagamento entra na Fase 3.
+  reembolsoStatus?: "pendente" | "pago" | null;
+  criadoEm: string;
+  criadoPor?: string | null;
 };
 
 export type WhatsappContato = {

@@ -148,6 +148,9 @@ service cloud.firestore {
     match /whatsappTags/{id}           { allow read, write: if authed(); }
     match /rotinaNotificacoes/{id}     { allow read, write: if authed(); }
     match /notificacaoConfigs/{id}     { allow read, write: if authed(); }
+    match /cartaoCategorias/{id}       { allow read, write: if authed(); }
+    match /cartaoFaturas/{id}          { allow read, write: if authed(); }
+    match /cartaoLancamentos/{id}      { allow read, write: if authed(); }
     match /ftCardapio/{id}             { allow read, write: if authed(); }
     match /ftImportRascunhos/{id}      { allow read, write: if authed(); }
     match /ftVinculosRecebimento/{id}  { allow read, write: if authed(); }

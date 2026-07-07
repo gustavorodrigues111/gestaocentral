@@ -53,6 +53,7 @@ import { TarefasPage } from "../../modules/tarefas/TarefasPage";
 import { ContasFixasPage } from "../../modules/contasFixas/ContasFixasPage";
 import { ManutencoesPage } from "../../modules/manutencoes/ManutencoesPage";
 import { VendasPage } from "../../modules/vendas/VendasPage";
+import { FaturasPage } from "../../modules/faturas/FaturasPage";
 import { FichasPage } from "../../modules/fichas/FichasPage";
 import { ExamesPage } from "../../modules/exames/ExamesPage";
 import { DemissaoPage } from "../../modules/demissao/DemissaoPage";
@@ -108,6 +109,7 @@ function ModuleRouter() {
     case "contasFixas":   return <ContasFixasPage key={k} />;
     case "manutencoes":   return <ManutencoesPage key={k} />;
     case "vendas":        return <VendasPage key={k} />;
+    case "faturas":       return <FaturasPage key={k} />;
     case "fichas":        return <FichasPage key={k} />;
     case "exames":        return <ExamesPage key={k} />;
     case "demissao":      return <DemissaoPage key={k} />;

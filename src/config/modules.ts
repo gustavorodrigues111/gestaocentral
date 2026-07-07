@@ -87,6 +87,7 @@ export const MODULES: ModuleDef[] = [
   // ── Despesas ─────────────────────────────────────────────────────
   { id: "contasFixas", area: "fin", subarea: "Despesas",               label: "Contas Fixas",    icon: "💵", status: "ativo", etapa: "beta", desc: "Cadastro mestre de pagamentos recorrentes (aluguel, sistemas, impostos). Gera lembretes no Gestor de Tarefas." },
   { id: "vendas",      area: "fin", subarea: "Vendas & Permutas",      label: "Vendas",          icon: "🧾", status: "ativo", etapa: "beta", desc: "Registro de vendas fora do sistema fiscal (entre empresas, permutas, sem margem). Cobrança via WhatsApp, quitação e permuta recíproca." },
+  { id: "faturas",     area: "fin", subarea: "Cartões & Faturas",      label: "Faturas",         icon: "💳", status: "ativo", etapa: "em_desenvolvimento", desc: "Faturas de cartão: sobe o PDF, a IA extrai e você classifica os gastos por categoria/empresa. Gastos atribuídos a outra empresa viram reembolso na Central de Avisos dela." },
 
   // ═══ 🌐 INSTITUCIONAL / CONFIG ═══
   { id: "sites",          area: "inst", subarea: "Configuração", label: "Sites",          icon: "🌐", status: "ativo", etapa: "beta", desc: "Site público do restaurante: história, horário, cardápio, forms" },

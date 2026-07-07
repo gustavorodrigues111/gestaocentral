@@ -588,6 +588,18 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "faturas",
+    icon: "💳",
+    label: "Faturas de Cartão",
+    desc: "Subir faturas de cartão, classificar gastos e reembolsos entre empresas",
+    area: "gestao",
+    acoes: [
+      { id: "ver",         label: "Ver faturas e lançamentos", sensivel: true },
+      { id: "classificar", label: "Subir fatura e classificar lançamentos", sensivel: true },
+      { id: "categorias",  label: "Gerenciar categorias" },
+    ],
+  },
+  {
     id: "exames",
     icon: "🩺",
     label: "Exames Médicos",
