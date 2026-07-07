@@ -13,6 +13,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
+import { exportarFaturasXLSX, exportarFaturasPDF } from "./exportFaturas";
 import type { CartaoCategoria, CartaoLancamento } from "../../core/types";
 
 const CARTOES = ["Master Itaú", "Visa Itaú", "Master Santander", "Visa Santander"];
@@ -119,11 +120,22 @@ function Visualizacao({ minhas, outras, catNome, restNome, meId, meNome }: { min
     finally { setPagando(""); }
   }
 
+  const exportarLancs = sub === "minhas" ? minhasProprias : outras;
+  const exportarTitulo = sub === "minhas" ? "Minhas faturas" : "Reembolsos a receber";
+
   return (
     <div>
-      <div className="flex gap-1.5 mb-3">
-        <SubChip ativo={sub === "minhas"} onClick={() => setSub("minhas")}>Minhas faturas · {fmtBRL(totalMinhas)}</SubChip>
-        <SubChip ativo={sub === "outras"} onClick={() => setSub("outras")}>Outras faturas (reembolso) · {fmtBRL(totalOutrasPend)}</SubChip>
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <div className="flex gap-1.5">
+          <SubChip ativo={sub === "minhas"} onClick={() => setSub("minhas")}>Minhas faturas · {fmtBRL(totalMinhas)}</SubChip>
+          <SubChip ativo={sub === "outras"} onClick={() => setSub("outras")}>Outras faturas (reembolso) · {fmtBRL(totalOutrasPend)}</SubChip>
+        </div>
+        {exportarLancs.length > 0 && (
+          <div className="flex gap-1.5">
+            <button type="button" onClick={() => void exportarFaturasXLSX(exportarLancs, catNome, exportarTitulo)} className="text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">⬇ Excel</button>
+            <button type="button" onClick={() => void exportarFaturasPDF(exportarLancs, catNome, exportarTitulo)} className="text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">⬇ PDF</button>
+          </div>
+        )}
       </div>
 
       {sub === "minhas" ? (

@@ -783,6 +783,11 @@ export type Restaurant = {
   serviceStartDate?: string;
   modulosAtivos: ModuleId[];
 
+  // É um restaurante de fato? Default true (retrocompat: tudo que já existe é
+  // restaurante). Desmarcar em entidades de gestão pessoal/escritório (ex:
+  // Quibebe) — só rótulo/organização; os módulos continuam manuais.
+  restaurante?: boolean;
+
   // Multi-unidades. Default false — restaurante single-unidade não vê nada
   // disso na UI e o sistema funciona como antes.
   multiUnidades?: boolean;

@@ -27,6 +27,7 @@ export function ConfiguracoesPage() {
     codigoContabil: activeRestaurant?.codigoContabil || "",
     cnpj: activeRestaurant?.cnpj || "",
     subdomain: activeRestaurant?.subdomain || "",
+    restaurante: activeRestaurant?.restaurante !== false,  // default true (retrocompat)
   });
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState("");
@@ -81,6 +82,7 @@ export function ConfiguracoesPage() {
         codigoContabil: form.codigoContabil.trim() || null,
         cnpj: form.cnpj.trim() || null,
         subdomain: sub || null,
+        restaurante: form.restaurante,
       });
       setSavedAt(new Date().toLocaleTimeString("pt-BR"));
     } catch (e) {
@@ -133,6 +135,17 @@ export function ConfiguracoesPage() {
             )}
             . 3-30 caracteres, letras minúsculas/números/hífen.
           </p>
+        </div>
+
+        {/* Tipo de entidade — restaurante vs. gestão pessoal/escritório */}
+        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input type="checkbox" checked={form.restaurante} onChange={(e) => setForm({ ...form, restaurante: e.target.checked })} className="mt-0.5" />
+            <span>
+              <span className="text-sm font-medium text-gray-900 dark:text-gray-100">É um restaurante</span>
+              <span className="block text-xs text-gray-500 dark:text-gray-400">Desmarque em entidades de gestão pessoal ou escritório (não operacional). Só organiza — os módulos continuam escolhidos manualmente acima.</span>
+            </span>
+          </label>
         </div>
 
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
