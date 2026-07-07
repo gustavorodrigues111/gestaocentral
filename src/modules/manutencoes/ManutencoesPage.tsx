@@ -34,6 +34,8 @@ export function ManutencoesPage() {
   const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
   const [enderecos, setEnderecos] = useState<Endereco[]>([]);
   const [aba, setAba] = useState<"visualizacao" | "cadastro">("visualizacao");
+  const [filtroEnd, setFiltroEnd] = useState<string>("todas");
+  const [soObrig, setSoObrig] = useState(false);
   const [editando, setEditando] = useState<Manutencao | null>(null);
   const [apontando, setApontando] = useState<Manutencao | null>(null);
   const [criando, setCriando] = useState(false);
@@ -64,8 +66,17 @@ export function ManutencoesPage() {
   if (!pessoa) return null;
   const hoje = new Date().toISOString().slice(0, 10);
   const daEmpresa = manutencoes.filter(m => (m.restaurantIds || []).includes(rid || "") || (m.enderecoIds || []).some(eid => endById[eid]?.restaurantId === rid));
-  const vencidas = daEmpresa.filter(m => m.proximoVencimento < hoje).length;
   const endsDaEmpresa = enderecos.filter(e => e.restaurantId === rid);
+  // Filtros só valem na Visualização (chips de unidade + laudo obrigatório).
+  const filtrando = aba === "visualizacao";
+  const visiveis = daEmpresa.filter(m => {
+    if (!filtrando) return true;
+    if (soObrig && m.obrigatorio === false) return false;
+    if (filtroEnd !== "todas" && !(m.enderecoIds || []).includes(filtroEnd)) return false;
+    return true;
+  });
+  const vencidas = visiveis.filter(m => m.proximoVencimento < hoje).length;
+  const filtroAtivo = filtrando && (filtroEnd !== "todas" || soObrig);
 
   const tab = (v: "visualizacao" | "cadastro", label: string) => (
     <button type="button" onClick={() => setAba(v)}
@@ -75,7 +86,7 @@ export function ManutencoesPage() {
   return (
     <div className="max-w-6xl mx-auto p-4">
       <header className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-        <div className="text-sm text-gray-500">{daEmpresa.length} item{daEmpresa.length === 1 ? "" : "s"}{vencidas > 0 && <span className="text-rose-600 font-medium"> · {vencidas} vencido{vencidas === 1 ? "" : "s"}</span>}</div>
+        <div className="text-sm text-gray-500">{visiveis.length} item{visiveis.length === 1 ? "" : "s"}{filtroAtivo && daEmpresa.length !== visiveis.length ? ` de ${daEmpresa.length}` : ""}{vencidas > 0 && <span className="text-rose-600 font-medium"> · {vencidas} vencido{vencidas === 1 ? "" : "s"}</span>}</div>
         <Button onClick={() => setCriando(true)}>+ Nova Manutenção</Button>
       </header>
 
@@ -93,15 +104,32 @@ export function ManutencoesPage() {
         <PastaRaizConfig rid={rid} folderId={activeRestaurant?.manutencoesDriveFolderId} folderNome={activeRestaurant?.manutencoesDriveFolderNome} />
       )}
 
+      {filtrando && daEmpresa.length > 0 && (endsDaEmpresa.length > 1 || daEmpresa.some(m => m.obrigatorio === false)) && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+          {endsDaEmpresa.length > 1 && (
+            <>
+              {chip(filtroEnd === "todas", "Todas as unidades", () => setFiltroEnd("todas"))}
+              {endsDaEmpresa.map(e => chip(filtroEnd === e.id, `📍 ${e.apelido}`, () => setFiltroEnd(e.id), e.id))}
+              <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />
+            </>
+          )}
+          {chip(soObrig, "📋 Só laudo obrigatório", () => setSoObrig(v => !v))}
+        </div>
+      )}
+
       {daEmpresa.length === 0 ? (
         <div className="text-center py-12 text-gray-500 dark:text-gray-400">
           <div className="text-4xl mb-2">📅</div>
           <p>Nenhuma manutenção cadastrada nesta empresa.</p>
           <p className="text-sm mt-1">Vá em <b>📝 Cadastro</b> pra criar filtros, potabilidade, dedetização, CLCB, certificados, etc.</p>
         </div>
+      ) : visiveis.length === 0 ? (
+        <div className="text-center py-10 text-gray-500 dark:text-gray-400 text-sm">
+          Nenhum item com esse filtro. <button type="button" onClick={() => { setFiltroEnd("todas"); setSoObrig(false); }} className="text-indigo-600 hover:underline">limpar filtros</button>
+        </div>
       ) : (
         <div className="space-y-2">
-          {daEmpresa.map(m => {
+          {visiveis.map(m => {
             const atrasada = m.proximoVencimento < hoje;
             const proxima = !atrasada && m.proximoVencimento <= addDias(hoje, m.diasAntecedencia || 30);
             const st = m.statusCiclo || "pendente";
@@ -420,6 +448,12 @@ function ManutencaoForm({ manutencao, onClose, restaurants, enderecos, pessoaId 
   );
 }
 
+function chip(active: boolean, label: string, onClick: () => void, key?: string) {
+  return (
+    <button key={key} type="button" onClick={onClick}
+      className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${active ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{label}</button>
+  );
+}
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return <label className="block"><div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1">{label}</div>{children}</label>;
 }
