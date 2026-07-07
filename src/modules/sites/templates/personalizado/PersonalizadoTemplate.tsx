@@ -1401,7 +1401,7 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
                       <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, gap: 1 }}>
                         {p.preco && (
                           <span style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                            {(p.taca || (p.garrafaMl || "").trim()) && <svg width={txCorpo(13)} height={txCorpo(13)} viewBox="0 0 24 24" fill="none" stroke={corPrimaria} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ alignSelf: "center" }}><path d="M10 2.5h4" /><path d="M10.5 2.5V6c0 1-.4 1.6-1.1 2.3C8.3 9.6 8 10.5 8 11.8V20a1.5 1.5 0 0 0 1.5 1.5h5A1.5 1.5 0 0 0 16 20v-8.2c0-1.3-.3-2.2-1.4-3.5C13.9 7.6 13.5 7 13.5 6V2.5" /></svg>}
+                            {(p.garrafa || p.taca || (p.garrafaMl || "").trim()) && <svg width={txCorpo(13)} height={txCorpo(13)} viewBox="0 0 24 24" fill="none" stroke={corPrimaria} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ alignSelf: "center" }}><path d="M10 2.5h4" /><path d="M10.5 2.5V6c0 1-.4 1.6-1.1 2.3C8.3 9.6 8 10.5 8 11.8V20a1.5 1.5 0 0 0 1.5 1.5h5A1.5 1.5 0 0 0 16 20v-8.2c0-1.3-.3-2.2-1.4-3.5C13.9 7.6 13.5 7 13.5 6V2.5" /></svg>}
                             {(p.garrafaMl || "").trim() && <span style={{ fontSize: txCorpo(12), color: corPrimaria, opacity: 0.75, whiteSpace: "nowrap" }}>({String(p.garrafaMl).replace(/ml$/i, "").trim()}ml)</span>}
                             <span style={{ fontSize: txCorpo(16), fontWeight: 600, color: corPrimaria, whiteSpace: "nowrap" }}>{p.preco}</span>
                           </span>

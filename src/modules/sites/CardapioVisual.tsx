@@ -207,7 +207,7 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
                   <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, gap: 1 }}>
                     {precoTxt && (
                       <span style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                        {!ehNota && (p.taca || (p.garrafaMl || "").trim()) && <GarrafaIcon size={lay.tamTitulo * 0.82} color={TEAL} />}
+                        {!ehNota && (p.garrafa || p.taca || (p.garrafaMl || "").trim()) && <GarrafaIcon size={lay.tamTitulo * 0.82} color={TEAL} />}
                         {!ehNota && (p.garrafaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: TEAL, opacity: 0.75, whiteSpace: "nowrap" }}>({String(p.garrafaMl).replace(/ml$/i, "").trim()}ml)</span>}
                         <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: TEAL, whiteSpace: "nowrap", fontWeight: 600 }}>{precoTxt}</span>
                       </span>

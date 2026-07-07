@@ -278,19 +278,21 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
                     <div className="flex-1 min-w-0 space-y-1.5">
                       {/* Título (verde) — 2 linhas (Enter = quebra; ótimo pra nome de vinho) */}
                       <textarea value={p.titulo} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { titulo: e.target.value })} placeholder="Nome do prato/vinho (Enter = quebra de linha)" className={`${inpTitulo} w-full font-semibold resize-y`} />
-                      {/* Preço garrafa (com $) + ml da garrafa + checkbox taça + reordenar */}
+                      {/* Preço (com $) + checkbox garrafa/taça + reordenar */}
                       <div className="flex items-center gap-2 flex-wrap">
-                        <div className="relative w-16 shrink-0" title="Tamanho da garrafa (ml) — opcional, pra garrafas não-padrão">
-                          <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><GarrafaIcon size={12} /></span>
-                          <input value={p.garrafaMl || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { garrafaMl: e.target.value.replace(/[^\d]/g, "") || undefined })} placeholder="ml" className={`${inpTitulo} w-full text-right pl-6 pr-1`} />
-                        </div>
                         <div className="relative w-28 shrink-0">
                           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">$</span>
-                          <input value={p.preco || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { preco: e.target.value || undefined })} placeholder={p.taca ? "garrafa" : "preço"} className={`${inpTitulo} w-full text-right pl-6`} />
+                          <input value={p.preco || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { preco: e.target.value || undefined })} placeholder={p.garrafa ? "garrafa" : "preço"} className={`${inpTitulo} w-full text-right pl-6`} />
                         </div>
                         {podeEditar && (
+                          <label className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1 cursor-pointer whitespace-nowrap" title="Marca como garrafa/vinho — mostra o ícone de garrafa ao lado do preço">
+                            <input type="checkbox" checked={!!p.garrafa} onChange={(e) => setPrato(si, pi, e.target.checked ? { garrafa: true } : { garrafa: undefined, garrafaMl: undefined })} />
+                            <GarrafaIcon size={13} /> garrafa
+                          </label>
+                        )}
+                        {podeEditar && (
                           <label className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1 cursor-pointer whitespace-nowrap">
-                            <input type="checkbox" checked={!!p.taca} onChange={(e) => setPrato(si, pi, e.target.checked ? { taca: true } : { taca: undefined, precoTaca: undefined })} />
+                            <input type="checkbox" checked={!!p.taca} onChange={(e) => setPrato(si, pi, e.target.checked ? { taca: true, garrafa: true } : { taca: undefined, precoTaca: undefined, tacaMl: undefined })} />
                             <TacaIcon size={13} /> taça
                           </label>
                         )}
@@ -302,6 +304,12 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
                           </div>
                         )}
                       </div>
+                      {p.garrafa && (
+                        <div className="relative w-24">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><GarrafaIcon size={13} /></span>
+                          <input value={p.garrafaMl || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { garrafaMl: e.target.value.replace(/[^\d]/g, "") || undefined })} placeholder="ml (opc.)" className={`${inpTitulo} w-full text-right pl-7`} />
+                        </div>
+                      )}
                       {p.taca && (
                         <div className="flex items-center gap-2">
                           <div className="relative w-24 shrink-0">
