@@ -313,8 +313,21 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   }
 
   function setLinha(i: number, patch: Partial<Extraido>) { setLinhas(prev => prev.map((l, j) => j === i ? { ...l, ...patch } : l)); }
-  // Ao trocar destino, zera categoria (é de outra lista).
-  function setDestino(i: number, tipo: "propria" | "empresa", empresaId: string | null) { setLinha(i, { destinoTipo: tipo, empresaAtribuidaId: empresaId, categoriaId: null }); }
+  // Ao trocar destino, preserva a categoria pelo NOME se a nova empresa tiver
+  // uma igual; senão zera (as categorias são por entidade).
+  function setDestino(i: number, tipo: "propria" | "empresa", empresaId: string | null) {
+    setLinhas(prev => prev.map((l, j) => {
+      if (j !== i) return l;
+      const oldEnt = l.destinoTipo === "propria" ? rid : l.empresaAtribuidaId;
+      const newEnt = tipo === "propria" ? rid : empresaId;
+      let categoriaId: string | null = null;
+      if (l.categoriaId && oldEnt && newEnt) {
+        const nome = catsDe(oldEnt).find(c => c.id === l.categoriaId)?.nome;
+        if (nome) categoriaId = catsDe(newEnt).find(c => c.nome.toLowerCase() === nome.toLowerCase())?.id || null;
+      }
+      return { ...l, destinoTipo: tipo, empresaAtribuidaId: empresaId, categoriaId };
+    }));
+  }
 
   const somaClass = linhas.reduce((s, l) => s + (l.valor || 0), 0);
   const diff = totalFatura != null ? Math.round((somaClass - totalFatura) * 100) / 100 : null;
