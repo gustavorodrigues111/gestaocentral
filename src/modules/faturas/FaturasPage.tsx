@@ -113,7 +113,7 @@ export function FaturasPage() {
       {aba === "categorias" && podeCategorias && (
         <div className="space-y-5">
           <Categorias rid={rid} categorias={catsDe(rid)} pixPadrao={activeRestaurant?.cartaoChavePixPadrao || ""} cartoes={activeRestaurant?.cartoesCadastrados || []} outrasEmpresas={outrasEmpresas} />
-          {isMaster && <ImportadorFaturas rid={rid} restaurants={restaurants} categorias={categorias} pixPadrao={activeRestaurant?.cartaoChavePixPadrao} meId={me?.id} />}
+          {isMaster && <ImportadorFaturas rid={rid} restaurants={restaurants} categorias={categorias} pixPadrao={activeRestaurant?.cartaoChavePixPadrao} meId={me?.id} faturas={faturas} todosLancamentos={minhas} />}
         </div>
       )}
     </div>
@@ -437,6 +437,14 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   async function persistir(fechar: boolean) {
     if (linhas.length === 0) return;
     if (cartoes.length > 0 && !cartao) { alert("Escolha o cartão antes de salvar."); return; }
+    // TRAVA DE DUPLICADO: fatura NOVA do mesmo cartão + competência que outra já salva.
+    if (!faturaId && cartao) {
+      const dup = faturas.find(f => f.id !== faturaId && f.cartao === cartao && f.competencia === competencia);
+      if (dup) {
+        const st = dup.status === "fechada" ? "publicada" : "rascunho";
+        if (!confirm(`⚠️ Já existe uma fatura de ${cartao} nesta competência (${competencia.split("-").reverse().join("/")}, ${st}). Salvar outra vai DUPLICAR os lançamentos. Continuar mesmo assim?`)) return;
+      }
+    }
     if (fechar) {
       const semCat = linhas.filter(l => !l.categoriaId).length;
       const msg = semCat > 0
@@ -816,8 +824,9 @@ function Vazio({ texto }: { texto: string }) {
 // ─── Importador provisório (carga histórica da planilha do Cowork) ────────────
 // Sobe o .xlsx "Fatura Total <mês>" → cria 1 fatura FECHADA por cartão com os
 // lançamentos já classificados. Remover depois da carga inicial.
-function ImportadorFaturas({ rid, restaurants, categorias, pixPadrao, meId }: {
+function ImportadorFaturas({ rid, restaurants, categorias, pixPadrao, meId, faturas, todosLancamentos }: {
   rid: string; restaurants: { id: string; nome: string }[]; categorias: CartaoCategoria[]; pixPadrao?: string; meId?: string;
+  faturas: CartaoFatura[]; todosLancamentos: CartaoLancamento[];
 }) {
   const [status, setStatus] = useState("");
   const [rodando, setRodando] = useState(false);
@@ -839,13 +848,24 @@ function ImportadorFaturas({ rid, restaurants, categorias, pixPadrao, meId }: {
       if (faltando.length) { setStatus(`⚠️ Não achei estas empresas no sistema: ${faltando.join(", ")}. Confira os nomes cadastrados.`); return; }
       const meioAMeio: RateioSimples[] = [{ empresaId: lobozo!.id, percentual: 50 }, { empresaId: sororoca!.id, percentual: 50 }];
 
+      // Operações acumuladas → commitadas em lotes de 450 (limite do Firestore = 500).
+      type Op = (b: ReturnType<typeof writeBatch>) => void;
+      const ops: Op[] = [];
+
+      // TRAVA DE DUPLICADOS: remove qualquer fatura de jun/2026 já existente (de
+      // PDF ou import anterior) + seus lançamentos, pra reimportar limpo.
+      const antigasJun = faturas.filter(f => f.restaurantId === rid && f.competencia === "2026-06");
+      for (const f of antigasJun) {
+        ops.push(b => b.delete(doc(db, "cartaoFaturas", f.id)));
+        for (const l of todosLancamentos.filter(l => l.faturaId === f.id)) ops.push(b => b.delete(doc(db, "cartaoLancamentos", l.id)));
+      }
+
       // Garante categorias Transporte/Telefonia (na minha entidade) com rateio padrão.
-      const batch = writeBatch(db);
       const acharOuCriarCat = (nome: string): string => {
         const existente = categorias.find(c => c.restaurantId === rid && norm(c.nome) === norm(nome));
         if (existente) return existente.id;
         const id = `cat_imp_${norm(nome).replace(/\W+/g, "")}`;
-        batch.set(doc(db, "cartaoCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome, ativo: true, rateioPadrao: meioAMeio, criadoEm: new Date().toISOString() }));
+        ops.push(b => b.set(doc(db, "cartaoCategorias", id), sanitizeForFirestore({ id, restaurantId: rid, nome, ativo: true, rateioPadrao: meioAMeio, criadoEm: new Date().toISOString() })));
         return id;
       };
       const catTransporte = acharOuCriarCat("Transporte");
@@ -880,13 +900,11 @@ function ImportadorFaturas({ rid, restaurants, categorias, pixPadrao, meId }: {
           .slice(1).filter(r => r[1] && typeof r[2] === "number");
         if (!rows.length) continue;
         const fid = `fatimp_202606_${norm(cartao).replace(/\W+/g, "")}`;
-        // apaga import anterior deste cartão (idempotente)
-        // (não temos a lista aqui; ids determinísticos sobrescrevem)
-        batch.set(doc(db, "cartaoFaturas", fid), sanitizeForFirestore({
+        ops.push(b => b.set(doc(db, "cartaoFaturas", fid), sanitizeForFirestore({
           id: fid, restaurantId: rid, cartao, competencia: "2026-06", vencimento: venc,
           totalFatura: totalPorCartao[cartao] ?? null, status: "fechada", fechadaEm: agora, fechadaPor: meId || null,
           criadoEm: agora, criadoPor: meId || null,
-        }));
+        })));
         nFat++;
         rows.forEach((r, i) => {
           const dataDDMM = String(r[0] || "").trim();
@@ -902,7 +920,7 @@ function ImportadorFaturas({ rid, restaurants, categorias, pixPadrao, meId }: {
           const ehEmpresa = partes.length > 0;
           if (ehEmpresa) totalReemb += partes.reduce((s, p) => s + p.valor, 0);
           const id = `${fid}_${i}`;
-          batch.set(doc(db, "cartaoLancamentos", id), sanitizeForFirestore({
+          ops.push(b => b.set(doc(db, "cartaoLancamentos", id), sanitizeForFirestore({
             id, restaurantId: rid, faturaId: fid, cartao,
             data: dataYmd, dataOriginal: dataDDMM, descricao, valor, parcela, obs: String(r[4] || "") || null,
             destinoTipo: ehEmpresa ? "empresa" : "propria",
@@ -911,13 +929,19 @@ function ImportadorFaturas({ rid, restaurants, categorias, pixPadrao, meId }: {
             categoriaId: plano.categoriaId, publicado: true,
             reembolsoDataPagamento: ehEmpresa ? venc : null, reembolsoChavePix: ehEmpresa ? (pixPadrao || null) : null,
             criadoEm: agora, criadoPor: meId || null,
-          }));
+          })));
           nLanc++;
         });
       }
-      if (!confirm(`Importar ${nFat} faturas · ${nLanc} lançamentos · ${fmtBRL(totalReemb)} a reembolsar (pendente)?\nAs faturas entram FECHADAS e os reembolsos ficam em aberto pras empresas.`)) { setStatus(""); return; }
-      await batch.commit();
-      setStatus(`✅ Importado: ${nFat} faturas, ${nLanc} lançamentos. Veja em Visualização.`);
+      const aviso = antigasJun.length ? `\n⚠️ Isso vai SUBSTITUIR ${antigasJun.length} fatura(s) de jun/2026 que já existem (evita duplicar).` : "";
+      if (!confirm(`Importar ${nFat} faturas · ${nLanc} lançamentos · ${fmtBRL(totalReemb)} a reembolsar (pendente)?${aviso}\nAs faturas entram FECHADAS e os reembolsos ficam em aberto pras empresas.`)) { setStatus(""); return; }
+      // Commit em lotes de 450 (limite do Firestore).
+      for (let k = 0; k < ops.length; k += 450) {
+        const b = writeBatch(db);
+        for (const op of ops.slice(k, k + 450)) op(b);
+        await b.commit();
+      }
+      setStatus(`✅ Importado: ${nFat} faturas, ${nLanc} lançamentos${antigasJun.length ? ` (${antigasJun.length} substituída(s))` : ""}. Veja em Visualização.`);
     } catch (e) { setStatus("Erro: " + (e instanceof Error ? e.message : "?")); }
     finally { setRodando(false); }
   }
