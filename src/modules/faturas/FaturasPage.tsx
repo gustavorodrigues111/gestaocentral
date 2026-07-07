@@ -4,7 +4,7 @@
 // faturas a reembolsar) e Classificação. Categorias são por entidade.
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, query, where, writeBatch } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -67,7 +67,7 @@ export function FaturasPage() {
   if (!podeVer) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-700 dark:text-gray-300 font-medium">Sem acesso ao módulo Faturas.</p></div>;
 
   return (
-    <div className="max-w-5xl mx-auto p-4">
+    <div className="max-w-6xl">
       <header className="mb-4">
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">💳 Faturas</h1>
         <p className="text-xs text-gray-500">{activeRestaurant?.nome} · faturas de cartão, classificação e reembolsos</p>
@@ -80,21 +80,23 @@ export function FaturasPage() {
         ))}
       </nav>
 
-      {aba === "visualizacao" && <Visualizacao minhas={minhas} outras={outras} catNome={catNome} restNome={restNome} />}
+      {aba === "visualizacao" && <Visualizacao minhas={minhas} outras={outras} catNome={catNome} restNome={restNome} meId={me?.id} meNome={me?.nome} />}
       {aba === "classificacao" && podeClassificar && (
-        <Classificacao rid={rid} meId={me?.id} outrasEmpresas={outrasEmpresas} catsDe={catsDe} minhas={minhas} />
+        <Classificacao rid={rid} meId={me?.id} pixPadrao={activeRestaurant?.cartaoChavePixPadrao} outrasEmpresas={outrasEmpresas} catsDe={catsDe} minhas={minhas} />
       )}
-      {aba === "categorias" && podeCategorias && <Categorias rid={rid} categorias={catsDe(rid)} />}
+      {aba === "categorias" && podeCategorias && <Categorias rid={rid} categorias={catsDe(rid)} pixPadrao={activeRestaurant?.cartaoChavePixPadrao || ""} />}
     </div>
   );
 }
 
 // ─── Visualização ────────────────────────────────────────────────────────────
-function Visualizacao({ minhas, outras, catNome, restNome }: { minhas: CartaoLancamento[]; outras: CartaoLancamento[]; catNome: (id?: string | null) => string; restNome: Record<string, string> }) {
+function Visualizacao({ minhas, outras, catNome, restNome, meId, meNome }: { minhas: CartaoLancamento[]; outras: CartaoLancamento[]; catNome: (id?: string | null) => string; restNome: Record<string, string>; meId?: string; meNome?: string }) {
   const [sub, setSub] = useState<"minhas" | "outras">("minhas");
+  const [pagando, setPagando] = useState("");
   const minhasProprias = minhas.filter(l => l.destinoTipo === "propria");
   const totalMinhas = minhasProprias.reduce((s, l) => s + (l.valor || 0), 0);
-  const totalOutras = outras.reduce((s, l) => s + (l.valor || 0), 0);
+  const outrasPend = outras.filter(l => l.reembolsoStatus !== "pago");
+  const totalOutrasPend = outrasPend.reduce((s, l) => s + (l.valor || 0), 0);
 
   // Agrupa "outras" por dono (restaurantId).
   const outrasPorDono = useMemo(() => {
@@ -103,11 +105,25 @@ function Visualizacao({ minhas, outras, catNome, restNome }: { minhas: CartaoLan
     return [...m.entries()];
   }, [outras]);
 
+  async function marcarPago(lancs: CartaoLancamento[], donoNome: string) {
+    const pend = lancs.filter(l => l.reembolsoStatus !== "pago");
+    if (!pend.length) return;
+    if (!confirm(`Confirmar pagamento de ${fmtBRL(pend.reduce((s, l) => s + (l.valor || 0), 0))} pra ${donoNome}?`)) return;
+    setPagando(lancs[0].restaurantId);
+    try {
+      const batch = writeBatch(db);
+      const agora = new Date().toISOString();
+      for (const l of pend) batch.update(doc(db, "cartaoLancamentos", l.id), { reembolsoStatus: "pago", pagoEm: agora, pagoPor: meId || null, pagoPorNome: meNome || null });
+      await batch.commit();
+    } catch (e) { alert("Erro ao marcar pago: " + (e instanceof Error ? e.message : "?")); }
+    finally { setPagando(""); }
+  }
+
   return (
     <div>
       <div className="flex gap-1.5 mb-3">
         <SubChip ativo={sub === "minhas"} onClick={() => setSub("minhas")}>Minhas faturas · {fmtBRL(totalMinhas)}</SubChip>
-        <SubChip ativo={sub === "outras"} onClick={() => setSub("outras")}>Outras faturas (reembolso) · {fmtBRL(totalOutras)}</SubChip>
+        <SubChip ativo={sub === "outras"} onClick={() => setSub("outras")}>Outras faturas (reembolso) · {fmtBRL(totalOutrasPend)}</SubChip>
       </div>
 
       {sub === "minhas" ? (
@@ -116,13 +132,31 @@ function Visualizacao({ minhas, outras, catNome, restNome }: { minhas: CartaoLan
         )
       ) : (
         outrasPorDono.length === 0 ? <Vazio texto="Nenhum reembolso atribuído a esta empresa." /> : (
-          <div className="space-y-4">
-            {outrasPorDono.map(([dono, lancs]) => (
-              <div key={dono}>
-                <div className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-1.5">💳 De {restNome[dono] || "outra entidade"} · {fmtBRL(lancs.reduce((s, l) => s + (l.valor || 0), 0))}</div>
-                <LancTabela lancs={lancs} catNome={catNome} />
-              </div>
-            ))}
+          <div className="space-y-5">
+            {outrasPorDono.map(([dono, lancs]) => {
+              const donoNome = restNome[dono] || "outra entidade";
+              const pend = lancs.filter(l => l.reembolsoStatus !== "pago");
+              const pix = lancs.find(l => l.reembolsoChavePix)?.reembolsoChavePix;
+              const dataPag = lancs.find(l => l.reembolsoDataPagamento)?.reembolsoDataPagamento;
+              return (
+                <div key={dono} className="rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+                  <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-800">
+                    <div className="min-w-0">
+                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">💳 De {donoNome} · {fmtBRL(lancs.reduce((s, l) => s + (l.valor || 0), 0))}</div>
+                      <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500 mt-0.5">
+                        {pix && <span>Pix: <b className="text-gray-700 dark:text-gray-300 select-all">{pix}</b></span>}
+                        {dataPag && <span>Pagar até: <b>{dataPag.split("-").reverse().join("/")}</b></span>}
+                        {pend.length === 0 ? <span className="text-emerald-600 font-medium">✓ Tudo pago</span> : <span className="text-amber-600 font-medium">Pendente: {fmtBRL(pend.reduce((s, l) => s + (l.valor || 0), 0))}</span>}
+                      </div>
+                    </div>
+                    {pend.length > 0 && (
+                      <Button size="sm" onClick={() => void marcarPago(lancs, donoNome)} disabled={pagando === dono}>{pagando === dono ? "…" : "✓ Marcar como pago"}</Button>
+                    )}
+                  </div>
+                  <LancTabela lancs={lancs} catNome={catNome} mostrarStatus />
+                </div>
+              );
+            })}
           </div>
         )
       )}
@@ -130,13 +164,13 @@ function Visualizacao({ minhas, outras, catNome, restNome }: { minhas: CartaoLan
   );
 }
 
-function LancTabela({ lancs, catNome }: { lancs: CartaoLancamento[]; catNome: (id?: string | null) => string }) {
+function LancTabela({ lancs, catNome, mostrarStatus }: { lancs: CartaoLancamento[]; catNome: (id?: string | null) => string; mostrarStatus?: boolean }) {
   const ordenados = [...lancs].sort((a, b) => (a.data || "").localeCompare(b.data || ""));
   return (
-    <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+    <div className={mostrarStatus ? "overflow-x-auto" : "overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800"}>
       <table className="w-full min-w-[520px] text-sm">
         <thead><tr className="text-[11px] uppercase text-gray-400 bg-gray-50 dark:bg-gray-900/40">
-          <th className="text-left px-3 py-2">Data</th><th className="text-left px-3 py-2">Descrição</th><th className="text-left px-3 py-2">Categoria</th><th className="text-left px-3 py-2">Cartão</th><th className="text-right px-3 py-2">Valor</th>
+          <th className="text-left px-3 py-2">Data</th><th className="text-left px-3 py-2">Descrição</th><th className="text-left px-3 py-2">Categoria</th><th className="text-left px-3 py-2">Cartão</th><th className="text-right px-3 py-2">Valor</th>{mostrarStatus && <th className="text-right px-3 py-2">Status</th>}
         </tr></thead>
         <tbody>
           {ordenados.map(l => (
@@ -146,6 +180,7 @@ function LancTabela({ lancs, catNome }: { lancs: CartaoLancamento[]; catNome: (i
               <td className="px-3 py-1.5 text-gray-600 dark:text-gray-300">{catNome(l.categoriaId)}</td>
               <td className="px-3 py-1.5 text-[11px] text-gray-400">{l.cartao}</td>
               <td className={`px-3 py-1.5 text-right tabular-nums ${l.valor < 0 ? "text-emerald-600" : "text-gray-900 dark:text-gray-100"}`}>{fmtBRL(l.valor)}</td>
+              {mostrarStatus && <td className="px-3 py-1.5 text-right whitespace-nowrap">{l.reembolsoStatus === "pago" ? <span className="text-[10px] font-semibold text-emerald-600">✓ pago</span> : <span className="text-[10px] font-semibold text-amber-600">pendente</span>}</td>}
             </tr>
           ))}
         </tbody>
@@ -155,8 +190,8 @@ function LancTabela({ lancs, catNome }: { lancs: CartaoLancamento[]; catNome: (i
 }
 
 // ─── Classificação (subir + extrair + classificar + salvar) ──────────────────
-function Classificacao({ rid, meId, outrasEmpresas, catsDe, minhas }: {
-  rid: string; meId?: string; outrasEmpresas: { id: string; nome: string }[];
+function Classificacao({ rid, meId, pixPadrao, outrasEmpresas, catsDe, minhas }: {
+  rid: string; meId?: string; pixPadrao?: string; outrasEmpresas: { id: string; nome: string }[];
   catsDe: (entId: string) => CartaoCategoria[]; minhas: CartaoLancamento[];
 }) {
   const [cartao, setCartao] = useState(CARTOES[0]);
@@ -227,6 +262,9 @@ function Classificacao({ rid, meId, outrasEmpresas, catsDe, minhas }: {
           data: ymdDe(l.data), dataOriginal: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, obs: null,
           destinoTipo: l.destinoTipo, empresaAtribuidaId: l.destinoTipo === "empresa" ? l.empresaAtribuidaId : null,
           categoriaId: l.categoriaId, reembolsoStatus: l.destinoTipo === "empresa" ? "pendente" : null,
+          reembolsoDataPagamento: l.destinoTipo === "empresa" ? (venc || null) : null,
+          reembolsoChavePix: l.destinoTipo === "empresa" ? (pixPadrao || null) : null,
+          pagoEm: null, pagoPor: null,
           criadoEm: new Date().toISOString(), criadoPor: meId || null,
         }));
       }
@@ -304,13 +342,28 @@ function Classificacao({ rid, meId, outrasEmpresas, catsDe, minhas }: {
   );
 }
 
-// ─── Categorias ──────────────────────────────────────────────────────────────
-function Categorias({ rid, categorias }: { rid: string; categorias: CartaoCategoria[] }) {
+// ─── Categorias + Pix ────────────────────────────────────────────────────────
+function Categorias({ rid, categorias, pixPadrao }: { rid: string; categorias: CartaoCategoria[]; pixPadrao: string }) {
   const [nome, setNome] = useState("");
+  const [pix, setPix] = useState(pixPadrao);
+  const [salvandoPix, setSalvandoPix] = useState(false);
+  useEffect(() => { setPix(pixPadrao); }, [pixPadrao]);
   async function criar() { const n = nome.trim(); if (!n) return; await addDoc(collection(db, "cartaoCategorias"), sanitizeForFirestore({ restaurantId: rid, nome: n, ativo: true, criadoEm: new Date().toISOString() })); setNome(""); }
   async function excluir(id: string) { if (confirm("Excluir categoria?")) await deleteDoc(doc(db, "cartaoCategorias", id)); }
+  async function salvarPix() { setSalvandoPix(true); try { await updateDoc(doc(db, "restaurants", rid), { cartaoChavePixPadrao: pix.trim() }); } finally { setSalvandoPix(false); } }
+  const pixMudou = pix.trim() !== (pixPadrao || "").trim();
   return (
-    <div className="max-w-lg space-y-3">
+    <div className="max-w-lg space-y-5">
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-2">
+        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">🔑 Chave Pix pra receber reembolsos</div>
+        <p className="text-xs text-gray-500">Quando você atribui um gasto a outra empresa, essa chave vai junto pra ela te pagar.</p>
+        <div className="flex gap-2">
+          <input value={pix} onChange={e => setPix(e.target.value)} placeholder="CPF, e-mail, telefone ou chave aleatória"
+            className="flex-1 px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+          <Button onClick={() => void salvarPix()} disabled={!pixMudou || salvandoPix}>{salvandoPix ? "…" : "Salvar"}</Button>
+        </div>
+      </div>
+
       <p className="text-xs text-gray-500">Categorias desta entidade. São usadas pra classificar os gastos das faturas.</p>
       <div className="flex gap-2">
         <input value={nome} onChange={e => setNome(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void criar(); }} placeholder="Nova categoria (ex: Viagem, Mercado, Telefonia)"

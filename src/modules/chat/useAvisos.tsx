@@ -135,6 +135,27 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     return () => unsub();
   }, [ridsKeyAll]);
 
+  // ── Reembolsos de cartão: lançamentos atribuídos ao MEU restaurante (sou o
+  //    pagador) e lançamentos MEUS já marcados como pagos (sou o solicitante). ──
+  type ReembLanc = { id: string; restaurantId: string; empresaAtribuidaId?: string | null; destinoTipo?: string; valor?: number; reembolsoStatus?: string | null; reembolsoDataPagamento?: string | null; pagoEm?: string | null; pagoPorNome?: string | null; criadoEm?: string };
+  const [reembReceber, setReembReceber] = useState<ReembLanc[]>([]);
+  const [reembPagos, setReembPagos] = useState<ReembLanc[]>([]);
+  useEffect(() => {
+    const rids = ridsKeyAll ? ridsKeyAll.split(",").slice(0, 10) : [];
+    if (!rids.length) { setReembReceber([]); setReembPagos([]); return; }
+    const u1 = onSnapshot(
+      query(collection(db, "cartaoLancamentos"), where("empresaAtribuidaId", "in", rids)),
+      (snap) => setReembReceber(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ReembLanc).filter((l) => l.reembolsoStatus !== "pago")),
+      () => setReembReceber([]),
+    );
+    const u2 = onSnapshot(
+      query(collection(db, "cartaoLancamentos"), where("restaurantId", "in", rids)),
+      (snap) => setReembPagos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ReembLanc).filter((l) => l.destinoTipo === "empresa" && l.reembolsoStatus === "pago")),
+      () => setReembPagos([]),
+    );
+    return () => { u1(); u2(); };
+  }, [ridsKeyAll]);
+
   // ── Config de canais por notificação (gating in-app da Central) ──
   const [notifConfigs, setNotifConfigs] = useState<Record<string, { inApp?: boolean }>>({});
   useEffect(() => {
@@ -250,6 +271,62 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         restauranteNome: nomePorRid[g.buyerRid] || "Restaurante",
         cta: "Ver no Vendas", href: `/r/${g.buyerRid}/vendas`,
         categoria: "Vendas", categoriaIcone: "🧾",
+      });
+    }
+
+    // ── Reembolsos de cartão a pagar (sou o pagador) — agrupado por empresa a
+    //    quem devo o reembolso (o dono do cartão). ──
+    const brl = (v: number) => (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+    const pagarGrp = new Map<string, { pagadorRid: string; donoRid: string; n: number; total: number; venc: string; em: string }>();
+    for (const l of reembReceber) {
+      const pagadorRid = l.empresaAtribuidaId || ""; if (!pagadorRid) continue;
+      const donoRid = l.restaurantId || "";
+      const key = `${pagadorRid}_${donoRid}`;
+      const g = pagarGrp.get(key) || { pagadorRid, donoRid, n: 0, total: 0, venc: "", em: "" };
+      g.n++; g.total += (l.valor || 0);
+      const t = String(l.criadoEm || ""); if (t > g.em) g.em = t;
+      const v = String(l.reembolsoDataPagamento || ""); if (v && (!g.venc || v < g.venc)) g.venc = v;
+      pagarGrp.set(key, g);
+    }
+    for (const g of pagarGrp.values()) {
+      const vencido = g.venc && g.venc < hoje;
+      out.push({
+        id: `reembpagar_${g.pagadorRid}_${g.donoRid}`,
+        tipo: "reembolso_pagar", icone: vencido ? "⏰" : "💳",
+        titulo: "Reembolso a pagar",
+        descricao: `${g.n} ${g.n === 1 ? "gasto" : "gastos"} de ${nomePorRid[g.donoRid] || "outra empresa"} · ${brl(g.total)}${g.venc ? ` · pagar até ${fmtDataCurta(g.venc)}` : ""}`,
+        em: g.em,
+        restauranteId: g.pagadorRid,
+        restauranteNome: nomePorRid[g.pagadorRid] || "Restaurante",
+        cta: "Ver reembolsos", href: `/r/${g.pagadorRid}/faturas`,
+        categoria: "Faturas", categoriaIcone: "💳",
+      });
+    }
+
+    // ── Reembolsos pagos (sou o solicitante/dono do cartão) — agrupado por
+    //    empresa que me pagou. Some do inbox quando eu marco lido. ──
+    const pagoGrp = new Map<string, { donoRid: string; pagadorRid: string; n: number; total: number; em: string; quem: string }>();
+    for (const l of reembPagos) {
+      const donoRid = l.restaurantId || "";
+      const pagadorRid = l.empresaAtribuidaId || ""; if (!pagadorRid) continue;
+      const key = `${donoRid}_${pagadorRid}`;
+      const g = pagoGrp.get(key) || { donoRid, pagadorRid, n: 0, total: 0, em: "", quem: "" };
+      g.n++; g.total += (l.valor || 0);
+      const t = String(l.pagoEm || ""); if (t > g.em) g.em = t;
+      if (l.pagoPorNome) g.quem = l.pagoPorNome;
+      pagoGrp.set(key, g);
+    }
+    for (const g of pagoGrp.values()) {
+      out.push({
+        id: `reembpago_${g.donoRid}_${g.pagadorRid}`,
+        tipo: "reembolso_pago", icone: "✅",
+        titulo: "Reembolso pago",
+        descricao: `${nomePorRid[g.pagadorRid] || "Uma empresa"} pagou ${brl(g.total)}${g.quem ? ` (${g.quem})` : ""} de ${g.n} ${g.n === 1 ? "gasto" : "gastos"}`,
+        em: g.em,
+        restauranteId: g.donoRid,
+        restauranteNome: nomePorRid[g.donoRid] || "Restaurante",
+        cta: "Ver no Faturas", href: `/r/${g.donoRid}/faturas`,
+        categoria: "Faturas", categoriaIcone: "💳",
       });
     }
 
@@ -444,6 +521,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     escala, faleDp, fechamento, gorjetas, vt, vr, beneficios,
     ocorrencias, eventos, recebimento, compras, ideias, admissoes, demissoes, exames, uniformes,
     minhaAcao, minhaProducao, checklistTpl, checklistRun, cobrancasInt,
+    reembReceber, reembPagos,
   ]);
 
   // ── Estado de leitura (overlay persistido por pessoa) ──

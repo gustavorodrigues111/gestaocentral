@@ -848,6 +848,7 @@ export type Restaurant = {
   // Fechamento de caixa: pasta raiz no Drive (subpastas dia/turno) + sócios notificados.
   fechamentoDriveFolderId?: string;
   fechamentoDriveFolderNome?: string;
+  cartaoChavePixPadrao?: string;           // Pix padrão pra receber reembolsos de cartão (módulo Faturas)
   fechamentoSociosEmails?: string[];
   fechamentoSociosWhatsapp?: string[];     // números (só dígitos) que recebem o aviso por WhatsApp
   fechamentoEmailRemetente?: string;       // remetente do email aos sócios (domínio verificado na Resend)
@@ -5632,8 +5633,13 @@ export type CartaoLancamento = {
   destinoTipo: "propria" | "empresa";
   empresaAtribuidaId?: string | null;   // se destinoTipo="empresa"
   categoriaId?: string | null;          // categoria (na lista do destino)
-  // Reembolso (quando destinoTipo="empresa") — ciclo de pagamento entra na Fase 3.
+  // Reembolso (quando destinoTipo="empresa"): ciclo de pagamento.
   reembolsoStatus?: "pendente" | "pago" | null;
+  reembolsoDataPagamento?: string | null;  // "YYYY-MM-DD" — até quando pagar
+  reembolsoChavePix?: string | null;        // chave Pix do solicitante (dono)
+  pagoEm?: string | null;                   // ISO — quando o pagador marcou pago
+  pagoPor?: string | null;                  // pessoaId do pagador
+  pagoPorNome?: string | null;              // nome do pagador (pra exibir no aviso)
   criadoEm: string;
   criadoPor?: string | null;
 };
