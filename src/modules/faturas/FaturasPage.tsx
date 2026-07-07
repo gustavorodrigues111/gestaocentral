@@ -17,6 +17,13 @@ import { exportarFaturasXLSX, exportarFaturasPDF } from "./exportFaturas";
 import type { CartaoCategoria, CartaoLancamento } from "../../core/types";
 
 const CARTOES = ["Master Itaú", "Visa Itaú", "Master Santander", "Visa Santander"];
+// Categorias sugeridas (quick-add) — cobrem gastos comuns de restaurante + pessoal.
+const CATEGORIAS_SUGERIDAS = [
+  "Insumos / Mercado", "Bebidas", "Hortifruti", "Carnes", "Embalagens",
+  "Manutenção", "Equipamentos", "Limpeza", "Gás", "Uniformes",
+  "Marketing", "Softwares / Assinaturas", "Telefonia", "Transporte", "Combustível",
+  "Viagem", "Alimentação", "Contabilidade", "Impostos / Taxas", "Material de escritório",
+];
 const fmtBRL = (v: number) => (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const normNome = (s: string) => (s || "").toUpperCase().replace(/\d/g, "").replace(/[^A-Z ]/g, "").trim().slice(0, 18);
 const mesAtual = () => new Date().toISOString().slice(0, 7);
@@ -373,8 +380,11 @@ function Categorias({ rid, categorias, pixPadrao, cartoes }: { rid: string; cate
   const [salvandoPix, setSalvandoPix] = useState(false);
   const [novoCartao, setNovoCartao] = useState("");
   useEffect(() => { setPix(pixPadrao); }, [pixPadrao]);
-  async function criar() { const n = nome.trim(); if (!n) return; await addDoc(collection(db, "cartaoCategorias"), sanitizeForFirestore({ restaurantId: rid, nome: n, ativo: true, criadoEm: new Date().toISOString() })); setNome(""); }
+  async function criarNome(n: string) { const nome = n.trim(); if (!nome || categorias.some(c => c.nome.toLowerCase() === nome.toLowerCase())) return; await addDoc(collection(db, "cartaoCategorias"), sanitizeForFirestore({ restaurantId: rid, nome, ativo: true, criadoEm: new Date().toISOString() })); }
+  async function criar() { await criarNome(nome); setNome(""); }
+  async function addTodasSugeridas() { for (const c of catsSugeridas) await criarNome(c); }
   async function excluir(id: string) { if (confirm("Excluir categoria?")) await deleteDoc(doc(db, "cartaoCategorias", id)); }
+  const catsSugeridas = CATEGORIAS_SUGERIDAS.filter(c => !categorias.some(x => x.nome.toLowerCase() === c.toLowerCase()));
   async function salvarPix() { setSalvandoPix(true); try { await updateDoc(doc(db, "restaurants", rid), { cartaoChavePixPadrao: pix.trim() }); } finally { setSalvandoPix(false); } }
   const pixMudou = pix.trim() !== (pixPadrao || "").trim();
   async function addCartao(nomeCartao: string) { const n = nomeCartao.trim(); if (!n || cartoes.some(c => c.toLowerCase() === n.toLowerCase())) return; await updateDoc(doc(db, "restaurants", rid), { cartoesCadastrados: [...cartoes, n] }); setNovoCartao(""); }
@@ -421,13 +431,24 @@ function Categorias({ rid, categorias, pixPadrao, cartoes }: { rid: string; cate
         </div>
       </div>
 
-      <p className="text-xs text-gray-500">Categorias desta entidade. São usadas pra classificar os gastos das faturas.</p>
+      <div className="flex items-center justify-between gap-2">
+        <p className="text-xs text-gray-500">Categorias desta entidade. São usadas pra classificar os gastos das faturas.</p>
+        {catsSugeridas.length > 0 && <button type="button" onClick={() => void addTodasSugeridas()} className="text-[11px] font-medium whitespace-nowrap px-2.5 py-1 rounded-lg border border-indigo-300 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">+ Adicionar sugeridas</button>}
+      </div>
       <div className="flex gap-2">
         <input value={nome} onChange={e => setNome(e.target.value)} onKeyDown={e => { if (e.key === "Enter") void criar(); }} placeholder="Nova categoria (ex: Viagem, Mercado, Telefonia)"
           className="flex-1 px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
         <Button onClick={() => void criar()} disabled={!nome.trim()}>+ Adicionar</Button>
       </div>
-      {categorias.length === 0 ? <Vazio texto="Nenhuma categoria ainda." /> : (
+      {catsSugeridas.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          <span className="text-[11px] text-gray-400 self-center">Sugestões:</span>
+          {catsSugeridas.map(c => (
+            <button key={c} type="button" onClick={() => void criarNome(c)} className="text-[11px] px-2 py-0.5 rounded-full border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 hover:border-indigo-400 hover:text-indigo-600">+ {c}</button>
+          ))}
+        </div>
+      )}
+      {categorias.length === 0 ? <Vazio texto="Nenhuma categoria ainda. Use as sugestões acima ou crie a sua." /> : (
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
           {categorias.map(c => (
             <div key={c.id} className="flex items-center justify-between px-3 py-2 text-sm">
