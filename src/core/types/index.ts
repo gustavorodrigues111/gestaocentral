@@ -869,6 +869,8 @@ export type Restaurant = {
   // Fechamento de caixa: pasta raiz no Drive (subpastas dia/turno) + sócios notificados.
   fechamentoDriveFolderId?: string;
   fechamentoDriveFolderNome?: string;
+  manutencoesDriveFolderId?: string;       // pasta-raiz dos laudos de Manutenções no Drive
+  manutencoesDriveFolderNome?: string;
   cartaoChavePixPadrao?: string;           // Pix padrão pra receber reembolsos de cartão (módulo Faturas)
   cartoesCadastrados?: string[];           // nomes dos cartões que sobem fatura aqui — a IA casa cada PDF com um deles
   fechamentoSociosEmails?: string[];
@@ -4442,6 +4444,20 @@ export type ContaFixa = {
 
 // ─── MANUTENÇÃO / LICENÇA (cadastro mestre) ───────────────────────────────
 
+export type ManutencaoLaudo = {
+  id: string;
+  nome: string;
+  driveId?: string;
+  url?: string;                  // webViewLink do Drive
+  enderecoId?: string;           // endereço a que o laudo se refere
+  enviadoEm: string;             // ISO
+  enviadoPor?: string | null;
+};
+
+export const MANUTENCAO_STATUS_LABEL: Record<"pendente" | "agendado" | "aguardando_laudo", string> = {
+  pendente: "Pendente", agendado: "Agendado", aguardando_laudo: "Aguardando laudo",
+};
+
 export type ManutencaoTipo =
   | "filtros_agua" | "potabilidade_agua" | "caixa_dagua" | "gelo"
   | "dedetizacao" | "coifa" | "estofado" | "ar_condicionado" | "termometro"
@@ -4503,6 +4519,10 @@ export type Manutencao = {
   restaurantIds: string[];              // derivado dos endereços (scoping/compat)
   enderecoIds?: string[];               // N:N — 1 item pode cobrir vários endereços
   obrigatorio?: boolean;                // true = gera laudo / prazo rígido; false = flexível
+  // Apontamento do ciclo atual (aba Visualização):
+  statusCiclo?: "pendente" | "agendado" | "aguardando_laudo";
+  agendadoPara?: string | null;         // YYYY-MM-DD quando statusCiclo = "agendado"
+  laudos?: ManutencaoLaudo[];           // anexos subidos ao Drive (endereço → tipo → arquivo)
   periodicidade: ManutencaoPeriodicidade;
   periodicidadeCustomDias?: number;
   proximoVencimento: string;    // YYYY-MM-DD
