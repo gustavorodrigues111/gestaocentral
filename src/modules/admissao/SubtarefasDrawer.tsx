@@ -1454,7 +1454,9 @@ function DocumentosConferencia({
         for (let i = 0; i < arqs.length; i++) {
           const arq = arqs[i];
           if (arq.driveFileId) { novosArqs.push(arq); continue; } // já no Drive
-          const resp = await fetch(arq.url);
+          // Docs do candidato vêm sem `url` (leitura exige auth); resolve pelo path.
+          const dlUrl = arq.url || await getDownloadURL(storageRef(storage, arq.path));
+          const resp = await fetch(dlUrl);
           if (!resp.ok) throw new Error(`Não consegui baixar "${arq.nome}".`);
           const blob = await resp.blob();
           const nome = nomeArquivoDrive(it.nome, empNome, arq.nome, arqs.length, i);
@@ -1522,14 +1524,20 @@ function DocumentosConferencia({
                 <div className="mt-1.5 space-y-1">
                   {arqs.map((a) => (
                     <div key={a.path} className="flex items-center gap-2 text-[11px]">
-                      <a
-                        href={a.storageExpurgado && a.driveFileId ? driveViewUrl(a.driveFileId) : a.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-indigo-600 dark:text-indigo-400 hover:underline truncate flex-1"
+                      <button
+                        type="button"
+                        onClick={async () => {
+                          try {
+                            const u = a.storageExpurgado && a.driveFileId
+                              ? driveViewUrl(a.driveFileId)
+                              : (a.url || await getDownloadURL(storageRef(storage, a.path)));
+                            window.open(u, "_blank", "noopener,noreferrer");
+                          } catch { alert("Não consegui abrir o arquivo."); }
+                        }}
+                        className="text-indigo-600 dark:text-indigo-400 hover:underline truncate flex-1 text-left"
                       >
                         📄 {a.nome}
-                      </a>
+                      </button>
                       {a.enviadoPeloDp && <span className="text-[9px] uppercase text-gray-400 shrink-0">DP</span>}
                       {a.driveFileId && (
                         <span className="text-[9px] text-emerald-600 shrink-0" title={a.storageExpurgado ? "No Drive (original removido do Storage)" : "Já está no Drive"}>

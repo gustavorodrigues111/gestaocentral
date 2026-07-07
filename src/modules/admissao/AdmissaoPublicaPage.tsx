@@ -14,7 +14,7 @@ import { useParams } from "react-router-dom";
 import {
   collection, doc, getDocs, query, setDoc, where,
 } from "firebase/firestore";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref as storageRef, uploadBytes } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
@@ -1138,9 +1138,11 @@ function DocumentosUploadSection({
         }
         const safe = file.name.replace(/[^\w.\-]+/g, "_");
         const path = `admissoes/${rid}/${admissaoId}/${d.id}/${Date.now()}_${safe}`;
-        const snap = await uploadBytes(storageRef(storage, path), file, { contentType: file.type });
-        const url = await getDownloadURL(snap.ref);
-        novos.push({ nome: file.name, url, path, tipo: file.type, tamanho: file.size });
+        // NÃO chamamos getDownloadURL aqui: o candidato é anônimo (sem login) e
+        // a leitura do Storage exige auth (docs de identidade são privados). O DP
+        // resolve a URL a partir do `path` quando for conferir/baixar.
+        await uploadBytes(storageRef(storage, path), file, { contentType: file.type });
+        novos.push({ nome: file.name, url: "", path, tipo: file.type, tamanho: file.size });
       }
       if (novos.length > 0) {
         onChange((cur) => {
