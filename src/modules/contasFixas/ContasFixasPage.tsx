@@ -23,6 +23,7 @@ import {
 import {
   ymd, parseYmd, parseAnoMes, fmtAnoMes, daysInMonth, proximoDiaUtil, fmtBR,
 } from "../../core/utils/date";
+import { buscarFeriadosProximos } from "../sites/feriadosHelper";
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 function inicioSemanaSeg(s: string): string {
@@ -49,6 +50,25 @@ export function ContasFixasPage() {
   const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(hoje));
   const [dragId, setDragId] = useState<string | null>(null);
   const [dropDia, setDropDia] = useState<string | null>(null);
+  const [feriados, setFeriados] = useState<Record<string, string>>({}); // data → nome
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const listas = await Promise.all([
+          buscarFeriadosProximos("SP", 14).catch(() => []),
+          buscarFeriadosProximos("PA", 14).catch(() => []),
+        ]);
+        if (!alive) return;
+        const map: Record<string, string> = {};
+        for (const f of listas.flat()) map[f.date] = f.name;
+        setFeriados(map);
+      } catch { /* offline: sem feriados, cai no fim de semana só */ }
+    })();
+    return () => { alive = false; };
+  }, []);
+  const feriadosSet = useMemo(() => new Set(Object.keys(feriados)), [feriados]);
 
   useEffect(() => {
     const u = onSnapshot(
@@ -83,7 +103,7 @@ export function ContasFixasPage() {
     if (!c.diaDoMes) return null;
     const { ano, mes } = parseAnoMes(cmp);
     const dia = Math.min(c.diaDoMes, daysInMonth(ano, mes));
-    return proximoDiaUtil(`${fmtAnoMes(ano, mes)}-${pad2(dia)}`);
+    return proximoDiaUtil(`${fmtAnoMes(ano, mes)}-${pad2(dia)}`, feriadosSet);
   };
   const statusDe = (c: ContaFixa, cmp: string): "paga" | "atrasada" | "pendente" => {
     if (c.pagamentos?.[cmp]) return "paga";
@@ -215,21 +235,31 @@ export function ContasFixasPage() {
             {dias.map((d, i) => {
               const wd = parseYmd(d).getDay();
               const fds = wd === 0 || wd === 6;
+              const feriadoNome = feriados[d];
+              const naoUtil = fds || !!feriadoNome;
               const ehHoje = d === hoje;
               const itens = porDia.get(d) || [];
+              const corDia = dropDia === d
+                ? "border-indigo-400 bg-indigo-50/60 dark:bg-indigo-900/25"
+                : naoUtil
+                  ? "border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/15"
+                  : "border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/40 dark:bg-emerald-950/10";
               return (
                 <div key={d}
                   onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dropDia !== d) setDropDia(d); }}
                   onDragLeave={() => { if (dropDia === d) setDropDia(null); }}
                   onDrop={(e) => { e.preventDefault(); const raw = e.dataTransfer.getData("text/plain"); const [id, cmp] = raw.split("|"); setDropDia(null); setDragId(null); if (id) void moverPara(id, cmp, d); }}
-                  className={`rounded-xl border p-1.5 min-h-[110px] ${dropDia === d ? "border-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/20" : ehHoje ? "border-indigo-300 dark:border-indigo-800" : fds ? "border-gray-100 dark:border-gray-800/60 bg-gray-50/50 dark:bg-gray-900/40" : "border-gray-200 dark:border-gray-800"}`}>
-                  <div className={`text-[11px] font-semibold mb-1 flex items-center justify-between ${ehHoje ? "text-indigo-600 dark:text-indigo-300" : fds ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}`}>
+                  title={feriadoNome ? `Feriado: ${feriadoNome}` : undefined}
+                  className={`rounded-xl border p-1.5 min-h-[150px] ${ehHoje ? "ring-1 ring-indigo-400" : ""} ${corDia}`}>
+                  <div className={`text-[11px] font-semibold mb-1 flex items-center justify-between ${ehHoje ? "text-indigo-600 dark:text-indigo-300" : naoUtil ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"}`}>
                     <span>{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"][i]} {parseYmd(d).getDate()}</span>
-                    {itens.length > 0 && <span className="text-gray-400">{itens.length}</span>}
+                    {itens.length > 0 && <span className="opacity-60">{itens.length}</span>}
                   </div>
+                  {feriadoNome && <div className="text-[9px] text-amber-600 dark:text-amber-400 mb-1 truncate" title={feriadoNome}>🎉 {feriadoNome}</div>}
                   <div className="space-y-1">
                     {itens.map(({ c, cmp }) => {
                       const st = statusDe(c, cmp);
+                      const end = c.enderecoId ? endById[c.enderecoId] : null;
                       return (
                         <div key={c.id + cmp} draggable
                           onDragStart={(e) => { e.dataTransfer.setData("text/plain", `${c.id}|${cmp}`); e.dataTransfer.effectAllowed = "move"; setDragId(c.id); }}
@@ -237,8 +267,9 @@ export function ContasFixasPage() {
                           onClick={() => void togglePago(c, cmp)}
                           title={`${c.nome} — clique pra marcar pago`}
                           className={`cursor-grab active:cursor-grabbing rounded-lg border px-1.5 py-1 text-[11px] leading-tight ${dragId === c.id ? "opacity-40" : ""} ${st === "paga" ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20" : st === "atrasada" ? "border-rose-300 bg-rose-50 dark:bg-rose-900/20" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"}`}>
-                          <div className="font-medium text-gray-800 dark:text-gray-100 truncate flex items-center gap-1">{st === "paga" && <span className="text-emerald-600">✓</span>}{c.nome}</div>
-                          {c.valorEstimado ? <div className="text-gray-500">R$ {c.valorEstimado.toFixed(2)}</div> : null}
+                          <div className="font-semibold text-gray-800 dark:text-gray-100 flex items-start gap-1">{st === "paga" && <span className="text-emerald-600">✓</span>}<span className="break-words">{c.nome}</span></div>
+                          <div className="text-gray-500 dark:text-gray-400">{CONTA_FIXA_CATEGORIA_LABEL[c.categoria]}{c.valorEstimado ? ` · R$ ${c.valorEstimado.toFixed(2)}` : ""}</div>
+                          {end && <div className="text-gray-400 dark:text-gray-500 truncate">📍 {end.apelido}</div>}
                           {c.ajustesData?.[cmp] && <div className="text-[9px] text-amber-600">• movida neste mês</div>}
                         </div>
                       );
