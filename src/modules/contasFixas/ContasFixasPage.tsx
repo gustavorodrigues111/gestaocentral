@@ -41,6 +41,7 @@ export function ContasFixasPage() {
   const [aba, setAba] = useState<"visualizacao" | "cadastro">("visualizacao");
   const [editando, setEditando] = useState<ContaFixa | null>(null);
   const [criando, setCriando] = useState(false);
+  const [novaInit, setNovaInit] = useState<Partial<ContaFixa> | null>(null); // criar já com dia preenchido
   const [importando, setImportando] = useState(false);
   const hoje = new Date().toISOString().slice(0, 10);
   const [comp, setComp] = useState(hoje.slice(0, 7)); // "YYYY-MM"
@@ -98,12 +99,19 @@ export function ContasFixasPage() {
 
   // Data efetiva da conta num mês: override do mês (arrasto) ou dia do cadastro
   // já corrigido pro próximo dia útil (fim de semana → segue pro dia útil).
-  const dataEfetiva = (c: ContaFixa, cmp: string): string | null => {
-    if (c.ajustesData?.[cmp]) return c.ajustesData[cmp];
+  // Data "natural": dia do cadastro corrigido pro próximo dia útil (sem override).
+  const dataNatural = (c: ContaFixa, cmp: string): string | null => {
     if (!c.diaDoMes) return null;
     const { ano, mes } = parseAnoMes(cmp);
     const dia = Math.min(c.diaDoMes, daysInMonth(ano, mes));
     return proximoDiaUtil(`${fmtAnoMes(ano, mes)}-${pad2(dia)}`, feriadosSet);
+  };
+  const dataEfetiva = (c: ContaFixa, cmp: string): string | null => c.ajustesData?.[cmp] || dataNatural(c, cmp);
+  // No Cadastro o dia é o configurado (sem pulo de dia útil nem override do mês).
+  const dataCadastro = (c: ContaFixa, cmp: string): string | null => {
+    if (!c.diaDoMes) return null;
+    const { ano, mes } = parseAnoMes(cmp);
+    return `${fmtAnoMes(ano, mes)}-${pad2(Math.min(c.diaDoMes, daysInMonth(ano, mes)))}`;
   };
   const statusDe = (c: ContaFixa, cmp: string): "paga" | "atrasada" | "pendente" => {
     if (c.pagamentos?.[cmp]) return "paga";
@@ -126,12 +134,14 @@ export function ContasFixasPage() {
   const nPagas = base.filter(c => statusDe(c, comp) === "paga").length;
   const nAtras = base.filter(c => statusDe(c, comp) === "atrasada").length;
 
-  // Calendário-semana
+  // Calendário-semana — no Cadastro usa o dia configurado; na Visualização a
+  // data efetiva (dia útil + ajuste do mês).
+  const noCadastro = aba === "cadastro";
   const dias = Array.from({ length: 7 }, (_, i) => { const d = parseYmd(semanaInicio); d.setDate(d.getDate() + i); return ymd(d); });
   const mesesVis = [...new Set(dias.map(d => d.slice(0, 7)))];
   const porDia = new Map<string, { c: ContaFixa; cmp: string }[]>();
   for (const cmp of mesesVis) for (const c of base) {
-    const ed = dataEfetiva(c, cmp);
+    const ed = noCadastro ? dataCadastro(c, cmp) : dataEfetiva(c, cmp);
     if (ed && dias.includes(ed)) { const arr = porDia.get(ed) || []; arr.push({ c, cmp }); porDia.set(ed, arr); }
   }
   const navegar = (delta: number) => { const d = parseYmd(semanaInicio); d.setDate(d.getDate() + delta * 7); setSemanaInicio(ymd(d)); };
@@ -144,7 +154,9 @@ export function ContasFixasPage() {
   }
   async function moverPara(id: string, cmp: string, novaData: string) {
     const c = contas.find(x => x.id === id); if (!c) return;
-    const novo = { ...(c.ajustesData || {}) }; novo[cmp] = novaData;
+    const novo = { ...(c.ajustesData || {}) };
+    if (novaData === dataNatural(c, cmp)) delete novo[cmp]; // voltou pro dia original → some o ajuste
+    else novo[cmp] = novaData;
     await updateDoc(doc(db, "contasFixas", id), { ajustesData: novo, atualizadoEm: new Date().toISOString() });
   }
 
@@ -205,13 +217,9 @@ export function ContasFixasPage() {
       {daEmpresa.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 mb-3">
           {catSelect}
-          {aba === "visualizacao" && (
-            <>
-              <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />
-              {chip(vis === "calendario", "📅 Calendário", () => setVis("calendario"))}
-              {chip(vis === "lista", "📋 Lista", () => setVis("lista"))}
-            </>
-          )}
+          <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />
+          {chip(vis === "calendario", "📅 Calendário", () => setVis("calendario"))}
+          {chip(vis === "lista", "📋 Lista", () => setVis("lista"))}
           {aba === "visualizacao" && vis === "lista" && (
             <>
               <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />
@@ -230,7 +238,7 @@ export function ContasFixasPage() {
           <p>Nenhuma conta fixa nesta empresa.</p>
           <p className="text-sm mt-1">Use <b>+ Nova Conta Fixa</b> ou <b>⬆️ Importar CSV</b> pra popular.</p>
         </div>
-      ) : aba === "visualizacao" && vis === "calendario" ? (
+      ) : vis === "calendario" ? (
         <div>
           <div className="flex items-center justify-center gap-2 mb-3">
             <Button size="sm" variant="ghost" onClick={() => navegar(-1)}>‹</Button>
@@ -238,7 +246,9 @@ export function ContasFixasPage() {
             <Button size="sm" variant="ghost" onClick={() => navegar(1)}>›</Button>
             <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 ml-2">{tituloSemana}</span>
           </div>
-          <p className="text-[11px] text-gray-400 mb-2 text-center">Arraste um card pra mudar a data só neste mês. Pra mudar sempre, edite no 📝 Cadastro.</p>
+          <p className="text-[11px] text-gray-400 mb-2 text-center">{noCadastro
+            ? "Clique num card pra editar (dia, recorrência, valor). “+ Nova” cria uma conta sempre naquele dia do mês."
+            : "Arraste um card pra mudar a data só neste mês. Pra mudar sempre, edite no 📝 Cadastro."}</p>
           <div className="grid grid-cols-1 sm:grid-cols-7 gap-1.5">
             {dias.map((d, i) => {
               const wd = parseYmd(d).getDay();
@@ -246,6 +256,7 @@ export function ContasFixasPage() {
               const feriadoNome = feriados[d];
               const naoUtil = fds || !!feriadoNome;
               const ehHoje = d === hoje;
+              const diaMes = parseYmd(d).getDate();
               const itens = porDia.get(d) || [];
               const corDia = dropDia === d
                 ? "border-indigo-400 bg-indigo-50/60 dark:bg-indigo-900/25"
@@ -254,35 +265,44 @@ export function ContasFixasPage() {
                   : "border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/40 dark:bg-emerald-950/10";
               return (
                 <div key={d}
-                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dropDia !== d) setDropDia(d); }}
-                  onDragLeave={() => { if (dropDia === d) setDropDia(null); }}
-                  onDrop={(e) => { e.preventDefault(); const raw = e.dataTransfer.getData("text/plain"); const [id, cmp] = raw.split("|"); setDropDia(null); setDragId(null); if (id) void moverPara(id, cmp, d); }}
+                  onDragOver={noCadastro ? undefined : (e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dropDia !== d) setDropDia(d); }}
+                  onDragLeave={noCadastro ? undefined : () => { if (dropDia === d) setDropDia(null); }}
+                  onDrop={noCadastro ? undefined : (e) => { e.preventDefault(); const raw = e.dataTransfer.getData("text/plain"); const [id, cmp] = raw.split("|"); setDropDia(null); setDragId(null); if (id) void moverPara(id, cmp, d); }}
                   title={feriadoNome ? `Feriado: ${feriadoNome}` : undefined}
-                  className={`rounded-xl border p-1.5 min-h-[150px] ${ehHoje ? "ring-1 ring-indigo-400" : ""} ${corDia}`}>
+                  className={`rounded-xl border p-1.5 min-h-[150px] flex flex-col ${ehHoje ? "ring-1 ring-indigo-400" : ""} ${corDia}`}>
                   <div className={`text-[11px] font-semibold mb-1 flex items-center justify-between ${ehHoje ? "text-indigo-600 dark:text-indigo-300" : naoUtil ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"}`}>
-                    <span>{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"][i]} {parseYmd(d).getDate()}</span>
+                    <span>{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"][i]} {diaMes}</span>
                     {itens.length > 0 && <span className="opacity-60">{itens.length}</span>}
                   </div>
                   {feriadoNome && <div className="text-[9px] text-amber-600 dark:text-amber-400 mb-1 truncate" title={feriadoNome}>🎉 {feriadoNome}</div>}
-                  <div className="space-y-1">
+                  <div className="space-y-1 flex-1">
                     {itens.map(({ c, cmp }) => {
                       const st = statusDe(c, cmp);
                       const end = c.enderecoId ? endById[c.enderecoId] : null;
+                      const corCard = noCadastro
+                        ? "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"
+                        : st === "paga" ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20"
+                        : st === "atrasada" ? "border-rose-300 bg-rose-50 dark:bg-rose-900/20"
+                        : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900";
                       return (
-                        <div key={c.id + cmp} draggable
-                          onDragStart={(e) => { e.dataTransfer.setData("text/plain", `${c.id}|${cmp}`); e.dataTransfer.effectAllowed = "move"; setDragId(c.id); }}
-                          onDragEnd={() => { setDragId(null); setDropDia(null); }}
-                          onClick={() => void togglePago(c, cmp)}
-                          title={`${c.nome} — clique pra marcar pago`}
-                          className={`cursor-grab active:cursor-grabbing rounded-lg border px-1.5 py-1 text-[11px] leading-tight ${dragId === c.id ? "opacity-40" : ""} ${st === "paga" ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20" : st === "atrasada" ? "border-rose-300 bg-rose-50 dark:bg-rose-900/20" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"}`}>
-                          <div className="font-semibold text-gray-800 dark:text-gray-100 flex items-start gap-1">{st === "paga" && <span className="text-emerald-600">✓</span>}<span className="break-words">{c.nome}</span></div>
-                          <div className="text-gray-500 dark:text-gray-400">{CONTA_FIXA_CATEGORIA_LABEL[c.categoria]}{c.valorEstimado ? ` · R$ ${c.valorEstimado.toFixed(2)}` : ""}</div>
+                        <div key={c.id + cmp} draggable={!noCadastro}
+                          onDragStart={noCadastro ? undefined : (e) => { e.dataTransfer.setData("text/plain", `${c.id}|${cmp}`); e.dataTransfer.effectAllowed = "move"; setDragId(c.id); }}
+                          onDragEnd={noCadastro ? undefined : () => { setDragId(null); setDropDia(null); }}
+                          onClick={() => noCadastro ? setEditando(c) : void togglePago(c, cmp)}
+                          title={noCadastro ? `${c.nome} — clique pra editar` : `${c.nome} — clique pra marcar pago`}
+                          className={`rounded-lg border px-1.5 py-1 text-[11px] leading-tight ${noCadastro ? "cursor-pointer hover:shadow-sm" : "cursor-grab active:cursor-grabbing"} ${dragId === c.id ? "opacity-40" : ""} ${corCard}`}>
+                          <div className="font-semibold text-gray-800 dark:text-gray-100 flex items-start gap-1">{!noCadastro && st === "paga" && <span className="text-emerald-600">✓</span>}<span className="break-words">{c.nome}</span></div>
+                          <div className="text-gray-500 dark:text-gray-400">{CONTA_FIXA_CATEGORIA_LABEL[c.categoria]}{c.valorEstimado ? ` · R$ ${c.valorEstimado.toFixed(2)}` : ""}{noCadastro && c.recorrencia !== "mensal" ? ` · ${CONTA_FIXA_RECORRENCIA_LABEL[c.recorrencia]}` : ""}</div>
                           {end && <div className="text-gray-400 dark:text-gray-500 truncate">📍 {end.apelido}</div>}
-                          {c.ajustesData?.[cmp] && <div className="text-[9px] text-amber-600">• movida neste mês</div>}
+                          {!noCadastro && c.ajustesData?.[cmp] && <div className="text-[9px] text-amber-600">• movida neste mês</div>}
                         </div>
                       );
                     })}
                   </div>
+                  {noCadastro && (
+                    <button type="button" onClick={() => setNovaInit({ diaDoMes: diaMes, restaurantIds: rid ? [rid] : [] })}
+                      className="mt-1 text-[10px] text-gray-400 hover:text-indigo-600 border border-dashed border-gray-300 dark:border-gray-700 rounded-lg py-0.5">+ Nova</button>
+                  )}
                 </div>
               );
             })}
@@ -325,10 +345,11 @@ export function ContasFixasPage() {
         </div>
       )}
 
-      {(criando || editando) && (
+      {(criando || editando || novaInit) && (
         <ContaFixaForm
           conta={editando}
-          onClose={() => { setCriando(false); setEditando(null); }}
+          init={novaInit || undefined}
+          onClose={() => { setCriando(false); setEditando(null); setNovaInit(null); }}
           restaurantes={restaurants.map(r => ({ id: r.id, nome: r.nome }))}
           enderecos={enderecos}
           pessoaId={pessoa.id}
@@ -452,8 +473,9 @@ function ImportContasModal({ onClose, restaurantes, pessoaId }: {
   );
 }
 
-function ContaFixaForm({ conta, onClose, restaurantes, enderecos, pessoaId }: {
+function ContaFixaForm({ conta, init, onClose, restaurantes, enderecos, pessoaId }: {
   conta: ContaFixa | null;
+  init?: Partial<ContaFixa>;
   onClose: () => void;
   restaurantes: { id: string; nome: string }[];
   enderecos: Endereco[];
@@ -469,6 +491,7 @@ function ContaFixaForm({ conta, onClose, restaurantes, enderecos, pessoaId }: {
     projetoId: "proj-financ-rot",
     subprojetoId: "sub-financ-contas",
     ativo: true,
+    ...(init || {}),
   });
 
   async function salvar() {
