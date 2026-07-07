@@ -143,6 +143,17 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, catNome, restNome, meId,
   const totalAReceber = minhasTodas.reduce((s, l) => s + aReembolsar(l), 0);
   const totalOutrasPend = outras.reduce((s, l) => { const p = minhaParte(l); return s + (p && p.status !== "pago" ? (p.valor || 0) : 0); }, 0);
 
+  // "A me reembolsar" agrupado por empresa (respeita o filtro de cartão).
+  const aReceberPorEmpresa = (() => {
+    const m = new Map<string, { total: number; pend: number; pago: number }>();
+    for (const l of minhasTodas) { if (l.ignorado) continue; for (const p of l.rateio || []) {
+      const g = m.get(p.empresaId) || { total: 0, pend: 0, pago: 0 };
+      g.total += p.valor || 0; if (p.status === "pago") g.pago += p.valor || 0; else g.pend += p.valor || 0;
+      m.set(p.empresaId, g);
+    } }
+    return [...m.entries()].sort((a, b) => b[1].total - a[1].total);
+  })();
+
   // Agrupa "outras" por dono (restaurantId).
   const outrasPorDono = useMemo(() => {
     const m = new Map<string, CartaoLancamento[]>();
@@ -173,13 +184,7 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, catNome, restNome, meId,
 
   return (
     <div>
-      {cartoesDisp.length > 1 && (
-        <div className="flex flex-wrap items-center gap-1.5 mb-3">
-          <span className="text-[11px] text-gray-400 mr-0.5">Cartões:</span>
-          <SubChip ativo={cartoesSel.size === 0} onClick={() => setCartoesSel(new Set())}>Todos</SubChip>
-          {cartoesDisp.map(c => <SubChip key={c} ativo={cartoesSel.has(c)} onClick={() => toggleCartao(c)}>{c}</SubChip>)}
-        </div>
-      )}
+      {/* 1. Filtro principal: minhas faturas × reembolsos a pagar (acima dos cartões) */}
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <div className="flex gap-1.5">
           <SubChip ativo={sub === "minhas"} onClick={() => setSub("minhas")}>Minhas faturas · {fmtBRL(totalMinhas)}</SubChip>
@@ -192,12 +197,35 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, catNome, restNome, meId,
           </div>
         )}
       </div>
+      {/* 2. Filtro por cartão */}
+      {cartoesDisp.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+          <span className="text-[11px] text-gray-400 mr-0.5">Cartões:</span>
+          <SubChip ativo={cartoesSel.size === 0} onClick={() => setCartoesSel(new Set())}>Todos</SubChip>
+          {cartoesDisp.map(c => <SubChip key={c} ativo={cartoesSel.has(c)} onClick={() => toggleCartao(c)}>{c}</SubChip>)}
+        </div>
+      )}
 
       {sub === "minhas" ? (
         minhasTodas.length === 0 ? <Vazio texto="Nenhum lançamento classificado ainda. Vá em Classificação e suba uma fatura." /> : (
           <>
-            {totalAReceber > 0 && (
-              <p className="text-[11px] text-gray-500 mb-1.5">Deste total, <b className="text-violet-600 dark:text-violet-300">{fmtBRL(totalAReceber)}</b> são itens a reembolsar por outras empresas (com selo ↩).</p>
+            {/* 3. A me reembolsar — total + por empresa (respeita o cartão filtrado) */}
+            {aReceberPorEmpresa.length > 0 && (
+              <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 mb-3">
+                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1.5">↩ A me reembolsar · <span className="text-violet-600 dark:text-violet-300">{fmtBRL(totalAReceber)}</span></div>
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {aReceberPorEmpresa.map(([empId, g]) => (
+                    <div key={empId} className="flex items-center justify-between gap-2 py-1.5 text-sm">
+                      <span className="text-gray-800 dark:text-gray-200">{restNome[empId] || "empresa"}</span>
+                      <span className="flex items-center gap-2.5 whitespace-nowrap">
+                        {g.pend > 0 && <span className="text-[11px] text-amber-600">pendente {fmtBRL(g.pend)}</span>}
+                        {g.pago > 0 && <span className="text-[11px] text-emerald-600">pago {fmtBRL(g.pago)}</span>}
+                        <b className="tabular-nums text-gray-900 dark:text-gray-100">{fmtBRL(g.total)}</b>
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
             <LancTabela lancs={minhasTodas} catNome={catNome} restNome={restNome} mostrarReembolso />
           </>
