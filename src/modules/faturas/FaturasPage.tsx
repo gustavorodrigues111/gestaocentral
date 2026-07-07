@@ -346,10 +346,16 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
     return `Rateio · ${r.length} empresas`;
   };
 
-  // Todas as faturas (rascunho E fechada) são editáveis/reabríveis pelos chips.
-  const faturasLista = faturas.slice().sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
+  // Organização por competência (mês/ano). Default = mais recente.
+  const [compSel, setCompSel] = useState<string>("");
+  const competencias = useMemo(() => [...new Set(faturas.map(f => f.competencia).filter(Boolean) as string[])].sort().reverse(), [faturas]);
+  const compAtual = compSel && competencias.includes(compSel) ? compSel : (competencias[0] || "");
+  const compLabel = (c: string) => { const M = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]; const [y, m] = c.split("-"); return `${M[Number(m) - 1] || m}/${y}`; };
+  // Faturas do mês selecionado (rascunho E fechada), editáveis pelos chips.
+  const faturasLista = faturas.filter(f => f.competencia === compAtual).sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
   const statusFatura = (id: string | null) => faturas.find(f => f.id === id)?.status;
   const ehFechada = statusFatura(faturaId) === "fechada";
+  const bloqueado = ehFechada;   // publicada = travada; reabrir pra editar
   const editando = linhas.length > 0;
 
   // Ao abrir a Classificação, carrega automaticamente a 1ª fatura da lista (uma vez).
@@ -559,15 +565,23 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
             <input type="file" accept="application/pdf" className="hidden" disabled={subindo} onChange={e => { const f = e.target.files?.[0]; if (f) void subirEExtrair(f); e.currentTarget.value = ""; }} />
           </label>
           <span className="text-xs text-gray-500">A IA lê o PDF e identifica sozinha o cartão, o vencimento e os lançamentos.</span>
+          {competencias.length > 0 && (
+            <label className="ml-auto text-[11px] text-gray-500 flex items-center gap-1.5">📅 Mês
+              <select value={compAtual} onChange={e => { const v = e.target.value; setCompSel(v); const first = faturas.filter(f => f.competencia === v).sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""))[0]; if (first) trocarPara(first); else limpar(); }}
+                className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1">
+                {competencias.map(c => <option key={c} value={c}>{compLabel(c)}</option>)}
+              </select>
+            </label>
+          )}
         </div>
         {cartoes.length === 0 && <p className="text-xs text-amber-600 mt-2">⚠️ Cadastre seus cartões na aba <b>Config</b> pra IA saber de qual cartão é cada fatura.</p>}
         {erro && <p className="text-xs text-rose-600 mt-2">{erro}</p>}
       </div>
 
-      {/* Chips de navegação entre faturas — sempre no topo (rascunho + publicadas) */}
+      {/* Chips de navegação entre faturas do mês — sempre no topo (rascunho + publicadas) */}
       {(faturasLista.length > 0 || editando) && (
         <div className="flex flex-wrap items-center gap-1.5">
-          <span className="text-[11px] text-gray-400 mr-0.5">Faturas:</span>
+          <span className="text-[11px] text-gray-400 mr-0.5">Faturas de {compLabel(compAtual)}:</span>
           {faturasLista.map(f => (
             <SubChip key={f.id} ativo={f.id === faturaId} onClick={() => trocarPara(f)}>{f.cartao || "Cartão —"}{f.vencimento ? ` · ${f.vencimento.slice(8, 10)}/${f.vencimento.slice(5, 7)}` : ""}{f.status === "fechada" ? " ✓" : ""}</SubChip>
           ))}
@@ -587,10 +601,10 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
                 <span className="text-gray-500">Cartão:</span>
                 {cartoes.length === 0 ? (
                   <b>{cartao || "—"}</b>
-                ) : faturaId && !trocandoCartao ? (
+                ) : (faturaId && !trocandoCartao) || bloqueado ? (
                   <>
                     <b className="text-gray-800 dark:text-gray-200">{cartao || "—"}</b>
-                    <button type="button" onClick={() => setTrocandoCartao(true)} className="text-[10px] text-indigo-600 hover:text-indigo-700">trocar cartão</button>
+                    {!bloqueado && <button type="button" onClick={() => setTrocandoCartao(true)} className="text-[10px] text-indigo-600 hover:text-indigo-700">trocar cartão</button>}
                   </>
                 ) : (
                   <select value={cartao} autoFocus onChange={e => { setCartao(e.target.value); setTrocandoCartao(false); }} className={`${inp} py-1 ${!cartao ? "border-amber-300" : ""}`}>
@@ -612,10 +626,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
             <div className="flex items-center gap-1.5">
               <Button size="sm" variant={faturaId ? "danger" : "ghost"} onClick={() => void descartar()} disabled={salvando}>{faturaId ? "🗑 Excluir fatura" : "Descartar"}</Button>
               {ehFechada ? (
-                <>
-                  <Button size="sm" variant="ghost" onClick={() => void persistir(false)} disabled={salvando}>{salvando ? "…" : "↩ Virar rascunho"}</Button>
-                  <Button size="sm" onClick={() => void persistir(true)} disabled={salvando || (cartoes.length > 0 && !cartao)}>{salvando ? "…" : "💾 Salvar (publicada)"}</Button>
-                </>
+                <Button size="sm" onClick={() => void persistir(false)} disabled={salvando}>{salvando ? "…" : "↩ Reabrir pra editar"}</Button>
               ) : (
                 <>
                   <Button size="sm" variant="secondary" onClick={() => void persistir(false)} disabled={salvando}>{salvando ? "…" : "💾 Salvar rascunho"}</Button>
@@ -624,7 +635,9 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
               )}
             </div>
           </div>
-          <p className="text-[11px] text-gray-500 flex items-center gap-1">✨ A fatura é toda sua. A IA já marcou os itens a <b className="text-violet-600 dark:text-violet-300">reembolsar</b> por outra empresa e a <b className="text-indigo-600 dark:text-indigo-300">categoria</b> — clique nas pílulas pra ajustar.</p>
+          {bloqueado
+            ? <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1">🔒 Fatura <b>publicada</b> — clique <b>Reabrir pra editar</b> pra mexer nos lançamentos.</p>
+            : <p className="text-[11px] text-gray-500 flex items-center gap-1">✨ A fatura é toda sua. A IA já marcou os itens a <b className="text-violet-600 dark:text-violet-300">reembolsar</b> por outra empresa e a <b className="text-indigo-600 dark:text-indigo-300">categoria</b> — clique nas pílulas pra ajustar.</p>}
           <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
             <table className="w-full min-w-[640px] text-sm">
               <thead><tr className="text-[11px] uppercase text-gray-400 bg-gray-50 dark:bg-gray-900/40">
@@ -636,7 +649,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
                       <td className="px-2 py-1.5 whitespace-nowrap text-gray-500">{l.data}</td>
                       <td className="px-2 py-1.5">
                         <span className={l.ignorar ? "line-through" : ""}>{l.descricao}</span>{l.parcela && <span className="ml-1 text-[10px] text-gray-400">({l.parcela})</span>}
-                        <button type="button" onClick={() => toggleIgnorar(i)} className="ml-2 text-[10px] text-gray-400 hover:text-rose-600 align-middle">{l.ignorar ? "↩ reincluir" : "✕ ignorar"}</button>
+                        {!bloqueado && <button type="button" onClick={() => toggleIgnorar(i)} className="ml-2 text-[10px] text-gray-400 hover:text-rose-600 align-middle">{l.ignorar ? "↩ reincluir" : "✕ ignorar"}</button>}
                       </td>
                       <td className={`px-2 py-1.5 text-right tabular-nums ${l.ignorar ? "line-through text-gray-400" : l.valor < 0 ? "text-emerald-600" : ""}`}>{fmtBRL(l.valor)}</td>
                       {l.ignorar ? (
@@ -644,10 +657,10 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
                       ) : (
                         <>
                           <td className="px-2 py-1.5">
-                            <button type="button" onClick={() => setRateioRow(i)} className={chipSelect(l.rateio.length ? "empresa" : "neutro") + " pr-2.5"}>{resumoRateio(l.rateio)} ▾</button>
+                            <button type="button" disabled={bloqueado} onClick={() => setRateioRow(i)} className={chipSelect(l.rateio.length ? "empresa" : "neutro") + " pr-2.5" + (bloqueado ? " opacity-70 cursor-default" : "")}>{resumoRateio(l.rateio)}{bloqueado ? "" : " ▾"}</button>
                           </td>
                           <td className="px-2 py-1.5">
-                            <select value={l.categoriaId || ""} onChange={e => setCategoria(i, e.target.value || null)} className={chipSelect(l.categoriaId ? "ok" : "vazio")}>
+                            <select value={l.categoriaId || ""} disabled={bloqueado} onChange={e => setCategoria(i, e.target.value || null)} className={chipSelect(l.categoriaId ? "ok" : "vazio") + (bloqueado ? " opacity-70" : "")}>
                               <option value="">+ categoria</option>
                               {catsDe(rid).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                             </select>
