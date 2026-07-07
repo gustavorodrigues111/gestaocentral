@@ -3659,6 +3659,7 @@ export type SecaoCardapio = {
   // Quebra de coluna: a partir do item `quebraIdx`, a seção continua em outra
   // coluna (colB) na posição posTopB — sem repetir o cabeçalho.
   quebraIdx?: number;                // índice do 1º item da parte 2 (1..len-1)
+  pagB?: number;                     // página da parte 2 (default = mesma página)
   colB?: number;                     // coluna da parte 2
   posTopB?: number;                  // px da parte 2
 };
