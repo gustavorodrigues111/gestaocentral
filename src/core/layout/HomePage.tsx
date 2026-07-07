@@ -54,8 +54,9 @@ export function HomePage() {
 
   function visibleModule(moduleId: ModuleId) {
     if (!pessoa) return false;
-    if (pessoa.isMaster) return true;       // master vê tudo
+    // modulosAtivos vale pra todos (inclusive master): desativado não aparece.
     if (!modulosAtivos.includes(moduleId)) return false;
+    if (pessoa.isMaster) return true;       // master ignora só a permissão
     return canUse(pessoa, rid, moduleId);
   }
 
