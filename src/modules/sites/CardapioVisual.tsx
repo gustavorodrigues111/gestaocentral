@@ -4,7 +4,8 @@
 // (html2canvas → jsPDF) — a fonte sai idêntica à da tela.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { resolverFonte } from "./shared/cardapioFontes";
 import { carregarFontesCardapio } from "./shared/FontePicker";
@@ -42,6 +43,19 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
   const [lay, setLay] = useState<Lay>(() => montarLay(menuLayoutProprio && menuLayout ? menuLayout : sharedLayout));
   const [baixando, setBaixando] = useState(false);
   const [erroBaixar, setErroBaixar] = useState("");
+  const [subindoArte, setSubindoArte] = useState<"capa" | "miolo" | "">("");
+
+  async function subirArte(tipo: "capa" | "miolo", file: File) {
+    setSubindoArte(tipo);
+    try {
+      const ext = (file.name.split(".").pop() || "png").toLowerCase().replace(/[^a-z0-9]/g, "") || "png";
+      const path = `cardapios/${rid}/arte-${tipo}-${Date.now()}.${ext}`;
+      const snap = await uploadBytes(storageRef(storage, path), file, { contentType: file.type || "image/png" });
+      const url = await getDownloadURL(snap.ref);
+      setCampo(tipo === "capa" ? "capaUrl" : "mioloUrl", url as never);
+    } catch (e) { alert("Erro ao subir a arte: " + (e instanceof Error ? e.message : "?")); }
+    finally { setSubindoArte(""); }
+  }
   const [dirty, setDirty] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [salvoFlash, setSalvoFlash] = useState(false);
@@ -478,6 +492,22 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
               <input type="checkbox" checked={lay.mostrarCifrao} onChange={(e) => setCampo("mostrarCifrao", e.target.checked)} className="w-4 h-4 accent-indigo-600" />
               Mostrar cifrão <span className="font-semibold">$</span> antes do preço
             </label>
+          </PainelGrupo>
+
+          <PainelGrupo titulo="Arte de fundo (capa / miolo)" icone="🎨">
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">Pro logo e a arte saírem nítidos no PDF, suba imagens grandes (largura ≥ 2500px). A <b>capa</b> é o fundo da página 1; o <b>miolo</b> é o fundo das demais.</p>
+            {([["capa", "Capa (página 1)", lay.capaUrl], ["miolo", "Miolo (demais)", lay.mioloUrl]] as const).map(([tipo, label, atual]) => (
+              <div key={tipo} className="flex items-center justify-between gap-2">
+                <span className="text-[12px] text-gray-600 dark:text-gray-300">{label}{atual ? <span className="text-emerald-600"> ✓</span> : ""}</span>
+                <div className="flex items-center gap-1.5">
+                  {atual && <button type="button" onClick={() => setCampo(tipo === "capa" ? "capaUrl" : "mioloUrl", "" as never)} className="text-[11px] text-gray-400 hover:text-rose-600">remover</button>}
+                  <label className={`text-[11px] px-2 py-1 rounded-lg border cursor-pointer ${subindoArte ? "opacity-50 border-gray-300" : "border-indigo-300 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"}`}>
+                    {subindoArte === tipo ? "enviando…" : atual ? "trocar" : "subir"}
+                    <input type="file" accept="image/*" className="hidden" disabled={!!subindoArte} onChange={(e) => { const f = e.target.files?.[0]; if (f) void subirArte(tipo, f); e.currentTarget.value = ""; }} />
+                  </label>
+                </div>
+              </div>
+            ))}
           </PainelGrupo>
 
           {!!capaSrc && (
