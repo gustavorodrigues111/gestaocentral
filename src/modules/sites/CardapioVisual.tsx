@@ -405,16 +405,26 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
       const pdf = new jsPDF({ unit: "pt", format: "a4" });
       const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight();
       const nodes = Array.from(paginasRef.current?.querySelectorAll<HTMLDivElement>(".pagina-pdf") || []);
+      if (nodes.length === 0) { setErroBaixar("Nenhuma página encontrada pra gerar o PDF. Abra a aba Prévia e tente de novo."); return; }
       // Página renderiza em ~460px; pra sair nítido no A4 precisamos de ~300 DPI.
       // scale alto + PNG (sem perda) — JPEG borrava as bordas do logo/arte.
-      const scale = Math.min(6, Math.max(4, Math.ceil(2480 / (nodes[0]?.offsetWidth || 460))));
-      for (let i = 0; i < nodes.length; i++) {
-        const canvas = await html2canvas(nodes[i]!, { scale, backgroundColor: "#ffffff", useCORS: true, imageTimeout: 0, ignoreElements: (el) => el.classList?.contains("guia-margem") });
-        const img = canvas.toDataURL("image/png");
-        if (i > 0) pdf.addPage();
-        pdf.addImage(img, "PNG", 0, 0, W, H, undefined, "FAST");
+      const scale = Math.min(6, Math.max(4, Math.ceil(2480 / (nodes[0]!.offsetWidth || 460))));
+      // O preview fica reduzido por transform: scale() pra caber na tela; se o
+      // html2canvas capturar assim, sai em baixa. Neutraliza o transform durante o print.
+      const wrap = paginasRef.current;
+      const prevT = wrap ? wrap.style.transform : "";
+      if (wrap) wrap.style.transform = "none";
+      await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      try {
+        for (let i = 0; i < nodes.length; i++) {
+          const canvas = await html2canvas(nodes[i]!, { scale, backgroundColor: "#ffffff", useCORS: true, imageTimeout: 0, ignoreElements: (el) => el.classList?.contains("guia-margem") });
+          const img = canvas.toDataURL("image/png");
+          if (i > 0) pdf.addPage();
+          pdf.addImage(img, "PNG", 0, 0, W, H, undefined, "FAST");
+        }
+      } finally {
+        if (wrap) wrap.style.transform = prevT;
       }
-      if (nodes.length === 0) { setErroBaixar("Nenhuma página encontrada pra gerar o PDF. Abra a aba Prévia e tente de novo."); return; }
       pdf.save(`${(nomeRestaurante || "cardapio").toLowerCase().replace(/\s+/g, "-")}-cardapio${en ? "-en" : ""}.pdf`);
     } catch (e) {
       console.error("cardapio PDF:", e);
