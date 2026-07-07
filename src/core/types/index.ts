@@ -5607,7 +5607,23 @@ export type CartaoCategoria = {
   cor?: string;
   ordem?: number;
   ativo?: boolean;
+  // Rateio percentual padrão: gastos desta categoria são reembolsados,
+  // divididos em % entre empresas. Aplica-se sozinho ao classificar. Ex:
+  // Telefonia → [{Lobozó,40},{Sororoca,30},{Puba,30}]. Soma pode ser <100
+  // (a sobra fica como gasto próprio, não reembolsado).
+  rateioPadrao?: { empresaId: string; percentual: number }[];
   criadoEm?: string;
+};
+
+// Uma fatia do rateio percentual de um lançamento (uma empresa reembolsa X%).
+export type CartaoRateioParte = {
+  empresaId: string;
+  percentual: number;                 // 0–100
+  valor: number;                      // valor da fatia = lancamento.valor * %/100
+  status?: "pendente" | "pago";
+  pagoEm?: string | null;
+  pagoPor?: string | null;
+  pagoPorNome?: string | null;
 };
 
 // Uma fatura subida (de um cartão, num mês).
@@ -5641,8 +5657,12 @@ export type CartaoLancamento = {
   obs?: string | null;
   // Destino: própria entidade OU atribuído a outra empresa (reembolso).
   destinoTipo: "propria" | "empresa";
-  empresaAtribuidaId?: string | null;   // se destinoTipo="empresa"
+  empresaAtribuidaId?: string | null;   // legado (1 empresa a 100%); ainda gravado quando rateio tem 1 fatia
   categoriaId?: string | null;          // categoria (na lista do destino)
+  // Rateio percentual: 1+ empresas reembolsam, cada uma sua %. Vazio/ausente
+  // = gasto 100% próprio. Fonte de verdade do reembolso.
+  rateio?: CartaoRateioParte[];
+  empresasRateadas?: string[];          // ids das empresas no rateio (pra array-contains)
   // Publicado = a fatura pai foi FECHADA. Só publicado dispara reembolso/aviso
   // pra outra empresa. Enquanto rascunho, publicado=false (invisível pras outras).
   publicado?: boolean;

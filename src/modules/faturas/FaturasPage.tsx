@@ -14,7 +14,10 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { exportarFaturasXLSX, exportarFaturasPDF } from "./exportFaturas";
-import type { CartaoCategoria, CartaoFatura, CartaoLancamento } from "../../core/types";
+import type { CartaoCategoria, CartaoFatura, CartaoLancamento, CartaoRateioParte } from "../../core/types";
+
+type RateioSimples = { empresaId: string; percentual: number };
+const round2 = (v: number) => Math.round(v * 100) / 100;
 
 const CARTOES = ["Master Itaú", "Visa Itaú", "Master Santander", "Visa Santander"];
 // Categorias sugeridas (quick-add) — cobrem gastos comuns de restaurante + pessoal.
@@ -40,7 +43,7 @@ const chipSelect = (v: "empresa" | "neutro" | "ok" | "vazio"): string => {
   return base + styles[v];
 };
 
-type Extraido = { data: string; descricao: string; valor: number; parcela: string | null; destinoTipo: "propria" | "empresa"; empresaAtribuidaId: string | null; categoriaId: string | null };
+type Extraido = { data: string; descricao: string; valor: number; parcela: string | null; rateio: RateioSimples[]; categoriaId: string | null };
 
 export function FaturasPage() {
   const { pessoa: me } = useAuth();
@@ -76,7 +79,7 @@ export function FaturasPage() {
     if (!rid) return;
     const u1 = onSnapshot(query(collection(db, "cartaoLancamentos"), where("restaurantId", "==", rid)), snap =>
       setMinhas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as CartaoLancamento)));
-    const u2 = onSnapshot(query(collection(db, "cartaoLancamentos"), where("empresaAtribuidaId", "==", rid)), snap =>
+    const u2 = onSnapshot(query(collection(db, "cartaoLancamentos"), where("empresasRateadas", "array-contains", rid)), snap =>
       setOutras(snap.docs.map(d => ({ id: d.id, ...d.data() }) as CartaoLancamento)));
     const u3 = onSnapshot(query(collection(db, "cartaoFaturas"), where("restaurantId", "==", rid)), snap =>
       setFaturas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as CartaoFatura)));
@@ -103,17 +106,17 @@ export function FaturasPage() {
         ))}
       </nav>
 
-      {aba === "visualizacao" && <Visualizacao minhas={minhas} outras={outras} catNome={catNome} restNome={restNome} meId={me?.id} meNome={me?.nome} />}
+      {aba === "visualizacao" && <Visualizacao rid={rid} minhas={minhas} outras={outras} catNome={catNome} restNome={restNome} meId={me?.id} meNome={me?.nome} />}
       {aba === "classificacao" && podeClassificar && (
         <Classificacao rid={rid} meId={me?.id} pixPadrao={activeRestaurant?.cartaoChavePixPadrao} cartoes={activeRestaurant?.cartoesCadastrados || []} empresaPropriaNome={activeRestaurant?.nome || restNome[rid] || ""} outrasEmpresas={outrasEmpresas} catsDe={catsDe} minhas={minhas} faturas={faturas} />
       )}
-      {aba === "categorias" && podeCategorias && <Categorias rid={rid} categorias={catsDe(rid)} pixPadrao={activeRestaurant?.cartaoChavePixPadrao || ""} cartoes={activeRestaurant?.cartoesCadastrados || []} />}
+      {aba === "categorias" && podeCategorias && <Categorias rid={rid} categorias={catsDe(rid)} pixPadrao={activeRestaurant?.cartaoChavePixPadrao || ""} cartoes={activeRestaurant?.cartoesCadastrados || []} outrasEmpresas={outrasEmpresas} />}
     </div>
   );
 }
 
 // ─── Visualização ────────────────────────────────────────────────────────────
-function Visualizacao({ minhas, outras: outrasRaw, catNome, restNome, meId, meNome }: { minhas: CartaoLancamento[]; outras: CartaoLancamento[]; catNome: (id?: string | null) => string; restNome: Record<string, string>; meId?: string; meNome?: string }) {
+function Visualizacao({ rid, minhas, outras: outrasRaw, catNome, restNome, meId, meNome }: { rid: string; minhas: CartaoLancamento[]; outras: CartaoLancamento[]; catNome: (id?: string | null) => string; restNome: Record<string, string>; meId?: string; meNome?: string }) {
   const [sub, setSub] = useState<"minhas" | "outras">("minhas");
   const [pagando, setPagando] = useState("");
   // Filtro multi-cartão (vazio = todos).
@@ -122,14 +125,18 @@ function Visualizacao({ minhas, outras: outrasRaw, catNome, restNome, meId, meNo
   const passaCartao = (l: CartaoLancamento) => cartoesSel.size === 0 || cartoesSel.has(l.cartao);
   const toggleCartao = (c: string) => setCartoesSel(prev => { const n = new Set(prev); n.has(c) ? n.delete(c) : n.add(c); return n; });
 
+  // Minha fatia (empresa atual = rid) no rateio de um lançamento de outra empresa.
+  const minhaParte = (l: CartaoLancamento) => (l.rateio || []).find(p => p.empresaId === rid);
+  // Total a reembolsar de um lançamento meu (soma das fatias das outras empresas).
+  const aReembolsar = (l: CartaoLancamento) => (l.rateio || []).reduce((s, p) => s + (p.valor || 0), 0);
+
   // Só reembolsos de faturas FECHADAS (publicadas) aparecem pra outra empresa.
   const outras = outrasRaw.filter(l => l.publicado && passaCartao(l));
   // Minhas faturas = a fatura inteira é minha; os itens a reembolsar ganham selo.
   const minhasTodas = minhas.filter(passaCartao);
   const totalMinhas = minhasTodas.reduce((s, l) => s + (l.valor || 0), 0);
-  const totalAReceber = minhasTodas.filter(l => l.destinoTipo === "empresa").reduce((s, l) => s + (l.valor || 0), 0);
-  const outrasPend = outras.filter(l => l.reembolsoStatus !== "pago");
-  const totalOutrasPend = outrasPend.reduce((s, l) => s + (l.valor || 0), 0);
+  const totalAReceber = minhasTodas.reduce((s, l) => s + aReembolsar(l), 0);
+  const totalOutrasPend = outras.reduce((s, l) => { const p = minhaParte(l); return s + (p && p.status !== "pago" ? (p.valor || 0) : 0); }, 0);
 
   // Agrupa "outras" por dono (restaurantId).
   const outrasPorDono = useMemo(() => {
@@ -139,14 +146,18 @@ function Visualizacao({ minhas, outras: outrasRaw, catNome, restNome, meId, meNo
   }, [outras]);
 
   async function marcarPago(lancs: CartaoLancamento[], donoNome: string) {
-    const pend = lancs.filter(l => l.reembolsoStatus !== "pago");
-    if (!pend.length) return;
-    if (!confirm(`Confirmar pagamento de ${fmtBRL(pend.reduce((s, l) => s + (l.valor || 0), 0))} pra ${donoNome}?`)) return;
-    setPagando(lancs[0].restaurantId);
+    const alvo = lancs.filter(l => { const p = minhaParte(l); return p && p.status !== "pago"; });
+    if (!alvo.length) return;
+    const totalPagar = alvo.reduce((s, l) => s + (minhaParte(l)?.valor || 0), 0);
+    if (!confirm(`Confirmar pagamento de ${fmtBRL(totalPagar)} pra ${donoNome}?`)) return;
+    setPagando(alvo[0].restaurantId);
     try {
       const batch = writeBatch(db);
       const agora = new Date().toISOString();
-      for (const l of pend) batch.update(doc(db, "cartaoLancamentos", l.id), { reembolsoStatus: "pago", pagoEm: agora, pagoPor: meId || null, pagoPorNome: meNome || null });
+      for (const l of alvo) {
+        const novoRateio = (l.rateio || []).map(p => p.empresaId === rid ? { ...p, status: "pago", pagoEm: agora, pagoPor: meId || null, pagoPorNome: meNome || null } : p);
+        batch.update(doc(db, "cartaoLancamentos", l.id), { rateio: novoRateio });
+      }
       await batch.commit();
     } catch (e) { alert("Erro ao marcar pago: " + (e instanceof Error ? e.message : "?")); }
     finally { setPagando(""); }
@@ -187,29 +198,50 @@ function Visualizacao({ minhas, outras: outrasRaw, catNome, restNome, meId, meNo
           </>
         )
       ) : (
-        outrasPorDono.length === 0 ? <Vazio texto="Nenhum reembolso atribuído a esta empresa." /> : (
+        outrasPorDono.length === 0 ? <Vazio texto="Nenhum reembolso a pagar a outra empresa." /> : (
           <div className="space-y-5">
             {outrasPorDono.map(([dono, lancs]) => {
               const donoNome = restNome[dono] || "outra entidade";
-              const pend = lancs.filter(l => l.reembolsoStatus !== "pago");
+              const linhasParte = lancs.map(l => ({ l, parte: minhaParte(l)! })).filter(x => x.parte)
+                .sort((a, b) => (a.l.data || "").localeCompare(b.l.data || ""));
+              const totalDono = linhasParte.reduce((s, x) => s + (x.parte.valor || 0), 0);
+              const pend = linhasParte.filter(x => x.parte.status !== "pago");
+              const totalPend = pend.reduce((s, x) => s + (x.parte.valor || 0), 0);
               const pix = lancs.find(l => l.reembolsoChavePix)?.reembolsoChavePix;
               const dataPag = lancs.find(l => l.reembolsoDataPagamento)?.reembolsoDataPagamento;
               return (
                 <div key={dono} className="rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
                   <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-800">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">💳 De {donoNome} · {fmtBRL(lancs.reduce((s, l) => s + (l.valor || 0), 0))}</div>
+                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">💳 A pagar pra {donoNome} · {fmtBRL(totalDono)}</div>
                       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500 mt-0.5">
                         {pix && <span>Pix: <b className="text-gray-700 dark:text-gray-300 select-all">{pix}</b></span>}
                         {dataPag && <span>Pagar até: <b>{dataPag.split("-").reverse().join("/")}</b></span>}
-                        {pend.length === 0 ? <span className="text-emerald-600 font-medium">✓ Tudo pago</span> : <span className="text-amber-600 font-medium">Pendente: {fmtBRL(pend.reduce((s, l) => s + (l.valor || 0), 0))}</span>}
+                        {pend.length === 0 ? <span className="text-emerald-600 font-medium">✓ Tudo pago</span> : <span className="text-amber-600 font-medium">Pendente: {fmtBRL(totalPend)}</span>}
                       </div>
                     </div>
                     {pend.length > 0 && (
                       <Button size="sm" onClick={() => void marcarPago(lancs, donoNome)} disabled={pagando === dono}>{pagando === dono ? "…" : "✓ Marcar como pago"}</Button>
                     )}
                   </div>
-                  <LancTabela lancs={lancs} catNome={catNome} mostrarStatus />
+                  <div className="overflow-x-auto">
+                    <table className="w-full min-w-[520px] text-sm">
+                      <thead><tr className="text-[11px] uppercase text-gray-400 bg-gray-50 dark:bg-gray-900/40">
+                        <th className="text-left px-3 py-2">Data</th><th className="text-left px-3 py-2">Descrição</th><th className="text-left px-3 py-2">Categoria</th><th className="text-right px-3 py-2">Sua fatia</th><th className="text-right px-3 py-2">Status</th>
+                      </tr></thead>
+                      <tbody>
+                        {linhasParte.map(({ l, parte }) => (
+                          <tr key={l.id} className="border-t border-gray-100 dark:border-gray-800">
+                            <td className="px-3 py-1.5 whitespace-nowrap text-gray-500">{l.dataOriginal || l.data}</td>
+                            <td className="px-3 py-1.5">{l.descricao}{l.parcela && <span className="ml-1 text-[10px] text-gray-400">({l.parcela})</span>}</td>
+                            <td className="px-3 py-1.5 text-gray-600 dark:text-gray-300">{catNome(l.categoriaId)}</td>
+                            <td className="px-3 py-1.5 text-right tabular-nums">{fmtBRL(parte.valor)} {parte.percentual < 100 && <span className="text-[10px] text-gray-400">({parte.percentual}%)</span>}</td>
+                            <td className="px-3 py-1.5 text-right whitespace-nowrap">{parte.status === "pago" ? <span className="text-[10px] font-semibold text-emerald-600">✓ pago</span> : <span className="text-[10px] font-semibold text-amber-600">pendente</span>}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               );
             })}
@@ -230,13 +262,18 @@ function LancTabela({ lancs, catNome, mostrarStatus, mostrarReembolso, restNome 
         </tr></thead>
         <tbody>
           {ordenados.map(l => {
-            const ehReembolso = mostrarReembolso && l.destinoTipo === "empresa";
+            const partes = l.rateio || [];
+            const ehReembolso = mostrarReembolso && partes.length > 0;
+            const todasPagas = partes.length > 0 && partes.every(p => p.status === "pago");
+            const seloTxt = partes.length === 1
+              ? `${restNome?.[partes[0].empresaId] || "empresa"}${partes[0].percentual < 100 ? ` ${partes[0].percentual}%` : ""}`
+              : `rateio · ${partes.length} empresas`;
             return (
             <tr key={l.id} className="border-t border-gray-100 dark:border-gray-800">
               <td className="px-3 py-1.5 whitespace-nowrap text-gray-500">{l.dataOriginal || l.data}</td>
               <td className="px-3 py-1.5">
                 <span>{l.descricao}</span>{l.parcela && <span className="ml-1 text-[10px] text-gray-400">({l.parcela})</span>}
-                {ehReembolso && <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 whitespace-nowrap">↩ reembolso{restNome?.[l.empresaAtribuidaId || ""] ? ` · ${restNome[l.empresaAtribuidaId || ""]}` : ""}{l.reembolsoStatus === "pago" ? " · pago" : ""}</span>}
+                {ehReembolso && <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 whitespace-nowrap">↩ {seloTxt}{todasPagas ? " · pago" : ""}</span>}
               </td>
               <td className="px-3 py-1.5 text-gray-600 dark:text-gray-300">{catNome(l.categoriaId)}</td>
               <td className="px-3 py-1.5 text-[11px] text-gray-400">{l.cartao}</td>
@@ -264,8 +301,15 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   const [venc, setVenc] = useState<string | null>(null);
   const [totalFatura, setTotalFatura] = useState<number | null>(null);
   const [salvando, setSalvando] = useState(false);
+  const [rateioRow, setRateioRow] = useState<number | null>(null);  // linha com o editor de rateio aberto
   // Competência derivada do vencimento (mês/ano da fatura) — sem input manual.
   const competencia = venc && /^\d{4}-\d{2}/.test(venc) ? venc.slice(0, 7) : mesAtual();
+  const nomeEmpresa = (id: string) => outrasEmpresas.find(e => e.id === id)?.nome || "?";
+  const resumoRateio = (r: RateioSimples[]): string => {
+    if (!r.length) return "Meu";
+    if (r.length === 1) return `${nomeEmpresa(r[0].empresaId)}${r[0].percentual < 100 ? ` ${r[0].percentual}%` : ""}`;
+    return `Rateio · ${r.length} empresas`;
+  };
 
   const rascunhos = faturas.filter(f => (f.status || "rascunho") === "rascunho").sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
   const editando = linhas.length > 0;
@@ -277,7 +321,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
     setLinhas(lancs.map(l => ({
       data: l.dataOriginal || (l.data ? l.data.slice(8, 10) + "/" + l.data.slice(5, 7) : ""),
       descricao: l.descricao, valor: l.valor, parcela: l.parcela || null,
-      destinoTipo: l.destinoTipo, empresaAtribuidaId: l.empresaAtribuidaId || null, categoriaId: l.categoriaId || null,
+      rateio: rateioDeLanc(l), categoriaId: l.categoriaId || null,
     })));
   }
   function limpar() { setLinhas([]); setVenc(null); setTotalFatura(null); setCartao(""); setFaturaId(null); setErro(""); }
@@ -292,11 +336,21 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
     limpar();
   }
 
-  // Memória de comerciante: por nome normalizado → última classificação usada.
+  // Rateio de um lançamento salvo → forma simples (compat: legado empresaAtribuidaId = 1 empresa 100%).
+  function rateioDeLanc(l: CartaoLancamento): RateioSimples[] {
+    if (Array.isArray(l.rateio) && l.rateio.length) return l.rateio.map(r => ({ empresaId: r.empresaId, percentual: r.percentual }));
+    if (l.destinoTipo === "empresa" && l.empresaAtribuidaId) return [{ empresaId: l.empresaAtribuidaId, percentual: 100 }];
+    return [];
+  }
+  // Rateio padrão de uma categoria (minha).
+  const catRateioPadrao = (catId: string | null): RateioSimples[] => (catId && catsDe(rid).find(c => c.id === catId)?.rateioPadrao) || [];
+
+  // Memória de comerciante: por nome normalizado → última classificação (categoria + rateio).
   const memoria = useMemo(() => {
-    const m = new Map<string, { destinoTipo: "propria" | "empresa"; empresaAtribuidaId: string | null; categoriaId: string | null }>();
-    for (const l of minhas) { const k = normNome(l.descricao); if (k && !m.has(k)) m.set(k, { destinoTipo: l.destinoTipo, empresaAtribuidaId: l.empresaAtribuidaId || null, categoriaId: l.categoriaId || null }); }
+    const m = new Map<string, { categoriaId: string | null; rateio: RateioSimples[] }>();
+    for (const l of minhas) { const k = normNome(l.descricao); if (k && !m.has(k)) m.set(k, { categoriaId: l.categoriaId || null, rateio: rateioDeLanc(l) }); }
     return m;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minhas]);
 
   async function subirEExtrair(file: File) {
@@ -306,32 +360,27 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
       const snap = await uploadBytes(storageRef(storage, path), file, { contentType: "application/pdf" });
       const url = await getDownloadURL(snap.ref);
       const empresasNomes = outrasEmpresas.map(e => e.nome);
-      const catNomes = [...new Set([rid, ...outrasEmpresas.map(e => e.id)].flatMap(id => catsDe(id).map(c => c.nome)))];
+      const catNomes = catsDe(rid).map(c => c.nome);  // categoria é sempre da minha entidade
       const r = await fetch("/api/fatura-extrair", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ pdfUrl: url, cartoes, empresaPropria: empresaPropriaNome, empresas: empresasNomes, categorias: catNomes }) });
       const j = await r.json();
       if (!r.ok) { setErro(j.error || "Falha na extração."); return; }
       setVenc(j.vencimento || null); setTotalFatura(typeof j.totalFatura === "number" ? j.totalFatura : null);
       setCartao(typeof j.cartao === "string" && j.cartao ? j.cartao : "");
       const novas: Extraido[] = (j.lancamentos || []).map((l: { data: string; descricao: string; valor: number; parcela: string | null; destinoEmpresa?: string | null; categoriaSugerida?: string | null }) => {
-        // 1) sugestão da IA: destino (outra empresa) + categoria
-        let destinoTipo: "propria" | "empresa" = "propria";
-        let empresaAtribuidaId: string | null = null;
-        if (l.destinoEmpresa) {
-          const emp = outrasEmpresas.find(e => e.nome.toLowerCase() === l.destinoEmpresa!.toLowerCase());
-          if (emp) { destinoTipo = "empresa"; empresaAtribuidaId = emp.id; }
-        }
-        const destEnt = destinoTipo === "propria" ? rid : empresaAtribuidaId;
+        // categoria (minha) sugerida pela IA
         let categoriaId: string | null = null;
-        if (l.categoriaSugerida && destEnt) {
-          const cat = catsDe(destEnt).find(c => c.nome.toLowerCase() === l.categoriaSugerida!.toLowerCase());
-          if (cat) categoriaId = cat.id;
+        if (l.categoriaSugerida) categoriaId = catsDe(rid).find(c => c.nome.toLowerCase() === l.categoriaSugerida!.toLowerCase())?.id || null;
+        // rateio sugerido: 1) rateio padrão da categoria; 2) empresa única da IA; 3) memória
+        let rateio: RateioSimples[] = catRateioPadrao(categoriaId);
+        if (!rateio.length && l.destinoEmpresa) {
+          const emp = outrasEmpresas.find(e => e.nome.toLowerCase() === l.destinoEmpresa!.toLowerCase());
+          if (emp) rateio = [{ empresaId: emp.id, percentual: 100 }];
         }
-        // 2) fallback: memória de comerciante (só se a IA não sugeriu nada)
-        if (destinoTipo === "propria" && !categoriaId) {
+        if (!categoriaId && !rateio.length) {
           const mem = memoria.get(normNome(l.descricao));
-          if (mem) { destinoTipo = mem.destinoTipo; empresaAtribuidaId = mem.empresaAtribuidaId; categoriaId = mem.categoriaId; }
+          if (mem) { categoriaId = mem.categoriaId; rateio = mem.rateio.length ? mem.rateio : catRateioPadrao(mem.categoriaId); }
         }
-        return { data: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, destinoTipo, empresaAtribuidaId, categoriaId };
+        return { data: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, rateio, categoriaId };
       });
       setLinhas(novas);
     } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao subir/extrair."); }
@@ -339,19 +388,15 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   }
 
   function setLinha(i: number, patch: Partial<Extraido>) { setLinhas(prev => prev.map((l, j) => j === i ? { ...l, ...patch } : l)); }
-  // Ao trocar destino, preserva a categoria pelo NOME se a nova empresa tiver
-  // uma igual; senão zera (as categorias são por entidade).
-  function setDestino(i: number, tipo: "propria" | "empresa", empresaId: string | null) {
+  function setRateio(i: number, rateio: RateioSimples[]) { setLinha(i, { rateio }); }
+  // Ao escolher categoria: se ela tem rateio padrão e a linha ainda não tem
+  // rateio próprio, aplica o padrão da categoria.
+  function setCategoria(i: number, categoriaId: string | null) {
     setLinhas(prev => prev.map((l, j) => {
       if (j !== i) return l;
-      const oldEnt = l.destinoTipo === "propria" ? rid : l.empresaAtribuidaId;
-      const newEnt = tipo === "propria" ? rid : empresaId;
-      let categoriaId: string | null = null;
-      if (l.categoriaId && oldEnt && newEnt) {
-        const nome = catsDe(oldEnt).find(c => c.id === l.categoriaId)?.nome;
-        if (nome) categoriaId = catsDe(newEnt).find(c => c.nome.toLowerCase() === nome.toLowerCase())?.id || null;
-      }
-      return { ...l, destinoTipo: tipo, empresaAtribuidaId: empresaId, categoriaId };
+      const padrao = catRateioPadrao(categoriaId);
+      const rateio = l.rateio.length ? l.rateio : padrao;
+      return { ...l, categoriaId, rateio };
     }));
   }
 
@@ -394,17 +439,23 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
       for (const old of minhas.filter(l => l.faturaId === fid)) batch.delete(doc(db, "cartaoLancamentos", old.id));
       linhas.forEach((l, i) => {
         const id = `${fid}_${i}`;
-        const ehEmpresa = l.destinoTipo === "empresa";
+        // Rateio: normaliza (%>0) e calcula o valor de cada fatia.
+        const partes: CartaoRateioParte[] = (l.rateio || []).filter(p => p.empresaId && p.percentual > 0).map(p => ({
+          empresaId: p.empresaId, percentual: p.percentual, valor: round2((l.valor || 0) * p.percentual / 100),
+          status: fechar ? "pendente" : undefined, pagoEm: null, pagoPor: null, pagoPorNome: null,
+        }));
+        const ehEmpresa = partes.length > 0;
         batch.set(doc(db, "cartaoLancamentos", id), sanitizeForFirestore({
           id, restaurantId: rid, faturaId: fid, cartao,
           data: ymdDe(l.data), dataOriginal: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, obs: null,
-          destinoTipo: l.destinoTipo, empresaAtribuidaId: ehEmpresa ? l.empresaAtribuidaId : null,
+          destinoTipo: ehEmpresa ? "empresa" : "propria",
+          empresaAtribuidaId: partes.length === 1 ? partes[0].empresaId : null,   // legado (1 empresa)
+          rateio: ehEmpresa ? partes : null,
+          empresasRateadas: ehEmpresa ? partes.map(p => p.empresaId) : null,
           categoriaId: l.categoriaId,
           publicado: fechar,                                 // só publica ao fechar
-          reembolsoStatus: fechar && ehEmpresa ? "pendente" : null,
           reembolsoDataPagamento: fechar && ehEmpresa ? (venc || null) : null,
           reembolsoChavePix: fechar && ehEmpresa ? (pixPadrao || null) : null,
-          pagoEm: null, pagoPor: null, pagoPorNome: null,
           criadoEm: agora, criadoPor: meId || null,
         }));
       });
@@ -486,46 +537,107 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
                 <th className="text-left px-2 py-2">Data</th><th className="text-left px-2 py-2">Descrição</th><th className="text-right px-2 py-2">Valor</th><th className="text-left px-2 py-2">Reembolso</th><th className="text-left px-2 py-2">Categoria</th>
               </tr></thead>
               <tbody>
-                {linhas.map((l, i) => {
-                  const destinoEnt = l.destinoTipo === "propria" ? rid : (l.empresaAtribuidaId || "");
-                  const cats = destinoEnt ? catsDe(destinoEnt) : [];
-                  return (
+                {linhas.map((l, i) => (
                     <tr key={i} className="border-t border-gray-100 dark:border-gray-800">
                       <td className="px-2 py-1.5 whitespace-nowrap text-gray-500">{l.data}</td>
                       <td className="px-2 py-1.5">{l.descricao}{l.parcela && <span className="ml-1 text-[10px] text-gray-400">({l.parcela})</span>}</td>
                       <td className={`px-2 py-1.5 text-right tabular-nums ${l.valor < 0 ? "text-emerald-600" : ""}`}>{fmtBRL(l.valor)}</td>
                       <td className="px-2 py-1.5">
-                        <select value={l.destinoTipo === "propria" ? "__minha__" : (l.empresaAtribuidaId || "")}
-                          onChange={e => { const v = e.target.value; v === "__minha__" ? setDestino(i, "propria", null) : setDestino(i, "empresa", v); }}
-                          className={chipSelect(l.destinoTipo === "empresa" ? "empresa" : "neutro")}>
-                          <option value="__minha__">Meu (sem reembolso)</option>
-                          {outrasEmpresas.map(em => <option key={em.id} value={em.id}>{em.nome}</option>)}
-                        </select>
+                        <button type="button" onClick={() => setRateioRow(i)} className={chipSelect(l.rateio.length ? "empresa" : "neutro") + " pr-2.5"}>{resumoRateio(l.rateio)} ▾</button>
                       </td>
                       <td className="px-2 py-1.5">
-                        <select value={l.categoriaId || ""} onChange={e => setLinha(i, { categoriaId: e.target.value || null })} className={chipSelect(l.categoriaId ? "ok" : "vazio")}>
+                        <select value={l.categoriaId || ""} onChange={e => setCategoria(i, e.target.value || null)} className={chipSelect(l.categoriaId ? "ok" : "vazio")}>
                           <option value="">+ categoria</option>
-                          {cats.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+                          {catsDe(rid).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                         </select>
                       </td>
                     </tr>
-                  );
-                })}
+                ))}
               </tbody>
             </table>
           </div>
         </>
       )}
+
+      {rateioRow != null && linhas[rateioRow] && (
+        <RateioModal
+          titulo={`Reembolso · ${linhas[rateioRow].descricao}`}
+          empresas={outrasEmpresas}
+          valorBase={linhas[rateioRow].valor}
+          value={linhas[rateioRow].rateio}
+          onChange={r => setRateio(rateioRow, r)}
+          onClose={() => setRateioRow(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Editor de rateio percentual (por lançamento e por categoria) ────────────
+function RateioModal({ titulo, empresas, value, valorBase, onChange, onClose }: {
+  titulo: string; empresas: { id: string; nome: string }[]; value: RateioSimples[];
+  valorBase?: number; onChange: (r: RateioSimples[]) => void; onClose: () => void;
+}) {
+  const [pcts, setPcts] = useState<Record<string, number>>(() => Object.fromEntries(value.map(p => [p.empresaId, p.percentual])));
+  const total = Object.values(pcts).reduce((s, v) => s + (v || 0), 0);
+  const sobra = round2(100 - total);
+  const set = (id: string, v: number) => setPcts(p => ({ ...p, [id]: v }));
+  const toggle = (id: string, on: boolean) => setPcts(p => { const n = { ...p }; if (on) n[id] = n[id] || 0; else delete n[id]; return n; });
+  function salvar() {
+    const r: RateioSimples[] = Object.entries(pcts).filter(([, v]) => v > 0).map(([empresaId, percentual]) => ({ empresaId, percentual: round2(percentual) }));
+    onChange(r); onClose();
+  }
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-4 space-y-3" onClick={e => e.stopPropagation()}>
+        <div>
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Rateio percentual</div>
+          <div className="text-[11px] text-gray-500 truncate">{titulo}</div>
+        </div>
+        <p className="text-xs text-gray-500">Marque uma ou mais empresas que reembolsam e o % de cada uma. O que sobrar fica como gasto seu (sem reembolso).</p>
+        <div className="max-h-64 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
+          {empresas.map(em => {
+            const on = pcts[em.id] != null;
+            return (
+              <div key={em.id} className="flex items-center gap-2 py-2">
+                <input type="checkbox" checked={on} onChange={e => toggle(em.id, e.target.checked)} />
+                <span className="flex-1 text-sm">{em.nome}</span>
+                {on && (
+                  <div className="flex items-center gap-1">
+                    <input type="number" min={0} max={100} value={pcts[em.id] || 0} onChange={e => set(em.id, Number(e.target.value))}
+                      className="w-16 px-2 py-1 text-sm text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                    <span className="text-xs text-gray-400">%</span>
+                    {valorBase != null && <span className="w-20 text-right text-[11px] text-gray-500 tabular-nums">{fmtBRL(round2((valorBase || 0) * (pcts[em.id] || 0) / 100))}</span>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex items-center justify-between text-xs">
+          <span className={total > 100 ? "text-rose-600 font-medium" : "text-gray-500"}>Total: {round2(total)}% {total > 100 ? "(passou de 100%)" : sobra > 0 ? `· sobra ${sobra}% (meu)` : "· 100%"}</span>
+          <div className="flex gap-1.5">
+            <Button size="sm" variant="ghost" onClick={() => setPcts({})}>Limpar</Button>
+            <Button size="sm" onClick={salvar} disabled={total > 100}>Aplicar</Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
 
 // ─── Config: Cartões + Pix + Categorias ──────────────────────────────────────
-function Categorias({ rid, categorias, pixPadrao, cartoes }: { rid: string; categorias: CartaoCategoria[]; pixPadrao: string; cartoes: string[] }) {
+function Categorias({ rid, categorias, pixPadrao, cartoes, outrasEmpresas }: { rid: string; categorias: CartaoCategoria[]; pixPadrao: string; cartoes: string[]; outrasEmpresas: { id: string; nome: string }[] }) {
   const [nome, setNome] = useState("");
   const [pix, setPix] = useState(pixPadrao);
   const [salvandoPix, setSalvandoPix] = useState(false);
   const [novoCartao, setNovoCartao] = useState("");
+  const [rateioCat, setRateioCat] = useState<CartaoCategoria | null>(null);   // categoria com editor de rateio aberto
+  const nomeEmp = (id: string) => outrasEmpresas.find(e => e.id === id)?.nome || "?";
+  const resumoRateioCat = (r?: { empresaId: string; percentual: number }[]) => !r?.length ? "" : r.length === 1 ? `${nomeEmp(r[0].empresaId)} ${r[0].percentual}%` : `rateio ${r.length} empresas`;
+  async function salvarRateioCat(cat: CartaoCategoria, r: { empresaId: string; percentual: number }[]) {
+    await updateDoc(doc(db, "cartaoCategorias", cat.id), { rateioPadrao: r.length ? r : null });
+  }
   useEffect(() => { setPix(pixPadrao); }, [pixPadrao]);
   async function criarNome(n: string) { const nome = n.trim(); if (!nome || categorias.some(c => c.nome.toLowerCase() === nome.toLowerCase())) return; await addDoc(collection(db, "cartaoCategorias"), sanitizeForFirestore({ restaurantId: rid, nome, ativo: true, criadoEm: new Date().toISOString() })); }
   async function criar() { await criarNome(nome); setNome(""); }
@@ -598,12 +710,27 @@ function Categorias({ rid, categorias, pixPadrao, cartoes }: { rid: string; cate
       {categorias.length === 0 ? <Vazio texto="Nenhuma categoria ainda. Use as sugestões acima ou crie a sua." /> : (
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
           {categorias.map(c => (
-            <div key={c.id} className="flex items-center justify-between px-3 py-2 text-sm">
-              <span>{c.nome}</span>
-              <button type="button" onClick={() => void excluir(c.id)} className="text-[11px] text-gray-400 hover:text-rose-600">excluir</button>
+            <div key={c.id} className="flex items-center justify-between gap-2 px-3 py-2 text-sm">
+              <span className="min-w-0 truncate">{c.nome}
+                {c.rateioPadrao?.length ? <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300">↩ {resumoRateioCat(c.rateioPadrao)}</span> : null}
+              </span>
+              <span className="flex items-center gap-2 whitespace-nowrap">
+                <button type="button" onClick={() => setRateioCat(c)} className="text-[11px] text-indigo-600 hover:text-indigo-700" disabled={outrasEmpresas.length === 0}>rateio padrão</button>
+                <button type="button" onClick={() => void excluir(c.id)} className="text-[11px] text-gray-400 hover:text-rose-600">excluir</button>
+              </span>
             </div>
           ))}
         </div>
+      )}
+
+      {rateioCat && (
+        <RateioModal
+          titulo={`Rateio padrão · ${rateioCat.nome}`}
+          empresas={outrasEmpresas}
+          value={(rateioCat.rateioPadrao || []).map(p => ({ empresaId: p.empresaId, percentual: p.percentual }))}
+          onChange={r => void salvarRateioCat(rateioCat, r)}
+          onClose={() => setRateioCat(null)}
+        />
       )}
     </div>
   );
