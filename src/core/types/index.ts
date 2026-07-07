@@ -3654,7 +3654,6 @@ export type PratoCardapio = {
   titulo: string;
   subtitulo?: string;
   preco?: string;            // preço da garrafa (ou preço único)
-  garrafa?: boolean;         // é vinho/garrafa → mostra ícone de garrafa ao lado do preço (independe do ml)
   garrafaMl?: string;        // tamanho da garrafa em ml (ex: "375") — exibido "(375ml)" antes do preço
   taca?: boolean;            // servido também em taça
   precoTaca?: string;        // preço da taça (quando taca = true)
@@ -3695,6 +3694,7 @@ export type CardapioMenu = {
   secoes: SecaoCardapio[];
   traduzidoEm?: string;
   traduzidoSig?: string;             // assinatura do conteúdo PT no momento da tradução
+  mostrarGarrafa?: boolean;          // cardápio de vinhos → ícone de garrafa em TODOS os itens (tudo ou nada)
   // Formatação (fontes/tamanhos/espaçamentos/margens): por padrão usa o layout
   // COMPARTILHADO do restaurante. Se `layoutProprio`, usa o `layout` próprio abaixo.
   layoutProprio?: boolean;

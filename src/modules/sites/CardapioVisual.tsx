@@ -44,8 +44,8 @@ const PADROES: Lay = {
 };
 const montarLay = (l?: CardapioLayout): Lay => l ? { ...PADROES, ...l, fontesCustom: l.fontesCustom || [], secaoPos: l.secaoPos || {}, colsPorPagina: l.colsPorPagina || {} } : PADROES;
 
-export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onSecoes, sharedLayout, menuLayoutProprio, menuLayout, onClose }: {
-  rid: string; menuId?: string; secoes: SecaoCardapio[]; nomeRestaurante?: string; nomeMenu?: string;
+export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onSecoes, sharedLayout, menuLayoutProprio, menuLayout, onClose }: {
+  rid: string; menuId?: string; secoes: SecaoCardapio[]; mostrarGarrafa?: boolean; nomeRestaurante?: string; nomeMenu?: string;
   tituloCapa?: string; onTituloCapa?: (v: string) => void; lang: "pt" | "en";
   onEditarPrato?: (pratoId: string, campo: CampoPrato, valor: string) => void;
   onSecoes?: (next: SecaoCardapio[]) => void;
@@ -207,7 +207,7 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
                   <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, gap: 1 }}>
                     {precoTxt && (
                       <span style={{ display: "flex", alignItems: "center", gap: 4, lineHeight: 1 }}>
-                        {!ehNota && (p.garrafa || p.taca || (p.garrafaMl || "").trim()) && <GarrafaIcon size={lay.tamTitulo * 0.9} color={TEAL} />}
+                        {!ehNota && mostrarGarrafa && <GarrafaIcon size={lay.tamTitulo * 0.9} color={TEAL} />}
                         {!ehNota && (p.garrafaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: TEAL, opacity: 0.75, whiteSpace: "nowrap" }}>({String(p.garrafaMl).replace(/ml$/i, "").trim()}ml)</span>}
                         <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: TEAL, whiteSpace: "nowrap", fontWeight: 600 }}>{precoTxt}</span>
                       </span>

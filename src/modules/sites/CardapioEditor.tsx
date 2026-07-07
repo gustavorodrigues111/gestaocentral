@@ -36,6 +36,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
   const [mostrarVisual, setMostrarVisual] = useState(false);
   const [iconePrato, setIconePrato] = useState<{ si: number; pi: number } | null>(null);
   const [tituloCapaMenu, setTituloCapaMenu] = useState("");
+  const [mostrarGarrafa, setMostrarGarrafa] = useState(false);
   const timer = useRef<number | undefined>(undefined);
   const tituloTimer = useRef<number | undefined>(undefined);
 
@@ -47,7 +48,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
         const d = snap.data() as CardapioEstruturado;
         if (menuId) {
           const m = (d.cardapios || []).find((c) => c.id === menuId);
-          setTituloCapaMenu(m?.tituloCapa ?? "");
+          setTituloCapaMenu(m?.tituloCapa ?? ""); setMostrarGarrafa(!!m?.mostrarGarrafa);
           setSecoes(m?.secoes || []); setTraduzidoEm(m?.traduzidoEm); setTraduzidoSig(m?.traduzidoSig);
         } else {
           setSecoes(d.secoes || []); setTraduzidoEm(d.traduzidoEm); setTraduzidoSig(d.traduzidoSig);
@@ -156,6 +157,15 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
       await setDoc(ref, sanitizeForFirestore({ id: rid, restaurantId: rid, cardapios, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id }), { merge: true }).catch(() => {});
     }, 600);
   }
+  async function salvarMostrarGarrafa(v: boolean) {
+    setMostrarGarrafa(v);
+    if (!menuId || !podeEditar) return;
+    const ref = doc(db, "cardapioEstruturado", rid);
+    const snap = await getDoc(ref);
+    const d = snap.exists() ? (snap.data() as CardapioEstruturado) : null;
+    const cardapios = (d?.cardapios || []).map((c) => c.id === menuId ? { ...c, mostrarGarrafa: v || undefined } : c);
+    await setDoc(ref, sanitizeForFirestore({ id: rid, restaurantId: rid, cardapios, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id }), { merge: true }).catch(() => {});
+  }
   // Edição direta de um prato pelo id (usada pela edição inline no preview do PDF).
   const editarPratoPorId = (pratoId: string, campo: keyof PratoCardapio, valor: string) =>
     commit(secoes.map((s) => ({ ...s, pratos: s.pratos.map((p) => p.id === pratoId ? { ...p, [campo]: valor.trim() || undefined } : p) })));
@@ -181,6 +191,12 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
             <button type="button" onClick={() => setLang("pt")} className={`text-[13px] px-2.5 py-1.5 font-medium ${!en ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}>🇧🇷 PT</button>
             <button type="button" onClick={() => setLang("en")} className={`text-[13px] px-2.5 py-1.5 font-medium ${en ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}>🇺🇸 EN</button>
           </div>
+          {podeEditar && (
+            <label className="text-[12px] text-gray-600 dark:text-gray-300 flex items-center gap-1.5 cursor-pointer whitespace-nowrap" title="Mostra o ícone de garrafa em TODOS os itens deste cardápio (tudo ou nada)">
+              <input type="checkbox" checked={mostrarGarrafa} onChange={(e) => void salvarMostrarGarrafa(e.target.checked)} />
+              🍾 Cardápio de vinhos
+            </label>
+          )}
           <span className="text-[12px] text-emerald-600 dark:text-emerald-400 ml-auto">
             {estado === "salvando" ? "salvando…" : estado === "salvo" ? "✓ salvo" : ""}
           </span>
@@ -278,21 +294,15 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
                     <div className="flex-1 min-w-0 space-y-1.5">
                       {/* Título (verde) — 2 linhas (Enter = quebra; ótimo pra nome de vinho) */}
                       <textarea value={p.titulo} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { titulo: e.target.value })} placeholder="Nome do prato/vinho (Enter = quebra de linha)" className={`${inpTitulo} w-full font-semibold resize-y`} />
-                      {/* Preço (com $) + checkbox garrafa/taça + reordenar */}
+                      {/* Preço (com $) + checkbox taça + reordenar */}
                       <div className="flex items-center gap-2 flex-wrap">
                         <div className="relative w-28 shrink-0">
                           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">$</span>
-                          <input value={p.preco || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { preco: e.target.value || undefined })} placeholder={p.garrafa ? "garrafa" : "preço"} className={`${inpTitulo} w-full text-right pl-6`} />
+                          <input value={p.preco || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { preco: e.target.value || undefined })} placeholder={mostrarGarrafa ? "garrafa" : "preço"} className={`${inpTitulo} w-full text-right pl-6`} />
                         </div>
                         {podeEditar && (
-                          <label className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1 cursor-pointer whitespace-nowrap" title="Marca como garrafa/vinho — mostra o ícone de garrafa ao lado do preço">
-                            <input type="checkbox" checked={!!p.garrafa} onChange={(e) => setPrato(si, pi, e.target.checked ? { garrafa: true } : { garrafa: undefined, garrafaMl: undefined })} />
-                            <GarrafaIcon size={13} /> garrafa
-                          </label>
-                        )}
-                        {podeEditar && (
                           <label className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1 cursor-pointer whitespace-nowrap">
-                            <input type="checkbox" checked={!!p.taca} onChange={(e) => setPrato(si, pi, e.target.checked ? { taca: true, garrafa: true } : { taca: undefined, precoTaca: undefined, tacaMl: undefined })} />
+                            <input type="checkbox" checked={!!p.taca} onChange={(e) => setPrato(si, pi, e.target.checked ? { taca: true } : { taca: undefined, precoTaca: undefined, tacaMl: undefined })} />
                             <TacaIcon size={13} /> taça
                           </label>
                         )}
@@ -304,8 +314,8 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
                           </div>
                         )}
                       </div>
-                      {p.garrafa && (
-                        <div className="relative w-24">
+                      {mostrarGarrafa && (
+                        <div className="relative w-24" title="Tamanho da garrafa (ml) — opcional, só pra garrafas não-padrão">
                           <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><GarrafaIcon size={13} /></span>
                           <input value={p.garrafaMl || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { garrafaMl: e.target.value.replace(/[^\d]/g, "") || undefined })} placeholder="ml (opc.)" className={`${inpTitulo} w-full text-right pl-7`} />
                         </div>
@@ -342,7 +352,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
       )}
 
       {mostrarVisual && (
-        <CardapioVisual rid={rid} menuId={menuId} secoes={secoes} nomeRestaurante={nomeRestaurante} nomeMenu={nomeMenu} tituloCapa={tituloCapaMenu} onTituloCapa={salvarTituloCapa} lang={lang} onEditarPrato={editarPratoPorId} onSecoes={(next) => commit(next)}
+        <CardapioVisual rid={rid} menuId={menuId} secoes={secoes} mostrarGarrafa={mostrarGarrafa} nomeRestaurante={nomeRestaurante} nomeMenu={nomeMenu} tituloCapa={tituloCapaMenu} onTituloCapa={salvarTituloCapa} lang={lang} onEditarPrato={editarPratoPorId} onSecoes={(next) => commit(next)}
           sharedLayout={sharedLayout} menuLayoutProprio={menuLayoutProprio} menuLayout={menuLayout} onClose={() => setMostrarVisual(false)} />
       )}
       {iconePrato && (() => {
