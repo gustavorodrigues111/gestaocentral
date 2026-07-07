@@ -21,7 +21,7 @@ import {
   CONTA_FIXA_CATEGORIA_LABEL, CONTA_FIXA_RECORRENCIA_LABEL,
 } from "../../core/types";
 import {
-  ymd, parseYmd, parseAnoMes, fmtAnoMes, daysInMonth, proximoDiaUtil, fmtBR,
+  ymd, parseYmd, parseAnoMes, fmtAnoMes, daysInMonth, proximoDiaUtil, fmtBR, nomeMes, shiftMonth,
 } from "../../core/utils/date";
 import { buscarFeriadosProximos } from "../sites/feriadosHelper";
 
@@ -165,12 +165,23 @@ export function ContasFixasPage() {
 
   // Card de conta (usado na lista e no calendário)
   const catSelect = (
-    <label className="text-xs text-gray-500 flex items-center gap-1">Categoria
+    <label className="flex items-center gap-1.5 text-xs text-gray-500">Categoria
       <select value={filtroCat} onChange={(e) => setFiltroCat(e.target.value)}
-        className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 px-2 py-1">
+        className="h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm shadow-sm dark:text-gray-100">
         <option value="">Todas</option>
         {catsPresentes.map(k => <option key={k} value={k}>{CONTA_FIXA_CATEGORIA_LABEL[k]}</option>)}
       </select>
+    </label>
+  );
+  const { ano: cAno, mes: cMes } = parseAnoMes(comp);
+  const shiftComp = (delta: number) => { const s = shiftMonth(cAno, cMes, delta); setComp(fmtAnoMes(s.ano, s.mes)); };
+  const compSelect = (
+    <label className="flex items-center gap-1.5 text-xs text-gray-500">Competência
+      <span className="inline-flex items-center h-9 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm">
+        <button type="button" onClick={() => shiftComp(-1)} className="px-2 h-full text-gray-500 hover:text-indigo-600 text-lg leading-none">‹</button>
+        <span className="px-1 min-w-[100px] text-center text-sm font-medium text-gray-700 dark:text-gray-200">{nomeMes(cMes)} {cAno}</span>
+        <button type="button" onClick={() => shiftComp(1)} className="px-2 h-full text-gray-500 hover:text-indigo-600 text-lg leading-none">›</button>
+      </span>
     </label>
   );
 
@@ -204,10 +215,7 @@ export function ContasFixasPage() {
           {aba === "visualizacao" && vis === "lista" && (
             <>
               <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />
-              <label className="text-xs text-gray-500 flex items-center gap-1">Competência
-                <input type="month" value={comp} onChange={(e) => setComp(e.target.value)}
-                  className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 px-2 py-1" />
-              </label>
+              {compSelect}
               {chip(filtro === "todas", "Todas", () => setFiltro("todas"))}
               {chip(filtro === "apagar", "A pagar", () => setFiltro("apagar"))}
               {chip(filtro === "pagas", "Pagas", () => setFiltro("pagas"))}
