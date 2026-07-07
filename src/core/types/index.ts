@@ -4439,6 +4439,10 @@ export type ContaFixa = {
   mesDoAno?: number;            // 1-12
   // Baixa de pagamento por competência ("YYYY-MM") — usada na aba Visualização.
   pagamentos?: { [competencia: string]: { pagoEm: string; pagoPor: string } };
+  // Ajuste pontual da data de vencimento em UM mês (arrasto no calendário).
+  // Chave = competência "YYYY-MM"; valor = data efetiva "YYYY-MM-DD". Não muda
+  // o cadastro (diaDoMes) nem os outros meses.
+  ajustesData?: { [competencia: string]: string };
   diasAntecedencia: number;     // gera tarefa X dias antes (default 3)
   responsavelPadraoId: string;
   responsavelPadraoNome?: string;

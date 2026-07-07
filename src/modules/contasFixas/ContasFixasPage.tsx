@@ -20,8 +20,15 @@ import type {
 import {
   CONTA_FIXA_CATEGORIA_LABEL, CONTA_FIXA_RECORRENCIA_LABEL,
 } from "../../core/types";
+import {
+  ymd, parseYmd, parseAnoMes, fmtAnoMes, daysInMonth, proximoDiaUtil, fmtBR,
+} from "../../core/utils/date";
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
+function inicioSemanaSeg(s: string): string {
+  const d = parseYmd(s); const dow = d.getDay(); const off = dow === 0 ? -6 : 1 - dow;
+  d.setDate(d.getDate() + off); return ymd(d);
+}
 const nrm = (s: string) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
 
 export function ContasFixasPage() {
@@ -37,6 +44,11 @@ export function ContasFixasPage() {
   const hoje = new Date().toISOString().slice(0, 10);
   const [comp, setComp] = useState(hoje.slice(0, 7)); // "YYYY-MM"
   const [filtro, setFiltro] = useState<"todas" | "apagar" | "pagas">("todas");
+  const [filtroCat, setFiltroCat] = useState<string>(""); // "" = todas (vale nas 2 abas)
+  const [vis, setVis] = useState<"calendario" | "lista">("calendario");
+  const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(hoje));
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [dropDia, setDropDia] = useState<string | null>(null);
 
   useEffect(() => {
     const u = onSnapshot(
@@ -64,27 +76,56 @@ export function ContasFixasPage() {
 
   if (!pessoa) return null;
 
-  const statusDe = (c: ContaFixa): "paga" | "atrasada" | "pendente" => {
-    if (c.pagamentos?.[comp]) return "paga";
-    if (c.diaDoMes) { const venc = `${comp}-${pad2(c.diaDoMes)}`; if (venc < hoje) return "atrasada"; }
+  // Data efetiva da conta num mês: override do mês (arrasto) ou dia do cadastro
+  // já corrigido pro próximo dia útil (fim de semana → segue pro dia útil).
+  const dataEfetiva = (c: ContaFixa, cmp: string): string | null => {
+    if (c.ajustesData?.[cmp]) return c.ajustesData[cmp];
+    if (!c.diaDoMes) return null;
+    const { ano, mes } = parseAnoMes(cmp);
+    const dia = Math.min(c.diaDoMes, daysInMonth(ano, mes));
+    return proximoDiaUtil(`${fmtAnoMes(ano, mes)}-${pad2(dia)}`);
+  };
+  const statusDe = (c: ContaFixa, cmp: string): "paga" | "atrasada" | "pendente" => {
+    if (c.pagamentos?.[cmp]) return "paga";
+    const ed = dataEfetiva(c, cmp);
+    if (ed && ed < hoje) return "atrasada";
     return "pendente";
   };
-  const visiveis = daEmpresa.filter(c => {
+
+  const base = daEmpresa.filter(c => !filtroCat || c.categoria === filtroCat);
+  const catsPresentes = [...new Set(daEmpresa.map(c => c.categoria))];
+
+  // Lista (aba Visualização · modo lista) — filtra por status na competência
+  const visiveisLista = base.filter(c => {
     if (aba !== "visualizacao") return true;
-    const s = statusDe(c);
+    const s = statusDe(c, comp);
     if (filtro === "pagas") return s === "paga";
     if (filtro === "apagar") return s !== "paga";
     return true;
   });
-  const nPagas = daEmpresa.filter(c => statusDe(c) === "paga").length;
-  const nAtras = daEmpresa.filter(c => statusDe(c) === "atrasada").length;
+  const nPagas = base.filter(c => statusDe(c, comp) === "paga").length;
+  const nAtras = base.filter(c => statusDe(c, comp) === "atrasada").length;
 
-  async function togglePago(c: ContaFixa) {
-    const atual = c.pagamentos || {};
-    const novo = { ...atual };
-    if (novo[comp]) delete novo[comp];
-    else novo[comp] = { pagoEm: new Date().toISOString(), pagoPor: pessoa!.id };
+  // Calendário-semana
+  const dias = Array.from({ length: 7 }, (_, i) => { const d = parseYmd(semanaInicio); d.setDate(d.getDate() + i); return ymd(d); });
+  const mesesVis = [...new Set(dias.map(d => d.slice(0, 7)))];
+  const porDia = new Map<string, { c: ContaFixa; cmp: string }[]>();
+  for (const cmp of mesesVis) for (const c of base) {
+    const ed = dataEfetiva(c, cmp);
+    if (ed && dias.includes(ed)) { const arr = porDia.get(ed) || []; arr.push({ c, cmp }); porDia.set(ed, arr); }
+  }
+  const navegar = (delta: number) => { const d = parseYmd(semanaInicio); d.setDate(d.getDate() + delta * 7); setSemanaInicio(ymd(d)); };
+  const tituloSemana = `${fmtBR(dias[0])} – ${fmtBR(dias[6])}`;
+
+  async function togglePago(c: ContaFixa, cmp: string) {
+    const novo = { ...(c.pagamentos || {}) };
+    if (novo[cmp]) delete novo[cmp]; else novo[cmp] = { pagoEm: new Date().toISOString(), pagoPor: pessoa!.id };
     await updateDoc(doc(db, "contasFixas", c.id), { pagamentos: novo, atualizadoEm: new Date().toISOString() });
+  }
+  async function moverPara(id: string, cmp: string, novaData: string) {
+    const c = contas.find(x => x.id === id); if (!c) return;
+    const novo = { ...(c.ajustesData || {}) }; novo[cmp] = novaData;
+    await updateDoc(doc(db, "contasFixas", id), { ajustesData: novo, atualizadoEm: new Date().toISOString() });
   }
 
   const tab = (v: "visualizacao" | "cadastro", label: string) => (
@@ -102,12 +143,23 @@ export function ContasFixasPage() {
   };
   const STLBL: Record<string, string> = { paga: "✓ Paga", atrasada: "⚠️ Atrasada", pendente: "Pendente" };
 
+  // Card de conta (usado na lista e no calendário)
+  const catSelect = (
+    <label className="text-xs text-gray-500 flex items-center gap-1">Categoria
+      <select value={filtroCat} onChange={(e) => setFiltroCat(e.target.value)}
+        className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 px-2 py-1">
+        <option value="">Todas</option>
+        {catsPresentes.map(k => <option key={k} value={k}>{CONTA_FIXA_CATEGORIA_LABEL[k]}</option>)}
+      </select>
+    </label>
+  );
+
   return (
     <div className="max-w-6xl mx-auto p-4">
       <header className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div className="text-sm text-gray-500">
-          {daEmpresa.length} conta{daEmpresa.length === 1 ? "" : "s"}
-          {aba === "visualizacao" && <> · <span className="text-emerald-600 font-medium">{nPagas} paga{nPagas === 1 ? "" : "s"}</span>{nAtras > 0 && <span className="text-rose-600 font-medium"> · {nAtras} atrasada{nAtras === 1 ? "" : "s"}</span>}</>}
+          {base.length} conta{base.length === 1 ? "" : "s"}
+          {aba === "visualizacao" && vis === "lista" && <> · <span className="text-emerald-600 font-medium">{nPagas} paga{nPagas === 1 ? "" : "s"}</span>{nAtras > 0 && <span className="text-rose-600 font-medium"> · {nAtras} atrasada{nAtras === 1 ? "" : "s"}</span>}</>}
         </div>
         <div className="flex items-center gap-2">
           {pessoa.isMaster && <Button variant="secondary" onClick={() => setImportando(true)}>⬆️ Importar CSV</Button>}
@@ -119,16 +171,28 @@ export function ContasFixasPage() {
         {tab("visualizacao", "📅 Visualização")}{tab("cadastro", "📝 Cadastro")}
       </nav>
 
-      {aba === "visualizacao" && daEmpresa.length > 0 && (
+      {daEmpresa.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 mb-3">
-          <label className="text-xs text-gray-500 flex items-center gap-1">Competência
-            <input type="month" value={comp} onChange={(e) => setComp(e.target.value)}
-              className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 px-2 py-1" />
-          </label>
-          <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />
-          {chip(filtro === "todas", "Todas", () => setFiltro("todas"))}
-          {chip(filtro === "apagar", "A pagar", () => setFiltro("apagar"))}
-          {chip(filtro === "pagas", "Pagas", () => setFiltro("pagas"))}
+          {catSelect}
+          {aba === "visualizacao" && (
+            <>
+              <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />
+              {chip(vis === "calendario", "📅 Calendário", () => setVis("calendario"))}
+              {chip(vis === "lista", "📋 Lista", () => setVis("lista"))}
+            </>
+          )}
+          {aba === "visualizacao" && vis === "lista" && (
+            <>
+              <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />
+              <label className="text-xs text-gray-500 flex items-center gap-1">Competência
+                <input type="month" value={comp} onChange={(e) => setComp(e.target.value)}
+                  className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 px-2 py-1" />
+              </label>
+              {chip(filtro === "todas", "Todas", () => setFiltro("todas"))}
+              {chip(filtro === "apagar", "A pagar", () => setFiltro("apagar"))}
+              {chip(filtro === "pagas", "Pagas", () => setFiltro("pagas"))}
+            </>
+          )}
         </div>
       )}
 
@@ -138,15 +202,62 @@ export function ContasFixasPage() {
           <p>Nenhuma conta fixa nesta empresa.</p>
           <p className="text-sm mt-1">Use <b>+ Nova Conta Fixa</b> ou <b>⬆️ Importar CSV</b> pra popular.</p>
         </div>
-      ) : visiveis.length === 0 ? (
-        <div className="text-center py-10 text-gray-500 dark:text-gray-400 text-sm">Nenhuma conta com esse filtro nesta competência.</div>
+      ) : aba === "visualizacao" && vis === "calendario" ? (
+        <div>
+          <div className="flex items-center justify-center gap-2 mb-3">
+            <Button size="sm" variant="ghost" onClick={() => navegar(-1)}>‹</Button>
+            <Button size="sm" variant="ghost" onClick={() => setSemanaInicio(inicioSemanaSeg(hoje))}>Hoje</Button>
+            <Button size="sm" variant="ghost" onClick={() => navegar(1)}>›</Button>
+            <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 ml-2">{tituloSemana}</span>
+          </div>
+          <p className="text-[11px] text-gray-400 mb-2 text-center">Arraste um card pra mudar a data só neste mês. Pra mudar sempre, edite no 📝 Cadastro.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-7 gap-1.5">
+            {dias.map((d, i) => {
+              const wd = parseYmd(d).getDay();
+              const fds = wd === 0 || wd === 6;
+              const ehHoje = d === hoje;
+              const itens = porDia.get(d) || [];
+              return (
+                <div key={d}
+                  onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; if (dropDia !== d) setDropDia(d); }}
+                  onDragLeave={() => { if (dropDia === d) setDropDia(null); }}
+                  onDrop={(e) => { e.preventDefault(); const raw = e.dataTransfer.getData("text/plain"); const [id, cmp] = raw.split("|"); setDropDia(null); setDragId(null); if (id) void moverPara(id, cmp, d); }}
+                  className={`rounded-xl border p-1.5 min-h-[110px] ${dropDia === d ? "border-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/20" : ehHoje ? "border-indigo-300 dark:border-indigo-800" : fds ? "border-gray-100 dark:border-gray-800/60 bg-gray-50/50 dark:bg-gray-900/40" : "border-gray-200 dark:border-gray-800"}`}>
+                  <div className={`text-[11px] font-semibold mb-1 flex items-center justify-between ${ehHoje ? "text-indigo-600 dark:text-indigo-300" : fds ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}`}>
+                    <span>{["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"][i]} {parseYmd(d).getDate()}</span>
+                    {itens.length > 0 && <span className="text-gray-400">{itens.length}</span>}
+                  </div>
+                  <div className="space-y-1">
+                    {itens.map(({ c, cmp }) => {
+                      const st = statusDe(c, cmp);
+                      return (
+                        <div key={c.id + cmp} draggable
+                          onDragStart={(e) => { e.dataTransfer.setData("text/plain", `${c.id}|${cmp}`); e.dataTransfer.effectAllowed = "move"; setDragId(c.id); }}
+                          onDragEnd={() => { setDragId(null); setDropDia(null); }}
+                          onClick={() => void togglePago(c, cmp)}
+                          title={`${c.nome} — clique pra marcar pago`}
+                          className={`cursor-grab active:cursor-grabbing rounded-lg border px-1.5 py-1 text-[11px] leading-tight ${dragId === c.id ? "opacity-40" : ""} ${st === "paga" ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20" : st === "atrasada" ? "border-rose-300 bg-rose-50 dark:bg-rose-900/20" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"}`}>
+                          <div className="font-medium text-gray-800 dark:text-gray-100 truncate flex items-center gap-1">{st === "paga" && <span className="text-emerald-600">✓</span>}{c.nome}</div>
+                          {c.valorEstimado ? <div className="text-gray-500">R$ {c.valorEstimado.toFixed(2)}</div> : null}
+                          {c.ajustesData?.[cmp] && <div className="text-[9px] text-amber-600">• movida neste mês</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : visiveisLista.length === 0 ? (
+        <div className="text-center py-10 text-gray-500 dark:text-gray-400 text-sm">Nenhuma conta com esse filtro{aba === "visualizacao" ? " nesta competência" : ""}.</div>
       ) : (
         <div className="space-y-2">
-          {visiveis.map(c => {
-            const st = statusDe(c);
+          {visiveisLista.map(c => {
+            const st = statusDe(c, comp);
             return (
               <div key={c.id} onClick={() => aba === "cadastro" ? setEditando(c) : undefined}
-                className={`p-3 rounded-xl border bg-white dark:bg-gray-900 transition-shadow ${aba === "cadastro" ? "cursor-pointer hover:shadow-md" : ""} ${st === "atrasada" ? "border-rose-200 dark:border-rose-900/50" : "border-gray-200 dark:border-gray-800"}`}>
+                className={`p-3 rounded-xl border bg-white dark:bg-gray-900 transition-shadow ${aba === "cadastro" ? "cursor-pointer hover:shadow-md" : ""} ${aba === "visualizacao" && st === "atrasada" ? "border-rose-200 dark:border-rose-900/50" : "border-gray-200 dark:border-gray-800"}`}>
                 <div className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5 flex-wrap">
@@ -163,7 +274,7 @@ export function ContasFixasPage() {
                     {c.enderecoId && endById[c.enderecoId] && <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">📍 {endById[c.enderecoId].apelido}</div>}
                   </div>
                   {aba === "visualizacao" && (
-                    <button type="button" onClick={() => void togglePago(c)}
+                    <button type="button" onClick={() => void togglePago(c, comp)}
                       className={`shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg border ${st === "paga" ? "border-emerald-300 text-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 dark:text-emerald-300" : "border-indigo-300 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"}`}>
                       {st === "paga" ? "✓ Pago" : "Marcar pago"}
                     </button>

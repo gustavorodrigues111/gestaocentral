@@ -56,6 +56,23 @@ export function shiftMonth(ano: number, mes: number, delta: number): { ano: numb
   return { ano: a, mes: m };
 }
 
+// ─── Dia útil ─────────────────────────────────────────────────────────────
+// Sábado e domingo NÃO são dias úteis. Feriados (opcionais) tb não.
+export function ehDiaUtil(d: Date, feriados?: Set<string>): boolean {
+  const dow = d.getDay();
+  if (dow === 0 || dow === 6) return false;
+  if (feriados && feriados.has(ymd(d))) return false;
+  return true;
+}
+
+// Dado "YYYY-MM-DD", devolve o próximo dia útil >= a data (a própria, se já útil).
+export function proximoDiaUtil(s: string, feriados?: Set<string>): string {
+  const d = parseYmd(s);
+  let guard = 0;
+  while (!ehDiaUtil(d, feriados) && guard < 30) { d.setDate(d.getDate() + 1); guard++; }
+  return ymd(d);
+}
+
 // ─── Formatação BR ────────────────────────────────────────────────────────
 // Padrão do sistema: datas sempre exibidas em DD/MM/AAAA.
 
