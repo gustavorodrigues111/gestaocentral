@@ -619,7 +619,20 @@ function RateioModal({ titulo, empresas, value, valorBase, onChange, onClose }: 
   const total = Object.values(pcts).reduce((s, v) => s + (v || 0), 0);
   const sobra = round2(100 - total);
   const set = (id: string, v: number) => setPcts(p => ({ ...p, [id]: v }));
-  const toggle = (id: string, on: boolean) => setPcts(p => { const n = { ...p }; if (on) n[id] = n[id] || 0; else delete n[id]; return n; });
+  // Divide 100% igualmente entre os ids (o último recebe a sobra do arredondamento).
+  const distribuir = (ids: string[]): Record<string, number> => {
+    const n = ids.length; if (!n) return {};
+    const base = Math.floor(10000 / n) / 100;   // 2 casas, pra baixo
+    const out: Record<string, number> = {};
+    ids.forEach((id, i) => { out[id] = i === n - 1 ? round2(100 - base * (n - 1)) : base; });
+    return out;
+  };
+  // Ao marcar/desmarcar, redistribui igualmente entre as selecionadas (praxe; edita depois).
+  const toggle = (id: string, on: boolean) => setPcts(p => {
+    const ids = new Set(Object.keys(p));
+    if (on) ids.add(id); else ids.delete(id);
+    return distribuir([...ids]);
+  });
   function salvar() {
     const r: RateioSimples[] = Object.entries(pcts).filter(([, v]) => v > 0).map(([empresaId, percentual]) => ({ empresaId, percentual: round2(percentual) }));
     onChange(r); onClose();
