@@ -41,6 +41,7 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
   // instantâneo, sem esperar o getDoc. O getDoc abaixo só confirma/atualiza depois.
   const [lay, setLay] = useState<Lay>(() => montarLay(menuLayoutProprio && menuLayout ? menuLayout : sharedLayout));
   const [baixando, setBaixando] = useState(false);
+  const [erroBaixar, setErroBaixar] = useState("");
   const [dirty, setDirty] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [salvoFlash, setSalvoFlash] = useState(false);
@@ -376,7 +377,7 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
   };
 
   async function baixar() {
-    setBaixando(true);
+    setBaixando(true); setErroBaixar("");
     try {
       // No mobile o preview pode estar escondido (aba Ajustes) → html2canvas
       // capturaria em branco. Garante a aba Prévia e espera pintar.
@@ -396,8 +397,16 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
         if (i > 0) pdf.addPage();
         pdf.addImage(img, "JPEG", 0, 0, W, H);
       }
+      if (nodes.length === 0) { setErroBaixar("Nenhuma página encontrada pra gerar o PDF. Abra a aba Prévia e tente de novo."); return; }
       pdf.save(`${(nomeRestaurante || "cardapio").toLowerCase().replace(/\s+/g, "-")}-cardapio${en ? "-en" : ""}.pdf`);
-    } catch { /* ignora */ }
+    } catch (e) {
+      console.error("cardapio PDF:", e);
+      const msg = e instanceof Error ? e.message : String(e);
+      const taint = /taint|SecurityError|cross-origin|insecure/i.test(msg);
+      setErroBaixar(taint
+        ? "A imagem de fundo/arte do cardápio bloqueou a geração (CORS). Me avise que eu libero o acesso no servidor de imagens."
+        : `Não consegui gerar o PDF: ${msg}`);
+    }
     finally { setBaixando(false); }
   }
 
@@ -541,8 +550,9 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
 
        {/* Rodapé: status + salvar + baixar + fechar */}
        <div className="flex items-center justify-between gap-2 px-4 py-3 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60">
-         <span className="text-[13px]">
-           {salvando ? <span className="text-gray-500">salvando…</span>
+         <span className="text-[13px] min-w-0">
+           {erroBaixar ? <span className="text-rose-600 dark:text-rose-400">{erroBaixar}</span>
+             : salvando ? <span className="text-gray-500">salvando…</span>
              : salvoFlash ? <span className="text-emerald-600 dark:text-emerald-400 font-medium">✓ Formatação salva</span>
              : dirty ? <span className="text-amber-600 dark:text-amber-400">● Alterações não salvas</span>
              : <span className="text-gray-400">Tudo salvo</span>}
