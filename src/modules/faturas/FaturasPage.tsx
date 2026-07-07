@@ -124,8 +124,10 @@ function Visualizacao({ minhas, outras: outrasRaw, catNome, restNome, meId, meNo
 
   // Só reembolsos de faturas FECHADAS (publicadas) aparecem pra outra empresa.
   const outras = outrasRaw.filter(l => l.publicado && passaCartao(l));
-  const minhasProprias = minhas.filter(l => l.destinoTipo === "propria" && passaCartao(l));
-  const totalMinhas = minhasProprias.reduce((s, l) => s + (l.valor || 0), 0);
+  // Minhas faturas = a fatura inteira é minha; os itens a reembolsar ganham selo.
+  const minhasTodas = minhas.filter(passaCartao);
+  const totalMinhas = minhasTodas.reduce((s, l) => s + (l.valor || 0), 0);
+  const totalAReceber = minhasTodas.filter(l => l.destinoTipo === "empresa").reduce((s, l) => s + (l.valor || 0), 0);
   const outrasPend = outras.filter(l => l.reembolsoStatus !== "pago");
   const totalOutrasPend = outrasPend.reduce((s, l) => s + (l.valor || 0), 0);
 
@@ -150,8 +152,8 @@ function Visualizacao({ minhas, outras: outrasRaw, catNome, restNome, meId, meNo
     finally { setPagando(""); }
   }
 
-  const exportarLancs = sub === "minhas" ? minhasProprias : outras;
-  const exportarTitulo = sub === "minhas" ? "Minhas faturas" : "Reembolsos a receber";
+  const exportarLancs = sub === "minhas" ? minhasTodas : outras;
+  const exportarTitulo = sub === "minhas" ? "Minhas faturas" : "Reembolsos a pagar";
 
   return (
     <div>
@@ -165,7 +167,7 @@ function Visualizacao({ minhas, outras: outrasRaw, catNome, restNome, meId, meNo
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <div className="flex gap-1.5">
           <SubChip ativo={sub === "minhas"} onClick={() => setSub("minhas")}>Minhas faturas · {fmtBRL(totalMinhas)}</SubChip>
-          <SubChip ativo={sub === "outras"} onClick={() => setSub("outras")}>Outras faturas (reembolso) · {fmtBRL(totalOutrasPend)}</SubChip>
+          <SubChip ativo={sub === "outras"} onClick={() => setSub("outras")}>A reembolsar a outros · {fmtBRL(totalOutrasPend)}</SubChip>
         </div>
         {exportarLancs.length > 0 && (
           <div className="flex gap-1.5">
@@ -176,8 +178,13 @@ function Visualizacao({ minhas, outras: outrasRaw, catNome, restNome, meId, meNo
       </div>
 
       {sub === "minhas" ? (
-        minhasProprias.length === 0 ? <Vazio texto="Nenhum lançamento classificado ainda. Vá em Classificação e suba uma fatura." /> : (
-          <LancTabela lancs={minhasProprias} catNome={catNome} />
+        minhasTodas.length === 0 ? <Vazio texto="Nenhum lançamento classificado ainda. Vá em Classificação e suba uma fatura." /> : (
+          <>
+            {totalAReceber > 0 && (
+              <p className="text-[11px] text-gray-500 mb-1.5">Deste total, <b className="text-violet-600 dark:text-violet-300">{fmtBRL(totalAReceber)}</b> são itens a reembolsar por outras empresas (com selo ↩).</p>
+            )}
+            <LancTabela lancs={minhasTodas} catNome={catNome} restNome={restNome} mostrarReembolso />
+          </>
         )
       ) : (
         outrasPorDono.length === 0 ? <Vazio texto="Nenhum reembolso atribuído a esta empresa." /> : (
@@ -213,7 +220,7 @@ function Visualizacao({ minhas, outras: outrasRaw, catNome, restNome, meId, meNo
   );
 }
 
-function LancTabela({ lancs, catNome, mostrarStatus }: { lancs: CartaoLancamento[]; catNome: (id?: string | null) => string; mostrarStatus?: boolean }) {
+function LancTabela({ lancs, catNome, mostrarStatus, mostrarReembolso, restNome }: { lancs: CartaoLancamento[]; catNome: (id?: string | null) => string; mostrarStatus?: boolean; mostrarReembolso?: boolean; restNome?: Record<string, string> }) {
   const ordenados = [...lancs].sort((a, b) => (a.data || "").localeCompare(b.data || ""));
   return (
     <div className={mostrarStatus ? "overflow-x-auto" : "overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800"}>
@@ -222,16 +229,22 @@ function LancTabela({ lancs, catNome, mostrarStatus }: { lancs: CartaoLancamento
           <th className="text-left px-3 py-2">Data</th><th className="text-left px-3 py-2">Descrição</th><th className="text-left px-3 py-2">Categoria</th><th className="text-left px-3 py-2">Cartão</th><th className="text-right px-3 py-2">Valor</th>{mostrarStatus && <th className="text-right px-3 py-2">Status</th>}
         </tr></thead>
         <tbody>
-          {ordenados.map(l => (
+          {ordenados.map(l => {
+            const ehReembolso = mostrarReembolso && l.destinoTipo === "empresa";
+            return (
             <tr key={l.id} className="border-t border-gray-100 dark:border-gray-800">
               <td className="px-3 py-1.5 whitespace-nowrap text-gray-500">{l.dataOriginal || l.data}</td>
-              <td className="px-3 py-1.5">{l.descricao}{l.parcela && <span className="ml-1 text-[10px] text-gray-400">({l.parcela})</span>}</td>
+              <td className="px-3 py-1.5">
+                <span>{l.descricao}</span>{l.parcela && <span className="ml-1 text-[10px] text-gray-400">({l.parcela})</span>}
+                {ehReembolso && <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 whitespace-nowrap">↩ reembolso{restNome?.[l.empresaAtribuidaId || ""] ? ` · ${restNome[l.empresaAtribuidaId || ""]}` : ""}{l.reembolsoStatus === "pago" ? " · pago" : ""}</span>}
+              </td>
               <td className="px-3 py-1.5 text-gray-600 dark:text-gray-300">{catNome(l.categoriaId)}</td>
               <td className="px-3 py-1.5 text-[11px] text-gray-400">{l.cartao}</td>
               <td className={`px-3 py-1.5 text-right tabular-nums ${l.valor < 0 ? "text-emerald-600" : "text-gray-900 dark:text-gray-100"}`}>{fmtBRL(l.valor)}</td>
               {mostrarStatus && <td className="px-3 py-1.5 text-right whitespace-nowrap">{l.reembolsoStatus === "pago" ? <span className="text-[10px] font-semibold text-emerald-600">✓ pago</span> : <span className="text-[10px] font-semibold text-amber-600">pendente</span>}</td>}
             </tr>
-          ))}
+            );
+          })}
         </tbody>
       </table>
     </div>
@@ -466,11 +479,11 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
               <Button size="sm" onClick={() => void persistir(true)} disabled={salvando || (cartoes.length > 0 && !cartao)}>{salvando ? "…" : "✓ Fechar fatura"}</Button>
             </div>
           </div>
-          <p className="text-[11px] text-gray-500 flex items-center gap-1">✨ A IA já sugeriu <b className="text-violet-600 dark:text-violet-300">destino</b> e <b className="text-indigo-600 dark:text-indigo-300">categoria</b> — clique nas pílulas pra ajustar o que precisar.</p>
+          <p className="text-[11px] text-gray-500 flex items-center gap-1">✨ A fatura é toda sua. A IA já marcou os itens a <b className="text-violet-600 dark:text-violet-300">reembolsar</b> por outra empresa e a <b className="text-indigo-600 dark:text-indigo-300">categoria</b> — clique nas pílulas pra ajustar.</p>
           <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
             <table className="w-full min-w-[640px] text-sm">
               <thead><tr className="text-[11px] uppercase text-gray-400 bg-gray-50 dark:bg-gray-900/40">
-                <th className="text-left px-2 py-2">Data</th><th className="text-left px-2 py-2">Descrição</th><th className="text-right px-2 py-2">Valor</th><th className="text-left px-2 py-2">Destino</th><th className="text-left px-2 py-2">Categoria</th>
+                <th className="text-left px-2 py-2">Data</th><th className="text-left px-2 py-2">Descrição</th><th className="text-right px-2 py-2">Valor</th><th className="text-left px-2 py-2">Reembolso</th><th className="text-left px-2 py-2">Categoria</th>
               </tr></thead>
               <tbody>
                 {linhas.map((l, i) => {
@@ -485,7 +498,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
                         <select value={l.destinoTipo === "propria" ? "__minha__" : (l.empresaAtribuidaId || "")}
                           onChange={e => { const v = e.target.value; v === "__minha__" ? setDestino(i, "propria", null) : setDestino(i, "empresa", v); }}
                           className={chipSelect(l.destinoTipo === "empresa" ? "empresa" : "neutro")}>
-                          <option value="__minha__">Minha</option>
+                          <option value="__minha__">Meu (sem reembolso)</option>
                           {outrasEmpresas.map(em => <option key={em.id} value={em.id}>{em.nome}</option>)}
                         </select>
                       </td>
