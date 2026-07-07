@@ -262,7 +262,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
                       <div className={`${refCls} flex-1 truncate`}>{p.titulo || "—"}</div>
                       {p.preco && <span className="text-[12px] text-gray-400 shrink-0">{p.preco}</span>}
                     </div>
-                    <input value={p.tituloEn || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { tituloEn: e.target.value || undefined })} placeholder="English — title" className={`${inpTitulo} w-full font-semibold`} />
+                    <textarea value={p.tituloEn || ""} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { tituloEn: e.target.value || undefined })} placeholder="English — title (Enter = line break)" className={`${inpTitulo} w-full font-semibold resize-y`} />
                     {p.subtitulo && <div className={refCls}>{p.subtitulo}</div>}
                     <textarea value={p.subtituloEn || ""} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { subtituloEn: e.target.value || undefined })} placeholder="English — description (Enter = quebra de linha)" className={`${inpDesc} w-full text-[12px] resize-y`} />
                   </>
@@ -276,8 +276,8 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
                       </button>
                     )}
                     <div className="flex-1 min-w-0 space-y-1.5">
-                      {/* Título (verde) */}
-                      <input value={p.titulo} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { titulo: e.target.value })} placeholder="Nome do prato" className={`${inpTitulo} w-full font-semibold`} />
+                      {/* Título (verde) — 2 linhas (Enter = quebra; ótimo pra nome de vinho) */}
+                      <textarea value={p.titulo} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { titulo: e.target.value })} placeholder="Nome do prato/vinho (Enter = quebra de linha)" className={`${inpTitulo} w-full font-semibold resize-y`} />
                       {/* Preço garrafa (com $) + checkbox taça + reordenar */}
                       <div className="flex items-center gap-2 flex-wrap">
                         <div className="relative w-28 shrink-0">
