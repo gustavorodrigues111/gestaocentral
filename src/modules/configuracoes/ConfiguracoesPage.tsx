@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { doc, updateDoc } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfig } from "../../core/auth/permissions";
@@ -9,7 +10,7 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { AREA_INFO, modulesByArea, getModule } from "../../config/modules";
 import { UNIDADE_TIPO_LABEL } from "../../core/types";
-import type { ModuleArea, ModuleId, Unidade, UnidadeTipo } from "../../core/types";
+import type { Endereco, ModuleArea, ModuleId, Unidade, UnidadeTipo } from "../../core/types";
 import { isValidSubdomain } from "../../core/restaurant/subdomain";
 
 export function ConfiguracoesPage() {
@@ -173,6 +174,17 @@ export function ConfiguracoesPage() {
             unidades: activeRestaurant.unidades || [],
           }}
         />
+      </section>
+
+      {/* Endereços — cadastro compartilhado (Contas Fixas + Manutenções) */}
+      <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <h2 className="text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">📍 Endereços</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Endereços físicos desta empresa. Usados pelos módulos de <b>Contas Fixas</b> e
+          <b> Manutenções/Licenças</b> (cada item amarra a um endereço). Um endereço encerrado
+          fica <b>inativo</b> (guarda o histórico). No futuro dá pra transferir um endereço pra outra empresa.
+        </p>
+        <EnderecosForm rid={rid} meId={me?.id} />
       </section>
 
       {/* Carga horária */}
@@ -402,6 +414,55 @@ function hhmmToMin(s: string): number | null {
   const m = s.trim().match(/^(\d{1,3}):([0-5]?\d)$/);
   if (!m) return null;
   return parseInt(m[1], 10) * 60 + parseInt(m[2], 10);
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Endereços — cadastro compartilhado (Contas Fixas + Manutenções). Coleção `enderecos`.
+// ────────────────────────────────────────────────────────────────────────────
+
+function EnderecosForm({ rid, meId }: { rid: string; meId?: string }) {
+  const [lista, setLista] = useState<Endereco[]>([]);
+  const [apelido, setApelido] = useState("");
+  const [logradouro, setLogradouro] = useState("");
+  useEffect(() => {
+    const u = onSnapshot(query(collection(db, "enderecos"), where("restaurantId", "==", rid)),
+      (snap) => setLista(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Endereco)
+        .sort((a, b) => (a.ativo === false ? 1 : 0) - (b.ativo === false ? 1 : 0) || a.apelido.localeCompare(b.apelido))),
+      () => setLista([]));
+    return () => u();
+  }, [rid]);
+  async function adicionar() {
+    const ap = apelido.trim(); if (!ap) return;
+    await addDoc(collection(db, "enderecos"), sanitizeForFirestore({
+      restaurantId: rid, apelido: ap, logradouro: logradouro.trim() || null, ativo: true,
+      criadoEm: new Date().toISOString(), criadoPor: meId || null,
+    }));
+    setApelido(""); setLogradouro("");
+  }
+  const patch = (id: string, p: Partial<Endereco>) => updateDoc(doc(db, "enderecos", id), p);
+  async function excluir(id: string) { if (confirm("Excluir endereço? Prefira INATIVAR pra manter o histórico.")) await deleteDoc(doc(db, "enderecos", id)); }
+  const inp = "px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+  return (
+    <div className="space-y-3">
+      {lista.length > 0 && (
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+          {lista.map((e) => (
+            <div key={e.id} className={`flex flex-wrap items-center gap-2 px-3 py-2 ${e.ativo === false ? "opacity-55" : ""}`}>
+              <input defaultValue={e.apelido} onBlur={(ev) => { const v = ev.target.value.trim(); if (v && v !== e.apelido) void patch(e.id, { apelido: v }); }} placeholder="Apelido" className={`${inp} w-36 font-medium`} />
+              <input defaultValue={e.logradouro || ""} onBlur={(ev) => { const v = ev.target.value.trim(); if (v !== (e.logradouro || "")) void patch(e.id, { logradouro: v }); }} placeholder="Rua, número, bairro…" className={`${inp} flex-1 min-w-[180px]`} />
+              <label className="text-xs text-gray-600 dark:text-gray-300 flex items-center gap-1 whitespace-nowrap"><input type="checkbox" checked={e.ativo !== false} onChange={(ev) => void patch(e.id, { ativo: ev.target.checked })} /> ativo</label>
+              <button type="button" onClick={() => void excluir(e.id)} className="text-[11px] text-gray-400 hover:text-rose-600">excluir</button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex flex-wrap gap-2">
+        <input value={apelido} onChange={(e) => setApelido(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void adicionar(); }} placeholder="Apelido (ex: Harmonia 321)" className={`${inp} w-44`} />
+        <input value={logradouro} onChange={(e) => setLogradouro(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void adicionar(); }} placeholder="Logradouro completo (opcional)" className={`${inp} flex-1 min-w-[180px]`} />
+        <Button onClick={() => void adicionar()} disabled={!apelido.trim()}>+ Adicionar endereço</Button>
+      </div>
+    </div>
+  );
 }
 
 // ────────────────────────────────────────────────────────────────────────────

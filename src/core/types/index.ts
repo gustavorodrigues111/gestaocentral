@@ -750,6 +750,22 @@ export type Unidade = {
   ativa: boolean;
 };
 
+// ─── ENDEREÇOS (cadastro compartilhado) ────────────────────────────────────
+// Cada empresa tem 1+ endereços físicos. Fonte única usada por Contas Fixas e
+// Manutenções/Licenças (um item amarra a 1+ endereços; N:N via referência de
+// ID). `restaurantId` pode MUDAR = transferência de endereço entre empresas
+// (leva o histórico junto, pois os itens referenciam o ID do endereço).
+// Coleção Firestore: `enderecos`.
+export type Endereco = {
+  id: string;
+  restaurantId: string;             // empresa dona (pode mudar = transferência)
+  apelido: string;                  // curto, ex: "Harmonia 321", "Matriz"
+  logradouro?: string;              // completo, ex: "Rua Harmonia, 321"
+  ativo?: boolean;                  // default true; false = encerrado (só histórico)
+  criadoEm?: string;
+  criadoPor?: string | null;
+};
+
 // ─── CONTATOS EXTERNOS (admissão) ──────────────────────────────────────────
 // Stakeholder externo do processo (clínica de exames, contabilidade,
 // financeiro do escritório, etc) com seus canais possíveis e o preferido.
