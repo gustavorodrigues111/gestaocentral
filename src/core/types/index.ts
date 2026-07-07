@@ -4500,7 +4500,9 @@ export type Manutencao = {
   tipo: ManutencaoTipo;
   fornecedor?: string;
   descricao?: string;
-  restaurantIds: string[];
+  restaurantIds: string[];              // derivado dos endereços (scoping/compat)
+  enderecoIds?: string[];               // N:N — 1 item pode cobrir vários endereços
+  obrigatorio?: boolean;                // true = gera laudo / prazo rígido; false = flexível
   periodicidade: ManutencaoPeriodicidade;
   periodicidadeCustomDias?: number;
   proximoVencimento: string;    // YYYY-MM-DD
