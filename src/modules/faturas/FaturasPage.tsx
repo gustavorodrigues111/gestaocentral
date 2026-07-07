@@ -307,6 +307,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   const [totalFatura, setTotalFatura] = useState<number | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [rateioRow, setRateioRow] = useState<number | null>(null);  // linha com o editor de rateio aberto
+  const [trocandoCartao, setTrocandoCartao] = useState(false);      // revela o select de cartão numa fatura já salva
   // Competência derivada do vencimento (mês/ano da fatura) — sem input manual.
   const competencia = venc && /^\d{4}-\d{2}/.test(venc) ? venc.slice(0, 7) : mesAtual();
   const nomeEmpresa = (id: string) => outrasEmpresas.find(e => e.id === id)?.nome || "?";
@@ -322,14 +323,21 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   // Carrega um rascunho salvo de volta pro editor.
   function carregarRascunho(f: CartaoFatura) {
     const lancs = minhas.filter(l => l.faturaId === f.id).sort((a, b) => (a.data || "").localeCompare(b.data || ""));
-    setFaturaId(f.id); setCartao(f.cartao || ""); setVenc(f.vencimento || null); setTotalFatura(f.totalFatura ?? null); setErro("");
+    setFaturaId(f.id); setCartao(f.cartao || ""); setVenc(f.vencimento || null); setTotalFatura(f.totalFatura ?? null); setErro(""); setTrocandoCartao(false);
     setLinhas(lancs.map(l => ({
       data: l.dataOriginal || (l.data ? l.data.slice(8, 10) + "/" + l.data.slice(5, 7) : ""),
       descricao: l.descricao, valor: l.valor, parcela: l.parcela || null,
       rateio: rateioDeLanc(l), categoriaId: l.categoriaId || null,
     })));
   }
-  function limpar() { setLinhas([]); setVenc(null); setTotalFatura(null); setCartao(""); setFaturaId(null); setErro(""); }
+  function limpar() { setLinhas([]); setVenc(null); setTotalFatura(null); setCartao(""); setFaturaId(null); setErro(""); setTrocandoCartao(false); }
+  // Troca a fatura sendo editada (navegação por chips). Avisa se há fatura nova não salva.
+  function trocarPara(f: CartaoFatura) {
+    if (f.id === faturaId) return;
+    if (!faturaId && linhas.length && !confirm("Você tem uma fatura não salva. Descartar e abrir a outra?")) return;
+    setTrocandoCartao(false);
+    carregarRascunho(f);
+  }
   async function descartar() {
     if (!confirm(faturaId ? "Descartar este rascunho? Os lançamentos salvos serão apagados." : "Descartar esta fatura não salva?")) return;
     if (faturaId) {
@@ -515,17 +523,34 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
 
       {editando && (
         <>
+          {/* Navegação entre faturas em aberto — por chips (não confundir com editar o cartão) */}
+          {(rascunhos.length > 0 || !faturaId) && (
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="text-[11px] text-gray-400 mr-0.5">Faturas em aberto:</span>
+              {rascunhos.map(f => (
+                <SubChip key={f.id} ativo={f.id === faturaId} onClick={() => trocarPara(f)}>{f.cartao || "Cartão —"}{f.vencimento ? ` · ${f.vencimento.slice(8, 10)}/${f.vencimento.slice(5, 7)}` : ""}</SubChip>
+              ))}
+              {!faturaId && <SubChip ativo onClick={() => { /* atual */ }}>{cartao || "Nova"} · não salva</SubChip>}
+            </div>
+          )}
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3 flex-wrap text-xs">
               <div className="flex items-center gap-1.5">
                 <span className="text-gray-500">Cartão:</span>
-                {cartoes.length > 0 ? (
-                  <select value={cartao} onChange={e => setCartao(e.target.value)} className={`${inp} py-1 ${!cartao ? "border-amber-300" : ""}`}>
+                {cartoes.length === 0 ? (
+                  <b>{cartao || "—"}</b>
+                ) : faturaId && !trocandoCartao ? (
+                  <>
+                    <b className="text-gray-800 dark:text-gray-200">{cartao || "—"}</b>
+                    <button type="button" onClick={() => setTrocandoCartao(true)} className="text-[10px] text-indigo-600 hover:text-indigo-700">trocar cartão</button>
+                  </>
+                ) : (
+                  <select value={cartao} autoFocus onChange={e => { setCartao(e.target.value); setTrocandoCartao(false); }} className={`${inp} py-1 ${!cartao ? "border-amber-300" : ""}`}>
                     <option value="">— escolher —</option>
                     {cartoes.map(c => <option key={c} value={c}>{c}</option>)}
                   </select>
-                ) : <b>{cartao || "—"}</b>}
-                {cartoes.length > 0 && cartao && <span className="text-[10px] text-emerald-600">✓ identificado</span>}
+                )}
+                {cartoes.length > 0 && cartao && !faturaId && <span className="text-[10px] text-emerald-600">✓ identificado</span>}
               </div>
               <span className="text-gray-500">Vencimento: <b className="text-gray-800 dark:text-gray-200">{venc ? venc.split("-").reverse().join("/") : "—"}</b></span>
               <span className="text-gray-500">Total: <b className="text-gray-800 dark:text-gray-200">{totalFatura != null ? fmtBRL(totalFatura) : "—"}</b></span>
