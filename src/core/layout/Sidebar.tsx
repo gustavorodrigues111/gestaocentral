@@ -202,17 +202,20 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             const info = AREA_INFO[area];
             const fechada = colapsadas.has(area);
             return (
-              <div key={area}>
+              <div
+                key={area}
+                className="rounded-xl border p-1.5 mb-2"
+                style={{ borderColor: `${info.color}33`, background: `${info.color}0d`, boxShadow: `0 1px 7px ${info.color}22` }}
+              >
                 <button
                   type="button"
                   onClick={() => toggleArea(area)}
-                  className="w-full flex items-center gap-1 px-3 mb-1 text-[10px] font-bold uppercase tracking-wider hover:opacity-80"
-                  style={{ color: info.color }}
+                  className="w-full flex items-center gap-1.5 px-1.5 mb-1 text-xs font-extrabold uppercase tracking-wide text-gray-900 dark:text-gray-100 hover:opacity-80"
                   title={fechada ? "Expandir" : "Recolher"}
                 >
-                  <span className={`transition-transform leading-none ${fechada ? "-rotate-90" : ""}`}>▾</span>
+                  <span className={`transition-transform leading-none ${fechada ? "-rotate-90" : ""}`} style={{ color: info.color }}>▾</span>
                   <span className="flex-1 text-left">{info.label}</span>
-                  <span className="opacity-60 font-semibold">{mods.length}</span>
+                  <span className="font-bold" style={{ color: info.color }}>{mods.length}</span>
                 </button>
                 {!fechada && (
                 <div className="space-y-0.5">
