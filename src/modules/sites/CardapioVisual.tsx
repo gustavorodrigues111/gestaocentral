@@ -309,7 +309,8 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
     const capa = !!capaSrc && p === 1;
     const bg = capa ? capaSrc : mioloSrc;
     return (
-      <div className="pagina-pdf" style={{ ...pageStyle, ...(bg ? { backgroundImage: `url(${bg})`, backgroundSize: "100% 100%" } : {}) }}>
+      <div className="pagina-pdf" style={pageStyle}>
+        {bg && <img src={bg} alt="" crossOrigin="anonymous" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", pointerEvents: "none", userSelect: "none" }} />}
         <GuiaMargens />
         {capa && tituloCapaMenu && (
           <div style={{ position: "absolute", top: `${lay.capaTitTopPct}%`, left: `${lay.capaTitLeftPct}%`, transform: "translateX(-50%)", width: "60%", textAlign: "center", fontFamily: fTit, fontSize: lay.tamTituloCapa, letterSpacing: 2, color: TEAL, fontWeight: 600 }}>{tituloCapaMenu}</div>
