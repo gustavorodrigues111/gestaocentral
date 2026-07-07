@@ -24,7 +24,7 @@ const TIPOS_FLEXIVEIS = new Set<ManutencaoTipo>(["filtros_agua", "ar_condicionad
 const STATUS_COR: Record<string, string> = {
   pendente: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
   agendado: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
-  aguardando_laudo: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
+  realizado: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
 };
 
 export function ManutencoesPage() {
@@ -113,7 +113,7 @@ export function ManutencoesPage() {
                     <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5 flex-wrap">
                       {MANUTENCAO_TIPO_LABEL[m.tipo]}
                       {m.fornecedor && <span className="text-gray-500 dark:text-gray-400 font-normal">· {m.fornecedor}</span>}
-                      {aba === "visualizacao" && st !== "pendente" && <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_COR[st]}`}>{MANUTENCAO_STATUS_LABEL[st]}{st === "agendado" && m.agendadoPara ? ` ${fmtBR(m.agendadoPara)}` : ""}</span>}
+                      {aba === "visualizacao" && st !== "pendente" && <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STATUS_COR[st] || STATUS_COR.pendente}`}>{MANUTENCAO_STATUS_LABEL[st as "pendente" | "agendado" | "realizado"] || "—"}{st === "agendado" && m.agendadoPara ? ` ${fmtBR(m.agendadoPara)}` : ""}{st === "realizado" && m.laudoPrevisto ? ` · ⏳ laudo ${fmtBR(m.laudoPrevisto)}` : ""}</span>}
                       {aba === "cadastro" && m.obrigatorio === false && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">flexível</span>}
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
@@ -170,24 +170,28 @@ function PastaRaizConfig({ rid, folderId, folderNome }: { rid: string; folderId?
 function ApontamentoModal({ manutencao, onClose, endsDaEmpresa, rootFolderId, pessoaId }: {
   manutencao: Manutencao; onClose: () => void; endsDaEmpresa: Endereco[]; rootFolderId?: string; pessoaId: string;
 }) {
+  const hoje = new Date().toISOString().slice(0, 10);
   const [m, setM] = useState<Manutencao>(manutencao);
   const [subindo, setSubindo] = useState(false);
+  const [concluindo, setConcluindo] = useState(false);
   const endsDoItem = endsDaEmpresa.filter(e => (m.enderecoIds || []).includes(e.id));
   const [endSel, setEndSel] = useState<string>(endsDoItem[0]?.id || "");
   const laudos = [...(m.laudos || [])].sort((a, b) => (b.enviadoEm || "").localeCompare(a.enviadoEm || ""));
+  const periodDias = MANUTENCAO_PERIODICIDADE_DIAS[m.periodicidade] || m.periodicidadeCustomDias || 180;
+  // Form de conclusão:
+  const [dataReal, setDataReal] = useState(hoje);
+  const [novoVenc, setNovoVenc] = useState(addDias(hoje, periodDias));
+  const [laudoModo, setLaudoModo] = useState<"recebido" | "aguardando">(laudos.length ? "recebido" : "aguardando");
+  const [previsao, setPrevisao] = useState(addDias(hoje, 15));
+
+  const st = m.statusCiclo || "pendente";
+  const aguardando = st === "realizado" && !!m.laudoPrevisto;
 
   async function patch(p: Partial<Manutencao>) {
-    const novo = { ...m, ...p, atualizadoEm: new Date().toISOString() };
-    setM(novo);
-    await updateDoc(doc(db, "manutencoes", m.id), sanitizeForFirestore(p));
+    setM(prev => ({ ...prev, ...p }));
+    await updateDoc(doc(db, "manutencoes", m.id), sanitizeForFirestore({ ...p, atualizadoEm: new Date().toISOString() }));
   }
-  async function concluir() {
-    if (!confirm("Marcar como concluído e renovar o prazo pela periodicidade?")) return;
-    const hoje = new Date().toISOString().slice(0, 10);
-    const dias = MANUTENCAO_PERIODICIDADE_DIAS[m.periodicidade] || m.periodicidadeCustomDias || 180;
-    await patch({ ultimaExecucao: hoje, proximoVencimento: addDias(hoje, dias), statusCiclo: "pendente", agendadoPara: null });
-    onClose();
-  }
+
   async function subirLaudo(file: File) {
     if (!rootFolderId) { alert("Configure a pasta-raiz do Drive na aba 📝 Cadastro primeiro."); return; }
     const endId = endSel || endsDoItem[0]?.id;
@@ -197,38 +201,86 @@ function ApontamentoModal({ manutencao, onClose, endsDaEmpresa, rootFolderId, pe
     try {
       const endFolder = await centralEnsureFolder(rootFolderId, end.apelido);
       const tipoFolder = await centralEnsureFolder(endFolder, MANUTENCAO_TIPO_LABEL[m.tipo]);
-      const dataStr = new Date().toISOString().slice(0, 10);
-      const renomeado = new File([file], `${dataStr} - ${end.apelido} - ${file.name}`, { type: file.type });
+      const renomeado = new File([file], `${hoje} - ${end.apelido} - ${file.name}`, { type: file.type });
       const up = await uploadFileToFolder(tipoFolder, renomeado);
       const laudo: ManutencaoLaudo = { id: `ld-${Date.now()}`, nome: renomeado.name, driveId: up.id, url: up.webViewLink, enderecoId: endId, enviadoEm: new Date().toISOString(), enviadoPor: pessoaId };
-      await patch({ laudos: [...(m.laudos || []), laudo], statusCiclo: "aguardando_laudo" });
+      await patch({ laudos: [...(m.laudos || []), laudo], laudoPrevisto: null });
+      // Recebeu o laudo → oferece renovar/ajustar o prazo pelo que o laudo informa.
+      setLaudoModo("recebido");
+      if (st !== "realizado" || aguardando) { setNovoVenc(addDias(hoje, periodDias)); setConcluindo(true); }
     } catch (e) { alert("Erro ao subir laudo: " + (e instanceof Error ? e.message : "?")); }
     finally { setSubindo(false); }
   }
 
+  async function confirmarConclusao() {
+    if (laudoModo === "recebido" && m.obrigatorio !== false && !(m.laudos || []).length) {
+      if (!confirm("Este item exige laudo e nenhum foi subido ainda. Concluir mesmo assim? (você pode subir depois)")) return;
+    }
+    await patch({ ultimaExecucao: dataReal, proximoVencimento: novoVenc, statusCiclo: "realizado", laudoPrevisto: laudoModo === "aguardando" ? previsao : null });
+    setConcluindo(false);
+  }
+
+  const inp = "px-2 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{MANUTENCAO_TIPO_LABEL[m.tipo]}{m.fornecedor && <span className="text-gray-500 font-normal"> · {m.fornecedor}</span>}</h2>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{MANUTENCAO_TIPO_LABEL[m.tipo]}{m.fornecedor && <span className="text-gray-500 font-normal"> · {m.fornecedor}</span>}{m.obrigatorio === false && <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">flexível</span>}</h2>
         <p className="text-xs text-gray-500 mb-4">📍 {endsDoItem.map(e => e.apelido).join(" · ") || "—"} · próx. vencimento {fmtBR(m.proximoVencimento)}</p>
 
         <div className="space-y-4">
-          {/* Status do ciclo */}
-          <div>
-            <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">Status</div>
-            <div className="flex flex-wrap gap-1.5">
-              {(["pendente", "agendado", "aguardando_laudo"] as const).map(s => (
-                <button key={s} type="button" onClick={() => void patch({ statusCiclo: s, ...(s !== "agendado" ? { agendadoPara: null } : {}) })}
-                  className={`text-xs font-medium px-3 py-1.5 rounded-full border ${(m.statusCiclo || "pendente") === s ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{MANUTENCAO_STATUS_LABEL[s]}</button>
-              ))}
-            </div>
-            {m.statusCiclo === "agendado" && (
-              <div className="mt-2 flex items-center gap-2 text-sm">
-                <span className="text-xs text-gray-500">Agendado para:</span>
-                <input type="date" value={m.agendadoPara || ""} onChange={(e) => void patch({ agendadoPara: e.target.value })} className="px-2 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+          {/* Status pré-conclusão */}
+          {st !== "realizado" && (
+            <div>
+              <div className="text-xs font-medium text-gray-700 dark:text-gray-300 mb-1.5">Status</div>
+              <div className="flex flex-wrap gap-1.5">
+                {(["pendente", "agendado"] as const).map(s => (
+                  <button key={s} type="button" onClick={() => void patch({ statusCiclo: s, ...(s !== "agendado" ? { agendadoPara: null } : {}) })}
+                    className={`text-xs font-medium px-3 py-1.5 rounded-full border ${st === s ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{MANUTENCAO_STATUS_LABEL[s]}</button>
+                ))}
               </div>
-            )}
-          </div>
+              {st === "agendado" && (
+                <div className="mt-2 flex items-center gap-2 text-sm"><span className="text-xs text-gray-500">Agendado para:</span>
+                  <input type="date" value={m.agendadoPara || ""} onChange={(e) => void patch({ agendadoPara: e.target.value })} className={inp} /></div>
+              )}
+            </div>
+          )}
+
+          {/* Realizado */}
+          {st === "realizado" && (
+            <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 text-sm">
+              <div className="font-medium text-emerald-800 dark:text-emerald-300">✓ Realizado{m.ultimaExecucao ? ` em ${fmtBR(m.ultimaExecucao)}` : ""}</div>
+              {aguardando
+                ? <div className="mt-1 flex items-center gap-2 text-xs text-amber-700 dark:text-amber-300">⏳ Aguardando laudo — previsão <input type="date" value={m.laudoPrevisto || ""} onChange={(e) => void patch({ laudoPrevisto: e.target.value })} className={inp + " py-0.5"} /></div>
+                : (m.laudos || []).length ? <div className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-400">Laudo recebido ✓</div> : null}
+              <button type="button" onClick={() => setConcluindo(true)} className="mt-2 text-[11px] text-indigo-600 hover:text-indigo-700">ajustar prazo / refazer conclusão</button>
+            </div>
+          )}
+
+          {/* Botão concluir (quando não está no form) */}
+          {!concluindo && st !== "realizado" && (
+            <Button onClick={() => setConcluindo(true)} className="w-full">✓ Concluir ciclo (foi realizado)</Button>
+          )}
+
+          {/* Form de conclusão */}
+          {concluindo && (
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 space-y-2.5">
+              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Concluir ciclo</div>
+              <label className="flex items-center justify-between gap-2 text-sm"><span className="text-xs text-gray-600 dark:text-gray-300">Foi realizado em</span><input type="date" value={dataReal} onChange={(e) => setDataReal(e.target.value)} className={inp} /></label>
+              <label className="flex items-center justify-between gap-2 text-sm"><span className="text-xs text-gray-600 dark:text-gray-300">Novo vencimento (do laudo ou pela periodicidade)</span><input type="date" value={novoVenc} onChange={(e) => setNovoVenc(e.target.value)} className={inp} /></label>
+              <div>
+                <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">Laudo</div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" checked={laudoModo === "recebido"} onChange={() => setLaudoModo("recebido")} /> Já recebi o laudo {(m.laudos || []).length ? "✓" : "(suba abaixo 📎)"}</label>
+                  <label className="flex items-center gap-2 text-sm"><input type="radio" checked={laudoModo === "aguardando"} onChange={() => setLaudoModo("aguardando")} /> Ainda não recebi — aguardando</label>
+                  {laudoModo === "aguardando" && <label className="flex items-center gap-2 text-sm pl-6"><span className="text-xs text-gray-500">Previsão de receber:</span><input type="date" value={previsao} onChange={(e) => setPrevisao(e.target.value)} className={inp} /></label>}
+                </div>
+              </div>
+              <div className="flex gap-2 justify-end pt-1">
+                <Button size="sm" variant="ghost" onClick={() => setConcluindo(false)}>Cancelar</Button>
+                <Button size="sm" onClick={() => void confirmarConclusao()}>Confirmar</Button>
+              </div>
+            </div>
+          )}
 
           {/* Laudos */}
           <div>
@@ -259,8 +311,6 @@ function ApontamentoModal({ manutencao, onClose, endsDaEmpresa, rootFolderId, pe
               </div>
             )}
           </div>
-
-          <Button onClick={() => void concluir()} className="w-full">✓ Concluído — renovar prazo</Button>
         </div>
 
         <div className="flex justify-end mt-4"><Button variant="ghost" onClick={onClose}>Fechar</Button></div>

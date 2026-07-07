@@ -158,6 +158,21 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     return () => { u1(); u2(); };
   }, [ridsKeyAll]);
 
+  // ── Manutenções/Licenças: vencidas + laudo atrasado (statusCiclo realizado c/
+  //    previsão de laudo já passada). Manutencao.restaurantIds é array. ──
+  type ManutAviso = { id: string; restaurantIds?: string[]; proximoVencimento?: string; statusCiclo?: string; laudoPrevisto?: string | null; ativo?: boolean; deletadoEm?: string | null };
+  const [manuts, setManuts] = useState<ManutAviso[]>([]);
+  useEffect(() => {
+    const rids = ridsKeyAll ? ridsKeyAll.split(",").slice(0, 10) : [];
+    if (!rids.length) { setManuts([]); return; }
+    const u = onSnapshot(
+      query(collection(db, "manutencoes"), where("restaurantIds", "array-contains-any", rids)),
+      (snap) => setManuts(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ManutAviso).filter((m) => !m.deletadoEm && m.ativo !== false)),
+      () => setManuts([]),
+    );
+    return () => u();
+  }, [ridsKeyAll]);
+
   // ── Config de canais por notificação (gating in-app da Central) ──
   const [notifConfigs, setNotifConfigs] = useState<Record<string, { inApp?: boolean }>>({});
   useEffect(() => {
@@ -337,6 +352,32 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         restauranteNome: nomePorRid[g.donoRid] || "Restaurante",
         cta: "Ver no Faturas", href: `/r/${g.donoRid}/faturas`,
         categoria: "Faturas", categoriaIcone: "💳",
+      });
+    }
+
+    // ── Manutenções/Licenças: vencidas + laudo atrasado, agrupado por empresa ──
+    const manutGrp = new Map<string, { vencidas: number; laudoAtras: number }>();
+    for (const mm of manuts) {
+      const venc = !!mm.proximoVencimento && mm.proximoVencimento < hoje;
+      const laudoAtras = mm.statusCiclo === "realizado" && !!mm.laudoPrevisto && mm.laudoPrevisto < hoje;
+      if (!venc && !laudoAtras) continue;
+      for (const r of mm.restaurantIds || []) {
+        if (!meusRids.has(r)) continue;
+        const g = manutGrp.get(r) || { vencidas: 0, laudoAtras: 0 };
+        if (venc) g.vencidas++; if (laudoAtras) g.laudoAtras++;
+        manutGrp.set(r, g);
+      }
+    }
+    for (const [r, g] of manutGrp) {
+      const partes: string[] = [];
+      if (g.vencidas) partes.push(`${g.vencidas} vencida${g.vencidas === 1 ? "" : "s"}`);
+      if (g.laudoAtras) partes.push(`${g.laudoAtras} laudo${g.laudoAtras === 1 ? "" : "s"} atrasado${g.laudoAtras === 1 ? "" : "s"}`);
+      out.push({
+        id: `manut_${r}`, tipo: "manutencoes", icone: g.vencidas ? "⚠️" : "⏳",
+        titulo: "Manutenções & Licenças", descricao: partes.join(" · "), em: hoje,
+        restauranteId: r, restauranteNome: nomePorRid[r] || "Restaurante",
+        cta: "Abrir Manutenções", href: `/r/${r}/manutencoes`,
+        categoria: "Manutenções", categoriaIcone: "🧰",
       });
     }
 
@@ -531,7 +572,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     escala, faleDp, fechamento, gorjetas, vt, vr, beneficios,
     ocorrencias, eventos, recebimento, compras, ideias, admissoes, demissoes, exames, uniformes,
     minhaAcao, minhaProducao, checklistTpl, checklistRun, cobrancasInt,
-    reembReceber, reembPagos,
+    reembReceber, reembPagos, manuts,
   ]);
 
   // ── Estado de leitura (overlay persistido por pessoa) ──

@@ -4454,8 +4454,8 @@ export type ManutencaoLaudo = {
   enviadoPor?: string | null;
 };
 
-export const MANUTENCAO_STATUS_LABEL: Record<"pendente" | "agendado" | "aguardando_laudo", string> = {
-  pendente: "Pendente", agendado: "Agendado", aguardando_laudo: "Aguardando laudo",
+export const MANUTENCAO_STATUS_LABEL: Record<"pendente" | "agendado" | "realizado", string> = {
+  pendente: "Pendente", agendado: "Agendado", realizado: "Realizado",
 };
 
 export type ManutencaoTipo =
@@ -4520,8 +4520,9 @@ export type Manutencao = {
   enderecoIds?: string[];               // N:N — 1 item pode cobrir vários endereços
   obrigatorio?: boolean;                // true = gera laudo / prazo rígido; false = flexível
   // Apontamento do ciclo atual (aba Visualização):
-  statusCiclo?: "pendente" | "agendado" | "aguardando_laudo";
+  statusCiclo?: "pendente" | "agendado" | "realizado";
   agendadoPara?: string | null;         // YYYY-MM-DD quando statusCiclo = "agendado"
+  laudoPrevisto?: string | null;        // previsão de receber o laudo (realizado sem laudo ainda) → monitorado na Central
   laudos?: ManutencaoLaudo[];           // anexos subidos ao Drive (endereço → tipo → arquivo)
   periodicidade: ManutencaoPeriodicidade;
   periodicidadeCustomDias?: number;
