@@ -47,6 +47,7 @@ export function ContasFixasPage() {
   const [comp, setComp] = useState(hoje.slice(0, 7)); // "YYYY-MM"
   const [filtro, setFiltro] = useState<"todas" | "apagar" | "pagas">("todas");
   const [filtroCat, setFiltroCat] = useState<string>(""); // "" = todas (vale nas 2 abas)
+  const [filtroEnd, setFiltroEnd] = useState<string>("todas"); // por unidade/endereço
   const [vis, setVis] = useState<"calendario" | "lista">("calendario");
   const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(hoje));
   const [dragId, setDragId] = useState<string | null>(null);
@@ -120,7 +121,8 @@ export function ContasFixasPage() {
     return "pendente";
   };
 
-  const base = daEmpresa.filter(c => !filtroCat || c.categoria === filtroCat);
+  const endsDaEmpresa = enderecos.filter(e => e.restaurantId === rid && (e.ativo !== false || daEmpresa.some(c => c.enderecoId === e.id)));
+  const base = daEmpresa.filter(c => (!filtroCat || c.categoria === filtroCat) && (filtroEnd === "todas" || c.enderecoId === filtroEnd));
   const catsPresentes = [...new Set(daEmpresa.map(c => c.categoria))];
 
   // Lista (aba Visualização · modo lista) — filtra por status na competência
@@ -164,8 +166,8 @@ export function ContasFixasPage() {
     <button type="button" onClick={() => setAba(v)}
       className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${aba === v ? "border-indigo-500 text-indigo-600 dark:text-indigo-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{label}</button>
   );
-  const chip = (active: boolean, label: string, onClick: () => void) => (
-    <button type="button" onClick={onClick}
+  const chip = (active: boolean, label: string, onClick: () => void, key?: string) => (
+    <button key={key} type="button" onClick={onClick}
       className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${active ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{label}</button>
   );
   const STCOR: Record<string, string> = {
@@ -217,6 +219,13 @@ export function ContasFixasPage() {
       {daEmpresa.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 mb-3">
           {catSelect}
+          {endsDaEmpresa.length > 1 && (
+            <>
+              <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />
+              {chip(filtroEnd === "todas", "Todas as unidades", () => setFiltroEnd("todas"))}
+              {endsDaEmpresa.map(e => chip(filtroEnd === e.id, `📍 ${e.apelido}`, () => setFiltroEnd(e.id), e.id))}
+            </>
+          )}
           <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />
           {chip(vis === "calendario", "📅 Calendário", () => setVis("calendario"))}
           {chip(vis === "lista", "📋 Lista", () => setVis("lista"))}

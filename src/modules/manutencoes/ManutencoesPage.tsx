@@ -13,7 +13,8 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
-import { fmtBR } from "../../core/utils/date";
+import { fmtBR, parseYmd, ymd } from "../../core/utils/date";
+import { buscarFeriadosProximos } from "../sites/feriadosHelper";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { centralEnsureFolder } from "../../core/google/driveCentral";
 import { uploadFileToFolder } from "../../core/google/driveShared";
@@ -21,6 +22,11 @@ import type { Manutencao, ManutencaoTipo, ManutencaoPeriodicidade, ManutencaoLau
 import { MANUTENCAO_TIPO_LABEL, MANUTENCAO_PERIODICIDADE_LABEL, MANUTENCAO_PERIODICIDADE_DIAS, MANUTENCAO_STATUS_LABEL } from "../../core/types";
 
 const TIPOS_FLEXIVEIS = new Set<ManutencaoTipo>(["filtros_agua", "ar_condicionado", "estofado"]);
+function inicioSemanaSeg(s: string): string {
+  const d = parseYmd(s); const dow = d.getDay(); const off = dow === 0 ? -6 : 1 - dow;
+  d.setDate(d.getDate() + off); return ymd(d);
+}
+const DOW_LBL = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
 const STATUS_COR: Record<string, string> = {
   pendente: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
   agendado: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
@@ -36,9 +42,26 @@ export function ManutencoesPage() {
   const [aba, setAba] = useState<"visualizacao" | "cadastro">("visualizacao");
   const [filtroEnd, setFiltroEnd] = useState<string>("todas");
   const [filtroObrig, setFiltroObrig] = useState<"todos" | "com" | "sem">("todos");
+  const [vis, setVis] = useState<"lista" | "calendario">("lista");
+  const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(new Date().toISOString().slice(0, 10)));
+  const [feriados, setFeriados] = useState<Record<string, string>>({});
   const [editando, setEditando] = useState<Manutencao | null>(null);
   const [apontando, setApontando] = useState<Manutencao | null>(null);
   const [criando, setCriando] = useState(false);
+
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const listas = await Promise.all([buscarFeriadosProximos("SP", 14).catch(() => []), buscarFeriadosProximos("PA", 14).catch(() => [])]);
+        if (!alive) return;
+        const map: Record<string, string> = {};
+        for (const f of listas.flat()) map[f.date] = f.name;
+        setFeriados(map);
+      } catch { /* sem feriados */ }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   useEffect(() => {
     const u = onSnapshot(query(collection(db, "manutencoes"), orderBy("proximoVencimento")),
@@ -77,6 +100,13 @@ export function ManutencoesPage() {
   const vencidas = visiveis.filter(m => m.proximoVencimento < hoje).length;
   const filtroAtivo = filtroEnd !== "todas" || filtroObrig !== "todos";
 
+  // Calendário-semana: cada manutenção no dia do seu próximo vencimento.
+  const dias = Array.from({ length: 7 }, (_, i) => { const d = parseYmd(semanaInicio); d.setDate(d.getDate() + i); return ymd(d); });
+  const porDia = new Map<string, Manutencao[]>();
+  for (const m of visiveis) if (dias.includes(m.proximoVencimento)) { const a = porDia.get(m.proximoVencimento) || []; a.push(m); porDia.set(m.proximoVencimento, a); }
+  const navegar = (delta: number) => { const d = parseYmd(semanaInicio); d.setDate(d.getDate() + delta * 7); setSemanaInicio(ymd(d)); };
+  const tituloSemana = `${fmtBR(dias[0])} – ${fmtBR(dias[6])}`;
+
   const tab = (v: "visualizacao" | "cadastro", label: string) => (
     <button type="button" onClick={() => setAba(v)}
       className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${aba === v ? "border-indigo-500 text-indigo-600 dark:text-indigo-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{label}</button>
@@ -103,8 +133,11 @@ export function ManutencoesPage() {
         <PastaRaizConfig rid={rid} folderId={activeRestaurant?.manutencoesDriveFolderId} folderNome={activeRestaurant?.manutencoesDriveFolderNome} />
       )}
 
-      {daEmpresa.length > 0 && (endsDaEmpresa.length > 1 || daEmpresa.some(m => m.obrigatorio === false)) && (
+      {daEmpresa.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
+          {chip(vis === "lista", "📋 Lista", () => setVis("lista"))}
+          {chip(vis === "calendario", "📅 Calendário", () => setVis("calendario"))}
+          {(endsDaEmpresa.length > 1 || daEmpresa.some(m => m.obrigatorio === false)) && <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />}
           {endsDaEmpresa.length > 1 && (
             <>
               {chip(filtroEnd === "todas", "Todas as unidades", () => setFiltroEnd("todas"))}
@@ -122,6 +155,55 @@ export function ManutencoesPage() {
           <div className="text-4xl mb-2">📅</div>
           <p>Nenhuma manutenção cadastrada nesta empresa.</p>
           <p className="text-sm mt-1">Vá em <b>📝 Cadastro</b> pra criar filtros, potabilidade, dedetização, CLCB, certificados, etc.</p>
+        </div>
+      ) : vis === "calendario" ? (
+        <div>
+          <div className="flex items-center justify-center gap-2 mb-3">
+            <Button size="sm" variant="ghost" onClick={() => navegar(-1)}>‹</Button>
+            <Button size="sm" variant="ghost" onClick={() => setSemanaInicio(inicioSemanaSeg(hoje))}>Hoje</Button>
+            <Button size="sm" variant="ghost" onClick={() => navegar(1)}>›</Button>
+            <span className="text-sm font-semibold text-gray-700 dark:text-gray-300 ml-2">{tituloSemana}</span>
+          </div>
+          <p className="text-[11px] text-gray-400 mb-2 text-center">Cada item aparece no dia do próximo vencimento. Clique pra apontar/concluir.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-7 gap-1.5">
+            {dias.map((d, i) => {
+              const wd = parseYmd(d).getDay();
+              const fds = wd === 0 || wd === 6;
+              const feriadoNome = feriados[d];
+              const naoUtil = fds || !!feriadoNome;
+              const ehHoje = d === hoje;
+              const itens = porDia.get(d) || [];
+              const corDia = naoUtil
+                ? "border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/15"
+                : "border-blue-200 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/15";
+              return (
+                <div key={d} title={feriadoNome ? `Feriado: ${feriadoNome}` : undefined}
+                  className={`rounded-xl border p-1.5 min-h-[150px] ${ehHoje ? "ring-1 ring-indigo-400" : ""} ${corDia}`}>
+                  <div className={`text-[11px] font-semibold mb-1 flex items-center justify-between ${ehHoje ? "text-indigo-600 dark:text-indigo-300" : naoUtil ? "text-amber-700 dark:text-amber-400" : "text-blue-700 dark:text-blue-400"}`}>
+                    <span>{DOW_LBL[i]} {parseYmd(d).getDate()}</span>
+                    {itens.length > 0 && <span className="opacity-60">{itens.length}</span>}
+                  </div>
+                  {feriadoNome && <div className="text-[9px] text-amber-600 dark:text-amber-400 mb-1 truncate" title={feriadoNome}>🎉 {feriadoNome}</div>}
+                  <div className="space-y-1">
+                    {itens.map(m => {
+                      const atrasada = m.proximoVencimento < hoje;
+                      const st = m.statusCiclo || "pendente";
+                      return (
+                        <div key={m.id} onClick={() => setApontando(m)}
+                          title={`${MANUTENCAO_TIPO_LABEL[m.tipo]} — clique pra apontar`}
+                          className={`cursor-pointer hover:shadow-sm rounded-lg border px-1.5 py-1 text-[11px] leading-tight ${atrasada ? "border-rose-300 bg-rose-50 dark:bg-rose-900/20" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"}`}>
+                          <div className="font-semibold text-gray-800 dark:text-gray-100 break-words">{MANUTENCAO_TIPO_LABEL[m.tipo]}</div>
+                          {m.fornecedor && <div className="text-gray-500 dark:text-gray-400 truncate">{m.fornecedor}</div>}
+                          <div className="text-gray-400 dark:text-gray-500 truncate">📍 {rotuloEnderecos(m) || "—"}</div>
+                          {st !== "pendente" && <div className={`inline-block mt-0.5 text-[9px] font-medium px-1 py-0.5 rounded-full ${STATUS_COR[st] || STATUS_COR.pendente}`}>{MANUTENCAO_STATUS_LABEL[st as "pendente" | "agendado" | "realizado"] || "—"}</div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
       ) : visiveis.length === 0 ? (
         <div className="text-center py-10 text-gray-500 dark:text-gray-400 text-sm">
