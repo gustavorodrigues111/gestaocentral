@@ -1399,6 +1399,12 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
                     <span style={{ fontSize: txCorpo(17), fontWeight: 600, flex: 1, whiteSpace: "pre-line" }}>{tituloPr(p)}</span>
                     {p.preco && <span style={{ fontSize: txCorpo(16), fontWeight: 600, color: corPrimaria, whiteSpace: "nowrap" }}>{p.preco}</span>}
                   </div>
+                  {p.taca && (p.precoTaca || "").trim() && (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: 1 }}>
+                      <svg width={txCorpo(13)} height={txCorpo(13)} viewBox="0 0 24 24" fill="none" stroke={corPrimaria} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 3h11l-1.2 6.6a4.6 4.6 0 0 1-9.2 0L6.5 3z" /><path d="M12 15.5V20" /><path d="M8.5 20h7" /></svg>
+                      <span style={{ fontSize: txCorpo(15), fontWeight: 600, color: corPrimaria, whiteSpace: "nowrap" }}>{p.precoTaca!.trim()}</span>
+                    </div>
+                  )}
                   {subPr(p) && <div style={{ fontSize: txCorpo(13.5), opacity: 0.7, marginTop: 2, lineHeight: 1.35, whiteSpace: "pre-line" }}>{subPr(p)}</div>}
                 </div>
               </div>

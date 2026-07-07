@@ -3653,7 +3653,9 @@ export type PratoCardapio = {
   id: string;
   titulo: string;
   subtitulo?: string;
-  preco?: string;
+  preco?: string;            // preço da garrafa (ou preço único)
+  taca?: boolean;            // servido também em taça
+  precoTaca?: string;        // preço da taça (quando taca = true)
   tituloEn?: string;
   subtituloEn?: string;
   // Ícone à esquerda do item (coquetéis etc.): da biblioteca embutida (iconeId)

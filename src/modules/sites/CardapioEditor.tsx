@@ -7,7 +7,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { authHeader } from "../../core/firebase/idToken";
-import { CardapioVisual } from "./CardapioVisual";
+import { CardapioVisual, TacaIcon } from "./CardapioVisual";
 import { IconePickerModal, IconeCardapioView } from "../cardapio/iconesCardapio";
 import type { CardapioEstruturado, CardapioLayout, SecaoCardapio, PratoCardapio } from "../../core/types";
 
@@ -278,12 +278,18 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
                     <div className="flex-1 min-w-0 space-y-1.5">
                       {/* Título (verde) */}
                       <input value={p.titulo} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { titulo: e.target.value })} placeholder="Nome do prato" className={`${inpTitulo} w-full font-semibold`} />
-                      {/* Preço (com $) + reordenar */}
-                      <div className="flex items-center gap-2">
+                      {/* Preço garrafa (com $) + checkbox taça + reordenar */}
+                      <div className="flex items-center gap-2 flex-wrap">
                         <div className="relative w-28 shrink-0">
                           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">$</span>
-                          <input value={p.preco || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { preco: e.target.value || undefined })} placeholder="preço" className={`${inpTitulo} w-full text-right pl-6`} />
+                          <input value={p.preco || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { preco: e.target.value || undefined })} placeholder={p.taca ? "garrafa" : "preço"} className={`${inpTitulo} w-full text-right pl-6`} />
                         </div>
+                        {podeEditar && (
+                          <label className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-1 cursor-pointer whitespace-nowrap">
+                            <input type="checkbox" checked={!!p.taca} onChange={(e) => setPrato(si, pi, e.target.checked ? { taca: true } : { taca: undefined, precoTaca: undefined })} />
+                            <TacaIcon size={13} /> taça
+                          </label>
+                        )}
                         {podeEditar && (
                           <div className="flex items-center gap-1 ml-auto text-gray-400">
                             <button type="button" title="Subir" onClick={() => movePrato(si, pi, -1)} className="w-7 h-7 rounded hover:bg-gray-100 dark:hover:bg-gray-800">↑</button>
@@ -292,6 +298,12 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
                           </div>
                         )}
                       </div>
+                      {p.taca && (
+                        <div className="relative w-28">
+                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><TacaIcon size={13} /></span>
+                          <input value={p.precoTaca || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { precoTaca: e.target.value || undefined })} placeholder="taça" className={`${inpTitulo} w-full text-right pl-7`} />
+                        </div>
+                      )}
                       {/* Descrição (azul) */}
                       <textarea value={p.subtitulo || ""} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { subtitulo: e.target.value || undefined })} placeholder="Descrição (Enter = quebra de linha)" className={`${inpDesc} w-full text-[12px] resize-y`} />
                     </div>

@@ -16,6 +16,15 @@ const PAGE_W = 460, PAGE_H = 651;
 const CAPA = "/cardapio-capa-sororoca.png";
 const norm = (s: string) => (s || "").trim().toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
 
+// Ícone de taça (só linhas) — usado ao lado do preço da taça.
+export function TacaIcon({ size = 12, color = "currentColor" }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline-block", verticalAlign: "middle" }}>
+      <path d="M6.5 3h11l-1.2 6.6a4.6 4.6 0 0 1-9.2 0L6.5 3z" /><path d="M12 15.5V20" /><path d="M8.5 20h7" />
+    </svg>
+  );
+}
+
 type CampoPrato = "titulo" | "subtitulo" | "tituloEn" | "subtituloEn";
 type Lay = Required<Omit<CardapioLayout, "fontesCustom" | "secaoPos" | "colsPorPagina">> & { fontesCustom: string[]; secaoPos: { [k: string]: number }; colsPorPagina: { [p: number]: number } };
 const PADROES: Lay = {
@@ -188,6 +197,12 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
                   style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: "#222", whiteSpace: "pre-line", outline: "none" }}>{titulo}</span>
                 {precoTxt && <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: TEAL, whiteSpace: "nowrap", fontWeight: 600 }}>{precoTxt}</span>}
               </div>
+              {p.taca && (p.precoTaca || "").trim() && (
+                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 4, marginTop: 1 }}>
+                  <TacaIcon size={lay.tamTitulo * 0.82} color={TEAL} />
+                  <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, color: TEAL, fontWeight: 600, whiteSpace: "nowrap" }}>{lay.mostrarCifrao ? `$ ${p.precoTaca!.trim()}` : p.precoTaca!.trim()}</span>
+                </div>
+              )}
               {/* Só renderiza a descrição quando existe — assim o "espaço nome→descrição"
                   não mexe nos pratos sem descrição (pra adicionar uma, use o campo do editor). */}
               {subt && (
