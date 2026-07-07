@@ -391,11 +391,14 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
       const pdf = new jsPDF({ unit: "pt", format: "a4" });
       const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight();
       const nodes = Array.from(paginasRef.current?.querySelectorAll<HTMLDivElement>(".pagina-pdf") || []);
+      // Página renderiza em ~460px; pra sair nítido no A4 precisamos de ~300 DPI.
+      // scale alto + PNG (sem perda) — JPEG borrava as bordas do logo/arte.
+      const scale = Math.min(6, Math.max(4, Math.ceil(2480 / (nodes[0]?.offsetWidth || 460))));
       for (let i = 0; i < nodes.length; i++) {
-        const canvas = await html2canvas(nodes[i]!, { scale: 3, backgroundColor: "#ffffff", useCORS: true, ignoreElements: (el) => el.classList?.contains("guia-margem") });
-        const img = canvas.toDataURL("image/jpeg", 0.94);
+        const canvas = await html2canvas(nodes[i]!, { scale, backgroundColor: "#ffffff", useCORS: true, imageTimeout: 0, ignoreElements: (el) => el.classList?.contains("guia-margem") });
+        const img = canvas.toDataURL("image/png");
         if (i > 0) pdf.addPage();
-        pdf.addImage(img, "JPEG", 0, 0, W, H);
+        pdf.addImage(img, "PNG", 0, 0, W, H, undefined, "FAST");
       }
       if (nodes.length === 0) { setErroBaixar("Nenhuma página encontrada pra gerar o PDF. Abra a aba Prévia e tente de novo."); return; }
       pdf.save(`${(nomeRestaurante || "cardapio").toLowerCase().replace(/\s+/g, "-")}-cardapio${en ? "-en" : ""}.pdf`);
