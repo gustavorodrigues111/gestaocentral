@@ -24,6 +24,14 @@ export function TacaIcon({ size = 12, color = "currentColor" }: { size?: number;
     </svg>
   );
 }
+// Ícone de garrafa (mesmo traço da taça).
+export function GarrafaIcon({ size = 12, color = "currentColor" }: { size?: number; color?: string }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline-block", verticalAlign: "middle" }}>
+      <path d="M10 2.5h4" /><path d="M10.5 2.5V6c0 1-.4 1.6-1.1 2.3C8.3 9.6 8 10.5 8 11.8V20a1.5 1.5 0 0 0 1.5 1.5h5A1.5 1.5 0 0 0 16 20v-8.2c0-1.3-.3-2.2-1.4-3.5C13.9 7.6 13.5 7 13.5 6V2.5" />
+    </svg>
+  );
+}
 
 type CampoPrato = "titulo" | "subtitulo" | "tituloEn" | "subtituloEn";
 type Lay = Required<Omit<CardapioLayout, "fontesCustom" | "secaoPos" | "colsPorPagina">> & { fontesCustom: string[]; secaoPos: { [k: string]: number }; colsPorPagina: { [p: number]: number } };
@@ -197,7 +205,13 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
                   style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: "#222", whiteSpace: "pre-line", outline: "none" }}>{titulo}</span>
                 {(precoTxt || (p.taca && (p.precoTaca || "").trim())) && (
                   <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, gap: 1 }}>
-                    {precoTxt && <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: TEAL, whiteSpace: "nowrap", fontWeight: 600 }}>{precoTxt}</span>}
+                    {precoTxt && (
+                      <span style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                        {!ehNota && (p.taca || (p.garrafaMl || "").trim()) && <GarrafaIcon size={lay.tamTitulo * 0.82} color={TEAL} />}
+                        {!ehNota && (p.garrafaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: TEAL, opacity: 0.75, whiteSpace: "nowrap" }}>({String(p.garrafaMl).replace(/ml$/i, "").trim()}ml)</span>}
+                        <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: TEAL, whiteSpace: "nowrap", fontWeight: 600 }}>{precoTxt}</span>
+                      </span>
+                    )}
                     {p.taca && (p.precoTaca || "").trim() && (
                       <span style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
                         <TacaIcon size={lay.tamTitulo * 0.82} color={TEAL} />

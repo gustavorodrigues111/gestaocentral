@@ -7,7 +7,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { authHeader } from "../../core/firebase/idToken";
-import { CardapioVisual, TacaIcon } from "./CardapioVisual";
+import { CardapioVisual, TacaIcon, GarrafaIcon } from "./CardapioVisual";
 import { IconePickerModal, IconeCardapioView } from "../cardapio/iconesCardapio";
 import type { CardapioEstruturado, CardapioLayout, SecaoCardapio, PratoCardapio } from "../../core/types";
 
@@ -278,8 +278,12 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
                     <div className="flex-1 min-w-0 space-y-1.5">
                       {/* Título (verde) — 2 linhas (Enter = quebra; ótimo pra nome de vinho) */}
                       <textarea value={p.titulo} disabled={!podeEditar} rows={2} onChange={(e) => setPrato(si, pi, { titulo: e.target.value })} placeholder="Nome do prato/vinho (Enter = quebra de linha)" className={`${inpTitulo} w-full font-semibold resize-y`} />
-                      {/* Preço garrafa (com $) + checkbox taça + reordenar */}
+                      {/* Preço garrafa (com $) + ml da garrafa + checkbox taça + reordenar */}
                       <div className="flex items-center gap-2 flex-wrap">
+                        <div className="relative w-16 shrink-0" title="Tamanho da garrafa (ml) — opcional, pra garrafas não-padrão">
+                          <span className="absolute left-1.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><GarrafaIcon size={12} /></span>
+                          <input value={p.garrafaMl || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { garrafaMl: e.target.value.replace(/[^\d]/g, "") || undefined })} placeholder="ml" className={`${inpTitulo} w-full text-right pl-6 pr-1`} />
+                        </div>
                         <div className="relative w-28 shrink-0">
                           <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-sm pointer-events-none">$</span>
                           <input value={p.preco || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { preco: e.target.value || undefined })} placeholder={p.taca ? "garrafa" : "preço"} className={`${inpTitulo} w-full text-right pl-6`} />
