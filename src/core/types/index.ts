@@ -3656,6 +3656,7 @@ export type PratoCardapio = {
   preco?: string;            // preço da garrafa (ou preço único)
   taca?: boolean;            // servido também em taça
   precoTaca?: string;        // preço da taça (quando taca = true)
+  tacaMl?: string;           // tamanho da taça em ml (ex: "120") — exibido "(120ml)" antes do preço
   tituloEn?: string;
   subtituloEn?: string;
   // Ícone à esquerda do item (coquetéis etc.): da biblioteca embutida (iconeId)

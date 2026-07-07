@@ -1400,8 +1400,9 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
                     {p.preco && <span style={{ fontSize: txCorpo(16), fontWeight: 600, color: corPrimaria, whiteSpace: "nowrap" }}>{p.preco}</span>}
                   </div>
                   {p.taca && (p.precoTaca || "").trim() && (
-                    <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4, marginTop: 1 }}>
-                      <svg width={txCorpo(13)} height={txCorpo(13)} viewBox="0 0 24 24" fill="none" stroke={corPrimaria} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M6.5 3h11l-1.2 6.6a4.6 4.6 0 0 1-9.2 0L6.5 3z" /><path d="M12 15.5V20" /><path d="M8.5 20h7" /></svg>
+                    <div style={{ display: "flex", alignItems: "baseline", justifyContent: "flex-end", gap: 4, marginTop: 1 }}>
+                      <svg width={txCorpo(13)} height={txCorpo(13)} viewBox="0 0 24 24" fill="none" stroke={corPrimaria} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ alignSelf: "center" }}><path d="M6.5 3h11l-1.2 6.6a4.6 4.6 0 0 1-9.2 0L6.5 3z" /><path d="M12 15.5V20" /><path d="M8.5 20h7" /></svg>
+                      {(p.tacaMl || "").trim() && <span style={{ fontSize: txCorpo(12), color: corPrimaria, opacity: 0.75, whiteSpace: "nowrap" }}>({String(p.tacaMl).replace(/ml$/i, "").trim()}ml)</span>}
                       <span style={{ fontSize: txCorpo(15), fontWeight: 600, color: corPrimaria, whiteSpace: "nowrap" }}>{p.precoTaca!.trim()}</span>
                     </div>
                   )}

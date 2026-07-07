@@ -299,9 +299,15 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
                         )}
                       </div>
                       {p.taca && (
-                        <div className="relative w-28">
-                          <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><TacaIcon size={13} /></span>
-                          <input value={p.precoTaca || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { precoTaca: e.target.value || undefined })} placeholder="taça" className={`${inpTitulo} w-full text-right pl-7`} />
+                        <div className="flex items-center gap-2">
+                          <div className="relative w-24 shrink-0">
+                            <input value={p.tacaMl || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { tacaMl: e.target.value.replace(/[^\d]/g, "") || undefined })} placeholder="ml" className={`${inpTitulo} w-full text-right pr-6`} />
+                            <span className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 text-[11px] pointer-events-none">ml</span>
+                          </div>
+                          <div className="relative w-28">
+                            <span className="absolute left-2 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><TacaIcon size={13} /></span>
+                            <input value={p.precoTaca || ""} disabled={!podeEditar} onChange={(e) => setPrato(si, pi, { precoTaca: e.target.value || undefined })} placeholder="taça" className={`${inpTitulo} w-full text-right pl-7`} />
+                          </div>
                         </div>
                       )}
                       {/* Descrição (azul) */}

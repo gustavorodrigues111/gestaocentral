@@ -198,8 +198,9 @@ export function CardapioVisual({ rid, menuId, secoes, nomeRestaurante, nomeMenu,
                 {precoTxt && <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: TEAL, whiteSpace: "nowrap", fontWeight: 600 }}>{precoTxt}</span>}
               </div>
               {p.taca && (p.precoTaca || "").trim() && (
-                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 4, marginTop: 1 }}>
+                <div style={{ display: "flex", justifyContent: "flex-end", alignItems: "baseline", gap: 4, marginTop: 1 }}>
                   <TacaIcon size={lay.tamTitulo * 0.82} color={TEAL} />
+                  {(p.tacaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: TEAL, opacity: 0.75, whiteSpace: "nowrap" }}>({String(p.tacaMl).replace(/ml$/i, "").trim()}ml)</span>}
                   <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, color: TEAL, fontWeight: 600, whiteSpace: "nowrap" }}>{lay.mostrarCifrao ? `$ ${p.precoTaca!.trim()}` : p.precoTaca!.trim()}</span>
                 </div>
               )}
