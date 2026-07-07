@@ -7,7 +7,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
-  collection, onSnapshot, query, orderBy, setDoc, doc, updateDoc,
+  collection, onSnapshot, query, orderBy, setDoc, doc, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -15,7 +15,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import type {
-  ContaFixa, ContaFixaCategoria, ContaFixaRecorrencia,
+  ContaFixa, ContaFixaCategoria, ContaFixaRecorrencia, Endereco,
 } from "../../core/types";
 import {
   CONTA_FIXA_CATEGORIA_LABEL, CONTA_FIXA_RECORRENCIA_LABEL,
@@ -29,6 +29,7 @@ export function ContasFixasPage() {
   const { rid } = useParams<{ rid: string }>();
   const { restaurants } = useRestaurant();
   const [contas, setContas] = useState<ContaFixa[]>([]);
+  const [enderecos, setEnderecos] = useState<Endereco[]>([]);
   const [aba, setAba] = useState<"visualizacao" | "cadastro">("visualizacao");
   const [editando, setEditando] = useState<ContaFixa | null>(null);
   const [criando, setCriando] = useState(false);
@@ -44,6 +45,16 @@ export function ContasFixasPage() {
     );
     return () => u();
   }, []);
+
+  const ridsKey = restaurants.map(r => r.id).join(",");
+  useEffect(() => {
+    const rids = ridsKey ? ridsKey.split(",").slice(0, 10) : [];
+    if (!rids.length) { setEnderecos([]); return; }
+    const u = onSnapshot(query(collection(db, "enderecos"), where("restaurantId", "in", rids)),
+      snap => setEnderecos(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Endereco)), () => setEnderecos([]));
+    return () => u();
+  }, [ridsKey]);
+  const endById = useMemo(() => Object.fromEntries(enderecos.map(e => [e.id, e])), [enderecos]);
 
   const daEmpresa = useMemo(
     () => contas.filter(c => (c.restaurantIds || []).includes(rid || ""))
@@ -149,6 +160,7 @@ export function ContasFixasPage() {
                       {c.valorEstimado ? ` · R$ ${c.valorEstimado.toFixed(2)}` : ""}
                       {c.observacoes ? ` · ${c.observacoes}` : ""}
                     </div>
+                    {c.enderecoId && endById[c.enderecoId] && <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">📍 {endById[c.enderecoId].apelido}</div>}
                   </div>
                   {aba === "visualizacao" && (
                     <button type="button" onClick={() => void togglePago(c)}
@@ -168,6 +180,7 @@ export function ContasFixasPage() {
           conta={editando}
           onClose={() => { setCriando(false); setEditando(null); }}
           restaurantes={restaurants.map(r => ({ id: r.id, nome: r.nome }))}
+          enderecos={enderecos}
           pessoaId={pessoa.id}
         />
       )}
@@ -289,10 +302,11 @@ function ImportContasModal({ onClose, restaurantes, pessoaId }: {
   );
 }
 
-function ContaFixaForm({ conta, onClose, restaurantes, pessoaId }: {
+function ContaFixaForm({ conta, onClose, restaurantes, enderecos, pessoaId }: {
   conta: ContaFixa | null;
   onClose: () => void;
   restaurantes: { id: string; nome: string }[];
+  enderecos: Endereco[];
   pessoaId: string;
 }) {
   const [f, setF] = useState<Partial<ContaFixa>>(conta ? { ...conta } : {
@@ -317,6 +331,7 @@ function ContaFixaForm({ conta, onClose, restaurantes, pessoaId }: {
       fornecedor: f.fornecedor,
       categoria: f.categoria || "outros",
       restaurantIds: f.restaurantIds || [],
+      enderecoId: f.enderecoId,
       valorEstimado: f.valorEstimado,
       pix: f.pix,
       banco: f.banco,
@@ -391,6 +406,19 @@ function ContaFixaForm({ conta, onClose, restaurantes, pessoaId }: {
               ))}
             </div>
           </Field>
+          {(() => {
+            const ridsSel = f.restaurantIds || [];
+            const opts = enderecos.filter(e => (ridsSel.length ? ridsSel.includes(e.restaurantId) : true) && (e.ativo !== false || e.id === f.enderecoId));
+            if (opts.length === 0 && !f.enderecoId) return null;
+            return (
+              <Field label="Endereço (opcional — útil p/ aluguel e consumo)">
+                <select value={f.enderecoId || ""} onChange={(e) => setF({ ...f, enderecoId: e.target.value || undefined })} className="cf-input">
+                  <option value="">— sem endereço —</option>
+                  {opts.map(e => <option key={e.id} value={e.id}>{e.apelido}{e.ativo === false ? " (inativo)" : ""}</option>)}
+                </select>
+              </Field>
+            );
+          })()}
           <Field label="Valor estimado (R$)">
             <input type="number" step="0.01" value={f.valorEstimado || ""} onChange={(e) => setF({ ...f, valorEstimado: e.target.value ? parseFloat(e.target.value) : undefined })} className="cf-input" />
           </Field>

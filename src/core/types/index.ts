@@ -4427,6 +4427,7 @@ export type ContaFixa = {
   fornecedor?: string;
   categoria: ContaFixaCategoria;
   restaurantIds: string[];      // empresa(s) pagadora(s)
+  enderecoId?: string;          // opcional — vincula a um endereço (útil p/ aluguel e consumo)
   valorEstimado?: number;
   pix?: string;
   banco?: string;

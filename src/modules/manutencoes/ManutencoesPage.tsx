@@ -35,7 +35,7 @@ export function ManutencoesPage() {
   const [enderecos, setEnderecos] = useState<Endereco[]>([]);
   const [aba, setAba] = useState<"visualizacao" | "cadastro">("visualizacao");
   const [filtroEnd, setFiltroEnd] = useState<string>("todas");
-  const [soObrig, setSoObrig] = useState(false);
+  const [filtroObrig, setFiltroObrig] = useState<"todos" | "com" | "sem">("todos");
   const [editando, setEditando] = useState<Manutencao | null>(null);
   const [apontando, setApontando] = useState<Manutencao | null>(null);
   const [criando, setCriando] = useState(false);
@@ -69,12 +69,13 @@ export function ManutencoesPage() {
   const endsDaEmpresa = enderecos.filter(e => e.restaurantId === rid);
   // Chips de filtro (unidade + laudo obrigatório) valem nas duas abas.
   const visiveis = daEmpresa.filter(m => {
-    if (soObrig && m.obrigatorio === false) return false;
+    if (filtroObrig === "com" && m.obrigatorio === false) return false;
+    if (filtroObrig === "sem" && m.obrigatorio !== false) return false;
     if (filtroEnd !== "todas" && !(m.enderecoIds || []).includes(filtroEnd)) return false;
     return true;
   });
   const vencidas = visiveis.filter(m => m.proximoVencimento < hoje).length;
-  const filtroAtivo = filtroEnd !== "todas" || soObrig;
+  const filtroAtivo = filtroEnd !== "todas" || filtroObrig !== "todos";
 
   const tab = (v: "visualizacao" | "cadastro", label: string) => (
     <button type="button" onClick={() => setAba(v)}
@@ -111,7 +112,8 @@ export function ManutencoesPage() {
               <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />
             </>
           )}
-          {chip(soObrig, "📋 Só laudo obrigatório", () => setSoObrig(v => !v))}
+          {chip(filtroObrig === "com", "📋 Com laudo obrigatório", () => setFiltroObrig(v => v === "com" ? "todos" : "com"))}
+          {chip(filtroObrig === "sem", "Sem laudo obrigatório", () => setFiltroObrig(v => v === "sem" ? "todos" : "sem"))}
         </div>
       )}
 
@@ -123,7 +125,7 @@ export function ManutencoesPage() {
         </div>
       ) : visiveis.length === 0 ? (
         <div className="text-center py-10 text-gray-500 dark:text-gray-400 text-sm">
-          Nenhum item com esse filtro. <button type="button" onClick={() => { setFiltroEnd("todas"); setSoObrig(false); }} className="text-indigo-600 hover:underline">limpar filtros</button>
+          Nenhum item com esse filtro. <button type="button" onClick={() => { setFiltroEnd("todas"); setFiltroObrig("todos"); }} className="text-indigo-600 hover:underline">limpar filtros</button>
         </div>
       ) : (
         <div className="space-y-2">
