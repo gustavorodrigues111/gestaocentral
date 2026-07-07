@@ -67,16 +67,14 @@ export function ManutencoesPage() {
   const hoje = new Date().toISOString().slice(0, 10);
   const daEmpresa = manutencoes.filter(m => (m.restaurantIds || []).includes(rid || "") || (m.enderecoIds || []).some(eid => endById[eid]?.restaurantId === rid));
   const endsDaEmpresa = enderecos.filter(e => e.restaurantId === rid);
-  // Filtros só valem na Visualização (chips de unidade + laudo obrigatório).
-  const filtrando = aba === "visualizacao";
+  // Chips de filtro (unidade + laudo obrigatório) valem nas duas abas.
   const visiveis = daEmpresa.filter(m => {
-    if (!filtrando) return true;
     if (soObrig && m.obrigatorio === false) return false;
     if (filtroEnd !== "todas" && !(m.enderecoIds || []).includes(filtroEnd)) return false;
     return true;
   });
   const vencidas = visiveis.filter(m => m.proximoVencimento < hoje).length;
-  const filtroAtivo = filtrando && (filtroEnd !== "todas" || soObrig);
+  const filtroAtivo = filtroEnd !== "todas" || soObrig;
 
   const tab = (v: "visualizacao" | "cadastro", label: string) => (
     <button type="button" onClick={() => setAba(v)}
@@ -104,7 +102,7 @@ export function ManutencoesPage() {
         <PastaRaizConfig rid={rid} folderId={activeRestaurant?.manutencoesDriveFolderId} folderNome={activeRestaurant?.manutencoesDriveFolderNome} />
       )}
 
-      {filtrando && daEmpresa.length > 0 && (endsDaEmpresa.length > 1 || daEmpresa.some(m => m.obrigatorio === false)) && (
+      {daEmpresa.length > 0 && (endsDaEmpresa.length > 1 || daEmpresa.some(m => m.obrigatorio === false)) && (
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
           {endsDaEmpresa.length > 1 && (
             <>
