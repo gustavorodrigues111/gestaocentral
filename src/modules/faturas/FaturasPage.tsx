@@ -553,7 +553,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
               {faturaId && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">rascunho</span>}
             </div>
             <div className="flex items-center gap-1.5">
-              <Button size="sm" variant="ghost" onClick={() => void descartar()} disabled={salvando}>Descartar</Button>
+              <Button size="sm" variant={faturaId ? "danger" : "ghost"} onClick={() => void descartar()} disabled={salvando}>{faturaId ? "🗑 Excluir fatura" : "Descartar"}</Button>
               <Button size="sm" variant="secondary" onClick={() => void persistir(false)} disabled={salvando}>{salvando ? "…" : "💾 Salvar rascunho"}</Button>
               <Button size="sm" onClick={() => void persistir(true)} disabled={salvando || (cartoes.length > 0 && !cartao)}>{salvando ? "…" : "✓ Fechar fatura"}</Button>
             </div>
