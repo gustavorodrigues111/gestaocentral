@@ -186,6 +186,7 @@ function ApontamentoModal({ manutencao, onClose, endsDaEmpresa, rootFolderId, pe
 
   const st = m.statusCiclo || "pendente";
   const aguardando = st === "realizado" && !!m.laudoPrevisto;
+  const mostraLaudo = m.obrigatorio !== false || m.permiteLaudo === true;
 
   async function patch(p: Partial<Manutencao>) {
     setM(prev => ({ ...prev, ...p }));
@@ -213,10 +214,10 @@ function ApontamentoModal({ manutencao, onClose, endsDaEmpresa, rootFolderId, pe
   }
 
   async function confirmarConclusao() {
-    if (laudoModo === "recebido" && m.obrigatorio !== false && !(m.laudos || []).length) {
+    if (mostraLaudo && laudoModo === "recebido" && m.obrigatorio !== false && !(m.laudos || []).length) {
       if (!confirm("Este item exige laudo e nenhum foi subido ainda. Concluir mesmo assim? (você pode subir depois)")) return;
     }
-    await patch({ ultimaExecucao: dataReal, proximoVencimento: novoVenc, statusCiclo: "realizado", laudoPrevisto: laudoModo === "aguardando" ? previsao : null });
+    await patch({ ultimaExecucao: dataReal, proximoVencimento: novoVenc, statusCiclo: "realizado", laudoPrevisto: (mostraLaudo && laudoModo === "aguardando") ? previsao : null });
     setConcluindo(false);
   }
 
@@ -267,14 +268,16 @@ function ApontamentoModal({ manutencao, onClose, endsDaEmpresa, rootFolderId, pe
               <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Concluir ciclo</div>
               <label className="flex items-center justify-between gap-2 text-sm"><span className="text-xs text-gray-600 dark:text-gray-300">Foi realizado em</span><input type="date" value={dataReal} onChange={(e) => setDataReal(e.target.value)} className={inp} /></label>
               <label className="flex items-center justify-between gap-2 text-sm"><span className="text-xs text-gray-600 dark:text-gray-300">Novo vencimento (do laudo ou pela periodicidade)</span><input type="date" value={novoVenc} onChange={(e) => setNovoVenc(e.target.value)} className={inp} /></label>
-              <div>
-                <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">Laudo</div>
-                <div className="flex flex-col gap-1.5">
-                  <label className="flex items-center gap-2 text-sm"><input type="radio" checked={laudoModo === "recebido"} onChange={() => setLaudoModo("recebido")} /> Já recebi o laudo {(m.laudos || []).length ? "✓" : "(suba abaixo 📎)"}</label>
-                  <label className="flex items-center gap-2 text-sm"><input type="radio" checked={laudoModo === "aguardando"} onChange={() => setLaudoModo("aguardando")} /> Ainda não recebi — aguardando</label>
-                  {laudoModo === "aguardando" && <label className="flex items-center gap-2 text-sm pl-6"><span className="text-xs text-gray-500">Previsão de receber:</span><input type="date" value={previsao} onChange={(e) => setPrevisao(e.target.value)} className={inp} /></label>}
+              {mostraLaudo && (
+                <div>
+                  <div className="text-xs text-gray-600 dark:text-gray-300 mb-1">Laudo</div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="flex items-center gap-2 text-sm"><input type="radio" checked={laudoModo === "recebido"} onChange={() => setLaudoModo("recebido")} /> Já recebi o laudo {(m.laudos || []).length ? "✓" : "(suba abaixo 📎)"}</label>
+                    <label className="flex items-center gap-2 text-sm"><input type="radio" checked={laudoModo === "aguardando"} onChange={() => setLaudoModo("aguardando")} /> Ainda não recebi — aguardando</label>
+                    {laudoModo === "aguardando" && <label className="flex items-center gap-2 text-sm pl-6"><span className="text-xs text-gray-500">Previsão de receber:</span><input type="date" value={previsao} onChange={(e) => setPrevisao(e.target.value)} className={inp} /></label>}
+                  </div>
                 </div>
-              </div>
+              )}
               <div className="flex gap-2 justify-end pt-1">
                 <Button size="sm" variant="ghost" onClick={() => setConcluindo(false)}>Cancelar</Button>
                 <Button size="sm" onClick={() => void confirmarConclusao()}>Confirmar</Button>
@@ -283,6 +286,9 @@ function ApontamentoModal({ manutencao, onClose, endsDaEmpresa, rootFolderId, pe
           )}
 
           {/* Laudos */}
+          {!mostraLaudo ? (
+            <p className="text-xs text-gray-400 italic border-t border-gray-100 dark:border-gray-800 pt-3">Item sem laudo. (Pra habilitar o anexo, ligue “Permitir subir laudo” no 📝 Cadastro.)</p>
+          ) : (
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <div className="text-xs font-medium text-gray-700 dark:text-gray-300">Laudos ({laudos.length})</div>
@@ -311,6 +317,7 @@ function ApontamentoModal({ manutencao, onClose, endsDaEmpresa, rootFolderId, pe
               </div>
             )}
           </div>
+          )}
         </div>
 
         <div className="flex justify-end mt-4"><Button variant="ghost" onClick={onClose}>Fechar</Button></div>
@@ -341,6 +348,7 @@ function ManutencaoForm({ manutencao, onClose, restaurants, enderecos, pessoaId 
     const data: Manutencao = {
       id, tipo: f.tipo, fornecedor: f.fornecedor, descricao: f.descricao,
       restaurantIds: rids.length ? rids : (f.restaurantIds || []), enderecoIds: endIds, obrigatorio: f.obrigatorio ?? true,
+      permiteLaudo: (f.obrigatorio ?? true) ? undefined : (f.permiteLaudo ?? false),
       statusCiclo: f.statusCiclo, agendadoPara: f.agendadoPara, laudos: f.laudos,
       periodicidade: f.periodicidade || "semestral", periodicidadeCustomDias: f.periodicidadeCustomDias,
       proximoVencimento: f.proximoVencimento, ultimaExecucao: f.ultimaExecucao, diasAntecedencia: f.diasAntecedencia ?? 30,
@@ -386,6 +394,12 @@ function ManutencaoForm({ manutencao, onClose, restaurants, enderecos, pessoaId 
             )}
           </Field>
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" checked={f.obrigatorio ?? true} onChange={(e) => setF({ ...f, obrigatorio: e.target.checked })} />Obrigatório (gera laudo / prazo rígido)</label>
+          {f.obrigatorio === false && (
+            <label className="flex items-start gap-2 text-sm text-gray-700 dark:text-gray-300 pl-6 -mt-1">
+              <input type="checkbox" checked={f.permiteLaudo ?? false} onChange={(e) => setF({ ...f, permiteLaudo: e.target.checked })} className="mt-0.5" />
+              <span>Permitir subir laudo neste item<span className="block text-[11px] text-gray-500 dark:text-gray-400">Deixe desligado em itens sem laudo (ex.: certificado digital) — o botão de anexo some no apontamento, evitando subir arquivo por engano.</span></span>
+            </label>
+          )}
           <Field label="Periodicidade *">
             <select value={f.periodicidade} onChange={(e) => setF({ ...f, periodicidade: e.target.value as ManutencaoPeriodicidade })} className="mt-input">
               {(Object.keys(MANUTENCAO_PERIODICIDADE_LABEL) as ManutencaoPeriodicidade[]).map(p => <option key={p} value={p}>{MANUTENCAO_PERIODICIDADE_LABEL[p]}</option>)}

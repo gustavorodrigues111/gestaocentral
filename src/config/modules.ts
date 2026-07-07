@@ -44,7 +44,7 @@ export const MODULES: ModuleDef[] = [
 
   // ── Pessoas Externas & Infra ─────────────────────────────────────
   { id: "freelas",     area: "ops", subarea: "Pessoas Externas & Infra", label: "Freelas",        icon: "🎒", status: "ativo", etapa: "beta",               desc: "Cadastro, agendamento, lançamento e pagamento de freelas", dependsOn: ["pessoas", "escala"] },
-  { id: "manutencoes", area: "ops", subarea: "Pessoas Externas & Infra", label: "Manutenções & Licenças", icon: "🛠️", status: "ativo", etapa: "beta",         desc: "Cadastro mestre de manutenções e licenças (potabilidade, dedetização, CLCB, alvarás). Gera lembretes no Gestor de Tarefas." },
+  { id: "manutencoes", area: "ops", subarea: "Pessoas Externas & Infra", label: "Prazos Técnicos", icon: "🛠️", status: "ativo", etapa: "beta",         desc: "Prazos técnicos e operacionais: manutenções, licenças e certificados (potabilidade, dedetização, CLCB, alvarás). Gera lembretes na Central de Avisos." },
 
   // ── ocultos (operação) ───────────────────────────────────────────
   { id: "temperaturas", area: "ops", label: "Temperaturas",      icon: "🌡️", status: "planejado", etapa: "em_desenvolvimento", desc: "Monitoramento e alertas", oculto: true },

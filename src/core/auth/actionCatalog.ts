@@ -549,8 +549,8 @@ export const CATALOGO: CatalogoModulo[] = [
   {
     id: "manutencoes",
     icon: "🛠️",
-    label: "Manutenções & Licenças",
-    desc: "Cadastro mestre de manutenções e licenças (gera tarefas-lembrete)",
+    label: "Prazos Técnicos",
+    desc: "Prazos técnicos: manutenções, licenças e certificados (gera lembretes na Central de Avisos)",
     area: "gestao",
     acoes: [
       { id: "ver",      label: "Ver manutenções e licenças cadastradas" },

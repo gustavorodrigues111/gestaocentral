@@ -4524,6 +4524,7 @@ export type Manutencao = {
   restaurantIds: string[];              // derivado dos endereços (scoping/compat)
   enderecoIds?: string[];               // N:N — 1 item pode cobrir vários endereços
   obrigatorio?: boolean;                // true = gera laudo / prazo rígido; false = flexível
+  permiteLaudo?: boolean;               // só flexíveis: liga o botão de subir laudo (obrigatório sempre permite)
   // Apontamento do ciclo atual (aba Visualização):
   statusCiclo?: "pendente" | "agendado" | "realizado";
   agendadoPara?: string | null;         // YYYY-MM-DD quando statusCiclo = "agendado"
