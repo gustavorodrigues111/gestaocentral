@@ -5663,6 +5663,9 @@ export type CartaoLancamento = {
   // = gasto 100% próprio. Fonte de verdade do reembolso.
   rateio?: CartaoRateioParte[];
   empresasRateadas?: string[];          // ids das empresas no rateio (pra array-contains)
+  // Ignorado = não conta na fatura (ex: pagamento da fatura anterior). Fica
+  // salvo e visível (riscado), mas fora de totais/reembolso.
+  ignorado?: boolean;
   // Publicado = a fatura pai foi FECHADA. Só publicado dispara reembolso/aviso
   // pra outra empresa. Enquanto rascunho, publicado=false (invisível pras outras).
   publicado?: boolean;

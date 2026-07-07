@@ -139,7 +139,7 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, catNome, restNome, meId,
   const outras = outrasRaw.filter(l => l.publicado && passaCartao(l));
   // Minhas faturas = a fatura inteira é minha; os itens a reembolsar ganham selo.
   const minhasTodas = minhas.filter(passaCartao);
-  const totalMinhas = minhasTodas.reduce((s, l) => s + (l.valor || 0), 0);
+  const totalMinhas = minhasTodas.filter(l => !l.ignorado).reduce((s, l) => s + (l.valor || 0), 0);
   const totalAReceber = minhasTodas.reduce((s, l) => s + aReembolsar(l), 0);
   const totalOutrasPend = outras.reduce((s, l) => { const p = minhaParte(l); return s + (p && p.status !== "pago" ? (p.valor || 0) : 0); }, 0);
 
@@ -168,7 +168,7 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, catNome, restNome, meId,
     finally { setPagando(""); }
   }
 
-  const exportarLancs = sub === "minhas" ? minhasTodas : outras;
+  const exportarLancs = sub === "minhas" ? minhasTodas.filter(l => !l.ignorado) : outras;
   const exportarTitulo = sub === "minhas" ? "Minhas faturas" : "Reembolsos a pagar";
 
   return (
@@ -274,15 +274,16 @@ function LancTabela({ lancs, catNome, mostrarStatus, mostrarReembolso, restNome 
               ? `${restNome?.[partes[0].empresaId] || "empresa"}${partes[0].percentual < 100 ? ` ${partes[0].percentual}%` : ""}`
               : `rateio · ${partes.length} empresas`;
             return (
-            <tr key={l.id} className="border-t border-gray-100 dark:border-gray-800">
+            <tr key={l.id} className={`border-t border-gray-100 dark:border-gray-800 ${l.ignorado ? "opacity-45" : ""}`}>
               <td className="px-3 py-1.5 whitespace-nowrap text-gray-500">{l.dataOriginal || l.data}</td>
               <td className="px-3 py-1.5">
-                <span>{l.descricao}</span>{l.parcela && <span className="ml-1 text-[10px] text-gray-400">({l.parcela})</span>}
-                {ehReembolso && <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 whitespace-nowrap">↩ {seloTxt}{todasPagas ? " · pago" : ""}</span>}
+                <span className={l.ignorado ? "line-through" : ""}>{l.descricao}</span>{l.parcela && <span className="ml-1 text-[10px] text-gray-400">({l.parcela})</span>}
+                {l.ignorado && <span className="ml-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400 whitespace-nowrap">ignorado</span>}
+                {ehReembolso && !l.ignorado && <span className="ml-1.5 text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 whitespace-nowrap">↩ {seloTxt}{todasPagas ? " · pago" : ""}</span>}
               </td>
               <td className="px-3 py-1.5 text-gray-600 dark:text-gray-300">{catNome(l.categoriaId)}</td>
               <td className="px-3 py-1.5 text-[11px] text-gray-400">{l.cartao}</td>
-              <td className={`px-3 py-1.5 text-right tabular-nums ${l.valor < 0 ? "text-emerald-600" : "text-gray-900 dark:text-gray-100"}`}>{fmtBRL(l.valor)}</td>
+              <td className={`px-3 py-1.5 text-right tabular-nums ${l.ignorado ? "line-through text-gray-400" : l.valor < 0 ? "text-emerald-600" : "text-gray-900 dark:text-gray-100"}`}>{fmtBRL(l.valor)}</td>
               {mostrarStatus && <td className="px-3 py-1.5 text-right whitespace-nowrap">{l.reembolsoStatus === "pago" ? <span className="text-[10px] font-semibold text-emerald-600">✓ pago</span> : <span className="text-[10px] font-semibold text-amber-600">pendente</span>}</td>}
             </tr>
             );
@@ -327,7 +328,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
     setLinhas(lancs.map(l => ({
       data: l.dataOriginal || (l.data ? l.data.slice(8, 10) + "/" + l.data.slice(5, 7) : ""),
       descricao: l.descricao, valor: l.valor, parcela: l.parcela || null,
-      rateio: rateioDeLanc(l), categoriaId: l.categoriaId || null,
+      rateio: rateioDeLanc(l), categoriaId: l.categoriaId || null, ignorar: l.ignorado || undefined,
     })));
   }
   function limpar() { setLinhas([]); setVenc(null); setTotalFatura(null); setCartao(""); setFaturaId(null); setErro(""); setTrocandoCartao(false); }
@@ -361,7 +362,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   // Memória de comerciante: por nome normalizado → última classificação (categoria + rateio).
   const memoria = useMemo(() => {
     const m = new Map<string, { categoriaId: string | null; rateio: RateioSimples[] }>();
-    for (const l of minhas) { const k = normNome(l.descricao); if (k && !m.has(k)) m.set(k, { categoriaId: l.categoriaId || null, rateio: rateioDeLanc(l) }); }
+    for (const l of minhas) { if (l.ignorado) continue; const k = normNome(l.descricao); if (k && !m.has(k)) m.set(k, { categoriaId: l.categoriaId || null, rateio: rateioDeLanc(l) }); }
     return m;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [minhas]);
@@ -453,10 +454,19 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         criadoEm: faturaAtual?.criadoEm || agora, criadoPor: faturaAtual?.criadoPor || meId || null,
       }));
       // Apaga lançamentos antigos desta fatura e regrava os atuais (ids determinísticos).
-      // Linhas ignoradas (ex: pagamento da fatura anterior) NÃO são gravadas.
+      // Linhas ignoradas ficam salvas (ignorado:true), fora de totais/reembolso.
       for (const old of minhas.filter(l => l.faturaId === fid)) batch.delete(doc(db, "cartaoLancamentos", old.id));
-      linhas.filter(l => !l.ignorar).forEach((l, i) => {
+      linhas.forEach((l, i) => {
         const id = `${fid}_${i}`;
+        if (l.ignorar) {
+          batch.set(doc(db, "cartaoLancamentos", id), sanitizeForFirestore({
+            id, restaurantId: rid, faturaId: fid, cartao,
+            data: ymdDe(l.data), dataOriginal: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, obs: null,
+            destinoTipo: "propria", empresaAtribuidaId: null, rateio: null, empresasRateadas: null, categoriaId: null,
+            ignorado: true, publicado: fechar, criadoEm: agora, criadoPor: meId || null,
+          }));
+          return;
+        }
         // Rateio: normaliza (%>0) e calcula o valor de cada fatia.
         const partes: CartaoRateioParte[] = (l.rateio || []).filter(p => p.empresaId && p.percentual > 0).map(p => ({
           empresaId: p.empresaId, percentual: p.percentual, valor: round2((l.valor || 0) * p.percentual / 100),
@@ -470,7 +480,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
           empresaAtribuidaId: partes.length === 1 ? partes[0].empresaId : null,   // legado (1 empresa)
           rateio: ehEmpresa ? partes : null,
           empresasRateadas: ehEmpresa ? partes.map(p => p.empresaId) : null,
-          categoriaId: l.categoriaId,
+          categoriaId: l.categoriaId, ignorado: false,
           publicado: fechar,                                 // só publica ao fechar
           reembolsoDataPagamento: fechar && ehEmpresa ? (venc || null) : null,
           reembolsoChavePix: fechar && ehEmpresa ? (pixPadrao || null) : null,
@@ -499,40 +509,23 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         {erro && <p className="text-xs text-rose-600 mt-2">{erro}</p>}
       </div>
 
-      {/* Rascunhos em aberto — continuar editando (só quando não está editando) */}
-      {!editando && rascunhos.length > 0 && (
-        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-2">
-          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">📝 Rascunhos em aberto</div>
-          <p className="text-xs text-gray-500">Faturas salvas mas ainda não fechadas — nada foi publicado pras outras empresas.</p>
-          <div className="divide-y divide-gray-100 dark:divide-gray-800">
-            {rascunhos.map(f => {
-              const n = minhas.filter(l => l.faturaId === f.id).length;
-              return (
-                <div key={f.id} className="flex items-center justify-between gap-2 py-2">
-                  <div className="min-w-0 text-sm">
-                    <span className="font-medium text-gray-900 dark:text-gray-100">{f.cartao || "Cartão —"}</span>
-                    <span className="text-gray-400"> · {n} lançamento{n === 1 ? "" : "s"}{f.vencimento ? ` · venc ${f.vencimento.split("-").reverse().join("/")}` : ""}</span>
-                  </div>
-                  <Button size="sm" variant="secondary" onClick={() => carregarRascunho(f)}>Continuar</Button>
-                </div>
-              );
-            })}
-          </div>
+      {/* Chips de navegação entre faturas em aberto — sempre no topo */}
+      {(rascunhos.length > 0 || editando) && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-gray-400 mr-0.5">Faturas em aberto:</span>
+          {rascunhos.map(f => (
+            <SubChip key={f.id} ativo={f.id === faturaId} onClick={() => trocarPara(f)}>{f.cartao || "Cartão —"}{f.vencimento ? ` · ${f.vencimento.slice(8, 10)}/${f.vencimento.slice(5, 7)}` : ""}</SubChip>
+          ))}
+          {editando && !faturaId && <SubChip ativo onClick={() => { /* atual */ }}>{cartao || "Nova"} · não salva</SubChip>}
         </div>
+      )}
+
+      {!editando && rascunhos.length > 0 && (
+        <Vazio texto="Selecione uma fatura acima pra continuar, ou suba um novo PDF." />
       )}
 
       {editando && (
         <>
-          {/* Navegação entre faturas em aberto — por chips (não confundir com editar o cartão) */}
-          {(rascunhos.length > 0 || !faturaId) && (
-            <div className="flex flex-wrap items-center gap-1.5">
-              <span className="text-[11px] text-gray-400 mr-0.5">Faturas em aberto:</span>
-              {rascunhos.map(f => (
-                <SubChip key={f.id} ativo={f.id === faturaId} onClick={() => trocarPara(f)}>{f.cartao || "Cartão —"}{f.vencimento ? ` · ${f.vencimento.slice(8, 10)}/${f.vencimento.slice(5, 7)}` : ""}</SubChip>
-              ))}
-              {!faturaId && <SubChip ativo onClick={() => { /* atual */ }}>{cartao || "Nova"} · não salva</SubChip>}
-            </div>
-          )}
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3 flex-wrap text-xs">
               <div className="flex items-center gap-1.5">
