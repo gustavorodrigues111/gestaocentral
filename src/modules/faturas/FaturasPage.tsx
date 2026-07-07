@@ -28,6 +28,18 @@ const fmtBRL = (v: number) => (v || 0).toLocaleString("pt-BR", { style: "currenc
 const normNome = (s: string) => (s || "").toUpperCase().replace(/\d/g, "").replace(/[^A-Z ]/g, "").trim().slice(0, 18);
 const mesAtual = () => new Date().toISOString().slice(0, 7);
 
+// Select com cara de chip/pílula colorida por estado.
+const chipSelect = (v: "empresa" | "neutro" | "ok" | "vazio"): string => {
+  const base = "text-xs font-medium rounded-full pl-2.5 pr-1 py-1 border cursor-pointer max-w-[160px] ";
+  const styles: Record<typeof v, string> = {
+    empresa: "border-violet-300 bg-violet-50 text-violet-700 dark:bg-violet-900/25 dark:text-violet-300 dark:border-violet-700",
+    neutro: "border-gray-200 bg-gray-50 text-gray-600 dark:bg-gray-800/50 dark:text-gray-300 dark:border-gray-700",
+    ok: "border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300 dark:border-indigo-700",
+    vazio: "border-amber-300 border-dashed bg-amber-50/60 text-amber-700 dark:text-amber-300 dark:border-amber-700 dark:bg-transparent",
+  };
+  return base + styles[v];
+};
+
 type Extraido = { data: string; descricao: string; valor: number; parcela: string | null; destinoTipo: "propria" | "empresa"; empresaAtribuidaId: string | null; categoriaId: string | null };
 
 export function FaturasPage() {
@@ -90,7 +102,7 @@ export function FaturasPage() {
 
       {aba === "visualizacao" && <Visualizacao minhas={minhas} outras={outras} catNome={catNome} restNome={restNome} meId={me?.id} meNome={me?.nome} />}
       {aba === "classificacao" && podeClassificar && (
-        <Classificacao rid={rid} meId={me?.id} pixPadrao={activeRestaurant?.cartaoChavePixPadrao} cartoes={activeRestaurant?.cartoesCadastrados || []} outrasEmpresas={outrasEmpresas} catsDe={catsDe} minhas={minhas} />
+        <Classificacao rid={rid} meId={me?.id} pixPadrao={activeRestaurant?.cartaoChavePixPadrao} cartoes={activeRestaurant?.cartoesCadastrados || []} empresaPropriaNome={activeRestaurant?.nome || restNome[rid] || ""} outrasEmpresas={outrasEmpresas} catsDe={catsDe} minhas={minhas} />
       )}
       {aba === "categorias" && podeCategorias && <Categorias rid={rid} categorias={catsDe(rid)} pixPadrao={activeRestaurant?.cartaoChavePixPadrao || ""} cartoes={activeRestaurant?.cartoesCadastrados || []} />}
     </div>
@@ -209,8 +221,8 @@ function LancTabela({ lancs, catNome, mostrarStatus }: { lancs: CartaoLancamento
 }
 
 // ─── Classificação (subir + extrair + classificar + salvar) ──────────────────
-function Classificacao({ rid, meId, pixPadrao, cartoes, outrasEmpresas, catsDe, minhas }: {
-  rid: string; meId?: string; pixPadrao?: string; cartoes: string[]; outrasEmpresas: { id: string; nome: string }[];
+function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outrasEmpresas, catsDe, minhas }: {
+  rid: string; meId?: string; pixPadrao?: string; cartoes: string[]; empresaPropriaNome: string; outrasEmpresas: { id: string; nome: string }[];
   catsDe: (entId: string) => CartaoCategoria[]; minhas: CartaoLancamento[];
 }) {
   const [cartao, setCartao] = useState("");        // identificado pela IA; editável
@@ -236,15 +248,33 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, outrasEmpresas, catsDe, 
       const path = `faturas-cartao/${rid}/${Date.now()}_${file.name.replace(/[^\w.\-]+/g, "_")}`;
       const snap = await uploadBytes(storageRef(storage, path), file, { contentType: "application/pdf" });
       const url = await getDownloadURL(snap.ref);
-      const r = await fetch("/api/fatura-extrair", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ pdfUrl: url, cartoes }) });
+      const empresasNomes = outrasEmpresas.map(e => e.nome);
+      const catNomes = [...new Set([rid, ...outrasEmpresas.map(e => e.id)].flatMap(id => catsDe(id).map(c => c.nome)))];
+      const r = await fetch("/api/fatura-extrair", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ pdfUrl: url, cartoes, empresaPropria: empresaPropriaNome, empresas: empresasNomes, categorias: catNomes }) });
       const j = await r.json();
       if (!r.ok) { setErro(j.error || "Falha na extração."); return; }
       setVenc(j.vencimento || null); setTotalFatura(typeof j.totalFatura === "number" ? j.totalFatura : null);
       setCartao(typeof j.cartao === "string" && j.cartao ? j.cartao : "");
-      const novas: Extraido[] = (j.lancamentos || []).map((l: { data: string; descricao: string; valor: number; parcela: string | null }) => {
-        const mem = memoria.get(normNome(l.descricao));
-        return { data: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela,
-          destinoTipo: mem?.destinoTipo || "propria", empresaAtribuidaId: mem?.empresaAtribuidaId || null, categoriaId: mem?.categoriaId || null };
+      const novas: Extraido[] = (j.lancamentos || []).map((l: { data: string; descricao: string; valor: number; parcela: string | null; destinoEmpresa?: string | null; categoriaSugerida?: string | null }) => {
+        // 1) sugestão da IA: destino (outra empresa) + categoria
+        let destinoTipo: "propria" | "empresa" = "propria";
+        let empresaAtribuidaId: string | null = null;
+        if (l.destinoEmpresa) {
+          const emp = outrasEmpresas.find(e => e.nome.toLowerCase() === l.destinoEmpresa!.toLowerCase());
+          if (emp) { destinoTipo = "empresa"; empresaAtribuidaId = emp.id; }
+        }
+        const destEnt = destinoTipo === "propria" ? rid : empresaAtribuidaId;
+        let categoriaId: string | null = null;
+        if (l.categoriaSugerida && destEnt) {
+          const cat = catsDe(destEnt).find(c => c.nome.toLowerCase() === l.categoriaSugerida!.toLowerCase());
+          if (cat) categoriaId = cat.id;
+        }
+        // 2) fallback: memória de comerciante (só se a IA não sugeriu nada)
+        if (destinoTipo === "propria" && !categoriaId) {
+          const mem = memoria.get(normNome(l.descricao));
+          if (mem) { destinoTipo = mem.destinoTipo; empresaAtribuidaId = mem.empresaAtribuidaId; categoriaId = mem.categoriaId; }
+        }
+        return { data: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, destinoTipo, empresaAtribuidaId, categoriaId };
       });
       setLinhas(novas);
     } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao subir/extrair."); }
@@ -333,6 +363,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, outrasEmpresas, catsDe, 
             </div>
             <Button size="sm" onClick={() => void salvar()} disabled={salvando || (cartoes.length > 0 && !cartao)}>{salvando ? "Salvando…" : "✓ Salvar fatura"}</Button>
           </div>
+          <p className="text-[11px] text-gray-500 flex items-center gap-1">✨ A IA já sugeriu <b className="text-violet-600 dark:text-violet-300">destino</b> e <b className="text-indigo-600 dark:text-indigo-300">categoria</b> — clique nas pílulas pra ajustar o que precisar.</p>
           <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
             <table className="w-full min-w-[640px] text-sm">
               <thead><tr className="text-[11px] uppercase text-gray-400 bg-gray-50 dark:bg-gray-900/40">
@@ -350,14 +381,14 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, outrasEmpresas, catsDe, 
                       <td className="px-2 py-1.5">
                         <select value={l.destinoTipo === "propria" ? "__minha__" : (l.empresaAtribuidaId || "")}
                           onChange={e => { const v = e.target.value; v === "__minha__" ? setDestino(i, "propria", null) : setDestino(i, "empresa", v); }}
-                          className={`${inp} py-1 text-xs`}>
+                          className={chipSelect(l.destinoTipo === "empresa" ? "empresa" : "neutro")}>
                           <option value="__minha__">Minha</option>
                           {outrasEmpresas.map(em => <option key={em.id} value={em.id}>{em.nome}</option>)}
                         </select>
                       </td>
                       <td className="px-2 py-1.5">
-                        <select value={l.categoriaId || ""} onChange={e => setLinha(i, { categoriaId: e.target.value || null })} className={`${inp} py-1 text-xs ${!l.categoriaId ? "border-amber-300" : ""}`}>
-                          <option value="">— categoria —</option>
+                        <select value={l.categoriaId || ""} onChange={e => setLinha(i, { categoriaId: e.target.value || null })} className={chipSelect(l.categoriaId ? "ok" : "vazio")}>
+                          <option value="">+ categoria</option>
                           {cats.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
                         </select>
                       </td>

@@ -15,12 +15,20 @@ const REQ_TIMEOUT_MS = 55_000;
 type VercelReq = { method?: string; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
 
-function montarPrompt(cartoes: string[]): string {
+function montarPrompt(cartoes: string[], empresaPropria: string, empresas: string[], categorias: string[]): string {
   const listaCartoes = cartoes.length
     ? "8) cartao = identifique de QUAL cartão é esta fatura, escolhendo EXATAMENTE UM desta lista cadastrada: " + JSON.stringify(cartoes) +
       ". Use a bandeira (Mastercard/Visa/Elo), o banco/emissor e os 4 últimos dígitos que aparecem no PDF pra casar. Retorne a string idêntica à da lista. Se nenhum casar com confiança, retorne null.\n"
     : "8) cartao = null (nenhum cartão cadastrado pra casar).\n";
-  return "Você recebe o PDF de uma FATURA de cartão de crédito (Itaú, Santander, etc). Extraia TODOS os lançamentos e os dados da fatura. Regras:\n" +
+  const propria = empresaPropria || "a própria entidade";
+  const destinoRegra =
+    "9) destino = pra quem é o gasto. Use \"propria\" quando for gasto da própria entidade (" + propria + "). " +
+    (empresas.length ? "Use o NOME EXATO de uma destas outras empresas quando o gasto for claramente dela (ex: compra pra loja X): " + JSON.stringify(empresas) + ". Na dúvida, \"propria\"." : "Sempre \"propria\" (não há outras empresas cadastradas).") + "\n";
+  const categoriaRegra = categorias.length
+    ? "10) categoria = classifique cada lançamento em UMA destas categorias, retornando o NOME EXATO (ou null se nenhuma servir): " + JSON.stringify(categorias) +
+      ". Use o nome do estabelecimento pra inferir com bom senso (ex: SUPERMERCADO/HORTIFRUTI→mercado/insumos, PAPELARIA→material de escritório, POSTO/ipiranga/shell→combustível, UBER/99/pedágio/tag→transporte, farmácia→saúde, restaurante/ifood→alimentação). Seja consistente: mesmo estabelecimento → mesma categoria.\n"
+    : "10) categoria = null (nenhuma categoria cadastrada).\n";
+  return "Você recebe o PDF de uma FATURA de cartão de crédito (Itaú, Santander, etc). Extraia TODOS os lançamentos, classifique-os e devolva os dados da fatura. Aja como um analista financeiro classificando os gastos numa conversa. Regras:\n" +
   "1) Para CADA lançamento (compra, estorno, encargo, anuidade, IOF): data ('DD/MM'), descricao (nome do estabelecimento, SEM o código de parcela grudado), valor (número), parcela.\n" +
   "2) valor = número em reais. Use ponto decimal. ESTORNOS/CRÉDITOS/PAGAMENTOS a favor do cliente = valor NEGATIVO. Ex: '1.977,50' → 1977.50 ; '-30,98' → -30.98.\n" +
   "3) parcela = se a descrição tiver marca de parcela (ex: 'MURR CADEIRAS LTDA03/03', 'AGP*BARFACIL*T08/12'), extraia como '03/03' / '08/12' e TIRE ela da descricao. Se não for parcelado, parcela = null.\n" +
@@ -28,8 +36,8 @@ function montarPrompt(cartoes: string[]): string {
   "5) vencimento = data de vencimento da fatura no formato 'YYYY-MM-DD'.\n" +
   "6) totalFatura = o valor do 'Total desta fatura' (número, ponto decimal).\n" +
   "7) NÃO invente nada. Se um campo não existir, use null.\n" +
-  listaCartoes +
-  "\nResponda SOMENTE um objeto JSON (sem texto antes/depois): { \"cartao\": \"...\"|null, \"vencimento\": \"YYYY-MM-DD\"|null, \"totalFatura\": number|null, \"lancamentos\": [ { \"data\": \"DD/MM\", \"descricao\": \"...\", \"valor\": number, \"parcela\": \"XX/YY\"|null } ] }";
+  listaCartoes + destinoRegra + categoriaRegra +
+  "\nResponda SOMENTE um objeto JSON (sem texto antes/depois): { \"cartao\": \"...\"|null, \"vencimento\": \"YYYY-MM-DD\"|null, \"totalFatura\": number|null, \"lancamentos\": [ { \"data\": \"DD/MM\", \"descricao\": \"...\", \"valor\": number, \"parcela\": \"XX/YY\"|null, \"destino\": \"propria\"|\"<nome empresa>\", \"categoria\": \"<nome>\"|null } ] }";
 }
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
@@ -41,10 +49,14 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) { res.status(500).json({ error: "ANTHROPIC_API_KEY não configurada nas env vars da Vercel." }); return; }
 
-  const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as { pdfUrl?: string; cartoes?: string[] } | null;
+  const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as { pdfUrl?: string; cartoes?: string[]; empresaPropria?: string; empresas?: string[]; categorias?: string[] } | null;
   const pdfUrl = (body?.pdfUrl || "").toString();
   if (!/^https?:\/\//.test(pdfUrl)) { res.status(400).json({ error: "pdfUrl inválida." }); return; }
-  const cartoes = Array.isArray(body?.cartoes) ? body!.cartoes.filter((c) => typeof c === "string" && c.trim()).slice(0, 20) : [];
+  const strArr = (v: unknown, n: number) => Array.isArray(v) ? v.filter((c) => typeof c === "string" && c.trim()).map((c) => (c as string).trim()).slice(0, n) : [];
+  const cartoes = strArr(body?.cartoes, 20);
+  const empresaPropria = (body?.empresaPropria || "").toString().slice(0, 80);
+  const empresas = strArr(body?.empresas, 30);
+  const categorias = strArr(body?.categorias, 60);
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
@@ -60,7 +72,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       max_tokens: 16000,
       messages: [{ role: "user", content: [
         { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } },
-        { type: "text", text: montarPrompt(cartoes) },
+        { type: "text", text: montarPrompt(cartoes, empresaPropria, empresas, categorias) },
       ] }],
     };
     const resp = await fetch(ANTHROPIC_URL, {
@@ -75,10 +87,16 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     const textOut = (json.content || []).filter((b) => b.type === "text").map((b) => b.text || "").join("");
     const m = textOut.match(/\{[\s\S]*\}/);
     if (!m) { res.status(502).json({ error: "A IA não retornou JSON." }); return; }
-    const parsed = JSON.parse(m[0]) as { cartao?: string | null; vencimento?: string | null; totalFatura?: number | null; lancamentos?: Array<{ data?: string; descricao?: string; valor?: number; parcela?: string | null }> };
+    const parsed = JSON.parse(m[0]) as { cartao?: string | null; vencimento?: string | null; totalFatura?: number | null; lancamentos?: Array<{ data?: string; descricao?: string; valor?: number; parcela?: string | null; destino?: string | null; categoria?: string | null }> };
+    // Resolve destino/categoria sugeridos contra as listas cadastradas (case-insensitive).
+    const acharEmpresa = (nome?: string | null) => (nome && nome.toLowerCase() !== "propria" && nome.toLowerCase() !== "minha") ? (empresas.find((e) => e.toLowerCase() === String(nome).toLowerCase().trim()) || null) : null;
+    const acharCategoria = (nome?: string | null) => nome ? (categorias.find((c) => c.toLowerCase() === String(nome).toLowerCase().trim()) || null) : null;
     const lancamentos = (Array.isArray(parsed.lancamentos) ? parsed.lancamentos : [])
       .filter((l) => l && typeof l.descricao === "string" && l.descricao.trim() && typeof l.valor === "number")
-      .map((l) => ({ data: String(l.data || "").trim(), descricao: String(l.descricao).trim(), valor: Number(l.valor), parcela: l.parcela ? String(l.parcela).trim() : null }));
+      .map((l) => ({
+        data: String(l.data || "").trim(), descricao: String(l.descricao).trim(), valor: Number(l.valor), parcela: l.parcela ? String(l.parcela).trim() : null,
+        destinoEmpresa: acharEmpresa(l.destino), categoriaSugerida: acharCategoria(l.categoria),
+      }));
     // Só aceita cartão se casar (case-insensitive) com um dos cadastrados.
     const cartaoDetectado = typeof parsed.cartao === "string"
       ? (cartoes.find((c) => c.toLowerCase() === parsed.cartao!.toLowerCase().trim()) || null)
