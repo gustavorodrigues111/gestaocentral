@@ -39,7 +39,7 @@ export type AccessProfile = {
 
 // ─── TIPOS BASE ───
 
-export type ModuleArea = "ops" | "dp" | "fin" | "inst" | "master";
+export type ModuleArea = "ops" | "dp" | "fin" | "agenda" | "inst" | "master";
 
 export type ModuleId =
   // Operação
@@ -55,6 +55,9 @@ export type ModuleId =
   | "uniformes"
   // Gestor de Tarefas + cadastros mestres
   | "tarefas" | "contasFixas" | "manutencoes"
+  // Prazos Trabalhistas — agenda que agrega prazos de RH (experiências 45/90,
+  // exames, uniformes/EPIs). Área AGENDA junto com Técnicos e Contas.
+  | "prazosTrabalhistas"
   // Vendas — registro de vendas fora do sistema fiscal (entre empresas, permutas)
   | "vendas"
   // Faturas — faturas de cartão: subir, IA extrai/classifica, reembolso entre entidades

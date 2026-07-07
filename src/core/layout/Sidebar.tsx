@@ -110,7 +110,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     return canUse(pessoa, rid, moduleId);
   }
 
-  const areas: ModuleArea[] = ["ops", "dp", "fin", "inst"];
+  const areas: ModuleArea[] = ["ops", "dp", "fin", "agenda", "inst"];
 
   // Seção Master (Tarefas + Planner): ferramentas pessoais do dono.
   // Diferente das demais áreas, RESPEITA modulosAtivos MESMO pro master —
