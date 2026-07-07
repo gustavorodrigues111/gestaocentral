@@ -120,6 +120,21 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     return () => unsub();
   }, [pid]);
 
+  // ── Cobranças internas: vendas de OUTRA empresa em que MEU restaurante é o
+  //    cliente vinculado + já teve cobrança gerada (status cobranca_enviada). ──
+  const ridsKeyAll = restaurants.map((r) => r.id).join(",");
+  const [cobrancasInt, setCobrancasInt] = useState<Array<{ id: string; restaurantId?: string; clienteRestauranteVinculadoId?: string | null; valorTotal?: number; saldo?: number; status?: string; criadoEm?: string }>>([]);
+  useEffect(() => {
+    const rids = ridsKeyAll ? ridsKeyAll.split(",").slice(0, 10) : [];
+    if (!rids.length) { setCobrancasInt([]); return; }
+    const unsub = onSnapshot(
+      query(collection(db, "vendas"), where("clienteRestauranteVinculadoId", "in", rids)),
+      (snap) => setCobrancasInt(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as { id: string; status?: string }).filter((v) => v.status === "cobranca_enviada")),
+      () => setCobrancasInt([]),
+    );
+    return () => unsub();
+  }, [ridsKeyAll]);
+
   // ── Config de canais por notificação (gating in-app da Central) ──
   const [notifConfigs, setNotifConfigs] = useState<Record<string, { inApp?: boolean }>>({});
   useEffect(() => {
@@ -209,6 +224,32 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         rotina: { rotina: r, ocorrenciaData: p.ocorrenciaData, atrasada: p.atrasada },
         categoria: "Rotinas",
         categoriaIcone: "🔁",
+      });
+    }
+
+    // ── Cobranças internas recebidas (agrupadas por empresa vendedora) ──
+    const cobrGrp = new Map<string, { buyerRid: string; sellerRid: string; n: number; total: number; em: string }>();
+    for (const v of cobrancasInt) {
+      const buyerRid = v.clienteRestauranteVinculadoId || "";
+      if (!buyerRid) continue;
+      const sellerRid = v.restaurantId || "";
+      const key = `${buyerRid}_${sellerRid}`;
+      const g = cobrGrp.get(key) || { buyerRid, sellerRid, n: 0, total: 0, em: "" };
+      g.n++; g.total += (v.saldo ?? v.valorTotal ?? 0);
+      const t = String(v.criadoEm || ""); if (t > g.em) g.em = t;
+      cobrGrp.set(key, g);
+    }
+    for (const g of cobrGrp.values()) {
+      out.push({
+        id: `cobrint_${g.buyerRid}_${g.sellerRid}`,
+        tipo: "cobranca_interna", icone: "💰",
+        titulo: "Cobrança recebida",
+        descricao: `${g.n} ${g.n === 1 ? "cobrança" : "cobranças"} de ${nomePorRid[g.sellerRid] || "outra empresa"} · ${(g.total || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}`,
+        em: g.em,
+        restauranteId: g.buyerRid,
+        restauranteNome: nomePorRid[g.buyerRid] || "Restaurante",
+        cta: "Ver no Vendas", href: `/r/${g.buyerRid}/vendas`,
+        categoria: "Vendas", categoriaIcone: "🧾",
       });
     }
 
@@ -402,7 +443,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     nomePorRid, rotinas, conclusoesIds, pid,
     escala, faleDp, fechamento, gorjetas, vt, vr, beneficios,
     ocorrencias, eventos, recebimento, compras, ideias, admissoes, demissoes, exames, uniformes,
-    minhaAcao, minhaProducao, checklistTpl, checklistRun,
+    minhaAcao, minhaProducao, checklistTpl, checklistRun, cobrancasInt,
   ]);
 
   // ── Estado de leitura (overlay persistido por pessoa) ──

@@ -149,8 +149,14 @@ export function VendasPage() {
   // "cobrança enviada".
   async function cobrarUma(v: Venda) {
     const cliente = clientes.find(c => c.id === v.clienteId) || null;
-    const msg = montarMensagemCobranca(activeRestaurant?.nome || "", cliente, [v]);
     if (v.status === "aberta") await updateDoc(doc(db, "vendas", v.id), { status: "cobranca_enviada" });
+    // Cliente INTERNO (empresa do sistema): a cobrança vira aviso na Central de
+    // Avisos da empresa vinculada — não abre WhatsApp.
+    if (v.clienteTipo === "interna" && v.clienteRestauranteVinculadoId) {
+      alert(`✅ Cobrança enviada pra Central de Avisos de ${v.clienteNomeSnapshot}.`);
+      return;
+    }
+    const msg = montarMensagemCobranca(activeRestaurant?.nome || "", cliente, [v]);
     const link = whatsLink(v.clienteWhatsappSnapshot || cliente?.whatsapp || undefined, msg);
     window.open(link || `https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
   }
@@ -666,7 +672,14 @@ function CobrancaModal({ rid, empresaNome, vendas, clientes, meId, meNome, onClo
         if (v.status === "aberta") await updateDoc(doc(db, "vendas", v.id), { status: "cobranca_enviada", cobrancaId: id });
         else await updateDoc(doc(db, "vendas", v.id), { cobrancaId: id });
       }
-      // Abre o WhatsApp do comprador com a mensagem.
+      // Cliente INTERNO: a cobrança vira aviso na Central de Avisos da empresa
+      // vinculada (deriva do status cobranca_enviada) — não abre WhatsApp.
+      if (cliente.tipo === "interna" && cliente.restauranteVinculadoId) {
+        alert(`✅ Cobrança enviada pra Central de Avisos de ${cliente.nome}.`);
+        onClose();
+        return;
+      }
+      // Externo: abre o WhatsApp do comprador com a mensagem.
       const link = whatsLink(cliente.whatsapp || undefined, msg);
       if (link) window.open(link, "_blank");
       else { window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank"); }
@@ -790,7 +803,9 @@ function CadastroClientes({ rid, clientes, restaurants }: { rid: string; cliente
           ) : (
             <Input label="Nome" value={nome} onChange={e => setNome(e.target.value)} placeholder="ex: Fulano / Empresa X" />
           )}
-          <Input label="WhatsApp" value={whats} onChange={e => setWhats(e.target.value)} placeholder="(91) 90000-0000" />
+          {tipo === "interna"
+            ? <div className="text-[11px] text-gray-500 dark:text-gray-400 self-end pb-2.5">💬 Cobrança vai pela Central de Avisos da empresa — sem WhatsApp.</div>
+            : <Input label="WhatsApp" value={whats} onChange={e => setWhats(e.target.value)} placeholder="(91) 90000-0000" />}
           <Button onClick={add}>+ Adicionar</Button>
         </div>
       </FormCard>
