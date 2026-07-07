@@ -3,6 +3,7 @@
 // dias antes do vencimento (generator.ts). Coloração por urgência.
 
 import { useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, orderBy, where, setDoc, doc, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -18,6 +19,7 @@ const TIPOS_FLEXIVEIS = new Set<ManutencaoTipo>(["filtros_agua", "ar_condicionad
 
 export function ManutencoesPage() {
   const { pessoa } = useAuth();
+  const { rid } = useParams<{ rid: string }>();
   const { restaurants } = useRestaurant();
   const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
   const [enderecos, setEnderecos] = useState<Endereco[]>([]);
@@ -52,13 +54,15 @@ export function ManutencoesPage() {
   if (!pessoa) return null;
   const hoje = new Date().toISOString().slice(0, 10);
   const isMaster = !!pessoa.isMaster;
-  const vencidas = manutencoes.filter(m => m.proximoVencimento < hoje).length;
+  // Só os itens desta empresa (via restaurantIds derivado dos endereços).
+  const daEmpresa = manutencoes.filter(m => (m.restaurantIds || []).includes(rid || "") || (m.enderecoIds || []).some(eid => endById[eid]?.restaurantId === rid));
+  const vencidas = daEmpresa.filter(m => m.proximoVencimento < hoje).length;
 
   return (
     <div className="max-w-6xl mx-auto p-4">
       <header className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <div className="text-sm text-gray-500">
-          {manutencoes.length} item{manutencoes.length === 1 ? "" : "s"}{vencidas > 0 && <span className="text-rose-600 font-medium"> · {vencidas} vencido{vencidas === 1 ? "" : "s"}</span>}
+          {daEmpresa.length} item{daEmpresa.length === 1 ? "" : "s"}{vencidas > 0 && <span className="text-rose-600 font-medium"> · {vencidas} vencido{vencidas === 1 ? "" : "s"}</span>}
         </div>
         <Button onClick={() => setCriando(true)}>+ Nova Manutenção</Button>
       </header>
@@ -69,15 +73,15 @@ export function ManutencoesPage() {
         </div>
       )}
 
-      {manutencoes.length === 0 ? (
+      {daEmpresa.length === 0 ? (
         <div className="text-center py-12 text-gray-500 dark:text-gray-400">
           <div className="text-4xl mb-2">📅</div>
-          <p>Nenhuma manutenção cadastrada.</p>
+          <p>Nenhuma manutenção cadastrada nesta empresa.</p>
           <p className="text-sm mt-1">Cadastre filtros, potabilidade, dedetização, CLCB, certificados, etc — o sistema lembra do próximo vencimento.</p>
         </div>
       ) : (
         <div className="space-y-2">
-          {manutencoes.map(m => {
+          {daEmpresa.map(m => {
             const atrasada = m.proximoVencimento < hoje;
             const proxima = !atrasada && m.proximoVencimento <= addDias(hoje, m.diasAntecedencia || 30);
             return (
