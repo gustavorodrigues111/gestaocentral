@@ -4436,6 +4436,8 @@ export type ContaFixa = {
   diaDoMes?: number;            // 1-31
   diaDaSemana?: number;         // 0-6
   mesDoAno?: number;            // 1-12
+  // Baixa de pagamento por competência ("YYYY-MM") — usada na aba Visualização.
+  pagamentos?: { [competencia: string]: { pagoEm: string; pagoPor: string } };
   diasAntecedencia: number;     // gera tarefa X dias antes (default 3)
   responsavelPadraoId: string;
   responsavelPadraoNome?: string;

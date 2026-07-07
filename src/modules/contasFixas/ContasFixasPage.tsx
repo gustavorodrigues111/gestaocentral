@@ -1,13 +1,13 @@
-// Cadastro mestre de Contas Fixas — pagamentos recorrentes. Gera tarefa
-// no Gestor de Tarefas X dias antes do vencimento (via generator.ts em
-// futura fase do trabalho — Fase 1 do próximo sprint).
-//
-// MVP nesta fase: CRUD de cadastro. Geração de tarefa é manual por
-// enquanto (botão "Gerar lembrete agora").
+// Contas Fixas — pagamentos recorrentes. Duas abas:
+//  📅 Visualização — trabalho do dia a dia: escolhe a competência (mês) e vai
+//     marcando cada conta como paga; status pendente/atrasada/paga.
+//  📝 Cadastro — config: categoria, recorrência, dia, PIX, empresa(s).
+// Escopo por empresa (rid da rota). Importador de CSV (master) pra popular.
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "react-router-dom";
 import {
-  collection, onSnapshot, query, orderBy, setDoc, doc,
+  collection, onSnapshot, query, orderBy, setDoc, doc, updateDoc,
 } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -21,12 +21,21 @@ import {
   CONTA_FIXA_CATEGORIA_LABEL, CONTA_FIXA_RECORRENCIA_LABEL,
 } from "../../core/types";
 
+const pad2 = (n: number) => String(n).padStart(2, "0");
+const nrm = (s: string) => (s || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+
 export function ContasFixasPage() {
   const { pessoa } = useAuth();
+  const { rid } = useParams<{ rid: string }>();
   const { restaurants } = useRestaurant();
   const [contas, setContas] = useState<ContaFixa[]>([]);
+  const [aba, setAba] = useState<"visualizacao" | "cadastro">("visualizacao");
   const [editando, setEditando] = useState<ContaFixa | null>(null);
   const [criando, setCriando] = useState(false);
+  const [importando, setImportando] = useState(false);
+  const hoje = new Date().toISOString().slice(0, 10);
+  const [comp, setComp] = useState(hoje.slice(0, 7)); // "YYYY-MM"
+  const [filtro, setFiltro] = useState<"todas" | "apagar" | "pagas">("todas");
 
   useEffect(() => {
     const u = onSnapshot(
@@ -36,47 +45,121 @@ export function ContasFixasPage() {
     return () => u();
   }, []);
 
+  const daEmpresa = useMemo(
+    () => contas.filter(c => (c.restaurantIds || []).includes(rid || ""))
+      .sort((a, b) => (a.diaDoMes || 99) - (b.diaDoMes || 99)),
+    [contas, rid]
+  );
+
   if (!pessoa) return null;
+
+  const statusDe = (c: ContaFixa): "paga" | "atrasada" | "pendente" => {
+    if (c.pagamentos?.[comp]) return "paga";
+    if (c.diaDoMes) { const venc = `${comp}-${pad2(c.diaDoMes)}`; if (venc < hoje) return "atrasada"; }
+    return "pendente";
+  };
+  const visiveis = daEmpresa.filter(c => {
+    if (aba !== "visualizacao") return true;
+    const s = statusDe(c);
+    if (filtro === "pagas") return s === "paga";
+    if (filtro === "apagar") return s !== "paga";
+    return true;
+  });
+  const nPagas = daEmpresa.filter(c => statusDe(c) === "paga").length;
+  const nAtras = daEmpresa.filter(c => statusDe(c) === "atrasada").length;
+
+  async function togglePago(c: ContaFixa) {
+    const atual = c.pagamentos || {};
+    const novo = { ...atual };
+    if (novo[comp]) delete novo[comp];
+    else novo[comp] = { pagoEm: new Date().toISOString(), pagoPor: pessoa!.id };
+    await updateDoc(doc(db, "contasFixas", c.id), { pagamentos: novo, atualizadoEm: new Date().toISOString() });
+  }
+
+  const tab = (v: "visualizacao" | "cadastro", label: string) => (
+    <button type="button" onClick={() => setAba(v)}
+      className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${aba === v ? "border-indigo-500 text-indigo-600 dark:text-indigo-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{label}</button>
+  );
+  const chip = (active: boolean, label: string, onClick: () => void) => (
+    <button type="button" onClick={onClick}
+      className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${active ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{label}</button>
+  );
+  const STCOR: Record<string, string> = {
+    paga: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+    atrasada: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300",
+    pendente: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
+  };
+  const STLBL: Record<string, string> = { paga: "✓ Paga", atrasada: "⚠️ Atrasada", pendente: "Pendente" };
 
   return (
     <div className="max-w-6xl mx-auto p-4">
-      <header className="flex items-center justify-between mb-4">
-        <Button onClick={() => setCriando(true)}>+ Nova Conta Fixa</Button>
+      <header className="flex items-center justify-between mb-3 gap-2 flex-wrap">
+        <div className="text-sm text-gray-500">
+          {daEmpresa.length} conta{daEmpresa.length === 1 ? "" : "s"}
+          {aba === "visualizacao" && <> · <span className="text-emerald-600 font-medium">{nPagas} paga{nPagas === 1 ? "" : "s"}</span>{nAtras > 0 && <span className="text-rose-600 font-medium"> · {nAtras} atrasada{nAtras === 1 ? "" : "s"}</span>}</>}
+        </div>
+        <div className="flex items-center gap-2">
+          {pessoa.isMaster && <Button variant="secondary" onClick={() => setImportando(true)}>⬆️ Importar CSV</Button>}
+          <Button onClick={() => setCriando(true)}>+ Nova Conta Fixa</Button>
+        </div>
       </header>
 
-      {contas.length === 0 ? (
+      <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
+        {tab("visualizacao", "📅 Visualização")}{tab("cadastro", "📝 Cadastro")}
+      </nav>
+
+      {aba === "visualizacao" && daEmpresa.length > 0 && (
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <label className="text-xs text-gray-500 flex items-center gap-1">Competência
+            <input type="month" value={comp} onChange={(e) => setComp(e.target.value)}
+              className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 px-2 py-1" />
+          </label>
+          <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />
+          {chip(filtro === "todas", "Todas", () => setFiltro("todas"))}
+          {chip(filtro === "apagar", "A pagar", () => setFiltro("apagar"))}
+          {chip(filtro === "pagas", "Pagas", () => setFiltro("pagas"))}
+        </div>
+      )}
+
+      {daEmpresa.length === 0 ? (
         <div className="text-center py-12 text-gray-500 dark:text-gray-400">
           <div className="text-4xl mb-2">📋</div>
-          <p>Nenhuma conta fixa cadastrada.</p>
-          <p className="text-sm mt-1">Cadastre os pagamentos recorrentes (aluguel, sistemas, impostos) pra gerar lembretes automáticos.</p>
+          <p>Nenhuma conta fixa nesta empresa.</p>
+          <p className="text-sm mt-1">Use <b>+ Nova Conta Fixa</b> ou <b>⬆️ Importar CSV</b> pra popular.</p>
         </div>
+      ) : visiveis.length === 0 ? (
+        <div className="text-center py-10 text-gray-500 dark:text-gray-400 text-sm">Nenhuma conta com esse filtro nesta competência.</div>
       ) : (
         <div className="space-y-2">
-          {contas.map(c => (
-            <div
-              key={c.id}
-              onClick={() => setEditando(c)}
-              className="p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 cursor-pointer hover:shadow-md transition-shadow"
-            >
-              <div className="flex items-center justify-between">
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium text-gray-900 dark:text-gray-100">{c.nome}</div>
-                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
-                    {CONTA_FIXA_CATEGORIA_LABEL[c.categoria]}
-                    {c.fornecedor && ` · ${c.fornecedor}`}
-                    {` · ${CONTA_FIXA_RECORRENCIA_LABEL[c.recorrencia]}`}
-                    {c.diaDoMes && ` · dia ${c.diaDoMes}`}
-                    {c.valorEstimado && ` · R$ ${c.valorEstimado.toFixed(2)}`}
-                  </div>
-                  {c.restaurantIds.length > 0 && (
-                    <div className="text-xs text-gray-500 dark:text-gray-500 mt-1">
-                      {c.restaurantIds.map(rid => restaurants.find(r => r.id === rid)?.nome || rid).join(", ")}
+          {visiveis.map(c => {
+            const st = statusDe(c);
+            return (
+              <div key={c.id} onClick={() => aba === "cadastro" ? setEditando(c) : undefined}
+                className={`p-3 rounded-xl border bg-white dark:bg-gray-900 transition-shadow ${aba === "cadastro" ? "cursor-pointer hover:shadow-md" : ""} ${st === "atrasada" ? "border-rose-200 dark:border-rose-900/50" : "border-gray-200 dark:border-gray-800"}`}>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5 flex-wrap">
+                      {c.nome}
+                      {aba === "visualizacao" && <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${STCOR[st]}`}>{STLBL[st]}</span>}
                     </div>
+                    <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                      {CONTA_FIXA_CATEGORIA_LABEL[c.categoria]}
+                      {c.fornecedor && ` · ${c.fornecedor}`}
+                      {c.diaDoMes ? ` · dia ${c.diaDoMes}` : ""}
+                      {c.valorEstimado ? ` · R$ ${c.valorEstimado.toFixed(2)}` : ""}
+                      {c.observacoes ? ` · ${c.observacoes}` : ""}
+                    </div>
+                  </div>
+                  {aba === "visualizacao" && (
+                    <button type="button" onClick={() => void togglePago(c)}
+                      className={`shrink-0 text-xs font-medium px-3 py-1.5 rounded-lg border ${st === "paga" ? "border-emerald-300 text-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 dark:text-emerald-300" : "border-indigo-300 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"}`}>
+                      {st === "paga" ? "✓ Pago" : "Marcar pago"}
+                    </button>
                   )}
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -88,6 +171,120 @@ export function ContasFixasPage() {
           pessoaId={pessoa.id}
         />
       )}
+      {importando && (
+        <ImportContasModal
+          onClose={() => setImportando(false)}
+          restaurantes={restaurants.map(r => ({ id: r.id, nome: r.nome }))}
+          pessoaId={pessoa.id}
+        />
+      )}
+    </div>
+  );
+}
+
+// ─── Importador de CSV ───────────────────────────────────────────────────────
+// Colunas: empresa,categoria,nome,fornecedor,dia,recorrencia,observacao
+// Idempotente: id determinístico por (empresa + nome + dia).
+function ImportContasModal({ onClose, restaurantes, pessoaId }: {
+  onClose: () => void; restaurantes: { id: string; nome: string }[]; pessoaId: string;
+}) {
+  const [texto, setTexto] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [resultado, setResultado] = useState<{ ok: number; semEmpresa: string[] } | null>(null);
+  const catValidas = new Set(Object.keys(CONTA_FIXA_CATEGORIA_LABEL));
+  const recValidas = new Set(Object.keys(CONTA_FIXA_RECORRENCIA_LABEL));
+
+  function parseCSV(txt: string): string[][] {
+    const rows: string[][] = []; let row: string[] = []; let cur = ""; let q = false;
+    for (let i = 0; i < txt.length; i++) {
+      const ch = txt[i];
+      if (q) {
+        if (ch === '"') { if (txt[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+        else cur += ch;
+      } else if (ch === '"') q = true;
+      else if (ch === ",") { row.push(cur); cur = ""; }
+      else if (ch === "\n") { row.push(cur); rows.push(row); row = []; cur = ""; }
+      else if (ch === "\r") { /* ignora */ }
+      else cur += ch;
+    }
+    if (cur.length || row.length) { row.push(cur); rows.push(row); }
+    return rows.filter(r => r.some(c => c.trim()));
+  }
+
+  async function importar() {
+    const rows = parseCSV(texto.trim());
+    if (rows.length < 2) { alert("CSV vazio ou sem linhas de dados."); return; }
+    const head = rows[0].map(h => nrm(h));
+    const idx = (name: string) => head.indexOf(name);
+    const iEmp = idx("empresa"), iCat = idx("categoria"), iNome = idx("nome"),
+      iForn = idx("fornecedor"), iDia = idx("dia"), iRec = idx("recorrencia"), iObs = idx("observacao");
+    if (iEmp < 0 || iNome < 0) { alert("CSV precisa ter ao menos as colunas 'empresa' e 'nome'."); return; }
+    setBusy(true);
+    const now = new Date().toISOString();
+    const semEmpresa = new Set<string>();
+    let ok = 0;
+    try {
+      for (const r of rows.slice(1)) {
+        const empRaw = (r[iEmp] || "").trim();
+        const rest = restaurantes.find(x => nrm(x.nome) === nrm(empRaw));
+        if (!rest) { if (empRaw) semEmpresa.add(empRaw); continue; }
+        const nome = (r[iNome] || "").trim();
+        if (!nome) continue;
+        const cat = iCat >= 0 && catValidas.has((r[iCat] || "").trim()) ? (r[iCat] as ContaFixaCategoria) : "outros";
+        const rec = iRec >= 0 && recValidas.has((r[iRec] || "").trim()) ? (r[iRec] as ContaFixaRecorrencia) : "mensal";
+        const diaN = iDia >= 0 ? parseInt((r[iDia] || "").trim()) : NaN;
+        const id = `cf-imp-${rest.id}-${nrm(nome).replace(/[^a-z0-9]+/g, "-").slice(0, 40)}-${isNaN(diaN) ? "x" : diaN}`;
+        const data: ContaFixa = {
+          id, nome, fornecedor: (iForn >= 0 ? r[iForn] : "").trim() || undefined,
+          categoria: cat, restaurantIds: [rest.id],
+          observacoes: (iObs >= 0 ? r[iObs] : "").trim() || undefined,
+          recorrencia: rec, diaDoMes: isNaN(diaN) ? undefined : diaN,
+          diasAntecedencia: 3, responsavelPadraoId: pessoaId,
+          projetoId: "proj-financ-rot", subprojetoId: "sub-financ-contas",
+          ativo: true, criadoEm: now, criadoPor: pessoaId, atualizadoEm: now,
+        };
+        await setDoc(doc(db, "contasFixas", id), sanitizeForFirestore(data));
+        ok++;
+      }
+      setResultado({ ok, semEmpresa: [...semEmpresa] });
+    } catch (e) { alert("Erro ao importar: " + (e instanceof Error ? e.message : "?")); }
+    finally { setBusy(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">⬆️ Importar Contas Fixas (CSV)</h2>
+        <p className="text-xs text-gray-500 mt-1 mb-3">Colunas: <code>empresa, categoria, nome, fornecedor, dia, recorrencia, observacao</code>. A empresa é casada pelo nome. Reimportar não duplica (id determinístico por empresa+nome+dia).</p>
+        {resultado ? (
+          <div className="text-sm space-y-2">
+            <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20 p-3 text-emerald-800 dark:text-emerald-300">✓ {resultado.ok} conta(s) importada(s)/atualizada(s).</div>
+            {resultado.semEmpresa.length > 0 && (
+              <div className="rounded-xl border border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/20 p-3 text-amber-800 dark:text-amber-300 text-xs">
+                ⚠️ Empresas não reconhecidas (linhas ignoradas): {resultado.semEmpresa.join(", ")}. Confira se o nome bate com o cadastro da empresa.
+              </div>
+            )}
+            <div className="flex justify-end"><Button onClick={onClose}>Fechar</Button></div>
+          </div>
+        ) : (
+          <>
+            <div className="flex items-center gap-2 mb-2">
+              <label className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-indigo-300 text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 cursor-pointer">
+                📄 Escolher arquivo .csv
+                <input type="file" accept=".csv,text/csv" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) f.text().then(setTexto); e.currentTarget.value = ""; }} />
+              </label>
+              <span className="text-xs text-gray-400">ou cole o conteúdo abaixo</span>
+            </div>
+            <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={8}
+              className="w-full text-xs font-mono rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 p-2"
+              placeholder="empresa,categoria,nome,fornecedor,dia,recorrencia,observacao&#10;Sororoca,alugueis,Aluguel do Imóvel,Simão Álvares 785,10,mensal," />
+            <div className="flex gap-2 justify-end mt-3">
+              <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+              <Button onClick={() => void importar()} disabled={busy || !texto.trim()}>{busy ? "Importando…" : "Importar"}</Button>
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 }
