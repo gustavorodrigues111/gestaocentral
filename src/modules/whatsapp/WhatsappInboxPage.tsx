@@ -35,7 +35,8 @@ function foneKey(raw?: string | null): string {
 
 const PALETA = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#ef4444", "#0ea5e9", "#8b5cf6", "#64748b"];
 
-export function WhatsappInboxPage() {
+export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | "completo" } = {}) {
+  const embutido = modo === "conversas";
   const { pessoa: me } = useAuth();
   const { rid } = useParams<{ rid: string }>();
   const { restaurants } = useRestaurant();
@@ -192,7 +193,7 @@ export function WhatsappInboxPage() {
     setEnviando(false);
   }
 
-  if (!podeVer) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-700 dark:text-gray-300 font-medium">Sem acesso à caixa de entrada do WhatsApp.</p></div>;
+  if (!podeVer && !embutido) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-700 dark:text-gray-300 font-medium">Sem acesso à caixa de entrada do WhatsApp.</p></div>;
 
   const contatoSel = sel ? contatos[sel] : undefined;
   const pessoaSel = sel ? pessoaDaConversa(sel) : null;
@@ -200,25 +201,29 @@ export function WhatsappInboxPage() {
   const herdaRest = sel ? restHerdado(sel) : false;
   const autoMatch = sel ? pessoaByFone[foneKey(sel)] : null;
 
+  const abaEfetiva = embutido ? "conversas" : tab;
   return (
-    <div className="max-w-4xl">
-      <div className="mb-3 flex items-start justify-between gap-2">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">💬 WhatsApp</h1>
-          <p className="text-xs text-gray-500">Mensagens recebidas no número da plataforma (número único, não por restaurante).</p>
+    <div className={embutido ? "" : "max-w-4xl"}>
+      {!embutido && (
+        <div className="mb-3 flex items-start justify-between gap-2">
+          <div>
+            <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">💬 WhatsApp</h1>
+            <p className="text-xs text-gray-500">Mensagens recebidas no número da plataforma (número único, não por restaurante).</p>
+          </div>
+          {tab === "conversas" && !sel && <button type="button" onClick={() => setGerenciarTags(true)} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 shrink-0">🏷 Tags</button>}
         </div>
-        {tab === "conversas" && !sel && <button type="button" onClick={() => setGerenciarTags(true)} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 shrink-0">🏷 Tags</button>}
-      </div>
+      )}
 
-      {/* Abas */}
-      <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
-        {([["conversas", "Conversas"], ["templates", "Templates"]] as const).map(([v, l]) => (
-          <button key={v} type="button" onClick={() => { setTab(v); setSel(null); }}
-            className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${tab === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
-        ))}
-      </div>
+      {!embutido && (
+        <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
+          {([["conversas", "Conversas"], ["templates", "Templates"]] as const).map(([v, l]) => (
+            <button key={v} type="button" onClick={() => { setTab(v); setSel(null); }}
+              className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${tab === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
+          ))}
+        </div>
+      )}
 
-      {tab === "templates" ? (
+      {abaEfetiva === "templates" ? (
         <WhatsappTemplatesTab podeConfig={podeResponder} />
       ) : (
       <>

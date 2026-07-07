@@ -11,19 +11,24 @@
 //  Aqui é só a renderização + o modal de leitura do Fale com DP.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { tratarFaleDp } from "../faleDp/repository";
 import { concluirRotina } from "../rotinas/repository";
 import { useAvisosCentral, type Aviso } from "./useAvisos";
-import type { FaleDpMensagem } from "../../core/types";
+import { WhatsappInboxPage } from "../whatsapp/WhatsappInboxPage";
+import { CentralConfig } from "./CentralConfig";
+import type { FaleDpMensagem, Pessoa } from "../../core/types";
 import { FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE } from "../../core/types";
 
-type AbaCentral = "inbox" | "historico";
+type AbaCentral = "avisos" | "whatsapp" | "historico" | "config";
 
 export function ChatPage() {
   const { pessoa } = useAuth();
@@ -31,9 +36,33 @@ export function ChatPage() {
   const navigate = useNavigate();
   const { inbox, historico, marcarLido, marcarNaoLido, marcarTodosLidos } = useAvisosCentral();
 
+  const isMaster = !!pessoa?.isMaster;
+  const { can } = useCanAcao(activeRestaurant?.id || "");
+  const podeWhats = isMaster || can("whatsappInbox", "ver");
+  const podeConfig = isMaster || can("whatsappInbox", "responder");
+
   const multiRest = restaurants.length > 1;
-  const [aba, setAba] = useState<AbaCentral>("inbox");
+  const [aba, setAba] = useState<AbaCentral>("avisos");
   const [msgAberta, setMsgAberta] = useState<{ msg: FaleDpMensagem; nome: string } | null>(null);
+
+  // Não-lidas do WhatsApp (badge da aba).
+  const [whatsUnread, setWhatsUnread] = useState(0);
+  useEffect(() => {
+    if (!podeWhats) return;
+    const u = onSnapshot(query(collection(db, "whatsappMensagens"), where("lido", "==", false)), snap =>
+      setWhatsUnread(snap.docs.filter(d => (d.data() as { direcao?: string }).direcao === "in").length));
+    return () => u();
+  }, [podeWhats]);
+
+  // Pessoas do restaurante ativo (pra config de destinatários dos avisos).
+  const [pessoasRest, setPessoasRest] = useState<Pessoa[]>([]);
+  useEffect(() => {
+    const rid = activeRestaurant?.id;
+    if (!rid || !podeConfig) { setPessoasRest([]); return; }
+    const u = onSnapshot(query(collection(db, "pessoas"), where("restaurantIds", "array-contains", rid)), snap =>
+      setPessoasRest(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa).filter(p => p.ativa !== false)));
+    return () => u();
+  }, [activeRestaurant?.id, podeConfig]);
 
   // Histórico agrupado por categoria (módulo).
   const gruposHistorico = useMemo(() => {
@@ -73,16 +102,18 @@ export function ChatPage() {
         </p>
       </header>
 
-      {/* Abas: Caixa de entrada / Histórico */}
-      <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
+      {/* Abas */}
+      <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
         {([
-          { k: "inbox" as const, label: "📥 Caixa de entrada", n: inbox.length },
+          { k: "avisos" as const, label: "📥 Avisos do sistema", n: inbox.length },
+          ...(podeWhats ? [{ k: "whatsapp" as const, label: "💬 WhatsApp", n: whatsUnread }] : []),
           { k: "historico" as const, label: "🗂️ Histórico", n: historico.length },
+          ...(podeConfig ? [{ k: "config" as const, label: "⚙️ Configurações", n: 0 }] : []),
         ]).map((t) => (
           <button
             key={t.k}
             onClick={() => setAba(t.k)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors whitespace-nowrap shrink-0 ${
               aba === t.k
                 ? "border-indigo-600 text-indigo-700 dark:text-indigo-300"
                 : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
@@ -98,7 +129,7 @@ export function ChatPage() {
         ))}
       </div>
 
-      {aba === "inbox" && (
+      {aba === "avisos" && (
         inbox.length === 0 ? (
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-10 text-center">
             <div className="text-4xl mb-3">✨</div>
@@ -128,6 +159,21 @@ export function ChatPage() {
             </div>
           </>
         )
+      )}
+
+      {aba === "whatsapp" && podeWhats && (
+        <WhatsappInboxPage modo="conversas" />
+      )}
+
+      {aba === "config" && podeConfig && (
+        <CentralConfig
+          rid={activeRestaurant?.id || ""}
+          restauranteNome={activeRestaurant?.nome || "—"}
+          pessoas={pessoasRest}
+          modulosAtivos={activeRestaurant?.modulosAtivos || []}
+          meId={pessoa?.id || ""}
+          podeConfig={podeConfig}
+        />
       )}
 
       {aba === "historico" && (
@@ -160,10 +206,6 @@ export function ChatPage() {
           </div>
         )
       )}
-
-      <p className="text-[11px] text-gray-400 dark:text-gray-600 mt-6 text-center">
-        Em breve: conversas entre usuários e WhatsApp externo.
-      </p>
 
       {msgAberta && (
         <FaleDpModal
