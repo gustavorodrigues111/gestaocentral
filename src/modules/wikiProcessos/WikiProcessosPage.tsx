@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, onSnapshot, query, orderBy, where, setDoc, doc } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, where, getDocs, setDoc, doc } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -30,15 +30,6 @@ const FORMATO_META: Record<WikiFormato, { icon: string; cls: string }> = {
 };
 const nEtapas = (p: WikiProcesso) => p.formato === "passos" ? (p.passos?.length ?? 0) : p.formato === "checklist" ? (p.itens?.length ?? 0) : 0;
 
-// Sugestões de processos pra semear como rascunhos (por área). O usuário depois
-// preenche o conteúdo (por voz ou texto).
-const PROCESSOS_SUGERIDOS: { area: string; titulos: string[] }[] = [
-  { area: "Departamento de Pessoas", titulos: ["Admissão de novo colaborador", "Fim de experiência (45/90)", "Registro e correção de ponto", "Fechamento de ponto do mês", "Solicitação de ajuste de escala", "Afastamento e atestado", "Desligamento", "Entrega de uniforme e EPI", "Exames ocupacionais"] },
-  { area: "Financeiro", titulos: ["Fechamento de caixa do turno", "Pagamento de conta fixa", "Conferência de fatura de cartão", "Recebimento de nota fiscal", "Sangria e suprimento de caixa"] },
-  { area: "Salão", titulos: ["Abertura da casa", "Fechamento da casa", "Fluxo de reserva", "Atendimento de evento", "Divisão de gorjeta do dia", "Registro de ocorrência/incidente"] },
-  { area: "Cozinha", titulos: ["Recebimento e armazenagem de insumos", "Contagem de estoque / inventário", "Produção do dia (mise en place)", "Controle de temperatura e validade", "Limpeza e higienização por área"] },
-  { area: "Gestão", titulos: ["Como usar a Central de Avisos", "Rotinas: criar e atribuir lembretes", "Reunião → Plano de Ação", "Como usar a Wiki (documentar, voz, Pergunte à IA)"] },
-];
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
 // Setores responsáveis de uma etapa (novo `responsaveis[]` ou legado `responsavel`).
@@ -107,7 +98,7 @@ export function WikiProcessosPage() {
   const [lendo, setLendo] = useState<WikiProcesso | null>(null);
   const [perguntando, setPerguntando] = useState(false);
   const [ditando, setDitando] = useState(false);
-  const [semeando, setSemeando] = useState(false);
+  const [sugerindo, setSugerindo] = useState(false);
   const [editVoz, setEditVoz] = useState<WikiProcesso | null>(null);
   const [rascunhoIA, setRascunhoIA] = useState<Partial<WikiProcesso> | null>(null);
   const [configSetores, setConfigSetores] = useState(false);
@@ -300,7 +291,7 @@ export function WikiProcessosPage() {
             <div className="flex gap-2 flex-wrap">
               <Button variant="secondary" onClick={() => setConfigSetores(true)}>👥 Responsáveis por setor</Button>
               {podeCriar && <>
-                <Button variant="secondary" onClick={() => setSemeando(true)}>🌱 Sugestões</Button>
+                <Button variant="secondary" onClick={() => setSugerindo(true)}>💡 Sugerir processo</Button>
                 <Button variant="secondary" onClick={() => setDitando(true)}>🎙️ Gravar por voz</Button>
                 <Button onClick={() => setCriando(true)}>+ Novo processo</Button>
               </>}
@@ -342,7 +333,7 @@ export function WikiProcessosPage() {
       {perguntando && <PerguntarIAModal processos={daEmpresa} diretrizes={diretrizesIA} rid={rid || ""} pessoaId={pessoa.id} pessoaNome={pessoa.nome} onClose={() => setPerguntando(false)} onAbrirProc={p => { setPerguntando(false); setLendo(p); }} />}
       {ditando && podeCriar && <DitarModal areasExistentes={areas} onClose={() => setDitando(false)}
         onRascunho={r => { setRascunhoIA(r); setDitando(false); setCriando(true); }} />}
-      {semeando && podeCriar && <SemearModal existentes={daEmpresa.map(p => p.titulo.toLowerCase())} ridAtual={rid || ""} pessoaId={pessoa.id} onClose={() => setSemeando(false)} />}
+      {sugerindo && podeCriar && <SugerirProcessoModal existentes={daEmpresa.map(p => ({ titulo: p.titulo, area: p.area }))} areas={areas} ridAtual={rid || ""} pessoaId={pessoa.id} onClose={() => setSugerindo(false)} />}
       {editVoz && podeEditar && <EditarVozModal proc={editVoz} onClose={() => setEditVoz(null)}
         onAplicar={p => { setEditVoz(null); setEditando(p); }} />}
       {configSetores && <ResponsaveisSetorModal rid={rid || ""} pessoas={pessoasRid} mapaInicial={setoresMap} podeEditar={podeCadastrar}
@@ -583,59 +574,90 @@ function DitarModal({ areasExistentes, onClose, onRascunho }: {
   );
 }
 
-// ─── Semear processos sugeridos como rascunhos ───────────────────────────────
-function SemearModal({ existentes, ridAtual, pessoaId, onClose }: {
-  existentes: string[]; ridAtual: string; pessoaId: string; onClose: () => void;
+// ─── Sugerir processo (IA, com base no sistema + perguntas da equipe) ─────────
+type Sugestao = { titulo: string; area: string; motivo: string };
+function SugerirProcessoModal({ existentes, areas, ridAtual, pessoaId, onClose }: {
+  existentes: { titulo: string; area: string }[]; areas: string[]; ridAtual: string; pessoaId: string; onClose: () => void;
 }) {
-  const jaTem = new Set(existentes);
-  const inicial = new Set<string>();
-  PROCESSOS_SUGERIDOS.forEach(g => g.titulos.forEach(t => { if (!jaTem.has(t.toLowerCase())) inicial.add(`${g.area}|${t}`); }));
-  const [sel, setSel] = useState<Set<string>>(inicial);
+  const [carregando, setCarregando] = useState(true);
+  const [sugestoes, setSugestoes] = useState<Sugestao[]>([]);
+  const [sel, setSel] = useState<Set<number>>(new Set());
+  const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
-  const toggle = (k: string) => setSel(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
+
+  async function buscar() {
+    setCarregando(true); setErro(""); setSugestoes([]); setSel(new Set());
+    try {
+      // Perguntas recentes da equipe à IA (sinal de dúvida/lacuna). Só o texto.
+      let perguntas: string[] = [];
+      try {
+        const snap = await getDocs(query(collection(db, "iaInteracoes"), where("restaurantId", "==", ridAtual)));
+        perguntas = snap.docs.map(d => String((d.data() as { pergunta?: string }).pergunta || "")).filter(Boolean).slice(-120);
+      } catch { /* sem permissão/registros — segue sem perguntas */ }
+      const r = await fetch("/api/wiki-sugerir-processo", {
+        method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
+        body: JSON.stringify({ existentes, areas, perguntas }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error || `HTTP ${r.status}`);
+      const sug = (d.sugestoes as Sugestao[]) || [];
+      setSugestoes(sug); setSel(new Set(sug.map((_, i) => i)));
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao sugerir."); }
+    finally { setCarregando(false); }
+  }
+  useEffect(() => { buscar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+
+  const toggle = (i: number) => setSel(s => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n; });
 
   async function criar() {
     if (sel.size === 0) return;
     setSalvando(true);
     try {
       const now = new Date().toISOString();
-      await Promise.all([...sel].map(k => {
-        const [area, ...rest] = k.split("|"); const titulo = rest.join("|");
-        const id = `wk-${uid()}`;
+      await Promise.all([...sel].map(i => {
+        const s = sugestoes[i]; const id = `wk-${uid()}`;
         return setDoc(doc(db, "wikiProcessos", id), sanitizeForFirestore({
-          id, restaurantIds: ridAtual ? [ridAtual] : [], area, titulo, formato: "passos",
+          id, restaurantIds: ridAtual ? [ridAtual] : [], area: s.area || "Geral", titulo: s.titulo, resumo: s.motivo || undefined, formato: "passos",
           passos: [], itens: [], fotos: [], publicado: false, ativo: true,
           criadoEm: now, criadoPor: pessoaId, atualizadoEm: now, atualizadoPor: pessoaId,
         } as WikiProcesso));
       }));
-      alert(`${sel.size} rascunho(s) criado(s). Preencha o conteúdo pela aba Cadastro (por voz ou texto).`);
+      alert(`${sel.size} rascunho(s) criado(s). Preencha o conteúdo (por voz ou texto).`);
       onClose();
-    } catch (e) { alert("Erro ao semear: " + (e instanceof Error ? e.message : "?")); }
+    } catch (e) { alert("Erro ao criar: " + (e instanceof Error ? e.message : "?")); }
     finally { setSalvando(false); }
   }
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg p-5 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">🌱 Processos sugeridos</h2>
-        <p className="text-xs text-gray-500 mt-1 mb-3">Cria rascunhos (título + área) pra você preencher depois. Os que já existem aparecem desmarcados.</p>
-        <div className="space-y-3">
-          {PROCESSOS_SUGERIDOS.map(g => (
-            <div key={g.area}>
-              <div className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">{g.area}</div>
-              <div className="space-y-1">
-                {g.titulos.map(t => { const k = `${g.area}|${t}`; const existe = jaTem.has(t.toLowerCase()); return (
-                  <label key={k} className={`flex items-center gap-2 text-sm p-1.5 rounded-lg ${existe ? "opacity-40" : "hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-                    <input type="checkbox" disabled={existe} checked={sel.has(k)} onChange={() => toggle(k)} />
-                    <span className="text-gray-700 dark:text-gray-300">{t}</span>{existe && <span className="text-[10px] text-gray-400">já existe</span>}
-                  </label>
-                ); })}
-              </div>
-            </div>
-          ))}
+        <div className="flex items-center justify-between gap-2">
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">💡 Sugerir processo</h2>
+          {!carregando && <button type="button" onClick={buscar} className="text-xs text-indigo-600 hover:underline">↻ Sugerir de novo</button>}
         </div>
+        <p className="text-xs text-gray-500 mt-1 mb-3">A IA sugere processos que faltam documentar, com base no que já existe e nas perguntas que a equipe fez à IA.</p>
+
+        {carregando ? (
+          <div className="text-center py-10 text-gray-500 text-sm">Analisando o sistema e as perguntas da equipe…</div>
+        ) : erro ? (
+          <div className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">{erro}</div>
+        ) : sugestoes.length === 0 ? (
+          <div className="text-center py-8 text-gray-500 text-sm">Sem novas sugestões no momento — parece bem coberto. 👏</div>
+        ) : (
+          <div className="space-y-2">
+            {sugestoes.map((s, i) => (
+              <label key={i} className={`flex items-start gap-2.5 p-2.5 rounded-xl border cursor-pointer ${sel.has(i) ? "border-indigo-400 bg-indigo-50/50 dark:bg-indigo-900/20" : "border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                <input type="checkbox" checked={sel.has(i)} onChange={() => toggle(i)} className="mt-1" />
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5 flex-wrap">{s.titulo}<span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">{s.area}</span></div>
+                  {s.motivo && <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{s.motivo}</div>}
+                </div>
+              </label>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2 justify-end mt-4">
-          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button variant="ghost" onClick={onClose}>Fechar</Button>
           <Button onClick={criar} disabled={salvando || sel.size === 0}>{salvando ? "Criando…" : `Criar ${sel.size || ""} rascunho(s)`}</Button>
         </div>
       </div>
