@@ -392,6 +392,11 @@ function WikiForm({ proc, rascunhoInicial, onClose, restaurantes, ridAtual, area
     ...(rascunhoInicial || {}),
   });
   const [subindo, setSubindo] = useState(false);
+  const nomeAtual = restaurantes.find(r => r.id === ridAtual)?.nome || "esta empresa";
+  const [modoEmp, setModoEmp] = useState<"uma" | "varias">(() => {
+    const ids = (proc ? proc.restaurantIds : f.restaurantIds) || [];
+    return ids.length > 1 || (ids.length === 1 && ids[0] !== ridAtual) ? "varias" : "uma";
+  });
 
   async function subirFoto(file: File): Promise<WikiFoto | null> {
     setSubindo(true);
@@ -512,14 +517,32 @@ function WikiForm({ proc, rascunhoInicial, onClose, restaurantes, ridAtual, area
             </div>
           </Campo>
 
-          {/* Empresas + publicado */}
-          {restaurantes.length > 1 && (
-            <Campo label="Empresas onde vale">
-              <div className="flex flex-wrap gap-x-3 gap-y-1">
-                {restaurantes.map(r => <label key={r.id} className="flex items-center gap-1 text-xs text-gray-700 dark:text-gray-300"><input type="checkbox" checked={(f.restaurantIds || []).includes(r.id)} onChange={() => toggleRid(r.id)} />{r.nome}</label>)}
+          {/* Onde este processo se aplica */}
+          <Campo label="Onde este processo se aplica *">
+            {restaurantes.length <= 1 ? (
+              <div className="text-xs text-gray-500">Só {nomeAtual}.</div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex flex-wrap gap-2">
+                  <button type="button" onClick={() => { setModoEmp("uma"); setF(p => ({ ...p, restaurantIds: ridAtual ? [ridAtual] : [] })); }}
+                    className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${modoEmp === "uma" ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>📍 Só {nomeAtual}</button>
+                  <button type="button" onClick={() => { setModoEmp("varias"); setF(p => ({ ...p, restaurantIds: (p.restaurantIds && p.restaurantIds.length) ? p.restaurantIds : (ridAtual ? [ridAtual] : []) })); }}
+                    className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${modoEmp === "varias" ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>🏢 Mais de uma empresa</button>
+                </div>
+                {modoEmp === "varias" && (
+                  <div className="flex flex-wrap gap-x-4 gap-y-1.5 p-2.5 rounded-lg border border-gray-200 dark:border-gray-800">
+                    {restaurantes.map(r => (
+                      <label key={r.id} className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300">
+                        <input type="checkbox" checked={(f.restaurantIds || []).includes(r.id)} onChange={() => toggleRid(r.id)} />{r.nome}
+                      </label>
+                    ))}
+                  </div>
+                )}
+                <div className="text-[11px] text-gray-400">{(f.restaurantIds || []).length} empresa{(f.restaurantIds || []).length === 1 ? "" : "s"} selecionada{(f.restaurantIds || []).length === 1 ? "" : "s"}.</div>
               </div>
-            </Campo>
-          )}
+            )}
+          </Campo>
+
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300"><input type="checkbox" checked={f.publicado ?? true} onChange={e => setF({ ...f, publicado: e.target.checked })} />Publicado (desmarque pra deixar como rascunho)</label>
         </div>
 
