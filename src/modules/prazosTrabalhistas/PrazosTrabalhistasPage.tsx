@@ -8,7 +8,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, onSnapshot, query, where, setDoc, doc } from "firebase/firestore";
+import { collection, onSnapshot, query, where, setDoc, doc, deleteDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -71,6 +71,10 @@ export function PrazosTrabalhistasPage() {
     }));
     setAcao(null);
   }
+  async function desmarcarResolvido(it: Item) {
+    await deleteDoc(doc(db, "agendaTrabResolvidos", it.id));
+    setAcao(null);
+  }
   async function baixarExame(it: Item, realizadoEm: string) {
     if (!it.exameId || !pessoa) return;
     await darBaixa({ exameId: it.exameId, realizadoEm, autor: { id: pessoa.id, nome: pessoa.nome } });
@@ -127,10 +131,10 @@ export function PrazosTrabalhistasPage() {
     return out.sort((a, b) => a.data.localeCompare(b.data));
   }, [empregados, exames, entregas, hoje, nomePorPessoa]);
 
-  const abertos = itens.filter(i => !resolvidos.has(i.id));
-  const cats = (["experiencia", "exame", "uniforme", "epi"] as Cat[]).filter(c => abertos.some(i => i.cat === c));
-  const visiveis = abertos.filter(i => filtroCat === "todos" || i.cat === filtroCat);
-  const vencidos = visiveis.filter(i => i.data < hoje).length;
+  // Resolvidos NÃO somem — ficam verdes no calendário (igual conta paga).
+  const cats = (["experiencia", "exame", "uniforme", "epi"] as Cat[]).filter(c => itens.some(i => i.cat === c));
+  const visiveis = itens.filter(i => filtroCat === "todos" || i.cat === filtroCat);
+  const vencidos = visiveis.filter(i => !resolvidos.has(i.id) && i.data < hoje).length;
 
   // Calendário-semana
   const dias = Array.from({ length: 7 }, (_, i) => { const d = parseYmd(semanaInicio); d.setDate(d.getDate() + i); return ymd(d); });
@@ -153,7 +157,7 @@ export function PrazosTrabalhistasPage() {
         📅 Prazos vindos dos módulos de origem (Admissão/experiência, Exames, Uniformes). Clique num item pra resolver — exame dá baixa de verdade (recalcula o próximo); os demais saem da agenda.
       </div>
 
-      {abertos.length > 0 && (
+      {itens.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
           {chip(vis === "calendario", "📅 Calendário", () => setVis("calendario"))}
           {chip(vis === "lista", "📋 Lista", () => setVis("lista"))}
@@ -163,7 +167,7 @@ export function PrazosTrabalhistasPage() {
         </div>
       )}
 
-      {abertos.length === 0 ? (
+      {itens.length === 0 ? (
         <div className="text-center py-12 text-gray-500 dark:text-gray-400">
           <div className="text-4xl mb-2">🧑‍⚖️</div>
           <p>Nenhum prazo trabalhista em aberto nesta empresa.</p>
@@ -193,14 +197,17 @@ export function PrazosTrabalhistasPage() {
                   </div>
                   {feriadoNome && <div className="text-[9px] text-amber-600 dark:text-amber-400 mb-1 truncate">🎉 {feriadoNome}</div>}
                   <div className="space-y-1">
-                    {lista.map(it => (
+                    {lista.map(it => {
+                      const resolvido = resolvidos.has(it.id);
+                      return (
                       <div key={it.id} onClick={() => setAcao(it)} title="clique pra resolver"
-                        className={`cursor-pointer hover:shadow-sm rounded-lg border px-1.5 py-1 text-[11px] leading-tight ${it.data < hoje ? "border-rose-300 bg-rose-50 dark:bg-rose-900/20" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"}`}>
+                        className={`cursor-pointer hover:shadow-sm rounded-lg border px-1.5 py-1 text-[11px] leading-tight ${resolvido ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20" : it.data < hoje ? "border-rose-300 bg-rose-50 dark:bg-rose-900/20" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900"}`}>
                         <div className="flex items-center gap-1"><span className={`text-[8px] font-medium px-1 py-0.5 rounded-full ${CAT_COR[it.cat]}`}>{CAT_LABEL[it.cat]}</span></div>
-                        <div className="font-semibold text-gray-800 dark:text-gray-100 break-words">{it.titulo}</div>
+                        <div className="font-semibold text-gray-800 dark:text-gray-100 break-words flex items-start gap-1">{resolvido && <span className="text-emerald-600">✓</span>}{it.titulo}</div>
                         <div className="text-gray-500 dark:text-gray-400 truncate">{it.sub}</div>
                       </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               );
@@ -210,19 +217,20 @@ export function PrazosTrabalhistasPage() {
       ) : (
         <div className="space-y-2">
           {visiveis.map(it => {
-            const atrasado = it.data < hoje;
+            const resolvido = resolvidos.has(it.id);
+            const atrasado = !resolvido && it.data < hoje;
             return (
               <div key={it.id} onClick={() => setAcao(it)}
-                className={`p-3 rounded-xl border bg-white dark:bg-gray-900 cursor-pointer hover:shadow-md transition-shadow ${atrasado ? "border-rose-200 dark:border-rose-900/50" : "border-gray-200 dark:border-gray-800"}`}>
+                className={`p-3 rounded-xl border cursor-pointer hover:shadow-md transition-shadow ${resolvido ? "border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/50 dark:bg-emerald-950/20" : atrasado ? "border-rose-200 dark:border-rose-900/50 bg-white dark:bg-gray-900" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
                 <div className="flex items-center gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5 flex-wrap">
                       <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${CAT_COR[it.cat]}`}>{CAT_LABEL[it.cat]}</span>
-                      {it.titulo}
+                      {resolvido && <span className="text-emerald-600">✓</span>}{it.titulo}
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{it.sub}{it.detalhe ? ` · ${it.detalhe}` : ""}</div>
                   </div>
-                  <div className={`shrink-0 text-sm font-medium ${atrasado ? "text-rose-600" : "text-gray-700 dark:text-gray-300"}`}>{fmtBR(it.data)}{atrasado && " ⚠️"}</div>
+                  <div className={`shrink-0 text-sm font-medium ${resolvido ? "text-emerald-600" : atrasado ? "text-rose-600" : "text-gray-700 dark:text-gray-300"}`}>{fmtBR(it.data)}{atrasado && " ⚠️"}</div>
                 </div>
               </div>
             );
@@ -230,15 +238,16 @@ export function PrazosTrabalhistasPage() {
         </div>
       )}
 
-      {acao && <AcaoModal it={acao} onClose={() => setAcao(null)} onBaixarExame={baixarExame} onResolver={marcarResolvido} hoje={hoje} />}
+      {acao && <AcaoModal it={acao} resolvido={resolvidos.has(acao.id)} onClose={() => setAcao(null)} onBaixarExame={baixarExame} onResolver={marcarResolvido} onDesresolver={desmarcarResolvido} hoje={hoje} />}
     </div>
   );
 }
 
-function AcaoModal({ it, onClose, onBaixarExame, onResolver, hoje }: {
-  it: Item; onClose: () => void; hoje: string;
+function AcaoModal({ it, resolvido, onClose, onBaixarExame, onResolver, onDesresolver, hoje }: {
+  it: Item; resolvido: boolean; onClose: () => void; hoje: string;
   onBaixarExame: (it: Item, realizadoEm: string) => Promise<void>;
   onResolver: (it: Item) => Promise<void>;
+  onDesresolver: (it: Item) => Promise<void>;
 }) {
   const [dataReal, setDataReal] = useState(hoje);
   const [busy, setBusy] = useState(false);
@@ -264,10 +273,14 @@ function AcaoModal({ it, onClose, onBaixarExame, onResolver, hoje }: {
           </div>
         ) : (
           <div className="space-y-3">
-            <p className="text-xs text-gray-500 dark:text-gray-400">Marcar como resolvido tira este item da agenda. A renovação/decisão em si você registra no <b>{origem}</b> (integração direta chega numa próxima).</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{resolvido
+              ? "Este prazo está marcado como resolvido (verde). Você pode desmarcar se precisar."
+              : <>Marcar como resolvido deixa o item <b>verde</b> no calendário (não some). A renovação/decisão em si você registra no <b>{origem}</b>.</>}</p>
             <div className="flex gap-2 justify-end">
               <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-              <Button disabled={busy} onClick={() => void run(() => onResolver(it))}>{busy ? "…" : "✓ Marcar resolvido"}</Button>
+              {resolvido
+                ? <Button variant="secondary" disabled={busy} onClick={() => void run(() => onDesresolver(it))}>{busy ? "…" : "Desmarcar"}</Button>
+                : <Button disabled={busy} onClick={() => void run(() => onResolver(it))}>{busy ? "…" : "✓ Marcar resolvido"}</Button>}
             </div>
           </div>
         )}
