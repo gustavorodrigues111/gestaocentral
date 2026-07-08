@@ -198,8 +198,7 @@ export function WikiProcessosPage() {
         onRascunho={r => { setRascunhoIA(r); setDitando(false); setCriando(true); }} />}
       {editVoz && podeEditar && <EditarVozModal proc={editVoz} onClose={() => setEditVoz(null)}
         onAplicar={p => { setEditVoz(null); setEditando(p); }} />}
-      {lendo && <LerModal proc={lendo} podeEditar={podeEditar}
-        onClose={() => setLendo(null)} onEditar={() => { setEditando(lendo); setLendo(null); }} />}
+      {lendo && <LerModal proc={lendo} onClose={() => setLendo(null)} />}
       {(criando || editando) && (
         <WikiForm proc={editando} rascunhoInicial={editando ? null : rascunhoIA} podeDeletar={podeDeletar}
           onClose={() => { setCriando(false); setEditando(null); setRascunhoIA(null); }}
@@ -545,7 +544,7 @@ function EditarVozModal({ proc, onClose, onAplicar }: {
 }
 
 // ─── Leitura (consulta) ──────────────────────────────────────────────────────
-function LerModal({ proc, podeEditar, onClose, onEditar }: { proc: WikiProcesso; podeEditar?: boolean; onClose: () => void; onEditar: () => void }) {
+function LerModal({ proc, onClose }: { proc: WikiProcesso; onClose: () => void }) {
   const nPassos = proc.passos?.length ?? 0;
   const nItens = proc.itens?.length ?? 0;
   return (
@@ -562,8 +561,7 @@ function LerModal({ proc, podeEditar, onClose, onEditar }: { proc: WikiProcesso;
           </div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight pr-8">{proc.titulo}</h2>
           {proc.resumo && <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 leading-relaxed">{proc.resumo}</p>}
-          <div className="flex items-center gap-2 mt-3">
-            {podeEditar && <Button size="sm" variant="secondary" onClick={onEditar}>✏️ Editar</Button>}
+          <div className="mt-3">
             <span className="text-[11px] text-gray-400">atualizado {fmtBR((proc.atualizadoEm || "").slice(0, 10))}</span>
           </div>
         </div>
