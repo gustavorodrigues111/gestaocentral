@@ -19,8 +19,10 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
+import { canAcao, resolverPerfil } from "../../core/auth/permissions";
+import { SETORES } from "../../core/wiki/setores";
 import { useAvisoSource, type AvisoDoc } from "./useAvisoSource";
-import type { FaleDpMensagem, Rotina, RotinaConclusao } from "../../core/types";
+import type { FaleDpMensagem, Rotina, RotinaConclusao, WikiProcesso } from "../../core/types";
 import { FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE } from "../../core/types";
 import { pendentesParaPessoa } from "../rotinas/repository";
 import { recorrenciaLabel } from "../rotinas/rotinasEngine";
@@ -263,6 +265,16 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   // ── Governança de IA: perguntas fora do escopo (uma por interação flagada) ──
   const iaAlertas = useAvisoSource({ ...base,
     gates: [["iaGovernanca", "receberAlertas"]], collectionName: "iaInteracoes", filtros: [["foraDeEscopo", "==", true]] });
+
+  // ── Wiki de Processos: minhas etapas (responsável via setor) ──
+  // Wiki usa restaurantIds[] (não restaurantId), então carrega tudo e filtra.
+  const [wikiProcs, setWikiProcs] = useState<WikiProcesso[]>([]);
+  const [wikiCfgs, setWikiCfgs] = useState<Record<string, Record<string, string[]>>>({});
+  useEffect(() => {
+    const u1 = onSnapshot(collection(db, "wikiProcessos"), (s) => setWikiProcs(s.docs.map(d => ({ id: d.id, ...d.data() }) as WikiProcesso).filter(p => !p.deletadoEm && p.ativo !== false)), () => setWikiProcs([]));
+    const u2 = onSnapshot(collection(db, "wikiConfig"), (s) => { const m: Record<string, Record<string, string[]>> = {}; s.docs.forEach(d => { const c = d.data() as { setoresResponsaveis?: Record<string, string[]> }; m[d.id] = c.setoresResponsaveis || {}; }); setWikiCfgs(m); }, () => setWikiCfgs({}));
+    return () => { u1(); u2(); };
+  }, []);
 
   const todos = useMemo<Aviso[]>(() => {
     const out: Aviso[] = [];
@@ -660,10 +672,39 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       });
     }
 
+    // ── Wiki: minhas etapas por empresa (1 aviso por rid com etapas minhas) ──
+    if (pessoa) {
+      const resps = (x: { responsaveis?: string[]; responsavel?: string }) => x.responsaveis?.length ? x.responsaveis : (x.responsavel ? [x.responsavel] : []);
+      for (const rid of pessoa.restaurantIds || []) {
+        if (!canAcao(pessoa, rid, "wikiProcessos", "ver", perfis)) continue;
+        const mapa = wikiCfgs[rid] || {};
+        const manual = SETORES.filter(s => (mapa[s.id] || []).includes(pid)).map(s => s.id);
+        const perfil = resolverPerfil((pessoa.profileIds as Record<string, string> | undefined)?.[rid], perfis);
+        const meus = new Set<string>([...manual, ...(perfil?.wikiSetores || [])]);
+        if (meus.size === 0) continue;
+        let n = 0;
+        for (const p of wikiProcs) {
+          if (!(p.restaurantIds || []).includes(rid)) continue;
+          for (const s of p.passos || []) if (resps(s).some(r => meus.has(r))) n++;
+          for (const it of p.itens || []) if (resps(it).some(r => meus.has(r))) n++;
+        }
+        if (n === 0) continue;
+        out.push({
+          id: `wikietapas_${rid}_${n}`, tipo: "wiki_minhas_etapas", icone: "🙋",
+          titulo: "Suas etapas na Wiki",
+          descricao: `${n} ${n === 1 ? "etapa sob sua responsabilidade" : "etapas sob sua responsabilidade"} nos processos documentados`,
+          em: EM_ALTO,
+          restauranteId: rid, restauranteNome: nomePorRid[rid] || "Restaurante",
+          cta: "Ver minhas etapas", href: `/r/${rid}/wikiProcessos`,
+          categoria: "Wiki de Processos", categoriaIcone: "📚",
+        });
+      }
+    }
+
     out.sort((a, b) => (b.em || "").localeCompare(a.em || ""));
     return out;
   }, [
-    nomePorRid, rotinas, conclusoesIds, pid,
+    nomePorRid, rotinas, conclusoesIds, pid, pessoa, perfis, wikiProcs, wikiCfgs,
     escala, faleDp, fechamento, gorjetas, vt, vr, beneficios,
     ocorrencias, eventos, recebimento, compras, ideias, admissoes, demissoes, exames, uniformes,
     minhaAcao, minhaProducao, checklistTpl, checklistRun, cobrancasInt,
