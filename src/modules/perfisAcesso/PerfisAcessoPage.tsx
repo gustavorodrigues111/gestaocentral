@@ -9,6 +9,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { CATALOGO, type CatalogoModulo } from "../../core/auth/actionCatalog";
+import { SETORES } from "../../core/wiki/setores";
 import { MODULES, AREA_INFO } from "../../config/modules";
 import type { ModuleArea, Pessoa } from "../../core/types";
 import { BUILTIN_GERENTE_RESTAURANTE } from "../../core/auth/builtinProfiles";
@@ -517,6 +518,28 @@ function PerfilEditor({ perfil, isNew, restaurantes, pessoas, perfis, onSalvar, 
         </div>
         );
       })}
+
+      {/* Correlação com os SETORES da Wiki de Processos: quem tem este perfil
+          É responsável pelas etapas marcadas com esses setores (vira "minhas
+          etapas"). Vale pra qualquer perfil, inclusive de empregado. */}
+      <div className="rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50/40 dark:bg-sky-900/10 p-3 space-y-2">
+        <div className="text-xs font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">🔗 Setores da Wiki que este perfil representa</div>
+        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+          Quem tiver este perfil vira responsável, na Wiki, pelas etapas marcadas com o(s) setor(es) abaixo (aparece o nome dele e entra em “minhas etapas”). Deixe vazio se este perfil não responde por nenhuma etapa.
+        </p>
+        <div className="flex flex-wrap gap-1.5">
+          {SETORES.map(s => {
+            const on = (form.wikiSetores || []).includes(s.id);
+            return (
+              <button key={s.id} type="button"
+                onClick={() => setForm(f => { const cur = f.wikiSetores || []; return { ...f, wikiSetores: on ? cur.filter(x => x !== s.id) : [...cur, s.id] }; })}
+                className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${on ? `${s.cls} border-transparent` : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800"}`}>
+                {on ? "✓ " : ""}{s.icon} {s.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Escopo por categoria da Wiki de Processos — só quando o perfil tem
           alguma permissão de wikiProcessos habilitada. */}

@@ -14,7 +14,8 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useDitado } from "../../core/hooks/useDitado";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
-import { wikiCategoriasAcessiveis } from "../../core/auth/permissions";
+import { wikiCategoriasAcessiveis, resolverPerfil } from "../../core/auth/permissions";
+import { SETORES, setorMeta } from "../../core/wiki/setores";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
@@ -23,17 +24,6 @@ import type { WikiProcesso, WikiFormato, WikiFoto, WikiPasso, WikiChecklistItem 
 const FORMATO_LABEL: Record<WikiFormato, string> = { texto: "📄 Texto", checklist: "✅ Checklist", passos: "👣 Passo a passo" };
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
-// Setores responsáveis por etapa (passo/checklist). No futuro cada setor mapeia
-// pra pessoas reais por empresa (lideranças, DP, financeiro…).
-const SETORES: { id: string; label: string; icon: string; cls: string }[] = [
-  { id: "lideranca",  label: "Liderança de área",        icon: "🧑‍✈️", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
-  { id: "area",       label: "Equipe da área",           icon: "👥",   cls: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300" },
-  { id: "dp",         label: "Departamento de Pessoas",  icon: "🧑‍⚖️", cls: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" },
-  { id: "financeiro", label: "Financeiro",               icon: "💰",   cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
-  { id: "socios",     label: "Sócios",                   icon: "👔",   cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" },
-  { id: "compras",    label: "Compras / Estoque",        icon: "📦",   cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" },
-];
-const setorMeta = (id?: string) => (id ? SETORES.find(s => s.id === id) : undefined);
 // Setores responsáveis de uma etapa (novo `responsaveis[]` ou legado `responsavel`).
 const respsDe = (x: { responsaveis?: string[]; responsavel?: string }): string[] =>
   x.responsaveis && x.responsaveis.length ? x.responsaveis : (x.responsavel ? [x.responsavel] : []);
@@ -104,7 +94,7 @@ export function WikiProcessosPage() {
   const [rascunhoIA, setRascunhoIA] = useState<Partial<WikiProcesso> | null>(null);
   const [configSetores, setConfigSetores] = useState(false);
   const [setoresMap, setSetoresMap] = useState<Record<string, string[]>>({});
-  const [pessoasRid, setPessoasRid] = useState<{ id: string; nome: string }[]>([]);
+  const [pessoasRid, setPessoasRid] = useState<{ id: string; nome: string; profileId?: string }[]>([]);
   const [diretrizesIA, setDiretrizesIA] = useState("");
 
   useEffect(() => {
@@ -118,7 +108,7 @@ export function WikiProcessosPage() {
     const uc = onSnapshot(doc(db, "wikiConfig", rid), snap => setSetoresMap((snap.data() as { setoresResponsaveis?: Record<string, string[]> } | undefined)?.setoresResponsaveis || {}));
     const ui = onSnapshot(doc(db, "iaConfig", rid), snap => setDiretrizesIA((snap.data() as { diretrizes?: string } | undefined)?.diretrizes || ""));
     const up = onSnapshot(query(collection(db, "pessoas"), where("restaurantIds", "array-contains", rid)),
-      snap => setPessoasRid(snap.docs.map(d => ({ id: d.id, nome: (d.data() as { nome?: string }).nome || "—" })).sort((a, b) => a.nome.localeCompare(b.nome))));
+      snap => setPessoasRid(snap.docs.map(d => { const dt = d.data() as { nome?: string; profileIds?: Record<string, string> }; return { id: d.id, nome: dt.nome || "—", profileId: dt.profileIds?.[rid] }; }).sort((a, b) => a.nome.localeCompare(b.nome))));
     return () => { uc(); ui(); up(); };
   }, [rid]);
 
@@ -132,10 +122,17 @@ export function WikiProcessosPage() {
   const daEmpresaTodas = procs.filter(p => (p.restaurantIds || []).includes(rid || ""));
   const daEmpresa = catsPermitidas ? daEmpresaTodas.filter(p => catsPermitidas.includes(p.area)) : daEmpresaTodas;
   const areas = [...new Set(daEmpresa.map(p => p.area).filter(Boolean))].sort();
-  // Nomes reais por setor (config wikiConfig/{rid} → pessoas do restaurante).
+  // Nomes reais por setor, somando DUAS fontes:
+  //  (a) mapa manual wikiConfig/{rid}.setoresResponsaveis;
+  //  (b) pessoas cujo PERFIL DE ACESSO neste rid está marcado com o setor
+  //      (AccessProfile.wikiSetores) — a correlação vive no perfil, não na etapa.
   const nomePessoa = (id: string) => pessoasRid.find(p => p.id === id)?.nome;
   const setorNomes: Record<string, string[]> = {};
-  for (const s of SETORES) setorNomes[s.id] = (setoresMap[s.id] || []).map(nomePessoa).filter(Boolean) as string[];
+  for (const s of SETORES) {
+    const manual = (setoresMap[s.id] || []).map(nomePessoa).filter(Boolean) as string[];
+    const porPerfil = pessoasRid.filter(p => resolverPerfil(p.profileId, perfis)?.wikiSetores?.includes(s.id)).map(p => p.nome);
+    setorNomes[s.id] = [...new Set([...manual, ...porPerfil])];
+  }
   const q = busca.trim().toLowerCase();
   const visiveis = daEmpresa.filter(p =>
     (filtroArea === "todas" || p.area === filtroArea) &&

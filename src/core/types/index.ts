@@ -38,6 +38,13 @@ export type AccessProfile = {
    * continuam em `permissions.wikiProcessos`.
    */
   wikiCategorias?: string[];
+  /**
+   * Correlação com os SETORES da Wiki de Processos (ver core/wiki/setores).
+   * Quem tem este perfil (nesse restaurante) É responsável pelas etapas marcadas
+   * com esses setores. Ausente/vazio = não representa nenhum setor. A etapa nunca
+   * aponta pro perfil — a correlação vive AQUI, no perfil.
+   */
+  wikiSetores?: string[];
   criadoPor?: string;                 // pessoaId
   criadoEm: string;                   // ISO
   atualizadoPor?: string;
