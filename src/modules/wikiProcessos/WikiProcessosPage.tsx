@@ -98,6 +98,7 @@ export function WikiProcessosPage() {
   const [lendo, setLendo] = useState<WikiProcesso | null>(null);
   const [perguntando, setPerguntando] = useState(false);
   const [ditando, setDitando] = useState(false);
+  const [escolhendoNovo, setEscolhendoNovo] = useState(false);
   const [sugerindo, setSugerindo] = useState(false);
   const [editVoz, setEditVoz] = useState<WikiProcesso | null>(null);
   const [rascunhoIA, setRascunhoIA] = useState<Partial<WikiProcesso> | null>(null);
@@ -287,13 +288,12 @@ export function WikiProcessosPage() {
         // ── Aba Cadastro ───────────────────────────────────────────────────
         <>
           <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-            <div className="text-sm text-gray-500">Gerencie os processos: crie, edite (inclusive por voz) e exclua.</div>
+            <div className="text-sm text-gray-500">Gerencie os processos. Clique num processo pra ler e editar.</div>
             <div className="flex gap-2 flex-wrap">
               <Button variant="secondary" onClick={() => setConfigSetores(true)}>👥 Responsáveis por setor</Button>
               {podeCriar && <>
                 <Button variant="secondary" onClick={() => setSugerindo(true)}>💡 Sugerir processo</Button>
-                <Button variant="secondary" onClick={() => setDitando(true)}>🎙️ Gravar por voz</Button>
-                <Button onClick={() => setCriando(true)}>+ Novo processo</Button>
+                <Button onClick={() => setEscolhendoNovo(true)}>+ Novo processo</Button>
               </>}
             </div>
           </div>
@@ -307,20 +307,24 @@ export function WikiProcessosPage() {
               {[...porArea.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([area, lista]) => (
                 <div key={area}>
                   <div className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">{area}</div>
-                  <div className="space-y-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {lista.map(p => (
-                      <div key={p.id} className="flex items-center gap-2 p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-                        <button type="button" onClick={() => setLendo(p)} className="flex-1 min-w-0 text-left">
-                          <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5 truncate">
-                            {p.titulo}
+                      <button key={p.id} type="button" onClick={() => setLendo(p)}
+                        className="text-left p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-800 transition-all flex gap-3 items-start">
+                        <span className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-lg ${FORMATO_META[p.formato].cls}`}>{FORMATO_META[p.formato].icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5 flex-wrap">
+                            <span className="truncate">{p.titulo}</span>
                             {p.publicado === false && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">rascunho</span>}
                             {(p.restaurantIds?.length ?? 0) > 1 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">🏢 {p.restaurantIds!.length}</span>}
                           </div>
-                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 truncate">{FORMATO_LABEL[p.formato]}{p.resumo ? ` · ${p.resumo}` : ""}</div>
-                        </button>
-                        {podeEditar && <button type="button" onClick={() => setEditVoz(p)} title="Editar por voz com IA" className="shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">🎙️ IA</button>}
-                        {podeEditar && <button type="button" onClick={() => setEditando(p)} title="Editar" className="shrink-0 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">✏️</button>}
-                      </div>
+                          {p.resumo && <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{p.resumo}</div>}
+                          <div className="text-[11px] text-gray-400 mt-1 flex items-center gap-2 flex-wrap">
+                            <span>{FORMATO_LABEL[p.formato]}</span>
+                            {nEtapas(p) > 0 && <span>· {nEtapas(p)} {p.formato === "passos" ? "passos" : "itens"}</span>}
+                          </div>
+                        </div>
+                      </button>
                     ))}
                   </div>
                 </div>
@@ -338,7 +342,18 @@ export function WikiProcessosPage() {
         onAplicar={p => { setEditVoz(null); setEditando(p); }} />}
       {configSetores && <ResponsaveisSetorModal rid={rid || ""} pessoas={pessoasRid} mapaInicial={setoresMap} podeEditar={podeCadastrar}
         onClose={() => setConfigSetores(false)} />}
-      {lendo && <LerModal proc={lendo} processos={daEmpresa} setorNomes={setorNomes} onClose={() => setLendo(null)} onAbrirProc={p => setLendo(p)} />}
+      {escolhendoNovo && podeCriar && (
+        <EscolherModoNovo
+          onClose={() => setEscolhendoNovo(false)}
+          onVoz={() => { setEscolhendoNovo(false); setDitando(true); }}
+          onEscrever={() => { setEscolhendoNovo(false); setCriando(true); }}
+        />
+      )}
+      {lendo && <LerModal proc={lendo} processos={daEmpresa} setorNomes={setorNomes}
+        editavel={abaAtual === "cadastro" && podeEditar}
+        onEditar={() => { setEditando(lendo); setLendo(null); }}
+        onEditarVoz={() => { setEditVoz(lendo); setLendo(null); }}
+        onClose={() => setLendo(null)} onAbrirProc={p => setLendo(p)} />}
       {(criando || editando) && (
         <WikiForm proc={editando} rascunhoInicial={editando ? null : rascunhoIA} podeDeletar={podeDeletar}
           onClose={() => { setCriando(false); setEditando(null); setRascunhoIA(null); }}
@@ -826,8 +841,33 @@ function ResponsaveisSetorModal({ rid, pessoas, mapaInicial, podeEditar, onClose
   );
 }
 
+// ─── Novo processo: escolher voz ou escrever ─────────────────────────────────
+function EscolherModoNovo({ onClose, onVoz, onEscrever }: { onClose: () => void; onVoz: () => void; onEscrever: () => void }) {
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md p-5" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">Novo processo</h2>
+        <p className="text-xs text-gray-500 mb-4">Como você quer criar?</p>
+        <div className="grid grid-cols-2 gap-3">
+          <button type="button" onClick={onVoz} className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors">
+            <span className="text-3xl">🎙️</span>
+            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Gravar por voz</span>
+            <span className="text-[11px] text-gray-500 text-center">Fale o processo e a IA monta o rascunho</span>
+          </button>
+          <button type="button" onClick={onEscrever} className="flex flex-col items-center gap-2 p-4 rounded-xl border border-gray-200 dark:border-gray-800 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20 transition-colors">
+            <span className="text-3xl">✍️</span>
+            <span className="text-sm font-medium text-gray-900 dark:text-gray-100">Escrever</span>
+            <span className="text-[11px] text-gray-500 text-center">Preencha o formulário manualmente</span>
+          </button>
+        </div>
+        <div className="flex justify-end mt-4"><Button variant="ghost" onClick={onClose}>Cancelar</Button></div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Leitura (consulta) ──────────────────────────────────────────────────────
-function LerModal({ proc, processos, setorNomes, onClose, onAbrirProc }: { proc: WikiProcesso; processos: WikiProcesso[]; setorNomes: Record<string, string[]>; onClose: () => void; onAbrirProc: (p: WikiProcesso) => void }) {
+function LerModal({ proc, processos, setorNomes, editavel, onEditar, onEditarVoz, onClose, onAbrirProc }: { proc: WikiProcesso; processos: WikiProcesso[]; setorNomes: Record<string, string[]>; editavel?: boolean; onEditar?: () => void; onEditarVoz?: () => void; onClose: () => void; onAbrirProc: (p: WikiProcesso) => void }) {
   const nPassos = proc.passos?.length ?? 0;
   const nItens = proc.itens?.length ?? 0;
   return (
@@ -844,7 +884,9 @@ function LerModal({ proc, processos, setorNomes, onClose, onAbrirProc }: { proc:
           </div>
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight pr-8">{proc.titulo}</h2>
           {proc.resumo && <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 leading-relaxed">{proc.resumo}</p>}
-          <div className="mt-3">
+          <div className="flex items-center gap-2 mt-3 flex-wrap">
+            {editavel && onEditar && <Button size="sm" variant="secondary" onClick={onEditar}>✏️ Editar</Button>}
+            {editavel && onEditarVoz && <Button size="sm" variant="secondary" onClick={onEditarVoz}>🎙️ Editar por voz</Button>}
             <span className="text-[11px] text-gray-400">atualizado {fmtBR((proc.atualizadoEm || "").slice(0, 10))}</span>
           </div>
         </div>
