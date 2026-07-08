@@ -41,12 +41,12 @@ export const MODULES: ModuleDef[] = [
 
   // ── Tarefas (item-pivô global) — colocada no topo do Sidebar separadamente
   { id: "tarefas",     area: "master", subarea: "Master",              label: "Gestor de Tarefas", icon: "🗂️", status: "ativo", etapa: "beta",             desc: "Gestor de Tarefas: rotinas e demandas, caixa por usuário, cascatas dos cadastros mestres" },
-  { id: "planner",     area: "master", subarea: "Master",              label: "Planner",           icon: "📅", status: "ativo", etapa: "beta",             desc: "Agenda pessoal do dono integrada ao Google Calendar (single-user, fora do escopo de restaurante)" },
+  { id: "planner",     area: "planejamento", subarea: "Planner",       label: "Planner",           icon: "📅", status: "ativo", etapa: "beta",             desc: "Agenda pessoal integrada ao Google Calendar. Lança prazos de qualquer tipo (conta, técnico, trabalhista) que registram no módulo de origem." },
 
   // ── Pessoas Externas & Infra ─────────────────────────────────────
   { id: "freelas",     area: "ops", subarea: "Pessoas Externas & Infra", label: "Freelas",        icon: "🎒", status: "ativo", etapa: "beta",               desc: "Cadastro, agendamento, lançamento e pagamento de freelas", dependsOn: ["pessoas", "escala"] },
-  { id: "prazosTrabalhistas", area: "agenda", subarea: "Prazos", label: "Prazos Trabalhistas", icon: "🧑‍⚖️", status: "ativo", etapa: "em_desenvolvimento", desc: "Agenda de prazos de RH: fim de experiência (45/90), exames e uniformes/EPIs. Agrega os prazos que já vivem nos módulos de origem." },
-  { id: "manutencoes", area: "agenda", subarea: "Prazos", label: "Prazos Técnicos", icon: "🛠️", status: "ativo", etapa: "beta",         desc: "Prazos técnicos e operacionais: manutenções, licenças e certificados (potabilidade, dedetização, CLCB, alvarás). Gera lembretes na Central de Avisos." },
+  { id: "prazosTrabalhistas", area: "planejamento", subarea: "Prazos", label: "Prazos Trabalhistas", icon: "🧑‍⚖️", status: "ativo", etapa: "em_desenvolvimento", desc: "Agenda de prazos de RH: fim de experiência (45/90), exames e uniformes/EPIs. Agrega os prazos que já vivem nos módulos de origem." },
+  { id: "manutencoes", area: "planejamento", subarea: "Prazos", label: "Prazos Técnicos", icon: "🛠️", status: "ativo", etapa: "beta",         desc: "Prazos técnicos e operacionais: manutenções, licenças e certificados (potabilidade, dedetização, CLCB, alvarás). Gera lembretes na Central de Avisos." },
 
   // ── ocultos (operação) ───────────────────────────────────────────
   { id: "temperaturas", area: "ops", label: "Temperaturas",      icon: "🌡️", status: "planejado", etapa: "em_desenvolvimento", desc: "Monitoramento e alertas", oculto: true },
@@ -87,7 +87,7 @@ export const MODULES: ModuleDef[] = [
   { id: "vr",          area: "fin", subarea: "Equipe (benefícios + variáveis)", label: "Vale Refeição", icon: "🍱", status: "ativo", etapa: "beta", desc: "VR diário (migrando pra Benefícios)", dependsOn: ["pessoas", "escala"] },
 
   // ── Despesas ─────────────────────────────────────────────────────
-  { id: "contasFixas", area: "agenda", subarea: "Contas",             label: "Contas Fixas",    icon: "💵", status: "ativo", etapa: "beta", desc: "Cadastro mestre de pagamentos recorrentes (aluguel, sistemas, impostos). Gera lembretes no Gestor de Tarefas." },
+  { id: "contasFixas", area: "planejamento", subarea: "Contas",             label: "Contas Fixas",    icon: "💵", status: "ativo", etapa: "beta", desc: "Cadastro mestre de pagamentos recorrentes (aluguel, sistemas, impostos). Gera lembretes no Gestor de Tarefas." },
   { id: "vendas",      area: "fin", subarea: "Vendas & Permutas",      label: "Vendas",          icon: "🧾", status: "ativo", etapa: "beta", desc: "Registro de vendas fora do sistema fiscal (entre empresas, permutas, sem margem). Cobrança via WhatsApp, quitação e permuta recíproca." },
   { id: "faturas",     area: "fin", subarea: "Cartões & Faturas",      label: "Faturas",         icon: "💳", status: "ativo", etapa: "em_desenvolvimento", desc: "Faturas de cartão: sobe o PDF, a IA extrai e você classifica os gastos por categoria/empresa. Gastos atribuídos a outra empresa viram reembolso na Central de Avisos dela." },
 
@@ -103,7 +103,7 @@ export const AREA_INFO = {
   ops:  { label: "Operação",               color: "#d4a017", desc: "Quem toca o restaurante no dia a dia" },
   dp:   { label: "Pessoas & DP",           color: "#3b82f6", desc: "RH, admissão, escala e desenvolvimento" },
   fin:  { label: "Financeiro",             color: "#10b981", desc: "Benefícios, gorjetas e pagamentos" },
-  agenda: { label: "Agenda",               color: "#0ea5e9", desc: "Prazos trabalhistas, técnicos e contas — o que vence e quando" },
+  planejamento: { label: "Planejamento",   color: "#0ea5e9", desc: "Planner, prazos (trabalhistas/técnicos) e contas — o que vence e quando" },
   inst: { label: "Institucional / Config", color: "#8b5cf6", desc: "Site público e configurações" },
   master: { label: "Master",               color: "#6b7280", desc: "Ferramentas pessoais do dono — ligue/desligue quando quiser" },
 } as const;

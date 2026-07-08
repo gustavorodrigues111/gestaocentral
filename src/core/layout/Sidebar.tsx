@@ -110,7 +110,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     return canUse(pessoa, rid, moduleId);
   }
 
-  const areas: ModuleArea[] = ["ops", "dp", "fin", "agenda", "inst"];
+  const areas: ModuleArea[] = ["ops", "dp", "fin", "planejamento", "inst"];
 
   // Seção Master (Tarefas + Planner): ferramentas pessoais do dono.
   // Diferente das demais áreas, RESPEITA modulosAtivos MESMO pro master —
@@ -232,7 +232,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                           </div>
                         )}
                         <NavLink
-                          to={rid ? `/r/${rid}/${m.id}` : "#"}
+                          to={m.id === "planner" ? "/planner" : (rid ? `/r/${rid}/${m.id}` : "#")}
                           onClick={onClose}
                           className={({ isActive }) => `
                             flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm

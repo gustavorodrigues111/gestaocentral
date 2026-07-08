@@ -60,7 +60,7 @@ export function HomePage() {
     return canUse(pessoa, rid, moduleId);
   }
 
-  const areas: ModuleArea[] = ["ops", "dp", "fin", "agenda", "inst"];
+  const areas: ModuleArea[] = ["ops", "dp", "fin", "planejamento", "inst"];
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -117,7 +117,7 @@ export function HomePage() {
                   );
                   return disabled
                     ? <div key={m.id}>{Card}</div>
-                    : <Link key={m.id} to={`/r/${rid}/${m.id}`}>{Card}</Link>;
+                    : <Link key={m.id} to={m.id === "planner" ? "/planner" : `/r/${rid}/${m.id}`}>{Card}</Link>;
                 })}
               </div>
             </section>
