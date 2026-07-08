@@ -53,6 +53,7 @@ type Lay = Required<Omit<CardapioLayout, "fontesCustom" | "secaoPos" | "colsPorP
 const PADROES: Lay = {
   fonteTitulos: "dm-serif-display", fonteCorpo: "inter", fontesCustom: [],
   espacoPratos: 8, espacoDescricao: 1, espacoSecoes: 24, tamTitulo: 13, tamDescricao: 10, tamSecao: 17,
+  corSecoes: "#111111", corPratos: "#111111", corDescricao: "#111111", corPreco: "#111111",
   tituloCapa: "COMIDAS", tamTituloCapa: 13, offsetTituloCapa: 0, secaoPos: {}, mostrarCifrao: true,
   margemTopo: 34, margemBaixo: 40, colGap: 22,
   capaUrl: "", mioloUrl: "", capaTitLeftPct: 54, capaTitTopPct: 20, colsPadrao: 2, colsPorPagina: {},
@@ -243,10 +244,10 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
       <div>
         {!semCabecalho && (
           <div style={{ textAlign: "center", marginBottom: 9 }}>
-            <span style={{ fontFamily: fTit, fontSize: lay.tamSecao, color: TEAL, fontWeight: 600 }}>{nome}</span>
+            <span style={{ fontFamily: fTit, fontSize: lay.tamSecao, color: lay.corSecoes, fontWeight: 600 }}>{nome}</span>
           </div>
         )}
-        {!semCabecalho && obs && <div style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, fontStyle: "italic", color: "#888", textAlign: "center", marginBottom: 8 }}>{obs}</div>}
+        {!semCabecalho && obs && <div style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, fontStyle: "italic", color: lay.corDescricao, textAlign: "center", marginBottom: 8 }}>{obs}</div>}
         {pratos.map((p) => {
           const titulo = (en && p.tituloEn) || p.titulo; if (!titulo) return null;
           const subt = (en && p.subtituloEn) || p.subtitulo;
@@ -260,21 +261,21 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
                 <span contentEditable={!!onEditarPrato} suppressContentEditableWarning
                   onBlur={(e) => onEditarPrato?.(p.id, campoTit, e.currentTarget.innerText)}
-                  style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: "#222", whiteSpace: "pre-line", outline: "none" }}>{titulo}</span>
+                  style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: lay.corPratos, whiteSpace: "pre-line", outline: "none" }}>{titulo}</span>
                 {(precoTxt || (p.taca && (p.precoTaca || "").trim())) && (
                   <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, gap: 1 }}>
                     {precoTxt && (
                       <span style={{ whiteSpace: "nowrap", lineHeight: 1.1 }}>
-                        {!ehNota && mostrarGarrafa && <span style={{ ...icoFonteStyle, fontSize: lay.tamTitulo * 1.05 }}>{GLYPH_GARRAFA}</span>}
-                        {!ehNota && (p.garrafaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: TEAL, opacity: 0.75, marginRight: 3 }}>({String(p.garrafaMl).replace(/ml$/i, "").trim()}ml)</span>}
-                        <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: TEAL, fontWeight: 600 }}>{precoTxt}</span>
+                        {!ehNota && mostrarGarrafa && <span style={{ ...icoFonteStyle, color: lay.corPreco, fontSize: lay.tamTitulo * 1.05 }}>{GLYPH_GARRAFA}</span>}
+                        {!ehNota && (p.garrafaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: lay.corPreco, opacity: 0.75, marginRight: 3 }}>({String(p.garrafaMl).replace(/ml$/i, "").trim()}ml)</span>}
+                        <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: lay.corPreco, fontWeight: 600 }}>{precoTxt}</span>
                       </span>
                     )}
                     {p.taca && (p.precoTaca || "").trim() && (
                       <span style={{ whiteSpace: "nowrap", lineHeight: 1.1 }}>
-                        <span style={{ ...icoFonteStyle, fontSize: lay.tamTitulo * 1.05 }}>{GLYPH_TACA}</span>
-                        {(p.tacaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: TEAL, opacity: 0.75, marginRight: 3 }}>({String(p.tacaMl).replace(/ml$/i, "").trim()}ml)</span>}
-                        <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, color: TEAL, fontWeight: 600 }}>{lay.mostrarCifrao ? `$ ${p.precoTaca!.trim()}` : p.precoTaca!.trim()}</span>
+                        <span style={{ ...icoFonteStyle, color: lay.corPreco, fontSize: lay.tamTitulo * 1.05 }}>{GLYPH_TACA}</span>
+                        {(p.tacaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: lay.corPreco, opacity: 0.75, marginRight: 3 }}>({String(p.tacaMl).replace(/ml$/i, "").trim()}ml)</span>}
+                        <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, color: lay.corPreco, fontWeight: 600 }}>{lay.mostrarCifrao ? `$ ${p.precoTaca!.trim()}` : p.precoTaca!.trim()}</span>
                       </span>
                     )}
                   </span>
@@ -285,7 +286,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
               {subt && (
                 <div contentEditable={!!onEditarPrato} suppressContentEditableWarning
                   onBlur={(e) => onEditarPrato?.(p.id, campoSub, e.currentTarget.innerText)}
-                  style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, color: "#777", marginTop: lay.espacoDescricao, lineHeight: 1.25, whiteSpace: "pre-line", outline: "none" }}>{subt}</div>
+                  style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, color: lay.corDescricao, marginTop: lay.espacoDescricao, lineHeight: 1.25, whiteSpace: "pre-line", outline: "none" }}>{subt}</div>
               )}
             </div>
           );
@@ -408,7 +409,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
         {bg && <img src={bg} alt="" crossOrigin="anonymous" draggable={false} style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "fill", pointerEvents: "none", userSelect: "none" }} />}
         <GuiaMargens />
         {capa && tituloCapaMenu && (
-          <div style={{ position: "absolute", top: `${lay.capaTitTopPct}%`, left: `${lay.capaTitLeftPct}%`, transform: "translateX(-50%)", width: "60%", textAlign: "center", fontFamily: fTit, fontSize: lay.tamTituloCapa, letterSpacing: 2, color: TEAL, fontWeight: 600 }}>{tituloCapaMenu}</div>
+          <div style={{ position: "absolute", top: `${lay.capaTitTopPct}%`, left: `${lay.capaTitLeftPct}%`, transform: "translateX(-50%)", width: "60%", textAlign: "center", fontFamily: fTit, fontSize: lay.tamTituloCapa, letterSpacing: 2, color: lay.corSecoes, fontWeight: 600 }}>{tituloCapaMenu}</div>
         )}
         {blocos.filter((b) => b.p === p).map((b) => {
           const g = colGeo(p, b.c);
@@ -617,6 +618,24 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
               <input type="checkbox" checked={lay.mostrarCifrao} onChange={(e) => setCampo("mostrarCifrao", e.target.checked)} className="w-4 h-4 accent-indigo-600" />
               Mostrar cifrão <span className="font-semibold">$</span> antes do preço
             </label>
+          </PainelGrupo>
+
+          <PainelGrupo titulo="Cores dos textos" icone="🎨">
+            {([
+              ["corSecoes", "Seções e título da capa"],
+              ["corPratos", "Nome do prato"],
+              ["corDescricao", "Descrição"],
+              ["corPreco", "Preço e ícones (garrafa/taça)"],
+            ] as const).map(([k, label]) => (
+              <label key={k} className="flex items-center justify-between gap-2 text-[13px] text-gray-600 dark:text-gray-300 py-1">
+                <span>{label}</span>
+                <span className="flex items-center gap-1.5">
+                  <input type="color" value={lay[k] || "#111111"} onChange={(e) => setCampo(k, e.target.value)} className="w-8 h-6 rounded cursor-pointer border border-gray-300 dark:border-gray-700 bg-transparent p-0" />
+                  {(lay[k] || "").toLowerCase() !== "#111111" && <button type="button" onClick={() => setCampo(k, "#111111")} className="text-[11px] text-gray-400 hover:text-indigo-600">preto</button>}
+                </span>
+              </label>
+            ))}
+            <p className="text-[11px] text-gray-400 pt-1">Padrão: preto. Clique no quadradinho pra escolher outra cor.</p>
           </PainelGrupo>
 
           <PainelGrupo titulo="Arte de fundo (capa / miolo)" icone="🎨">

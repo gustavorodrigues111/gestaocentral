@@ -3717,6 +3717,11 @@ export type CardapioLayout = {
   tamTitulo?: number;      // px do nome do prato
   tamDescricao?: number;   // px da descrição do prato
   tamSecao?: number;       // px do cabeçalho da seção
+  // Cores dos textos (default preto). Hex.
+  corSecoes?: string;      // cabeçalho da seção + título da capa
+  corPratos?: string;      // nome do prato
+  corDescricao?: string;   // descrição do prato
+  corPreco?: string;       // preço + ícone garrafa/taça
   // Título da capa (ex: "COMIDAS") — editável
   tituloCapa?: string;
   tamTituloCapa?: number;  // px
