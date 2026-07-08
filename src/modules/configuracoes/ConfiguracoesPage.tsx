@@ -220,6 +220,7 @@ export function ConfiguracoesPage() {
         <div className="space-y-5">
           {areas.map(area => {
             const mods = modulesByArea(area);
+            if (mods.length === 0) return null; // pula áreas sem módulos (ex: master vazio)
             const info = AREA_INFO[area];
             return (
               <div key={area}>
