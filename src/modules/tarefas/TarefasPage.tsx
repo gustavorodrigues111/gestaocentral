@@ -11,7 +11,7 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { aplicarPerfisNaPessoa } from "../../core/auth/profileToLegacy";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
-import { collection, doc, getDoc, getDocs, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, onSnapshot, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import {
   ouvirProjetos, ouvirSubprojetos, ouvirTarefasDeUsuario, ouvirTarefasDeProjeto,
@@ -2250,6 +2250,7 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
   });
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [dropAntes, setDropAntes] = useState<string | null>(null); // reordenar: soltar ANTES deste card
   const [feriados, setFeriados] = useState<Record<string, string>>({});
   useEffect(() => {
     let alive = true;
@@ -2282,6 +2283,28 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
       alert("Falha ao mover tarefa: " + (e instanceof Error ? e.message : String(e)));
     }
   }
+  // Reordena dentro de um dia (arrasto vertical): insere a tarefa arrastada
+  // antes de `antesDeId` (ou no fim se null) e regrava ordemDia de todo o dia.
+  async function reordenarNoDia(id: string, dia: string, antesDeId: string | null) {
+    if (!autor) return;
+    const dragged = tarefas.find(t => t.id === id);
+    if (!dragged) return;
+    const atual = (tarefasPorDia.get(dia) || []).filter(t => t.id !== id);
+    const idx = antesDeId ? atual.findIndex(t => t.id === antesDeId) : atual.length;
+    const nova = idx < 0 ? [...atual, dragged] : [...atual.slice(0, idx), dragged, ...atual.slice(idx)];
+    try {
+      const batch = writeBatch(db);
+      nova.forEach((t, i) => {
+        const patch: Partial<Tarefa> = { ordemDia: i };
+        if (t.id === id && t.prazo !== dia) patch.prazo = dia; // mudou de dia + posição
+        batch.update(doc(db, "tarefas", t.id), patch);
+      });
+      await batch.commit();
+    } catch (e) {
+      console.error("[tarefas] falha ao reordenar:", e);
+      alert("Falha ao reordenar: " + (e instanceof Error ? e.message : String(e)));
+    }
+  }
   useEffect(() => {
     try { localStorage.setItem("tarefas_calendario_fds", expandirFds ? "1" : "0"); } catch {}
   }, [expandirFds]);
@@ -2300,6 +2323,10 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
     arr.push(t);
     tarefasPorDia.set(t.prazo, arr);
   });
+  // Ordena cada dia pela ordem manual (arrasto vertical); sem ordem = por título.
+  tarefasPorDia.forEach(arr => arr.sort((a, b) =>
+    (a.ordemDia ?? 1e9) - (b.ordemDia ?? 1e9) || (a.titulo || "").localeCompare(b.titulo || "")
+  ));
 
   const semProprio = tarefas.filter(t => !t.prazo);
   const atrasadas = tarefas.filter(t =>
@@ -2350,7 +2377,7 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
           const id = e.dataTransfer.getData("text/plain");
           setDropTarget(null);
           setDraggingId(null);
-          if (id) moverParaData(id, data);
+          if (id) reordenarNoDia(id, data, null);
         } : undefined}
         title={feriadoNome ? `Feriado: ${feriadoNome}` : undefined}
         className={`flex flex-col min-h-[200px] rounded-lg border p-2 transition-colors ${ehHoje ? "ring-1 ring-indigo-400" : ""} ${
@@ -2392,9 +2419,22 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
                 onDragEnd={podeArrastar ? () => {
                   setDraggingId(null);
                   setDropTarget(null);
+                  setDropAntes(null);
+                } : undefined}
+                onDragOver={podeArrastar ? (e) => {
+                  e.preventDefault(); e.stopPropagation();
+                  e.dataTransfer.dropEffect = "move";
+                  if (draggingId !== t.id && dropAntes !== t.id) setDropAntes(t.id);
+                } : undefined}
+                onDragLeave={podeArrastar ? () => { if (dropAntes === t.id) setDropAntes(null); } : undefined}
+                onDrop={podeArrastar ? (e) => {
+                  e.preventDefault(); e.stopPropagation();
+                  const id = e.dataTransfer.getData("text/plain");
+                  setDropAntes(null); setDropTarget(null); setDraggingId(null);
+                  if (id && id !== t.id) reordenarNoDia(id, data, t.id);
                 } : undefined}
                 onClick={() => onAbrir(t.id)}
-                className={`w-full text-left text-[11px] px-2 py-1.5 rounded-md text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
+                className={`w-full text-left text-[11px] px-2 py-1.5 rounded-md text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${dropAntes === t.id ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
                 style={{ background: meta.cor + "14", borderLeft: `3px solid ${meta.cor}` }}
                 title={podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
               >

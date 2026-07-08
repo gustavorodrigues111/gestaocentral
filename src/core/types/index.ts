@@ -4347,6 +4347,7 @@ export type Tarefa = {
   subtarefaResponsaveisIds?: string[];
   restaurantIds?: string[];     // empresa(s) — multi-select opcional
   prazo?: string | null;
+  ordemDia?: number;                  // ordem manual dentro do dia (arrasto vertical no calendário)
   inicio?: string | null;
   status: TarefaStatus;
   prioridade: TarefaPrioridade;
