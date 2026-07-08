@@ -9,6 +9,7 @@ import { collection, onSnapshot, query, orderBy, setDoc, doc } from "firebase/fi
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { authHeader } from "../../core/firebase/idToken";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
@@ -17,6 +18,16 @@ import type { WikiProcesso, WikiFormato, WikiFoto, WikiPasso, WikiChecklistItem 
 
 const FORMATO_LABEL: Record<WikiFormato, string> = { texto: "📄 Texto", checklist: "✅ Checklist", passos: "👣 Passo a passo" };
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+// Achata um processo em texto puro pra mandar de contexto pra IA.
+function procToTexto(p: WikiProcesso): string {
+  const linhas: string[] = [];
+  if (p.resumo) linhas.push(`Resumo: ${p.resumo}`);
+  if (p.formato === "texto") linhas.push(p.conteudo || "");
+  else if (p.formato === "checklist") linhas.push(...(p.itens || []).map(i => `☐ ${i.texto}`));
+  else if (p.formato === "passos") linhas.push(...(p.passos || []).map((s, i) => `Passo ${i + 1}${s.titulo ? ` — ${s.titulo}` : ""}: ${s.descricao}`));
+  return linhas.join("\n").trim();
+}
 
 export function WikiProcessosPage() {
   const { pessoa } = useAuth();
@@ -28,6 +39,7 @@ export function WikiProcessosPage() {
   const [criando, setCriando] = useState(false);
   const [editando, setEditando] = useState<WikiProcesso | null>(null);
   const [lendo, setLendo] = useState<WikiProcesso | null>(null);
+  const [perguntando, setPerguntando] = useState(false);
 
   useEffect(() => {
     const u = onSnapshot(query(collection(db, "wikiProcessos"), orderBy("titulo")),
@@ -56,7 +68,10 @@ export function WikiProcessosPage() {
     <div className="max-w-5xl mx-auto p-4">
       <header className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div className="text-sm text-gray-500">{daEmpresa.length} processo{daEmpresa.length === 1 ? "" : "s"} documentado{daEmpresa.length === 1 ? "" : "s"}</div>
-        <Button onClick={() => setCriando(true)}>+ Novo processo</Button>
+        <div className="flex gap-2">
+          {daEmpresa.length > 0 && <Button variant="secondary" onClick={() => setPerguntando(true)}>🤖 Pergunte à IA</Button>}
+          <Button onClick={() => setCriando(true)}>+ Novo processo</Button>
+        </div>
       </header>
 
       <div className="flex flex-wrap items-center gap-2 mb-4">
@@ -101,12 +116,108 @@ export function WikiProcessosPage() {
         </div>
       )}
 
+      {perguntando && <PerguntarIAModal processos={daEmpresa} onClose={() => setPerguntando(false)} onAbrirProc={p => { setPerguntando(false); setLendo(p); }} />}
       {lendo && <LerModal proc={lendo} onClose={() => setLendo(null)} onEditar={() => { setEditando(lendo); setLendo(null); }} />}
       {(criando || editando) && (
         <WikiForm proc={editando} onClose={() => { setCriando(false); setEditando(null); }}
           restaurantes={restaurants.map(r => ({ id: r.id, nome: r.nome }))} ridAtual={rid || ""}
           areasExistentes={areas} pessoaId={pessoa.id} />
       )}
+    </div>
+  );
+}
+
+// ─── Pergunte à IA (Fase 2) ──────────────────────────────────────────────────
+type ChatMsg = { role: "user"; texto: string } | { role: "ia"; texto: string; fontes: WikiProcesso[] };
+function PerguntarIAModal({ processos, onClose, onAbrirProc }: {
+  processos: WikiProcesso[]; onClose: () => void; onAbrirProc: (p: WikiProcesso) => void;
+}) {
+  const [pergunta, setPergunta] = useState("");
+  const [msgs, setMsgs] = useState<ChatMsg[]>([]);
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState("");
+  // Só processos publicados vão de contexto (rascunho não conta).
+  const base = processos.filter(p => p.publicado !== false);
+
+  async function enviar() {
+    const q = pergunta.trim();
+    if (!q || carregando) return;
+    setErro("");
+    setMsgs(m => [...m, { role: "user", texto: q }]);
+    setPergunta("");
+    setCarregando(true);
+    try {
+      const r = await fetch("/api/wiki-perguntar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await authHeader()) },
+        body: JSON.stringify({ pergunta: q, processos: base.map(p => ({ id: p.id, titulo: p.titulo, area: p.area, texto: procToTexto(p) })) }),
+      });
+      const data = await r.json();
+      if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+      const fontes = (data.fontesIds as string[] || []).map(id => base.find(p => p.id === id)).filter(Boolean) as WikiProcesso[];
+      setMsgs(m => [...m, { role: "ia", texto: String(data.resposta || ""), fontes }]);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao consultar a IA.");
+    } finally { setCarregando(false); }
+  }
+
+  const sugestoes = base.slice(0, 3).map(p => `Como funciona: ${p.titulo}?`);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl flex flex-col max-h-[92vh]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-2 p-4 border-b border-gray-100 dark:border-gray-800">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">🤖 Pergunte à IA</h2>
+            <div className="text-xs text-gray-500">Respostas a partir dos {base.length} processo{base.length === 1 ? "" : "s"} publicado{base.length === 1 ? "" : "s"} da wiki.</div>
+          </div>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[180px]">
+          {msgs.length === 0 && (
+            <div className="text-center text-gray-500 dark:text-gray-400 py-6">
+              <div className="text-3xl mb-2">💬</div>
+              <p className="text-sm">Pergunte qualquer coisa sobre os processos documentados.</p>
+              {sugestoes.length > 0 && (
+                <div className="flex flex-wrap gap-1.5 justify-center mt-3">
+                  {sugestoes.map((s, i) => (
+                    <button key={i} type="button" onClick={() => setPergunta(s)}
+                      className="text-xs px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">{s}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+          {msgs.map((m, i) => m.role === "user" ? (
+            <div key={i} className="flex justify-end"><div className="max-w-[85%] bg-indigo-600 text-white rounded-2xl rounded-br-sm px-3.5 py-2 text-sm whitespace-pre-wrap">{m.texto}</div></div>
+          ) : (
+            <div key={i} className="flex justify-start">
+              <div className="max-w-[90%]">
+                <div className="bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm whitespace-pre-wrap leading-relaxed">{m.texto}</div>
+                {m.fontes.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1.5">
+                    <span className="text-[11px] text-gray-400 self-center">Fontes:</span>
+                    {m.fontes.map(p => (
+                      <button key={p.id} type="button" onClick={() => onAbrirProc(p)}
+                        className="text-[11px] px-2 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">📄 {p.titulo}</button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          {carregando && <div className="flex justify-start"><div className="bg-gray-100 dark:bg-gray-800 rounded-2xl rounded-bl-sm px-3.5 py-2 text-sm text-gray-500">Consultando a wiki…</div></div>}
+          {erro && <div className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">{erro}</div>}
+        </div>
+
+        <div className="p-3 border-t border-gray-100 dark:border-gray-800 flex gap-2">
+          <input value={pergunta} onChange={e => setPergunta(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }}
+            placeholder="Digite sua pergunta…" autoFocus disabled={carregando}
+            className="flex-1 h-10 px-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+          <Button onClick={enviar} disabled={carregando || !pergunta.trim()}>Enviar</Button>
+        </div>
+      </div>
     </div>
   );
 }
