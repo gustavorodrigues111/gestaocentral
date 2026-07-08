@@ -3,7 +3,7 @@
 // equipe. Escopo por empresa (restaurantIds[]). Fotos no Firebase Storage.
 // Fase 2 (pendente): "Pergunte à IA". Fase 3: trilha de onboarding + confirmar leitura.
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, orderBy, setDoc, doc } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -40,6 +40,8 @@ export function WikiProcessosPage() {
   const [editando, setEditando] = useState<WikiProcesso | null>(null);
   const [lendo, setLendo] = useState<WikiProcesso | null>(null);
   const [perguntando, setPerguntando] = useState(false);
+  const [ditando, setDitando] = useState(false);
+  const [rascunhoIA, setRascunhoIA] = useState<Partial<WikiProcesso> | null>(null);
 
   useEffect(() => {
     const u = onSnapshot(query(collection(db, "wikiProcessos"), orderBy("titulo")),
@@ -68,8 +70,9 @@ export function WikiProcessosPage() {
     <div className="max-w-5xl mx-auto p-4">
       <header className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div className="text-sm text-gray-500">{daEmpresa.length} processo{daEmpresa.length === 1 ? "" : "s"} documentado{daEmpresa.length === 1 ? "" : "s"}</div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 flex-wrap">
           {daEmpresa.length > 0 && <Button variant="secondary" onClick={() => setPerguntando(true)}>🤖 Pergunte à IA</Button>}
+          <Button variant="secondary" onClick={() => setDitando(true)}>🎙️ Gravar por voz</Button>
           <Button onClick={() => setCriando(true)}>+ Novo processo</Button>
         </div>
       </header>
@@ -117,9 +120,12 @@ export function WikiProcessosPage() {
       )}
 
       {perguntando && <PerguntarIAModal processos={daEmpresa} onClose={() => setPerguntando(false)} onAbrirProc={p => { setPerguntando(false); setLendo(p); }} />}
+      {ditando && <DitarModal areasExistentes={areas} onClose={() => setDitando(false)}
+        onRascunho={r => { setRascunhoIA(r); setDitando(false); setCriando(true); }} />}
       {lendo && <LerModal proc={lendo} onClose={() => setLendo(null)} onEditar={() => { setEditando(lendo); setLendo(null); }} />}
       {(criando || editando) && (
-        <WikiForm proc={editando} onClose={() => { setCriando(false); setEditando(null); }}
+        <WikiForm proc={editando} rascunhoInicial={editando ? null : rascunhoIA}
+          onClose={() => { setCriando(false); setEditando(null); setRascunhoIA(null); }}
           restaurantes={restaurants.map(r => ({ id: r.id, nome: r.nome }))} ridAtual={rid || ""}
           areasExistentes={areas} pessoaId={pessoa.id} />
       )}
@@ -222,6 +228,106 @@ function PerguntarIAModal({ processos, onClose, onAbrirProc }: {
   );
 }
 
+// ─── Gravar por voz → IA modela o rascunho (Fase 2) ──────────────────────────
+function DitarModal({ areasExistentes, onClose, onRascunho }: {
+  areasExistentes: string[]; onClose: () => void; onRascunho: (r: Partial<WikiProcesso>) => void;
+}) {
+  const [gravando, setGravando] = useState(false);
+  const [transcricao, setTranscricao] = useState("");
+  const [parcial, setParcial] = useState("");
+  const [modelando, setModelando] = useState(false);
+  const [erro, setErro] = useState("");
+  const recRef = useRef<any>(null);
+  const querGravarRef = useRef(false);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const SR = typeof window !== "undefined" ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) : null;
+
+  useEffect(() => () => { querGravarRef.current = false; try { recRef.current?.stop(); } catch { /* noop */ } }, []);
+
+  function iniciar() {
+    setErro("");
+    if (!SR) { setErro("Seu navegador não suporta ditado por voz. Use o Chrome/Edge no computador — ou digite/cole o texto abaixo e clique em montar."); return; }
+    const rec = new SR();
+    rec.lang = "pt-BR"; rec.continuous = true; rec.interimResults = true;
+    rec.onresult = (ev: any) => {
+      let fim = "";
+      let interim = "";
+      for (let i = ev.resultIndex; i < ev.results.length; i++) {
+        const t = ev.results[i][0].transcript;
+        if (ev.results[i].isFinal) fim += t; else interim += t;
+      }
+      if (fim) setTranscricao(prev => (prev + " " + fim).replace(/\s+/g, " ").trimStart());
+      setParcial(interim);
+    };
+    rec.onerror = (ev: any) => { if (ev.error !== "no-speech" && ev.error !== "aborted") setErro("Erro no microfone: " + ev.error); };
+    rec.onend = () => { if (querGravarRef.current) { try { rec.start(); } catch { /* já rodando */ } } else { setGravando(false); setParcial(""); } };
+    recRef.current = rec;
+    querGravarRef.current = true;
+    try { rec.start(); setGravando(true); } catch { setErro("Não consegui acessar o microfone."); }
+  }
+  function parar() { querGravarRef.current = false; try { recRef.current?.stop(); } catch { /* noop */ } setGravando(false); setParcial(""); }
+
+  async function modelar() {
+    const txt = (transcricao + " " + parcial).trim();
+    if (txt.length < 3) { setErro("Fale ou digite o processo primeiro."); return; }
+    if (gravando) parar();
+    setModelando(true); setErro("");
+    try {
+      const r = await fetch("/api/wiki-modelar", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await authHeader()) },
+        body: JSON.stringify({ transcricao: txt, areas: areasExistentes }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error || `HTTP ${r.status}`);
+      const rascunho: Partial<WikiProcesso> = {
+        titulo: d.titulo || "", area: d.area || "", resumo: d.resumo || "",
+        formato: (d.formato as WikiFormato) || "texto",
+        conteudo: d.formato === "texto" ? (d.conteudo || "") : "",
+        itens: d.formato === "checklist" ? ((d.itens as string[]) || []).map(t => ({ id: uid(), texto: t })) : [],
+        passos: d.formato === "passos" ? ((d.passos as { titulo?: string; descricao?: string }[]) || []).map(p => ({ id: uid(), titulo: p.titulo || "", descricao: p.descricao || "", foto: null })) : [],
+      };
+      onRascunho(rascunho);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao modelar.");
+    } finally { setModelando(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-xl p-5 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">🎙️ Gravar processo por voz</h2>
+        <p className="text-xs text-gray-500 mt-1 mb-4">Fale explicando o processo do seu jeito — a IA organiza em título, área e passos pra você revisar antes de salvar.</p>
+
+        <div className="flex items-center gap-3 mb-3">
+          {!gravando ? (
+            <Button onClick={iniciar} disabled={modelando}>🎙️ {transcricao ? "Continuar gravando" : "Começar a falar"}</Button>
+          ) : (
+            <button type="button" onClick={parar} className="inline-flex items-center gap-2 px-4 h-10 rounded-xl bg-rose-600 text-white text-sm font-medium">
+              <span className="w-2.5 h-2.5 rounded-full bg-white animate-pulse" /> Parar
+            </button>
+          )}
+          {gravando && <span className="text-xs text-rose-600">Ouvindo…</span>}
+        </div>
+
+        <textarea
+          value={transcricao + (parcial ? (transcricao ? " " : "") + parcial : "")}
+          onChange={e => { setTranscricao(e.target.value); setParcial(""); }}
+          rows={7} disabled={gravando}
+          placeholder="A transcrição aparece aqui enquanto você fala. Você pode editar antes de montar."
+          className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+
+        {erro && <div className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2 mt-2">{erro}</div>}
+
+        <div className="flex gap-2 justify-end mt-4">
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button onClick={modelar} disabled={modelando || (transcricao + parcial).trim().length < 3}>{modelando ? "Montando…" : "✨ Montar processo com IA"}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Leitura (consulta) ──────────────────────────────────────────────────────
 function LerModal({ proc, onClose, onEditar }: { proc: WikiProcesso; onClose: () => void; onEditar: () => void }) {
   return (
@@ -276,13 +382,14 @@ function LerModal({ proc, onClose, onEditar }: { proc: WikiProcesso; onClose: ()
 }
 
 // ─── Cadastro/edição ─────────────────────────────────────────────────────────
-function WikiForm({ proc, onClose, restaurantes, ridAtual, areasExistentes, pessoaId }: {
-  proc: WikiProcesso | null; onClose: () => void; restaurantes: { id: string; nome: string }[];
+function WikiForm({ proc, rascunhoInicial, onClose, restaurantes, ridAtual, areasExistentes, pessoaId }: {
+  proc: WikiProcesso | null; rascunhoInicial?: Partial<WikiProcesso> | null; onClose: () => void; restaurantes: { id: string; nome: string }[];
   ridAtual: string; areasExistentes: string[]; pessoaId: string;
 }) {
   const [f, setF] = useState<Partial<WikiProcesso>>(proc ? { ...proc } : {
     titulo: "", area: "", resumo: "", formato: "texto", restaurantIds: ridAtual ? [ridAtual] : [],
     conteudo: "", itens: [], passos: [], fotos: [], publicado: true, ativo: true,
+    ...(rascunhoInicial || {}),
   });
   const [subindo, setSubindo] = useState(false);
 
