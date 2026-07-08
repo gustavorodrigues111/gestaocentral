@@ -401,7 +401,7 @@ function PerguntarIAModal({ processos, diretrizes, rid, pessoaId, pessoaNome, on
         setDoc(doc(db, "iaInteracoes", iid), sanitizeForFirestore({
           id: iid, restaurantId: rid, moduleId: "wikiProcessos", moduleLabel: "Wiki de Processos", canal: "pergunte-ia",
           pessoaId, pessoaNome, pergunta: q, resposta: String(data.resposta || ""),
-          foraDeEscopo: data.foraDeEscopo === true, motivo: String(data.motivo || ""), createdAt: new Date().toISOString(),
+          foraDeEscopo: data.foraDeEscopo === true, motivo: String(data.motivo || ""), severidade: String(data.severidade || "baixa"), createdAt: new Date().toISOString(),
         })).catch(() => {});
       }
     } catch (e) {

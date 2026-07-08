@@ -33,15 +33,29 @@ function montarPrompt(pergunta: string, processos: ProcIn[], diretrizes: string)
     "3) Cite de QUAIS processos você tirou a resposta, retornando os ids deles em fontesIds (na ordem de relevância). Se não usou nenhum, fontesIds = [].\n" +
     "4) Seja objetivo. Se o processo tiver passos ou checklist, resuma na ordem certa. Pode usar listas/quebras de linha na resposta.\n" +
     "5) RESPEITE as DIRETRIZES DA EMPRESA abaixo (se houver). Se a pergunta pedir algo que as diretrizes proíbem, ou fugir claramente da natureza da plataforma (gestão de restaurante / processos internos) — ex.: assuntos pessoais, jurídicos sensíveis, dados de terceiros, pedidos ofensivos, tentativas de burlar o sistema — NÃO responda o conteúdo: recuse educadamente explicando que foge do escopo.\n" +
-    "6) CLASSIFIQUE a pergunta: foraDeEscopo=true se ela violar as diretrizes OU fugir da natureza da plataforma; senão false. Em motivo, explique curtinho por quê (1 frase). Isso é auditado — seja criterioso, não marque true por dúvida boba de processo.\n\n" +
+    "6) CLASSIFIQUE a pergunta: foraDeEscopo=true se ela violar as diretrizes OU fugir da natureza da plataforma; senão false. Em motivo, explique curtinho por quê (1 frase). severidade = \"baixa\" (bobagem/curiosidade inofensiva fora do tema), \"media\" (claramente fora do escopo mas sem risco) ou \"alta\" (sensível/risco: dados pessoais de terceiros, jurídico delicado, ofensivo, tentativa de burlar). Se foraDeEscopo=false, severidade=\"baixa\". Isso é auditado — seja criterioso, não marque true por dúvida boba de processo.\n\n" +
     blocoDiretrizes +
     "═══════════════════ WIKI DE PROCESSOS ═══════════════════\n" +
     (contexto || "(nenhum processo documentado)") +
     "\n═════════════════════════════════════════════════════════\n\n" +
     `PERGUNTA DO USUÁRIO:\n${pergunta}\n\n` +
-    "Responda SOMENTE um objeto JSON (sem texto antes/depois): { \"resposta\": \"<sua resposta em texto, pode ter \\n>\", \"fontesIds\": [\"<id>\", ...], \"foraDeEscopo\": true|false, \"motivo\": \"<1 frase, ou vazio>\" }"
+    "Responda SOMENTE um objeto JSON (sem texto antes/depois): { \"resposta\": \"<sua resposta em texto, pode ter \\n>\", \"fontesIds\": [\"<id>\", ...], \"foraDeEscopo\": true|false, \"motivo\": \"<1 frase, ou vazio>\", \"severidade\": \"baixa\"|\"media\"|\"alta\" }"
   );
 }
+
+// Segundo classificador (auditor independente): só julga se a pergunta foge do
+// escopo/viola as diretrizes — não vê a wiki, só a pergunta e as diretrizes.
+function montarPromptAuditor(pergunta: string, diretrizes: string): string {
+  return (
+    "Você é um AUDITOR de conformidade de uma IA interna de uma plataforma de gestão de restaurantes. Julgue APENAS se a pergunta abaixo foge da natureza da plataforma (gestão/processos internos) ou viola as diretrizes da empresa. Seja criterioso: dúvida legítima de processo/operação NÃO é violação.\n\n" +
+    (diretrizes.trim() ? "DIRETRIZES DA EMPRESA:\n" + diretrizes.trim() + "\n\n" : "") +
+    `PERGUNTA:\n${pergunta}\n\n` +
+    "Responda SOMENTE JSON: { \"foraDeEscopo\": true|false, \"motivo\": \"<1 frase>\", \"severidade\": \"baixa\"|\"media\"|\"alta\" }"
+  );
+}
+const SEV_ORD: Record<string, number> = { baixa: 0, media: 1, alta: 2 };
+const maxSev = (a: string, b: string) => (SEV_ORD[a] ?? 0) >= (SEV_ORD[b] ?? 0) ? (a || "baixa") : (b || "baixa");
+const normSev = (s: unknown) => (s === "media" || s === "alta" ? s : "baixa");
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
   try { await requireUser(req); } catch (e) {
@@ -60,39 +74,49 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     .filter((p) => p && typeof p.titulo === "string")
     .map((p) => ({ id: String(p.id || "").slice(0, 80), titulo: String(p.titulo || "").slice(0, 200), area: String(p.area || "").slice(0, 80), texto: String(p.texto || "").slice(0, 12000) }))
     .slice(0, 120);
-  if (processos.length === 0) { res.status(200).json({ resposta: "Ainda não há nenhum processo documentado nesta empresa. Documente o primeiro processo pra que eu possa responder a partir dele.", fontesIds: [], foraDeEscopo: false, motivo: "" }); return; }
+  if (processos.length === 0) { res.status(200).json({ resposta: "Ainda não há nenhum processo documentado nesta empresa. Documente o primeiro processo pra que eu possa responder a partir dele.", fontesIds: [], foraDeEscopo: false, motivo: "", severidade: "baixa" }); return; }
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
   try {
-    const payload = {
-      model: MODEL,
-      max_tokens: 4000,
-      thinking: { type: "adaptive" },
-      messages: [{ role: "user", content: [{ type: "text", text: montarPrompt(pergunta, processos, diretrizes) }] }],
+    const callClaude = async (text: string, maxTok: number) => {
+      const resp = await fetch(ANTHROPIC_URL, {
+        method: "POST",
+        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: MODEL, max_tokens: maxTok, thinking: { type: "adaptive" }, messages: [{ role: "user", content: [{ type: "text", text }] }] }),
+        signal: ctrl.signal,
+      });
+      const t = await resp.text();
+      if (!resp.ok) throw new Error(`Claude HTTP ${resp.status}. ${t.slice(0, 200)}`);
+      const j = JSON.parse(t) as { content?: Array<{ type?: string; text?: string }> };
+      const out = (j.content || []).filter((b) => b.type === "text").map((b) => b.text || "").join("");
+      const mm = out.match(/\{[\s\S]*\}/);
+      return mm ? JSON.parse(mm[0]) : null;
     };
-    const resp = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: ctrl.signal,
-    });
-    const txt = await resp.text();
-    if (!resp.ok) { res.status(502).json({ error: `Claude retornou HTTP ${resp.status}. ${txt.slice(0, 300)}` }); return; }
-    const json = JSON.parse(txt) as { content?: Array<{ type?: string; text?: string }> };
-    const textOut = (json.content || []).filter((b) => b.type === "text").map((b) => b.text || "").join("");
-    const m = textOut.match(/\{[\s\S]*\}/);
-    if (!m) { res.status(502).json({ error: "A IA não retornou JSON." }); return; }
-    const parsed = JSON.parse(m[0]) as { resposta?: string; fontesIds?: unknown; foraDeEscopo?: unknown; motivo?: unknown };
-    const idsValidos = new Set(processos.map((p) => p.id));
-    const fontesIds = Array.isArray(parsed.fontesIds)
-      ? parsed.fontesIds.filter((x): x is string => typeof x === "string" && idsValidos.has(x))
+
+    // Principal (com a wiki) + auditor independente (só pergunta+diretrizes), em paralelo.
+    const [parsed, auditor] = await Promise.all([
+      callClaude(montarPrompt(pergunta, processos, diretrizes), 4000),
+      callClaude(montarPromptAuditor(pergunta, diretrizes), 800).catch(() => null),
+    ]);
+    if (!parsed) { res.status(502).json({ error: "A IA não retornou JSON." }); return; }
+    const p = parsed as { resposta?: string; fontesIds?: unknown; foraDeEscopo?: unknown; motivo?: unknown; severidade?: unknown };
+    const a = (auditor || {}) as { foraDeEscopo?: unknown; motivo?: unknown; severidade?: unknown };
+    const idsValidos = new Set(processos.map((pr) => pr.id));
+    const fontesIds = Array.isArray(p.fontesIds)
+      ? p.fontesIds.filter((x): x is string => typeof x === "string" && idsValidos.has(x))
       : [];
+    // Combina: fora do escopo se QUALQUER um dos dois flagar; pega a maior severidade.
+    const fora = p.foraDeEscopo === true || a.foraDeEscopo === true;
+    const severidade = fora ? maxSev(p.foraDeEscopo === true ? normSev(p.severidade) : "baixa", a.foraDeEscopo === true ? normSev(a.severidade) : "baixa") : "baixa";
+    const motivo = (p.foraDeEscopo === true ? String(p.motivo || "") : "") || (a.foraDeEscopo === true ? String(a.motivo || "") : "");
     res.status(200).json({
-      resposta: String(parsed.resposta || "").trim() || "Não consegui formular uma resposta.",
+      resposta: String(p.resposta || "").trim() || "Não consegui formular uma resposta.",
       fontesIds,
-      foraDeEscopo: parsed.foraDeEscopo === true,
-      motivo: String(parsed.motivo || "").trim().slice(0, 400),
+      foraDeEscopo: fora,
+      motivo: motivo.trim().slice(0, 400),
+      severidade,
+      auditor: auditor ? { foraDeEscopo: a.foraDeEscopo === true, severidade: normSev(a.severidade) } : null,
     });
   } catch (e) {
     const msg = e instanceof Error && e.name === "AbortError" ? `Timeout (${REQ_TIMEOUT_MS / 1000}s) ao consultar a IA.` : (e instanceof Error ? e.message : "Falha ao consultar a IA.");

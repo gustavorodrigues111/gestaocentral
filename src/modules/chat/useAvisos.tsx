@@ -661,9 +661,11 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       const perg = String((i as { pergunta?: string }).pergunta || "");
       const motivo = String((i as { motivo?: string }).motivo || "");
       const nome = String((i as { pessoaNome?: string }).pessoaNome || "Alguém");
+      const sev = String((i as { severidade?: string }).severidade || "baixa");
+      const sevIcone = sev === "alta" ? "🔴" : sev === "media" ? "🟠" : "⚠️";
       out.push({
-        id: `ia_${i.id}`, tipo: "ia_fora_escopo", icone: "⚠️",
-        titulo: "Pergunta fora do escopo na IA",
+        id: `ia_${i.id}`, tipo: "ia_fora_escopo", icone: sevIcone,
+        titulo: `Pergunta fora do escopo na IA${sev === "alta" ? " (alta)" : ""}`,
         descricao: `${nome} perguntou algo fora do escopo${motivo ? ` · ${motivo}` : ""}: “${perg.slice(0, 90)}${perg.length > 90 ? "…" : ""}”`,
         em: String((i as { createdAt?: string }).createdAt || ""),
         restauranteId: i.restaurantId, restauranteNome: nomePorRid[i.restaurantId] || "Restaurante",

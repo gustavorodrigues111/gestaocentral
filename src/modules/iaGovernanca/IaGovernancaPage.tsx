@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, onSnapshot, query, where, doc, setDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, where, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { authHeader } from "../../core/firebase/idToken";
@@ -20,9 +20,14 @@ type DiretrizBloco = { id: string; texto: string; criadoEm: string; criadoPor: s
 type IaInteracao = {
   id: string; restaurantId: string; moduleLabel?: string; canal?: string;
   pessoaId?: string; pessoaNome?: string; pergunta?: string; resposta?: string;
-  foraDeEscopo?: boolean; motivo?: string; createdAt?: string;
+  foraDeEscopo?: boolean; motivo?: string; severidade?: string; createdAt?: string;
 };
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+const SEV_META: Record<string, { label: string; cls: string }> = {
+  alta: { label: "🔴 Alta", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" },
+  media: { label: "🟠 Média", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
+  baixa: { label: "🟡 Baixa", cls: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" },
+};
 // String derivada (o endpoint da IA e o cliente da Wiki consomem `diretrizes`).
 const juntarBlocos = (bs: DiretrizBloco[]) => bs.map(b => `- ${b.texto}`).join("\n");
 
@@ -38,14 +43,17 @@ export function IaGovernancaPage() {
   const [interacoes, setInteracoes] = useState<IaInteracao[]>([]);
   const [filtro, setFiltro] = useState<"todas" | "fora">("todas");
   const [aberta, setAberta] = useState<string | null>(null);
+  const [retencaoDias, setRetencaoDias] = useState<number>(0);
+  const [purgando, setPurgando] = useState(false);
 
   useEffect(() => {
     if (!rid) return;
     const u = onSnapshot(doc(db, "iaConfig", rid), snap => {
-      const d = snap.data() as { diretrizesBlocos?: DiretrizBloco[]; diretrizes?: string } | undefined;
+      const d = snap.data() as { diretrizesBlocos?: DiretrizBloco[]; diretrizes?: string; retencaoDias?: number } | undefined;
       if (d?.diretrizesBlocos && d.diretrizesBlocos.length) setBlocos(d.diretrizesBlocos);
       else if (d?.diretrizes && d.diretrizes.trim()) setBlocos([{ id: uid(), texto: d.diretrizes.trim(), criadoEm: new Date().toISOString(), criadoPor: "migrado" }]);
       else setBlocos([]);
+      setRetencaoDias(typeof d?.retencaoDias === "number" ? d.retencaoDias : 0);
       setCarregou(true);
     });
     return () => u();
@@ -74,6 +82,32 @@ export function IaGovernancaPage() {
 
   const registrosVis = interacoes.filter(i => filtro === "todas" || i.foraDeEscopo);
   const nFora = interacoes.filter(i => i.foraDeEscopo).length;
+
+  function exportarCSV() {
+    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const linhas = [["data", "pessoa", "modulo", "pergunta", "resposta", "fora_do_escopo", "severidade", "motivo"].join(",")];
+    for (const i of registrosVis) linhas.push([i.createdAt || "", i.pessoaNome || "", i.moduleLabel || "", i.pergunta || "", i.resposta || "", i.foraDeEscopo ? "sim" : "não", i.severidade || "", i.motivo || ""].map(esc).join(","));
+    const blob = new Blob(["﻿" + linhas.join("\n")], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = `ia-registros-${rid}.csv`; a.click();
+    URL.revokeObjectURL(url);
+  }
+  async function salvarRetencao(dias: number) {
+    if (!rid) return;
+    setRetencaoDias(dias);
+    await setDoc(doc(db, "iaConfig", rid), sanitizeForFirestore({ restaurantId: rid, retencaoDias: dias, atualizadoEm: new Date().toISOString(), atualizadoPor: pessoa!.id }), { merge: true }).catch(() => {});
+  }
+  async function purgarAntigos() {
+    if (!rid || !retencaoDias) return;
+    const corte = new Date(Date.now() - retencaoDias * 86400000).toISOString();
+    const antigos = interacoes.filter(i => (i.createdAt || "") < corte);
+    if (antigos.length === 0) { alert("Nenhum registro além do período de retenção."); return; }
+    if (!confirm(`Expurgar ${antigos.length} registro(s) com mais de ${retencaoDias} dias? Ação irreversível.`)) return;
+    setPurgando(true);
+    try { await Promise.all(antigos.map(i => deleteDoc(doc(db, "iaInteracoes", i.id)))); alert(`${antigos.length} registro(s) expurgado(s).`); }
+    catch (e) { alert("Erro ao expurgar: " + (e instanceof Error ? e.message : "?")); }
+    finally { setPurgando(false); }
+  }
 
   const tabBtn = (val: "diretrizes" | "registros", label: string, badge?: number) => (
     <button type="button" onClick={() => setAba(val)}
@@ -123,10 +157,25 @@ export function IaGovernancaPage() {
         <div className="space-y-3">
           <div className="flex items-center gap-2 flex-wrap">
             <div className="text-sm text-gray-500">{interacoes.length} interaç{interacoes.length === 1 ? "ão" : "ões"} registrada{interacoes.length === 1 ? "" : "s"}{nFora > 0 ? ` · ${nFora} fora do escopo` : ""}</div>
-            <div className="flex gap-1.5 ml-auto">
+            <div className="flex gap-1.5 ml-auto items-center">
               <Chip active={filtro === "todas"} onClick={() => setFiltro("todas")}>Todas</Chip>
               <Chip active={filtro === "fora"} onClick={() => setFiltro("fora")}>⚠️ Fora do escopo</Chip>
+              <button type="button" onClick={exportarCSV} disabled={registrosVis.length === 0} className="text-xs font-medium px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40">⬇️ CSV</button>
             </div>
+          </div>
+
+          {/* Retenção / LGPD */}
+          <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500 rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2">
+            <span>🔒 Retenção:</span>
+            <select value={retencaoDias} onChange={e => salvarRetencao(Number(e.target.value))} className="px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+              <option value={0}>Manter tudo</option>
+              <option value={90}>90 dias</option>
+              <option value={180}>180 dias</option>
+              <option value={365}>1 ano</option>
+              <option value={730}>2 anos</option>
+            </select>
+            {retencaoDias > 0 && <button type="button" onClick={purgarAntigos} disabled={purgando} className="text-rose-600 hover:underline disabled:opacity-40">{purgando ? "Expurgando…" : `🧹 Expurgar > ${retencaoDias} dias`}</button>}
+            <span className="text-[11px] text-gray-400">Expurgo manual — apaga registros além do período pra conformidade LGPD.</span>
           </div>
           {registrosVis.length === 0 ? (
             <div className="text-center py-10 text-gray-500 dark:text-gray-400 text-sm">Nenhum registro {filtro === "fora" ? "fora do escopo " : ""}ainda.</div>
@@ -137,6 +186,7 @@ export function IaGovernancaPage() {
                   <button type="button" onClick={() => setAberta(aberta === i.id ? null : i.id)} className="w-full text-left">
                     <div className="flex items-center gap-2 flex-wrap">
                       {i.foraDeEscopo && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">⚠️ Fora do escopo</span>}
+                      {i.foraDeEscopo && i.severidade && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${(SEV_META[i.severidade] || SEV_META.baixa).cls}`}>{(SEV_META[i.severidade] || SEV_META.baixa).label}</span>}
                       <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{i.pessoaNome || "—"}</span>
                       <span className="text-[11px] text-gray-400">{i.moduleLabel || "IA"} · {fmtBR((i.createdAt || "").slice(0, 10))}</span>
                     </div>
