@@ -264,50 +264,26 @@ export function TarefasPage() {
           Minhas tarefas no topo + lista de projetos como favoritos clicáveis)
           + área principal com tabs e views. Mobile colapsa: sidebar some,
           tabs ficam por cima. */}
-      <div className="md:grid md:grid-cols-[220px_1fr] md:gap-5">
-        <aside className="hidden md:block">
-          <ProjetosSidebar
-            tabAtual={tab}
-            projetoFiltroAtual={tab === "projeto" ? projetoFiltro : ""}
-            subFiltroAtual={subFiltro}
-            minhasPendentes={minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length}
-            projetos={projetosVisiveis}
-            subprojetos={subprojetosVisiveis}
-            tarefasProjeto={tarefasProjeto}
-            onAbrirMinhas={() => setTab("minhas")}
-            onAbrirProjeto={(pid) => {
-              // Toggle: click no projeto já ativo colapsa (volta pra Minhas).
-              // Click em projeto diferente abre aquele.
-              if (tab === "projeto" && projetoFiltro === pid) {
-                setTab("minhas");
-                setSubFiltro("");
-              } else {
-                setTab("projeto");
-                setProjetoFiltro(pid);
-                setSubFiltro("");
-              }
-            }}
-            onAbrirSubprojeto={(pid, sid) => { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(sid); }}
-            onAbrirAdmin={isMaster ? () => setTab("admin") : undefined}
-            onAbrirLixeira={isMaster ? () => setTab("lixeira") : undefined}
-          />
-        </aside>
+      <div>
+        <ProjetosTopBar
+          tabAtual={tab}
+          projetoFiltroAtual={tab === "projeto" ? projetoFiltro : ""}
+          subFiltroAtual={subFiltro}
+          minhasPendentes={minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length}
+          projetos={projetosVisiveis}
+          subprojetos={subprojetosVisiveis}
+          tarefasProjeto={tarefasProjeto}
+          onAbrirMinhas={() => setTab("minhas")}
+          onAbrirProjeto={(pid) => {
+            if (tab === "projeto" && projetoFiltro === pid) { setTab("minhas"); setSubFiltro(""); }
+            else { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(""); }
+          }}
+          onAbrirSubprojeto={(pid, sid) => { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(sid); }}
+          onAbrirAdmin={isMaster ? () => setTab("admin") : undefined}
+          onAbrirLixeira={isMaster ? () => setTab("lixeira") : undefined}
+        />
 
         <div className="min-w-0">
-          {/* Tabs ainda visíveis (mobile + atalho rápido no desktop) */}
-          <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto md:hidden">
-            <TabButton ativo={tab === "minhas"} onClick={() => setTab("minhas")}>
-              Minhas Tarefas
-              {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length > 0 && (
-                <span className="ml-2 inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
-                  {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length}
-                </span>
-              )}
-            </TabButton>
-            <TabButton ativo={tab === "projeto"} onClick={() => setTab("projeto")}>Por Projeto</TabButton>
-            {isMaster && <TabButton ativo={tab === "admin"} onClick={() => setTab("admin")}>Configurações de Tarefas</TabButton>}
-            {isMaster && <TabButton ativo={tab === "lixeira"} onClick={() => setTab("lixeira")}>Lixeira</TabButton>}
-          </nav>
 
       {tab === "minhas" && (
         <div>
@@ -454,7 +430,10 @@ export function TarefasPage() {
 // Sidebar lateral (estilo Asana) — atalho "Minhas tarefas" no topo + lista
 // de projetos como accordion (click expande mostrando subprojetos inline,
 // sem abrir uma 2ª coluna duplicada).
-function ProjetosSidebar({
+// Barra horizontal no topo (substitui a antiga sidebar lateral) — libera a
+// largura pro calendário/kanban. "Minhas tarefas" + projetos como chips; os
+// subprojetos do projeto ativo aparecem numa 2ª linha.
+function ProjetosTopBar({
   tabAtual, projetoFiltroAtual, subFiltroAtual, minhasPendentes,
   projetos, subprojetos, tarefasProjeto,
   onAbrirMinhas, onAbrirProjeto, onAbrirSubprojeto,
@@ -466,8 +445,6 @@ function ProjetosSidebar({
   minhasPendentes: number;
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
-  // Pra contadores de ativas no projeto expandido (tarefas só carregam quando
-  // o projeto está aberto; vazio fora disso é esperado).
   tarefasProjeto: Tarefa[];
   onAbrirMinhas: () => void;
   onAbrirProjeto: (id: string) => void;
@@ -476,196 +453,42 @@ function ProjetosSidebar({
   onAbrirLixeira?: () => void;
 }) {
   const ativas = (ts: Tarefa[]) => ts.filter(t => t.status !== "concluida" && t.status !== "cancelada").length;
+  const subs = tabAtual === "projeto" && projetoFiltroAtual ? subprojetos.filter(s => s.projetoId === projetoFiltroAtual) : [];
+  const chip = (active: boolean) => `shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-colors ${active ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`;
   return (
-    <div className="sticky top-4 space-y-4">
-      {/* Bloco superior — caixa pessoal. Mesma estrutura visual dos itens
-          de projeto (chevron placeholder + dot + emoji) pra tamanho consistente. */}
-      <div className="space-y-0.5">
-        <button
-          onClick={onAbrirMinhas}
-          className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors ${
-            tabAtual === "minhas"
-              ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold"
-              : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-          }`}
-        >
-          {/* Placeholder do chevron pra alinhar com os projetos */}
-          <span className="w-3" aria-hidden />
-          {/* Dot indigo pra dar identidade visual igual aos projetos */}
-          <span className="w-2 h-2 rounded-full shrink-0 bg-indigo-500" />
-          <span className="text-sm leading-none">📥</span>
-          <span className="truncate flex-1">Minhas tarefas</span>
-          {minhasPendentes > 0 && (
-            <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
-              {minhasPendentes}
-            </span>
-          )}
+    <div className="mb-4 space-y-2">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+        <button onClick={onAbrirMinhas} className={chip(tabAtual === "minhas")}>
+          📥 Minhas tarefas
+          {minhasPendentes > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">{minhasPendentes}</span>}
         </button>
+        {projetos.map(p => (
+          <button key={p.id} onClick={() => onAbrirProjeto(p.id)} className={chip(tabAtual === "projeto" && projetoFiltroAtual === p.id)} title={p.nome}>
+            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.cor || "#6b7280" }} />
+            <span>{p.emoji || "📁"}</span>
+            <span className="whitespace-nowrap">{p.nome}</span>
+          </button>
+        ))}
+        {(onAbrirAdmin || onAbrirLixeira) && <span className="mx-1 h-5 w-px bg-gray-200 dark:bg-gray-700 shrink-0" />}
+        {onAbrirAdmin && <button onClick={onAbrirAdmin} className={chip(tabAtual === "admin")}>⚙️ Configurações</button>}
+        {onAbrirLixeira && <button onClick={onAbrirLixeira} className={chip(tabAtual === "lixeira")}>🗑️ Lixeira</button>}
       </div>
-
-      {/* Bloco Projetos com accordion inline */}
-      <div>
-        <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 px-2 mb-1">
-          Projetos
-        </div>
-        <div className="space-y-0.5 max-h-[60vh] overflow-y-auto">
-          {projetos.length === 0 && (
-            <div className="px-2 py-1 text-xs text-gray-400 italic">Sem projetos ainda.</div>
-          )}
-          {projetos.map(p => {
-            const projetoAtivo = tabAtual === "projeto" && projetoFiltroAtual === p.id;
-            const subs = subprojetos.filter(s => s.projetoId === p.id);
+      {tabAtual === "projeto" && subs.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pl-1">
+          {subs.map(s => {
+            const ativ = ativas(tarefasProjeto.filter(t => t.subprojetoId === s.id));
+            const sel = subFiltroAtual === s.id;
+            const auto = !!s.bloqueadoCriacaoManual;
             return (
-              <div key={p.id}>
-                <button
-                  onClick={() => onAbrirProjeto(p.id)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors ${
-                    projetoAtivo
-                      ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold"
-                      : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-                  }`}
-                  title={p.nome}
-                >
-                  <span className="text-[9px] text-gray-400 w-3 text-center" aria-hidden>
-                    {projetoAtivo ? "▾" : "▸"}
-                  </span>
-                  <span
-                    className="w-2 h-2 rounded-full shrink-0"
-                    style={{ background: p.cor || "#6b7280" }}
-                  />
-                  <span className="text-sm leading-none">{p.emoji || "📁"}</span>
-                  <span className="truncate flex-1">{p.nome}</span>
-                </button>
-                {/* Accordion de subprojetos — só do projeto ativo. Separa
-                    em "Manuais" (criação livre, caixa verde) e "Automáticos"
-                    (bloqueados, caixa vermelha) — destaque visual ajuda a
-                    diferenciar os 2 modos de origem das tarefas. */}
-                {projetoAtivo && subs.length > 0 && (() => {
-                  const manuais = subs.filter(s => !s.bloqueadoCriacaoManual);
-                  const automaticos = subs.filter(s => !!s.bloqueadoCriacaoManual);
-                  const renderBtn = (s: TarefaSubprojeto) => {
-                    const ts = tarefasProjeto.filter(t => t.subprojetoId === s.id);
-                    const ativ = ativas(ts);
-                    const sel = subFiltroAtual === s.id;
-                    return (
-                      <button
-                        key={s.id}
-                        onClick={() => onAbrirSubprojeto(p.id, s.id)}
-                        className={`w-full text-left flex items-center gap-2 px-2 py-1 rounded text-[12px] transition-colors ${
-                          sel
-                            ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-medium shadow-sm"
-                            : "text-gray-700 dark:text-gray-300 hover:bg-white/60 dark:hover:bg-gray-900/40"
-                        }`}
-                        title={s.nome}
-                      >
-                        <span className="truncate flex-1">{s.nome}</span>
-                        {ativ > 0 && <span className="text-[10px] text-gray-500">{ativ}</span>}
-                      </button>
-                    );
-                  };
-                  return (
-                    <div className="pl-5 mt-0.5 space-y-1.5">
-                      {/* Sem "Todos" — o próprio click no nome do projeto
-                          já filtra tudo (subFiltro vazio). */}
-
-                      {/* Caixa verde — subprojetos manuais (criação livre) */}
-                      {manuais.length > 0 && (
-                        <div className="rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-900/15 p-1.5">
-                          <div className="px-1 pb-1 text-[9px] uppercase tracking-wider font-semibold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-                            ✏️ Manuais
-                            <span className="text-[9px] text-emerald-600/70 dark:text-emerald-400/70 font-normal normal-case tracking-normal">(editáveis)</span>
-                          </div>
-                          <div className="space-y-0.5">
-                            {manuais.map(renderBtn)}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Caixa vermelha — subprojetos automáticos (só hooks) */}
-                      {automaticos.length > 0 && (
-                        <div className="rounded-md border border-rose-200 dark:border-rose-800 bg-rose-50/60 dark:bg-rose-900/15 p-1.5">
-                          <div className="px-1 pb-1 text-[9px] uppercase tracking-wider font-semibold text-rose-700 dark:text-rose-400 flex items-center gap-1">
-                            🔒 Automáticos
-                            <span className="text-[9px] text-rose-600/70 dark:text-rose-400/70 font-normal normal-case tracking-normal">(só hooks)</span>
-                          </div>
-                          <div className="space-y-0.5">
-                            {automaticos.map(renderBtn)}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })()}
-              </div>
+              <button key={s.id} onClick={() => onAbrirSubprojeto(projetoFiltroAtual, s.id)} title={s.nome}
+                className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs transition-colors ${sel ? (auto ? "border-rose-400 bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300" : "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300") : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                {auto ? "🔒" : "✏️"}<span className="whitespace-nowrap">{s.nome}</span>{ativ > 0 && <span className="text-[10px] opacity-70">{ativ}</span>}
+              </button>
             );
           })}
         </div>
-      </div>
-
-      {/* Bloco Admin/Lixeira — só master */}
-      {(onAbrirAdmin || onAbrirLixeira) && (
-        <div className="space-y-0.5 pt-3 border-t border-gray-200 dark:border-gray-800">
-          {onAbrirAdmin && (
-            <SidebarItem
-              ativo={tabAtual === "admin"}
-              onClick={onAbrirAdmin}
-              icone="⚙️"
-              label="Configurações de Tarefas"
-            />
-          )}
-          {onAbrirLixeira && (
-            <SidebarItem
-              ativo={tabAtual === "lixeira"}
-              onClick={onAbrirLixeira}
-              icone="🗑️"
-              label="Lixeira"
-            />
-          )}
-        </div>
       )}
     </div>
-  );
-}
-
-function SidebarItem({ ativo, onClick, icone, label, badge }: {
-  ativo: boolean;
-  onClick: () => void;
-  icone: string;
-  label: string;
-  badge?: number;
-}) {
-  return (
-    <button
-      onClick={onClick}
-      className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-sm text-left transition-colors ${
-        ativo
-          ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-semibold"
-          : "hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-      }`}
-    >
-      <span className="text-base leading-none">{icone}</span>
-      <span className="flex-1">{label}</span>
-      {badge !== undefined && badge > 0 && (
-        <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
-          {badge}
-        </span>
-      )}
-    </button>
-  );
-}
-
-function TabButton({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <button
-      onClick={onClick}
-      className={`px-3 sm:px-4 py-2 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap flex-shrink-0 ${
-        ativo
-          ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
-          : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-      }`}
-    >
-      {children}
-    </button>
   );
 }
 
