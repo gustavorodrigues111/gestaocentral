@@ -168,6 +168,28 @@ export function WikiProcessosPage() {
   const porArea = new Map<string, WikiProcesso[]>();
   for (const p of visiveis) { const a = p.area || "Sem área"; const arr = porArea.get(a) || []; arr.push(p); porArea.set(a, arr); }
 
+  // Preenche UM processo (rascunho) com a IA a partir do título/área e abre o
+  // editor pra revisar antes de salvar. Lança em erro (o LerModal trata).
+  async function preencherComIA(proc: WikiProcesso) {
+    const r = await fetch("/api/wiki-preencher", {
+      method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
+      body: JSON.stringify({ titulo: proc.titulo, area: proc.area, setores: SETORES.map(s => ({ id: s.id, label: s.label })) }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d?.error || `HTTP ${r.status}`);
+    const fmt = (d.formato as WikiFormato) || "passos";
+    const atualizado: WikiProcesso = {
+      ...proc,
+      resumo: proc.resumo || (d.resumo ? String(d.resumo) : proc.resumo),
+      formato: fmt,
+      conteudo: fmt === "texto" ? (d.conteudo || "") : undefined,
+      itens: fmt === "checklist" ? ((d.itens as { texto?: string; responsaveis?: string[] }[]) || []).map(it => ({ id: uid(), texto: it.texto || "", responsaveis: it.responsaveis?.length ? it.responsaveis : undefined })) : undefined,
+      passos: fmt === "passos" ? ((d.passos as { titulo?: string; descricao?: string; responsaveis?: string[] }[]) || []).map(p => ({ id: uid(), titulo: p.titulo || "", descricao: p.descricao || "", foto: null, responsaveis: p.responsaveis?.length ? p.responsaveis : undefined })) : undefined,
+    };
+    setLendo(null);
+    setEditando(atualizado);
+  }
+
   const chip = (active: boolean, label: string, onClick: () => void, key?: string) => (
     <button key={key} type="button" onClick={onClick}
       className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${active ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{label}</button>
@@ -353,6 +375,7 @@ export function WikiProcessosPage() {
         editavel={abaAtual === "cadastro" && podeEditar}
         onEditar={() => { setEditando(lendo); setLendo(null); }}
         onEditarVoz={() => { setEditVoz(lendo); setLendo(null); }}
+        onPreencherIA={() => preencherComIA(lendo)}
         onClose={() => setLendo(null)} onAbrirProc={p => setLendo(p)} />}
       {(criando || editando) && (
         <WikiForm proc={editando} rascunhoInicial={editando ? null : rascunhoIA} podeDeletar={podeDeletar}
@@ -867,8 +890,11 @@ function EscolherModoNovo({ onClose, onVoz, onEscrever }: { onClose: () => void;
 }
 
 // ─── Leitura (consulta) ──────────────────────────────────────────────────────
-function LerModal({ proc, processos, setorNomes, editavel, onEditar, onEditarVoz, onClose, onAbrirProc }: { proc: WikiProcesso; processos: WikiProcesso[]; setorNomes: Record<string, string[]>; editavel?: boolean; onEditar?: () => void; onEditarVoz?: () => void; onClose: () => void; onAbrirProc: (p: WikiProcesso) => void }) {
+function LerModal({ proc, processos, setorNomes, editavel, onEditar, onEditarVoz, onPreencherIA, onClose, onAbrirProc }: { proc: WikiProcesso; processos: WikiProcesso[]; setorNomes: Record<string, string[]>; editavel?: boolean; onEditar?: () => void; onEditarVoz?: () => void; onPreencherIA?: () => Promise<void>; onClose: () => void; onAbrirProc: (p: WikiProcesso) => void }) {
   const nPassos = proc.passos?.length ?? 0;
+  const [gerando, setGerando] = useState(false);
+  const [erroGen, setErroGen] = useState("");
+  const vazio = (proc.passos?.length ?? 0) === 0 && (proc.itens?.length ?? 0) === 0 && !(proc.conteudo || "").trim();
   const nItens = proc.itens?.length ?? 0;
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -885,10 +911,16 @@ function LerModal({ proc, processos, setorNomes, editavel, onEditar, onEditarVoz
           <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight pr-8">{proc.titulo}</h2>
           {proc.resumo && <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 leading-relaxed">{proc.resumo}</p>}
           <div className="flex items-center gap-2 mt-3 flex-wrap">
+            {editavel && onPreencherIA && (
+              <Button size="sm" onClick={async () => { setGerando(true); setErroGen(""); try { await onPreencherIA(); } catch (e) { setErroGen(e instanceof Error ? e.message : "Falha ao preencher."); setGerando(false); } }} disabled={gerando}>
+                {gerando ? "Gerando…" : (vazio ? "✨ Preencher com IA" : "✨ Refazer com IA")}
+              </Button>
+            )}
             {editavel && onEditar && <Button size="sm" variant="secondary" onClick={onEditar}>✏️ Editar</Button>}
             {editavel && onEditarVoz && <Button size="sm" variant="secondary" onClick={onEditarVoz}>🎙️ Editar por voz</Button>}
             <span className="text-[11px] text-gray-400">atualizado {fmtBR((proc.atualizadoEm || "").slice(0, 10))}</span>
           </div>
+          {erroGen && <div className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2 mt-2">{erroGen}</div>}
         </div>
 
         {/* Corpo */}
