@@ -45,7 +45,7 @@ export const MODULES: ModuleDef[] = [
 
   // ── Pessoas Externas & Infra ─────────────────────────────────────
   { id: "freelas",     area: "ops", subarea: "Pessoas Externas & Infra", label: "Freelas",        icon: "🎒", status: "ativo", etapa: "beta",               desc: "Cadastro, agendamento, lançamento e pagamento de freelas", dependsOn: ["pessoas", "escala"] },
-  { id: "prazosTrabalhistas", area: "agenda", subarea: "Prazos", label: "Prazos Trabalhistas", icon: "🧑‍⚖️", status: "em-breve", etapa: "em_desenvolvimento", desc: "Agenda de prazos de RH: fim de experiência (45/90), exames e uniformes/EPIs. Agrega os prazos que já vivem nos módulos de origem." },
+  { id: "prazosTrabalhistas", area: "agenda", subarea: "Prazos", label: "Prazos Trabalhistas", icon: "🧑‍⚖️", status: "ativo", etapa: "em_desenvolvimento", desc: "Agenda de prazos de RH: fim de experiência (45/90), exames e uniformes/EPIs. Agrega os prazos que já vivem nos módulos de origem." },
   { id: "manutencoes", area: "agenda", subarea: "Prazos", label: "Prazos Técnicos", icon: "🛠️", status: "ativo", etapa: "beta",         desc: "Prazos técnicos e operacionais: manutenções, licenças e certificados (potabilidade, dedetização, CLCB, alvarás). Gera lembretes na Central de Avisos." },
 
   // ── ocultos (operação) ───────────────────────────────────────────
