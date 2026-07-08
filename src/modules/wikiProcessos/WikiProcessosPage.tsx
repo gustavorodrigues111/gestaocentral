@@ -5,7 +5,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, onSnapshot, query, orderBy, setDoc, doc } from "firebase/firestore";
+import { collection, onSnapshot, query, orderBy, where, setDoc, doc } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -25,7 +25,7 @@ const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 // Setores responsáveis por etapa (passo/checklist). No futuro cada setor mapeia
 // pra pessoas reais por empresa (lideranças, DP, financeiro…).
 const SETORES: { id: string; label: string; icon: string; cls: string }[] = [
-  { id: "lideranca",  label: "Liderança diária",         icon: "🧑‍✈️", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
+  { id: "lideranca",  label: "Liderança de área",        icon: "🧑‍✈️", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
   { id: "area",       label: "Equipe da área",           icon: "👥",   cls: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300" },
   { id: "dp",         label: "Departamento de Pessoas",  icon: "🧑‍⚖️", cls: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" },
   { id: "financeiro", label: "Financeiro",               icon: "💰",   cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
@@ -33,10 +33,15 @@ const SETORES: { id: string; label: string; icon: string; cls: string }[] = [
   { id: "compras",    label: "Compras / Estoque",        icon: "📦",   cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" },
 ];
 const setorMeta = (id?: string) => (id ? SETORES.find(s => s.id === id) : undefined);
-function SetorBadge({ id }: { id?: string }) {
+function SetorBadge({ id, nomes }: { id?: string; nomes?: string[] }) {
   const m = setorMeta(id);
   if (!m) return null;
-  return <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${m.cls}`}>{m.icon} {m.label}</span>;
+  return (
+    <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${m.cls}`}>
+      {m.icon} {m.label}
+      {nomes && nomes.length > 0 && <span className="font-normal opacity-90"> · {nomes.join(", ")}</span>}
+    </span>
+  );
 }
 
 // Achata um processo em texto puro pra mandar de contexto pra IA.
@@ -72,12 +77,23 @@ export function WikiProcessosPage() {
   const [ditando, setDitando] = useState(false);
   const [editVoz, setEditVoz] = useState<WikiProcesso | null>(null);
   const [rascunhoIA, setRascunhoIA] = useState<Partial<WikiProcesso> | null>(null);
+  const [configSetores, setConfigSetores] = useState(false);
+  const [setoresMap, setSetoresMap] = useState<Record<string, string[]>>({});
+  const [pessoasRid, setPessoasRid] = useState<{ id: string; nome: string }[]>([]);
 
   useEffect(() => {
     const u = onSnapshot(query(collection(db, "wikiProcessos"), orderBy("titulo")),
       snap => setProcs(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WikiProcesso).filter(p => !p.deletadoEm && p.ativo !== false)));
     return () => u();
   }, []);
+
+  useEffect(() => {
+    if (!rid) return;
+    const uc = onSnapshot(doc(db, "wikiConfig", rid), snap => setSetoresMap((snap.data() as { setoresResponsaveis?: Record<string, string[]> } | undefined)?.setoresResponsaveis || {}));
+    const up = onSnapshot(query(collection(db, "pessoas"), where("restaurantIds", "array-contains", rid)),
+      snap => setPessoasRid(snap.docs.map(d => ({ id: d.id, nome: (d.data() as { nome?: string }).nome || "—" })).sort((a, b) => a.nome.localeCompare(b.nome))));
+    return () => { uc(); up(); };
+  }, [rid]);
 
   if (!pessoa) return null;
   if (loadingPerfis) return <div className="max-w-5xl mx-auto p-6 text-sm text-gray-400">Carregando…</div>;
@@ -89,6 +105,10 @@ export function WikiProcessosPage() {
   const daEmpresaTodas = procs.filter(p => (p.restaurantIds || []).includes(rid || ""));
   const daEmpresa = catsPermitidas ? daEmpresaTodas.filter(p => catsPermitidas.includes(p.area)) : daEmpresaTodas;
   const areas = [...new Set(daEmpresa.map(p => p.area).filter(Boolean))].sort();
+  // Nomes reais por setor (config wikiConfig/{rid} → pessoas do restaurante).
+  const nomePessoa = (id: string) => pessoasRid.find(p => p.id === id)?.nome;
+  const setorNomes: Record<string, string[]> = {};
+  for (const s of SETORES) setorNomes[s.id] = (setoresMap[s.id] || []).map(nomePessoa).filter(Boolean) as string[];
   const q = busca.trim().toLowerCase();
   const visiveis = daEmpresa.filter(p =>
     (filtroArea === "todas" || p.area === filtroArea) &&
@@ -170,12 +190,13 @@ export function WikiProcessosPage() {
         <>
           <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
             <div className="text-sm text-gray-500">Gerencie os processos: crie, edite (inclusive por voz) e exclua.</div>
-            {podeCriar && (
-              <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap">
+              <Button variant="secondary" onClick={() => setConfigSetores(true)}>👥 Responsáveis por setor</Button>
+              {podeCriar && <>
                 <Button variant="secondary" onClick={() => setDitando(true)}>🎙️ Gravar por voz</Button>
                 <Button onClick={() => setCriando(true)}>+ Novo processo</Button>
-              </div>
-            )}
+              </>}
+            </div>
           </div>
 
           {visiveis.length === 0 ? (
@@ -215,7 +236,9 @@ export function WikiProcessosPage() {
         onRascunho={r => { setRascunhoIA(r); setDitando(false); setCriando(true); }} />}
       {editVoz && podeEditar && <EditarVozModal proc={editVoz} onClose={() => setEditVoz(null)}
         onAplicar={p => { setEditVoz(null); setEditando(p); }} />}
-      {lendo && <LerModal proc={lendo} processos={daEmpresa} onClose={() => setLendo(null)} onAbrirProc={p => setLendo(p)} />}
+      {configSetores && <ResponsaveisSetorModal rid={rid || ""} pessoas={pessoasRid} mapaInicial={setoresMap} podeEditar={podeCadastrar}
+        onClose={() => setConfigSetores(false)} />}
+      {lendo && <LerModal proc={lendo} processos={daEmpresa} setorNomes={setorNomes} onClose={() => setLendo(null)} onAbrirProc={p => setLendo(p)} />}
       {(criando || editando) && (
         <WikiForm proc={editando} rascunhoInicial={editando ? null : rascunhoIA} podeDeletar={podeDeletar}
           onClose={() => { setCriando(false); setEditando(null); setRascunhoIA(null); }}
@@ -562,8 +585,74 @@ function EditarVozModal({ proc, onClose, onAplicar }: {
   );
 }
 
+// ─── Responsáveis por setor (setor → pessoas reais da empresa) ────────────────
+function ResponsaveisSetorModal({ rid, pessoas, mapaInicial, podeEditar, onClose }: {
+  rid: string; pessoas: { id: string; nome: string }[]; mapaInicial: Record<string, string[]>; podeEditar?: boolean; onClose: () => void;
+}) {
+  const [mapa, setMapa] = useState<Record<string, string[]>>(() => structuredClone(mapaInicial || {}));
+  const [salvando, setSalvando] = useState(false);
+  const [aberto, setAberto] = useState<string | null>(null);
+
+  const toggle = (setorId: string, pessoaId: string) => setMapa(m => {
+    const cur = m[setorId] || [];
+    return { ...m, [setorId]: cur.includes(pessoaId) ? cur.filter(x => x !== pessoaId) : [...cur, pessoaId] };
+  });
+  const nomesDe = (setorId: string) => (mapa[setorId] || []).map(id => pessoas.find(p => p.id === id)?.nome).filter(Boolean) as string[];
+
+  async function salvar() {
+    setSalvando(true);
+    try {
+      await setDoc(doc(db, "wikiConfig", rid), sanitizeForFirestore({ restaurantId: rid, setoresResponsaveis: mapa, atualizadoEm: new Date().toISOString() }), { merge: true });
+      onClose();
+    } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); }
+    finally { setSalvando(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg p-5 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">👥 Responsáveis por setor</h2>
+        <p className="text-xs text-gray-500 mt-1 mb-4">Defina quem é cada setor nesta empresa. O nome aparece nas etapas dos processos que marcam esse setor como responsável.</p>
+
+        {pessoas.length === 0 ? (
+          <div className="text-sm text-gray-500 py-6 text-center">Nenhuma pessoa cadastrada nesta empresa ainda.</div>
+        ) : (
+          <div className="space-y-2">
+            {SETORES.map(s => {
+              const nomes = nomesDe(s.id);
+              const open = aberto === s.id;
+              return (
+                <div key={s.id} className="rounded-xl border border-gray-200 dark:border-gray-800">
+                  <button type="button" onClick={() => setAberto(open ? null : s.id)} className="w-full flex items-center justify-between gap-2 p-3 text-left">
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-1 rounded-full ${s.cls}`}>{s.icon} {s.label}</span>
+                    <span className="text-xs text-gray-500 truncate">{nomes.length ? nomes.join(", ") : "ninguém"} {open ? "▲" : "▼"}</span>
+                  </button>
+                  {open && (
+                    <div className="px-3 pb-3 flex flex-wrap gap-x-4 gap-y-1.5 border-t border-gray-100 dark:border-gray-800 pt-2">
+                      {pessoas.map(p => (
+                        <label key={p.id} className="flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-300">
+                          <input type="checkbox" disabled={!podeEditar} checked={(mapa[s.id] || []).includes(p.id)} onChange={() => toggle(s.id, p.id)} />{p.nome}
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        <div className="flex gap-2 justify-end mt-5">
+          <Button variant="ghost" onClick={onClose}>{podeEditar ? "Cancelar" : "Fechar"}</Button>
+          {podeEditar && <Button onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button>}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Leitura (consulta) ──────────────────────────────────────────────────────
-function LerModal({ proc, processos, onClose, onAbrirProc }: { proc: WikiProcesso; processos: WikiProcesso[]; onClose: () => void; onAbrirProc: (p: WikiProcesso) => void }) {
+function LerModal({ proc, processos, setorNomes, onClose, onAbrirProc }: { proc: WikiProcesso; processos: WikiProcesso[]; setorNomes: Record<string, string[]>; onClose: () => void; onAbrirProc: (p: WikiProcesso) => void }) {
   const nPassos = proc.passos?.length ?? 0;
   const nItens = proc.itens?.length ?? 0;
   return (
@@ -597,7 +686,7 @@ function LerModal({ proc, processos, onClose, onAbrirProc }: { proc: WikiProcess
                 <li key={it.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/30">
                   <span className="shrink-0 w-6 h-6 rounded-md border-2 border-emerald-400 dark:border-emerald-600" />
                   <span className="flex-1 text-[15px] text-gray-800 dark:text-gray-200 leading-snug">{it.texto}</span>
-                  <SetorBadge id={it.responsavel} />
+                  <SetorBadge id={it.responsavel} nomes={setorNomes[it.responsavel || ""]} />
                 </li>
               ))}
             </ul>
@@ -613,7 +702,7 @@ function LerModal({ proc, processos, onClose, onAbrirProc }: { proc: WikiProcess
                     <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/30 p-3.5">
                       <div className="flex items-start justify-between gap-2 flex-wrap mb-1">
                         {s.titulo ? <div className="font-semibold text-gray-900 dark:text-gray-100">{s.titulo}</div> : <span />}
-                        <SetorBadge id={s.responsavel} />
+                        <SetorBadge id={s.responsavel} nomes={setorNomes[s.responsavel || ""]} />
                       </div>
                       <div className="text-[15px] text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">{s.descricao}</div>
                       {(() => { const vinc = s.processoVinculadoId ? processos.find(x => x.id === s.processoVinculadoId) : undefined; return vinc ? (

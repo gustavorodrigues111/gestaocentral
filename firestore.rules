@@ -229,6 +229,7 @@ service cloud.firestore {
     match /manutencoes/{id}         { allow read, write: if authed(); allow delete: if isMaster(); }
     match /agendaTrabResolvidos/{id} { allow read, write, delete: if authed(); }
     match /wikiProcessos/{id}       { allow read, write: if authed(); allow delete: if isMaster(); }
+    match /wikiConfig/{rid}         { allow read, write: if authed(); }
     // Exames médicos (Fase 7) — auth-only por enquanto. Fase futura: escopo
     // por rest + perfis com canAcao("exames", "ver"). Dados sensíveis (LGPD).
     match /exameTiposConfig/{id}    { allow read, write: if authed(); allow delete: if isMaster(); }
