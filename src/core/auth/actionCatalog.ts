@@ -547,6 +547,17 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "prazosTrabalhistas",
+    icon: "🧑‍⚖️",
+    label: "Prazos Trabalhistas",
+    desc: "Agenda de RH: fim de experiência (45/90), exames e uniformes/EPIs (agrega dos módulos de origem)",
+    area: "gestao",
+    acoes: [
+      { id: "ver",       label: "Ver a agenda de prazos trabalhistas" },
+      { id: "resolver",  label: "Marcar prazo como resolvido / dar baixa" },
+    ],
+  },
+  {
     id: "manutencoes",
     icon: "🛠️",
     label: "Prazos Técnicos",
