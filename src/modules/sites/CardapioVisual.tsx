@@ -243,27 +243,20 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
                   style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: "#222", whiteSpace: "pre-line", outline: "none" }}>{titulo}</span>
                 {(precoTxt || (p.taca && (p.precoTaca || "").trim())) && (
                   <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, gap: 1 }}>
-                    {precoTxt && (() => {
-                      const icoW = lay.tamTitulo * 0.95;
-                      const temIco = !ehNota && mostrarGarrafa;
-                      return (
-                      <span style={{ position: "relative", display: "inline-block", whiteSpace: "nowrap", lineHeight: 1, fontSize: lay.tamTitulo, paddingLeft: temIco ? icoW + 4 : 0 }}>
-                        {temIco && <GarrafaIcon size={icoW} color={TEAL} style={{ position: "absolute", left: 0, top: lay.tamTitulo * 0.43 - icoW / 2 }} />}
-                        {!ehNota && (p.garrafaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: TEAL, opacity: 0.75, marginRight: 4 }}>({String(p.garrafaMl).replace(/ml$/i, "").trim()}ml)</span>}
+                    {precoTxt && (
+                      <span style={{ whiteSpace: "nowrap", lineHeight: 1.1 }}>
+                        {!ehNota && mostrarGarrafa && <span style={{ fontSize: lay.tamTitulo * 0.95, marginRight: 3 }}>🍾</span>}
+                        {!ehNota && (p.garrafaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: TEAL, opacity: 0.75, marginRight: 3 }}>({String(p.garrafaMl).replace(/ml$/i, "").trim()}ml)</span>}
                         <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: TEAL, fontWeight: 600 }}>{precoTxt}</span>
                       </span>
-                      );
-                    })()}
-                    {p.taca && (p.precoTaca || "").trim() && (() => {
-                      const icoW = lay.tamTitulo * 0.95;
-                      return (
-                      <span style={{ position: "relative", display: "inline-block", whiteSpace: "nowrap", lineHeight: 1, fontSize: lay.tamTitulo, paddingLeft: icoW + 4 }}>
-                        <TacaIcon size={icoW} color={TEAL} style={{ position: "absolute", left: 0, top: lay.tamTitulo * 0.43 - icoW / 2 }} />
-                        {(p.tacaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: TEAL, opacity: 0.75, marginRight: 4 }}>({String(p.tacaMl).replace(/ml$/i, "").trim()}ml)</span>}
+                    )}
+                    {p.taca && (p.precoTaca || "").trim() && (
+                      <span style={{ whiteSpace: "nowrap", lineHeight: 1.1 }}>
+                        <span style={{ fontSize: lay.tamTitulo * 0.95, marginRight: 3 }}>🍷</span>
+                        {(p.tacaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: TEAL, opacity: 0.75, marginRight: 3 }}>({String(p.tacaMl).replace(/ml$/i, "").trim()}ml)</span>}
                         <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, color: TEAL, fontWeight: 600 }}>{lay.mostrarCifrao ? `$ ${p.precoTaca!.trim()}` : p.precoTaca!.trim()}</span>
                       </span>
-                      );
-                    })()}
+                    )}
                   </span>
                 )}
               </div>
