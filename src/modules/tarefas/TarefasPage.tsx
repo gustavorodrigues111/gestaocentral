@@ -2219,7 +2219,25 @@ function inicioSemanaSeg(yyyymmdd: string): string {
   return d.toISOString().slice(0, 10);
 }
 
-function CalendarioView({ tarefas, projetos, subprojetos, onAbrir, autor, onNovaTarefaNoDia }: {
+// Badge objetivo por TIPO de tarefa (origem) — label curto + cor + ícone.
+// Manual/sem origem cai no projeto (nome + cor + emoji).
+const TAREFA_CAT_META: Record<string, { label: string; cor: string; icon: string }> = {
+  conta_fixa:       { label: "Conta",       cor: "#10b981", icon: "💵" },
+  manutencao:       { label: "Técnico",     cor: "#f59e0b", icon: "🛠️" },
+  admissao:         { label: "Trabalhista", cor: "#8b5cf6", icon: "🧑‍⚖️" },
+  demissao:         { label: "Demissão",    cor: "#ef4444", icon: "👋" },
+  ferias:           { label: "Férias",      cor: "#0ea5e9", icon: "🏖️" },
+  reuniao:          { label: "Reunião",     cor: "#6366f1", icon: "🗣️" },
+  evento:           { label: "Evento",      cor: "#ec4899", icon: "🎉" },
+  recorrencia:      { label: "Rotina",      cor: "#14b8a6", icon: "🔁" },
+  lote_financeiro:  { label: "Financeiro",  cor: "#22c55e", icon: "📦" },
+  portal_empregado: { label: "Portal",      cor: "#64748b", icon: "📲" },
+};
+function catDaTarefa(origem: string, proj?: { nome?: string; cor?: string; emoji?: string }): { label: string; cor: string; icon: string } {
+  return TAREFA_CAT_META[origem] || { label: proj?.nome || "Tarefa", cor: proj?.cor || "#6b7280", icon: proj?.emoji || "📁" };
+}
+
+function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }: {
   tarefas: Tarefa[];
   projetos: TarefaProjeto[];
   subprojetos?: TarefaSubprojeto[];
@@ -2345,12 +2363,9 @@ function CalendarioView({ tarefas, projetos, subprojetos, onAbrir, autor, onNova
         <div className="space-y-1 flex-1 overflow-y-auto">
           {lista.map(t => {
             const proj = projetos.find(p => p.id === t.projetoId);
-            const cor = t.corHerdada || proj?.cor || "#6b7280";
+            const meta = catDaTarefa(t.origem, proj);
             const concluida = t.status === "concluida";
             const arrastando = draggingId === t.id;
-            // Asana-style: "‹ Subprojeto" em cinza menor abaixo do título.
-            // Fonte do prefixo é o subprojeto (não tem tarefa-pai no schema).
-            const sub = subprojetos?.find(s => s.id === t.subprojetoId);
             return (
               <button
                 key={t.id}
@@ -2365,16 +2380,14 @@ function CalendarioView({ tarefas, projetos, subprojetos, onAbrir, autor, onNova
                   setDropTarget(null);
                 } : undefined}
                 onClick={() => onAbrir(t.id)}
-                className={`w-full text-left text-[11px] px-1.5 py-1 rounded hover:opacity-80 transition-opacity ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
-                style={{ background: cor + "26", color: cor, borderLeft: `2px solid ${cor}` }}
+                className={`w-full text-left text-[11px] px-1.5 py-1 rounded text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
+                style={{ background: meta.cor + "14", borderLeft: `3px solid ${meta.cor}` }}
                 title={podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
               >
-                <div className="truncate font-medium">{t.titulo}</div>
-                {sub && (
-                  <div className="truncate text-[10px] opacity-70 leading-tight">
-                    ‹ {sub.nome}
-                  </div>
-                )}
+                <div className="truncate font-medium leading-tight">{t.titulo}</div>
+                <span className="inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-[1px] rounded-full text-[8px] font-bold uppercase tracking-wide text-white" style={{ background: meta.cor }}>
+                  {meta.icon} {meta.label}
+                </span>
               </button>
             );
           })}
