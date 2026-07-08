@@ -190,6 +190,12 @@ export function WikiProcessosPage() {
     setEditando(atualizado);
   }
 
+  // Publica / volta pra rascunho direto (sem abrir o form).
+  async function togglePublicado(proc: WikiProcesso, publicar: boolean) {
+    await setDoc(doc(db, "wikiProcessos", proc.id), sanitizeForFirestore({ publicado: publicar, atualizadoEm: new Date().toISOString(), atualizadoPor: pessoa!.id }), { merge: true });
+    setLendo(prev => prev && prev.id === proc.id ? { ...prev, publicado: publicar } : prev);
+  }
+
   const chip = (active: boolean, label: string, onClick: () => void, key?: string) => (
     <button key={key} type="button" onClick={onClick}
       className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${active ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{label}</button>
@@ -376,6 +382,7 @@ export function WikiProcessosPage() {
         onEditar={() => { setEditando(lendo); setLendo(null); }}
         onEditarVoz={() => { setEditVoz(lendo); setLendo(null); }}
         onPreencherIA={() => preencherComIA(lendo)}
+        onPublicar={pub => togglePublicado(lendo, pub)}
         onClose={() => setLendo(null)} onAbrirProc={p => setLendo(p)} />}
       {(criando || editando) && (
         <WikiForm proc={editando} rascunhoInicial={editando ? null : rascunhoIA} podeDeletar={podeDeletar}
@@ -890,7 +897,7 @@ function EscolherModoNovo({ onClose, onVoz, onEscrever }: { onClose: () => void;
 }
 
 // ─── Leitura (consulta) ──────────────────────────────────────────────────────
-function LerModal({ proc, processos, setorNomes, editavel, onEditar, onEditarVoz, onPreencherIA, onClose, onAbrirProc }: { proc: WikiProcesso; processos: WikiProcesso[]; setorNomes: Record<string, string[]>; editavel?: boolean; onEditar?: () => void; onEditarVoz?: () => void; onPreencherIA?: () => Promise<void>; onClose: () => void; onAbrirProc: (p: WikiProcesso) => void }) {
+function LerModal({ proc, processos, setorNomes, editavel, onEditar, onEditarVoz, onPreencherIA, onPublicar, onClose, onAbrirProc }: { proc: WikiProcesso; processos: WikiProcesso[]; setorNomes: Record<string, string[]>; editavel?: boolean; onEditar?: () => void; onEditarVoz?: () => void; onPreencherIA?: () => Promise<void>; onPublicar?: (pub: boolean) => void; onClose: () => void; onAbrirProc: (p: WikiProcesso) => void }) {
   const nPassos = proc.passos?.length ?? 0;
   const [gerando, setGerando] = useState(false);
   const [erroGen, setErroGen] = useState("");
@@ -905,6 +912,9 @@ function LerModal({ proc, processos, setorNomes, editavel, onEditar, onEditarVoz
           <div className="flex flex-wrap items-center gap-1.5 mb-2">
             <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">{proc.area}</span>
             <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">{FORMATO_LABEL[proc.formato]}</span>
+            {proc.publicado === false
+              ? <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">rascunho</span>
+              : <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">publicado</span>}
             {nPassos > 0 && <span className="text-[11px] text-gray-400">{nPassos} passo{nPassos === 1 ? "" : "s"}</span>}
             {nItens > 0 && <span className="text-[11px] text-gray-400">{nItens} ite{nItens === 1 ? "m" : "ns"}</span>}
           </div>
@@ -916,8 +926,10 @@ function LerModal({ proc, processos, setorNomes, editavel, onEditar, onEditarVoz
                 {gerando ? "Gerando…" : (vazio ? "✨ Preencher com IA" : "✨ Refazer com IA")}
               </Button>
             )}
+            {editavel && onPublicar && proc.publicado === false && <Button size="sm" onClick={() => onPublicar(true)}>📢 Publicar</Button>}
             {editavel && onEditar && <Button size="sm" variant="secondary" onClick={onEditar}>✏️ Editar</Button>}
             {editavel && onEditarVoz && <Button size="sm" variant="secondary" onClick={onEditarVoz}>🎙️ Editar por voz</Button>}
+            {editavel && onPublicar && proc.publicado !== false && <button type="button" onClick={() => onPublicar(false)} className="text-[11px] text-gray-400 hover:text-amber-600 underline">voltar a rascunho</button>}
             <span className="text-[11px] text-gray-400">atualizado {fmtBR((proc.atualizadoEm || "").slice(0, 10))}</span>
           </div>
           {erroGen && <div className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2 mt-2">{erroGen}</div>}
