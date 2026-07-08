@@ -96,8 +96,8 @@ export function ConfiguracoesPage() {
 
   // Área "master" (Tarefas + Planner) só aparece pro master ligar/desligar.
   const areas: ModuleArea[] = me?.isMaster
-    ? ["ops", "dp", "fin", "inst", "master"]
-    : ["ops", "dp", "fin", "inst"];
+    ? ["ops", "dp", "fin", "agenda", "inst", "master"]
+    : ["ops", "dp", "fin", "agenda", "inst"];
 
   return (
     <div className="max-w-3xl space-y-6">
