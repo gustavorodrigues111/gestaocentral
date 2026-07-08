@@ -33,6 +33,9 @@ const SETORES: { id: string; label: string; icon: string; cls: string }[] = [
   { id: "compras",    label: "Compras / Estoque",        icon: "📦",   cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" },
 ];
 const setorMeta = (id?: string) => (id ? SETORES.find(s => s.id === id) : undefined);
+// Setores responsáveis de uma etapa (novo `responsaveis[]` ou legado `responsavel`).
+const respsDe = (x: { responsaveis?: string[]; responsavel?: string }): string[] =>
+  x.responsaveis && x.responsaveis.length ? x.responsaveis : (x.responsavel ? [x.responsavel] : []);
 function SetorBadge({ id, nomes }: { id?: string; nomes?: string[] }) {
   const m = setorMeta(id);
   if (!m) return null;
@@ -41,6 +44,27 @@ function SetorBadge({ id, nomes }: { id?: string; nomes?: string[] }) {
       {m.icon} {m.label}
       {nomes && nomes.length > 0 && <span className="font-normal opacity-90"> · {nomes.join(", ")}</span>}
     </span>
+  );
+}
+// Editor de múltiplos setores responsáveis: chips selecionados (removíveis) + select pra adicionar.
+function ResponsaveisPicker({ value, onChange, selCls }: { value?: string[]; onChange: (v: string[] | undefined) => void; selCls: string }) {
+  const sel = value || [];
+  const disp = SETORES.filter(s => !sel.includes(s.id));
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      {sel.map(id => { const m = setorMeta(id); return m ? (
+        <span key={id} className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${m.cls}`}>
+          {m.icon} {m.label}
+          <button type="button" onClick={() => { const next = sel.filter(x => x !== id); onChange(next.length ? next : undefined); }} className="opacity-60 hover:opacity-100">✕</button>
+        </span>
+      ) : null; })}
+      {disp.length > 0 && (
+        <select value="" onChange={e => { if (e.target.value) onChange([...sel, e.target.value]); }} className={selCls}>
+          <option value="">{sel.length ? "➕ responsável" : "👤 Responsável…"}</option>
+          {disp.map(s => <option key={s.id} value={s.id}>{s.icon} {s.label}</option>)}
+        </select>
+      )}
+    </div>
   );
 }
 
@@ -523,8 +547,8 @@ function EditarVozModal({ proc, onClose, onAplicar }: {
         resumo: (d.resumo && String(d.resumo).trim()) ? String(d.resumo).trim() : proc.resumo,
         formato: fmt,
         conteudo: fmt === "texto" ? (d.conteudo || "") : undefined,
-        itens: fmt === "checklist" ? ((d.itens as { id?: string; texto?: string }[]) || []).map(i => ({ id: i.id || uid(), texto: i.texto || "", responsavel: (proc.itens || []).find(x => x.id === i.id)?.responsavel })) : undefined,
-        passos: fmt === "passos" ? ((d.passos as { id?: string; titulo?: string; descricao?: string }[]) || []).map(p => { const orig = (proc.passos || []).find(x => x.id === p.id); return { id: p.id || uid(), titulo: p.titulo || "", descricao: p.descricao || "", foto: orig?.foto || null, responsavel: orig?.responsavel, processoVinculadoId: orig?.processoVinculadoId }; }) : undefined,
+        itens: fmt === "checklist" ? ((d.itens as { id?: string; texto?: string }[]) || []).map(i => { const orig = (proc.itens || []).find(x => x.id === i.id); return { id: i.id || uid(), texto: i.texto || "", responsaveis: orig ? respsDe(orig) : undefined }; }) : undefined,
+        passos: fmt === "passos" ? ((d.passos as { id?: string; titulo?: string; descricao?: string }[]) || []).map(p => { const orig = (proc.passos || []).find(x => x.id === p.id); return { id: p.id || uid(), titulo: p.titulo || "", descricao: p.descricao || "", foto: orig?.foto || null, responsaveis: orig ? respsDe(orig) : undefined, processoVinculadoId: orig?.processoVinculadoId }; }) : undefined,
       };
       setResultado(atualizado);
       setMudancas(Array.isArray(d.resumoMudancas) ? d.resumoMudancas : []);
@@ -686,7 +710,9 @@ function LerModal({ proc, processos, setorNomes, onClose, onAbrirProc }: { proc:
                 <li key={it.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/30">
                   <span className="shrink-0 w-6 h-6 rounded-md border-2 border-emerald-400 dark:border-emerald-600" />
                   <span className="flex-1 text-[15px] text-gray-800 dark:text-gray-200 leading-snug">{it.texto}</span>
-                  <SetorBadge id={it.responsavel} nomes={setorNomes[it.responsavel || ""]} />
+                  <div className="flex flex-wrap gap-1 justify-end">
+                    {respsDe(it).map(rid => <SetorBadge key={rid} id={rid} nomes={setorNomes[rid]} />)}
+                  </div>
                 </li>
               ))}
             </ul>
@@ -702,7 +728,9 @@ function LerModal({ proc, processos, setorNomes, onClose, onAbrirProc }: { proc:
                     <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/30 p-3.5">
                       <div className="flex items-start justify-between gap-2 flex-wrap mb-1">
                         {s.titulo ? <div className="font-semibold text-gray-900 dark:text-gray-100">{s.titulo}</div> : <span />}
-                        <SetorBadge id={s.responsavel} nomes={setorNomes[s.responsavel || ""]} />
+                        <div className="flex flex-wrap gap-1 justify-end">
+                          {respsDe(s).map(rid => <SetorBadge key={rid} id={rid} nomes={setorNomes[rid]} />)}
+                        </div>
                       </div>
                       <div className="text-[15px] text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">{s.descricao}</div>
                       {(() => { const vinc = s.processoVinculadoId ? processos.find(x => x.id === s.processoVinculadoId) : undefined; return vinc ? (
@@ -838,10 +866,7 @@ function WikiForm({ proc, rascunhoInicial, podeDeletar, categoriasPermitidas, pr
                   <div key={it.id} className="flex flex-wrap items-center gap-2">
                     <span className="text-gray-400">☐</span>
                     <input value={it.texto} onChange={e => setF({ ...f, itens: (f.itens || []).map(x => x.id === it.id ? { ...x, texto: e.target.value } : x) })} className={inp.replace("w-full", "") + " flex-1 min-w-[140px]"} placeholder={`Item ${idx + 1}`} />
-                    <select value={it.responsavel || ""} onChange={e => setF({ ...f, itens: (f.itens || []).map(x => x.id === it.id ? { ...x, responsavel: e.target.value || undefined } : x) })} className={selSetor}>
-                      <option value="">👤 Responsável…</option>
-                      {SETORES.map(s => <option key={s.id} value={s.id}>{s.icon} {s.label}</option>)}
-                    </select>
+                    <ResponsaveisPicker value={respsDe(it)} selCls={selSetor} onChange={rs => setF({ ...f, itens: (f.itens || []).map(x => x.id === it.id ? { ...x, responsaveis: rs, responsavel: undefined } : x) })} />
                     <button type="button" onClick={() => setF({ ...f, itens: (f.itens || []).filter(x => x.id !== it.id) })} className="text-gray-400 hover:text-rose-600 text-sm">✕</button>
                   </div>
                 ))}
@@ -861,10 +886,7 @@ function WikiForm({ proc, rascunhoInicial, podeDeletar, categoriasPermitidas, pr
                     </div>
                     <textarea value={s.descricao} onChange={e => setF({ ...f, passos: (f.passos || []).map(x => x.id === s.id ? { ...x, descricao: e.target.value } : x) })} className={inp} rows={2} placeholder="O que fazer neste passo" />
                     <div className="flex flex-wrap items-center gap-2">
-                      <select value={s.responsavel || ""} onChange={e => setF({ ...f, passos: (f.passos || []).map(x => x.id === s.id ? { ...x, responsavel: e.target.value || undefined } : x) })} className={selSetor}>
-                        <option value="">👤 Responsável…</option>
-                        {SETORES.map(so => <option key={so.id} value={so.id}>{so.icon} {so.label}</option>)}
-                      </select>
+                      <ResponsaveisPicker value={respsDe(s)} selCls={selSetor} onChange={rs => setF({ ...f, passos: (f.passos || []).map(x => x.id === s.id ? { ...x, responsaveis: rs, responsavel: undefined } : x) })} />
                       {(processosDaEmpresa?.length ?? 0) > 0 && (
                         <select value={s.processoVinculadoId || ""} onChange={e => setF({ ...f, passos: (f.passos || []).map(x => x.id === s.id ? { ...x, processoVinculadoId: e.target.value || undefined } : x) })} className={selSetor}>
                           <option value="">🔗 Vincular processo…</option>
