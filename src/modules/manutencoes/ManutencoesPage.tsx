@@ -437,7 +437,7 @@ function ApontamentoModal({ manutencao, onClose, endsDaEmpresa, rootFolderId, pe
 }
 
 // ─── Cadastro (config) ───────────────────────────────────────────────────────
-function ManutencaoForm({ manutencao, onClose, restaurants, enderecos, pessoaId }: {
+export function ManutencaoForm({ manutencao, onClose, restaurants, enderecos, pessoaId }: {
   manutencao: Manutencao | null; onClose: () => void; restaurants: { id: string; nome: string }[]; enderecos: Endereco[]; pessoaId: string;
 }) {
   const [f, setF] = useState<Partial<Manutencao>>(manutencao ? { ...manutencao } : {

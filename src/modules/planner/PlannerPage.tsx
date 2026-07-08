@@ -15,6 +15,7 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import { LancarPrazoModal } from "./LancarPrazoModal";
 import { Input } from "../../core/ui/Input";
 import { TimeInput } from "../../core/ui/TimeInput";
 
@@ -611,6 +612,7 @@ export function PlannerPage() {
   const [periodo, setPeriodo] = useState<Periodo>("semana");
   const [refresh, setRefresh] = useState(0);
   const [criar, setCriar] = useState<null | "evento" | "pin">(null);
+  const [lancarPrazo, setLancarPrazo] = useState(false);
   const [criarEm, setCriarEm] = useState<{ data: string; inicio: string; fim: string } | null>(null);
   const [editando, setEditando] = useState<PEvent | null>(null);
   const [refDate, setRefDate] = useState(() => new Date());
@@ -659,19 +661,22 @@ export function PlannerPage() {
           </Dropdown>
         )}
         <StatusGoogle conn={conn} />
-        {conn.token && (
-          <div className="ml-auto flex items-center gap-2">
-            <RevisarButton conn={conn} agendas={visiveis} refresh={refresh} podeCriar={gravaveis.length > 0} onCriar={abrirCriarEm} onIr={irPara} />
-            <Dropdown label="+ Novo" primary disabled={gravaveis.length === 0}>
-              {(close) => (
-                <>
-                  <MenuItem onClick={() => { setCriar("evento"); close(); }}>📅 Evento</MenuItem>
-                  <MenuItem onClick={() => { setCriar("pin"); close(); }}>📌 Pin</MenuItem>
-                </>
-              )}
-            </Dropdown>
-          </div>
-        )}
+        <div className="ml-auto flex items-center gap-2">
+          <Button size="sm" variant="secondary" onClick={() => setLancarPrazo(true)}>🧾 Lançar prazo</Button>
+          {conn.token && (
+            <>
+              <RevisarButton conn={conn} agendas={visiveis} refresh={refresh} podeCriar={gravaveis.length > 0} onCriar={abrirCriarEm} onIr={irPara} />
+              <Dropdown label="+ Novo" primary disabled={gravaveis.length === 0}>
+                {(close) => (
+                  <>
+                    <MenuItem onClick={() => { setCriar("evento"); close(); }}>📅 Evento</MenuItem>
+                    <MenuItem onClick={() => { setCriar("pin"); close(); }}>📌 Pin</MenuItem>
+                  </>
+                )}
+              </Dropdown>
+            </>
+          )}
+        </div>
       </div>
 
       {alvo === "semana" && <SemanaView conn={conn} agendas={visiveis} refresh={refresh} refDate={refDate} setRefDate={setRefDate} onEventClick={setEditando} onRefresh={() => setRefresh((r) => r + 1)} />}
@@ -683,6 +688,7 @@ export function PlannerPage() {
 
       {conn.token && agendas.length > 0 && <AgendasManager agendas={agendas} setPref={setPref} />}
 
+      {lancarPrazo && <LancarPrazoModal onClose={() => setLancarPrazo(false)} />}
       {criar && conn.token && (
         <EventoModal
           modo={criar}

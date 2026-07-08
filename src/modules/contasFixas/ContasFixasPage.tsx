@@ -483,7 +483,7 @@ function ImportContasModal({ onClose, restaurantes, pessoaId }: {
   );
 }
 
-function ContaFixaForm({ conta, init, onClose, restaurantes, enderecos, pessoaId }: {
+export function ContaFixaForm({ conta, init, onClose, restaurantes, enderecos, pessoaId }: {
   conta: ContaFixa | null;
   init?: Partial<ContaFixa>;
   onClose: () => void;
