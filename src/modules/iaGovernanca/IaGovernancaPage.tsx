@@ -1,48 +1,39 @@
-// Governança de IA — diretrizes do que a IA pode/não pode responder (por empresa,
-// replicáveis pra outras), registro jurídico das interações (auditoria) e alertas
-// de uso fora do escopo (LGPD). Alertas ao vivo saem na Central de Avisos
-// (fonte iaInteracoes em useAvisos, gate iaGovernanca.receberAlertas).
+// Governança de IA (SÓ MASTER) — diretrizes do que a IA pode/não pode responder,
+// em BLOCOS independentes (adicionados por texto ou voz; a IA checa contradição/
+// redundância a cada novo bloco). Registro jurídico das interações (auditoria).
+// Alertas de uso fora do escopo saem na Central de Avisos (gate receberAlertas).
+// Diretrizes por empresa, replicáveis pra outras.
 
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where, doc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { authHeader } from "../../core/firebase/idToken";
 import { useAuth } from "../../core/auth/AuthContext";
-import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { useDitado } from "../../core/hooks/useDitado";
 import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
 
+type DiretrizBloco = { id: string; texto: string; criadoEm: string; criadoPor: string };
 type IaInteracao = {
   id: string; restaurantId: string; moduleLabel?: string; canal?: string;
   pessoaId?: string; pessoaNome?: string; pergunta?: string; resposta?: string;
   foraDeEscopo?: boolean; motivo?: string; createdAt?: string;
 };
-
-const DIRETRIZES_MODELO = `A IA só pode responder sobre os processos internos documentados na plataforma (gestão do restaurante: operação, cozinha, salão, DP, financeiro, etc.).
-
-NÃO pode:
-- Dar orientação jurídica, médica ou contábil que não esteja documentada.
-- Tratar de assuntos pessoais dos colaboradores ou dados de terceiros.
-- Responder pedidos ofensivos, discriminatórios ou fora do trabalho.
-- Inventar informação que não esteja na wiki.
-
-Em caso de dúvida fora do escopo, recusar educadamente e orientar a procurar a liderança/DP.`;
+const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+// String derivada (o endpoint da IA e o cliente da Wiki consomem `diretrizes`).
+const juntarBlocos = (bs: DiretrizBloco[]) => bs.map(b => `- ${b.texto}`).join("\n");
 
 export function IaGovernancaPage() {
   const { pessoa } = useAuth();
   const { rid } = useParams<{ rid: string }>();
   const { restaurants } = useRestaurant();
-  const { can, loading } = useCanAcao(rid || "");
-  const podeConfig = can("iaGovernanca", "configurar");
-  const podeVerReg = can("iaGovernanca", "verRegistros");
-  const podeVer = podeConfig || podeVerReg || can("iaGovernanca", "receberAlertas");
 
   const [aba, setAba] = useState<"diretrizes" | "registros">("diretrizes");
-  const [diretrizes, setDiretrizes] = useState("");
+  const [blocos, setBlocos] = useState<DiretrizBloco[]>([]);
   const [carregou, setCarregou] = useState(false);
-  const [salvando, setSalvando] = useState(false);
   const [replicar, setReplicar] = useState(false);
   const [interacoes, setInteracoes] = useState<IaInteracao[]>([]);
   const [filtro, setFiltro] = useState<"todas" | "fora">("todas");
@@ -51,31 +42,35 @@ export function IaGovernancaPage() {
   useEffect(() => {
     if (!rid) return;
     const u = onSnapshot(doc(db, "iaConfig", rid), snap => {
-      setDiretrizes((snap.data() as { diretrizes?: string } | undefined)?.diretrizes || "");
+      const d = snap.data() as { diretrizesBlocos?: DiretrizBloco[]; diretrizes?: string } | undefined;
+      if (d?.diretrizesBlocos && d.diretrizesBlocos.length) setBlocos(d.diretrizesBlocos);
+      else if (d?.diretrizes && d.diretrizes.trim()) setBlocos([{ id: uid(), texto: d.diretrizes.trim(), criadoEm: new Date().toISOString(), criadoPor: "migrado" }]);
+      else setBlocos([]);
       setCarregou(true);
     });
     return () => u();
   }, [rid]);
 
   useEffect(() => {
-    if (!rid || !podeVerReg) return;
+    if (!rid || !pessoa?.isMaster) return;
     const u = onSnapshot(query(collection(db, "iaInteracoes"), where("restaurantId", "==", rid)),
       snap => setInteracoes(snap.docs.map(d => ({ id: d.id, ...d.data() }) as IaInteracao).sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""))));
     return () => u();
-  }, [rid, podeVerReg]);
+  }, [rid, pessoa?.isMaster]);
 
   if (!pessoa) return null;
-  if (loading) return <div className="max-w-4xl mx-auto p-6 text-sm text-gray-400">Carregando…</div>;
-  if (!podeVer) return <div className="max-w-4xl mx-auto p-8 text-center text-gray-500">Você não tem permissão para acessar a Governança de IA.</div>;
+  if (!pessoa.isMaster) return <div className="max-w-4xl mx-auto p-8 text-center text-gray-500">A Governança de IA é exclusiva do administrador master.</div>;
 
-  async function salvar() {
+  async function persistir(novos: DiretrizBloco[]) {
     if (!rid) return;
-    setSalvando(true);
-    try {
-      await setDoc(doc(db, "iaConfig", rid), sanitizeForFirestore({ restaurantId: rid, diretrizes: diretrizes.trim(), atualizadoEm: new Date().toISOString(), atualizadoPor: pessoa!.id }), { merge: true });
-    } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); }
-    finally { setSalvando(false); }
+    setBlocos(novos);
+    await setDoc(doc(db, "iaConfig", rid), sanitizeForFirestore({
+      restaurantId: rid, diretrizesBlocos: novos, diretrizes: juntarBlocos(novos),
+      atualizadoEm: new Date().toISOString(), atualizadoPor: pessoa!.id,
+    }), { merge: true }).catch(e => alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")));
   }
+  const addBloco = (texto: string) => persistir([...blocos, { id: uid(), texto: texto.trim(), criadoEm: new Date().toISOString(), criadoPor: pessoa!.id }]);
+  const removeBloco = (id: string) => persistir(blocos.filter(b => b.id !== id));
 
   const registrosVis = interacoes.filter(i => filtro === "todas" || i.foraDeEscopo);
   const nFora = interacoes.filter(i => i.foraDeEscopo).length;
@@ -89,33 +84,39 @@ export function IaGovernancaPage() {
 
   return (
     <div className="max-w-4xl mx-auto p-4">
-      <div className="flex items-center gap-2 mb-1">
-        <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">🛡️ Governança de IA</h1>
-      </div>
-      <p className="text-xs text-gray-500 mb-4">Defina o que a IA pode responder, acompanhe as interações e receba alertas de uso fora do escopo (LGPD).</p>
+      <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">🛡️ Governança de IA</h1>
+      <p className="text-xs text-gray-500 mb-4">Módulo exclusivo do master. Diretrizes em blocos do que a IA pode responder, registro das interações e alertas de uso fora do escopo (LGPD).</p>
 
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
-        {(podeConfig || podeVer) && tabBtn("diretrizes", "📋 Diretrizes")}
-        {podeVerReg && tabBtn("registros", "🗂️ Registros", nFora)}
+        {tabBtn("diretrizes", "📋 Diretrizes")}
+        {tabBtn("registros", "🗂️ Registros", nFora)}
       </div>
 
       {aba === "diretrizes" ? (
         <div className="space-y-3">
-          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
-            <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">O que a IA pode e não pode responder</div>
-              {podeConfig && diretrizes.trim() === "" && <button type="button" onClick={() => setDiretrizes(DIRETRIZES_MODELO)} className="text-xs text-indigo-600 hover:underline">Usar modelo sugerido</button>}
+          <div className="text-sm text-gray-500">{blocos.length} diretriz{blocos.length === 1 ? "" : "es"} nesta empresa. Cada bloco é uma regra independente; a IA checa se um novo bloco contradiz os demais.</div>
+
+          {/* Lista de blocos */}
+          {blocos.length === 0 ? (
+            <div className="text-center py-8 text-gray-500 dark:text-gray-400 text-sm rounded-xl border border-dashed border-gray-200 dark:border-gray-800">Nenhuma diretriz ainda. Adicione a primeira abaixo.</div>
+          ) : (
+            <div className="space-y-2">
+              {blocos.map((b, i) => (
+                <div key={b.id} className="flex items-start gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+                  <span className="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 text-xs font-bold flex items-center justify-center">{i + 1}</span>
+                  <div className="flex-1 min-w-0 text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">{b.texto}</div>
+                  <button type="button" onClick={() => { if (confirm("Remover esta diretriz?")) removeBloco(b.id); }} className="shrink-0 text-gray-400 hover:text-rose-600 text-sm">🗑️</button>
+                </div>
+              ))}
             </div>
-            <textarea value={diretrizes} onChange={e => setDiretrizes(e.target.value)} disabled={!podeConfig} rows={14}
-              placeholder={podeConfig ? "Escreva as diretrizes da IA para esta empresa…" : "Sem diretrizes definidas."}
-              className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 leading-relaxed disabled:opacity-70" />
-            <p className="text-[11px] text-gray-400 mt-1.5">Essas diretrizes entram como instrução da IA em toda consulta desta empresa. Se a pergunta violá-las, a IA recusa e o caso vira um registro/alerta.</p>
-            {podeConfig && (
-              <div className="flex gap-2 justify-between mt-3 flex-wrap">
-                <Button variant="secondary" onClick={() => setReplicar(true)} disabled={!carregou}>📑 Copiar para outras empresas</Button>
-                <Button onClick={salvar} disabled={salvando || !carregou}>{salvando ? "Salvando…" : "Salvar diretrizes"}</Button>
-              </div>
-            )}
+          )}
+
+          {/* Adicionar bloco (texto/voz + checagem) */}
+          <AdicionarDiretriz existentes={blocos.map(b => b.texto)} onAdd={addBloco} />
+
+          {/* Replicar */}
+          <div className="flex justify-end pt-1">
+            <Button variant="secondary" onClick={() => setReplicar(true)} disabled={!carregou || blocos.length === 0}>📑 Copiar diretrizes para outras empresas</Button>
           </div>
         </div>
       ) : (
@@ -155,8 +156,75 @@ export function IaGovernancaPage() {
         </div>
       )}
 
-      {replicar && (
-        <ReplicarModal diretrizes={diretrizes} restaurantes={restaurants.filter(r => r.id !== rid).map(r => ({ id: r.id, nome: r.nome }))} pessoaId={pessoa.id} onClose={() => setReplicar(false)} />
+      {replicar && <ReplicarModal blocos={blocos} restaurantes={restaurants.filter(r => r.id !== rid).map(r => ({ id: r.id, nome: r.nome }))} pessoaId={pessoa.id} onClose={() => setReplicar(false)} />}
+    </div>
+  );
+}
+
+// Adicionar diretriz: texto ou voz, com checagem de contradição/redundância pela IA.
+function AdicionarDiretriz({ existentes, onAdd }: { existentes: string[]; onAdd: (texto: string) => void }) {
+  const dit = useDitado();
+  const [texto, setTexto] = useState("");
+  const [checando, setChecando] = useState(false);
+  const [aviso, setAviso] = useState<{ veredito: string; explicacao: string } | null>(null);
+  const [erro, setErro] = useState("");
+  const valor = dit.gravando ? (dit.transcricao + (dit.parcial ? (dit.transcricao ? " " : "") + dit.parcial : "")) : texto;
+
+  function micToggle() {
+    if (dit.gravando) { dit.parar(); setTexto((dit.transcricao + " " + dit.parcial).replace(/\s+/g, " ").trim()); }
+    else { setErro(""); setAviso(null); dit.setTranscricao(texto); dit.setParcial(""); dit.iniciar(); }
+  }
+
+  async function verificar() {
+    const nova = (dit.gravando ? (dit.transcricao + " " + dit.parcial) : texto).replace(/\s+/g, " ").trim();
+    if (nova.length < 3) { setErro("Escreva ou fale a diretriz."); return; }
+    if (dit.gravando) dit.parar();
+    setChecando(true); setErro(""); setAviso(null);
+    try {
+      const r = await fetch("/api/ia-diretriz-validar", {
+        method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
+        body: JSON.stringify({ nova, existentes }),
+      });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error || `HTTP ${r.status}`);
+      if (d.veredito === "ok") { onAdd(nova); setTexto(""); dit.setTranscricao(""); dit.setParcial(""); }
+      else setAviso({ veredito: d.veredito, explicacao: d.explicacao || "" });
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao validar."); }
+    finally { setChecando(false); }
+  }
+
+  function adicionarMesmoAssim() {
+    const nova = valor.replace(/\s+/g, " ").trim();
+    if (nova.length < 3) return;
+    onAdd(nova); setTexto(""); dit.setTranscricao(""); dit.setParcial(""); setAviso(null);
+  }
+
+  return (
+    <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-900/10 p-3 space-y-2">
+      <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">➕ Nova diretriz</div>
+      <div className="flex gap-2 items-start">
+        <button type="button" onClick={micToggle} disabled={checando} title={dit.gravando ? "Parar" : "Ditar por voz"}
+          className={`shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center text-lg ${dit.gravando ? "border-rose-400 bg-rose-50 dark:bg-rose-900/20 text-rose-600" : "border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-white dark:hover:bg-gray-800"}`}>{dit.gravando ? "⏹️" : "🎙️"}</button>
+        <textarea value={valor} onChange={e => { setTexto(e.target.value); if (dit.gravando) dit.parar(); }} rows={2} disabled={checando}
+          placeholder="Ex.: A IA não pode dar orientação jurídica que não esteja documentada."
+          className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+      </div>
+      {dit.gravando && <div className="text-[11px] text-rose-600 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" /> Ouvindo…</div>}
+      {(erro || dit.erroMic) && <div className="text-[11px] text-rose-600">{erro || dit.erroMic}</div>}
+      {aviso && (
+        <div className={`rounded-lg px-3 py-2 text-sm ${aviso.veredito === "contradiz" ? "bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800" : "bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800"}`}>
+          <div className="font-semibold mb-0.5">{aviso.veredito === "contradiz" ? "⚠️ Contradiz uma diretriz existente" : "↔️ Parece redundante"}</div>
+          <div className="text-[13px]">{aviso.explicacao}</div>
+          <div className="flex gap-2 justify-end mt-2">
+            <button type="button" onClick={() => setAviso(null)} className="text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-600">Revisar texto</button>
+            <button type="button" onClick={adicionarMesmoAssim} className="text-xs px-2.5 py-1 rounded-lg bg-gray-800 dark:bg-gray-200 text-white dark:text-gray-900">Adicionar mesmo assim</button>
+          </div>
+        </div>
+      )}
+      {!aviso && (
+        <div className="flex justify-end">
+          <Button onClick={verificar} disabled={checando || valor.trim().length < 3}>{checando ? "Verificando…" : "Verificar e adicionar"}</Button>
+        </div>
       )}
     </div>
   );
@@ -169,9 +237,8 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
   );
 }
 
-// Replicar as mesmas diretrizes pra outras empresas (marca as que quer copiar).
-function ReplicarModal({ diretrizes, restaurantes, pessoaId, onClose }: {
-  diretrizes: string; restaurantes: { id: string; nome: string }[]; pessoaId: string; onClose: () => void;
+function ReplicarModal({ blocos, restaurantes, pessoaId, onClose }: {
+  blocos: DiretrizBloco[]; restaurantes: { id: string; nome: string }[]; pessoaId: string; onClose: () => void;
 }) {
   const [sel, setSel] = useState<string[]>([]);
   const [salvando, setSalvando] = useState(false);
@@ -182,7 +249,9 @@ function ReplicarModal({ diretrizes, restaurantes, pessoaId, onClose }: {
     setSalvando(true);
     try {
       const now = new Date().toISOString();
-      await Promise.all(sel.map(id => setDoc(doc(db, "iaConfig", id), sanitizeForFirestore({ restaurantId: id, diretrizes: diretrizes.trim(), atualizadoEm: now, atualizadoPor: pessoaId }), { merge: true })));
+      await Promise.all(sel.map(id => setDoc(doc(db, "iaConfig", id), sanitizeForFirestore({
+        restaurantId: id, diretrizesBlocos: blocos, diretrizes: juntarBlocos(blocos), atualizadoEm: now, atualizadoPor: pessoaId,
+      }), { merge: true })));
       alert(`Diretrizes copiadas para ${sel.length} empresa(s).`);
       onClose();
     } catch (e) { alert("Erro ao copiar: " + (e instanceof Error ? e.message : "?")); }
@@ -193,7 +262,7 @@ function ReplicarModal({ diretrizes, restaurantes, pessoaId, onClose }: {
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md p-5 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
         <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">📑 Copiar diretrizes</h2>
-        <p className="text-xs text-gray-500 mt-1 mb-3">As diretrizes atuais vão substituir as das empresas marcadas.</p>
+        <p className="text-xs text-gray-500 mt-1 mb-3">Os {blocos.length} blocos atuais vão substituir as diretrizes das empresas marcadas.</p>
         {restaurantes.length === 0 ? (
           <div className="text-sm text-gray-500 py-4 text-center">Você não tem outras empresas pra copiar.</div>
         ) : (

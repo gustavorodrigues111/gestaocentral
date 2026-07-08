@@ -94,7 +94,7 @@ export const MODULES: ModuleDef[] = [
   // ═══ 🌐 INSTITUCIONAL / CONFIG ═══
   { id: "sites",          area: "inst", subarea: "Configuração", label: "Sites",          icon: "🌐", status: "ativo", etapa: "beta", desc: "Site público do restaurante: história, horário, cardápio, forms" },
   { id: "cardapio",       area: "inst", subarea: "Configuração", label: "Cardápio",       icon: "📋", status: "ativo", etapa: "beta", desc: "Elaboração dos cardápios do restaurante (comidas, bebidas, vinhos): edita aqui e o site puxa" },
-  { id: "iaGovernanca",   area: "inst", subarea: "Configuração", label: "Governança de IA", icon: "🛡️", status: "ativo", etapa: "beta", desc: "Diretrizes do que a IA pode responder, registro jurídico das interações e alertas de uso fora do escopo (LGPD) às lideranças." },
+  { id: "iaGovernanca",   area: "master", subarea: "Sistema",   label: "Governança de IA", icon: "🛡️", status: "ativo", etapa: "beta", desc: "Diretrizes do que a IA pode responder, registro jurídico das interações e alertas de uso fora do escopo (LGPD). Só master." },
   { id: "configuracoes",  area: "inst", subarea: "Configuração", label: "Configurações",  icon: "⚙️", status: "ativo", desc: "Configurações do restaurante" },
   // ocultos (institucional)
   { id: "recursos",       area: "inst", label: "Biblioteca",     icon: "📚", status: "planejado", etapa: "em_desenvolvimento", desc: "Documentos e wiki interna", oculto: true },

@@ -12,6 +12,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { authHeader } from "../../core/firebase/idToken";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
+import { useDitado } from "../../core/hooks/useDitado";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { wikiCategoriasAcessiveis } from "../../core/auth/permissions";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -496,37 +497,6 @@ function DitarModal({ areasExistentes, onClose, onRascunho }: {
 }
 
 // ─── Editar processo existente por voz + IA ──────────────────────────────────
-// Hook reaproveitável de ditado (Web Speech API, pt-BR, auto-restart).
-function useDitado() {
-  const [gravando, setGravando] = useState(false);
-  const [transcricao, setTranscricao] = useState("");
-  const [parcial, setParcial] = useState("");
-  const [erroMic, setErroMic] = useState("");
-  const recRef = useRef<any>(null);
-  const querGravarRef = useRef(false);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const SR = typeof window !== "undefined" ? ((window as any).SpeechRecognition || (window as any).webkitSpeechRecognition) : null;
-  useEffect(() => () => { querGravarRef.current = false; try { recRef.current?.stop(); } catch { /* noop */ } }, []);
-  function iniciar() {
-    setErroMic("");
-    if (!SR) { setErroMic("Seu navegador não suporta ditado por voz. Use o Chrome/Edge no computador — ou digite/cole o texto abaixo."); return; }
-    const rec = new SR();
-    rec.lang = "pt-BR"; rec.continuous = true; rec.interimResults = true;
-    rec.onresult = (ev: any) => {
-      let fim = ""; let interim = "";
-      for (let i = ev.resultIndex; i < ev.results.length; i++) { const t = ev.results[i][0].transcript; if (ev.results[i].isFinal) fim += t; else interim += t; }
-      if (fim) setTranscricao(prev => (prev + " " + fim).replace(/\s+/g, " ").trimStart());
-      setParcial(interim);
-    };
-    rec.onerror = (ev: any) => { if (ev.error !== "no-speech" && ev.error !== "aborted") setErroMic("Erro no microfone: " + ev.error); };
-    rec.onend = () => { if (querGravarRef.current) { try { rec.start(); } catch { /* noop */ } } else { setGravando(false); setParcial(""); } };
-    recRef.current = rec; querGravarRef.current = true;
-    try { rec.start(); setGravando(true); } catch { setErroMic("Não consegui acessar o microfone."); }
-  }
-  function parar() { querGravarRef.current = false; try { recRef.current?.stop(); } catch { /* noop */ } setGravando(false); setParcial(""); }
-  return { gravando, transcricao, setTranscricao, parcial, setParcial, erroMic, setErroMic, iniciar, parar, SR };
-}
-
 function EditarVozModal({ proc, onClose, onAplicar }: {
   proc: WikiProcesso; onClose: () => void; onAplicar: (p: WikiProcesso) => void;
 }) {
