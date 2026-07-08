@@ -13,6 +13,7 @@ import { authHeader } from "../../core/firebase/idToken";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useDitado } from "../../core/hooks/useDitado";
+import { transcreverAudio } from "../../core/hooks/transcreverAudio";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { wikiCategoriasAcessiveis, resolverPerfil } from "../../core/auth/permissions";
 import { SETORES, setorMeta } from "../../core/wiki/setores";
@@ -368,6 +369,7 @@ function PerguntarIAModal({ processos, diretrizes, rid, pessoaId, pessoaNome, on
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
+  const [transcrevendo, setTranscrevendo] = useState(false);
   const dit = useDitado();
   // Só processos publicados vão de contexto (rascunho não conta).
   const base = processos.filter(p => p.publicado !== false);
@@ -465,8 +467,12 @@ function PerguntarIAModal({ processos, diretrizes, rid, pessoaId, pessoaNome, on
           {dit.erroMic && <div className="text-[11px] text-rose-600 mb-1">{dit.erroMic}</div>}
         </div>
         <div className="p-3 pt-1 flex gap-2 items-center">
-          <button type="button" onClick={micToggle} disabled={carregando} title={dit.gravando ? "Parar" : "Perguntar por voz"}
+          <button type="button" onClick={micToggle} disabled={carregando || transcrevendo} title={dit.gravando ? "Parar" : "Perguntar por voz"}
             className={`shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center text-lg ${dit.gravando ? "border-rose-400 bg-rose-50 dark:bg-rose-900/20 text-rose-600" : "border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{dit.gravando ? "⏹️" : "🎙️"}</button>
+          <label title="Enviar arquivo de áudio (ex.: WhatsApp)" className={`shrink-0 w-10 h-10 rounded-xl border border-gray-300 dark:border-gray-700 flex items-center justify-center text-lg cursor-pointer text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 ${carregando || transcrevendo ? "opacity-40 pointer-events-none" : ""}`}>
+            {transcrevendo ? "…" : "📎"}
+            <input type="file" accept="audio/*" className="hidden" onChange={async e => { const file = e.target.files?.[0]; e.currentTarget.value = ""; if (!file) return; setTranscrevendo(true); setErro(""); try { const t = await transcreverAudio(file); if (t) setPergunta(p => (p ? p + " " : "") + t); else setErro("Não consegui entender o áudio."); } catch (err) { setErro(err instanceof Error ? err.message : "Falha ao transcrever."); } finally { setTranscrevendo(false); } }} />
+          </label>
           <input value={valorInput} onChange={e => { setPergunta(e.target.value); if (dit.gravando) dit.parar(); }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }}
             placeholder="Digite ou fale sua pergunta…" autoFocus disabled={carregando}
             className="flex-1 h-10 px-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
