@@ -44,6 +44,40 @@ const PADROES: Lay = {
 };
 const montarLay = (l?: CardapioLayout): Lay => l ? { ...PADROES, ...l, fontesCustom: l.fontesCustom || [], secaoPos: l.secaoPos || {}, colsPorPagina: l.colsPorPagina || {} } : PADROES;
 
+const PX_TRANSP = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
+// Converte uma imagem (mesmo cross-origin/asset) em data-URI. Tenta canvas
+// (precisa CORS) e cai pro fetch (mesma origem = /assets, /cardapio-*.png).
+async function imgParaDataUrl(url: string): Promise<string | null> {
+  try {
+    const im = new Image(); im.crossOrigin = "anonymous"; im.src = url;
+    await im.decode();
+    const c = document.createElement("canvas"); c.width = im.naturalWidth || 1; c.height = im.naturalHeight || 1;
+    c.getContext("2d")!.drawImage(im, 0, 0);
+    return c.toDataURL("image/png");
+  } catch { /* segue pro fetch */ }
+  try {
+    const r = await fetch(url, { mode: "cors", cache: "force-cache" });
+    if (!r.ok) return null;
+    const b = await r.blob();
+    return await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result as string); fr.onerror = () => res(null); fr.readAsDataURL(b); });
+  } catch { return null; }
+}
+// Inlina todas as <img> das páginas como data-URI ANTES do html2canvas, pra
+// ele não precisar buscar nada externo (evita "Failed to fetch" intermitente).
+// Falhou uma? vira pixel transparente (gera sem a arte, não quebra o PDF).
+async function inlinarImagens(root: HTMLElement): Promise<() => void> {
+  const imgs = Array.from(root.querySelectorAll("img"));
+  const restore: Array<[HTMLImageElement, string]> = [];
+  await Promise.all(imgs.map(async (img) => {
+    const src = img.getAttribute("src") || "";
+    if (!src || src.startsWith("data:")) return;
+    const data = await imgParaDataUrl(src);
+    restore.push([img, src]);
+    img.setAttribute("src", data || PX_TRANSP);
+  }));
+  return () => restore.forEach(([img, src]) => { if (img.isConnected) img.setAttribute("src", src); });
+}
+
 export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onSecoes, sharedLayout, menuLayoutProprio, menuLayout, onClose }: {
   rid: string; menuId?: string; secoes: SecaoCardapio[]; mostrarGarrafa?: boolean; nomeRestaurante?: string; nomeMenu?: string;
   tituloCapa?: string; onTituloCapa?: (v: string) => void; lang: "pt" | "en";
@@ -457,17 +491,21 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
       const wrap = paginasRef.current;
       const prevT = wrap ? wrap.style.transform : "";
       if (wrap) wrap.style.transform = "none";
+      // Inlina as imagens (fundo/arte/ilustrações) como data-URI pra o html2canvas
+      // não buscar nada externo durante a captura (fim do "Failed to fetch").
+      const restaurarImgs = wrap ? await inlinarImagens(wrap) : () => {};
       await new Promise<void>((r) => requestAnimationFrame(() => r()));
       let dims = "";
       try {
         for (let i = 0; i < nodes.length; i++) {
-          const canvas = await html2canvas(nodes[i]!, { scale, backgroundColor: "#ffffff", useCORS: true, imageTimeout: 0, ignoreElements: (el) => el.classList?.contains("guia-margem") });
+          const canvas = await html2canvas(nodes[i]!, { scale, backgroundColor: "#ffffff", useCORS: true, imageTimeout: 15000, ignoreElements: (el) => el.classList?.contains("guia-margem") });
           if (i === 0) dims = `${canvas.width}×${canvas.height}px`;
           const img = canvas.toDataURL("image/png");
           if (i > 0) pdf.addPage();
           pdf.addImage(img, "PNG", 0, 0, W, H, undefined, "FAST");
         }
       } finally {
+        restaurarImgs();
         if (wrap) wrap.style.transform = prevT;
       }
       pdf.save(`${(nomeRestaurante || "cardapio").toLowerCase().replace(/\s+/g, "-")}-cardapio${en ? "-en" : ""}.pdf`);
