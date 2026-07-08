@@ -215,12 +215,14 @@ export function WikiProcessosPage() {
         onRascunho={r => { setRascunhoIA(r); setDitando(false); setCriando(true); }} />}
       {editVoz && podeEditar && <EditarVozModal proc={editVoz} onClose={() => setEditVoz(null)}
         onAplicar={p => { setEditVoz(null); setEditando(p); }} />}
-      {lendo && <LerModal proc={lendo} onClose={() => setLendo(null)} />}
+      {lendo && <LerModal proc={lendo} processos={daEmpresa} onClose={() => setLendo(null)} onAbrirProc={p => setLendo(p)} />}
       {(criando || editando) && (
         <WikiForm proc={editando} rascunhoInicial={editando ? null : rascunhoIA} podeDeletar={podeDeletar}
           onClose={() => { setCriando(false); setEditando(null); setRascunhoIA(null); }}
           restaurantes={restaurants.map(r => ({ id: r.id, nome: r.nome }))} ridAtual={rid || ""}
-          areasExistentes={areas} categoriasPermitidas={catsPermitidas} pessoaId={pessoa.id} />
+          areasExistentes={areas} categoriasPermitidas={catsPermitidas}
+          processosDaEmpresa={daEmpresa.filter(p => p.id !== editando?.id).map(p => ({ id: p.id, titulo: p.titulo, area: p.area }))}
+          pessoaId={pessoa.id} />
       )}
     </div>
   );
@@ -498,8 +500,8 @@ function EditarVozModal({ proc, onClose, onAplicar }: {
         resumo: (d.resumo && String(d.resumo).trim()) ? String(d.resumo).trim() : proc.resumo,
         formato: fmt,
         conteudo: fmt === "texto" ? (d.conteudo || "") : undefined,
-        itens: fmt === "checklist" ? ((d.itens as { id?: string; texto?: string }[]) || []).map(i => ({ id: i.id || uid(), texto: i.texto || "" })) : undefined,
-        passos: fmt === "passos" ? ((d.passos as { id?: string; titulo?: string; descricao?: string }[]) || []).map(p => ({ id: p.id || uid(), titulo: p.titulo || "", descricao: p.descricao || "", foto: (proc.passos || []).find(x => x.id === p.id)?.foto || null })) : undefined,
+        itens: fmt === "checklist" ? ((d.itens as { id?: string; texto?: string }[]) || []).map(i => ({ id: i.id || uid(), texto: i.texto || "", responsavel: (proc.itens || []).find(x => x.id === i.id)?.responsavel })) : undefined,
+        passos: fmt === "passos" ? ((d.passos as { id?: string; titulo?: string; descricao?: string }[]) || []).map(p => { const orig = (proc.passos || []).find(x => x.id === p.id); return { id: p.id || uid(), titulo: p.titulo || "", descricao: p.descricao || "", foto: orig?.foto || null, responsavel: orig?.responsavel, processoVinculadoId: orig?.processoVinculadoId }; }) : undefined,
       };
       setResultado(atualizado);
       setMudancas(Array.isArray(d.resumoMudancas) ? d.resumoMudancas : []);
@@ -561,7 +563,7 @@ function EditarVozModal({ proc, onClose, onAplicar }: {
 }
 
 // ─── Leitura (consulta) ──────────────────────────────────────────────────────
-function LerModal({ proc, onClose }: { proc: WikiProcesso; onClose: () => void }) {
+function LerModal({ proc, processos, onClose, onAbrirProc }: { proc: WikiProcesso; processos: WikiProcesso[]; onClose: () => void; onAbrirProc: (p: WikiProcesso) => void }) {
   const nPassos = proc.passos?.length ?? 0;
   const nItens = proc.itens?.length ?? 0;
   return (
@@ -614,6 +616,12 @@ function LerModal({ proc, onClose }: { proc: WikiProcesso; onClose: () => void }
                         <SetorBadge id={s.responsavel} />
                       </div>
                       <div className="text-[15px] text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">{s.descricao}</div>
+                      {(() => { const vinc = s.processoVinculadoId ? processos.find(x => x.id === s.processoVinculadoId) : undefined; return vinc ? (
+                        <button type="button" onClick={() => onAbrirProc(vinc)}
+                          className="mt-2.5 inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 bg-indigo-50/60 dark:bg-indigo-900/20 hover:bg-indigo-100 dark:hover:bg-indigo-900/40">
+                          🔗 Ver processo: {vinc.titulo} →
+                        </button>
+                      ) : null; })()}
                       {s.foto && <a href={s.foto.url} target="_blank" rel="noreferrer"><img src={s.foto.url} alt="" className="mt-2.5 rounded-lg max-h-60 border border-gray-200 dark:border-gray-700" /></a>}
                     </div>
                   </li>
@@ -639,9 +647,10 @@ function LerModal({ proc, onClose }: { proc: WikiProcesso; onClose: () => void }
 }
 
 // ─── Cadastro/edição ─────────────────────────────────────────────────────────
-function WikiForm({ proc, rascunhoInicial, podeDeletar, categoriasPermitidas, onClose, restaurantes, ridAtual, areasExistentes, pessoaId }: {
+function WikiForm({ proc, rascunhoInicial, podeDeletar, categoriasPermitidas, processosDaEmpresa, onClose, restaurantes, ridAtual, areasExistentes, pessoaId }: {
   proc: WikiProcesso | null; rascunhoInicial?: Partial<WikiProcesso> | null; podeDeletar?: boolean;
-  categoriasPermitidas?: string[] | null; onClose: () => void; restaurantes: { id: string; nome: string }[];
+  categoriasPermitidas?: string[] | null; processosDaEmpresa?: { id: string; titulo: string; area: string }[];
+  onClose: () => void; restaurantes: { id: string; nome: string }[];
   ridAtual: string; areasExistentes: string[]; pessoaId: string;
 }) {
   // Perfil restrito a certas categorias? Então o campo Área vira seleção fechada.
@@ -767,6 +776,12 @@ function WikiForm({ proc, rascunhoInicial, podeDeletar, categoriasPermitidas, on
                         <option value="">👤 Responsável…</option>
                         {SETORES.map(so => <option key={so.id} value={so.id}>{so.icon} {so.label}</option>)}
                       </select>
+                      {(processosDaEmpresa?.length ?? 0) > 0 && (
+                        <select value={s.processoVinculadoId || ""} onChange={e => setF({ ...f, passos: (f.passos || []).map(x => x.id === s.id ? { ...x, processoVinculadoId: e.target.value || undefined } : x) })} className={selSetor}>
+                          <option value="">🔗 Vincular processo…</option>
+                          {processosDaEmpresa!.map(pp => <option key={pp.id} value={pp.id}>{pp.titulo}</option>)}
+                        </select>
+                      )}
                       {s.foto ? (
                         <div className="flex items-center gap-2"><img src={s.foto.url} alt="" className="h-12 rounded border border-gray-200 dark:border-gray-700" /><button type="button" onClick={() => setF({ ...f, passos: (f.passos || []).map(x => x.id === s.id ? { ...x, foto: null } : x) })} className="text-[11px] text-gray-400 hover:text-rose-600">remover foto</button></div>
                       ) : (
