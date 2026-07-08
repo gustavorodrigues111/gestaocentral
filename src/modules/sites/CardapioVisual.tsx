@@ -17,20 +17,22 @@ const CAPA = "/cardapio-capa-sororoca.png";
 const norm = (s: string) => (s || "").trim().toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
 
 // Ícone de taça (só linhas) — usado ao lado do preço da taça.
-export function TacaIcon({ size = 12, color = "currentColor" }: { size?: number; color?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline-block", verticalAlign: "-0.1em" }}>
-      <path d="M6.5 3h11l-1.2 6.6a4.6 4.6 0 0 1-9.2 0L6.5 3z" /><path d="M12 15.5V20" /><path d="M8.5 20h7" />
-    </svg>
-  );
+// Ícones renderizados como <img> data-URI (não <svg> inline): o html2canvas
+// 1.4.1 posiciona <img> corretamente na linha, mas erra <svg> inline — era a
+// causa do desalinhamento no PDF do cardápio.
+function svgIconUri(inner: string, color: string): string {
+  const c = color === "currentColor" ? "#374151" : color;
+  // intrínseco grande (viewBox 24) pra rasterizar nítido no PDF.
+  const svg = `<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120' viewBox='0 0 24 24' fill='none' stroke='${c}' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'>${inner}</svg>`;
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
 }
-// Ícone de garrafa (mesmo traço da taça).
+const TACA_PATHS = "<path d='M6.5 3h11l-1.2 6.6a4.6 4.6 0 0 1-9.2 0L6.5 3z'/><path d='M12 15.5V20'/><path d='M8.5 20h7'/>";
+const GARRAFA_PATHS = "<path d='M10 2.5h4'/><path d='M10.5 2.5V6c0 1-.4 1.6-1.1 2.3C8.3 9.6 8 10.5 8 11.8V20a1.5 1.5 0 0 0 1.5 1.5h5A1.5 1.5 0 0 0 16 20v-8.2c0-1.3-.3-2.2-1.4-3.5C13.9 7.6 13.5 7 13.5 6V2.5'/>";
+export function TacaIcon({ size = 12, color = "currentColor" }: { size?: number; color?: string }) {
+  return <img src={svgIconUri(TACA_PATHS, color)} width={size} height={size} alt="" style={{ display: "inline-block", verticalAlign: "middle" }} />;
+}
 export function GarrafaIcon({ size = 12, color = "currentColor" }: { size?: number; color?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ display: "inline-block", verticalAlign: "-0.1em" }}>
-      <path d="M10 2.5h4" /><path d="M10.5 2.5V6c0 1-.4 1.6-1.1 2.3C8.3 9.6 8 10.5 8 11.8V20a1.5 1.5 0 0 0 1.5 1.5h5A1.5 1.5 0 0 0 16 20v-8.2c0-1.3-.3-2.2-1.4-3.5C13.9 7.6 13.5 7 13.5 6V2.5" />
-    </svg>
-  );
+  return <img src={svgIconUri(GARRAFA_PATHS, color)} width={size} height={size} alt="" style={{ display: "inline-block", verticalAlign: "middle" }} />;
 }
 
 type CampoPrato = "titulo" | "subtitulo" | "tituloEn" | "subtituloEn";
@@ -70,7 +72,9 @@ async function inlinarImagens(root: HTMLElement): Promise<() => void> {
   const restore: Array<[HTMLImageElement, string]> = [];
   await Promise.all(imgs.map(async (img) => {
     const src = img.getAttribute("src") || "";
-    if (!src || src.startsWith("data:")) return;
+    // Pula o que já é raster (png/jpeg/gif). SVG data-URI É rasterizado (o
+    // html2canvas 1.4.1 falha em desenhar SVG data-URI direto).
+    if (!src || (src.startsWith("data:") && !src.startsWith("data:image/svg"))) return;
     const data = await imgParaDataUrl(src);
     restore.push([img, src]);
     img.setAttribute("src", data || PX_TRANSP);
