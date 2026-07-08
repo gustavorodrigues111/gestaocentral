@@ -44,6 +44,14 @@ service firebase.storage {
         && request.resource.contentType.matches("image/.*");
     }
 
+    // Fotos dos processos (Wiki de Processos)
+    match /wiki/{rid}/{file=**} {
+      allow read: if true;
+      allow write: if request.auth != null
+        && request.resource.size < 8 * 1024 * 1024   // máx 8 MB
+        && request.resource.contentType.matches("image/.*");
+    }
+
     // Currículos de candidaturas "Trabalhe Conosco": cliente faz upload
     // sem auth, mas só lê com auth.
     match /candidaturas/{rid}/{file=**} {

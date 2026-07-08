@@ -4535,6 +4535,34 @@ export const MANUTENCAO_PERIODICIDADE_LABEL: Record<ManutencaoPeriodicidade, str
   custom:      "Customizado",
 };
 
+// ─── Wiki de Processos ───────────────────────────────────────────────────────
+// Documentação viva dos processos internos, por área. 3 formatos + fotos.
+export type WikiFormato = "texto" | "checklist" | "passos";
+export type WikiFoto = { id: string; url: string; storagePath?: string; legenda?: string };
+export type WikiPasso = { id: string; titulo?: string; descricao: string; foto?: WikiFoto | null };
+export type WikiChecklistItem = { id: string; texto: string };
+export type WikiProcesso = {
+  id: string;
+  restaurantIds: string[];          // 1+ empresas onde o processo vale
+  area: string;                     // categoria livre (Cozinha, Salão, DP...)
+  titulo: string;
+  resumo?: string;                  // 1 linha
+  formato: WikiFormato;
+  conteudo?: string;                // formato "texto" (markdown simples)
+  itens?: WikiChecklistItem[];      // formato "checklist"
+  passos?: WikiPasso[];             // formato "passos"
+  fotos?: WikiFoto[];               // fotos gerais (qualquer formato)
+  tags?: string[];
+  publicado?: boolean;              // rascunho vs publicado
+  ativo: boolean;
+  deletadoEm?: string | null;
+  deletadoPor?: string | null;
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm: string;
+  atualizadoPor?: string;
+};
+
 export type Manutencao = {
   id: string;
   tipo: ManutencaoTipo;

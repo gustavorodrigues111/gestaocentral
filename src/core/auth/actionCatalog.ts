@@ -547,6 +547,19 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "wikiProcessos",
+    icon: "📚",
+    label: "Wiki de Processos",
+    desc: "Documentação dos processos internos por área (texto/checklist/passo-a-passo + fotos)",
+    area: "gestao",
+    acoes: [
+      { id: "ver",      label: "Consultar os processos documentados" },
+      { id: "criar",    label: "Documentar novo processo" },
+      { id: "editar",   label: "Editar processo" },
+      { id: "deletar",  label: "Excluir processo", sensivel: true },
+    ],
+  },
+  {
     id: "prazosTrabalhistas",
     icon: "🧑‍⚖️",
     label: "Prazos Trabalhistas",

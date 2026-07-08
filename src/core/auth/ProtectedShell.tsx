@@ -53,6 +53,7 @@ import { TarefasPage } from "../../modules/tarefas/TarefasPage";
 import { ContasFixasPage } from "../../modules/contasFixas/ContasFixasPage";
 import { ManutencoesPage } from "../../modules/manutencoes/ManutencoesPage";
 import { PrazosTrabalhistasPage } from "../../modules/prazosTrabalhistas/PrazosTrabalhistasPage";
+import { WikiProcessosPage } from "../../modules/wikiProcessos/WikiProcessosPage";
 import { VendasPage } from "../../modules/vendas/VendasPage";
 import { FaturasPage } from "../../modules/faturas/FaturasPage";
 import { FichasPage } from "../../modules/fichas/FichasPage";
@@ -110,6 +111,7 @@ function ModuleRouter() {
     case "contasFixas":   return <ContasFixasPage key={k} />;
     case "manutencoes":   return <ManutencoesPage key={k} />;
     case "prazosTrabalhistas": return <PrazosTrabalhistasPage key={k} />;
+    case "wikiProcessos": return <WikiProcessosPage key={k} />;
     case "vendas":        return <VendasPage key={k} />;
     case "faturas":       return <FaturasPage key={k} />;
     case "fichas":        return <FichasPage key={k} />;
