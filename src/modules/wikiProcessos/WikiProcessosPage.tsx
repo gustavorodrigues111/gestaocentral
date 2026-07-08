@@ -82,7 +82,7 @@ export function WikiProcessosPage() {
   const podeCadastrar = podeCriar || podeEditar || podeDeletar;
 
   const [procs, setProcs] = useState<WikiProcesso[]>([]);
-  const [aba, setAba] = useState<"visualizacao" | "cadastro">("visualizacao");
+  const [aba, setAba] = useState<"visualizacao" | "minhas" | "cadastro">("visualizacao");
   const [busca, setBusca] = useState("");
   const [filtroArea, setFiltroArea] = useState<string>("todas");
   const [criando, setCriando] = useState(false);
@@ -133,6 +133,22 @@ export function WikiProcessosPage() {
     const porPerfil = pessoasRid.filter(p => resolverPerfil(p.profileId, perfis)?.wikiSetores?.includes(s.id)).map(p => p.nome);
     setorNomes[s.id] = [...new Set([...manual, ...porPerfil])];
   }
+  // Meus setores neste rid = mapa manual (eu na lista) + meu perfil de acesso.
+  const meuPerfil = resolverPerfil((pessoa.profileIds as Record<string, string> | undefined)?.[rid || ""], perfis);
+  const meusSetores = new Set<string>([
+    ...SETORES.filter(s => (setoresMap[s.id] || []).includes(pessoa.id)).map(s => s.id),
+    ...(meuPerfil?.wikiSetores || []),
+  ]);
+  // Minhas etapas: etapas (passo/checklist) de qualquer processo cujo responsável
+  // inclua um setor meu. Respeita o filtro de área.
+  const baseMinhas = daEmpresa.filter(p => filtroArea === "todas" || p.area === filtroArea);
+  const minhasPorProc = baseMinhas.map(p => {
+    const etapas: { tipo: "passo" | "item"; idx: number; titulo?: string; texto: string; setores: string[] }[] = [];
+    (p.passos || []).forEach((s, i) => { const rs = respsDe(s).filter(r => meusSetores.has(r)); if (rs.length) etapas.push({ tipo: "passo", idx: i, titulo: s.titulo, texto: s.descricao, setores: rs }); });
+    (p.itens || []).forEach((it, i) => { const rs = respsDe(it).filter(r => meusSetores.has(r)); if (rs.length) etapas.push({ tipo: "item", idx: i, titulo: undefined, texto: it.texto, setores: rs }); });
+    return { proc: p, etapas };
+  }).filter(g => g.etapas.length > 0);
+  const totalMinhas = minhasPorProc.reduce((n, g) => n + g.etapas.length, 0);
   const q = busca.trim().toLowerCase();
   const visiveis = daEmpresa.filter(p =>
     (filtroArea === "todas" || p.area === filtroArea) &&
@@ -146,9 +162,11 @@ export function WikiProcessosPage() {
     <button key={key} type="button" onClick={onClick}
       className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${active ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{label}</button>
   );
-  const tabBtn = (val: "visualizacao" | "cadastro", label: string) => (
+  const tabBtn = (val: "visualizacao" | "minhas" | "cadastro", label: string, badge?: number) => (
     <button type="button" onClick={() => setAba(val)}
-      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${abaAtual === val ? "border-indigo-500 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{label}</button>
+      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors inline-flex items-center gap-1.5 ${abaAtual === val ? "border-indigo-500 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
+      {label}{badge ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">{badge}</span> : null}
+    </button>
   );
 
   return (
@@ -156,6 +174,7 @@ export function WikiProcessosPage() {
       {/* Abas Visualização / Cadastro */}
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
         {tabBtn("visualizacao", "👁️ Visualização")}
+        {meusSetores.size > 0 && tabBtn("minhas", "🙋 Minhas etapas", totalMinhas)}
         {podeCadastrar && tabBtn("cadastro", "📝 Cadastro")}
       </div>
 
@@ -202,6 +221,45 @@ export function WikiProcessosPage() {
                         <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{FORMATO_LABEL[p.formato]}{p.resumo ? ` · ${p.resumo}` : ""}</div>
                         {(p.fotos?.length ?? 0) > 0 && <div className="text-[11px] text-gray-400 mt-1">📎 {p.fotos!.length} foto{p.fotos!.length === 1 ? "" : "s"}</div>}
                       </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      ) : abaAtual === "minhas" ? (
+        // ── Aba Minhas etapas ──────────────────────────────────────────────
+        <>
+          <div className="text-sm text-gray-500 mb-3">
+            Etapas onde você é responsável{meuPerfil?.nome ? ` (perfil ${meuPerfil.nome})` : ""} — {[...meusSetores].map(id => setorMeta(id)?.label).filter(Boolean).join(", ")}.
+          </div>
+          {totalMinhas === 0 ? (
+            <div className="text-center py-12 text-gray-500 dark:text-gray-400">
+              <div className="text-4xl mb-2">🙋</div>
+              <p>Nenhuma etapa atribuída a você{filtroArea !== "todas" ? " nesta área" : ""}.</p>
+              <p className="text-sm mt-1">Quando um processo marcar um setor seu como responsável de uma etapa, ela aparece aqui.</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {minhasPorProc.map(({ proc, etapas }) => (
+                <div key={proc.id} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+                  <button type="button" onClick={() => setLendo(proc)} className="text-left w-full">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-semibold text-gray-900 dark:text-gray-100">{proc.titulo}</span>
+                      <span className="text-[11px] text-gray-400">{proc.area} · {FORMATO_LABEL[proc.formato]} · abrir →</span>
+                    </div>
+                  </button>
+                  <div className="mt-2 space-y-1.5">
+                    {etapas.map((e, i) => (
+                      <div key={i} className="flex items-start gap-2 p-2 rounded-lg bg-gray-50/70 dark:bg-gray-800/40">
+                        <span className="shrink-0 text-[11px] font-bold text-indigo-600 dark:text-indigo-300 mt-0.5">{e.tipo === "passo" ? `${e.idx + 1}.` : "☐"}</span>
+                        <div className="flex-1 min-w-0">
+                          {e.titulo && <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{e.titulo}</div>}
+                          <div className="text-sm text-gray-700 dark:text-gray-300 line-clamp-2">{e.texto}</div>
+                          <div className="flex flex-wrap gap-1 mt-1">{e.setores.map(sid => <SetorBadge key={sid} id={sid} />)}</div>
+                        </div>
+                      </div>
                     ))}
                   </div>
                 </div>
