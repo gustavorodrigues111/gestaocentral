@@ -2253,6 +2253,21 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
   });
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
+  const [feriados, setFeriados] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      try {
+        const { buscarFeriadosProximos } = await import("../sites/feriadosHelper");
+        const listas = await Promise.all([buscarFeriadosProximos("SP", 14).catch(() => []), buscarFeriadosProximos("PA", 14).catch(() => [])]);
+        if (!alive) return;
+        const map: Record<string, string> = {};
+        for (const f of listas.flat()) map[f.date] = f.name;
+        setFeriados(map);
+      } catch { /* sem feriados */ }
+    })();
+    return () => { alive = false; };
+  }, []);
 
   const podeArrastar = !!autor?.id;
 
@@ -2318,6 +2333,8 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
   function renderDia(data: string, label: string, dia: number) {
     const ehHoje = data === hoje;
     const ehFds = dia >= 5;
+    const feriadoNome = feriados[data];
+    const naoUtil = ehFds || !!feriadoNome;
     const lista = tarefasPorDia.get(data) || [];
     const ehAlvo = dropTarget === data;
     return (
@@ -2338,23 +2355,23 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
           setDraggingId(null);
           if (id) moverParaData(id, data);
         } : undefined}
-        className={`flex flex-col min-h-[200px] rounded-lg border p-2 transition-colors ${
+        title={feriadoNome ? `Feriado: ${feriadoNome}` : undefined}
+        className={`flex flex-col min-h-[200px] rounded-lg border p-2 transition-colors ${ehHoje ? "ring-1 ring-indigo-400" : ""} ${
           ehAlvo
             ? "border-indigo-500 ring-2 ring-indigo-300 dark:ring-indigo-700 bg-indigo-50 dark:bg-indigo-900/30"
-            : ehHoje
-              ? "border-indigo-500 bg-indigo-50/40 dark:bg-indigo-900/10"
-              : ehFds
-                ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40"
-                : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"
+            : naoUtil
+              ? "border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/15"
+              : "border-blue-200 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/15"
         }`}
       >
-        <div className={`flex items-baseline justify-between mb-1.5 pb-1.5 border-b ${ehHoje ? "border-indigo-300 dark:border-indigo-800" : "border-gray-200 dark:border-gray-800"}`}>
+        <div className={`flex items-baseline justify-between mb-1.5 pb-1.5 border-b ${ehHoje ? "border-indigo-300 dark:border-indigo-800" : naoUtil ? "border-amber-200 dark:border-amber-900/40" : "border-blue-200 dark:border-blue-900/40"}`}>
           <div>
-            <div className={`text-[10px] font-bold uppercase tracking-wider ${ehHoje ? "text-indigo-600 dark:text-indigo-400" : "text-gray-500 dark:text-gray-400"}`}>{label}</div>
+            <div className={`text-[10px] font-bold uppercase tracking-wider ${ehHoje ? "text-indigo-600 dark:text-indigo-400" : naoUtil ? "text-amber-700 dark:text-amber-400" : "text-blue-700 dark:text-blue-400"}`}>{label}</div>
             <div className={`text-base font-bold ${ehHoje ? "text-indigo-700 dark:text-indigo-300" : "text-gray-900 dark:text-gray-100"}`}>
               {Number(data.slice(8, 10))}
               <span className="ml-1 text-[10px] font-normal text-gray-500 dark:text-gray-400">{data.slice(5, 7)}</span>
             </div>
+            {feriadoNome && <div className="text-[9px] text-amber-600 dark:text-amber-400 truncate max-w-[90px]" title={feriadoNome}>🎉 {feriadoNome}</div>}
           </div>
           {lista.length > 0 && (
             <span className="text-[10px] text-gray-500 dark:text-gray-400">{lista.length}</span>
