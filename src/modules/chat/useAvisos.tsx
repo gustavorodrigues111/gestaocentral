@@ -260,6 +260,10 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   const uniformes = useAvisoSource({ ...base,
     gates: [["uniformes", "receberAvisos"]], collectionName: "entregasUniforme" });
 
+  // ── Governança de IA: perguntas fora do escopo (uma por interação flagada) ──
+  const iaAlertas = useAvisoSource({ ...base,
+    gates: [["iaGovernanca", "receberAlertas"]], collectionName: "iaInteracoes", filtros: [["foraDeEscopo", "==", true]] });
+
   const todos = useMemo<Aviso[]>(() => {
     const out: Aviso[] = [];
     const hoje = new Date().toISOString().slice(0, 10);
@@ -640,6 +644,22 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       pending: (d) => Array.isArray(d.itens) && (d.itens as Array<{ validadeAte?: string }>).some(
         (it) => !!it.validadeAte && String(it.validadeAte) <= limite30) });
 
+    // ── Governança de IA: cada pergunta fora do escopo vira um alerta ──
+    for (const i of Object.values(iaAlertas).flat()) {
+      const perg = String((i as { pergunta?: string }).pergunta || "");
+      const motivo = String((i as { motivo?: string }).motivo || "");
+      const nome = String((i as { pessoaNome?: string }).pessoaNome || "Alguém");
+      out.push({
+        id: `ia_${i.id}`, tipo: "ia_fora_escopo", icone: "⚠️",
+        titulo: "Pergunta fora do escopo na IA",
+        descricao: `${nome} perguntou algo fora do escopo${motivo ? ` · ${motivo}` : ""}: “${perg.slice(0, 90)}${perg.length > 90 ? "…" : ""}”`,
+        em: String((i as { createdAt?: string }).createdAt || ""),
+        restauranteId: i.restaurantId, restauranteNome: nomePorRid[i.restaurantId] || "Restaurante",
+        cta: "Ver registros", href: `/r/${i.restaurantId}/iaGovernanca`,
+        categoria: "Governança de IA", categoriaIcone: "🛡️",
+      });
+    }
+
     out.sort((a, b) => (b.em || "").localeCompare(a.em || ""));
     return out;
   }, [
@@ -648,7 +668,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     ocorrencias, eventos, recebimento, compras, ideias, admissoes, demissoes, exames, uniformes,
     minhaAcao, minhaProducao, checklistTpl, checklistRun, cobrancasInt,
     reembReceber, reembPagos, manuts,
-    empTrab, exTrab, uniTrab, trabResolv,
+    empTrab, exTrab, uniTrab, trabResolv, iaAlertas,
   ]);
 
   // ── Estado de leitura (overlay persistido por pessoa) ──

@@ -560,6 +560,18 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "iaGovernanca",
+    icon: "🛡️",
+    label: "Governança de IA",
+    desc: "Diretrizes da IA, registro das interações e alertas de uso fora do escopo (LGPD)",
+    area: "gestao",
+    acoes: [
+      { id: "verRegistros",   label: "Ver registros de interações com a IA (auditoria)" },
+      { id: "configurar",     label: "Editar as diretrizes da IA", sensivel: true },
+      { id: "receberAlertas", label: "Receber alertas de perguntas fora do escopo (na Central de Avisos)", sensivel: true },
+    ],
+  },
+  {
     id: "prazosTrabalhistas",
     icon: "🧑‍⚖️",
     label: "Prazos Trabalhistas",

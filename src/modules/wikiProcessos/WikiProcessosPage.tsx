@@ -104,6 +104,7 @@ export function WikiProcessosPage() {
   const [configSetores, setConfigSetores] = useState(false);
   const [setoresMap, setSetoresMap] = useState<Record<string, string[]>>({});
   const [pessoasRid, setPessoasRid] = useState<{ id: string; nome: string }[]>([]);
+  const [diretrizesIA, setDiretrizesIA] = useState("");
 
   useEffect(() => {
     const u = onSnapshot(query(collection(db, "wikiProcessos"), orderBy("titulo")),
@@ -114,9 +115,10 @@ export function WikiProcessosPage() {
   useEffect(() => {
     if (!rid) return;
     const uc = onSnapshot(doc(db, "wikiConfig", rid), snap => setSetoresMap((snap.data() as { setoresResponsaveis?: Record<string, string[]> } | undefined)?.setoresResponsaveis || {}));
+    const ui = onSnapshot(doc(db, "iaConfig", rid), snap => setDiretrizesIA((snap.data() as { diretrizes?: string } | undefined)?.diretrizes || ""));
     const up = onSnapshot(query(collection(db, "pessoas"), where("restaurantIds", "array-contains", rid)),
       snap => setPessoasRid(snap.docs.map(d => ({ id: d.id, nome: (d.data() as { nome?: string }).nome || "—" })).sort((a, b) => a.nome.localeCompare(b.nome))));
-    return () => { uc(); up(); };
+    return () => { uc(); ui(); up(); };
   }, [rid]);
 
   if (!pessoa) return null;
@@ -255,7 +257,7 @@ export function WikiProcessosPage() {
         </>
       )}
 
-      {perguntando && <PerguntarIAModal processos={daEmpresa} onClose={() => setPerguntando(false)} onAbrirProc={p => { setPerguntando(false); setLendo(p); }} />}
+      {perguntando && <PerguntarIAModal processos={daEmpresa} diretrizes={diretrizesIA} rid={rid || ""} pessoaId={pessoa.id} pessoaNome={pessoa.nome} onClose={() => setPerguntando(false)} onAbrirProc={p => { setPerguntando(false); setLendo(p); }} />}
       {ditando && podeCriar && <DitarModal areasExistentes={areas} onClose={() => setDitando(false)}
         onRascunho={r => { setRascunhoIA(r); setDitando(false); setCriando(true); }} />}
       {editVoz && podeEditar && <EditarVozModal proc={editVoz} onClose={() => setEditVoz(null)}
@@ -277,8 +279,8 @@ export function WikiProcessosPage() {
 
 // ─── Pergunte à IA (Fase 2) ──────────────────────────────────────────────────
 type ChatMsg = { role: "user"; texto: string } | { role: "ia"; texto: string; fontes: WikiProcesso[] };
-function PerguntarIAModal({ processos, onClose, onAbrirProc }: {
-  processos: WikiProcesso[]; onClose: () => void; onAbrirProc: (p: WikiProcesso) => void;
+function PerguntarIAModal({ processos, diretrizes, rid, pessoaId, pessoaNome, onClose, onAbrirProc }: {
+  processos: WikiProcesso[]; diretrizes: string; rid: string; pessoaId: string; pessoaNome: string; onClose: () => void; onAbrirProc: (p: WikiProcesso) => void;
 }) {
   const [pergunta, setPergunta] = useState("");
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
@@ -305,12 +307,21 @@ function PerguntarIAModal({ processos, onClose, onAbrirProc }: {
       const r = await fetch("/api/wiki-perguntar", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ pergunta: q, processos: base.map(p => ({ id: p.id, titulo: p.titulo, area: p.area, texto: procToTexto(p) })) }),
+        body: JSON.stringify({ pergunta: q, diretrizes, processos: base.map(p => ({ id: p.id, titulo: p.titulo, area: p.area, texto: procToTexto(p) })) }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
       const fontes = (data.fontesIds as string[] || []).map(id => base.find(p => p.id === id)).filter(Boolean) as WikiProcesso[];
       setMsgs(m => [...m, { role: "ia", texto: String(data.resposta || ""), fontes }]);
+      // Registro jurídico da interação (LGPD/auditoria). Best-effort — não quebra a UX.
+      if (rid) {
+        const iid = `ia-${uid()}`;
+        setDoc(doc(db, "iaInteracoes", iid), sanitizeForFirestore({
+          id: iid, restaurantId: rid, moduleId: "wikiProcessos", moduleLabel: "Wiki de Processos", canal: "pergunte-ia",
+          pessoaId, pessoaNome, pergunta: q, resposta: String(data.resposta || ""),
+          foraDeEscopo: data.foraDeEscopo === true, motivo: String(data.motivo || ""), createdAt: new Date().toISOString(),
+        })).catch(() => {});
+      }
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao consultar a IA.");
     } finally { setCarregando(false); }
@@ -325,6 +336,7 @@ function PerguntarIAModal({ processos, onClose, onAbrirProc }: {
           <div>
             <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">🤖 Pergunte à IA</h2>
             <div className="text-xs text-gray-500">Respostas a partir dos {base.length} processo{base.length === 1 ? "" : "s"} publicado{base.length === 1 ? "" : "s"} da wiki.</div>
+            <div className="text-[10px] text-gray-400 mt-0.5">🔒 Para sua segurança e conformidade (LGPD), as interações com a IA são registradas.</div>
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
         </div>

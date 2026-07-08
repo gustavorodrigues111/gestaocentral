@@ -84,6 +84,9 @@ export type ModuleId =
   // Wiki de Processos — documentação viva dos processos internos por área.
   // Cada processo em texto/checklist/passo-a-passo + fotos; consulta da equipe.
   | "wikiProcessos"
+  // Governança de IA — diretrizes do que a IA pode responder, log jurídico das
+  // interações e alertas de uso fora do escopo (LGPD) às lideranças.
+  | "iaGovernanca"
   // Portal do Empregado — área pessoal do empregado (minha escala, meus
   // horários, minha gorjeta, futuro: minha folha de ponto, meus uniformes,
   // meus exames, meu VT, fale com DP). NÃO é item de sidebar (sidebar tem
