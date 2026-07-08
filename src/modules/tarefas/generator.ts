@@ -105,7 +105,7 @@ export async function gerarTarefasDoDia(autor: { id: string; nome: string }): Pr
     const tBase: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm"> = {
       projetoId: cf.projetoId,
       subprojetoId: cf.subprojetoId,
-      titulo: `Pagar — ${cf.nome}`,
+      titulo: cf.fornecedor?.trim() || cf.nome,
       descricao: notes || undefined,
       responsavelId: cf.responsavelPadraoId,
       responsavelNome: cf.responsavelPadraoNome,
