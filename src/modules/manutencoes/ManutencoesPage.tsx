@@ -42,7 +42,7 @@ export function ManutencoesPage() {
   const [aba, setAba] = useState<"visualizacao" | "cadastro">("visualizacao");
   const [filtroEnd, setFiltroEnd] = useState<string>("todas");
   const [filtroObrig, setFiltroObrig] = useState<"todos" | "com" | "sem">("todos");
-  const [vis, setVis] = useState<"lista" | "calendario">("lista");
+  const [vis, setVis] = useState<"lista" | "calendario">("calendario");
   const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(new Date().toISOString().slice(0, 10)));
   const [feriados, setFeriados] = useState<Record<string, string>>({});
   const [editando, setEditando] = useState<Manutencao | null>(null);
@@ -135,8 +135,8 @@ export function ManutencoesPage() {
 
       {daEmpresa.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
-          {chip(vis === "lista", "📋 Lista", () => setVis("lista"))}
           {chip(vis === "calendario", "📅 Calendário", () => setVis("calendario"))}
+          {chip(vis === "lista", "📋 Lista", () => setVis("lista"))}
           {(endsDaEmpresa.length > 1 || daEmpresa.some(m => m.obrigatorio === false)) && <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />}
           {endsDaEmpresa.length > 1 && (
             <>

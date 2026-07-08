@@ -43,7 +43,7 @@ export function PrazosTrabalhistasPage() {
   const [entregas, setEntregas] = useState<EntregaUniforme[]>([]);
   const [resolvidos, setResolvidos] = useState<Set<string>>(new Set());
   const [feriados, setFeriados] = useState<Record<string, string>>({});
-  const [vis, setVis] = useState<"lista" | "calendario">("lista");
+  const [vis, setVis] = useState<"lista" | "calendario">("calendario");
   const [filtroCat, setFiltroCat] = useState<Cat | "todos">("todos");
   const [acao, setAcao] = useState<Item | null>(null);
   const hoje = new Date().toISOString().slice(0, 10);
@@ -155,8 +155,8 @@ export function PrazosTrabalhistasPage() {
 
       {abertos.length > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
-          {chip(vis === "lista", "📋 Lista", () => setVis("lista"))}
           {chip(vis === "calendario", "📅 Calendário", () => setVis("calendario"))}
+          {chip(vis === "lista", "📋 Lista", () => setVis("lista"))}
           <span className="mx-1 h-4 w-px bg-gray-200 dark:bg-gray-700" />
           {chip(filtroCat === "todos", "Todos", () => setFiltroCat("todos"))}
           {cats.map(c => chip(filtroCat === c, CAT_LABEL[c], () => setFiltroCat(c), c))}
