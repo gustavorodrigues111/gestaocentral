@@ -16,9 +16,11 @@ const PAGE_W = 460, PAGE_H = 651;
 // Ícones garrafa/taça como GLIFO de fonte (Material Symbols Outlined, peso fino):
 // renderiza como texto → alinha certinho no PDF (svg/img o html2canvas erra).
 // Instância @24,200,0,0 = opsz 24, wght 200 (delicado), FILL 0 (linha), GRAD 0.
-const MSYMS_HREF = "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block";
 const GLYPH_GARRAFA = String.fromCharCode(0xea60); // liquor (garrafa)
 const GLYPH_TACA = String.fromCharCode(0xf1e8);    // wine_bar (taça)
+// Subset SÓ nos 2 glifos (&text=) → fonte minúscula, carrega rápido (a variável
+// inteira do Material Symbols é pesada e travava a geração do PDF).
+const MSYMS_HREF = `https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@24,300,0,0&text=${encodeURIComponent(GLYPH_GARRAFA + GLYPH_TACA)}&display=block`;
 const icoFonteStyle: CSSProperties = {
   fontFamily: "'Material Symbols Outlined'", fontWeight: 300,
   fontVariationSettings: "'wght' 250, 'opsz' 24, 'FILL' 0, 'GRAD' 0",
@@ -500,8 +502,11 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
       // senão o html2canvas captura no fallback e o PDF sai com fonte errada.
       try {
         const fs = (document as Document & { fonts?: { ready?: Promise<unknown>; load?: (f: string, t?: string) => Promise<unknown> } }).fonts;
-        await fs?.load?.("24px 'Material Symbols Outlined'", GLYPH_GARRAFA + GLYPH_TACA); // garante os glifos garrafa/taça
-        await fs?.ready;
+        // Espera a fonte, mas com teto de 2.5s pra nunca travar a geração.
+        await Promise.race([
+          (async () => { await fs?.load?.("24px 'Material Symbols Outlined'", GLYPH_GARRAFA + GLYPH_TACA); await fs?.ready; })(),
+          new Promise((r) => setTimeout(r, 2500)),
+        ]);
       } catch { /* ok */ }
       const html2canvas = (await import("html2canvas")).default;
       const { jsPDF } = await import("jspdf");
