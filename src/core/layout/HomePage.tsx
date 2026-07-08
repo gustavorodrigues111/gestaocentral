@@ -60,7 +60,7 @@ export function HomePage() {
     return canUse(pessoa, rid, moduleId);
   }
 
-  const areas: ModuleArea[] = ["ops", "dp", "fin", "planejamento", "inst"];
+  const areas: ModuleArea[] = ["planejamento", "ops", "dp", "fin", "inst"];
 
   return (
     <div className="max-w-5xl mx-auto">

@@ -33,6 +33,18 @@ export function ConfiguracoesPage() {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState("");
   const [err, setErr] = useState("");
+  const [editData, setEditData] = useState(false); // dados travados até clicar Editar
+  function resetForm() {
+    setForm({
+      nome: activeRestaurant?.nome || "",
+      razaoSocial: activeRestaurant?.razaoSocial || "",
+      codigoContabil: activeRestaurant?.codigoContabil || "",
+      cnpj: activeRestaurant?.cnpj || "",
+      subdomain: activeRestaurant?.subdomain || "",
+      restaurante: activeRestaurant?.restaurante !== false,
+    });
+    setErr("");
+  }
 
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -86,6 +98,7 @@ export function ConfiguracoesPage() {
         restaurante: form.restaurante,
       });
       setSavedAt(new Date().toLocaleTimeString("pt-BR"));
+      setEditData(false); // trava de volta após salvar
     } catch (e) {
       console.error(e);
       alert("Erro ao salvar");
@@ -96,8 +109,8 @@ export function ConfiguracoesPage() {
 
   // Área "master" (Tarefas + Planner) só aparece pro master ligar/desligar.
   const areas: ModuleArea[] = me?.isMaster
-    ? ["ops", "dp", "fin", "planejamento", "inst", "master"]
-    : ["ops", "dp", "fin", "planejamento", "inst"];
+    ? ["planejamento", "ops", "dp", "fin", "inst", "master"]
+    : ["planejamento", "ops", "dp", "fin", "inst"];
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -105,10 +118,10 @@ export function ConfiguracoesPage() {
       <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
         <h2 className="text-base font-semibold mb-4 text-gray-900 dark:text-gray-100">Dados do restaurante</h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Input label="Nome" value={form.nome} onChange={(e) => setForm({ ...form, nome: e.target.value })} />
-          <Input label="Razão social" value={form.razaoSocial} onChange={(e) => setForm({ ...form, razaoSocial: e.target.value })} placeholder="ex: SOROROCA BAR LTDA" />
-          <Input label="CNPJ" value={form.cnpj} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} placeholder="00.000.000/0000-00" />
-          <Input label="Código contábil" value={form.codigoContabil} onChange={(e) => setForm({ ...form, codigoContabil: e.target.value.replace(/\D/g, "") })} placeholder="ex: 2992" />
+          <Input label="Nome" value={form.nome} disabled={!editData} onChange={(e) => setForm({ ...form, nome: e.target.value })} className={!editData ? "bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 cursor-not-allowed" : ""} />
+          <Input label="Razão social" value={form.razaoSocial} disabled={!editData} onChange={(e) => setForm({ ...form, razaoSocial: e.target.value })} placeholder="ex: SOROROCA BAR LTDA" className={!editData ? "bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 cursor-not-allowed" : ""} />
+          <Input label="CNPJ" value={form.cnpj} disabled={!editData} onChange={(e) => setForm({ ...form, cnpj: e.target.value })} placeholder="00.000.000/0000-00" className={!editData ? "bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 cursor-not-allowed" : ""} />
+          <Input label="Código contábil" value={form.codigoContabil} disabled={!editData} onChange={(e) => setForm({ ...form, codigoContabil: e.target.value.replace(/\D/g, "") })} placeholder="ex: 2992" className={!editData ? "bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 cursor-not-allowed" : ""} />
         </div>
 
         {/* Subdomain — porta de entrada brandada */}
@@ -119,9 +132,10 @@ export function ConfiguracoesPage() {
           <div className="flex items-center gap-2">
             <Input
               value={form.subdomain}
+              disabled={!editData}
               onChange={(e) => setForm({ ...form, subdomain: e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "") })}
               placeholder="ex: lobozo"
-              className="flex-1"
+              className={`flex-1 ${!editData ? "bg-gray-50 dark:bg-gray-800/50 text-gray-600 dark:text-gray-400 cursor-not-allowed" : ""}`}
             />
             <span className="text-sm text-gray-500 whitespace-nowrap">.planejamento.app</span>
           </div>
@@ -140,8 +154,8 @@ export function ConfiguracoesPage() {
 
         {/* Tipo de entidade — restaurante vs. gestão pessoal/escritório */}
         <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
-          <label className="flex items-start gap-2.5 cursor-pointer">
-            <input type="checkbox" checked={form.restaurante} onChange={(e) => setForm({ ...form, restaurante: e.target.checked })} className="mt-0.5" />
+          <label className={`flex items-start gap-2.5 ${editData ? "cursor-pointer" : "cursor-not-allowed opacity-70"}`}>
+            <input type="checkbox" checked={form.restaurante} disabled={!editData} onChange={(e) => setForm({ ...form, restaurante: e.target.checked })} className="mt-0.5" />
             <span>
               <span className="text-sm font-medium text-gray-900 dark:text-gray-100">É um restaurante</span>
               <span className="block text-xs text-gray-500 dark:text-gray-400">Desmarque em entidades de gestão pessoal ou escritório (não operacional). Só organiza — os módulos continuam escolhidos manualmente acima.</span>
@@ -154,7 +168,17 @@ export function ConfiguracoesPage() {
         </p>
         {err && <div className="text-sm text-rose-600 mt-2">{err}</div>}
         <div className="flex items-center gap-3 mt-4">
-          <Button onClick={salvarBasico} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
+          {!editData ? (
+            <>
+              <Button variant="secondary" onClick={() => { setSavedAt(""); setEditData(true); }}>✏️ Editar</Button>
+              <span className="text-xs text-gray-400 flex items-center gap-1">🔒 Dados protegidos — clique em Editar pra alterar</span>
+            </>
+          ) : (
+            <>
+              <Button onClick={salvarBasico} disabled={saving}>{saving ? "Salvando..." : "Salvar"}</Button>
+              <Button variant="ghost" onClick={() => { resetForm(); setEditData(false); }} disabled={saving}>Cancelar</Button>
+            </>
+          )}
           {savedAt && <span className="text-xs text-green-600 dark:text-green-400">✓ Salvo às {savedAt}</span>}
         </div>
       </section>
