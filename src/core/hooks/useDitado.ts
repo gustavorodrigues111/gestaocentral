@@ -26,7 +26,11 @@ export function useDitado() {
       if (fim) setTranscricao(prev => (prev + " " + fim).replace(/\s+/g, " ").trimStart());
       setParcial(interim);
     };
-    rec.onerror = (ev: any) => { if (ev.error !== "no-speech" && ev.error !== "aborted") setErroMic("Erro no microfone: " + ev.error); };
+    rec.onerror = (ev: any) => {
+      if (ev.error === "no-speech" || ev.error === "aborted") return;
+      if (ev.error === "not-allowed" || ev.error === "service-not-allowed") setErroMic("Microfone bloqueado. Permita o acesso ao microfone nas configurações do navegador (no iPhone, o ditado por voz do site tem suporte limitado — use o teclado ou anexe um áudio).");
+      else setErroMic("Erro no microfone: " + ev.error);
+    };
     rec.onend = () => { if (querGravarRef.current) { try { rec.start(); } catch { /* noop */ } } else { setGravando(false); setParcial(""); } };
     recRef.current = rec; querGravarRef.current = true;
     try { rec.start(); setGravando(true); } catch { setErroMic("Não consegui acessar o microfone."); }

@@ -420,15 +420,15 @@ function PerguntarIAModal({ processos, diretrizes, rid, pessoaId, pessoaNome, on
   const sugestoes = base.slice(0, 3).map(p => `Como funciona: ${p.titulo}?`);
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl flex flex-col max-h-[92vh]" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between gap-2 p-4 border-b border-gray-100 dark:border-gray-800">
-          <div>
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl flex flex-col max-h-[88vh]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-2 p-4 border-b border-gray-100 dark:border-gray-800">
+          <div className="min-w-0">
             <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">🤖 Pergunte à IA</h2>
-            <div className="text-xs text-gray-500">Respostas a partir dos {base.length} processo{base.length === 1 ? "" : "s"} publicado{base.length === 1 ? "" : "s"} da wiki.</div>
-            <div className="text-[10px] text-gray-400 mt-0.5">🔒 Para sua segurança e conformidade (LGPD), as interações com a IA são registradas.</div>
+            <div className="text-xs text-gray-500">Respostas a partir {base.length === 1 ? "do 1 processo publicado" : `dos ${base.length} processos publicados`} da wiki.</div>
+            <div className="text-[10px] text-gray-400 mt-0.5">🔒 LGPD: as interações com a IA são registradas.</div>
           </div>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+          <button type="button" onClick={onClose} className="shrink-0 text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[180px]">
@@ -480,9 +480,9 @@ function PerguntarIAModal({ processos, diretrizes, rid, pessoaId, pessoaNome, on
             <input type="file" accept="audio/*" className="hidden" onChange={async e => { const file = e.target.files?.[0]; e.currentTarget.value = ""; if (!file) return; setTranscrevendo(true); setErro(""); try { const t = await transcreverAudio(file); if (t) setPergunta(p => (p ? p + " " : "") + t); else setErro("Não consegui entender o áudio."); } catch (err) { setErro(err instanceof Error ? err.message : "Falha ao transcrever."); } finally { setTranscrevendo(false); } }} />
           </label>
           <input value={valorInput} onChange={e => { setPergunta(e.target.value); if (dit.gravando) dit.parar(); }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }}
-            placeholder="Digite ou fale sua pergunta…" autoFocus disabled={carregando}
-            className="flex-1 h-10 px-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
-          <Button onClick={enviar} disabled={carregando || !valorInput.trim()}>Enviar</Button>
+            placeholder="Digite ou fale…" autoFocus disabled={carregando}
+            className="flex-1 min-w-0 h-10 px-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+          <button type="button" onClick={enviar} disabled={carregando || !valorInput.trim()} className="shrink-0 h-10 px-3 rounded-xl bg-indigo-600 text-white text-sm font-medium disabled:opacity-40">Enviar</button>
         </div>
       </div>
     </div>
