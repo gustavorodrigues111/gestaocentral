@@ -6,7 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, onSnapshot, query, where, doc, setDoc, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, where, doc, setDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { authHeader } from "../../core/firebase/idToken";
@@ -20,7 +20,7 @@ type DiretrizBloco = { id: string; texto: string; criadoEm: string; criadoPor: s
 type IaInteracao = {
   id: string; restaurantId: string; moduleLabel?: string; canal?: string;
   pessoaId?: string; pessoaNome?: string; pergunta?: string; resposta?: string;
-  foraDeEscopo?: boolean; motivo?: string; severidade?: string; createdAt?: string;
+  foraDeEscopo?: boolean; motivo?: string; severidade?: string; createdAt?: string; anonimizado?: boolean;
 };
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const SEV_META: Record<string, { label: string; cls: string }> = {
@@ -92,6 +92,47 @@ export function IaGovernancaPage() {
     const a = document.createElement("a"); a.href = url; a.download = `ia-registros-${rid}.csv`; a.click();
     URL.revokeObjectURL(url);
   }
+  async function exportarPDF() {
+    const [{ jsPDF }, { default: autoTable }] = await Promise.all([import("jspdf"), import("jspdf-autotable")]);
+    const d = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+    const nomeEmp = restaurants.find(r => r.id === rid)?.nome || rid || "";
+    d.setFont("helvetica", "bold"); d.setFontSize(15); d.setTextColor(30, 30, 30);
+    d.text("Registro de interações com a IA", 10, 12);
+    d.setFont("helvetica", "normal"); d.setFontSize(10); d.setTextColor(100, 116, 139);
+    d.text(`${nomeEmp}  ·  ${registrosVis.length} registro(s)${filtro === "fora" ? " (só fora do escopo)" : ""}`, 10, 17);
+    autoTable(d, {
+      startY: 22,
+      head: [["Data", "Pessoa", "Escopo", "Sev.", "Pergunta", "Motivo"]],
+      body: registrosVis.map(i => [
+        (i.createdAt || "").slice(0, 16).replace("T", " "),
+        i.anonimizado ? "— anonimizado —" : (i.pessoaNome || "—"),
+        i.foraDeEscopo ? "FORA" : "ok",
+        i.foraDeEscopo ? (i.severidade || "") : "",
+        i.pergunta || "",
+        i.motivo || "",
+      ]),
+      theme: "grid",
+      styles: { fontSize: 8, cellPadding: 1.5, valign: "top", textColor: [30, 30, 30], lineColor: [200, 200, 200], lineWidth: 0.15 },
+      headStyles: { fillColor: [79, 70, 229], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
+      columnStyles: { 0: { cellWidth: 30 }, 1: { cellWidth: 38 }, 2: { cellWidth: 16, halign: "center" }, 3: { cellWidth: 14, halign: "center" }, 4: { cellWidth: 100 }, 5: { cellWidth: 78 } },
+      didParseCell: (data) => { if (data.section === "body" && registrosVis[data.row.index]?.foraDeEscopo && data.column.index === 2) { data.cell.styles.textColor = [190, 18, 60]; data.cell.styles.fontStyle = "bold"; } },
+    });
+    d.save(`ia-registros-${rid}.pdf`);
+  }
+  async function anonimizar(ids: string[]) {
+    await Promise.all(ids.map(id => updateDoc(doc(db, "iaInteracoes", id), { pessoaNome: "Anonimizado", pessoaId: "", anonimizado: true }).catch(() => {})));
+  }
+  async function anonimizarAntigos() {
+    if (!rid || !retencaoDias) return;
+    const corte = new Date(Date.now() - retencaoDias * 86400000).toISOString();
+    const alvo = interacoes.filter(i => (i.createdAt || "") < corte && !i.anonimizado);
+    if (alvo.length === 0) { alert("Nenhum registro além do período pra anonimizar."); return; }
+    if (!confirm(`Anonimizar ${alvo.length} registro(s) com mais de ${retencaoDias} dias? Remove o nome da pessoa, mantém pergunta/resposta.`)) return;
+    setPurgando(true);
+    try { await anonimizar(alvo.map(i => i.id)); alert(`${alvo.length} registro(s) anonimizado(s).`); }
+    catch (e) { alert("Erro: " + (e instanceof Error ? e.message : "?")); }
+    finally { setPurgando(false); }
+  }
   async function salvarRetencao(dias: number) {
     if (!rid) return;
     setRetencaoDias(dias);
@@ -161,6 +202,7 @@ export function IaGovernancaPage() {
               <Chip active={filtro === "todas"} onClick={() => setFiltro("todas")}>Todas</Chip>
               <Chip active={filtro === "fora"} onClick={() => setFiltro("fora")}>⚠️ Fora do escopo</Chip>
               <button type="button" onClick={exportarCSV} disabled={registrosVis.length === 0} className="text-xs font-medium px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40">⬇️ CSV</button>
+              <button type="button" onClick={exportarPDF} disabled={registrosVis.length === 0} className="text-xs font-medium px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40">📄 PDF</button>
             </div>
           </div>
 
@@ -174,8 +216,9 @@ export function IaGovernancaPage() {
               <option value={365}>1 ano</option>
               <option value={730}>2 anos</option>
             </select>
-            {retencaoDias > 0 && <button type="button" onClick={purgarAntigos} disabled={purgando} className="text-rose-600 hover:underline disabled:opacity-40">{purgando ? "Expurgando…" : `🧹 Expurgar > ${retencaoDias} dias`}</button>}
-            <span className="text-[11px] text-gray-400">Expurgo manual — apaga registros além do período pra conformidade LGPD.</span>
+            {retencaoDias > 0 && <button type="button" onClick={anonimizarAntigos} disabled={purgando} className="text-indigo-600 hover:underline disabled:opacity-40">🕶️ Anonimizar antigos</button>}
+            {retencaoDias > 0 && <button type="button" onClick={purgarAntigos} disabled={purgando} className="text-rose-600 hover:underline disabled:opacity-40">{purgando ? "Processando…" : `🧹 Expurgar > ${retencaoDias} dias`}</button>}
+            <span className="text-[11px] text-gray-400 w-full">LGPD: <b>anonimizar</b> mantém pergunta/resposta e remove o nome; <b>expurgar</b> apaga o registro. Ações manuais sobre o que passou do período.</span>
           </div>
           {registrosVis.length === 0 ? (
             <div className="text-center py-10 text-gray-500 dark:text-gray-400 text-sm">Nenhum registro {filtro === "fora" ? "fora do escopo " : ""}ainda.</div>
@@ -187,7 +230,7 @@ export function IaGovernancaPage() {
                     <div className="flex items-center gap-2 flex-wrap">
                       {i.foraDeEscopo && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">⚠️ Fora do escopo</span>}
                       {i.foraDeEscopo && i.severidade && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${(SEV_META[i.severidade] || SEV_META.baixa).cls}`}>{(SEV_META[i.severidade] || SEV_META.baixa).label}</span>}
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{i.pessoaNome || "—"}</span>
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{i.anonimizado ? <span className="italic text-gray-400">🕶️ Anonimizado</span> : (i.pessoaNome || "—")}</span>
                       <span className="text-[11px] text-gray-400">{i.moduleLabel || "IA"} · {fmtBR((i.createdAt || "").slice(0, 10))}</span>
                     </div>
                     <div className="text-sm text-gray-700 dark:text-gray-300 mt-1 line-clamp-2">“{i.pergunta}”</div>
@@ -197,6 +240,11 @@ export function IaGovernancaPage() {
                     <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800">
                       <div className="text-[11px] font-semibold text-gray-500 mb-1">Resposta da IA</div>
                       <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{i.resposta || "—"}</div>
+                      {!i.anonimizado && (
+                        <div className="flex justify-end mt-2">
+                          <button type="button" onClick={() => { if (confirm("Anonimizar este registro? Remove o nome da pessoa, mantém pergunta/resposta.")) anonimizar([i.id]); }} className="text-[11px] text-indigo-600 hover:underline">🕶️ Anonimizar este registro</button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

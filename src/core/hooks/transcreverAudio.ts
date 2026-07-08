@@ -12,7 +12,7 @@ function fileToBase64(file: File): Promise<string> {
 }
 
 export async function transcreverAudio(file: File): Promise<string> {
-  if (file.size > 10 * 1024 * 1024) throw new Error("Áudio muito grande (máx ~10 MB). Use um trecho menor.");
+  if (file.size > 20 * 1024 * 1024) throw new Error("Áudio muito grande (máx ~20 MB). Use um trecho menor.");
   const audioBase64 = await fileToBase64(file);
   const r = await fetch("/api/audio-transcrever", {
     method: "POST",
