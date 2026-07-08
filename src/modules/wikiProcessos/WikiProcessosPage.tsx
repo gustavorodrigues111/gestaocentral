@@ -22,6 +22,23 @@ import type { WikiProcesso, WikiFormato, WikiFoto, WikiPasso, WikiChecklistItem 
 const FORMATO_LABEL: Record<WikiFormato, string> = { texto: "📄 Texto", checklist: "✅ Checklist", passos: "👣 Passo a passo" };
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
+// Setores responsáveis por etapa (passo/checklist). No futuro cada setor mapeia
+// pra pessoas reais por empresa (lideranças, DP, financeiro…).
+const SETORES: { id: string; label: string; icon: string; cls: string }[] = [
+  { id: "lideranca",  label: "Liderança diária",         icon: "🧑‍✈️", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
+  { id: "area",       label: "Equipe da área",           icon: "👥",   cls: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300" },
+  { id: "dp",         label: "Departamento de Pessoas",  icon: "🧑‍⚖️", cls: "bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" },
+  { id: "financeiro", label: "Financeiro",               icon: "💰",   cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
+  { id: "socios",     label: "Sócios",                   icon: "👔",   cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" },
+  { id: "compras",    label: "Compras / Estoque",        icon: "📦",   cls: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300" },
+];
+const setorMeta = (id?: string) => (id ? SETORES.find(s => s.id === id) : undefined);
+function SetorBadge({ id }: { id?: string }) {
+  const m = setorMeta(id);
+  if (!m) return null;
+  return <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${m.cls}`}>{m.icon} {m.label}</span>;
+}
+
 // Achata um processo em texto puro pra mandar de contexto pra IA.
 function procToTexto(p: WikiProcesso): string {
   const linhas: string[] = [];
@@ -577,7 +594,8 @@ function LerModal({ proc, onClose }: { proc: WikiProcesso; onClose: () => void }
               {(proc.itens || []).map(it => (
                 <li key={it.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/30">
                   <span className="shrink-0 w-6 h-6 rounded-md border-2 border-emerald-400 dark:border-emerald-600" />
-                  <span className="text-[15px] text-gray-800 dark:text-gray-200 leading-snug">{it.texto}</span>
+                  <span className="flex-1 text-[15px] text-gray-800 dark:text-gray-200 leading-snug">{it.texto}</span>
+                  <SetorBadge id={it.responsavel} />
                 </li>
               ))}
             </ul>
@@ -591,7 +609,10 @@ function LerModal({ proc, onClose }: { proc: WikiProcesso; onClose: () => void }
                   <li key={s.id} className="relative pl-12">
                     <span className="absolute left-0 top-0 w-8 h-8 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center ring-4 ring-white dark:ring-gray-900 shadow-sm">{i + 1}</span>
                     <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/30 p-3.5">
-                      {s.titulo && <div className="font-semibold text-gray-900 dark:text-gray-100 mb-1">{s.titulo}</div>}
+                      <div className="flex items-start justify-between gap-2 flex-wrap mb-1">
+                        {s.titulo ? <div className="font-semibold text-gray-900 dark:text-gray-100">{s.titulo}</div> : <span />}
+                        <SetorBadge id={s.responsavel} />
+                      </div>
                       <div className="text-[15px] text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">{s.descricao}</div>
                       {s.foto && <a href={s.foto.url} target="_blank" rel="noreferrer"><img src={s.foto.url} alt="" className="mt-2.5 rounded-lg max-h-60 border border-gray-200 dark:border-gray-700" /></a>}
                     </div>
@@ -677,6 +698,7 @@ function WikiForm({ proc, rascunhoInicial, podeDeletar, categoriasPermitidas, on
   }
 
   const inp = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+  const selSetor = "text-xs px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 shrink-0";
   const toggleRid = (id: string) => setF(p => { const cur = p.restaurantIds || []; return { ...p, restaurantIds: cur.includes(id) ? cur.filter(x => x !== id) : [...cur, id] }; });
 
   return (
@@ -715,9 +737,13 @@ function WikiForm({ proc, rascunhoInicial, podeDeletar, categoriasPermitidas, on
             <Campo label="Itens do checklist">
               <div className="space-y-1.5">
                 {(f.itens || []).map((it, idx) => (
-                  <div key={it.id} className="flex items-center gap-2">
+                  <div key={it.id} className="flex flex-wrap items-center gap-2">
                     <span className="text-gray-400">☐</span>
-                    <input value={it.texto} onChange={e => setF({ ...f, itens: (f.itens || []).map(x => x.id === it.id ? { ...x, texto: e.target.value } : x) })} className={inp} placeholder={`Item ${idx + 1}`} />
+                    <input value={it.texto} onChange={e => setF({ ...f, itens: (f.itens || []).map(x => x.id === it.id ? { ...x, texto: e.target.value } : x) })} className={inp.replace("w-full", "") + " flex-1 min-w-[140px]"} placeholder={`Item ${idx + 1}`} />
+                    <select value={it.responsavel || ""} onChange={e => setF({ ...f, itens: (f.itens || []).map(x => x.id === it.id ? { ...x, responsavel: e.target.value || undefined } : x) })} className={selSetor}>
+                      <option value="">👤 Responsável…</option>
+                      {SETORES.map(s => <option key={s.id} value={s.id}>{s.icon} {s.label}</option>)}
+                    </select>
                     <button type="button" onClick={() => setF({ ...f, itens: (f.itens || []).filter(x => x.id !== it.id) })} className="text-gray-400 hover:text-rose-600 text-sm">✕</button>
                   </div>
                 ))}
@@ -736,7 +762,11 @@ function WikiForm({ proc, rascunhoInicial, podeDeletar, categoriasPermitidas, on
                       <button type="button" onClick={() => setF({ ...f, passos: (f.passos || []).filter(x => x.id !== s.id) })} className="text-gray-400 hover:text-rose-600 text-sm">✕</button>
                     </div>
                     <textarea value={s.descricao} onChange={e => setF({ ...f, passos: (f.passos || []).map(x => x.id === s.id ? { ...x, descricao: e.target.value } : x) })} className={inp} rows={2} placeholder="O que fazer neste passo" />
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select value={s.responsavel || ""} onChange={e => setF({ ...f, passos: (f.passos || []).map(x => x.id === s.id ? { ...x, responsavel: e.target.value || undefined } : x) })} className={selSetor}>
+                        <option value="">👤 Responsável…</option>
+                        {SETORES.map(so => <option key={so.id} value={so.id}>{so.icon} {so.label}</option>)}
+                      </select>
                       {s.foto ? (
                         <div className="flex items-center gap-2"><img src={s.foto.url} alt="" className="h-12 rounded border border-gray-200 dark:border-gray-700" /><button type="button" onClick={() => setF({ ...f, passos: (f.passos || []).map(x => x.id === s.id ? { ...x, foto: null } : x) })} className="text-[11px] text-gray-400 hover:text-rose-600">remover foto</button></div>
                       ) : (

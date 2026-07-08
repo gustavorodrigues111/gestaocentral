@@ -4,6 +4,17 @@
 @tailwind components;
 @tailwind utilities;
 
+/* iOS Safari dá zoom automático ao focar um input com fonte < 16px. Em telas
+   pequenas, força 16px nos controles pra evitar o "pulo" de zoom no foco.
+   (Não desativa o pinch-zoom — mantém acessibilidade.) */
+@media (max-width: 640px) {
+  input:not([type="checkbox"]):not([type="radio"]),
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 :root {
   --bg:        #ffffff;
   --bg2:       #f9fafb;

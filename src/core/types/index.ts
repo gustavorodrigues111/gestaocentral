@@ -4546,8 +4546,9 @@ export const MANUTENCAO_PERIODICIDADE_LABEL: Record<ManutencaoPeriodicidade, str
 // Documentação viva dos processos internos, por área. 3 formatos + fotos.
 export type WikiFormato = "texto" | "checklist" | "passos";
 export type WikiFoto = { id: string; url: string; storagePath?: string; legenda?: string };
-export type WikiPasso = { id: string; titulo?: string; descricao: string; foto?: WikiFoto | null };
-export type WikiChecklistItem = { id: string; texto: string };
+// responsavel = id do setor responsável pela etapa (ver SETORES_WIKI). Opcional.
+export type WikiPasso = { id: string; titulo?: string; descricao: string; foto?: WikiFoto | null; responsavel?: string };
+export type WikiChecklistItem = { id: string; texto: string; responsavel?: string };
 export type WikiProcesso = {
   id: string;
   restaurantIds: string[];          // 1+ empresas onde o processo vale
