@@ -517,6 +517,69 @@ function PerfilEditor({ perfil, isNew, restaurantes, pessoas, perfis, onSalvar, 
         </div>
         );
       })}
+
+      {/* Escopo por categoria da Wiki de Processos — só quando o perfil tem
+          alguma permissão de wikiProcessos habilitada. */}
+      {form.permissions.wikiProcessos && Object.values(form.permissions.wikiProcessos).some(v => v === true) && (
+        <WikiCategoriasEditor
+          restauranteId={form.restaurantId}
+          selecionadas={form.wikiCategorias || []}
+          onChange={cats => setForm(f => ({ ...f, wikiCategorias: cats }))}
+        />
+      )}
+    </div>
+  );
+}
+
+// Escopo por categoria da Wiki: vazio = todas. Oferece as áreas já existentes
+// (do restaurante do perfil, ou de todos se global) como checkboxes + campo livre.
+function WikiCategoriasEditor({ restauranteId, selecionadas, onChange }: {
+  restauranteId: string | null;
+  selecionadas: string[];
+  onChange: (cats: string[]) => void;
+}) {
+  const [areas, setAreas] = useState<string[]>([]);
+  const [nova, setNova] = useState("");
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "wikiProcessos"), snap => {
+      const set = new Set<string>();
+      snap.docs.forEach(d => {
+        const p = d.data() as { area?: string; restaurantIds?: string[]; deletadoEm?: string | null };
+        if (p.deletadoEm) return;
+        if (restauranteId && !(p.restaurantIds || []).includes(restauranteId)) return;
+        if (p.area && p.area.trim()) set.add(p.area.trim());
+      });
+      setAreas([...set].sort());
+    });
+    return () => u();
+  }, [restauranteId]);
+
+  const todas = [...new Set([...areas, ...selecionadas])].sort();
+  const toggle = (a: string) => onChange(selecionadas.includes(a) ? selecionadas.filter(x => x !== a) : [...selecionadas, a]);
+  const addNova = () => { const v = nova.trim(); if (v && !selecionadas.includes(v)) onChange([...selecionadas, v]); setNova(""); };
+
+  return (
+    <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-900/10 p-3 space-y-2">
+      <div className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">📚 Wiki — categorias visíveis</div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400">
+        Deixe <b>vazio</b> pra este perfil acessar <b>todas</b> as categorias. Marque categorias específicas pra limitar o que ele vê e onde pode cadastrar.
+      </p>
+      {todas.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {todas.map(a => (
+            <button key={a} type="button" onClick={() => toggle(a)}
+              className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${selecionadas.includes(a) ? "border-indigo-500 bg-indigo-500 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800"}`}>
+              {selecionadas.includes(a) ? "✓ " : ""}{a}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="flex gap-2 items-center">
+        <input value={nova} onChange={e => setNova(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addNova(); } }}
+          placeholder="Adicionar categoria manualmente…" className="flex-1 border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-1.5 text-sm bg-white dark:bg-gray-900" />
+        <button type="button" onClick={addNova} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-300 text-indigo-600 hover:bg-white dark:hover:bg-gray-800">+ Add</button>
+      </div>
+      <div className="text-[11px] text-gray-400">{selecionadas.length === 0 ? "Todas as categorias (sem restrição)." : `${selecionadas.length} categoria(s) selecionada(s).`}</div>
     </div>
   );
 }

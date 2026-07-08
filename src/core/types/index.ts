@@ -31,6 +31,13 @@ export type AccessProfile = {
    */
   restaurantId: string | null;
   permissions: PermissoesPerfil;
+  /**
+   * Escopo por categoria da Wiki de Processos. Lista de áreas/categorias que
+   * este perfil pode ver/editar. Ausente ou vazio = TODAS as categorias.
+   * Master ignora. Só filtra dados; as ações (ver/criar/editar/deletar)
+   * continuam em `permissions.wikiProcessos`.
+   */
+  wikiCategorias?: string[];
   criadoPor?: string;                 // pessoaId
   criadoEm: string;                   // ISO
   atualizadoPor?: string;

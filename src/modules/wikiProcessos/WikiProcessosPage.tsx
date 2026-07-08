@@ -12,6 +12,8 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { authHeader } from "../../core/firebase/idToken";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
+import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
+import { wikiCategoriasAcessiveis } from "../../core/auth/permissions";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
@@ -35,6 +37,7 @@ export function WikiProcessosPage() {
   const { rid } = useParams<{ rid: string }>();
   const { restaurants } = useRestaurant();
   const { can, loading: loadingPerfis } = useCanAcao(rid || "");
+  const { perfis } = useAccessProfiles();
   const podeVer = can("wikiProcessos", "ver") || can("wikiProcessos", "criar") || can("wikiProcessos", "editar");
   const podeCriar = can("wikiProcessos", "criar");
   const podeEditar = can("wikiProcessos", "editar");
@@ -64,7 +67,10 @@ export function WikiProcessosPage() {
   if (!podeVer) return <div className="max-w-5xl mx-auto p-8 text-center text-gray-500">Você não tem permissão para acessar a Wiki de Processos.</div>;
 
   const abaAtual = aba === "cadastro" && !podeCadastrar ? "visualizacao" : aba;
-  const daEmpresa = procs.filter(p => (p.restaurantIds || []).includes(rid || ""));
+  // Escopo por categoria: null = todas; [...] = só essas áreas (perfil restrito).
+  const catsPermitidas = wikiCategoriasAcessiveis(pessoa, rid || "", perfis);
+  const daEmpresaTodas = procs.filter(p => (p.restaurantIds || []).includes(rid || ""));
+  const daEmpresa = catsPermitidas ? daEmpresaTodas.filter(p => catsPermitidas.includes(p.area)) : daEmpresaTodas;
   const areas = [...new Set(daEmpresa.map(p => p.area).filter(Boolean))].sort();
   const q = busca.trim().toLowerCase();
   const visiveis = daEmpresa.filter(p =>
@@ -198,7 +204,7 @@ export function WikiProcessosPage() {
         <WikiForm proc={editando} rascunhoInicial={editando ? null : rascunhoIA} podeDeletar={podeDeletar}
           onClose={() => { setCriando(false); setEditando(null); setRascunhoIA(null); }}
           restaurantes={restaurants.map(r => ({ id: r.id, nome: r.nome }))} ridAtual={rid || ""}
-          areasExistentes={areas} pessoaId={pessoa.id} />
+          areasExistentes={areas} categoriasPermitidas={catsPermitidas} pessoaId={pessoa.id} />
       )}
     </div>
   );
@@ -213,15 +219,22 @@ function PerguntarIAModal({ processos, onClose, onAbrirProc }: {
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState("");
+  const dit = useDitado();
   // Só processos publicados vão de contexto (rascunho não conta).
   const base = processos.filter(p => p.publicado !== false);
+  const valorInput = dit.gravando ? (dit.transcricao + (dit.parcial ? (dit.transcricao ? " " : "") + dit.parcial : "")) : pergunta;
+  function micToggle() {
+    if (dit.gravando) { dit.parar(); setPergunta((dit.transcricao + " " + dit.parcial).replace(/\s+/g, " ").trim()); }
+    else { setErro(""); dit.setTranscricao(pergunta); dit.setParcial(""); dit.iniciar(); }
+  }
 
   async function enviar() {
-    const q = pergunta.trim();
+    const q = (dit.gravando ? (dit.transcricao + " " + dit.parcial) : pergunta).replace(/\s+/g, " ").trim();
     if (!q || carregando) return;
+    if (dit.gravando) dit.parar();
     setErro("");
     setMsgs(m => [...m, { role: "user", texto: q }]);
-    setPergunta("");
+    setPergunta(""); dit.setTranscricao(""); dit.setParcial("");
     setCarregando(true);
     try {
       const r = await fetch("/api/wiki-perguntar", {
@@ -288,11 +301,17 @@ function PerguntarIAModal({ processos, onClose, onAbrirProc }: {
           {erro && <div className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">{erro}</div>}
         </div>
 
-        <div className="p-3 border-t border-gray-100 dark:border-gray-800 flex gap-2">
-          <input value={pergunta} onChange={e => setPergunta(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }}
-            placeholder="Digite sua pergunta…" autoFocus disabled={carregando}
+        <div className="px-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+          {dit.gravando && <div className="text-[11px] text-rose-600 mb-1 flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-600 animate-pulse" /> Ouvindo… fale sua pergunta</div>}
+          {dit.erroMic && <div className="text-[11px] text-rose-600 mb-1">{dit.erroMic}</div>}
+        </div>
+        <div className="p-3 pt-1 flex gap-2 items-center">
+          <button type="button" onClick={micToggle} disabled={carregando} title={dit.gravando ? "Parar" : "Perguntar por voz"}
+            className={`shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center text-lg ${dit.gravando ? "border-rose-400 bg-rose-50 dark:bg-rose-900/20 text-rose-600" : "border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{dit.gravando ? "⏹️" : "🎙️"}</button>
+          <input value={valorInput} onChange={e => { setPergunta(e.target.value); if (dit.gravando) dit.parar(); }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }}
+            placeholder="Digite ou fale sua pergunta…" autoFocus disabled={carregando}
             className="flex-1 h-10 px-3 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
-          <Button onClick={enviar} disabled={carregando || !pergunta.trim()}>Enviar</Button>
+          <Button onClick={enviar} disabled={carregando || !valorInput.trim()}>Enviar</Button>
         </div>
       </div>
     </div>
@@ -579,12 +598,15 @@ function LerModal({ proc, podeEditar, onClose, onEditar }: { proc: WikiProcesso;
 }
 
 // ─── Cadastro/edição ─────────────────────────────────────────────────────────
-function WikiForm({ proc, rascunhoInicial, podeDeletar, onClose, restaurantes, ridAtual, areasExistentes, pessoaId }: {
-  proc: WikiProcesso | null; rascunhoInicial?: Partial<WikiProcesso> | null; podeDeletar?: boolean; onClose: () => void; restaurantes: { id: string; nome: string }[];
+function WikiForm({ proc, rascunhoInicial, podeDeletar, categoriasPermitidas, onClose, restaurantes, ridAtual, areasExistentes, pessoaId }: {
+  proc: WikiProcesso | null; rascunhoInicial?: Partial<WikiProcesso> | null; podeDeletar?: boolean;
+  categoriasPermitidas?: string[] | null; onClose: () => void; restaurantes: { id: string; nome: string }[];
   ridAtual: string; areasExistentes: string[]; pessoaId: string;
 }) {
+  // Perfil restrito a certas categorias? Então o campo Área vira seleção fechada.
+  const catsRestritas = categoriasPermitidas && categoriasPermitidas.length > 0 ? categoriasPermitidas : null;
   const [f, setF] = useState<Partial<WikiProcesso>>(proc ? { ...proc } : {
-    titulo: "", area: "", resumo: "", formato: "texto", restaurantIds: ridAtual ? [ridAtual] : [],
+    titulo: "", area: catsRestritas && catsRestritas.length === 1 ? catsRestritas[0] : "", resumo: "", formato: "texto", restaurantIds: ridAtual ? [ridAtual] : [],
     conteudo: "", itens: [], passos: [], fotos: [], publicado: true, ativo: true,
     ...(rascunhoInicial || {}),
   });
@@ -610,6 +632,7 @@ function WikiForm({ proc, rascunhoInicial, podeDeletar, onClose, restaurantes, r
   async function salvar() {
     if (!f.titulo?.trim()) { alert("Título é obrigatório"); return; }
     if (!f.area?.trim()) { alert("Escolha/defina a área"); return; }
+    if (catsRestritas && !catsRestritas.includes(f.area.trim())) { alert("Seu perfil só pode cadastrar nas categorias: " + catsRestritas.join(", ")); return; }
     const now = new Date().toISOString();
     const id = proc?.id || `wk-${uid()}`;
     const data: WikiProcesso = {
@@ -644,8 +667,17 @@ function WikiForm({ proc, rascunhoInicial, podeDeletar, onClose, restaurantes, r
           <Campo label="Título *"><input value={f.titulo || ""} onChange={e => setF({ ...f, titulo: e.target.value })} className={inp} autoFocus placeholder="Ex: Fechamento de caixa do turno" /></Campo>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <Campo label="Área *">
-              <input list="wiki-areas" value={f.area || ""} onChange={e => setF({ ...f, area: e.target.value })} className={inp} placeholder="Cozinha, Salão, DP, Financeiro…" />
-              <datalist id="wiki-areas">{areasExistentes.map(a => <option key={a} value={a} />)}</datalist>
+              {catsRestritas ? (
+                <select value={f.area || ""} onChange={e => setF({ ...f, area: e.target.value })} className={inp}>
+                  <option value="">Escolha a categoria…</option>
+                  {catsRestritas.map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
+              ) : (
+                <>
+                  <input list="wiki-areas" value={f.area || ""} onChange={e => setF({ ...f, area: e.target.value })} className={inp} placeholder="Cozinha, Salão, DP, Financeiro…" />
+                  <datalist id="wiki-areas">{areasExistentes.map(a => <option key={a} value={a} />)}</datalist>
+                </>
+              )}
             </Campo>
             <Campo label="Formato *">
               <select value={f.formato} onChange={e => setF({ ...f, formato: e.target.value as WikiFormato })} className={inp}>

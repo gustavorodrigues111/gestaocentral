@@ -138,6 +138,26 @@ export function canAcao(
 }
 
 /**
+ * Categorias da Wiki de Processos que a pessoa pode ver/editar nesse restaurante.
+ * - null  = TODAS (master, sem perfil-restrição, ou lista vazia no perfil)
+ * - [...] = só essas categorias (áreas) exatas
+ * Filtra dados apenas; as ações continuam em canAcao("wikiProcessos", …).
+ */
+export function wikiCategoriasAcessiveis(
+  pessoa: Pessoa | null,
+  restaurantId: string,
+  perfisCustom: AccessProfile[] = [],
+): string[] | null {
+  if (!pessoa) return [];
+  if (pessoa.isMaster) return null;
+  const profileId = pessoa.profileIds?.[restaurantId];
+  const profile = resolverPerfil(profileId, perfisCustom);
+  const cats = profile?.wikiCategorias;
+  if (!cats || cats.length === 0) return null;
+  return cats;
+}
+
+/**
  * Versão "any of" — true se pessoa pode fazer pelo menos UMA das ações do
  * módulo. Útil pra decidir se mostra o item no menu sem precisar verificar
  * cada ação individualmente.
