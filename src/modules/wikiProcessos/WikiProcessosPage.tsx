@@ -546,52 +546,74 @@ function EditarVozModal({ proc, onClose, onAplicar }: {
 
 // ─── Leitura (consulta) ──────────────────────────────────────────────────────
 function LerModal({ proc, podeEditar, onClose, onEditar }: { proc: WikiProcesso; podeEditar?: boolean; onClose: () => void; onEditar: () => void }) {
+  const nPassos = proc.passos?.length ?? 0;
+  const nItens = proc.itens?.length ?? 0;
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl p-5 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-2 mb-1">
-          <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{proc.titulo}</h2>
-          {podeEditar && <Button size="sm" variant="secondary" onClick={onEditar}>✏️ Editar</Button>}
-        </div>
-        <div className="text-xs text-gray-500 mb-4">{proc.area} · {FORMATO_LABEL[proc.formato]} · atualizado {fmtBR((proc.atualizadoEm || "").slice(0, 10))}</div>
-        {proc.resumo && <p className="text-sm text-gray-600 dark:text-gray-300 mb-4 italic">{proc.resumo}</p>}
-
-        {proc.formato === "texto" && (
-          <div className="text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">{proc.conteudo || <span className="text-gray-400">Sem conteúdo.</span>}</div>
-        )}
-        {proc.formato === "checklist" && (
-          <ul className="space-y-1.5">
-            {(proc.itens || []).map(it => (
-              <li key={it.id} className="flex items-start gap-2 text-sm text-gray-800 dark:text-gray-200"><span className="text-emerald-500 mt-0.5">☐</span>{it.texto}</li>
-            ))}
-          </ul>
-        )}
-        {proc.formato === "passos" && (
-          <ol className="space-y-3">
-            {(proc.passos || []).map((s, i) => (
-              <li key={s.id} className="flex gap-3">
-                <span className="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 text-xs font-bold flex items-center justify-center">{i + 1}</span>
-                <div className="flex-1 min-w-0">
-                  {s.titulo && <div className="font-medium text-gray-900 dark:text-gray-100">{s.titulo}</div>}
-                  <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{s.descricao}</div>
-                  {s.foto && <img src={s.foto.url} alt="" className="mt-2 rounded-lg max-h-52 border border-gray-200 dark:border-gray-700" />}
-                </div>
-              </li>
-            ))}
-          </ol>
-        )}
-
-        {(proc.fotos?.length ?? 0) > 0 && (
-          <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
-            <div className="text-xs font-medium text-gray-500 mb-2">📎 Fotos</div>
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {proc.fotos!.map(f => (
-                <a key={f.id} href={f.url} target="_blank" rel="noreferrer"><img src={f.url} alt={f.legenda || ""} className="rounded-lg border border-gray-200 dark:border-gray-700 w-full h-28 object-cover" /></a>
-              ))}
-            </div>
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col shadow-2xl" onClick={e => e.stopPropagation()}>
+        {/* Cabeçalho colorido */}
+        <div className="relative px-6 pt-5 pb-4 bg-gradient-to-br from-indigo-50 to-white dark:from-indigo-900/25 dark:to-gray-900 border-b border-gray-100 dark:border-gray-800">
+          <button type="button" onClick={onClose} className="absolute top-4 right-4 w-8 h-8 rounded-full flex items-center justify-center text-gray-400 hover:bg-gray-200/60 dark:hover:bg-gray-700/60">✕</button>
+          <div className="flex flex-wrap items-center gap-1.5 mb-2">
+            <span className="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">{proc.area}</span>
+            <span className="text-[11px] font-medium px-2.5 py-1 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">{FORMATO_LABEL[proc.formato]}</span>
+            {nPassos > 0 && <span className="text-[11px] text-gray-400">{nPassos} passo{nPassos === 1 ? "" : "s"}</span>}
+            {nItens > 0 && <span className="text-[11px] text-gray-400">{nItens} ite{nItens === 1 ? "m" : "ns"}</span>}
           </div>
-        )}
-        <div className="flex justify-end mt-5"><Button variant="ghost" onClick={onClose}>Fechar</Button></div>
+          <h2 className="text-2xl font-bold text-gray-900 dark:text-gray-100 leading-tight pr-8">{proc.titulo}</h2>
+          {proc.resumo && <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 leading-relaxed">{proc.resumo}</p>}
+          <div className="flex items-center gap-2 mt-3">
+            {podeEditar && <Button size="sm" variant="secondary" onClick={onEditar}>✏️ Editar</Button>}
+            <span className="text-[11px] text-gray-400">atualizado {fmtBR((proc.atualizadoEm || "").slice(0, 10))}</span>
+          </div>
+        </div>
+
+        {/* Corpo */}
+        <div className="px-6 py-5 overflow-y-auto">
+          {proc.formato === "texto" && (
+            <div className="text-[15px] text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-7">{proc.conteudo || <span className="text-gray-400">Sem conteúdo.</span>}</div>
+          )}
+
+          {proc.formato === "checklist" && (
+            <ul className="space-y-2">
+              {(proc.itens || []).map(it => (
+                <li key={it.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/30">
+                  <span className="shrink-0 w-6 h-6 rounded-md border-2 border-emerald-400 dark:border-emerald-600" />
+                  <span className="text-[15px] text-gray-800 dark:text-gray-200 leading-snug">{it.texto}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {proc.formato === "passos" && (
+            <div className="relative">
+              {nPassos > 1 && <div className="absolute left-[15px] top-4 bottom-4 w-0.5 bg-gradient-to-b from-indigo-300 to-indigo-100 dark:from-indigo-700 dark:to-indigo-900/40" />}
+              <ol className="space-y-4">
+                {(proc.passos || []).map((s, i) => (
+                  <li key={s.id} className="relative pl-12">
+                    <span className="absolute left-0 top-0 w-8 h-8 rounded-full bg-indigo-600 text-white text-sm font-bold flex items-center justify-center ring-4 ring-white dark:ring-gray-900 shadow-sm">{i + 1}</span>
+                    <div className="rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/30 p-3.5">
+                      {s.titulo && <div className="font-semibold text-gray-900 dark:text-gray-100 mb-1">{s.titulo}</div>}
+                      <div className="text-[15px] text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">{s.descricao}</div>
+                      {s.foto && <a href={s.foto.url} target="_blank" rel="noreferrer"><img src={s.foto.url} alt="" className="mt-2.5 rounded-lg max-h-60 border border-gray-200 dark:border-gray-700" /></a>}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+
+          {(proc.fotos?.length ?? 0) > 0 && (
+            <div className="mt-5 pt-4 border-t border-gray-100 dark:border-gray-800">
+              <div className="text-xs font-medium text-gray-500 mb-2">📎 Fotos</div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+                {proc.fotos!.map(f => (
+                  <a key={f.id} href={f.url} target="_blank" rel="noreferrer"><img src={f.url} alt={f.legenda || ""} className="rounded-lg border border-gray-200 dark:border-gray-700 w-full h-28 object-cover hover:opacity-90 transition-opacity" /></a>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
