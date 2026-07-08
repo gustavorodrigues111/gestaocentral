@@ -40,8 +40,8 @@ export const MODULES: ModuleDef[] = [
   { id: "whatsappInbox", area: "dp", subarea: "Operação Diária",       label: "WhatsApp",        icon: "💬", status: "ativo", etapa: "em_desenvolvimento", desc: "Caixa de entrada do WhatsApp do planejamento.app — agora dentro da Central de Avisos › WhatsApp", oculto: true },
 
   // ── Tarefas (item-pivô global) — colocada no topo do Sidebar separadamente
-  { id: "tarefas",     area: "planejamento", subarea: "Agenda",        label: "Gestor de Tarefas", icon: "🗂️", status: "ativo", etapa: "beta",             desc: "Gestor de Tarefas: rotinas e demandas, caixa por usuário, cascatas dos cadastros mestres" },
-  { id: "planner",     area: "planejamento", subarea: "Agenda",        label: "Planner",           icon: "📅", status: "ativo", etapa: "beta",             desc: "Agenda pessoal integrada ao Google Calendar. Lança prazos de qualquer tipo (conta, técnico, trabalhista) que registram no módulo de origem." },
+  { id: "tarefas",     area: "planejamento", subarea: "Tarefas",       label: "Gestor de Tarefas", icon: "🗂️", status: "ativo", etapa: "beta",             desc: "Gestor de Tarefas: rotinas e demandas, caixa por usuário, cascatas dos cadastros mestres" },
+  { id: "planner",     area: "master", subarea: "Master",              label: "Planner",           icon: "📅", status: "ativo", etapa: "beta",             desc: "Agenda pessoal integrada ao Google Calendar. Lança prazos de qualquer tipo (conta, técnico, trabalhista) que registram no módulo de origem." },
 
   // ── Pessoas Externas & Infra ─────────────────────────────────────
   { id: "freelas",     area: "ops", subarea: "Pessoas Externas & Infra", label: "Freelas",        icon: "🎒", status: "ativo", etapa: "beta",               desc: "Cadastro, agendamento, lançamento e pagamento de freelas", dependsOn: ["pessoas", "escala"] },
