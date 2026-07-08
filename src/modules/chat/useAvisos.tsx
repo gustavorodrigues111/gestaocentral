@@ -401,28 +401,34 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    // ── Prazos Trabalhistas: iminentes (próximos) + vencidos, por empresa ──
-    const trabGrp = new Map<string, { imin: number; venc: number }>();
-    const addTrab = (r?: string, kind?: "imin" | "venc") => {
-      if (!r || !kind || !meusRids.has(r)) return;
-      const g = trabGrp.get(r) || { imin: 0, venc: 0 };
-      g[kind]++; trabGrp.set(r, g);
+    // ── Prazos Trabalhistas: iminentes + vencidos, 1 card por CATEGORIA/empresa ──
+    const TRAB_META: Record<string, { icone: string; titulo: string }> = {
+      experiencia: { icone: "🧑‍⚖️", titulo: "Experiência" },
+      exame: { icone: "🩺", titulo: "Exames" },
+      uniforme: { icone: "👕", titulo: "Uniformes" },
+      epi: { icone: "🦺", titulo: "EPIs" },
     };
-    // Experiências (45/90) — janela de decisão iminente 10d antes; vencido recente (até 15d).
+    const trabGrp = new Map<string, { imin: number; venc: number }>(); // chave `${rid}|${cat}`
+    const addTrab = (r: string | undefined, cat: string, kind: "imin" | "venc") => {
+      if (!r || !meusRids.has(r)) return;
+      const k = `${r}|${cat}`; const g = trabGrp.get(k) || { imin: 0, venc: 0 };
+      g[kind]++; trabGrp.set(k, g);
+    };
+    // Experiências (45/90) — decisão iminente 10d antes; vencido recente (até 15d).
     for (const e of empTrab) {
       if (!e.estaAtivo || e.demitidoEm || !e.admissaoAtual) continue;
       for (const [suf, dias] of [["exp1", 45], ["exp2", 90]] as const) {
         const fim = addDiasYmd(e.admissaoAtual, dias);
         if (trabResolv.has(`${suf}-${e.id}`)) continue;
-        if (fim < hoje && fim >= addDiasYmd(hoje, -15)) addTrab(e.restaurantId, "venc");
-        else if (fim >= hoje && fim <= addDiasYmd(hoje, 10)) addTrab(e.restaurantId, "imin");
+        if (fim < hoje && fim >= addDiasYmd(hoje, -15)) addTrab(e.restaurantId, "experiencia", "venc");
+        else if (fim >= hoje && fim <= addDiasYmd(hoje, 10)) addTrab(e.restaurantId, "experiencia", "imin");
       }
     }
     // Exames — usa a antecedência do próprio exame.
     for (const ex of exTrab) {
       if (ex.ativo === false || !ex.proximoVencimento) continue;
-      if (ex.proximoVencimento < hoje) addTrab(ex.restaurantId, "venc");
-      else if (ex.proximoVencimento <= addDiasYmd(hoje, ex.diasAntecedencia || 15)) addTrab(ex.restaurantId, "imin");
+      if (ex.proximoVencimento < hoje) addTrab(ex.restaurantId, "exame", "venc");
+      else if (ex.proximoVencimento <= addDiasYmd(hoje, ex.diasAntecedencia || 15)) addTrab(ex.restaurantId, "exame", "imin");
     }
     // Uniformes/EPIs — validade do item (iminente 15d).
     for (const en of uniTrab) {
@@ -430,17 +436,20 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       for (const it of en.itens || []) {
         if (!it.validadeAte) continue;
         if (trabResolv.has(`uni-${en.id}-${it.itemId}-${it.validadeAte}`)) continue;
-        if (it.validadeAte < hoje) addTrab(en.restaurantId, "venc");
-        else if (it.validadeAte <= addDiasYmd(hoje, 15)) addTrab(en.restaurantId, "imin");
+        const cat = it.caEpi ? "epi" : "uniforme";
+        if (it.validadeAte < hoje) addTrab(en.restaurantId, cat, "venc");
+        else if (it.validadeAte <= addDiasYmd(hoje, 15)) addTrab(en.restaurantId, cat, "imin");
       }
     }
-    for (const [r, g] of trabGrp) {
+    for (const [k, g] of trabGrp) {
+      const [r, cat] = k.split("|");
+      const meta = TRAB_META[cat] || { icone: "🧑‍⚖️", titulo: "Prazos Trabalhistas" };
       const partes: string[] = [];
       if (g.venc) partes.push(`${g.venc} vencido${g.venc === 1 ? "" : "s"}`);
       if (g.imin) partes.push(`${g.imin} próximo${g.imin === 1 ? "" : "s"}`);
       out.push({
-        id: `trab_${r}`, tipo: "prazosTrabalhistas", icone: g.venc ? "⚠️" : "⏳",
-        titulo: "Prazos Trabalhistas", descricao: partes.join(" · "), em: hoje,
+        id: `trab_${cat}_${r}`, tipo: "prazosTrabalhistas", icone: meta.icone,
+        titulo: meta.titulo, descricao: partes.join(" · "), em: hoje,
         restauranteId: r, restauranteNome: nomePorRid[r] || "Restaurante",
         cta: "Abrir Prazos Trabalhistas", href: `/r/${r}/prazosTrabalhistas`,
         categoria: "Prazos Trabalhistas", categoriaIcone: "🧑‍⚖️",
