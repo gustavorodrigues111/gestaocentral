@@ -4561,7 +4561,7 @@ export type WikiFoto = { id: string; url: string; storagePath?: string; legenda?
 // processoVinculadoId = id de outro WikiProcesso que esta etapa referencia
 // (ex.: passo "Conclusão da seleção" → processo "Processo de seleção").
 export type WikiPasso = { id: string; titulo?: string; descricao: string; foto?: WikiFoto | null; responsaveis?: string[]; responsavel?: string; processoVinculadoId?: string };
-export type WikiChecklistItem = { id: string; texto: string; responsaveis?: string[]; responsavel?: string };
+export type WikiChecklistItem = { id: string; texto: string; responsaveis?: string[]; responsavel?: string; processoVinculadoId?: string };
 export type WikiProcesso = {
   id: string;
   restaurantIds: string[];          // 1+ empresas onde o processo vale

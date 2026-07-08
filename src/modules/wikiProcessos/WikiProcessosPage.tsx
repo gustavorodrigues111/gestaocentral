@@ -22,6 +22,22 @@ import { fmtBR } from "../../core/utils/date";
 import type { WikiProcesso, WikiFormato, WikiFoto, WikiPasso, WikiChecklistItem } from "../../core/types";
 
 const FORMATO_LABEL: Record<WikiFormato, string> = { texto: "📄 Texto", checklist: "✅ Checklist", passos: "👣 Passo a passo" };
+const FORMATO_META: Record<WikiFormato, { icon: string; cls: string }> = {
+  texto: { icon: "📄", cls: "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300" },
+  checklist: { icon: "✅", cls: "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-300" },
+  passos: { icon: "👣", cls: "bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300" },
+};
+const nEtapas = (p: WikiProcesso) => p.formato === "passos" ? (p.passos?.length ?? 0) : p.formato === "checklist" ? (p.itens?.length ?? 0) : 0;
+
+// Sugestões de processos pra semear como rascunhos (por área). O usuário depois
+// preenche o conteúdo (por voz ou texto).
+const PROCESSOS_SUGERIDOS: { area: string; titulos: string[] }[] = [
+  { area: "Departamento de Pessoas", titulos: ["Admissão de novo colaborador", "Fim de experiência (45/90)", "Registro e correção de ponto", "Fechamento de ponto do mês", "Solicitação de ajuste de escala", "Afastamento e atestado", "Desligamento", "Entrega de uniforme e EPI", "Exames ocupacionais"] },
+  { area: "Financeiro", titulos: ["Fechamento de caixa do turno", "Pagamento de conta fixa", "Conferência de fatura de cartão", "Recebimento de nota fiscal", "Sangria e suprimento de caixa"] },
+  { area: "Salão", titulos: ["Abertura da casa", "Fechamento da casa", "Fluxo de reserva", "Atendimento de evento", "Divisão de gorjeta do dia", "Registro de ocorrência/incidente"] },
+  { area: "Cozinha", titulos: ["Recebimento e armazenagem de insumos", "Contagem de estoque / inventário", "Produção do dia (mise en place)", "Controle de temperatura e validade", "Limpeza e higienização por área"] },
+  { area: "Gestão", titulos: ["Como usar a Central de Avisos", "Rotinas: criar e atribuir lembretes", "Reunião → Plano de Ação", "Como usar a Wiki (documentar, voz, Pergunte à IA)"] },
+];
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
 // Setores responsáveis de uma etapa (novo `responsaveis[]` ou legado `responsavel`).
@@ -90,6 +106,7 @@ export function WikiProcessosPage() {
   const [lendo, setLendo] = useState<WikiProcesso | null>(null);
   const [perguntando, setPerguntando] = useState(false);
   const [ditando, setDitando] = useState(false);
+  const [semeando, setSemeando] = useState(false);
   const [editVoz, setEditVoz] = useState<WikiProcesso | null>(null);
   const [rascunhoIA, setRascunhoIA] = useState<Partial<WikiProcesso> | null>(null);
   const [configSetores, setConfigSetores] = useState(false);
@@ -213,13 +230,20 @@ export function WikiProcessosPage() {
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     {lista.map(p => (
                       <button key={p.id} type="button" onClick={() => setLendo(p)}
-                        className="text-left p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md transition-shadow">
-                        <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
-                          {p.titulo}
-                          {p.publicado === false && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">rascunho</span>}
+                        className="text-left p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:shadow-md hover:border-indigo-200 dark:hover:border-indigo-800 transition-all flex gap-3 items-start">
+                        <span className={`shrink-0 w-9 h-9 rounded-xl flex items-center justify-center text-lg ${FORMATO_META[p.formato].cls}`}>{FORMATO_META[p.formato].icon}</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5 flex-wrap">
+                            <span className="truncate">{p.titulo}</span>
+                            {p.publicado === false && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">rascunho</span>}
+                          </div>
+                          {p.resumo && <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{p.resumo}</div>}
+                          <div className="text-[11px] text-gray-400 mt-1 flex items-center gap-2 flex-wrap">
+                            <span>{FORMATO_LABEL[p.formato]}</span>
+                            {nEtapas(p) > 0 && <span>· {nEtapas(p)} {p.formato === "passos" ? "passos" : "itens"}</span>}
+                            {(p.fotos?.length ?? 0) > 0 && <span>· 📎 {p.fotos!.length}</span>}
+                          </div>
                         </div>
-                        <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{FORMATO_LABEL[p.formato]}{p.resumo ? ` · ${p.resumo}` : ""}</div>
-                        {(p.fotos?.length ?? 0) > 0 && <div className="text-[11px] text-gray-400 mt-1">📎 {p.fotos!.length} foto{p.fotos!.length === 1 ? "" : "s"}</div>}
                       </button>
                     ))}
                   </div>
@@ -275,6 +299,7 @@ export function WikiProcessosPage() {
             <div className="flex gap-2 flex-wrap">
               <Button variant="secondary" onClick={() => setConfigSetores(true)}>👥 Responsáveis por setor</Button>
               {podeCriar && <>
+                <Button variant="secondary" onClick={() => setSemeando(true)}>🌱 Sugestões</Button>
                 <Button variant="secondary" onClick={() => setDitando(true)}>🎙️ Gravar por voz</Button>
                 <Button onClick={() => setCriando(true)}>+ Novo processo</Button>
               </>}
@@ -316,6 +341,7 @@ export function WikiProcessosPage() {
       {perguntando && <PerguntarIAModal processos={daEmpresa} diretrizes={diretrizesIA} rid={rid || ""} pessoaId={pessoa.id} pessoaNome={pessoa.nome} onClose={() => setPerguntando(false)} onAbrirProc={p => { setPerguntando(false); setLendo(p); }} />}
       {ditando && podeCriar && <DitarModal areasExistentes={areas} onClose={() => setDitando(false)}
         onRascunho={r => { setRascunhoIA(r); setDitando(false); setCriando(true); }} />}
+      {semeando && podeCriar && <SemearModal existentes={daEmpresa.map(p => p.titulo.toLowerCase())} ridAtual={rid || ""} pessoaId={pessoa.id} onClose={() => setSemeando(false)} />}
       {editVoz && podeEditar && <EditarVozModal proc={editVoz} onClose={() => setEditVoz(null)}
         onAplicar={p => { setEditVoz(null); setEditando(p); }} />}
       {configSetores && <ResponsaveisSetorModal rid={rid || ""} pessoas={pessoasRid} mapaInicial={setoresMap} podeEditar={podeCadastrar}
@@ -499,7 +525,7 @@ function DitarModal({ areasExistentes, onClose, onRascunho }: {
       const r = await fetch("/api/wiki-modelar", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ transcricao: txt, areas: areasExistentes }),
+        body: JSON.stringify({ transcricao: txt, areas: areasExistentes, setores: SETORES.map(s => ({ id: s.id, label: s.label })) }),
       });
       const d = await r.json();
       if (!r.ok) throw new Error(d?.error || `HTTP ${r.status}`);
@@ -507,8 +533,8 @@ function DitarModal({ areasExistentes, onClose, onRascunho }: {
         titulo: d.titulo || "", area: d.area || "", resumo: d.resumo || "",
         formato: (d.formato as WikiFormato) || "texto",
         conteudo: d.formato === "texto" ? (d.conteudo || "") : "",
-        itens: d.formato === "checklist" ? ((d.itens as string[]) || []).map(t => ({ id: uid(), texto: t })) : [],
-        passos: d.formato === "passos" ? ((d.passos as { titulo?: string; descricao?: string }[]) || []).map(p => ({ id: uid(), titulo: p.titulo || "", descricao: p.descricao || "", foto: null })) : [],
+        itens: d.formato === "checklist" ? ((d.itens as { texto?: string; responsaveis?: string[] }[]) || []).map(it => ({ id: uid(), texto: it.texto || "", responsaveis: Array.isArray(it.responsaveis) && it.responsaveis.length ? it.responsaveis : undefined })) : [],
+        passos: d.formato === "passos" ? ((d.passos as { titulo?: string; descricao?: string; responsaveis?: string[] }[]) || []).map(p => ({ id: uid(), titulo: p.titulo || "", descricao: p.descricao || "", foto: null, responsaveis: Array.isArray(p.responsaveis) && p.responsaveis.length ? p.responsaveis : undefined })) : [],
       };
       onRascunho(rascunho);
     } catch (e) {
@@ -545,6 +571,66 @@ function DitarModal({ areasExistentes, onClose, onRascunho }: {
         <div className="flex gap-2 justify-end mt-4">
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
           <Button onClick={modelar} disabled={modelando || (transcricao + parcial).trim().length < 3}>{modelando ? "Montando…" : "✨ Montar processo com IA"}</Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Semear processos sugeridos como rascunhos ───────────────────────────────
+function SemearModal({ existentes, ridAtual, pessoaId, onClose }: {
+  existentes: string[]; ridAtual: string; pessoaId: string; onClose: () => void;
+}) {
+  const jaTem = new Set(existentes);
+  const inicial = new Set<string>();
+  PROCESSOS_SUGERIDOS.forEach(g => g.titulos.forEach(t => { if (!jaTem.has(t.toLowerCase())) inicial.add(`${g.area}|${t}`); }));
+  const [sel, setSel] = useState<Set<string>>(inicial);
+  const [salvando, setSalvando] = useState(false);
+  const toggle = (k: string) => setSel(s => { const n = new Set(s); n.has(k) ? n.delete(k) : n.add(k); return n; });
+
+  async function criar() {
+    if (sel.size === 0) return;
+    setSalvando(true);
+    try {
+      const now = new Date().toISOString();
+      await Promise.all([...sel].map(k => {
+        const [area, ...rest] = k.split("|"); const titulo = rest.join("|");
+        const id = `wk-${uid()}`;
+        return setDoc(doc(db, "wikiProcessos", id), sanitizeForFirestore({
+          id, restaurantIds: ridAtual ? [ridAtual] : [], area, titulo, formato: "passos",
+          passos: [], itens: [], fotos: [], publicado: false, ativo: true,
+          criadoEm: now, criadoPor: pessoaId, atualizadoEm: now, atualizadoPor: pessoaId,
+        } as WikiProcesso));
+      }));
+      alert(`${sel.size} rascunho(s) criado(s). Preencha o conteúdo pela aba Cadastro (por voz ou texto).`);
+      onClose();
+    } catch (e) { alert("Erro ao semear: " + (e instanceof Error ? e.message : "?")); }
+    finally { setSalvando(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg p-5 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">🌱 Processos sugeridos</h2>
+        <p className="text-xs text-gray-500 mt-1 mb-3">Cria rascunhos (título + área) pra você preencher depois. Os que já existem aparecem desmarcados.</p>
+        <div className="space-y-3">
+          {PROCESSOS_SUGERIDOS.map(g => (
+            <div key={g.area}>
+              <div className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1">{g.area}</div>
+              <div className="space-y-1">
+                {g.titulos.map(t => { const k = `${g.area}|${t}`; const existe = jaTem.has(t.toLowerCase()); return (
+                  <label key={k} className={`flex items-center gap-2 text-sm p-1.5 rounded-lg ${existe ? "opacity-40" : "hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                    <input type="checkbox" disabled={existe} checked={sel.has(k)} onChange={() => toggle(k)} />
+                    <span className="text-gray-700 dark:text-gray-300">{t}</span>{existe && <span className="text-[10px] text-gray-400">já existe</span>}
+                  </label>
+                ); })}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="flex gap-2 justify-end mt-4">
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button onClick={criar} disabled={salvando || sel.size === 0}>{salvando ? "Criando…" : `Criar ${sel.size || ""} rascunho(s)`}</Button>
         </div>
       </div>
     </div>
@@ -746,7 +832,12 @@ function LerModal({ proc, processos, setorNomes, onClose, onAbrirProc }: { proc:
               {(proc.itens || []).map(it => (
                 <li key={it.id} className="flex items-center gap-3 p-3 rounded-xl border border-gray-100 dark:border-gray-800 bg-gray-50/70 dark:bg-gray-800/30">
                   <span className="shrink-0 w-6 h-6 rounded-md border-2 border-emerald-400 dark:border-emerald-600" />
-                  <span className="flex-1 text-[15px] text-gray-800 dark:text-gray-200 leading-snug">{it.texto}</span>
+                  <div className="flex-1 min-w-0">
+                    <span className="text-[15px] text-gray-800 dark:text-gray-200 leading-snug">{it.texto}</span>
+                    {(() => { const vinc = it.processoVinculadoId ? processos.find(x => x.id === it.processoVinculadoId) : undefined; return vinc ? (
+                      <button type="button" onClick={() => onAbrirProc(vinc)} className="ml-2 inline-flex items-center gap-1 text-[11px] font-medium px-2 py-0.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 align-middle">🔗 {vinc.titulo} →</button>
+                    ) : null; })()}
+                  </div>
                   <div className="flex flex-wrap gap-1 justify-end">
                     {respsDe(it).map(rid => <SetorBadge key={rid} id={rid} nomes={setorNomes[rid]} />)}
                   </div>
@@ -904,6 +995,12 @@ function WikiForm({ proc, rascunhoInicial, podeDeletar, categoriasPermitidas, pr
                     <span className="text-gray-400">☐</span>
                     <input value={it.texto} onChange={e => setF({ ...f, itens: (f.itens || []).map(x => x.id === it.id ? { ...x, texto: e.target.value } : x) })} className={inp.replace("w-full", "") + " flex-1 min-w-[140px]"} placeholder={`Item ${idx + 1}`} />
                     <ResponsaveisPicker value={respsDe(it)} selCls={selSetor} onChange={rs => setF({ ...f, itens: (f.itens || []).map(x => x.id === it.id ? { ...x, responsaveis: rs, responsavel: undefined } : x) })} />
+                    {(processosDaEmpresa?.length ?? 0) > 0 && (
+                      <select value={it.processoVinculadoId || ""} onChange={e => setF({ ...f, itens: (f.itens || []).map(x => x.id === it.id ? { ...x, processoVinculadoId: e.target.value || undefined } : x) })} className={selSetor}>
+                        <option value="">🔗 Vincular…</option>
+                        {processosDaEmpresa!.map(pp => <option key={pp.id} value={pp.id}>{pp.titulo}</option>)}
+                      </select>
+                    )}
                     <button type="button" onClick={() => setF({ ...f, itens: (f.itens || []).filter(x => x.id !== it.id) })} className="text-gray-400 hover:text-rose-600 text-sm">✕</button>
                   </div>
                 ))}
