@@ -7,7 +7,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { Navigate } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
-import { canVer } from "../../core/auth/permissions";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { aplicarPerfisNaPessoa } from "../../core/auth/profileToLegacy";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -255,10 +254,7 @@ export function TarefasPage() {
         </div>
       )}
 
-      {/* Botão "Ver como…" — só pra master, abre modal de seleção */}
-      {isMaster && !isViewingAs && (
-        <VerComoButton onSelect={setViewingAsId} />
-      )}
+      {/* "Ver como…" saiu daqui — acessível pelo cadastro da Pessoa. */}
 
       {/* Layout 2 colunas no desktop: sidebar lateral leve (estilo Asana —
           Minhas tarefas no topo + lista de projetos como favoritos clicáveis)
@@ -279,8 +275,6 @@ export function TarefasPage() {
             else { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(""); }
           }}
           onAbrirSubprojeto={(pid, sid) => { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(sid); }}
-          onAbrirAdmin={isMaster ? () => setTab("admin") : undefined}
-          onAbrirLixeira={isMaster ? () => setTab("lixeira") : undefined}
         />
 
         <div className="min-w-0">
@@ -297,7 +291,16 @@ export function TarefasPage() {
               {minhas.length} tarefa(s) · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas
             </span>
           </div>
-          <ViewSwitcher value={viewMinhas} onChange={setViewMinhas} />
+          <div className="flex items-center gap-2 flex-wrap">
+            {isMaster && (
+              <>
+                <button type="button" onClick={() => setTab("admin")} className="text-xs font-medium px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">⚙️ Configurações</button>
+                <button type="button" onClick={() => setTab("lixeira")} className="text-xs font-medium px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">🗑️ Lixeira</button>
+                <span className="mx-1 h-5 w-px bg-gray-200 dark:bg-gray-700" />
+              </>
+            )}
+            <ViewSwitcher value={viewMinhas} onChange={setViewMinhas} />
+          </div>
           {viewMinhas === "calendario" && (
             <CalendarioView
               tarefas={minhas}
@@ -437,7 +440,6 @@ function ProjetosTopBar({
   tabAtual, projetoFiltroAtual, subFiltroAtual, minhasPendentes,
   projetos, subprojetos, tarefasProjeto,
   onAbrirMinhas, onAbrirProjeto, onAbrirSubprojeto,
-  onAbrirAdmin, onAbrirLixeira,
 }: {
   tabAtual: string;
   projetoFiltroAtual: string;
@@ -449,8 +451,6 @@ function ProjetosTopBar({
   onAbrirMinhas: () => void;
   onAbrirProjeto: (id: string) => void;
   onAbrirSubprojeto: (projetoId: string, subId: string) => void;
-  onAbrirAdmin?: () => void;
-  onAbrirLixeira?: () => void;
 }) {
   const ativas = (ts: Tarefa[]) => ts.filter(t => t.status !== "concluida" && t.status !== "cancelada").length;
   const subs = tabAtual === "projeto" && projetoFiltroAtual ? subprojetos.filter(s => s.projetoId === projetoFiltroAtual) : [];
@@ -469,9 +469,6 @@ function ProjetosTopBar({
             <span className="whitespace-nowrap">{p.nome}</span>
           </button>
         ))}
-        {(onAbrirAdmin || onAbrirLixeira) && <span className="mx-1 h-5 w-px bg-gray-200 dark:bg-gray-700 shrink-0" />}
-        {onAbrirAdmin && <button onClick={onAbrirAdmin} className={chip(tabAtual === "admin")}>⚙️ Configurações</button>}
-        {onAbrirLixeira && <button onClick={onAbrirLixeira} className={chip(tabAtual === "lixeira")}>🗑️ Lixeira</button>}
       </div>
       {tabAtual === "projeto" && subs.length > 0 && (
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pl-1">
@@ -2397,12 +2394,12 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
                   setDropTarget(null);
                 } : undefined}
                 onClick={() => onAbrir(t.id)}
-                className={`w-full text-left text-[11px] px-1.5 py-1 rounded text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
+                className={`w-full text-left text-[11px] px-2 py-1.5 rounded-md text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
                 style={{ background: meta.cor + "14", borderLeft: `3px solid ${meta.cor}` }}
                 title={podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
               >
-                <div className="truncate font-medium leading-tight">{t.titulo}</div>
-                <span className="inline-flex items-center gap-0.5 mt-0.5 px-1.5 py-[1px] rounded-full text-[8px] font-bold uppercase tracking-wide text-white" style={{ background: meta.cor }}>
+                <div className="font-medium leading-snug line-clamp-2 mb-1">{t.titulo}</div>
+                <span className="inline-flex items-center gap-0.5 px-1.5 py-[1px] rounded-full text-[8px] font-bold uppercase tracking-wide text-white" style={{ background: meta.cor }}>
                   {meta.icon} {meta.label}
                 </span>
               </button>
@@ -4425,126 +4422,6 @@ function SubtarefasSection({ tarefa, autor, pessoas, novaSubtarefa, setNovaSubta
 }
 
 // ─── "Ver como…" — master only ────────────────────────────────────────────
-// Lista pessoas com permissão "tarefas" em algum restaurante e deixa o
-// master escolher uma pra impersonar. Pessoas com isMaster ficam de fora
-// (a visualização delas é igual à do user atual quando ele é master).
-function VerComoButton({ onSelect }: { onSelect: (id: string) => void }) {
-  const [aberto, setAberto] = useState(false);
-  const [pessoas, setPessoas] = useState<Array<{ id: string; nome: string; cargosResumo: string }>>([]);
-  const [busca, setBusca] = useState("");
-  useEffect(() => {
-    if (!aberto) return;
-    // Carrega perfis custom (collection /accessProfiles) e pessoas em
-    // paralelo. permissions[rid] da Pessoa é derivado dos profileIds via
-    // aplicarPerfisNaPessoa — sem isso, o doc bruto do Firestore vem sem
-    // permissions e o filtro de canVer pra "tarefas" retorna vazio.
-    let perfisAtual: AccessProfile[] = [];
-    let pessoasAtual: Array<{ id: string; data: Pessoa }> = [];
-    function recalcular() {
-      const list: Array<{ id: string; nome: string; cargosResumo: string }> = [];
-      for (const { id, data } of pessoasAtual) {
-        if (data.ativa === false) continue;
-        if (data.isMaster) continue; // master vê tudo
-        if (!data.nome) continue;
-        const enriquecida = aplicarPerfisNaPessoa(data, perfisAtual);
-        const rids = Object.keys(enriquecida.permissions || {}).filter(rid =>
-          canVer(enriquecida, rid, "tarefas"),
-        );
-        if (rids.length === 0) continue;
-        list.push({
-          id,
-          nome: data.nome,
-          cargosResumo: `${rids.length} restaurante(s)`,
-        });
-      }
-      list.sort((a, b) => a.nome.localeCompare(b.nome));
-      setPessoas(list);
-    }
-    const u1 = onSnapshot(collection(db, "accessProfiles"), snap => {
-      perfisAtual = snap.docs.map(d => ({ id: d.id, ...d.data() }) as AccessProfile);
-      recalcular();
-    });
-    const u2 = onSnapshot(collection(db, "pessoas"), snap => {
-      pessoasAtual = snap.docs.map(d => ({ id: d.id, data: { id: d.id, ...d.data() } as Pessoa }));
-      recalcular();
-    });
-    return () => { u1(); u2(); };
-  }, [aberto]);
-
-  const filtrada = useMemo(() => {
-    const q = busca.trim().toLowerCase();
-    if (!q) return pessoas;
-    return pessoas.filter(p => p.nome.toLowerCase().includes(q));
-  }, [pessoas, busca]);
-
-  return (
-    <>
-      <button
-        type="button"
-        onClick={() => setAberto(true)}
-        className="mb-3 text-[11px] px-2.5 py-1 rounded border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
-      >
-        👁 Ver como outro usuário (master)
-      </button>
-      {aberto && (
-        <div
-          className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4"
-          onClick={() => setAberto(false)}
-        >
-          <div
-            className="bg-white dark:bg-gray-900 rounded-xl shadow-2xl w-full max-w-md max-h-[85vh] overflow-y-auto"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-gray-800">
-              <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">
-                👁 Visualizar Gestor de Tarefas como…
-              </h2>
-              <button
-                type="button"
-                onClick={() => setAberto(false)}
-                className="text-gray-500 hover:text-gray-900 text-xl leading-none p-1"
-              >
-                ✕
-              </button>
-            </div>
-            <div className="p-4 space-y-3">
-              <p className="text-xs text-gray-600 dark:text-gray-400">
-                Escolha uma pessoa pra ver a tela do Gestor de Tarefas com as
-                permissões dela. O bypass de master fica desativado nessa
-                visualização.
-              </p>
-              <input
-                type="text"
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="Buscar por nome…"
-                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
-                autoFocus
-              />
-              <div className="space-y-1 max-h-[50vh] overflow-y-auto">
-                {filtrada.length === 0 ? (
-                  <div className="text-xs text-gray-500 italic text-center py-4">
-                    Nenhuma pessoa{busca && ` com "${busca}"`} tem acesso ao Gestor de Tarefas.
-                  </div>
-                ) : filtrada.map(p => (
-                  <button
-                    key={p.id}
-                    type="button"
-                    onClick={() => { onSelect(p.id); setAberto(false); }}
-                    className="w-full text-left px-3 py-2 rounded-lg hover:bg-indigo-50 dark:hover:bg-indigo-900/20 border border-transparent hover:border-indigo-200 dark:hover:border-indigo-800"
-                  >
-                    <div className="text-sm text-gray-900 dark:text-gray-100">{p.nome}</div>
-                    <div className="text-[10px] text-gray-500 dark:text-gray-400">{p.cargosResumo}</div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-    </>
-  );
-}
 
 // ─── ProrrogarContratoModal ─────────────────────────────────────────────
 // Aberto pelo botão "✓ Prorrogar contrato" na Decisão de Experiência 1ª
