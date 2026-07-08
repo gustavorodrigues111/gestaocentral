@@ -164,9 +164,12 @@ export function WikiProcessosPage() {
     (filtroArea === "todas" || p.area === filtroArea) &&
     (!q || `${p.titulo} ${p.resumo || ""} ${(p.tags || []).join(" ")} ${p.area}`.toLowerCase().includes(q))
   );
-  // Agrupa por área
-  const porArea = new Map<string, WikiProcesso[]>();
-  for (const p of visiveis) { const a = p.area || "Sem área"; const arr = porArea.get(a) || []; arr.push(p); porArea.set(a, arr); }
+  // Agrupa por área. Visualização mostra só PUBLICADOS; Cadastro mostra tudo.
+  const agrupar = (lista: WikiProcesso[]) => { const m = new Map<string, WikiProcesso[]>(); for (const p of lista) { const a = p.area || "Sem área"; const arr = m.get(a) || []; arr.push(p); m.set(a, arr); } return m; };
+  const porArea = agrupar(visiveis);
+  const visiveisPub = visiveis.filter(p => p.publicado !== false);
+  const porAreaPub = agrupar(visiveisPub);
+  const daEmpresaPub = daEmpresa.filter(p => p.publicado !== false);
 
   // Preenche UM processo (rascunho) com a IA a partir do título/área e abre o
   // editor pra revisar antes de salvar. Lança em erro (o LerModal trata).
@@ -231,21 +234,21 @@ export function WikiProcessosPage() {
       {abaAtual === "visualizacao" ? (
         <>
           <div className="flex items-center justify-between mb-3 gap-2 flex-wrap">
-            <div className="text-sm text-gray-500">{daEmpresa.length} processo{daEmpresa.length === 1 ? "" : "s"} documentado{daEmpresa.length === 1 ? "" : "s"}</div>
-            {daEmpresa.length > 0 && <Button variant="secondary" onClick={() => setPerguntando(true)}>🤖 Pergunte à IA</Button>}
+            <div className="text-sm text-gray-500">{daEmpresaPub.length} processo{daEmpresaPub.length === 1 ? "" : "s"} publicado{daEmpresaPub.length === 1 ? "" : "s"}</div>
+            {daEmpresaPub.length > 0 && <Button variant="secondary" onClick={() => setPerguntando(true)}>🤖 Pergunte à IA</Button>}
           </div>
 
-          {daEmpresa.length === 0 ? (
+          {daEmpresaPub.length === 0 ? (
             <div className="text-center py-12 text-gray-500 dark:text-gray-400">
               <div className="text-4xl mb-2">📚</div>
-              <p>Nenhum processo documentado nesta empresa ainda.</p>
-              {podeCadastrar && <p className="text-sm mt-1">Vá na aba <b>Cadastro</b> pra documentar o primeiro: abertura da casa, fechamento de caixa, limpeza, recebimento…</p>}
+              <p>Nenhum processo publicado nesta empresa ainda.</p>
+              {podeCadastrar && <p className="text-sm mt-1">Documente e <b>publique</b> pela aba <b>Cadastro</b> pra ele aparecer aqui.</p>}
             </div>
-          ) : visiveis.length === 0 ? (
+          ) : visiveisPub.length === 0 ? (
             <div className="text-center py-10 text-gray-500 dark:text-gray-400 text-sm">Nada encontrado pra essa busca/filtro.</div>
           ) : (
             <div className="space-y-5">
-              {[...porArea.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([area, lista]) => (
+              {[...porAreaPub.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([area, lista]) => (
                 <div key={area}>
                   <div className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">{area}</div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
@@ -926,10 +929,11 @@ function LerModal({ proc, processos, setorNomes, editavel, onEditar, onEditarVoz
                 {gerando ? "Gerando…" : (vazio ? "✨ Preencher com IA" : "✨ Refazer com IA")}
               </Button>
             )}
-            {editavel && onPublicar && proc.publicado === false && <Button size="sm" onClick={() => onPublicar(true)}>📢 Publicar</Button>}
+            {editavel && onPublicar && (proc.publicado === false
+              ? <Button size="sm" onClick={() => onPublicar(true)}>📢 Publicar</Button>
+              : <Button size="sm" variant="secondary" onClick={() => onPublicar(false)}>↩︎ Voltar para rascunho</Button>)}
             {editavel && onEditar && <Button size="sm" variant="secondary" onClick={onEditar}>✏️ Editar</Button>}
             {editavel && onEditarVoz && <Button size="sm" variant="secondary" onClick={onEditarVoz}>🎙️ Editar por voz</Button>}
-            {editavel && onPublicar && proc.publicado !== false && <button type="button" onClick={() => onPublicar(false)} className="text-[11px] text-gray-400 hover:text-amber-600 underline">voltar a rascunho</button>}
             <span className="text-[11px] text-gray-400">atualizado {fmtBR((proc.atualizadoEm || "").slice(0, 10))}</span>
           </div>
           {erroGen && <div className="text-xs text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2 mt-2">{erroGen}</div>}
