@@ -13,6 +13,17 @@ import type { CardapioEstruturado, CardapioLayout, SecaoCardapio } from "../../c
 
 const TEAL = "#1d3c4b";
 const PAGE_W = 460, PAGE_H = 651;
+// Ícones garrafa/taça como GLIFO de fonte (Material Symbols Outlined, peso fino):
+// renderiza como texto → alinha certinho no PDF (svg/img o html2canvas erra).
+// Instância @24,200,0,0 = opsz 24, wght 200 (delicado), FILL 0 (linha), GRAD 0.
+const MSYMS_HREF = "https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:opsz,wght,FILL,GRAD@20..48,100..700,0..1,-50..200&display=block";
+const GLYPH_GARRAFA = String.fromCharCode(0xea60); // liquor (garrafa)
+const GLYPH_TACA = String.fromCharCode(0xf1e8);    // wine_bar (taça)
+const icoFonteStyle: CSSProperties = {
+  fontFamily: "'Material Symbols Outlined'", fontWeight: 300,
+  fontVariationSettings: "'wght' 250, 'opsz' 24, 'FILL' 0, 'GRAD' 0",
+  fontStyle: "normal", color: TEAL, marginRight: 3, lineHeight: 1, verticalAlign: "-0.15em",
+};
 const CAPA = "/cardapio-capa-sororoca.png";
 const norm = (s: string) => (s || "").trim().toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
 
@@ -93,6 +104,13 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
   const ehSororoca = /soror/i.test(nomeRestaurante || "");
   const [tCapa, setTCapa] = useState(tituloCapa ?? "");
   useEffect(() => { setTCapa(tituloCapa ?? ""); }, [tituloCapa]);
+  // Carrega a fonte de ícones (garrafa/taça) uma vez.
+  useEffect(() => {
+    if (document.querySelector("link[data-msyms]")) return;
+    const l = document.createElement("link");
+    l.rel = "stylesheet"; l.href = MSYMS_HREF; l.setAttribute("data-msyms", "1");
+    document.head.appendChild(l);
+  }, []);
   // Inicializa JÁ com o layout vindo por props (carregado pelo CardapioPage) — abre
   // instantâneo, sem esperar o getDoc. O getDoc abaixo só confirma/atualiza depois.
   const [lay, setLay] = useState<Lay>(() => montarLay(menuLayoutProprio && menuLayout ? menuLayout : sharedLayout));
@@ -245,14 +263,14 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
                   <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, gap: 1 }}>
                     {precoTxt && (
                       <span style={{ whiteSpace: "nowrap", lineHeight: 1.1 }}>
-                        {!ehNota && mostrarGarrafa && <span style={{ fontSize: lay.tamTitulo * 0.95, marginRight: 3 }}>🍾</span>}
+                        {!ehNota && mostrarGarrafa && <span style={{ ...icoFonteStyle, fontSize: lay.tamTitulo * 1.05 }}>{GLYPH_GARRAFA}</span>}
                         {!ehNota && (p.garrafaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: TEAL, opacity: 0.75, marginRight: 3 }}>({String(p.garrafaMl).replace(/ml$/i, "").trim()}ml)</span>}
                         <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: TEAL, fontWeight: 600 }}>{precoTxt}</span>
                       </span>
                     )}
                     {p.taca && (p.precoTaca || "").trim() && (
                       <span style={{ whiteSpace: "nowrap", lineHeight: 1.1 }}>
-                        <span style={{ fontSize: lay.tamTitulo * 0.95, marginRight: 3 }}>🍷</span>
+                        <span style={{ ...icoFonteStyle, fontSize: lay.tamTitulo * 1.05 }}>{GLYPH_TACA}</span>
                         {(p.tacaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: TEAL, opacity: 0.75, marginRight: 3 }}>({String(p.tacaMl).replace(/ml$/i, "").trim()}ml)</span>}
                         <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, color: TEAL, fontWeight: 600 }}>{lay.mostrarCifrao ? `$ ${p.precoTaca!.trim()}` : p.precoTaca!.trim()}</span>
                       </span>
@@ -480,7 +498,11 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
       await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
       // Garante que as fontes do Google terminaram de baixar antes do print —
       // senão o html2canvas captura no fallback e o PDF sai com fonte errada.
-      try { await (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts?.ready; } catch { /* ok */ }
+      try {
+        const fs = (document as Document & { fonts?: { ready?: Promise<unknown>; load?: (f: string, t?: string) => Promise<unknown> } }).fonts;
+        await fs?.load?.("24px 'Material Symbols Outlined'", GLYPH_GARRAFA + GLYPH_TACA); // garante os glifos garrafa/taça
+        await fs?.ready;
+      } catch { /* ok */ }
       const html2canvas = (await import("html2canvas")).default;
       const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({ unit: "pt", format: "a4" });
