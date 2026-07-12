@@ -14,14 +14,16 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
+import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
+import { whatsappNumerosAcessiveis } from "../../core/auth/permissions";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
-import { enviarWhatsapp } from "../../core/whatsapp/enviar";
 import { WhatsappTemplatesTab } from "./WhatsappTemplatesTab";
-import type { Pessoa, WhatsappTag, WhatsappContato } from "../../core/types";
+import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero } from "../../core/types";
 
-type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null };
+type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string };
 
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
@@ -42,11 +44,16 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
   const { restaurants } = useRestaurant();
   const isMaster = !!me?.isMaster;
   const { can } = useCanAcao(rid || "");
+  const { perfis } = useAccessProfiles();
   const podeVer = isMaster || can("whatsappInbox", "ver");
   const podeResponder = isMaster || can("whatsappInbox", "responder");
   const podeVincular = isMaster || can("whatsappInbox", "vincular");
   const podeTags = isMaster || can("whatsappInbox", "gerenciarTags");
+  const podeConfigNum = isMaster || can("whatsappInbox", "configurar");
 
+  const [numeros, setNumeros] = useState<WhatsappNumero[]>([]);
+  const [numeroSel, setNumeroSel] = useState<string | null>(null);
+  const [gerNumeros, setGerNumeros] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [contatos, setContatos] = useState<Record<string, WhatsappContato>>({});
@@ -67,6 +74,12 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
   useEffect(() => {
     const u = onSnapshot(query(collection(db, "whatsappMensagens"), orderBy("timestamp", "asc")), snap =>
       setMsgs(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Msg)));
+    return () => u();
+  }, []);
+
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "whatsappNumeros"), snap =>
+      setNumeros(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WhatsappNumero).filter(n => n.ativo !== false)));
     return () => u();
   }, []);
 
@@ -123,17 +136,28 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
     return c?.restaurantIds == null && !c?.restaurantId;
   }
 
+  // ── Números acessíveis (permissão) + número selecionado ───────────────────
+  const numsPermitidos = whatsappNumerosAcessiveis(me, rid || "", perfis);   // null = todos
+  const numerosVisiveis = numsPermitidos ? numeros.filter(n => numsPermitidos.includes(n.id)) : numeros;
+  useEffect(() => {
+    if (numerosVisiveis.length === 0) { if (numeroSel !== null) setNumeroSel(null); return; }
+    if (!numeroSel || !numerosVisiveis.some(n => n.id === numeroSel)) setNumeroSel(numerosVisiveis[0].id);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [numerosVisiveis.map(n => n.id).join(","), numeroSel]);
+  // Só as mensagens do número selecionado.
+  const msgsDoNumero = useMemo(() => msgs.filter(m => m.numeroId === numeroSel), [msgs, numeroSel]);
+
   // ── Conversas agrupadas ──────────────────────────────────────────────────
   const conversas = useMemo(() => {
     const m = new Map<string, { waId: string; nome?: string | null; ultima: Msg; naoLidas: number }>();
-    for (const msg of msgs) {
+    for (const msg of msgsDoNumero) {
       const c = m.get(msg.waId) || { waId: msg.waId, nome: msg.nome, ultima: msg, naoLidas: 0 };
       c.ultima = msg; if (msg.nome) c.nome = msg.nome;
       m.set(msg.waId, c);
     }
-    for (const msg of msgs) if (msg.direcao === "in" && !msg.lido) { const c = m.get(msg.waId); if (c) c.naoLidas++; }
+    for (const msg of msgsDoNumero) if (msg.direcao === "in" && !msg.lido) { const c = m.get(msg.waId); if (c) c.naoLidas++; }
     return [...m.values()].sort((a, b) => (b.ultima.timestamp || "").localeCompare(a.ultima.timestamp || ""));
-  }, [msgs]);
+  }, [msgsDoNumero]);
 
   const nomeConversa = (waId: string, waNome?: string | null) =>
     contatos[waId]?.nomeManual || pessoaDaConversa(waId)?.nome || waNome || foneBonito(waId);
@@ -148,10 +172,8 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
     return true;
   }), [conversas, filtroRest, filtroTag, contatos, pessoas]);
 
-  const thread = useMemo(() => msgs.filter(x => x.waId === sel), [msgs, sel]);
+  const thread = useMemo(() => msgsDoNumero.filter(x => x.waId === sel), [msgsDoNumero, sel]);
   const nomeSel = sel ? nomeConversa(sel, conversas.find(c => c.waId === sel)?.nome) : "";
-  const ultimaEntrada = useMemo(() => thread.filter(m => m.direcao === "in").slice(-1)[0], [thread]);
-  const dentro24h = ultimaEntrada?.timestamp ? (Date.now() - new Date(ultimaEntrada.timestamp).getTime()) < 24 * 3600 * 1000 : false;
 
   // Marca recebidas como lidas ao abrir.
   useEffect(() => {
@@ -183,15 +205,22 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
 
   async function responder() {
     const txt = resposta.trim();
-    if (!txt || !sel) return;
+    if (!txt || !sel || !numeroSel) return;
     setEnviando(true);
-    const r = await enviarWhatsapp({ to: sel, texto: txt, contexto: "inbox_resposta", criadoPor: me?.id });
-    if (r.ok) {
-      await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({ waId: sel, nome: nomeSel || null, direcao: "out", tipo: "text", texto: txt, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, autorNome: me?.nome || null }));
-      setResposta("");
-    } else {
-      alert(r.naoConfigurado ? "WhatsApp ainda não configurado (env vars)." : (r.erro || "Falha ao enviar."));
-    }
+    try {
+      const r = await fetch("/api/evolution-enviar", {
+        method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
+        body: JSON.stringify({ instancia: numeroSel, to: sel, texto: txt, autorNome: me?.nome || "" }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && (j as { ok?: boolean }).ok) {
+        // Guarda o texto CRU (sem o prefixo *Nome:*); a autoria vai em autorNome.
+        await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({ waId: sel, nome: nomeSel || null, direcao: "out", tipo: "text", texto: txt, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null }));
+        setResposta("");
+      } else {
+        alert((j as { naoConfigurado?: boolean }).naoConfigurado ? "Evolution ainda não configurada (env vars na Vercel)." : ((j as { error?: string }).error || "Falha ao enviar."));
+      }
+    } catch (e) { alert("Falha ao enviar: " + (e instanceof Error ? e.message : "?")); }
     setEnviando(false);
   }
 
@@ -228,6 +257,22 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
       <>
       {!sel && (
         <>
+          {/* Seletor de NÚMERO (caixa) — só os que a pessoa pode acessar */}
+          <div className="flex flex-wrap items-center gap-1.5 mb-2">
+            {numerosVisiveis.map(n => (
+              <button key={n.id} type="button" onClick={() => setNumeroSel(n.id)}
+                className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${numeroSel === n.id ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                📱 {n.nome}
+              </button>
+            ))}
+            {podeConfigNum && <button type="button" onClick={() => setGerNumeros(true)} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50">＋ Números</button>}
+          </div>
+          {numerosVisiveis.length === 0 && (
+            <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500 mb-3">
+              {numeros.length === 0 ? (podeConfigNum ? "Nenhum número configurado ainda. Clique em “＋ Números” pra registrar." : "Nenhum número de WhatsApp configurado.") : "Você não tem número de WhatsApp atribuído."}
+            </div>
+          )}
+
           {/* Filtro por restaurante + gerenciar tags */}
           <div className="flex flex-wrap items-center gap-1.5 mb-2">
             <FiltroChip ativo={filtroRest === "all"} onClick={() => setFiltroRest("all")}>Todos</FiltroChip>
@@ -353,7 +398,6 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
           {/* Resposta */}
           {podeResponder && (
             <div className="border-t border-gray-200 dark:border-gray-800 p-2">
-              {!dentro24h && <div className="text-[11px] text-amber-700 dark:text-amber-400 mb-1 px-1">⚠ Fora da janela de 24h — texto livre pode falhar; nesse caso só template aprovado inicia a conversa.</div>}
               <div className="flex items-end gap-2">
                 <textarea value={resposta} onChange={e => setResposta(e.target.value)} rows={1} placeholder="Responder…" className="flex-1 px-3 py-2 text-base rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 resize-none" onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void responder(); } }} />
                 <Button onClick={() => void responder()} disabled={enviando || !resposta.trim()}>{enviando ? "…" : "Enviar"}</Button>
@@ -367,7 +411,63 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
       )}
 
       {gerenciarTags && <GerenciarTagsModal tags={tags} onClose={() => setGerenciarTags(false)} onCriar={criarTag} onExcluir={excluirTag} />}
+      {gerNumeros && <NumerosModal numeros={numeros} pessoaId={me?.id || null} onClose={() => setGerNumeros(false)} />}
     </div>
+  );
+}
+
+// Cadastro dos números (caixas). O id do doc = nome da INSTÂNCIA na Evolution.
+function NumerosModal({ numeros, pessoaId, onClose }: { numeros: WhatsappNumero[]; pessoaId: string | null; onClose: () => void }) {
+  const [instancia, setInstancia] = useState("");
+  const [nome, setNome] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const slug = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+  async function criar() {
+    const id = slug(instancia);
+    if (!id) { alert("Informe o nome da instância (ex.: sororoca-clientes)."); return; }
+    if (!nome.trim()) { alert("Informe um rótulo amigável."); return; }
+    if (numeros.some(n => n.id === id)) { alert("Já existe um número com essa instância."); return; }
+    setSalvando(true);
+    try {
+      await setDoc(doc(db, "whatsappNumeros", id), sanitizeForFirestore({ id, nome: nome.trim(), descricao: descricao.trim() || undefined, ativo: true, criadoEm: new Date().toISOString(), criadoPor: pessoaId }));
+      setInstancia(""); setNome(""); setDescricao("");
+    } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : "?")); }
+    finally { setSalvando(false); }
+  }
+  async function toggleAtivo(n: WhatsappNumero) { await setDoc(doc(db, "whatsappNumeros", n.id), { ativo: !(n.ativo !== false) }, { merge: true }); }
+  async function excluir(n: WhatsappNumero) { if (confirm(`Remover o número "${n.nome}"? (não apaga as conversas)`)) await deleteDoc(doc(db, "whatsappNumeros", n.id)); }
+
+  const inp = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+  return (
+    <Modal onClose={onClose} title="📱 Números de WhatsApp">
+      <div className="space-y-4">
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 space-y-2">
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-300">Registrar número</div>
+          <p className="text-[11px] text-gray-500">A <b>instância</b> tem que ser IGUAL ao nome criado na Evolution (ex.: <code>sororoca</code>). O <b>rótulo</b> é só pra exibir.</p>
+          <input value={instancia} onChange={e => setInstancia(e.target.value)} className={inp} placeholder="Instância na Evolution (ex.: sororoca)" />
+          <input value={nome} onChange={e => setNome(e.target.value)} className={inp} placeholder="Rótulo (ex.: Sororoca · Clientes)" />
+          <input value={descricao} onChange={e => setDescricao(e.target.value)} className={inp} placeholder="Descrição (opcional): clientes, fornecedores, DP…" />
+          <div className="flex justify-end"><Button onClick={criar} disabled={salvando}>{salvando ? "Salvando…" : "Adicionar número"}</Button></div>
+        </div>
+        {numeros.length > 0 && (
+          <div className="space-y-1.5">
+            {numeros.map(n => (
+              <div key={n.id} className="flex items-center gap-2 p-2.5 rounded-lg border border-gray-200 dark:border-gray-800">
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{n.nome} {n.ativo === false && <span className="text-[10px] text-gray-400">(inativo)</span>}</div>
+                  <div className="text-[11px] text-gray-400 truncate">instância: {n.id}{n.descricao ? ` · ${n.descricao}` : ""}</div>
+                </div>
+                <button type="button" onClick={() => void toggleAtivo(n)} className="text-[11px] px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">{n.ativo === false ? "Ativar" : "Desativar"}</button>
+                <button type="button" onClick={() => void excluir(n)} className="text-gray-400 hover:text-rose-600 text-sm">🗑️</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-[11px] text-gray-400">Quem acessa cada número se define no <b>Perfil de Acesso</b> (escopo por número). Master vê todos.</p>
+      </div>
+    </Modal>
   );
 }
 

@@ -158,6 +158,25 @@ export function wikiCategoriasAcessiveis(
 }
 
 /**
+ * Números de WhatsApp (inbox) que a pessoa pode ver/responder nesse restaurante.
+ * - null  = TODOS (master, sem restrição no perfil, ou lista vazia)
+ * - [...] = só esses ids de whatsappNumeros
+ */
+export function whatsappNumerosAcessiveis(
+  pessoa: Pessoa | null,
+  restaurantId: string,
+  perfisCustom: AccessProfile[] = [],
+): string[] | null {
+  if (!pessoa) return [];
+  if (pessoa.isMaster) return null;
+  const profileId = pessoa.profileIds?.[restaurantId];
+  const profile = resolverPerfil(profileId, perfisCustom);
+  const nums = profile?.whatsappNumeros;
+  if (!nums || nums.length === 0) return null;
+  return nums;
+}
+
+/**
  * Versão "any of" — true se pessoa pode fazer pelo menos UMA das ações do
  * módulo. Útil pra decidir se mostra o item no menu sem precisar verificar
  * cada ação individualmente.

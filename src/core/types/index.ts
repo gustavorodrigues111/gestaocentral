@@ -45,6 +45,13 @@ export type AccessProfile = {
    * aponta pro perfil — a correlação vive AQUI, no perfil.
    */
   wikiSetores?: string[];
+  /**
+   * Escopo por NÚMERO de WhatsApp (inbox). Lista de ids de whatsappNumeros que
+   * este perfil pode ver/responder. Ausente/vazio = TODOS os números. Master
+   * ignora. Filtra só o inbox; as ações (ver/responder/…) seguem em
+   * `permissions.whatsappInbox`.
+   */
+  whatsappNumeros?: string[];
   criadoPor?: string;                 // pessoaId
   criadoEm: string;                   // ISO
   atualizadoPor?: string;
@@ -5794,6 +5801,16 @@ export type CartaoLancamento = {
   criadoPor?: string | null;
 };
 
+// Número de WhatsApp plugado (uma "caixa" do inbox). O id do doc = o nome da
+// INSTÂNCIA na Evolution (ex.: "sororoca"), pra o webhook mapear direto.
+export type WhatsappNumero = {
+  id: string;                 // = nome da instância na Evolution
+  nome: string;               // rótulo amigável (ex.: "Sororoca · Clientes")
+  descricao?: string;         // pra que serve (clientes, fornecedores, DP…)
+  ativo?: boolean;
+  criadoEm?: string;
+  criadoPor?: string;
+};
 export type WhatsappContato = {
   id: string;                 // = waId (dígitos, com DDI)
   restaurantIds?: string[] | null;  // override manual (multi). null/ausente = herda da Pessoa

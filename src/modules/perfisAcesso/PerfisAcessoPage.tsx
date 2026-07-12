@@ -541,6 +541,15 @@ function PerfilEditor({ perfil, isNew, restaurantes, pessoas, perfis, onSalvar, 
         </div>
       </div>
 
+      {/* Escopo por NÚMERO de WhatsApp — só quando o perfil tem alguma
+          permissão de whatsappInbox habilitada. Vazio = todos os números. */}
+      {form.permissions.whatsappInbox && Object.values(form.permissions.whatsappInbox).some(v => v === true) && (
+        <WhatsappNumerosEditor
+          selecionados={form.whatsappNumeros || []}
+          onChange={nums => setForm(f => ({ ...f, whatsappNumeros: nums }))}
+        />
+      )}
+
       {/* Escopo por categoria da Wiki de Processos — só quando o perfil tem
           alguma permissão de wikiProcessos habilitada. */}
       {form.permissions.wikiProcessos && Object.values(form.permissions.wikiProcessos).some(v => v === true) && (
@@ -550,6 +559,40 @@ function PerfilEditor({ perfil, isNew, restaurantes, pessoas, perfis, onSalvar, 
           onChange={cats => setForm(f => ({ ...f, wikiCategorias: cats }))}
         />
       )}
+    </div>
+  );
+}
+
+// Escopo por número de WhatsApp: vazio = todos. Lista os whatsappNumeros ativos.
+function WhatsappNumerosEditor({ selecionados, onChange }: { selecionados: string[]; onChange: (nums: string[]) => void }) {
+  const [numeros, setNumeros] = useState<{ id: string; nome: string }[]>([]);
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "whatsappNumeros"), snap => {
+      setNumeros(snap.docs.map(d => { const x = d.data() as { nome?: string; ativo?: boolean }; return { id: d.id, nome: x.nome || d.id, ativo: x.ativo }; }).filter(n => n.ativo !== false).map(n => ({ id: n.id, nome: n.nome })));
+    });
+    return () => u();
+  }, []);
+  const toggle = (id: string) => onChange(selecionados.includes(id) ? selecionados.filter(x => x !== id) : [...selecionados, id]);
+  return (
+    <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-900/10 p-3 space-y-2">
+      <div className="text-xs font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-300">📱 Números de WhatsApp deste perfil</div>
+      <p className="text-[11px] text-gray-500 dark:text-gray-400">Deixe <b>vazio</b> pra este perfil acessar <b>todos</b> os números. Marque números específicos pra limitar o inbox só a eles.</p>
+      {numeros.length === 0 ? (
+        <p className="text-[11px] text-gray-400">Nenhum número cadastrado ainda (cadastre no inbox do WhatsApp).</p>
+      ) : (
+        <div className="flex flex-wrap gap-1.5">
+          {numeros.map(n => {
+            const on = selecionados.includes(n.id);
+            return (
+              <button key={n.id} type="button" onClick={() => toggle(n.id)}
+                className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${on ? "border-emerald-500 bg-emerald-500 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800"}`}>
+                {on ? "✓ " : ""}📱 {n.nome}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      <div className="text-[11px] text-gray-400">{selecionados.length === 0 ? "Todos os números." : `${selecionados.length} número(s) selecionado(s).`}</div>
     </div>
   );
 }
