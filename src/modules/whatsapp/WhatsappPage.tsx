@@ -34,7 +34,9 @@ export function WhatsappPage() {
         {podeConfig && tabBtn("config", "⚙️ Configuração")}
       </div>
 
-      {abaEfetiva === "chat" ? <WhatsappInboxPage modo="conversas" /> : (
+      {/* Mantém o inbox montado ao trocar de aba pra não perder a conversa aberta. */}
+      {podeVer && <div className={abaEfetiva === "chat" ? "" : "hidden"}><WhatsappInboxPage modo="conversas" /></div>}
+      {podeConfig && abaEfetiva === "config" && (
         <div className="space-y-4">
           <NumerosManager />
           <TagsManager />
