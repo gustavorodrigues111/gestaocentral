@@ -45,7 +45,6 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
   const podeVer = isMaster || can("whatsapp", "ver");
   const podeResponder = isMaster || can("whatsapp", "responder");
   const podeVincular = isMaster || can("whatsapp", "vincular");
-  const podeTags = isMaster || can("whatsapp", "gerenciarTags");
 
   const [numeros, setNumeros] = useState<WhatsappNumero[]>([]);
   const [numeroSel, setNumeroSel] = useState<string | null>(null);
@@ -59,7 +58,6 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
   const [enviando, setEnviando] = useState(false);
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
   const [detalhes, setDetalhes] = useState(false);
-  const [gerenciarTags, setGerenciarTags] = useState(false);
   const [tab, setTab] = useState<"conversas" | "templates">("conversas");
 
   const ridsKey = restaurants.map(r => r.id).join(",");
@@ -172,13 +170,6 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
     const novas = atuais.includes(tagId) ? atuais.filter(t => t !== tagId) : [...atuais, tagId];
     await salvarContato(waId, { tagIds: novas });
   }
-  async function criarTag(nome: string, cor: string) {
-    const n = nome.trim(); if (!n) return;
-    await addDoc(collection(db, "whatsappTags"), sanitizeForFirestore({ nome: n, cor, criadoEm: new Date().toISOString() }));
-  }
-  async function excluirTag(id: string) {
-    await deleteDoc(doc(db, "whatsappTags", id));
-  }
 
   async function responder() {
     const txt = resposta.trim();
@@ -248,12 +239,6 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
             </div>
           )}
 
-          {/* Gerenciar tags */}
-          {podeTags && (
-            <div className="flex justify-end mb-2">
-              <button type="button" onClick={() => setGerenciarTags(true)} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 shrink-0">🏷 Tags</button>
-            </div>
-          )}
           {/* Filtro por tag */}
           {tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-3">
@@ -330,7 +315,6 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
                       </button>
                     );
                   })}
-                  <button type="button" onClick={() => setGerenciarTags(true)} className="text-xs text-indigo-600 dark:text-indigo-400 px-1.5">+ nova</button>
                 </div>
               </div>
             </div>
@@ -363,7 +347,6 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
       </>
       )}
 
-      {gerenciarTags && <GerenciarTagsModal tags={tags} onClose={() => setGerenciarTags(false)} onCriar={criarTag} onExcluir={excluirTag} />}
       {novaConversa && <NovaConversaModal pessoas={pessoas} onClose={() => setNovaConversa(false)}
         onAbrir={(waId, pid) => { setNovaConversa(false); setSel(waId); if (pid) void salvarContato(waId, { pessoaId: pid }); }} />}
     </div>
@@ -674,35 +657,41 @@ function FiltroChip({ ativo, onClick, children }: { ativo: boolean; onClick: () 
   );
 }
 
-function GerenciarTagsModal({ tags, onClose, onCriar, onExcluir }: { tags: WhatsappTag[]; onClose: () => void; onCriar: (nome: string, cor: string) => Promise<void>; onExcluir: (id: string) => Promise<void> }) {
+// Cadastro das tags (aba Configuração do módulo). Self-contido.
+export function TagsManager() {
+  const [tags, setTags] = useState<WhatsappTag[]>([]);
   const [nome, setNome] = useState("");
   const [cor, setCor] = useState(PALETA[0]!);
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "whatsappTags"), snap => setTags(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WhatsappTag).sort((a, b) => a.nome.localeCompare(b.nome))));
+    return () => u();
+  }, []);
+  const criar = async () => { const n = nome.trim(); if (!n) return; await addDoc(collection(db, "whatsappTags"), sanitizeForFirestore({ nome: n, cor, criadoEm: new Date().toISOString() })); setNome(""); };
+  const excluir = async (id: string) => { if (confirm("Excluir esta tag?")) await deleteDoc(doc(db, "whatsappTags", id)); };
   return (
-    <Modal title="Tags do WhatsApp" onClose={onClose} maxWidth="max-w-md">
-      <div className="space-y-4">
-        <div className="flex flex-wrap gap-2">
-          {tags.length === 0 && <span className="text-sm text-gray-400">Nenhuma tag ainda.</span>}
-          {tags.map(t => (
-            <span key={t.id} className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-full text-white" style={{ background: t.cor || "#6366f1" }}>
-              {t.nome}
-              <button type="button" onClick={() => void onExcluir(t.id)} className="opacity-80 hover:opacity-100 leading-none">×</button>
-            </span>
+    <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 space-y-3">
+      <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">🏷 Tags de conversa</div>
+      <p className="text-[11px] text-gray-500">Etiquetas pra organizar as conversas (aplicadas no Chat, dentro de cada conversa).</p>
+      <div className="flex flex-wrap gap-2">
+        {tags.length === 0 && <span className="text-sm text-gray-400">Nenhuma tag ainda.</span>}
+        {tags.map(t => (
+          <span key={t.id} className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-full text-white" style={{ background: t.cor || "#6366f1" }}>
+            {t.nome}
+            <button type="button" onClick={() => void excluir(t.id)} className="opacity-80 hover:opacity-100 leading-none">×</button>
+          </span>
+        ))}
+      </div>
+      <div className="border-t border-gray-100 dark:border-gray-800 pt-3">
+        <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Nova tag</label>
+        <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome da tag" className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100"
+          onKeyDown={e => { if (e.key === "Enter") void criar(); }} />
+        <div className="flex items-center gap-2 mt-2">
+          {PALETA.map(c => (
+            <button key={c} type="button" onClick={() => setCor(c)} className={`w-6 h-6 rounded-full ${cor === c ? "ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-900" : ""}`} style={{ background: c }} />
           ))}
-        </div>
-        <div className="border-t border-gray-200 dark:border-gray-800 pt-4">
-          <label className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Nova tag</label>
-          <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome da tag" className="w-full mt-1 px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
-            onKeyDown={e => { if (e.key === "Enter" && nome.trim()) { void onCriar(nome, cor); setNome(""); } }} />
-          <div className="flex items-center gap-2 mt-2">
-            {PALETA.map(c => (
-              <button key={c} type="button" onClick={() => setCor(c)} className={`w-6 h-6 rounded-full ${cor === c ? "ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-900" : ""}`} style={{ background: c }} />
-            ))}
-          </div>
-          <div className="mt-3 text-right">
-            <Button onClick={() => { if (nome.trim()) { void onCriar(nome, cor); setNome(""); } }} disabled={!nome.trim()}>Adicionar</Button>
-          </div>
+          <Button onClick={() => void criar()} disabled={!nome.trim()} size="sm">Adicionar</Button>
         </div>
       </div>
-    </Modal>
+    </div>
   );
 }

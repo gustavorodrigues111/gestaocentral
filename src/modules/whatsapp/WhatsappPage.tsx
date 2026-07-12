@@ -6,7 +6,7 @@ import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
-import { WhatsappInboxPage, NumerosManager } from "./WhatsappInboxPage";
+import { WhatsappInboxPage, NumerosManager, TagsManager } from "./WhatsappInboxPage";
 
 export function WhatsappPage() {
   const { pessoa } = useAuth();
@@ -38,7 +38,12 @@ export function WhatsappPage() {
         {podeConfig && tabBtn("config", "⚙️ Configuração")}
       </div>
 
-      {abaEfetiva === "chat" ? <WhatsappInboxPage modo="conversas" /> : <NumerosManager />}
+      {abaEfetiva === "chat" ? <WhatsappInboxPage modo="conversas" /> : (
+        <div className="space-y-4">
+          <NumerosManager />
+          <TagsManager />
+        </div>
+      )}
     </div>
   );
 }
