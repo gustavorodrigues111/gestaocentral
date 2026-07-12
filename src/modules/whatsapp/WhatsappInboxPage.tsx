@@ -19,11 +19,12 @@ import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import { WhatsappTemplatesTab } from "./WhatsappTemplatesTab";
-import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero } from "../../core/types";
+import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, Cliente } from "../../core/types";
 
-type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string };
+type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean };
 
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
+const fmtBRcurto = (ymd?: string | null) => { if (!ymd) return ""; const [a, m, d] = String(ymd).split("-"); return d ? `${d}/${m}/${a?.slice(2) || ""}` : String(ymd); };
 const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
 const foneBonito = (wa: string) => { const d = soDig(wa); const n = d.startsWith("55") ? d.slice(2) : d; return n.length >= 10 ? `+55 ${n.slice(0, 2)} ${n.slice(2, n.length - 4)}-${n.slice(-4)}` : wa; };
 // Chave de comparação que ignora DDI 55 e o 9º dígito de celular (DDD + 8 últimos).
@@ -52,6 +53,7 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [contatos, setContatos] = useState<Record<string, WhatsappContato>>({});
+  const [clientes, setClientes] = useState<Cliente[]>([]);
   const [tags, setTags] = useState<WhatsappTag[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [resposta, setResposta] = useState("");
@@ -93,6 +95,15 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
     return () => u();
   }, []);
 
+  // Clientes do Reservas+CRM (das empresas do usuário) — pra casar por telefone.
+  useEffect(() => {
+    const rids = ridsKey ? ridsKey.split(",").slice(0, 10) : [];
+    if (!rids.length) { setClientes([]); return; }
+    const u = onSnapshot(query(collection(db, "clientes"), where("restaurantId", "in", rids)),
+      snap => setClientes(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Cliente)));
+    return () => u();
+  }, [ridsKey]);
+
   useEffect(() => {
     const u = onSnapshot(collection(db, "whatsappTags"), snap =>
       setTags(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WhatsappTag).sort((a, b) => a.nome.localeCompare(b.nome))));
@@ -107,12 +118,25 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
     return m;
   }, [pessoas]);
   const tagById = useMemo(() => Object.fromEntries(tags.map(t => [t.id, t])), [tags]);
+  const clienteById = useMemo(() => Object.fromEntries(clientes.map(c => [c.id, c])), [clientes]);
+  const clienteByFone = useMemo(() => {
+    const m: Record<string, Cliente> = {};
+    for (const c of clientes) { const k = foneKey(c.telefone); if (k && !m[k]) m[k] = c; }
+    return m;
+  }, [clientes]);
 
   // Resolve Pessoa vinculada (manual tem prioridade sobre auto-match).
   function pessoaDaConversa(waId: string): Pessoa | null {
     const c = contatos[waId];
     if (c?.pessoaId) return pessoaById[c.pessoaId] || null;
     return pessoaByFone[foneKey(waId)] || null;
+  }
+  // Resolve Cliente (CRM) vinculado (manual tem prioridade sobre auto-match por telefone).
+  function clienteDaConversa(waId: string): Cliente | null {
+    const c = contatos[waId];
+    if (c?.clienteId) return clienteById[c.clienteId] || null;
+    if (c?.clienteId === null) return null;   // desvinculado manualmente
+    return clienteByFone[foneKey(waId)] || null;
   }
 
   // ── Números acessíveis + número selecionado ───────────────────────────────
@@ -205,6 +229,23 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
   const contatoSel = sel ? contatos[sel] : undefined;
   const pessoaSel = sel ? pessoaDaConversa(sel) : null;
   const autoMatch = sel ? pessoaByFone[foneKey(sel)] : null;
+  const clienteSel = sel ? clienteDaConversa(sel) : null;
+  const clienteAuto = sel ? clienteByFone[foneKey(sel)] : null;
+  const [transferir, setTransferir] = useState(false);
+
+  // Vincular/desvincular cliente do CRM.
+  async function vincularCliente(clienteId: string | null) { if (sel) await salvarContato(sel, { clienteId }); }
+  // Transferir a conversa pra outro atendente (+ registra no histórico).
+  async function transferirPara(p: Pessoa, nota: string) {
+    if (!sel) return;
+    await salvarContato(sel, { atribuidoA: p.id, atribuidoNome: p.nome });
+    await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({
+      waId: sel, numeroId: numeroSel, direcao: "out", tipo: "sistema", sistema: true, lido: true,
+      texto: `🔀 Conversa transferida para ${p.nome} por ${me?.nome || "—"}${nota ? ` — ${nota}` : ""}`,
+      timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), autorNome: me?.nome || null,
+    }));
+    setTransferir(false);
+  }
 
   const abaEfetiva = embutido ? "conversas" : tab;
   return (
@@ -297,10 +338,14 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
           {/* Header da conversa: nome completo → vínculo → botões */}
           <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800">
             <div className="text-base font-semibold text-gray-900 dark:text-gray-100 break-words">{nomeSel}</div>
-            <div className="text-[11px] text-gray-400 mt-0.5">
-              {foneBonito(sel)}{pessoaSel && <> · <span className="text-indigo-600 dark:text-indigo-300">👤 {pessoaSel.nome}</span></>}
+            <div className="text-[11px] text-gray-400 mt-0.5 flex flex-wrap gap-x-1">
+              <span>{foneBonito(sel)}</span>
+              {clienteSel && <span>· <span className="text-emerald-600 dark:text-emerald-300">🧑 {clienteSel.nome} (cliente)</span></span>}
+              {pessoaSel && <span>· <span className="text-indigo-600 dark:text-indigo-300">👤 {pessoaSel.nome}</span></span>}
             </div>
-            <div className="flex items-center gap-2 mt-2">
+            {contatoSel?.atribuidoNome && <div className="text-[11px] text-gray-500 mt-0.5">🙋 Responsável: <b>{contatoSel.atribuidoNome}</b></div>}
+            <div className="flex items-center gap-2 mt-2 flex-wrap">
+              {podeResponder && <button type="button" onClick={() => setTransferir(true)} className="text-xs px-2.5 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300">↪ Transferir</button>}
               <button type="button" onClick={() => marcarNaoLida(sel)} title="Marcar como não lida" className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-500 hover:text-rose-600">🔵 Não lida</button>
               {podeVincular && <button type="button" onClick={() => setDetalhes(v => !v)} className={`text-xs px-2.5 py-1 rounded-lg border ${detalhes ? "border-indigo-400 text-indigo-600 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"}`}>ⓘ Detalhes</button>}
             </div>
@@ -310,7 +355,24 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
           {detalhes && podeVincular && (
             <div className="px-3 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30 space-y-3 text-sm">
               <div>
-                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Pessoa vinculada</label>
+                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Cliente (Reservas + CRM)</label>
+                {clienteSel ? (
+                  <div className="mt-1 flex items-center justify-between gap-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-900/10 px-3 py-2">
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">🧑 {clienteSel.nome}</div>
+                      <div className="text-[11px] text-gray-500 truncate">
+                        {(clienteSel.tags || []).slice(0, 3).join(", ")}{clienteSel.ultimaVisita ? ` · última visita ${fmtBRcurto(clienteSel.ultimaVisita)}` : ""}{typeof clienteSel.totalReservas === "number" ? ` · ${clienteSel.totalReservas} reservas` : ""}
+                      </div>
+                      {!contatoSel?.clienteId && clienteAuto && <div className="text-[11px] text-emerald-600 dark:text-emerald-400">Casado automaticamente pelo telefone.</div>}
+                    </div>
+                    <button type="button" onClick={() => void vincularCliente(null)} className="text-[11px] text-gray-400 hover:text-rose-600 shrink-0">desvincular</button>
+                  </div>
+                ) : (
+                  <ClientePicker clientes={clientes} onChange={id => void vincularCliente(id)} />
+                )}
+              </div>
+              <div>
+                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Pessoa vinculada (equipe)</label>
                 <PessoaPicker pessoas={pessoas} valueId={contatoSel?.pessoaId || null} autoMatch={autoMatch} onChange={id => void salvarContato(sel, { pessoaId: id })} />
                 {!contatoSel?.pessoaId && autoMatch && <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">Vinculada automaticamente pelo número: <strong>{autoMatch.nome}</strong></p>}
               </div>
@@ -335,7 +397,11 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
 
           {/* Mensagens */}
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
-            {thread.map(m => (
+            {thread.map(m => m.sistema || m.tipo === "sistema" ? (
+              <div key={m.id} className="flex justify-center">
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800/60 rounded-full px-3 py-1 text-center max-w-[90%]">{m.texto} · {hhmm(m.timestamp)}</div>
+              </div>
+            ) : (
               <div key={m.id} className={`flex ${m.direcao === "out" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${m.direcao === "out" ? "bg-emerald-100 dark:bg-emerald-900/30 text-gray-900 dark:text-gray-100" : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"}`}>
                   <div className="whitespace-pre-wrap break-words">{m.texto || `[${m.tipo || "msg"}]`}</div>
@@ -363,6 +429,9 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
 
       {novaConversa && <NovaConversaModal pessoas={pessoas} onClose={() => setNovaConversa(false)}
         onAbrir={(waId, pid) => { setNovaConversa(false); setSel(waId); if (pid) void salvarContato(waId, { pessoaId: pid }); }} />}
+      {transferir && sel && <TransferModal
+        pessoas={pessoas.filter(p => { const n = numeros.find(x => x.id === numeroSel); const uids = n?.usuariosIds || []; return uids.length === 0 || uids.includes(p.id); })}
+        atualId={contatoSel?.atribuidoA || null} meId={me?.id || null} onClose={() => setTransferir(false)} onTransferir={transferirPara} />}
     </div>
   );
 }
@@ -664,6 +733,61 @@ function PessoaPicker({ pessoas, valueId, autoMatch, onChange }: { pessoas: Pess
         </>
       )}
     </div>
+  );
+}
+
+// Escolhe um cliente do Reservas+CRM (busca por nome/telefone).
+function ClientePicker({ clientes, onChange }: { clientes: Cliente[]; onChange: (id: string) => void }) {
+  const [busca, setBusca] = useState("");
+  const lista = useMemo(() => {
+    const q = busca.trim().toLowerCase(); const qd = soDig(busca);
+    return [...clientes].sort((a, b) => a.nome.localeCompare(b.nome))
+      .filter(c => !q || c.nome.toLowerCase().includes(q) || (!!qd && soDig(c.telefone).includes(qd))).slice(0, 40);
+  }, [clientes, busca]);
+  return (
+    <div className="mt-1">
+      <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Vincular a um cliente do CRM…" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+      {busca.trim() && (
+        <div className="mt-1 max-h-44 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+          {lista.length === 0 && <div className="px-3 py-2 text-sm text-gray-400">Nenhum cliente encontrado.</div>}
+          {lista.map(c => (
+            <button key={c.id} type="button" onClick={() => onChange(c.id)} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/40">
+              <div className="text-sm text-gray-900 dark:text-gray-100 truncate">{c.nome}</div>
+              {c.telefone && <div className="text-[11px] text-gray-400">{c.telefone}</div>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Transferir conversa pra outro atendente (só quem pode usar o número) + nota.
+function TransferModal({ pessoas, atualId, meId, onClose, onTransferir }: { pessoas: Pessoa[]; atualId: string | null; meId: string | null; onClose: () => void; onTransferir: (p: Pessoa, nota: string) => Promise<void> }) {
+  const [busca, setBusca] = useState("");
+  const [nota, setNota] = useState("");
+  const [sel, setSel] = useState<Pessoa | null>(null);
+  const lista = useMemo(() => { const q = busca.trim().toLowerCase(); return [...pessoas].sort((a, b) => a.nome.localeCompare(b.nome)).filter(p => p.id !== meId && (!q || p.nome.toLowerCase().includes(q))); }, [pessoas, busca, meId]);
+  return (
+    <Modal onClose={onClose} title="↪ Transferir conversa" maxWidth="max-w-md">
+      <div className="space-y-3">
+        {atualId && <p className="text-[11px] text-gray-400">Atualmente com quem você escolher assume a conversa.</p>}
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar atendente…" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+        <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+          {lista.length === 0 && <div className="px-3 py-3 text-sm text-gray-400">Nenhum atendente disponível pra este número.</div>}
+          {lista.map(p => (
+            <button key={p.id} type="button" onClick={() => setSel(p)} className={`w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40 ${sel?.id === p.id ? "bg-indigo-50 dark:bg-indigo-900/20" : ""}`}>
+              {sel?.id === p.id ? "✓ " : ""}{p.nome}
+            </button>
+          ))}
+        </div>
+        <textarea value={nota} onChange={e => setNota(e.target.value)} rows={2} placeholder="Nota do repasse (opcional): contexto pro próximo atendente…" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+        <div className="flex gap-2 justify-end">
+          <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => sel && void onTransferir(sel, nota.trim())} disabled={!sel}>Transferir{sel ? ` para ${sel.nome.split(" ")[0]}` : ""}</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 

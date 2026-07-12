@@ -29,10 +29,6 @@ export function WhatsappPage() {
 
   return (
     <div className="max-w-4xl mx-auto p-4">
-      <div className="mb-3">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">💬 WhatsApp</h1>
-        <p className="text-xs text-gray-500">Atendimento pelos números conectados. (Os disparos automáticos do sistema ficam na Central de Avisos → WhatsApp do sistema.)</p>
-      </div>
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
         {podeVer && tabBtn("chat", "💬 Chat")}
         {podeConfig && tabBtn("config", "⚙️ Configuração")}

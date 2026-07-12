@@ -5823,7 +5823,11 @@ export type WhatsappContato = {
   restaurantIds?: string[] | null;  // override manual (multi). null/ausente = herda da Pessoa
   restaurantId?: string | null;     // legado (single) — lido como fallback
   pessoaId?: string | null;       // Pessoa vinculada (auto ou manual)
+  clienteId?: string | null;      // Cliente do Reservas+CRM vinculado (auto ou manual)
+  atribuidoA?: string | null;     // pessoaId do atendente responsável pela conversa
+  atribuidoNome?: string | null;
   nomeManual?: string | null;     // nome sobrescrito manualmente
+  nomePush?: string | null;       // nome que a pessoa usa no WhatsApp (semeado pelo webhook)
   tagIds?: string[];
   atualizadoEm?: string;
   atualizadoPor?: string;
