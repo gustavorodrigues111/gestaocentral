@@ -14,8 +14,6 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
-import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
-import { whatsappNumerosAcessiveis } from "../../core/auth/permissions";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
@@ -44,7 +42,6 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
   const { restaurants } = useRestaurant();
   const isMaster = !!me?.isMaster;
   const { can } = useCanAcao(rid || "");
-  const { perfis } = useAccessProfiles();
   const podeVer = isMaster || can("whatsappInbox", "ver");
   const podeResponder = isMaster || can("whatsappInbox", "responder");
   const podeVincular = isMaster || can("whatsappInbox", "vincular");
@@ -136,9 +133,9 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
     return c?.restaurantIds == null && !c?.restaurantId;
   }
 
-  // ── Números acessíveis (permissão) + número selecionado ───────────────────
-  const numsPermitidos = whatsappNumerosAcessiveis(me, rid || "", perfis);   // null = todos
-  const numerosVisiveis = numsPermitidos ? numeros.filter(n => numsPermitidos.includes(n.id)) : numeros;
+  // ── Números acessíveis (por atribuição de usuário) + número selecionado ────
+  // Master vê todos; os demais só os números em que estão em usuariosIds.
+  const numerosVisiveis = isMaster ? numeros : numeros.filter(n => (n.usuariosIds || []).includes(me?.id || ""));
   useEffect(() => {
     if (numerosVisiveis.length === 0) { if (numeroSel !== null) setNumeroSel(null); return; }
     if (!numeroSel || !numerosVisiveis.some(n => n.id === numeroSel)) setNumeroSel(numerosVisiveis[0].id);
@@ -411,62 +408,182 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
       )}
 
       {gerenciarTags && <GerenciarTagsModal tags={tags} onClose={() => setGerenciarTags(false)} onCriar={criarTag} onExcluir={excluirTag} />}
-      {gerNumeros && <NumerosModal numeros={numeros} pessoaId={me?.id || null} onClose={() => setGerNumeros(false)} />}
+      {gerNumeros && <NumerosModal numeros={numeros} pessoas={pessoas} pessoaId={me?.id || null} onClose={() => setGerNumeros(false)} />}
     </div>
   );
 }
 
-// Cadastro dos números (caixas). O id do doc = nome da INSTÂNCIA na Evolution.
-function NumerosModal({ numeros, pessoaId, onClose }: { numeros: WhatsappNumero[]; pessoaId: string | null; onClose: () => void }) {
-  const [instancia, setInstancia] = useState("");
+// Cadastro dos números DENTRO do app: cria a instância na Evolution, aponta o
+// webhook e mostra o QR aqui mesmo. O id do doc = nome da instância.
+async function chamarInstancia(acao: string, instancia: string): Promise<{ ok?: boolean; qr?: string | null; estado?: string; naoConfigurado?: boolean; error?: string }> {
+  const r = await fetch("/api/evolution-instancia", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ acao, instancia }) });
+  return r.json().catch(() => ({}));
+}
+
+const ESTADO_META: Record<string, { label: string; cls: string }> = {
+  open: { label: "Conectado", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
+  connecting: { label: "Conectando…", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
+  close: { label: "Desconectado", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" },
+};
+function NumerosModal({ numeros, pessoas, pessoaId, onClose }: { numeros: WhatsappNumero[]; pessoas: Pessoa[]; pessoaId: string | null; onClose: () => void }) {
   const [nome, setNome] = useState("");
+  const [instancia, setInstancia] = useState("");
   const [descricao, setDescricao] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [qr, setQr] = useState<{ instancia: string; nome: string; qr: string | null } | null>(null);
+  const [estados, setEstados] = useState<Record<string, string>>({});
+  const [expandido, setExpandido] = useState<string | null>(null);
+  const [buscaU, setBuscaU] = useState("");
   const slug = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
+  // Poll do status de conexão de cada número.
+  async function atualizarStatus() {
+    const res = await Promise.all(numeros.map(async n => [n.id, (await chamarInstancia("status", n.id)).estado || "unknown"] as const));
+    setEstados(Object.fromEntries(res));
+  }
+  useEffect(() => { void atualizarStatus(); const t = setInterval(() => void atualizarStatus(), 8000); return () => clearInterval(t); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [numeros.map(n => n.id).join(",")]);
+
   async function criar() {
-    const id = slug(instancia);
-    if (!id) { alert("Informe o nome da instância (ex.: sororoca-clientes)."); return; }
+    const id = slug(instancia || nome);
+    if (!id) { alert("Informe um nome pro número."); return; }
     if (!nome.trim()) { alert("Informe um rótulo amigável."); return; }
-    if (numeros.some(n => n.id === id)) { alert("Já existe um número com essa instância."); return; }
+    if (numeros.some(n => n.id === id)) { alert("Já existe um número com esse identificador."); return; }
     setSalvando(true);
     try {
-      await setDoc(doc(db, "whatsappNumeros", id), sanitizeForFirestore({ id, nome: nome.trim(), descricao: descricao.trim() || undefined, ativo: true, criadoEm: new Date().toISOString(), criadoPor: pessoaId }));
-      setInstancia(""); setNome(""); setDescricao("");
+      const r = await chamarInstancia("create", id);
+      if (r.naoConfigurado) { alert("Evolution ainda não configurada na Vercel (env vars EVOLUTION_*)."); setSalvando(false); return; }
+      if (r.error) { alert("Erro na Evolution: " + r.error); setSalvando(false); return; }
+      await setDoc(doc(db, "whatsappNumeros", id), sanitizeForFirestore({ id, nome: nome.trim(), descricao: descricao.trim() || undefined, ativo: true, usuariosIds: [], criadoEm: new Date().toISOString(), criadoPor: pessoaId }));
+      setNome(""); setInstancia(""); setDescricao("");
+      setQr({ instancia: id, nome: nome.trim() || id, qr: r.qr || null });
     } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : "?")); }
     finally { setSalvando(false); }
   }
-  async function toggleAtivo(n: WhatsappNumero) { await setDoc(doc(db, "whatsappNumeros", n.id), { ativo: !(n.ativo !== false) }, { merge: true }); }
-  async function excluir(n: WhatsappNumero) { if (confirm(`Remover o número "${n.nome}"? (não apaga as conversas)`)) await deleteDoc(doc(db, "whatsappNumeros", n.id)); }
+  async function patch(id: string, p: Partial<WhatsappNumero>) { await setDoc(doc(db, "whatsappNumeros", id), sanitizeForFirestore(p), { merge: true }); }
+  async function excluir(n: WhatsappNumero) {
+    if (!confirm(`Remover "${n.nome}"? Desconecta e apaga a instância na Evolution (não apaga as conversas já recebidas).`)) return;
+    await chamarInstancia("delete", n.id).catch(() => {});
+    await deleteDoc(doc(db, "whatsappNumeros", n.id));
+  }
+  const toggleUsuario = (n: WhatsappNumero, pid: string) => {
+    const cur = n.usuariosIds || [];
+    void patch(n.id, { usuariosIds: cur.includes(pid) ? cur.filter(x => x !== pid) : [...cur, pid] });
+  };
 
   const inp = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+  const pessoasFiltradas = (q: string) => { const s = q.trim().toLowerCase(); return [...pessoas].sort((a, b) => a.nome.localeCompare(b.nome)).filter(p => !s || p.nome.toLowerCase().includes(s)).slice(0, 100); };
+
   return (
-    <Modal onClose={onClose} title="📱 Números de WhatsApp">
+    <>
+    <Modal onClose={onClose} title="⚙️ Números de WhatsApp" maxWidth="max-w-2xl">
       <div className="space-y-4">
+        {/* Adicionar */}
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 space-y-2">
-          <div className="text-xs font-semibold text-gray-600 dark:text-gray-300">Registrar número</div>
-          <p className="text-[11px] text-gray-500">A <b>instância</b> tem que ser IGUAL ao nome criado na Evolution (ex.: <code>sororoca</code>). O <b>rótulo</b> é só pra exibir.</p>
-          <input value={instancia} onChange={e => setInstancia(e.target.value)} className={inp} placeholder="Instância na Evolution (ex.: sororoca)" />
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-300">➕ Adicionar número</div>
+          <p className="text-[11px] text-gray-500">Cria o número na hora e mostra o <b>QR</b> pra conectar o celular — sem sair daqui.</p>
           <input value={nome} onChange={e => setNome(e.target.value)} className={inp} placeholder="Rótulo (ex.: Sororoca · Clientes)" />
-          <input value={descricao} onChange={e => setDescricao(e.target.value)} className={inp} placeholder="Descrição (opcional): clientes, fornecedores, DP…" />
-          <div className="flex justify-end"><Button onClick={criar} disabled={salvando}>{salvando ? "Salvando…" : "Adicionar número"}</Button></div>
-        </div>
-        {numeros.length > 0 && (
-          <div className="space-y-1.5">
-            {numeros.map(n => (
-              <div key={n.id} className="flex items-center gap-2 p-2.5 rounded-lg border border-gray-200 dark:border-gray-800">
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{n.nome} {n.ativo === false && <span className="text-[10px] text-gray-400">(inativo)</span>}</div>
-                  <div className="text-[11px] text-gray-400 truncate">instância: {n.id}{n.descricao ? ` · ${n.descricao}` : ""}</div>
-                </div>
-                <button type="button" onClick={() => void toggleAtivo(n)} className="text-[11px] px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">{n.ativo === false ? "Ativar" : "Desativar"}</button>
-                <button type="button" onClick={() => void excluir(n)} className="text-gray-400 hover:text-rose-600 text-sm">🗑️</button>
-              </div>
-            ))}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input value={instancia} onChange={e => setInstancia(e.target.value)} className={inp} placeholder="Identificador (opcional)" />
+            <input value={descricao} onChange={e => setDescricao(e.target.value)} className={inp} placeholder="Descrição (clientes, fornecedores…)" />
           </div>
-        )}
-        <p className="text-[11px] text-gray-400">Quem acessa cada número se define no <b>Perfil de Acesso</b> (escopo por número). Master vê todos.</p>
+          <div className="flex justify-end"><Button onClick={criar} disabled={salvando}>{salvando ? "Criando…" : "Adicionar e conectar"}</Button></div>
+        </div>
+
+        {/* Lista de números */}
+        <div className="space-y-2">
+          {numeros.length === 0 && <div className="text-center text-sm text-gray-400 py-4">Nenhum número ainda.</div>}
+          {numeros.map(n => {
+            const est = estados[n.id] || "unknown";
+            const em = ESTADO_META[est] || { label: "—", cls: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" };
+            const nUsers = (n.usuariosIds || []).length;
+            const aberto = expandido === n.id;
+            return (
+              <div key={n.id} className="rounded-xl border border-gray-200 dark:border-gray-800">
+                <div className="flex items-center gap-2 p-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate flex items-center gap-2">
+                      {n.nome}
+                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${em.cls}`}>{est === "unknown" ? "…" : em.label}</span>
+                      {n.ativo === false && <span className="text-[10px] text-gray-400">(inativo)</span>}
+                    </div>
+                    <div className="text-[11px] text-gray-400 truncate">instância: {n.id}{n.descricao ? ` · ${n.descricao}` : ""} · {nUsers} usuário{nUsers === 1 ? "" : "s"}</div>
+                  </div>
+                  <button type="button" onClick={() => setQr({ instancia: n.id, nome: n.nome, qr: null })} className="text-[11px] px-2 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300">{est === "open" ? "🔄 Reconectar" : "🔌 Conectar"}</button>
+                  <button type="button" onClick={() => setExpandido(aberto ? null : n.id)} className="text-[11px] px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">👥 Usuários</button>
+                  <button type="button" onClick={() => void excluir(n)} className="text-gray-400 hover:text-rose-600 text-sm">🗑️</button>
+                </div>
+                {aberto && (
+                  <div className="px-3 pb-3 border-t border-gray-100 dark:border-gray-800 pt-2 space-y-2">
+                    <div className="text-[11px] font-semibold text-gray-500 uppercase">Quem pode usar este número</div>
+                    <input value={buscaU} onChange={e => setBuscaU(e.target.value)} className={inp} placeholder="Buscar pessoa…" />
+                    <div className="max-h-44 overflow-y-auto flex flex-wrap gap-x-4 gap-y-1">
+                      {pessoasFiltradas(buscaU).map(p => (
+                        <label key={p.id} className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300">
+                          <input type="checkbox" checked={(n.usuariosIds || []).includes(p.id)} onChange={() => toggleUsuario(n, p.id)} />{p.nome}
+                        </label>
+                      ))}
+                    </div>
+                    <div>
+                      <div className="text-[11px] font-semibold text-gray-500 uppercase mt-2 mb-1">Regras de uso (opcional)</div>
+                      <textarea defaultValue={n.regras || ""} onBlur={e => { if (e.target.value !== (n.regras || "")) void patch(n.id, { regras: e.target.value }); }} rows={2} className={inp} placeholder="Ex.: só responder em horário comercial; sempre confirmar preço antes de fechar…" />
+                    </div>
+                    <button type="button" onClick={() => void patch(n.id, { ativo: !(n.ativo !== false) })} className="text-[11px] text-gray-500 hover:underline">{n.ativo === false ? "Reativar número" : "Desativar número (esconde do inbox)"}</button>
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <p className="text-[11px] text-gray-400">Só quem estiver marcado em <b>Usuários</b> vê/responde cada número. Master vê todos. O que cada um pode fazer (ver/responder/tags) segue no Perfil de Acesso.</p>
       </div>
+    </Modal>
+    {qr && <QrModal instancia={qr.instancia} nome={qr.nome} qrInicial={qr.qr} onClose={() => { setQr(null); void atualizarStatus(); }} />}
+    </>
+  );
+}
+
+// Mostra o QR e detecta a conexão (polling do status). Regenera o QR se expirar.
+function QrModal({ instancia, nome, qrInicial, onClose }: { instancia: string; nome: string; qrInicial: string | null; onClose: () => void }) {
+  const [qr, setQr] = useState<string | null>(qrInicial);
+  const [estado, setEstado] = useState<string>("connecting");
+  const [carregando, setCarregando] = useState(false);
+
+  async function regenerar() {
+    setCarregando(true);
+    const r = await chamarInstancia("connect", instancia);
+    if (r.qr) setQr(r.qr);
+    setCarregando(false);
+  }
+  useEffect(() => { if (!qrInicial) void regenerar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
+  useEffect(() => {
+    const t = setInterval(async () => {
+      const r = await chamarInstancia("status", instancia);
+      if (r.estado) setEstado(r.estado);
+      if (r.estado === "open") clearInterval(t);
+    }, 3000);
+    return () => clearInterval(t);
+  }, [instancia]);
+
+  const conectado = estado === "open";
+  return (
+    <Modal onClose={onClose} title={`📱 Conectar · ${nome}`} maxWidth="max-w-sm">
+      {conectado ? (
+        <div className="text-center py-6 space-y-3">
+          <div className="text-5xl">✅</div>
+          <p className="font-medium text-gray-900 dark:text-gray-100">Número conectado!</p>
+          <Button onClick={onClose}>Fechar</Button>
+        </div>
+      ) : (
+        <div className="text-center space-y-3">
+          <p className="text-sm text-gray-600 dark:text-gray-300">No celular do número: <b>Aparelhos conectados → Conectar um aparelho</b> e escaneie:</p>
+          {qr ? <img src={qr} alt="QR Code" className="mx-auto w-56 h-56 rounded-lg border border-gray-200 dark:border-gray-700 bg-white" /> : <div className="py-16 text-gray-400 text-sm">Gerando QR…</div>}
+          <p className="text-[11px] text-gray-400">O QR expira em ~40s. Se não ler, gere um novo.</p>
+          <div className="flex gap-2 justify-center">
+            <Button variant="secondary" onClick={() => void regenerar()} disabled={carregando}>{carregando ? "…" : "↻ Gerar novo QR"}</Button>
+            <Button variant="ghost" onClick={onClose}>Fechar</Button>
+          </div>
+        </div>
+      )}
     </Modal>
   );
 }
