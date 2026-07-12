@@ -70,6 +70,11 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       res.status(200).json({ ok: true, estado });
       return;
     }
+    if (acao === "logout") {   // desconecta o WhatsApp mas mantém a instância
+      const d = await call(`/instance/logout/${encodeURIComponent(instancia)}`, "DELETE");
+      res.status(200).json({ ok: d.ok });
+      return;
+    }
     if (acao === "delete") {
       await call(`/instance/logout/${encodeURIComponent(instancia)}`, "DELETE").catch(() => {});
       const d = await call(`/instance/delete/${encodeURIComponent(instancia)}`, "DELETE");

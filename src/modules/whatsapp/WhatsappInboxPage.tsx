@@ -171,6 +171,14 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
     await salvarContato(waId, { tagIds: novas });
   }
 
+  // Marca a conversa como NÃO lida (última mensagem recebida vira não-lida) e volta pra lista.
+  async function marcarNaoLida(waId: string) {
+    const inbound = msgsDoNumero.filter(m => m.waId === waId && m.direcao === "in");
+    const ultima = inbound[inbound.length - 1];
+    setSel(null);
+    if (ultima) await updateDoc(doc(db, "whatsappMensagens", ultima.id), { lido: false }).catch(() => {});
+  }
+
   async function responder() {
     const txt = resposta.trim();
     if (!txt || !sel || !numeroSel) return;
@@ -290,6 +298,7 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
               <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{nomeSel}</div>
               <div className="text-[11px] text-gray-400">{foneBonito(sel)}{pessoaSel && <> · 👤 {pessoaSel.nome}</>}</div>
             </div>
+            <button type="button" onClick={() => marcarNaoLida(sel)} title="Marcar como não lida" className="text-xs px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-500 hover:text-rose-600">🔵 Não lida</button>
             {podeVincular && <button type="button" onClick={() => setDetalhes(v => !v)} className={`text-xs px-2 py-1 rounded-lg border ${detalhes ? "border-indigo-400 text-indigo-600 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"}`}>ⓘ Detalhes</button>}
           </div>
 
@@ -510,7 +519,9 @@ export function NumerosManager() {
                     </div>
                     <div className="text-[11px] text-gray-400 truncate">instância: {n.id}{n.descricao ? ` · ${n.descricao}` : ""} · {nUsers} usuário{nUsers === 1 ? "" : "s"}</div>
                   </div>
-                  <button type="button" onClick={() => setQr({ instancia: n.id, nome: n.nome, qr: null })} className="text-[11px] px-2 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300">{est === "open" ? "🔄 Reconectar" : "🔌 Conectar"}</button>
+                  {est === "open"
+                    ? <button type="button" onClick={async () => { if (!confirm(`Desconectar "${n.nome}"? O número sai do ar até reconectar.`)) return; await chamarInstancia("logout", n.id); void atualizarStatus(); }} className="text-[11px] px-2 py-1 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">⏻ Desconectar</button>
+                    : <button type="button" onClick={() => setQr({ instancia: n.id, nome: n.nome, qr: null })} className="text-[11px] px-2 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300">{est === "close" ? "🔄 Reconectar" : "🔌 Conectar"}</button>}
                   <button type="button" onClick={() => setExpandido(aberto ? null : n.id)} className="text-[11px] px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">👥 Usuários</button>
                   <button type="button" onClick={() => void excluir(n)} className="text-gray-400 hover:text-rose-600 text-sm">🗑️</button>
                 </div>
