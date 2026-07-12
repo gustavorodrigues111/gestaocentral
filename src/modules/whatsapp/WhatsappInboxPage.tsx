@@ -290,16 +290,20 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
           </div>
         )
       ) : (
+        <>
+        {/* Voltar — fora da conversa, pra ficar claro que retorna à lista */}
+        <button type="button" onClick={() => setSel(null)} className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100">← Voltar às conversas</button>
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col h-[72vh]">
-          {/* Header da conversa */}
-          <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-200 dark:border-gray-800">
-            <button type="button" onClick={() => setSel(null)} className="text-sm text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">←</button>
-            <div className="min-w-0 flex-1">
-              <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{nomeSel}</div>
-              <div className="text-[11px] text-gray-400">{foneBonito(sel)}{pessoaSel && <> · 👤 {pessoaSel.nome}</>}</div>
+          {/* Header da conversa: nome completo → vínculo → botões */}
+          <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800">
+            <div className="text-base font-semibold text-gray-900 dark:text-gray-100 break-words">{nomeSel}</div>
+            <div className="text-[11px] text-gray-400 mt-0.5">
+              {foneBonito(sel)}{pessoaSel && <> · <span className="text-indigo-600 dark:text-indigo-300">👤 {pessoaSel.nome}</span></>}
             </div>
-            <button type="button" onClick={() => marcarNaoLida(sel)} title="Marcar como não lida" className="text-xs px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-500 hover:text-rose-600">🔵 Não lida</button>
-            {podeVincular && <button type="button" onClick={() => setDetalhes(v => !v)} className={`text-xs px-2 py-1 rounded-lg border ${detalhes ? "border-indigo-400 text-indigo-600 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"}`}>ⓘ Detalhes</button>}
+            <div className="flex items-center gap-2 mt-2">
+              <button type="button" onClick={() => marcarNaoLida(sel)} title="Marcar como não lida" className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-500 hover:text-rose-600">🔵 Não lida</button>
+              {podeVincular && <button type="button" onClick={() => setDetalhes(v => !v)} className={`text-xs px-2.5 py-1 rounded-lg border ${detalhes ? "border-indigo-400 text-indigo-600 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"}`}>ⓘ Detalhes</button>}
+            </div>
           </div>
 
           {/* Painel de detalhes: vínculo + restaurante + tags */}
@@ -351,6 +355,7 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
             </div>
           )}
         </div>
+        </>
       )}
 
       </>
