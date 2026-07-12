@@ -576,6 +576,7 @@ export function NumerosManager() {
   const [instancia, setInstancia] = useState("");
   const [descricao, setDescricao] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [addOpen, setAddOpen] = useState(false);
   const [qr, setQr] = useState<{ instancia: string; nome: string; qr: string | null } | null>(null);
   const [estados, setEstados] = useState<Record<string, string>>({});
   const slug = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
@@ -598,7 +599,7 @@ export function NumerosManager() {
       if (r.naoConfigurado) { alert("Evolution ainda não configurada na Vercel (env vars EVOLUTION_*)."); setSalvando(false); return; }
       if (r.error) { alert("Erro na Evolution: " + r.error); setSalvando(false); return; }
       await setDoc(doc(db, "whatsappNumeros", id), sanitizeForFirestore({ id, nome: nome.trim(), descricao: descricao.trim() || undefined, ativo: true, usuariosIds: [], criadoEm: new Date().toISOString(), criadoPor: pessoaId }));
-      setNome(""); setInstancia(""); setDescricao("");
+      setNome(""); setInstancia(""); setDescricao(""); setAddOpen(false);
       setQr({ instancia: id, nome: nome.trim() || id, qr: r.qr || null });
     } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : "?")); }
     finally { setSalvando(false); }
@@ -614,16 +615,9 @@ export function NumerosManager() {
   return (
     <div>
       <div className="space-y-4">
-        {/* Adicionar */}
-        <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 space-y-2">
-          <div className="text-xs font-semibold text-gray-600 dark:text-gray-300">➕ Adicionar número</div>
-          <p className="text-[11px] text-gray-500">Cria o número na hora e mostra o <b>QR</b> pra conectar o celular — sem sair daqui.</p>
-          <input value={nome} onChange={e => setNome(e.target.value)} className={inp} placeholder="Rótulo (ex.: Sororoca · Clientes)" />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            <input value={instancia} onChange={e => setInstancia(e.target.value)} className={inp} placeholder="Identificador (opcional)" />
-            <input value={descricao} onChange={e => setDescricao(e.target.value)} className={inp} placeholder="Descrição (clientes, fornecedores…)" />
-          </div>
-          <div className="flex justify-end"><Button onClick={criar} disabled={salvando}>{salvando ? "Criando…" : "Adicionar e conectar"}</Button></div>
+        {/* Adicionar — só um botão; o resto vai num modal */}
+        <div className="flex justify-end">
+          <Button onClick={() => { setNome(""); setInstancia(""); setDescricao(""); setAddOpen(true); }}>➕ Adicionar novo número</Button>
         </div>
 
         {/* Lista de números */}
@@ -638,6 +632,30 @@ export function NumerosManager() {
         </div>
         <p className="text-[11px] text-gray-400">Só quem estiver marcado em <b>Usuários</b> vê/responde cada número. Master vê todos. O que cada um pode fazer (ver/responder/tags) segue no Perfil de Acesso.</p>
       </div>
+      {addOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !salvando && setAddOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5 space-y-3" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">➕ Adicionar novo número</h3>
+              <button type="button" onClick={() => !salvando && setAddOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <p className="text-xs text-gray-500">Cria o número na hora e mostra o <b>QR</b> pra conectar o celular — sem sair daqui.</p>
+            <div>
+              <label className="text-[11px] font-semibold text-gray-500 uppercase">Nome do número *</label>
+              <input value={nome} onChange={e => setNome(e.target.value)} className={inp} placeholder="Ex.: Sororoca · Clientes" autoFocus
+                onKeyDown={e => { if (e.key === "Enter" && nome.trim()) void criar(); }} />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-gray-500 uppercase">Descrição (opcional)</label>
+              <input value={descricao} onChange={e => setDescricao(e.target.value)} className={inp} placeholder="Ex.: atendimento a clientes, fornecedores…" />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setAddOpen(false)} disabled={salvando} className="text-sm px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>
+              <Button onClick={criar} disabled={salvando || !nome.trim()}>{salvando ? "Criando…" : "Adicionar e conectar"}</Button>
+            </div>
+          </div>
+        </div>
+      )}
       {qr && <QrModal instancia={qr.instancia} nome={qr.nome} qrInicial={qr.qr} onClose={() => { setQr(null); void atualizarStatus(); }} />}
     </div>
   );
