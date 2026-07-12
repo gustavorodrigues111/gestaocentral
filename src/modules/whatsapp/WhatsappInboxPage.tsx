@@ -616,9 +616,7 @@ export function NumerosManager() {
     <div>
       <div className="space-y-4">
         {/* Adicionar — só um botão; o resto vai num modal */}
-        <div className="flex justify-end">
-          <Button onClick={() => { setNome(""); setInstancia(""); setDescricao(""); setAddOpen(true); }}>➕ Adicionar novo número</Button>
-        </div>
+        <Button className="w-full" onClick={() => { setNome(""); setInstancia(""); setDescricao(""); setAddOpen(true); }}>➕ Adicionar novo número</Button>
 
         {/* Lista de números */}
         <div className="space-y-2.5">
