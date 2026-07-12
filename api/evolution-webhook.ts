@@ -23,10 +23,16 @@ type EvoMsg = {
   message?: {
     conversation?: string;
     extendedTextMessage?: { text?: string };
-    imageMessage?: { caption?: string };
+    imageMessage?: { caption?: string; mimetype?: string };
     videoMessage?: { caption?: string };
     documentMessage?: { caption?: string; fileName?: string };
-    audioMessage?: unknown;
+    audioMessage?: { mimetype?: string };
+    stickerMessage?: { mimetype?: string };
+    reactionMessage?: { text?: string };
+    locationMessage?: { degreesLatitude?: number; degreesLongitude?: number };
+    contactMessage?: { displayName?: string };
+    contactsArrayMessage?: unknown;
+    pollCreationMessage?: { name?: string };
   };
 };
 type EvoBody = { event?: string; instance?: string; data?: EvoMsg | EvoMsg[] };
@@ -39,11 +45,42 @@ function textoDe(m?: EvoMsg["message"], tipo?: string): string {
     || m.imageMessage?.caption
     || m.videoMessage?.caption
     || m.documentMessage?.caption
-    || (m.documentMessage?.fileName ? `[documento: ${m.documentMessage.fileName}]` : "")
-    || (m.imageMessage ? "[imagem]" : "")
-    || (m.videoMessage ? "[vídeo]" : "")
-    || (m.audioMessage ? "[áudio]" : "")
+    || (m.reactionMessage?.text ? `reagiu ${m.reactionMessage.text}` : "")
+    || (m.stickerMessage ? "🟢 Figurinha" : "")
+    || (m.documentMessage?.fileName ? `📄 ${m.documentMessage.fileName}` : "")
+    || (m.imageMessage ? "🖼️ Imagem" : "")
+    || (m.videoMessage ? "🎬 Vídeo" : "")
+    || (m.audioMessage ? "🎤 Áudio" : "")
+    || (m.locationMessage ? "📍 Localização" : "")
+    || (m.contactMessage?.displayName ? `👤 Contato: ${m.contactMessage.displayName}` : "")
+    || (m.contactsArrayMessage ? "👥 Contatos" : "")
+    || (m.pollCreationMessage?.name ? `📊 Enquete: ${m.pollCreationMessage.name}` : "")
     || (tipo ? `[${tipo}]` : "");
+}
+
+// Busca o conteúdo real da mídia (figurinha/imagem) na Evolution → data URL.
+// Só pra tipos leves; erro/grande → volta vazio (fica só o rótulo).
+async function baixarMidia(instancia: string, msg: EvoMsg): Promise<{ midia: string; mime: string } | null> {
+  const base = (process.env.EVOLUTION_API_URL || "").replace(/\/+$/, "");
+  const key = process.env.EVOLUTION_API_KEY;
+  if (!base || !key) return null;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 12_000);
+    const resp = await fetch(`${base}/chat/getBase64FromMediaMessage/${encodeURIComponent(instancia)}`, {
+      method: "POST",
+      headers: { apikey: key, "Content-Type": "application/json" },
+      body: JSON.stringify({ message: { key: msg.key }, convertToMp4: false }),
+      signal: ctrl.signal,
+    });
+    clearTimeout(t);
+    if (!resp.ok) return null;
+    const j = (await resp.json()) as { base64?: string; mimetype?: string } | null;
+    const b64 = j?.base64 || "";
+    if (!b64 || b64.length > 800_000) return null;   // ~600KB — não estoura o doc do Firestore
+    const mime = j?.mimetype || "application/octet-stream";
+    return { midia: `data:${mime};base64,${b64}`, mime };
+  } catch { return null; }
 }
 
 export default async function handler(req: Req, res: Res): Promise<void> {
@@ -79,12 +116,16 @@ async function processar(body: EvoBody): Promise<void> {
     const texto = textoDe(m.message, m.messageType);
     const tsNum = Number(m.messageTimestamp);
     const ts = tsNum ? new Date(tsNum * 1000).toISOString() : new Date().toISOString();
+    // Figurinha e imagem: tenta baixar o conteúdo pra exibir de verdade.
+    let midia: { midia: string; mime: string } | null = null;
+    if (m.message?.stickerMessage || m.message?.imageMessage) midia = await baixarMidia(numeroId, m);
     try {
       await firestoreCriar("whatsappMensagens", `${numeroId}_${id}`, {
         waId, nome: m.pushName || null, direcao: fromMe ? "out" : "in",
         tipo: m.messageType || "text", texto, timestamp: ts, recebidoEm: new Date().toISOString(),
         lido: fromMe, numeroId, messageId: id,
         autorNome: fromMe ? "via aparelho" : null, viaAparelho: fromMe,
+        ...(midia ? { midia: midia.midia, mime: midia.mime } : {}),
       });
       // Semeia o contato na 1ª mensagem (create-if-not-exists — não sobrescreve
       // ajustes manuais posteriores, que vêm pelo app com merge).

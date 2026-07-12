@@ -21,7 +21,7 @@ import { Modal } from "../../core/ui/Modal";
 import { WhatsappTemplatesTab } from "./WhatsappTemplatesTab";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, Cliente } from "../../core/types";
 
-type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean };
+type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; mime?: string };
 
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const fmtBRcurto = (ymd?: string | null) => { if (!ymd) return ""; const [a, m, d] = String(ymd).split("-"); return d ? `${d}/${m}/${a?.slice(2) || ""}` : String(ymd); };
@@ -35,6 +35,7 @@ function foneKey(raw?: string | null): string {
 }
 
 const PALETA = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#ef4444", "#0ea5e9", "#8b5cf6", "#64748b"];
+const EMOJIS = ["😀","😁","😂","🤣","😊","😍","😘","😉","😎","🤗","🤔","😅","🙃","😴","😮","😢","😭","😡","👍","👎","👏","🙏","💪","🤝","👌","✌️","🔥","✨","🎉","❤️","🧡","💛","💚","💙","💜","🖤","💯","✅","❌","⚠️","⭐","📌","📎","📄","📷","🎁","💰","💳","🛵","🍔","🍕","🍟","🥤","☕","🍺","🎂","😋","🤤","👋","🫶","😇","🥳","🤩"];
 
 export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { modo?: "conversas" | "completo"; voltarListaSignal?: number } = {}) {
   const embutido = modo === "conversas";
@@ -59,6 +60,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [sel, setSel] = useState<string | null>(null);
   const [resposta, setResposta] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const [emojiAberto, setEmojiAberto] = useState(false);
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
   const [detalhes, setDetalhes] = useState(false);
   const [tab, setTab] = useState<"conversas" | "templates">("conversas");
@@ -465,7 +467,15 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             ) : (
               <div key={m.id} className={`flex ${m.direcao === "out" ? "justify-end" : "justify-start"}`}>
                 <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${m.direcao === "out" ? "bg-emerald-100 dark:bg-emerald-900/30 text-gray-900 dark:text-gray-100" : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"}`}>
-                  <div className="whitespace-pre-wrap break-words">{m.texto || `[${m.tipo || "msg"}]`}</div>
+                  {m.midia && (m.mime?.startsWith("image") || m.tipo === "stickerMessage") && (
+                    <img src={m.midia} alt={m.texto || "mídia"} className={`rounded-lg mb-1 ${m.tipo === "stickerMessage" ? "w-32 h-32 object-contain" : "max-w-full max-h-64 object-contain"}`} />
+                  )}
+                  {(!m.midia || !(m.mime?.startsWith("image") || m.tipo === "stickerMessage")) && (
+                    <div className="whitespace-pre-wrap break-words">{m.texto || `[${m.tipo || "msg"}]`}</div>
+                  )}
+                  {m.midia && m.texto && m.tipo === "imageMessage" && m.texto !== "🖼️ Imagem" && (
+                    <div className="whitespace-pre-wrap break-words mt-1">{m.texto}</div>
+                  )}
                   <div className="text-[10px] text-gray-400 mt-0.5 text-right">{m.direcao === "out" && m.autorNome ? `${m.autorNome} · ` : ""}{hhmm(m.timestamp)}</div>
                 </div>
               </div>
@@ -474,10 +484,18 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
           {/* Resposta */}
           {podeResponder && (
-            <div className="border-t border-gray-200 dark:border-gray-800 p-2">
+            <div className="border-t border-gray-200 dark:border-gray-800 p-2 relative">
+              {emojiAberto && (
+                <div className="absolute bottom-full left-2 mb-1 w-64 max-h-44 overflow-y-auto p-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg grid grid-cols-8 gap-0.5 z-10">
+                  {EMOJIS.map(e => (
+                    <button key={e} type="button" onClick={() => { setResposta(r => r + e); }} className="text-xl leading-none p-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">{e}</button>
+                  ))}
+                </div>
+              )}
               <div className="flex items-end gap-2">
-                <textarea value={resposta} onChange={e => setResposta(e.target.value)} rows={1} placeholder="Responder…" className="flex-1 px-3 py-2 text-base rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 resize-none" onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void responder(); } }} />
-                <Button onClick={() => void responder()} disabled={enviando || !resposta.trim()}>{enviando ? "…" : "Enviar"}</Button>
+                <button type="button" onClick={() => setEmojiAberto(v => !v)} className="shrink-0 w-10 h-10 rounded-xl border border-gray-300 dark:border-gray-700 text-xl hover:bg-gray-50 dark:hover:bg-gray-800" title="Emojis">😊</button>
+                <textarea value={resposta} onChange={e => setResposta(e.target.value)} onFocus={() => setEmojiAberto(false)} rows={1} placeholder="Responder…" className="flex-1 px-3 py-2 text-base rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 resize-none" onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void responder(); } }} />
+                <Button onClick={() => { setEmojiAberto(false); void responder(); }} disabled={enviando || !resposta.trim()}>{enviando ? "…" : "Enviar"}</Button>
               </div>
             </div>
           )}
