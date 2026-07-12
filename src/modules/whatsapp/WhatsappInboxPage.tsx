@@ -42,15 +42,13 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
   const { restaurants } = useRestaurant();
   const isMaster = !!me?.isMaster;
   const { can } = useCanAcao(rid || "");
-  const podeVer = isMaster || can("whatsappInbox", "ver");
-  const podeResponder = isMaster || can("whatsappInbox", "responder");
-  const podeVincular = isMaster || can("whatsappInbox", "vincular");
-  const podeTags = isMaster || can("whatsappInbox", "gerenciarTags");
-  const podeConfigNum = isMaster || can("whatsappInbox", "configurar");
+  const podeVer = isMaster || can("whatsapp", "ver");
+  const podeResponder = isMaster || can("whatsapp", "responder");
+  const podeVincular = isMaster || can("whatsapp", "vincular");
+  const podeTags = isMaster || can("whatsapp", "gerenciarTags");
 
   const [numeros, setNumeros] = useState<WhatsappNumero[]>([]);
   const [numeroSel, setNumeroSel] = useState<string | null>(null);
-  const [gerNumeros, setGerNumeros] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [contatos, setContatos] = useState<Record<string, WhatsappContato>>({});
@@ -262,11 +260,10 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
                 📱 {n.nome}
               </button>
             ))}
-            {podeConfigNum && <button type="button" onClick={() => setGerNumeros(true)} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50">＋ Números</button>}
           </div>
           {numerosVisiveis.length === 0 && (
             <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500 mb-3">
-              {numeros.length === 0 ? (podeConfigNum ? "Nenhum número configurado ainda. Clique em “＋ Números” pra registrar." : "Nenhum número de WhatsApp configurado.") : "Você não tem número de WhatsApp atribuído."}
+              {numeros.length === 0 ? (isMaster ? "Nenhum número configurado ainda. Vá na aba Configuração pra adicionar e conectar." : "Nenhum número de WhatsApp configurado.") : "Você não tem número de WhatsApp atribuído."}
             </div>
           )}
 
@@ -408,7 +405,6 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
       )}
 
       {gerenciarTags && <GerenciarTagsModal tags={tags} onClose={() => setGerenciarTags(false)} onCriar={criarTag} onExcluir={excluirTag} />}
-      {gerNumeros && <NumerosModal numeros={numeros} pessoas={pessoas} pessoaId={me?.id || null} onClose={() => setGerNumeros(false)} />}
     </div>
   );
 }
@@ -425,7 +421,27 @@ const ESTADO_META: Record<string, { label: string; cls: string }> = {
   connecting: { label: "Conectando…", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
   close: { label: "Desconectado", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" },
 };
-function NumerosModal({ numeros, pessoas, pessoaId, onClose }: { numeros: WhatsappNumero[]; pessoas: Pessoa[]; pessoaId: string | null; onClose: () => void }) {
+// Gestão dos números (aba Configuração do módulo WhatsApp). Self-contido.
+export function NumerosManager() {
+  const { pessoa: me } = useAuth();
+  const { restaurants } = useRestaurant();
+  const pessoaId = me?.id || null;
+  const [numeros, setNumeros] = useState<WhatsappNumero[]>([]);
+  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "whatsappNumeros"), snap => setNumeros(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WhatsappNumero)));
+    return () => u();
+  }, []);
+  useEffect(() => {
+    const rids = restaurants.map(r => r.id).slice(0, 10);
+    const base = collection(db, "pessoas");
+    const q = me?.isMaster ? base : (rids.length ? query(base, where("restaurantIds", "array-contains-any", rids)) : null);
+    if (!q) { setPessoas([]); return; }
+    const u = onSnapshot(q, snap => setPessoas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa)));
+    return () => u();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [me?.isMaster, restaurants.map(r => r.id).join(",")]);
+
   const [nome, setNome] = useState("");
   const [instancia, setInstancia] = useState("");
   const [descricao, setDescricao] = useState("");
@@ -474,8 +490,7 @@ function NumerosModal({ numeros, pessoas, pessoaId, onClose }: { numeros: Whatsa
   const pessoasFiltradas = (q: string) => { const s = q.trim().toLowerCase(); return [...pessoas].sort((a, b) => a.nome.localeCompare(b.nome)).filter(p => !s || p.nome.toLowerCase().includes(s)).slice(0, 100); };
 
   return (
-    <>
-    <Modal onClose={onClose} title="⚙️ Números de WhatsApp" maxWidth="max-w-2xl">
+    <div>
       <div className="space-y-4">
         {/* Adicionar */}
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 space-y-2">
@@ -536,9 +551,8 @@ function NumerosModal({ numeros, pessoas, pessoaId, onClose }: { numeros: Whatsa
         </div>
         <p className="text-[11px] text-gray-400">Só quem estiver marcado em <b>Usuários</b> vê/responde cada número. Master vê todos. O que cada um pode fazer (ver/responder/tags) segue no Perfil de Acesso.</p>
       </div>
-    </Modal>
-    {qr && <QrModal instancia={qr.instancia} nome={qr.nome} qrInicial={qr.qr} onClose={() => { setQr(null); void atualizarStatus(); }} />}
-    </>
+      {qr && <QrModal instancia={qr.instancia} nome={qr.nome} qrInicial={qr.qr} onClose={() => { setQr(null); void atualizarStatus(); }} />}
+    </div>
   );
 }
 

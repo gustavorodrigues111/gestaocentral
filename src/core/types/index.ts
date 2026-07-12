@@ -101,6 +101,10 @@ export type ModuleId =
   // Governança de IA — diretrizes do que a IA pode responder, log jurídico das
   // interações e alertas de uso fora do escopo (LGPD) às lideranças.
   | "iaGovernanca"
+  // WhatsApp — atendimento pelos números CONECTADOS (device-link/Evolution):
+  // inbox das conversas + configuração dos números. O WhatsApp da API oficial
+  // (disparos do sistema) fica na Central de Avisos ("WhatsApp do sistema").
+  | "whatsapp"
   // Portal do Empregado — área pessoal do empregado (minha escala, meus
   // horários, minha gorjeta, futuro: minha folha de ponto, meus uniformes,
   // meus exames, meu VT, fale com DP). NÃO é item de sidebar (sidebar tem

@@ -23,7 +23,7 @@ import { Button } from "../../core/ui/Button";
 import { tratarFaleDp } from "../faleDp/repository";
 import { concluirRotina } from "../rotinas/repository";
 import { useAvisosCentral, type Aviso } from "./useAvisos";
-import { WhatsappInboxPage } from "../whatsapp/WhatsappInboxPage";
+import { WhatsappTemplatesTab } from "../whatsapp/WhatsappTemplatesTab";
 import { CentralConfig } from "./CentralConfig";
 import type { FaleDpMensagem, Pessoa } from "../../core/types";
 import { FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE } from "../../core/types";
@@ -38,8 +38,9 @@ export function ChatPage() {
 
   const isMaster = !!pessoa?.isMaster;
   const { can } = useCanAcao(activeRestaurant?.id || "");
-  const podeWhats = isMaster || can("whatsappInbox", "ver");
-  const podeConfig = isMaster || can("whatsappInbox", "configurar");
+  // "WhatsApp do sistema" = número da API oficial (disparos/templates).
+  const podeSistema = isMaster || can("whatsapp", "configurar");
+  const podeConfig = isMaster || can("whatsapp", "configurar");
 
   const multiRest = restaurants.length > 1;
   const [aba, setAba] = useState<AbaCentral>("avisos");
@@ -49,14 +50,6 @@ export function ChatPage() {
   // Avisos filtrados por restaurante (chips na aba Avisos do sistema).
   const inboxVis = useMemo(() => filtroRestAvisos === "all" ? inbox : inbox.filter(a => a.restauranteId === filtroRestAvisos), [inbox, filtroRestAvisos]);
 
-  // Não-lidas do WhatsApp (badge da aba).
-  const [whatsUnread, setWhatsUnread] = useState(0);
-  useEffect(() => {
-    if (!podeWhats) return;
-    const u = onSnapshot(query(collection(db, "whatsappMensagens"), where("lido", "==", false)), snap =>
-      setWhatsUnread(snap.docs.filter(d => (d.data() as { direcao?: string }).direcao === "in").length));
-    return () => u();
-  }, [podeWhats]);
 
   // Pessoas do restaurante ativo (pra config de destinatários dos avisos).
   const [pessoasRest, setPessoasRest] = useState<Pessoa[]>([]);
@@ -110,7 +103,7 @@ export function ChatPage() {
       <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {([
           { k: "avisos" as const, label: "📥 Avisos do sistema", n: inbox.length, alerta: true },
-          ...(podeWhats ? [{ k: "whatsapp" as const, label: "💬 WhatsApp", n: whatsUnread, alerta: true }] : []),
+          ...(podeSistema ? [{ k: "whatsapp" as const, label: "📣 WhatsApp do sistema", n: 0, alerta: false }] : []),
           { k: "historico" as const, label: "🗂️ Histórico", n: historico.length, alerta: false },
           ...(podeConfig ? [{ k: "config" as const, label: "⚙️ Configurações", n: 0, alerta: false }] : []),
         ]).map((t) => (
@@ -177,8 +170,14 @@ export function ChatPage() {
         )
       )}
 
-      {aba === "whatsapp" && podeWhats && (
-        <WhatsappInboxPage modo="conversas" />
+      {aba === "whatsapp" && podeSistema && (
+        <div>
+          <div className="mb-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30 p-3">
+            <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">📣 WhatsApp do sistema (API oficial)</div>
+            <p className="text-xs text-gray-500 mt-0.5">Número da API da Meta usado pelos <b>disparos automáticos</b> do sistema (lembretes, fechamento, cobranças). O atendimento pelos números conectados fica no módulo <b>WhatsApp</b>.</p>
+          </div>
+          <WhatsappTemplatesTab podeConfig={podeConfig} />
+        </div>
       )}
 
       {aba === "config" && podeConfig && (
