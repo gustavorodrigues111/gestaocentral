@@ -7,7 +7,7 @@
 // cadastrado) e a um restaurante, além de receber tags. Isso permite dividir a
 // caixa por restaurante e filtrar por tag. Metadados em whatsappContatos/{waId}
 // e catálogo de tags em whatsappTags.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -50,6 +50,7 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
   const [numeros, setNumeros] = useState<WhatsappNumero[]>([]);
   const [numeroSel, setNumeroSel] = useState<string | null>(null);
   const [novaConversa, setNovaConversa] = useState(false);
+  const [qrRecon, setQrRecon] = useState<{ instancia: string; nome: string } | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [contatos, setContatos] = useState<Record<string, WhatsappContato>>({});
@@ -154,6 +155,46 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
   }, [numerosVisiveis.map(n => n.id).join(","), numeroSel]);
   // Só as mensagens do número selecionado.
   const msgsDoNumero = useMemo(() => msgs.filter(m => m.numeroId === numeroSel), [msgs, numeroSel]);
+
+  // ── Saúde da conexão do número selecionado: avisa quando cai (device desligado,
+  // sessão expirada). Sem isso, o inbox parece "vivo" mas nada entra/sai. ──
+  const [statusConexao, setStatusConexao] = useState<string>("unknown");
+  useEffect(() => {
+    if (!numeroSel) { setStatusConexao("unknown"); return; }
+    let vivo = true;
+    const checar = async () => { const r = await chamarInstancia("status", numeroSel).catch(() => null); if (vivo && r) setStatusConexao(r.estado || "unknown"); };
+    setStatusConexao("unknown"); void checar();
+    const t = setInterval(checar, 20000);
+    return () => { vivo = false; clearInterval(t); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [numeroSel]);
+  const numeroSelObj = numeros.find(n => n.id === numeroSel) || null;
+  const desconectado = !!numeroSel && statusConexao === "close";
+
+  // ── Alerta rápido: com a aba aberta (mesmo em segundo plano), piscar o título
+  // + beep quando chega mensagem nova não-lida num número que a pessoa acessa. ──
+  const totalNaoLidas = useMemo(() => {
+    const vis = new Set(numerosVisiveis.map(n => n.id));
+    return msgs.filter(m => m.direcao === "in" && !m.lido && m.numeroId && vis.has(m.numeroId)).length;
+  }, [msgs, numerosVisiveis]);
+  const prevUnread = useRef(totalNaoLidas);
+  const tituloOrig = useRef(typeof document !== "undefined" ? document.title : "");
+  const flashRef = useRef<number | null>(null);
+  useEffect(() => {
+    if (totalNaoLidas > prevUnread.current && typeof document !== "undefined" && document.hidden) {
+      try { const AC = (window as { AudioContext?: typeof AudioContext; webkitAudioContext?: typeof AudioContext }).AudioContext || (window as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext; if (AC) { const ctx = new AC(); const o = ctx.createOscillator(); const g = ctx.createGain(); o.connect(g); g.connect(ctx.destination); o.frequency.value = 880; g.gain.value = 0.05; o.start(); o.stop(ctx.currentTime + 0.15); } } catch { /* beep é best-effort */ }
+      if (flashRef.current) clearInterval(flashRef.current);
+      let on = false;
+      flashRef.current = window.setInterval(() => { document.title = (on = !on) ? `💬 (${totalNaoLidas}) nova mensagem` : tituloOrig.current; }, 1000);
+    }
+    prevUnread.current = totalNaoLidas;
+  }, [totalNaoLidas]);
+  useEffect(() => {
+    const limpar = () => { if (!document.hidden && flashRef.current) { clearInterval(flashRef.current); flashRef.current = null; document.title = tituloOrig.current; } };
+    document.addEventListener("visibilitychange", limpar);
+    window.addEventListener("focus", limpar);
+    return () => { document.removeEventListener("visibilitychange", limpar); window.removeEventListener("focus", limpar); if (flashRef.current) { clearInterval(flashRef.current); document.title = tituloOrig.current; } };
+  }, []);
 
   // ── Conversas agrupadas ──────────────────────────────────────────────────
   const conversas = useMemo(() => {
@@ -270,6 +311,23 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
         <WhatsappTemplatesTab podeConfig={podeResponder} />
       ) : (
       <>
+      {desconectado && (
+        <div className="rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 p-4 mb-3 flex items-start gap-3">
+          <span className="text-xl leading-none">🔌</span>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-rose-700 dark:text-rose-300">Número desconectado{numeroSelObj ? ` — ${numeroSelObj.nome}` : ""}</p>
+            <p className="text-xs text-rose-600/90 dark:text-rose-300/80 mt-0.5">
+              {isMaster
+                ? "O aparelho saiu do ar (celular desligado, sem internet ou sessão expirada). Enquanto isso, nenhuma mensagem entra ou sai por este número. Reconecte lendo o QR de novo."
+                : "O aparelho deste número saiu do ar, então nenhuma mensagem entra ou sai por ele no momento. Solicite ao administrador que refaça a conexão do número."}
+            </p>
+            {isMaster && (
+              <button type="button" onClick={() => setQrRecon({ instancia: numeroSel!, nome: numeroSelObj?.nome || numeroSel! })}
+                className="mt-2 text-xs font-semibold px-3 py-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700">🔄 Reconectar agora</button>
+            )}
+          </div>
+        </div>
+      )}
       {!sel && (
         <>
           {/* Seletor de NÚMERO (caixa) — só os que a pessoa pode acessar */}
@@ -432,6 +490,8 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
       {transferir && sel && <TransferModal
         pessoas={pessoas.filter(p => { const n = numeros.find(x => x.id === numeroSel); const uids = n?.usuariosIds || []; return uids.length === 0 || uids.includes(p.id); })}
         atualId={contatoSel?.atribuidoA || null} meId={me?.id || null} onClose={() => setTransferir(false)} onTransferir={transferirPara} />}
+      {qrRecon && <QrModal instancia={qrRecon.instancia} nome={qrRecon.nome} qrInicial={null}
+        onClose={() => { setQrRecon(null); if (numeroSel) void chamarInstancia("status", numeroSel).then(r => setStatusConexao(r.estado || "unknown")).catch(() => {}); }} />}
     </div>
   );
 }
@@ -518,8 +578,6 @@ export function NumerosManager() {
   const [salvando, setSalvando] = useState(false);
   const [qr, setQr] = useState<{ instancia: string; nome: string; qr: string | null } | null>(null);
   const [estados, setEstados] = useState<Record<string, string>>({});
-  const [expandido, setExpandido] = useState<string | null>(null);
-  const [buscaU, setBuscaU] = useState("");
   const slug = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
   // Poll do status de conexão de cada número.
@@ -545,19 +603,13 @@ export function NumerosManager() {
     } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : "?")); }
     finally { setSalvando(false); }
   }
-  async function patch(id: string, p: Partial<WhatsappNumero>) { await setDoc(doc(db, "whatsappNumeros", id), sanitizeForFirestore(p), { merge: true }); }
   async function excluir(n: WhatsappNumero) {
     if (!confirm(`Remover "${n.nome}"? Desconecta e apaga a instância na Evolution (não apaga as conversas já recebidas).`)) return;
     await chamarInstancia("delete", n.id).catch(() => {});
     await deleteDoc(doc(db, "whatsappNumeros", n.id));
   }
-  const toggleUsuario = (n: WhatsappNumero, pid: string) => {
-    const cur = n.usuariosIds || [];
-    void patch(n.id, { usuariosIds: cur.includes(pid) ? cur.filter(x => x !== pid) : [...cur, pid] });
-  };
 
   const inp = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
-  const pessoasFiltradas = (q: string) => { const s = q.trim().toLowerCase(); return [...pessoas].sort((a, b) => a.nome.localeCompare(b.nome)).filter(p => !s || p.nome.toLowerCase().includes(s)).slice(0, 100); };
 
   return (
     <div>
@@ -575,67 +627,148 @@ export function NumerosManager() {
         </div>
 
         {/* Lista de números */}
-        <div className="space-y-2">
+        <div className="space-y-2.5">
           {numeros.length === 0 && <div className="text-center text-sm text-gray-400 py-4">Nenhum número ainda.</div>}
-          {numeros.map(n => {
-            const est = estados[n.id] || "unknown";
-            const em = ESTADO_META[est] || { label: "—", cls: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" };
-            const nUsers = (n.usuariosIds || []).length;
-            const aberto = expandido === n.id;
-            return (
-              <div key={n.id} className="rounded-xl border border-gray-200 dark:border-gray-800">
-                <div className="flex items-center gap-2 p-3">
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate flex items-center gap-2">
-                      {n.nome}
-                      <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${em.cls}`}>{est === "unknown" ? "…" : em.label}</span>
-                      {n.ativo === false && <span className="text-[10px] text-gray-400">(inativo)</span>}
-                    </div>
-                    <div className="text-[11px] text-gray-400 truncate">instância: {n.id}{n.descricao ? ` · ${n.descricao}` : ""} · {nUsers} usuário{nUsers === 1 ? "" : "s"}</div>
-                  </div>
-                  {est === "open"
-                    ? <button type="button" onClick={async () => { if (!confirm(`Desconectar "${n.nome}"? O número sai do ar até reconectar.`)) return; await chamarInstancia("logout", n.id); void atualizarStatus(); }} className="text-[11px] px-2 py-1 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">⏻ Desconectar</button>
-                    : <button type="button" onClick={() => setQr({ instancia: n.id, nome: n.nome, qr: null })} className="text-[11px] px-2 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300">{est === "close" ? "🔄 Reconectar" : "🔌 Conectar"}</button>}
-                  <button type="button" onClick={() => setExpandido(aberto ? null : n.id)} className="text-[11px] px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">👥 Usuários</button>
-                  <button type="button" onClick={() => void excluir(n)} className="text-gray-400 hover:text-rose-600 text-sm">🗑️</button>
-                </div>
-                {aberto && (
-                  <div className="px-3 pb-3 border-t border-gray-100 dark:border-gray-800 pt-2 space-y-2">
-                    <div className="text-[11px] font-semibold text-gray-500 uppercase">Empresa(s) deste número</div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {restaurants.map(r => {
-                        const on = (n.restaurantIds || []).includes(r.id);
-                        return (
-                          <button key={r.id} type="button" onClick={() => { const cur = n.restaurantIds || []; void patch(n.id, { restaurantIds: on ? cur.filter(x => x !== r.id) : [...cur, r.id] }); }}
-                            className={`text-xs font-medium px-3 py-1.5 rounded-full border ${on ? "border-indigo-500 bg-indigo-500 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800"}`}>{on ? "✓ " : ""}{r.nome}</button>
-                        );
-                      })}
-                    </div>
-                    <p className="text-[11px] text-gray-400">Trava o número numa empresa: só quem é dessa empresa pode usar. Vazio = qualquer empresa.</p>
-
-                    <div className="text-[11px] font-semibold text-gray-500 uppercase pt-1">Quem pode usar este número</div>
-                    <input value={buscaU} onChange={e => setBuscaU(e.target.value)} className={inp} placeholder="Buscar pessoa…" />
-                    <div className="max-h-44 overflow-y-auto flex flex-wrap gap-x-4 gap-y-1">
-                      {pessoasFiltradas(buscaU).filter(p => { const rs = n.restaurantIds || []; return rs.length === 0 || (p.restaurantIds || []).some(r => rs.includes(r)); }).map(p => (
-                        <label key={p.id} className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300">
-                          <input type="checkbox" checked={(n.usuariosIds || []).includes(p.id)} onChange={() => toggleUsuario(n, p.id)} />{p.nome}
-                        </label>
-                      ))}
-                    </div>
-                    <div>
-                      <div className="text-[11px] font-semibold text-gray-500 uppercase mt-2 mb-1">Regras de uso (opcional)</div>
-                      <textarea defaultValue={n.regras || ""} onBlur={e => { if (e.target.value !== (n.regras || "")) void patch(n.id, { regras: e.target.value }); }} rows={2} className={inp} placeholder="Ex.: só responder em horário comercial; sempre confirmar preço antes de fechar…" />
-                    </div>
-                    <button type="button" onClick={() => void patch(n.id, { ativo: !(n.ativo !== false) })} className="text-[11px] text-gray-500 hover:underline">{n.ativo === false ? "Reativar número" : "Desativar número (esconde do inbox)"}</button>
-                  </div>
-                )}
-              </div>
-            );
-          })}
+          {numeros.map(n => (
+            <NumeroConfigCard key={n.id} numero={n} estado={estados[n.id] || "unknown"} pessoas={pessoas} restaurants={restaurants}
+              onQr={() => setQr({ instancia: n.id, nome: n.nome, qr: null })}
+              onLogout={async () => { if (!confirm(`Desconectar "${n.nome}"? O número sai do ar até reconectar.`)) return; await chamarInstancia("logout", n.id); void atualizarStatus(); }}
+              onExcluir={() => void excluir(n)} />
+          ))}
         </div>
         <p className="text-[11px] text-gray-400">Só quem estiver marcado em <b>Usuários</b> vê/responde cada número. Master vê todos. O que cada um pode fazer (ver/responder/tags) segue no Perfil de Acesso.</p>
       </div>
       {qr && <QrModal instancia={qr.instancia} nome={qr.nome} qrInicial={qr.qr} onClose={() => { setQr(null); void atualizarStatus(); }} />}
+    </div>
+  );
+}
+
+// Card de um número: status colorido, expansível, usuários por chip, botão Salvar.
+function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout, onExcluir }: {
+  numero: WhatsappNumero; estado: string; pessoas: Pessoa[]; restaurants: { id: string; nome: string }[];
+  onQr: () => void; onLogout: () => void; onExcluir: () => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const [buscaU, setBuscaU] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [draft, setDraft] = useState(() => ({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], regras: numero.regras || "", ativo: numero.ativo !== false }));
+  // Ressincroniza o rascunho quando o doc muda (ex.: depois de salvar).
+  useEffect(() => { setDraft({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], regras: numero.regras || "", ativo: numero.ativo !== false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [numero.id, numero.nome, numero.descricao, (numero.restaurantIds || []).join(","), (numero.usuariosIds || []).join(","), numero.regras, numero.ativo]);
+
+  const eqArr = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",");
+  const dirty = draft.nome !== numero.nome || draft.descricao !== (numero.descricao || "") || !eqArr(draft.restaurantIds, numero.restaurantIds || []) || !eqArr(draft.usuariosIds, numero.usuariosIds || []) || draft.regras !== (numero.regras || "") || draft.ativo !== (numero.ativo !== false);
+
+  const em = ESTADO_META[estado] || { label: "…", cls: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" };
+  const cor = estado === "open" ? "border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-900/10"
+    : estado === "close" ? "border-rose-300 dark:border-rose-800 bg-rose-50/40 dark:bg-rose-900/10"
+    : estado === "connecting" ? "border-amber-300 dark:border-amber-800 bg-amber-50/40 dark:bg-amber-900/10"
+    : "border-gray-200 dark:border-gray-800";
+  const pessoaById = Object.fromEntries(pessoas.map(p => [p.id, p]));
+  const selecionados = draft.usuariosIds.map(id => pessoaById[id]).filter(Boolean) as Pessoa[];
+  const disponiveis = (() => {
+    const q = buscaU.trim().toLowerCase();
+    return pessoas
+      .filter(p => !draft.usuariosIds.includes(p.id))
+      .filter(p => { const rs = draft.restaurantIds; return rs.length === 0 || (p.restaurantIds || []).some(r => rs.includes(r)); })
+      .filter(p => !q || p.nome.toLowerCase().includes(q))
+      .sort((a, b) => a.nome.localeCompare(b.nome)).slice(0, 30);
+  })();
+  const inp = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+
+  async function salvar() { setSalvando(true); try { await setDoc(doc(db, "whatsappNumeros", numero.id), sanitizeForFirestore({ nome: draft.nome.trim() || numero.nome, descricao: draft.descricao.trim() || null, restaurantIds: draft.restaurantIds, usuariosIds: draft.usuariosIds, regras: draft.regras.trim() || null, ativo: draft.ativo, atualizadoEm: new Date().toISOString() }), { merge: true }); } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); } finally { setSalvando(false); } }
+  const cancelar = () => setDraft({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], regras: numero.regras || "", ativo: numero.ativo !== false });
+
+  return (
+    <div className={`rounded-xl border ${cor}`}>
+      {/* Cabeçalho do card (clicável) */}
+      <button type="button" onClick={() => setAberto(v => !v)} className="w-full text-left p-3.5 flex items-start gap-3">
+        <span className={`mt-0.5 w-2.5 h-2.5 rounded-full shrink-0 ${estado === "open" ? "bg-emerald-500" : estado === "close" ? "bg-rose-500" : estado === "connecting" ? "bg-amber-500 animate-pulse" : "bg-gray-300"}`} />
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{numero.nome}</span>
+            <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${em.cls}`}>{em.label}</span>
+            {numero.ativo === false && <span className="text-[10px] text-gray-400">(inativo)</span>}
+          </div>
+          <div className="text-[11px] text-gray-400 mt-0.5">instância: {numero.id}{numero.descricao ? ` · ${numero.descricao}` : ""}</div>
+          {/* Chips de usuários conectados */}
+          <div className="flex flex-wrap gap-1 mt-1.5">
+            {selecionados.length === 0 && <span className="text-[11px] text-gray-400">Sem usuários atribuídos</span>}
+            {selecionados.slice(0, 6).map(p => <span key={p.id} className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/70 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300">{p.nome.split(" ")[0]}</span>)}
+            {selecionados.length > 6 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-white/70 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 text-gray-500">+{selecionados.length - 6}</span>}
+          </div>
+        </div>
+        <span className="text-gray-400 text-sm shrink-0 mt-0.5">{aberto ? "▲" : "▼"}</span>
+      </button>
+
+      {aberto && (
+        <div className="px-3.5 pb-3.5 border-t border-gray-200/70 dark:border-gray-800 pt-3 space-y-3">
+          {/* Conexão */}
+          <div className="flex items-center gap-2">
+            {estado === "open"
+              ? <button type="button" onClick={onLogout} className="text-xs px-2.5 py-1.5 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">⏻ Desconectar</button>
+              : <button type="button" onClick={onQr} className="text-xs px-2.5 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300">{estado === "close" ? "🔄 Reconectar" : "🔌 Conectar"}</button>}
+            <button type="button" onClick={onExcluir} className="ml-auto text-xs text-gray-400 hover:text-rose-600">🗑️ Excluir número</button>
+          </div>
+
+          {/* Rótulo */}
+          <div><label className="text-[11px] font-semibold text-gray-500 uppercase">Rótulo</label>
+            <input value={draft.nome} onChange={e => setDraft(d => ({ ...d, nome: e.target.value }))} className={inp} /></div>
+
+          {/* Empresas */}
+          <div>
+            <label className="text-[11px] font-semibold text-gray-500 uppercase">Empresa(s) deste número</label>
+            <div className="flex flex-wrap gap-1.5 mt-1">
+              {restaurants.map(r => { const on = draft.restaurantIds.includes(r.id); return (
+                <button key={r.id} type="button" onClick={() => setDraft(d => ({ ...d, restaurantIds: on ? d.restaurantIds.filter(x => x !== r.id) : [...d.restaurantIds, r.id] }))}
+                  className={`text-xs font-medium px-3 py-1.5 rounded-full border ${on ? "border-indigo-500 bg-indigo-500 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800"}`}>{on ? "✓ " : ""}{r.nome}</button>
+              ); })}
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">Vazio = qualquer empresa. Trava o número só pra quem é da(s) empresa(s) marcada(s).</p>
+          </div>
+
+          {/* Usuários por chip + busca */}
+          <div>
+            <label className="text-[11px] font-semibold text-gray-500 uppercase">Usuários que podem usar</label>
+            <div className="flex flex-wrap gap-1.5 mt-1 mb-1.5">
+              {selecionados.length === 0 && <span className="text-[11px] text-gray-400">Ninguém ainda.</span>}
+              {selecionados.map(p => (
+                <span key={p.id} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                  {p.nome}
+                  <button type="button" onClick={() => setDraft(d => ({ ...d, usuariosIds: d.usuariosIds.filter(x => x !== p.id) }))} className="opacity-70 hover:opacity-100">✕</button>
+                </span>
+              ))}
+            </div>
+            <input value={buscaU} onChange={e => setBuscaU(e.target.value)} className={inp} placeholder="Digite o nome pra adicionar…" />
+            {buscaU.trim() && (
+              <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+                {disponiveis.length === 0 && <div className="px-3 py-2 text-sm text-gray-400">Ninguém encontrado.</div>}
+                {disponiveis.map(p => (
+                  <button key={p.id} type="button" onClick={() => { setDraft(d => ({ ...d, usuariosIds: [...d.usuariosIds, p.id] })); setBuscaU(""); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40 text-gray-800 dark:text-gray-200">{p.nome}</button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Regras */}
+          <div>
+            <label className="text-[11px] font-semibold text-gray-500 uppercase">Regras de uso (opcional)</label>
+            <textarea value={draft.regras} onChange={e => setDraft(d => ({ ...d, regras: e.target.value }))} rows={2} className={inp} placeholder="Ex.: só responder em horário comercial; confirmar preço antes de fechar…" />
+          </div>
+
+          <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
+            <input type="checkbox" checked={draft.ativo} onChange={e => setDraft(d => ({ ...d, ativo: e.target.checked }))} /> Ativo (aparece no inbox)
+          </label>
+
+          {/* Salvar / Cancelar */}
+          <div className="flex items-center justify-end gap-2 pt-1">
+            {dirty && <span className="text-[11px] text-amber-600 dark:text-amber-400 mr-auto">Alterações não salvas</span>}
+            {dirty && <button type="button" onClick={cancelar} className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>}
+            <Button onClick={() => void salvar()} disabled={!dirty || salvando}>{salvando ? "Salvando…" : "💾 Salvar"}</Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
