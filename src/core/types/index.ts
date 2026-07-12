@@ -5812,6 +5812,7 @@ export type WhatsappNumero = {
   nome: string;               // rótulo amigável (ex.: "Sororoca · Clientes")
   descricao?: string;         // pra que serve (clientes, fornecedores, DP…)
   ativo?: boolean;
+  restaurantIds?: string[];   // empresa(s) dona(s) do número (vazio = sem empresa/qualquer)
   usuariosIds?: string[];     // pessoas que podem usar/ver este número (vazio = ninguém além do master)
   regras?: string;            // regras de uso (texto livre, exibido aos atendentes)
   criadoEm?: string;

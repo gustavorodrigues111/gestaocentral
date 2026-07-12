@@ -49,6 +49,7 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
 
   const [numeros, setNumeros] = useState<WhatsappNumero[]>([]);
   const [numeroSel, setNumeroSel] = useState<string | null>(null);
+  const [novaConversa, setNovaConversa] = useState(false);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [contatos, setContatos] = useState<Record<string, WhatsappContato>>({});
@@ -131,9 +132,14 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
     return c?.restaurantIds == null && !c?.restaurantId;
   }
 
-  // ── Números acessíveis (por atribuição de usuário) + número selecionado ────
-  // Master vê todos; os demais só os números em que estão em usuariosIds.
-  const numerosVisiveis = isMaster ? numeros : numeros.filter(n => (n.usuariosIds || []).includes(me?.id || ""));
+  // ── Números acessíveis + número selecionado ───────────────────────────────
+  // Master vê todos; os demais só os números em que estão em usuariosIds E que
+  // pertencem a uma empresa dele (número travado numa empresa não vaza pra outra).
+  const meRids = me?.restaurantIds || [];
+  const numerosVisiveis = isMaster ? numeros : numeros.filter(n =>
+    (n.usuariosIds || []).includes(me?.id || "") &&
+    ((n.restaurantIds || []).length === 0 || (n.restaurantIds || []).some(r => meRids.includes(r)))
+  );
   useEffect(() => {
     if (numerosVisiveis.length === 0) { if (numeroSel !== null) setNumeroSel(null); return; }
     if (!numeroSel || !numerosVisiveis.some(n => n.id === numeroSel)) setNumeroSel(numerosVisiveis[0].id);
@@ -260,6 +266,7 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
                 📱 {n.nome}
               </button>
             ))}
+            {podeResponder && numeroSel && <button type="button" onClick={() => setNovaConversa(true)} className="ml-auto text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shrink-0">＋ Nova conversa</button>}
           </div>
           {numerosVisiveis.length === 0 && (
             <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500 mb-3">
@@ -405,7 +412,52 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
       )}
 
       {gerenciarTags && <GerenciarTagsModal tags={tags} onClose={() => setGerenciarTags(false)} onCriar={criarTag} onExcluir={excluirTag} />}
+      {novaConversa && <NovaConversaModal pessoas={pessoas} onClose={() => setNovaConversa(false)}
+        onAbrir={(waId, pid) => { setNovaConversa(false); setSel(waId); if (pid) void salvarContato(waId, { pessoaId: pid }); }} />}
     </div>
+  );
+}
+
+// Iniciar conversa nova: digita um número OU escolhe uma pessoa cadastrada.
+function NovaConversaModal({ pessoas, onAbrir, onClose }: { pessoas: Pessoa[]; onAbrir: (waId: string, pessoaId?: string) => void; onClose: () => void }) {
+  const [fone, setFone] = useState("");
+  const [busca, setBusca] = useState("");
+  const norm = (raw: string) => { let d = (raw || "").replace(/\D/g, ""); if (!d) return ""; if (d.length <= 11) d = "55" + d; return d; };
+  const comFone = useMemo(() => {
+    const s = busca.trim().toLowerCase(); const sd = soDig(busca);
+    return [...pessoas].filter(p => !!soDig(p.whatsapp))
+      .filter(p => !s || p.nome.toLowerCase().includes(s) || (!!sd && soDig(p.whatsapp).includes(sd)))
+      .sort((a, b) => a.nome.localeCompare(b.nome)).slice(0, 40);
+  }, [pessoas, busca]);
+  const inp = "w-full px-3 py-2.5 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+
+  return (
+    <Modal onClose={onClose} title="＋ Nova conversa" maxWidth="max-w-md">
+      <div className="space-y-4">
+        <div>
+          <label className="text-[11px] font-semibold text-gray-500 uppercase">Digitar um número</label>
+          <div className="flex gap-2 mt-1">
+            <input value={fone} onChange={e => setFone(e.target.value)} className={inp} placeholder="Ex.: 11 98888-7777" inputMode="tel"
+              onKeyDown={e => { if (e.key === "Enter" && norm(fone)) onAbrir(norm(fone)); }} />
+            <Button onClick={() => { const w = norm(fone); if (!w) { alert("Número inválido."); return; } onAbrir(w); }} disabled={!norm(fone)}>Abrir</Button>
+          </div>
+          <p className="text-[11px] text-gray-400 mt-1">DDI 55 (Brasil) é assumido se você não colocar.</p>
+        </div>
+        <div>
+          <label className="text-[11px] font-semibold text-gray-500 uppercase">Ou escolher uma pessoa cadastrada</label>
+          <input value={busca} onChange={e => setBusca(e.target.value)} className={`${inp} mt-1`} placeholder="Buscar nome ou número…" />
+          <div className="max-h-56 overflow-y-auto mt-1.5 rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            {comFone.length === 0 && <div className="px-3 py-3 text-sm text-gray-400">Nenhuma pessoa com WhatsApp encontrada.</div>}
+            {comFone.map(p => (
+              <button key={p.id} type="button" onClick={() => onAbrir(norm(p.whatsapp || ""), p.id)} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/40">
+                <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{p.nome}</div>
+                <div className="text-[11px] text-gray-400">{foneBonito(p.whatsapp || "")}</div>
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
@@ -529,10 +581,22 @@ export function NumerosManager() {
                 </div>
                 {aberto && (
                   <div className="px-3 pb-3 border-t border-gray-100 dark:border-gray-800 pt-2 space-y-2">
-                    <div className="text-[11px] font-semibold text-gray-500 uppercase">Quem pode usar este número</div>
+                    <div className="text-[11px] font-semibold text-gray-500 uppercase">Empresa(s) deste número</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {restaurants.map(r => {
+                        const on = (n.restaurantIds || []).includes(r.id);
+                        return (
+                          <button key={r.id} type="button" onClick={() => { const cur = n.restaurantIds || []; void patch(n.id, { restaurantIds: on ? cur.filter(x => x !== r.id) : [...cur, r.id] }); }}
+                            className={`text-xs font-medium px-3 py-1.5 rounded-full border ${on ? "border-indigo-500 bg-indigo-500 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800"}`}>{on ? "✓ " : ""}{r.nome}</button>
+                        );
+                      })}
+                    </div>
+                    <p className="text-[11px] text-gray-400">Trava o número numa empresa: só quem é dessa empresa pode usar. Vazio = qualquer empresa.</p>
+
+                    <div className="text-[11px] font-semibold text-gray-500 uppercase pt-1">Quem pode usar este número</div>
                     <input value={buscaU} onChange={e => setBuscaU(e.target.value)} className={inp} placeholder="Buscar pessoa…" />
                     <div className="max-h-44 overflow-y-auto flex flex-wrap gap-x-4 gap-y-1">
-                      {pessoasFiltradas(buscaU).map(p => (
+                      {pessoasFiltradas(buscaU).filter(p => { const rs = n.restaurantIds || []; return rs.length === 0 || (p.restaurantIds || []).some(r => rs.includes(r)); }).map(p => (
                         <label key={p.id} className="flex items-center gap-1.5 text-xs text-gray-700 dark:text-gray-300">
                           <input type="checkbox" checked={(n.usuariosIds || []).includes(p.id)} onChange={() => toggleUsuario(n, p.id)} />{p.nome}
                         </label>
