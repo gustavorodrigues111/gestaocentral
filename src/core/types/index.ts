@@ -5720,6 +5720,7 @@ export type WhatsappTag = {
   id: string;
   nome: string;
   cor?: string;        // hex (ex "#6366f1")
+  descricao?: string;
   criadoEm?: string;
 };
 

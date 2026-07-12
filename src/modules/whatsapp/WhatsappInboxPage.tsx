@@ -950,13 +950,16 @@ function FiltroChip({ ativo, onClick, children }: { ativo: boolean; onClick: () 
 export function TagsManager() {
   const [tags, setTags] = useState<WhatsappTag[]>([]);
   const [nome, setNome] = useState("");
+  const [descricao, setDescricao] = useState("");
   const [cor, setCor] = useState(PALETA[0]!);
+  const [open, setOpen] = useState(false);
   useEffect(() => {
     const u = onSnapshot(collection(db, "whatsappTags"), snap => setTags(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WhatsappTag).sort((a, b) => a.nome.localeCompare(b.nome))));
     return () => u();
   }, []);
-  const criar = async () => { const n = nome.trim(); if (!n) return; await addDoc(collection(db, "whatsappTags"), sanitizeForFirestore({ nome: n, cor, criadoEm: new Date().toISOString() })); setNome(""); };
+  const criar = async () => { const n = nome.trim(); if (!n) return; await addDoc(collection(db, "whatsappTags"), sanitizeForFirestore({ nome: n, cor, descricao: descricao.trim() || null, criadoEm: new Date().toISOString() })); setNome(""); setDescricao(""); setOpen(false); };
   const excluir = async (id: string) => { if (confirm("Excluir esta tag?")) await deleteDoc(doc(db, "whatsappTags", id)); };
+  const inp = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 space-y-3">
       <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">🏷 Tags de conversa</div>
@@ -964,23 +967,49 @@ export function TagsManager() {
       <div className="flex flex-wrap gap-2">
         {tags.length === 0 && <span className="text-sm text-gray-400">Nenhuma tag ainda.</span>}
         {tags.map(t => (
-          <span key={t.id} className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-full text-white" style={{ background: t.cor || "#6366f1" }}>
+          <span key={t.id} className="inline-flex items-center gap-1.5 text-sm px-2.5 py-1 rounded-full text-white" style={{ background: t.cor || "#6366f1" }} title={t.descricao || undefined}>
             {t.nome}
             <button type="button" onClick={() => void excluir(t.id)} className="opacity-80 hover:opacity-100 leading-none">×</button>
           </span>
         ))}
       </div>
-      <div className="border-t border-gray-100 dark:border-gray-800 pt-3">
-        <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Nova tag</label>
-        <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome da tag" className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100"
-          onKeyDown={e => { if (e.key === "Enter") void criar(); }} />
-        <div className="flex items-center gap-2 mt-2">
-          {PALETA.map(c => (
-            <button key={c} type="button" onClick={() => setCor(c)} className={`w-6 h-6 rounded-full ${cor === c ? "ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-900" : ""}`} style={{ background: c }} />
-          ))}
-          <Button onClick={() => void criar()} disabled={!nome.trim()} size="sm">Adicionar</Button>
+      <Button className="w-full" size="sm" onClick={() => { setNome(""); setDescricao(""); setCor(PALETA[0]!); setOpen(true); }}>➕ Adicionar nova tag</Button>
+
+      {open && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setOpen(false)}>
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5 space-y-3" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">🏷 Nova tag</h3>
+              <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-gray-500 uppercase">Nome da tag *</label>
+              <input value={nome} onChange={e => setNome(e.target.value)} className={inp} placeholder="Ex.: Aguardando pagamento" autoFocus
+                onKeyDown={e => { if (e.key === "Enter" && nome.trim()) void criar(); }} />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-gray-500 uppercase">Descrição (opcional)</label>
+              <input value={descricao} onChange={e => setDescricao(e.target.value)} className={inp} placeholder="Pra que serve esta etiqueta" />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-gray-500 uppercase">Cor</label>
+              <div className="flex items-center gap-2 mt-1 flex-wrap">
+                {PALETA.map(c => (
+                  <button key={c} type="button" onClick={() => setCor(c)} className={`w-7 h-7 rounded-full ${cor === c ? "ring-2 ring-offset-2 ring-gray-400 dark:ring-offset-gray-900" : ""}`} style={{ background: c }} />
+                ))}
+              </div>
+            </div>
+            {/* Prévia */}
+            <div className="flex items-center gap-2 text-xs text-gray-500">Prévia:
+              <span className="inline-flex items-center text-sm px-2.5 py-1 rounded-full text-white" style={{ background: cor }}>{nome.trim() || "Tag"}</span>
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setOpen(false)} className="text-sm px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>
+              <Button onClick={() => void criar()} disabled={!nome.trim()}>Adicionar</Button>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
