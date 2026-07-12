@@ -36,7 +36,7 @@ function foneKey(raw?: string | null): string {
 
 const PALETA = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#ef4444", "#0ea5e9", "#8b5cf6", "#64748b"];
 
-export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | "completo" } = {}) {
+export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { modo?: "conversas" | "completo"; voltarListaSignal?: number } = {}) {
   const embutido = modo === "conversas";
   const { pessoa: me } = useAuth();
   const { rid } = useParams<{ rid: string }>();
@@ -153,6 +153,9 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
     if (!numeroSel || !numerosVisiveis.some(n => n.id === numeroSel)) setNumeroSel(numerosVisiveis[0].id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [numerosVisiveis.map(n => n.id).join(","), numeroSel]);
+  // Clique na aba "Chat" (no topo) → volta pra lista de todas as conversas.
+  useEffect(() => { if (voltarListaSignal) setSel(null); }, [voltarListaSignal]);
+
   // Só as mensagens do número selecionado.
   const msgsDoNumero = useMemo(() => msgs.filter(m => m.numeroId === numeroSel), [msgs, numeroSel]);
 
