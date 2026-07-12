@@ -38,6 +38,13 @@ type EvoMsg = {
 type EvoBody = { event?: string; instance?: string; data?: EvoMsg | EvoMsg[] };
 
 const soDig = (s?: string) => (s || "").replace(/\D/g, "");
+// Chave normalizada BR: ignora DDI 55 e o 9º dígito de celular (DDD + 8 últimos).
+// Mesma lógica do foneKey do front — pra o contato semeado casar as duas formas.
+function chaveBR(raw?: string): string {
+  let d = soDig(raw);
+  if ((d.length === 12 || d.length === 13) && d.startsWith("55")) d = d.slice(2);
+  return d.length >= 10 ? d.slice(0, 2) + d.slice(-8) : d;
+}
 function textoDe(m?: EvoMsg["message"], tipo?: string): string {
   if (!m) return tipo ? `[${tipo}]` : "";
   return m.conversation
@@ -129,7 +136,7 @@ async function processar(body: EvoBody): Promise<void> {
       });
       // Semeia o contato na 1ª mensagem (create-if-not-exists — não sobrescreve
       // ajustes manuais posteriores, que vêm pelo app com merge).
-      if (m.pushName) await firestoreCriar("whatsappContatos", waId, { id: waId, nomePush: m.pushName, atualizadoEm: new Date().toISOString() });
+      if (m.pushName) { const ck = chaveBR(waId); await firestoreCriar("whatsappContatos", ck, { id: ck, waId, nomePush: m.pushName, atualizadoEm: new Date().toISOString() }); }
     } catch (e) { console.log("[evo-webhook] falha ao gravar:", (e as Error)?.message); }
   }
 }

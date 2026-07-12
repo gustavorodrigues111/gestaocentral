@@ -92,7 +92,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   useEffect(() => {
     const u = onSnapshot(collection(db, "whatsappContatos"), snap => {
       const m: Record<string, WhatsappContato> = {};
-      snap.docs.forEach(d => { m[d.id] = { id: d.id, ...d.data() } as WhatsappContato; });
+      // Indexa pela chave normalizada (DDD + 8 últimos), pra casar as duas formas
+      // do número (com/sem o 9º dígito) no mesmo contato.
+      snap.docs.forEach(d => { const data = { id: d.id, ...d.data() } as WhatsappContato; const k = foneKey(d.id); if (!m[k] || (data.atualizadoEm || "") > (m[k].atualizadoEm || "")) m[k] = data; });
       setContatos(m);
     });
     return () => u();
@@ -130,13 +132,13 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
   // Resolve Pessoa vinculada (manual tem prioridade sobre auto-match).
   function pessoaDaConversa(waId: string): Pessoa | null {
-    const c = contatos[waId];
+    const c = contatos[foneKey(waId)];
     if (c?.pessoaId) return pessoaById[c.pessoaId] || null;
     return pessoaByFone[foneKey(waId)] || null;
   }
   // Resolve Cliente (CRM) vinculado (manual tem prioridade sobre auto-match por telefone).
   function clienteDaConversa(waId: string): Cliente | null {
-    const c = contatos[waId];
+    const c = contatos[foneKey(waId)];
     if (c?.clienteId) return clienteById[c.clienteId] || null;
     if (c?.clienteId === null) return null;   // desvinculado manualmente
     return clienteByFone[foneKey(waId)] || null;
@@ -202,48 +204,54 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   }, []);
 
   // ── Conversas agrupadas ──────────────────────────────────────────────────
+  // Agrupa por chave normalizada (foneKey) — junta as duas formas do mesmo
+  // número (com/sem o 9º dígito) numa conversa só. waId = número mais recente.
   const conversas = useMemo(() => {
     const m = new Map<string, { waId: string; nome?: string | null; ultima: Msg; naoLidas: number }>();
     for (const msg of msgsDoNumero) {
-      const c = m.get(msg.waId) || { waId: msg.waId, nome: msg.nome, ultima: msg, naoLidas: 0 };
-      c.ultima = msg; if (msg.nome) c.nome = msg.nome;
-      m.set(msg.waId, c);
+      const k = foneKey(msg.waId);
+      const c = m.get(k) || { waId: msg.waId, nome: msg.nome, ultima: msg, naoLidas: 0 };
+      c.ultima = msg; c.waId = msg.waId; if (msg.nome) c.nome = msg.nome;   // msgsDoNumero está em ordem asc → fica o mais recente
+      m.set(k, c);
     }
-    for (const msg of msgsDoNumero) if (msg.direcao === "in" && !msg.lido) { const c = m.get(msg.waId); if (c) c.naoLidas++; }
+    for (const msg of msgsDoNumero) if (msg.direcao === "in" && !msg.lido) { const c = m.get(foneKey(msg.waId)); if (c) c.naoLidas++; }
     return [...m.values()].sort((a, b) => (b.ultima.timestamp || "").localeCompare(a.ultima.timestamp || ""));
   }, [msgsDoNumero]);
 
   const nomeConversa = (waId: string, waNome?: string | null) =>
-    contatos[waId]?.nomeManual || pessoaDaConversa(waId)?.nome || waNome || foneBonito(waId);
+    contatos[foneKey(waId)]?.nomeManual || pessoaDaConversa(waId)?.nome || waNome || foneBonito(waId);
 
   // Filtro por tag (o número já é da empresa; não filtra por empresa aqui).
   const conversasFiltradas = useMemo(() => conversas.filter(c => {
-    if (filtroTag) { if (!(contatos[c.waId]?.tagIds || []).includes(filtroTag)) return false; }
+    if (filtroTag) { if (!(contatos[foneKey(c.waId)]?.tagIds || []).includes(filtroTag)) return false; }
     return true;
   }), [conversas, filtroTag, contatos]);
 
-  const thread = useMemo(() => msgsDoNumero.filter(x => x.waId === sel), [msgsDoNumero, sel]);
-  const nomeSel = sel ? nomeConversa(sel, conversas.find(c => c.waId === sel)?.nome) : "";
+  const thread = useMemo(() => msgsDoNumero.filter(x => foneKey(x.waId) === foneKey(sel || "")), [msgsDoNumero, sel]);
+  const nomeSel = sel ? nomeConversa(sel, conversas.find(c => foneKey(c.waId) === foneKey(sel))?.nome) : "";
 
   // Marca recebidas como lidas ao abrir.
   useEffect(() => {
     if (!sel) return;
-    for (const m of msgs) if (m.waId === sel && m.direcao === "in" && !m.lido) void updateDoc(doc(db, "whatsappMensagens", m.id), { lido: true }).catch(() => {});
+    for (const m of msgs) if (foneKey(m.waId) === foneKey(sel) && m.direcao === "in" && !m.lido) void updateDoc(doc(db, "whatsappMensagens", m.id), { lido: true }).catch(() => {});
   }, [sel, msgs]);
 
   // ── Writers ──────────────────────────────────────────────────────────────
   async function salvarContato(waId: string, patch: Partial<WhatsappContato>) {
-    await setDoc(doc(db, "whatsappContatos", waId), sanitizeForFirestore({ ...patch, id: waId, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id || null }), { merge: true });
+    // Doc keyed pela chave normalizada (DDD + 8 últimos) → tags/vínculos casam
+    // com/sem o 9º dígito. Guarda o waId cru pra referência.
+    const k = foneKey(waId);
+    await setDoc(doc(db, "whatsappContatos", k), sanitizeForFirestore({ ...patch, id: k, waId, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id || null }), { merge: true });
   }
   async function toggleTagConversa(waId: string, tagId: string) {
-    const atuais = contatos[waId]?.tagIds || [];
+    const atuais = contatos[foneKey(waId)]?.tagIds || [];
     const novas = atuais.includes(tagId) ? atuais.filter(t => t !== tagId) : [...atuais, tagId];
     await salvarContato(waId, { tagIds: novas });
   }
 
   // Marca a conversa como NÃO lida (última mensagem recebida vira não-lida) e volta pra lista.
   async function marcarNaoLida(waId: string) {
-    const inbound = msgsDoNumero.filter(m => m.waId === waId && m.direcao === "in");
+    const inbound = msgsDoNumero.filter(m => foneKey(m.waId) === foneKey(waId) && m.direcao === "in");
     const ultima = inbound[inbound.length - 1];
     setSel(null);
     if (ultima) await updateDoc(doc(db, "whatsappMensagens", ultima.id), { lido: false }).catch(() => {});
@@ -252,11 +260,15 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   async function responder() {
     const txt = resposta.trim();
     if (!txt || !sel || !numeroSel) return;
+    // Responde no número que o cliente REALMENTE usou por último (com/sem o 9º
+    // dígito), não numa forma normalizada que poderia não existir.
+    const inbound = thread.filter(m => m.direcao === "in");
+    const paraEnviar = inbound.length ? inbound[inbound.length - 1].waId : sel;
     setEnviando(true);
     try {
       const r = await fetch("/api/evolution-enviar", {
         method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ instancia: numeroSel, to: sel, texto: txt, autorNome: me?.nome || "" }),
+        body: JSON.stringify({ instancia: numeroSel, to: paraEnviar, texto: txt, autorNome: me?.nome || "" }),
       });
       const j = await r.json().catch(() => ({}));
       if (r.ok && (j as { ok?: boolean }).ok) {
@@ -272,7 +284,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
   if (!podeVer && !embutido) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-700 dark:text-gray-300 font-medium">Sem acesso à caixa de entrada do WhatsApp.</p></div>;
 
-  const contatoSel = sel ? contatos[sel] : undefined;
+  const contatoSel = sel ? contatos[foneKey(sel)] : undefined;
   const pessoaSel = sel ? pessoaDaConversa(sel) : null;
   const autoMatch = sel ? pessoaByFone[foneKey(sel)] : null;
   const clienteSel = sel ? clienteDaConversa(sel) : null;
@@ -373,7 +385,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         ) : (
           <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
             {conversasFiltradas.map(c => {
-              const cTags = (contatos[c.waId]?.tagIds || []).map(id => tagById[id]).filter(Boolean) as WhatsappTag[];
+              const cTags = (contatos[foneKey(c.waId)]?.tagIds || []).map(id => tagById[id]).filter(Boolean) as WhatsappTag[];
               const naoLida = c.naoLidas > 0;
               return (
                 <button key={c.waId} type="button" onClick={() => { setSel(c.waId); setDetalhes(false); }}

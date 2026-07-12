@@ -5820,7 +5820,8 @@ export type WhatsappNumero = {
   criadoPor?: string;
 };
 export type WhatsappContato = {
-  id: string;                 // = waId (dígitos, com DDI)
+  id: string;                 // = foneKey (DDD + 8 últimos; normaliza o 9º dígito)
+  waId?: string;              // número cru mais recente visto (com DDI), pra referência
   restaurantIds?: string[] | null;  // override manual (multi). null/ausente = herda da Pessoa
   restaurantId?: string | null;     // legado (single) — lido como fallback
   pessoaId?: string | null;       // Pessoa vinculada (auto ou manual)
