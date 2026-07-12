@@ -57,7 +57,6 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
   const [sel, setSel] = useState<string | null>(null);
   const [resposta, setResposta] = useState("");
   const [enviando, setEnviando] = useState(false);
-  const [filtroRest, setFiltroRest] = useState<string>("all"); // "all" | rid | "none"
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
   const [detalhes, setDetalhes] = useState(false);
   const [gerenciarTags, setGerenciarTags] = useState(false);
@@ -163,15 +162,11 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
   const nomeConversa = (waId: string, waNome?: string | null) =>
     contatos[waId]?.nomeManual || pessoaDaConversa(waId)?.nome || waNome || foneBonito(waId);
 
-  // Filtro por restaurante + tag.
+  // Filtro por tag (o número já é da empresa; não filtra por empresa aqui).
   const conversasFiltradas = useMemo(() => conversas.filter(c => {
-    if (filtroRest !== "all") {
-      const rs = restsDaConversa(c.waId);
-      if (filtroRest === "none" ? rs.length > 0 : !rs.includes(filtroRest)) return false;
-    }
     if (filtroTag) { if (!(contatos[c.waId]?.tagIds || []).includes(filtroTag)) return false; }
     return true;
-  }), [conversas, filtroRest, filtroTag, contatos, pessoas]);
+  }), [conversas, filtroTag, contatos]);
 
   const thread = useMemo(() => msgsDoNumero.filter(x => x.waId === sel), [msgsDoNumero, sel]);
   const nomeSel = sel ? nomeConversa(sel, conversas.find(c => c.waId === sel)?.nome) : "";
@@ -274,15 +269,12 @@ export function WhatsappInboxPage({ modo = "completo" }: { modo?: "conversas" | 
             </div>
           )}
 
-          {/* Filtro por restaurante + gerenciar tags */}
-          <div className="flex flex-wrap items-center gap-1.5 mb-2">
-            <FiltroChip ativo={filtroRest === "all"} onClick={() => setFiltroRest("all")}>Todos</FiltroChip>
-            {restaurants.map(r => (
-              <FiltroChip key={r.id} ativo={filtroRest === r.id} onClick={() => setFiltroRest(r.id)}>{r.nome}</FiltroChip>
-            ))}
-            <FiltroChip ativo={filtroRest === "none"} onClick={() => setFiltroRest("none")}>Sem vínculo</FiltroChip>
-            {podeTags && <button type="button" onClick={() => setGerenciarTags(true)} className="ml-auto text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 shrink-0">🏷 Tags</button>}
-          </div>
+          {/* Gerenciar tags */}
+          {podeTags && (
+            <div className="flex justify-end mb-2">
+              <button type="button" onClick={() => setGerenciarTags(true)} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 shrink-0">🏷 Tags</button>
+            </div>
+          )}
           {/* Filtro por tag */}
           {tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-3">
