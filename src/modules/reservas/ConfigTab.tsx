@@ -8,7 +8,6 @@ import { SaloesTab } from "./SaloesTab";
 import { MesasTab } from "./MesasTab";
 import { TemplateConfirmacaoTab } from "./TemplateConfirmacaoTab";
 import { EmailComprovanteTab } from "./EmailComprovanteTab";
-import { AssistenteIaTab } from "./AssistenteIaTab";
 
 type Props = {
   restaurantId: string;
@@ -16,7 +15,7 @@ type Props = {
   pessoaId: string;
 };
 
-type SubTab = "saloes" | "mesas" | "template" | "email" | "assistente";
+type SubTab = "saloes" | "mesas" | "template" | "email";
 
 export function ConfigTab({ restaurantId, podeConfig, pessoaId }: Props) {
   const [sub, setSub] = useState<SubTab>("saloes");
@@ -37,9 +36,6 @@ export function ConfigTab({ restaurantId, podeConfig, pessoaId }: Props) {
         <SubTabButton ativo={sub === "email"} onClick={() => setSub("email")}>
           📧 Email de comprovante
         </SubTabButton>
-        <SubTabButton ativo={sub === "assistente"} onClick={() => setSub("assistente")}>
-          🤖 Assistente de IA
-        </SubTabButton>
       </div>
 
       {sub === "saloes" && (
@@ -53,9 +49,6 @@ export function ConfigTab({ restaurantId, podeConfig, pessoaId }: Props) {
       )}
       {sub === "email" && (
         <EmailComprovanteTab restaurantId={restaurantId} />
-      )}
-      {sub === "assistente" && (
-        <AssistenteIaTab restaurantId={restaurantId} podeConfig={podeConfig} pessoaId={pessoaId} />
       )}
     </div>
   );

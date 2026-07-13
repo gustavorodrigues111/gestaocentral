@@ -19,6 +19,7 @@ import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import { WhatsappTemplatesTab } from "./WhatsappTemplatesTab";
+import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
 
 type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; mime?: string };
@@ -61,6 +62,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [sel, setSel] = useState<string | null>(null);
   const [resposta, setResposta] = useState("");
   const [enviando, setEnviando] = useState(false);
+  const enviandoRef = useRef(false);   // trava síncrona contra duplo-envio (state é async)
   const [emojiAberto, setEmojiAberto] = useState(false);
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
   const [filtroAtrib, setFiltroAtrib] = useState<"minhas" | "pendentes" | "todas" | "outros">("pendentes");
@@ -328,14 +330,16 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   async function responder() {
     const txt = resposta.trim();
     if (!txt || !sel || !numeroSel) return;
-    // Assume a conversa pra mim ao responder (se declinar assumir de outro, aborta).
-    if (!(await assumirConversa(sel))) return;
-    // Responde no número que o cliente REALMENTE usou por último (com/sem o 9º
-    // dígito), não numa forma normalizada que poderia não existir.
-    const inbound = thread.filter(m => m.direcao === "in");
-    const paraEnviar = inbound.length ? inbound[inbound.length - 1].waId : sel;
+    if (enviandoRef.current) return;   // já tem um envio em andamento → ignora (anti-duplicata)
+    enviandoRef.current = true;
     setEnviando(true);
     try {
+      // Assume a conversa pra mim ao responder (se declinar assumir de outro, aborta).
+      if (!(await assumirConversa(sel))) return;
+      // Responde no número que o cliente REALMENTE usou por último (com/sem o 9º
+      // dígito), não numa forma normalizada que poderia não existir.
+      const inbound = thread.filter(m => m.direcao === "in");
+      const paraEnviar = inbound.length ? inbound[inbound.length - 1].waId : sel;
       const r = await fetch("/api/evolution-enviar", {
         method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
         body: JSON.stringify({ instancia: numeroSel, to: paraEnviar, texto: txt, autorNome: me?.nome || "" }),
@@ -349,7 +353,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         alert((j as { naoConfigurado?: boolean }).naoConfigurado ? "Evolution ainda não configurada (env vars na Vercel)." : ((j as { error?: string }).error || "Falha ao enviar."));
       }
     } catch (e) { alert("Falha ao enviar: " + (e instanceof Error ? e.message : "?")); }
-    setEnviando(false);
+    finally { setEnviando(false); enviandoRef.current = false; }
   }
 
   // ── Mídia: foto/vídeo/documento/áudio ──────────────────────────────────────
@@ -1166,6 +1170,11 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
           {/* Triagem automática por área (bot) */}
           <SecaoCfg icon="🤖" titulo="Triagem automática" hint="menu de áreas">
             <RoteamentoNumero numero={numero} pessoas={pessoas} />
+          </SecaoCfg>
+
+          {/* Assistente de IA (concierge) */}
+          <SecaoCfg icon="✨" titulo="Assistente de IA" hint="responde e confirma reservas">
+            <AssistenteIaNumero numero={numero} restaurants={restaurants} />
           </SecaoCfg>
 
           {/* Zona de perigo */}

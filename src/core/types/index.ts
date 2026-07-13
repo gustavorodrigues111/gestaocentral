@@ -2038,13 +2038,17 @@ export const TEMPLATE_CONFIRMACAO_VARIAVEIS = [
 // a IA que atende no WhatsApp: responde dúvidas (horário, cardápio, endereço),
 // confirma reservas e, no planejamento.app, futuramente cria reservas. As
 // diretrizes seguem o mesmo padrão do "Pergunte à IA" da Wiki de Processos.
+// Config do assistente de IA POR NÚMERO do WhatsApp (docId = numeroId/instância
+// em /assistenteWhatsapp). O webhook já sabe o numeroId ao receber a mensagem,
+// então lê a config direto por id. `restaurantId` diz de qual restaurante a IA
+// usa o site (conhecimento). Vive na aba Configuração do módulo WhatsApp.
 export type AssistenteWhatsappConfig = {
-  id: string;                         // = restaurantId
-  restaurantId: string;
-  ativo: boolean;                     // liga/desliga o assistente
-  numeroInstancia?: string | null;    // instância Evolution que atende (id de whatsappNumeros)
-  // Conhecimento: endereço, horário, cardápio, reservas (interno/externo) vêm
-  // do SITE (sitesConfig/{rid}) — fonte única, não se redigita aqui.
+  id: string;                         // = numeroId (instância Evolution)
+  numeroId: string;
+  restaurantId?: string | null;       // de qual restaurante a IA usa o site (sitesConfig)
+  ativo: boolean;                     // liga/desliga o assistente neste número
+  // Conhecimento (endereço, horário, cardápio, reservas) vem do SITE do
+  // restaurantId — fonte única, não se redigita aqui.
   diretrizes?: string;                // do/don't livre — "nunca responda X", "sempre faça Y"
   infoExtra?: string;                 // infos que NÃO estão no site (pet, estacionamento, kids…)
   confirmacaoAtiva?: boolean;         // dispara/interpreta confirmação de reserva
