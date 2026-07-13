@@ -1326,6 +1326,7 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
   const [docData, setDocData] = useState<CardapioEstruturado | null>(null);
   const [idioma, setIdioma] = useState<"pt" | "en">("pt");
   const [menuSel, setMenuSel] = useState<string>("");
+  const [secaoSel, setSecaoSel] = useState<string>("");   // navegação por seção (chips)
 
   useEffect(() => {
     let cancel = false;
@@ -1344,6 +1345,11 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
   if (!cardapios.length) return <div style={{ textAlign: "center", opacity: 0.5, fontSize: txCorpo(14), padding: "24px 0" }}>Cardápio em breve.</div>;
   const menuAtual = cardapios.find((c) => c.id === menuSel) || cardapios[0]!;
   const secoes = (menuAtual.secoes || []).filter((s) => s.nome || s.pratos.length);
+  // Navegação por seção: mostra 1 seção por vez (chips) quando há mais de uma —
+  // evita a página do cardápio ficar muito longa. Ao trocar de cardápio, o
+  // secaoSel antigo não bate → cai pra 1ª seção automaticamente.
+  const secaoAtual = secoes.find((s) => s.id === secaoSel) || secoes[0];
+  const secoesVisiveis = secaoAtual ? [secaoAtual] : [];
 
   const en = idioma === "en";
   const temEn = secoes.some((s) => s.nomeEn || s.pratos.some((p) => p.tituloEn));
@@ -1380,7 +1386,21 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
           ))}
         </div>
       )}
-      {secoes.map((s) => (
+      {secoes.length > 1 && (
+        <div style={{ display: "flex", flexWrap: "nowrap", gap: 8, marginBottom: 22, overflowX: "auto", paddingBottom: 6, WebkitOverflowScrolling: "touch", justifyContent: "flex-start", scrollbarWidth: "none" }}>
+          {secoes.map((s) => {
+            const ativo = s.id === secaoAtual!.id;
+            return (
+              <button key={s.id} type="button" onClick={() => setSecaoSel(s.id)}
+                style={{ flexShrink: 0, fontSize: txCorpo(13), fontWeight: 600, padding: "6px 15px", borderRadius: 999, cursor: "pointer",
+                  border: `1px solid ${corPrimaria}`, background: ativo ? corPrimaria : "transparent", color: ativo ? "#fff" : corPrimaria, whiteSpace: "nowrap" }}>
+                {nomeSec(s)}
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {secoesVisiveis.map((s) => (
         <div key={s.id} style={{ marginBottom: 30 }}>
           <h3 style={{ fontSize: txCorpo(22), color: corPrimaria, fontWeight: 700, margin: "0 0 4px", letterSpacing: 0.3 }}>{nomeSec(s)}</h3>
           {obsSec(s) && <p style={{ fontSize: txCorpo(13), opacity: 0.7, fontStyle: "italic", margin: "0 0 12px" }}>{obsSec(s)}</p>}
