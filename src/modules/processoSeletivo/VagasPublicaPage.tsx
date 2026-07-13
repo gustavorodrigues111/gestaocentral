@@ -65,32 +65,36 @@ export function VagasPublicaPage({ slugFromHost }: { slugFromHost?: string }) {
 
   return (
     <div style={wrap}>
-      <div style={{ maxWidth: 640, margin: "0 auto" }}>
-        {cfg?.logoUrl && <img src={cfg.logoUrl} alt="" style={{ height: 56, marginBottom: 16 }} />}
-        <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>Trabalhe com a gente</h1>
-        <p style={{ fontSize: 14, opacity: 0.7, marginTop: 6, marginBottom: 24 }}>Confira as vagas abertas e candidate-se. Não achou a sua? Deixe seu currículo no banco de talentos.</p>
+      <div style={{ maxWidth: 660, margin: "0 auto" }}>
+        <div style={{ textAlign: "center", marginBottom: 28 }}>
+          {cfg?.logoUrl && <img src={cfg.logoUrl} alt="" style={{ height: 80, maxWidth: 220, objectFit: "contain", margin: "0 auto 14px", display: "block" }} />}
+          <h1 style={{ fontSize: 30, fontWeight: 800, margin: 0, letterSpacing: -0.5 }}>Trabalhe com a gente</h1>
+          <p style={{ fontSize: 14, opacity: 0.7, marginTop: 8 }}>Confira as vagas abertas e candidate-se.<br />Não achou a sua? Deixe seu currículo no banco de talentos.</p>
+        </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
           {vagas.length === 0 && (
-            <div style={{ borderRadius: 16, border: "1px dashed rgba(0,0,0,.2)", padding: 32, textAlign: "center", fontSize: 14, opacity: 0.7, background: "rgba(255,255,255,.5)" }}>Nenhuma vaga aberta no momento.</div>
+            <div style={{ borderRadius: 18, border: "1px dashed rgba(0,0,0,.18)", padding: 40, textAlign: "center", fontSize: 14, opacity: 0.7, background: "rgba(255,255,255,.55)" }}>Nenhuma vaga aberta no momento.</div>
           )}
           {vagas.map((v) => (
-            <div key={v.id} style={{ borderRadius: 16, background: tema.card, boxShadow: "0 1px 4px rgba(0,0,0,.08)", padding: 18 }}>
+            <div key={v.id} style={{ borderRadius: 18, background: tema.card, boxShadow: "0 2px 10px rgba(0,0,0,.07)", padding: 22, borderLeft: `4px solid ${tema.primaria}` }}>
               <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: tema.texto }}>{v.titulo}</h2>
-                {v.area && <span style={{ fontSize: 12, opacity: 0.5 }}>· {v.area}</span>}
+                <h2 style={{ fontSize: 21, fontWeight: 700, margin: 0, color: tema.texto }}>{v.titulo}</h2>
+                {v.area && <span style={{ fontSize: 12, fontWeight: 600, color: tema.secundaria }}>{v.area}</span>}
               </div>
-              {v.descricao && <p style={{ fontSize: 14, opacity: 0.8, marginTop: 6, whiteSpace: "pre-wrap", color: tema.texto }}>{v.descricao}</p>}
-              {v.requisitos && <p style={{ fontSize: 12, opacity: 0.65, marginTop: 6, whiteSpace: "pre-wrap", color: tema.texto }}><b>Requisitos:</b> {v.requisitos}</p>}
-              <button type="button" onClick={() => navigate(`/vaga/${rid}/${v.id}`)} style={{ marginTop: 14, padding: "10px 18px", borderRadius: 12, background: tema.primaria, color: "#fff", fontSize: 14, fontWeight: 600, border: "none", cursor: "pointer" }}>Candidatar-se →</button>
+              {v.descricao && <p style={{ fontSize: 14, opacity: 0.8, marginTop: 8, whiteSpace: "pre-wrap", color: tema.texto, lineHeight: 1.5 }}>{v.descricao}</p>}
+              {v.requisitos && <p style={{ fontSize: 12.5, opacity: 0.65, marginTop: 8, whiteSpace: "pre-wrap", color: tema.texto }}><b>Requisitos:</b> {v.requisitos}</p>}
+              <button type="button" onClick={() => navigate(`/vaga/${rid}/${v.id}`)} style={{ marginTop: 16, padding: "11px 22px", borderRadius: 12, background: tema.primaria, color: "#fff", fontSize: 14, fontWeight: 700, border: "none", cursor: "pointer" }}>Candidatar-se →</button>
             </div>
           ))}
         </div>
 
-        <div style={{ marginTop: 24, borderRadius: 16, background: "rgba(255,255,255,.5)", padding: 18, textAlign: "center" }}>
+        <div style={{ marginTop: 22, borderRadius: 18, background: "rgba(255,255,255,.55)", padding: 20, textAlign: "center" }}>
           <p style={{ fontSize: 14, opacity: 0.75, margin: 0, color: tema.texto }}>Não encontrou uma vaga pra você?</p>
-          <button type="button" onClick={() => navigate(`/trabalhe/${rid}`)} style={{ marginTop: 8, padding: "10px 18px", borderRadius: 12, background: "transparent", color: tema.primaria, border: `1px solid ${tema.primaria}`, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Deixar meu currículo (banco de talentos)</button>
+          <button type="button" onClick={() => navigate(`/trabalhe/${rid}`)} style={{ marginTop: 10, padding: "11px 22px", borderRadius: 12, background: "transparent", color: tema.primaria, border: `1.5px solid ${tema.primaria}`, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Deixar meu currículo (banco de talentos)</button>
         </div>
+
+        <p style={{ textAlign: "center", fontSize: 11, opacity: 0.4, marginTop: 28 }}>powered by planejamento.app</p>
       </div>
     </div>
   );

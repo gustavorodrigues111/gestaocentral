@@ -23,7 +23,7 @@ type Props = {
   cargos: Cargo[];
   schemaUsado: FormField[];
   // Pré-preenchimento (ex.: vindo de um candidato aprovado no Processo Seletivo).
-  defaults?: { nome?: string; email?: string; whatsapp?: string };
+  defaults?: { nome?: string; email?: string; whatsapp?: string; cargoId?: string };
   onClose: () => void;
   // O caller adiciona o restaurantSnapshot — modal só lida com os dados do candidato.
   onConfirm: (input: Omit<IniciarAdmissaoInput, "restaurantSnapshot">) => Promise<Admissao | undefined>;
@@ -34,7 +34,7 @@ export function IniciarAdmissaoModal({ rid, cargos, schemaUsado, defaults, onClo
   const [cpf, setCpf] = useState("");
   const [email, setEmail] = useState(defaults?.email || "");
   const [whatsapp, setWhatsapp] = useState((defaults?.whatsapp || "").replace(/\D/g, ""));
-  const [cargoId, setCargoId] = useState("");
+  const [cargoId, setCargoId] = useState(defaults?.cargoId || "");
   const [salario, setSalario] = useState("");
   const [dataAdmissao, setDataAdmissao] = useState("");
   const [cargoConfianca, setCargoConfianca] = useState(false);

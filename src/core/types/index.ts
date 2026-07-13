@@ -3965,6 +3965,11 @@ export type Vaga = {
   status: "aberta" | "pausada" | "encerrada";
   responsavelId?: string | null;   // recebe as candidaturas desta vaga
   responsavelNome?: string | null;
+  cargoId?: string | null;         // cargo interno vinculado (pré-preenche a admissão)
+  cargoNome?: string | null;
+  horarioModeloEmpregadoId?: string | null;  // empregado de referência do horário
+  horarioModeloNome?: string | null;
+  horarioModelo?: WorkSchedule[];  // snapshot do horário copiado desse empregado
   perguntas?: PerguntaVaga[];
   publica?: boolean;          // aparece na página pública de vagas
   slug?: string;              // pra link público /vaga/<slug>

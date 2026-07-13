@@ -12,7 +12,9 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { IniciarAdmissaoModal } from "../admissao/IniciarAdmissaoModal";
 import { iniciarAdmissao, getPrazoDias, getDocumentosAdmissao, getSchemaAdmissao } from "../../core/admissao/admissaoHelpers";
-import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, PerguntaVaga, Pessoa, Cargo } from "../../core/types";
+import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, PerguntaVaga, Pessoa, Cargo, WorkSchedule } from "../../core/types";
+
+type EmpMin = { id: string; nome: string; workSchedules?: WorkSchedule[] };
 
 const COLUNAS: { id: EtapaSeletivo; label: string; cor: string }[] = [
   { id: "nova",       label: "Novas",      cor: "border-blue-300 dark:border-blue-800" },
@@ -64,6 +66,7 @@ export function ProcessoSeletivoPage() {
   const [vagas, setVagas] = useState<Vaga[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
+  const [empregados, setEmpregados] = useState<EmpMin[]>([]);
   const [sel, setSel] = useState<CandidaturaTrabalhe | null>(null);
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [editVaga, setEditVaga] = useState<Vaga | "nova" | null>(null);
@@ -79,7 +82,9 @@ export function ProcessoSeletivoPage() {
       (s) => setPessoas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Pessoa).sort((a, b) => a.nome.localeCompare(b.nome))), () => setPessoas([]));
     const u4 = onSnapshot(query(collection(db, "cargos"), where("restaurantId", "==", rid)),
       (s) => setCargos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo)), () => setCargos([]));
-    return () => { u1(); u2(); u3(); u4(); };
+    const u5 = onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)),
+      (s) => setEmpregados(s.docs.map((d) => ({ id: d.id, ...d.data() }) as EmpMin).filter((e) => e.nome).sort((a, b) => a.nome.localeCompare(b.nome))), () => setEmpregados([]));
+    return () => { u1(); u2(); u3(); u4(); u5(); };
   }, [rid]);
 
   // Mantém o sel atualizado quando a candidatura muda no snapshot.
@@ -173,7 +178,7 @@ export function ProcessoSeletivoPage() {
       {admitir && activeRest && (
         <IniciarAdmissaoModal
           rid={rid} cargos={cargos} schemaUsado={getSchemaAdmissao(activeRest)}
-          defaults={{ nome: admitir.nome, email: admitir.email, whatsapp: admitir.whatsapp }}
+          defaults={{ nome: admitir.nome, email: admitir.email, whatsapp: admitir.whatsapp, cargoId: vagas.find((v) => v.id === admitir.vagaId)?.cargoId || undefined }}
           onClose={() => setAdmitir(null)}
           onConfirm={async (input) => {
             if (!pessoa) return undefined;
@@ -190,7 +195,7 @@ export function ProcessoSeletivoPage() {
       )}
 
       {editVaga && (
-        <VagaEditor vaga={editVaga === "nova" ? null : editVaga} rid={rid} pessoas={pessoas} pessoaId={pessoa?.id || ""}
+        <VagaEditor vaga={editVaga === "nova" ? null : editVaga} rid={rid} pessoas={pessoas} cargos={cargos} empregados={empregados} pessoaId={pessoa?.id || ""}
           onSalvar={(v) => { void salvarVaga(v); setEditVaga(null); }} onClose={() => setEditVaga(null)} />
       )}
     </div>
@@ -230,8 +235,20 @@ function VagasAdmin({ vagas, rid, podeVagas, onNova, onEditar, onExcluir }: {
   );
 }
 
-function VagaEditor({ vaga, rid, pessoas, pessoaId, onSalvar, onClose }: {
-  vaga: Vaga | null; rid: string; pessoas: Pessoa[]; pessoaId: string; onSalvar: (v: Vaga) => void; onClose: () => void;
+const lbl = "text-[11px] font-medium text-gray-500 dark:text-gray-400 block mb-1";
+const ta = inp + " resize-none";
+
+function Secao({ titulo, hint, children }: { titulo: string; hint?: string; children: React.ReactNode }) {
+  return (
+    <section className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 space-y-2.5">
+      <div className="text-[11px] font-bold uppercase tracking-wide text-gray-600 dark:text-gray-300">{titulo}{hint && <span className="ml-1 font-normal normal-case text-gray-400">· {hint}</span>}</div>
+      {children}
+    </section>
+  );
+}
+
+function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar, onClose }: {
+  vaga: Vaga | null; rid: string; pessoas: Pessoa[]; cargos: Cargo[]; empregados: EmpMin[]; pessoaId: string; onSalvar: (v: Vaga) => void; onClose: () => void;
 }) {
   const [titulo, setTitulo] = useState(vaga?.titulo || "");
   const [area, setArea] = useState(vaga?.area || "");
@@ -239,8 +256,14 @@ function VagaEditor({ vaga, rid, pessoas, pessoaId, onSalvar, onClose }: {
   const [requisitos, setRequisitos] = useState(vaga?.requisitos || "");
   const [status, setStatus] = useState<Vaga["status"]>(vaga?.status || "aberta");
   const [responsavelId, setResponsavelId] = useState(vaga?.responsavelId || "");
+  const [cargoId, setCargoId] = useState(vaga?.cargoId || "");
+  const [horarioEmpId, setHorarioEmpId] = useState(vaga?.horarioModeloEmpregadoId || "");
   const [publica, setPublica] = useState(vaga?.publica !== false);
   const [perguntas, setPerguntas] = useState<PerguntaVaga[]>(vaga?.perguntas || []);
+
+  const cargosAtivos = cargos.filter((c) => (c as { ativo?: boolean }).ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome));
+  const empModelo = empregados.find((e) => e.id === horarioEmpId);
+  const nWs = empModelo?.workSchedules?.length || 0;
 
   const addPerg = () => setPerguntas((p) => [...p, { id: "p" + Math.random().toString(36).slice(2, 7), label: "", tipo: "texto", obrigatoria: false }]);
   const setPerg = (i: number, patch: Partial<PerguntaVaga>) => setPerguntas((p) => p.map((x, j) => j === i ? { ...x, ...patch } : x));
@@ -249,10 +272,15 @@ function VagaEditor({ vaga, rid, pessoas, pessoaId, onSalvar, onClose }: {
   function salvar() {
     if (!titulo.trim()) { alert("Informe o título da vaga."); return; }
     const resp = pessoas.find((p) => p.id === responsavelId);
+    const cargo = cargos.find((c) => c.id === cargoId);
+    const emp = empregados.find((e) => e.id === horarioEmpId);
     const v: Vaga = {
       id: vaga?.id || `vaga_${rid}_${slugify(titulo)}_${Math.random().toString(36).slice(2, 5)}`,
       restaurantId: rid, titulo: titulo.trim(), area: area.trim() || undefined, descricao: descricao.trim() || undefined,
       requisitos: requisitos.trim() || undefined, status, responsavelId: responsavelId || null, responsavelNome: resp?.nome || null,
+      cargoId: cargoId || null, cargoNome: cargo?.nome || null,
+      horarioModeloEmpregadoId: horarioEmpId || null, horarioModeloNome: emp?.nome || null,
+      horarioModelo: emp?.workSchedules && emp.workSchedules.length ? emp.workSchedules : undefined,
       perguntas: perguntas.filter((p) => p.label.trim()).map((p) => ({ ...p, label: p.label.trim() })),
       publica, slug: vaga?.slug || slugify(titulo), criadoEm: vaga?.criadoEm || new Date().toISOString(), criadoPor: vaga?.criadoPor || pessoaId, atualizadoEm: new Date().toISOString(),
     };
@@ -260,55 +288,78 @@ function VagaEditor({ vaga, rid, pessoas, pessoaId, onSalvar, onClose }: {
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-      <div className="w-full max-w-lg max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{vaga ? "Editar vaga" : "Nova vaga"}</h3>
-          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
-        </div>
-        <div><label className="text-[11px] text-gray-500">Título *</label><input value={titulo} onChange={(e) => setTitulo(e.target.value)} className={inp} placeholder="Ex.: Garçom / Cozinheiro" /></div>
-        <div className="grid grid-cols-2 gap-2">
-          <div><label className="text-[11px] text-gray-500">Área/cargo</label><input value={area} onChange={(e) => setArea(e.target.value)} className={inp} placeholder="Salão, Cozinha…" /></div>
-          <div><label className="text-[11px] text-gray-500">Status</label>
-            <select value={status} onChange={(e) => setStatus(e.target.value as Vaga["status"])} className={inp}>
-              <option value="aberta">Aberta</option><option value="pausada">Pausada</option><option value="encerrada">Encerrada</option>
-            </select></div>
-        </div>
-        <div><label className="text-[11px] text-gray-500">Descrição</label><textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={2} className={inp} /></div>
-        <div><label className="text-[11px] text-gray-500">Requisitos</label><textarea value={requisitos} onChange={(e) => setRequisitos(e.target.value)} rows={2} className={inp} /></div>
-        <div><label className="text-[11px] text-gray-500">Responsável (recebe as candidaturas)</label>
-          <select value={responsavelId} onChange={(e) => setResponsavelId(e.target.value)} className={inp}>
-            <option value="">— ninguém (fica com quem tem permissão) —</option>
-            {pessoas.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
-          </select></div>
-        <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300"><input type="checkbox" checked={publica} onChange={(e) => setPublica(e.target.checked)} /> Aparecer na página pública de vagas</label>
-
-        <div className="border-t border-gray-200 dark:border-gray-800 pt-2">
-          <div className="flex items-center justify-between mb-1"><span className="text-[11px] font-semibold text-gray-500 uppercase">Perguntas da vaga</span></div>
-          <div className="space-y-2">
-            {perguntas.map((p, i) => (
-              <div key={p.id} className="rounded-lg border border-gray-200 dark:border-gray-700 p-2 space-y-1.5">
-                <div className="flex items-center gap-1.5">
-                  <input value={p.label} onChange={(e) => setPerg(i, { label: e.target.value })} className={`${inp} flex-1`} placeholder="Pergunta (ex.: Tem experiência?)" />
-                  <button type="button" onClick={() => delPerg(i)} className="text-gray-400 hover:text-rose-600 text-sm">🗑️</button>
-                </div>
-                <div className="flex items-center gap-2">
-                  <select value={p.tipo} onChange={(e) => setPerg(i, { tipo: e.target.value as PerguntaVaga["tipo"] })} className={`${inp} flex-1`}>
-                    <option value="texto">Texto curto</option><option value="textolongo">Texto longo</option>
-                    <option value="opcoes">Múltipla escolha</option><option value="simnao">Sim/Não</option><option value="numero">Número</option>
-                  </select>
-                  <label className="flex items-center gap-1 text-[11px] text-gray-500 shrink-0"><input type="checkbox" checked={!!p.obrigatoria} onChange={(e) => setPerg(i, { obrigatoria: e.target.checked })} /> obrigatória</label>
-                </div>
-                {p.tipo === "opcoes" && <input value={(p.opcoes || []).join(", ")} onChange={(e) => setPerg(i, { opcoes: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} className={inp} placeholder="Opções separadas por vírgula" />}
-              </div>
-            ))}
-          </div>
-          <button type="button" onClick={addPerg} className="mt-1.5 w-full text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">➕ Adicionar pergunta</button>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+      <div className="w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-2xl bg-gray-50 dark:bg-gray-950 border border-gray-200 dark:border-gray-800 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="sticky top-0 z-10 flex items-center justify-between px-5 py-3 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-b border-gray-200 dark:border-gray-800">
+          <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">{vaga ? "Editar vaga" : "Nova vaga"}</h3>
+          <button type="button" onClick={onClose} className="w-8 h-8 rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800">✕</button>
         </div>
 
-        <div className="flex justify-end gap-2 pt-1">
+        <div className="p-4 space-y-3">
+          <Secao titulo="A vaga">
+            <div><label className={lbl}>Título *</label><input value={titulo} onChange={(e) => setTitulo(e.target.value)} className={inp} placeholder="Ex.: Bartender" /></div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><label className={lbl}>Área</label><input value={area} onChange={(e) => setArea(e.target.value)} className={inp} placeholder="Salão, Cozinha, Bar…" /></div>
+              <div><label className={lbl}>Status</label>
+                <select value={status} onChange={(e) => setStatus(e.target.value as Vaga["status"])} className={inp}>
+                  <option value="aberta">Aberta</option><option value="pausada">Pausada</option><option value="encerrada">Encerrada</option>
+                </select></div>
+            </div>
+            <div><label className={lbl}>Descrição</label><textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={3} className={ta} placeholder="O que a pessoa vai fazer, cultura, benefícios…" /></div>
+            <div><label className={lbl}>Requisitos</label><textarea value={requisitos} onChange={(e) => setRequisitos(e.target.value)} rows={3} className={ta} placeholder="Experiência, disponibilidade, etc." /></div>
+          </Secao>
+
+          <Secao titulo="Responsável & visibilidade">
+            <div><label className={lbl}>Responsável (recebe as candidaturas)</label>
+              <select value={responsavelId} onChange={(e) => setResponsavelId(e.target.value)} className={inp}>
+                <option value="">— ninguém (fica com quem tem permissão) —</option>
+                {pessoas.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select></div>
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input type="checkbox" checked={publica} onChange={(e) => setPublica(e.target.checked)} /> Aparecer na página pública de vagas</label>
+          </Secao>
+
+          <Secao titulo="Ligação com a admissão" hint="pré-preenche quando o candidato for aprovado">
+            <div><label className={lbl}>Cargo interno vinculado</label>
+              <select value={cargoId} onChange={(e) => setCargoId(e.target.value)} className={inp}>
+                <option value="">— nenhum —</option>
+                {cargosAtivos.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+              </select></div>
+            <div><label className={lbl}>Horário: copiar de um empregado</label>
+              <select value={horarioEmpId} onChange={(e) => setHorarioEmpId(e.target.value)} className={inp}>
+                <option value="">— nenhum —</option>
+                {empregados.map((e) => <option key={e.id} value={e.id}>{e.nome}{e.workSchedules?.length ? "" : " (sem horário)"}</option>)}
+              </select>
+              {horarioEmpId && <p className="text-[11px] text-gray-400 mt-1">{nWs > 0 ? `Copia o horário atual de ${empModelo?.nome} (${nWs} vigência${nWs > 1 ? "s" : ""}) como modelo pra admissão.` : `${empModelo?.nome} não tem horário cadastrado.`}</p>}
+            </div>
+          </Secao>
+
+          <Secao titulo="Perguntas da vaga" hint="aparecem no formulário público">
+            <div className="space-y-2">
+              {perguntas.length === 0 && <div className="text-xs text-gray-400">Nenhuma pergunta.</div>}
+              {perguntas.map((p, i) => (
+                <div key={p.id} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-2 space-y-1.5">
+                  <div className="flex items-center gap-1.5">
+                    <input value={p.label} onChange={(e) => setPerg(i, { label: e.target.value })} className={`${inp} flex-1`} placeholder="Pergunta (ex.: Tem experiência?)" />
+                    <button type="button" onClick={() => delPerg(i)} className="text-gray-400 hover:text-rose-600 text-sm shrink-0">🗑️</button>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <select value={p.tipo} onChange={(e) => setPerg(i, { tipo: e.target.value as PerguntaVaga["tipo"] })} className={`${inp} flex-1`}>
+                      <option value="texto">Texto curto</option><option value="textolongo">Texto longo</option>
+                      <option value="opcoes">Múltipla escolha</option><option value="simnao">Sim/Não</option><option value="numero">Número</option>
+                    </select>
+                    <label className="flex items-center gap-1 text-[11px] text-gray-500 shrink-0"><input type="checkbox" checked={!!p.obrigatoria} onChange={(e) => setPerg(i, { obrigatoria: e.target.checked })} /> obrigatória</label>
+                  </div>
+                  {p.tipo === "opcoes" && <input value={(p.opcoes || []).join(", ")} onChange={(e) => setPerg(i, { opcoes: e.target.value.split(",").map((s) => s.trim()).filter(Boolean) })} className={inp} placeholder="Opções separadas por vírgula" />}
+                </div>
+              ))}
+            </div>
+            <button type="button" onClick={addPerg} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-900">➕ Adicionar pergunta</button>
+          </Secao>
+        </div>
+
+        <div className="sticky bottom-0 flex justify-end gap-2 px-5 py-3 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-800">
           <button type="button" onClick={onClose} className="text-sm px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>
-          <Button onClick={salvar}>Salvar vaga</Button>
+          <Button onClick={salvar}>💾 Salvar vaga</Button>
         </div>
       </div>
     </div>
