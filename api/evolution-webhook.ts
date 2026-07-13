@@ -41,6 +41,13 @@ type EvoMsg = {
 };
 type EvoBody = { event?: string; instance?: string; data?: EvoMsg | EvoMsg[] };
 
+// Tipos de mensagem que são protocolo/bastidor do WhatsApp — não têm conteúdo
+// pra mostrar na conversa (o app oficial também não exibe).
+const IGNORAR_TIPOS = new Set([
+  "secretEncryptedMessage", "senderKeyDistributionMessage", "messageContextInfo",
+  "pollUpdateMessage", "protocolMessage", "keepInChatMessage",
+]);
+
 const soDig = (s?: string) => (s || "").replace(/\D/g, "");
 // Chave normalizada BR: ignora DDI 55 e o 9º dígito de celular (DDD + 8 últimos).
 // Mesma lógica do foneKey do front — pra o contato semeado casar as duas formas.
@@ -139,6 +146,11 @@ async function processar(body: EvoBody): Promise<void> {
       try { if (await firestoreLer("whatsappMensagens", alvoId)) await firestoreAtualizar("whatsappMensagens", alvoId, { apagada: true, texto: "", midia: null }); } catch (e) { console.log("[evo-webhook] revoke:", (e as Error)?.message); }
       continue;
     }
+
+    // Envelopes de PROTOCOLO/bastidor do WhatsApp — sem conteúdo pra exibir
+    // (chaves de sessão, payloads com segredo, votos de enquete, sync). Ignora
+    // pra não virar bolha "[secretEncryptedMessage]" na conversa.
+    if (IGNORAR_TIPOS.has(m.messageType || "")) continue;
 
     const texto = textoDe(m.message, m.messageType);
     const tsNum = Number(m.messageTimestamp);
