@@ -48,7 +48,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 
   const payload = {
     model: MODEL,
-    max_tokens: 4000,
+    max_tokens: 8000,
     messages: [{ role: "user", content: [{ type: "text", text: PROMPT + JSON.stringify(ptCompacto) }] }],
   };
 

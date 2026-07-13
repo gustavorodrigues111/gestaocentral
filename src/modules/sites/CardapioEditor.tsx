@@ -120,11 +120,29 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
           }),
         };
       });
+      // Valida: a tradução TEM que ter vindo com algum inglês. Se voltou vazia
+      // (truncou/erro), NÃO marca como traduzido — evita "diz traduzido mas sem EN".
+      const temAlgumEn = next.some((s) => s.nomeEn || s.pratos.some((p) => p.tituloEn));
+      if (!temAlgumEn) throw new Error("A tradução voltou vazia. Tente de novo.");
       const now = new Date().toISOString();
       const novaSig = sigPt(secoes);
+      setSecoes(next);
       setTraduzidoEm(now);
       setTraduzidoSig(novaSig);
-      commit(next, now, novaSig);
+      // Salva IMEDIATO e aguardando (não pelo debounce do commit, que pode se
+      // perder se trocar de menu/fechar antes dos 700ms). Tradução é cara.
+      if (podeEditar) {
+        const ref = doc(db, "cardapioEstruturado", rid);
+        if (menuId) {
+          const snap = await getDoc(ref);
+          const d = snap.exists() ? (snap.data() as CardapioEstruturado) : null;
+          const cardapios = (d?.cardapios || []).map((c) => c.id === menuId ? { ...c, secoes: next, traduzidoEm: now, traduzidoSig: novaSig } : c);
+          await setDoc(ref, sanitizeForFirestore({ id: rid, restaurantId: rid, cardapios, atualizadoEm: now, atualizadoPor: me?.id }), { merge: true });
+        } else {
+          await setDoc(ref, sanitizeForFirestore({ id: rid, restaurantId: rid, secoes: next, traduzidoEm: now, traduzidoSig: novaSig, atualizadoEm: now, atualizadoPor: me?.id }), { merge: true });
+        }
+        setEstado("salvo"); setTimeout(() => setEstado(""), 1800);
+      }
       setLang("en");
     } catch (e) {
       setErroTrad(e instanceof Error ? e.message : "Falha ao traduzir.");
