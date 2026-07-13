@@ -72,7 +72,7 @@ export type ModuleId =
   | "rotinas"
   // Escritório
   | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "beneficios" | "compras" | "recebimento" | "fechamentoCaixa" | "recursos" | "faleDp"
-  | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "analise-ponto" | "admissao" | "sites" | "cardapio"
+  | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "analise-ponto" | "admissao" | "processoSeletivo" | "sites" | "cardapio"
   | "uniformes"
   // Gestor de Tarefas + cadastros mestres
   | "tarefas" | "contasFixas" | "manutencoes"
@@ -3944,10 +3944,43 @@ export type StatusCandidatura =
   | "rejeitada"
   | "arquivada";
 
+// ── Processo Seletivo: etapas fixas do kanban ──
+export type EtapaSeletivo = "nova" | "triagem" | "entrevista" | "aprovado" | "rejeitado" | "banco";
+
+// Vaga em aberto (Processo Seletivo). Pode ter perguntas próprias e um responsável.
+export type PerguntaVaga = {
+  id: string;
+  label: string;
+  tipo: "texto" | "textolongo" | "opcoes" | "simnao" | "numero";
+  obrigatoria?: boolean;
+  opcoes?: string[];          // pra tipo "opcoes"
+};
+export type Vaga = {
+  id: string;
+  restaurantId: string;
+  titulo: string;
+  area?: string;              // cargo/área
+  descricao?: string;
+  requisitos?: string;
+  status: "aberta" | "pausada" | "encerrada";
+  responsavelId?: string | null;   // recebe as candidaturas desta vaga
+  responsavelNome?: string | null;
+  perguntas?: PerguntaVaga[];
+  publica?: boolean;          // aparece na página pública de vagas
+  slug?: string;              // pra link público /vaga/<slug>
+  criadoEm: string;
+  criadoPor?: string;
+  atualizadoEm?: string;
+};
+
 export type CandidaturaTrabalhe = {
   id: string;
   restaurantId: string;
   status: StatusCandidatura;
+  etapa?: EtapaSeletivo;             // etapa no kanban do Processo Seletivo
+  vagaId?: string | null;           // null/ausente = avulsa (banco de talentos)
+  vagaTitulo?: string | null;
+  respostas?: Record<string, string>;  // respostas das perguntas da vaga {perguntaId: valor}
   // Dados do candidato
   nome: string;
   whatsapp: string;                  // E.164

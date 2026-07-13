@@ -414,6 +414,21 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "processoSeletivo",
+    icon: "🎯",
+    label: "Processo Seletivo",
+    desc: "Vagas + candidaturas (kanban) até aprovar/rejeitar",
+    area: "gestao",
+    acoes: [
+      { id: "ver",              label: "Ver processo seletivo (vagas e candidaturas)" },
+      { id: "receberCandidaturas", label: "Receber avisos de novas candidaturas na Central de Avisos", sensivel: true },
+      { id: "gerenciarVagas",   label: "Criar/editar vagas", sensivel: true },
+      { id: "triar",            label: "Mover candidato no kanban / triar" },
+      { id: "transferir",       label: "Transferir candidatura para outra pessoa", sensivel: true },
+      { id: "aprovar",          label: "Aprovar/rejeitar e enviar pra Admissão", sensivel: true },
+    ],
+  },
+  {
     id: "admissao",
     icon: "👋",
     label: "Admissão",
@@ -421,7 +436,6 @@ export const CATALOGO: CatalogoModulo[] = [
     area: "gestao",
     acoes: [
       { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
-      { id: "receberCandidaturas", label: "Receber avisos de novas candidaturas na Central de Avisos", sensivel: true },
       { id: "verCandidaturas",  label: "Ver candidaturas (trabalhe-conosco)", sensivel: true },
       { id: "triar",            label: "Triar / classificar candidato" },
       { id: "iniciarAdmissao",  label: "Iniciar processo de admissão", sensivel: true },

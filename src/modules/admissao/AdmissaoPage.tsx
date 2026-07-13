@@ -27,9 +27,9 @@ import { TabBadge } from "../../core/ui/TabBadge";
 
 type TabId = "kanban" | "candidaturas" | "finalizadas" | "config";
 
+// A aba "Candidaturas" saiu daqui — agora fica no módulo Processo Seletivo.
 const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
   { id: "kanban",       label: "Kanban",        icon: "🗂️" },
-  { id: "candidaturas", label: "Candidaturas",  icon: "💼" },
   { id: "finalizadas",  label: "Finalizadas",   icon: "📦" },
   { id: "config",       label: "Configurações", icon: "⚙️" },
 ];

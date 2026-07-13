@@ -470,6 +470,12 @@ service cloud.firestore {
     }
     // Candidaturas "Trabalhe Conosco": create público + read/update authed.
     // Guards: status inicial deve ser "nova" e origem "publico".
+    // Vagas do Processo Seletivo: read público (página de vagas abertas +
+    // candidatura por vaga renderiza as perguntas). Write só authed.
+    match /vagas/{id} {
+      allow read: if true;
+      allow write: if authed();
+    }
     match /candidaturasTrabalhe/{id} {
       allow read: if authed();
       allow create: if authed()

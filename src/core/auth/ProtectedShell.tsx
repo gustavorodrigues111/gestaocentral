@@ -42,6 +42,7 @@ import { FechamentoCaixaPage } from "../../modules/fechamentoCaixa/FechamentoCai
 import { RegistrosPontoPage } from "../../modules/excecoes/RegistrosPontoPage";
 import { AnalisePontoPage } from "../../modules/analisePonto/AnalisePontoPage";
 import { AdmissaoPage } from "../../modules/admissao/AdmissaoPage";
+import { ProcessoSeletivoPage } from "../../modules/processoSeletivo/ProcessoSeletivoPage";
 import { EventosPage } from "../../modules/eventos/EventosPage";
 import { SitesPage } from "../../modules/sites/SitesPage";
 import { CardapioPage } from "../../modules/cardapio/CardapioPage";
@@ -105,6 +106,7 @@ function ModuleRouter() {
     case "excecoes":      return <RegistrosPontoPage key={k} />;
     case "analise-ponto": return <AnalisePontoPage key={k} />;
     case "admissao":      return <AdmissaoPage key={k} />;
+    case "processoSeletivo": return <ProcessoSeletivoPage key={k} />;
     case "eventos":       return <EventosPage key={k} />;
     case "sites":         return <SitesPage key={k} />;
     case "cardapio":      return <CardapioPage key={k} />;

@@ -256,7 +256,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   const admissoes = useAvisoSource({ ...base,
     gates: [["admissao", "receberAvisos"]], collectionName: "admissoes" });
   const candidaturasNovas = useAvisoSource({ ...base,
-    gates: [["admissao", "receberCandidaturas"]], collectionName: "candidaturasTrabalhe", filtros: [["status", "==", "nova"]] });
+    gates: [["processoSeletivo", "receberCandidaturas"]], collectionName: "candidaturasTrabalhe", filtros: [["status", "==", "nova"]] });
   const demissoes = useAvisoSource({ ...base,
     gates: [["demissao", "receberAvisos"]], collectionName: "processosDemissao" });
   const exames = useAvisoSource({ ...base,
@@ -698,7 +698,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         descricao: `Trabalhe conosco${area ? ` · ${area}` : ""}`,
         em: String((c as { createdAt?: string }).createdAt || ""),
         restauranteId: c.restaurantId, restauranteNome: nomePorRid[c.restaurantId] || "Restaurante",
-        cta: "Ver candidatura", href: `/r/${c.restaurantId}/admissao`,
+        cta: "Ver candidatura", href: `/r/${c.restaurantId}/processoSeletivo`,
         categoria: "Candidaturas", categoriaIcone: "💼",
       });
     }
