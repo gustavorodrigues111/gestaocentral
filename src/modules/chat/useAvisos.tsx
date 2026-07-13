@@ -255,6 +255,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     gates: [["ideias", "receberAvisos"]], collectionName: "ideias", filtros: [["status", "==", "aberta"]] });
   const admissoes = useAvisoSource({ ...base,
     gates: [["admissao", "receberAvisos"]], collectionName: "admissoes" });
+  const candidaturasNovas = useAvisoSource({ ...base,
+    gates: [["admissao", "receberCandidaturas"]], collectionName: "candidaturasTrabalhe", filtros: [["status", "==", "nova"]] });
   const demissoes = useAvisoSource({ ...base,
     gates: [["demissao", "receberAvisos"]], collectionName: "processosDemissao" });
   const exames = useAvisoSource({ ...base,
@@ -686,6 +688,21 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       pending: (d) => Array.isArray(d.itens) && (d.itens as Array<{ validadeAte?: string }>).some(
         (it) => !!it.validadeAte && String(it.validadeAte) <= limite30) });
 
+    // ── Candidaturas novas (trabalhe-conosco): 1 aviso por candidato ──
+    for (const c of Object.values(candidaturasNovas).flat()) {
+      const nome = String((c as { nome?: string }).nome || "Candidato");
+      const area = String((c as { areaInteresse?: string }).areaInteresse || "");
+      out.push({
+        id: `cand_${c.id}`, tipo: "candidatura", icone: "💼",
+        titulo: `Nova candidatura: ${nome}`,
+        descricao: `Trabalhe conosco${area ? ` · ${area}` : ""}`,
+        em: String((c as { createdAt?: string }).createdAt || ""),
+        restauranteId: c.restaurantId, restauranteNome: nomePorRid[c.restaurantId] || "Restaurante",
+        cta: "Ver candidatura", href: `/r/${c.restaurantId}/admissao`,
+        categoria: "Candidaturas", categoriaIcone: "💼",
+      });
+    }
+
     // ── Governança de IA: cada pergunta fora do escopo vira um alerta ──
     for (const i of Object.values(iaAlertas).flat()) {
       const perg = String((i as { pergunta?: string }).pergunta || "");
@@ -738,7 +755,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   }, [
     nomePorRid, rotinas, conclusoesIds, pid, pessoa, perfis, wikiProcs, wikiCfgs,
     escala, faleDp, fechamento, gorjetas, vt, vr, beneficios,
-    ocorrencias, eventos, recebimento, compras, ideias, admissoes, demissoes, exames, uniformes,
+    ocorrencias, eventos, recebimento, compras, ideias, admissoes, candidaturasNovas, demissoes, exames, uniformes,
     minhaAcao, minhaProducao, checklistTpl, checklistRun, cobrancasInt,
     reembReceber, reembPagos, manuts,
     empTrab, exTrab, uniTrab, trabResolv, iaAlertas, avisosDir,

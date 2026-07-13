@@ -421,6 +421,7 @@ export const CATALOGO: CatalogoModulo[] = [
     area: "gestao",
     acoes: [
       { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
+      { id: "receberCandidaturas", label: "Receber avisos de novas candidaturas na Central de Avisos", sensivel: true },
       { id: "verCandidaturas",  label: "Ver candidaturas (trabalhe-conosco)", sensivel: true },
       { id: "triar",            label: "Triar / classificar candidato" },
       { id: "iniciarAdmissao",  label: "Iniciar processo de admissão", sensivel: true },
