@@ -1326,7 +1326,7 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
   const [docData, setDocData] = useState<CardapioEstruturado | null>(null);
   const [idioma, setIdioma] = useState<"pt" | "en">("pt");
   const [menuSel, setMenuSel] = useState<string>("");
-  const [secaoSel, setSecaoSel] = useState<string>("");   // navegação por seção (chips)
+  const [secoesSel, setSecoesSel] = useState<string[]>([]);   // chips selecionados (multi)
 
   useEffect(() => {
     let cancel = false;
@@ -1374,7 +1374,14 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
       abas.push({ id: s.id, titulo: nomeSec(s), secoes: [s] });
     }
   }
-  const abaAtual = abas.find((a) => a.id === secaoSel) || abas[0];
+  // Multi-seleção: mantém só ids válidos; se nada válido, cai pra 1ª aba (assim
+  // trocar de cardápio reseta pra primeira seção sozinho).
+  const selValidas = secoesSel.filter((id) => abas.some((a) => a.id === id));
+  const selEfetiva = selValidas.length ? selValidas : (abas[0] ? [abas[0].id] : []);
+  const abasVisiveis = abas.filter((a) => selEfetiva.includes(a.id));   // em ordem
+  const todasSel = abas.length > 0 && abas.every((a) => selEfetiva.includes(a.id));
+  const toggleAba = (id: string) => setSecoesSel(selEfetiva.includes(id) ? selEfetiva.filter((x) => x !== id) : [...selEfetiva, id]);
+  const toggleTudo = () => setSecoesSel(todasSel ? [abas[0]!.id] : abas.map((a) => a.id));
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto" }}>
@@ -1406,10 +1413,15 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
       {!secoes.length && <div style={{ textAlign: "center", opacity: 0.5, fontSize: txCorpo(14), padding: "16px 0" }}>Cardápio em breve.</div>}
       {abas.length > 1 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 22, justifyContent: "center" }}>
+          <button type="button" onClick={toggleTudo}
+            style={{ flexShrink: 0, fontSize: txCorpo(13), fontWeight: 600, padding: "6px 15px", borderRadius: 999, cursor: "pointer",
+              border: `1px solid ${corPrimaria}`, background: todasSel ? corPrimaria : "transparent", color: todasSel ? "#fff" : corPrimaria, whiteSpace: "nowrap" }}>
+            Tudo
+          </button>
           {abas.map((a) => {
-            const ativo = a.id === abaAtual!.id;
+            const ativo = selEfetiva.includes(a.id);
             return (
-              <button key={a.id} type="button" onClick={() => setSecaoSel(a.id)}
+              <button key={a.id} type="button" onClick={() => toggleAba(a.id)}
                 style={{ flexShrink: 0, fontSize: txCorpo(13), fontWeight: 600, padding: "6px 15px", borderRadius: 999, cursor: "pointer",
                   border: `1px solid ${corPrimaria}`, background: ativo ? corPrimaria : "transparent", color: ativo ? "#fff" : corPrimaria, whiteSpace: "nowrap" }}>
                 {a.titulo}
@@ -1418,11 +1430,11 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
           })}
         </div>
       )}
-      {abaAtual && (
-        <div style={{ marginBottom: 30 }}>
-          <h3 style={{ fontSize: txCorpo(22), color: corPrimaria, fontWeight: 700, margin: "0 0 10px", letterSpacing: 0.3 }}>{abaAtual.titulo}</h3>
-          {abaAtual.secoes.map((s) => (
-          <div key={s.id} style={{ marginTop: abaAtual.secoes.length > 1 ? 16 : 0 }}>
+      {abasVisiveis.map((aba) => (
+        <div key={aba.id} style={{ marginBottom: 30 }}>
+          <h3 style={{ fontSize: txCorpo(22), color: corPrimaria, fontWeight: 700, margin: "0 0 10px", letterSpacing: 0.3 }}>{aba.titulo}</h3>
+          {aba.secoes.map((s) => (
+          <div key={s.id} style={{ marginTop: aba.secoes.length > 1 ? 16 : 0 }}>
             {obsSec(s) && <p style={{ fontSize: txCorpo(13), opacity: 0.7, fontStyle: "italic", margin: "0 0 12px" }}>{obsSec(s)}</p>}
           <div style={{ marginTop: 4 }}>
             {s.pratos.filter((p) => tituloPr(p)).map((p) => (
@@ -1464,7 +1476,7 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
           </div>
           ))}
         </div>
-      )}
+      ))}
     </div>
   );
 }
