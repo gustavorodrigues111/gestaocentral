@@ -3981,6 +3981,7 @@ export type CandidaturaTrabalhe = {
   vagaId?: string | null;           // null/ausente = avulsa (banco de talentos)
   vagaTitulo?: string | null;
   respostas?: Record<string, string>;  // respostas das perguntas da vaga {perguntaId: valor}
+  observacoes?: string;                 // observações que o próprio candidato incluiu
   // Dados do candidato
   nome: string;
   whatsapp: string;                  // E.164

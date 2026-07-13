@@ -1,13 +1,27 @@
-// Páginas PÚBLICAS do Processo Seletivo (sem auth):
-//  • VagasPublicaPage  — lista as vagas abertas (rota /vagas/:rid ou domínio próprio /vagas)
+// Páginas PÚBLICAS do Processo Seletivo (sem auth), no TEMA de cores do site:
+//  • VagasPublicaPage  — lista as vagas abertas (/vagas/:rid ou domínio próprio /vagas)
 //  • VagaCandidaturaPage — formulário de candidatura de uma vaga (/vaga/:rid/:vagaId)
-// A candidatura espontânea (banco de talentos) continua em /trabalhe/:rid.
-import { useEffect, useState } from "react";
+// Candidatura espontânea (banco de talentos) continua em /trabalhe/:rid.
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { collection, doc, getDoc, getDocs, query, where, setDoc } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import type { Vaga, PerguntaVaga, CandidaturaTrabalhe } from "../../core/types";
+import type { Vaga, PerguntaVaga, CandidaturaTrabalhe, SiteConfig } from "../../core/types";
+
+type Tema = { fundo: string; texto: string; primaria: string; secundaria: string; card: string };
+function temaDe(cfg: SiteConfig | null): Tema {
+  const t = cfg?.tema;
+  const primaria = t?.corPrimaria || "#1a5c2a";
+  return {
+    primaria,
+    secundaria: t?.corSecundaria || "#d4af37",
+    fundo: t?.corFundo || "#f7f3e9",
+    texto: t?.corTexto || "#1a1a1a",
+    card: "#ffffff",
+  };
+}
 
 async function ridDoSlug(slug: string): Promise<string | null> {
   try {
@@ -16,27 +30,26 @@ async function ridDoSlug(slug: string): Promise<string | null> {
   } catch { /* nada */ }
   return null;
 }
-async function nomeDoRest(rid: string): Promise<string> {
-  try { const s = await getDoc(doc(db, "sitesConfig", rid)); const d = s.data() as { metaTitulo?: string } | undefined; return d?.metaTitulo || ""; } catch { return ""; }
+async function carregarSite(rid: string): Promise<SiteConfig | null> {
+  try { const s = await getDoc(doc(db, "sitesConfig", rid)); if (s.exists()) return { id: s.id, ...s.data() } as SiteConfig; } catch { /* nada */ }
+  return null;
 }
-
-const wrap = "min-h-screen bg-[#f7f3e9] dark:bg-gray-950 py-8 px-4";
-const card = "max-w-2xl mx-auto";
 
 export function VagasPublicaPage({ slugFromHost }: { slugFromHost?: string }) {
   const { rid: ridParam } = useParams<{ rid: string }>();
   const navigate = useNavigate();
   const [rid, setRid] = useState<string | null>(ridParam || null);
-  const [nome, setNome] = useState("");
+  const [cfg, setCfg] = useState<SiteConfig | null>(null);
   const [vagas, setVagas] = useState<Vaga[]>([]);
   const [loading, setLoading] = useState(true);
+  const tema = useMemo(() => temaDe(cfg), [cfg]);
 
   useEffect(() => {
     (async () => {
       const r = ridParam || (slugFromHost ? await ridDoSlug(slugFromHost) : null);
       if (!r) { setLoading(false); return; }
       setRid(r);
-      setNome(await nomeDoRest(r));
+      setCfg(await carregarSite(r));
       try {
         const snap = await getDocs(query(collection(db, "vagas"), where("restaurantId", "==", r), where("status", "==", "aberta")));
         setVagas(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Vaga).filter((v) => v.publica !== false));
@@ -45,35 +58,38 @@ export function VagasPublicaPage({ slugFromHost }: { slugFromHost?: string }) {
     })();
   }, [ridParam, slugFromHost]);
 
-  if (loading) return <div className={wrap}><div className={`${card} text-center text-gray-400`}>Carregando…</div></div>;
-  if (!rid) return <div className={wrap}><div className={`${card} text-center text-gray-500`}>Página não encontrada.</div></div>;
+  const wrap: React.CSSProperties = { minHeight: "100vh", background: tema.fundo, color: tema.texto, padding: "40px 16px", fontFamily: "system-ui, sans-serif" };
+
+  if (loading) return <div style={wrap}><div style={{ maxWidth: 640, margin: "0 auto", textAlign: "center", opacity: 0.6 }}>Carregando…</div></div>;
+  if (!rid) return <div style={wrap}><div style={{ maxWidth: 640, margin: "0 auto", textAlign: "center", opacity: 0.6 }}>Página não encontrada.</div></div>;
 
   return (
-    <div className={wrap}>
-      <div className={card}>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Trabalhe com a gente{nome ? ` · ${nome}` : ""}</h1>
-        <p className="text-sm text-gray-500 mt-1 mb-5">Confira as vagas abertas e candidate-se. Não achou a sua? Deixe seu currículo no banco de talentos.</p>
+    <div style={wrap}>
+      <div style={{ maxWidth: 640, margin: "0 auto" }}>
+        {cfg?.logoUrl && <img src={cfg.logoUrl} alt="" style={{ height: 56, marginBottom: 16 }} />}
+        <h1 style={{ fontSize: 28, fontWeight: 800, margin: 0 }}>Trabalhe com a gente</h1>
+        <p style={{ fontSize: 14, opacity: 0.7, marginTop: 6, marginBottom: 24 }}>Confira as vagas abertas e candidate-se. Não achou a sua? Deixe seu currículo no banco de talentos.</p>
 
-        <div className="space-y-3">
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
           {vagas.length === 0 && (
-            <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500 bg-white/60 dark:bg-gray-900/40">Nenhuma vaga aberta no momento.</div>
+            <div style={{ borderRadius: 16, border: "1px dashed rgba(0,0,0,.2)", padding: 32, textAlign: "center", fontSize: 14, opacity: 0.7, background: "rgba(255,255,255,.5)" }}>Nenhuma vaga aberta no momento.</div>
           )}
           {vagas.map((v) => (
-            <div key={v.id} className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
-              <div className="flex items-center gap-2 flex-wrap">
-                <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{v.titulo}</h2>
-                {v.area && <span className="text-xs text-gray-400">· {v.area}</span>}
+            <div key={v.id} style={{ borderRadius: 16, background: tema.card, boxShadow: "0 1px 4px rgba(0,0,0,.08)", padding: 18 }}>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+                <h2 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: tema.texto }}>{v.titulo}</h2>
+                {v.area && <span style={{ fontSize: 12, opacity: 0.5 }}>· {v.area}</span>}
               </div>
-              {v.descricao && <p className="text-sm text-gray-600 dark:text-gray-300 mt-1 whitespace-pre-wrap">{v.descricao}</p>}
-              {v.requisitos && <p className="text-xs text-gray-500 mt-1 whitespace-pre-wrap"><b>Requisitos:</b> {v.requisitos}</p>}
-              <button type="button" onClick={() => navigate(`/vaga/${rid}/${v.id}`)} className="mt-3 px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold">Candidatar-se →</button>
+              {v.descricao && <p style={{ fontSize: 14, opacity: 0.8, marginTop: 6, whiteSpace: "pre-wrap", color: tema.texto }}>{v.descricao}</p>}
+              {v.requisitos && <p style={{ fontSize: 12, opacity: 0.65, marginTop: 6, whiteSpace: "pre-wrap", color: tema.texto }}><b>Requisitos:</b> {v.requisitos}</p>}
+              <button type="button" onClick={() => navigate(`/vaga/${rid}/${v.id}`)} style={{ marginTop: 14, padding: "10px 18px", borderRadius: 12, background: tema.primaria, color: "#fff", fontSize: 14, fontWeight: 600, border: "none", cursor: "pointer" }}>Candidatar-se →</button>
             </div>
           ))}
         </div>
 
-        <div className="mt-6 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white/60 dark:bg-gray-900/40 p-4 text-center">
-          <p className="text-sm text-gray-600 dark:text-gray-300">Não encontrou uma vaga pra você?</p>
-          <button type="button" onClick={() => navigate(`/trabalhe/${rid}`)} className="mt-2 px-4 py-2 rounded-xl border border-emerald-500 text-emerald-600 dark:text-emerald-300 text-sm font-semibold">Deixar meu currículo (banco de talentos)</button>
+        <div style={{ marginTop: 24, borderRadius: 16, background: "rgba(255,255,255,.5)", padding: 18, textAlign: "center" }}>
+          <p style={{ fontSize: 14, opacity: 0.75, margin: 0, color: tema.texto }}>Não encontrou uma vaga pra você?</p>
+          <button type="button" onClick={() => navigate(`/trabalhe/${rid}`)} style={{ marginTop: 8, padding: "10px 18px", borderRadius: 12, background: "transparent", color: tema.primaria, border: `1px solid ${tema.primaria}`, fontSize: 14, fontWeight: 600, cursor: "pointer" }}>Deixar meu currículo (banco de talentos)</button>
         </div>
       </div>
     </div>
@@ -84,42 +100,59 @@ export function VagaCandidaturaPage() {
   const { rid, vagaId } = useParams<{ rid: string; vagaId: string }>();
   const navigate = useNavigate();
   const [vaga, setVaga] = useState<Vaga | null>(null);
+  const [cfg, setCfg] = useState<SiteConfig | null>(null);
   const [loading, setLoading] = useState(true);
   const [nome, setNome] = useState("");
   const [whatsapp, setWhatsapp] = useState("");
   const [email, setEmail] = useState("");
+  const [observacoes, setObservacoes] = useState("");
+  const [curriculo, setCurriculo] = useState<File | null>(null);
   const [respostas, setRespostas] = useState<Record<string, string>>({});
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
   const [ok, setOk] = useState(false);
+  const tema = useMemo(() => temaDe(cfg), [cfg]);
 
   useEffect(() => {
     (async () => {
-      if (!vagaId) { setLoading(false); return; }
+      if (!vagaId || !rid) { setLoading(false); return; }
       try { const s = await getDoc(doc(db, "vagas", vagaId)); if (s.exists()) setVaga({ id: s.id, ...s.data() } as Vaga); } catch { /* nada */ }
+      setCfg(await carregarSite(rid));
       setLoading(false);
     })();
-  }, [vagaId]);
+  }, [vagaId, rid]);
 
-  const inp = "w-full px-3 py-2.5 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+  const wrap: React.CSSProperties = { minHeight: "100vh", background: tema.fundo, color: tema.texto, padding: "40px 16px", fontFamily: "system-ui, sans-serif" };
+  const inp: React.CSSProperties = { width: "100%", padding: "11px 12px", fontSize: 16, borderRadius: 10, border: "1px solid rgba(0,0,0,.2)", background: "#fff", color: "#1a1a1a", boxSizing: "border-box" };
+  const lbl: React.CSSProperties = { fontSize: 13, fontWeight: 500, display: "block", marginBottom: 4, color: tema.texto };
 
   async function enviar() {
     setErro("");
     if (!nome.trim()) return setErro("Preencha seu nome.");
     if (whatsapp.replace(/\D/g, "").length < 10) return setErro("Digite um WhatsApp válido (DDD + número).");
+    if (!email.trim() || !email.includes("@")) return setErro("Digite um e-mail válido.");
     for (const p of vaga?.perguntas || []) {
       if (p.obrigatoria && !(respostas[p.id] || "").trim()) return setErro(`Responda: ${p.label}`);
     }
+    if (curriculo && curriculo.size > 10 * 1024 * 1024) return setErro("Currículo muito grande (máx 10 MB).");
     setEnviando(true);
     try {
       let d = whatsapp.replace(/\D/g, ""); if (d.length <= 11) d = "55" + d;
+      const id = `cand_${rid}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      let curriculoUrl: string | undefined;
+      if (curriculo) {
+        const ext = curriculo.name.split(".").pop()?.toLowerCase() || "pdf";
+        const r = storageRef(storage, `candidaturas/${rid}/${id}.${ext}`);
+        const snap = await uploadBytes(r, curriculo, { contentType: curriculo.type });
+        curriculoUrl = await getDownloadURL(snap.ref);
+      }
       const respLabels: Record<string, string> = {};
       for (const p of vaga?.perguntas || []) { const v = (respostas[p.id] || "").trim(); if (v) respLabels[p.label] = v; }
-      const id = `cand_${rid}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
       const cand: CandidaturaTrabalhe = {
         id, restaurantId: rid || "", status: "nova", etapa: "nova",
         vagaId: vagaId || null, vagaTitulo: vaga?.titulo || null,
         respostas: Object.keys(respLabels).length ? respLabels : undefined,
+        observacoes: observacoes.trim() || undefined, curriculoUrl,
         responsavelId: vaga?.responsavelId || undefined, responsavelNome: vaga?.responsavelNome || undefined,
         nome: nome.trim(), whatsapp: d, email: email.trim(), areaInteresse: vaga?.area || vaga?.titulo || "",
         origem: "publico", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
@@ -130,50 +163,59 @@ export function VagaCandidaturaPage() {
     setEnviando(false);
   }
 
-  if (loading) return <div className={wrap}><div className={`${card} text-center text-gray-400`}>Carregando…</div></div>;
-  if (!vaga) return <div className={wrap}><div className={`${card} text-center text-gray-500`}>Vaga não encontrada ou encerrada.</div></div>;
+  if (loading) return <div style={wrap}><div style={{ maxWidth: 640, margin: "0 auto", textAlign: "center", opacity: 0.6 }}>Carregando…</div></div>;
+  if (!vaga) return <div style={wrap}><div style={{ maxWidth: 640, margin: "0 auto", textAlign: "center", opacity: 0.6 }}>Vaga não encontrada ou encerrada.</div></div>;
   if (ok) return (
-    <div className={wrap}><div className={`${card} rounded-2xl border border-emerald-200 dark:border-emerald-900/50 bg-white dark:bg-gray-900 p-8 text-center`}>
-      <div className="text-4xl mb-2">✅</div>
-      <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Candidatura enviada!</h1>
-      <p className="text-sm text-gray-500 mt-1">Obrigado, {nome.split(" ")[0]}. Vamos analisar e entrar em contato pelo WhatsApp.</p>
+    <div style={wrap}><div style={{ maxWidth: 560, margin: "0 auto", borderRadius: 16, background: tema.card, padding: 32, textAlign: "center", boxShadow: "0 1px 4px rgba(0,0,0,.08)" }}>
+      <div style={{ fontSize: 40, marginBottom: 8 }}>✅</div>
+      <h1 style={{ fontSize: 20, fontWeight: 700, margin: 0, color: tema.texto }}>Candidatura enviada!</h1>
+      <p style={{ fontSize: 14, opacity: 0.7, marginTop: 6, color: tema.texto }}>Obrigado, {nome.split(" ")[0]}. Vamos analisar e entrar em contato pelo WhatsApp.</p>
     </div></div>
   );
 
   return (
-    <div className={wrap}>
-      <div className={`${card} rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5`}>
-        <button type="button" onClick={() => navigate(`/vagas/${rid}`)} className="text-xs text-gray-500 hover:underline mb-2">← Todas as vagas</button>
-        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">{vaga.titulo}</h1>
-        {vaga.area && <p className="text-xs text-gray-400">{vaga.area}</p>}
-        {vaga.descricao && <p className="text-sm text-gray-600 dark:text-gray-300 mt-2 whitespace-pre-wrap">{vaga.descricao}</p>}
+    <div style={wrap}>
+      <div style={{ maxWidth: 640, margin: "0 auto", borderRadius: 16, background: tema.card, padding: 22, boxShadow: "0 1px 4px rgba(0,0,0,.08)" }}>
+        <button type="button" onClick={() => navigate(`/vagas/${rid}`)} style={{ fontSize: 12, opacity: 0.6, background: "none", border: "none", cursor: "pointer", marginBottom: 8, color: tema.texto }}>← Todas as vagas</button>
+        <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: tema.texto }}>{vaga.titulo}</h1>
+        {vaga.area && <p style={{ fontSize: 12, opacity: 0.5, margin: "2px 0 0" }}>{vaga.area}</p>}
+        {vaga.descricao && <p style={{ fontSize: 14, opacity: 0.8, marginTop: 10, whiteSpace: "pre-wrap", color: tema.texto }}>{vaga.descricao}</p>}
 
-        <div className="space-y-3 mt-4">
-          <div><label className="text-xs font-medium text-gray-600 dark:text-gray-300">Seu nome *</label><input value={nome} onChange={(e) => setNome(e.target.value)} className={inp} /></div>
-          <div><label className="text-xs font-medium text-gray-600 dark:text-gray-300">WhatsApp *</label><input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className={inp} placeholder="(11) 99999-9999" /></div>
-          <div><label className="text-xs font-medium text-gray-600 dark:text-gray-300">E-mail</label><input value={email} onChange={(e) => setEmail(e.target.value)} className={inp} /></div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 16 }}>
+          <div><label style={lbl}>Seu nome *</label><input value={nome} onChange={(e) => setNome(e.target.value)} style={inp} /></div>
+          <div><label style={lbl}>WhatsApp *</label><input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} style={inp} placeholder="(11) 99999-9999" /></div>
+          <div><label style={lbl}>E-mail *</label><input value={email} onChange={(e) => setEmail(e.target.value)} style={inp} type="email" /></div>
 
           {(vaga.perguntas || []).map((p: PerguntaVaga) => (
             <div key={p.id}>
-              <label className="text-xs font-medium text-gray-600 dark:text-gray-300">{p.label}{p.obrigatoria ? " *" : ""}</label>
+              <label style={lbl}>{p.label}{p.obrigatoria ? " *" : ""}</label>
               {p.tipo === "textolongo" ? (
-                <textarea value={respostas[p.id] || ""} onChange={(e) => setRespostas((r) => ({ ...r, [p.id]: e.target.value }))} rows={3} className={inp} />
+                <textarea value={respostas[p.id] || ""} onChange={(e) => setRespostas((r) => ({ ...r, [p.id]: e.target.value }))} rows={3} style={inp} />
               ) : p.tipo === "opcoes" ? (
-                <select value={respostas[p.id] || ""} onChange={(e) => setRespostas((r) => ({ ...r, [p.id]: e.target.value }))} className={inp}>
+                <select value={respostas[p.id] || ""} onChange={(e) => setRespostas((r) => ({ ...r, [p.id]: e.target.value }))} style={inp}>
                   <option value="">— escolha —</option>{(p.opcoes || []).map((o) => <option key={o} value={o}>{o}</option>)}
                 </select>
               ) : p.tipo === "simnao" ? (
-                <select value={respostas[p.id] || ""} onChange={(e) => setRespostas((r) => ({ ...r, [p.id]: e.target.value }))} className={inp}>
+                <select value={respostas[p.id] || ""} onChange={(e) => setRespostas((r) => ({ ...r, [p.id]: e.target.value }))} style={inp}>
                   <option value="">— escolha —</option><option value="Sim">Sim</option><option value="Não">Não</option>
                 </select>
               ) : (
-                <input type={p.tipo === "numero" ? "number" : "text"} value={respostas[p.id] || ""} onChange={(e) => setRespostas((r) => ({ ...r, [p.id]: e.target.value }))} className={inp} />
+                <input type={p.tipo === "numero" ? "number" : "text"} value={respostas[p.id] || ""} onChange={(e) => setRespostas((r) => ({ ...r, [p.id]: e.target.value }))} style={inp} />
               )}
             </div>
           ))}
 
-          {erro && <div className="text-sm text-rose-600 dark:text-rose-400">{erro}</div>}
-          <button type="button" onClick={() => void enviar()} disabled={enviando} className="w-full py-3 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold disabled:opacity-60">{enviando ? "Enviando…" : "Enviar candidatura"}</button>
+          <div>
+            <label style={lbl}>Currículo (PDF, opcional)</label>
+            <input type="file" accept="application/pdf,.pdf,.doc,.docx" onChange={(e) => setCurriculo(e.target.files?.[0] || null)} style={{ fontSize: 13 }} />
+            {curriculo && <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>📎 {curriculo.name}</div>}
+          </div>
+
+          <div><label style={lbl}>Observações (opcional)</label>
+            <textarea value={observacoes} onChange={(e) => setObservacoes(e.target.value)} rows={3} style={inp} placeholder="Algo que você queira incluir…" /></div>
+
+          {erro && <div style={{ fontSize: 14, color: "#dc2626" }}>{erro}</div>}
+          <button type="button" onClick={() => void enviar()} disabled={enviando} style={{ width: "100%", padding: "13px", borderRadius: 12, background: tema.primaria, color: "#fff", fontWeight: 700, fontSize: 15, border: "none", cursor: "pointer", opacity: enviando ? 0.6 : 1 }}>{enviando ? "Enviando…" : "Enviar candidatura"}</button>
         </div>
       </div>
     </div>

@@ -345,6 +345,7 @@ function CandidatoDrawer({ cand, pessoas, podeTriar, podeTransferir, podeAprovar
           {cand.curriculoUrl && <div>📎 <a href={cand.curriculoUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">Currículo (PDF) ↗</a></div>}
         </div>
         {cand.experiencia && <div><div className="text-[11px] font-semibold text-gray-500 uppercase">Experiência</div><p className="text-sm whitespace-pre-wrap text-gray-700 dark:text-gray-200">{cand.experiencia}</p></div>}
+        {cand.observacoes && <div><div className="text-[11px] font-semibold text-gray-500 uppercase">Observações do candidato</div><p className="text-sm whitespace-pre-wrap text-gray-700 dark:text-gray-200">{cand.observacoes}</p></div>}
         {cand.respostas && Object.keys(cand.respostas).length > 0 && (
           <div><div className="text-[11px] font-semibold text-gray-500 uppercase">Respostas da vaga</div>
             <div className="text-sm text-gray-700 dark:text-gray-200 space-y-1">{Object.entries(cand.respostas).map(([k, v]) => <div key={k}>• {v}</div>)}</div></div>
