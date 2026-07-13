@@ -3966,7 +3966,8 @@ export type Vaga = {
   restaurantId: string;
   titulo: string;
   area?: string;              // cargo/área
-  descricao?: string;
+  resumo?: string;            // chamada curta — aparece na LISTAGEM pública de vagas
+  descricao?: string;         // descrição completa — só na página da vaga
   requisitos?: string;
   status: "aberta" | "pausada" | "encerrada";
   salarioBase?: number | null;     // salário base do cargo (R$/mês)

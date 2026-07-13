@@ -12,6 +12,14 @@ import type { Vaga, PerguntaVaga, CandidaturaTrabalhe, SiteConfig, HorarioDia, S
 
 const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 const brl = (n: number) => `R$ ${n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+// Chamada curta pra listagem: usa o resumo; se a vaga (antiga) não tiver,
+// cai pra 1ª frase/trecho da descrição truncado.
+function resumoCurto(v: Vaga): string {
+  if (v.resumo?.trim()) return v.resumo.trim();
+  const d = (v.descricao || "").replace(/\s+/g, " ").trim();
+  if (!d) return "";
+  return d.length > 160 ? d.slice(0, 157).trimEnd() + "…" : d;
+}
 // Horário-modelo da vaga (1ª vigência): TODOS os dias (sem carga = folga) + ciclo de domingo.
 function horarioInfo(vaga: Vaga): { dias: { dia: string; texto: string; folga: boolean }[]; ciclo: SundayCycle | null } {
   const ws = vaga.horarioModelo?.[0];
@@ -102,9 +110,8 @@ export function VagasPublicaPage({ slugFromHost }: { slugFromHost?: string }) {
               <div key={v.id} style={{ borderRadius: 18, background: tema.card, boxShadow: "0 2px 12px rgba(0,0,0,.07)", padding: "26px 22px" }}>
                 <h3 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: tema.texto }}>{v.titulo}</h3>
                 {v.area && <div style={{ fontSize: 12.5, fontWeight: 600, color: tema.secundaria, marginTop: 4 }}>{v.area}</div>}
-                {v.descricao && <p style={{ fontSize: 14, opacity: 0.8, marginTop: 12, whiteSpace: "pre-wrap", color: tema.texto, lineHeight: 1.55, maxWidth: 460, marginLeft: "auto", marginRight: "auto" }}>{v.descricao}</p>}
-                {v.requisitos && <p style={{ fontSize: 12.5, opacity: 0.62, marginTop: 10, whiteSpace: "pre-wrap", color: tema.texto, maxWidth: 460, marginLeft: "auto", marginRight: "auto" }}><b>Requisitos:</b> {v.requisitos}</p>}
-                <button type="button" onClick={() => navigate(`/vaga/${rid}/${v.id}`)} style={{ marginTop: 20, padding: "12px 28px", borderRadius: 12, background: tema.primaria, color: "#fff", fontSize: 15, fontWeight: 700, border: "none", cursor: "pointer" }}>Candidatar-se →</button>
+                {resumoCurto(v) && <p style={{ fontSize: 14, opacity: 0.8, marginTop: 12, whiteSpace: "pre-wrap", color: tema.texto, lineHeight: 1.55, maxWidth: 460, marginLeft: "auto", marginRight: "auto" }}>{resumoCurto(v)}</p>}
+                <button type="button" onClick={() => navigate(`/vaga/${rid}/${v.id}`)} style={{ marginTop: 20, padding: "12px 28px", borderRadius: 12, background: tema.primaria, color: "#fff", fontSize: 15, fontWeight: 700, border: "none", cursor: "pointer" }}>Ver vaga e candidatar-se →</button>
               </div>
             ))}
           </div>
