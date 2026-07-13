@@ -10,7 +10,7 @@ import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type { Vaga, PerguntaVaga, CandidaturaTrabalhe, SiteConfig, HorarioDia, SundayCycle } from "../../core/types";
 
-const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 // Horário-modelo da vaga (1ª vigência): TODOS os dias (sem carga = folga) + ciclo de domingo.
 function horarioInfo(vaga: Vaga): { dias: { dia: string; texto: string; folga: boolean }[]; ciclo: SundayCycle | null } {
   const ws = vaga.horarioModelo?.[0];
@@ -219,8 +219,8 @@ export function VagaCandidaturaPage() {
                 <div style={{ fontSize: 13, fontWeight: 700, color: tema.texto, marginBottom: 8 }}>🕒 Horário</div>
                 <div style={{ width: "100%", borderRadius: 10, overflow: "hidden", border: "1px solid rgba(0,0,0,.1)" }}>
                   {hor.dias.map((h, idx) => (
-                    <div key={h.dia} style={{ display: "flex", alignItems: "center", padding: "9px 14px", fontSize: 14, background: h.folga ? "transparent" : tema.card, borderTop: idx > 0 ? "1px solid rgba(0,0,0,.07)" : "none", color: tema.texto, opacity: h.folga ? 0.55 : 1 }}>
-                      <span style={{ fontWeight: 700, width: 52, flexShrink: 0, textAlign: "left" }}>{h.dia}</span>
+                    <div key={h.dia} style={{ display: "flex", alignItems: "center", padding: "9px 16px", fontSize: 14, background: h.folga ? "transparent" : tema.card, borderTop: idx > 0 ? "1px solid rgba(0,0,0,.07)" : "none", color: tema.texto, opacity: h.folga ? 0.55 : 1 }}>
+                      <span style={{ fontWeight: 700, width: "40%", flexShrink: 0, textAlign: "left" }}>{h.dia}</span>
                       <span style={{ textAlign: "left" }}>{h.texto}</span>
                     </div>
                   ))}
