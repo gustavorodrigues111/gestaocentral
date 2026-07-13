@@ -2043,16 +2043,10 @@ export type AssistenteWhatsappConfig = {
   restaurantId: string;
   ativo: boolean;                     // liga/desliga o assistente
   numeroInstancia?: string | null;    // instância Evolution que atende (id de whatsappNumeros)
-  // Conhecimento que a IA pode usar pra responder
+  // Conhecimento: endereço, horário, cardápio, reservas (interno/externo) vêm
+  // do SITE (sitesConfig/{rid}) — fonte única, não se redigita aqui.
   diretrizes?: string;                // do/don't livre — "nunca responda X", "sempre faça Y"
-  horarioFuncionamento?: string;      // texto livre (ex.: "Ter-Dom 12h-23h; Seg fechado")
-  endereco?: string;
-  linkSite?: string;
-  linkCardapio?: string;
-  infoExtra?: string;                 // políticas (criança/pet/estacionamento), etc.
-  // Reservas
-  sistemaReservas: "planejamento" | "getin";
-  linkGetin?: string | null;          // usado quando sistemaReservas === "getin"
+  infoExtra?: string;                 // infos que NÃO estão no site (pet, estacionamento, kids…)
   confirmacaoAtiva?: boolean;         // dispara/interpreta confirmação de reserva
   atualizadoEm: string;
   atualizadoPor: string;
