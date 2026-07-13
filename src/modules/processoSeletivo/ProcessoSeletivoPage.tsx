@@ -567,7 +567,24 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, unidades, pessoaId
               <select value={cargoId} onChange={(e) => setCargoId(e.target.value)} className={inp}>
                 <option value="">— nenhum —</option>
                 {cargosAtivos.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-              </select></div>
+              </select>
+              {(() => {
+                const cg = cargos.find((c) => c.id === cargoId);
+                if (!cg || (cg.salarioBase == null && !cg.descricao)) return null;
+                return (
+                  <button type="button"
+                    onClick={() => {
+                      if (cg.salarioBase != null) setSalarioBase(String(cg.salarioBase));
+                      if (cg.descricao) setDescricao(cg.descricao);
+                    }}
+                    className="mt-1 text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline text-left">
+                    ↧ Usar dados do cargo {cg.nome}
+                    {cg.salarioBase != null ? ` (salário R$ ${cg.salarioBase.toLocaleString("pt-BR")}` : " ("}
+                    {cg.descricao ? `${cg.salarioBase != null ? " + " : ""}descrição)` : ")"}
+                  </button>
+                );
+              })()}
+            </div>
             <div>
               <label className={lbl}>Horário-modelo (pra admissão)</label>
               <div className="flex p-0.5 rounded-lg bg-gray-100 dark:bg-gray-800/60 mb-2">

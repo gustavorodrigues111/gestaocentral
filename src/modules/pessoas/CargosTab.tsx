@@ -259,6 +259,8 @@ function CargoModal({
   const [pontos, setPontos] = useState<number>(cargo?.pontos ?? 1);
   const [semGorjeta, setSemGorjeta] = useState(cargo?.semGorjeta ?? false);
   const [recebeProducao, setRecebeProducao] = useState(cargo?.recebeProducao ?? false);
+  const [salarioBase, setSalarioBase] = useState(cargo?.salarioBase != null ? String(cargo.salarioBase) : "");
+  const [descricao, setDescricao] = useState(cargo?.descricao || "");
   // batePonto opcional — default = true pra registrado/estagiario, false pra
   // freela/terceirizado. Quando o user marca/desmarca, vira valor explícito.
   // null = "herda do TipoVinculo" (não persiste).
@@ -292,6 +294,10 @@ function CargoModal({
     if (cargo.nome !== nome.trim()) naoCriticas.nome = nome.trim();
     if (cargo.area !== area) naoCriticas.area = area;
     if (cargo.ativo !== ativo) naoCriticas.ativo = ativo;
+    // Remuneração/descrição — não afetam gorjeta, aplicam imediato.
+    const novoSalario = salarioBase.trim() ? (parseFloat(salarioBase.replace(",", ".")) || null) : null;
+    if ((cargo.salarioBase ?? null) !== novoSalario) naoCriticas.salarioBase = novoSalario;
+    if ((cargo.descricao ?? "") !== descricao.trim()) naoCriticas.descricao = descricao.trim();
     // batePonto: muda imediatamente — afeta só filtragem do relatório de ponto
     const batePontoAtualCargo = cargo.batePonto ?? null;
     if (batePontoAtualCargo !== batePonto) {
@@ -367,6 +373,8 @@ function CargoModal({
           semGorjeta,
           recebeProducao: semGorjeta ? false : recebeProducao,
           ...(batePonto !== null ? { batePonto } : {}),
+          ...(salarioBase.trim() ? { salarioBase: parseFloat(salarioBase.replace(",", ".")) || null } : {}),
+          ...(descricao.trim() ? { descricao: descricao.trim() } : {}),
           ativo,
         };
         const ref = await addDoc(collection(db, "cargos"), {
@@ -533,6 +541,32 @@ function CargoModal({
                 </label>
               </>
             )}
+          </div>
+        </div>
+
+        <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
+          <label className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 block mb-2">
+            Remuneração & descrição
+          </label>
+          <div className="space-y-2">
+            <Input
+              label="Salário base (R$/mês)"
+              type="number"
+              min="0" step="0.01"
+              value={salarioBase}
+              onChange={(e) => setSalarioBase(e.target.value)}
+              placeholder="ex: 1800"
+            />
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Descrição do cargo (job description)</label>
+              <textarea
+                value={descricao}
+                onChange={(e) => setDescricao(e.target.value)}
+                rows={4}
+                placeholder="Responsabilidades, o que a pessoa faz no dia a dia, requisitos…"
+                className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 mt-1"
+              />
+            </div>
           </div>
         </div>
 

@@ -231,6 +231,12 @@ export type Cargo = {
   // cargo de confiança → não bate). undefined = usa default por TipoVinculo.
   batePonto?: boolean;
 
+  // Remuneração de referência do cargo (por empresa — cada Cargo já é de um
+  // restaurantId). Base pra pré-preencher vagas/admissões. Não afeta gorjeta.
+  salarioBase?: number | null;   // R$/mês
+  // Job description — o que o cargo faz, responsabilidades, requisitos.
+  descricao?: string;
+
   ativo: boolean;
   ordem: number;
   createdAt: string;
