@@ -564,7 +564,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         conversasFiltradas.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">{conversas.length === 0 ? "Nenhuma mensagem recebida ainda. Quando alguém mandar no WhatsApp do planejamento.app, aparece aqui." : filtroAtrib === "pendentes" ? "🎉 Nenhuma conversa pendente — tudo atribuído." : filtroAtrib === "minhas" ? "Você não tem conversas atribuídas." : "Nenhuma conversa nesse filtro."}</div>
         ) : (
-          <div className="-mx-4 border-y border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+          <div className="relative left-1/2 w-screen -ml-[50vw] border-y border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
             {conversasFiltradas.map(c => {
               const cont = contatos[foneKey(c.waId)];
               const cTags = (cont?.tagIds || []).map(id => tagById[id]).filter(Boolean) as WhatsappTag[];
