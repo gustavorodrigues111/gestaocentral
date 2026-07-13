@@ -17,7 +17,7 @@ function horarioInfo(vaga: Vaga): { dias: { dia: string; texto: string; folga: b
   const days = ws && ws.type === "single" ? (ws.days as { [k: number]: HorarioDia } | undefined) : undefined;
   if (!days) return { dias: [], ciclo: null };
   const dias = [];
-  for (let i = 0; i < 7; i++) {
+  for (const i of [1, 2, 3, 4, 5, 6, 0]) {   // começa na segunda, domingo por último
     const d = days[i];
     if (d?.active && d.in && d.out) dias.push({ dia: DIAS_SEMANA[i], texto: `${d.in}–${d.out}${d.break ? ` (int. ${d.break}min)` : ""}`, folga: false });
     else dias.push({ dia: DIAS_SEMANA[i], texto: "Folga", folga: true });
@@ -216,14 +216,17 @@ export function VagaCandidaturaPage() {
             {vaga.requisitos && <p style={{ fontSize: 13, opacity: 0.7, margin: "0 0 8px", whiteSpace: "pre-wrap", color: tema.texto }}><b>Requisitos:</b> {vaga.requisitos}</p>}
             {hor.dias.length > 0 && (
               <div style={{ marginTop: 6 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: tema.texto, marginBottom: 6 }}>🕒 Horário</div>
-                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                  {hor.dias.map((h) => (
-                    <span key={h.dia} style={{ fontSize: 12, padding: "3px 9px", borderRadius: 999, background: h.folga ? "transparent" : tema.card, border: `1px solid ${h.folga ? "rgba(0,0,0,.12)" : "rgba(0,0,0,.1)"}`, color: tema.texto, opacity: h.folga ? 0.5 : 1 }}><b>{h.dia}</b> {h.texto}</span>
+                <div style={{ fontSize: 13, fontWeight: 700, color: tema.texto, marginBottom: 8, textAlign: "center" }}>🕒 Horário</div>
+                <div style={{ maxWidth: 340, margin: "0 auto", borderRadius: 12, overflow: "hidden", border: "1px solid rgba(0,0,0,.1)" }}>
+                  {hor.dias.map((h, idx) => (
+                    <div key={h.dia} style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, padding: "8px 12px", fontSize: 13, background: h.folga ? "transparent" : tema.card, borderTop: idx > 0 ? "1px solid rgba(0,0,0,.07)" : "none", color: tema.texto, opacity: h.folga ? 0.55 : 1 }}>
+                      <span style={{ fontWeight: 700, minWidth: 36, textAlign: "right" }}>{h.dia}</span>
+                      <span style={{ minWidth: 130, textAlign: "left" }}>{h.texto}</span>
+                    </div>
                   ))}
                 </div>
                 {hor.ciclo && (
-                  <p style={{ fontSize: 12, opacity: 0.7, marginTop: 8, color: tema.texto }}>🔁 <b>Domingo cíclico:</b> trabalha {hor.ciclo.workCount} domingo{hor.ciclo.workCount > 1 ? "s" : ""} seguido{hor.ciclo.workCount > 1 ? "s" : ""} e folga 1.</p>
+                  <p style={{ fontSize: 12, opacity: 0.7, marginTop: 8, color: tema.texto, textAlign: "center" }}>🔁 <b>Domingo cíclico:</b> trabalha {hor.ciclo.workCount} domingo{hor.ciclo.workCount > 1 ? "s" : ""} seguido{hor.ciclo.workCount > 1 ? "s" : ""} e folga 1.</p>
                 )}
               </div>
             )}
