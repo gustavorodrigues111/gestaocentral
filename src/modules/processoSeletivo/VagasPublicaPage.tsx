@@ -230,6 +230,9 @@ export function VagaCandidaturaPage() {
                   {vaga.gorjetaMedia != null && <div>Gorjeta média: <b>{brl(vaga.gorjetaMedia)}</b></div>}
                   {vaga.salarioBase != null && vaga.gorjetaMedia != null && <div style={{ opacity: 0.7, marginTop: 2 }}>Total médio estimado: <b>{brl((vaga.salarioBase || 0) + (vaga.gorjetaMedia || 0))}</b></div>}
                 </div>
+                <div style={{ fontSize: 11.5, opacity: 0.6, color: tema.texto, marginTop: 6, lineHeight: 1.4 }}>
+                  Valores <b>brutos</b>, sujeitos às deduções legais (INSS, IRRF e demais descontos aplicáveis){vaga.gorjetaMedia != null ? "; a gorjeta média é uma estimativa e pode variar mês a mês" : ""}.
+                </div>
               </div>
             )}
             {hor.dias.length > 0 && (
