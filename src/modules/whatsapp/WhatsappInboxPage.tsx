@@ -7,7 +7,7 @@
 // cadastrado) e a um restaurante, além de receber tags. Isso permite dividir a
 // caixa por restaurante e filtrar por tag. Metadados em whatsappContatos/{waId}
 // e catálogo de tags em whatsappTags.
-import { useEffect, useMemo, useRef, useState, type ReactNode, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type ChangeEvent, type TouchEvent as RTouchEvent } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -415,19 +415,21 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const clienteSel = sel ? clienteDaConversa(sel) : null;
   const clienteAuto = sel ? clienteByFone[foneKey(sel)] : null;
   const [transferir, setTransferir] = useState(false);
+  const [transferWaId, setTransferWaId] = useState<string | null>(null);
 
   // Vincular/desvincular cliente do CRM.
   async function vincularCliente(clienteId: string | null) { if (sel) await salvarContato(sel, { clienteId }); }
   // Transferir a conversa pra outro atendente (+ registra no histórico).
   async function transferirPara(p: Pessoa, nota: string) {
-    if (!sel) return;
-    await salvarContato(sel, { atribuidoA: p.id, atribuidoNome: p.nome });
+    const alvo = transferWaId || sel;
+    if (!alvo) return;
+    await salvarContato(alvo, { atribuidoA: p.id, atribuidoNome: p.nome });
     await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({
-      waId: sel, numeroId: numeroSel, direcao: "out", tipo: "sistema", sistema: true, lido: true,
+      waId: alvo, numeroId: numeroSel, direcao: "out", tipo: "sistema", sistema: true, lido: true,
       texto: `🔀 Conversa transferida para ${p.nome} por ${me?.nome || "—"}${nota ? ` — ${nota}` : ""}`,
       timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), autorNome: me?.nome || null,
     }));
-    setTransferir(false);
+    setTransferir(false); setTransferWaId(null);
   }
 
   const abaEfetiva = embutido ? "conversas" : tab;
@@ -512,9 +514,13 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             {conversasFiltradas.map(c => {
               const cTags = (contatos[foneKey(c.waId)]?.tagIds || []).map(id => tagById[id]).filter(Boolean) as WhatsappTag[];
               const naoLida = c.naoLidas > 0;
+              const atribuido = contatos[foneKey(c.waId)]?.atribuidoNome;
               return (
-                <button key={c.waId} type="button" onClick={() => { setSel(c.waId); setDetalhes(false); }}
-                  className={`w-full text-left flex items-center gap-3 px-4 py-3 transition-colors ${naoLida ? "bg-rose-50 dark:bg-rose-900/20 hover:bg-rose-100 dark:hover:bg-rose-900/30" : "hover:bg-gray-50 dark:hover:bg-gray-800/40"}`}>
+                <ConversaItem key={c.waId} naoLida={naoLida}
+                  onAbrir={() => { setSel(c.waId); setDetalhes(false); }}
+                  onNaoLida={() => void marcarNaoLida(c.waId)}
+                  onTransferir={() => { setTransferWaId(c.waId); setTransferir(true); }}
+                  podeResponder={podeResponder}>
                   <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center text-lg shrink-0">💬</div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-2 flex-wrap">
@@ -523,9 +529,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                       {cTags.map(t => <span key={t.id} className="inline-block w-2 h-2 rounded-full" style={{ background: t.cor || "#6366f1" }} title={t.nome} />)}
                     </div>
                     <div className={`text-xs truncate ${naoLida ? "text-gray-700 dark:text-gray-200 font-medium" : "text-gray-500"}`}>{c.ultima.direcao === "out" ? "Você: " : ""}{c.ultima.texto || `[${c.ultima.tipo || "msg"}]`}</div>
+                    {atribuido && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 truncate">🙋 {atribuido}</div>}
                   </div>
                   <span className="text-[10px] text-gray-400 shrink-0">{hhmm(c.ultima.timestamp)}</span>
-                </button>
+                </ConversaItem>
               );
             })}
           </div>
@@ -695,11 +702,51 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
       {novaConversa && <NovaConversaModal pessoas={pessoas} onClose={() => setNovaConversa(false)}
         onAbrir={(waId, pid) => { setNovaConversa(false); setSel(waId); if (pid) void salvarContato(waId, { pessoaId: pid }); }} />}
-      {transferir && sel && <TransferModal
+      {transferir && (transferWaId || sel) && <TransferModal
         pessoas={pessoas.filter(p => { const n = numeros.find(x => x.id === numeroSel); const uids = n?.usuariosIds || []; return uids.length === 0 || uids.includes(p.id); })}
-        atualId={contatoSel?.atribuidoA || null} meId={me?.id || null} onClose={() => setTransferir(false)} onTransferir={transferirPara} />}
+        atualId={contatos[foneKey(transferWaId || sel || "")]?.atribuidoA || null} meId={me?.id || null} onClose={() => { setTransferir(false); setTransferWaId(null); }} onTransferir={transferirPara} />}
       {qrRecon && <QrModal instancia={qrRecon.instancia} nome={qrRecon.nome} qrInicial={null}
         onClose={() => { setQrRecon(null); if (numeroSel) void chamarInstancia("status", numeroSel).then(r => setStatusConexao(r.estado || "unknown")).catch(() => {}); }} />}
+    </div>
+  );
+}
+
+// Item da lista de conversas com "arrastar pro lado" revelando ações
+// (marcar não lida / transferir), estilo apps de mensagem.
+function ConversaItem({ naoLida, onAbrir, onNaoLida, onTransferir, podeResponder, children }: {
+  naoLida: boolean; onAbrir: () => void; onNaoLida: () => void; onTransferir: () => void; podeResponder: boolean; children: ReactNode;
+}) {
+  const MAX = podeResponder ? 152 : 80;   // largura das ações reveladas
+  const [dx, setDx] = useState(0);
+  const [aberto, setAberto] = useState(false);
+  const [arrastando, setArrastando] = useState(false);
+  const startX = useRef(0); const startY = useRef(0);
+  const horizontal = useRef(false); const decidiu = useRef(false); const moveu = useRef(false);
+
+  function onTouchStart(e: RTouchEvent) { const t = e.touches[0]; startX.current = t.clientX; startY.current = t.clientY; horizontal.current = false; decidiu.current = false; moveu.current = false; setArrastando(true); }
+  function onTouchMove(e: RTouchEvent) {
+    const t = e.touches[0]; const dX = t.clientX - startX.current; const dY = t.clientY - startY.current;
+    if (!decidiu.current && (Math.abs(dX) > 6 || Math.abs(dY) > 6)) { decidiu.current = true; horizontal.current = Math.abs(dX) > Math.abs(dY); }
+    if (horizontal.current) { moveu.current = true; const base = aberto ? MAX : 0; setDx(Math.max(0, Math.min(MAX, base + dX))); }
+  }
+  function onTouchEnd() { setArrastando(false); if (!horizontal.current) return; const abrir = dx > MAX / 2; setAberto(abrir); setDx(abrir ? MAX : 0); }
+  function fechar() { setAberto(false); setDx(0); }
+
+  return (
+    <div className="relative overflow-hidden">
+      {/* Ações reveladas atrás (à esquerda) */}
+      <div className="absolute inset-y-0 left-0 flex" style={{ width: MAX }}>
+        <button type="button" onClick={() => { onNaoLida(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-blue-500 text-white text-[11px] font-medium"><span className="text-base">🔵</span>Não lida</button>
+        {podeResponder && <button type="button" onClick={() => { onTransferir(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-indigo-500 text-white text-[11px] font-medium"><span className="text-base">↪</span>Transferir</button>}
+      </div>
+      {/* Linha (frente) — arrasta pra revelar */}
+      <button type="button"
+        onClick={() => { if (aberto) { fechar(); return; } if (moveu.current) { moveu.current = false; return; } onAbrir(); }}
+        onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
+        style={{ transform: `translateX(${dx}px)`, touchAction: "pan-y", transition: arrastando ? "none" : "transform 0.2s" }}
+        className={`relative w-full text-left flex items-center gap-3 px-4 py-3 ${naoLida ? "bg-rose-50 dark:bg-rose-900/20" : "bg-white dark:bg-gray-900"}`}>
+        {children}
+      </button>
     </div>
   );
 }
