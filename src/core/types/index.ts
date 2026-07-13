@@ -3774,6 +3774,11 @@ export type CardapioMenu = {
   tituloCapa?: string;               // rótulo na capa ("COMIDAS")
   temCapa?: boolean;                 // usa a página de capa (arte)
   secoes: SecaoCardapio[];
+  // Agrupamento das seções pra EXIBIÇÃO NO SITE (chips navegáveis). Cada grupo
+  // vira 1 chip com título próprio e referencia seções JÁ EXISTENTES (reusa os
+  // pratos, não duplica). Ex.: um grupo "Brasa e Acompanhamentos" apontando pras
+  // seções Brasa + Acompanhamentos. Vazio/ausente = 1 chip por seção.
+  gruposSite?: { id: string; titulo: string; secaoIds: string[] }[];
   traduzidoEm?: string;
   traduzidoSig?: string;             // assinatura do conteúdo PT no momento da tradução
   mostrarGarrafa?: boolean;          // cardápio de vinhos → ícone de garrafa em TODOS os itens (tudo ou nada)

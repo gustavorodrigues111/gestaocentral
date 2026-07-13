@@ -16,6 +16,8 @@ const uid = () => (typeof crypto !== "undefined" && crypto.randomUUID ? crypto.r
 // Assinatura do conteúdo PT (nome/obs da seção + título/subtítulo dos pratos).
 // Usada pra saber se a tradução está em dia: traduziu → guarda a assinatura;
 // mudou o PT → assinatura difere → reabilita o botão de traduzir.
+type GrupoSite = { id: string; titulo: string; secaoIds: string[] };
+
 function sigPt(secoes: SecaoCardapio[]): string {
   const txt = secoes.map((s) => [s.nome || "", s.obs || "", ...s.pratos.flatMap((p) => [p.titulo || "", p.subtitulo || ""])].join("")).join("");
   let h = 5381;
@@ -37,6 +39,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
   const [iconePrato, setIconePrato] = useState<{ si: number; pi: number } | null>(null);
   const [tituloCapaMenu, setTituloCapaMenu] = useState("");
   const [mostrarGarrafa, setMostrarGarrafa] = useState(false);
+  const [gruposSite, setGruposSite] = useState<GrupoSite[]>([]);
   const timer = useRef<number | undefined>(undefined);
   const tituloTimer = useRef<number | undefined>(undefined);
 
@@ -49,6 +52,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
         if (menuId) {
           const m = (d.cardapios || []).find((c) => c.id === menuId);
           setTituloCapaMenu(m?.tituloCapa ?? ""); setMostrarGarrafa(!!m?.mostrarGarrafa);
+          setGruposSite(m?.gruposSite || []);
           setSecoes(m?.secoes || []); setTraduzidoEm(m?.traduzidoEm); setTraduzidoSig(m?.traduzidoSig);
         } else {
           setSecoes(d.secoes || []); setTraduzidoEm(d.traduzidoEm); setTraduzidoSig(d.traduzidoSig);
@@ -166,6 +170,29 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
     const cardapios = (d?.cardapios || []).map((c) => c.id === menuId ? { ...c, mostrarGarrafa: v || undefined } : c);
     await setDoc(ref, sanitizeForFirestore({ id: rid, restaurantId: rid, cardapios, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id }), { merge: true }).catch(() => {});
   }
+  async function salvarGrupos(next: GrupoSite[]) {
+    setGruposSite(next);
+    if (!menuId || !podeEditar) return;
+    const limpos = next
+      .map((g) => ({ ...g, titulo: g.titulo.trim(), secaoIds: g.secaoIds.filter((id) => secoes.some((s) => s.id === id)) }))
+      .filter((g) => g.secaoIds.length);
+    const ref = doc(db, "cardapioEstruturado", rid);
+    const snap = await getDoc(ref);
+    const d = snap.exists() ? (snap.data() as CardapioEstruturado) : null;
+    const cardapios = (d?.cardapios || []).map((c) => c.id === menuId ? { ...c, gruposSite: limpos.length ? limpos : undefined } : c);
+    await setDoc(ref, sanitizeForFirestore({ id: rid, restaurantId: rid, cardapios, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id }), { merge: true }).catch(() => {});
+  }
+  const addGrupo = () => void salvarGrupos([...gruposSite, { id: uid(), titulo: "", secaoIds: [] }]);
+  const setGrupo = (i: number, patch: Partial<GrupoSite>) => void salvarGrupos(gruposSite.map((g, j) => j === i ? { ...g, ...patch } : g));
+  const removeGrupo = (i: number) => void salvarGrupos(gruposSite.filter((_, j) => j !== i));
+  const toggleSecaoGrupo = (i: number, secaoId: string) => {
+    const g = gruposSite[i]!;
+    const on = g.secaoIds.includes(secaoId);
+    setGrupo(i, { secaoIds: on ? g.secaoIds.filter((x) => x !== secaoId) : [...g.secaoIds, secaoId] });
+  };
+  // Seções que não estão em nenhum grupo → viram chip individual no site.
+  const secoesEmGrupo = new Set(gruposSite.flatMap((g) => g.secaoIds));
+
   // Edição direta de um prato pelo id (usada pela edição inline no preview do PDF).
   const editarPratoPorId = (pratoId: string, campo: keyof PratoCardapio, valor: string) =>
     commit(secoes.map((s) => ({ ...s, pratos: s.pratos.map((p) => p.id === pratoId ? { ...p, [campo]: valor.trim() || undefined } : p) })));
@@ -205,6 +232,42 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
               className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 shrink-0 font-medium">
               🎨 Ver PDF
             </button>
+          )}
+        </div>
+      )}
+
+      {/* Exibição no site: agrupa seções em chips navegáveis */}
+      {podeEditar && secoes.length > 1 && (
+        <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3 space-y-2">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200">🔖 Chips no site</div>
+            <button type="button" onClick={addGrupo} className="text-[12px] text-indigo-600 dark:text-indigo-400 font-medium">+ Juntar seções num chip</button>
+          </div>
+          <p className="text-[11px] text-gray-400 dark:text-gray-500">No site, o cliente navega o cardápio por chips. Sem configurar nada, <b>cada seção vira um chip</b>. Crie um chip aqui pra <b>juntar duas ou mais seções</b> sob um título só (ex.: Brasa + Acompanhamentos → “Brasa e Acompanhamentos”). Reaproveita os pratos que já existem.</p>
+          {gruposSite.map((g, i) => (
+            <div key={g.id} className="rounded-lg border border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/40 p-2 space-y-1.5">
+              <div className="flex items-center gap-2">
+                <input value={g.titulo} onChange={(e) => setGrupo(i, { titulo: e.target.value })} placeholder="Título do chip"
+                  className="flex-1 text-[13px] px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100" />
+                <button type="button" onClick={() => removeGrupo(i)} className="text-[11px] text-gray-400 hover:text-rose-600 shrink-0">remover</button>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {secoes.map((s) => {
+                  const on = g.secaoIds.includes(s.id);
+                  const emOutro = secoesEmGrupo.has(s.id) && !on;
+                  return (
+                    <button key={s.id} type="button" disabled={emOutro} onClick={() => toggleSecaoGrupo(i, s.id)}
+                      className={`text-[12px] px-2.5 py-1 rounded-full border transition-colors ${on ? "bg-indigo-600 border-indigo-600 text-white" : emOutro ? "border-gray-200 dark:border-gray-800 text-gray-300 dark:text-gray-600 cursor-not-allowed" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-indigo-400"}`}
+                      title={emOutro ? "Já está em outro chip" : ""}>
+                      {s.nome || "(sem nome)"}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+          {gruposSite.length > 0 && secoes.some((s) => !secoesEmGrupo.has(s.id)) && (
+            <p className="text-[11px] text-gray-400">As demais seções ({secoes.filter((s) => !secoesEmGrupo.has(s.id)).map((s) => s.nome || "(sem nome)").join(", ")}) aparecem como chips individuais.</p>
           )}
         </div>
       )}

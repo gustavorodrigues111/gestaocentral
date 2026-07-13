@@ -1345,11 +1345,6 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
   if (!cardapios.length) return <div style={{ textAlign: "center", opacity: 0.5, fontSize: txCorpo(14), padding: "24px 0" }}>Cardápio em breve.</div>;
   const menuAtual = cardapios.find((c) => c.id === menuSel) || cardapios[0]!;
   const secoes = (menuAtual.secoes || []).filter((s) => s.nome || s.pratos.length);
-  // Navegação por seção: mostra 1 seção por vez (chips) quando há mais de uma —
-  // evita a página do cardápio ficar muito longa. Ao trocar de cardápio, o
-  // secaoSel antigo não bate → cai pra 1ª seção automaticamente.
-  const secaoAtual = secoes.find((s) => s.id === secaoSel) || secoes[0];
-  const secoesVisiveis = secaoAtual ? [secaoAtual] : [];
 
   const en = idioma === "en";
   const temEn = secoes.some((s) => s.nomeEn || s.pratos.some((p) => p.tituloEn));
@@ -1357,6 +1352,25 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
   const obsSec = (s: typeof secoes[number]) => (en && s.obsEn) || s.obs;
   const tituloPr = (p: { titulo: string; tituloEn?: string }) => (en && p.tituloEn) || p.titulo;
   const subPr = (p: { subtitulo?: string; subtituloEn?: string }) => (en && p.subtituloEn) || p.subtitulo;
+
+  // Abas de exibição no site: se o cardápio tem `gruposSite`, cada grupo vira 1
+  // chip (com título próprio) reunindo as seções apontadas. Seções fora de
+  // qualquer grupo entram como chips soltos no fim. Sem config = 1 chip por seção.
+  type Aba = { id: string; titulo: string; secoes: typeof secoes };
+  const grupos = menuAtual.gruposSite || [];
+  let abas: Aba[];
+  if (grupos.length) {
+    const usadas = new Set<string>();
+    abas = grupos.map((g) => {
+      const ss = (g.secaoIds || []).map((sid) => secoes.find((s) => s.id === sid)).filter(Boolean) as typeof secoes;
+      ss.forEach((s) => usadas.add(s.id));
+      return { id: g.id, titulo: g.titulo || (ss[0] ? nomeSec(ss[0]) : ""), secoes: ss };
+    }).filter((a) => a.secoes.length);
+    for (const s of secoes.filter((x) => !usadas.has(x.id))) abas.push({ id: s.id, titulo: nomeSec(s), secoes: [s] });
+  } else {
+    abas = secoes.map((s) => ({ id: s.id, titulo: nomeSec(s), secoes: [s] }));
+  }
+  const abaAtual = abas.find((a) => a.id === secaoSel) || abas[0];
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto" }}>
@@ -1386,25 +1400,27 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
           ))}
         </div>
       )}
-      {secoes.length > 1 && (
+      {abas.length > 1 && (
         <div style={{ display: "flex", flexWrap: "nowrap", gap: 8, marginBottom: 22, overflowX: "auto", paddingBottom: 6, WebkitOverflowScrolling: "touch", justifyContent: "flex-start", scrollbarWidth: "none" }}>
-          {secoes.map((s) => {
-            const ativo = s.id === secaoAtual!.id;
+          {abas.map((a) => {
+            const ativo = a.id === abaAtual!.id;
             return (
-              <button key={s.id} type="button" onClick={() => setSecaoSel(s.id)}
+              <button key={a.id} type="button" onClick={() => setSecaoSel(a.id)}
                 style={{ flexShrink: 0, fontSize: txCorpo(13), fontWeight: 600, padding: "6px 15px", borderRadius: 999, cursor: "pointer",
                   border: `1px solid ${corPrimaria}`, background: ativo ? corPrimaria : "transparent", color: ativo ? "#fff" : corPrimaria, whiteSpace: "nowrap" }}>
-                {nomeSec(s)}
+                {a.titulo}
               </button>
             );
           })}
         </div>
       )}
-      {secoesVisiveis.map((s) => (
-        <div key={s.id} style={{ marginBottom: 30 }}>
-          <h3 style={{ fontSize: txCorpo(22), color: corPrimaria, fontWeight: 700, margin: "0 0 4px", letterSpacing: 0.3 }}>{nomeSec(s)}</h3>
-          {obsSec(s) && <p style={{ fontSize: txCorpo(13), opacity: 0.7, fontStyle: "italic", margin: "0 0 12px" }}>{obsSec(s)}</p>}
-          <div style={{ marginTop: 10 }}>
+      {abaAtual && (
+        <div style={{ marginBottom: 30 }}>
+          <h3 style={{ fontSize: txCorpo(22), color: corPrimaria, fontWeight: 700, margin: "0 0 10px", letterSpacing: 0.3 }}>{abaAtual.titulo}</h3>
+          {abaAtual.secoes.map((s) => (
+          <div key={s.id} style={{ marginTop: abaAtual.secoes.length > 1 ? 16 : 0 }}>
+            {obsSec(s) && <p style={{ fontSize: txCorpo(13), opacity: 0.7, fontStyle: "italic", margin: "0 0 12px" }}>{obsSec(s)}</p>}
+          <div style={{ marginTop: 4 }}>
             {s.pratos.filter((p) => tituloPr(p)).map((p) => (
               <div key={p.id} style={{ padding: "9px 0", borderBottom: `1px solid ${corSecundaria}22`, display: "flex", alignItems: "center", gap: 10 }}>
                 {(p.iconeUrl || p.iconeId) && (
@@ -1441,8 +1457,10 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
               </div>
             ))}
           </div>
+          </div>
+          ))}
         </div>
-      ))}
+      )}
     </div>
   );
 }
