@@ -3945,7 +3945,7 @@ export type StatusCandidatura =
   | "arquivada";
 
 // ── Processo Seletivo: etapas fixas do kanban ──
-export type EtapaSeletivo = "nova" | "triagem" | "entrevista" | "teste" | "aprovado" | "rejeitado" | "banco";
+export type EtapaSeletivo = "nova" | "triagem" | "entrevista" | "teste" | "aprovado" | "admissao" | "rejeitado" | "banco";
 
 // Vaga em aberto (Processo Seletivo). Pode ter perguntas próprias e um responsável.
 export type PerguntaVaga = {
@@ -3963,6 +3963,8 @@ export type Vaga = {
   descricao?: string;
   requisitos?: string;
   status: "aberta" | "pausada" | "encerrada";
+  curriculoObrigatorio?: boolean;  // exige anexo de currículo na candidatura pública
+  restauranteNome?: string | null; // nome do restaurante (pro título da página pública)
   responsavelId?: string | null;   // recebe as candidaturas desta vaga
   responsavelNome?: string | null;
   cargoId?: string | null;         // cargo interno vinculado (pré-preenche a admissão)
@@ -3987,6 +3989,8 @@ export type CandidaturaTrabalhe = {
   vagaTitulo?: string | null;
   respostas?: Record<string, string>;  // respostas das perguntas da vaga {perguntaId: valor}
   observacoes?: string;                 // observações que o próprio candidato incluiu
+  admissaoId?: string;                  // processo de admissão criado a partir deste candidato
+  freelaShiftId?: string;               // turno de freela criado (teste)
   // Dados do candidato
   nome: string;
   whatsapp: string;                  // E.164

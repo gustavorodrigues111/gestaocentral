@@ -52,7 +52,10 @@ export function VagasPublicaPage({ slugFromHost }: { slugFromHost?: string }) {
       setCfg(await carregarSite(r));
       try {
         const snap = await getDocs(query(collection(db, "vagas"), where("restaurantId", "==", r), where("status", "==", "aberta")));
-        setVagas(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Vaga).filter((v) => v.publica !== false));
+        const lista = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Vaga).filter((v) => v.publica !== false);
+        setVagas(lista);
+        const nome = lista.find((v) => v.restauranteNome)?.restauranteNome;
+        document.title = nome ? `Vagas · ${nome}` : "Trabalhe conosco";
       } catch { setVagas([]); }
       setLoading(false);
     })();
@@ -124,7 +127,7 @@ export function VagaCandidaturaPage() {
   useEffect(() => {
     (async () => {
       if (!vagaId || !rid) { setLoading(false); return; }
-      try { const s = await getDoc(doc(db, "vagas", vagaId)); if (s.exists()) setVaga({ id: s.id, ...s.data() } as Vaga); } catch { /* nada */ }
+      try { const s = await getDoc(doc(db, "vagas", vagaId)); if (s.exists()) { const vg = { id: s.id, ...s.data() } as Vaga; setVaga(vg); document.title = `${vg.titulo}${vg.restauranteNome ? ` · ${vg.restauranteNome}` : ""}`; } } catch { /* nada */ }
       setCfg(await carregarSite(rid));
       setLoading(false);
     })();
@@ -139,6 +142,7 @@ export function VagaCandidaturaPage() {
     if (!nome.trim()) return setErro("Preencha seu nome.");
     if (whatsapp.replace(/\D/g, "").length < 10) return setErro("Digite um WhatsApp válido (DDD + número).");
     if (!email.trim() || !email.includes("@")) return setErro("Digite um e-mail válido.");
+    if (vaga?.curriculoObrigatorio && !curriculo) return setErro("Anexe seu currículo (obrigatório pra esta vaga).");
     for (const p of vaga?.perguntas || []) {
       if (p.obrigatoria && !(respostas[p.id] || "").trim()) return setErro(`Responda: ${p.label}`);
     }
@@ -214,7 +218,7 @@ export function VagaCandidaturaPage() {
           ))}
 
           <div>
-            <label style={lbl}>Currículo (PDF, opcional)</label>
+            <label style={lbl}>Currículo (PDF{vaga.curriculoObrigatorio ? ", obrigatório *" : ", opcional"})</label>
             <input type="file" accept="application/pdf,.pdf,.doc,.docx" onChange={(e) => setCurriculo(e.target.files?.[0] || null)} style={{ fontSize: 13 }} />
             {curriculo && <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>📎 {curriculo.name}</div>}
           </div>

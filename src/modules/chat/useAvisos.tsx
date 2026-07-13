@@ -257,6 +257,9 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     gates: [["admissao", "receberAvisos"]], collectionName: "admissoes" });
   const candidaturasNovas = useAvisoSource({ ...base,
     gates: [["processoSeletivo", "receberCandidaturas"]], collectionName: "candidaturasTrabalhe", filtros: [["status", "==", "nova"]] });
+  // Aprovados direcionados pra admissão → avisa quem tem acesso ao módulo Admissão.
+  const candidaturasAdmissao = useAvisoSource({ ...base,
+    gates: [["admissao", "receberAvisos"]], collectionName: "candidaturasTrabalhe", filtros: [["etapa", "==", "admissao"]] });
   const demissoes = useAvisoSource({ ...base,
     gates: [["demissao", "receberAvisos"]], collectionName: "processosDemissao" });
   const exames = useAvisoSource({ ...base,
@@ -707,6 +710,21 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       });
     }
 
+    // ── Candidatos aprovados aguardando admissão (só os sem admissão iniciada) ──
+    for (const c of Object.values(candidaturasAdmissao).flat()) {
+      if ((c as { admissaoId?: string }).admissaoId) continue;
+      const nome = String((c as { nome?: string }).nome || "Candidato");
+      out.push({
+        id: `candadm_${c.id}`, tipo: "candidatura_admissao", icone: "🪪",
+        titulo: `Iniciar admissão: ${nome}`,
+        descricao: `Aprovado no processo seletivo${(c as { vagaTitulo?: string }).vagaTitulo ? ` · ${(c as { vagaTitulo?: string }).vagaTitulo}` : ""} — pronto pra admissão.`,
+        em: String((c as { direcionadoAdmissaoEm?: string; createdAt?: string }).direcionadoAdmissaoEm || (c as { createdAt?: string }).createdAt || hoje),
+        restauranteId: c.restaurantId, restauranteNome: nomePorRid[c.restaurantId] || "Restaurante",
+        cta: "Ir pra admissão", href: `/r/${c.restaurantId}/processoSeletivo`,
+        categoria: "Admissão", categoriaIcone: "🪪",
+      });
+    }
+
     // ── Governança de IA: cada pergunta fora do escopo vira um alerta ──
     for (const i of Object.values(iaAlertas).flat()) {
       const perg = String((i as { pergunta?: string }).pergunta || "");
@@ -762,7 +780,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     ocorrencias, eventos, recebimento, compras, ideias, admissoes, candidaturasNovas, demissoes, exames, uniformes,
     minhaAcao, minhaProducao, checklistTpl, checklistRun, cobrancasInt,
     reembReceber, reembPagos, manuts,
-    empTrab, exTrab, uniTrab, trabResolv, iaAlertas, avisosDir,
+    empTrab, exTrab, uniTrab, trabResolv, iaAlertas, avisosDir, candidaturasAdmissao,
   ]);
 
   // ── Estado de leitura (overlay persistido por pessoa) ──

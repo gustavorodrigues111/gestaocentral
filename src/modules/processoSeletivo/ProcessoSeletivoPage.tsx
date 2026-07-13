@@ -16,30 +16,31 @@ import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, Pergu
 
 type EmpMin = { id: string; nome: string; workSchedules?: WorkSchedule[] };
 
-// Rejeitados NÃO é coluna — vai pro histórico abaixo do kanban.
+// Kanban = 3 colunas. Aprovados→admissão e Rejeitados vão pra HISTÓRICOS abaixo.
 const COLUNAS: { id: EtapaSeletivo; label: string; cor: string }[] = [
-  { id: "nova",       label: "Novas",      cor: "border-blue-300 dark:border-blue-800" },
-  { id: "triagem",    label: "Triagem",    cor: "border-indigo-300 dark:border-indigo-800" },
-  { id: "entrevista", label: "Entrevista", cor: "border-amber-300 dark:border-amber-800" },
-  { id: "teste",      label: "Em teste (freela)", cor: "border-purple-300 dark:border-purple-800" },
-  { id: "aprovado",   label: "Aprovados",  cor: "border-emerald-300 dark:border-emerald-800" },
-  { id: "banco",      label: "Banco de talentos", cor: "border-gray-300 dark:border-gray-700" },
+  { id: "nova",       label: "Novas",              cor: "border-blue-300 dark:border-blue-800" },
+  { id: "entrevista", label: "Entrevistas marcadas", cor: "border-amber-300 dark:border-amber-800" },
+  { id: "aprovado",   label: "Aprovadas",          cor: "border-emerald-300 dark:border-emerald-800" },
 ];
 
+// Onde a candidatura fica (coluna do kanban OU histórico). Normaliza etapas
+// legadas (triagem/teste/banco) pras 3 colunas atuais.
 function etapaDe(c: CandidaturaTrabalhe): EtapaSeletivo {
-  if (c.etapa) return c.etapa;
+  const e = c.etapa;
+  if (e === "rejeitado" || e === "admissao" || e === "entrevista") return e;
+  if (e === "aprovado" || e === "teste") return "aprovado";
+  if (e === "nova" || e === "triagem" || e === "banco") return "nova";
   switch (c.status) {
-    case "em_analise": return "triagem";
+    case "em_analise": return "entrevista";
     case "aprovada_pra_admissao": return "aprovado";
     case "rejeitada": return "rejeitado";
-    case "arquivada": return "banco";
     default: return "nova";
   }
 }
 function statusDaEtapa(e: EtapaSeletivo): StatusCandidatura {
   switch (e) {
-    case "triagem": case "entrevista": case "teste": return "em_analise";
-    case "aprovado": return "aprovada_pra_admissao";
+    case "entrevista": return "em_analise";
+    case "aprovado": case "admissao": return "aprovada_pra_admissao";
     case "rejeitado": return "rejeitada";
     case "banco": return "arquivada";
     default: return "nova";
@@ -92,7 +93,7 @@ export function ProcessoSeletivoPage() {
   useEffect(() => { if (sel) { const f = cands.find((c) => c.id === sel.id); if (f) setSel(f); } }, [cands]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const porEtapa = useMemo(() => {
-    const m: Record<EtapaSeletivo, CandidaturaTrabalhe[]> = { nova: [], triagem: [], entrevista: [], teste: [], aprovado: [], rejeitado: [], banco: [] };
+    const m: Record<EtapaSeletivo, CandidaturaTrabalhe[]> = { nova: [], triagem: [], entrevista: [], teste: [], aprovado: [], admissao: [], rejeitado: [], banco: [] };
     for (const c of cands) m[etapaDe(c)].push(c);
     for (const k of Object.keys(m) as EtapaSeletivo[]) m[k].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
     return m;
@@ -109,6 +110,11 @@ export function ProcessoSeletivoPage() {
   async function rejeitar(c: CandidaturaTrabalhe, motivo: string) {
     await mover(c.id, "rejeitado", { motivoRejeicao: motivo || null, rejeitadaEm: new Date().toISOString() });
   }
+  // Direciona o aprovado pra admissão: vai pro histórico + dispara aviso na
+  // Central pra quem tem acesso ao módulo Admissão (fonte derivada em useAvisos).
+  async function mandarParaAdmissao(c: CandidaturaTrabalhe) {
+    await mover(c.id, "admissao", { direcionadoAdmissaoEm: new Date().toISOString(), direcionadoPor: pessoa?.nome || null });
+  }
   // Cria um turno de freela (só-nome) pro candidato em teste — cai no módulo Freelas.
   async function criarFreela(c: CandidaturaTrabalhe) {
     if ((c as unknown as { freelaShiftId?: string }).freelaShiftId) { alert("Este candidato já tem um freela criado."); return; }
@@ -119,10 +125,10 @@ export function ProcessoSeletivoPage() {
       date: hoje, status: "agendado", observacao: "Teste (Processo Seletivo)",
       criadoEm: new Date().toISOString(), criadoPor: pessoa?.id || null,
     }));
-    await updateDoc(doc(db, "candidaturasTrabalhe", c.id), { freelaShiftId: ref.id, etapa: "teste", status: statusDaEtapa("teste"), updatedAt: new Date().toISOString() }).catch(() => {});
+    await updateDoc(doc(db, "candidaturasTrabalhe", c.id), { freelaShiftId: ref.id, updatedAt: new Date().toISOString() }).catch(() => {});
   }
   async function salvarVaga(v: Vaga) {
-    await setDoc(doc(db, "vagas", v.id), sanitizeForFirestore(v), { merge: true });
+    await setDoc(doc(db, "vagas", v.id), sanitizeForFirestore({ ...v, restauranteNome: activeRest?.nome || v.restauranteNome || null }), { merge: true });
   }
   async function excluirVaga(v: Vaga) {
     if (confirm(`Excluir a vaga "${v.titulo}"?`)) await deleteDoc(doc(db, "vagas", v.id));
@@ -161,9 +167,7 @@ export function ProcessoSeletivoPage() {
               </div>
               <div className="px-2 pb-2 space-y-2 min-h-[120px] overflow-y-auto max-h-[70vh]">
                 {porEtapa[col.id].length === 0 && <div className="text-[11px] text-gray-400 text-center py-4">—</div>}
-                {porEtapa[col.id].map((c) => {
-                  const temFreela = !!(c as unknown as { freelaShiftId?: string }).freelaShiftId;
-                  return (
+                {porEtapa[col.id].map((c) => (
                   <div key={c.id} draggable={podeTriar}
                     onDragStart={(e) => { e.dataTransfer.setData("id", c.id); setArrastando(c.id); }}
                     onDragEnd={() => setArrastando(null)}
@@ -173,22 +177,40 @@ export function ProcessoSeletivoPage() {
                       <div className="text-[11px] text-gray-500 truncate">{c.vagaTitulo ? `📌 ${c.vagaTitulo}` : "Banco de talentos"}{c.areaInteresse ? ` · ${c.areaInteresse}` : ""}</div>
                       {c.responsavelNome && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 truncate mt-0.5">🙋 {c.responsavelNome}</div>}
                     </button>
-                    {col.id === "teste" && podeTriar && (
-                      temFreela
-                        ? <div className="mt-1.5 text-[10px] text-purple-600 dark:text-purple-300 font-semibold">✓ Freela criado</div>
-                        : <button type="button" onClick={() => void criarFreela(c)} className="mt-1.5 w-full text-[11px] font-semibold px-2 py-1 rounded-md bg-purple-600 hover:bg-purple-700 text-white">⚡ Criar freela</button>
+                    {col.id === "aprovado" && podeAprovar && (
+                      <div className="flex gap-1.5 mt-2">
+                        <button type="button" onClick={() => void mandarParaAdmissao(c)} className="flex-1 text-[11px] font-semibold px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white">🪪 → Admissão</button>
+                        <button type="button" onClick={() => { const m = prompt("Motivo (opcional):") || ""; void rejeitar(c, m); }} className="text-[11px] font-semibold px-2 py-1 rounded-md border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">Não passou</button>
+                      </div>
                     )}
                   </div>
-                  );
-                })}
+                ))}
               </div>
             </div>
           ))}
         </div>
 
-        {/* Histórico de rejeitados (não ocupa coluna no kanban) */}
+        {/* Histórico: aprovados direcionados pra admissão */}
+        {porEtapa.admissao.length > 0 && (
+          <details open className="mt-4 rounded-xl border border-emerald-200 dark:border-emerald-900/50">
+            <summary className="cursor-pointer px-4 py-2.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300">🪪 Direcionados pra admissão ({porEtapa.admissao.length})</summary>
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              {porEtapa.admissao.map((c) => (
+                <div key={c.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <button type="button" onClick={() => setSel(c)} className="flex-1 min-w-0 text-left">
+                    <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{c.nome}</div>
+                    <div className="text-[11px] text-gray-400 truncate">{c.vagaTitulo ? `📌 ${c.vagaTitulo}` : "Banco de talentos"}{c.admissaoId ? " · admissão iniciada ✓" : " · aguardando admissão"}</div>
+                  </button>
+                  {podeAprovar && !c.admissaoId && <button type="button" onClick={() => setAdmitir(c)} className="text-xs px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-medium shrink-0">Iniciar admissão</button>}
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+
+        {/* Histórico de rejeitados */}
         {porEtapa.rejeitado.length > 0 && (
-          <details className="mt-4 rounded-xl border border-gray-200 dark:border-gray-800">
+          <details className="mt-3 rounded-xl border border-gray-200 dark:border-gray-800">
             <summary className="cursor-pointer px-4 py-2.5 text-sm font-semibold text-gray-600 dark:text-gray-300">❌ Rejeitados ({porEtapa.rejeitado.length})</summary>
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {porEtapa.rejeitado.map((c) => (
@@ -197,7 +219,7 @@ export function ProcessoSeletivoPage() {
                     <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{c.nome}</div>
                     <div className="text-[11px] text-gray-400 truncate">{c.vagaTitulo ? `📌 ${c.vagaTitulo}` : "Banco de talentos"}{c.motivoRejeicao ? ` · motivo: ${c.motivoRejeicao}` : ""}</div>
                   </button>
-                  {podeTriar && <button type="button" onClick={() => void mover(c.id, "triagem")} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline shrink-0">↩ Restaurar</button>}
+                  {podeTriar && <button type="button" onClick={() => void mover(c.id, "nova")} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline shrink-0">↩ Restaurar</button>}
                 </div>
               ))}
             </div>
@@ -214,6 +236,8 @@ export function ProcessoSeletivoPage() {
           onMover={(e) => { if (e === "rejeitado") { const m = prompt("Motivo da rejeição (opcional):") || ""; void rejeitar(sel, m); } else void mover(sel.id, e); setSel(null); }}
           onTransferir={(p) => { void transferir(sel, p); }}
           onIniciarAdmissao={() => { setAdmitir(sel); }}
+          onMandarAdmissao={() => { void mandarParaAdmissao(sel); setSel(null); }}
+          onCriarFreela={() => { void criarFreela(sel); }}
           onClose={() => setSel(null)} />
       )}
 
@@ -301,6 +325,7 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
   const [cargoId, setCargoId] = useState(vaga?.cargoId || "");
   const [horarioEmpId, setHorarioEmpId] = useState(vaga?.horarioModeloEmpregadoId || "");
   const [publica, setPublica] = useState(vaga?.publica !== false);
+  const [curriculoObrigatorio, setCurriculoObrigatorio] = useState(!!vaga?.curriculoObrigatorio);
   const [perguntas, setPerguntas] = useState<PerguntaVaga[]>(vaga?.perguntas || []);
 
   const cargosAtivos = cargos.filter((c) => (c as { ativo?: boolean }).ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome));
@@ -319,7 +344,7 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
     const v: Vaga = {
       id: vaga?.id || `vaga_${rid}_${slugify(titulo)}_${Math.random().toString(36).slice(2, 5)}`,
       restaurantId: rid, titulo: titulo.trim(), area: area.trim() || undefined, descricao: descricao.trim() || undefined,
-      requisitos: requisitos.trim() || undefined, status, responsavelId: responsavelId || null, responsavelNome: resp?.nome || null,
+      requisitos: requisitos.trim() || undefined, status, curriculoObrigatorio, responsavelId: responsavelId || null, responsavelNome: resp?.nome || null,
       cargoId: cargoId || null, cargoNome: cargo?.nome || null,
       horarioModeloEmpregadoId: horarioEmpId || null, horarioModeloNome: emp?.nome || null,
       horarioModelo: emp?.workSchedules && emp.workSchedules.length ? emp.workSchedules : undefined,
@@ -358,6 +383,7 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
                 {pessoas.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </select></div>
             <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input type="checkbox" checked={publica} onChange={(e) => setPublica(e.target.checked)} /> Aparecer na página pública de vagas</label>
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input type="checkbox" checked={curriculoObrigatorio} onChange={(e) => setCurriculoObrigatorio(e.target.checked)} /> Currículo (anexo) é obrigatório na candidatura</label>
           </Secao>
 
           <Secao titulo="Ligação com a admissão" hint="pré-preenche quando o candidato for aprovado">
@@ -408,9 +434,9 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
   );
 }
 
-function CandidatoDrawer({ cand, pessoas, podeTriar, podeTransferir, podeAprovar, onMover, onTransferir, onIniciarAdmissao, onClose }: {
+function CandidatoDrawer({ cand, pessoas, podeTriar, podeTransferir, podeAprovar, onMover, onTransferir, onIniciarAdmissao, onMandarAdmissao, onCriarFreela, onClose }: {
   cand: CandidaturaTrabalhe; pessoas: Pessoa[]; podeTriar: boolean; podeTransferir: boolean; podeAprovar: boolean;
-  onMover: (e: EtapaSeletivo) => void; onTransferir: (p: Pessoa) => void; onIniciarAdmissao: () => void; onClose: () => void;
+  onMover: (e: EtapaSeletivo) => void; onTransferir: (p: Pessoa) => void; onIniciarAdmissao: () => void; onMandarAdmissao: () => void; onCriarFreela: () => void; onClose: () => void;
 }) {
   const [transf, setTransf] = useState(false);
   const [buscaT, setBuscaT] = useState("");
@@ -471,10 +497,21 @@ function CandidatoDrawer({ cand, pessoas, podeTriar, podeTransferir, podeAprovar
           </div>
         )}
 
+        {podeTriar && !(cand as { freelaShiftId?: string }).freelaShiftId && (
+          <button type="button" onClick={onCriarFreela} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20">⚡ Criar freela (teste)</button>
+        )}
+        {(cand as { freelaShiftId?: string }).freelaShiftId && <div className="text-[11px] text-purple-600 dark:text-purple-300 font-semibold">✓ Freela criado (módulo Freelas)</div>}
+
         {podeAprovar && etapa === "aprovado" && (
+          <div className="border-t border-gray-200 dark:border-gray-800 pt-3 space-y-2">
+            <Button className="w-full" onClick={onMandarAdmissao}>🪪 Mandar para admissão</Button>
+            <p className="text-[11px] text-gray-400">Avisa na Central quem tem acesso ao módulo Admissão e joga o candidato pro histórico "Direcionados pra admissão".</p>
+            <button type="button" onClick={onIniciarAdmissao} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300">Ou iniciar a admissão agora (pré-preenchida)</button>
+          </div>
+        )}
+        {podeAprovar && etapa === "admissao" && !cand.admissaoId && (
           <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
-            <Button className="w-full" onClick={onIniciarAdmissao}>🪪 Iniciar admissão deste candidato</Button>
-            <p className="text-[11px] text-gray-400 mt-1">Abre a admissão já com nome, e-mail e WhatsApp preenchidos. Você completa CPF e cargo.</p>
+            <Button className="w-full" onClick={onIniciarAdmissao}>🪪 Iniciar admissão (pré-preenchida)</Button>
           </div>
         )}
       </div>
