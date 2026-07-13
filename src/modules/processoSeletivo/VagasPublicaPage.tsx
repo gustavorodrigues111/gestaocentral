@@ -63,38 +63,42 @@ export function VagasPublicaPage({ slugFromHost }: { slugFromHost?: string }) {
   if (loading) return <div style={wrap}><div style={{ maxWidth: 640, margin: "0 auto", textAlign: "center", opacity: 0.6 }}>Carregando…</div></div>;
   if (!rid) return <div style={wrap}><div style={{ maxWidth: 640, margin: "0 auto", textAlign: "center", opacity: 0.6 }}>Página não encontrada.</div></div>;
 
+  const secTitulo: React.CSSProperties = { fontSize: 13, fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", opacity: 0.55, textAlign: "center", margin: "0 0 14px" };
   return (
     <div style={wrap}>
-      <div style={{ maxWidth: 660, margin: "0 auto" }}>
-        <div style={{ textAlign: "center", marginBottom: 28 }}>
-          {cfg?.logoUrl && <img src={cfg.logoUrl} alt="" style={{ height: 80, maxWidth: 220, objectFit: "contain", margin: "0 auto 14px", display: "block" }} />}
-          <h1 style={{ fontSize: 30, fontWeight: 800, margin: 0, letterSpacing: -0.5 }}>Trabalhe com a gente</h1>
-          <p style={{ fontSize: 14, opacity: 0.7, marginTop: 8 }}>Confira as vagas abertas e candidate-se.<br />Não achou a sua? Deixe seu currículo no banco de talentos.</p>
-        </div>
+      <div style={{ maxWidth: 600, margin: "0 auto", textAlign: "center" }}>
+        {/* Hero centralizado */}
+        {cfg?.logoUrl && <img src={cfg.logoUrl} alt="" style={{ height: 88, maxWidth: 240, objectFit: "contain", margin: "0 auto 18px", display: "block" }} />}
+        <h1 style={{ fontSize: 32, fontWeight: 800, margin: 0, letterSpacing: -0.5 }}>Trabalhe com a gente</h1>
+        <p style={{ fontSize: 15, opacity: 0.7, marginTop: 10, maxWidth: 440, marginLeft: "auto", marginRight: "auto", lineHeight: 1.5 }}>Confira as vagas abertas e candidate-se. Não achou a sua? Deixe seu currículo no banco de talentos.</p>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-          {vagas.length === 0 && (
-            <div style={{ borderRadius: 18, border: "1px dashed rgba(0,0,0,.18)", padding: 40, textAlign: "center", fontSize: 14, opacity: 0.7, background: "rgba(255,255,255,.55)" }}>Nenhuma vaga aberta no momento.</div>
-          )}
-          {vagas.map((v) => (
-            <div key={v.id} style={{ borderRadius: 18, background: tema.card, boxShadow: "0 2px 10px rgba(0,0,0,.07)", padding: 22, borderLeft: `4px solid ${tema.primaria}` }}>
-              <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-                <h2 style={{ fontSize: 21, fontWeight: 700, margin: 0, color: tema.texto }}>{v.titulo}</h2>
-                {v.area && <span style={{ fontSize: 12, fontWeight: 600, color: tema.secundaria }}>{v.area}</span>}
+        {/* Vagas em aberto */}
+        <div style={{ marginTop: 40 }}>
+          <h2 style={secTitulo}>Vagas em aberto</h2>
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            {vagas.length === 0 && (
+              <div style={{ borderRadius: 18, border: "1px dashed rgba(0,0,0,.18)", padding: 40, fontSize: 14, opacity: 0.7, background: "rgba(255,255,255,.55)" }}>Nenhuma vaga aberta no momento.</div>
+            )}
+            {vagas.map((v) => (
+              <div key={v.id} style={{ borderRadius: 18, background: tema.card, boxShadow: "0 2px 12px rgba(0,0,0,.07)", padding: "26px 22px" }}>
+                <h3 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: tema.texto }}>{v.titulo}</h3>
+                {v.area && <div style={{ fontSize: 12.5, fontWeight: 600, color: tema.secundaria, marginTop: 4 }}>{v.area}</div>}
+                {v.descricao && <p style={{ fontSize: 14, opacity: 0.8, marginTop: 12, whiteSpace: "pre-wrap", color: tema.texto, lineHeight: 1.55, maxWidth: 460, marginLeft: "auto", marginRight: "auto" }}>{v.descricao}</p>}
+                {v.requisitos && <p style={{ fontSize: 12.5, opacity: 0.62, marginTop: 10, whiteSpace: "pre-wrap", color: tema.texto, maxWidth: 460, marginLeft: "auto", marginRight: "auto" }}><b>Requisitos:</b> {v.requisitos}</p>}
+                <button type="button" onClick={() => navigate(`/vaga/${rid}/${v.id}`)} style={{ marginTop: 20, padding: "12px 28px", borderRadius: 12, background: tema.primaria, color: "#fff", fontSize: 15, fontWeight: 700, border: "none", cursor: "pointer" }}>Candidatar-se →</button>
               </div>
-              {v.descricao && <p style={{ fontSize: 14, opacity: 0.8, marginTop: 8, whiteSpace: "pre-wrap", color: tema.texto, lineHeight: 1.5 }}>{v.descricao}</p>}
-              {v.requisitos && <p style={{ fontSize: 12.5, opacity: 0.65, marginTop: 8, whiteSpace: "pre-wrap", color: tema.texto }}><b>Requisitos:</b> {v.requisitos}</p>}
-              <button type="button" onClick={() => navigate(`/vaga/${rid}/${v.id}`)} style={{ marginTop: 16, padding: "11px 22px", borderRadius: 12, background: tema.primaria, color: "#fff", fontSize: 14, fontWeight: 700, border: "none", cursor: "pointer" }}>Candidatar-se →</button>
-            </div>
-          ))}
+            ))}
+          </div>
         </div>
 
-        <div style={{ marginTop: 22, borderRadius: 18, background: "rgba(255,255,255,.55)", padding: 20, textAlign: "center" }}>
-          <p style={{ fontSize: 14, opacity: 0.75, margin: 0, color: tema.texto }}>Não encontrou uma vaga pra você?</p>
-          <button type="button" onClick={() => navigate(`/trabalhe/${rid}`)} style={{ marginTop: 10, padding: "11px 22px", borderRadius: 12, background: "transparent", color: tema.primaria, border: `1.5px solid ${tema.primaria}`, fontSize: 14, fontWeight: 700, cursor: "pointer" }}>Deixar meu currículo (banco de talentos)</button>
+        {/* Banco de talentos */}
+        <div style={{ marginTop: 44 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700, margin: "0 0 6px", color: tema.texto }}>Não encontrou uma vaga pra você?</h2>
+          <p style={{ fontSize: 14, opacity: 0.65, margin: "0 0 16px" }}>Deixe seu currículo no nosso banco de talentos — a gente chama quando surgir algo.</p>
+          <button type="button" onClick={() => navigate(`/trabalhe/${rid}`)} style={{ padding: "12px 28px", borderRadius: 12, background: "transparent", color: tema.primaria, border: `1.5px solid ${tema.primaria}`, fontSize: 15, fontWeight: 700, cursor: "pointer" }}>Deixar meu currículo</button>
         </div>
 
-        <p style={{ textAlign: "center", fontSize: 11, opacity: 0.4, marginTop: 28 }}>powered by planejamento.app</p>
+        <p style={{ fontSize: 11, opacity: 0.4, marginTop: 40 }}>powered by planejamento.app</p>
       </div>
     </div>
   );
