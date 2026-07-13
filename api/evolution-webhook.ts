@@ -31,7 +31,8 @@ type EvoMsg = {
     documentMessage?: { caption?: string; fileName?: string };
     audioMessage?: { mimetype?: string };
     stickerMessage?: { mimetype?: string };
-    reactionMessage?: { text?: string };
+    reactionMessage?: { text?: string; key?: { id?: string; remoteJid?: string; fromMe?: boolean } };
+    protocolMessage?: { type?: string | number; key?: { id?: string } };
     locationMessage?: { degreesLatitude?: number; degreesLongitude?: number };
     contactMessage?: { displayName?: string };
     contactsArrayMessage?: unknown;
@@ -123,6 +124,22 @@ async function processar(body: EvoBody): Promise<void> {
     const waId = soDig(jid.split("@")[0]);
     if (!waId) continue;
     const fromMe = !!m.key?.fromMe;
+
+    // Reação → anexa na mensagem-alvo (não vira mensagem nova). text vazio = removeu.
+    const reac = m.message?.reactionMessage;
+    if (reac && reac.key?.id) {
+      const alvoId = `${numeroId}_${reac.key.id}`;
+      try { if (await firestoreLer("whatsappMensagens", alvoId)) await firestoreAtualizar("whatsappMensagens", alvoId, { reacao: reac.text || null }); } catch (e) { console.log("[evo-webhook] reacao:", (e as Error)?.message); }
+      continue;
+    }
+    // "Apagar pra todos" (revoke) → marca a mensagem-alvo como apagada.
+    const proto = m.message?.protocolMessage;
+    if (proto && proto.key?.id && (proto.type === "REVOKE" || proto.type === 0)) {
+      const alvoId = `${numeroId}_${proto.key.id}`;
+      try { if (await firestoreLer("whatsappMensagens", alvoId)) await firestoreAtualizar("whatsappMensagens", alvoId, { apagada: true, texto: "", midia: null }); } catch (e) { console.log("[evo-webhook] revoke:", (e as Error)?.message); }
+      continue;
+    }
+
     const texto = textoDe(m.message, m.messageType);
     const tsNum = Number(m.messageTimestamp);
     const ts = tsNum ? new Date(tsNum * 1000).toISOString() : new Date().toISOString();

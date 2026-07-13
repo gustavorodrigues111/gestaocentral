@@ -22,7 +22,7 @@ import { WhatsappTemplatesTab } from "./WhatsappTemplatesTab";
 import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
 
-type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; mime?: string };
+type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean };
 
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const fmtBRcurto = (ymd?: string | null) => { if (!ymd) return ""; const [a, m, d] = String(ymd).split("-"); return d ? `${d}/${m}/${a?.slice(2) || ""}` : String(ymd); };
@@ -63,6 +63,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [resposta, setResposta] = useState("");
   const [enviando, setEnviando] = useState(false);
   const enviandoRef = useRef(false);   // trava síncrona contra duplo-envio (state é async)
+  const [acaoMsgId, setAcaoMsgId] = useState<string | null>(null);   // popover de ações aberto (id da msg)
+  const [editMsg, setEditMsg] = useState<{ id: string; texto: string } | null>(null);   // edição inline
   const [emojiAberto, setEmojiAberto] = useState(false);
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
   const [filtroAtrib, setFiltroAtrib] = useState<"minhas" | "pendentes" | "todas" | "outros" | "finalizados">("pendentes");
@@ -352,7 +354,12 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       const j = await r.json().catch(() => ({}));
       if (r.ok && (j as { ok?: boolean }).ok) {
         // Guarda o texto CRU (sem o prefixo *Nome:*); a autoria vai em autorNome.
-        await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({ waId: sel, nome: nomeSel || null, direcao: "out", tipo: "text", texto: txt, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null }));
+        // Grava com id determinístico ${numeroId}_${messageId} pra (1) permitir
+        // editar/apagar depois e (2) casar com o eco fromMe do webhook (dedup).
+        const mid = (j as { messageId?: string }).messageId || null;
+        const docMsg = sanitizeForFirestore({ waId: sel, nome: nomeSel || null, direcao: "out", tipo: "text", texto: txt, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null, ...(mid ? { messageId: mid } : {}) });
+        if (mid) await setDoc(doc(db, "whatsappMensagens", `${numeroSel}_${mid}`), docMsg, { merge: true });
+        else await addDoc(collection(db, "whatsappMensagens"), docMsg);
         setResposta("");
       } else {
         alert((j as { naoConfigurado?: boolean }).naoConfigurado ? "Evolution ainda não configurada (env vars na Vercel)." : ((j as { error?: string }).error || "Falha ao enviar."));
@@ -378,12 +385,16 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         const tipoMsg = tipo === "image" ? "imageMessage" : tipo === "video" ? "videoMessage" : tipo === "audio" ? "audioMessage" : "documentMessage";
         const rotulo = caption || (tipo === "image" ? "🖼️ Imagem" : tipo === "video" ? "🎬 Vídeo" : tipo === "audio" ? "🎤 Áudio" : `📄 ${fileName}`);
         const guardaMidia = dataUrl.length <= 900_000;   // ~675KB cabe no doc do Firestore
-        await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({
+        const midMedia = (j as { messageId?: string }).messageId || null;
+        const docMedia = sanitizeForFirestore({
           waId: sel, nome: nomeSel || null, direcao: "out", tipo: tipoMsg, texto: rotulo,
           timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true,
           numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null,
+          ...(midMedia ? { messageId: midMedia } : {}),
           ...(guardaMidia ? { midia: dataUrl, mime: mimetype } : {}),
-        }));
+        });
+        if (midMedia) await setDoc(doc(db, "whatsappMensagens", `${numeroSel}_${midMedia}`), docMedia, { merge: true });
+        else await addDoc(collection(db, "whatsappMensagens"), docMedia);
       } else {
         alert((j as { naoConfigurado?: boolean }).naoConfigurado ? "Evolution ainda não configurada (env vars na Vercel)." : ((j as { error?: string }).error || "Falha ao enviar mídia."));
       }
@@ -501,6 +512,36 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       waId, numeroId: numeroSel, direcao: "out", tipo: "sistema", sistema: true, lido: true,
       texto: `🔄 ${me?.nome || "—"} reabriu o atendimento`, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), autorNome: me?.nome || null,
     }));
+  }
+
+  // ── Ações sobre uma mensagem: reagir / editar / apagar (pra todos) ───────────
+  async function acaoMsg(m: Msg, acao: "reagir" | "editar" | "apagar", extra: { reaction?: string; texto?: string } = {}): Promise<boolean> {
+    if (!m.messageId) { alert("Essa mensagem é antiga (enviada antes dessa função) e não dá pra alterar."); return false; }
+    const numero = m.numeroId || numeroSel;
+    if (!numero) return false;
+    try {
+      const r = await fetch("/api/evolution-acao", {
+        method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
+        body: JSON.stringify({ instancia: numero, acao, remoteJid: `${soDig(m.waId)}@s.whatsapp.net`, id: m.messageId, fromMe: m.direcao === "out", to: soDig(m.waId), ...extra }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (!(r.ok && (j as { ok?: boolean }).ok)) { alert((j as { naoConfigurado?: boolean }).naoConfigurado ? "Evolution não configurada." : ((j as { error?: string }).error || "Falha na ação.")); return false; }
+      return true;
+    } catch (e) { alert("Falha: " + (e instanceof Error ? e.message : "?")); return false; }
+  }
+  async function reagirMsg(m: Msg, emoji: string) {
+    const novo = m.reacao === emoji ? "" : emoji;   // tocar no mesmo emoji remove a reação
+    if (await acaoMsg(m, "reagir", { reaction: novo })) await updateDoc(doc(db, "whatsappMensagens", m.id), { reacao: novo || null }).catch(() => {});
+  }
+  async function editarMsg(m: Msg, novoTexto: string) {
+    const t = novoTexto.trim();
+    if (!t || t === (m.texto || "")) { setEditMsg(null); return; }
+    if (await acaoMsg(m, "editar", { texto: t })) { await updateDoc(doc(db, "whatsappMensagens", m.id), { texto: t, editado: true }).catch(() => {}); }
+    setEditMsg(null);
+  }
+  async function apagarMsg(m: Msg) {
+    if (!confirm("Apagar esta mensagem para todos? Some pra você e pro cliente — não tem 'apagar só pra mim'.")) return;
+    if (await acaoMsg(m, "apagar")) await updateDoc(doc(db, "whatsappMensagens", m.id), { apagada: true, texto: "", midia: null, mime: null }).catch(() => {});
   }
 
   const abaEfetiva = embutido ? "conversas" : tab;
@@ -752,30 +793,74 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800/60 rounded-full px-3 py-1 text-center max-w-[90%]">{m.texto} · {hhmm(m.timestamp)}</div>
               </div>
             ) : (
-              <div key={m.id} className={`flex ${m.direcao === "out" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[80%] rounded-2xl px-2.5 py-1.5 text-sm shadow-sm ${m.direcao === "out" ? "bg-[#dcf8c6] dark:bg-emerald-900/40 text-gray-900 dark:text-gray-100 rounded-br-md" : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-md"}`}>
-                  {m.direcao === "out" && m.autorNome && <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 mb-0.5">{m.autorNome}</div>}
-                  {(() => {
-                    const isImg = m.midia && (m.mime?.startsWith("image") || m.tipo === "stickerMessage");
-                    const isVid = m.midia && (m.mime?.startsWith("video") || m.tipo === "videoMessage");
-                    const isAud = m.midia && (m.mime?.startsWith("audio") || m.tipo === "audioMessage");
-                    const isDoc = m.midia && m.tipo === "documentMessage";
-                    const rotuloAuto = ["🖼️ Imagem", "🎬 Vídeo", "🎤 Áudio"].includes(m.texto || "");
-                    return (
-                      <>
-                        {isImg && <img src={m.midia} alt={m.texto || "imagem"} className={`rounded-lg ${m.tipo === "stickerMessage" ? "w-32 h-32 object-contain" : "max-w-full max-h-64 object-contain"}`} />}
-                        {isVid && <video src={m.midia} controls className="rounded-lg max-w-full max-h-64" />}
-                        {isAud && <audio src={m.midia} controls className="max-w-[220px]" />}
-                        {isDoc && <a href={m.midia} download className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 underline">📄 {m.texto?.replace(/^📄 /, "") || "documento"}</a>}
-                        {!isImg && !isVid && !isAud && !isDoc && <div className="whitespace-pre-wrap break-words">{m.texto || `[${m.tipo || "msg"}]`}</div>}
-                        {(isImg || isVid) && m.texto && !rotuloAuto && <div className="whitespace-pre-wrap break-words mt-1">{m.texto}</div>}
-                      </>
-                    );
-                  })()}
-                  <div className="text-[10px] text-gray-400 mt-0.5 text-right">{hhmm(m.timestamp)}{m.direcao === "out" ? " ✓✓" : ""}</div>
+              <div key={m.id} className={`flex group ${m.direcao === "out" ? "justify-end" : "justify-start"}`}>
+                <div className="relative max-w-[80%]">
+                  <div className={`rounded-2xl px-2.5 py-1.5 text-sm shadow-sm ${m.direcao === "out" ? "bg-[#dcf8c6] dark:bg-emerald-900/40 text-gray-900 dark:text-gray-100 rounded-br-md" : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-md"} ${m.reacao && !m.apagada ? "mb-2" : ""}`}>
+                    {m.direcao === "out" && m.autorNome && <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 mb-0.5">{m.autorNome}</div>}
+                    {m.apagada ? (
+                      <div className="italic text-gray-400 dark:text-gray-500">🚫 Mensagem apagada</div>
+                    ) : editMsg?.id === m.id ? (
+                      <div className="space-y-1.5 min-w-[200px]">
+                        <textarea autoFocus value={editMsg.texto} onChange={e => setEditMsg({ id: m.id, texto: e.target.value })} rows={2}
+                          className="w-full text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-2 py-1 outline-none resize-none"
+                          onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void editarMsg(m, editMsg.texto); } if (e.key === "Escape") setEditMsg(null); }} />
+                        <div className="flex justify-end gap-1.5 text-xs">
+                          <button type="button" onClick={() => setEditMsg(null)} className="px-2 py-0.5 rounded text-gray-500">Cancelar</button>
+                          <button type="button" onClick={() => void editarMsg(m, editMsg.texto)} className="px-2 py-0.5 rounded bg-emerald-600 text-white font-medium">Salvar</button>
+                        </div>
+                      </div>
+                    ) : (() => {
+                      const isImg = m.midia && (m.mime?.startsWith("image") || m.tipo === "stickerMessage");
+                      const isVid = m.midia && (m.mime?.startsWith("video") || m.tipo === "videoMessage");
+                      const isAud = m.midia && (m.mime?.startsWith("audio") || m.tipo === "audioMessage");
+                      const isDoc = m.midia && m.tipo === "documentMessage";
+                      const rotuloAuto = ["🖼️ Imagem", "🎬 Vídeo", "🎤 Áudio"].includes(m.texto || "");
+                      return (
+                        <>
+                          {isImg && <img src={m.midia} alt={m.texto || "imagem"} className={`rounded-lg ${m.tipo === "stickerMessage" ? "w-32 h-32 object-contain" : "max-w-full max-h-64 object-contain"}`} />}
+                          {isVid && <video src={m.midia} controls className="rounded-lg max-w-full max-h-64" />}
+                          {isAud && <audio src={m.midia} controls className="max-w-[220px]" />}
+                          {isDoc && <a href={m.midia} download className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 underline">📄 {m.texto?.replace(/^📄 /, "") || "documento"}</a>}
+                          {!isImg && !isVid && !isAud && !isDoc && <div className="whitespace-pre-wrap break-words">{m.texto || `[${m.tipo || "msg"}]`}</div>}
+                          {(isImg || isVid) && m.texto && !rotuloAuto && <div className="whitespace-pre-wrap break-words mt-1">{m.texto}</div>}
+                        </>
+                      );
+                    })()}
+                    <div className="text-[10px] text-gray-400 mt-0.5 text-right">{m.editado && !m.apagada && <span className="italic">editado · </span>}{hhmm(m.timestamp)}{m.direcao === "out" ? " ✓✓" : ""}</div>
+                  </div>
+
+                  {/* Reação no canto da bolha */}
+                  {m.reacao && !m.apagada && (
+                    <div className={`absolute -bottom-2.5 ${m.direcao === "out" ? "right-2" : "left-2"} bg-white dark:bg-gray-700 rounded-full px-1 py-0.5 text-xs shadow border border-gray-200 dark:border-gray-600 leading-none`}>{m.reacao}</div>
+                  )}
+
+                  {/* Botão de ações (aparece no hover) */}
+                  {podeResponder && !m.apagada && editMsg?.id !== m.id && (
+                    <button type="button" onClick={() => setAcaoMsgId(acaoMsgId === m.id ? null : m.id)}
+                      className={`absolute top-0 ${m.direcao === "out" ? "-left-7" : "-right-7"} w-6 h-6 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center text-sm opacity-0 group-hover:opacity-100 ${acaoMsgId === m.id ? "opacity-100" : ""}`} title="Ações">⋯</button>
+                  )}
+
+                  {/* Popover de ações */}
+                  {acaoMsgId === m.id && (
+                    <div className={`absolute z-20 top-6 ${m.direcao === "out" ? "right-0" : "left-0"} bg-white dark:bg-gray-800 rounded-xl shadow-lg border border-gray-200 dark:border-gray-700 p-1.5 w-max`}>
+                      <div className="flex gap-0.5 mb-1">
+                        {["👍", "❤️", "😂", "😮", "😢", "🙏"].map(e => (
+                          <button key={e} type="button" onClick={() => { void reagirMsg(m, e); setAcaoMsgId(null); }}
+                            className={`w-8 h-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-lg flex items-center justify-center ${m.reacao === e ? "bg-gray-100 dark:bg-gray-700" : ""}`}>{e}</button>
+                        ))}
+                      </div>
+                      {m.direcao === "out" && !m.midia && (
+                        <button type="button" onClick={() => { setEditMsg({ id: m.id, texto: m.texto || "" }); setAcaoMsgId(null); }} className="w-full text-left px-3 py-1.5 text-xs rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200">✏️ Editar</button>
+                      )}
+                      {m.direcao === "out" && (
+                        <button type="button" onClick={() => { void apagarMsg(m); setAcaoMsgId(null); }} className="w-full text-left px-3 py-1.5 text-xs rounded-lg hover:bg-rose-50 dark:hover:bg-rose-900/20 text-rose-600 dark:text-rose-400">🗑️ Apagar para todos</button>
+                      )}
+                    </div>
+                  )}
                 </div>
               </div>
             ))}
+            {acaoMsgId && <div className="fixed inset-0 z-10" onClick={() => setAcaoMsgId(null)} />}
             <div ref={msgsEndRef} />
           </div>
 
