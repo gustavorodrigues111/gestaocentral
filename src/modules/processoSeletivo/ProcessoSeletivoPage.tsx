@@ -14,9 +14,12 @@ import { IniciarAdmissaoModal } from "../admissao/IniciarAdmissaoModal";
 import { iniciarAdmissao, getPrazoDias, getDocumentosAdmissao, getSchemaAdmissao } from "../../core/admissao/admissaoHelpers";
 import { DiasTabela, CicloDomingoEditor } from "../pessoas/HorariosTab";
 import { emptyDays, validateWorkScheduleDays, getActiveWorkSchedule } from "../../core/escala/horarios";
-import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, PerguntaVaga, Pessoa, Cargo, WorkSchedule, HorarioDia, SundayCycle } from "../../core/types";
+import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, PerguntaVaga, Pessoa, Cargo, Empregado, Unidade, WorkSchedule, HorarioDia, SundayCycle } from "../../core/types";
+import { puxarRemuneracao } from "./remuneracao";
 
-type EmpMin = { id: string; nome: string; workSchedules?: WorkSchedule[] };
+// Empregado completo — o cálculo da gorjeta média (calcularDivisaoDia) precisa
+// de cargoId/períodos de TODOS os empregados, não só id+nome.
+type EmpMin = Empregado;
 
 // Kanban = 3 colunas. Aprovados→admissão e Rejeitados vão pra HISTÓRICOS abaixo.
 const COLUNAS: { id: EtapaSeletivo; label: string; cor: string }[] = [
@@ -265,7 +268,7 @@ export function ProcessoSeletivoPage() {
       )}
 
       {editVaga && (
-        <VagaEditor vaga={editVaga === "nova" ? null : editVaga} rid={rid} pessoas={pessoas} cargos={cargos} empregados={empregados} pessoaId={pessoa?.id || ""}
+        <VagaEditor vaga={editVaga === "nova" ? null : editVaga} rid={rid} pessoas={pessoas} cargos={cargos} empregados={empregados} unidades={activeRest?.unidades || []} pessoaId={pessoa?.id || ""}
           onSalvar={(v) => { void salvarVaga(v); setEditVaga(null); }} onClose={() => setEditVaga(null)} />
       )}
 
@@ -378,8 +381,8 @@ function Secao({ titulo, hint, children }: { titulo: string; hint?: string; chil
   );
 }
 
-function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar, onClose }: {
-  vaga: Vaga | null; rid: string; pessoas: Pessoa[]; cargos: Cargo[]; empregados: EmpMin[]; pessoaId: string; onSalvar: (v: Vaga) => void; onClose: () => void;
+function VagaEditor({ vaga, rid, pessoas, cargos, empregados, unidades, pessoaId, onSalvar, onClose }: {
+  vaga: Vaga | null; rid: string; pessoas: Pessoa[]; cargos: Cargo[]; empregados: EmpMin[]; unidades: Unidade[]; pessoaId: string; onSalvar: (v: Vaga) => void; onClose: () => void;
 }) {
   const [titulo, setTitulo] = useState(vaga?.titulo || "");
   const [area, setArea] = useState(vaga?.area || "");
@@ -408,6 +411,29 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
   const [publica, setPublica] = useState(vaga?.publica !== false);
   const [curriculoObrigatorio, setCurriculoObrigatorio] = useState(!!vaga?.curriculoObrigatorio);
   const [perguntas, setPerguntas] = useState<PerguntaVaga[]>(vaga?.perguntas || []);
+
+  // Puxar salário + gorjeta média de um empregado existente (referência).
+  const [puxandoRemun, setPuxandoRemun] = useState(false);
+  const [remunInfo, setRemunInfo] = useState<string | null>(null);
+  const empsDoCargo = cargoId ? empregados.filter((e) => e.cargoId === cargoId && e.estaAtivo !== false) : [];
+  const empsOutros = empregados.filter((e) => !empsDoCargo.some((x) => x.id === e.id));
+  async function puxarRemun(empId: string) {
+    const emp = empregados.find((e) => e.id === empId);
+    if (!emp) return;
+    setPuxandoRemun(true); setRemunInfo(null);
+    try {
+      const now = new Date();
+      const r = await puxarRemuneracao(rid, emp, empregados, cargos, unidades, now.getFullYear(), now.getMonth() + 1);
+      if (r.salario != null) setSalarioBase(String(r.salario));
+      if (r.gorjetaMedia != null) setGorjetaMedia(String(r.gorjetaMedia));
+      const p: string[] = [];
+      p.push(r.salario != null ? `salário R$ ${r.salario.toLocaleString("pt-BR")}` : "salário não achado (só existe se admitido pelo app)");
+      p.push(r.gorjetaMedia != null ? `gorjeta média R$ ${r.gorjetaMedia.toLocaleString("pt-BR")} (${r.mesesUsados} ${r.mesesUsados === 1 ? "mês" : "meses"})` : "sem gorjeta nos últimos 3 meses");
+      setRemunInfo("Puxado de " + emp.nome + ": " + p.join(" · "));
+    } catch (e) {
+      setRemunInfo("Erro ao puxar: " + (e instanceof Error ? e.message : "?"));
+    } finally { setPuxandoRemun(false); }
+  }
 
   const cargosAtivos = cargos.filter((c) => (c as { ativo?: boolean }).ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome));
   const empModelo = empregados.find((e) => e.id === horarioEmpId);
@@ -479,6 +505,35 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
               <div><label className={lbl}>Gorjeta média (R$/mês)</label>
                 <input type="number" step="0.01" value={gorjetaMedia} onChange={(e) => setGorjetaMedia(e.target.value)} className={inp} placeholder="Ex.: 1200" /></div>
             </div>
+            {empregados.length > 0 && (
+              <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-2 space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] text-gray-500 shrink-0">
+                    Puxar de um empregado{cargoId ? " (sugeridos: mesmo cargo)" : ""}:
+                  </span>
+                  <select
+                    disabled={puxandoRemun}
+                    defaultValue=""
+                    onChange={(e) => { const v = e.target.value; e.target.value = ""; if (v) void puxarRemun(v); }}
+                    className={`${inp} flex-1`}
+                  >
+                    <option value="">{puxandoRemun ? "Calculando…" : "Selecione…"}</option>
+                    {empsDoCargo.length > 0 && (
+                      <optgroup label="Mesmo cargo">
+                        {empsDoCargo.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
+                      </optgroup>
+                    )}
+                    {empsOutros.length > 0 && (
+                      <optgroup label={empsDoCargo.length > 0 ? "Outros" : "Empregados"}>
+                        {empsOutros.map((e) => <option key={e.id} value={e.id}>{e.nome}</option>)}
+                      </optgroup>
+                    )}
+                  </select>
+                </div>
+                {remunInfo && <p className="text-[11px] text-gray-500">{remunInfo}</p>}
+                <p className="text-[10px] text-gray-400">Salário vem da admissão; gorjeta é a média mensal recalculada dos últimos 3 meses. Ambos ficam editáveis.</p>
+              </div>
+            )}
           </Secao>
 
           <Secao titulo="Responsável & visibilidade">
