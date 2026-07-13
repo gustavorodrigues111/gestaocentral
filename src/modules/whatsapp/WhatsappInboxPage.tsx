@@ -63,6 +63,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [enviando, setEnviando] = useState(false);
   const [emojiAberto, setEmojiAberto] = useState(false);
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
+  const [filtroAtrib, setFiltroAtrib] = useState<"minhas" | "pendentes" | "todas" | "outros">("pendentes");
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const msgsEndRef = useRef<HTMLDivElement | null>(null);
   const painelRef = useRef<HTMLDivElement | null>(null);
@@ -268,11 +269,23 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const nomeConversa = (waId: string, waNome?: string | null) =>
     contatos[foneKey(waId)]?.nomeManual || pessoaDaConversa(waId)?.nome || waNome || foneBonito(waId);
 
-  // Filtro por tag (o número já é da empresa; não filtra por empresa aqui).
+  // Dono (responsável) de uma conversa, pela chave normalizada.
+  const donoDe = (waId: string): string | null => contatos[foneKey(waId)]?.atribuidoA || null;
+  // Contadores por atribuição (pra chips).
+  const contMinhas = useMemo(() => conversas.filter(c => donoDe(c.waId) === me?.id).length, [conversas, contatos, me?.id]);
+  const contPend = useMemo(() => conversas.filter(c => !donoDe(c.waId)).length, [conversas, contatos]);
+  const contOutros = useMemo(() => conversas.filter(c => { const d = donoDe(c.waId); return d && d !== me?.id; }).length, [conversas, contatos, me?.id]);
+
+  // Filtro por atribuição + tag (o número já é da empresa; não filtra por empresa aqui).
   const conversasFiltradas = useMemo(() => conversas.filter(c => {
     if (filtroTag) { if (!(contatos[foneKey(c.waId)]?.tagIds || []).includes(filtroTag)) return false; }
+    const dono = donoDe(c.waId);
+    if (filtroAtrib === "minhas" && dono !== me?.id) return false;
+    if (filtroAtrib === "pendentes" && dono) return false;
+    if (filtroAtrib === "outros" && (!dono || dono === me?.id)) return false;
     return true;
-  }), [conversas, filtroTag, contatos]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [conversas, filtroTag, contatos, filtroAtrib, me?.id]);
 
   const thread = useMemo(() => msgsDoNumero.filter(x => foneKey(x.waId) === foneKey(sel || "")), [msgsDoNumero, sel]);
   // Rola pro fim ao abrir a conversa ou chegar mensagem nova.
@@ -309,6 +322,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   async function responder() {
     const txt = resposta.trim();
     if (!txt || !sel || !numeroSel) return;
+    // Assume a conversa pra mim ao responder (se declinar assumir de outro, aborta).
+    if (!(await assumirConversa(sel))) return;
     // Responde no número que o cliente REALMENTE usou por último (com/sem o 9º
     // dígito), não numa forma normalizada que poderia não existir.
     const inbound = thread.filter(m => m.direcao === "in");
@@ -334,6 +349,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // ── Mídia: foto/vídeo/documento/áudio ──────────────────────────────────────
   async function enviarMidia(tipo: "image" | "video" | "document" | "audio", dataUrl: string, fileName: string, mimetype: string, caption = "") {
     if (!sel || !numeroSel) return;
+    if (!(await assumirConversa(sel))) return;
     const inbound = thread.filter(m => m.direcao === "in");
     const paraEnviar = inbound.length ? inbound[inbound.length - 1].waId : sel;
     setEnviandoMidia(true);
@@ -432,6 +448,28 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     setTransferir(false); setTransferWaId(null);
   }
 
+  // Assume a conversa pra mim (avisa se já for de outro). Retorna se pode seguir.
+  async function assumirConversa(waId: string, silencioso = false): Promise<boolean> {
+    const c = contatos[foneKey(waId)];
+    const dono = c?.atribuidoA || null;
+    if (dono === me?.id) return true;                       // já é minha
+    if (dono && !silencioso) { if (!confirm(`Essa conversa é de ${c?.atribuidoNome || "outra pessoa"}. Assumir mesmo assim?`)) return false; }
+    await salvarContato(waId, { atribuidoA: me?.id || null, atribuidoNome: me?.nome || null });
+    await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({
+      waId, numeroId: numeroSel, direcao: "out", tipo: "sistema", sistema: true, lido: true,
+      texto: `🙋 ${me?.nome || "—"} assumiu a conversa`, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), autorNome: me?.nome || null,
+    }));
+    return true;
+  }
+  async function liberarConversa(waId: string) {
+    if (!confirm("Liberar esta conversa? Ela volta pra fila de pendentes (sem responsável).")) return;
+    await salvarContato(waId, { atribuidoA: null, atribuidoNome: null });
+    await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({
+      waId, numeroId: numeroSel, direcao: "out", tipo: "sistema", sistema: true, lido: true,
+      texto: `↩️ ${me?.nome || "—"} liberou a conversa (voltou pra pendentes)`, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), autorNome: me?.nome || null,
+    }));
+  }
+
   const abaEfetiva = embutido ? "conversas" : tab;
   return (
     <div className={embutido ? "" : "max-w-4xl"}>
@@ -490,6 +528,16 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             </div>
           )}
 
+          {/* Filtro por atribuição */}
+          {numerosVisiveis.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              <FiltroChip ativo={filtroAtrib === "pendentes"} onClick={() => setFiltroAtrib("pendentes")}>⏳ Pendentes{contPend ? ` (${contPend})` : ""}</FiltroChip>
+              <FiltroChip ativo={filtroAtrib === "minhas"} onClick={() => setFiltroAtrib("minhas")}>🙋 Minhas{contMinhas ? ` (${contMinhas})` : ""}</FiltroChip>
+              <FiltroChip ativo={filtroAtrib === "todas"} onClick={() => setFiltroAtrib("todas")}>Todas</FiltroChip>
+              {isMaster && <FiltroChip ativo={filtroAtrib === "outros"} onClick={() => setFiltroAtrib("outros")}>De outros{contOutros ? ` (${contOutros})` : ""}</FiltroChip>}
+            </div>
+          )}
+
           {/* Filtro por tag */}
           {tags.length > 0 && (
             <div className="flex flex-wrap gap-1.5 mb-3">
@@ -508,7 +556,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
       {!sel ? (
         conversasFiltradas.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">{conversas.length === 0 ? "Nenhuma mensagem recebida ainda. Quando alguém mandar no WhatsApp do planejamento.app, aparece aqui." : "Nenhuma conversa nesse filtro."}</div>
+          <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">{conversas.length === 0 ? "Nenhuma mensagem recebida ainda. Quando alguém mandar no WhatsApp do planejamento.app, aparece aqui." : filtroAtrib === "pendentes" ? "🎉 Nenhuma conversa pendente — tudo atribuído." : filtroAtrib === "minhas" ? "Você não tem conversas atribuídas." : "Nenhuma conversa nesse filtro."}</div>
         ) : (
           <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
             {conversasFiltradas.map(c => {
@@ -557,6 +605,28 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             <button type="button" onClick={() => marcarNaoLida(sel)} title="Marcar como não lida" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">🔵</button>
             {podeVincular && <button type="button" onClick={() => setDetalhes(v => !v)} title="Detalhes" className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${detalhes ? "text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30" : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>ⓘ</button>}
           </div>
+
+          {/* Barra de atribuição (responsável) */}
+          {(() => {
+            const dono = contatoSel?.atribuidoA || null;
+            const minha = dono === me?.id;
+            return (
+              <div className={`flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 text-xs shrink-0 ${!dono ? "bg-amber-50 dark:bg-amber-900/20" : minha ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-gray-50 dark:bg-gray-800/40"}`}>
+                <span className="truncate">
+                  {!dono ? <span className="text-amber-700 dark:text-amber-300">⏳ Pendente — sem responsável</span>
+                    : minha ? <span className="text-emerald-700 dark:text-emerald-300">🙋 Atribuída a <b>você</b></span>
+                    : <span className="text-gray-600 dark:text-gray-300">🙋 Atribuída a <b>{contatoSel?.atribuidoNome}</b></span>}
+                </span>
+                {podeResponder && (
+                  <div className="ml-auto shrink-0">
+                    {minha
+                      ? <button type="button" onClick={() => void liberarConversa(sel)} className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Liberar</button>
+                      : <button type="button" onClick={() => void assumirConversa(sel)} className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-medium">Assumir</button>}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {/* Painel de detalhes: vínculo + restaurante + tags */}
           {detalhes && podeVincular && (
