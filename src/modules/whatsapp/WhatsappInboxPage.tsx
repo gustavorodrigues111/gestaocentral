@@ -65,6 +65,21 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const msgsEndRef = useRef<HTMLDivElement | null>(null);
+  const painelRef = useRef<HTMLDivElement | null>(null);
+  // iOS: com o teclado aberto, ancora o painel na viewport VISÍVEL pra o
+  // cabeçalho não subir pra fora da tela (VisualViewport API).
+  useEffect(() => {
+    if (!sel) return;
+    const vv = window.visualViewport;
+    const apply = () => {
+      const el = painelRef.current; if (!el) return;
+      if (vv) { el.style.height = vv.height + "px"; el.style.transform = `translateY(${vv.offsetTop}px)`; }
+    };
+    apply();
+    vv?.addEventListener("resize", apply);
+    vv?.addEventListener("scroll", apply);
+    return () => { vv?.removeEventListener("resize", apply); vv?.removeEventListener("scroll", apply); const el = painelRef.current; if (el) { el.style.height = ""; el.style.transform = ""; } };
+  }, [sel]);
   // Auto-expande o campo de resposta conforme o texto (até ~5 linhas → rola).
   useEffect(() => {
     const el = taRef.current; if (!el) return;
@@ -518,7 +533,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       ) : (
         <>
         {/* Conversa em tela cheia: só o chat, compose fixo embaixo, sem rolagem dupla */}
-        <div className="fixed inset-0 z-40 bg-white dark:bg-gray-950 flex flex-col">
+        <div ref={painelRef} className="fixed left-0 right-0 top-0 z-40 h-[100dvh] bg-white dark:bg-gray-950 flex flex-col">
           {/* Header compacto */}
           <div className="flex items-center gap-1 px-1.5 py-1.5 border-b border-gray-200 dark:border-gray-800 shrink-0">
             <button type="button" onClick={() => setSel(null)} className="w-9 h-9 rounded-full text-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0" title="Voltar às conversas">←</button>
