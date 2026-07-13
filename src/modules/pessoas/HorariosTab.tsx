@@ -609,7 +609,7 @@ export function DiasTabela({
   );
 }
 
-function CicloDomingoEditor({
+export function CicloDomingoEditor({
   ciclo, onChange,
 }: { ciclo: SundayCycle | null; onChange: (c: SundayCycle | null) => void }) {
   const ativo = !!ciclo;

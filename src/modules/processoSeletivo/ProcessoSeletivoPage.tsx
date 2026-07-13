@@ -12,9 +12,9 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { IniciarAdmissaoModal } from "../admissao/IniciarAdmissaoModal";
 import { iniciarAdmissao, getPrazoDias, getDocumentosAdmissao, getSchemaAdmissao } from "../../core/admissao/admissaoHelpers";
-import { DiasTabela } from "../pessoas/HorariosTab";
-import { emptyDays, validateWorkScheduleDays } from "../../core/escala/horarios";
-import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, PerguntaVaga, Pessoa, Cargo, WorkSchedule, HorarioDia } from "../../core/types";
+import { DiasTabela, CicloDomingoEditor } from "../pessoas/HorariosTab";
+import { emptyDays, validateWorkScheduleDays, getActiveWorkSchedule } from "../../core/escala/horarios";
+import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, PerguntaVaga, Pessoa, Cargo, WorkSchedule, HorarioDia, SundayCycle } from "../../core/types";
 
 type EmpMin = { id: string; nome: string; workSchedules?: WorkSchedule[] };
 
@@ -395,6 +395,14 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
     const base = vaga?.horarioModelo?.[0];
     return base && base.type === "single" && base.days ? (base.days as { [k: number]: HorarioDia }) : emptyDays();
   });
+  const [ciclo, setCiclo] = useState<SundayCycle | null>(() => (vaga?.horarioModelo?.[0]?.sundayCycle as SundayCycle | undefined) || null);
+  const [puxarEmpId, setPuxarEmpId] = useState("");
+  function puxarDe(empId: string) {
+    const emp = empregados.find((e) => e.id === empId);
+    const ws = emp?.workSchedules ? getActiveWorkSchedule(emp.workSchedules, new Date().toISOString().slice(0, 10)) : null;
+    if (ws && ws.type === "single" && ws.days) { setDias({ ...(ws.days as { [k: number]: HorarioDia }) }); setCiclo((ws.sundayCycle as SundayCycle | undefined) || null); }
+    else alert("Esse empregado não tem um horário simples pra puxar.");
+  }
   const [publica, setPublica] = useState(vaga?.publica !== false);
   const [curriculoObrigatorio, setCurriculoObrigatorio] = useState(!!vaga?.curriculoObrigatorio);
   const [perguntas, setPerguntas] = useState<PerguntaVaga[]>(vaga?.perguntas || []);
@@ -424,7 +432,7 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
       horarioModelo = emp?.workSchedules && emp.workSchedules.length ? emp.workSchedules : undefined;
     } else if (horarioModo === "novo") {
       if (validNovo.errors.length > 0) { alert("Resolva as violações trabalhistas (CLT) antes de salvar o horário."); return; }
-      horarioModelo = [{ validFrom: new Date().toISOString().slice(0, 10), type: "single", totalContract: validNovo.totalContract, days: dias, sundayCycle: null, registradoEm: new Date().toISOString(), registradoPor: pessoaId }];
+      horarioModelo = [{ validFrom: new Date().toISOString().slice(0, 10), type: "single", totalContract: validNovo.totalContract, days: dias, sundayCycle: dias[0]?.active ? ciclo : null, registradoEm: new Date().toISOString(), registradoPor: pessoaId }];
     }
     const v: Vaga = {
       id: vaga?.id || `vaga_${rid}_${slugify(titulo)}_${Math.random().toString(36).slice(2, 5)}`,
@@ -514,6 +522,15 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
               )}
               {horarioModo === "novo" && (
                 <div className="space-y-2">
+                  {empregados.length > 0 && (
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] text-gray-500 shrink-0">Puxar de um empregado:</span>
+                      <select value={puxarEmpId} onChange={(e) => { setPuxarEmpId(e.target.value); if (e.target.value) puxarDe(e.target.value); }} className={`${inp} flex-1`}>
+                        <option value="">— escolher pra preencher —</option>
+                        {empregados.map((e) => <option key={e.id} value={e.id}>{e.nome}{e.workSchedules?.length ? "" : " (sem horário)"}</option>)}
+                      </select>
+                    </div>
+                  )}
                   <div className="overflow-x-auto -mx-1 px-1">
                     <DiasTabela days={dias}
                       onPatch={(idx, patch) => setDias((d) => ({ ...d, [idx]: { ...d[idx], ...patch } }))}
@@ -521,6 +538,7 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
                       onLimpar={(idx) => setDias((d) => ({ ...d, [idx]: emptyDia() }))}
                       unidadesAtivas={[]} mostraUnidade={false} unidadePadraoId="" />
                   </div>
+                  {dias[0]?.active && <CicloDomingoEditor ciclo={ciclo} onChange={setCiclo} />}
                   {errosClt.length > 0
                     ? <div className="text-[11px] text-rose-600 dark:text-rose-400">⚠ {errosClt.length} violação(ões) CLT — corrija pra salvar: {errosClt.slice(0, 3).map((e) => e.mensagem).join("; ")}</div>
                     : <div className="text-[11px] text-emerald-600 dark:text-emerald-400">✓ Horário dentro das regras trabalhistas ({Math.round(validNovo.totalContract / 60 * 10) / 10}h/sem).</div>}
