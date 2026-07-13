@@ -1411,7 +1411,7 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
       {abas.length > 1 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 22, justifyContent: "center" }}>
           <button type="button" onClick={() => setSecaoSel("__tudo__")}
-            style={{ flexShrink: 0, fontSize: txCorpo(13), fontWeight: 600, padding: "6px 15px", borderRadius: 999, cursor: "pointer",
+            style={{ flexShrink: 0, fontSize: txCorpo(11.5), fontWeight: 600, padding: "4px 12px", borderRadius: 999, cursor: "pointer",
               border: `1px solid ${corPrimaria}`, background: isTudo ? corPrimaria : "transparent", color: isTudo ? "#fff" : corPrimaria, whiteSpace: "nowrap" }}>
             Tudo
           </button>
@@ -1419,7 +1419,7 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
             const ativo = !isTudo && a.id === abaAtualId;
             return (
               <button key={a.id} type="button" onClick={() => setSecaoSel(a.id)}
-                style={{ flexShrink: 0, fontSize: txCorpo(13), fontWeight: 600, padding: "6px 15px", borderRadius: 999, cursor: "pointer",
+                style={{ flexShrink: 0, fontSize: txCorpo(11.5), fontWeight: 600, padding: "4px 12px", borderRadius: 999, cursor: "pointer",
                   border: `1px solid ${corPrimaria}`, background: ativo ? corPrimaria : "transparent", color: ativo ? "#fff" : corPrimaria, whiteSpace: "nowrap" }}>
                 {a.titulo}
               </button>
