@@ -282,6 +282,23 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const contOutros = useMemo(() => conversas.filter(c => { const d = donoDe(c.waId); return d && d !== me?.id && !finalizadaDe(c.waId); }).length, [conversas, contatos, me?.id]);
   const contFinalizadas = useMemo(() => conversas.filter(c => finalizadaDe(c.waId)).length, [conversas, contatos]);
 
+  // Tem conversa NÃO LIDA em cada filtro? (pra sombrear o chip de vermelho)
+  const naoLidasPorFiltro = useMemo(() => {
+    const r = { pendentes: false, minhas: false, todas: false, finalizados: false, outros: false };
+    for (const c of conversas) {
+      const cont = contatos[foneKey(c.waId)];
+      if (!(c.naoLidas > 0 || cont?.naoLidaManual)) continue;
+      const dono = cont?.atribuidoA || null;
+      const fin = !!cont?.finalizadoEm;
+      if (fin) { r.finalizados = true; continue; }
+      r.todas = true;
+      if (!dono) r.pendentes = true;
+      else if (dono === me?.id) r.minhas = true;
+      else r.outros = true;
+    }
+    return r;
+  }, [conversas, contatos, me?.id]);
+
   // Filtro por atribuição + tag (o número já é da empresa; não filtra por empresa aqui).
   const conversasFiltradas = useMemo(() => conversas.filter(c => {
     if (filtroTag) { if (!(contatos[foneKey(c.waId)]?.tagIds || []).includes(filtroTag)) return false; }
@@ -612,12 +629,19 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 ["todas", "Todas", 0],
                 ["finalizados", "Finalizados", contFinalizadas],
                 ...(isMaster ? [["outros", "Outros", contOutros] as const] : []),
-              ] as const).map(([v, label, cont]) => (
-                <button key={v} type="button" onClick={() => setFiltroAtrib(v)}
-                  className={`flex-1 min-w-0 text-xs font-semibold px-1 py-1.5 rounded-md transition-colors truncate ${filtroAtrib === v ? "bg-white dark:bg-gray-900 text-emerald-600 dark:text-emerald-300 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}>
-                  {label}{cont ? ` (${cont})` : ""}
-                </button>
-              ))}
+              ] as const).map(([v, label, cont]) => {
+                const temNaoLida = naoLidasPorFiltro[v];
+                const ativo = filtroAtrib === v;
+                const cls = temNaoLida
+                  ? (ativo ? "bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-200 shadow-sm" : "bg-rose-50 text-rose-600 dark:bg-rose-900/25 dark:text-rose-300")
+                  : (ativo ? "bg-white dark:bg-gray-900 text-emerald-600 dark:text-emerald-300 shadow-sm" : "text-gray-500 dark:text-gray-400");
+                return (
+                  <button key={v} type="button" onClick={() => setFiltroAtrib(v)}
+                    className={`flex-1 min-w-0 text-xs font-semibold px-1 py-1.5 rounded-md transition-colors truncate ${cls}`}>
+                    {label}{cont ? ` (${cont})` : ""}
+                  </button>
+                );
+              })}
             </div>
           )}
 
