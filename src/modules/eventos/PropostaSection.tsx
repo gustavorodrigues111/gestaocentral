@@ -370,21 +370,20 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
           {/* Pagamento (sinal/saldo editável) */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-2.5">
             <div className="flex items-center justify-between gap-2">
-              <span className="text-[11px] uppercase font-bold text-gray-500">Pagamento</span>
+              <span className="text-[11px] uppercase font-bold text-gray-500">Pagamento · <span className="normal-case font-normal text-gray-400">valor e data de cada parcela são livres</span></span>
               {parcelasEdit.length === 0 ? (
-                <button type="button" onClick={() => setParcelasEdit(parcelasDefault(totalFinal))} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">Personalizar parcelas</button>
+                <button type="button" onClick={() => setParcelasEdit(parcelasDefault(totalFinal))} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">✏️ Editar valores e datas</button>
               ) : (
                 <div className="flex gap-2">
-                  <button type="button" onClick={() => setParcelasEdit(parcelasDefault(totalFinal))} className="text-[11px] text-gray-500 hover:underline">↻ 50/50</button>
+                  <button type="button" onClick={() => setParcelasEdit(parcelasDefault(totalFinal))} className="text-[11px] text-gray-500 hover:underline" title="Recalcula em 50% sinal + 50% saldo">↻ 50/50</button>
                   <button type="button" onClick={() => setParcelasEdit(prev => [...prev, { ordem: prev.length + 1, descricao: "", valor: 0 }])} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">+ parcela</button>
-                  <button type="button" onClick={() => setParcelasEdit([])} className="text-[11px] text-rose-500 hover:underline">usar 50/50 padrão</button>
                 </div>
               )}
             </div>
             {parcelasEdit.length === 0 ? (
-              <div className="text-xs text-gray-500 mt-1">
-                {lead.cliente.tipoPessoa === "PJ" ? "Faturamento (contrato + NF) — parcela única." : "50% sinal no ato + 50% saldo até 1 dia antes (padrão)."}
-              </div>
+              <button type="button" onClick={() => setParcelasEdit(parcelasDefault(totalFinal))} className="w-full text-left text-xs text-gray-500 mt-1 hover:text-indigo-600 dark:hover:text-indigo-400">
+                {lead.cliente.tipoPessoa === "PJ" ? "Faturamento (contrato + NF) — parcela única. Toque pra editar." : "Começa em 50% sinal + 50% saldo (1 dia antes). Toque pra ajustar valores e datas de cada parcela →"}
+              </button>
             ) : (
               <div className="mt-2 space-y-1.5">
                 {parcelasEdit.map((pc, i) => (
