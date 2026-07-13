@@ -248,7 +248,7 @@ export function ProcessoSeletivoPage() {
       {admitir && activeRest && (
         <IniciarAdmissaoModal
           rid={rid} cargos={cargos} schemaUsado={getSchemaAdmissao(activeRest)}
-          defaults={{ nome: admitir.nome, email: admitir.email, whatsapp: admitir.whatsapp, cargoId: vagas.find((v) => v.id === admitir.vagaId)?.cargoId || undefined }}
+          defaults={(() => { const vg = vagas.find((v) => v.id === admitir.vagaId); return { nome: admitir.nome, email: admitir.email, whatsapp: admitir.whatsapp, cargoId: vg?.cargoId || undefined, salario: vg?.salarioBase != null ? String(vg.salarioBase) : undefined }; })()}
           onClose={() => setAdmitir(null)}
           onConfirm={async (input) => {
             if (!pessoa) return undefined;
@@ -385,6 +385,8 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
   const [area, setArea] = useState(vaga?.area || "");
   const [descricao, setDescricao] = useState(vaga?.descricao || "");
   const [requisitos, setRequisitos] = useState(vaga?.requisitos || "");
+  const [salarioBase, setSalarioBase] = useState(vaga?.salarioBase != null ? String(vaga.salarioBase) : "");
+  const [gorjetaMedia, setGorjetaMedia] = useState(vaga?.gorjetaMedia != null ? String(vaga.gorjetaMedia) : "");
   const [status, setStatus] = useState<Vaga["status"]>(vaga?.status || "aberta");
   const [responsavelIds, setResponsavelIds] = useState<string[]>(vaga?.responsavelIds || (vaga?.responsavelId ? [vaga.responsavelId] : []));
   const [buscaResp, setBuscaResp] = useState("");
@@ -438,6 +440,8 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
       id: vaga?.id || `vaga_${rid}_${slugify(titulo)}_${Math.random().toString(36).slice(2, 5)}`,
       restaurantId: rid, titulo: titulo.trim(), area: area.trim() || undefined, descricao: descricao.trim() || undefined,
       requisitos: requisitos.trim() || undefined, status, curriculoObrigatorio,
+      salarioBase: salarioBase.trim() ? parseFloat(salarioBase.replace(",", ".")) || null : null,
+      gorjetaMedia: gorjetaMedia.trim() ? parseFloat(gorjetaMedia.replace(",", ".")) || null : null,
       responsavelIds, responsavelNomes: nomesResp, responsavelId: responsavelIds[0] || null, responsavelNome: nomesResp[0] || null,
       cargoId: cargoId || null, cargoNome: cargo?.nome || null,
       horarioModeloEmpregadoId, horarioModeloNome, horarioModelo,
@@ -469,6 +473,12 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
             </div>
             <div><label className={lbl}>Descrição</label><textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={3} className={ta} placeholder="O que a pessoa vai fazer, cultura, benefícios…" /></div>
             <div><label className={lbl}>Requisitos</label><textarea value={requisitos} onChange={(e) => setRequisitos(e.target.value)} rows={3} className={ta} placeholder="Experiência, disponibilidade, etc." /></div>
+            <div className="grid grid-cols-2 gap-2">
+              <div><label className={lbl}>Salário base (R$/mês)</label>
+                <input type="number" step="0.01" value={salarioBase} onChange={(e) => setSalarioBase(e.target.value)} className={inp} placeholder="Ex.: 1800" /></div>
+              <div><label className={lbl}>Gorjeta média (R$/mês)</label>
+                <input type="number" step="0.01" value={gorjetaMedia} onChange={(e) => setGorjetaMedia(e.target.value)} className={inp} placeholder="Ex.: 1200" /></div>
+            </div>
           </Secao>
 
           <Secao titulo="Responsável & visibilidade">

@@ -3963,6 +3963,8 @@ export type Vaga = {
   descricao?: string;
   requisitos?: string;
   status: "aberta" | "pausada" | "encerrada";
+  salarioBase?: number | null;     // salário base do cargo (R$/mês)
+  gorjetaMedia?: number | null;    // gorjeta média do cargo (R$/mês)
   curriculoObrigatorio?: boolean;  // exige anexo de currículo na candidatura pública
   restauranteNome?: string | null; // nome do restaurante (pro título da página pública)
   responsavelId?: string | null;   // (legado) 1º responsável — mantido pra retrocompat

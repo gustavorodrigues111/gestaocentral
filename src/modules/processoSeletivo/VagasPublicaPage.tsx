@@ -11,6 +11,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type { Vaga, PerguntaVaga, CandidaturaTrabalhe, SiteConfig, HorarioDia, SundayCycle } from "../../core/types";
 
 const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
+const brl = (n: number) => `R$ ${n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 // Horário-modelo da vaga (1ª vigência): TODOS os dias (sem carga = folga) + ciclo de domingo.
 function horarioInfo(vaga: Vaga): { dias: { dia: string; texto: string; folga: boolean }[]; ciclo: SundayCycle | null } {
   const ws = vaga.horarioModelo?.[0];
@@ -209,11 +210,21 @@ export function VagaCandidaturaPage() {
         {vaga.area && <p style={{ fontSize: 12, opacity: 0.5, margin: "2px 0 0" }}>{vaga.area}</p>}
 
         {/* Quadro de detalhes da vaga */}
-        {(() => { const hor = horarioInfo(vaga); return (vaga.descricao || vaga.requisitos || hor.dias.length > 0) && (
+        {(() => { const hor = horarioInfo(vaga); return (vaga.descricao || vaga.requisitos || hor.dias.length > 0 || vaga.salarioBase != null || vaga.gorjetaMedia != null) && (
           <div style={{ marginTop: 14, borderRadius: 12, background: tema.fundo, border: `1px solid rgba(0,0,0,.08)`, padding: 16 }}>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", opacity: 0.5, marginBottom: 8 }}>Sobre a vaga</div>
             {vaga.descricao && <p style={{ fontSize: 14, opacity: 0.85, margin: "0 0 8px", whiteSpace: "pre-wrap", color: tema.texto, lineHeight: 1.5 }}>{vaga.descricao}</p>}
             {vaga.requisitos && <p style={{ fontSize: 13, opacity: 0.7, margin: "0 0 8px", whiteSpace: "pre-wrap", color: tema.texto }}><b>Requisitos:</b> {vaga.requisitos}</p>}
+            {(vaga.salarioBase != null || vaga.gorjetaMedia != null) && (
+              <div style={{ marginTop: 6, marginBottom: 4 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: tema.texto, marginBottom: 4 }}>💰 Remuneração</div>
+                <div style={{ fontSize: 14, color: tema.texto }}>
+                  {vaga.salarioBase != null && <div>Salário base: <b>{brl(vaga.salarioBase)}</b></div>}
+                  {vaga.gorjetaMedia != null && <div>Gorjeta média: <b>{brl(vaga.gorjetaMedia)}</b></div>}
+                  {vaga.salarioBase != null && vaga.gorjetaMedia != null && <div style={{ opacity: 0.7, marginTop: 2 }}>Total médio estimado: <b>{brl((vaga.salarioBase || 0) + (vaga.gorjetaMedia || 0))}</b></div>}
+                </div>
+              </div>
+            )}
             {hor.dias.length > 0 && (
               <div style={{ marginTop: 10 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: tema.texto, marginBottom: 8 }}>🕒 Horário</div>
