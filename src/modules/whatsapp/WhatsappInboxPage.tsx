@@ -790,7 +790,6 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         onAbrir={(waId, pid) => { setNovaConversa(false); setSel(waId); if (pid) void salvarContato(waId, { pessoaId: pid }); }} />}
       {transferir && (transferWaId || sel) && <TransferModal
         pessoas={pessoas.filter(p => { const n = numeros.find(x => x.id === numeroSel); const uids = n?.usuariosIds || []; return uids.length === 0 || uids.includes(p.id); })}
-        atualId={contatos[foneKey(transferWaId || sel || "")]?.atribuidoA || null}
         modo={donoDe(transferWaId || sel || "") ? "transferir" : "atribuir"}
         meId={me?.id || null} onClose={() => { setTransferir(false); setTransferWaId(null); }} onTransferir={transferirPara} />}
       {qrRecon && <QrModal instancia={qrRecon.instancia} nome={qrRecon.nome} qrInicial={null}
@@ -1341,7 +1340,7 @@ function ClientePicker({ clientes, onChange }: { clientes: Cliente[]; onChange: 
 }
 
 // Transferir conversa pra outro atendente (só quem pode usar o número) + nota.
-function TransferModal({ pessoas, atualId, meId, modo = "transferir", onClose, onTransferir }: { pessoas: Pessoa[]; atualId: string | null; meId: string | null; modo?: "atribuir" | "transferir"; onClose: () => void; onTransferir: (p: Pessoa, nota: string) => Promise<void> }) {
+function TransferModal({ pessoas, meId, modo = "transferir", onClose, onTransferir }: { pessoas: Pessoa[]; meId: string | null; modo?: "atribuir" | "transferir"; onClose: () => void; onTransferir: (p: Pessoa, nota: string) => Promise<void> }) {
   const [busca, setBusca] = useState("");
   const [nota, setNota] = useState("");
   const [sel, setSel] = useState<Pessoa | null>(null);
