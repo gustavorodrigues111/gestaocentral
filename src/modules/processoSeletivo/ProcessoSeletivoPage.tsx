@@ -75,6 +75,7 @@ export function ProcessoSeletivoPage() {
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [editVaga, setEditVaga] = useState<Vaga | "nova" | null>(null);
   const [admitir, setAdmitir] = useState<CandidaturaTrabalhe | null>(null);
+  const [novaCand, setNovaCand] = useState(false);
 
   useEffect(() => {
     if (!rid) return;
@@ -148,11 +149,12 @@ export function ProcessoSeletivoPage() {
         </div>
       </div>
 
-      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
+      <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
         {([["kanban", "🗂️ Candidaturas"], ["vagas", "📌 Vagas"]] as const).map(([v, l]) => (
           <button key={v} type="button" onClick={() => setAba(v)}
             className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${aba === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
         ))}
+        {aba === "kanban" && podeTriar && <div className="ml-auto pb-1"><Button size="sm" onClick={() => setNovaCand(true)}>➕ Nova candidatura</Button></div>}
       </div>
 
       {aba === "kanban" ? (
@@ -266,6 +268,67 @@ export function ProcessoSeletivoPage() {
         <VagaEditor vaga={editVaga === "nova" ? null : editVaga} rid={rid} pessoas={pessoas} cargos={cargos} empregados={empregados} pessoaId={pessoa?.id || ""}
           onSalvar={(v) => { void salvarVaga(v); setEditVaga(null); }} onClose={() => setEditVaga(null)} />
       )}
+
+      {novaCand && <NovaCandidaturaModal rid={rid} vagas={vagas} onClose={() => setNovaCand(false)} />}
+    </div>
+  );
+}
+
+// Criação MANUAL de candidatura (ex.: alguém indicou, ou chegou por fora do site).
+function NovaCandidaturaModal({ rid, vagas, onClose }: { rid: string; vagas: Vaga[]; onClose: () => void }) {
+  const [nome, setNome] = useState("");
+  const [whatsapp, setWhatsapp] = useState("");
+  const [email, setEmail] = useState("");
+  const [vagaId, setVagaId] = useState("");
+  const [area, setArea] = useState("");
+  const [obs, setObs] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const vaga = vagas.find((v) => v.id === vagaId);
+
+  async function salvar() {
+    if (!nome.trim()) { alert("Informe o nome do candidato."); return; }
+    setSalvando(true);
+    try {
+      let d = whatsapp.replace(/\D/g, ""); if (d && d.length <= 11) d = "55" + d;
+      const id = `cand_${rid}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      const cand: CandidaturaTrabalhe = {
+        id, restaurantId: rid, status: "nova", etapa: "nova",
+        vagaId: vagaId || null, vagaTitulo: vaga?.titulo || null,
+        responsavelIds: vaga?.responsavelIds?.length ? vaga.responsavelIds : (vaga?.responsavelId ? [vaga.responsavelId] : undefined),
+        responsavelId: (vaga?.responsavelIds?.[0]) || vaga?.responsavelId || undefined, responsavelNome: (vaga?.responsavelNomes?.[0]) || vaga?.responsavelNome || undefined,
+        observacoes: obs.trim() || undefined,
+        nome: nome.trim(), whatsapp: d, email: email.trim(), areaInteresse: area.trim() || vaga?.area || vaga?.titulo || "",
+        origem: "manual", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      };
+      await setDoc(doc(db, "candidaturasTrabalhe", id), sanitizeForFirestore(cand));
+      onClose();
+    } catch (e) { alert("Erro ao criar: " + (e instanceof Error ? e.message : "?")); } finally { setSalvando(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">➕ Nova candidatura</h3>
+          <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+        <div><label className={lbl}>Nome *</label><input value={nome} onChange={(e) => setNome(e.target.value)} className={inp} autoFocus /></div>
+        <div className="grid grid-cols-2 gap-2">
+          <div><label className={lbl}>WhatsApp</label><input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} className={inp} placeholder="(11) 99999-9999" /></div>
+          <div><label className={lbl}>E-mail</label><input value={email} onChange={(e) => setEmail(e.target.value)} className={inp} /></div>
+        </div>
+        <div><label className={lbl}>Vaga (opcional)</label>
+          <select value={vagaId} onChange={(e) => setVagaId(e.target.value)} className={inp}>
+            <option value="">— banco de talentos (sem vaga) —</option>
+            {vagas.map((v) => <option key={v.id} value={v.id}>{v.titulo}</option>)}
+          </select></div>
+        <div><label className={lbl}>Área de interesse (opcional)</label><input value={area} onChange={(e) => setArea(e.target.value)} className={inp} placeholder="Salão, Cozinha…" /></div>
+        <div><label className={lbl}>Observações (opcional)</label><textarea value={obs} onChange={(e) => setObs(e.target.value)} rows={2} className={`${inp} resize-none`} placeholder="Indicação, contexto…" /></div>
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} className="text-sm px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>
+          <Button onClick={() => void salvar()} disabled={salvando || !nome.trim()}>{salvando ? "Criando…" : "Criar candidatura"}</Button>
+        </div>
+      </div>
     </div>
   );
 }
