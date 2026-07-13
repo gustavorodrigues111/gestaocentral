@@ -215,18 +215,18 @@ export function VagaCandidaturaPage() {
             {vaga.descricao && <p style={{ fontSize: 14, opacity: 0.85, margin: "0 0 8px", whiteSpace: "pre-wrap", color: tema.texto, lineHeight: 1.5 }}>{vaga.descricao}</p>}
             {vaga.requisitos && <p style={{ fontSize: 13, opacity: 0.7, margin: "0 0 8px", whiteSpace: "pre-wrap", color: tema.texto }}><b>Requisitos:</b> {vaga.requisitos}</p>}
             {hor.dias.length > 0 && (
-              <div style={{ marginTop: 6 }}>
-                <div style={{ fontSize: 13, fontWeight: 700, color: tema.texto, marginBottom: 8, textAlign: "center" }}>🕒 Horário</div>
-                <div style={{ maxWidth: 340, margin: "0 auto", borderRadius: 12, overflow: "hidden", border: "1px solid rgba(0,0,0,.1)" }}>
+              <div style={{ marginTop: 10 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: tema.texto, marginBottom: 8 }}>🕒 Horário</div>
+                <div style={{ width: "100%", borderRadius: 10, overflow: "hidden", border: "1px solid rgba(0,0,0,.1)" }}>
                   {hor.dias.map((h, idx) => (
-                    <div key={h.dia} style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 8, padding: "8px 12px", fontSize: 13, background: h.folga ? "transparent" : tema.card, borderTop: idx > 0 ? "1px solid rgba(0,0,0,.07)" : "none", color: tema.texto, opacity: h.folga ? 0.55 : 1 }}>
-                      <span style={{ fontWeight: 700, minWidth: 36, textAlign: "right" }}>{h.dia}</span>
-                      <span style={{ minWidth: 130, textAlign: "left" }}>{h.texto}</span>
+                    <div key={h.dia} style={{ display: "flex", alignItems: "center", padding: "9px 14px", fontSize: 14, background: h.folga ? "transparent" : tema.card, borderTop: idx > 0 ? "1px solid rgba(0,0,0,.07)" : "none", color: tema.texto, opacity: h.folga ? 0.55 : 1 }}>
+                      <span style={{ fontWeight: 700, width: 52, flexShrink: 0, textAlign: "left" }}>{h.dia}</span>
+                      <span style={{ textAlign: "left" }}>{h.texto}</span>
                     </div>
                   ))}
                 </div>
                 {hor.ciclo && (
-                  <p style={{ fontSize: 12, opacity: 0.7, marginTop: 8, color: tema.texto, textAlign: "center" }}>🔁 <b>Domingo cíclico:</b> trabalha {hor.ciclo.workCount} domingo{hor.ciclo.workCount > 1 ? "s" : ""} seguido{hor.ciclo.workCount > 1 ? "s" : ""} e folga 1.</p>
+                  <p style={{ fontSize: 13, opacity: 0.75, marginTop: 8, color: tema.texto }}>🔁 <b>Domingo cíclico:</b> trabalha {hor.ciclo.workCount} domingo{hor.ciclo.workCount > 1 ? "s" : ""} seguido{hor.ciclo.workCount > 1 ? "s" : ""} e folga 1.</p>
                 )}
               </div>
             )}
