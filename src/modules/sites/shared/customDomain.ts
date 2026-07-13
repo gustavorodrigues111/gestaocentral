@@ -19,6 +19,8 @@ const RESTAURANT_HOSTS: Record<string, string> = {
   "www.lobozo.com.br": "lobozo",
   "sororoca.com.br":   "sororoca",
   "www.sororoca.com.br": "sororoca",
+  "sororocabar.com.br":   "sororoca",
+  "www.sororocabar.com.br": "sororoca",
 };
 
 // Hosts internos do admin/preview — NUNCA renderizar site público.

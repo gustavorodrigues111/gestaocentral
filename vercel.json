@@ -20,6 +20,16 @@
       "has": [{ "type": "host", "value": "www.sororoca.com.br" }],
       "destination": "/site/sororoca/"
     },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "sororocabar.com.br" }],
+      "destination": "/site/sororoca/"
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "www.sororocabar.com.br" }],
+      "destination": "/site/sororoca/"
+    },
     { "source": "/copa", "destination": "/copa.html" },
     { "source": "/((?!api/|site/|copa).*)", "destination": "/index.html" }
   ],
