@@ -64,12 +64,20 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [emojiAberto, setEmojiAberto] = useState(false);
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
   const taRef = useRef<HTMLTextAreaElement | null>(null);
+  const msgsEndRef = useRef<HTMLDivElement | null>(null);
   // Auto-expande o campo de resposta conforme o texto (até ~5 linhas → rola).
   useEffect(() => {
     const el = taRef.current; if (!el) return;
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 132) + "px";
   }, [resposta, sel]);
+  // Trava o scroll do fundo enquanto a conversa em tela cheia está aberta.
+  useEffect(() => {
+    if (!sel) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = prev; };
+  }, [sel]);
   // Anexos + gravação de áudio.
   const [anexoMenu, setAnexoMenu] = useState(false);
   const [enviandoMidia, setEnviandoMidia] = useState(false);
@@ -252,6 +260,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   }), [conversas, filtroTag, contatos]);
 
   const thread = useMemo(() => msgsDoNumero.filter(x => foneKey(x.waId) === foneKey(sel || "")), [msgsDoNumero, sel]);
+  // Rola pro fim ao abrir a conversa ou chegar mensagem nova.
+  useEffect(() => { const t = setTimeout(() => msgsEndRef.current?.scrollIntoView({ block: "end" }), 50); return () => clearTimeout(t); }, [sel, thread.length]);
   const nomeSel = sel ? nomeConversa(sel, conversas.find(c => foneKey(c.waId) === foneKey(sel))?.nome) : "";
 
   // Marca recebidas como lidas ao abrir.
@@ -507,28 +517,28 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         )
       ) : (
         <>
-        {/* Voltar — fora da conversa, pra ficar claro que retorna à lista */}
-        <button type="button" onClick={() => setSel(null)} className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100">← Voltar às conversas</button>
-        <div className="-mx-4 border-y border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col h-[76vh]">
-          {/* Header da conversa: nome completo → vínculo → botões */}
-          <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800">
-            <div className="text-base font-semibold text-gray-900 dark:text-gray-100 break-words">{nomeSel}</div>
-            <div className="text-[11px] text-gray-400 mt-0.5 flex flex-wrap gap-x-1">
-              <span>{foneBonito(sel)}</span>
-              {clienteSel && <span>· <span className="text-emerald-600 dark:text-emerald-300">🧑 {clienteSel.nome} (cliente)</span></span>}
-              {pessoaSel && <span>· <span className="text-indigo-600 dark:text-indigo-300">👤 {pessoaSel.nome}</span></span>}
+        {/* Conversa em tela cheia: só o chat, compose fixo embaixo, sem rolagem dupla */}
+        <div className="fixed inset-0 z-40 bg-white dark:bg-gray-950 flex flex-col">
+          {/* Header compacto */}
+          <div className="flex items-center gap-1 px-1.5 py-1.5 border-b border-gray-200 dark:border-gray-800 shrink-0">
+            <button type="button" onClick={() => setSel(null)} className="w-9 h-9 rounded-full text-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0" title="Voltar às conversas">←</button>
+            <div className="flex-1 min-w-0 leading-tight">
+              <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{nomeSel}</div>
+              <div className="text-[11px] text-gray-400 truncate">
+                {foneBonito(sel)}
+                {clienteSel && <span className="text-emerald-600 dark:text-emerald-300"> · 🧑 {clienteSel.nome}</span>}
+                {pessoaSel && <span className="text-indigo-600 dark:text-indigo-300"> · 👤 {pessoaSel.nome}</span>}
+                {contatoSel?.atribuidoNome && <span> · 🙋 {contatoSel.atribuidoNome}</span>}
+              </div>
             </div>
-            {contatoSel?.atribuidoNome && <div className="text-[11px] text-gray-500 mt-0.5">🙋 Responsável: <b>{contatoSel.atribuidoNome}</b></div>}
-            <div className="flex items-center gap-2 mt-2 flex-wrap">
-              {podeResponder && <button type="button" onClick={() => setTransferir(true)} className="text-xs px-2.5 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300">↪ Transferir</button>}
-              <button type="button" onClick={() => marcarNaoLida(sel)} title="Marcar como não lida" className="text-xs px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-500 hover:text-rose-600">🔵 Não lida</button>
-              {podeVincular && <button type="button" onClick={() => setDetalhes(v => !v)} className={`text-xs px-2.5 py-1 rounded-lg border ${detalhes ? "border-indigo-400 text-indigo-600 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"}`}>ⓘ Detalhes</button>}
-            </div>
+            {podeResponder && <button type="button" onClick={() => setTransferir(true)} title="Transferir" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">↪</button>}
+            <button type="button" onClick={() => marcarNaoLida(sel)} title="Marcar como não lida" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">🔵</button>
+            {podeVincular && <button type="button" onClick={() => setDetalhes(v => !v)} title="Detalhes" className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${detalhes ? "text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30" : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>ⓘ</button>}
           </div>
 
           {/* Painel de detalhes: vínculo + restaurante + tags */}
           {detalhes && podeVincular && (
-            <div className="px-3 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30 space-y-3 text-sm">
+            <div className="px-3 py-3 border-b border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30 space-y-3 text-sm max-h-[45vh] overflow-y-auto shrink-0">
               <div>
                 <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Cliente (Reservas + CRM)</label>
                 {clienteSel ? (
@@ -601,11 +611,12 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 </div>
               </div>
             ))}
+            <div ref={msgsEndRef} />
           </div>
 
           {/* Resposta */}
           {podeResponder && (
-            <div className="border-t border-gray-200 dark:border-gray-800 p-2 relative">
+            <div className="border-t border-gray-200 dark:border-gray-800 p-2 relative shrink-0">
               {slashAtivo && (
                 <div className="absolute bottom-full left-2 right-2 mb-1 max-h-56 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg z-10">
                   <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900">⚡ Respostas rápidas{slashQ ? ` · "${slashQ}"` : ""}</div>
