@@ -63,6 +63,13 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [enviando, setEnviando] = useState(false);
   const [emojiAberto, setEmojiAberto] = useState(false);
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
+  const taRef = useRef<HTMLTextAreaElement | null>(null);
+  // Auto-expande o campo de resposta conforme o texto (até ~5 linhas → rola).
+  useEffect(() => {
+    const el = taRef.current; if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 132) + "px";
+  }, [resposta, sel]);
   const [detalhes, setDetalhes] = useState(false);
   const [tab, setTab] = useState<"conversas" | "templates">("conversas");
 
@@ -534,7 +541,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
               )}
               <div className="flex items-end gap-2">
                 <button type="button" onClick={() => setEmojiAberto(v => !v)} className="shrink-0 w-10 h-10 rounded-xl border border-gray-300 dark:border-gray-700 text-xl hover:bg-gray-50 dark:hover:bg-gray-800" title="Emojis">😊</button>
-                <textarea value={resposta} onChange={e => setResposta(e.target.value)} onFocus={() => setEmojiAberto(false)} rows={1} placeholder="Responder…  ( / = respostas rápidas )" className="flex-1 px-3 py-2 text-base rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 resize-none" onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !slashAtivo) { e.preventDefault(); void responder(); } }} />
+                <textarea ref={taRef} value={resposta} onChange={e => setResposta(e.target.value)} onFocus={() => setEmojiAberto(false)} rows={1} placeholder="Responder…  ( / = respostas rápidas )" className="flex-1 px-3 py-2 text-base leading-snug rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 resize-none overflow-y-auto" onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !slashAtivo) { e.preventDefault(); void responder(); } }} />
                 <Button onClick={() => { setEmojiAberto(false); void responder(); }} disabled={enviando || !resposta.trim()}>{enviando ? "…" : "Enviar"}</Button>
               </div>
             </div>
