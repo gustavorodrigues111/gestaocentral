@@ -19,7 +19,7 @@ import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import { WhatsappTemplatesTab } from "./WhatsappTemplatesTab";
-import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, Cliente } from "../../core/types";
+import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, Cliente } from "../../core/types";
 
 type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; mime?: string };
 
@@ -57,6 +57,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [contatos, setContatos] = useState<Record<string, WhatsappContato>>({});
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [tags, setTags] = useState<WhatsappTag[]>([]);
+  const [respostas, setRespostas] = useState<WhatsappResposta[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [resposta, setResposta] = useState("");
   const [enviando, setEnviando] = useState(false);
@@ -112,6 +113,11 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   useEffect(() => {
     const u = onSnapshot(collection(db, "whatsappTags"), snap =>
       setTags(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WhatsappTag).sort((a, b) => a.nome.localeCompare(b.nome))));
+    return () => u();
+  }, []);
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "whatsappRespostas"), snap =>
+      setRespostas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WhatsappResposta)));
     return () => u();
   }, []);
 
@@ -283,6 +289,14 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   }
 
   if (!podeVer && !embutido) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-700 dark:text-gray-300 font-medium">Sem acesso à caixa de entrada do WhatsApp.</p></div>;
+
+  // Respostas rápidas do número selecionado + picker acionado por "/" no campo.
+  const respostasNum = respostas.filter(r => r.numeroId === numeroSel);
+  const slashAtivo = resposta.startsWith("/");
+  const slashQ = slashAtivo ? resposta.slice(1).toLowerCase().trim() : "";
+  const respostasFiltradas = slashAtivo
+    ? respostasNum.filter(r => !slashQ || (r.atalho || "").toLowerCase().includes(slashQ) || r.texto.toLowerCase().includes(slashQ))
+    : [];
 
   const contatoSel = sel ? contatos[foneKey(sel)] : undefined;
   const pessoaSel = sel ? pessoaDaConversa(sel) : null;
@@ -497,6 +511,20 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
           {/* Resposta */}
           {podeResponder && (
             <div className="border-t border-gray-200 dark:border-gray-800 p-2 relative">
+              {slashAtivo && (
+                <div className="absolute bottom-full left-2 right-2 mb-1 max-h-56 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg z-10">
+                  <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900">⚡ Respostas rápidas{slashQ ? ` · "${slashQ}"` : ""}</div>
+                  {respostasFiltradas.length === 0 && (
+                    <div className="px-3 py-3 text-sm text-gray-400">{respostasNum.length === 0 ? "Nenhuma resposta cadastrada pra este número. Cadastre em ⚙️ Configuração." : "Nada encontrado."}</div>
+                  )}
+                  {respostasFiltradas.map(r => (
+                    <button key={r.id} type="button" onClick={() => { setResposta(r.texto); setEmojiAberto(false); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 border-b border-gray-50 dark:border-gray-800/60 last:border-0">
+                      {r.atalho && <div className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">/{r.atalho}</div>}
+                      <div className="text-sm text-gray-700 dark:text-gray-200 line-clamp-2 whitespace-pre-wrap">{r.texto}</div>
+                    </button>
+                  ))}
+                </div>
+              )}
               {emojiAberto && (
                 <div className="absolute bottom-full left-2 mb-1 w-64 max-h-44 overflow-y-auto p-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg grid grid-cols-8 gap-0.5 z-10">
                   {EMOJIS.map(e => (
@@ -506,7 +534,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
               )}
               <div className="flex items-end gap-2">
                 <button type="button" onClick={() => setEmojiAberto(v => !v)} className="shrink-0 w-10 h-10 rounded-xl border border-gray-300 dark:border-gray-700 text-xl hover:bg-gray-50 dark:hover:bg-gray-800" title="Emojis">😊</button>
-                <textarea value={resposta} onChange={e => setResposta(e.target.value)} onFocus={() => setEmojiAberto(false)} rows={1} placeholder="Responder…" className="flex-1 px-3 py-2 text-base rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 resize-none" onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void responder(); } }} />
+                <textarea value={resposta} onChange={e => setResposta(e.target.value)} onFocus={() => setEmojiAberto(false)} rows={1} placeholder="Responder…  ( / = respostas rápidas )" className="flex-1 px-3 py-2 text-base rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 resize-none" onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !slashAtivo) { e.preventDefault(); void responder(); } }} />
                 <Button onClick={() => { setEmojiAberto(false); void responder(); }} disabled={enviando || !resposta.trim()}>{enviando ? "…" : "Enviar"}</Button>
               </div>
             </div>
@@ -816,7 +844,63 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
             {dirty && <button type="button" onClick={cancelar} className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>}
             <Button onClick={() => void salvar()} disabled={!dirty || salvando}>{salvando ? "Salvando…" : "💾 Salvar"}</Button>
           </div>
+
+          {/* Respostas rápidas deste número */}
+          <div className="border-t border-gray-200/70 dark:border-gray-800 pt-3">
+            <RespostasNumero numeroId={numero.id} />
+          </div>
         </div>
+      )}
+    </div>
+  );
+}
+
+// Cadastro das respostas rápidas (mensagens pré-cadastradas) de um número.
+function RespostasNumero({ numeroId }: { numeroId: string }) {
+  const { pessoa: me } = useAuth();
+  const [itens, setItens] = useState<WhatsappResposta[]>([]);
+  const [atalho, setAtalho] = useState("");
+  const [texto, setTexto] = useState("");
+  const [addOpen, setAddOpen] = useState(false);
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "whatsappRespostas"), snap =>
+      setItens(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WhatsappResposta).filter(r => r.numeroId === numeroId).sort((a, b) => (a.atalho || a.texto).localeCompare(b.atalho || b.texto))));
+    return () => u();
+  }, [numeroId]);
+  const inp = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+  const criar = async () => {
+    const t = texto.trim(); if (!t) return;
+    await addDoc(collection(db, "whatsappRespostas"), sanitizeForFirestore({ numeroId, atalho: atalho.trim().replace(/^\/+/, "") || null, texto: t, criadoEm: new Date().toISOString(), criadoPor: me?.id || null }));
+    setAtalho(""); setTexto(""); setAddOpen(false);
+  };
+  const excluir = async (id: string) => { if (confirm("Excluir esta resposta rápida?")) await deleteDoc(doc(db, "whatsappRespostas", id)); };
+  return (
+    <div className="space-y-2">
+      <div className="text-[11px] font-semibold text-gray-500 uppercase">⚡ Respostas rápidas ({itens.length})</div>
+      <p className="text-[11px] text-gray-400">No chat, digite <b>/</b> pra escolher uma. O atalho ajuda a achar (ex.: <code>/horario</code>).</p>
+      <div className="space-y-1.5">
+        {itens.length === 0 && <div className="text-xs text-gray-400">Nenhuma ainda.</div>}
+        {itens.map(r => (
+          <div key={r.id} className="flex items-start gap-2 rounded-lg border border-gray-100 dark:border-gray-800 p-2">
+            <div className="flex-1 min-w-0">
+              {r.atalho && <div className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">/{r.atalho}</div>}
+              <div className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">{r.texto}</div>
+            </div>
+            <button type="button" onClick={() => void excluir(r.id)} className="text-gray-400 hover:text-rose-600 text-sm shrink-0">🗑️</button>
+          </div>
+        ))}
+      </div>
+      {addOpen ? (
+        <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-2 space-y-2">
+          <input value={atalho} onChange={e => setAtalho(e.target.value)} className={inp} placeholder="Atalho (opcional) — ex.: horario" />
+          <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={3} className={inp} placeholder="Texto da resposta…" />
+          <div className="flex justify-end gap-2">
+            <button type="button" onClick={() => { setAddOpen(false); setAtalho(""); setTexto(""); }} className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>
+            <Button size="sm" onClick={() => void criar()} disabled={!texto.trim()}>Adicionar</Button>
+          </div>
+        </div>
+      ) : (
+        <button type="button" onClick={() => setAddOpen(true)} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">➕ Nova resposta rápida</button>
       )}
     </div>
   );

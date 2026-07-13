@@ -5724,6 +5724,16 @@ export type WhatsappTag = {
   criadoEm?: string;
 };
 
+// Resposta rápida (mensagem pré-cadastrada) — por número, acionada por "/" no chat.
+export type WhatsappResposta = {
+  id: string;
+  numeroId: string;    // instância (número) a que pertence
+  atalho?: string;     // rótulo curto pra buscar depois do "/" (ex.: "horario")
+  texto: string;       // conteúdo enviado
+  criadoEm?: string;
+  criadoPor?: string | null;
+};
+
 // ── Módulo Faturas (cartão de crédito) ──────────────────────────────────────
 // Categoria por entidade (cada empresa/pessoa tem a sua lista).
 export type CartaoCategoria = {
