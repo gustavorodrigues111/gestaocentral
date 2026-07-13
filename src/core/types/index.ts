@@ -5840,6 +5840,7 @@ export type WhatsappContato = {
   atribuidoNome?: string | null;
   nomeManual?: string | null;     // nome sobrescrito manualmente
   nomePush?: string | null;       // nome que a pessoa usa no WhatsApp (semeado pelo webhook)
+  naoLidaManual?: boolean;        // marcada como não-lida manualmente (força o destaque)
   tagIds?: string[];
   atualizadoEm?: string;
   atualizadoPor?: string;

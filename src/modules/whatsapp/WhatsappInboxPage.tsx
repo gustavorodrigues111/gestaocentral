@@ -292,10 +292,12 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   useEffect(() => { const t = setTimeout(() => msgsEndRef.current?.scrollIntoView({ block: "end" }), 50); return () => clearTimeout(t); }, [sel, thread.length]);
   const nomeSel = sel ? nomeConversa(sel, conversas.find(c => foneKey(c.waId) === foneKey(sel))?.nome) : "";
 
-  // Marca recebidas como lidas ao abrir.
+  // Marca recebidas como lidas ao abrir + limpa a flag manual de não-lida.
   useEffect(() => {
     if (!sel) return;
     for (const m of msgs) if (foneKey(m.waId) === foneKey(sel) && m.direcao === "in" && !m.lido) void updateDoc(doc(db, "whatsappMensagens", m.id), { lido: true }).catch(() => {});
+    if (contatos[foneKey(sel)]?.naoLidaManual) void salvarContato(sel, { naoLidaManual: false });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel, msgs]);
 
   // ── Writers ──────────────────────────────────────────────────────────────
@@ -311,12 +313,16 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     await salvarContato(waId, { tagIds: novas });
   }
 
-  // Marca a conversa como NÃO lida (última mensagem recebida vira não-lida) e volta pra lista.
+  // Marca a conversa como NÃO lida (flag no contato — robusto até sem mensagem
+  // recebida, ex.: conversa comigo mesmo) e volta pra lista.
   async function marcarNaoLida(waId: string) {
-    const inbound = msgsDoNumero.filter(m => foneKey(m.waId) === foneKey(waId) && m.direcao === "in");
-    const ultima = inbound[inbound.length - 1];
     setSel(null);
-    if (ultima) await updateDoc(doc(db, "whatsappMensagens", ultima.id), { lido: false }).catch(() => {});
+    await salvarContato(waId, { naoLidaManual: true });
+  }
+  // Marca como LIDA: limpa a flag manual e zera as recebidas não-lidas.
+  async function marcarLida(waId: string) {
+    await salvarContato(waId, { naoLidaManual: false });
+    for (const m of msgsDoNumero) if (foneKey(m.waId) === foneKey(waId) && m.direcao === "in" && !m.lido) void updateDoc(doc(db, "whatsappMensagens", m.id), { lido: true }).catch(() => {});
   }
 
   async function responder() {
@@ -558,28 +564,32 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         conversasFiltradas.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">{conversas.length === 0 ? "Nenhuma mensagem recebida ainda. Quando alguém mandar no WhatsApp do planejamento.app, aparece aqui." : filtroAtrib === "pendentes" ? "🎉 Nenhuma conversa pendente — tudo atribuído." : filtroAtrib === "minhas" ? "Você não tem conversas atribuídas." : "Nenhuma conversa nesse filtro."}</div>
         ) : (
-          <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
+          <div className="-mx-4 border-y border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
             {conversasFiltradas.map(c => {
-              const cTags = (contatos[foneKey(c.waId)]?.tagIds || []).map(id => tagById[id]).filter(Boolean) as WhatsappTag[];
-              const naoLida = c.naoLidas > 0;
-              const atribuido = contatos[foneKey(c.waId)]?.atribuidoNome;
+              const cont = contatos[foneKey(c.waId)];
+              const cTags = (cont?.tagIds || []).map(id => tagById[id]).filter(Boolean) as WhatsappTag[];
+              const naoLida = c.naoLidas > 0 || !!cont?.naoLidaManual;
+              const atribuido = cont?.atribuidoNome;
               return (
                 <ConversaItem key={c.waId} naoLida={naoLida}
                   onAbrir={() => { setSel(c.waId); setDetalhes(false); }}
                   onNaoLida={() => void marcarNaoLida(c.waId)}
+                  onLida={() => void marcarLida(c.waId)}
                   onTransferir={() => { setTransferWaId(c.waId); setTransferir(true); }}
                   podeResponder={podeResponder}>
                   <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center text-lg shrink-0">💬</div>
                   <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5 min-w-0">
                       <span className={`truncate ${naoLida ? "font-bold text-gray-900 dark:text-gray-50" : "font-medium text-gray-900 dark:text-gray-100"}`}>{nomeConversa(c.waId, c.nome)}</span>
-                      {naoLida && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500 text-white">{c.naoLidas}</span>}
-                      {cTags.map(t => <span key={t.id} className="inline-block w-2 h-2 rounded-full" style={{ background: t.cor || "#6366f1" }} title={t.nome} />)}
+                      {cTags.map(t => <span key={t.id} className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: t.cor || "#6366f1" }} title={t.nome} />)}
                     </div>
                     <div className={`text-xs truncate ${naoLida ? "text-gray-700 dark:text-gray-200 font-medium" : "text-gray-500"}`}>{c.ultima.direcao === "out" ? "Você: " : ""}{c.ultima.texto || `[${c.ultima.tipo || "msg"}]`}</div>
                     {atribuido && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 truncate">🙋 {atribuido}</div>}
                   </div>
-                  <span className="text-[10px] text-gray-400 shrink-0">{hhmm(c.ultima.timestamp)}</span>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <span className="text-[10px] text-gray-400">{hhmm(c.ultima.timestamp)}</span>
+                    {naoLida && <span className="min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center text-[10px] font-bold rounded-full bg-rose-500 text-white">{c.naoLidas > 0 ? c.naoLidas : ""}</span>}
+                  </div>
                 </ConversaItem>
               );
             })}
@@ -783,8 +793,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
 // Item da lista de conversas com "arrastar pro lado" revelando ações
 // (marcar não lida / transferir), estilo apps de mensagem.
-function ConversaItem({ naoLida, onAbrir, onNaoLida, onTransferir, podeResponder, children }: {
-  naoLida: boolean; onAbrir: () => void; onNaoLida: () => void; onTransferir: () => void; podeResponder: boolean; children: ReactNode;
+function ConversaItem({ naoLida, onAbrir, onNaoLida, onLida, onTransferir, podeResponder, children }: {
+  naoLida: boolean; onAbrir: () => void; onNaoLida: () => void; onLida: () => void; onTransferir: () => void; podeResponder: boolean; children: ReactNode;
 }) {
   const MAX = podeResponder ? 152 : 80;   // largura das ações reveladas
   const [dx, setDx] = useState(0);
@@ -806,7 +816,9 @@ function ConversaItem({ naoLida, onAbrir, onNaoLida, onTransferir, podeResponder
     <div className="relative overflow-hidden">
       {/* Ações reveladas atrás (à esquerda) */}
       <div className="absolute inset-y-0 left-0 flex" style={{ width: MAX }}>
-        <button type="button" onClick={() => { onNaoLida(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-blue-500 text-white text-[11px] font-medium"><span className="text-base">🔵</span>Não lida</button>
+        {naoLida
+          ? <button type="button" onClick={() => { onLida(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-gray-500 text-white text-[11px] font-medium"><span className="text-base">✓</span>Lida</button>
+          : <button type="button" onClick={() => { onNaoLida(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-blue-500 text-white text-[11px] font-medium"><span className="text-base">🔵</span>Não lida</button>}
         {podeResponder && <button type="button" onClick={() => { onTransferir(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-indigo-500 text-white text-[11px] font-medium"><span className="text-base">↪</span>Transferir</button>}
       </div>
       {/* Linha (frente) — arrasta pra revelar */}
