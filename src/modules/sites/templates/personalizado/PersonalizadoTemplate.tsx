@@ -632,7 +632,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             conteudo: (
               <CtaConteudo
                 texto={t("trabalheTexto", "Sempre buscando gente boa pra somar no time.")}
-                ctaTo={`/trabalhe/${cfg.restaurantId}`}
+                ctaTo="/vagas"
                 ctaLabel={t("trabalheCtaLabel", "Enviar candidatura")}
                 primaryButton={primaryButton}
                 fontSizeCorpo={txCorpo(17)}
