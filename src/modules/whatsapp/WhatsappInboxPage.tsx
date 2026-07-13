@@ -571,7 +571,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
               const naoLida = c.naoLidas > 0 || !!cont?.naoLidaManual;
               const atribuido = cont?.atribuidoNome;
               return (
-                <ConversaItem key={c.waId} naoLida={naoLida}
+                <ConversaItem key={c.waId} naoLida={naoLida} temDono={!!donoDe(c.waId)}
                   onAbrir={() => { setSel(c.waId); setDetalhes(false); }}
                   onNaoLida={() => void marcarNaoLida(c.waId)}
                   onLida={() => void marcarLida(c.waId)}
@@ -611,7 +611,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 {contatoSel?.atribuidoNome && <span> · 🙋 {contatoSel.atribuidoNome}</span>}
               </div>
             </div>
-            {podeResponder && <button type="button" onClick={() => setTransferir(true)} title="Transferir" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">↪</button>}
+            {podeResponder && <button type="button" onClick={() => { setTransferWaId(null); setTransferir(true); }} title={contatoSel?.atribuidoA ? "Transferir" : "Atribuir"} className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">↪</button>}
             <button type="button" onClick={() => marcarNaoLida(sel)} title="Marcar como não lida" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">🔵</button>
             {podeVincular && <button type="button" onClick={() => setDetalhes(v => !v)} title="Detalhes" className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${detalhes ? "text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30" : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>ⓘ</button>}
           </div>
@@ -628,10 +628,16 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                     : <span className="text-gray-600 dark:text-gray-300">🙋 Atribuída a <b>{contatoSel?.atribuidoNome}</b></span>}
                 </span>
                 {podeResponder && (
-                  <div className="ml-auto shrink-0">
+                  <div className="ml-auto shrink-0 flex items-center gap-1.5">
                     {minha
-                      ? <button type="button" onClick={() => void liberarConversa(sel)} className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Liberar</button>
-                      : <button type="button" onClick={() => void assumirConversa(sel)} className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-medium">Assumir</button>}
+                      ? <>
+                          <button type="button" onClick={() => { setTransferWaId(null); setTransferir(true); }} className="px-2.5 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300">↪ Transferir</button>
+                          <button type="button" onClick={() => void liberarConversa(sel)} className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Liberar</button>
+                        </>
+                      : <>
+                          <button type="button" onClick={() => void assumirConversa(sel)} className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-medium">Assumir</button>
+                          <button type="button" onClick={() => { setTransferWaId(null); setTransferir(true); }} className="px-2.5 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300">{dono ? "↪ Transferir" : "🙋 Atribuir"}</button>
+                        </>}
                   </div>
                 )}
               </div>
@@ -784,7 +790,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         onAbrir={(waId, pid) => { setNovaConversa(false); setSel(waId); if (pid) void salvarContato(waId, { pessoaId: pid }); }} />}
       {transferir && (transferWaId || sel) && <TransferModal
         pessoas={pessoas.filter(p => { const n = numeros.find(x => x.id === numeroSel); const uids = n?.usuariosIds || []; return uids.length === 0 || uids.includes(p.id); })}
-        atualId={contatos[foneKey(transferWaId || sel || "")]?.atribuidoA || null} meId={me?.id || null} onClose={() => { setTransferir(false); setTransferWaId(null); }} onTransferir={transferirPara} />}
+        atualId={contatos[foneKey(transferWaId || sel || "")]?.atribuidoA || null}
+        modo={donoDe(transferWaId || sel || "") ? "transferir" : "atribuir"}
+        meId={me?.id || null} onClose={() => { setTransferir(false); setTransferWaId(null); }} onTransferir={transferirPara} />}
       {qrRecon && <QrModal instancia={qrRecon.instancia} nome={qrRecon.nome} qrInicial={null}
         onClose={() => { setQrRecon(null); if (numeroSel) void chamarInstancia("status", numeroSel).then(r => setStatusConexao(r.estado || "unknown")).catch(() => {}); }} />}
     </div>
@@ -793,8 +801,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
 // Item da lista de conversas com "arrastar pro lado" revelando ações
 // (marcar não lida / transferir), estilo apps de mensagem.
-function ConversaItem({ naoLida, onAbrir, onNaoLida, onLida, onTransferir, podeResponder, children }: {
-  naoLida: boolean; onAbrir: () => void; onNaoLida: () => void; onLida: () => void; onTransferir: () => void; podeResponder: boolean; children: ReactNode;
+function ConversaItem({ naoLida, temDono, onAbrir, onNaoLida, onLida, onTransferir, podeResponder, children }: {
+  naoLida: boolean; temDono: boolean; onAbrir: () => void; onNaoLida: () => void; onLida: () => void; onTransferir: () => void; podeResponder: boolean; children: ReactNode;
 }) {
   const MAX = podeResponder ? 152 : 80;   // largura das ações reveladas
   const [dx, setDx] = useState(0);
@@ -819,7 +827,7 @@ function ConversaItem({ naoLida, onAbrir, onNaoLida, onLida, onTransferir, podeR
         {naoLida
           ? <button type="button" onClick={() => { onLida(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-gray-500 text-white text-[11px] font-medium"><span className="text-base">✓</span>Lida</button>
           : <button type="button" onClick={() => { onNaoLida(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-blue-500 text-white text-[11px] font-medium"><span className="text-base">🔵</span>Não lida</button>}
-        {podeResponder && <button type="button" onClick={() => { onTransferir(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-indigo-500 text-white text-[11px] font-medium"><span className="text-base">↪</span>Transferir</button>}
+        {podeResponder && <button type="button" onClick={() => { onTransferir(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-indigo-500 text-white text-[11px] font-medium"><span className="text-base">{temDono ? "↪" : "🙋"}</span>{temDono ? "Transferir" : "Atribuir"}</button>}
       </div>
       {/* Linha (frente) — arrasta pra revelar */}
       <button type="button"
@@ -1333,15 +1341,17 @@ function ClientePicker({ clientes, onChange }: { clientes: Cliente[]; onChange: 
 }
 
 // Transferir conversa pra outro atendente (só quem pode usar o número) + nota.
-function TransferModal({ pessoas, atualId, meId, onClose, onTransferir }: { pessoas: Pessoa[]; atualId: string | null; meId: string | null; onClose: () => void; onTransferir: (p: Pessoa, nota: string) => Promise<void> }) {
+function TransferModal({ pessoas, atualId, meId, modo = "transferir", onClose, onTransferir }: { pessoas: Pessoa[]; atualId: string | null; meId: string | null; modo?: "atribuir" | "transferir"; onClose: () => void; onTransferir: (p: Pessoa, nota: string) => Promise<void> }) {
   const [busca, setBusca] = useState("");
   const [nota, setNota] = useState("");
   const [sel, setSel] = useState<Pessoa | null>(null);
-  const lista = useMemo(() => { const q = busca.trim().toLowerCase(); return [...pessoas].sort((a, b) => a.nome.localeCompare(b.nome)).filter(p => p.id !== meId && (!q || p.nome.toLowerCase().includes(q))); }, [pessoas, busca, meId]);
+  const atribuir = modo === "atribuir";
+  const verbo = atribuir ? "Atribuir" : "Transferir";
+  const lista = useMemo(() => { const q = busca.trim().toLowerCase(); return [...pessoas].sort((a, b) => a.nome.localeCompare(b.nome)).filter(p => (atribuir || p.id !== meId) && (!q || p.nome.toLowerCase().includes(q))); }, [pessoas, busca, meId, atribuir]);
   return (
-    <Modal onClose={onClose} title="↪ Transferir conversa" maxWidth="max-w-md">
+    <Modal onClose={onClose} title={`${atribuir ? "🙋" : "↪"} ${verbo} conversa`} maxWidth="max-w-md">
       <div className="space-y-3">
-        {atualId && <p className="text-[11px] text-gray-400">Atualmente com quem você escolher assume a conversa.</p>}
+        <p className="text-[11px] text-gray-400">{atribuir ? "Escolha o atendente responsável por esta conversa." : "Quem você escolher assume a conversa."}</p>
         <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar atendente…" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
         <div className="max-h-52 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
           {lista.length === 0 && <div className="px-3 py-3 text-sm text-gray-400">Nenhum atendente disponível pra este número.</div>}
@@ -1351,10 +1361,10 @@ function TransferModal({ pessoas, atualId, meId, onClose, onTransferir }: { pess
             </button>
           ))}
         </div>
-        <textarea value={nota} onChange={e => setNota(e.target.value)} rows={2} placeholder="Nota do repasse (opcional): contexto pro próximo atendente…" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+        <textarea value={nota} onChange={e => setNota(e.target.value)} rows={2} placeholder={atribuir ? "Nota (opcional): contexto pro atendente…" : "Nota do repasse (opcional): contexto pro próximo atendente…"} className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
         <div className="flex gap-2 justify-end">
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => sel && void onTransferir(sel, nota.trim())} disabled={!sel}>Transferir{sel ? ` para ${sel.nome.split(" ")[0]}` : ""}</Button>
+          <Button onClick={() => sel && void onTransferir(sel, nota.trim())} disabled={!sel}>{verbo}{sel ? ` ${atribuir ? "a" : "para"} ${sel.nome.split(" ")[0]}` : ""}</Button>
         </div>
       </div>
     </Modal>
