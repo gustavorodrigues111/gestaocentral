@@ -1383,14 +1383,18 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
   return (
     <div style={{ maxWidth: 720, margin: "0 auto" }}>
       {temEn && (
-        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginBottom: 14 }}>
-          {(["pt", "en"] as const).map((l) => (
-            <button key={l} type="button" onClick={() => setIdioma(l)}
-              style={{ fontSize: txCorpo(11.5), fontWeight: 600, padding: "4px 11px", borderRadius: 999, cursor: "pointer",
-                border: `1px solid ${corPrimaria}`, background: idioma === l ? corPrimaria : "transparent", color: idioma === l ? "#fff" : corPrimaria }}>
-              {l === "pt" ? "PT" : "EN"}
-            </button>
-          ))}
+        <div style={{ display: "flex", justifyContent: "center", gap: 14, marginBottom: 18 }}>
+          {(["pt", "en"] as const).map((l) => {
+            const ativo = idioma === l;
+            return (
+              <button key={l} type="button" onClick={() => setIdioma(l)}
+                style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 3, padding: "6px 12px", borderRadius: 12, cursor: "pointer",
+                  border: `1px solid ${ativo ? corPrimaria : "transparent"}`, background: ativo ? `${corPrimaria}14` : "transparent", opacity: ativo ? 1 : 0.6 }}>
+                <span style={{ fontSize: txCorpo(24), lineHeight: 1 }}>{l === "pt" ? "🇧🇷" : "🇬🇧"}</span>
+                <span style={{ fontSize: txCorpo(10.5), fontWeight: 700, letterSpacing: 1, textTransform: "uppercase", color: corPrimaria }}>{l}</span>
+              </button>
+            );
+          })}
         </div>
       )}
       {cardapios.length > 1 && (
