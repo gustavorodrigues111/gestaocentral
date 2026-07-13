@@ -1358,22 +1358,37 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
   // qualquer grupo entram como chips soltos no fim. Sem config = 1 chip por seção.
   type Aba = { id: string; titulo: string; secoes: typeof secoes };
   const grupos = menuAtual.gruposSite || [];
-  let abas: Aba[];
-  if (grupos.length) {
-    const usadas = new Set<string>();
-    abas = grupos.map((g) => {
-      const ss = (g.secaoIds || []).map((sid) => secoes.find((s) => s.id === sid)).filter(Boolean) as typeof secoes;
-      ss.forEach((s) => usadas.add(s.id));
-      return { id: g.id, titulo: g.titulo || (ss[0] ? nomeSec(ss[0]) : ""), secoes: ss };
-    }).filter((a) => a.secoes.length);
-    for (const s of secoes.filter((x) => !usadas.has(x.id))) abas.push({ id: s.id, titulo: nomeSec(s), secoes: [s] });
-  } else {
-    abas = secoes.map((s) => ({ id: s.id, titulo: nomeSec(s), secoes: [s] }));
+  // Percorre as seções NA ORDEM: seção agrupada emite o grupo (uma vez, na
+  // posição da 1ª seção dele); seção solta vira chip próprio. Assim a ordem dos
+  // chips segue a ordem das seções (reordenável no editor), mesmo com grupos.
+  const abas: Aba[] = [];
+  const grupoFeito = new Set<string>();
+  for (const s of secoes) {
+    const g = grupos.find((x) => (x.secaoIds || []).includes(s.id));
+    if (g) {
+      if (grupoFeito.has(g.id)) continue;
+      grupoFeito.add(g.id);
+      const ss = secoes.filter((x) => (g.secaoIds || []).includes(x.id));
+      abas.push({ id: g.id, titulo: g.titulo || nomeSec(ss[0]!), secoes: ss });
+    } else {
+      abas.push({ id: s.id, titulo: nomeSec(s), secoes: [s] });
+    }
   }
   const abaAtual = abas.find((a) => a.id === secaoSel) || abas[0];
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto" }}>
+      {temEn && (
+        <div style={{ display: "flex", justifyContent: "flex-end", gap: 6, marginBottom: 14 }}>
+          {(["pt", "en"] as const).map((l) => (
+            <button key={l} type="button" onClick={() => setIdioma(l)}
+              style={{ fontSize: txCorpo(11.5), fontWeight: 600, padding: "4px 11px", borderRadius: 999, cursor: "pointer",
+                border: `1px solid ${corPrimaria}`, background: idioma === l ? corPrimaria : "transparent", color: idioma === l ? "#fff" : corPrimaria }}>
+              {l === "pt" ? "PT" : "EN"}
+            </button>
+          ))}
+        </div>
+      )}
       {cardapios.length > 1 && (
         <div style={{ display: "flex", justifyContent: "center", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
           {cardapios.map((c) => {
@@ -1389,19 +1404,8 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
         </div>
       )}
       {!secoes.length && <div style={{ textAlign: "center", opacity: 0.5, fontSize: txCorpo(14), padding: "16px 0" }}>Cardápio em breve.</div>}
-      {temEn && (
-        <div style={{ display: "flex", justifyContent: "center", gap: 8, marginBottom: 18 }}>
-          {(["pt", "en"] as const).map((l) => (
-            <button key={l} type="button" onClick={() => setIdioma(l)}
-              style={{ fontSize: txCorpo(12), fontWeight: 600, padding: "5px 14px", borderRadius: 999, cursor: "pointer",
-                border: `1px solid ${corPrimaria}`, background: idioma === l ? corPrimaria : "transparent", color: idioma === l ? "#fff" : corPrimaria }}>
-              {l === "pt" ? "Português" : "English"}
-            </button>
-          ))}
-        </div>
-      )}
       {abas.length > 1 && (
-        <div style={{ display: "flex", flexWrap: "nowrap", gap: 8, marginBottom: 22, overflowX: "auto", paddingBottom: 6, WebkitOverflowScrolling: "touch", justifyContent: "flex-start", scrollbarWidth: "none" }}>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 22, justifyContent: "center" }}>
           {abas.map((a) => {
             const ativo = a.id === abaAtual!.id;
             return (
