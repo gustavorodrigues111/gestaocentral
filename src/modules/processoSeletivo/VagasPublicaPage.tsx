@@ -165,7 +165,8 @@ export function VagaCandidaturaPage() {
         vagaId: vagaId || null, vagaTitulo: vaga?.titulo || null,
         respostas: Object.keys(respLabels).length ? respLabels : undefined,
         observacoes: observacoes.trim() || undefined, curriculoUrl,
-        responsavelId: vaga?.responsavelId || undefined, responsavelNome: vaga?.responsavelNome || undefined,
+        responsavelIds: vaga?.responsavelIds?.length ? vaga.responsavelIds : (vaga?.responsavelId ? [vaga.responsavelId] : undefined),
+        responsavelId: (vaga?.responsavelIds?.[0]) || vaga?.responsavelId || undefined, responsavelNome: (vaga?.responsavelNomes?.[0]) || vaga?.responsavelNome || undefined,
         nome: nome.trim(), whatsapp: d, email: email.trim(), areaInteresse: vaga?.area || vaga?.titulo || "",
         origem: "publico", createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       };

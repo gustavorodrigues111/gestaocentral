@@ -514,7 +514,7 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
 
 // ── Componentes auxiliares ──────────────────────────────────────────────────
 
-function DiasTabela({
+export function DiasTabela({
   days, onPatch, onCopiar, onLimpar,
   unidadesAtivas, mostraUnidade, unidadePadraoId,
 }: {

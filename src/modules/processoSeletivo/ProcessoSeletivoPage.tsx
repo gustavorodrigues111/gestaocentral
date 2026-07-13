@@ -12,7 +12,9 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { IniciarAdmissaoModal } from "../admissao/IniciarAdmissaoModal";
 import { iniciarAdmissao, getPrazoDias, getDocumentosAdmissao, getSchemaAdmissao } from "../../core/admissao/admissaoHelpers";
-import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, PerguntaVaga, Pessoa, Cargo, WorkSchedule } from "../../core/types";
+import { DiasTabela } from "../pessoas/HorariosTab";
+import { emptyDays, validateWorkScheduleDays } from "../../core/escala/horarios";
+import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, PerguntaVaga, Pessoa, Cargo, WorkSchedule, HorarioDia } from "../../core/types";
 
 type EmpMin = { id: string; nome: string; workSchedules?: WorkSchedule[] };
 
@@ -105,7 +107,7 @@ export function ProcessoSeletivoPage() {
   }
   async function transferir(c: CandidaturaTrabalhe, p: Pessoa) {
     const hist = [...(((c as unknown as { historico?: unknown[] }).historico) || []), { tipo: "transferencia", para: p.id, paraNome: p.nome, por: pessoa?.nome || "—", em: new Date().toISOString() }];
-    await updateDoc(doc(db, "candidaturasTrabalhe", c.id), { responsavelId: p.id, responsavelNome: p.nome, historico: hist, updatedAt: new Date().toISOString() }).catch(() => {});
+    await updateDoc(doc(db, "candidaturasTrabalhe", c.id), { responsavelId: p.id, responsavelNome: p.nome, responsavelIds: [p.id], historico: hist, updatedAt: new Date().toISOString() }).catch(() => {});
   }
   async function rejeitar(c: CandidaturaTrabalhe, motivo: string) {
     await mover(c.id, "rejeitado", { motivoRejeicao: motivo || null, rejeitadaEm: new Date().toISOString() });
@@ -288,7 +290,7 @@ function VagasAdmin({ vagas, rid, podeVagas, onNova, onEditar, onExcluir }: {
                 <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${v.status === "aberta" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : v.status === "pausada" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800"}`}>{v.status}</span>
                 {v.publica && <span className="text-[10px] text-gray-400">pública</span>}
               </div>
-              <div className="text-[11px] text-gray-500 mt-0.5">{v.area || "—"}{v.responsavelNome ? ` · 🙋 ${v.responsavelNome}` : ""}{v.perguntas?.length ? ` · ${v.perguntas.length} pergunta(s)` : ""}</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">{v.area || "—"}{(v.responsavelNomes?.length ? v.responsavelNomes : (v.responsavelNome ? [v.responsavelNome] : [])).length ? ` · 🙋 ${(v.responsavelNomes?.length ? v.responsavelNomes : [v.responsavelNome]).join(", ")}` : ""}{v.perguntas?.length ? ` · ${v.perguntas.length} pergunta(s)` : ""}</div>
             </div>
             {podeVagas && <div className="flex gap-1.5 shrink-0">
               <button type="button" onClick={() => onEditar(v)} className="text-xs px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Editar</button>
@@ -321,9 +323,15 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
   const [descricao, setDescricao] = useState(vaga?.descricao || "");
   const [requisitos, setRequisitos] = useState(vaga?.requisitos || "");
   const [status, setStatus] = useState<Vaga["status"]>(vaga?.status || "aberta");
-  const [responsavelId, setResponsavelId] = useState(vaga?.responsavelId || "");
+  const [responsavelIds, setResponsavelIds] = useState<string[]>(vaga?.responsavelIds || (vaga?.responsavelId ? [vaga.responsavelId] : []));
+  const [buscaResp, setBuscaResp] = useState("");
   const [cargoId, setCargoId] = useState(vaga?.cargoId || "");
+  const [horarioModo, setHorarioModo] = useState<"nenhum" | "copiar" | "novo">(vaga?.horarioModeloEmpregadoId ? "copiar" : (vaga?.horarioModelo?.length ? "novo" : "nenhum"));
   const [horarioEmpId, setHorarioEmpId] = useState(vaga?.horarioModeloEmpregadoId || "");
+  const [dias, setDias] = useState<{ [k: number]: HorarioDia }>(() => {
+    const base = vaga?.horarioModelo?.[0];
+    return base && base.type === "single" && base.days ? (base.days as { [k: number]: HorarioDia }) : emptyDays();
+  });
   const [publica, setPublica] = useState(vaga?.publica !== false);
   const [curriculoObrigatorio, setCurriculoObrigatorio] = useState(!!vaga?.curriculoObrigatorio);
   const [perguntas, setPerguntas] = useState<PerguntaVaga[]>(vaga?.perguntas || []);
@@ -331,6 +339,11 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
   const cargosAtivos = cargos.filter((c) => (c as { ativo?: boolean }).ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome));
   const empModelo = empregados.find((e) => e.id === horarioEmpId);
   const nWs = empModelo?.workSchedules?.length || 0;
+  const selecionadosResp = responsavelIds.map((id) => pessoas.find((p) => p.id === id)).filter(Boolean) as Pessoa[];
+  const disponiveisResp = pessoas.filter((p) => !responsavelIds.includes(p.id) && (!buscaResp.trim() || p.nome.toLowerCase().includes(buscaResp.trim().toLowerCase()))).slice(0, 20);
+  const validNovo = validateWorkScheduleDays(dias, 0, 44 * 60);
+  const errosClt = horarioModo === "novo" ? validNovo.errors : [];
+  const emptyDia = () => emptyDays()[0];
 
   const addPerg = () => setPerguntas((p) => [...p, { id: "p" + Math.random().toString(36).slice(2, 7), label: "", tipo: "texto", obrigatoria: false }]);
   const setPerg = (i: number, patch: Partial<PerguntaVaga>) => setPerguntas((p) => p.map((x, j) => j === i ? { ...x, ...patch } : x));
@@ -338,16 +351,25 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
 
   function salvar() {
     if (!titulo.trim()) { alert("Informe o título da vaga."); return; }
-    const resp = pessoas.find((p) => p.id === responsavelId);
     const cargo = cargos.find((c) => c.id === cargoId);
-    const emp = empregados.find((e) => e.id === horarioEmpId);
+    const nomesResp = selecionadosResp.map((p) => p.nome);
+    // Horário-modelo: copiar de empregado OU criar novo (com validação CLT).
+    let horarioModeloEmpregadoId: string | null = null, horarioModeloNome: string | null = null, horarioModelo: WorkSchedule[] | undefined;
+    if (horarioModo === "copiar" && horarioEmpId) {
+      const emp = empregados.find((e) => e.id === horarioEmpId);
+      horarioModeloEmpregadoId = horarioEmpId; horarioModeloNome = emp?.nome || null;
+      horarioModelo = emp?.workSchedules && emp.workSchedules.length ? emp.workSchedules : undefined;
+    } else if (horarioModo === "novo") {
+      if (validNovo.errors.length > 0) { alert("Resolva as violações trabalhistas (CLT) antes de salvar o horário."); return; }
+      horarioModelo = [{ validFrom: new Date().toISOString().slice(0, 10), type: "single", totalContract: validNovo.totalContract, days: dias, sundayCycle: null, registradoEm: new Date().toISOString(), registradoPor: pessoaId }];
+    }
     const v: Vaga = {
       id: vaga?.id || `vaga_${rid}_${slugify(titulo)}_${Math.random().toString(36).slice(2, 5)}`,
       restaurantId: rid, titulo: titulo.trim(), area: area.trim() || undefined, descricao: descricao.trim() || undefined,
-      requisitos: requisitos.trim() || undefined, status, curriculoObrigatorio, responsavelId: responsavelId || null, responsavelNome: resp?.nome || null,
+      requisitos: requisitos.trim() || undefined, status, curriculoObrigatorio,
+      responsavelIds, responsavelNomes: nomesResp, responsavelId: responsavelIds[0] || null, responsavelNome: nomesResp[0] || null,
       cargoId: cargoId || null, cargoNome: cargo?.nome || null,
-      horarioModeloEmpregadoId: horarioEmpId || null, horarioModeloNome: emp?.nome || null,
-      horarioModelo: emp?.workSchedules && emp.workSchedules.length ? emp.workSchedules : undefined,
+      horarioModeloEmpregadoId, horarioModeloNome, horarioModelo,
       perguntas: perguntas.filter((p) => p.label.trim()).map((p) => ({ ...p, label: p.label.trim() })),
       publica, slug: vaga?.slug || slugify(titulo), criadoEm: vaga?.criadoEm || new Date().toISOString(), criadoPor: vaga?.criadoPor || pessoaId, atualizadoEm: new Date().toISOString(),
     };
@@ -365,23 +387,41 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
         <div className="p-4 space-y-3">
           <Secao titulo="A vaga">
             <div><label className={lbl}>Título *</label><input value={titulo} onChange={(e) => setTitulo(e.target.value)} className={inp} placeholder="Ex.: Bartender" /></div>
-            <div className="grid grid-cols-2 gap-2">
-              <div><label className={lbl}>Área</label><input value={area} onChange={(e) => setArea(e.target.value)} className={inp} placeholder="Salão, Cozinha, Bar…" /></div>
-              <div><label className={lbl}>Status</label>
-                <select value={status} onChange={(e) => setStatus(e.target.value as Vaga["status"])} className={inp}>
-                  <option value="aberta">Aberta</option><option value="pausada">Pausada</option><option value="encerrada">Encerrada</option>
-                </select></div>
+            <div><label className={lbl}>Área</label><input value={area} onChange={(e) => setArea(e.target.value)} className={inp} placeholder="Salão, Cozinha, Bar…" /></div>
+            <div><label className={lbl}>Status</label>
+              <div className="flex p-0.5 rounded-lg bg-gray-100 dark:bg-gray-800/60">
+                {([["aberta", "🟢 Aberta"], ["pausada", "⏸ Pausada"], ["encerrada", "⛔ Encerrada"]] as const).map(([v, l]) => (
+                  <button key={v} type="button" onClick={() => setStatus(v)}
+                    className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-colors ${status === v ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}>{l}</button>
+                ))}
+              </div>
             </div>
             <div><label className={lbl}>Descrição</label><textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={3} className={ta} placeholder="O que a pessoa vai fazer, cultura, benefícios…" /></div>
             <div><label className={lbl}>Requisitos</label><textarea value={requisitos} onChange={(e) => setRequisitos(e.target.value)} rows={3} className={ta} placeholder="Experiência, disponibilidade, etc." /></div>
           </Secao>
 
           <Secao titulo="Responsável & visibilidade">
-            <div><label className={lbl}>Responsável (recebe as candidaturas)</label>
-              <select value={responsavelId} onChange={(e) => setResponsavelId(e.target.value)} className={inp}>
-                <option value="">— ninguém (fica com quem tem permissão) —</option>
-                {pessoas.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
-              </select></div>
+            <div>
+              <label className={lbl}>Responsáveis (recebem as candidaturas) — pode ser mais de um</label>
+              <div className="flex flex-wrap gap-1.5 mb-1.5">
+                {selecionadosResp.length === 0 && <span className="text-[11px] text-gray-400">Ninguém ainda — fica com quem tem permissão.</span>}
+                {selecionadosResp.map((p) => (
+                  <span key={p.id} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    {p.nome}
+                    <button type="button" onClick={() => setResponsavelIds((ids) => ids.filter((x) => x !== p.id))} className="opacity-70 hover:opacity-100">✕</button>
+                  </span>
+                ))}
+              </div>
+              <input value={buscaResp} onChange={(e) => setBuscaResp(e.target.value)} className={inp} placeholder="Digite o nome pra adicionar…" />
+              {buscaResp.trim() && (
+                <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+                  {disponiveisResp.length === 0 && <div className="px-3 py-2 text-sm text-gray-400">Ninguém encontrado.</div>}
+                  {disponiveisResp.map((p) => (
+                    <button key={p.id} type="button" onClick={() => { setResponsavelIds((ids) => [...ids, p.id]); setBuscaResp(""); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40 text-gray-800 dark:text-gray-200">{p.nome}</button>
+                  ))}
+                </div>
+              )}
+            </div>
             <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input type="checkbox" checked={publica} onChange={(e) => setPublica(e.target.checked)} /> Aparecer na página pública de vagas</label>
             <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200"><input type="checkbox" checked={curriculoObrigatorio} onChange={(e) => setCurriculoObrigatorio(e.target.checked)} /> Currículo (anexo) é obrigatório na candidatura</label>
           </Secao>
@@ -392,12 +432,37 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, pessoaId, onSalvar
                 <option value="">— nenhum —</option>
                 {cargosAtivos.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
               </select></div>
-            <div><label className={lbl}>Horário: copiar de um empregado</label>
-              <select value={horarioEmpId} onChange={(e) => setHorarioEmpId(e.target.value)} className={inp}>
-                <option value="">— nenhum —</option>
-                {empregados.map((e) => <option key={e.id} value={e.id}>{e.nome}{e.workSchedules?.length ? "" : " (sem horário)"}</option>)}
-              </select>
-              {horarioEmpId && <p className="text-[11px] text-gray-400 mt-1">{nWs > 0 ? `Copia o horário atual de ${empModelo?.nome} (${nWs} vigência${nWs > 1 ? "s" : ""}) como modelo pra admissão.` : `${empModelo?.nome} não tem horário cadastrado.`}</p>}
+            <div>
+              <label className={lbl}>Horário-modelo (pra admissão)</label>
+              <div className="flex p-0.5 rounded-lg bg-gray-100 dark:bg-gray-800/60 mb-2">
+                {([["nenhum", "Nenhum"], ["copiar", "Copiar de alguém"], ["novo", "Criar novo"]] as const).map(([v, l]) => (
+                  <button key={v} type="button" onClick={() => setHorarioModo(v)}
+                    className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-colors ${horarioModo === v ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}>{l}</button>
+                ))}
+              </div>
+              {horarioModo === "copiar" && (
+                <>
+                  <select value={horarioEmpId} onChange={(e) => setHorarioEmpId(e.target.value)} className={inp}>
+                    <option value="">— escolher empregado —</option>
+                    {empregados.map((e) => <option key={e.id} value={e.id}>{e.nome}{e.workSchedules?.length ? "" : " (sem horário)"}</option>)}
+                  </select>
+                  {horarioEmpId && <p className="text-[11px] text-gray-400 mt-1">{nWs > 0 ? `Copia o horário atual de ${empModelo?.nome} (${nWs} vigência${nWs > 1 ? "s" : ""}).` : `${empModelo?.nome} não tem horário cadastrado.`}</p>}
+                </>
+              )}
+              {horarioModo === "novo" && (
+                <div className="space-y-2">
+                  <div className="overflow-x-auto -mx-1 px-1">
+                    <DiasTabela days={dias}
+                      onPatch={(idx, patch) => setDias((d) => ({ ...d, [idx]: { ...d[idx], ...patch } }))}
+                      onCopiar={(fonte, destino) => setDias((d) => ({ ...d, [destino]: { ...d[fonte] } }))}
+                      onLimpar={(idx) => setDias((d) => ({ ...d, [idx]: emptyDia() }))}
+                      unidadesAtivas={[]} mostraUnidade={false} unidadePadraoId="" />
+                  </div>
+                  {errosClt.length > 0
+                    ? <div className="text-[11px] text-rose-600 dark:text-rose-400">⚠ {errosClt.length} violação(ões) CLT — corrija pra salvar: {errosClt.slice(0, 3).map((e) => e.mensagem).join("; ")}</div>
+                    : <div className="text-[11px] text-emerald-600 dark:text-emerald-400">✓ Horário dentro das regras trabalhistas ({Math.round(validNovo.totalContract / 60 * 10) / 10}h/sem).</div>}
+                </div>
+              )}
             </div>
           </Secao>
 

@@ -3965,8 +3965,10 @@ export type Vaga = {
   status: "aberta" | "pausada" | "encerrada";
   curriculoObrigatorio?: boolean;  // exige anexo de currículo na candidatura pública
   restauranteNome?: string | null; // nome do restaurante (pro título da página pública)
-  responsavelId?: string | null;   // recebe as candidaturas desta vaga
+  responsavelId?: string | null;   // (legado) 1º responsável — mantido pra retrocompat
   responsavelNome?: string | null;
+  responsavelIds?: string[];       // responsáveis que recebem as candidaturas (podem ser vários)
+  responsavelNomes?: string[];
   cargoId?: string | null;         // cargo interno vinculado (pré-preenche a admissão)
   cargoNome?: string | null;
   horarioModeloEmpregadoId?: string | null;  // empregado de referência do horário
@@ -4002,6 +4004,7 @@ export type CandidaturaTrabalhe = {
   // Atribuição
   responsavelId?: string;
   responsavelNome?: string;
+  responsavelIds?: string[];         // responsáveis da vaga (todos recebem o aviso desta candidatura)
   observacoesInternas?: string;
   // Auditoria
   origem: "publico" | "manual";

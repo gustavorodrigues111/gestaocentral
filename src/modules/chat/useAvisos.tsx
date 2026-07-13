@@ -695,8 +695,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     // (se tem responsável, só cai pra ele; sem responsável, cai pra quem tem
     // a permissão de receber candidaturas na empresa).
     for (const c of Object.values(candidaturasNovas).flat()) {
-      const resp = (c as { responsavelId?: string }).responsavelId;
-      if (resp && resp !== pid) continue;
+      const resps = ((c as { responsavelIds?: string[] }).responsavelIds) || ((c as { responsavelId?: string }).responsavelId ? [(c as { responsavelId?: string }).responsavelId as string] : []);
+      if (resps.length > 0 && !resps.includes(pid)) continue;
       const nome = String((c as { nome?: string }).nome || "Candidato");
       const area = String((c as { areaInteresse?: string }).areaInteresse || "");
       out.push({
