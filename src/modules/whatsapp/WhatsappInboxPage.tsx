@@ -536,7 +536,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
           {/* Filtro por atribuição */}
           {numerosVisiveis.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-2">
+            <div className="flex flex-nowrap gap-1.5 mb-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
               <FiltroChip ativo={filtroAtrib === "pendentes"} onClick={() => setFiltroAtrib("pendentes")}>⏳ Pendentes{contPend ? ` (${contPend})` : ""}</FiltroChip>
               <FiltroChip ativo={filtroAtrib === "minhas"} onClick={() => setFiltroAtrib("minhas")}>🙋 Minhas{contMinhas ? ` (${contMinhas})` : ""}</FiltroChip>
               <FiltroChip ativo={filtroAtrib === "todas"} onClick={() => setFiltroAtrib("todas")}>Todas</FiltroChip>
@@ -1363,7 +1363,7 @@ function TransferModal({ pessoas, atualId, meId, onClose, onTransferir }: { pess
 
 function FiltroChip({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button type="button" onClick={onClick} className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${ativo ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>{children}</button>
+    <button type="button" onClick={onClick} className={`shrink-0 whitespace-nowrap text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${ativo ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>{children}</button>
   );
 }
 
