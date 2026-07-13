@@ -146,9 +146,25 @@ async function processar(body: EvoBody): Promise<void> {
     // replay de histórico ao reconectar).
     const agoraS = Date.now() / 1000;
     if (!fromMe && tsNum && agoraS - tsNum < 300) {
+      // Cliente escreveu numa conversa finalizada → reabre e volta pra pendentes
+      // (limpa finalizado + responsável). Roda ANTES da automação, que então
+      // re-atribui pelo atendente padrão / triagem normalmente.
+      try { await reabrirSeFinalizada(waId); } catch (e) { console.log("[evo-webhook] reabrir:", (e as Error)?.message); }
       try { await automacao(numeroId, waId, texto); } catch (e) { console.log("[evo-webhook] automacao:", (e as Error)?.message); }
     }
   }
+}
+
+// Reabre atendimento finalizado quando o cliente volta a escrever: limpa
+// finalizadoEm + o responsável, devolvendo a conversa pra fila de pendentes.
+async function reabrirSeFinalizada(waIdCru: string): Promise<void> {
+  const ck = chaveBR(waIdCru);
+  const contato = await firestoreLer("whatsappContatos", ck);
+  if (!contato?.finalizadoEm) return;
+  await firestoreAtualizar("whatsappContatos", ck, {
+    finalizadoEm: null, finalizadoPor: null, atribuidoA: null, atribuidoNome: null,
+    roteamentoEstado: null, atualizadoEm: new Date().toISOString(),
+  });
 }
 
 // ── Automação: atendente padrão do contato + menu de triagem por área ──────────

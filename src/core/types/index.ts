@@ -5949,6 +5949,10 @@ export type WhatsappContato = {
   naoLidaManual?: boolean;        // marcada como não-lida manualmente (força o destaque)
   atendentePadrao?: string | null;    // pessoaId que assume automaticamente as pendentes deste contato
   atendentePadraoNome?: string | null;
+  // Atendimento finalizado: sai das listas ativas e vai pra "Finalizados".
+  // Reabre (volta pra pendentes) quando o cliente manda nova mensagem.
+  finalizadoEm?: string | null;
+  finalizadoPor?: string | null;      // pessoaId de quem finalizou
   roteamentoEstado?: "menu_enviado" | "roteado" | null;  // estado do menu automático (bot)
   tagIds?: string[];
   atualizadoEm?: string;

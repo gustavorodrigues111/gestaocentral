@@ -65,7 +65,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const enviandoRef = useRef(false);   // trava síncrona contra duplo-envio (state é async)
   const [emojiAberto, setEmojiAberto] = useState(false);
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
-  const [filtroAtrib, setFiltroAtrib] = useState<"minhas" | "pendentes" | "todas" | "outros">("pendentes");
+  const [filtroAtrib, setFiltroAtrib] = useState<"minhas" | "pendentes" | "todas" | "outros" | "finalizados">("pendentes");
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const msgsEndRef = useRef<HTMLDivElement | null>(null);
   const painelRef = useRef<HTMLDivElement | null>(null);
@@ -273,14 +273,19 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
   // Dono (responsável) de uma conversa, pela chave normalizada.
   const donoDe = (waId: string): string | null => contatos[foneKey(waId)]?.atribuidoA || null;
-  // Contadores por atribuição (pra chips).
-  const contMinhas = useMemo(() => conversas.filter(c => donoDe(c.waId) === me?.id).length, [conversas, contatos, me?.id]);
-  const contPend = useMemo(() => conversas.filter(c => !donoDe(c.waId)).length, [conversas, contatos]);
-  const contOutros = useMemo(() => conversas.filter(c => { const d = donoDe(c.waId); return d && d !== me?.id; }).length, [conversas, contatos, me?.id]);
+  const finalizadaDe = (waId: string): boolean => !!contatos[foneKey(waId)]?.finalizadoEm;
+  // Contadores por atribuição (pra chips). Finalizadas ficam fora das listas ativas.
+  const contMinhas = useMemo(() => conversas.filter(c => donoDe(c.waId) === me?.id && !finalizadaDe(c.waId)).length, [conversas, contatos, me?.id]);
+  const contPend = useMemo(() => conversas.filter(c => !donoDe(c.waId) && !finalizadaDe(c.waId)).length, [conversas, contatos]);
+  const contOutros = useMemo(() => conversas.filter(c => { const d = donoDe(c.waId); return d && d !== me?.id && !finalizadaDe(c.waId); }).length, [conversas, contatos, me?.id]);
+  const contFinalizadas = useMemo(() => conversas.filter(c => finalizadaDe(c.waId)).length, [conversas, contatos]);
 
   // Filtro por atribuição + tag (o número já é da empresa; não filtra por empresa aqui).
   const conversasFiltradas = useMemo(() => conversas.filter(c => {
     if (filtroTag) { if (!(contatos[foneKey(c.waId)]?.tagIds || []).includes(filtroTag)) return false; }
+    const finalizada = finalizadaDe(c.waId);
+    if (filtroAtrib === "finalizados") return finalizada;   // aba Finalizados só mostra finalizadas
+    if (finalizada) return false;                           // finalizadas somem das listas ativas
     const dono = donoDe(c.waId);
     if (filtroAtrib === "minhas" && dono !== me?.id) return false;
     if (filtroAtrib === "pendentes" && dono) return false;
@@ -479,6 +484,24 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       texto: `↩️ ${me?.nome || "—"} liberou a conversa (voltou pra pendentes)`, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), autorNome: me?.nome || null,
     }));
   }
+  // Finaliza o atendimento: sai das listas ativas → "Finalizados". Reabre
+  // automático (volta pra pendentes) quando o cliente mandar nova mensagem.
+  async function finalizarConversa(waId: string) {
+    await salvarContato(waId, { finalizadoEm: new Date().toISOString(), finalizadoPor: me?.id || null });
+    await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({
+      waId, numeroId: numeroSel, direcao: "out", tipo: "sistema", sistema: true, lido: true,
+      texto: `✅ ${me?.nome || "—"} finalizou o atendimento`, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), autorNome: me?.nome || null,
+    }));
+  }
+  // Reabertura manual (pelo atendente) — mantém o responsável. A reabertura por
+  // mensagem do cliente acontece no webhook e devolve pra pendentes.
+  async function reabrirConversa(waId: string) {
+    await salvarContato(waId, { finalizadoEm: null, finalizadoPor: null });
+    await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({
+      waId, numeroId: numeroSel, direcao: "out", tipo: "sistema", sistema: true, lido: true,
+      texto: `🔄 ${me?.nome || "—"} reabriu o atendimento`, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), autorNome: me?.nome || null,
+    }));
+  }
 
   const abaEfetiva = embutido ? "conversas" : tab;
   return (
@@ -546,6 +569,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 ["pendentes", "Pendentes", contPend],
                 ["minhas", "Minhas", contMinhas],
                 ["todas", "Todas", 0],
+                ["finalizados", "Finalizados", contFinalizadas],
                 ...(isMaster ? [["outros", "Outros", contOutros] as const] : []),
               ] as const).map(([v, label, cont]) => (
                 <button key={v} type="button" onClick={() => setFiltroAtrib(v)}
@@ -633,6 +657,19 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
           {(() => {
             const dono = contatoSel?.atribuidoA || null;
             const minha = dono === me?.id;
+            const finalizada = !!contatoSel?.finalizadoEm;
+            if (finalizada) {
+              return (
+                <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 text-xs shrink-0 bg-gray-100 dark:bg-gray-800/60">
+                  <span className="truncate text-gray-600 dark:text-gray-300">✅ Atendimento finalizado <span className="text-gray-400">· reabre quando o cliente escrever</span></span>
+                  {podeResponder && (
+                    <div className="ml-auto shrink-0">
+                      <button type="button" onClick={() => void reabrirConversa(sel)} className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">🔄 Reabrir</button>
+                    </div>
+                  )}
+                </div>
+              );
+            }
             return (
               <div className={`flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 text-xs shrink-0 ${!dono ? "bg-amber-50 dark:bg-amber-900/20" : minha ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-gray-50 dark:bg-gray-800/40"}`}>
                 <span className="truncate">
@@ -651,6 +688,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                           <button type="button" onClick={() => void assumirConversa(sel)} className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-medium">Assumir</button>
                           <button type="button" onClick={() => { setTransferWaId(null); setTransferir(true); }} className="px-2.5 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300">{dono ? "↪ Transferir" : "🙋 Atribuir"}</button>
                         </>}
+                    <button type="button" onClick={() => void finalizarConversa(sel)} className="px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300">✅ Finalizar</button>
                   </div>
                 )}
               </div>
