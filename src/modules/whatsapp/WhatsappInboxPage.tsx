@@ -509,7 +509,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         <>
         {/* Voltar — fora da conversa, pra ficar claro que retorna à lista */}
         <button type="button" onClick={() => setSel(null)} className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-gray-100">← Voltar às conversas</button>
-        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col h-[72vh]">
+        <div className="-mx-4 border-y border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col h-[76vh]">
           {/* Header da conversa: nome completo → vínculo → botões */}
           <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800">
             <div className="text-base font-semibold text-gray-900 dark:text-gray-100 break-words">{nomeSel}</div>
@@ -648,14 +648,14 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 </div>
               ) : (
                 <div className="flex items-end gap-1.5">
-                  <button type="button" onClick={() => { setAnexoMenu(v => !v); setEmojiAberto(false); }} disabled={enviandoMidia} className="shrink-0 w-9 h-9 rounded-full text-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center" title="Anexar">{enviandoMidia ? "⏳" : "＋"}</button>
-                  <div className="flex-1 flex items-end gap-1 rounded-3xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-0.5">
-                    <button type="button" onClick={() => { setEmojiAberto(v => !v); setAnexoMenu(false); }} className="shrink-0 w-8 h-9 text-xl text-gray-500 hover:text-gray-700 flex items-center justify-center" title="Emojis">😊</button>
-                    <textarea ref={taRef} value={resposta} onChange={e => setResposta(e.target.value)} onFocus={() => { setEmojiAberto(false); setAnexoMenu(false); }} rows={1} placeholder="Mensagem  ( / = respostas rápidas )" className="flex-1 py-2 text-base leading-snug bg-transparent resize-none overflow-y-auto outline-none border-0" onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !slashAtivo) { e.preventDefault(); void responder(); } }} />
+                  <button type="button" onClick={() => { setAnexoMenu(v => !v); setEmojiAberto(false); }} disabled={enviandoMidia} className="shrink-0 w-10 h-10 rounded-full text-2xl text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center leading-none" title="Anexar">{enviandoMidia ? "⏳" : "＋"}</button>
+                  <div className="flex-1 flex items-end rounded-3xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 pl-1 pr-2 min-h-[40px]">
+                    <button type="button" onClick={() => { setEmojiAberto(v => !v); setAnexoMenu(false); }} className="shrink-0 w-9 h-9 text-xl text-gray-500 hover:text-gray-700 flex items-center justify-center leading-none" title="Emojis">😊</button>
+                    <textarea ref={taRef} value={resposta} onChange={e => setResposta(e.target.value)} onFocus={() => { setEmojiAberto(false); setAnexoMenu(false); }} rows={1} placeholder="Mensagem" className="flex-1 py-2 text-base leading-snug bg-transparent resize-none overflow-y-auto outline-none border-0" onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !slashAtivo) { e.preventDefault(); void responder(); } }} />
                   </div>
                   {resposta.trim()
-                    ? <button type="button" onClick={() => { setEmojiAberto(false); void responder(); }} disabled={enviando} className="shrink-0 w-11 h-11 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center text-lg" title="Enviar">{enviando ? "…" : "➤"}</button>
-                    : <button type="button" onClick={() => void iniciarGravacao()} disabled={enviandoMidia} className="shrink-0 w-11 h-11 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center text-lg" title="Gravar áudio">🎤</button>}
+                    ? <button type="button" onClick={() => { setEmojiAberto(false); void responder(); }} disabled={enviando} className="shrink-0 w-10 h-10 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center text-base" title="Enviar">{enviando ? "…" : "➤"}</button>
+                    : <button type="button" onClick={() => void iniciarGravacao()} disabled={enviandoMidia} className="shrink-0 w-10 h-10 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center text-lg" title="Gravar áudio">🎤</button>}
                 </div>
               )}
             </div>
