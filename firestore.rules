@@ -379,6 +379,12 @@ service cloud.firestore {
       allow read: if true;
       allow create, update, delete: if authed();
     }
+    // Config do assistente de IA no WhatsApp (diretrizes + conhecimento por
+    // restaurante). Sem PII; só o app autenticado lê/escreve. O webhook lê via
+    // REST com service account (fora das rules).
+    match /assistenteWhatsapp/{id} {
+      allow read, write: if authed();
+    }
     // ExcecaoReserva: overrides por data (bloqueios, personalizações, janelas
     // extras). Read público — o form de reservas precisa respeitar bloqueios
     // e mostrar janelas extras. Write só authed (admin master ou perfil com

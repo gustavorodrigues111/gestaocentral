@@ -2033,6 +2033,31 @@ export const TEMPLATE_CONFIRMACAO_VARIAVEIS = [
   { tag: "{salao}",         desc: "Nome do salão" },
 ] as const;
 
+// ── Assistente de IA no WhatsApp (concierge por restaurante) ──────────────────
+// Config por restaurante (docId = restaurantId em /assistenteWhatsapp). Alimenta
+// a IA que atende no WhatsApp: responde dúvidas (horário, cardápio, endereço),
+// confirma reservas e, no planejamento.app, futuramente cria reservas. As
+// diretrizes seguem o mesmo padrão do "Pergunte à IA" da Wiki de Processos.
+export type AssistenteWhatsappConfig = {
+  id: string;                         // = restaurantId
+  restaurantId: string;
+  ativo: boolean;                     // liga/desliga o assistente
+  numeroInstancia?: string | null;    // instância Evolution que atende (id de whatsappNumeros)
+  // Conhecimento que a IA pode usar pra responder
+  diretrizes?: string;                // do/don't livre — "nunca responda X", "sempre faça Y"
+  horarioFuncionamento?: string;      // texto livre (ex.: "Ter-Dom 12h-23h; Seg fechado")
+  endereco?: string;
+  linkSite?: string;
+  linkCardapio?: string;
+  infoExtra?: string;                 // políticas (criança/pet/estacionamento), etc.
+  // Reservas
+  sistemaReservas: "planejamento" | "getin";
+  linkGetin?: string | null;          // usado quando sistemaReservas === "getin"
+  confirmacaoAtiva?: boolean;         // dispara/interpreta confirmação de reserva
+  atualizadoEm: string;
+  atualizadoPor: string;
+};
+
 export type ReservaStatus =
   | "pendente"        // marcada mas ainda não confirmada
   | "confirmada"      // confirmada (cliente avisou que vem)
