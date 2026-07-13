@@ -3461,6 +3461,25 @@ export type ParcelaProposta = {
   observacao?: string;
 };
 
+// Aviso direcionado a pessoas específicas (com anexo opcional) — cai na Central
+// de Avisos de cada destinatário. Genérico: qualquer módulo pode criar.
+export type AvisoDirecionado = {
+  id: string;
+  restaurantId: string;
+  destinatarioIds: string[];      // pessoaIds que recebem
+  titulo: string;
+  texto?: string;
+  icone?: string;                 // emoji (default 📩)
+  categoria?: string;             // rótulo de agrupamento na Central
+  anexoUrl?: string;              // link do PDF/arquivo
+  anexoNome?: string;
+  href?: string;                  // navegação alternativa (se não for anexo)
+  origem?: string;                // módulo de origem (ex.: "beo")
+  criadoEm: string;
+  criadoPor?: string;
+  criadoPorNome?: string;
+};
+
 export type PropostaEvento = {
   id: string;
   restaurantId: string;

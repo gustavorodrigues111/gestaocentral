@@ -452,6 +452,7 @@ service cloud.firestore {
     }
     match /propostasEvento/{id} { allow read, write: if authed(); }
     match /beosEvento/{id}      { allow read, write: if authed(); }
+    match /avisosDirecionados/{id} { allow read, write: if authed(); }
     match /logsEvento/{id}      { allow read, write: if authed(); }
     match /templatesEvento/{id} { allow read, write: if authed(); }
 

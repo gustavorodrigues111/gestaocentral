@@ -75,6 +75,7 @@ export function ChatPage() {
   function abrirAviso(a: Aviso) {
     if (a.faleDp) { setMsgAberta({ msg: a.faleDp, nome: a.restauranteNome }); return; }
     if (a.href) {
+      if (/^https?:\/\//i.test(a.href)) { window.open(a.href, "_blank", "noopener"); return; }
       if (a.restauranteId !== activeRestaurant?.id) setActiveId(a.restauranteId);
       navigate(a.href);
     }

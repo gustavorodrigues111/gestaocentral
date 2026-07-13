@@ -1,13 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
 import { collection, doc, onSnapshot, query, setDoc, where, getDocs } from "firebase/firestore";
-import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
+import { ref as storageRef, uploadBytes, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import type { BEOEvento, CardapioPdf, LeadEvento, PropostaEvento } from "../../core/types";
+import type { BEOEvento, CardapioPdf, LeadEvento, Pessoa, PropostaEvento } from "../../core/types";
+import { gerarBeoPDF } from "./beoPdf";
+import { enviarAvisoDirecionado } from "../../core/avisos/enviarAviso";
 
 const MAX_BEO_PDF_MB = 20;
 
@@ -23,9 +26,12 @@ type Props = {
 // Vai pra cozinha — primeira versão: texto formatado pronto pra colar no
 // WhatsApp (ou exportar como PDF no futuro).
 export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
+  const { restaurants } = useRestaurant();
+  const nomeRestaurante = restaurants.find(r => r.id === lead.restaurantId)?.nome || "Restaurante";
   const [beos, setBeos] = useState<BEOEvento[]>([]);
   const [propostaVigente, setPropostaVigente] = useState<PropostaEvento | null>(null);
   const [gerando, setGerando] = useState(false);
+  const [enviarEquipe, setEnviarEquipe] = useState<BEOEvento | null>(null);
 
   // Form pra criar nova versão
   const [temEquipe, setTemEquipe] = useState(false);
@@ -172,8 +178,13 @@ export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
           <div className="flex gap-2 flex-wrap">
             <Button size="sm" onClick={() => copiarBEOTexto(beoAtual)}>📋 Copiar</Button>
             <Button size="sm" onClick={() => enviarBEOWhatsApp(beoAtual)}>💬 WhatsApp</Button>
+            <Button size="sm" variant="secondary" onClick={() => setEnviarEquipe(beoAtual)}>📤 Enviar pra equipe</Button>
           </div>
         </div>
+      )}
+
+      {enviarEquipe && (
+        <EnviarBeoModal beo={enviarEquipe} lead={lead} restaurantNome={nomeRestaurante} meId={meId} meNome={meNome} onClose={() => setEnviarEquipe(null)} />
       )}
 
       {beos.length > 1 && (
@@ -412,6 +423,83 @@ function BeoCardapioUploader({
         {uploading ? `Enviando… ${progresso}%` : "📎 Anexar cardápio (PDF)"}
       </button>
       {erro && <div className="mt-1 text-[11px] text-red-600 dark:text-red-400">{erro}</div>}
+    </div>
+  );
+}
+
+// Modal: escolhe pessoas, gera o PDF do BEO, sobe no Storage e cria um aviso
+// direcionado (cai na Central de Avisos de cada destinatário).
+function EnviarBeoModal({ beo, lead, restaurantNome, meId, meNome, onClose }: {
+  beo: BEOEvento; lead: LeadEvento; restaurantNome: string; meId: string; meNome: string; onClose: () => void;
+}) {
+  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  const [sel, setSel] = useState<Set<string>>(() => new Set());
+  const [busca, setBusca] = useState("");
+  const [msg, setMsg] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState("");
+  useEffect(() => {
+    const u = onSnapshot(
+      query(collection(db, "pessoas"), where("restaurantIds", "array-contains", lead.restaurantId)),
+      (s) => setPessoas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Pessoa).sort((a, b) => a.nome.localeCompare(b.nome))),
+      () => setPessoas([]),
+    );
+    return () => u();
+  }, [lead.restaurantId]);
+  const filtradas = pessoas.filter((p) => !busca.trim() || p.nome.toLowerCase().includes(busca.trim().toLowerCase()));
+  const toggle = (id: string) => setSel((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+
+  async function enviar() {
+    if (sel.size === 0) { setErro("Selecione ao menos uma pessoa."); return; }
+    setEnviando(true); setErro("");
+    try {
+      const blob = await gerarBeoPDF(beo, lead, restaurantNome);
+      const path = `beos-cardapios/${lead.restaurantId}/${lead.id}/beo_v${beo.versao}_${Date.now()}.pdf`;
+      const r = storageRef(storage, path);
+      await uploadBytes(r, blob, { contentType: "application/pdf" });
+      const url = await getDownloadURL(r);
+      await enviarAvisoDirecionado({
+        restaurantId: lead.restaurantId,
+        destinatarioIds: [...sel],
+        titulo: `📋 BEO — ${lead.cliente.nome} (v${beo.versao})`,
+        texto: msg.trim() || `Ordem do evento de ${lead.cliente.nome}. Abra o PDF pra ver a produção.`,
+        icone: "📋", categoria: "Eventos · BEO",
+        anexoUrl: url, anexoNome: `BEO ${lead.cliente.nome} v${beo.versao}.pdf`,
+        origem: "beo", criadoPor: meId, criadoPorNome: meNome,
+      });
+      onClose();
+    } catch (e) {
+      const cod = (e as { code?: string }).code || "";
+      setErro(cod.includes("unauthorized") ? "Sem permissão pra subir o PDF. Regras do Storage podem não estar publicadas." : (e instanceof Error ? e.message : "Erro ao enviar"));
+    }
+    setEnviando(false);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !enviando && onClose()}>
+      <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5 space-y-3 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">📤 Enviar BEO pra equipe</h3>
+          <button type="button" onClick={() => !enviando && onClose()} className="text-gray-400 hover:text-gray-600">✕</button>
+        </div>
+        <p className="text-xs text-gray-500">Gera o PDF do BEO e envia pra Central de Avisos de quem você escolher.</p>
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar pessoa…" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+        <div className="max-h-56 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+          {filtradas.length === 0 && <div className="px-3 py-3 text-sm text-gray-400">Nenhuma pessoa encontrada.</div>}
+          {filtradas.map((p) => (
+            <label key={p.id} className="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/40">
+              <input type="checkbox" checked={sel.has(p.id)} onChange={() => toggle(p.id)} />
+              <span className="text-gray-800 dark:text-gray-200">{p.nome}</span>
+            </label>
+          ))}
+        </div>
+        <textarea value={msg} onChange={(e) => setMsg(e.target.value)} rows={2} placeholder="Mensagem (opcional)…" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+        {erro && <div className="text-[11px] text-rose-600 dark:text-rose-400">{erro}</div>}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={onClose} disabled={enviando} className="text-sm px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>
+          <Button onClick={() => void enviar()} disabled={enviando || sel.size === 0}>{enviando ? "Enviando…" : `Enviar${sel.size ? ` (${sel.size})` : ""}`}</Button>
+        </div>
+      </div>
     </div>
   );
 }

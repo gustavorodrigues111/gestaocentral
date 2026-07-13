@@ -22,7 +22,7 @@ import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { canAcao, resolverPerfil } from "../../core/auth/permissions";
 import { SETORES } from "../../core/wiki/setores";
 import { useAvisoSource, type AvisoDoc } from "./useAvisoSource";
-import type { FaleDpMensagem, Rotina, RotinaConclusao, WikiProcesso } from "../../core/types";
+import type { AvisoDirecionado, FaleDpMensagem, Rotina, RotinaConclusao, WikiProcesso } from "../../core/types";
 import { FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE } from "../../core/types";
 import { pendentesParaPessoa } from "../rotinas/repository";
 import { recorrenciaLabel } from "../rotinas/rotinasEngine";
@@ -276,10 +276,40 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     return () => { u1(); u2(); };
   }, []);
 
+  // ── Avisos direcionados a mim (genérico: BEO, relatórios…) ──
+  const [avisosDir, setAvisosDir] = useState<AvisoDirecionado[]>([]);
+  useEffect(() => {
+    if (!pid) { setAvisosDir([]); return; }
+    const u = onSnapshot(
+      query(collection(db, "avisosDirecionados"), where("destinatarioIds", "array-contains", pid)),
+      (s) => setAvisosDir(s.docs.map((d) => ({ id: d.id, ...d.data() }) as AvisoDirecionado)),
+      () => setAvisosDir([]),
+    );
+    return () => u();
+  }, [pid]);
+
   const todos = useMemo<Aviso[]>(() => {
     const out: Aviso[] = [];
     const hoje = new Date().toISOString().slice(0, 10);
     const limite30 = addDiasYmd(hoje, 30);
+
+    // ── Avisos direcionados a mim ──
+    for (const a of avisosDir) {
+      out.push({
+        id: `dir_${a.id}`,
+        tipo: "direcionado",
+        icone: a.icone || "📩",
+        titulo: a.titulo,
+        descricao: a.texto || (a.anexoNome ? `Anexo: ${a.anexoNome}` : ""),
+        em: a.criadoEm || hoje,
+        restauranteId: a.restaurantId,
+        restauranteNome: nomePorRid[a.restaurantId] || "—",
+        cta: a.anexoUrl ? "Abrir PDF" : "Ver",
+        href: a.href || a.anexoUrl,
+        categoria: a.categoria || "Enviados a você",
+        categoriaIcone: a.icone || "📩",
+      });
+    }
 
     // ── Rotinas pendentes do usuário (vencem hoje ou atrasadas e não feitas) ──
     for (const p of pendentesParaPessoa(rotinas, conclusoesIds, pid, hoje)) {
@@ -711,7 +741,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     ocorrencias, eventos, recebimento, compras, ideias, admissoes, demissoes, exames, uniformes,
     minhaAcao, minhaProducao, checklistTpl, checklistRun, cobrancasInt,
     reembReceber, reembPagos, manuts,
-    empTrab, exTrab, uniTrab, trabResolv, iaAlertas,
+    empTrab, exTrab, uniTrab, trabResolv, iaAlertas, avisosDir,
   ]);
 
   // ── Estado de leitura (overlay persistido por pessoa) ──
