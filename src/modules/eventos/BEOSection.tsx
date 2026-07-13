@@ -28,6 +28,7 @@ export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
   const [gerando, setGerando] = useState(false);
 
   // Form pra criar nova versão
+  const [temEquipe, setTemEquipe] = useState(false);
   const [horaChegada, setHoraChegada] = useState("");
   const [horaInicio, setHoraInicio] = useState("");
   const [horaEncerramento, setHoraEncerramento] = useState("");
@@ -94,7 +95,7 @@ export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
         versao,
         dataEvento: propostaVigente.dataEvento,
         slot: propostaVigente.slot,
-        horaChegadaEquipe: horaChegada || "—",
+        horaChegadaEquipe: temEquipe ? (horaChegada || "—") : "",
         horaInicioServico: horaInicio || propostaVigente.horaInicio,
         horaEncerramento: horaEncerramento || "—",
         numConvidados: propostaVigente.numConvidados,
@@ -199,8 +200,12 @@ export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
               consolidar a ordem do evento pra cozinha (a partir da proposta v{propostaVigente.versao}).
             </div>
           )}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <Input label="Chegada equipe" type="time" value={horaChegada} onChange={(e) => setHoraChegada(e.target.value)} />
+          <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 mb-2">
+            <input type="checkbox" checked={temEquipe} onChange={(e) => setTemEquipe(e.target.checked)} />
+            Tem equipe externa (garçons/apoio) neste evento?
+          </label>
+          <div className={`grid grid-cols-1 gap-2 ${temEquipe ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+            {temEquipe && <Input label="Chegada equipe" type="time" value={horaChegada} onChange={(e) => setHoraChegada(e.target.value)} />}
             <Input label="Início serviço" type="time" value={horaInicio} onChange={(e) => setHoraInicio(e.target.value)} />
             <Input label="Encerramento" type="time" value={horaEncerramento} onChange={(e) => setHoraEncerramento(e.target.value)} />
           </div>
@@ -419,7 +424,7 @@ function formatarBEOTexto(b: BEOEvento): string {
   linhas.push(`*BEO v${b.versao}*`);
   linhas.push("");
   linhas.push(`📅 ${dataBR} (${diaSem}) · ${b.slot === "almoco" ? "almoço" : b.slot === "jantar" ? "jantar" : "dia inteiro"}`);
-  linhas.push(`🕒 Chegada equipe ${b.horaChegadaEquipe} · Início ${b.horaInicioServico} · Fim ${b.horaEncerramento}`);
+  linhas.push(`🕒 ${b.horaChegadaEquipe ? `Chegada equipe ${b.horaChegadaEquipe} · ` : ""}Início ${b.horaInicioServico} · Fim ${b.horaEncerramento}`);
   linhas.push(`👥 ${b.numConvidados} convidados`);
   linhas.push(`📞 Contato no dia: ${b.contatoNoDia.nome} — ${b.contatoNoDia.whatsapp}`);
   linhas.push("");
