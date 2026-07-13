@@ -10,6 +10,16 @@
       "has": [{ "type": "host", "value": "www.lobozo.com.br" }],
       "destination": "/site/lobozo/"
     },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "sororoca.com.br" }],
+      "destination": "/site/sororoca/"
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "www.sororoca.com.br" }],
+      "destination": "/site/sororoca/"
+    },
     { "source": "/copa", "destination": "/copa.html" },
     { "source": "/((?!api/|site/|copa).*)", "destination": "/index.html" }
   ],
