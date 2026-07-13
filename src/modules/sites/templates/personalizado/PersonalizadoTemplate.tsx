@@ -1326,7 +1326,7 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
   const [docData, setDocData] = useState<CardapioEstruturado | null>(null);
   const [idioma, setIdioma] = useState<"pt" | "en">("pt");
   const [menuSel, setMenuSel] = useState<string>("");
-  const [secoesSel, setSecoesSel] = useState<string[]>([]);   // chips selecionados (multi)
+  const [secaoSel, setSecaoSel] = useState<string>("");   // chip selecionado (single); "__tudo__" = todas
 
   useEffect(() => {
     let cancel = false;
@@ -1374,14 +1374,11 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
       abas.push({ id: s.id, titulo: nomeSec(s), secoes: [s] });
     }
   }
-  // Multi-seleção: mantém só ids válidos; se nada válido, cai pra 1ª aba (assim
-  // trocar de cardápio reseta pra primeira seção sozinho).
-  const selValidas = secoesSel.filter((id) => abas.some((a) => a.id === id));
-  const selEfetiva = selValidas.length ? selValidas : (abas[0] ? [abas[0].id] : []);
-  const abasVisiveis = abas.filter((a) => selEfetiva.includes(a.id));   // em ordem
-  const todasSel = abas.length > 0 && abas.every((a) => selEfetiva.includes(a.id));
-  const toggleAba = (id: string) => setSecoesSel(selEfetiva.includes(id) ? selEfetiva.filter((x) => x !== id) : [...selEfetiva, id]);
-  const toggleTudo = () => setSecoesSel(todasSel ? [abas[0]!.id] : abas.map((a) => a.id));
+  // Seleção única: um chip por vez (não soma). "__tudo__" mostra todas as seções.
+  // Chip normal mostra só a sua. Se o id não bate (troca de cardápio), cai na 1ª.
+  const isTudo = secaoSel === "__tudo__";
+  const abaAtualId = abas.some((a) => a.id === secaoSel) ? secaoSel : (abas[0]?.id || "");
+  const abasVisiveis = isTudo ? abas : abas.filter((a) => a.id === abaAtualId);
 
   return (
     <div style={{ maxWidth: 720, margin: "0 auto" }}>
@@ -1413,15 +1410,15 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
       {!secoes.length && <div style={{ textAlign: "center", opacity: 0.5, fontSize: txCorpo(14), padding: "16px 0" }}>Cardápio em breve.</div>}
       {abas.length > 1 && (
         <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 22, justifyContent: "center" }}>
-          <button type="button" onClick={toggleTudo}
+          <button type="button" onClick={() => setSecaoSel("__tudo__")}
             style={{ flexShrink: 0, fontSize: txCorpo(13), fontWeight: 600, padding: "6px 15px", borderRadius: 999, cursor: "pointer",
-              border: `1px solid ${corPrimaria}`, background: todasSel ? corPrimaria : "transparent", color: todasSel ? "#fff" : corPrimaria, whiteSpace: "nowrap" }}>
+              border: `1px solid ${corPrimaria}`, background: isTudo ? corPrimaria : "transparent", color: isTudo ? "#fff" : corPrimaria, whiteSpace: "nowrap" }}>
             Tudo
           </button>
           {abas.map((a) => {
-            const ativo = selEfetiva.includes(a.id);
+            const ativo = !isTudo && a.id === abaAtualId;
             return (
-              <button key={a.id} type="button" onClick={() => toggleAba(a.id)}
+              <button key={a.id} type="button" onClick={() => setSecaoSel(a.id)}
                 style={{ flexShrink: 0, fontSize: txCorpo(13), fontWeight: 600, padding: "6px 15px", borderRadius: 999, cursor: "pointer",
                   border: `1px solid ${corPrimaria}`, background: ativo ? corPrimaria : "transparent", color: ativo ? "#fff" : corPrimaria, whiteSpace: "nowrap" }}>
                 {a.titulo}
