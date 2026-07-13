@@ -8,7 +8,21 @@ import { collection, doc, getDoc, getDocs, query, where, setDoc } from "firebase
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import type { Vaga, PerguntaVaga, CandidaturaTrabalhe, SiteConfig } from "../../core/types";
+import type { Vaga, PerguntaVaga, CandidaturaTrabalhe, SiteConfig, HorarioDia } from "../../core/types";
+
+const DIAS_SEMANA = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+// Extrai os dias ativos do horário-modelo da vaga (1ª vigência), pra exibição.
+function horarioResumo(vaga: Vaga): { dia: string; texto: string }[] {
+  const ws = vaga.horarioModelo?.[0];
+  const days = ws && ws.type === "single" ? (ws.days as { [k: number]: HorarioDia } | undefined) : undefined;
+  if (!days) return [];
+  const out: { dia: string; texto: string }[] = [];
+  for (let i = 0; i < 7; i++) {
+    const d = days[i];
+    if (d?.active && d.in && d.out) out.push({ dia: DIAS_SEMANA[i], texto: `${d.in}–${d.out}${d.break ? ` (int. ${d.break}min)` : ""}` });
+  }
+  return out;
+}
 
 type Tema = { fundo: string; texto: string; primaria: string; secundaria: string; card: string };
 function temaDe(cfg: SiteConfig | null): Tema {
@@ -192,9 +206,28 @@ export function VagaCandidaturaPage() {
         <button type="button" onClick={() => navigate(`/vagas/${rid}`)} style={{ fontSize: 12, opacity: 0.6, background: "none", border: "none", cursor: "pointer", marginBottom: 8, color: tema.texto }}>← Todas as vagas</button>
         <h1 style={{ fontSize: 22, fontWeight: 800, margin: 0, color: tema.texto }}>{vaga.titulo}</h1>
         {vaga.area && <p style={{ fontSize: 12, opacity: 0.5, margin: "2px 0 0" }}>{vaga.area}</p>}
-        {vaga.descricao && <p style={{ fontSize: 14, opacity: 0.8, marginTop: 10, whiteSpace: "pre-wrap", color: tema.texto }}>{vaga.descricao}</p>}
 
-        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 16 }}>
+        {/* Quadro de detalhes da vaga */}
+        {(vaga.descricao || vaga.requisitos || horarioResumo(vaga).length > 0) && (
+          <div style={{ marginTop: 14, borderRadius: 12, background: tema.fundo, border: `1px solid rgba(0,0,0,.08)`, padding: 16 }}>
+            <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", opacity: 0.5, marginBottom: 8 }}>Sobre a vaga</div>
+            {vaga.descricao && <p style={{ fontSize: 14, opacity: 0.85, margin: "0 0 8px", whiteSpace: "pre-wrap", color: tema.texto, lineHeight: 1.5 }}>{vaga.descricao}</p>}
+            {vaga.requisitos && <p style={{ fontSize: 13, opacity: 0.7, margin: "0 0 8px", whiteSpace: "pre-wrap", color: tema.texto }}><b>Requisitos:</b> {vaga.requisitos}</p>}
+            {horarioResumo(vaga).length > 0 && (
+              <div style={{ marginTop: 6 }}>
+                <div style={{ fontSize: 13, fontWeight: 700, color: tema.texto, marginBottom: 4 }}>🕒 Horário</div>
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {horarioResumo(vaga).map((h) => (
+                    <span key={h.dia} style={{ fontSize: 12, padding: "3px 9px", borderRadius: 999, background: tema.card, border: "1px solid rgba(0,0,0,.1)", color: tema.texto }}><b>{h.dia}</b> {h.texto}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 18 }}>
+          <div style={{ fontSize: 15, fontWeight: 700, color: tema.texto }}>Candidate-se</div>
           <div><label style={lbl}>Seu nome *</label><input value={nome} onChange={(e) => setNome(e.target.value)} style={inp} /></div>
           <div><label style={lbl}>WhatsApp *</label><input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} style={inp} placeholder="(11) 99999-9999" /></div>
           <div><label style={lbl}>E-mail *</label><input value={email} onChange={(e) => setEmail(e.target.value)} style={inp} type="email" /></div>
