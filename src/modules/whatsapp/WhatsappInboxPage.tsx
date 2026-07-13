@@ -7,7 +7,7 @@
 // cadastrado) e a um restaurante, além de receber tags. Isso permite dividir a
 // caixa por restaurante e filtrar por tag. Metadados em whatsappContatos/{waId}
 // e catálogo de tags em whatsappTags.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -721,6 +721,22 @@ export function NumerosManager() {
 }
 
 // Card de um número: status colorido, expansível, usuários por chip, botão Salvar.
+// Painel-seção interno do card (título + conteúdo), pra dividir visualmente.
+function SecaoCfg({ icon, titulo, hint, children }: { icon?: string; titulo?: string; hint?: string; children: ReactNode }) {
+  return (
+    <section className="rounded-lg border border-gray-200/80 dark:border-gray-800 bg-white/60 dark:bg-gray-900/30 p-3 space-y-2">
+      {titulo && (
+        <div className="flex items-center gap-1.5">
+          {icon && <span className="text-sm leading-none">{icon}</span>}
+          <span className="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wide">{titulo}</span>
+          {hint && <span className="text-[10px] text-gray-400 normal-case font-normal">· {hint}</span>}
+        </div>
+      )}
+      {children}
+    </section>
+  );
+}
+
 function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout, onExcluir }: {
   numero: WhatsappNumero; estado: string; pessoas: Pessoa[]; restaurants: { id: string; nome: string }[];
   onQr: () => void; onLogout: () => void; onExcluir: () => void;
@@ -780,74 +796,86 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
       </button>
 
       {aberto && (
-        <div className="px-3.5 pb-3.5 border-t border-gray-200/70 dark:border-gray-800 pt-3 space-y-3">
+        <div className="border-t border-gray-200/70 dark:border-gray-800">
+          <div className="p-3 space-y-2.5">
+
           {/* Conexão */}
-          <div className="flex items-center gap-2">
-            {estado === "open"
-              ? <button type="button" onClick={onLogout} className="text-xs px-2.5 py-1.5 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">⏻ Desconectar</button>
-              : <button type="button" onClick={onQr} className="text-xs px-2.5 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300">{estado === "close" ? "🔄 Reconectar" : "🔌 Conectar"}</button>}
-            <button type="button" onClick={onExcluir} className="ml-auto text-xs text-gray-400 hover:text-rose-600">🗑️ Excluir número</button>
-          </div>
-
-          {/* Rótulo */}
-          <div><label className="text-[11px] font-semibold text-gray-500 uppercase">Rótulo</label>
-            <input value={draft.nome} onChange={e => setDraft(d => ({ ...d, nome: e.target.value }))} className={inp} /></div>
-
-          {/* Empresas */}
-          <div>
-            <label className="text-[11px] font-semibold text-gray-500 uppercase">Empresa(s) deste número</label>
-            <div className="flex flex-wrap gap-1.5 mt-1">
-              {restaurants.map(r => { const on = draft.restaurantIds.includes(r.id); return (
-                <button key={r.id} type="button" onClick={() => setDraft(d => ({ ...d, restaurantIds: on ? d.restaurantIds.filter(x => x !== r.id) : [...d.restaurantIds, r.id] }))}
-                  className={`text-xs font-medium px-3 py-1.5 rounded-full border ${on ? "border-indigo-500 bg-indigo-500 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800"}`}>{on ? "✓ " : ""}{r.nome}</button>
-              ); })}
+          <SecaoCfg icon="🔌" titulo="Conexão">
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${em.cls}`}>{em.label}</span>
+              {estado === "open"
+                ? <button type="button" onClick={onLogout} className="text-xs px-2.5 py-1.5 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">⏻ Desconectar</button>
+                : <button type="button" onClick={onQr} className="text-xs px-2.5 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300">{estado === "close" ? "🔄 Reconectar" : "🔌 Conectar"}</button>}
             </div>
-            <p className="text-[11px] text-gray-400 mt-1">Vazio = qualquer empresa. Trava o número só pra quem é da(s) empresa(s) marcada(s).</p>
-          </div>
+          </SecaoCfg>
 
-          {/* Usuários por chip + busca */}
-          <div>
-            <label className="text-[11px] font-semibold text-gray-500 uppercase">Usuários que podem usar</label>
-            <div className="flex flex-wrap gap-1.5 mt-1 mb-1.5">
-              {selecionados.length === 0 && <span className="text-[11px] text-gray-400">Ninguém ainda.</span>}
-              {selecionados.map(p => (
-                <span key={p.id} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                  {p.nome}
-                  <button type="button" onClick={() => setDraft(d => ({ ...d, usuariosIds: d.usuariosIds.filter(x => x !== p.id) }))} className="opacity-70 hover:opacity-100">✕</button>
-                </span>
-              ))}
+          {/* Identificação */}
+          <SecaoCfg icon="🏷️" titulo="Identificação">
+            <div><label className="text-[11px] text-gray-500">Rótulo</label>
+              <input value={draft.nome} onChange={e => setDraft(d => ({ ...d, nome: e.target.value }))} className={inp} /></div>
+            <div><label className="text-[11px] text-gray-500">Descrição (opcional)</label>
+              <input value={draft.descricao} onChange={e => setDraft(d => ({ ...d, descricao: e.target.value }))} className={inp} placeholder="Ex.: atendimento a clientes" /></div>
+            <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 pt-0.5">
+              <input type="checkbox" checked={draft.ativo} onChange={e => setDraft(d => ({ ...d, ativo: e.target.checked }))} /> Ativo (aparece no inbox)
+            </label>
+          </SecaoCfg>
+
+          {/* Acesso: empresas + usuários */}
+          <SecaoCfg icon="🔒" titulo="Acesso" hint="quem enxerga/usa este número">
+            <div>
+              <label className="text-[11px] text-gray-500">Empresa(s) deste número</label>
+              <div className="flex flex-wrap gap-1.5 mt-1">
+                {restaurants.map(r => { const on = draft.restaurantIds.includes(r.id); return (
+                  <button key={r.id} type="button" onClick={() => setDraft(d => ({ ...d, restaurantIds: on ? d.restaurantIds.filter(x => x !== r.id) : [...d.restaurantIds, r.id] }))}
+                    className={`text-xs font-medium px-3 py-1.5 rounded-full border ${on ? "border-indigo-500 bg-indigo-500 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800"}`}>{on ? "✓ " : ""}{r.nome}</button>
+                ); })}
+              </div>
+              <p className="text-[11px] text-gray-400 mt-1">Vazio = qualquer empresa.</p>
             </div>
-            <input value={buscaU} onChange={e => setBuscaU(e.target.value)} className={inp} placeholder="Digite o nome pra adicionar…" />
-            {buscaU.trim() && (
-              <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
-                {disponiveis.length === 0 && <div className="px-3 py-2 text-sm text-gray-400">Ninguém encontrado.</div>}
-                {disponiveis.map(p => (
-                  <button key={p.id} type="button" onClick={() => { setDraft(d => ({ ...d, usuariosIds: [...d.usuariosIds, p.id] })); setBuscaU(""); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40 text-gray-800 dark:text-gray-200">{p.nome}</button>
+            <div className="pt-1">
+              <label className="text-[11px] text-gray-500">Usuários que podem usar</label>
+              <div className="flex flex-wrap gap-1.5 mt-1 mb-1.5">
+                {selecionados.length === 0 && <span className="text-[11px] text-gray-400">Ninguém ainda.</span>}
+                {selecionados.map(p => (
+                  <span key={p.id} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    {p.nome}
+                    <button type="button" onClick={() => setDraft(d => ({ ...d, usuariosIds: d.usuariosIds.filter(x => x !== p.id) }))} className="opacity-70 hover:opacity-100">✕</button>
+                  </span>
                 ))}
               </div>
-            )}
-          </div>
+              <input value={buscaU} onChange={e => setBuscaU(e.target.value)} className={inp} placeholder="Digite o nome pra adicionar…" />
+              {buscaU.trim() && (
+                <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+                  {disponiveis.length === 0 && <div className="px-3 py-2 text-sm text-gray-400">Ninguém encontrado.</div>}
+                  {disponiveis.map(p => (
+                    <button key={p.id} type="button" onClick={() => { setDraft(d => ({ ...d, usuariosIds: [...d.usuariosIds, p.id] })); setBuscaU(""); }} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/40 text-gray-800 dark:text-gray-200">{p.nome}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </SecaoCfg>
 
           {/* Regras */}
-          <div>
-            <label className="text-[11px] font-semibold text-gray-500 uppercase">Regras de uso (opcional)</label>
+          <SecaoCfg icon="📋" titulo="Regras de uso" hint="opcional">
             <textarea value={draft.regras} onChange={e => setDraft(d => ({ ...d, regras: e.target.value }))} rows={2} className={inp} placeholder="Ex.: só responder em horário comercial; confirmar preço antes de fechar…" />
-          </div>
-
-          <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-            <input type="checkbox" checked={draft.ativo} onChange={e => setDraft(d => ({ ...d, ativo: e.target.checked }))} /> Ativo (aparece no inbox)
-          </label>
-
-          {/* Salvar / Cancelar */}
-          <div className="flex items-center justify-end gap-2 pt-1">
-            {dirty && <span className="text-[11px] text-amber-600 dark:text-amber-400 mr-auto">Alterações não salvas</span>}
-            {dirty && <button type="button" onClick={cancelar} className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>}
-            <Button onClick={() => void salvar()} disabled={!dirty || salvando}>{salvando ? "Salvando…" : "💾 Salvar"}</Button>
-          </div>
+          </SecaoCfg>
 
           {/* Respostas rápidas deste número */}
-          <div className="border-t border-gray-200/70 dark:border-gray-800 pt-3">
+          <SecaoCfg>
             <RespostasNumero numeroId={numero.id} />
+          </SecaoCfg>
+
+          {/* Zona de perigo */}
+          <div className="flex justify-end pt-0.5">
+            <button type="button" onClick={onExcluir} className="text-xs text-gray-400 hover:text-rose-600">🗑️ Excluir número</button>
+          </div>
+          </div>
+
+          {/* Barra de salvar (rodapé) */}
+          <div className="flex items-center justify-end gap-2 px-3 py-2.5 border-t border-gray-200/70 dark:border-gray-800 bg-white/70 dark:bg-gray-900/50 rounded-b-xl">
+            {dirty && <span className="text-[11px] text-amber-600 dark:text-amber-400 mr-auto">● Alterações não salvas</span>}
+            {dirty && <button type="button" onClick={cancelar} className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>}
+            <Button onClick={() => void salvar()} disabled={!dirty || salvando}>{salvando ? "Salvando…" : "💾 Salvar"}</Button>
           </div>
         </div>
       )}
@@ -1079,8 +1107,6 @@ export function TagsManager() {
   const inp = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3 space-y-3">
-      <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">🏷 Tags de conversa</div>
-      <p className="text-[11px] text-gray-500">Etiquetas pra organizar as conversas (aplicadas no Chat, dentro de cada conversa).</p>
       <div className="flex flex-wrap gap-2">
         {tags.length === 0 && <span className="text-sm text-gray-400">Nenhuma tag ainda.</span>}
         {tags.map(t => (

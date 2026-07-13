@@ -39,9 +39,17 @@ export function WhatsappPage() {
       {/* Mantém o inbox montado ao trocar de aba pra não perder a conversa aberta. */}
       {podeVer && <div className={abaEfetiva === "chat" ? "" : "hidden"}><WhatsappInboxPage modo="conversas" voltarListaSignal={voltarLista} /></div>}
       {podeConfig && abaEfetiva === "config" && (
-        <div className="space-y-4">
-          <NumerosManager />
-          <TagsManager />
+        <div className="space-y-6">
+          <section>
+            <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1">📱 Números conectados</h2>
+            <p className="text-xs text-gray-500 mb-2">Cada número é um WhatsApp plugado como dispositivo. Abra um card pra configurar acesso, regras e respostas rápidas.</p>
+            <NumerosManager />
+          </section>
+          <section>
+            <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1">🏷 Tags de conversa <span className="text-[11px] font-normal text-gray-400">· valem para todos os números</span></h2>
+            <p className="text-xs text-gray-500 mb-2">Etiquetas globais pra organizar as conversas no chat (não são por número).</p>
+            <TagsManager />
+          </section>
         </div>
       )}
     </div>
