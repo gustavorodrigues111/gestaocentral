@@ -4001,7 +4001,8 @@ export type CandidaturaTrabalhe = {
   respostas?: Record<string, string>;  // respostas das perguntas da vaga {perguntaId: valor}
   observacoes?: string;                 // observações que o próprio candidato incluiu
   admissaoId?: string;                  // processo de admissão criado a partir deste candidato
-  freelaShiftId?: string;               // turno de freela criado (teste)
+  freelaPessoaId?: string;              // pessoa cadastrada como freela (teste)
+  freelaShiftId?: string;               // (legado) turno de freela criado direto
   // Dados do candidato
   nome: string;
   whatsapp: string;                  // E.164

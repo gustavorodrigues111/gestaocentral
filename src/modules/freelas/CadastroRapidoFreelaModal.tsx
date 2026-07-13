@@ -13,6 +13,8 @@ function onlyDigits(s: string): string {
 
 type Props = {
   restaurantId: string;
+  // Pré-preenche os campos (ex: vindo de uma candidatura no Processo Seletivo).
+  defaults?: { nome?: string; whatsapp?: string; cpf?: string; pix?: string };
   // Quando o cadastro termina (ou já existia uma pessoa com esse CPF),
   // devolve a Pessoa pra o caller usar (ex: pré-preencher o turno).
   onSaved: (pessoa: Pessoa) => void;
@@ -25,12 +27,12 @@ type Props = {
 //
 // Se já existir Pessoa com o mesmo CPF (em qualquer restaurante), oferece
 // vincular a existente ao restaurante atual (evita duplicação).
-export function CadastroRapidoFreelaModal({ restaurantId, onSaved, onClose }: Props) {
+export function CadastroRapidoFreelaModal({ restaurantId, defaults, onSaved, onClose }: Props) {
   const { pessoa: me } = useAuth();
-  const [nome, setNome] = useState("");
-  const [cpf, setCpf] = useState("");
-  const [pix, setPix] = useState("");
-  const [whatsapp, setWhatsapp] = useState("");
+  const [nome, setNome] = useState(defaults?.nome || "");
+  const [cpf, setCpf] = useState(defaults?.cpf || "");
+  const [pix, setPix] = useState(defaults?.pix || "");
+  const [whatsapp, setWhatsapp] = useState(defaults?.whatsapp || "");
   const [err, setErr] = useState("");
   const [saving, setSaving] = useState(false);
   const [duplicada, setDuplicada] = useState<Pessoa | null>(null);

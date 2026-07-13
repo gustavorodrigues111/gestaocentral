@@ -3,7 +3,7 @@
 // responsável + página pública. F3: transferir, rejeitar c/ motivo, aprovar→admissão.
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, onSnapshot, query, where, updateDoc, doc, setDoc, deleteDoc, addDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, where, updateDoc, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -11,6 +11,8 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { IniciarAdmissaoModal } from "../admissao/IniciarAdmissaoModal";
+import { CadastroRapidoFreelaModal } from "../freelas/CadastroRapidoFreelaModal";
+import { NovoTurnoModal } from "../freelas/NovoTurnoModal";
 import { iniciarAdmissao, getPrazoDias, getDocumentosAdmissao, getSchemaAdmissao } from "../../core/admissao/admissaoHelpers";
 import { DiasTabela, CicloDomingoEditor } from "../pessoas/HorariosTab";
 import { emptyDays, validateWorkScheduleDays, getActiveWorkSchedule } from "../../core/escala/horarios";
@@ -79,6 +81,8 @@ export function ProcessoSeletivoPage() {
   const [editVaga, setEditVaga] = useState<Vaga | "nova" | null>(null);
   const [admitir, setAdmitir] = useState<CandidaturaTrabalhe | null>(null);
   const [novaCand, setNovaCand] = useState(false);
+  const [cadastrarFreela, setCadastrarFreela] = useState<CandidaturaTrabalhe | null>(null);
+  const [lancarTurno, setLancarTurno] = useState<CandidaturaTrabalhe | null>(null);
 
   useEffect(() => {
     if (!rid) return;
@@ -122,16 +126,12 @@ export function ProcessoSeletivoPage() {
     await mover(c.id, "admissao", { direcionadoAdmissaoEm: new Date().toISOString(), direcionadoPor: pessoa?.nome || null });
   }
   // Cria um turno de freela (só-nome) pro candidato em teste — cai no módulo Freelas.
-  async function criarFreela(c: CandidaturaTrabalhe) {
-    if ((c as unknown as { freelaShiftId?: string }).freelaShiftId) { alert("Este candidato já tem um freela criado."); return; }
-    if (!confirm(`Criar freela em teste pra ${c.nome}? Ele entra como turno agendado no módulo Freelas (você ajusta data/valor lá).`)) return;
-    const hoje = new Date().toISOString().slice(0, 10);
-    const ref = await addDoc(collection(db, "freelaShifts"), sanitizeForFirestore({
-      restaurantId: rid, nomeSnapshot: c.nome, whatsappSnapshot: c.whatsapp || undefined,
-      date: hoje, status: "agendado", observacao: "Teste (Processo Seletivo)",
-      criadoEm: new Date().toISOString(), criadoPor: pessoa?.id || null,
-    }));
-    await updateDoc(doc(db, "candidaturasTrabalhe", c.id), { freelaShiftId: ref.id, updatedAt: new Date().toISOString() }).catch(() => {});
+  // Freela: o botão abre o modal de cadastro de freela (Pessoa) pré-preenchido;
+  // quando salva, marca a candidatura com o freelaPessoaId. Os turnos de teste
+  // são lançados depois, por outro botão.
+  async function onFreelaCadastrado(c: CandidaturaTrabalhe, freela: Pessoa) {
+    await updateDoc(doc(db, "candidaturasTrabalhe", c.id), { freelaPessoaId: freela.id, updatedAt: new Date().toISOString() }).catch(() => {});
+    setCadastrarFreela(null);
   }
   async function salvarVaga(v: Vaga) {
     await setDoc(doc(db, "vagas", v.id), sanitizeForFirestore({ ...v, restauranteNome: activeRest?.nome || v.restauranteNome || null }), { merge: true });
@@ -244,8 +244,27 @@ export function ProcessoSeletivoPage() {
           onTransferir={(p) => { void transferir(sel, p); }}
           onIniciarAdmissao={() => { setAdmitir(sel); }}
           onMandarAdmissao={() => { void mandarParaAdmissao(sel); setSel(null); }}
-          onCriarFreela={() => { void criarFreela(sel); }}
+          onCadastrarFreela={() => { setCadastrarFreela(sel); }}
+          onLancarTurno={() => { setLancarTurno(sel); }}
           onClose={() => setSel(null)} />
+      )}
+
+      {cadastrarFreela && (
+        <CadastroRapidoFreelaModal
+          restaurantId={rid}
+          defaults={{ nome: cadastrarFreela.nome, whatsapp: cadastrarFreela.whatsapp || undefined }}
+          onSaved={(freela) => { void onFreelaCadastrado(cadastrarFreela, freela); }}
+          onClose={() => setCadastrarFreela(null)} />
+      )}
+
+      {lancarTurno && (
+        <NovoTurnoModal
+          restaurantId={rid}
+          empregados={empregados}
+          pessoas={pessoas}
+          preselectFreelaId={lancarTurno.freelaPessoaId}
+          onSaved={() => setLancarTurno(null)}
+          onClose={() => setLancarTurno(null)} />
       )}
 
       {admitir && activeRest && (
@@ -694,9 +713,9 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, unidades, pessoaId
   );
 }
 
-function CandidatoDrawer({ cand, pessoas, podeTriar, podeTransferir, podeAprovar, onMover, onTransferir, onIniciarAdmissao, onMandarAdmissao, onCriarFreela, onClose }: {
+function CandidatoDrawer({ cand, pessoas, podeTriar, podeTransferir, podeAprovar, onMover, onTransferir, onIniciarAdmissao, onMandarAdmissao, onCadastrarFreela, onLancarTurno, onClose }: {
   cand: CandidaturaTrabalhe; pessoas: Pessoa[]; podeTriar: boolean; podeTransferir: boolean; podeAprovar: boolean;
-  onMover: (e: EtapaSeletivo) => void; onTransferir: (p: Pessoa) => void; onIniciarAdmissao: () => void; onMandarAdmissao: () => void; onCriarFreela: () => void; onClose: () => void;
+  onMover: (e: EtapaSeletivo) => void; onTransferir: (p: Pessoa) => void; onIniciarAdmissao: () => void; onMandarAdmissao: () => void; onCadastrarFreela: () => void; onLancarTurno: () => void; onClose: () => void;
 }) {
   const [transf, setTransf] = useState(false);
   const [buscaT, setBuscaT] = useState("");
@@ -757,10 +776,15 @@ function CandidatoDrawer({ cand, pessoas, podeTriar, podeTransferir, podeAprovar
           </div>
         )}
 
-        {podeTriar && !(cand as { freelaShiftId?: string }).freelaShiftId && (
-          <button type="button" onClick={onCriarFreela} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20">⚡ Criar freela (teste)</button>
+        {podeTriar && !cand.freelaPessoaId && (
+          <button type="button" onClick={onCadastrarFreela} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20">🎒 Cadastrar como freela (teste)</button>
         )}
-        {(cand as { freelaShiftId?: string }).freelaShiftId && <div className="text-[11px] text-purple-600 dark:text-purple-300 font-semibold">✓ Freela criado (módulo Freelas)</div>}
+        {podeTriar && cand.freelaPessoaId && (
+          <div className="space-y-1.5">
+            <div className="text-[11px] text-emerald-600 dark:text-emerald-300 font-semibold">✓ Cadastrado como freela</div>
+            <button type="button" onClick={onLancarTurno} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20">📋 Lançar turno de teste</button>
+          </div>
+        )}
 
         {podeAprovar && etapa === "aprovado" && (
           <div className="border-t border-gray-200 dark:border-gray-800 pt-3 space-y-2">

@@ -27,6 +27,8 @@ type Props = {
   // Quando presente, o modal ALTERA um turno planejado existente (mesma pessoa,
   // edita data/área/previsto/obs) em vez de criar um novo.
   editShift?: FreelaShift;
+  // Pré-seleciona um freela (ex: turno de teste vindo do Processo Seletivo).
+  preselectFreelaId?: string;
   onClose: () => void;
   onSaved: () => void;
 };
@@ -38,9 +40,10 @@ type SelecionadoFreela = { tipo: "freela"; pessoa: Pessoa };
 type Selecionado = SelecionadoEmp | SelecionadoFreela | null;
 
 export function NovoTurnoModal({
-  restaurantId, empregados, pessoas, initialDate, modo = "planejar", editShift, onClose, onSaved,
+  restaurantId, empregados, pessoas, initialDate, modo = "planejar", editShift, preselectFreelaId, onClose, onSaved,
 }: Props) {
   const { pessoa: me } = useAuth();
+  const preFreela = preselectFreelaId ? pessoas.find((p) => p.id === preselectFreelaId) || null : null;
   const isEdit = !!editShift;
   const isAvulso = modo === "avulso" && !isEdit;
   // Avulso é sempre hoje (abrir agora). Planejar/editar pode ser hoje ou futuro.
@@ -51,8 +54,8 @@ export function NovoTurnoModal({
   const [intervalos, setIntervalos] = useState<FreelaIntervalo[]>(editShift?.intervalosPrevistos || []);
   const [obs, setObs] = useState(editShift?.observacao || "");
 
-  const [escolhaTipo, setEscolhaTipo] = useState<EscolhaTipo>(null);
-  const [selecionado, setSelecionado] = useState<Selecionado>(null);
+  const [escolhaTipo, setEscolhaTipo] = useState<EscolhaTipo>(preFreela ? "freela" : null);
+  const [selecionado, setSelecionado] = useState<Selecionado>(preFreela ? { tipo: "freela", pessoa: preFreela } : null);
   const [mostrarCadastro, setMostrarCadastro] = useState(false);
 
   const [err, setErr] = useState("");
