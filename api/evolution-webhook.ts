@@ -143,6 +143,15 @@ async function processar(body: EvoBody): Promise<void> {
     const texto = textoDe(m.message, m.messageType);
     const tsNum = Number(m.messageTimestamp);
     const ts = tsNum ? new Date(tsNum * 1000).toISOString() : new Date().toISOString();
+    const recente = !fromMe && !!tsNum && (Date.now() / 1000 - tsNum) < 300;
+
+    // Reabre conversa finalizada O QUANTO ANTES (em paralelo) — não espera o
+    // download de mídia (que pode levar segundos) nem a gravação da mensagem.
+    // É o que move o chip de Finalizados → Pendentes/atendente padrão rápido.
+    const pReabrir = recente
+      ? reabrirSeFinalizada(numeroId, waId).catch((e) => console.log("[evo-webhook] reabrir:", (e as Error)?.message))
+      : null;
+
     // Figurinha e imagem: tenta baixar o conteúdo pra exibir de verdade.
     let midia: { midia: string; mime: string } | null = null;
     if (m.message?.stickerMessage || m.message?.imageMessage) midia = await baixarMidia(numeroId, m);
@@ -160,13 +169,10 @@ async function processar(body: EvoBody): Promise<void> {
     } catch (e) { console.log("[evo-webhook] falha ao gravar:", (e as Error)?.message); }
 
     // Automação: só pra mensagens RECEBIDAS e RECENTES (evita disparar no
-    // replay de histórico ao reconectar).
-    const agoraS = Date.now() / 1000;
-    if (!fromMe && tsNum && agoraS - tsNum < 300) {
-      // Cliente escreveu numa conversa finalizada → reabre. Se o contato tem
-      // atendente padrão, volta direto pra ele; senão, pra pendentes. Roda ANTES
-      // da automação (que só age se ainda ficar sem responsável).
-      try { await reabrirSeFinalizada(numeroId, waId); } catch (e) { console.log("[evo-webhook] reabrir:", (e as Error)?.message); }
+    // replay de histórico ao reconectar). Espera a reabertura terminar antes
+    // (a automação só age se a conversa ainda ficar sem responsável).
+    if (recente) {
+      if (pReabrir) await pReabrir;
       try { await automacao(numeroId, waId, texto); } catch (e) { console.log("[evo-webhook] automacao:", (e as Error)?.message); }
     }
   }
