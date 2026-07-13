@@ -3,7 +3,7 @@
 
 import {
   collection, doc, getDoc, getDocs, query, where, orderBy, onSnapshot,
-  setDoc, updateDoc, addDoc, deleteDoc,
+  setDoc, updateDoc, addDoc, deleteDoc, deleteField,
 } from "firebase/firestore";
 import type { Unsubscribe } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -277,6 +277,22 @@ export async function mudarStatus(id: string, status: TarefaStatus, autor: { id:
     valorAntes: atual.status,
     valorDepois: status,
   });
+
+  // Sincroniza com Contas Fixas: concluir a tarefa marca a conta como PAGA na
+  // competência (mês do vencimento = mês do prazo); reabrir desmarca. O elo é
+  // origemRefId (id da conta) + o mês do prazo.
+  if (atual.origem === "conta_fixa" && atual.origemRefId && atual.prazo) {
+    const cmp = atual.prazo.slice(0, 7);
+    const cfRef = doc(db, "contasFixas", atual.origemRefId);
+    try {
+      if (status === "concluida") {
+        await updateDoc(cfRef, { [`pagamentos.${cmp}`]: { pagoEm: new Date().toISOString(), pagoPor: autor.id }, atualizadoEm: new Date().toISOString() });
+      } else if (atual.status === "concluida") {
+        await updateDoc(cfRef, { [`pagamentos.${cmp}`]: deleteField(), atualizadoEm: new Date().toISOString() });
+      }
+    } catch (e) { console.warn("[repository] sync conta fixa falhou:", e); }
+  }
+
   // Auto-clone: se concluiu uma rotina recorrente, agenda próxima ocorrência.
   // Import dinâmico pra evitar ciclo de imports (generator depende de repository).
   if (status === "concluida") {
@@ -286,6 +302,31 @@ export async function mudarStatus(id: string, status: TarefaStatus, autor: { id:
     } catch (e) {
       console.warn("[repository] auto-clone falhou:", e);
     }
+  }
+}
+
+// Sincroniza Contas Fixas → Gestor: quando uma conta é marcada paga/não-paga
+// numa competência, reflete no status da tarefa vinculada (origem conta_fixa,
+// mesmo mês). Usa atualizarTarefa (não mudarStatus) pra NÃO reescrever de volta
+// o pagamento (evita ida-e-volta) e pra não travar em campos obrigatórios.
+export async function sincronizarTarefaPorContaFixa(
+  contaFixaId: string, competencia: string, pago: boolean, autor: { id: string; nome: string },
+): Promise<void> {
+  const snap = await getDocs(query(
+    collection(db, COL_TAREFAS),
+    where("origem", "==", "conta_fixa"),
+    where("origemRefId", "==", contaFixaId),
+  ));
+  for (const d of snap.docs) {
+    const t = { id: d.id, ...d.data() } as Tarefa;
+    if ((t.prazo || "").slice(0, 7) !== competencia) continue;
+    if (t.deletadoEm) continue;
+    const novo: TarefaStatus = pago ? "concluida" : "a_fazer";
+    if (t.status === novo) continue;
+    if (pago && t.status === "cancelada") continue;   // não ressuscita cancelada
+    await atualizarTarefa(t.id, { status: novo }, autor, {
+      acao: "status_mudou", campo: "status", valorAntes: t.status, valorDepois: novo,
+    });
   }
 }
 
