@@ -7,6 +7,7 @@ import { isWelcomePageHost } from "./core/restaurant/subdomain";
 import { AdmissaoPublicaPage } from "./modules/admissao/AdmissaoPublicaPage";
 import { EventosPublicaPage } from "./modules/eventos/EventosPublicaPage";
 import { TrabalhePublicaPage } from "./modules/sites/TrabalhePublicaPage";
+import { VagasPublicaPage, VagaCandidaturaPage } from "./modules/processoSeletivo/VagasPublicaPage";
 import { ReservasPublicaPage } from "./modules/sites/ReservasPublicaPage";
 import { PoliticaPrivacidadePage } from "./modules/sites/PoliticaPrivacidadePage";
 import { PrivacidadePlataformaPage } from "./modules/sites/PrivacidadePlataformaPage";
@@ -53,6 +54,8 @@ function App() {
           <Route path="/admissao/:token" element={<AdmissaoPublicaPage />} />
           <Route path="/eventos/:rid" element={<EventosPublicaPage />} />
           <Route path="/trabalhe/:rid" element={<TrabalhePublicaPage />} />
+          <Route path="/vagas/:rid" element={<VagasPublicaPage />} />
+          <Route path="/vaga/:rid/:vagaId" element={<VagaCandidaturaPage />} />
           <Route path="/reservas/:rid" element={<ReservasPublicaPage />} />
           <Route path="/politica/:slug" element={<PoliticaPrivacidadePage />} />
           {/* Política de privacidade da plataforma (usada pra publicar o app do WhatsApp na Meta) */}
@@ -78,6 +81,7 @@ function RootOrShell() {
     // Domínio próprio. Raiz → site; sub-path (ex: /cardapio, /menu) → tenta
     // atalho de cardápio (redireciona pro PDF) ou cai no site.
     const sub = window.location.pathname.replace(/^\/+|\/+$/g, "");
+    if (sub === "vagas") return <VagasPublicaPage slugFromHost={slugDoHost} />;
     if (sub) return <CardapioRedirect slug={slugDoHost} sub={sub} />;
     return <SitePublicaPage slugFromHost={slugDoHost} />;
   }

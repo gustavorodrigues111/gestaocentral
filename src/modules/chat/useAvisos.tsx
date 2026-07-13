@@ -688,8 +688,12 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       pending: (d) => Array.isArray(d.itens) && (d.itens as Array<{ validadeAte?: string }>).some(
         (it) => !!it.validadeAte && String(it.validadeAte) <= limite30) });
 
-    // ── Candidaturas novas (trabalhe-conosco): 1 aviso por candidato ──
+    // ── Candidaturas novas: 1 aviso por candidato, roteado pelo responsável ──
+    // (se tem responsável, só cai pra ele; sem responsável, cai pra quem tem
+    // a permissão de receber candidaturas na empresa).
     for (const c of Object.values(candidaturasNovas).flat()) {
+      const resp = (c as { responsavelId?: string }).responsavelId;
+      if (resp && resp !== pid) continue;
       const nome = String((c as { nome?: string }).nome || "Candidato");
       const area = String((c as { areaInteresse?: string }).areaInteresse || "");
       out.push({
