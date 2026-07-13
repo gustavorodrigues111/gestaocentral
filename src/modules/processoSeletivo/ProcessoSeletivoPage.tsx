@@ -15,7 +15,7 @@ import { iniciarAdmissao, getPrazoDias, getDocumentosAdmissao, getSchemaAdmissao
 import { DiasTabela, CicloDomingoEditor } from "../pessoas/HorariosTab";
 import { emptyDays, validateWorkScheduleDays, getActiveWorkSchedule } from "../../core/escala/horarios";
 import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, PerguntaVaga, Pessoa, Cargo, Empregado, Unidade, WorkSchedule, HorarioDia, SundayCycle } from "../../core/types";
-import { puxarRemuneracao } from "./remuneracao";
+import { puxarRemuneracao, type RemuneracaoPuxada } from "./remuneracao";
 
 // Empregado completo — o cálculo da gorjeta média (calcularDivisaoDia) precisa
 // de cargoId/períodos de TODOS os empregados, não só id+nome.
@@ -414,26 +414,25 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, unidades, pessoaId
 
   // Puxar salário + gorjeta média de um empregado existente (referência).
   const [puxandoRemun, setPuxandoRemun] = useState(false);
-  const [remunInfo, setRemunInfo] = useState<string | null>(null);
+  const [remun, setRemun] = useState<{ empNome: string; res: RemuneracaoPuxada } | null>(null);
+  const [remunErro, setRemunErro] = useState<string | null>(null);
   const empsDoCargo = cargoId ? empregados.filter((e) => e.cargoId === cargoId && e.estaAtivo !== false) : [];
   const empsOutros = empregados.filter((e) => !empsDoCargo.some((x) => x.id === e.id));
   async function puxarRemun(empId: string) {
     const emp = empregados.find((e) => e.id === empId);
     if (!emp) return;
-    setPuxandoRemun(true); setRemunInfo(null);
+    setPuxandoRemun(true); setRemun(null); setRemunErro(null);
     try {
       const now = new Date();
       const r = await puxarRemuneracao(rid, emp, empregados, cargos, unidades, now.getFullYear(), now.getMonth() + 1);
       if (r.salario != null) setSalarioBase(String(r.salario));
       if (r.gorjetaMedia != null) setGorjetaMedia(String(r.gorjetaMedia));
-      const p: string[] = [];
-      p.push(r.salario != null ? `salário R$ ${r.salario.toLocaleString("pt-BR")}` : "salário não achado (só existe se admitido pelo app)");
-      p.push(r.gorjetaMedia != null ? `gorjeta média R$ ${r.gorjetaMedia.toLocaleString("pt-BR")} (${r.mesesUsados} ${r.mesesUsados === 1 ? "mês" : "meses"})` : "sem gorjeta nos últimos 3 meses");
-      setRemunInfo("Puxado de " + emp.nome + ": " + p.join(" · "));
+      setRemun({ empNome: emp.nome, res: r });
     } catch (e) {
-      setRemunInfo("Erro ao puxar: " + (e instanceof Error ? e.message : "?"));
+      setRemunErro("Erro ao puxar: " + (e instanceof Error ? e.message : "?"));
     } finally { setPuxandoRemun(false); }
   }
+  const brl = (n: number) => n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const cargosAtivos = cargos.filter((c) => (c as { ativo?: boolean }).ativo !== false).sort((a, b) => a.nome.localeCompare(b.nome));
   const empModelo = empregados.find((e) => e.id === horarioEmpId);
@@ -530,8 +529,35 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, unidades, pessoaId
                     )}
                   </select>
                 </div>
-                {remunInfo && <p className="text-[11px] text-gray-500">{remunInfo}</p>}
-                <p className="text-[10px] text-gray-400">Salário vem da admissão; gorjeta é a média mensal recalculada dos últimos 3 meses. Ambos ficam editáveis.</p>
+                {remunErro && <p className="text-[11px] text-rose-600">{remunErro}</p>}
+                {remun && (
+                  <div className="text-[11px] text-gray-600 dark:text-gray-300 space-y-1">
+                    <p className="font-medium">Puxado de {remun.empNome}:</p>
+                    <p>{remun.res.salario != null
+                      ? <>Salário: <strong>R$ {brl(remun.res.salario)}</strong></>
+                      : <span className="text-gray-400">Salário não achado (só existe se admitido pelo app)</span>}</p>
+                    {remun.res.porMes.length > 0 ? (
+                      <div>
+                        <p className="mb-0.5">Gorjeta <strong>bruta</strong> por mês:</p>
+                        <ul className="ml-3 space-y-0.5">
+                          {remun.res.porMes.map((m) => (
+                            <li key={m.label} className="flex justify-between max-w-[220px]">
+                              <span className="text-gray-500">{m.label}</span>
+                              <span>R$ {brl(m.bruto)}</span>
+                            </li>
+                          ))}
+                          <li className="flex justify-between max-w-[220px] border-t border-gray-200 dark:border-gray-700 pt-0.5 font-medium">
+                            <span>média ({remun.res.mesesUsados} {remun.res.mesesUsados === 1 ? "mês" : "meses"})</span>
+                            <span>R$ {brl(remun.res.gorjetaMedia || 0)}</span>
+                          </li>
+                        </ul>
+                      </div>
+                    ) : (
+                      <p className="text-gray-400">Sem gorjeta nos últimos 3 meses.</p>
+                    )}
+                  </div>
+                )}
+                <p className="text-[10px] text-gray-400">Salário vem da admissão; gorjeta é a média mensal <strong>bruta</strong> recalculada dos últimos 3 meses. Ambos ficam editáveis.</p>
               </div>
             )}
           </Secao>

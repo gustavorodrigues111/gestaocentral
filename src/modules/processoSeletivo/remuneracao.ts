@@ -9,11 +9,16 @@ import { calcularDivisaoDia, calcularValorLiquido } from "../gorjetas/calc";
 import { getActiveSplitVersion } from "../gorjetas/splitRules";
 import { fmtAnoMes } from "../../core/utils/date";
 
+export type MesGorjeta = { ano: number; mes: number; label: string; bruto: number };
+
 export type RemuneracaoPuxada = {
   salario: number | null;      // R$/mês, da admissão vinculada (null se não achou)
-  gorjetaMedia: number | null; // média mensal dos meses com gorjeta (null se nenhum)
+  gorjetaMedia: number | null; // média mensal BRUTA dos meses com gorjeta (null se nenhum)
   mesesUsados: number;         // quantos meses entraram na média (0..3)
+  porMes: MesGorjeta[];        // detalhe dos meses usados (bruto por mês)
 };
+
+const MES_ABREV = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 
 // Os 3 meses de calendário anteriores a (ano, mes) — o mês corrente é parcial
 // e fica de fora.
@@ -56,14 +61,15 @@ export async function puxarRemuneracao(
     }),
   );
 
-  // Soma a parte do empregado, mês a mês. Só conta o mês na média se ele teve
-  // gorjeta (> 0) — evita que meses antes da contratação (total 0) puxem a
-  // média pra baixo.
-  const totaisPorMes: number[] = [];
+  // Soma a parte BRUTA do empregado, mês a mês. O rateio distribui o valor
+  // líquido, então cada parte (meu.valor) é líquida — reconstrói o bruto do dia
+  // dividindo pelo fator (1 - taxa). Só conta o mês na média se teve gorjeta
+  // (> 0) — evita que meses antes da contratação (total 0) puxem pra baixo.
+  const porMes: MesGorjeta[] = [];
   for (const { ano: a, mes: m } of meses) {
     const key = fmtAnoMes(a, m);
     const escala = escalaPorMes[key];
-    let total = 0;
+    let bruto = 0;
     for (const g of gorjetas) {
       if (!g.date?.startsWith(key)) continue;
       if (!g.valorBruto || g.semGorjeta) continue;
@@ -76,13 +82,20 @@ export async function puxarRemuneracao(
         g.unidadeId || null, unidades,
       );
       const meu = itens.find((it) => it.empregadoId === empregado.id);
-      if (meu) total += meu.valor;
+      if (meu) {
+        const fator = 1 - taxRate / 100;
+        bruto += fator > 0 ? meu.valor / fator : meu.valor;
+      }
     }
-    if (total > 0) totaisPorMes.push(total);
+    if (bruto > 0) {
+      porMes.push({ ano: a, mes: m, label: `${MES_ABREV[m - 1]}/${String(a).slice(2)}`, bruto: Math.round(bruto * 100) / 100 });
+    }
   }
+  // Ordena cronológico (mais antigo → mais novo) pra leitura.
+  porMes.sort((x, y) => x.ano - y.ano || x.mes - y.mes);
 
-  const gorjetaMedia = totaisPorMes.length
-    ? Math.round((totaisPorMes.reduce((s, v) => s + v, 0) / totaisPorMes.length) * 100) / 100
+  const gorjetaMedia = porMes.length
+    ? Math.round((porMes.reduce((s, v) => s + v.bruto, 0) / porMes.length) * 100) / 100
     : null;
 
   // Salário: admissão vinculada mais recente com salário informado.
@@ -101,5 +114,5 @@ export async function puxarRemuneracao(
     } catch { /* sem índice/permissão → deixa salário em branco */ }
   }
 
-  return { salario, gorjetaMedia, mesesUsados: totaisPorMes.length };
+  return { salario, gorjetaMedia, mesesUsados: porMes.length, porMes };
 }
