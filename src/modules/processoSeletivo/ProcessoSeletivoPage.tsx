@@ -498,10 +498,10 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, unidades, pessoaId
                 ))}
               </div>
             </div>
-            <div><label className={lbl}>Resumo <span className="text-gray-400 font-normal">(aparece na listagem de vagas)</span></label>
-              <textarea value={resumo} onChange={(e) => setResumo(e.target.value)} rows={2} className={ta} placeholder="Chamada curta — 1 ou 2 linhas. Ex.: Prepara drinks e cuida do bar; experiência em coquetelaria." /></div>
-            <div><label className={lbl}>Descrição completa <span className="text-gray-400 font-normal">(só na página da vaga)</span></label>
-              <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={4} className={ta} placeholder="O que a pessoa vai fazer no dia a dia, responsabilidades, cultura, benefícios…" /></div>
+            <div><label className={lbl}>Descrição <span className="text-gray-400 font-normal">(aparece na listagem de vagas)</span></label>
+              <textarea value={resumo} onChange={(e) => setResumo(e.target.value)} rows={3} className={ta} placeholder="Descrição principal, curta — é o que aparece no card da vaga na listagem pública." /></div>
+            <div><label className={lbl}>Detalhes da vaga <span className="text-gray-400 font-normal">(só na página da vaga)</span></label>
+              <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={5} className={ta} placeholder="Texto completo: responsabilidades no dia a dia, cultura, benefícios…" /></div>
             <div><label className={lbl}>Requisitos <span className="text-gray-400 font-normal">(só na página da vaga)</span></label>
               <textarea value={requisitos} onChange={(e) => setRequisitos(e.target.value)} rows={3} className={ta} placeholder="Experiência, disponibilidade, etc." /></div>
             <div className="grid grid-cols-2 gap-2">

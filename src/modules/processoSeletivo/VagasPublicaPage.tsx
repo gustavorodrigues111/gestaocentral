@@ -12,14 +12,6 @@ import type { Vaga, PerguntaVaga, CandidaturaTrabalhe, SiteConfig, HorarioDia, S
 
 const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
 const brl = (n: number) => `R$ ${n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
-// Chamada curta pra listagem: usa o resumo; se a vaga (antiga) não tiver,
-// cai pra 1ª frase/trecho da descrição truncado.
-function resumoCurto(v: Vaga): string {
-  if (v.resumo?.trim()) return v.resumo.trim();
-  const d = (v.descricao || "").replace(/\s+/g, " ").trim();
-  if (!d) return "";
-  return d.length > 160 ? d.slice(0, 157).trimEnd() + "…" : d;
-}
 // Horário-modelo da vaga (1ª vigência): TODOS os dias (sem carga = folga) + ciclo de domingo.
 function horarioInfo(vaga: Vaga): { dias: { dia: string; texto: string; folga: boolean }[]; ciclo: SundayCycle | null } {
   const ws = vaga.horarioModelo?.[0];
@@ -110,7 +102,7 @@ export function VagasPublicaPage({ slugFromHost }: { slugFromHost?: string }) {
               <div key={v.id} style={{ borderRadius: 18, background: tema.card, boxShadow: "0 2px 12px rgba(0,0,0,.07)", padding: "26px 22px" }}>
                 <h3 style={{ fontSize: 22, fontWeight: 700, margin: 0, color: tema.texto }}>{v.titulo}</h3>
                 {v.area && <div style={{ fontSize: 12.5, fontWeight: 600, color: tema.secundaria, marginTop: 4 }}>{v.area}</div>}
-                {resumoCurto(v) && <p style={{ fontSize: 14, opacity: 0.8, marginTop: 12, whiteSpace: "pre-wrap", color: tema.texto, lineHeight: 1.55, maxWidth: 460, marginLeft: "auto", marginRight: "auto" }}>{resumoCurto(v)}</p>}
+                {v.resumo?.trim() && <p style={{ fontSize: 14, opacity: 0.8, marginTop: 12, whiteSpace: "pre-wrap", color: tema.texto, lineHeight: 1.55, maxWidth: 460, marginLeft: "auto", marginRight: "auto" }}>{v.resumo.trim()}</p>}
                 <button type="button" onClick={() => navigate(`/vaga/${rid}/${v.id}`)} style={{ marginTop: 20, padding: "12px 28px", borderRadius: 12, background: tema.primaria, color: "#fff", fontSize: 15, fontWeight: 700, border: "none", cursor: "pointer" }}>Ver vaga e candidatar-se →</button>
               </div>
             ))}
@@ -217,9 +209,10 @@ export function VagaCandidaturaPage() {
         {vaga.area && <p style={{ fontSize: 12, opacity: 0.5, margin: "2px 0 0" }}>{vaga.area}</p>}
 
         {/* Quadro de detalhes da vaga */}
-        {(() => { const hor = horarioInfo(vaga); return (vaga.descricao || vaga.requisitos || hor.dias.length > 0 || vaga.salarioBase != null || vaga.gorjetaMedia != null) && (
+        {(() => { const hor = horarioInfo(vaga); return (vaga.resumo || vaga.descricao || vaga.requisitos || hor.dias.length > 0 || vaga.salarioBase != null || vaga.gorjetaMedia != null) && (
           <div style={{ marginTop: 14, borderRadius: 12, background: tema.fundo, border: `1px solid rgba(0,0,0,.08)`, padding: 16 }}>
             <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: 0.8, textTransform: "uppercase", opacity: 0.5, marginBottom: 8 }}>Sobre a vaga</div>
+            {vaga.resumo && <p style={{ fontSize: 14, fontWeight: 600, margin: "0 0 8px", whiteSpace: "pre-wrap", color: tema.texto, lineHeight: 1.5 }}>{vaga.resumo}</p>}
             {vaga.descricao && <p style={{ fontSize: 14, opacity: 0.85, margin: "0 0 8px", whiteSpace: "pre-wrap", color: tema.texto, lineHeight: 1.5 }}>{vaga.descricao}</p>}
             {vaga.requisitos && <p style={{ fontSize: 13, opacity: 0.7, margin: "0 0 8px", whiteSpace: "pre-wrap", color: tema.texto }}><b>Requisitos:</b> {vaga.requisitos}</p>}
             {(vaga.salarioBase != null || vaga.gorjetaMedia != null) && (
