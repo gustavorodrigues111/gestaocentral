@@ -163,25 +163,36 @@ async function processar(body: EvoBody): Promise<void> {
     // replay de histórico ao reconectar).
     const agoraS = Date.now() / 1000;
     if (!fromMe && tsNum && agoraS - tsNum < 300) {
-      // Cliente escreveu numa conversa finalizada → reabre e volta pra pendentes
-      // (limpa finalizado + responsável). Roda ANTES da automação, que então
-      // re-atribui pelo atendente padrão / triagem normalmente.
-      try { await reabrirSeFinalizada(waId); } catch (e) { console.log("[evo-webhook] reabrir:", (e as Error)?.message); }
+      // Cliente escreveu numa conversa finalizada → reabre. Se o contato tem
+      // atendente padrão, volta direto pra ele; senão, pra pendentes. Roda ANTES
+      // da automação (que só age se ainda ficar sem responsável).
+      try { await reabrirSeFinalizada(numeroId, waId); } catch (e) { console.log("[evo-webhook] reabrir:", (e as Error)?.message); }
       try { await automacao(numeroId, waId, texto); } catch (e) { console.log("[evo-webhook] automacao:", (e as Error)?.message); }
     }
   }
 }
 
-// Reabre atendimento finalizado quando o cliente volta a escrever: limpa
-// finalizadoEm + o responsável, devolvendo a conversa pra fila de pendentes.
-async function reabrirSeFinalizada(waIdCru: string): Promise<void> {
+// Reabre atendimento finalizado quando o cliente volta a escrever.
+// - Se o contato tem ATENDENTE PADRÃO → reabre já atribuída a ele.
+// - Senão → volta pra pendentes (sem responsável) e reseta a triagem.
+async function reabrirSeFinalizada(numeroId: string, waIdCru: string): Promise<void> {
   const ck = chaveBR(waIdCru);
   const contato = await firestoreLer("whatsappContatos", ck);
   if (!contato?.finalizadoEm) return;
-  await firestoreAtualizar("whatsappContatos", ck, {
-    finalizadoEm: null, finalizadoPor: null, atribuidoA: null, atribuidoNome: null,
-    roteamentoEstado: null, atualizadoEm: new Date().toISOString(),
-  });
+  const padrao = (contato.atendentePadrao as string) || null;
+  if (padrao) {
+    const nome = (contato.atendentePadraoNome as string) || null;
+    await firestoreAtualizar("whatsappContatos", ck, {
+      finalizadoEm: null, finalizadoPor: null,
+      atribuidoA: padrao, atribuidoNome: nome, atualizadoEm: new Date().toISOString(),
+    });
+    await msgSistema(numeroId, waIdCru, `🙋 Reaberta e atribuída automaticamente a ${nome || "atendente padrão"}`);
+  } else {
+    await firestoreAtualizar("whatsappContatos", ck, {
+      finalizadoEm: null, finalizadoPor: null, atribuidoA: null, atribuidoNome: null,
+      roteamentoEstado: null, atualizadoEm: new Date().toISOString(),
+    });
+  }
 }
 
 // ── Automação: atendente padrão do contato + menu de triagem por área ──────────
