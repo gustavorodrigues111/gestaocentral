@@ -2,14 +2,17 @@
 // F1: kanban com etapas fixas + arrastar. F2: vagas com perguntas próprias +
 // responsável + página pública. F3: transferir, rejeitar c/ motivo, aprovar→admissão.
 import { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where, updateDoc, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
-import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, PerguntaVaga, Pessoa } from "../../core/types";
+import { IniciarAdmissaoModal } from "../admissao/IniciarAdmissaoModal";
+import { iniciarAdmissao, getPrazoDias, getDocumentosAdmissao, getSchemaAdmissao } from "../../core/admissao/admissaoHelpers";
+import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, PerguntaVaga, Pessoa, Cargo } from "../../core/types";
 
 const COLUNAS: { id: EtapaSeletivo; label: string; cor: string }[] = [
   { id: "nova",       label: "Novas",      cor: "border-blue-300 dark:border-blue-800" },
@@ -53,15 +56,18 @@ export function ProcessoSeletivoPage() {
   const podeVagas = isMaster || can("processoSeletivo", "gerenciarVagas");
   const podeTransferir = isMaster || can("processoSeletivo", "transferir");
   const podeAprovar = isMaster || can("processoSeletivo", "aprovar");
-  const navigate = useNavigate();
+  const { restaurants } = useRestaurant();
+  const activeRest = restaurants.find((r) => r.id === rid) || null;
 
   const [aba, setAba] = useState<"kanban" | "vagas">("kanban");
   const [cands, setCands] = useState<CandidaturaTrabalhe[]>([]);
   const [vagas, setVagas] = useState<Vaga[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  const [cargos, setCargos] = useState<Cargo[]>([]);
   const [sel, setSel] = useState<CandidaturaTrabalhe | null>(null);
   const [arrastando, setArrastando] = useState<string | null>(null);
   const [editVaga, setEditVaga] = useState<Vaga | "nova" | null>(null);
+  const [admitir, setAdmitir] = useState<CandidaturaTrabalhe | null>(null);
 
   useEffect(() => {
     if (!rid) return;
@@ -71,7 +77,9 @@ export function ProcessoSeletivoPage() {
       (s) => setVagas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Vaga)), () => setVagas([]));
     const u3 = onSnapshot(query(collection(db, "pessoas"), where("restaurantIds", "array-contains", rid)),
       (s) => setPessoas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Pessoa).sort((a, b) => a.nome.localeCompare(b.nome))), () => setPessoas([]));
-    return () => { u1(); u2(); u3(); };
+    const u4 = onSnapshot(query(collection(db, "cargos"), where("restaurantId", "==", rid)),
+      (s) => setCargos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo)), () => setCargos([]));
+    return () => { u1(); u2(); u3(); u4(); };
   }, [rid]);
 
   // Mantém o sel atualizado quando a candidatura muda no snapshot.
@@ -158,8 +166,27 @@ export function ProcessoSeletivoPage() {
           podeTriar={podeTriar} podeTransferir={podeTransferir} podeAprovar={podeAprovar}
           onMover={(e) => { if (e === "rejeitado") { const m = prompt("Motivo da rejeição (opcional):") || ""; void rejeitar(sel, m); } else void mover(sel.id, e); setSel(null); }}
           onTransferir={(p) => { void transferir(sel, p); }}
-          onIniciarAdmissao={() => { navigate(`/r/${rid}/admissao`); }}
+          onIniciarAdmissao={() => { setAdmitir(sel); }}
           onClose={() => setSel(null)} />
+      )}
+
+      {admitir && activeRest && (
+        <IniciarAdmissaoModal
+          rid={rid} cargos={cargos} schemaUsado={getSchemaAdmissao(activeRest)}
+          defaults={{ nome: admitir.nome, email: admitir.email, whatsapp: admitir.whatsapp }}
+          onClose={() => setAdmitir(null)}
+          onConfirm={async (input) => {
+            if (!pessoa) return undefined;
+            try {
+              const adm = await iniciarAdmissao({ ...input, restaurantSnapshot: {
+                nome: activeRest.nome, whatsappDP: activeRest.whatsappDP,
+                prazoDias: getPrazoDias(activeRest), documentosAdmissao: getDocumentosAdmissao(activeRest),
+              } }, pessoa);
+              await mover(admitir.id, "aprovado", { admissaoId: adm.id });
+              setAdmitir(null); setSel(null);
+              return adm;
+            } catch (e) { alert("Erro ao iniciar admissão: " + (e instanceof Error ? e.message : "?")); return undefined; }
+          }} />
       )}
 
       {editVaga && (
@@ -352,7 +379,7 @@ function CandidatoDrawer({ cand, pessoas, podeTriar, podeTransferir, podeAprovar
         {podeAprovar && etapa === "aprovado" && (
           <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
             <Button className="w-full" onClick={onIniciarAdmissao}>🪪 Iniciar admissão deste candidato</Button>
-            <p className="text-[11px] text-gray-400 mt-1">Abre o módulo Admissão pra concluir com CPF e cargo. (Pré-preenchimento automático dos dados vem no próximo ajuste.)</p>
+            <p className="text-[11px] text-gray-400 mt-1">Abre a admissão já com nome, e-mail e WhatsApp preenchidos. Você completa CPF e cargo.</p>
           </div>
         )}
       </div>
