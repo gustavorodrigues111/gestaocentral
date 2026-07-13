@@ -19,7 +19,7 @@ import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import { WhatsappTemplatesTab } from "./WhatsappTemplatesTab";
-import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, Cliente } from "../../core/types";
+import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
 
 type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; mime?: string };
 
@@ -670,6 +670,12 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 {!contatoSel?.pessoaId && autoMatch && <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">Vinculada automaticamente pelo número: <strong>{autoMatch.nome}</strong></p>}
               </div>
               <div>
+                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Atendente padrão</label>
+                <PessoaPicker pessoas={pessoas.filter(p => { const n = numeros.find(x => x.id === numeroSel); const uids = n?.usuariosIds || []; return uids.length === 0 || uids.includes(p.id); })} valueId={contatoSel?.atendentePadrao || null} autoMatch={null}
+                  onChange={id => void salvarContato(sel, { atendentePadrao: id, atendentePadraoNome: id ? (pessoas.find(p => p.id === id)?.nome || null) : null })} />
+                <p className="text-[11px] text-gray-400 mt-1">Quando este contato manda mensagem e a conversa está <b>pendente</b>, é atribuída automaticamente a essa pessoa.</p>
+              </div>
+              <div>
                 <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Tags</label>
                 <div className="flex flex-wrap gap-1.5 mt-1 items-center">
                   {tags.length === 0 && <span className="text-[11px] text-gray-400">Nenhuma tag criada.</span>}
@@ -1148,6 +1154,11 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
             <RespostasNumero numeroId={numero.id} />
           </SecaoCfg>
 
+          {/* Triagem automática por área (bot) */}
+          <SecaoCfg icon="🤖" titulo="Triagem automática" hint="menu de áreas">
+            <RoteamentoNumero numero={numero} pessoas={pessoas} />
+          </SecaoCfg>
+
           {/* Zona de perigo */}
           <div className="flex justify-end pt-0.5">
             <button type="button" onClick={onExcluir} className="text-xs text-gray-400 hover:text-rose-600">🗑️ Excluir número</button>
@@ -1213,6 +1224,69 @@ function RespostasNumero({ numeroId }: { numeroId: string }) {
       ) : (
         <button type="button" onClick={() => setAddOpen(true)} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">➕ Nova resposta rápida</button>
       )}
+    </div>
+  );
+}
+
+// Config do menu automático de triagem por área (roda no webhook).
+function RoteamentoNumero({ numero, pessoas }: { numero: WhatsappNumero; pessoas: Pessoa[] }) {
+  const vazio: WhatsappRoteamento = { ativo: false, saudacao: "", mensagemRoteado: "", opcoes: [] };
+  const [rot, setRot] = useState<WhatsappRoteamento>(() => numero.roteamento || vazio);
+  const [salvando, setSalvando] = useState(false);
+  useEffect(() => { setRot(numero.roteamento || vazio);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [numero.id, JSON.stringify(numero.roteamento)]);
+  const elegiveis = pessoas.filter(p => { const uids = numero.usuariosIds || []; return uids.length === 0 || uids.includes(p.id); }).sort((a, b) => a.nome.localeCompare(b.nome));
+  const inp = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+  const opcoes = rot.opcoes || [];
+  const setOpc = (i: number, patch: Partial<NonNullable<WhatsappRoteamento["opcoes"]>[number]>) => setRot(r => ({ ...r, opcoes: (r.opcoes || []).map((o, idx) => idx === i ? { ...o, ...patch } : o) }));
+  const addOpc = () => setRot(r => ({ ...r, opcoes: [...(r.opcoes || []), { id: "op_" + Math.random().toString(36).slice(2, 8), rotulo: "", pessoaId: "" }] }));
+  const delOpc = (i: number) => setRot(r => ({ ...r, opcoes: (r.opcoes || []).filter((_, idx) => idx !== i) }));
+  const dirty = JSON.stringify(rot) !== JSON.stringify(numero.roteamento || vazio);
+  async function salvar() {
+    setSalvando(true);
+    try {
+      const limpa: WhatsappRoteamento = { ativo: !!rot.ativo, saudacao: rot.saudacao?.trim() || "", mensagemRoteado: rot.mensagemRoteado?.trim() || "",
+        opcoes: opcoes.filter(o => o.rotulo?.trim() && o.pessoaId).map(o => ({ id: o.id, rotulo: o.rotulo.trim(), pessoaId: o.pessoaId, pessoaNome: elegiveis.find(p => p.id === o.pessoaId)?.nome || o.pessoaNome || undefined, atalhos: o.atalhos })) };
+      await setDoc(doc(db, "whatsappNumeros", numero.id), sanitizeForFirestore({ roteamento: limpa }), { merge: true });
+    } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); } finally { setSalvando(false); }
+  }
+  return (
+    <div className="space-y-2.5">
+      <label className="flex items-center gap-2 text-xs text-gray-700 dark:text-gray-200">
+        <input type="checkbox" checked={!!rot.ativo} onChange={e => setRot(r => ({ ...r, ativo: e.target.checked }))} /> Ativar menu automático
+      </label>
+      <p className="text-[11px] text-gray-400">Cliente novo manda mensagem → o sistema responde com o menu; ao escolher, a conversa é atribuída ao atendente da área. Para assim que alguém assume.</p>
+      <div>
+        <label className="text-[11px] text-gray-500">Saudação + instrução</label>
+        <textarea value={rot.saudacao || ""} onChange={e => setRot(r => ({ ...r, saudacao: e.target.value }))} rows={2} className={inp} placeholder="Ex.: Olá! Com qual área você quer falar?" />
+      </div>
+      <div>
+        <div className="text-[11px] text-gray-500 mb-1">Áreas (opções do menu)</div>
+        <div className="space-y-1.5">
+          {opcoes.length === 0 && <div className="text-xs text-gray-400">Nenhuma área ainda.</div>}
+          {opcoes.map((o, i) => (
+            <div key={o.id} className="flex items-center gap-1.5">
+              <span className="text-xs text-gray-400 w-4 shrink-0">{i + 1}.</span>
+              <input value={o.rotulo} onChange={e => setOpc(i, { rotulo: e.target.value })} className={`${inp} flex-1`} placeholder="Área (ex.: Financeiro)" />
+              <select value={o.pessoaId} onChange={e => setOpc(i, { pessoaId: e.target.value })} className={`${inp} flex-1`}>
+                <option value="">— atendente —</option>
+                {elegiveis.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
+              <button type="button" onClick={() => delOpc(i)} className="text-gray-400 hover:text-rose-600 text-sm shrink-0">🗑️</button>
+            </div>
+          ))}
+        </div>
+        <button type="button" onClick={addOpc} className="mt-1.5 w-full text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">➕ Adicionar área</button>
+      </div>
+      <div>
+        <label className="text-[11px] text-gray-500">Confirmação após escolher (use <code>{"{atendente}"}</code>)</label>
+        <input value={rot.mensagemRoteado || ""} onChange={e => setRot(r => ({ ...r, mensagemRoteado: e.target.value }))} className={inp} placeholder="Ex.: Perfeito! Vou te encaminhar para {atendente}. 😊" />
+      </div>
+      <div className="flex items-center justify-end gap-2">
+        {dirty && <span className="text-[11px] text-amber-600 dark:text-amber-400 mr-auto">Alterações não salvas</span>}
+        <Button size="sm" onClick={() => void salvar()} disabled={!dirty || salvando}>{salvando ? "Salvando…" : "💾 Salvar triagem"}</Button>
+      </div>
     </div>
   );
 }

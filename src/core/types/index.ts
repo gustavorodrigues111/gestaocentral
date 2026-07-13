@@ -5826,8 +5826,16 @@ export type WhatsappNumero = {
   restaurantIds?: string[];   // empresa(s) dona(s) do número (vazio = sem empresa/qualquer)
   usuariosIds?: string[];     // pessoas que podem usar/ver este número (vazio = ninguém além do master)
   regras?: string;            // regras de uso (texto livre, exibido aos atendentes)
+  roteamento?: WhatsappRoteamento;   // menu automático de áreas (bot de triagem)
   criadoEm?: string;
   criadoPor?: string;
+};
+// Menu automático de triagem por área (roda no webhook).
+export type WhatsappRoteamento = {
+  ativo?: boolean;
+  saudacao?: string;          // texto inicial + instrução ("Escolha a área…")
+  mensagemRoteado?: string;   // confirmação após escolher (use {atendente} pra o nome)
+  opcoes?: Array<{ id: string; rotulo: string; pessoaId: string; pessoaNome?: string; atalhos?: string[] }>;
 };
 export type WhatsappContato = {
   id: string;                 // = foneKey (DDD + 8 últimos; normaliza o 9º dígito)
@@ -5841,6 +5849,9 @@ export type WhatsappContato = {
   nomeManual?: string | null;     // nome sobrescrito manualmente
   nomePush?: string | null;       // nome que a pessoa usa no WhatsApp (semeado pelo webhook)
   naoLidaManual?: boolean;        // marcada como não-lida manualmente (força o destaque)
+  atendentePadrao?: string | null;    // pessoaId que assume automaticamente as pendentes deste contato
+  atendentePadraoNome?: string | null;
+  roteamentoEstado?: "menu_enviado" | "roteado" | null;  // estado do menu automático (bot)
   tagIds?: string[];
   atualizadoEm?: string;
   atualizadoPor?: string;

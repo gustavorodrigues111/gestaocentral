@@ -101,6 +101,21 @@ export async function firestoreLer(colecao: string, docId: string): Promise<Reco
   return decDoc((await resp.json()) as { name?: string; fields?: Record<string, Record<string, unknown>> });
 }
 
+// Atualiza (merge) campos de um doc existente via PATCH + updateMask.
+// Só mexe nos campos passados; cria o doc se não existir.
+export async function firestoreAtualizar(colecao: string, docId: string, obj: Record<string, unknown>): Promise<boolean> {
+  const token = await idToken();
+  const fields: Record<string, unknown> = {};
+  const mask: string[] = [];
+  for (const [k, v] of Object.entries(obj)) { const e = encVal(v); if (e) { fields[k] = e; mask.push(k); } }
+  const maskQs = mask.map(m => `updateMask.fieldPaths=${encodeURIComponent(m)}`).join("&");
+  const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/${colecao}/${encodeURIComponent(docId)}?${maskQs}`;
+  const resp = await fetch(url, { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ fields }) });
+  if (resp.ok) return true;
+  const t = await resp.text();
+  throw new Error(`Firestore PATCH ${resp.status}: ${t.slice(0, 200)}`);
+}
+
 // Cria um doc com id conhecido. 409 (já existe) = ok (dedupe). Devolve true se gravou/existia.
 export async function firestoreCriar(colecao: string, docId: string, obj: Record<string, unknown>): Promise<boolean> {
   const token = await idToken();
