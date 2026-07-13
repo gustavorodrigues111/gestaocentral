@@ -7,7 +7,7 @@
 // cadastrado) e a um restaurante, além de receber tags. Isso permite dividir a
 // caixa por restaurante e filtrar por tag. Metadados em whatsappContatos/{waId}
 // e catálogo de tags em whatsappTags.
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode, type ChangeEvent } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -70,6 +70,17 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 132) + "px";
   }, [resposta, sel]);
+  // Anexos + gravação de áudio.
+  const [anexoMenu, setAnexoMenu] = useState(false);
+  const [enviandoMidia, setEnviandoMidia] = useState(false);
+  const [gravando, setGravando] = useState(false);
+  const [segGrav, setSegGrav] = useState(0);
+  const mediaRecRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const gravTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const cancelGravRef = useRef(false);
+  const fileMediaRef = useRef<HTMLInputElement | null>(null);
+  const fileDocRef = useRef<HTMLInputElement | null>(null);
   const [detalhes, setDetalhes] = useState(false);
   const [tab, setTab] = useState<"conversas" | "templates">("conversas");
 
@@ -295,6 +306,74 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     setEnviando(false);
   }
 
+  // ── Mídia: foto/vídeo/documento/áudio ──────────────────────────────────────
+  async function enviarMidia(tipo: "image" | "video" | "document" | "audio", dataUrl: string, fileName: string, mimetype: string, caption = "") {
+    if (!sel || !numeroSel) return;
+    const inbound = thread.filter(m => m.direcao === "in");
+    const paraEnviar = inbound.length ? inbound[inbound.length - 1].waId : sel;
+    setEnviandoMidia(true);
+    try {
+      const r = await fetch("/api/evolution-enviar-midia", {
+        method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
+        body: JSON.stringify({ instancia: numeroSel, to: paraEnviar, tipo, base64: dataUrl, mimetype, fileName, caption, autorNome: me?.nome || "" }),
+      });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && (j as { ok?: boolean }).ok) {
+        const tipoMsg = tipo === "image" ? "imageMessage" : tipo === "video" ? "videoMessage" : tipo === "audio" ? "audioMessage" : "documentMessage";
+        const rotulo = caption || (tipo === "image" ? "🖼️ Imagem" : tipo === "video" ? "🎬 Vídeo" : tipo === "audio" ? "🎤 Áudio" : `📄 ${fileName}`);
+        const guardaMidia = dataUrl.length <= 900_000;   // ~675KB cabe no doc do Firestore
+        await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({
+          waId: sel, nome: nomeSel || null, direcao: "out", tipo: tipoMsg, texto: rotulo,
+          timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true,
+          numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null,
+          ...(guardaMidia ? { midia: dataUrl, mime: mimetype } : {}),
+        }));
+      } else {
+        alert((j as { naoConfigurado?: boolean }).naoConfigurado ? "Evolution ainda não configurada (env vars na Vercel)." : ((j as { error?: string }).error || "Falha ao enviar mídia."));
+      }
+    } catch (e) { alert("Falha ao enviar mídia: " + (e instanceof Error ? e.message : "?")); }
+    setEnviandoMidia(false);
+  }
+
+  function onArquivo(e: ChangeEvent<HTMLInputElement>, forcarDoc: boolean) {
+    const f = e.target.files?.[0]; e.target.value = "";
+    setAnexoMenu(false);
+    if (!f) return;
+    if (f.size > 16 * 1024 * 1024) { alert("Arquivo muito grande (máximo 16 MB)."); return; }
+    const tipo: "image" | "video" | "document" = forcarDoc ? "document" : f.type.startsWith("image/") ? "image" : f.type.startsWith("video/") ? "video" : "document";
+    const reader = new FileReader();
+    reader.onload = () => void enviarMidia(tipo, String(reader.result || ""), f.name, f.type);
+    reader.readAsDataURL(f);
+  }
+
+  async function iniciarGravacao() {
+    setAnexoMenu(false);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const mr = new MediaRecorder(stream);
+      chunksRef.current = []; cancelGravRef.current = false;
+      mr.ondataavailable = ev => { if (ev.data.size) chunksRef.current.push(ev.data); };
+      mr.onstop = () => {
+        stream.getTracks().forEach(t => t.stop());
+        if (cancelGravRef.current) { cancelGravRef.current = false; return; }
+        const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+        const reader = new FileReader();
+        reader.onload = () => void enviarMidia("audio", String(reader.result || ""), "audio", blob.type);
+        reader.readAsDataURL(blob);
+      };
+      mediaRecRef.current = mr; mr.start(); setGravando(true); setSegGrav(0);
+      gravTimerRef.current = setInterval(() => setSegGrav(s => s + 1), 1000);
+    } catch { alert("Não foi possível acessar o microfone. Autorize o acesso no navegador."); }
+  }
+  function pararGravacao(enviar: boolean) {
+    if (gravTimerRef.current) { clearInterval(gravTimerRef.current); gravTimerRef.current = null; }
+    setGravando(false);
+    const mr = mediaRecRef.current; mediaRecRef.current = null;
+    if (!mr) return;
+    cancelGravRef.current = !enviar;
+    try { mr.stop(); } catch { /* ignore */ }
+  }
+
   if (!podeVer && !embutido) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-700 dark:text-gray-300 font-medium">Sem acesso à caixa de entrada do WhatsApp.</p></div>;
 
   // Respostas rápidas do número selecionado + picker acionado por "/" no campo.
@@ -499,17 +578,26 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
               </div>
             ) : (
               <div key={m.id} className={`flex ${m.direcao === "out" ? "justify-end" : "justify-start"}`}>
-                <div className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${m.direcao === "out" ? "bg-emerald-100 dark:bg-emerald-900/30 text-gray-900 dark:text-gray-100" : "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100"}`}>
-                  {m.midia && (m.mime?.startsWith("image") || m.tipo === "stickerMessage") && (
-                    <img src={m.midia} alt={m.texto || "mídia"} className={`rounded-lg mb-1 ${m.tipo === "stickerMessage" ? "w-32 h-32 object-contain" : "max-w-full max-h-64 object-contain"}`} />
-                  )}
-                  {(!m.midia || !(m.mime?.startsWith("image") || m.tipo === "stickerMessage")) && (
-                    <div className="whitespace-pre-wrap break-words">{m.texto || `[${m.tipo || "msg"}]`}</div>
-                  )}
-                  {m.midia && m.texto && m.tipo === "imageMessage" && m.texto !== "🖼️ Imagem" && (
-                    <div className="whitespace-pre-wrap break-words mt-1">{m.texto}</div>
-                  )}
-                  <div className="text-[10px] text-gray-400 mt-0.5 text-right">{m.direcao === "out" && m.autorNome ? `${m.autorNome} · ` : ""}{hhmm(m.timestamp)}</div>
+                <div className={`max-w-[80%] rounded-2xl px-2.5 py-1.5 text-sm shadow-sm ${m.direcao === "out" ? "bg-[#dcf8c6] dark:bg-emerald-900/40 text-gray-900 dark:text-gray-100 rounded-br-md" : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-md"}`}>
+                  {m.direcao === "out" && m.autorNome && <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 mb-0.5">{m.autorNome}</div>}
+                  {(() => {
+                    const isImg = m.midia && (m.mime?.startsWith("image") || m.tipo === "stickerMessage");
+                    const isVid = m.midia && (m.mime?.startsWith("video") || m.tipo === "videoMessage");
+                    const isAud = m.midia && (m.mime?.startsWith("audio") || m.tipo === "audioMessage");
+                    const isDoc = m.midia && m.tipo === "documentMessage";
+                    const rotuloAuto = ["🖼️ Imagem", "🎬 Vídeo", "🎤 Áudio"].includes(m.texto || "");
+                    return (
+                      <>
+                        {isImg && <img src={m.midia} alt={m.texto || "imagem"} className={`rounded-lg ${m.tipo === "stickerMessage" ? "w-32 h-32 object-contain" : "max-w-full max-h-64 object-contain"}`} />}
+                        {isVid && <video src={m.midia} controls className="rounded-lg max-w-full max-h-64" />}
+                        {isAud && <audio src={m.midia} controls className="max-w-[220px]" />}
+                        {isDoc && <a href={m.midia} download className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 underline">📄 {m.texto?.replace(/^📄 /, "") || "documento"}</a>}
+                        {!isImg && !isVid && !isAud && !isDoc && <div className="whitespace-pre-wrap break-words">{m.texto || `[${m.tipo || "msg"}]`}</div>}
+                        {(isImg || isVid) && m.texto && !rotuloAuto && <div className="whitespace-pre-wrap break-words mt-1">{m.texto}</div>}
+                      </>
+                    );
+                  })()}
+                  <div className="text-[10px] text-gray-400 mt-0.5 text-right">{hhmm(m.timestamp)}{m.direcao === "out" ? " ✓✓" : ""}</div>
                 </div>
               </div>
             ))}
@@ -539,11 +627,37 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                   ))}
                 </div>
               )}
-              <div className="flex items-end gap-2">
-                <button type="button" onClick={() => setEmojiAberto(v => !v)} className="shrink-0 w-10 h-10 rounded-xl border border-gray-300 dark:border-gray-700 text-xl hover:bg-gray-50 dark:hover:bg-gray-800" title="Emojis">😊</button>
-                <textarea ref={taRef} value={resposta} onChange={e => setResposta(e.target.value)} onFocus={() => setEmojiAberto(false)} rows={1} placeholder="Responder…  ( / = respostas rápidas )" className="flex-1 px-3 py-2 text-base leading-snug rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 resize-none overflow-y-auto" onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !slashAtivo) { e.preventDefault(); void responder(); } }} />
-                <Button onClick={() => { setEmojiAberto(false); void responder(); }} disabled={enviando || !resposta.trim()}>{enviando ? "…" : "Enviar"}</Button>
-              </div>
+              {/* Menu de anexos */}
+              {anexoMenu && !gravando && (
+                <div className="absolute bottom-full left-2 mb-1 w-52 p-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg z-10">
+                  <button type="button" onClick={() => fileMediaRef.current?.click()} className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-200">🖼️ Foto ou vídeo</button>
+                  <button type="button" onClick={() => fileDocRef.current?.click()} className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-200">📄 Documento</button>
+                  <button type="button" onClick={() => void iniciarGravacao()} className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-200">🎤 Gravar áudio</button>
+                </div>
+              )}
+              <input ref={fileMediaRef} type="file" accept="image/*,video/*" className="hidden" onChange={e => onArquivo(e, false)} />
+              <input ref={fileDocRef} type="file" className="hidden" onChange={e => onArquivo(e, true)} />
+
+              {gravando ? (
+                /* Barra de gravação de áudio */
+                <div className="flex items-center gap-3 px-2 py-1.5">
+                  <span className="w-3 h-3 rounded-full bg-rose-500 animate-pulse shrink-0" />
+                  <span className="text-sm text-gray-600 dark:text-gray-300 flex-1">Gravando… {Math.floor(segGrav / 60)}:{String(segGrav % 60).padStart(2, "0")}</span>
+                  <button type="button" onClick={() => pararGravacao(false)} className="text-sm px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>
+                  <button type="button" onClick={() => pararGravacao(true)} className="w-10 h-10 rounded-full bg-emerald-600 text-white flex items-center justify-center shrink-0" title="Enviar áudio">➤</button>
+                </div>
+              ) : (
+                <div className="flex items-end gap-1.5">
+                  <button type="button" onClick={() => { setAnexoMenu(v => !v); setEmojiAberto(false); }} disabled={enviandoMidia} className="shrink-0 w-9 h-9 rounded-full text-xl text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center" title="Anexar">{enviandoMidia ? "⏳" : "＋"}</button>
+                  <div className="flex-1 flex items-end gap-1 rounded-3xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-0.5">
+                    <button type="button" onClick={() => { setEmojiAberto(v => !v); setAnexoMenu(false); }} className="shrink-0 w-8 h-9 text-xl text-gray-500 hover:text-gray-700 flex items-center justify-center" title="Emojis">😊</button>
+                    <textarea ref={taRef} value={resposta} onChange={e => setResposta(e.target.value)} onFocus={() => { setEmojiAberto(false); setAnexoMenu(false); }} rows={1} placeholder="Mensagem  ( / = respostas rápidas )" className="flex-1 py-2 text-base leading-snug bg-transparent resize-none overflow-y-auto outline-none border-0" onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !slashAtivo) { e.preventDefault(); void responder(); } }} />
+                  </div>
+                  {resposta.trim()
+                    ? <button type="button" onClick={() => { setEmojiAberto(false); void responder(); }} disabled={enviando} className="shrink-0 w-11 h-11 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center text-lg" title="Enviar">{enviando ? "…" : "➤"}</button>
+                    : <button type="button" onClick={() => void iniciarGravacao()} disabled={enviandoMidia} className="shrink-0 w-11 h-11 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center text-lg" title="Gravar áudio">🎤</button>}
+                </div>
+              )}
             </div>
           )}
         </div>
