@@ -3,7 +3,7 @@
 // responsável + página pública. F3: transferir, rejeitar c/ motivo, aprovar→admissão.
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, onSnapshot, query, where, updateDoc, doc, setDoc, deleteDoc } from "firebase/firestore";
+import { collection, onSnapshot, query, where, updateDoc, doc, setDoc, deleteDoc, addDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -16,12 +16,13 @@ import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, Pergu
 
 type EmpMin = { id: string; nome: string; workSchedules?: WorkSchedule[] };
 
+// Rejeitados NÃO é coluna — vai pro histórico abaixo do kanban.
 const COLUNAS: { id: EtapaSeletivo; label: string; cor: string }[] = [
   { id: "nova",       label: "Novas",      cor: "border-blue-300 dark:border-blue-800" },
   { id: "triagem",    label: "Triagem",    cor: "border-indigo-300 dark:border-indigo-800" },
   { id: "entrevista", label: "Entrevista", cor: "border-amber-300 dark:border-amber-800" },
+  { id: "teste",      label: "Em teste (freela)", cor: "border-purple-300 dark:border-purple-800" },
   { id: "aprovado",   label: "Aprovados",  cor: "border-emerald-300 dark:border-emerald-800" },
-  { id: "rejeitado",  label: "Rejeitados", cor: "border-rose-300 dark:border-rose-800" },
   { id: "banco",      label: "Banco de talentos", cor: "border-gray-300 dark:border-gray-700" },
 ];
 
@@ -37,7 +38,7 @@ function etapaDe(c: CandidaturaTrabalhe): EtapaSeletivo {
 }
 function statusDaEtapa(e: EtapaSeletivo): StatusCandidatura {
   switch (e) {
-    case "triagem": case "entrevista": return "em_analise";
+    case "triagem": case "entrevista": case "teste": return "em_analise";
     case "aprovado": return "aprovada_pra_admissao";
     case "rejeitado": return "rejeitada";
     case "banco": return "arquivada";
@@ -91,7 +92,7 @@ export function ProcessoSeletivoPage() {
   useEffect(() => { if (sel) { const f = cands.find((c) => c.id === sel.id); if (f) setSel(f); } }, [cands]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const porEtapa = useMemo(() => {
-    const m: Record<EtapaSeletivo, CandidaturaTrabalhe[]> = { nova: [], triagem: [], entrevista: [], aprovado: [], rejeitado: [], banco: [] };
+    const m: Record<EtapaSeletivo, CandidaturaTrabalhe[]> = { nova: [], triagem: [], entrevista: [], teste: [], aprovado: [], rejeitado: [], banco: [] };
     for (const c of cands) m[etapaDe(c)].push(c);
     for (const k of Object.keys(m) as EtapaSeletivo[]) m[k].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
     return m;
@@ -107,6 +108,18 @@ export function ProcessoSeletivoPage() {
   }
   async function rejeitar(c: CandidaturaTrabalhe, motivo: string) {
     await mover(c.id, "rejeitado", { motivoRejeicao: motivo || null, rejeitadaEm: new Date().toISOString() });
+  }
+  // Cria um turno de freela (só-nome) pro candidato em teste — cai no módulo Freelas.
+  async function criarFreela(c: CandidaturaTrabalhe) {
+    if ((c as unknown as { freelaShiftId?: string }).freelaShiftId) { alert("Este candidato já tem um freela criado."); return; }
+    if (!confirm(`Criar freela em teste pra ${c.nome}? Ele entra como turno agendado no módulo Freelas (você ajusta data/valor lá).`)) return;
+    const hoje = new Date().toISOString().slice(0, 10);
+    const ref = await addDoc(collection(db, "freelaShifts"), sanitizeForFirestore({
+      restaurantId: rid, nomeSnapshot: c.nome, whatsappSnapshot: c.whatsapp || undefined,
+      date: hoje, status: "agendado", observacao: "Teste (Processo Seletivo)",
+      criadoEm: new Date().toISOString(), criadoPor: pessoa?.id || null,
+    }));
+    await updateDoc(doc(db, "candidaturasTrabalhe", c.id), { freelaShiftId: ref.id, etapa: "teste", status: statusDaEtapa("teste"), updatedAt: new Date().toISOString() }).catch(() => {});
   }
   async function salvarVaga(v: Vaga) {
     await setDoc(doc(db, "vagas", v.id), sanitizeForFirestore(v), { merge: true });
@@ -135,6 +148,7 @@ export function ProcessoSeletivoPage() {
       </div>
 
       {aba === "kanban" ? (
+        <>
         <div className="flex gap-3 overflow-x-auto pb-3 [scrollbar-width:thin]">
           {COLUNAS.map((col) => (
             <div key={col.id}
@@ -147,21 +161,49 @@ export function ProcessoSeletivoPage() {
               </div>
               <div className="px-2 pb-2 space-y-2 min-h-[120px] overflow-y-auto max-h-[70vh]">
                 {porEtapa[col.id].length === 0 && <div className="text-[11px] text-gray-400 text-center py-4">—</div>}
-                {porEtapa[col.id].map((c) => (
-                  <button key={c.id} type="button" draggable={podeTriar}
+                {porEtapa[col.id].map((c) => {
+                  const temFreela = !!(c as unknown as { freelaShiftId?: string }).freelaShiftId;
+                  return (
+                  <div key={c.id} draggable={podeTriar}
                     onDragStart={(e) => { e.dataTransfer.setData("id", c.id); setArrastando(c.id); }}
                     onDragEnd={() => setArrastando(null)}
-                    onClick={() => setSel(c)}
-                    className={`w-full text-left rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-2.5 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors ${arrastando === c.id ? "opacity-50" : ""}`}>
-                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{c.nome}</div>
-                    <div className="text-[11px] text-gray-500 truncate">{c.vagaTitulo ? `📌 ${c.vagaTitulo}` : "Banco de talentos"}{c.areaInteresse ? ` · ${c.areaInteresse}` : ""}</div>
-                    {c.responsavelNome && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 truncate mt-0.5">🙋 {c.responsavelNome}</div>}
-                  </button>
-                ))}
+                    className={`rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-2.5 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors ${arrastando === c.id ? "opacity-50" : ""}`}>
+                    <button type="button" onClick={() => setSel(c)} className="w-full text-left">
+                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{c.nome}</div>
+                      <div className="text-[11px] text-gray-500 truncate">{c.vagaTitulo ? `📌 ${c.vagaTitulo}` : "Banco de talentos"}{c.areaInteresse ? ` · ${c.areaInteresse}` : ""}</div>
+                      {c.responsavelNome && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 truncate mt-0.5">🙋 {c.responsavelNome}</div>}
+                    </button>
+                    {col.id === "teste" && podeTriar && (
+                      temFreela
+                        ? <div className="mt-1.5 text-[10px] text-purple-600 dark:text-purple-300 font-semibold">✓ Freela criado</div>
+                        : <button type="button" onClick={() => void criarFreela(c)} className="mt-1.5 w-full text-[11px] font-semibold px-2 py-1 rounded-md bg-purple-600 hover:bg-purple-700 text-white">⚡ Criar freela</button>
+                    )}
+                  </div>
+                  );
+                })}
               </div>
             </div>
           ))}
         </div>
+
+        {/* Histórico de rejeitados (não ocupa coluna no kanban) */}
+        {porEtapa.rejeitado.length > 0 && (
+          <details className="mt-4 rounded-xl border border-gray-200 dark:border-gray-800">
+            <summary className="cursor-pointer px-4 py-2.5 text-sm font-semibold text-gray-600 dark:text-gray-300">❌ Rejeitados ({porEtapa.rejeitado.length})</summary>
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              {porEtapa.rejeitado.map((c) => (
+                <div key={c.id} className="flex items-center gap-3 px-4 py-2.5">
+                  <button type="button" onClick={() => setSel(c)} className="flex-1 min-w-0 text-left">
+                    <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{c.nome}</div>
+                    <div className="text-[11px] text-gray-400 truncate">{c.vagaTitulo ? `📌 ${c.vagaTitulo}` : "Banco de talentos"}{c.motivoRejeicao ? ` · motivo: ${c.motivoRejeicao}` : ""}</div>
+                  </button>
+                  {podeTriar && <button type="button" onClick={() => void mover(c.id, "triagem")} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline shrink-0">↩ Restaurar</button>}
+                </div>
+              ))}
+            </div>
+          </details>
+        )}
+        </>
       ) : (
         <VagasAdmin vagas={vagas} rid={rid} podeVagas={podeVagas} onNova={() => setEditVaga("nova")} onEditar={(v) => setEditVaga(v)} onExcluir={excluirVaga} />
       )}
@@ -424,6 +466,7 @@ function CandidatoDrawer({ cand, pessoas, podeTriar, podeTransferir, podeAprovar
               {COLUNAS.filter((c) => c.id !== etapa).map((c) => (
                 <button key={c.id} type="button" onClick={() => onMover(c.id)} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">{c.label}</button>
               ))}
+              {etapa !== "rejeitado" && <button type="button" onClick={() => onMover("rejeitado")} className="text-xs px-2.5 py-1.5 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20">❌ Rejeitar</button>}
             </div>
           </div>
         )}

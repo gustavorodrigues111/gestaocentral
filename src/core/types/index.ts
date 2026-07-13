@@ -3945,7 +3945,7 @@ export type StatusCandidatura =
   | "arquivada";
 
 // ── Processo Seletivo: etapas fixas do kanban ──
-export type EtapaSeletivo = "nova" | "triagem" | "entrevista" | "aprovado" | "rejeitado" | "banco";
+export type EtapaSeletivo = "nova" | "triagem" | "entrevista" | "teste" | "aprovado" | "rejeitado" | "banco";
 
 // Vaga em aberto (Processo Seletivo). Pode ter perguntas próprias e um responsável.
 export type PerguntaVaga = {
