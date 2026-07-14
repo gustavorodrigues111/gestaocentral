@@ -24,7 +24,6 @@ import {
   ymd, parseYmd, parseAnoMes, fmtAnoMes, daysInMonth, proximoDiaUtil, fmtBR, nomeMes, shiftMonth,
 } from "../../core/utils/date";
 import { buscarFeriadosProximos } from "../sites/feriadosHelper";
-import { sincronizarTarefaPorContaFixa } from "../tarefas/repository";
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 function inicioSemanaSeg(s: string): string {
@@ -151,12 +150,10 @@ export function ContasFixasPage() {
   const tituloSemana = `${fmtBR(dias[0])} – ${fmtBR(dias[6])}`;
 
   async function togglePago(c: ContaFixa, cmp: string) {
-    const pago = !c.pagamentos?.[cmp];   // estado APÓS o toggle
     const novo = { ...(c.pagamentos || {}) };
-    if (!pago) delete novo[cmp]; else novo[cmp] = { pagoEm: new Date().toISOString(), pagoPor: pessoa!.id };
+    if (novo[cmp]) delete novo[cmp]; else novo[cmp] = { pagoEm: new Date().toISOString(), pagoPor: pessoa!.id };
     await updateDoc(doc(db, "contasFixas", c.id), { pagamentos: novo, atualizadoEm: new Date().toISOString() });
-    // Reflete no Gestor de Tarefas: conclui/reabre a tarefa vinculada (se existir).
-    try { await sincronizarTarefaPorContaFixa(c.id, cmp, pago, { id: pessoa!.id, nome: pessoa!.nome }); } catch { /* tarefa pode não existir ainda */ }
+    // O Gestor de Tarefas reflete automaticamente (deriva ao vivo de contasFixas).
   }
   async function moverPara(id: string, cmp: string, novaData: string) {
     const c = contas.find(x => x.id === id); if (!c) return;

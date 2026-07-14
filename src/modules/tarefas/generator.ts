@@ -41,7 +41,8 @@ async function loadObservadoresPadraoSub(subprojetoId: string): Promise<string[]
 }
 
 /** Próximo vencimento de uma Conta Fixa a partir de hoje. */
-function proximoVencimentoContaFixa(cf: ContaFixa): string | null {
+export const ANTECEDENCIA_CONTA_FIXA_DIAS = ANTECEDENCIA_DEFAULT_DIAS;
+export function proximoVencimentoContaFixa(cf: ContaFixa): string | null {
   const hoje = new Date();
   if (cf.recorrencia === "mensal" && cf.diaDoMes) {
     let alvo = new Date(hoje.getFullYear(), hoje.getMonth(), cf.diaDoMes);
@@ -79,7 +80,10 @@ export async function gerarTarefasDoDia(autor: { id: string; nome: string }): Pr
   const hoje = new Date().toISOString().slice(0, 10);
 
   // ── Contas Fixas ──
-  const cfSnap = await getDocs(query(collection(db, "contasFixas"), where("ativo", "==", true)));
+  // DESATIVADO: contas fixas agora aparecem no Gestor como CARD DERIVADO ao vivo
+  // (ver derivados.ts), não mais como cópia de tarefa. Fonte única = módulo Contas
+  // Fixas. Loop preservado abaixo (não itera) — fase A da integração.
+  const cfSnap = { docs: [] as { id: string; data: () => Record<string, unknown> }[] };
   for (const d of cfSnap.docs) {
     const cf = { id: d.id, ...d.data() } as ContaFixa;
     if (cf.deletadoEm) continue;

@@ -4522,6 +4522,21 @@ export type Tarefa = {
   criadoPor: string;
   criadoPorNome?: string;
   atualizadoEm: string;
+  // RUNTIME-ONLY (nunca persistido): marca um card DERIVADO ao vivo de outro
+  // módulo (conta fixa/manutenção/prazo), exibido no Gestor sem virar tarefa de
+  // verdade. Concluir delega pro módulo dono.
+  __derivado?: TarefaDerivadaInfo;
+};
+
+// Item derivado de outro módulo, exibido como card leve no Gestor de Tarefas.
+export type TarefaDerivadaInfo = {
+  tipo: "conta_fixa";               // (fases seguintes: "manutencao" | "prazo_trabalhista")
+  refId: string;                    // id no módulo de origem
+  competencia?: string;             // "YYYY-MM" (contas fixas)
+  // Conclui/reabre no módulo dono (ex.: marca a conta paga). Não mexe em tarefa.
+  setConcluida: (v: boolean) => Promise<void>;
+  // Se o card abre um modal do módulo (manutenção/trabalhista) em vez de só check.
+  abrirModal?: () => void;
 };
 
 // ─── CONTA FIXA (cadastro mestre) ─────────────────────────────────────────
