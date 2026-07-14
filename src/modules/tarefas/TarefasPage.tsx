@@ -5,7 +5,9 @@
 // independente do restaurante selecionado no topo.
 
 import { useEffect, useState, useMemo } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
+import { ContaFixaForm } from "../contasFixas/ContasFixasPage";
+import { ManutencaoForm } from "../manutencoes/ManutencoesPage";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { aplicarPerfisNaPessoa } from "../../core/auth/profileToLegacy";
@@ -49,7 +51,7 @@ import {
   TAREFA_VISIBILIDADE_LABEL, RECORRENCIA_TIPO_LABEL,
   TAREFA_CUSTOM_FIELD_TIPO_LABEL, MODULOS_ORIGEM_TAREFA,
 } from "../../core/types";
-import type { TarefaAnexo, Subtarefa, ContaFixa, Manutencao, Empregado, ExameEmpregado, EntregaUniforme } from "../../core/types";
+import type { TarefaAnexo, Subtarefa, ContaFixa, Manutencao, Empregado, ExameEmpregado, EntregaUniforme, Endereco } from "../../core/types";
 import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
 import { derivarContasFixas, derivarManutencoes, derivarPrazosTrab } from "./derivados";
@@ -172,6 +174,12 @@ export function TarefasPage() {
   const [resolvidosTrab, setResolvidosTrab] = useState<Set<string>>(new Set());
   const [prazoTrabAberto, setPrazoTrabAberto] = useState<PrazoTrabItem | null>(null);
   const [contaFixaAberta, setContaFixaAberta] = useState<{ conta: ContaFixa; cmp: string } | null>(null);
+  // "+ Novo prazo" no projeto Prazos: menu de escolha + forms de criação inline.
+  const [prazoMenuAberto, setPrazoMenuAberto] = useState(false);
+  const [criarContaFixa, setCriarContaFixa] = useState(false);
+  const [criarManutencao, setCriarManutencao] = useState(false);
+  const [enderecos, setEnderecos] = useState<Endereco[]>([]);
+  const navigate = useNavigate();
   // Modal de nova tarefa. Aceita pré-preenchimento de prazo, projeto e
   // subprojeto pra fluxos diferentes (botão por dia, "+ Nova tarefa" dentro
   // de um projeto, etc.).
@@ -261,7 +269,8 @@ export function TarefasPage() {
     const u4 = onSnapshot(collection(db, "examesEmpregado"), (s) => setExamesTrab(s.docs.map((d) => ({ id: d.id, ...d.data() }) as ExameEmpregado)), () => setExamesTrab([]));
     const u5 = onSnapshot(collection(db, "entregasUniforme"), (s) => setEntregasTrab(s.docs.map((d) => ({ id: d.id, ...d.data() }) as EntregaUniforme)), () => setEntregasTrab([]));
     const u6 = onSnapshot(collection(db, "agendaTrabResolvidos"), (s) => setResolvidosTrab(new Set(s.docs.map((d) => d.id))), () => setResolvidosTrab(new Set()));
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
+    const u7 = onSnapshot(collection(db, "enderecos"), (s) => setEnderecos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Endereco)), () => setEnderecos([]));
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
   }, []);
 
   // Projeto "Prazos" (casa única dos itens com data). Resolve por id do seed com
@@ -536,6 +545,12 @@ export function TarefasPage() {
               ["proprio", "✍️ Próprios", proprios],
             ];
             const ocultos = defs.filter(([t]) => !prazoTipoFiltro.has(t)).reduce((s, [, , n]) => s + n, 0);
+            const opcoes: [string, () => void][] = [
+              ["✍️ Prazo próprio", () => setNovaAberta({ projetoId: prazosProjId })],
+              ["💰 Conta fixa", () => setCriarContaFixa(true)],
+              ["🛠️ Prazo técnico", () => setCriarManutencao(true)],
+              ["🧑‍⚖️ Trabalhista (via Admissão)", () => navigate(`/r/${ridAtivo}/admissao`)],
+            ];
             return (
               <div className="flex items-center gap-1.5 flex-wrap mb-3">
                 {defs.map(([t, label, n]) => {
@@ -549,6 +564,19 @@ export function TarefasPage() {
                   );
                 })}
                 {ocultos > 0 && <span className="text-[11px] text-amber-600 dark:text-amber-400 ml-1">👁️ {ocultos} oculto(s)</span>}
+                <div className="relative ml-auto">
+                  <Button size="sm" onClick={() => setPrazoMenuAberto((v) => !v)}>+ Novo prazo</Button>
+                  {prazoMenuAberto && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setPrazoMenuAberto(false)} />
+                      <div className="absolute right-0 mt-1 z-20 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
+                        {opcoes.map(([lbl, fn]) => (
+                          <button key={lbl} type="button" onClick={() => { setPrazoMenuAberto(false); fn(); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
               </div>
             );
           })()}
@@ -627,6 +655,18 @@ export function TarefasPage() {
       {/* Modal de conta fixa — detalhes + marcar pago (não marca ao clicar). */}
       {contaFixaAberta && (
         <ContaFixaDetalheModal conta={contaFixaAberta.conta} competencia={contaFixaAberta.cmp} pessoaId={pessoa?.id || ""} onClose={() => setContaFixaAberta(null)} />
+      )}
+
+      {/* Criação inline a partir do "+ Novo prazo" (reusa os forms dos módulos). */}
+      {criarContaFixa && (
+        <ContaFixaForm conta={null} init={prazosProjId ? { projetoId: prazosProjId } : undefined}
+          restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome || r.id }))} enderecos={enderecos} pessoaId={pessoa?.id || ""}
+          onClose={() => setCriarContaFixa(false)} />
+      )}
+      {criarManutencao && (
+        <ManutencaoForm manutencao={null}
+          restaurants={restaurants.map((r) => ({ id: r.id, nome: r.nome || r.id }))} enderecos={enderecos} pessoaId={pessoa?.id || ""}
+          onClose={() => setCriarManutencao(false)} />
       )}
 
       {/* Modal de prazo trabalhista (experiência/exame/uniforme) — aberto pelo

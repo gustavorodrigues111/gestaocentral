@@ -116,7 +116,7 @@ export function ManutencoesPage() {
     <div className="max-w-6xl mx-auto p-4">
       <header className="flex items-center justify-between mb-3 gap-2 flex-wrap">
         <div className="text-sm text-gray-500">{visiveis.length} item{visiveis.length === 1 ? "" : "s"}{filtroAtivo && daEmpresa.length !== visiveis.length ? ` de ${daEmpresa.length}` : ""}{vencidas > 0 && <span className="text-rose-600 font-medium"> · {vencidas} vencido{vencidas === 1 ? "" : "s"}</span>}</div>
-        <Button onClick={() => setCriando(true)}>+ Nova Manutenção</Button>
+        <Button onClick={() => setCriando(true)}>+ Novo Prazo Técnico</Button>
       </header>
 
       <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
@@ -496,7 +496,7 @@ export function ManutencaoForm({ manutencao, onClose, restaurants, enderecos, pe
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h2 className="text-lg font-bold mb-4 text-gray-900 dark:text-gray-100">{manutencao ? "Editar cadastro" : "Nova Manutenção"}</h2>
+        <h2 className="text-lg font-bold mb-4 text-gray-900 dark:text-gray-100">{manutencao ? "Editar cadastro" : "Novo Prazo Técnico"}</h2>
         <div className="space-y-3">
           <Field label="Tipo *">
             <select value={f.tipo} onChange={(e) => setF({ ...f, tipo: e.target.value as ManutencaoTipo, obrigatorio: !TIPOS_FLEXIVEIS.has(e.target.value as ManutencaoTipo) })} className="mt-input">

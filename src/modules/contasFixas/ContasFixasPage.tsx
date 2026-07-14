@@ -210,7 +210,6 @@ export function ContasFixasPage() {
           {aba === "visualizacao" && vis === "lista" && <> · <span className="text-emerald-600 font-medium">{nPagas} paga{nPagas === 1 ? "" : "s"}</span>{nAtras > 0 && <span className="text-rose-600 font-medium"> · {nAtras} atrasada{nAtras === 1 ? "" : "s"}</span>}</>}
         </div>
         <div className="flex items-center gap-2">
-          {pessoa.isMaster && <Button variant="secondary" onClick={() => setImportando(true)}>⬆️ Importar CSV</Button>}
           <Button onClick={() => setCriando(true)}>+ Nova Conta Fixa</Button>
         </div>
       </header>
@@ -248,7 +247,7 @@ export function ContasFixasPage() {
         <div className="text-center py-12 text-gray-500 dark:text-gray-400">
           <div className="text-4xl mb-2">📋</div>
           <p>Nenhuma conta fixa nesta empresa.</p>
-          <p className="text-sm mt-1">Use <b>+ Nova Conta Fixa</b> ou <b>⬆️ Importar CSV</b> pra popular.</p>
+          <p className="text-sm mt-1">Use <b>+ Nova Conta Fixa</b> pra popular.</p>
         </div>
       ) : vis === "calendario" ? (
         <div>
