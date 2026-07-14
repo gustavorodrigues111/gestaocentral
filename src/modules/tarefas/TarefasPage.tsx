@@ -123,6 +123,17 @@ export function TarefasPage() {
   const [subprojetos, setSubprojetos] = useState<TarefaSubprojeto[]>([]);
   const [minhas, setMinhas] = useState<Tarefa[]>([]);
   const [projetoFiltro, setProjetoFiltro] = useState<string>("");
+  // Filtro de tipo dentro do projeto Prazos (contas fixas/técnicos/trabalhistas/
+  // próprios). Multi-seleção, todos ligados por padrão, estado salvo.
+  const [prazoTipoFiltro, setPrazoTipoFiltro] = useState<Set<string>>(() => {
+    try { const raw = localStorage.getItem("tarefas_prazo_filtro"); if (raw) return new Set(JSON.parse(raw) as string[]); } catch { /* ignore */ }
+    return new Set(["conta_fixa", "manutencao", "prazo_trabalhista", "proprio"]);
+  });
+  const togglePrazoTipo = (t: string) => setPrazoTipoFiltro(prev => {
+    const n = new Set(prev); n.has(t) ? n.delete(t) : n.add(t);
+    try { localStorage.setItem("tarefas_prazo_filtro", JSON.stringify([...n])); } catch { /* ignore */ }
+    return n;
+  });
   // subFiltro vive aqui (não no ProjetoView) pra a sidebar conseguir mostrar
   // os subprojetos como accordion dentro do próprio projeto selecionado.
   const [subFiltro, setSubFiltro] = useState<string>("");
@@ -230,7 +241,14 @@ export function TarefasPage() {
     return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
   }, []);
 
-  // Itens derivados (contas fixas + manutenções + prazos trabalhistas).
+  // Projeto "Prazos" (casa única dos itens com data). Resolve por id do seed com
+  // fallback por nome — se não existir, os derivados mantêm o projeto de origem.
+  const prazosProjId = useMemo(
+    () => projetos.find((p) => p.id === "proj-prazos" || /praz/i.test(p.nome || ""))?.id || "",
+    [projetos],
+  );
+  // Itens derivados (contas fixas + manutenções + prazos trabalhistas). Todos são
+  // roteados pro projeto Prazos (nível de exibição — sem migrar dados de origem).
   const derivadas = useMemo(() => {
     if (!pessoa) return [];
     const hoje = new Date().toISOString().slice(0, 10);
@@ -238,12 +256,13 @@ export function TarefasPage() {
     const prazosTrab = subPT
       ? derivarPrazosTrab(computarPrazosTrab(empregadosTrab, examesTrab, entregasTrab, hoje), hoje, resolvidosTrab, subPT.projetoId, subPT.id, setPrazoTrabAberto)
       : [];
-    return [
+    const all = [
       ...derivarContasFixas(contasFixas, hoje, (conta, cmp) => setContaFixaAberta({ conta, cmp })),
       ...derivarManutencoes(manutencoes, hoje, setManutencaoAberta),
       ...prazosTrab,
     ];
-  }, [contasFixas, manutencoes, empregadosTrab, examesTrab, entregasTrab, resolvidosTrab, subprojetos, pessoa]);
+    return prazosProjId ? all.map((d): Tarefa => ({ ...d, projetoId: prazosProjId })) : all;
+  }, [contasFixas, manutencoes, empregadosTrab, examesTrab, entregasTrab, resolvidosTrab, subprojetos, pessoa, prazosProjId]);
   // "Minhas": esconde as cópias persistidas antigas (origem conta_fixa) e injeta
   // os derivados dos quais sou responsável-padrão.
   const minhasComDerivados = useMemo(
@@ -264,11 +283,19 @@ export function TarefasPage() {
     [todasTarefas, derivadas],
   );
   const tarefasProjetoComDerivados = useMemo(
-    () => [
-      ...tarefasProjeto.filter((t) => !ORIGEM_DERIVADA.has(t.origem) && podeVerTarefa(t, projetos.find((p) => p.id === t.projetoId), pessoa)),
-      ...derivadas.filter((d) => d.projetoId === projetoFiltro),
-    ],
-    [tarefasProjeto, derivadas, projetoFiltro, projetos, pessoa],
+    () => {
+      const manuais = tarefasProjeto.filter((t) => !ORIGEM_DERIVADA.has(t.origem) && podeVerTarefa(t, projetos.find((p) => p.id === t.projetoId), pessoa));
+      const derivs = derivadas.filter((d) => d.projetoId === projetoFiltro);
+      // No projeto Prazos: aplica os chips de tipo (próprios = tarefas manuais).
+      if (prazosProjId && projetoFiltro === prazosProjId) {
+        return [
+          ...(prazoTipoFiltro.has("proprio") ? manuais : []),
+          ...derivs.filter((d) => d.__derivado && prazoTipoFiltro.has(d.__derivado.tipo)),
+        ];
+      }
+      return [...manuais, ...derivs];
+    },
+    [tarefasProjeto, derivadas, projetoFiltro, projetos, pessoa, prazosProjId, prazoTipoFiltro],
   );
 
   // `isMaster` reflete o USER REAL (não a pessoa impersonada). Permissão de
@@ -475,6 +502,33 @@ export function TarefasPage() {
             )}
           </div>
 
+          {prazosProjId && projetoFiltro === prazosProjId && (() => {
+            const cnt: Record<string, number> = { conta_fixa: 0, manutencao: 0, prazo_trabalhista: 0 };
+            derivadas.forEach((d) => { const t = d.__derivado?.tipo; if (t && t in cnt) cnt[t] += 1; });
+            const proprios = tarefasProjeto.filter((t) => !ORIGEM_DERIVADA.has(t.origem)).length;
+            const defs: [string, string, number][] = [
+              ["conta_fixa", "💰 Contas fixas", cnt.conta_fixa],
+              ["manutencao", "🛠️ Técnicos", cnt.manutencao],
+              ["prazo_trabalhista", "🧑‍⚖️ Trabalhistas", cnt.prazo_trabalhista],
+              ["proprio", "✍️ Próprios", proprios],
+            ];
+            const ocultos = defs.filter(([t]) => !prazoTipoFiltro.has(t)).reduce((s, [, , n]) => s + n, 0);
+            return (
+              <div className="flex items-center gap-1.5 flex-wrap mb-3">
+                {defs.map(([t, label, n]) => {
+                  const on = prazoTipoFiltro.has(t);
+                  return (
+                    <button key={t} type="button" onClick={() => togglePrazoTipo(t)}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${on ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 line-through decoration-1"}`}>
+                      <span className={on ? "" : "opacity-60"}>{label}</span>
+                      {n > 0 && <span className={`text-[10px] ${on ? "opacity-70" : "opacity-50"}`}>{n}</span>}
+                    </button>
+                  );
+                })}
+                {ocultos > 0 && <span className="text-[11px] text-amber-600 dark:text-amber-400 ml-1">👁️ {ocultos} oculto(s)</span>}
+              </div>
+            );
+          })()}
           <ProjetoView
             projetos={projetos}
             subprojetos={subprojetos}
