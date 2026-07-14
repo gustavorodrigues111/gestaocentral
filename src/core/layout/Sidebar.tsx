@@ -8,6 +8,7 @@ import { useRestaurant } from "../restaurant/RestaurantContext";
 import { canUse } from "../auth/permissions";
 import { useCanAcao } from "../auth/useCanAcao";
 import { useAvisos } from "../../modules/chat/useAvisos";
+import { confirmarSaida } from "../nav/unsaved";
 import { ModuleBadge } from "../ui/ModuleBadge";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
 import type { ModuleArea, ModuleId } from "../types";
@@ -21,8 +22,16 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   const [showNewRest, setShowNewRest] = useState(false);
   const modulosAtivos = activeRestaurant?.modulosAtivos || [];
 
+  // Fecha o drawer ao navegar, mas antes checa alterações não salvas (ex:
+  // classificação de fatura). Se o usuário cancelar, bloqueia a navegação.
+  function guardedClose(e: { preventDefault: () => void }) {
+    if (!confirmarSaida()) { e.preventDefault(); return; }
+    onClose();
+  }
+
   function changeRestaurant(newRid: string) {
     if (newRid === "__novo__") { setShowNewRest(true); return; }
+    if (!confirmarSaida()) return;
     setActiveId(newRid);
     // Se está em /r/{oldRid}/{moduleId}, vai pro mesmo módulo no novo restaurante.
     const m = location.pathname.match(/^\/r\/[^/]+\/(.+)$/);
@@ -162,7 +171,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           {rid && (
             <NavLink
               to={rid ? `/r/${rid}/chat` : "/"}
-              onClick={onClose}
+              onClick={guardedClose}
               className={({ isActive }) => `
                 flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium
                 ${isActive
@@ -183,7 +192,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           {souEquipe && rid && canAcaoRid("portalEmpregado", "acessar") && (
             <NavLink
               to={`/portal/${rid}`}
-              onClick={onClose}
+              onClick={guardedClose}
               className={({ isActive }) => `
                 block px-3 py-2 rounded-lg text-sm font-medium
                 ${isActive
@@ -233,7 +242,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                         )}
                         <NavLink
                           to={m.id === "planner" ? "/planner" : (rid ? `/r/${rid}/${m.id}` : "#")}
-                          onClick={onClose}
+                          onClick={guardedClose}
                           className={({ isActive }) => `
                             flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
                             ${isActive
@@ -253,11 +262,11 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                   })}
                   {area === "inst" && pessoa?.isMaster && (
                     <>
-                      <NavLink to="/arquitetura" onClick={onClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                      <NavLink to="/arquitetura" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
                         <span>🏗️</span><span className="flex-1 truncate">Arquitetura</span>
                         <span className="text-[9px] text-gray-400">master</span>
                       </NavLink>
-                      <NavLink to="/perfis" onClick={onClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                      <NavLink to="/perfis" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
                         <span>🛡️</span><span className="flex-1 truncate">Perfis de Acesso</span>
                         <span className="text-[9px] text-gray-400">master</span>
                       </NavLink>
@@ -296,7 +305,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                         key={m.id}
                         to={to}
                         end={m.id === "tarefas"}
-                        onClick={onClose}
+                        onClick={guardedClose}
                         className={({ isActive }) => `
                           flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
                           ${isActive
@@ -326,7 +335,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           <div className="pt-3 mt-2 border-t border-gray-100 dark:border-gray-800">
             <NavLink
               to="/?catalogo=1"
-              onClick={onClose}
+              onClick={guardedClose}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] text-gray-500 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"
             >
               <span>🧭</span>

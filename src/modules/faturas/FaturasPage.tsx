@@ -13,6 +13,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
+import { setUnsavedCheck, confirmarSaida } from "../../core/nav/unsaved";
 import { exportarFaturasXLSX, exportarFaturasPDF } from "./exportFaturas";
 import type { CartaoCategoria, CartaoFatura, CartaoLancamento, CartaoRateioParte } from "../../core/types";
 
@@ -111,7 +112,7 @@ export function FaturasPage() {
 
       <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
         {([["visualizacao", "Visualização"], ...(podeClassificar ? [["classificacao", "Classificação"] as const] : []), ...(podeCategorias ? [["categorias", "Config"] as const] : [])] as const).map(([v, l]) => (
-          <button key={v} type="button" onClick={() => setAba(v)}
+          <button key={v} type="button" onClick={() => { if (v !== aba && confirmarSaida()) setAba(v); }}
             className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${aba === v ? "border-indigo-500 text-indigo-600 dark:text-indigo-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
         ))}
       </nav>
@@ -491,6 +492,15 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   const [rateioRow, setRateioRow] = useState<number | null>(null);  // linha com o editor de rateio aberto
   const [trocandoCartao, setTrocandoCartao] = useState(false);      // revela o select de cartão numa fatura já salva
   const [agrupar, setAgrupar] = useState(false);                    // agrupa a tabela por empresa/destino
+  const [dirty, setDirty] = useState(false);                        // edições não salvas na classificação
+  // Guarda de saída: registra o estado sujo globalmente (abas/menu checam) e
+  // dispara o aviso nativo do browser ao fechar/atualizar/voltar.
+  useEffect(() => {
+    setUnsavedCheck(() => dirty);
+    const h = (e: BeforeUnloadEvent) => { if (dirty) { e.preventDefault(); e.returnValue = ""; } };
+    window.addEventListener("beforeunload", h);
+    return () => { setUnsavedCheck(null); window.removeEventListener("beforeunload", h); };
+  }, [dirty]);
   // Competência derivada do vencimento (mês/ano da fatura) — sem input manual.
   const competencia = venc && /^\d{4}-\d{2}/.test(venc) ? venc.slice(0, 7) : mesAtual();
   const nomeEmpresa = (id: string) => outrasEmpresas.find(e => e.id === id)?.nome || "?";
@@ -532,12 +542,13 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
       rateio: rateioDeLanc(l), categoriaId: l.categoriaId || null, ignorar: l.ignorado || undefined,
       pendente: l.destinoTipo === "pendente" || undefined,
     })));
+    setDirty(false);
   }
-  function limpar() { setLinhas([]); setVenc(null); setTotalFatura(null); setCartao(""); setFaturaId(null); setArquivoPath(null); setErro(""); setTrocandoCartao(false); }
+  function limpar() { setLinhas([]); setVenc(null); setTotalFatura(null); setCartao(""); setFaturaId(null); setArquivoPath(null); setErro(""); setTrocandoCartao(false); setDirty(false); }
   // Troca a fatura sendo editada (navegação por chips). Avisa se há fatura nova não salva.
   function trocarPara(f: CartaoFatura) {
     if (f.id === faturaId) return;
-    if (!faturaId && linhas.length && !confirm("Você tem uma fatura não salva. Descartar e abrir a outra?")) return;
+    if (dirty && !confirm("Você tem alterações não salvas nesta fatura. Descartar e abrir a outra?")) return;
     setTrocandoCartao(false);
     carregarRascunho(f);
   }
@@ -655,14 +666,16 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         idxs.forEach(i => { if (parcInfo(novas[i])!.n !== minN) { novas[i].ignorar = true; novas[i].pendente = undefined; novas[i].duvida = true; novas[i].duvidaMotivo = "parcela futura (cronograma) — não é desta fatura"; } });
       });
       setLinhas(novas);
+      setDirty(false);
   }
 
-  function setLinha(i: number, patch: Partial<Extraido>) { setLinhas(prev => prev.map((l, j) => j === i ? { ...l, ...patch } : l)); }
+  function setLinha(i: number, patch: Partial<Extraido>) { setDirty(true); setLinhas(prev => prev.map((l, j) => j === i ? { ...l, ...patch } : l)); }
   function setRateio(i: number, rateio: RateioSimples[]) { setLinha(i, { rateio, pendente: false }); }
   function marcarMeu(i: number) { setLinha(i, { rateio: [], pendente: false }); }   // resolve pendente como "meu"
   // Ao escolher categoria: se ela tem rateio padrão e a linha ainda não tem
   // rateio próprio, aplica o padrão da categoria.
   function setCategoria(i: number, categoriaId: string | null) {
+    setDirty(true);
     setLinhas(prev => prev.map((l, j) => {
       if (j !== i) return l;
       const padrao = catRateioPadrao(categoriaId);
@@ -671,10 +684,10 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
     }));
   }
 
-  const toggleIgnorar = (i: number) => setLinhas(prev => prev.map((l, j) => j === i ? { ...l, ignorar: !l.ignorar } : l));
+  const toggleIgnorar = (i: number) => { setDirty(true); setLinhas(prev => prev.map((l, j) => j === i ? { ...l, ignorar: !l.ignorar } : l)); };
   // Adiciona um lançamento manual (pra fechar a diferença quando a IA perdeu uma linha).
-  const adicionarLinha = () => setLinhas(prev => [...prev, { data: "", descricao: "", valor: 0, parcela: null, rateio: [], categoriaId: null, pendente: true, manual: true }]);
-  const removerLinha = (i: number) => setLinhas(prev => prev.filter((_, j) => j !== i));
+  const adicionarLinha = () => { setDirty(true); setLinhas(prev => [...prev, { data: "", descricao: "", valor: 0, parcela: null, rateio: [], categoriaId: null, pendente: true, manual: true }]); };
+  const removerLinha = (i: number) => { setDirty(true); setLinhas(prev => prev.filter((_, j) => j !== i)); };
   const linhasValidas = linhas.filter(l => !l.ignorar);
   const somaClass = linhasValidas.reduce((s, l) => s + (l.valor || 0), 0);
   const diff = totalFatura != null ? Math.round((somaClass - totalFatura) * 100) / 100 : null;
@@ -789,6 +802,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         }));
       });
       await batch.commit();
+      setDirty(false);
       if (fechar) { const jaEra = faturaAtual?.status === "fechada"; limpar(); alert(jaEra ? "✅ Alterações salvas (fatura publicada)." : "✅ Fatura fechada. Reembolsos publicados pras outras empresas."); }
       else { setFaturaId(fid); alert("💾 Salvo como rascunho. Dá pra continuar editando pelos chips no topo."); }
     } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); }
