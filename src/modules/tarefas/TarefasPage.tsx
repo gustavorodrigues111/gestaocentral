@@ -69,6 +69,29 @@ import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal"
 type Tab = "minhas" | "projeto" | "admin" | "lixeira" | "todas";
 type ViewMode = "calendario" | "lista" | "kanban";
 
+// Avatar de iniciais do responsável (2 letras) numa bolinha de cor estável por
+// pessoa — pra bater o olho em quem é o dono do card.
+const AVATAR_CORES = ["#4f46e5", "#0891b2", "#059669", "#d97706", "#db2777", "#7c3aed", "#dc2626", "#0d9488", "#2563eb", "#9333ea"];
+function iniciaisNome(nome?: string): string {
+  const parts = (nome || "").trim().split(/\s+/).filter(Boolean);
+  if (!parts.length) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+function corAvatar(key: string): string {
+  let h = 0; for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) >>> 0;
+  return AVATAR_CORES[h % AVATAR_CORES.length];
+}
+function AvatarIniciais({ nome, id, size = 22, className = "" }: { nome?: string; id?: string; size?: number; className?: string }) {
+  if (!nome && !id) return null;
+  return (
+    <span title={nome || "Responsável"} className={`inline-flex items-center justify-center rounded-full text-white font-bold shrink-0 ${className}`}
+      style={{ width: size, height: size, background: corAvatar(id || nome || ""), fontSize: Math.round(size * 0.42), lineHeight: 1 }}>
+      {iniciaisNome(nome)}
+    </span>
+  );
+}
+
 export function TarefasPage() {
   const { pessoa: pessoaReal } = useAuth();
   const { restaurants, activeId: ridAtivo } = useRestaurant();
@@ -1111,6 +1134,7 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
             )}
           </div>
         </div>
+        {tarefa.responsavelNome && <AvatarIniciais nome={tarefa.responsavelNome} id={tarefa.responsavelId} className="mt-0.5" />}
       </div>
     </div>
   );
@@ -2397,7 +2421,10 @@ function KanbanView({ tarefas, projetos, autor, onAbrir }: {
                       : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md"}`}
                     style={{ borderLeftWidth: 3, borderLeftColor: cor }}
                   >
-                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2">{t.titulo}</div>
+                    <div className="flex items-start gap-1.5">
+                      <div className="flex-1 text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2">{t.titulo}</div>
+                      {t.responsavelNome && <AvatarIniciais nome={t.responsavelNome} id={t.responsavelId} size={18} />}
+                    </div>
                     <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-500 dark:text-gray-400">
                       {proj && <span style={{ color: cor }}>{proj.emoji}</span>}
                       {t.prazo && <span>📅 {fmtBR(t.prazo)}</span>}
@@ -2646,11 +2673,12 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
                   if (id && id !== t.id) reordenarNoDia(id, data, t.id);
                 } : undefined}
                 onClick={() => { if (der?.abrirModal) der.abrirModal(); else if (der?.setConcluida) void der.setConcluida(!concluida); else onAbrir(t.id); }}
-                className={`w-full text-left text-[11px] px-2 py-1.5 rounded-md text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${dropAntes === t.id ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${der ? "cursor-pointer" : podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${der ? "ring-1 ring-amber-300/70 dark:ring-amber-800/60" : ""}`}
+                className={`relative w-full text-left text-[11px] px-2 py-1.5 rounded-md text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${dropAntes === t.id ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${der ? "cursor-pointer" : podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${der ? "ring-1 ring-amber-300/70 dark:ring-amber-800/60" : ""}`}
                 style={{ background: meta.cor + "14", borderLeft: `3px solid ${meta.cor}` }}
                 title={der ? (der.abrirModal ? `${t.titulo} — abrir` : `${t.titulo} — marcar pago`) : podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
               >
-                <div className="font-medium leading-snug line-clamp-2 mb-1">{t.titulo}</div>
+                {t.responsavelNome && <AvatarIniciais nome={t.responsavelNome} id={t.responsavelId} size={16} className="absolute top-1 right-1" />}
+                <div className="font-medium leading-snug line-clamp-2 mb-1 pr-4">{t.titulo}</div>
                 <span className="inline-flex items-center gap-0.5 px-1.5 py-[1px] rounded-full text-[8px] font-bold uppercase tracking-wide text-white" style={{ background: meta.cor }}>
                   {meta.icon} {meta.label}
                 </span>
