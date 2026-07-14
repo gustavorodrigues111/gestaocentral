@@ -15,7 +15,12 @@ const REQ_TIMEOUT_MS = 55_000;
 type VercelReq = { method?: string; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
 
-function montarPrompt(cartoes: string[], empresaPropria: string, empresas: string[], categorias: string[]): string {
+type HistItem = { descricao: string; destino?: string | null; categoria?: string | null };
+function montarPrompt(cartoes: string[], empresaPropria: string, empresas: string[], categorias: string[], historico: HistItem[]): string {
+  const blocoHistorico = historico.length
+    ? "\nREFERÊNCIA DE CLASSIFICAÇÕES ANTERIORES (como lançamentos semelhantes já foram classificados neste cartão/conta — use como BASE FORTE pra decidir destino e categoria, casando pelo nome do estabelecimento; mesma loja → mesmo destino/categoria de antes): " +
+      JSON.stringify(historico.slice(0, 200)) + "\n"
+    : "";
   const listaCartoes = cartoes.length
     ? "8) cartao = identifique de QUAL cartão é esta fatura, escolhendo EXATAMENTE UM desta lista cadastrada: " + JSON.stringify(cartoes) +
       ". Use a bandeira (Mastercard/Visa/Elo), o banco/emissor e os 4 últimos dígitos que aparecem no PDF pra casar. Retorne a string idêntica à da lista. Se nenhum casar com confiança, retorne null.\n"
@@ -38,7 +43,7 @@ function montarPrompt(cartoes: string[], empresaPropria: string, empresas: strin
   "5) vencimento = data de vencimento da fatura no formato 'YYYY-MM-DD'.\n" +
   "6) totalFatura = o valor do 'Total desta fatura' (número, ponto decimal).\n" +
   "7) NÃO invente nada. Se um campo não existir, use null.\n" +
-  listaCartoes + destinoRegra + categoriaRegra +
+  listaCartoes + destinoRegra + categoriaRegra + blocoHistorico +
   "\nResponda SOMENTE um objeto JSON (sem texto antes/depois): { \"cartao\": \"...\"|null, \"vencimento\": \"YYYY-MM-DD\"|null, \"totalFatura\": number|null, \"lancamentos\": [ { \"data\": \"DD/MM\", \"descricao\": \"...\", \"valor\": number, \"parcela\": \"XX/YY\"|null, \"destino\": \"propria\"|\"<nome empresa>\", \"categoria\": \"<nome>\"|null } ] }";
 }
 
@@ -51,7 +56,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) { res.status(500).json({ error: "ANTHROPIC_API_KEY não configurada nas env vars da Vercel." }); return; }
 
-  const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as { pdfUrl?: string; cartoes?: string[]; empresaPropria?: string; empresas?: string[]; categorias?: string[] } | null;
+  const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as { pdfUrl?: string; cartoes?: string[]; empresaPropria?: string; empresas?: string[]; categorias?: string[]; historico?: HistItem[] } | null;
   const pdfUrl = (body?.pdfUrl || "").toString();
   if (!/^https?:\/\//.test(pdfUrl)) { res.status(400).json({ error: "pdfUrl inválida." }); return; }
   const strArr = (v: unknown, n: number) => Array.isArray(v) ? v.filter((c) => typeof c === "string" && c.trim()).map((c) => (c as string).trim()).slice(0, n) : [];
@@ -59,6 +64,10 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const empresaPropria = (body?.empresaPropria || "").toString().slice(0, 80);
   const empresas = strArr(body?.empresas, 30);
   const categorias = strArr(body?.categorias, 60);
+  const historico = (Array.isArray(body?.historico) ? body!.historico : [])
+    .filter((h): h is HistItem => !!h && typeof h.descricao === "string")
+    .map((h) => ({ descricao: String(h.descricao).slice(0, 80), destino: h.destino ? String(h.destino).slice(0, 60) : null, categoria: h.categoria ? String(h.categoria).slice(0, 60) : null }))
+    .slice(0, 200);
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
@@ -74,7 +83,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       max_tokens: 16000,
       messages: [{ role: "user", content: [
         { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } },
-        { type: "text", text: montarPrompt(cartoes, empresaPropria, empresas, categorias) },
+        { type: "text", text: montarPrompt(cartoes, empresaPropria, empresas, categorias, historico) },
       ] }],
     };
     const resp = await fetch(ANTHROPIC_URL, {

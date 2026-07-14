@@ -110,6 +110,7 @@ export function FaturasPage() {
 // ─── Visualização ────────────────────────────────────────────────────────────
 function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNome, meId, meNome }: { rid: string; minhas: CartaoLancamento[]; outras: CartaoLancamento[]; faturas: CartaoFatura[]; catNome: (id?: string | null) => string; restNome: Record<string, string>; meId?: string; meNome?: string }) {
   const [sub, setSub] = useState<"minhas" | "pendentes" | "outras">("minhas");
+  const [faturaAberta, setFaturaAberta] = useState<string | null>(null);   // fatura aberta dentro do mês
   const [pagando, setPagando] = useState("");
   // Filtro multi-cartão (vazio = todos).
   const [cartoesSel, setCartoesSel] = useState<Set<string>>(() => new Set());
@@ -244,7 +245,49 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
                 </div>
               </div>
             )}
-            <LancTabela lancs={minhasTodas} catNome={catNome} restNome={restNome} mostrarReembolso />
+            {(() => {
+              const fatValida = faturaAberta && faturas.find(f => f.id === faturaAberta && f.competencia === mesAtivo);
+              const fmtVenc = (v?: string) => v ? v.slice(8, 10) + "/" + v.slice(5, 7) : "";
+              if (fatValida) {
+                const f = fatValida;
+                const lancsF = minhasTodas.filter(l => l.faturaId === f.id);
+                return (
+                  <>
+                    <button type="button" onClick={() => setFaturaAberta(null)} className="mb-2 text-[12px] font-medium text-indigo-600 dark:text-indigo-300 hover:underline">← Faturas de {fmtMes(mesAtivo)}</button>
+                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">📄 {f.cartao || "Cartão"}{f.vencimento ? ` · venc ${fmtVenc(f.vencimento)}` : ""}</div>
+                    <LancTabela lancs={lancsF} catNome={catNome} restNome={restNome} mostrarReembolso />
+                  </>
+                );
+              }
+              // Pastas de fatura (publicadas) do mês
+              const fatsMes = faturas.filter(f => f.competencia === mesAtivo && f.status === "fechada" && (cartoesSel.size === 0 || cartoesSel.has(f.cartao)))
+                .sort((a, b) => (b.vencimento || "").localeCompare(a.vencimento || ""));
+              const semFatura = minhasTodas.filter(l => !l.faturaId || !fatsMes.some(f => f.id === l.faturaId));
+              return (
+                <div className="space-y-2">
+                  {fatsMes.map(f => {
+                    const lancsF = minhasTodas.filter(l => l.faturaId === f.id);
+                    const total = lancsF.filter(l => !l.ignorado).reduce((s, l) => s + (l.valor || 0), 0);
+                    return (
+                      <button key={f.id} type="button" onClick={() => setFaturaAberta(f.id)} className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 flex items-center justify-between gap-3 hover:shadow-sm transition-shadow">
+                        <div className="min-w-0">
+                          <div className="text-sm font-medium text-gray-900 dark:text-gray-100">📄 {f.cartao || "Cartão"}{f.vencimento ? <span className="text-xs text-gray-400 font-normal"> · venc {fmtVenc(f.vencimento)}</span> : ""}</div>
+                          <div className="text-[11px] text-gray-400">{lancsF.length} lançamento(s)</div>
+                        </div>
+                        <div className="text-right whitespace-nowrap"><b className="tabular-nums text-gray-900 dark:text-gray-100">{fmtBRL(total)}</b> <span className="text-gray-300">›</span></div>
+                      </button>
+                    );
+                  })}
+                  {fatsMes.length === 0 && semFatura.length === 0 && <Vazio texto="Nenhuma fatura publicada neste mês." />}
+                  {semFatura.length > 0 && (
+                    <details className="rounded-xl border border-dashed border-gray-200 dark:border-gray-800 p-2">
+                      <summary className="text-xs text-gray-500 cursor-pointer">Outros lançamentos sem fatura ({semFatura.length})</summary>
+                      <div className="mt-2"><LancTabela lancs={semFatura} catNome={catNome} restNome={restNome} mostrarReembolso /></div>
+                    </details>
+                  )}
+                </div>
+              );
+            })()}
           </>
         )
       ) : (
@@ -440,7 +483,21 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
       const url = await getDownloadURL(snap.ref);
       const empresasNomes = outrasEmpresas.map(e => e.nome);
       const catNomes = catsDe(rid).map(c => c.nome);  // categoria é sempre da minha entidade
-      const r = await fetch("/api/fatura-extrair", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ pdfUrl: url, cartoes, empresaPropria: empresaPropriaNome, empresas: empresasNomes, categorias: catNomes }) });
+      // Histórico pra IA usar de base: última classificação por descrição.
+      const historico = (() => {
+        const seen = new Set<string>(); const out: { descricao: string; destino: string | null; categoria: string | null }[] = [];
+        for (const l of [...minhas].sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""))) {
+          if (l.ignorado) continue;
+          const key = normNome(l.descricao); if (seen.has(key)) continue; seen.add(key);
+          const empId = l.rateio?.length === 1 ? l.rateio[0].empresaId : (l.destinoTipo === "empresa" ? l.empresaAtribuidaId : null);
+          const destino = empId ? (outrasEmpresas.find(e => e.id === empId)?.nome || null) : (l.destinoTipo === "propria" ? "propria" : null);
+          const categoria = l.categoriaId ? (catsDe(rid).find(c => c.id === l.categoriaId)?.nome || null) : null;
+          if (destino || categoria) out.push({ descricao: l.descricao, destino, categoria });
+          if (out.length >= 200) break;
+        }
+        return out;
+      })();
+      const r = await fetch("/api/fatura-extrair", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ pdfUrl: url, cartoes, empresaPropria: empresaPropriaNome, empresas: empresasNomes, categorias: catNomes, historico }) });
       const j = await r.json();
       if (!r.ok) { setErro(j.error || "Falha na extração."); return; }
       setVenc(j.vencimento || null); setTotalFatura(typeof j.totalFatura === "number" ? j.totalFatura : null);
