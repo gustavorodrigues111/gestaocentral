@@ -76,6 +76,8 @@ export type ModuleId =
   | "uniformes"
   // Gestor de Tarefas + cadastros mestres
   | "tarefas" | "contasFixas" | "manutencoes"
+  // Agentes de IA
+  | "agentes"
   // Prazos Trabalhistas — agenda que agrega prazos de RH (experiências 45/90,
   // exames, uniformes/EPIs). Área AGENDA junto com Técnicos e Contas.
   | "prazosTrabalhistas"
@@ -5933,6 +5935,57 @@ export type CartaoLancamento = {
   pagoPorNome?: string | null;              // nome do pagador (pra exibir no aviso)
   criadoEm: string;
   criadoPor?: string | null;
+};
+
+// ─── Agentes de IA (módulo `agentes`, área master) ──────────────────────────
+// Um agente = persona + caixa de ferramentas (do catálogo) + escopo + auditoria.
+// Roda como loop de tool-use do Claude no backend (F1b). Escrita sempre em modo
+// confirmação. Permissão herda da matriz de Pessoas de quem fala com ele.
+export type AgenteIA = {
+  id: string;
+  nome: string;
+  tipo: "dp" | "financeiro";
+  descricao?: string;
+  systemPrompt?: string;                     // editável; default vem do catálogo
+  tools: Record<string, boolean>;            // key da ferramenta → habilitada
+  entidades: string[] | "todas";             // rids que o agente pode tocar
+  numerosWhatsapp?: string[];                // números autorizados (canal futuro)
+  modoEscrita?: "confirmar" | "auto";        // default "confirmar"
+  model?: string;
+  ativo: boolean;
+  criadoEm: string;
+  criadoPor?: string | null;
+  atualizadoEm?: string;
+};
+
+// Uma mensagem numa conversa com um agente (contexto entre turnos + WhatsApp).
+export type AgenteMensagem = {
+  id: string;
+  agenteId: string;
+  conversaId: string;
+  restaurantId?: string;
+  role: "user" | "assistant";
+  texto: string;
+  pessoaId?: string;
+  canal?: "app" | "whatsapp";
+  toolCalls?: { tool: string; args?: unknown; resultResumo?: string }[];
+  criadoEm: string;
+};
+
+// Trilha de auditoria: TODA chamada de ferramenta (read e write) vira um log.
+export type AgenteLog = {
+  id: string;
+  agenteId: string;
+  pessoaId?: string;
+  pessoaNome?: string;
+  tool: string;
+  tipo: "read" | "write";
+  args?: unknown;
+  resumo?: string;
+  entidadeId?: string;
+  canal?: "app" | "whatsapp";
+  aprovadoPor?: string;                      // pessoaId que confirmou (writes)
+  criadoEm: string;
 };
 
 // Número de WhatsApp plugado (uma "caixa" do inbox). O id do doc = o nome da

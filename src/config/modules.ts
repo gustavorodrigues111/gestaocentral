@@ -43,6 +43,7 @@ export const MODULES: ModuleDef[] = [
   // ── Tarefas (item-pivô global) — colocada no topo do Sidebar separadamente
   { id: "tarefas",     area: "planejamento", subarea: "Tarefas",       label: "Gestor de Tarefas", icon: "🗂️", status: "ativo", etapa: "beta",             desc: "Gestor de Tarefas: rotinas e demandas, caixa por usuário, cascatas dos cadastros mestres" },
   { id: "planner",     area: "master", subarea: "Master",              label: "Planner",           icon: "📅", status: "ativo", etapa: "beta",             desc: "Agenda pessoal integrada ao Google Calendar. Lança prazos de qualquer tipo (conta, técnico, trabalhista) que registram no módulo de origem." },
+  { id: "agentes",     area: "master", subarea: "Master",              label: "Agentes de IA",     icon: "🤖", status: "ativo", etapa: "em_desenvolvimento", desc: "Agentes de IA (DP e Financeiro) que consultam e — com confirmação — alteram dados dentro da plataforma. Acesso controlado herdado de Pessoas; futuramente respondem no WhatsApp em números autorizados." },
 
   // ── Pessoas Externas & Infra ─────────────────────────────────────
   { id: "freelas",     area: "ops", subarea: "Pessoas Externas & Infra", label: "Freelas",        icon: "🎒", status: "ativo", etapa: "beta",               desc: "Cadastro, agendamento, lançamento e pagamento de freelas", dependsOn: ["pessoas", "escala"] },

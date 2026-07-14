@@ -154,6 +154,10 @@ service cloud.firestore {
     match /cartaoCategorias/{id}       { allow read, write: if authed(); }
     match /cartaoFaturas/{id}          { allow read, write: if authed(); }
     match /cartaoLancamentos/{id}      { allow read, write: if authed(); }
+    // Agentes de IA: config só master edita; conversas authed; logs append-only.
+    match /agentesIA/{id}     { allow read: if authed(); allow create, update, delete: if isMaster(); }
+    match /agenteMensagens/{id} { allow read, write: if authed(); }
+    match /agenteLogs/{id}    { allow read: if authed(); allow create: if authed(); allow update, delete: if false; }
     match /ftCardapio/{id}             { allow read, write: if authed(); }
     match /ftImportRascunhos/{id}      { allow read, write: if authed(); }
     match /ftVinculosRecebimento/{id}  { allow read, write: if authed(); }
