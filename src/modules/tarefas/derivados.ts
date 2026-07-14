@@ -102,7 +102,9 @@ export function derivarManutencoes(
   for (const m of manutencoes) {
     if (!m.ativo || m.deletadoEm) continue;
     if (!m.proximoVencimento) continue;
-    const antec = m.diasAntecedencia ?? 30;
+    // Janela generosa pro Gestor: pelo menos 60 dias à frente (+ atrasadas), pra
+    // laudos/licenças aparecerem com antecedência de planejamento.
+    const antec = Math.max(m.diasAntecedencia ?? 30, 60);
     if (diasEntre(hojeYmd, m.proximoVencimento) > antec) continue;
     const realizado = m.statusCiclo === "realizado";
     const nome = MANUTENCAO_TIPO_LABEL[m.tipo] || m.tipo;

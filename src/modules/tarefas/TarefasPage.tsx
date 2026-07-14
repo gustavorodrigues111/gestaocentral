@@ -345,7 +345,7 @@ export function TarefasPage() {
           </div>
           {viewMinhas === "calendario" && (
             <CalendarioView
-              tarefas={minhas.filter(t => !ORIGEM_DERIVADA.has(t.origem))}
+              tarefas={minhasComDerivados}
               projetos={projetos}
               subprojetos={subprojetos}
               onAbrir={setDetalheId}
@@ -2337,7 +2337,7 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
   const podeArrastar = !!autor?.id;
 
   async function moverParaData(id: string, novaData: string) {
-    if (!autor) return;
+    if (!autor || id.includes("::")) return;   // card derivado não muda de data
     // Otimista: snapshot atualiza. Não mostro spinner — só falha avisa.
     try {
       await atualizarTarefa(id, { prazo: novaData }, autor, {
@@ -2353,10 +2353,11 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
   // Reordena dentro de um dia (arrasto vertical): insere a tarefa arrastada
   // antes de `antesDeId` (ou no fim se null) e regrava ordemDia de todo o dia.
   async function reordenarNoDia(id: string, dia: string, antesDeId: string | null) {
-    if (!autor) return;
+    if (!autor || id.includes("::")) return;   // derivado não reordena/persiste
     const dragged = tarefas.find(t => t.id === id);
     if (!dragged) return;
-    const atual = (tarefasPorDia.get(dia) || []).filter(t => t.id !== id);
+    // Exclui os derivados (id sintético) — não têm doc pra gravar ordem.
+    const atual = (tarefasPorDia.get(dia) || []).filter(t => t.id !== id && !t.__derivado);
     const idx = antesDeId ? atual.findIndex(t => t.id === antesDeId) : atual.length;
     const nova = idx < 0 ? [...atual, dragged] : [...atual.slice(0, idx), dragged, ...atual.slice(idx)];
     try {
@@ -2474,11 +2475,13 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
             const meta = catDaTarefa(t.origem, proj);
             const concluida = t.status === "concluida";
             const arrastando = draggingId === t.id;
+            const der = t.__derivado;
+            const arrastavel = podeArrastar && !der;
             return (
               <button
                 key={t.id}
-                draggable={podeArrastar}
-                onDragStart={podeArrastar ? (e) => {
+                draggable={arrastavel}
+                onDragStart={arrastavel ? (e) => {
                   e.dataTransfer.setData("text/plain", t.id);
                   e.dataTransfer.effectAllowed = "move";
                   setDraggingId(t.id);
@@ -2500,10 +2503,10 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
                   setDropAntes(null); setDropTarget(null); setDraggingId(null);
                   if (id && id !== t.id) reordenarNoDia(id, data, t.id);
                 } : undefined}
-                onClick={() => onAbrir(t.id)}
-                className={`w-full text-left text-[11px] px-2 py-1.5 rounded-md text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${dropAntes === t.id ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
+                onClick={() => { if (der?.abrirModal) der.abrirModal(); else if (der?.setConcluida) void der.setConcluida(!concluida); else onAbrir(t.id); }}
+                className={`w-full text-left text-[11px] px-2 py-1.5 rounded-md text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${dropAntes === t.id ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${der ? "cursor-pointer" : podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${der ? "ring-1 ring-amber-300/70 dark:ring-amber-800/60" : ""}`}
                 style={{ background: meta.cor + "14", borderLeft: `3px solid ${meta.cor}` }}
-                title={podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
+                title={der ? (der.tipo === "manutencao" ? `${t.titulo} — abrir apontamento` : `${t.titulo} — marcar pago`) : podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
               >
                 <div className="font-medium leading-snug line-clamp-2 mb-1">{t.titulo}</div>
                 <span className="inline-flex items-center gap-0.5 px-1.5 py-[1px] rounded-full text-[8px] font-bold uppercase tracking-wide text-white" style={{ background: meta.cor }}>
@@ -2648,8 +2651,9 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
             {atrasadas.slice(0, 20).map(t => {
               const proj = projetos.find(p => p.id === t.projetoId);
               const cor = t.corHerdada || proj?.cor || "#6b7280";
+              const der = t.__derivado;
               return (
-                <div key={t.id} onClick={() => onAbrir(t.id)} className="p-2 rounded-md bg-white dark:bg-gray-900 border border-rose-200 dark:border-rose-900/40 cursor-pointer hover:shadow-sm flex items-center gap-2" style={{ borderLeftWidth: 3, borderLeftColor: cor }}>
+                <div key={t.id} onClick={() => { if (der?.abrirModal) der.abrirModal(); else if (der?.setConcluida) void der.setConcluida(true); else onAbrir(t.id); }} className={`p-2 rounded-md border cursor-pointer hover:shadow-sm flex items-center gap-2 ${der ? "bg-amber-50/60 dark:bg-amber-900/10 border-dashed border-amber-300 dark:border-amber-800/60" : "bg-white dark:bg-gray-900 border-rose-200 dark:border-rose-900/40"}`} style={{ borderLeftWidth: 3, borderLeftColor: cor }}>
                   <span style={{ color: cor }}>{proj?.emoji}</span>
                   <span className="flex-1">{t.titulo}</span>
                   <span className="text-[10px] text-rose-600 dark:text-rose-400">{fmtBR(t.prazo)}</span>
