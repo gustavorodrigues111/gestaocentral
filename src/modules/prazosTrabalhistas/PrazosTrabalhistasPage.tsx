@@ -261,14 +261,21 @@ export function AcaoModal({ it, resolvido, onClose, onBaixarExame, onResolver, o
     if (it.restaurantId) window.location.href = `/r/${it.restaurantId}/demissao?empregadoId=${it.empregadoId}&motivo=${encodeURIComponent(motivo)}`;
     else alert(`Vá em Demissão → '+ Iniciar Demissão' → escolha o empregado → iniciativa: Empresa → motivo: "${motivo}".`);
   }
+  // Renovar: 1ª etapa → segue pro 2º período (Termo de Prorrogação no Clicksign);
+  // 2ª etapa → contrato por tempo indeterminado (registra a renovação = resolvido).
+  function renovar() {
+    if (it.etapa === "1a") setProrrogar(true);
+    else void run(() => onResolver(it));
+  }
   const origem = it.cat === "exame" ? "módulo Exames" : it.cat === "experiencia" ? "Gestor de Tarefas (decisão de experiência)" : "módulo Uniformes";
   const inp = "px-2 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
   async function run(fn: () => Promise<void>) { setBusy(true); try { await fn(); } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : "?")); } finally { setBusy(false); } }
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-1.5 mb-1"><span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${CAT_COR[it.cat]}`}>{CAT_LABEL[it.cat]}</span></div>
-        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{it.titulo}</h2>
+      <div className="relative bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+        <button type="button" onClick={onClose} className="absolute top-3 right-3 w-8 h-8 rounded-full text-gray-400 hover:text-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center text-lg leading-none" title="Fechar">✕</button>
+        <div className="flex items-center gap-1.5 mb-1 pr-8"><span className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${CAT_COR[it.cat]}`}>{CAT_LABEL[it.cat]}</span></div>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 pr-8">{it.titulo}</h2>
         <p className="text-xs text-gray-500 mb-4">{it.sub} · vence {fmtBR(it.data)}</p>
 
         {ehExame ? (
@@ -276,31 +283,33 @@ export function AcaoModal({ it, resolvido, onClose, onBaixarExame, onResolver, o
             <label className="flex items-center justify-between gap-2 text-sm"><span className="text-xs text-gray-600 dark:text-gray-300">Exame realizado em</span><input type="date" value={dataReal} onChange={(e) => setDataReal(e.target.value)} className={inp} /></label>
             <p className="text-[11px] text-gray-400">Grava no {origem}: registra no histórico e recalcula o próximo vencimento pela periodicidade.</p>
             <div className="flex gap-2 justify-end">
-              <Button variant="ghost" onClick={onClose}>Cancelar</Button>
               <Button disabled={busy} onClick={() => void run(() => onBaixarExame(it, dataReal))}>{busy ? "…" : "✓ Marcar realizado"}</Button>
+            </div>
+          </div>
+        ) : ehExperiencia ? (
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              {it.etapa === "1a"
+                ? <>Decisão do <b>1º período</b>: <b>renovar</b> segue pro 2º período (envia o Termo de Prorrogação pro Clicksign) ou <b>não renovar</b> abre a demissão pré-preenchida.</>
+                : <>Decisão do <b>2º período</b>: <b>renovar</b> passa pra contrato por tempo indeterminado ou <b>não renovar</b> abre a demissão pré-preenchida.</>}
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" disabled={busy} onClick={iniciarDemissao}
+                className="px-3 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white text-sm font-semibold disabled:opacity-60">
+                ✗ Não renovar
+              </button>
+              <button type="button" disabled={busy} onClick={renovar}
+                className="px-3 py-2.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-semibold disabled:opacity-60">
+                {busy ? "…" : it.etapa === "1a" ? "✓ Renovar (2º período)" : "✓ Renovar (indeterminado)"}
+              </button>
             </div>
           </div>
         ) : (
           <div className="space-y-3">
-            {ehExperiencia && (
-              <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-2">
-                <div className="text-xs font-medium text-amber-900 dark:text-amber-100">Decisão de experiência ({it.etapa === "1a" ? "1ª etapa" : "2ª etapa"})</div>
-                <p className="text-[11px] text-amber-800 dark:text-amber-300">
-                  {it.etapa === "1a"
-                    ? <><b>Prorrogar pro 2º período</b> (envia o Termo pro Clicksign) ou <b>não renovar</b> (abre a demissão pré-preenchida).</>
-                    : <>Se a decisão for <b>não renovar</b>, abra a demissão pré-preenchida abaixo.</>}
-                </p>
-                <div className="flex flex-wrap gap-2">
-                  {it.etapa === "1a" && <Button size="sm" onClick={() => setProrrogar(true)}>✓ Prorrogar contrato</Button>}
-                  <Button size="sm" variant="danger" onClick={iniciarDemissao}>✗ Não renovar — iniciar demissão</Button>
-                </div>
-              </div>
-            )}
             <p className="text-xs text-gray-500 dark:text-gray-400">{resolvido
               ? "Este prazo está marcado como resolvido (verde). Você pode desmarcar se precisar."
-              : <>Marcar como resolvido deixa o item <b>verde</b> no calendário (não some){ehExperiencia ? "" : <>. A renovação/decisão em si você registra no <b>{origem}</b></>}.</>}</p>
+              : <>Marcar como resolvido deixa o item <b>verde</b> no calendário (não some). A renovação/decisão em si você registra no <b>{origem}</b>.</>}</p>
             <div className="flex gap-2 justify-end">
-              <Button variant="ghost" onClick={onClose}>Cancelar</Button>
               {resolvido
                 ? <Button variant="secondary" disabled={busy} onClick={() => void run(() => onDesresolver(it))}>{busy ? "…" : "Desmarcar"}</Button>
                 : <Button disabled={busy} onClick={() => void run(() => onResolver(it))}>{busy ? "…" : "✓ Marcar resolvido"}</Button>}
