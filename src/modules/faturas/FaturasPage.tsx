@@ -424,6 +424,8 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   const [linhas, setLinhas] = useState<Extraido[]>([]);
   const [venc, setVenc] = useState<string | null>(null);
   const [totalFatura, setTotalFatura] = useState<number | null>(null);
+  const [arquivoPath, setArquivoPath] = useState<string | null>(null);  // path do PDF no Storage (pra reler)
+  const [relendo, setRelendo] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [rateioRow, setRateioRow] = useState<number | null>(null);  // linha com o editor de rateio aberto
   const [trocandoCartao, setTrocandoCartao] = useState(false);      // revela o select de cartão numa fatura já salva
@@ -461,7 +463,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   // Carrega um rascunho salvo de volta pro editor.
   function carregarRascunho(f: CartaoFatura) {
     const lancs = minhas.filter(l => l.faturaId === f.id).sort((a, b) => (a.data || "").localeCompare(b.data || ""));
-    setFaturaId(f.id); setCartao(f.cartao || ""); setVenc(f.vencimento || null); setTotalFatura(f.totalFatura ?? null); setErro(""); setTrocandoCartao(false);
+    setFaturaId(f.id); setCartao(f.cartao || ""); setVenc(f.vencimento || null); setTotalFatura(f.totalFatura ?? null); setArquivoPath(f.arquivoPath || null); setErro(""); setTrocandoCartao(false);
     setLinhas(lancs.map(l => ({
       data: l.dataOriginal || (l.data ? l.data.slice(8, 10) + "/" + l.data.slice(5, 7) : ""),
       descricao: l.descricao, valor: l.valor, parcela: l.parcela || null,
@@ -469,7 +471,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
       pendente: l.destinoTipo === "pendente" || undefined,
     })));
   }
-  function limpar() { setLinhas([]); setVenc(null); setTotalFatura(null); setCartao(""); setFaturaId(null); setErro(""); setTrocandoCartao(false); }
+  function limpar() { setLinhas([]); setVenc(null); setTotalFatura(null); setCartao(""); setFaturaId(null); setArquivoPath(null); setErro(""); setTrocandoCartao(false); }
   // Troca a fatura sendo editada (navegação por chips). Avisa se há fatura nova não salva.
   function trocarPara(f: CartaoFatura) {
     if (f.id === faturaId) return;
@@ -511,28 +513,49 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
       const path = `faturas-cartao/${rid}/${Date.now()}_${file.name.replace(/[^\w.\-]+/g, "_")}`;
       const snap = await uploadBytes(storageRef(storage, path), file, { contentType: "application/pdf" });
       const url = await getDownloadURL(snap.ref);
-      const empresasNomes = outrasEmpresas.map(e => e.nome);
-      const catNomes = catsDe(rid).map(c => c.nome);  // categoria é sempre da minha entidade
-      // Histórico pra IA usar de base: última classificação por descrição.
-      const historico = (() => {
-        const seen = new Set<string>(); const out: { descricao: string; destino: string | null; categoria: string | null }[] = [];
-        for (const l of [...minhas].sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""))) {
-          if (l.ignorado) continue;
-          const key = normNome(l.descricao); if (seen.has(key)) continue; seen.add(key);
-          const empId = l.rateio?.length === 1 ? l.rateio[0].empresaId : (l.destinoTipo === "empresa" ? l.empresaAtribuidaId : null);
-          const destino = empId ? (outrasEmpresas.find(e => e.id === empId)?.nome || null) : (l.destinoTipo === "propria" ? "propria" : null);
-          const categoria = l.categoriaId ? (catsDe(rid).find(c => c.id === l.categoriaId)?.nome || null) : null;
-          if (destino || categoria) out.push({ descricao: l.descricao, destino, categoria });
-          if (out.length >= 200) break;
-        }
-        return out;
-      })();
-      const r = await fetch("/api/fatura-extrair", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ pdfUrl: url, cartoes, empresaPropria: empresaPropriaNome, empresas: empresasNomes, categorias: catNomes, historico }) });
-      const j = await r.json();
-      if (!r.ok) { setErro(j.error || "Falha na extração."); return; }
-      setVenc(j.vencimento || null); setTotalFatura(typeof j.totalFatura === "number" ? j.totalFatura : null);
-      setCartao(typeof j.cartao === "string" && j.cartao ? j.cartao : "");
-      const novas: Extraido[] = (j.lancamentos || []).map((l: { data: string; descricao: string; valor: number; parcela: string | null; destinoEmpresa?: string | null; categoriaSugerida?: string | null; duvida?: boolean; duvidaMotivo?: string | null }) => {
+      setArquivoPath(path);          // guarda pra permitir reler depois
+      await extrairDeUrl(url);
+    } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao subir/extrair."); }
+    finally { setSubindo(false); }
+  }
+
+  // Reprocessa o PDF já guardado (arquivoPath) — útil quando a extração melhorou.
+  // Substitui as linhas atuais, então avisa antes.
+  async function relerPDF() {
+    if (!arquivoPath) return;
+    if (linhas.length && !confirm("Reler o PDF vai substituir os lançamentos atuais desta fatura pela extração nova (você perde ajustes manuais feitos aqui). Continuar?")) return;
+    setErro(""); setRelendo(true);
+    try {
+      const url = await getDownloadURL(storageRef(storage, arquivoPath));
+      await extrairDeUrl(url);
+    } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao reler o PDF."); }
+    finally { setRelendo(false); }
+  }
+
+  // Chama a IA de extração pra uma URL de PDF e joga o resultado nas linhas.
+  async function extrairDeUrl(url: string) {
+    const empresasNomes = outrasEmpresas.map(e => e.nome);
+    const catNomes = catsDe(rid).map(c => c.nome);  // categoria é sempre da minha entidade
+    // Histórico pra IA usar de base: última classificação por descrição.
+    const historico = (() => {
+      const seen = new Set<string>(); const out: { descricao: string; destino: string | null; categoria: string | null }[] = [];
+      for (const l of [...minhas].sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""))) {
+        if (l.ignorado) continue;
+        const key = normNome(l.descricao); if (seen.has(key)) continue; seen.add(key);
+        const empId = l.rateio?.length === 1 ? l.rateio[0].empresaId : (l.destinoTipo === "empresa" ? l.empresaAtribuidaId : null);
+        const destino = empId ? (outrasEmpresas.find(e => e.id === empId)?.nome || null) : (l.destinoTipo === "propria" ? "propria" : null);
+        const categoria = l.categoriaId ? (catsDe(rid).find(c => c.id === l.categoriaId)?.nome || null) : null;
+        if (destino || categoria) out.push({ descricao: l.descricao, destino, categoria });
+        if (out.length >= 200) break;
+      }
+      return out;
+    })();
+    const r = await fetch("/api/fatura-extrair", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ pdfUrl: url, cartoes, empresaPropria: empresaPropriaNome, empresas: empresasNomes, categorias: catNomes, historico }) });
+    const j = await r.json();
+    if (!r.ok) { setErro(j.error || "Falha na extração."); return; }
+    setVenc(j.vencimento || null); setTotalFatura(typeof j.totalFatura === "number" ? j.totalFatura : null);
+    setCartao(typeof j.cartao === "string" && j.cartao ? j.cartao : "");
+    const novas: Extraido[] = (j.lancamentos || []).map((l: { data: string; descricao: string; valor: number; parcela: string | null; destinoEmpresa?: string | null; categoriaSugerida?: string | null; duvida?: boolean; duvidaMotivo?: string | null }) => {
         // categoria (minha) sugerida pela IA
         let categoriaId: string | null = null;
         if (l.categoriaSugerida) categoriaId = catsDe(rid).find(c => c.nome.toLowerCase() === l.categoriaSugerida!.toLowerCase())?.id || null;
@@ -558,8 +581,6 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         return { data: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, rateio, categoriaId, ignorar, pendente, duvida: l.duvida ? true : undefined, duvidaMotivo: l.duvida && l.duvidaMotivo ? l.duvidaMotivo : undefined };
       });
       setLinhas(novas);
-    } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao subir/extrair."); }
-    finally { setSubindo(false); }
   }
 
   function setLinha(i: number, patch: Partial<Extraido>) { setLinhas(prev => prev.map((l, j) => j === i ? { ...l, ...patch } : l)); }
@@ -622,6 +643,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
       const batch = writeBatch(db);
       batch.set(doc(db, "cartaoFaturas", fid), sanitizeForFirestore({
         id: fid, restaurantId: rid, cartao, competencia, vencimento: venc, totalFatura,
+        arquivoPath: arquivoPath || faturaAtual?.arquivoPath || null,
         status: fechar ? "fechada" : "rascunho",
         fechadaEm: fechar ? agora : null, fechadaPor: fechar ? (meId || null) : null,
         criadoEm: faturaAtual?.criadoEm || agora, criadoPor: faturaAtual?.criadoPor || meId || null,
@@ -764,6 +786,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
                 : <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">rascunho</span>)}
             </div>
             <div className="flex items-center gap-1.5">
+              {arquivoPath && !bloqueado && <Button size="sm" variant="secondary" onClick={() => void relerPDF()} disabled={relendo || salvando || subindo}>{relendo ? "🔄 relendo…" : "🔄 Reler PDF"}</Button>}
               <Button size="sm" variant={faturaId ? "danger" : "ghost"} onClick={() => void descartar()} disabled={salvando}>{faturaId ? "🗑 Excluir fatura" : "Descartar"}</Button>
               {ehFechada ? (
                 <Button size="sm" onClick={() => void persistir(false)} disabled={salvando}>{salvando ? "…" : "↩ Reabrir pra editar"}</Button>
