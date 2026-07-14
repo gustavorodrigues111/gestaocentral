@@ -584,7 +584,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
       // mesmo total (ex: '08/10' E '09/10' E '10/10'), é o cronograma FUTURO
       // incluído por engano. Mantém só a menor parcela (a do mês) e pré-ignora o
       // resto — reversível (a linha fica visível como "ignorado").
-      const parcInfo = (l: Extraido) => { const m = (l.parcela || "").match(/^(\d+)\s*\/\s*(\d+)$/); return m ? { n: parseInt(m[1], 10), tot: m[2] } : null; };
+      const parcInfo = (l: Extraido) => { const src = l.parcela || (l.descricao.match(/\b(\d{1,2}\/\d{1,2})\s*$/)?.[1] || ""); const m = src.match(/^(\d+)\s*\/\s*(\d+)$/); return m ? { n: parseInt(m[1], 10), tot: m[2] } : null; };
       const grupos = new Map<string, number[]>();
       novas.forEach((l, idx) => { const p = parcInfo(l); if (!p) return; const key = normNome(l.descricao) + "|" + p.tot; const arr = grupos.get(key) || []; arr.push(idx); grupos.set(key, arr); });
       grupos.forEach(idxs => {
