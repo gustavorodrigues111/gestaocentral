@@ -24,6 +24,7 @@ import {
   ymd, parseYmd, parseAnoMes, fmtAnoMes, daysInMonth, proximoDiaUtil, fmtBR, nomeMes, shiftMonth,
 } from "../../core/utils/date";
 import { buscarFeriadosProximos } from "../sites/feriadosHelper";
+import { ContaFixaDetalheModal } from "./ContaFixaDetalheModal";
 
 const pad2 = (n: number) => String(n).padStart(2, "0");
 function inicioSemanaSeg(s: string): string {
@@ -40,6 +41,7 @@ export function ContasFixasPage() {
   const [enderecos, setEnderecos] = useState<Endereco[]>([]);
   const [aba, setAba] = useState<"visualizacao" | "cadastro">("visualizacao");
   const [editando, setEditando] = useState<ContaFixa | null>(null);
+  const [detalheConta, setDetalheConta] = useState<{ conta: ContaFixa; cmp: string } | null>(null);
   const [criando, setCriando] = useState(false);
   const [novaInit, setNovaInit] = useState<Partial<ContaFixa> | null>(null); // criar já com dia preenchido
   const [importando, setImportando] = useState(false);
@@ -298,8 +300,8 @@ export function ContasFixasPage() {
                         <div key={c.id + cmp} draggable={!noCadastro}
                           onDragStart={noCadastro ? undefined : (e) => { e.dataTransfer.setData("text/plain", `${c.id}|${cmp}`); e.dataTransfer.effectAllowed = "move"; setDragId(c.id); }}
                           onDragEnd={noCadastro ? undefined : () => { setDragId(null); setDropDia(null); }}
-                          onClick={() => noCadastro ? setEditando(c) : void togglePago(c, cmp)}
-                          title={noCadastro ? `${c.nome} — clique pra editar` : `${c.nome} — clique pra marcar pago`}
+                          onClick={() => noCadastro ? setEditando(c) : setDetalheConta({ conta: c, cmp })}
+                          title={noCadastro ? `${c.nome} — clique pra editar` : `${c.nome} — clique pra ver detalhes`}
                           className={`rounded-lg border px-1.5 py-1 text-[11px] leading-tight ${noCadastro ? "cursor-pointer hover:shadow-sm" : "cursor-grab active:cursor-grabbing"} ${dragId === c.id ? "opacity-40" : ""} ${corCard}`}>
                           <div className="font-semibold text-gray-800 dark:text-gray-100 flex items-start gap-1">{!noCadastro && st === "paga" && <span className="text-emerald-600">✓</span>}<span className="break-words">{c.fornecedor?.trim() || c.nome}</span></div>
                           {c.fornecedor?.trim() && c.nome ? <div className="text-gray-600 dark:text-gray-300 break-words">{c.nome}</div> : null}
@@ -365,6 +367,10 @@ export function ContasFixasPage() {
           enderecos={enderecos}
           pessoaId={pessoa.id}
         />
+      )}
+
+      {detalheConta && (
+        <ContaFixaDetalheModal conta={detalheConta.conta} competencia={detalheConta.cmp} pessoaId={pessoa.id} onClose={() => setDetalheConta(null)} />
       )}
       {importando && (
         <ImportContasModal

@@ -56,6 +56,7 @@ import { derivarContasFixas, derivarManutencoes, derivarPrazosTrab } from "./der
 import { ApontamentoModal } from "../manutencoes/ManutencoesPage";
 import { ProrrogarContratoModal } from "../admissao/ProrrogarContratoModal";
 import { AcaoModal as PrazoTrabModal, computarPrazosTrab, resolverPrazoTrab, desresolverPrazoTrab, baixarExameTrab, type Item as PrazoTrabItem } from "../prazosTrabalhistas/PrazosTrabalhistasPage";
+import { ContaFixaDetalheModal } from "../contasFixas/ContaFixaDetalheModal";
 
 const SUBPROJETO_PRAZOS_TRAB = "sub-pessoas-experiencia";
 import { podeVerTarefa, podeVerProjeto, isConfidencial } from "./visibilidade";
@@ -136,6 +137,7 @@ export function TarefasPage() {
   const [entregasTrab, setEntregasTrab] = useState<EntregaUniforme[]>([]);
   const [resolvidosTrab, setResolvidosTrab] = useState<Set<string>>(new Set());
   const [prazoTrabAberto, setPrazoTrabAberto] = useState<PrazoTrabItem | null>(null);
+  const [contaFixaAberta, setContaFixaAberta] = useState<{ conta: ContaFixa; cmp: string } | null>(null);
   // Modal de nova tarefa. Aceita pré-preenchimento de prazo, projeto e
   // subprojeto pra fluxos diferentes (botão por dia, "+ Nova tarefa" dentro
   // de um projeto, etc.).
@@ -237,7 +239,7 @@ export function TarefasPage() {
       ? derivarPrazosTrab(computarPrazosTrab(empregadosTrab, examesTrab, entregasTrab, hoje), hoje, resolvidosTrab, subPT.projetoId, subPT.id, setPrazoTrabAberto)
       : [];
     return [
-      ...derivarContasFixas(contasFixas, { id: pessoa.id, nome: pessoa.nome }, hoje),
+      ...derivarContasFixas(contasFixas, hoje, (conta, cmp) => setContaFixaAberta({ conta, cmp })),
       ...derivarManutencoes(manutencoes, hoje, setManutencaoAberta),
       ...prazosTrab,
     ];
@@ -543,6 +545,11 @@ export function TarefasPage() {
           pessoaId={pessoa?.id || ""}
           onClose={() => setManutencaoAberta(null)}
         />
+      )}
+
+      {/* Modal de conta fixa — detalhes + marcar pago (não marca ao clicar). */}
+      {contaFixaAberta && (
+        <ContaFixaDetalheModal conta={contaFixaAberta.conta} competencia={contaFixaAberta.cmp} pessoaId={pessoa?.id || ""} onClose={() => setContaFixaAberta(null)} />
       )}
 
       {/* Modal de prazo trabalhista (experiência/exame/uniforme) — aberto pelo

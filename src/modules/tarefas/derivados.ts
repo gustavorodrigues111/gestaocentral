@@ -4,8 +4,6 @@
 // A conta fixa vira uma "tarefa virtual" (id sintético "cf::<id>::<comp>") com
 // __derivado.setConcluida ligado ao pagamento no módulo Contas Fixas. Nenhum doc
 // de tarefa é criado; o dado vive só no módulo dono.
-import { doc, updateDoc, deleteField } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
 import type { ContaFixa, Manutencao, Tarefa } from "../../core/types";
 import { MANUTENCAO_TIPO_LABEL } from "../../core/types";
 import type { Item as PrazoTrabItem } from "../prazosTrabalhistas/PrazosTrabalhistasPage";
@@ -28,17 +26,7 @@ function proxComp(comp: string): string {
   return `${a}-${pad2(m)}`;
 }
 
-// Marca/desmarca a conta como paga na competência (mesma lógica do togglePago).
-export async function setContaFixaPaga(cf: ContaFixa, competencia: string, paga: boolean, pessoa: { id: string }): Promise<void> {
-  const ref = doc(db, "contasFixas", cf.id);
-  if (paga) {
-    await updateDoc(ref, { [`pagamentos.${competencia}`]: { pagoEm: new Date().toISOString(), pagoPor: pessoa.id }, atualizadoEm: new Date().toISOString() });
-  } else {
-    await updateDoc(ref, { [`pagamentos.${competencia}`]: deleteField(), atualizadoEm: new Date().toISOString() });
-  }
-}
-
-function cardContaFixa(cf: ContaFixa, comp: string, venc: string, pessoa: { id: string; nome: string }): Tarefa {
+function cardContaFixa(cf: ContaFixa, comp: string, venc: string, abrir: (cf: ContaFixa, comp: string) => void): Tarefa {
   const paga = !!cf.pagamentos?.[comp];
   return {
     id: `cf::${cf.id}::${comp}`,
@@ -59,7 +47,8 @@ function cardContaFixa(cf: ContaFixa, comp: string, venc: string, pessoa: { id: 
     criadoEm: cf.criadoEm,
     criadoPor: cf.criadoPor,
     atualizadoEm: cf.atualizadoEm,
-    __derivado: { tipo: "conta_fixa", refId: cf.id, competencia: comp, setConcluida: (v: boolean) => setContaFixaPaga(cf, comp, v, pessoa) },
+    // Clicar abre o modal de detalhes (com botão marcar pago), não marca direto.
+    __derivado: { tipo: "conta_fixa", refId: cf.id, competencia: comp, abrirModal: () => abrir(cf, comp) },
   };
 }
 
@@ -69,7 +58,7 @@ function cardContaFixa(cf: ContaFixa, comp: string, venc: string, pessoa: { id: 
 //   dentro da antecedência, mostra também o próximo.
 // - Outras recorrências: o próximo vencimento dentro da antecedência.
 export function derivarContasFixas(
-  contas: ContaFixa[], pessoa: { id: string; nome: string }, hojeYmd: string,
+  contas: ContaFixa[], hojeYmd: string, abrir: (cf: ContaFixa, comp: string) => void,
 ): Tarefa[] {
   const out: Tarefa[] = [];
   const compAtual = hojeYmd.slice(0, 7);
@@ -78,16 +67,16 @@ export function derivarContasFixas(
     const antec = cf.diasAntecedencia ?? ANTECEDENCIA_CONTA_FIXA_DIAS;
     if (cf.recorrencia === "mensal" && cf.diaDoMes) {
       const vAtual = vencMensal(cf, compAtual);
-      if (vAtual) out.push(cardContaFixa(cf, compAtual, vAtual, pessoa));
+      if (vAtual) out.push(cardContaFixa(cf, compAtual, vAtual, abrir));
       if (cf.pagamentos?.[compAtual]) {   // mês atual pago → antecipa o próximo se estiver perto
         const prox = proxComp(compAtual);
         const vProx = vencMensal(cf, prox);
-        if (vProx && diasEntre(hojeYmd, vProx) <= antec) out.push(cardContaFixa(cf, prox, vProx, pessoa));
+        if (vProx && diasEntre(hojeYmd, vProx) <= antec) out.push(cardContaFixa(cf, prox, vProx, abrir));
       }
     } else {
       const venc = proximoVencimentoContaFixa(cf);
       if (!venc || diasEntre(hojeYmd, venc) > antec) continue;
-      out.push(cardContaFixa(cf, venc.slice(0, 7), venc, pessoa));
+      out.push(cardContaFixa(cf, venc.slice(0, 7), venc, abrir));
     }
   }
   return out;
