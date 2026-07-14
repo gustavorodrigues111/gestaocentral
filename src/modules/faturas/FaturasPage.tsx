@@ -98,7 +98,7 @@ export function FaturasPage() {
         ))}
       </nav>
 
-      {aba === "visualizacao" && <Visualizacao rid={rid} minhas={minhas} outras={outras} catNome={catNome} restNome={restNome} meId={me?.id} meNome={me?.nome} />}
+      {aba === "visualizacao" && <Visualizacao rid={rid} minhas={minhas} outras={outras} faturas={faturas} catNome={catNome} restNome={restNome} meId={me?.id} meNome={me?.nome} />}
       {aba === "classificacao" && podeClassificar && (
         <Classificacao rid={rid} meId={me?.id} pixPadrao={activeRestaurant?.cartaoChavePixPadrao} cartoes={activeRestaurant?.cartoesCadastrados || []} empresaPropriaNome={activeRestaurant?.nome || restNome[rid] || ""} outrasEmpresas={outrasEmpresas} catsDe={catsDe} minhas={minhas} faturas={faturas} />
       )}
@@ -108,13 +108,22 @@ export function FaturasPage() {
 }
 
 // ─── Visualização ────────────────────────────────────────────────────────────
-function Visualizacao({ rid, minhas, outras: outrasRaw, catNome, restNome, meId, meNome }: { rid: string; minhas: CartaoLancamento[]; outras: CartaoLancamento[]; catNome: (id?: string | null) => string; restNome: Record<string, string>; meId?: string; meNome?: string }) {
+function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNome, meId, meNome }: { rid: string; minhas: CartaoLancamento[]; outras: CartaoLancamento[]; faturas: CartaoFatura[]; catNome: (id?: string | null) => string; restNome: Record<string, string>; meId?: string; meNome?: string }) {
   const [sub, setSub] = useState<"minhas" | "outras">("minhas");
   const [pagando, setPagando] = useState("");
   // Filtro multi-cartão (vazio = todos).
   const [cartoesSel, setCartoesSel] = useState<Set<string>>(() => new Set());
   const cartoesDisp = useMemo(() => [...new Set([...minhas, ...outrasRaw].map(l => l.cartao).filter(Boolean))].sort(), [minhas, outrasRaw]);
   const passaCartao = (l: CartaoLancamento) => cartoesSel.size === 0 || cartoesSel.has(l.cartao);
+
+  // Mês (competência da FATURA) — pra não misturar faturas de meses diferentes.
+  const compPorFatura = useMemo(() => Object.fromEntries(faturas.map(f => [f.id, f.competencia])), [faturas]);
+  const compDe = (l: CartaoLancamento) => (l.faturaId && compPorFatura[l.faturaId]) || (l.data || "").slice(0, 7);
+  const mesesDisp = useMemo(() => [...new Set([...minhas, ...outrasRaw].map(compDe).filter(Boolean))].sort().reverse(), [minhas, outrasRaw, compPorFatura]);
+  const [mesSel, setMesSel] = useState<string>("");
+  const mesAtivo = mesSel && mesesDisp.includes(mesSel) ? mesSel : (mesesDisp[0] || "");
+  const passaMes = (l: CartaoLancamento) => !mesAtivo || compDe(l) === mesAtivo;
+  const fmtMes = (c: string) => { const [a, m] = c.split("-"); const nomes = ["", "jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]; return `${nomes[Number(m)] || m}/${a}`; };
   const toggleCartao = (c: string) => setCartoesSel(prev => { const n = new Set(prev); n.has(c) ? n.delete(c) : n.add(c); return n; });
 
   // Minha fatia (empresa atual = rid) no rateio de um lançamento de outra empresa.
@@ -123,9 +132,9 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, catNome, restNome, meId,
   const aReembolsar = (l: CartaoLancamento) => (l.rateio || []).reduce((s, p) => s + (p.valor || 0), 0);
 
   // Só reembolsos de faturas FECHADAS (publicadas) aparecem pra outra empresa.
-  const outras = outrasRaw.filter(l => l.publicado && passaCartao(l));
+  const outras = outrasRaw.filter(l => l.publicado && passaCartao(l) && passaMes(l));
   // Minhas faturas = a fatura inteira é minha; os itens a reembolsar ganham selo.
-  const minhasTodas = minhas.filter(passaCartao);
+  const minhasTodas = minhas.filter(l => passaCartao(l) && passaMes(l));
   const totalMinhas = minhasTodas.filter(l => !l.ignorado).reduce((s, l) => s + (l.valor || 0), 0);
   const totalAReceber = minhasTodas.reduce((s, l) => s + aReembolsar(l), 0);
   const totalOutrasPend = outras.reduce((s, l) => { const p = minhaParte(l); return s + (p && p.status !== "pago" ? (p.valor || 0) : 0); }, 0);
@@ -184,7 +193,14 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, catNome, restNome, meId,
           </div>
         )}
       </div>
-      {/* 2. Filtro por cartão */}
+      {/* 2. Pastas de mês (competência da fatura) — não mistura meses */}
+      {mesesDisp.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5 mb-3">
+          <span className="text-[11px] text-gray-400 mr-0.5">📁 Mês:</span>
+          {mesesDisp.map(c => <SubChip key={c} ativo={c === mesAtivo} onClick={() => setMesSel(c)}>{fmtMes(c)}</SubChip>)}
+        </div>
+      )}
+      {/* 3. Filtro por cartão */}
       {cartoesDisp.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
           <span className="text-[11px] text-gray-400 mr-0.5">Cartões:</span>
