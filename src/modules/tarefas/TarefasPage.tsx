@@ -112,7 +112,7 @@ export function TarefasPage() {
   // projeto da sidebar, e aí faz sentido lista).
   const [tab, setTab] = useState<Tab>("minhas");
   const [viewMinhas, setViewMinhas] = useState<ViewMode>("calendario");
-  const [viewProjeto, setViewProjeto] = useState<ViewMode>("lista");
+  const [viewProjeto, setViewProjeto] = useState<ViewMode>("calendario");
 
   const [projetos, setProjetos] = useState<TarefaProjeto[]>([]);
   const [subprojetos, setSubprojetos] = useState<TarefaSubprojeto[]>([]);
