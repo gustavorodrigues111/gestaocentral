@@ -98,7 +98,7 @@ export function FaturasPage() {
         ))}
       </nav>
 
-      {aba === "visualizacao" && <Visualizacao rid={rid} minhas={minhas} outras={outras} faturas={faturas} catNome={catNome} restNome={restNome} meId={me?.id} meNome={me?.nome} />}
+      {aba === "visualizacao" && <Visualizacao rid={rid} minhas={minhas} outras={outras} faturas={faturas} catNome={catNome} restNome={restNome} meId={me?.id} meNome={me?.nome} onSubir={() => setAba("classificacao")} />}
       {aba === "classificacao" && podeClassificar && (
         <Classificacao rid={rid} meId={me?.id} pixPadrao={activeRestaurant?.cartaoChavePixPadrao} cartoes={activeRestaurant?.cartoesCadastrados || []} empresaPropriaNome={activeRestaurant?.nome || restNome[rid] || ""} outrasEmpresas={outrasEmpresas} catsDe={catsDe} minhas={minhas} faturas={faturas} />
       )}
@@ -108,7 +108,7 @@ export function FaturasPage() {
 }
 
 // ─── Visualização ────────────────────────────────────────────────────────────
-function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNome, meId, meNome }: { rid: string; minhas: CartaoLancamento[]; outras: CartaoLancamento[]; faturas: CartaoFatura[]; catNome: (id?: string | null) => string; restNome: Record<string, string>; meId?: string; meNome?: string }) {
+function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNome, meId, meNome, onSubir }: { rid: string; minhas: CartaoLancamento[]; outras: CartaoLancamento[]; faturas: CartaoFatura[]; catNome: (id?: string | null) => string; restNome: Record<string, string>; meId?: string; meNome?: string; onSubir?: () => void }) {
   const [sub, setSub] = useState<"minhas" | "pendentes" | "outras">("minhas");
   const [faturaAberta, setFaturaAberta] = useState<string | null>(null);   // fatura aberta dentro do mês
   const [pagando, setPagando] = useState("");
@@ -122,7 +122,7 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
   const compDe = (l: CartaoLancamento) => (l.faturaId && compPorFatura[l.faturaId]) || (l.data || "").slice(0, 7);
   const mesesDisp = useMemo(() => [...new Set([...minhas, ...outrasRaw].map(compDe).filter(Boolean))].sort().reverse(), [minhas, outrasRaw, compPorFatura]);
   const [mesSel, setMesSel] = useState<string>("");
-  const mesAtivo = mesSel && mesesDisp.includes(mesSel) ? mesSel : (mesesDisp[0] || "");
+  const mesAtivo = mesSel && mesesDisp.includes(mesSel) ? mesSel : "";   // "" = landing de meses
   const passaMes = (l: CartaoLancamento) => !mesAtivo || compDe(l) === mesAtivo;
   const fmtMes = (c: string) => { const [a, m] = c.split("-"); const nomes = ["", "jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]; return `${nomes[Number(m)] || m}/${a}`; };
   const toggleCartao = (c: string) => setCartoesSel(prev => { const n = new Set(prev); n.has(c) ? n.delete(c) : n.add(c); return n; });
@@ -183,8 +183,38 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
   const exportarLancs = sub === "minhas" ? minhasTodas.filter(l => !l.ignorado) : outras;
   const exportarTitulo = sub === "minhas" ? "Minhas faturas" : "Reembolsos a pagar";
 
+  // Landing: sem mês selecionado → pastas de mês (+ subir novas faturas).
+  if (!mesAtivo) {
+    return (
+      <div>
+        <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">📁 Escolha o mês</h3>
+          {onSubir && <Button size="sm" onClick={onSubir}>📄 Subir novas faturas</Button>}
+        </div>
+        {mesesDisp.length === 0 ? <Vazio texto="Nenhuma fatura ainda. Clique em “Subir novas faturas”." /> : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+            {mesesDisp.map(m => {
+              const nFat = faturas.filter(f => f.competencia === m && f.status === "fechada").length;
+              const totalMes = minhas.filter(l => compDe(l) === m && !l.ignorado && l.destinoTipo !== "pendente").reduce((s, l) => s + (l.valor || 0), 0);
+              const nPend = minhas.filter(l => compDe(l) === m && l.destinoTipo === "pendente" && !l.ignorado).length;
+              return (
+                <button key={m} type="button" onClick={() => setMesSel(m)} className="text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 hover:shadow-sm transition-shadow">
+                  <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">📁 {fmtMes(m)}</div>
+                  <div className="text-[11px] text-gray-400 mt-0.5">{nFat} fatura(s) · {fmtBRL(totalMes)}</div>
+                  {nPend > 0 && <div className="text-[11px] text-amber-600 dark:text-amber-400">⏳ {nPend} pendente(s)</div>}
+                </button>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return (
     <div>
+      {/* Voltar pra lista de meses */}
+      <button type="button" onClick={() => setMesSel("__none__")} className="mb-2 text-[12px] font-medium text-indigo-600 dark:text-indigo-300 hover:underline">← Todos os meses</button>
       {/* 1. Filtro principal: minhas faturas × reembolsos a pagar (acima dos cartões) */}
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <div className="flex gap-1.5 flex-wrap">
@@ -409,7 +439,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   // Organização por competência (mês/ano). Default = mais recente.
   const [compSel, setCompSel] = useState<string>("");
   const competencias = useMemo(() => [...new Set(faturas.map(f => f.competencia).filter(Boolean) as string[])].sort().reverse(), [faturas]);
-  const compAtual = compSel && competencias.includes(compSel) ? compSel : (competencias[0] || "");
+  const compAtual = compSel && competencias.includes(compSel) ? compSel : "";   // "" = landing de meses
   const compLabel = (c: string) => { const M = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]; const [y, m] = c.split("-"); return `${M[Number(m) - 1] || m}/${y}`; };
   // Faturas do mês selecionado (rascunho E fechada), editáveis pelos chips.
   const faturasLista = faturas.filter(f => f.competencia === compAtual).sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
@@ -653,9 +683,28 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         {erro && <p className="text-xs text-rose-600 mt-2">{erro}</p>}
       </div>
 
-      {/* Pastas de mês (competência) — não mistura faturas de meses diferentes */}
-      {competencias.length > 1 && (
+      {/* Landing: sem mês/edição → pastas de mês em cards. Com mês → chips finos. */}
+      {!compAtual && !editando ? (
+        competencias.length > 0 && (
+          <div>
+            <div className="text-[11px] text-gray-400 mb-1.5">📁 Ou abra um mês pra editar/ver as faturas:</div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+              {competencias.map(c => {
+                const nFat = faturas.filter(f => f.competencia === c).length;
+                return (
+                  <button key={c} type="button" onClick={() => { setCompSel(c); const first = faturas.filter(f => f.competencia === c).sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""))[0]; if (first) trocarPara(first); }}
+                    className="text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 hover:shadow-sm transition-shadow">
+                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">📁 {compLabel(c)}</div>
+                    <div className="text-[11px] text-gray-400 mt-0.5">{nFat} fatura(s)</div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )
+      ) : (
         <div className="flex flex-wrap items-center gap-1.5">
+          <button type="button" onClick={() => { setCompSel("__none__"); limpar(); }} className="text-[12px] font-medium text-indigo-600 dark:text-indigo-300 hover:underline mr-1">← Meses</button>
           <span className="text-[11px] text-gray-400 mr-0.5">📁 Mês:</span>
           {competencias.map(c => (
             <SubChip key={c} ativo={c === compAtual} onClick={() => { setCompSel(c); const first = faturas.filter(f => f.competencia === c).sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""))[0]; if (first) trocarPara(first); else limpar(); }}>{compLabel(c)}</SubChip>
