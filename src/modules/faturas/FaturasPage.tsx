@@ -111,6 +111,7 @@ export function FaturasPage() {
 function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNome, meId, meNome, onSubir }: { rid: string; minhas: CartaoLancamento[]; outras: CartaoLancamento[]; faturas: CartaoFatura[]; catNome: (id?: string | null) => string; restNome: Record<string, string>; meId?: string; meNome?: string; onSubir?: () => void }) {
   const [sub, setSub] = useState<"minhas" | "pendentes" | "outras">("minhas");
   const [faturaAberta, setFaturaAberta] = useState<string | null>(null);   // fatura aberta dentro do mês
+  const [empAberta, setEmpAberta] = useState<string | null>(null);         // empresa expandida em "A me reembolsar"
   const [pagando, setPagando] = useState("");
   // Filtro multi-cartão (vazio = todos).
   const [cartoesSel, setCartoesSel] = useState<Set<string>>(() => new Set());
@@ -126,6 +127,7 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
   const passaMes = (l: CartaoLancamento) => !mesAtivo || compDe(l) === mesAtivo;
   const fmtMes = (c: string) => { const [a, m] = c.split("-"); const nomes = ["", "jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"]; return `${nomes[Number(m)] || m}/${a}`; };
   const toggleCartao = (c: string) => setCartoesSel(prev => { const n = new Set(prev); n.has(c) ? n.delete(c) : n.add(c); return n; });
+  const fmtVencCurto = (v?: string) => v ? v.slice(8, 10) + "/" + v.slice(5, 7) : "";
 
   // Minha fatia (empresa atual = rid) no rateio de um lançamento de outra empresa.
   const minhaParte = (l: CartaoLancamento) => (l.rateio || []).find(p => p.empresaId === rid);
@@ -154,6 +156,23 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
     } }
     return [...m.entries()].sort((a, b) => b[1].total - a[1].total);
   })();
+
+  // Lançamentos que compõem o reembolso de UMA empresa, agrupados por cartão
+  // (respeita os filtros de mês/cartão já aplicados em minhasTodas).
+  const reembolsoDe = (empId: string): [string, { lancs: CartaoLancamento[]; total: number; pend: number }][] => {
+    const m = new Map<string, { lancs: CartaoLancamento[]; total: number; pend: number }>();
+    for (const l of minhasTodas) {
+      if (l.ignorado) continue;
+      const p = (l.rateio || []).find(x => x.empresaId === empId);
+      if (!p) continue;
+      const card = l.cartao || "Sem cartão";
+      const g = m.get(card) || { lancs: [], total: 0, pend: 0 };
+      g.lancs.push(l); g.total += p.valor || 0; if (p.status !== "pago") g.pend += p.valor || 0;
+      m.set(card, g);
+    }
+    return [...m.entries()].sort((a, b) => b[1].total - a[1].total);
+  };
+  const parteDe = (l: CartaoLancamento, empId: string) => (l.rateio || []).find(x => x.empresaId === empId);
 
   // Agrupa "outras" por dono (restaurantId).
   const outrasPorDono = useMemo(() => {
@@ -262,16 +281,40 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
               <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 mb-3">
                 <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1.5">↩ A me reembolsar · <span className="text-violet-600 dark:text-violet-300">{fmtBRL(totalAReceber)}</span></div>
                 <div className="divide-y divide-gray-100 dark:divide-gray-800">
-                  {aReceberPorEmpresa.map(([empId, g]) => (
-                    <div key={empId} className="flex items-center justify-between gap-2 py-1.5 text-sm">
-                      <span className="text-gray-800 dark:text-gray-200">{restNome[empId] || "empresa"}</span>
-                      <span className="flex items-center gap-2.5 whitespace-nowrap">
-                        {g.pend > 0 && <span className="text-[11px] text-amber-600">pendente {fmtBRL(g.pend)}</span>}
-                        {g.pago > 0 && <span className="text-[11px] text-emerald-600">pago {fmtBRL(g.pago)}</span>}
-                        <b className="tabular-nums text-gray-900 dark:text-gray-100">{fmtBRL(g.total)}</b>
-                      </span>
+                  {aReceberPorEmpresa.map(([empId, g]) => {
+                    const aberta = empAberta === empId;
+                    return (
+                    <div key={empId}>
+                      <button type="button" onClick={() => setEmpAberta(aberta ? null : empId)} className="w-full flex items-center justify-between gap-2 py-1.5 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 rounded-lg px-1 -mx-1">
+                        <span className="text-gray-800 dark:text-gray-200 flex items-center gap-1.5"><span className={`text-gray-400 text-[10px] transition-transform ${aberta ? "rotate-90" : ""}`}>▶</span>{restNome[empId] || "empresa"}</span>
+                        <span className="flex items-center gap-2.5 whitespace-nowrap">
+                          {g.pend > 0 && <span className="text-[11px] text-amber-600">pendente {fmtBRL(g.pend)}</span>}
+                          {g.pago > 0 && <span className="text-[11px] text-emerald-600">pago {fmtBRL(g.pago)}</span>}
+                          <b className="tabular-nums text-gray-900 dark:text-gray-100">{fmtBRL(g.total)}</b>
+                        </span>
+                      </button>
+                      {aberta && (
+                        <div className="pl-4 pb-2 space-y-2">
+                          {reembolsoDe(empId).map(([card, cg]) => (
+                            <div key={card} className="rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
+                              <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-gray-50 dark:bg-gray-800/40 text-[11px]">
+                                <span className="font-semibold text-gray-600 dark:text-gray-300">💳 {card}</span>
+                                <span className="tabular-nums text-gray-500">{cg.lancs.length} item(s) · <b className="text-gray-800 dark:text-gray-200">{fmtBRL(cg.total)}</b>{cg.pend > 0 && cg.pend < cg.total ? <span className="text-amber-600"> · pend {fmtBRL(cg.pend)}</span> : ""}</span>
+                              </div>
+                              <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                                {cg.lancs.map(l => { const p = parteDe(l, empId); return (
+                                  <div key={l.id} className="flex items-center justify-between gap-2 px-2.5 py-1 text-[12px]">
+                                    <span className="min-w-0 truncate text-gray-700 dark:text-gray-300"><span className="text-gray-400">{l.dataOriginal || fmtVencCurto(l.data)}</span> {l.descricao}{l.parcela ? <span className="text-gray-400"> ({l.parcela})</span> : ""}{p && p.percentual < 100 ? <span className="text-violet-500"> · {p.percentual}%</span> : ""}</span>
+                                    <span className="whitespace-nowrap flex items-center gap-1.5">{p?.status === "pago" && <span className="text-[10px] text-emerald-600">✓ pago</span>}<b className="tabular-nums text-gray-800 dark:text-gray-200">{fmtBRL(p?.valor || 0)}</b></span>
+                                  </div>
+                                ); })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
-                  ))}
+                  ); })}
                 </div>
               </div>
             )}
