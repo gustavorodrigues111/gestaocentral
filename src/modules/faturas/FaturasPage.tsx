@@ -671,7 +671,6 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
 
   function setLinha(i: number, patch: Partial<Extraido>) { setDirty(true); setLinhas(prev => prev.map((l, j) => j === i ? { ...l, ...patch } : l)); }
   function setRateio(i: number, rateio: RateioSimples[]) { setLinha(i, { rateio, pendente: false }); }
-  function marcarMeu(i: number) { setLinha(i, { rateio: [], pendente: false }); }   // resolve pendente como "meu"
   // Ao escolher categoria: se ela tem rateio padrão e a linha ainda não tem
   // rateio próprio, aplica o padrão da categoria.
   function setCategoria(i: number, categoriaId: string | null) {
@@ -839,9 +838,6 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
           <td className="px-2 py-1.5">
             <div className="flex items-center gap-1.5 flex-wrap">
               <button type="button" disabled={bloqueado} onClick={() => setRateioRow(i)} className={(l.rateio.length === 1 ? empChip(l.rateio[0].empresaId) : chipSelect(l.rateio.length ? "empresa" : l.pendente ? "vazio" : "neutro")) + " pr-2.5" + (bloqueado ? " opacity-70 cursor-default" : "")}>{l.pendente && !l.rateio.length ? "⏳ Pendente" : resumoRateio(l.rateio)}{bloqueado ? "" : " ▾"}</button>
-              {!bloqueado && l.pendente && !l.rateio.length && (
-                <button type="button" onClick={() => marcarMeu(i)} className="text-[11px] font-medium text-indigo-600 dark:text-indigo-300 hover:underline">é meu</button>
-              )}
             </div>
           </td>
           <td className="px-2 py-1.5">
@@ -1020,6 +1016,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         <RateioModal
           titulo={`Reembolso · ${linhas[rateioRow].descricao}`}
           empresas={outrasEmpresas}
+          propria={{ id: rid, nome: empresaPropriaNome || "Minha empresa" }}
           valorBase={linhas[rateioRow].valor}
           value={linhas[rateioRow].rateio}
           onChange={r => setRateio(rateioRow, r)}
@@ -1031,11 +1028,18 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
 }
 
 // ─── Editor de rateio percentual (por lançamento e por categoria) ────────────
-function RateioModal({ titulo, empresas, value, valorBase, onChange, onClose }: {
-  titulo: string; empresas: { id: string; nome: string }[]; value: RateioSimples[];
+function RateioModal({ titulo, empresas, propria, value, valorBase, onChange, onClose }: {
+  titulo: string; empresas: { id: string; nome: string }[]; propria?: { id: string; nome: string }; value: RateioSimples[];
   valorBase?: number; onChange: (r: RateioSimples[]) => void; onClose: () => void;
 }) {
-  const [pcts, setPcts] = useState<Record<string, number>>(() => Object.fromEntries(value.map(p => [p.empresaId, p.percentual])));
+  // A empresa dona da fatura entra na lista (1ª). Selecioná-la = gasto seu (não
+  // vira reembolso); por isso ela é retirada do resultado ao salvar.
+  const lista = propria ? [propria, ...empresas.filter(e => e.id !== propria.id)] : empresas;
+  const [pcts, setPcts] = useState<Record<string, number>>(() => {
+    const base: Record<string, number> = Object.fromEntries(value.map(p => [p.empresaId, p.percentual]));
+    if (propria) { const rem = round2(100 - value.reduce((s, p) => s + (p.percentual || 0), 0)); if (rem > 0) base[propria.id] = rem; }
+    return base;
+  });
   const total = Object.values(pcts).reduce((s, v) => s + (v || 0), 0);
   const sobra = round2(100 - total);
   const set = (id: string, v: number) => setPcts(p => ({ ...p, [id]: v }));
@@ -1054,7 +1058,8 @@ function RateioModal({ titulo, empresas, value, valorBase, onChange, onClose }: 
     return distribuir([...ids]);
   });
   function salvar() {
-    const r: RateioSimples[] = Object.entries(pcts).filter(([, v]) => v > 0).map(([empresaId, percentual]) => ({ empresaId, percentual: round2(percentual) }));
+    // Tira a própria empresa do resultado: a parte dela é "meu" (sem reembolso).
+    const r: RateioSimples[] = Object.entries(pcts).filter(([id, v]) => v > 0 && id !== propria?.id).map(([empresaId, percentual]) => ({ empresaId, percentual: round2(percentual) }));
     onChange(r); onClose();
   }
   return (
@@ -1064,15 +1069,16 @@ function RateioModal({ titulo, empresas, value, valorBase, onChange, onClose }: 
           <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Rateio percentual</div>
           <div className="text-[11px] text-gray-500 truncate">{titulo}</div>
         </div>
-        <p className="text-xs text-gray-500">Marque uma ou mais empresas que reembolsam e o % de cada uma. O que sobrar fica como gasto seu (sem reembolso).</p>
+        <p className="text-xs text-gray-500">Marque quem arca com cada parte e o %. {propria ? <><b>{propria.nome}</b> (sua empresa) = gasto seu, sem reembolso; as outras viram reembolso.</> : "O que sobrar fica como gasto seu (sem reembolso)."}</p>
         <div className="max-h-64 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
-          {empresas.map(em => {
+          {lista.map(em => {
             const on = pcts[em.id] != null;
+            const ehPropria = propria != null && em.id === propria.id;
             return (
               <div key={em.id} onClick={() => toggle(em.id, !on)}
-                className={`flex items-center gap-2.5 py-2.5 px-2 -mx-2 rounded-lg cursor-pointer transition-colors ${on ? "bg-indigo-50 dark:bg-indigo-900/20" : "hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                className={`flex items-center gap-2.5 py-2.5 px-2 -mx-2 rounded-lg cursor-pointer transition-colors ${on ? (ehPropria ? "bg-gray-100 dark:bg-gray-800/60" : "bg-indigo-50 dark:bg-indigo-900/20") : "hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
                 <input type="checkbox" checked={on} readOnly className="pointer-events-none w-4 h-4" />
-                <span className="flex-1 text-sm">{em.nome}</span>
+                <span className="flex-1 text-sm">{em.nome}{ehPropria && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-300">minha empresa · sem reembolso</span>}</span>
                 {on && (
                   <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                     <input type="number" min={0} max={100} value={pcts[em.id] || 0} onChange={e => set(em.id, Number(e.target.value))}
