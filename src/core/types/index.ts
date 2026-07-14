@@ -4530,12 +4530,13 @@ export type Tarefa = {
 
 // Item derivado de outro módulo, exibido como card leve no Gestor de Tarefas.
 export type TarefaDerivadaInfo = {
-  tipo: "conta_fixa";               // (fases seguintes: "manutencao" | "prazo_trabalhista")
+  tipo: "conta_fixa" | "manutencao"; // (fase seguinte: "prazo_trabalhista")
   refId: string;                    // id no módulo de origem
   competencia?: string;             // "YYYY-MM" (contas fixas)
-  // Conclui/reabre no módulo dono (ex.: marca a conta paga). Não mexe em tarefa.
-  setConcluida: (v: boolean) => Promise<void>;
-  // Se o card abre um modal do módulo (manutenção/trabalhista) em vez de só check.
+  // Conclui/reabre no módulo dono direto (ex.: marca a conta paga). Ausente
+  // quando concluir exige um fluxo (então usa abrirModal).
+  setConcluida?: (v: boolean) => Promise<void>;
+  // Card abre um modal do módulo (manutenção/trabalhista) pra concluir/apontar.
   abrirModal?: () => void;
 };
 

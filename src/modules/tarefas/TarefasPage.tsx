@@ -23,6 +23,10 @@ import {
   ouvirAutomacoes, salvarAutomacao, propagarAutomacaoEmAbertas,
 } from "./repository";
 
+// Origens que agora aparecem como CARD DERIVADO ao vivo (não mais cópia de
+// tarefa). As cópias persistidas antigas dessas origens ficam escondidas.
+const ORIGEM_DERIVADA = new Set(["conta_fixa", "manutencao"]);
+
 async function mudarStatusComErro(id: string, status: TarefaStatus, autor: { id: string; nome: string }) {
   try {
     await mudarStatus(id, status, autor);
@@ -45,10 +49,11 @@ import {
   TAREFA_VISIBILIDADE_LABEL, RECORRENCIA_TIPO_LABEL,
   TAREFA_CUSTOM_FIELD_TIPO_LABEL, MODULOS_ORIGEM_TAREFA,
 } from "../../core/types";
-import type { TarefaAnexo, Subtarefa, ContaFixa } from "../../core/types";
+import type { TarefaAnexo, Subtarefa, ContaFixa, Manutencao } from "../../core/types";
 import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
-import { derivarContasFixas } from "./derivados";
+import { derivarContasFixas, derivarManutencoes } from "./derivados";
+import { ApontamentoModal } from "../manutencoes/ManutencoesPage";
 import { podeVerTarefa, podeVerProjeto, isConfidencial } from "./visibilidade";
 import { parseCSV, mapearLinhas, executarImport, detectarOrfas } from "./importador";
 import type { LinhaImportada } from "./importador";
@@ -119,6 +124,8 @@ export function TarefasPage() {
   const [tarefasProjeto, setTarefasProjeto] = useState<Tarefa[]>([]);
   const [lixeira, setLixeira] = useState<Tarefa[]>([]);
   const [contasFixas, setContasFixas] = useState<ContaFixa[]>([]);
+  const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
+  const [manutencaoAberta, setManutencaoAberta] = useState<Manutencao | null>(null);
   // Modal de nova tarefa. Aceita pré-preenchimento de prazo, projeto e
   // subprojeto pra fluxos diferentes (botão por dia, "+ Nova tarefa" dentro
   // de um projeto, etc.).
@@ -189,27 +196,34 @@ export function TarefasPage() {
     return () => u();
   }, [tab]);
 
-  // Contas fixas ativas — pra derivar cards leves no Gestor (fonte única = módulo).
+  // Contas fixas + manutenções ativas — pra derivar cards leves no Gestor
+  // (fonte única = módulo dono).
   useEffect(() => {
-    const u = onSnapshot(query(collection(db, "contasFixas"), where("ativo", "==", true)),
+    const u1 = onSnapshot(query(collection(db, "contasFixas"), where("ativo", "==", true)),
       (s) => setContasFixas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as ContaFixa)), () => setContasFixas([]));
-    return () => u();
+    const u2 = onSnapshot(query(collection(db, "manutencoes"), where("ativo", "==", true)),
+      (s) => setManutencoes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Manutencao)), () => setManutencoes([]));
+    return () => { u1(); u2(); };
   }, []);
 
-  // Itens derivados (contas fixas próximas do vencimento) como tarefas virtuais.
-  const derivadas = useMemo(
-    () => (pessoa ? derivarContasFixas(contasFixas, { id: pessoa.id, nome: pessoa.nome }, new Date().toISOString().slice(0, 10)) : []),
-    [contasFixas, pessoa],
-  );
+  // Itens derivados (contas fixas + manutenções próximas do vencimento).
+  const derivadas = useMemo(() => {
+    if (!pessoa) return [];
+    const hoje = new Date().toISOString().slice(0, 10);
+    return [
+      ...derivarContasFixas(contasFixas, { id: pessoa.id, nome: pessoa.nome }, hoje),
+      ...derivarManutencoes(manutencoes, hoje, setManutencaoAberta),
+    ];
+  }, [contasFixas, manutencoes, pessoa]);
   // "Minhas": esconde as cópias persistidas antigas (origem conta_fixa) e injeta
   // os derivados dos quais sou responsável-padrão.
   const minhasComDerivados = useMemo(
-    () => [...minhas.filter((t) => t.origem !== "conta_fixa"), ...derivadas.filter((d) => d.responsavelId === pessoa?.id)],
+    () => [...minhas.filter((t) => !ORIGEM_DERIVADA.has(t.origem)), ...derivadas.filter((d) => d.responsavelId === pessoa?.id)],
     [minhas, derivadas, pessoa?.id],
   );
   const tarefasProjetoComDerivados = useMemo(
     () => [
-      ...tarefasProjeto.filter((t) => t.origem !== "conta_fixa" && podeVerTarefa(t, projetos.find((p) => p.id === t.projetoId), pessoa)),
+      ...tarefasProjeto.filter((t) => !ORIGEM_DERIVADA.has(t.origem) && podeVerTarefa(t, projetos.find((p) => p.id === t.projetoId), pessoa)),
       ...derivadas.filter((d) => d.projetoId === projetoFiltro),
     ],
     [tarefasProjeto, derivadas, projetoFiltro, projetos, pessoa],
@@ -331,7 +345,7 @@ export function TarefasPage() {
           </div>
           {viewMinhas === "calendario" && (
             <CalendarioView
-              tarefas={minhas.filter(t => t.origem !== "conta_fixa")}
+              tarefas={minhas.filter(t => !ORIGEM_DERIVADA.has(t.origem))}
               projetos={projetos}
               subprojetos={subprojetos}
               onAbrir={setDetalheId}
@@ -453,6 +467,16 @@ export function TarefasPage() {
         ) : (
           <SemPermissaoModal onClose={() => setDetalheId(null)} />
         )
+      )}
+
+      {/* Modal de apontamento de manutenção (prazo técnico) — aberto pelo card
+          derivado; o próprio módulo cuida de agendar/subir laudo/concluir ciclo. */}
+      {manutencaoAberta && (
+        <ApontamentoModal
+          manutencao={manutencaoAberta}
+          pessoaId={pessoa?.id || ""}
+          onClose={() => setManutencaoAberta(null)}
+        />
       )}
     </div>
   );
@@ -888,19 +912,19 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
 
   return (
     <div
-      onClick={der ? undefined : onAbrir}
+      onClick={der ? (der.abrirModal || undefined) : onAbrir}
       className={`
         p-3 rounded-xl border transition-all
         ${concluida ? "opacity-60" : ""}
         ${der
-          ? "bg-amber-50/60 dark:bg-amber-900/10 border-dashed border-amber-300 dark:border-amber-800/60"
+          ? "bg-amber-50/60 dark:bg-amber-900/10 border-dashed border-amber-300 dark:border-amber-800/60" + (der.abrirModal ? " cursor-pointer hover:shadow-md" : "")
           : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 cursor-pointer hover:shadow-md"}
       `}
       style={{ borderLeftWidth: 4, borderLeftColor: cor }}
     >
       <div className="flex items-start gap-2">
         <button
-          onClick={(e) => { e.stopPropagation(); if (der) void der.setConcluida(!concluida); else mudarStatusComErro(tarefa.id, concluida ? "a_fazer" : "concluida", autor); }}
+          onClick={(e) => { e.stopPropagation(); if (der?.abrirModal) der.abrirModal(); else if (der?.setConcluida) void der.setConcluida(!concluida); else mudarStatusComErro(tarefa.id, concluida ? "a_fazer" : "concluida", autor); }}
           className={`mt-1 w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${
             concluida
               ? "bg-emerald-500 border-emerald-500 text-white"
@@ -2186,7 +2210,9 @@ function KanbanView({ tarefas, projetos, autor, onAbrir }: {
     // Card derivado (conta fixa etc.): concluir/reabrir delega pro módulo dono.
     const t = tarefas.find((x) => x.id === id);
     if (t?.__derivado) {
-      if (col === "concluida" || col === "a_fazer") await t.__derivado.setConcluida(col === "concluida");
+      const der = t.__derivado;
+      if (der.abrirModal) der.abrirModal();                       // manutenção: abre o modal
+      else if (der.setConcluida && (col === "concluida" || col === "a_fazer")) await der.setConcluida(col === "concluida");
       return;
     }
     await mudarStatusComErro(id, col, autor);
@@ -2223,9 +2249,9 @@ function KanbanView({ tarefas, projetos, autor, onAbrir }: {
                     key={t.id}
                     draggable
                     onDragStart={(e) => onDragStart(e, t.id)}
-                    onClick={der ? undefined : () => onAbrir(t.id)}
+                    onClick={der ? (der.abrirModal || undefined) : () => onAbrir(t.id)}
                     className={`p-2 rounded-lg border transition-shadow ${der
-                      ? "bg-amber-50/60 dark:bg-amber-900/10 border-dashed border-amber-300 dark:border-amber-800/60 cursor-grab"
+                      ? "bg-amber-50/60 dark:bg-amber-900/10 border-dashed border-amber-300 dark:border-amber-800/60 " + (der.abrirModal ? "cursor-pointer hover:shadow-md" : "cursor-grab")
                       : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md"}`}
                     style={{ borderLeftWidth: 3, borderLeftColor: cor }}
                   >
@@ -2233,7 +2259,7 @@ function KanbanView({ tarefas, projetos, autor, onAbrir }: {
                     <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-500 dark:text-gray-400">
                       {proj && <span style={{ color: cor }}>{proj.emoji}</span>}
                       {t.prazo && <span>📅 {fmtBR(t.prazo)}</span>}
-                      {der && <span className="px-1 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">💰 conta fixa</span>}
+                      {der && <span className="px-1 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">{der.tipo === "manutencao" ? "🔧 prazo técnico" : "💰 conta fixa"}</span>}
                       {(t.subtarefas?.length ?? 0) > 0 && <span>☑️ {t.subtarefas?.filter(s => s.feito).length}/{t.subtarefas?.length}</span>}
                     </div>
                   </div>

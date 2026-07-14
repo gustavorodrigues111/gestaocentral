@@ -6,7 +6,8 @@
 // de tarefa é criado; o dado vive só no módulo dono.
 import { doc, updateDoc, deleteField } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import type { ContaFixa, Tarefa } from "../../core/types";
+import type { ContaFixa, Manutencao, Tarefa } from "../../core/types";
+import { MANUTENCAO_TIPO_LABEL } from "../../core/types";
 import { proximoVencimentoContaFixa, ANTECEDENCIA_CONTA_FIXA_DIAS } from "./generator";
 
 function diasEntre(a: string, b: string): number {
@@ -62,6 +63,45 @@ export function derivarContasFixas(
         competencia: comp,
         setConcluida: (v: boolean) => setContaFixaPaga(cf, comp, v, pessoa),
       },
+    });
+  }
+  return out;
+}
+
+// Deriva manutenções (prazos técnicos) ativas com vencimento próximo. Concluir
+// NÃO é um simples check (exige apontamento/laudo) → o card abre o modal do
+// módulo (ApontamentoModal) via `abrirModal`. Status = realizado ? concluída.
+export function derivarManutencoes(
+  manutencoes: Manutencao[], hojeYmd: string, abrir: (m: Manutencao) => void,
+): Tarefa[] {
+  const out: Tarefa[] = [];
+  for (const m of manutencoes) {
+    if (!m.ativo || m.deletadoEm) continue;
+    if (!m.proximoVencimento) continue;
+    const antec = m.diasAntecedencia ?? 30;
+    if (diasEntre(hojeYmd, m.proximoVencimento) > antec) continue;
+    const realizado = m.statusCiclo === "realizado";
+    const nome = MANUTENCAO_TIPO_LABEL[m.tipo] || m.tipo;
+    out.push({
+      id: `mt::${m.id}`,
+      projetoId: m.projetoId,
+      subprojetoId: m.subprojetoId,
+      titulo: nome,
+      responsavelId: m.responsavelPadraoId,
+      responsavelNome: m.responsavelPadraoNome,
+      restaurantIds: m.restaurantIds,
+      prazo: m.proximoVencimento,
+      status: realizado ? "concluida" : "a_fazer",
+      prioridade: "normal",
+      origem: "manutencao",
+      origemRefId: m.id,
+      origemRefLabel: `Manutenção: ${nome}`,
+      subtarefas: [],
+      comentarios: [],
+      criadoEm: m.criadoEm || "",
+      criadoPor: m.criadoPor || "",
+      atualizadoEm: m.atualizadoEm || "",
+      __derivado: { tipo: "manutencao", refId: m.id, abrirModal: () => abrir(m) },
     });
   }
   return out;

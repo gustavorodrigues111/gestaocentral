@@ -134,7 +134,10 @@ export async function gerarTarefasDoDia(autor: { id: string; nome: string }): Pr
   }
 
   // ── Manutenções ──
-  const mtSnap = await getDocs(query(collection(db, "manutencoes"), where("ativo", "==", true)));
+  // DESATIVADO: manutenções (prazos técnicos) agora aparecem no Gestor como CARD
+  // DERIVADO ao vivo (derivados.ts), abrindo o ApontamentoModal do módulo. Loop
+  // preservado abaixo (não itera) — fase B da integração.
+  const mtSnap = { docs: [] as { id: string; data: () => Record<string, unknown> }[] };
   for (const d of mtSnap.docs) {
     const m = { id: d.id, ...d.data() } as Manutencao;
     if (m.deletadoEm) continue;

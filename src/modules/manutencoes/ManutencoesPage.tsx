@@ -277,11 +277,26 @@ function PastaRaizConfig({ rid, folderId, folderNome }: { rid: string; folderId?
 }
 
 // ─── Apontamento (Visualização) ──────────────────────────────────────────────
-function ApontamentoModal({ manutencao, onClose, endsDaEmpresa, rootFolderId, pessoaId }: {
-  manutencao: Manutencao; onClose: () => void; endsDaEmpresa: Endereco[]; rootFolderId?: string; pessoaId: string;
+export function ApontamentoModal({ manutencao, onClose, pessoaId, endsDaEmpresa: endsProp, rootFolderId: rootProp }: {
+  manutencao: Manutencao; onClose: () => void; pessoaId: string;
+  // Opcionais: se não vierem, o modal se auto-carrega pela própria manutenção
+  // (permite abrir de qualquer lugar, ex.: card derivado no Gestor de Tarefas).
+  endsDaEmpresa?: Endereco[]; rootFolderId?: string;
 }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [m, setM] = useState<Manutencao>(manutencao);
+  const { restaurants } = useRestaurant();
+  const [endsAuto, setEndsAuto] = useState<Endereco[]>([]);
+  useEffect(() => {
+    if (endsProp) return;   // caller já forneceu
+    const rids = (manutencao.restaurantIds || []).slice(0, 10);
+    if (!rids.length) { setEndsAuto([]); return; }
+    const u = onSnapshot(query(collection(db, "enderecos"), where("restaurantId", "in", rids)),
+      (s) => setEndsAuto(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Endereco)), () => setEndsAuto([]));
+    return () => u();
+  }, [endsProp, manutencao.restaurantIds]);
+  const endsDaEmpresa = endsProp || endsAuto;
+  const rootFolderId = rootProp ?? restaurants.find((r) => (manutencao.restaurantIds || []).includes(r.id))?.manutencoesDriveFolderId;
   const [subindo, setSubindo] = useState(false);
   const [concluindo, setConcluindo] = useState(false);
   const endsDoItem = endsDaEmpresa.filter(e => (m.enderecoIds || []).includes(e.id));
