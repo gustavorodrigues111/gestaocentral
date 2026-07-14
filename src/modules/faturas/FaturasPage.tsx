@@ -2,7 +2,7 @@
 // você classifica cada um por CATEGORIA e DESTINO (própria entidade ou outra
 // empresa = reembolso). Duas abas: Visualização (Minhas faturas / Outras
 // faturas a reembolsar) e Classificação. Categorias são por entidade.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -490,6 +490,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   const [salvando, setSalvando] = useState(false);
   const [rateioRow, setRateioRow] = useState<number | null>(null);  // linha com o editor de rateio aberto
   const [trocandoCartao, setTrocandoCartao] = useState(false);      // revela o select de cartão numa fatura já salva
+  const [agrupar, setAgrupar] = useState(false);                    // agrupa a tabela por empresa/destino
   // Competência derivada do vencimento (mês/ano da fatura) — sem input manual.
   const competencia = venc && /^\d{4}-\d{2}/.test(venc) ? venc.slice(0, 7) : mesAtual();
   const nomeEmpresa = (id: string) => outrasEmpresas.find(e => e.id === id)?.nome || "?";
@@ -687,6 +688,26 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   const valMeu = somaClass - valReembolso - valPendente;
   const qtdPendentes = linhasValidas.filter(l => l.pendente && !l.rateio.length).length;
 
+  // Agrupamento por destino (pra visão "Agrupar por empresa"). Preserva o índice
+  // original de cada linha pra edição continuar funcionando.
+  const grupoDe = (l: Extraido): { key: string; label: string; ord: number; empId?: string } => {
+    if (l.ignorar) return { key: "__ign", label: "Ignorados", ord: 99 };
+    if (l.rateio.length === 1) { const id = l.rateio[0].empresaId; return { key: id, label: nomeEmpresa(id), ord: 10, empId: id }; }
+    if (l.rateio.length > 1) return { key: "__rateio", label: "Rateio · múltiplas empresas", ord: 20 };
+    if (l.pendente) return { key: "__pend", label: "⏳ Pendente", ord: 90 };
+    return { key: "__meu", label: "Meu (sem reembolso)", ord: 1 };
+  };
+  const gruposLinhas = (() => {
+    const m = new Map<string, { label: string; ord: number; empId?: string; itens: { l: Extraido; i: number }[]; total: number }>();
+    linhas.forEach((l, i) => {
+      const g = grupoDe(l);
+      const cur = m.get(g.key) || { label: g.label, ord: g.ord, empId: g.empId, itens: [], total: 0 };
+      cur.itens.push({ l, i }); if (!l.ignorar) cur.total += l.valor || 0;
+      m.set(g.key, cur);
+    });
+    return [...m.values()].sort((a, b) => a.ord - b.ord || a.label.localeCompare(b.label));
+  })();
+
   function ymdDe(dataDDMM: string): string {
     const [d, m] = (dataDDMM || "").split("/");
     if (!d || !m) return competencia + "-01";
@@ -775,6 +796,51 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   }
 
   const inp = "px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900";
+
+  const renderLinha = (l: Extraido, i: number) => (
+    <tr key={i} className={`border-t border-gray-100 dark:border-gray-800 ${l.ignorar ? "opacity-45" : l.duvida ? "bg-rose-50 dark:bg-rose-900/20 border-l-2 border-l-rose-400" : ""}`}>
+      <td className="px-2 py-1.5 whitespace-nowrap text-gray-500">
+        {l.manual && !bloqueado
+          ? <input value={l.data} onChange={e => setLinha(i, { data: e.target.value })} placeholder="DD/MM" className="w-16 bg-transparent border border-rose-300 dark:border-rose-700 rounded px-1.5 py-0.5 text-sm" />
+          : l.data}
+      </td>
+      <td className="px-2 py-1.5">
+        {l.manual && !bloqueado
+          ? <input value={l.descricao} onChange={e => setLinha(i, { descricao: e.target.value })} placeholder="Descrição do lançamento" className="w-full bg-transparent border border-rose-300 dark:border-rose-700 rounded px-1.5 py-0.5 text-sm" />
+          : <><span className={l.ignorar ? "line-through" : ""}>{l.descricao}</span>{l.parcela && <span className="ml-1 text-[10px] text-gray-400">({l.parcela})</span>}</>}
+        {!bloqueado && (l.manual
+          ? <button type="button" onClick={() => removerLinha(i)} className="ml-2 text-[10px] text-gray-400 hover:text-rose-600 align-middle">✕ remover</button>
+          : <button type="button" onClick={() => toggleIgnorar(i)} className="ml-2 text-[10px] text-gray-400 hover:text-rose-600 align-middle">{l.ignorar ? "↩ reincluir" : "✕ ignorar"}</button>)}
+        {l.duvida && !l.ignorar && <div className="text-[10px] text-rose-600 dark:text-rose-400 mt-0.5">⚠ {l.duvidaMotivo || "confira este lançamento"}</div>}
+      </td>
+      <td className={`px-2 py-1.5 text-right tabular-nums ${l.ignorar ? "line-through text-gray-400" : l.valor < 0 ? "text-emerald-600" : ""}`}>
+        {l.manual && !bloqueado
+          ? <input type="number" step="0.01" value={Number.isFinite(l.valor) ? l.valor : 0} onChange={e => setLinha(i, { valor: parseFloat(e.target.value) || 0 })} className="w-24 text-right bg-transparent border border-rose-300 dark:border-rose-700 rounded px-1.5 py-0.5 text-sm tabular-nums" />
+          : fmtBRL(l.valor)}
+      </td>
+      {l.ignorar ? (
+        <td className="px-2 py-1.5 text-[11px] text-gray-400 italic" colSpan={2}>ignorado — não entra na fatura</td>
+      ) : (
+        <>
+          <td className="px-2 py-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <button type="button" disabled={bloqueado} onClick={() => setRateioRow(i)} className={(l.rateio.length === 1 ? empChip(l.rateio[0].empresaId) : chipSelect(l.rateio.length ? "empresa" : l.pendente ? "vazio" : "neutro")) + " pr-2.5" + (bloqueado ? " opacity-70 cursor-default" : "")}>{l.pendente && !l.rateio.length ? "⏳ Pendente" : resumoRateio(l.rateio)}{bloqueado ? "" : " ▾"}</button>
+              {!bloqueado && l.pendente && !l.rateio.length && (
+                <button type="button" onClick={() => marcarMeu(i)} className="text-[11px] font-medium text-indigo-600 dark:text-indigo-300 hover:underline">é meu</button>
+              )}
+            </div>
+          </td>
+          <td className="px-2 py-1.5">
+            <select value={l.categoriaId || ""} disabled={bloqueado} onChange={e => setCategoria(i, e.target.value || null)} className={chipSelect(l.categoriaId ? "ok" : "vazio") + (bloqueado ? " opacity-70" : "")}>
+              <option value="">+ categoria</option>
+              {catsDe(rid).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            </select>
+          </td>
+        </>
+      )}
+    </tr>
+  );
+
   return (
     <div className="space-y-3">
       <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
@@ -905,55 +971,31 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
               </div>
             </div>
           )}
+          <div className="flex items-center justify-end mb-1.5">
+            <button type="button" onClick={() => setAgrupar(v => !v)} className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border ${agrupar ? "border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300 dark:border-indigo-700" : "border-gray-200 text-gray-500 dark:border-gray-700"}`}>{agrupar ? "☑" : "☐"} Agrupar por empresa</button>
+          </div>
           <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
             <table className="w-full min-w-[640px] text-sm">
               <thead><tr className="text-[11px] uppercase text-gray-400 bg-gray-50 dark:bg-gray-900/40">
                 <th className="text-left px-2 py-2">Data</th><th className="text-left px-2 py-2">Descrição</th><th className="text-right px-2 py-2">Valor</th><th className="text-left px-2 py-2">Reembolso</th><th className="text-left px-2 py-2">Categoria</th>
               </tr></thead>
               <tbody>
-                {linhas.map((l, i) => (
-                    <tr key={i} className={`border-t border-gray-100 dark:border-gray-800 ${l.ignorar ? "opacity-45" : l.duvida ? "bg-rose-50 dark:bg-rose-900/20 border-l-2 border-l-rose-400" : ""}`}>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-gray-500">
-                        {l.manual && !bloqueado
-                          ? <input value={l.data} onChange={e => setLinha(i, { data: e.target.value })} placeholder="DD/MM" className="w-16 bg-transparent border border-rose-300 dark:border-rose-700 rounded px-1.5 py-0.5 text-sm" />
-                          : l.data}
-                      </td>
-                      <td className="px-2 py-1.5">
-                        {l.manual && !bloqueado
-                          ? <input value={l.descricao} onChange={e => setLinha(i, { descricao: e.target.value })} placeholder="Descrição do lançamento" className="w-full bg-transparent border border-rose-300 dark:border-rose-700 rounded px-1.5 py-0.5 text-sm" />
-                          : <><span className={l.ignorar ? "line-through" : ""}>{l.descricao}</span>{l.parcela && <span className="ml-1 text-[10px] text-gray-400">({l.parcela})</span>}</>}
-                        {!bloqueado && (l.manual
-                          ? <button type="button" onClick={() => removerLinha(i)} className="ml-2 text-[10px] text-gray-400 hover:text-rose-600 align-middle">✕ remover</button>
-                          : <button type="button" onClick={() => toggleIgnorar(i)} className="ml-2 text-[10px] text-gray-400 hover:text-rose-600 align-middle">{l.ignorar ? "↩ reincluir" : "✕ ignorar"}</button>)}
-                        {l.duvida && !l.ignorar && <div className="text-[10px] text-rose-600 dark:text-rose-400 mt-0.5">⚠ {l.duvidaMotivo || "confira este lançamento"}</div>}
-                      </td>
-                      <td className={`px-2 py-1.5 text-right tabular-nums ${l.ignorar ? "line-through text-gray-400" : l.valor < 0 ? "text-emerald-600" : ""}`}>
-                        {l.manual && !bloqueado
-                          ? <input type="number" step="0.01" value={Number.isFinite(l.valor) ? l.valor : 0} onChange={e => setLinha(i, { valor: parseFloat(e.target.value) || 0 })} className="w-24 text-right bg-transparent border border-rose-300 dark:border-rose-700 rounded px-1.5 py-0.5 text-sm tabular-nums" />
-                          : fmtBRL(l.valor)}
-                      </td>
-                      {l.ignorar ? (
-                        <td className="px-2 py-1.5 text-[11px] text-gray-400 italic" colSpan={2}>ignorado — não entra na fatura</td>
-                      ) : (
-                        <>
-                          <td className="px-2 py-1.5">
-                            <div className="flex items-center gap-1.5 flex-wrap">
-                              <button type="button" disabled={bloqueado} onClick={() => setRateioRow(i)} className={(l.rateio.length === 1 ? empChip(l.rateio[0].empresaId) : chipSelect(l.rateio.length ? "empresa" : l.pendente ? "vazio" : "neutro")) + " pr-2.5" + (bloqueado ? " opacity-70 cursor-default" : "")}>{l.pendente && !l.rateio.length ? "⏳ Pendente" : resumoRateio(l.rateio)}{bloqueado ? "" : " ▾"}</button>
-                              {!bloqueado && l.pendente && !l.rateio.length && (
-                                <button type="button" onClick={() => marcarMeu(i)} className="text-[11px] font-medium text-indigo-600 dark:text-indigo-300 hover:underline">é meu</button>
-                              )}
-                            </div>
+                {agrupar
+                  ? gruposLinhas.map(g => (
+                      <Fragment key={g.label}>
+                        <tr className="bg-gray-50 dark:bg-gray-800/40">
+                          <td colSpan={5} className="px-2 py-1.5">
+                            <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 flex items-center gap-1.5">
+                              {g.empId && <span className={"w-2.5 h-2.5 rounded-full " + empCor(g.empId).dot} />}
+                              {g.label}
+                              <span className="font-normal text-gray-400">· {g.itens.filter(x => !x.l.ignorar).length} item(s) · {fmtBRL(g.total)}</span>
+                            </span>
                           </td>
-                          <td className="px-2 py-1.5">
-                            <select value={l.categoriaId || ""} disabled={bloqueado} onChange={e => setCategoria(i, e.target.value || null)} className={chipSelect(l.categoriaId ? "ok" : "vazio") + (bloqueado ? " opacity-70" : "")}>
-                              <option value="">+ categoria</option>
-                              {catsDe(rid).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-                            </select>
-                          </td>
-                        </>
-                      )}
-                    </tr>
-                ))}
+                        </tr>
+                        {g.itens.map(({ l, i }) => renderLinha(l, i))}
+                      </Fragment>
+                    ))
+                  : linhas.map((l, i) => renderLinha(l, i))}
               </tbody>
             </table>
           </div>
