@@ -2,8 +2,8 @@
 // Cria/edita persona, liga ferramentas do catálogo, define escopo de entidades.
 // O motor de chat + execução de ferramentas (loop tool-use no api/agente.ts)
 // entra no F1b. Escrita sempre em modo confirmação; permissão herda de Pessoas.
-import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, doc, setDoc, deleteDoc } from "firebase/firestore";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { collection, onSnapshot, doc, setDoc, deleteDoc, addDoc, query, where, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { authHeader } from "../../core/firebase/idToken";
@@ -128,32 +128,60 @@ export function AgentesPage() {
         <AgenteEditor agente={editando} restaurants={restaurants} onClose={() => setEditando(null)} onSalvar={salvar} onExcluir={excluir} />
       )}
       {conversando && (
-        <AgenteChat agente={conversando} pessoaNome={pessoa?.nome} onClose={() => setConversando(null)} onConfig={() => { setEditando(conversando); setConversando(null); }} />
+        <AgenteChat agente={conversando} pessoaId={pessoa?.id} pessoaNome={pessoa?.nome} onClose={() => setConversando(null)} onConfig={() => { setEditando(conversando); setConversando(null); }} />
       )}
     </div>
   );
 }
 
-type ChatMsg = { role: "user" | "assistant"; texto: string; tools?: { tool: string; resumo: string }[] };
+type ChatMsg = { id: string; role: "user" | "assistant"; texto: string; tools?: { tool: string; resumo: string }[]; criadoEm: string };
 
-function AgenteChat({ agente, pessoaNome, onClose, onConfig }: { agente: AgenteIA; pessoaNome?: string; onClose: () => void; onConfig: () => void }) {
+function AgenteChat({ agente, pessoaId, pessoaNome, onClose, onConfig }: { agente: AgenteIA; pessoaId?: string; pessoaNome?: string; onClose: () => void; onConfig: () => void }) {
+  // Uma conversa contínua por (agente, pessoa). Persiste em agenteMensagens.
+  const conversaId = `${agente.id}__${pessoaId || "anon"}`;
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
+  const fimRef = useRef<HTMLDivElement | null>(null);
+
+  // Carrega e mantém a conversa ao vivo (ordena no cliente — sem índice composto).
+  useEffect(() => {
+    const q = query(collection(db, "agenteMensagens"), where("conversaId", "==", conversaId));
+    const u = onSnapshot(q, s => setMsgs(
+      s.docs.map(d => ({ id: d.id, ...(d.data() as Omit<ChatMsg, "id">) }))
+        .sort((a, b) => (a.criadoEm || "").localeCompare(b.criadoEm || ""))
+    ));
+    return () => u();
+  }, [conversaId]);
+  useEffect(() => { fimRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs.length, enviando]);
+
+  async function persistir(role: "user" | "assistant", texto: string, tools?: { tool: string; resumo: string }[]) {
+    await addDoc(collection(db, "agenteMensagens"), {
+      agenteId: agente.id, conversaId, restaurantId: null, role, texto,
+      pessoaId: pessoaId || null, canal: "app", tools: tools || null,
+      criadoEm: new Date().toISOString(),
+    });
+  }
+  async function limparConversa() {
+    if (!confirm("Apagar toda esta conversa? Não dá pra desfazer.")) return;
+    const batch = writeBatch(db);
+    for (const m of msgs) batch.delete(doc(db, "agenteMensagens", m.id));
+    await batch.commit();
+  }
 
   async function enviar() {
     const m = texto.trim();
     if (!m || enviando) return;
     setErro(""); setTexto("");
     const historico = msgs.map(x => ({ role: x.role, texto: x.texto }));
-    setMsgs(prev => [...prev, { role: "user", texto: m }]);
     setEnviando(true);
     try {
+      await persistir("user", m);
       const r = await fetch("/api/agente", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ agenteId: agente.id, mensagem: m, historico, pessoaNome }) });
       const j = await r.json();
-      if (!r.ok) { setErro(j.error || "Falha na resposta."); setMsgs(prev => [...prev, { role: "assistant", texto: "⚠️ " + (j.error || "Erro.") }]); return; }
-      setMsgs(prev => [...prev, { role: "assistant", texto: j.resposta || "(sem resposta)", tools: j.toolCalls }]);
+      if (!r.ok) { setErro(j.error || "Falha na resposta."); await persistir("assistant", "⚠️ " + (j.error || "Erro.")); return; }
+      await persistir("assistant", j.resposta || "(sem resposta)", j.toolCalls);
     } catch (e) { setErro(e instanceof Error ? e.message : "Erro de rede."); }
     finally { setEnviando(false); }
   }
@@ -164,6 +192,7 @@ function AgenteChat({ agente, pessoaNome, onClose, onConfig }: { agente: AgenteI
         <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
           <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{DOMINIO_META[agente.tipo].icon} {agente.nome}</div>
           <div className="flex items-center gap-1">
+            {msgs.length > 0 && <button type="button" onClick={() => void limparConversa()} title="Limpar conversa" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">🗑</button>}
             <button type="button" onClick={onConfig} title="Configurar" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">⚙</button>
             <button type="button" onClick={onClose} className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">✕</button>
           </div>
@@ -177,8 +206,8 @@ function AgenteChat({ agente, pessoaNome, onClose, onConfig }: { agente: AgenteI
               <div className="mt-2 text-[11px]">Ex: {agente.tipo === "financeiro" ? "“Quais contas fixas vencem em julho?”" : "“Quem está em período de experiência este mês?”"}</div>
             </div>
           )}
-          {msgs.map((m, i) => (
-            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+          {msgs.map(m => (
+            <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
               <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${m.role === "user" ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200"}`}>
                 {m.texto}
                 {m.tools && m.tools.length > 0 && (
@@ -191,6 +220,7 @@ function AgenteChat({ agente, pessoaNome, onClose, onConfig }: { agente: AgenteI
           ))}
           {enviando && <div className="text-xs text-gray-400">consultando…</div>}
           {erro && <div className="text-xs text-rose-600">{erro}</div>}
+          <div ref={fimRef} />
         </div>
 
         <div className="p-3 border-t border-gray-100 dark:border-gray-800 flex items-end gap-2">
