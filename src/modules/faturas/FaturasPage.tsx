@@ -619,6 +619,12 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   const naoClassificados = linhasValidas.filter(l => !l.categoriaId).length;
   const emDuvida = linhasValidas.filter(l => l.duvida).length;
   const naoBate = diff != null && Math.abs(diff) >= 0.01;
+  // Distribuição do valor: quanto vira reembolso de outra empresa, quanto está
+  // pendente (não decidido) e quanto sobra como meu (gasto próprio).
+  const valReembolso = linhasValidas.reduce((s, l) => s + (l.rateio || []).reduce((a, p) => a + (l.valor || 0) * (p.percentual || 0) / 100, 0), 0);
+  const valPendente = linhasValidas.filter(l => l.pendente && !l.rateio.length).reduce((s, l) => s + (l.valor || 0), 0);
+  const valMeu = somaClass - valReembolso - valPendente;
+  const qtdPendentes = linhasValidas.filter(l => l.pendente && !l.rateio.length).length;
 
   function ymdDe(dataDDMM: string): string {
     const [d, m] = (dataDDMM || "").split("/");
@@ -768,7 +774,8 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
 
       {editando && (
         <>
-          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 flex items-center justify-between gap-3 flex-wrap">
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 flex flex-col gap-2.5">
+           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div className="flex items-center gap-3 flex-wrap text-xs">
               <div className="flex items-center gap-1.5">
                 <span className="text-gray-500">Cartão:</span>
@@ -788,11 +795,6 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
                 {cartoes.length > 0 && cartao && !faturaId && <span className="text-[10px] text-emerald-600">✓ identificado</span>}
               </div>
               <span className="text-gray-500">Vencimento: <b className="text-gray-800 dark:text-gray-200">{venc ? venc.split("-").reverse().join("/") : "—"}</b></span>
-              <span className="text-gray-500">Total: <b className="text-gray-800 dark:text-gray-200">{totalFatura != null ? fmtBRL(totalFatura) : "—"}</b></span>
-              <span className="text-gray-500">Classificado: <b className="text-gray-800 dark:text-gray-200">{fmtBRL(somaClass)}</b></span>
-              {diff != null && <span className={Math.abs(diff) < 0.01 ? "text-emerald-600" : "text-rose-600 font-semibold"}>Diferença: <b>{fmtBRL(diff)}</b></span>}
-              {emDuvida > 0 && <span className="text-rose-600">{emDuvida} em dúvida</span>}
-              {naoClassificados > 0 && <span className="text-amber-600">{naoClassificados} sem categoria</span>}
               {faturaId && (ehFechada
                 ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">publicada</span>
                 : <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">rascunho</span>)}
@@ -809,6 +811,22 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
                 </>
               )}
             </div>
+           </div>
+           <div className="flex items-center gap-x-4 gap-y-1.5 flex-wrap text-xs border-t border-gray-100 dark:border-gray-800 pt-2.5">
+             <span className="text-gray-400 uppercase text-[10px] font-semibold tracking-wide">Confere?</span>
+             <span className="text-gray-500">Total da fatura: <b className="text-gray-800 dark:text-gray-200">{totalFatura != null ? fmtBRL(totalFatura) : "—"}</b></span>
+             <span className="text-gray-500" title="Soma dos valores de todos os lançamentos (menos os ignorados). Serve só pra conferir se bate com o Total impresso na fatura — não tem a ver com destino nem categoria.">Soma dos lançamentos: <b className="text-gray-800 dark:text-gray-200">{fmtBRL(somaClass)}</b></span>
+             {diff != null && (Math.abs(diff) < 0.01
+               ? <span className="text-emerald-600 font-semibold">✓ bate</span>
+               : <span className="text-rose-600 font-semibold">{diff < 0 ? `faltam ${fmtBRL(-diff)}` : `sobram ${fmtBRL(diff)}`}</span>)}
+             <span className="w-px h-4 bg-gray-200 dark:bg-gray-700 hidden sm:inline-block" />
+             <span className="text-gray-400 uppercase text-[10px] font-semibold tracking-wide">Destino do gasto</span>
+             <span className="text-gray-500" title="O que sobra como gasto seu (sem reembolso de outra empresa).">Meu: <b className="text-gray-800 dark:text-gray-200">{fmtBRL(valMeu)}</b></span>
+             {valReembolso > 0.005 && <span className="text-violet-600 dark:text-violet-300" title="Parte atribuída a outra(s) empresa(s) — vira reembolso a receber.">A reembolsar: <b>{fmtBRL(valReembolso)}</b></span>}
+             {qtdPendentes > 0 && <span className="text-amber-600" title="Lançamentos que ainda não foram decididos como 'meu' ou 'reembolso'.">⏳ Pendente: <b>{fmtBRL(valPendente)}</b> ({qtdPendentes})</span>}
+             {emDuvida > 0 && <span className="text-rose-600">⚠ {emDuvida} em dúvida</span>}
+             {naoClassificados > 0 && <span className="text-amber-600">{naoClassificados} sem categoria</span>}
+           </div>
           </div>
           {bloqueado
             ? <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1">🔒 Fatura <b>publicada</b> — clique <b>Reabrir pra editar</b> pra mexer nos lançamentos.</p>
