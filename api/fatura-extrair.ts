@@ -45,8 +45,10 @@ function montarPrompt(cartoes: string[], empresaPropria: string, empresas: strin
   "5) vencimento = data de vencimento da fatura no formato 'YYYY-MM-DD'.\n" +
   "6) totalFatura = o valor do 'Total desta fatura' (número, ponto decimal).\n" +
   "7) NÃO invente nada. Se um campo não existir, use null.\n" +
-  listaCartoes + destinoRegra + categoriaRegra + blocoHistorico +
-  "\nResponda SOMENTE um objeto JSON (sem texto antes/depois): { \"cartao\": \"...\"|null, \"vencimento\": \"YYYY-MM-DD\"|null, \"totalFatura\": number|null, \"lancamentos\": [ { \"data\": \"DD/MM\", \"descricao\": \"...\", \"valor\": number, \"parcela\": \"XX/YY\"|null, \"destino\": \"propria\"|\"<nome empresa>\", \"categoria\": \"<nome>\"|null } ] }";
+  listaCartoes + destinoRegra + categoriaRegra +
+  "11) duvida = true quando você NÃO tem certeza deste lançamento: valor pouco legível, descrição ilegível/ambígua, linha de grade multi-coluna de cartão adicional sem nome de loja, ou qualquer leitura que você teve que chutar. duvidaMotivo = frase curta dizendo o motivo (ex: 'valor pouco legível', 'sem nome de estabelecimento', 'grade de cartão adicional'). Se tiver certeza, duvida = false e duvidaMotivo = null. Prefira marcar duvida=true a esconder um lançamento — é melhor o humano conferir do que sumir com o valor.\n" +
+  blocoHistorico +
+  "\nResponda SOMENTE um objeto JSON (sem texto antes/depois): { \"cartao\": \"...\"|null, \"vencimento\": \"YYYY-MM-DD\"|null, \"totalFatura\": number|null, \"lancamentos\": [ { \"data\": \"DD/MM\", \"descricao\": \"...\", \"valor\": number, \"parcela\": \"XX/YY\"|null, \"destino\": \"propria\"|\"<nome empresa>\", \"categoria\": \"<nome>\"|null, \"duvida\": true|false, \"duvidaMotivo\": \"<motivo>\"|null } ] }";
 }
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
@@ -100,7 +102,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     const textOut = (json.content || []).filter((b) => b.type === "text").map((b) => b.text || "").join("");
     const m = textOut.match(/\{[\s\S]*\}/);
     if (!m) { res.status(502).json({ error: "A IA não retornou JSON." }); return; }
-    const parsed = JSON.parse(m[0]) as { cartao?: string | null; vencimento?: string | null; totalFatura?: number | null; lancamentos?: Array<{ data?: string; descricao?: string; valor?: number; parcela?: string | null; destino?: string | null; categoria?: string | null }> };
+    const parsed = JSON.parse(m[0]) as { cartao?: string | null; vencimento?: string | null; totalFatura?: number | null; lancamentos?: Array<{ data?: string; descricao?: string; valor?: number; parcela?: string | null; destino?: string | null; categoria?: string | null; duvida?: boolean; duvidaMotivo?: string | null }> };
     // Resolve destino/categoria sugeridos contra as listas cadastradas (case-insensitive).
     const acharEmpresa = (nome?: string | null) => (nome && nome.toLowerCase() !== "propria" && nome.toLowerCase() !== "minha") ? (empresas.find((e) => e.toLowerCase() === String(nome).toLowerCase().trim()) || null) : null;
     const acharCategoria = (nome?: string | null) => nome ? (categorias.find((c) => c.toLowerCase() === String(nome).toLowerCase().trim()) || null) : null;
@@ -109,6 +111,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       .map((l) => ({
         data: String(l.data || "").trim(), descricao: String(l.descricao).trim(), valor: Number(l.valor), parcela: l.parcela ? String(l.parcela).trim() : null,
         destinoEmpresa: acharEmpresa(l.destino), categoriaSugerida: acharCategoria(l.categoria),
+        duvida: l.duvida === true, duvidaMotivo: l.duvida === true && l.duvidaMotivo ? String(l.duvidaMotivo).slice(0, 120) : null,
       }));
     // Só aceita cartão se casar (case-insensitive) com um dos cadastrados.
     const cartaoDetectado = typeof parsed.cartao === "string"

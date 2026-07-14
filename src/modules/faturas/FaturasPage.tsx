@@ -35,7 +35,7 @@ const chipSelect = (v: "empresa" | "neutro" | "ok" | "vazio"): string => {
   return base + styles[v];
 };
 
-type Extraido = { data: string; descricao: string; valor: number; parcela: string | null; rateio: RateioSimples[]; categoriaId: string | null; ignorar?: boolean; pendente?: boolean };
+type Extraido = { data: string; descricao: string; valor: number; parcela: string | null; rateio: RateioSimples[]; categoriaId: string | null; ignorar?: boolean; pendente?: boolean; duvida?: boolean; duvidaMotivo?: string; manual?: boolean };
 
 export function FaturasPage() {
   const { pessoa: me } = useAuth();
@@ -532,7 +532,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
       if (!r.ok) { setErro(j.error || "Falha na extração."); return; }
       setVenc(j.vencimento || null); setTotalFatura(typeof j.totalFatura === "number" ? j.totalFatura : null);
       setCartao(typeof j.cartao === "string" && j.cartao ? j.cartao : "");
-      const novas: Extraido[] = (j.lancamentos || []).map((l: { data: string; descricao: string; valor: number; parcela: string | null; destinoEmpresa?: string | null; categoriaSugerida?: string | null }) => {
+      const novas: Extraido[] = (j.lancamentos || []).map((l: { data: string; descricao: string; valor: number; parcela: string | null; destinoEmpresa?: string | null; categoriaSugerida?: string | null; duvida?: boolean; duvidaMotivo?: string | null }) => {
         // categoria (minha) sugerida pela IA
         let categoriaId: string | null = null;
         if (l.categoriaSugerida) categoriaId = catsDe(rid).find(c => c.nome.toLowerCase() === l.categoriaSugerida!.toLowerCase())?.id || null;
@@ -555,7 +555,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         // Nasce PENDENTE quando a IA não identificou destino e não há histórico —
         // não assume "meu" sozinho.
         const pendente = !ignorar && rateio.length === 0 && !classificadoAntes ? true : undefined;
-        return { data: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, rateio, categoriaId, ignorar, pendente };
+        return { data: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, rateio, categoriaId, ignorar, pendente, duvida: l.duvida ? true : undefined, duvidaMotivo: l.duvida && l.duvidaMotivo ? l.duvidaMotivo : undefined };
       });
       setLinhas(novas);
     } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao subir/extrair."); }
@@ -577,10 +577,15 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   }
 
   const toggleIgnorar = (i: number) => setLinhas(prev => prev.map((l, j) => j === i ? { ...l, ignorar: !l.ignorar } : l));
+  // Adiciona um lançamento manual (pra fechar a diferença quando a IA perdeu uma linha).
+  const adicionarLinha = () => setLinhas(prev => [...prev, { data: "", descricao: "", valor: 0, parcela: null, rateio: [], categoriaId: null, pendente: true, manual: true }]);
+  const removerLinha = (i: number) => setLinhas(prev => prev.filter((_, j) => j !== i));
   const linhasValidas = linhas.filter(l => !l.ignorar);
   const somaClass = linhasValidas.reduce((s, l) => s + (l.valor || 0), 0);
   const diff = totalFatura != null ? Math.round((somaClass - totalFatura) * 100) / 100 : null;
   const naoClassificados = linhasValidas.filter(l => !l.categoriaId).length;
+  const emDuvida = linhasValidas.filter(l => l.duvida).length;
+  const naoBate = diff != null && Math.abs(diff) >= 0.01;
 
   function ymdDe(dataDDMM: string): string {
     const [d, m] = (dataDDMM || "").split("/");
@@ -751,7 +756,8 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
               <span className="text-gray-500">Vencimento: <b className="text-gray-800 dark:text-gray-200">{venc ? venc.split("-").reverse().join("/") : "—"}</b></span>
               <span className="text-gray-500">Total: <b className="text-gray-800 dark:text-gray-200">{totalFatura != null ? fmtBRL(totalFatura) : "—"}</b></span>
               <span className="text-gray-500">Classificado: <b className="text-gray-800 dark:text-gray-200">{fmtBRL(somaClass)}</b></span>
-              {diff != null && <span className={Math.abs(diff) < 0.01 ? "text-emerald-600" : "text-amber-600"}>Diferença: <b>{fmtBRL(diff)}</b></span>}
+              {diff != null && <span className={Math.abs(diff) < 0.01 ? "text-emerald-600" : "text-rose-600 font-semibold"}>Diferença: <b>{fmtBRL(diff)}</b></span>}
+              {emDuvida > 0 && <span className="text-rose-600">{emDuvida} em dúvida</span>}
               {naoClassificados > 0 && <span className="text-amber-600">{naoClassificados} sem categoria</span>}
               {faturaId && (ehFechada
                 ? <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">publicada</span>
@@ -772,6 +778,19 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
           {bloqueado
             ? <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1">🔒 Fatura <b>publicada</b> — clique <b>Reabrir pra editar</b> pra mexer nos lançamentos.</p>
             : <p className="text-[11px] text-gray-500 flex items-center gap-1">✨ A fatura é toda sua. A IA já marcou os itens a <b className="text-violet-600 dark:text-violet-300">reembolsar</b> por outra empresa e a <b className="text-indigo-600 dark:text-indigo-300">categoria</b> — clique nas pílulas pra ajustar.</p>}
+          {!bloqueado && naoBate && diff != null && (
+            <div className="rounded-lg border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 px-3 py-2.5 flex items-start gap-2 text-[12px] text-rose-800 dark:text-rose-200">
+              <span className="text-base leading-none">⚠️</span>
+              <div className="flex-1">
+                <b>A soma dos lançamentos não bate com o Total da fatura.</b>{" "}
+                {diff < 0
+                  ? <>Faltam <b>{fmtBRL(-diff)}</b> — provavelmente a IA não leu algum lançamento (cartão adicional costuma vir numa grade compacta). </>
+                  : <>Sobram <b>{fmtBRL(diff)}</b> — pode ter algum lançamento lido a mais ou duplicado. </>}
+                Confira as linhas <span className="text-rose-600 font-semibold">em vermelho</span>{emDuvida > 0 ? ` (${emDuvida} em dúvida)` : ""}, ignore o que estiver errado{diff < 0 ? ", ou adicione o que faltou manualmente" : ""}.
+                <div className="mt-1.5"><Button size="sm" variant="secondary" onClick={adicionarLinha}>＋ Adicionar lançamento manual</Button></div>
+              </div>
+            </div>
+          )}
           <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
             <table className="w-full min-w-[640px] text-sm">
               <thead><tr className="text-[11px] uppercase text-gray-400 bg-gray-50 dark:bg-gray-900/40">
@@ -779,13 +798,26 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
               </tr></thead>
               <tbody>
                 {linhas.map((l, i) => (
-                    <tr key={i} className={`border-t border-gray-100 dark:border-gray-800 ${l.ignorar ? "opacity-45" : ""}`}>
-                      <td className="px-2 py-1.5 whitespace-nowrap text-gray-500">{l.data}</td>
-                      <td className="px-2 py-1.5">
-                        <span className={l.ignorar ? "line-through" : ""}>{l.descricao}</span>{l.parcela && <span className="ml-1 text-[10px] text-gray-400">({l.parcela})</span>}
-                        {!bloqueado && <button type="button" onClick={() => toggleIgnorar(i)} className="ml-2 text-[10px] text-gray-400 hover:text-rose-600 align-middle">{l.ignorar ? "↩ reincluir" : "✕ ignorar"}</button>}
+                    <tr key={i} className={`border-t border-gray-100 dark:border-gray-800 ${l.ignorar ? "opacity-45" : l.duvida ? "bg-rose-50 dark:bg-rose-900/20 border-l-2 border-l-rose-400" : ""}`}>
+                      <td className="px-2 py-1.5 whitespace-nowrap text-gray-500">
+                        {l.manual && !bloqueado
+                          ? <input value={l.data} onChange={e => setLinha(i, { data: e.target.value })} placeholder="DD/MM" className="w-16 bg-transparent border border-rose-300 dark:border-rose-700 rounded px-1.5 py-0.5 text-sm" />
+                          : l.data}
                       </td>
-                      <td className={`px-2 py-1.5 text-right tabular-nums ${l.ignorar ? "line-through text-gray-400" : l.valor < 0 ? "text-emerald-600" : ""}`}>{fmtBRL(l.valor)}</td>
+                      <td className="px-2 py-1.5">
+                        {l.manual && !bloqueado
+                          ? <input value={l.descricao} onChange={e => setLinha(i, { descricao: e.target.value })} placeholder="Descrição do lançamento" className="w-full bg-transparent border border-rose-300 dark:border-rose-700 rounded px-1.5 py-0.5 text-sm" />
+                          : <><span className={l.ignorar ? "line-through" : ""}>{l.descricao}</span>{l.parcela && <span className="ml-1 text-[10px] text-gray-400">({l.parcela})</span>}</>}
+                        {!bloqueado && (l.manual
+                          ? <button type="button" onClick={() => removerLinha(i)} className="ml-2 text-[10px] text-gray-400 hover:text-rose-600 align-middle">✕ remover</button>
+                          : <button type="button" onClick={() => toggleIgnorar(i)} className="ml-2 text-[10px] text-gray-400 hover:text-rose-600 align-middle">{l.ignorar ? "↩ reincluir" : "✕ ignorar"}</button>)}
+                        {l.duvida && !l.ignorar && <div className="text-[10px] text-rose-600 dark:text-rose-400 mt-0.5">⚠ {l.duvidaMotivo || "confira este lançamento"}</div>}
+                      </td>
+                      <td className={`px-2 py-1.5 text-right tabular-nums ${l.ignorar ? "line-through text-gray-400" : l.valor < 0 ? "text-emerald-600" : ""}`}>
+                        {l.manual && !bloqueado
+                          ? <input type="number" step="0.01" value={Number.isFinite(l.valor) ? l.valor : 0} onChange={e => setLinha(i, { valor: parseFloat(e.target.value) || 0 })} className="w-24 text-right bg-transparent border border-rose-300 dark:border-rose-700 rounded px-1.5 py-0.5 text-sm tabular-nums" />
+                          : fmtBRL(l.valor)}
+                      </td>
                       {l.ignorar ? (
                         <td className="px-2 py-1.5 text-[11px] text-gray-400 italic" colSpan={2}>ignorado — não entra na fatura</td>
                       ) : (
