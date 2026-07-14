@@ -24,16 +24,34 @@ const normNome = (s: string) => (s || "").toUpperCase().replace(/\d/g, "").repla
 const mesAtual = () => new Date().toISOString().slice(0, 7);
 
 // Select com cara de chip/pílula colorida por estado.
+const CHIP_BASE = "text-xs font-medium rounded-full pl-2.5 pr-1 py-1 border cursor-pointer max-w-[160px] ";
 const chipSelect = (v: "empresa" | "neutro" | "ok" | "vazio"): string => {
-  const base = "text-xs font-medium rounded-full pl-2.5 pr-1 py-1 border cursor-pointer max-w-[160px] ";
   const styles: Record<typeof v, string> = {
     empresa: "border-violet-300 bg-violet-50 text-violet-700 dark:bg-violet-900/25 dark:text-violet-300 dark:border-violet-700",
     neutro: "border-gray-200 bg-gray-50 text-gray-600 dark:bg-gray-800/50 dark:text-gray-300 dark:border-gray-700",
     ok: "border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300 dark:border-indigo-700",
     vazio: "border-amber-300 border-dashed bg-amber-50/60 text-amber-700 dark:text-amber-300 dark:border-amber-700 dark:bg-transparent",
   };
-  return base + styles[v];
+  return CHIP_BASE + styles[v];
 };
+
+// Paleta estável por empresa: mesma empresa → sempre a mesma cor (classes
+// literais pra não serem purgadas pelo Tailwind). Também usada como "dot".
+const EMP_PALETA = [
+  { chip: "border-rose-300 bg-rose-50 text-rose-700 dark:bg-rose-900/25 dark:text-rose-300 dark:border-rose-700", dot: "bg-rose-400" },
+  { chip: "border-emerald-300 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/25 dark:text-emerald-300 dark:border-emerald-700", dot: "bg-emerald-400" },
+  { chip: "border-sky-300 bg-sky-50 text-sky-700 dark:bg-sky-900/25 dark:text-sky-300 dark:border-sky-700", dot: "bg-sky-400" },
+  { chip: "border-amber-300 bg-amber-50 text-amber-700 dark:bg-amber-900/25 dark:text-amber-300 dark:border-amber-700", dot: "bg-amber-400" },
+  { chip: "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-700 dark:bg-fuchsia-900/25 dark:text-fuchsia-300 dark:border-fuchsia-700", dot: "bg-fuchsia-400" },
+  { chip: "border-teal-300 bg-teal-50 text-teal-700 dark:bg-teal-900/25 dark:text-teal-300 dark:border-teal-700", dot: "bg-teal-400" },
+  { chip: "border-orange-300 bg-orange-50 text-orange-700 dark:bg-orange-900/25 dark:text-orange-300 dark:border-orange-700", dot: "bg-orange-400" },
+  { chip: "border-cyan-300 bg-cyan-50 text-cyan-700 dark:bg-cyan-900/25 dark:text-cyan-300 dark:border-cyan-700", dot: "bg-cyan-400" },
+  { chip: "border-lime-300 bg-lime-50 text-lime-700 dark:bg-lime-900/25 dark:text-lime-300 dark:border-lime-700", dot: "bg-lime-400" },
+  { chip: "border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300 dark:border-indigo-700", dot: "bg-indigo-400" },
+];
+const empIdx = (empId: string): number => { let h = 0; for (let i = 0; i < empId.length; i++) h = (h * 31 + empId.charCodeAt(i)) >>> 0; return h % EMP_PALETA.length; };
+const empCor = (empId: string) => EMP_PALETA[empIdx(empId)];
+const empChip = (empId: string): string => CHIP_BASE + empCor(empId).chip;
 
 type Extraido = { data: string; descricao: string; valor: number; parcela: string | null; rateio: RateioSimples[]; categoriaId: string | null; ignorar?: boolean; pendente?: boolean; duvida?: boolean; duvidaMotivo?: string; manual?: boolean };
 
@@ -286,7 +304,7 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
                     return (
                     <div key={empId}>
                       <button type="button" onClick={() => setEmpAberta(aberta ? null : empId)} className="w-full flex items-center justify-between gap-2 py-1.5 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 rounded-lg px-1 -mx-1">
-                        <span className="text-gray-800 dark:text-gray-200 flex items-center gap-1.5"><span className={`text-gray-400 text-[10px] transition-transform ${aberta ? "rotate-90" : ""}`}>▶</span>{restNome[empId] || "empresa"}</span>
+                        <span className="text-gray-800 dark:text-gray-200 flex items-center gap-1.5"><span className={`text-gray-400 text-[10px] transition-transform ${aberta ? "rotate-90" : ""}`}>▶</span><span className={"w-2.5 h-2.5 rounded-full " + empCor(empId).dot} />{restNome[empId] || "empresa"}</span>
                         <span className="flex items-center gap-2.5 whitespace-nowrap">
                           {g.pend > 0 && <span className="text-[11px] text-amber-600">pendente {fmtBRL(g.pend)}</span>}
                           {g.pago > 0 && <span className="text-[11px] text-emerald-600">pago {fmtBRL(g.pago)}</span>}
@@ -920,7 +938,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
                         <>
                           <td className="px-2 py-1.5">
                             <div className="flex items-center gap-1.5 flex-wrap">
-                              <button type="button" disabled={bloqueado} onClick={() => setRateioRow(i)} className={chipSelect(l.rateio.length ? "empresa" : l.pendente ? "vazio" : "neutro") + " pr-2.5" + (bloqueado ? " opacity-70 cursor-default" : "")}>{l.pendente && !l.rateio.length ? "⏳ Pendente" : resumoRateio(l.rateio)}{bloqueado ? "" : " ▾"}</button>
+                              <button type="button" disabled={bloqueado} onClick={() => setRateioRow(i)} className={(l.rateio.length === 1 ? empChip(l.rateio[0].empresaId) : chipSelect(l.rateio.length ? "empresa" : l.pendente ? "vazio" : "neutro")) + " pr-2.5" + (bloqueado ? " opacity-70 cursor-default" : "")}>{l.pendente && !l.rateio.length ? "⏳ Pendente" : resumoRateio(l.rateio)}{bloqueado ? "" : " ▾"}</button>
                               {!bloqueado && l.pendente && !l.rateio.length && (
                                 <button type="button" onClick={() => marcarMeu(i)} className="text-[11px] font-medium text-indigo-600 dark:text-indigo-300 hover:underline">é meu</button>
                               )}
