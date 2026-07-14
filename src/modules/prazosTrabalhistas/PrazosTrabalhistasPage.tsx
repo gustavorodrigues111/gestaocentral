@@ -16,6 +16,7 @@ import { Button } from "../../core/ui/Button";
 import { parseYmd, ymd, fmtBR } from "../../core/utils/date";
 import { buscarFeriadosProximos } from "../sites/feriadosHelper";
 import { darBaixa } from "../exames/repository";
+import { ProrrogarContratoModal } from "../admissao/ProrrogarContratoModal";
 import type { Empregado, ExameEmpregado, EntregaUniforme } from "../../core/types";
 
 type Cat = "experiencia" | "exame" | "uniforme" | "epi";
@@ -26,7 +27,7 @@ const CAT_COR: Record<Cat, string> = {
   uniforme: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
   epi: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
 };
-type Item = { id: string; cat: Cat; data: string; titulo: string; sub: string; detalhe?: string; exameId?: string };
+type Item = { id: string; cat: Cat; data: string; titulo: string; sub: string; detalhe?: string; exameId?: string; empregadoId?: string; etapa?: "1a" | "2a"; restaurantId?: string };
 
 function inicioSemanaSeg(s: string): string {
   const d = parseYmd(s); const dow = d.getDay(); const off = dow === 0 ? -6 : 1 - dow;
@@ -110,8 +111,9 @@ export function PrazosTrabalhistasPage() {
       const adm = e.admissaoAtual;
       if (!adm) continue;
       const fim1 = addDias(adm, 45), fim2 = addDias(adm, 90);
-      if (fim1 >= addDias(hoje, -15)) out.push({ id: `exp1-${e.id}`, cat: "experiencia", data: fim1, titulo: "Fim experiência · 1º período (45d)", sub: e.nome, detalhe: `Admissão ${fmtBR(adm)}` });
-      if (fim2 >= addDias(hoje, -15)) out.push({ id: `exp2-${e.id}`, cat: "experiencia", data: fim2, titulo: "Fim experiência · 2º período (90d)", sub: e.nome, detalhe: `Admissão ${fmtBR(adm)}` });
+      const rid0 = e.restaurantId;
+      if (fim1 >= addDias(hoje, -15)) out.push({ id: `exp1-${e.id}`, cat: "experiencia", data: fim1, titulo: "Fim experiência · 1º período (45d)", sub: e.nome, detalhe: `Admissão ${fmtBR(adm)}`, empregadoId: e.id, etapa: "1a", restaurantId: rid0 });
+      if (fim2 >= addDias(hoje, -15)) out.push({ id: `exp2-${e.id}`, cat: "experiencia", data: fim2, titulo: "Fim experiência · 2º período (90d)", sub: e.nome, detalhe: `Admissão ${fmtBR(adm)}`, empregadoId: e.id, etapa: "2a", restaurantId: rid0 });
     }
     // Exames
     for (const ex of exames) {
@@ -238,20 +240,29 @@ export function PrazosTrabalhistasPage() {
         </div>
       )}
 
-      {acao && <AcaoModal it={acao} resolvido={resolvidos.has(acao.id)} onClose={() => setAcao(null)} onBaixarExame={baixarExame} onResolver={marcarResolvido} onDesresolver={desmarcarResolvido} hoje={hoje} />}
+      {acao && <AcaoModal it={acao} resolvido={resolvidos.has(acao.id)} onClose={() => setAcao(null)} onBaixarExame={baixarExame} onResolver={marcarResolvido} onDesresolver={desmarcarResolvido} hoje={hoje} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} />}
     </div>
   );
 }
 
-function AcaoModal({ it, resolvido, onClose, onBaixarExame, onResolver, onDesresolver, hoje }: {
+function AcaoModal({ it, resolvido, onClose, onBaixarExame, onResolver, onDesresolver, hoje, autor }: {
   it: Item; resolvido: boolean; onClose: () => void; hoje: string;
   onBaixarExame: (it: Item, realizadoEm: string) => Promise<void>;
   onResolver: (it: Item) => Promise<void>;
   onDesresolver: (it: Item) => Promise<void>;
+  autor: { id: string; nome: string };
 }) {
   const [dataReal, setDataReal] = useState(hoje);
   const [busy, setBusy] = useState(false);
+  const [prorrogar, setProrrogar] = useState(false);
   const ehExame = it.cat === "exame";
+  const ehExperiencia = it.cat === "experiencia" && !!it.empregadoId;
+  function iniciarDemissao() {
+    if (!confirm(`Iniciar demissão por NÃO RENOVAÇÃO do contrato de experiência (${it.etapa === "1a" ? "1ª" : "2ª"} etapa)?\n\nAbre o módulo Pessoas pra concluir o desligamento.`)) return;
+    const motivo = `Não renovação do contrato de experiência (${it.etapa === "1a" ? "1ª" : "2ª"} etapa)`;
+    if (it.restaurantId) window.location.href = `/r/${it.restaurantId}/demissao?empregadoId=${it.empregadoId}&motivo=${encodeURIComponent(motivo)}`;
+    else alert(`Vá em Demissão → '+ Iniciar Demissão' → escolha o empregado → iniciativa: Empresa → motivo: "${motivo}".`);
+  }
   const origem = it.cat === "exame" ? "módulo Exames" : it.cat === "experiencia" ? "Gestor de Tarefas (decisão de experiência)" : "módulo Uniformes";
   const inp = "px-2 py-1 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
   async function run(fn: () => Promise<void>) { setBusy(true); try { await fn(); } catch (e) { alert("Erro: " + (e instanceof Error ? e.message : "?")); } finally { setBusy(false); } }
@@ -273,9 +284,23 @@ function AcaoModal({ it, resolvido, onClose, onBaixarExame, onResolver, onDesres
           </div>
         ) : (
           <div className="space-y-3">
+            {ehExperiencia && (
+              <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3 space-y-2">
+                <div className="text-xs font-medium text-amber-900 dark:text-amber-100">Decisão de experiência ({it.etapa === "1a" ? "1ª etapa" : "2ª etapa"})</div>
+                <p className="text-[11px] text-amber-800 dark:text-amber-300">
+                  {it.etapa === "1a"
+                    ? <><b>Prorrogar pro 2º período</b> (envia o Termo pro Clicksign) ou <b>não renovar</b> (abre a demissão pré-preenchida).</>
+                    : <>Se a decisão for <b>não renovar</b>, abra a demissão pré-preenchida abaixo.</>}
+                </p>
+                <div className="flex flex-wrap gap-2">
+                  {it.etapa === "1a" && <Button size="sm" onClick={() => setProrrogar(true)}>✓ Prorrogar contrato</Button>}
+                  <Button size="sm" variant="danger" onClick={iniciarDemissao}>✗ Não renovar — iniciar demissão</Button>
+                </div>
+              </div>
+            )}
             <p className="text-xs text-gray-500 dark:text-gray-400">{resolvido
               ? "Este prazo está marcado como resolvido (verde). Você pode desmarcar se precisar."
-              : <>Marcar como resolvido deixa o item <b>verde</b> no calendário (não some). A renovação/decisão em si você registra no <b>{origem}</b>.</>}</p>
+              : <>Marcar como resolvido deixa o item <b>verde</b> no calendário (não some){ehExperiencia ? "" : <>. A renovação/decisão em si você registra no <b>{origem}</b></>}.</>}</p>
             <div className="flex gap-2 justify-end">
               <Button variant="ghost" onClick={onClose}>Cancelar</Button>
               {resolvido
@@ -285,6 +310,9 @@ function AcaoModal({ it, resolvido, onClose, onBaixarExame, onResolver, onDesres
           </div>
         )}
       </div>
+      {prorrogar && it.empregadoId && (
+        <ProrrogarContratoModal empregadoId={it.empregadoId} autor={autor} onClose={() => setProrrogar(false)} />
+      )}
     </div>
   );
 }

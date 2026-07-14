@@ -320,112 +320,12 @@ export type AdmissaoFinalizadaInput = {
   autorNome: string;
 };
 
-export async function gerarCascataAdmissao(input: AdmissaoFinalizadaInput): Promise<number> {
-  const {
-    pessoaNome, empregadoId, restaurantId, admissaoData,
-    responsavelPadraoId, responsavelPadraoNome,
-    autorId, autorNome,
-  } = input;
-
-  // Idempotência: usa origemRefId+tipo na chave pra evitar duplicar
-  // mesmo se chamar 2× pra mesma admissão. Tarefas soft-deletadas NÃO
-  // contam — sincronizar de novo recria normalmente.
-  const existSnap = await getDocs(query(
-    collection(db, "tarefas"),
-    where("origemRefId", "==", empregadoId),
-    where("origem", "==", "admissao"),
-  ));
-  const existAtivas = existSnap.docs.filter(d => !(d.data() as Tarefa).deletadoEm);
-  if (existAtivas.length >= 2) return 0; // já gerou tudo (Experiência 1ª + 2ª)
-
-  const tarefas: Array<{ titulo: string; prazo: string; origemKey: string; ehDecisaoExperiencia: "1a" | "2a" }> = [
-    {
-      titulo: `Avaliação 1ª etapa Experiência | ${pessoaNome}`,
-      prazo: addDias(admissaoData, 40),
-      origemKey: "exp1",
-      ehDecisaoExperiencia: "1a",
-    },
-    {
-      titulo: `Avaliação 2ª etapa Experiência | ${pessoaNome}`,
-      prazo: addDias(admissaoData, 85),
-      origemKey: "exp2",
-      ehDecisaoExperiencia: "2a",
-    },
-  ];
-
-  // Checklist padrão para Experiência. Cada etapa cria a tarefa-pai com
-  // estas subtarefas, com prazos relativos ao prazo da pai.
-  // Se o subprojeto tiver tarefasTemplate definido no Admin, ele sobrescreve.
-  const checklistDefault = [
-    { texto: "Conversar com líder sobre desempenho técnico e comportamental do empregado", offset: "D-7" },
-    { texto: "Avaliar faltas e pontualidade do primeiro período", offset: "D-5" },
-    { texto: "Definir renovação ou demissão com Gustavo", offset: "D-2" },
-  ];
-
-  // Carrega responsável padrão + observadores padrão do subprojeto
-  // (sobrescrevem/adicionam ao que veio de quem moveu o card)
-  let respIdFinal = responsavelPadraoId;
-  let respNomeFinal = responsavelPadraoNome;
-  let observadoresPadrao: string[] = [];
-  try {
-    const subSnap = await getDoc(doc(db, "tarefaSubprojetos", "sub-pessoas-experiencia"));
-    if (subSnap.exists()) {
-      const sub = subSnap.data() as {
-        responsavelPadraoId?: string;
-        responsavelPadraoNome?: string;
-        observadoresPadraoIds?: string[];
-      };
-      if (sub.responsavelPadraoId) {
-        respIdFinal = sub.responsavelPadraoId;
-        respNomeFinal = sub.responsavelPadraoNome;
-      }
-      if (sub.observadoresPadraoIds?.length) {
-        observadoresPadrao = sub.observadoresPadraoIds;
-      }
-    }
-  } catch (e) {
-    console.warn("[cascata] falha ao carregar config do subprojeto:", e);
-  }
-
-  // Filtra os que já existem (ativos — soft-deletados não contam)
-  const chavesExistentes = new Set(existAtivas.map(d => (d.data() as Tarefa).recorrenciaKey));
-  let criadas = 0;
-  for (const t of tarefas) {
-    const chave = `adm-${empregadoId}-${t.origemKey}`;
-    if (chavesExistentes.has(chave)) continue;
-    // Resolve subtarefas a partir do template default (com prazos relativos)
-    const { resolverPrazoOffset } = await import("./prazoOffset");
-    const subtarefas: Subtarefa[] = checklistDefault.map((c, i) => ({
-      id: Math.random().toString(36).slice(2, 11),
-      texto: c.texto,
-      feito: false,
-      prazo: resolverPrazoOffset(c.offset, t.prazo),
-      ordem: i + 1,
-    }));
-    const payload = await aplicarAutomacaoNoPayload({
-      projetoId: "proj-pessoas-rot",
-      subprojetoId: "sub-pessoas-experiencia",
-      titulo: t.titulo,
-      responsavelId: respIdFinal,
-      responsavelNome: respNomeFinal,
-      observadoresIds: observadoresPadrao.length > 0 ? observadoresPadrao : undefined,
-      restaurantIds: [restaurantId],
-      prazo: t.prazo,
-      status: "a_fazer" as const,
-      prioridade: "normal" as const,
-      subtarefas,
-      origem: "admissao" as const,
-      origemRefId: empregadoId,
-      origemRefLabel: `Admissão: ${pessoaNome}`,
-      recorrenciaKey: chave,
-      ehDecisaoExperiencia: t.ehDecisaoExperiencia,
-      criadoPor: autorId,
-      criadoPorNome: autorNome,
-    }, restaurantId, "admissao");
-    await criarTarefa(payload);
-    criadas++;
-  }
-  return criadas;
+export async function gerarCascataAdmissao(_input: AdmissaoFinalizadaInput): Promise<number> {
+  // DESATIVADO: as decisões de experiência (1ª/2ª) NÃO viram mais tarefa de
+  // verdade. Aparecem como prazo derivado ao vivo no módulo Prazos Trabalhistas
+  // (e espelhado no Gestor), com botões prorrogar/demitir no próprio modal.
+  // Fonte única = empregados.admissaoAtual. No-op pra não quebrar as chamadas.
+  return 0;
 }
 
 // ─── Recalcular prazos de Experiência quando admissão muda ───────────────
