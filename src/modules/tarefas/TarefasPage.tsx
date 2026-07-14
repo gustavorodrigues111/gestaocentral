@@ -15,7 +15,7 @@ import { collection, doc, getDoc, getDocs, onSnapshot, query, where, writeBatch 
 import { db } from "../../core/firebase/config";
 import {
   ouvirProjetos, ouvirSubprojetos, ouvirTarefasDeUsuario, ouvirTarefasDeProjeto,
-  ouvirLixeira, criarTarefa, mudarStatus, softDeleteTarefa, restaurarTarefa,
+  ouvirLixeira, ouvirTodasTarefas, criarTarefa, mudarStatus, softDeleteTarefa, restaurarTarefa,
   marcarSubtarefa, adicionarComentario, atualizarTarefa,
   salvarProjeto, salvarSubprojeto, CamposObrigatoriosFaltantesError,
   migrarGruposParaPrivadoLegado, aposentarCaixaPessoal,
@@ -65,7 +65,7 @@ import type { AccessProfile, Pessoa, Restaurant } from "../../core/types";
 import { pickDriveFolder, pickDriveFile } from "../../core/google/drivePicker";
 import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal";
 
-type Tab = "minhas" | "projeto" | "admin" | "lixeira";
+type Tab = "minhas" | "projeto" | "admin" | "lixeira" | "todas";
 type ViewMode = "calendario" | "lista" | "kanban";
 
 export function TarefasPage() {
@@ -127,6 +127,7 @@ export function TarefasPage() {
   const [subFiltro, setSubFiltro] = useState<string>("");
   const [tarefasProjeto, setTarefasProjeto] = useState<Tarefa[]>([]);
   const [lixeira, setLixeira] = useState<Tarefa[]>([]);
+  const [todasTarefas, setTodasTarefas] = useState<Tarefa[]>([]);
   const [contasFixas, setContasFixas] = useState<ContaFixa[]>([]);
   const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
   const [manutencaoAberta, setManutencaoAberta] = useState<Manutencao | null>(null);
@@ -205,6 +206,13 @@ export function TarefasPage() {
     return () => u();
   }, [tab]);
 
+  // Todas as tarefas (master) — só ouve quando a aba está aberta.
+  useEffect(() => {
+    if (tab !== "todas" || !pessoaReal?.isMaster) return;
+    const u = ouvirTodasTarefas(setTodasTarefas);
+    return () => u();
+  }, [tab, pessoaReal?.isMaster]);
+
   // Contas fixas + manutenções ativas — pra derivar cards leves no Gestor
   // (fonte única = módulo dono).
   useEffect(() => {
@@ -237,8 +245,21 @@ export function TarefasPage() {
   // "Minhas": esconde as cópias persistidas antigas (origem conta_fixa) e injeta
   // os derivados dos quais sou responsável-padrão.
   const minhasComDerivados = useMemo(
-    () => [...minhas.filter((t) => !ORIGEM_DERIVADA.has(t.origem)), ...derivadas.filter((d) => d.responsavelId === pessoa?.id)],
-    [minhas, derivadas, pessoa?.id],
+    () => [
+      ...minhas.filter((t) => !ORIGEM_DERIVADA.has(t.origem)),
+      // Derivados: sou o responsável (conta fixa/manutenção) OU o item não tem
+      // responsável (prazo trabalhista) e eu tenho acesso ao projeto dele.
+      ...derivadas.filter((d) =>
+        d.responsavelId === pessoa?.id
+        || (!d.responsavelId && podeVerTarefa(d, projetos.find((p) => p.id === d.projetoId), pessoa)),
+      ),
+    ],
+    [minhas, derivadas, pessoa, projetos],
+  );
+  // Master "Todas": todas as tarefas + todos os derivados (sem filtro de dono).
+  const todasComDerivados = useMemo(
+    () => [...todasTarefas.filter((t) => !ORIGEM_DERIVADA.has(t.origem)), ...derivadas],
+    [todasTarefas, derivadas],
   );
   const tarefasProjetoComDerivados = useMemo(
     () => [
@@ -254,8 +275,8 @@ export function TarefasPage() {
   // simular o que ela vê.
   const isMaster = !!pessoaReal?.isMaster;
   const tarefaSelecionada = useMemo(
-    () => [...minhas, ...tarefasProjeto].find(t => t.id === detalheId) || null,
-    [detalheId, minhas, tarefasProjeto],
+    () => [...minhas, ...tarefasProjeto, ...todasTarefas].find(t => t.id === detalheId) || null,
+    [detalheId, minhas, tarefasProjeto, todasTarefas],
   );
 
   // Projetos que esta pessoa pode ver na sidebar. Master vê todos;
@@ -355,6 +376,7 @@ export function TarefasPage() {
           <div className="flex items-center gap-2 flex-wrap mb-4">
             {isMaster && (
               <>
+                <button type="button" onClick={() => setTab("todas")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">🌐 Todas</button>
                 <button type="button" onClick={() => setTab("admin")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">⚙️ Configurações</button>
                 <button type="button" onClick={() => setTab("lixeira")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">🗑️ Lixeira</button>
                 <span className="mx-1 h-5 w-px bg-gray-200 dark:bg-gray-700" />
@@ -389,6 +411,31 @@ export function TarefasPage() {
               autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
               onAbrir={setDetalheId}
             />
+          )}
+        </div>
+      )}
+
+      {tab === "todas" && isMaster && (
+        <div>
+          <div className="mb-3 flex items-baseline gap-2 flex-wrap">
+            <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">🌐 Todas as tarefas</h2>
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
+              {todasComDerivados.length} tarefa(s) · {todasComDerivados.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas
+            </span>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap mb-4">
+            <button type="button" onClick={() => setTab("minhas")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">← Minhas</button>
+            <span className="mx-1 h-5 w-px bg-gray-200 dark:bg-gray-700" />
+            <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
+          </div>
+          {viewMinhas === "calendario" && (
+            <CalendarioView tarefas={todasComDerivados} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} />
+          )}
+          {viewMinhas === "lista" && (
+            <MinhasTarefasView tarefas={todasComDerivados} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />
+          )}
+          {viewMinhas === "kanban" && (
+            <KanbanView tarefas={todasComDerivados} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />
           )}
         </div>
       )}

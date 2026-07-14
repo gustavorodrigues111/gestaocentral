@@ -163,6 +163,13 @@ export function ouvirLixeira(cb: (tarefas: Tarefa[]) => void): Unsubscribe {
   });
 }
 
+// TODAS as tarefas ativas (não deletadas) — visão master "Todas".
+export function ouvirTodasTarefas(cb: (tarefas: Tarefa[]) => void): Unsubscribe {
+  return onSnapshot(collection(db, COL_TAREFAS), snap => {
+    cb(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Tarefa).filter(t => !t.deletadoEm));
+  });
+}
+
 export async function getTarefa(id: string): Promise<Tarefa | null> {
   const s = await getDoc(doc(db, COL_TAREFAS, id));
   return s.exists() ? ({ id: s.id, ...s.data() } as Tarefa) : null;
