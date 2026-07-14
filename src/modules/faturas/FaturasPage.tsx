@@ -867,11 +867,12 @@ function RateioModal({ titulo, empresas, value, valorBase, onChange, onClose }: 
           {empresas.map(em => {
             const on = pcts[em.id] != null;
             return (
-              <div key={em.id} className="flex items-center gap-2 py-2">
-                <input type="checkbox" checked={on} onChange={e => toggle(em.id, e.target.checked)} />
+              <div key={em.id} onClick={() => toggle(em.id, !on)}
+                className={`flex items-center gap-2.5 py-2.5 px-2 -mx-2 rounded-lg cursor-pointer transition-colors ${on ? "bg-indigo-50 dark:bg-indigo-900/20" : "hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                <input type="checkbox" checked={on} readOnly className="pointer-events-none w-4 h-4" />
                 <span className="flex-1 text-sm">{em.nome}</span>
                 {on && (
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                     <input type="number" min={0} max={100} value={pcts[em.id] || 0} onChange={e => set(em.id, Number(e.target.value))}
                       className="w-16 px-2 py-1 text-sm text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
                     <span className="text-xs text-gray-400">%</span>
