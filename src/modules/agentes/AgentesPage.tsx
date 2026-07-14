@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { authHeader } from "../../core/firebase/idToken";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
@@ -24,6 +25,7 @@ export function AgentesPage() {
   const [agentes, setAgentes] = useState<AgenteIA[]>([]);
   const [logs, setLogs] = useState<AgenteLog[]>([]);
   const [editando, setEditando] = useState<AgenteIA | null>(null);
+  const [conversando, setConversando] = useState<AgenteIA | null>(null);
 
   useEffect(() => {
     const u = onSnapshot(collection(db, "agentesIA"), s => setAgentes(s.docs.map(d => ({ id: d.id, ...d.data() }) as AgenteIA)));
@@ -86,13 +88,16 @@ export function AgentesPage() {
                 const ligadas = cat.filter(f => a.tools?.[f.key]).length;
                 const escritas = cat.filter(f => f.tipo === "write" && a.tools?.[f.key]).length;
                 return (
-                  <button key={a.id} type="button" onClick={() => setEditando(a)} className="w-full text-left rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 flex items-center justify-between gap-3 hover:shadow-sm transition-shadow">
-                    <div className="min-w-0">
+                  <div key={a.id} className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 flex items-center justify-between gap-3">
+                    <button type="button" onClick={() => a.ativo ? setConversando(a) : setEditando(a)} className="min-w-0 text-left flex-1">
                       <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">{DOMINIO_META[a.tipo].icon} {a.nome}{!a.ativo && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800">pausado</span>}</div>
                       <div className="text-[11px] text-gray-400 mt-0.5">{ligadas} ferramenta(s) · {escritas > 0 ? `${escritas} de escrita (confirmação)` : "só leitura"} · {a.entidades === "todas" ? "todas as entidades" : `${(a.entidades as string[]).length} entidade(s)`}</div>
+                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {a.ativo && <Button size="sm" onClick={() => setConversando(a)}>💬 Conversar</Button>}
+                      <button type="button" onClick={() => setEditando(a)} title="Configurar" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">⚙</button>
                     </div>
-                    <span className="text-gray-300">›</span>
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -122,6 +127,77 @@ export function AgentesPage() {
       {editando && (
         <AgenteEditor agente={editando} restaurants={restaurants} onClose={() => setEditando(null)} onSalvar={salvar} onExcluir={excluir} />
       )}
+      {conversando && (
+        <AgenteChat agente={conversando} pessoaNome={pessoa?.nome} onClose={() => setConversando(null)} onConfig={() => { setEditando(conversando); setConversando(null); }} />
+      )}
+    </div>
+  );
+}
+
+type ChatMsg = { role: "user" | "assistant"; texto: string; tools?: { tool: string; resumo: string }[] };
+
+function AgenteChat({ agente, pessoaNome, onClose, onConfig }: { agente: AgenteIA; pessoaNome?: string; onClose: () => void; onConfig: () => void }) {
+  const [msgs, setMsgs] = useState<ChatMsg[]>([]);
+  const [texto, setTexto] = useState("");
+  const [enviando, setEnviando] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function enviar() {
+    const m = texto.trim();
+    if (!m || enviando) return;
+    setErro(""); setTexto("");
+    const historico = msgs.map(x => ({ role: x.role, texto: x.texto }));
+    setMsgs(prev => [...prev, { role: "user", texto: m }]);
+    setEnviando(true);
+    try {
+      const r = await fetch("/api/agente", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ agenteId: agente.id, mensagem: m, historico, pessoaNome }) });
+      const j = await r.json();
+      if (!r.ok) { setErro(j.error || "Falha na resposta."); setMsgs(prev => [...prev, { role: "assistant", texto: "⚠️ " + (j.error || "Erro.") }]); return; }
+      setMsgs(prev => [...prev, { role: "assistant", texto: j.resposta || "(sem resposta)", tools: j.toolCalls }]);
+    } catch (e) { setErro(e instanceof Error ? e.message : "Erro de rede."); }
+    finally { setEnviando(false); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="relative bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{DOMINIO_META[agente.tipo].icon} {agente.nome}</div>
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={onConfig} title="Configurar" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">⚙</button>
+            <button type="button" onClick={onClose} className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">✕</button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+          {msgs.length === 0 && (
+            <div className="text-center text-xs text-gray-400 py-8">
+              <div className="text-3xl mb-2">{DOMINIO_META[agente.tipo].icon}</div>
+              Pergunte algo. Ele consulta os dados da plataforma e responde — por enquanto só leitura.
+              <div className="mt-2 text-[11px]">Ex: {agente.tipo === "financeiro" ? "“Quais contas fixas vencem em julho?”" : "“Quem está em período de experiência este mês?”"}</div>
+            </div>
+          )}
+          {msgs.map((m, i) => (
+            <div key={i} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+              <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${m.role === "user" ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200"}`}>
+                {m.texto}
+                {m.tools && m.tools.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {m.tools.map((t, k) => <span key={k} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200/70 dark:bg-gray-700/70 text-gray-500 dark:text-gray-400">🔎 {t.tool} · {t.resumo}</span>)}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+          {enviando && <div className="text-xs text-gray-400">consultando…</div>}
+          {erro && <div className="text-xs text-rose-600">{erro}</div>}
+        </div>
+
+        <div className="p-3 border-t border-gray-100 dark:border-gray-800 flex items-end gap-2">
+          <textarea value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }} rows={1} placeholder="Escreva uma pergunta…" className="flex-1 resize-none text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 max-h-28" />
+          <Button disabled={enviando || !texto.trim()} onClick={() => void enviar()}>{enviando ? "…" : "Enviar"}</Button>
+        </div>
+      </div>
     </div>
   );
 }
