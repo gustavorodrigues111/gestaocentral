@@ -568,18 +568,20 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
             <input type="file" accept="application/pdf" className="hidden" disabled={subindo} onChange={e => { const f = e.target.files?.[0]; if (f) void subirEExtrair(f); e.currentTarget.value = ""; }} />
           </label>
           <span className="text-xs text-gray-500">A IA lê o PDF e identifica sozinha o cartão, o vencimento e os lançamentos.</span>
-          {competencias.length > 0 && (
-            <label className="ml-auto text-[11px] text-gray-500 flex items-center gap-1.5">📅 Mês
-              <select value={compAtual} onChange={e => { const v = e.target.value; setCompSel(v); const first = faturas.filter(f => f.competencia === v).sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""))[0]; if (first) trocarPara(first); else limpar(); }}
-                className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1">
-                {competencias.map(c => <option key={c} value={c}>{compLabel(c)}</option>)}
-              </select>
-            </label>
-          )}
         </div>
         {cartoes.length === 0 && <p className="text-xs text-amber-600 mt-2">⚠️ Cadastre seus cartões na aba <b>Config</b> pra IA saber de qual cartão é cada fatura.</p>}
         {erro && <p className="text-xs text-rose-600 mt-2">{erro}</p>}
       </div>
+
+      {/* Pastas de mês (competência) — não mistura faturas de meses diferentes */}
+      {competencias.length > 1 && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <span className="text-[11px] text-gray-400 mr-0.5">📁 Mês:</span>
+          {competencias.map(c => (
+            <SubChip key={c} ativo={c === compAtual} onClick={() => { setCompSel(c); const first = faturas.filter(f => f.competencia === c).sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""))[0]; if (first) trocarPara(first); else limpar(); }}>{compLabel(c)}</SubChip>
+          ))}
+        </div>
+      )}
 
       {/* Chips de navegação entre faturas do mês — sempre no topo (rascunho + publicadas) */}
       {(faturasLista.length > 0 || editando) && (
