@@ -25,7 +25,7 @@ import {
 
 // Origens que agora aparecem como CARD DERIVADO ao vivo (não mais cópia de
 // tarefa). As cópias persistidas antigas dessas origens ficam escondidas.
-const ORIGEM_DERIVADA = new Set(["conta_fixa", "manutencao"]);
+const ORIGEM_DERIVADA = new Set(["conta_fixa", "manutencao", "admissao"]);
 
 async function mudarStatusComErro(id: string, status: TarefaStatus, autor: { id: string; nome: string }) {
   try {
@@ -49,12 +49,15 @@ import {
   TAREFA_VISIBILIDADE_LABEL, RECORRENCIA_TIPO_LABEL,
   TAREFA_CUSTOM_FIELD_TIPO_LABEL, MODULOS_ORIGEM_TAREFA,
 } from "../../core/types";
-import type { TarefaAnexo, Subtarefa, ContaFixa, Manutencao } from "../../core/types";
+import type { TarefaAnexo, Subtarefa, ContaFixa, Manutencao, Empregado, ExameEmpregado, EntregaUniforme } from "../../core/types";
 import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
-import { derivarContasFixas, derivarManutencoes } from "./derivados";
+import { derivarContasFixas, derivarManutencoes, derivarPrazosTrab } from "./derivados";
 import { ApontamentoModal } from "../manutencoes/ManutencoesPage";
 import { ProrrogarContratoModal } from "../admissao/ProrrogarContratoModal";
+import { AcaoModal as PrazoTrabModal, computarPrazosTrab, resolverPrazoTrab, desresolverPrazoTrab, baixarExameTrab, type Item as PrazoTrabItem } from "../prazosTrabalhistas/PrazosTrabalhistasPage";
+
+const SUBPROJETO_PRAZOS_TRAB = "sub-pessoas-experiencia";
 import { podeVerTarefa, podeVerProjeto, isConfidencial } from "./visibilidade";
 import { parseCSV, mapearLinhas, executarImport, detectarOrfas } from "./importador";
 import type { LinhaImportada } from "./importador";
@@ -127,6 +130,11 @@ export function TarefasPage() {
   const [contasFixas, setContasFixas] = useState<ContaFixa[]>([]);
   const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
   const [manutencaoAberta, setManutencaoAberta] = useState<Manutencao | null>(null);
+  const [empregadosTrab, setEmpregadosTrab] = useState<Empregado[]>([]);
+  const [examesTrab, setExamesTrab] = useState<ExameEmpregado[]>([]);
+  const [entregasTrab, setEntregasTrab] = useState<EntregaUniforme[]>([]);
+  const [resolvidosTrab, setResolvidosTrab] = useState<Set<string>>(new Set());
+  const [prazoTrabAberto, setPrazoTrabAberto] = useState<PrazoTrabItem | null>(null);
   // Modal de nova tarefa. Aceita pré-preenchimento de prazo, projeto e
   // subprojeto pra fluxos diferentes (botão por dia, "+ Nova tarefa" dentro
   // de um projeto, etc.).
@@ -204,18 +212,28 @@ export function TarefasPage() {
       (s) => setContasFixas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as ContaFixa)), () => setContasFixas([]));
     const u2 = onSnapshot(query(collection(db, "manutencoes"), where("ativo", "==", true)),
       (s) => setManutencoes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Manutencao)), () => setManutencoes([]));
-    return () => { u1(); u2(); };
+    // Prazos trabalhistas: fontes RH (org-wide). Concluir abre o modal do módulo.
+    const u3 = onSnapshot(collection(db, "empregados"), (s) => setEmpregadosTrab(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado)), () => setEmpregadosTrab([]));
+    const u4 = onSnapshot(collection(db, "examesEmpregado"), (s) => setExamesTrab(s.docs.map((d) => ({ id: d.id, ...d.data() }) as ExameEmpregado)), () => setExamesTrab([]));
+    const u5 = onSnapshot(collection(db, "entregasUniforme"), (s) => setEntregasTrab(s.docs.map((d) => ({ id: d.id, ...d.data() }) as EntregaUniforme)), () => setEntregasTrab([]));
+    const u6 = onSnapshot(collection(db, "agendaTrabResolvidos"), (s) => setResolvidosTrab(new Set(s.docs.map((d) => d.id))), () => setResolvidosTrab(new Set()));
+    return () => { u1(); u2(); u3(); u4(); u5(); u6(); };
   }, []);
 
-  // Itens derivados (contas fixas + manutenções próximas do vencimento).
+  // Itens derivados (contas fixas + manutenções + prazos trabalhistas).
   const derivadas = useMemo(() => {
     if (!pessoa) return [];
     const hoje = new Date().toISOString().slice(0, 10);
+    const subPT = subprojetos.find((s) => s.id === SUBPROJETO_PRAZOS_TRAB);
+    const prazosTrab = subPT
+      ? derivarPrazosTrab(computarPrazosTrab(empregadosTrab, examesTrab, entregasTrab, hoje), hoje, resolvidosTrab, subPT.projetoId, subPT.id, setPrazoTrabAberto)
+      : [];
     return [
       ...derivarContasFixas(contasFixas, { id: pessoa.id, nome: pessoa.nome }, hoje),
       ...derivarManutencoes(manutencoes, hoje, setManutencaoAberta),
+      ...prazosTrab,
     ];
-  }, [contasFixas, manutencoes, pessoa]);
+  }, [contasFixas, manutencoes, empregadosTrab, examesTrab, entregasTrab, resolvidosTrab, subprojetos, pessoa]);
   // "Minhas": esconde as cópias persistidas antigas (origem conta_fixa) e injeta
   // os derivados dos quais sou responsável-padrão.
   const minhasComDerivados = useMemo(
@@ -477,6 +495,21 @@ export function TarefasPage() {
           manutencao={manutencaoAberta}
           pessoaId={pessoa?.id || ""}
           onClose={() => setManutencaoAberta(null)}
+        />
+      )}
+
+      {/* Modal de prazo trabalhista (experiência/exame/uniforme) — aberto pelo
+          card derivado; reusa o modal do módulo (resolver/dar baixa/decisão). */}
+      {prazoTrabAberto && (
+        <PrazoTrabModal
+          it={prazoTrabAberto}
+          resolvido={resolvidosTrab.has(prazoTrabAberto.id)}
+          hoje={new Date().toISOString().slice(0, 10)}
+          autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
+          onResolver={async (it) => { await resolverPrazoTrab(it, it.restaurantId || "", pessoa?.id || null); setPrazoTrabAberto(null); }}
+          onDesresolver={async (it) => { await desresolverPrazoTrab(it); setPrazoTrabAberto(null); }}
+          onBaixarExame={async (it, realizadoEm) => { await baixarExameTrab(it, realizadoEm, { id: pessoa?.id || "", nome: pessoa?.nome || "" }); setPrazoTrabAberto(null); }}
+          onClose={() => setPrazoTrabAberto(null)}
         />
       )}
     </div>
@@ -2260,7 +2293,7 @@ function KanbanView({ tarefas, projetos, autor, onAbrir }: {
                     <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-500 dark:text-gray-400">
                       {proj && <span style={{ color: cor }}>{proj.emoji}</span>}
                       {t.prazo && <span>📅 {fmtBR(t.prazo)}</span>}
-                      {der && <span className="px-1 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">{der.tipo === "manutencao" ? "🔧 prazo técnico" : "💰 conta fixa"}</span>}
+                      {der && <span className="px-1 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">{der.tipo === "manutencao" ? "🔧 prazo técnico" : der.tipo === "prazo_trabalhista" ? "🧑‍⚖️ trabalhista" : "💰 conta fixa"}</span>}
                       {(t.subtarefas?.length ?? 0) > 0 && <span>☑️ {t.subtarefas?.filter(s => s.feito).length}/{t.subtarefas?.length}</span>}
                     </div>
                   </div>
@@ -2507,7 +2540,7 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
                 onClick={() => { if (der?.abrirModal) der.abrirModal(); else if (der?.setConcluida) void der.setConcluida(!concluida); else onAbrir(t.id); }}
                 className={`w-full text-left text-[11px] px-2 py-1.5 rounded-md text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${dropAntes === t.id ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${der ? "cursor-pointer" : podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${der ? "ring-1 ring-amber-300/70 dark:ring-amber-800/60" : ""}`}
                 style={{ background: meta.cor + "14", borderLeft: `3px solid ${meta.cor}` }}
-                title={der ? (der.tipo === "manutencao" ? `${t.titulo} — abrir apontamento` : `${t.titulo} — marcar pago`) : podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
+                title={der ? (der.abrirModal ? `${t.titulo} — abrir` : `${t.titulo} — marcar pago`) : podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
               >
                 <div className="font-medium leading-snug line-clamp-2 mb-1">{t.titulo}</div>
                 <span className="inline-flex items-center gap-0.5 px-1.5 py-[1px] rounded-full text-[8px] font-bold uppercase tracking-wide text-white" style={{ background: meta.cor }}>

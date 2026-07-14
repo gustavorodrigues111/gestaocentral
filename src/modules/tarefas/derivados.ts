@@ -8,6 +8,7 @@ import { doc, updateDoc, deleteField } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import type { ContaFixa, Manutencao, Tarefa } from "../../core/types";
 import { MANUTENCAO_TIPO_LABEL } from "../../core/types";
+import type { Item as PrazoTrabItem } from "../prazosTrabalhistas/PrazosTrabalhistasPage";
 import { proximoVencimentoContaFixa, ANTECEDENCIA_CONTA_FIXA_DIAS } from "./generator";
 
 function diasEntre(a: string, b: string): number {
@@ -128,6 +129,37 @@ export function derivarManutencoes(
       criadoPor: m.criadoPor || "",
       atualizadoEm: m.atualizadoEm || "",
       __derivado: { tipo: "manutencao", refId: m.id, abrirModal: () => abrir(m) },
+    });
+  }
+  return out;
+}
+
+// Deriva os prazos trabalhistas (experiência/exame/uniforme/EPI) em tarefas
+// virtuais no projeto "Pessoas". Sem responsável — visíveis por acesso ao
+// projeto. Concluir abre o modal do módulo (resolver/dar baixa/decisão).
+export function derivarPrazosTrab(
+  itens: PrazoTrabItem[], hojeYmd: string, resolvidos: Set<string>,
+  projetoId: string, subprojetoId: string, abrir: (it: PrazoTrabItem) => void,
+): Tarefa[] {
+  const out: Tarefa[] = [];
+  for (const it of itens) {
+    if (diasEntre(hojeYmd, it.data) > 45) continue;   // limita ~45 dias à frente (+ atrasados)
+    const resolvido = resolvidos.has(it.id);
+    out.push({
+      id: `pt::${it.id}`,
+      projetoId, subprojetoId,
+      titulo: it.titulo,
+      responsavelId: "",
+      restaurantIds: it.restaurantId ? [it.restaurantId] : undefined,
+      prazo: it.data,
+      status: resolvido ? "concluida" : "a_fazer",
+      prioridade: "normal",
+      origem: "admissao",
+      origemRefId: it.empregadoId || it.exameId || it.id,
+      origemRefLabel: it.sub,
+      subtarefas: [], comentarios: [],
+      criadoEm: "", criadoPor: "", atualizadoEm: "",
+      __derivado: { tipo: "prazo_trabalhista", refId: it.id, abrirModal: () => abrir(it) },
     });
   }
   return out;

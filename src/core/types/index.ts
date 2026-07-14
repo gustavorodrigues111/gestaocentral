@@ -4530,7 +4530,7 @@ export type Tarefa = {
 
 // Item derivado de outro módulo, exibido como card leve no Gestor de Tarefas.
 export type TarefaDerivadaInfo = {
-  tipo: "conta_fixa" | "manutencao"; // (fase seguinte: "prazo_trabalhista")
+  tipo: "conta_fixa" | "manutencao" | "prazo_trabalhista";
   refId: string;                    // id no módulo de origem
   competencia?: string;             // "YYYY-MM" (contas fixas)
   // Conclui/reabre no módulo dono direto (ex.: marca a conta paga). Ausente

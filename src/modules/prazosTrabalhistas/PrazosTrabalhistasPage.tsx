@@ -27,7 +27,53 @@ const CAT_COR: Record<Cat, string> = {
   uniforme: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",
   epi: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
 };
-type Item = { id: string; cat: Cat; data: string; titulo: string; sub: string; detalhe?: string; exameId?: string; empregadoId?: string; etapa?: "1a" | "2a"; restaurantId?: string };
+export type Item = { id: string; cat: Cat; data: string; titulo: string; sub: string; detalhe?: string; exameId?: string; empregadoId?: string; etapa?: "1a" | "2a"; restaurantId?: string };
+
+// Agrega os prazos trabalhistas (experiência 45/90, exames, uniformes/EPI) das
+// 3 fontes num array datado. Reusado pelo Gestor de Tarefas (cards derivados).
+export function computarPrazosTrab(empregados: Empregado[], exames: ExameEmpregado[], entregas: EntregaUniforme[], hoje: string): Item[] {
+  const nomePorPessoa: Record<string, string> = {};
+  for (const e of empregados) if (e.pessoaId) nomePorPessoa[e.pessoaId] = e.nome;
+  const out: Item[] = [];
+  for (const e of empregados) {
+    if (!e.estaAtivo || e.demitidoEm) continue;
+    const adm = e.admissaoAtual;
+    if (!adm) continue;
+    const fim1 = addDias(adm, 45), fim2 = addDias(adm, 90);
+    const rid0 = e.restaurantId;
+    if (fim1 >= addDias(hoje, -15)) out.push({ id: `exp1-${e.id}`, cat: "experiencia", data: fim1, titulo: "Fim experiência · 1º período (45d)", sub: e.nome, detalhe: `Admissão ${fmtBR(adm)}`, empregadoId: e.id, etapa: "1a", restaurantId: rid0 });
+    if (fim2 >= addDias(hoje, -15)) out.push({ id: `exp2-${e.id}`, cat: "experiencia", data: fim2, titulo: "Fim experiência · 2º período (90d)", sub: e.nome, detalhe: `Admissão ${fmtBR(adm)}`, empregadoId: e.id, etapa: "2a", restaurantId: rid0 });
+  }
+  for (const ex of exames) {
+    if (!ex.ativo || !ex.proximoVencimento) continue;
+    out.push({ id: `exm-${ex.id}`, cat: "exame", data: ex.proximoVencimento, titulo: ex.tipoNomeSnapshot, sub: ex.empregadoNomeSnapshot, detalhe: ex.fornecedor, exameId: ex.id, restaurantId: ex.restaurantId });
+  }
+  for (const en of entregas) {
+    if (en.cancelamento) continue;
+    const nome = (en.pessoaId && nomePorPessoa[en.pessoaId]) || en.candidatoSnapshot?.nome || "—";
+    for (const it of (en.itens || [])) {
+      if (!it.validadeAte) continue;
+      const cat: Cat = it.caEpi ? "epi" : "uniforme";
+      out.push({ id: `uni-${en.id}-${it.itemId}-${it.validadeAte}`, cat, data: it.validadeAte, titulo: it.nome, sub: nome, detalhe: it.caEpi ? `CA ${it.caEpi}` : undefined, restaurantId: en.restaurantId });
+    }
+  }
+  return out.sort((a, b) => a.data.localeCompare(b.data));
+}
+
+// Resolver/desresolver um prazo (marcador em agendaTrabResolvidos, overlay).
+export async function resolverPrazoTrab(it: Item, rid: string, pessoaId: string | null): Promise<void> {
+  await setDoc(doc(db, "agendaTrabResolvidos", it.id), sanitizeForFirestore({
+    id: it.id, restaurantId: rid, cat: it.cat, titulo: it.titulo, sub: it.sub, data: it.data,
+    resolvidoEm: new Date().toISOString(), resolvidoPor: pessoaId || null,
+  }));
+}
+export async function desresolverPrazoTrab(it: Item): Promise<void> {
+  await deleteDoc(doc(db, "agendaTrabResolvidos", it.id));
+}
+export async function baixarExameTrab(it: Item, realizadoEm: string, autor: { id: string; nome: string }): Promise<void> {
+  if (!it.exameId) return;
+  await darBaixa({ exameId: it.exameId, realizadoEm, autor });
+}
 
 function inicioSemanaSeg(s: string): string {
   const d = parseYmd(s); const dow = d.getDay(); const off = dow === 0 ? -6 : 1 - dow;
@@ -65,22 +111,9 @@ export function PrazosTrabalhistasPage() {
     return () => subs.forEach(u => u());
   }, [rid]);
 
-  async function marcarResolvido(it: Item) {
-    await setDoc(doc(db, "agendaTrabResolvidos", it.id), sanitizeForFirestore({
-      id: it.id, restaurantId: rid, cat: it.cat, titulo: it.titulo, sub: it.sub, data: it.data,
-      resolvidoEm: new Date().toISOString(), resolvidoPor: pessoa?.id || null,
-    }));
-    setAcao(null);
-  }
-  async function desmarcarResolvido(it: Item) {
-    await deleteDoc(doc(db, "agendaTrabResolvidos", it.id));
-    setAcao(null);
-  }
-  async function baixarExame(it: Item, realizadoEm: string) {
-    if (!it.exameId || !pessoa) return;
-    await darBaixa({ exameId: it.exameId, realizadoEm, autor: { id: pessoa.id, nome: pessoa.nome } });
-    setAcao(null);
-  }
+  async function marcarResolvido(it: Item) { await resolverPrazoTrab(it, rid || "", pessoa?.id || null); setAcao(null); }
+  async function desmarcarResolvido(it: Item) { await desresolverPrazoTrab(it); setAcao(null); }
+  async function baixarExame(it: Item, realizadoEm: string) { if (!pessoa) return; await baixarExameTrab(it, realizadoEm, { id: pessoa.id, nome: pessoa.nome }); setAcao(null); }
 
   useEffect(() => {
     let alive = true;
@@ -96,42 +129,7 @@ export function PrazosTrabalhistasPage() {
     return () => { alive = false; };
   }, []);
 
-  const nomePorPessoa = useMemo(() => {
-    const m: Record<string, string> = {};
-    for (const e of empregados) { if (e.pessoaId) m[e.pessoaId] = e.nome; }
-    return m;
-  }, [empregados]);
-
-  // Agrega os 3 fontes num só array de itens datados.
-  const itens = useMemo<Item[]>(() => {
-    const out: Item[] = [];
-    // Experiências (45/90) — só empregados ativos ainda dentro/perto da janela.
-    for (const e of empregados) {
-      if (!e.estaAtivo || e.demitidoEm) continue;
-      const adm = e.admissaoAtual;
-      if (!adm) continue;
-      const fim1 = addDias(adm, 45), fim2 = addDias(adm, 90);
-      const rid0 = e.restaurantId;
-      if (fim1 >= addDias(hoje, -15)) out.push({ id: `exp1-${e.id}`, cat: "experiencia", data: fim1, titulo: "Fim experiência · 1º período (45d)", sub: e.nome, detalhe: `Admissão ${fmtBR(adm)}`, empregadoId: e.id, etapa: "1a", restaurantId: rid0 });
-      if (fim2 >= addDias(hoje, -15)) out.push({ id: `exp2-${e.id}`, cat: "experiencia", data: fim2, titulo: "Fim experiência · 2º período (90d)", sub: e.nome, detalhe: `Admissão ${fmtBR(adm)}`, empregadoId: e.id, etapa: "2a", restaurantId: rid0 });
-    }
-    // Exames
-    for (const ex of exames) {
-      if (!ex.ativo || !ex.proximoVencimento) continue;
-      out.push({ id: `exm-${ex.id}`, cat: "exame", data: ex.proximoVencimento, titulo: ex.tipoNomeSnapshot, sub: ex.empregadoNomeSnapshot, detalhe: ex.fornecedor, exameId: ex.id });
-    }
-    // Uniformes/EPIs — itens com validade, de entregas não canceladas.
-    for (const en of entregas) {
-      if (en.cancelamento) continue;
-      const nome = (en.pessoaId && nomePorPessoa[en.pessoaId]) || en.candidatoSnapshot?.nome || "—";
-      for (const it of (en.itens || [])) {
-        if (!it.validadeAte) continue;
-        const cat: Cat = it.caEpi ? "epi" : "uniforme";
-        out.push({ id: `uni-${en.id}-${it.itemId}-${it.validadeAte}`, cat, data: it.validadeAte, titulo: it.nome, sub: nome, detalhe: it.caEpi ? `CA ${it.caEpi}` : undefined });
-      }
-    }
-    return out.sort((a, b) => a.data.localeCompare(b.data));
-  }, [empregados, exames, entregas, hoje, nomePorPessoa]);
+  const itens = useMemo<Item[]>(() => computarPrazosTrab(empregados, exames, entregas, hoje), [empregados, exames, entregas, hoje]);
 
   // Resolvidos NÃO somem — ficam verdes no calendário (igual conta paga).
   const cats = (["experiencia", "exame", "uniforme", "epi"] as Cat[]).filter(c => itens.some(i => i.cat === c));
@@ -245,7 +243,7 @@ export function PrazosTrabalhistasPage() {
   );
 }
 
-function AcaoModal({ it, resolvido, onClose, onBaixarExame, onResolver, onDesresolver, hoje, autor }: {
+export function AcaoModal({ it, resolvido, onClose, onBaixarExame, onResolver, onDesresolver, hoje, autor }: {
   it: Item; resolvido: boolean; onClose: () => void; hoje: string;
   onBaixarExame: (it: Item, realizadoEm: string) => Promise<void>;
   onResolver: (it: Item) => Promise<void>;
