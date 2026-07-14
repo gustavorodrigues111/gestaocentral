@@ -5911,7 +5911,7 @@ export type CartaoLancamento = {
   parcela?: string | null;    // "03/12"
   obs?: string | null;
   // Destino: própria entidade OU atribuído a outra empresa (reembolso).
-  destinoTipo: "propria" | "empresa";
+  destinoTipo: "propria" | "empresa" | "pendente";   // pendente = ainda não classificado (não assume "meu")
   empresaAtribuidaId?: string | null;   // legado (1 empresa a 100%); ainda gravado quando rateio tem 1 fatia
   categoriaId?: string | null;          // categoria (na lista do destino)
   // Rateio percentual: 1+ empresas reembolsam, cada uma sua %. Vazio/ausente

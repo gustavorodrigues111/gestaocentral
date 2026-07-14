@@ -35,7 +35,7 @@ const chipSelect = (v: "empresa" | "neutro" | "ok" | "vazio"): string => {
   return base + styles[v];
 };
 
-type Extraido = { data: string; descricao: string; valor: number; parcela: string | null; rateio: RateioSimples[]; categoriaId: string | null; ignorar?: boolean };
+type Extraido = { data: string; descricao: string; valor: number; parcela: string | null; rateio: RateioSimples[]; categoriaId: string | null; ignorar?: boolean; pendente?: boolean };
 
 export function FaturasPage() {
   const { pessoa: me } = useAuth();
@@ -109,7 +109,7 @@ export function FaturasPage() {
 
 // ─── Visualização ────────────────────────────────────────────────────────────
 function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNome, meId, meNome }: { rid: string; minhas: CartaoLancamento[]; outras: CartaoLancamento[]; faturas: CartaoFatura[]; catNome: (id?: string | null) => string; restNome: Record<string, string>; meId?: string; meNome?: string }) {
-  const [sub, setSub] = useState<"minhas" | "outras">("minhas");
+  const [sub, setSub] = useState<"minhas" | "pendentes" | "outras">("minhas");
   const [pagando, setPagando] = useState("");
   // Filtro multi-cartão (vazio = todos).
   const [cartoesSel, setCartoesSel] = useState<Set<string>>(() => new Set());
@@ -134,8 +134,12 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
   // Só reembolsos de faturas FECHADAS (publicadas) aparecem pra outra empresa.
   const outras = outrasRaw.filter(l => l.publicado && passaCartao(l) && passaMes(l));
   // Minhas faturas = a fatura inteira é minha; os itens a reembolsar ganham selo.
-  const minhasTodas = minhas.filter(l => passaCartao(l) && passaMes(l));
+  const minhasTodasRaw = minhas.filter(l => passaCartao(l) && passaMes(l));
+  // Pendentes = ainda não classificados (não assumem "meu"). Ficam num balde à parte.
+  const pendentes = minhasTodasRaw.filter(l => l.destinoTipo === "pendente" && !l.ignorado);
+  const minhasTodas = minhasTodasRaw.filter(l => l.destinoTipo !== "pendente");
   const totalMinhas = minhasTodas.filter(l => !l.ignorado).reduce((s, l) => s + (l.valor || 0), 0);
+  const totalPendentes = pendentes.reduce((s, l) => s + (l.valor || 0), 0);
   const totalAReceber = minhasTodas.reduce((s, l) => s + aReembolsar(l), 0);
   const totalOutrasPend = outras.reduce((s, l) => { const p = minhaParte(l); return s + (p && p.status !== "pago" ? (p.valor || 0) : 0); }, 0);
 
@@ -182,8 +186,9 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
     <div>
       {/* 1. Filtro principal: minhas faturas × reembolsos a pagar (acima dos cartões) */}
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-        <div className="flex gap-1.5">
+        <div className="flex gap-1.5 flex-wrap">
           <SubChip ativo={sub === "minhas"} onClick={() => setSub("minhas")}>Minhas faturas · {fmtBRL(totalMinhas)}</SubChip>
+          {pendentes.length > 0 && <SubChip ativo={sub === "pendentes"} onClick={() => setSub("pendentes")}>⏳ Pendentes · {fmtBRL(totalPendentes)}</SubChip>}
           <SubChip ativo={sub === "outras"} onClick={() => setSub("outras")}>A reembolsar a outros · {fmtBRL(totalOutrasPend)}</SubChip>
         </div>
         {exportarLancs.length > 0 && (
@@ -209,7 +214,16 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
         </div>
       )}
 
-      {sub === "minhas" ? (
+      {sub === "pendentes" ? (
+        pendentes.length === 0 ? <Vazio texto="Nada pendente neste mês. 🎉" /> : (
+          <>
+            <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 mb-3 text-xs text-amber-800 dark:text-amber-300">
+              ⏳ {pendentes.length} lançamento(s) ainda não classificado(s) · {fmtBRL(totalPendentes)}. Vá em <b>Classificação</b> e marque cada um como <b>"é meu"</b> ou atribua a uma <b>empresa</b> — enquanto pendentes, não entram no total "Minhas".
+            </div>
+            <LancTabela lancs={pendentes} catNome={catNome} />
+          </>
+        )
+      ) : sub === "minhas" ? (
         minhasTodas.length === 0 ? <Vazio texto="Nenhum lançamento classificado ainda. Vá em Classificação e suba uma fatura." /> : (
           <>
             {/* 3. A me reembolsar — total + por empresa (respeita o cartão filtrado) */}
@@ -379,6 +393,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
       data: l.dataOriginal || (l.data ? l.data.slice(8, 10) + "/" + l.data.slice(5, 7) : ""),
       descricao: l.descricao, valor: l.valor, parcela: l.parcela || null,
       rateio: rateioDeLanc(l), categoriaId: l.categoriaId || null, ignorar: l.ignorado || undefined,
+      pendente: l.destinoTipo === "pendente" || undefined,
     })));
   }
   function limpar() { setLinhas([]); setVenc(null); setTotalFatura(null); setCartao(""); setFaturaId(null); setErro(""); setTrocandoCartao(false); }
@@ -440,13 +455,20 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
           const emp = outrasEmpresas.find(e => e.nome.toLowerCase() === l.destinoEmpresa!.toLowerCase());
           if (emp) rateio = [{ empresaId: emp.id, percentual: 100 }];
         }
+        // Consulta o histórico (memória por descrição): serve de base pra
+        // classificação. Se já classificou essa descrição antes (meu OU empresa),
+        // não nasce pendente.
+        let classificadoAntes = rateio.length > 0 || !!l.destinoEmpresa;
         if (!categoriaId && !rateio.length) {
           const mem = memoria.get(normNome(l.descricao));
-          if (mem) { categoriaId = mem.categoriaId; rateio = mem.rateio.length ? mem.rateio : catRateioPadrao(mem.categoriaId); }
+          if (mem) { categoriaId = mem.categoriaId; rateio = mem.rateio.length ? mem.rateio : catRateioPadrao(mem.categoriaId); classificadoAntes = true; }
         }
         // pré-ignora pagamento da própria fatura (quitação anterior) se a IA deixar passar
         const ignorar = l.valor < 0 && /pagamento de fatura|pagto\.?\s*fatura|pagamento efetuad|pagamento recebid|pagamento online|pgto.*d[eé]bito|d[eé]bito autom[aá]tico/i.test(l.descricao) ? true : undefined;
-        return { data: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, rateio, categoriaId, ignorar };
+        // Nasce PENDENTE quando a IA não identificou destino e não há histórico —
+        // não assume "meu" sozinho.
+        const pendente = !ignorar && rateio.length === 0 && !classificadoAntes ? true : undefined;
+        return { data: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, rateio, categoriaId, ignorar, pendente };
       });
       setLinhas(novas);
     } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao subir/extrair."); }
@@ -454,7 +476,8 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   }
 
   function setLinha(i: number, patch: Partial<Extraido>) { setLinhas(prev => prev.map((l, j) => j === i ? { ...l, ...patch } : l)); }
-  function setRateio(i: number, rateio: RateioSimples[]) { setLinha(i, { rateio }); }
+  function setRateio(i: number, rateio: RateioSimples[]) { setLinha(i, { rateio, pendente: false }); }
+  function marcarMeu(i: number) { setLinha(i, { rateio: [], pendente: false }); }   // resolve pendente como "meu"
   // Ao escolher categoria: se ela tem rateio padrão e a linha ainda não tem
   // rateio próprio, aplica o padrão da categoria.
   function setCategoria(i: number, categoriaId: string | null) {
@@ -540,7 +563,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         batch.set(doc(db, "cartaoLancamentos", id), sanitizeForFirestore({
           id, restaurantId: rid, faturaId: fid, cartao,
           data: ymdDe(l.data), dataOriginal: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, obs: null,
-          destinoTipo: ehEmpresa ? "empresa" : "propria",
+          destinoTipo: ehEmpresa ? "empresa" : (l.pendente ? "pendente" : "propria"),
           empresaAtribuidaId: partes.length === 1 ? partes[0].empresaId : null,   // legado (1 empresa)
           rateio: ehEmpresa ? partes : null,
           empresasRateadas: ehEmpresa ? partes.map(p => p.empresaId) : null,
@@ -662,7 +685,12 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
                       ) : (
                         <>
                           <td className="px-2 py-1.5">
-                            <button type="button" disabled={bloqueado} onClick={() => setRateioRow(i)} className={chipSelect(l.rateio.length ? "empresa" : "neutro") + " pr-2.5" + (bloqueado ? " opacity-70 cursor-default" : "")}>{resumoRateio(l.rateio)}{bloqueado ? "" : " ▾"}</button>
+                            <div className="flex items-center gap-1.5 flex-wrap">
+                              <button type="button" disabled={bloqueado} onClick={() => setRateioRow(i)} className={chipSelect(l.rateio.length ? "empresa" : l.pendente ? "vazio" : "neutro") + " pr-2.5" + (bloqueado ? " opacity-70 cursor-default" : "")}>{l.pendente && !l.rateio.length ? "⏳ Pendente" : resumoRateio(l.rateio)}{bloqueado ? "" : " ▾"}</button>
+                              {!bloqueado && l.pendente && !l.rateio.length && (
+                                <button type="button" onClick={() => marcarMeu(i)} className="text-[11px] font-medium text-indigo-600 dark:text-indigo-300 hover:underline">é meu</button>
+                              )}
+                            </div>
                           </td>
                           <td className="px-2 py-1.5">
                             <select value={l.categoriaId || ""} disabled={bloqueado} onChange={e => setCategoria(i, e.target.value || null)} className={chipSelect(l.categoriaId ? "ok" : "vazio") + (bloqueado ? " opacity-70" : "")}>
