@@ -20,7 +20,7 @@ export function ContaFixaDetalheModal({ conta, competencia, pessoaId, onClose }:
   conta: ContaFixa; competencia: string; pessoaId: string; onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
-  const [paga, setPaga] = useState(!!conta.pagamentos?.[competencia]);
+  const paga = !!conta.pagamentos?.[competencia];
   const pagamento = conta.pagamentos?.[competencia];
 
   async function toggle() {
@@ -29,10 +29,11 @@ export function ContaFixaDetalheModal({ conta, competencia, pessoaId, onClose }:
       const ref = doc(db, "contasFixas", conta.id);
       if (paga) await updateDoc(ref, { [`pagamentos.${competencia}`]: deleteField(), atualizadoEm: new Date().toISOString() });
       else await updateDoc(ref, { [`pagamentos.${competencia}`]: { pagoEm: new Date().toISOString(), pagoPor: pessoaId || null }, atualizadoEm: new Date().toISOString() });
-      setPaga(!paga);
+      onClose();   // fecha o modal ao marcar/desmarcar
     } catch (e) {
       alert("Erro: " + (e instanceof Error ? e.message : "?"));
-    } finally { setBusy(false); }
+      setBusy(false);
+    }
   }
 
   const linhas: [string, string | undefined][] = [
