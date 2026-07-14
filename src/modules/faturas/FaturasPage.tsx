@@ -137,9 +137,18 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
   const cartoesDisp = useMemo(() => [...new Set([...minhas, ...outrasRaw].map(l => l.cartao).filter(Boolean))].sort(), [minhas, outrasRaw]);
   const passaCartao = (l: CartaoLancamento) => cartoesSel.size === 0 || cartoesSel.has(l.cartao);
 
-  // Mês (competência da FATURA) — pra não misturar faturas de meses diferentes.
+  // Mês da pasta = SEMPRE a competência (vencimento) da FATURA, nunca a data da
+  // compra (parcela comprada em outro mês não pode criar pasta no mês da compra).
+  // - Minhas faturas: competência da própria fatura (compPorFatura).
+  // - Reembolsos a pagar (fatura é de outra empresa, não carregada aqui): o
+  //   vencimento vem gravado no lançamento em reembolsoDataPagamento.
   const compPorFatura = useMemo(() => Object.fromEntries(faturas.map(f => [f.id, f.competencia])), [faturas]);
-  const compDe = (l: CartaoLancamento) => (l.faturaId && compPorFatura[l.faturaId]) || (l.data || "").slice(0, 7);
+  const compDe = (l: CartaoLancamento) => {
+    const daFatura = l.faturaId ? compPorFatura[l.faturaId] : undefined;
+    if (daFatura) return daFatura;
+    if (l.reembolsoDataPagamento) return String(l.reembolsoDataPagamento).slice(0, 7);
+    return (l.data || "").slice(0, 7);
+  };
   const mesesDisp = useMemo(() => [...new Set([...minhas, ...outrasRaw].map(compDe).filter(Boolean))].sort().reverse(), [minhas, outrasRaw, compPorFatura]);
   const [mesSel, setMesSel] = useState<string>("");
   const mesAtivo = mesSel && mesesDisp.includes(mesSel) ? mesSel : "";   // "" = landing de meses
@@ -235,10 +244,12 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
               const nFat = faturas.filter(f => f.competencia === m && f.status === "fechada").length;
               const totalMes = minhas.filter(l => compDe(l) === m && !l.ignorado && l.destinoTipo !== "pendente").reduce((s, l) => s + (l.valor || 0), 0);
               const nPend = minhas.filter(l => compDe(l) === m && l.destinoTipo === "pendente" && !l.ignorado).length;
+              const totalReemb = outras.filter(l => compDe(l) === m).reduce((s, l) => s + (minhaParte(l)?.valor || 0), 0);
               return (
                 <button key={m} type="button" onClick={() => setMesSel(m)} className="text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 hover:shadow-sm transition-shadow">
                   <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">📁 {fmtMes(m)}</div>
-                  <div className="text-[11px] text-gray-400 mt-0.5">{nFat} fatura(s) · {fmtBRL(totalMes)}</div>
+                  {(nFat > 0 || totalReemb === 0) && <div className="text-[11px] text-gray-400 mt-0.5">{nFat} fatura(s) · {fmtBRL(totalMes)}</div>}
+                  {totalReemb > 0 && <div className="text-[11px] text-violet-500 dark:text-violet-300 mt-0.5">↩ {fmtBRL(totalReemb)} a reembolsar</div>}
                   {nPend > 0 && <div className="text-[11px] text-amber-600 dark:text-amber-400">⏳ {nPend} pendente(s)</div>}
                 </button>
               );
