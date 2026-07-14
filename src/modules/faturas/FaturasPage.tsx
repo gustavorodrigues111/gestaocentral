@@ -580,6 +580,18 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         const pendente = !ignorar && rateio.length === 0 && !classificadoAntes ? true : undefined;
         return { data: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, rateio, categoriaId, ignorar, pendente, duvida: l.duvida ? true : undefined, duvidaMotivo: l.duvida && l.duvidaMotivo ? l.duvidaMotivo : undefined };
       });
+      // Rede de segurança: se a MESMA compra parcelada veio em várias parcelas do
+      // mesmo total (ex: '08/10' E '09/10' E '10/10'), é o cronograma FUTURO
+      // incluído por engano. Mantém só a menor parcela (a do mês) e pré-ignora o
+      // resto — reversível (a linha fica visível como "ignorado").
+      const parcInfo = (l: Extraido) => { const m = (l.parcela || "").match(/^(\d+)\s*\/\s*(\d+)$/); return m ? { n: parseInt(m[1], 10), tot: m[2] } : null; };
+      const grupos = new Map<string, number[]>();
+      novas.forEach((l, idx) => { const p = parcInfo(l); if (!p) return; const key = normNome(l.descricao) + "|" + p.tot; const arr = grupos.get(key) || []; arr.push(idx); grupos.set(key, arr); });
+      grupos.forEach(idxs => {
+        if (idxs.length < 2) return;
+        const minN = Math.min(...idxs.map(i => parcInfo(novas[i])!.n));
+        idxs.forEach(i => { if (parcInfo(novas[i])!.n !== minN) { novas[i].ignorar = true; novas[i].pendente = undefined; novas[i].duvida = true; novas[i].duvidaMotivo = "parcela futura (cronograma) — não é desta fatura"; } });
+      });
       setLinhas(novas);
   }
 
