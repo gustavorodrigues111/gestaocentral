@@ -1673,7 +1673,9 @@ function AdminView({ projetos, subprojetos, pessoaId }: {
         />
       )}
 
-      {projetos.map(p => {
+      {/* Esconde o projeto "Prazos" — ele é a espinha do grupo Prazos (derivados),
+          não um projeto de Tarefas comum. Some daqui pra não ser apagado sem querer. */}
+      {projetos.filter(p => !(p.id === "proj-prazos" || /praz/i.test(p.nome || ""))).map(p => {
         const subs = subprojetos.filter(s => s.projetoId === p.id);
         // "Quem vê" — texto resumido
         const v = (p.visibilidade || "privado") as string;
