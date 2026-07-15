@@ -514,7 +514,6 @@ export function TarefasPage() {
             {isMaster && (
               <>
                 <button type="button" onClick={() => setTab("todas")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">🌐 Todas</button>
-                <button type="button" onClick={() => setTab("admin")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">⚙️ Configurações</button>
                 <button type="button" onClick={() => setTab("lixeira")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">🗑️ Lixeira</button>
                 <span className="mx-1 h-5 w-px bg-gray-200 dark:bg-gray-700" />
               </>
