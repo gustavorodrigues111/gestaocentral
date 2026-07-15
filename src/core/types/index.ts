@@ -1735,6 +1735,10 @@ export type Ocorrencia = {
   criadaPor: string;                     // pessoaId
   criadaPorNome?: string;
   atualizadaEm: string;
+  // Soft-delete (pra aparecer no histórico "apagadas" com quem apagou)
+  deletadoEm?: string | null;            // ISO
+  deletadoPor?: string | null;           // pessoaId
+  deletadoPorNome?: string;
 };
 
 // ─── CHECKLISTS ─────────────────────────────────────────────────────────────

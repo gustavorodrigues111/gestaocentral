@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { VirarAcaoModal } from "../planoDeAcao/VirarAcaoModal";
@@ -15,7 +15,7 @@ import {
   OCORRENCIA_GRAVIDADE_ICON, OCORRENCIA_GRAVIDADE_LABEL,
   OCORRENCIA_STATUS_LABEL,
 } from "../../core/types";
-import type { Cargo, Empregado, Ocorrencia, OcorrenciaGravidade, OcorrenciaStatus } from "../../core/types";
+import type { Cargo, Empregado, Ocorrencia, OcorrenciaGravidade, OcorrenciaStatus, AcaoLog } from "../../core/types";
 import { OcorrenciaModal } from "./OcorrenciaModal";
 
 const GRAVIDADE_CLS: Record<OcorrenciaGravidade, string> = {
@@ -66,10 +66,8 @@ export function OcorrenciasPage() {
   const [filtroStatus, setFiltroStatus] = useState<"abertas" | "todas" | OcorrenciaStatus>("abertas");
   const [editing, setEditing] = useState<Ocorrencia | "new" | null>(null);
   const [virarDe, setVirarDe] = useState<Ocorrencia | null>(null);
-  const [aba, setAba] = useState<"registrar" | "kanban">(() => {
-    try { return (localStorage.getItem("ocorrencias_aba") as "registrar" | "kanban") || "registrar"; }
-    catch { return "registrar"; }
-  });
+  // Sempre abre em "Registrar" (não persiste a última aba).
+  const [aba, setAba] = useState<"registrar" | "kanban">("registrar");
   useEffect(() => { try { localStorage.setItem("ocorrencias_aba", aba); } catch {} }, [aba]);
   const [view, setView] = useState<"lista" | "kanban">(() => {
     try { return (localStorage.getItem("ocorrencias_view") as "lista" | "kanban") || "kanban"; }
@@ -117,8 +115,14 @@ export function OcorrenciasPage() {
   const empMap = useMemo(() => Object.fromEntries(empregados.map(e => [e.id, e])), [empregados]);
   const cargoMap = useMemo(() => Object.fromEntries(cargos.map(c => [c.id, c])), [cargos]);
 
+  // Ativas (kanban/lista) × Histórico (apagadas + resolvidas há mais de 14 dias).
+  const limiteHistData = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 14); return d.toISOString().slice(0, 10); }, []);
+  const emHistorico = (o: Ocorrencia) => !!o.deletadoEm || (o.status === "resolvida" && !!o.resolvidaEm && o.resolvidaEm.slice(0, 10) < limiteHistData);
+  const ativas = useMemo(() => ocorrencias.filter(o => !emHistorico(o)), [ocorrencias, limiteHistData]);
+  const historico = useMemo(() => ocorrencias.filter(emHistorico).sort((a, b) => (b.deletadoEm || b.resolvidaEm || "").localeCompare(a.deletadoEm || a.resolvidaEm || "")), [ocorrencias, limiteHistData]);
+
   const filtered = useMemo(() => {
-    return ocorrencias.filter(o => {
+    return ativas.filter(o => {
       if (filtroGrav !== "todas" && o.gravidade !== filtroGrav) return false;
       if (filtroStatus === "abertas") {
         if (o.status === "resolvida" || o.status === "arquivada") return false;
@@ -135,12 +139,12 @@ export function OcorrenciasPage() {
       }
       return true;
     });
-  }, [ocorrencias, filtroGrav, filtroStatus, search, empMap]);
+  }, [ativas, filtroGrav, filtroStatus, search, empMap]);
 
   // Ocorrências que EU registrei (aba Registrar, pra quem não gerencia).
   const minhas = useMemo(
-    () => ocorrencias.filter(o => o.criadaPor === me?.id),
-    [ocorrencias, me?.id],
+    () => ativas.filter(o => o.criadaPor === me?.id),
+    [ativas, me?.id],
   );
 
   // Abas disponíveis conforme permissão.
@@ -161,9 +165,15 @@ export function OcorrenciasPage() {
     return ocorrencias.filter(o => o.gravidade === "grave" && o.data >= limite).length;
   }, [ocorrencias]);
 
+  // Soft-delete: vai pro histórico "apagadas" (com quem apagou), não some de vez.
   async function excluir(o: Ocorrencia) {
-    if (!confirm(`Excluir "${o.titulo}"?`)) return;
-    await deleteDoc(doc(db, "ocorrencias", o.id));
+    if (!confirm(`Apagar "${o.titulo}"? Vai pro histórico de apagadas (dá pra ver quem apagou).`)) return;
+    const now = new Date().toISOString();
+    const lg: AcaoLog = { id: `lg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, em: now, autorId: me?.id || null, autorNome: me?.nome, tipo: "status", texto: "🗑️ Apagou a ocorrência" };
+    await updateDoc(doc(db, "ocorrencias", o.id), sanitizeForFirestore({
+      deletadoEm: now, deletadoPor: me?.id || null, deletadoPorNome: me?.nome,
+      log: [...(o.log || []), lg], atualizadaEm: now,
+    }));
   }
 
   // Registra no log da ocorrência que ela virou ação (Plano de Ação).
@@ -174,16 +184,19 @@ export function OcorrenciasPage() {
   }
 
   async function setStatus(o: Ocorrencia, status: OcorrenciaStatus) {
-    if (!me) return;
+    if (!me || status === o.status) return;
+    const now = new Date().toISOString();
+    const lg: AcaoLog = { id: `lg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, em: now, autorId: me.id, autorNome: me.nome, tipo: "status", texto: `Moveu: ${OCORRENCIA_STATUS_LABEL[o.status]} → ${OCORRENCIA_STATUS_LABEL[status]}` };
     const patch: Partial<Ocorrencia> = {
       status,
-      atualizadaEm: new Date().toISOString(),
+      atualizadaEm: now,
+      log: [...(o.log || []), lg],
     };
     if (status === "resolvida") {
-      patch.resolvidaEm = new Date().toISOString();
+      patch.resolvidaEm = now;
       patch.resolvidaPor = me.id;
     }
-    await updateDoc(doc(db, "ocorrencias", o.id), patch);
+    await updateDoc(doc(db, "ocorrencias", o.id), sanitizeForFirestore(patch));
   }
 
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -301,11 +314,12 @@ export function OcorrenciasPage() {
       </div>
 
       {view === "kanban" && <KanbanOcorrencias
-        ocorrencias={ocorrencias.filter(o => !search.trim() || o.titulo.toLowerCase().includes(search.toLowerCase()) || o.descricao.toLowerCase().includes(search.toLowerCase()))}
+        ocorrencias={ativas.filter(o => !search.trim() || o.titulo.toLowerCase().includes(search.toLowerCase()) || o.descricao.toLowerCase().includes(search.toLowerCase()))}
         loading={loading}
         podeEditar={podeEditar}
         onAbrir={(o) => setEditing(o)}
         onNova={podeCriar ? () => setEditing("new") : undefined}
+        onMover={setStatus}
         draggingId={draggingId}
         dropTarget={dropTarget}
         setDraggingId={setDraggingId}
@@ -432,6 +446,7 @@ export function OcorrenciasPage() {
         </div>
       )}
       </>)}
+      {historico.length > 0 && <HistoricoOcorrencias historico={historico} onAbrir={(o) => setEditing(o)} />}
       </>
       )}
 
@@ -457,6 +472,46 @@ export function OcorrenciasPage() {
   );
 }
 
+// ─── HISTÓRICO (abaixo do kanban): apagadas + resolvidas há +14 dias ─────────
+function HistoricoOcorrencias({ historico, onAbrir }: { historico: Ocorrencia[]; onAbrir: (o: Ocorrencia) => void }) {
+  const [aberto, setAberto] = useState(false);
+  const apagadas = historico.filter(o => o.deletadoEm);
+  const resolvidas = historico.filter(o => !o.deletadoEm);
+  const fmt = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString("pt-BR") : "";
+  const Item = ({ o, quem, quando }: { o: Ocorrencia; quem?: string; quando?: string }) => (
+    <button type="button" onClick={() => onAbrir(o)} className="w-full text-left flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/60 px-3 py-2 text-sm">
+      <span>{OCORRENCIA_GRAVIDADE_ICON[o.gravidade]}</span>
+      <span className="flex-1 min-w-0 truncate text-gray-800 dark:text-gray-200">{o.titulo}</span>
+      {quem && <span className="text-[11px] text-gray-500 whitespace-nowrap">{quem}</span>}
+      {quando && <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap">{quando}</span>}
+    </button>
+  );
+  return (
+    <div className="mt-6 rounded-xl border border-gray-200 dark:border-gray-800">
+      <button type="button" onClick={() => setAberto(v => !v)} className="w-full flex items-center justify-between gap-2 px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200">
+        <span>📚 Histórico ({historico.length})</span>
+        <span className="text-xs text-gray-400">{aberto ? "▲ recolher" : "▼ ver"}</span>
+      </button>
+      {aberto && (
+        <div className="px-3 pb-3 space-y-4 border-t border-gray-100 dark:border-gray-800 pt-3">
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">🗑️ Apagadas ({apagadas.length})</div>
+            {apagadas.length === 0 ? <p className="text-xs text-gray-400 italic">Nenhuma.</p> : (
+              <div className="space-y-1.5">{apagadas.map(o => <Item key={o.id} o={o} quem={o.deletadoPorNome ? `apagou: ${o.deletadoPorNome}` : undefined} quando={fmt(o.deletadoEm)} />)}</div>
+            )}
+          </div>
+          <div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">✅ Resolvidas há +14 dias ({resolvidas.length})</div>
+            {resolvidas.length === 0 ? <p className="text-xs text-gray-400 italic">Nenhuma.</p> : (
+              <div className="space-y-1.5">{resolvidas.map(o => <Item key={o.id} o={o} quando={fmt(o.resolvidaEm)} />)}</div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── KANBAN ───────────────────────────────────────────────────────────────
 
 const KANBAN_COLS_OC: Array<{ id: OcorrenciaStatus; titulo: string; descricao: string; bordaCls: string }> = [
@@ -468,24 +523,22 @@ const KANBAN_COLS_OC: Array<{ id: OcorrenciaStatus; titulo: string; descricao: s
   { id: "arquivada",      titulo: "📦 Arquivadas",       descricao: "Arquivadas",                               bordaCls: "border-t-gray-400" },
 ];
 
-function KanbanOcorrencias({ ocorrencias, loading, podeEditar, onAbrir, onNova, draggingId, dropTarget, setDraggingId, setDropTarget }: {
+function KanbanOcorrencias({ ocorrencias, loading, podeEditar, onAbrir, onNova, onMover, draggingId, dropTarget, setDraggingId, setDropTarget }: {
   ocorrencias: Ocorrencia[];
   loading: boolean;
   podeEditar: boolean;
   onAbrir: (o: Ocorrencia) => void;
   onNova?: () => void;
+  onMover: (o: Ocorrencia, status: OcorrenciaStatus) => void;
   draggingId: string | null;
   dropTarget: string | null;
   setDraggingId: (id: string | null) => void;
   setDropTarget: (id: string | null) => void;
 }) {
-  async function moverPara(id: string, status: OcorrenciaStatus) {
-    try {
-      await updateDoc(doc(db, "ocorrencias", id), { status, atualizadaEm: new Date().toISOString() });
-    } catch (e) {
-      console.error("[ocorrencias] falha ao mover:", e);
-      alert("Falha ao mover ocorrência: " + (e instanceof Error ? e.message : String(e)));
-    }
+  // Move via callback do pai (que registra no log quem moveu e de→para).
+  function moverPara(id: string, status: OcorrenciaStatus) {
+    const o = ocorrencias.find(x => x.id === id);
+    if (o) onMover(o, status);
   }
 
   const porCol: Record<OcorrenciaStatus, Ocorrencia[]> = {

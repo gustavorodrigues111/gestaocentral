@@ -11,7 +11,7 @@ import {
   OCORRENCIA_GRAVIDADE_ICON, OCORRENCIA_GRAVIDADE_LABEL,
   OCORRENCIA_STATUS_LABEL,
 } from "../../core/types";
-import type { Cargo, Empregado, Ocorrencia, OcorrenciaGravidade, OcorrenciaStatus } from "../../core/types";
+import type { Cargo, Empregado, Ocorrencia, OcorrenciaGravidade, OcorrenciaStatus, AcaoLog } from "../../core/types";
 import { registrarAutoEvento } from "../trilha/autoEventos";
 
 type Props = {
@@ -73,6 +73,12 @@ export function OcorrenciaModal({ ocorrencia, empregados, cargos, restaurantId, 
       // Se virou resolvida AGORA, marca quem resolveu
       const acabouResolver = status === "resolvida" && ocorrencia?.status !== "resolvida";
 
+      // Log/histórico: registra criação e mudança de status feita pelo modal.
+      const logId = `lg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+      let log: AcaoLog[] = ocorrencia?.log ? [...ocorrencia.log] : [];
+      if (isNew) log = [{ id: logId, em: now, autorId: me.id, autorNome: me.nome, tipo: "criada", texto: "📝 Registrou a ocorrência" }];
+      else if (status !== ocorrencia?.status) log = [...log, { id: logId, em: now, autorId: me.id, autorNome: me.nome, tipo: "status", texto: `Moveu: ${OCORRENCIA_STATUS_LABEL[ocorrencia!.status]} → ${OCORRENCIA_STATUS_LABEL[status]}` }];
+
       const payload: Omit<Ocorrencia, "id"> = {
         restaurantId,
         data,
@@ -91,6 +97,10 @@ export function OcorrenciaModal({ ocorrencia, empregados, cargos, restaurantId, 
         criadaPor: ocorrencia?.criadaPor || me.id,
         criadaPorNome: ocorrencia?.criadaPorNome || me.nome,
         atualizadaEm: now,
+        log,
+        deletadoEm: ocorrencia?.deletadoEm ?? null,
+        deletadoPor: ocorrencia?.deletadoPor ?? null,
+        deletadoPorNome: ocorrencia?.deletadoPorNome,
       };
 
       if (isNew) {
@@ -267,6 +277,21 @@ export function OcorrenciaModal({ ocorrencia, empregados, cargos, restaurantId, 
             </div>
           )}
         </div>
+
+        {/* Histórico da ocorrência: quem criou, moveu, virou ação, apagou. */}
+        {!isNew && (ocorrencia?.log?.length || 0) > 0 && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">📜 Histórico</div>
+            <div className="space-y-1.5">
+              {[...(ocorrencia?.log || [])].sort((a, b) => (a.em || "").localeCompare(b.em || "")).map(l => (
+                <div key={l.id} className="flex items-start gap-2 text-xs">
+                  <span className="text-gray-400 tabular-nums whitespace-nowrap">{l.em ? new Date(l.em).toLocaleDateString("pt-BR") : ""}</span>
+                  <span className="text-gray-700 dark:text-gray-300">{l.texto}{l.autorNome ? ` — ${l.autorNome}` : ""}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
 
