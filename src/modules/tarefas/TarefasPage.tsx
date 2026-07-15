@@ -93,6 +93,20 @@ function AvatarIniciais({ nome, id, size = 22, className = "" }: { nome?: string
   );
 }
 
+// Badge da(s) empresa(s) de um card (usa restaurantIds). Lê o contexto — sem
+// prop threading. Mostra o nome; se for mais de uma, "Nome +N".
+function EmpresaBadge({ ids, className = "" }: { ids?: string[]; className?: string }) {
+  const { restaurants } = useRestaurant();
+  if (!ids || !ids.length) return null;
+  const nomes = ids.map(id => restaurants.find(r => r.id === id)?.nome || "?");
+  const label = nomes.length === 1 ? nomes[0] : `${nomes[0]} +${nomes.length - 1}`;
+  return (
+    <span title={nomes.join(", ")} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 text-[10px] font-medium whitespace-nowrap max-w-[120px] ${className}`}>
+      <span className="truncate">🏢 {label}</span>
+    </span>
+  );
+}
+
 // Membros do grupo "Prazos" (mesma ordem dos chips).
 const PRAZO_TIPOS: { key: string; label: string; emoji: string }[] = [
   { key: "conta_fixa", label: "Contas", emoji: "💰" },
@@ -1318,6 +1332,7 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
                 {TAREFA_ORIGEM_LABEL[tarefa.origem]}
               </span>
             )}
+            <EmpresaBadge ids={tarefa.restaurantIds} />
             {tarefa.prioridade !== "normal" && (
               <span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${
                 tarefa.prioridade === "urgente" ? "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300" :
@@ -2626,10 +2641,11 @@ function KanbanView({ tarefas, projetos, autor, onAbrir }: {
                       <div className="flex-1 text-sm font-medium text-gray-900 dark:text-gray-100 line-clamp-2">{t.titulo}</div>
                       {t.responsavelNome && <AvatarIniciais nome={t.responsavelNome} id={t.responsavelId} size={18} />}
                     </div>
-                    <div className="flex items-center gap-1 mt-1 text-[10px] text-gray-500 dark:text-gray-400">
+                    <div className="flex items-center gap-1 mt-1 flex-wrap text-[10px] text-gray-500 dark:text-gray-400">
                       {proj && <span style={{ color: cor }}>{proj.emoji}</span>}
                       {t.prazo && <span>📅 {fmtBR(t.prazo)}</span>}
                       {der && <span className="px-1 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">{der.tipo === "manutencao" ? "🔧 prazo técnico" : der.tipo === "prazo_trabalhista" ? "🧑‍⚖️ trabalhista" : "💰 conta fixa"}</span>}
+                      <EmpresaBadge ids={t.restaurantIds} />
                       {(t.subtarefas?.length ?? 0) > 0 && <span>☑️ {t.subtarefas?.filter(s => s.feito).length}/{t.subtarefas?.length}</span>}
                     </div>
                   </div>
@@ -2914,9 +2930,12 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia, 
               >
                 {t.responsavelNome && <AvatarIniciais nome={t.responsavelNome} id={t.responsavelId} size={16} className="absolute top-1 right-1" />}
                 <div className="font-medium leading-snug line-clamp-2 mb-1 pr-4">{t.titulo}</div>
-                <span className="inline-flex items-center gap-0.5 px-1.5 py-[1px] rounded-full text-[8px] font-bold uppercase tracking-wide text-white" style={{ background: meta.cor }}>
-                  {meta.icon} {meta.label}
-                </span>
+                <div className="flex items-center gap-1 flex-wrap">
+                  <span className="inline-flex items-center gap-0.5 px-1.5 py-[1px] rounded-full text-[8px] font-bold uppercase tracking-wide text-white" style={{ background: meta.cor }}>
+                    {meta.icon} {meta.label}
+                  </span>
+                  <EmpresaBadge ids={t.restaurantIds} />
+                </div>
               </button>
             );
           })}
