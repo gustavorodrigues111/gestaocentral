@@ -316,17 +316,9 @@ export function ReservasPage() {
     window.open(link, "_blank", "noopener,noreferrer");
   }
 
-  if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
-  if (!podeVer) {
-    return (
-      <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
-        <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
-      </div>
-    );
-  }
-
-  // Agrupa reservas ATIVAS do dia por horário
+  // Agrupa reservas ATIVAS do dia por horário. FICA ANTES dos early returns —
+  // hooks têm que rodar sempre na mesma ordem (senão, quando a permissão carrega
+  // e muda o caminho de render, o React crasha = tela branca).
   const porHorario = useMemo(() => {
     const m: Record<string, Reserva[]> = {};
     for (const r of reservasAtivasDoDia) {
@@ -336,6 +328,16 @@ export function ReservasPage() {
     }
     return Object.entries(m).sort(([a], [b]) => a.localeCompare(b));
   }, [reservasAtivasDoDia]);
+
+  if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
+  if (!podeVer) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 text-center">
+        <div className="text-4xl mb-3">🔒</div>
+        <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-5xl">
