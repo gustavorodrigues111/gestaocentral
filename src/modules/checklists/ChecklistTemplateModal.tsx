@@ -247,8 +247,8 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
                 <div className="mt-2 pl-8 space-y-1.5">
                   <div className="flex flex-wrap items-center gap-1.5">
                     <span className="text-[11px] text-gray-400 mr-0.5">Frequência:</span>
-                    {([["diaria", "Todo dia"], ["semanal", "Dia da semana"], ["quinzenal", "Quinzenal"], ["mensal", "Mensal"]] as const).map(([f, l]) => (
-                      <button key={f} type="button" onClick={() => patchItem(item.id, { freq: f, ...(f === "diaria" ? { diasSemana: undefined, semanaParidade: undefined, diaDoMes: undefined } : {}), ...(f === "mensal" ? { diasSemana: undefined, semanaParidade: undefined, diaDoMes: item.diaDoMes || 1 } : {}), ...(f === "quinzenal" ? { semanaParidade: item.semanaParidade || "A" } : {}) })} className={CHIP((item.freq || "diaria") === f)}>{l}</button>
+                    {([["diaria", "Todo dia"], ["semanal", "Dia da semana"], ["quinzenal", "Quinzenal"], ["alternada", "Dia alternado"], ["mensal", "Mensal"]] as const).map(([f, l]) => (
+                      <button key={f} type="button" onClick={() => patchItem(item.id, { freq: f, ...(f === "diaria" ? { diasSemana: undefined, semanaParidade: undefined, diaDoMes: undefined, intervaloDias: undefined } : {}), ...(f === "mensal" ? { diasSemana: undefined, semanaParidade: undefined, diaDoMes: item.diaDoMes || 1, intervaloDias: undefined } : {}), ...(f === "quinzenal" ? { semanaParidade: item.semanaParidade || "A", intervaloDias: undefined } : {}), ...(f === "semanal" ? { intervaloDias: undefined } : {}), ...(f === "alternada" ? { diasSemana: undefined, semanaParidade: undefined, diaDoMes: undefined, intervaloDias: item.intervaloDias || 2 } : {}) })} className={CHIP((item.freq || "diaria") === f)}>{l}</button>
                     ))}
                     {item.freq && <span className="text-[11px] text-gray-400 ml-1">→ {freqItemLabel(item)}</span>}
                   </div>
@@ -279,6 +279,14 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
                       <span className="text-[11px] text-gray-400">Todo dia</span>
                       <input type="number" min={1} max={31} value={item.diaDoMes || 1} onChange={(e) => patchItem(item.id, { diaDoMes: Math.min(31, Math.max(1, parseInt(e.target.value) || 1)) })} className="w-16 px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
                       <span className="text-[11px] text-gray-400">do mês</span>
+                    </div>
+                  )}
+                  {item.freq === "alternada" && (
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      <span className="text-[11px] text-gray-400">A cada</span>
+                      <input type="number" min={2} max={30} value={item.intervaloDias || 2} onChange={(e) => patchItem(item.id, { intervaloDias: Math.min(30, Math.max(2, parseInt(e.target.value) || 2)) })} className="w-16 px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                      <span className="text-[11px] text-gray-400">dias, a partir de</span>
+                      <input type="date" value={item.dataInicio || "2026-01-01"} onChange={(e) => patchItem(item.id, { dataInicio: e.target.value || undefined })} className="px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
                     </div>
                   )}
                 </div>

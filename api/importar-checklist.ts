@@ -21,8 +21,9 @@ const PROMPT =
   "1) texto = a tarefa, curta e clara (ex: 'Limpar a chapa', 'Conferir temperatura da câmara').\n" +
   "2) obrigatorio = true se o item é essencial/crítico (segurança, higiene/food safety, dinheiro, algo que não pode faltar); false pros demais. Na dúvida, true.\n" +
   "3) descricao = instrução de COMO FAZER, só se o documento trouxer detalhe/explicação do item; senão \"\".\n" +
-  "Regras: IGNORE cabeçalhos decorativos, logos e rodapés. NÃO invente itens. Mantenha a ordem do documento.\n\n" +
-  "Responda SOMENTE um objeto JSON (sem texto antes/depois): { \"nome\": \"...\", \"itens\": [ { \"texto\": \"...\", \"obrigatorio\": true, \"descricao\": \"...\" } ] }";
+  "4) periodicidade = se o documento indicar de quanto em quanto tempo o item é feito (coluna 'Periodicidade', 'Frequência', ou anotação ao lado), copie o TEXTO EXATO como está escrito (ex: 'SEMANAL', 'DIA SIM DIA NÃO', 'QUINZENAL', '2X NA SEMANA', 'MENSAL', '1 X semana'). Se o item não tiver periodicidade indicada, use \"\".\n" +
+  "Regras: IGNORE cabeçalhos decorativos, logos e rodapés. NÃO invente itens nem periodicidades. Mantenha a ordem do documento.\n\n" +
+  "Responda SOMENTE um objeto JSON (sem texto antes/depois): { \"nome\": \"...\", \"itens\": [ { \"texto\": \"...\", \"obrigatorio\": true, \"descricao\": \"...\", \"periodicidade\": \"...\" } ] }";
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
   try { await requireUser(req); } catch (e) {
@@ -69,10 +70,10 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     const textOut = (json.content || []).filter((b) => b.type === "text").map((b) => b.text || "").join("");
     const m = textOut.match(/\{[\s\S]*\}/);
     if (!m) { res.status(502).json({ error: "A IA não retornou JSON." }); return; }
-    const parsed = JSON.parse(m[0]) as { nome?: string; itens?: Array<{ texto?: string; obrigatorio?: boolean; descricao?: string }> };
+    const parsed = JSON.parse(m[0]) as { nome?: string; itens?: Array<{ texto?: string; obrigatorio?: boolean; descricao?: string; periodicidade?: string }> };
     const itens = (Array.isArray(parsed.itens) ? parsed.itens : [])
       .filter((i) => i && typeof i.texto === "string" && i.texto.trim())
-      .map((i) => ({ texto: String(i.texto).trim(), obrigatorio: i.obrigatorio !== false, descricao: (i.descricao ?? "").toString().trim() }));
+      .map((i) => ({ texto: String(i.texto).trim(), obrigatorio: i.obrigatorio !== false, descricao: (i.descricao ?? "").toString().trim(), periodicidade: (i.periodicidade ?? "").toString().trim() }));
     res.status(200).json({ nome: (parsed.nome || "").toString().trim(), itens });
   } catch (e) {
     const msg = e instanceof Error && e.name === "AbortError" ? `Timeout (${REQ_TIMEOUT_MS / 1000}s) na leitura.` : (e instanceof Error ? e.message : "Falha ao processar.");

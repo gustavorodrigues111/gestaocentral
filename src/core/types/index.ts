@@ -1752,7 +1752,7 @@ export const CHECKLIST_FREQ_LABEL: Record<ChecklistFrequencia, string> = {
   avulsa:  "Avulsa",
 };
 
-export type ChecklistItemFreq = "diaria" | "semanal" | "quinzenal" | "mensal";
+export type ChecklistItemFreq = "diaria" | "semanal" | "quinzenal" | "mensal" | "alternada";
 export type ChecklistItemTemplate = {
   id: string;
   texto: string;
@@ -1768,6 +1768,8 @@ export type ChecklistItemTemplate = {
   diasSemana?: number[];      // diaria/semanal/quinzenal: 0=Dom..6=Sáb (vazio = todos p/ diária)
   semanaParidade?: "A" | "B"; // quinzenal: semana A (ímpar ISO) ou B (par)
   diaDoMes?: number;          // mensal: 1..31 (clampa ao último dia do mês)
+  intervaloDias?: number;     // alternada: a cada N dias (2 = dia sim/dia não)
+  dataInicio?: string;        // alternada: âncora YYYY-MM-DD (ausente = 2026-01-01)
 };
 
 // Turno do checklist (abertura / meio / fechamento). Ajuda a separar as rotinas

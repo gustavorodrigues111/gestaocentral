@@ -15,8 +15,9 @@ import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import type { ChecklistTemplate } from "../../core/types";
+import { parsePeriodicidade, freqItemLabel, type FreqParcial } from "./recorrencia";
 
-type ItemImp = { key: string; texto: string; obrigatorio: boolean; descricao: string };
+type ItemImp = { key: string; texto: string; obrigatorio: boolean; descricao: string; periodicidade?: string } & FreqParcial;
 const uid = () => `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 const semExt = (n: string) => n.replace(/\.[^.]+$/, "");
 
@@ -28,23 +29,29 @@ function parsePlanilha(buf: ArrayBuffer): { nome: string; itens: ItemImp[] } {
   const norm = (s: unknown) => String(s ?? "").trim().toLowerCase();
   const head = (rows[0] || []).map(norm);
   const hasHeader = head.some(h => /item|tarefa|checklist|descri|o que|obrigat|como|instru/.test(h));
-  let colTexto = 0, colObrig = -1, colDesc = -1;
+  let colTexto = 0, colObrig = -1, colDesc = -1, colFreq = -1;
   if (hasHeader) {
     head.forEach((h, i) => {
       if (/obrigat/.test(h)) colObrig = i;
+      else if (/periodic|frequ[eê]nc/.test(h)) colFreq = i;
       else if (/descri|como|instru/.test(h)) colDesc = i;
-      else if (/item|tarefa|o que|checklist/.test(h) && colTexto === 0) colTexto = i;
+      else if (/item|tarefa|o que|checklist|equipament|instala/.test(h) && colTexto === 0) colTexto = i;
     });
-    if (colTexto === colObrig || colTexto === colDesc) { const c = head.findIndex((_, i) => i !== colObrig && i !== colDesc); if (c >= 0) colTexto = c; }
+    if ([colObrig, colDesc, colFreq].includes(colTexto)) { const c = head.findIndex((_, i) => ![colObrig, colDesc, colFreq].includes(i)); if (c >= 0) colTexto = c; }
   }
   const body = hasHeader ? rows.slice(1) : rows;
   const truthy = (v: unknown) => /^(sim|s|x|true|1|obrig)/i.test(String(v ?? "").trim());
-  const itens = body.map(r => ({
-    key: uid(),
-    texto: String(r[colTexto] ?? "").trim(),
-    obrigatorio: colObrig >= 0 ? truthy(r[colObrig]) : true,
-    descricao: colDesc >= 0 ? String(r[colDesc] ?? "").trim() : "",
-  })).filter(i => i.texto);
+  const itens = body.map(r => {
+    const periodicidade = colFreq >= 0 ? String(r[colFreq] ?? "").trim() : "";
+    return {
+      key: uid(),
+      texto: String(r[colTexto] ?? "").trim(),
+      obrigatorio: colObrig >= 0 ? truthy(r[colObrig]) : true,
+      descricao: colDesc >= 0 ? String(r[colDesc] ?? "").trim() : "",
+      periodicidade: periodicidade || undefined,
+      ...parsePeriodicidade(periodicidade),
+    };
+  }).filter(i => i.texto);
   const nomeAba = wb.SheetNames[0];
   return { nome: nomeAba && !/^sheet\d*$|^plan\d*$|^planilha\d*$/i.test(nomeAba) ? nomeAba : "", itens };
 }
@@ -82,10 +89,10 @@ export function ImportarChecklistModal({ rid, onClose, onCriado }: {
         const resp = await fetch("/api/importar-checklist", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ fileUrl: url, mime: file.type }) });
         const data = await resp.json().catch(() => ({}));
         if (!resp.ok) throw new Error((data as { error?: string })?.error || `Erro ${resp.status}`);
-        const its = (Array.isArray((data as { itens?: unknown }).itens) ? (data as { itens: { texto: string; obrigatorio?: boolean; descricao?: string }[] }).itens : []);
+        const its = (Array.isArray((data as { itens?: unknown }).itens) ? (data as { itens: { texto: string; obrigatorio?: boolean; descricao?: string; periodicidade?: string }[] }).itens : []);
         if (its.length === 0) throw new Error("A IA não achou itens. Tente uma foto mais nítida ou enquadrada.");
         setNome(((data as { nome?: string }).nome || semExt(file.name)).trim());
-        setItens(its.map(i => ({ key: uid(), texto: i.texto, obrigatorio: i.obrigatorio !== false, descricao: i.descricao || "" }))); setFase("revisao");
+        setItens(its.map(i => ({ key: uid(), texto: i.texto, obrigatorio: i.obrigatorio !== false, descricao: i.descricao || "", periodicidade: (i.periodicidade || "").trim() || undefined, ...parsePeriodicidade(i.periodicidade || "") }))); setFase("revisao");
       } else {
         throw new Error("Formato não suportado. Use planilha (.xlsx/.csv), foto ou PDF.");
       }
@@ -105,7 +112,7 @@ export function ImportarChecklistModal({ rid, onClose, onCriado }: {
       const now = new Date().toISOString();
       const payload: Omit<ChecklistTemplate, "id"> = {
         restaurantId: rid, nome: nome.trim(), frequencia: "avulsa", ativo: true,
-        itens: validos.map((it, idx) => ({ id: `i_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 5)}`, texto: it.texto.trim(), ordem: idx + 1, obrigatorio: !!it.obrigatorio, descricao: it.descricao.trim() || undefined })),
+        itens: validos.map((it, idx) => ({ id: `i_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 5)}`, texto: it.texto.trim(), ordem: idx + 1, obrigatorio: !!it.obrigatorio, descricao: it.descricao.trim() || undefined, freq: it.freq, diasSemana: it.diasSemana, semanaParidade: it.semanaParidade, diaDoMes: it.diaDoMes, intervaloDias: it.intervaloDias })),
         criadoEm: now, criadoPor: me?.id || "", atualizadoEm: now,
       };
       const refDoc = await addDoc(collection(db, "checklistTemplates"), sanitizeForFirestore(payload));
@@ -117,7 +124,7 @@ export function ImportarChecklistModal({ rid, onClose, onCriado }: {
     <Modal title="📥 Importar checklist" onClose={onClose} maxWidth="max-w-2xl">
       {fase === "upload" ? (
         <div className="space-y-3">
-          <p className="text-sm text-gray-600 dark:text-gray-300">Tem um checklist pronto? Suba uma <b>planilha</b> (lida na hora), ou uma <b>foto</b>/<b>PDF</b> (a IA lê e monta pra você). Você revisa antes de criar.</p>
+          <p className="text-sm text-gray-600 dark:text-gray-300">Tem um checklist pronto? Suba uma <b>planilha</b> (lida na hora), ou uma <b>foto</b>/<b>PDF</b> (a IA lê e monta pra você). Se houver uma coluna de <b>periodicidade</b> (semanal, quinzenal, dia sim/dia não…), já viro em frequência por item. Você revisa antes de criar.</p>
           <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,image/*,application/pdf" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) void onFile(f); e.target.value = ""; }} />
           <button type="button" disabled={carregando} onClick={() => inputRef.current?.click()} className="w-full rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-700 p-8 text-center hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 disabled:opacity-60">
             <div className="text-3xl mb-1">{carregando ? "⏳" : "📄"}</div>
@@ -140,6 +147,17 @@ export function ImportarChecklistModal({ rid, onClose, onCriado }: {
                   <button type="button" onClick={() => remover(it.key)} className="text-rose-500 hover:text-rose-700 mt-1.5">×</button>
                 </div>
                 <input value={it.descricao} onChange={e => patch(it.key, { descricao: e.target.value })} placeholder="como fazer (opcional)" className="w-full ml-7 px-2 py-1 text-xs rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" style={{ width: "calc(100% - 1.75rem)" }} />
+                {(it.periodicidade || it.freq) && (
+                  <div className="ml-7 flex items-center gap-1.5 flex-wrap">
+                    {it.freq ? (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">🔁 {freqItemLabel(it)}</span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">⚠ periodicidade não reconhecida</span>
+                    )}
+                    {it.periodicidade && <span className="text-[10px] text-gray-400">no papel: “{it.periodicidade}”</span>}
+                    {it.freq && <button type="button" onClick={() => patch(it.key, { freq: undefined, diasSemana: undefined, semanaParidade: undefined, diaDoMes: undefined, intervaloDias: undefined })} className="text-[10px] text-gray-400 hover:text-rose-500 underline">limpar</button>}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -149,7 +167,7 @@ export function ImportarChecklistModal({ rid, onClose, onCriado }: {
             <button type="button" onClick={() => { setFase("upload"); setItens([]); setNome(""); setErro(""); }} className="text-xs text-gray-500 hover:text-gray-800">← outro arquivo</button>
             <div className="flex gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => void criar()} disabled={salvando}>{salvando ? "Criando…" : "Criar template"}</Button></div>
           </div>
-          <p className="text-[11px] text-gray-400">O template é criado como <b>avulso</b> — depois é só abrir e definir frequência, turno e responsáveis.</p>
+          <p className="text-[11px] text-gray-400">Itens com periodicidade reconhecida já vêm com <b>frequência própria</b> (o dia da semana exato você ajusta no editor). Turno e responsáveis também se definem depois.</p>
         </div>
       )}
     </Modal>
