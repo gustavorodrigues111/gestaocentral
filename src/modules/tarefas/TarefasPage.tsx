@@ -94,6 +94,14 @@ function AvatarIniciais({ nome, id, size = 22, className = "" }: { nome?: string
   );
 }
 
+// Membros do grupo "Prazos" (mesma ordem dos chips).
+const PRAZO_TIPOS: { key: string; label: string; emoji: string }[] = [
+  { key: "conta_fixa", label: "Contas", emoji: "💰" },
+  { key: "manutencao", label: "Técnicos", emoji: "🛠️" },
+  { key: "prazo_trabalhista", label: "Trabalhistas", emoji: "🧑‍⚖️" },
+  { key: "proprio", label: "Próprios", emoji: "✍️" },
+];
+
 export function TarefasPage() {
   const { pessoa: pessoaReal } = useAuth();
   const { restaurants, activeId: ridAtivo } = useRestaurant();
@@ -148,17 +156,11 @@ export function TarefasPage() {
   const [subprojetos, setSubprojetos] = useState<TarefaSubprojeto[]>([]);
   const [minhas, setMinhas] = useState<Tarefa[]>([]);
   const [projetoFiltro, setProjetoFiltro] = useState<string>("");
-  // Filtro de tipo dentro do projeto Prazos (contas fixas/técnicos/trabalhistas/
-  // próprios). Multi-seleção, todos ligados por padrão, estado salvo.
-  const [prazoTipoFiltro, setPrazoTipoFiltro] = useState<Set<string>>(() => {
-    try { const raw = localStorage.getItem("tarefas_prazo_filtro"); if (raw) return new Set(JSON.parse(raw) as string[]); } catch { /* ignore */ }
-    return new Set(["conta_fixa", "manutencao", "prazo_trabalhista", "proprio"]);
-  });
-  const togglePrazoTipo = (t: string) => setPrazoTipoFiltro(prev => {
-    const n = new Set(prev); n.has(t) ? n.delete(t) : n.add(t);
-    try { localStorage.setItem("tarefas_prazo_filtro", JSON.stringify([...n])); } catch { /* ignore */ }
-    return n;
-  });
+  // Grupo "Prazos": o tipo ativo (navegável, single-select). "" = todos os tipos.
+  const [prazoTipoAtivo, setPrazoTipoAtivo] = useState<string>("");
+  // Tarefas do projeto Prazos, sempre ouvidas (pra contar próprios/trabalhistas
+  // manuais nos chips do grupo Prazos mesmo estando noutra aba).
+  const [tarefasPrazos, setTarefasPrazos] = useState<Tarefa[]>([]);
   // subFiltro vive aqui (não no ProjetoView) pra a sidebar conseguir mostrar
   // os subprojetos como accordion dentro do próprio projeto selecionado.
   const [subFiltro, setSubFiltro] = useState<string>("");
@@ -280,6 +282,18 @@ export function TarefasPage() {
     () => projetos.find((p) => p.id === "proj-prazos" || /praz/i.test(p.nome || ""))?.id || "",
     [projetos],
   );
+  // Ouve as tarefas do projeto Prazos o tempo todo (pra contar próprios/
+  // trabalhistas manuais nos chips do grupo, mesmo fora da aba Prazos).
+  useEffect(() => {
+    if (!prazosProjId) { setTarefasPrazos([]); return; }
+    const u = ouvirTarefasDeProjeto(prazosProjId, setTarefasPrazos);
+    return () => u();
+  }, [prazosProjId]);
+  // Sub-prazos de Técnicos = subprojetos do projeto Prazos (Licenças, Manutenções).
+  const subPrazosTecnicos = useMemo(
+    () => (prazosProjId ? subprojetos.filter((s) => s.projetoId === prazosProjId) : []),
+    [subprojetos, prazosProjId],
+  );
   // Itens derivados (contas fixas + manutenções + prazos trabalhistas). Todos são
   // roteados pro projeto Prazos (nível de exibição — sem migrar dados de origem).
   const derivadas = useMemo(() => {
@@ -319,19 +333,29 @@ export function TarefasPage() {
     () => {
       const manuais = tarefasProjeto.filter((t) => !ORIGEM_DERIVADA.has(t.origem) && podeVerTarefa(t, projetos.find((p) => p.id === t.projetoId), pessoa));
       const derivs = derivadas.filter((d) => d.projetoId === projetoFiltro);
-      // No projeto Prazos: aplica os chips de tipo. Tarefas manuais com
-      // tipoPrazo="trabalhista" caem no chip 🧑‍⚖️; as demais em ✍️ Próprios.
+      // No projeto Prazos: navega por tipo (single-select). "" = todos.
+      // subFiltro (sub-prazo de Técnicos) é aplicado depois pelo ProjetoView.
       if (prazosProjId && projetoFiltro === prazosProjId) {
-        return [
-          ...(prazoTipoFiltro.has("proprio") ? manuais.filter((t) => t.tipoPrazo !== "trabalhista") : []),
-          ...(prazoTipoFiltro.has("prazo_trabalhista") ? manuais.filter((t) => t.tipoPrazo === "trabalhista") : []),
-          ...derivs.filter((d) => d.__derivado && prazoTipoFiltro.has(d.__derivado.tipo)),
-        ];
+        const t = prazoTipoAtivo;
+        if (!t) return [...manuais, ...derivs];
+        if (t === "proprio") return manuais.filter((x) => x.tipoPrazo !== "trabalhista");
+        if (t === "prazo_trabalhista") return [...manuais.filter((x) => x.tipoPrazo === "trabalhista"), ...derivs.filter((d) => d.__derivado?.tipo === "prazo_trabalhista")];
+        return derivs.filter((d) => d.__derivado?.tipo === t);
       }
       return [...manuais, ...derivs];
     },
-    [tarefasProjeto, derivadas, projetoFiltro, projetos, pessoa, prazosProjId, prazoTipoFiltro],
+    [tarefasProjeto, derivadas, projetoFiltro, projetos, pessoa, prazosProjId, prazoTipoAtivo],
   );
+
+  // Contagem por tipo de prazo (derivados + manuais do projeto Prazos).
+  const prazoCounts = useMemo(() => {
+    const c: Record<string, number> = { conta_fixa: 0, manutencao: 0, prazo_trabalhista: 0, proprio: 0 };
+    derivadas.forEach((d) => { const k = d.__derivado?.tipo; if (k && k in c) c[k] += 1; });
+    const manuais = tarefasPrazos.filter((t) => !ORIGEM_DERIVADA.has(t.origem));
+    c.prazo_trabalhista += manuais.filter((t) => t.tipoPrazo === "trabalhista").length;
+    c.proprio += manuais.filter((t) => t.tipoPrazo !== "trabalhista").length;
+    return c;
+  }, [derivadas, tarefasPrazos]);
 
   // `isMaster` reflete o USER REAL (não a pessoa impersonada). Permissão de
   // master pra usar AdminView/Lixeira/Ver-como vem da identidade autêntica.
@@ -415,12 +439,23 @@ export function TarefasPage() {
           projetos={projetosVisiveis}
           subprojetos={subprojetosVisiveis}
           tarefasProjeto={tarefasProjeto}
+          prazosProjId={prazosProjId}
+          prazoTipos={PRAZO_TIPOS.map(t => ({ ...t, count: prazoCounts[t.key] || 0 }))}
+          prazoTipoAtivo={tab === "projeto" && projetoFiltro === prazosProjId ? prazoTipoAtivo : ""}
+          subPrazosTecnicos={subPrazosTecnicos}
           onAbrirMinhas={() => setTab("minhas")}
           onAbrirProjeto={(pid) => {
+            setPrazoTipoAtivo("");
             if (tab === "projeto" && projetoFiltro === pid) { setTab("minhas"); setSubFiltro(""); }
             else { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(""); }
           }}
-          onAbrirSubprojeto={(pid, sid) => { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(sid); }}
+          onAbrirPrazoTipo={(tipo) => {
+            const jaEm = tab === "projeto" && projetoFiltro === prazosProjId;
+            setTab("projeto"); setProjetoFiltro(prazosProjId); setSubFiltro("");
+            setPrazoTipoAtivo(jaEm && prazoTipoAtivo === tipo ? "" : tipo);
+          }}
+          onAbrirSubprojeto={(pid, sid) => { setPrazoTipoAtivo(""); setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(sid); }}
+          onAbrirSubPrazo={(sid) => { setTab("projeto"); setProjetoFiltro(prazosProjId); setPrazoTipoAtivo("manutencao"); setSubFiltro(sid); }}
         />
 
         <div className="min-w-0">
@@ -537,67 +572,41 @@ export function TarefasPage() {
             )}
           </div>
 
-          {prazosProjId && projetoFiltro === prazosProjId && (() => {
-            const cnt: Record<string, number> = { conta_fixa: 0, manutencao: 0, prazo_trabalhista: 0 };
-            derivadas.forEach((d) => { const t = d.__derivado?.tipo; if (t && t in cnt) cnt[t] += 1; });
-            const manuais = tarefasProjeto.filter((t) => !ORIGEM_DERIVADA.has(t.origem));
-            const proprios = manuais.filter((t) => t.tipoPrazo !== "trabalhista").length;
-            const trabManuais = manuais.filter((t) => t.tipoPrazo === "trabalhista").length;
-            const defs: [string, string, number][] = [
-              ["conta_fixa", "💰 Contas fixas", cnt.conta_fixa],
-              ["manutencao", "🛠️ Técnicos", cnt.manutencao],
-              ["prazo_trabalhista", "🧑‍⚖️ Trabalhistas", cnt.prazo_trabalhista + trabManuais],
-              ["proprio", "✍️ Próprios", proprios],
-            ];
-            const ocultos = defs.filter(([t]) => !prazoTipoFiltro.has(t)).reduce((s, [, , n]) => s + n, 0);
-            const opcoes: [string, () => void][] = [
-              ["✍️ Prazo próprio", () => setNovaAberta({ projetoId: prazosProjId })],
-              ["💰 Conta fixa", () => setCriarContaFixa(true)],
-              ["🛠️ Prazo técnico", () => setCriarManutencao(true)],
-              ["🧑‍⚖️ Prazo trabalhista", () => setNovaAberta({ projetoId: prazosProjId, tipoPrazo: "trabalhista" })],
-            ];
-            return (
-              <div className="flex items-center gap-1.5 flex-wrap mb-3">
-                {defs.map(([t, label, n]) => {
-                  const on = prazoTipoFiltro.has(t);
-                  return (
-                    <button key={t} type="button" onClick={() => togglePrazoTipo(t)}
-                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs font-medium transition-colors ${on ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-400 dark:text-gray-500 line-through decoration-1"}`}>
-                      <span className={on ? "" : "opacity-60"}>{label}</span>
-                      {n > 0 && <span className={`text-[10px] ${on ? "opacity-70" : "opacity-50"}`}>{n}</span>}
-                    </button>
-                  );
-                })}
-                {ocultos > 0 && <span className="text-[11px] text-amber-600 dark:text-amber-400 ml-1">👁️ {ocultos} oculto(s)</span>}
-                <div className="relative ml-auto">
-                  <button type="button" onClick={() => setGerenciarMenuAberto((v) => !v)} className="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">⚙ Gerenciar ▾</button>
-                  {gerenciarMenuAberto && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setGerenciarMenuAberto(false)} />
-                      <div className="absolute right-0 mt-1 z-20 w-52 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
-                        {([["contasFixas", "💰 Contas fixas"], ["manutencoes", "🛠️ Prazos técnicos"], ["prazosTrabalhistas", "🧑‍⚖️ Prazos trabalhistas"]] as [string, string][]).map(([mod, lbl]) => (
-                          <button key={mod} type="button" onClick={() => { setGerenciarMenuAberto(false); navigate(`/r/${ridAtivo}/${mod}`); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-                <div className="relative">
-                  <Button size="sm" onClick={() => setPrazoMenuAberto((v) => !v)}>+ Novo prazo</Button>
-                  {prazoMenuAberto && (
-                    <>
-                      <div className="fixed inset-0 z-10" onClick={() => setPrazoMenuAberto(false)} />
-                      <div className="absolute right-0 mt-1 z-20 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
-                        {opcoes.map(([lbl, fn]) => (
-                          <button key={lbl} type="button" onClick={() => { setPrazoMenuAberto(false); fn(); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
+          {prazosProjId && projetoFiltro === prazosProjId && (
+            <div className="flex items-center justify-end gap-1.5 mb-3">
+              <div className="relative">
+                <button type="button" onClick={() => setGerenciarMenuAberto((v) => !v)} className="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">⚙ Gerenciar ▾</button>
+                {gerenciarMenuAberto && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setGerenciarMenuAberto(false)} />
+                    <div className="absolute right-0 mt-1 z-20 w-52 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
+                      {([["contasFixas", "💰 Contas fixas"], ["manutencoes", "🛠️ Prazos técnicos"], ["prazosTrabalhistas", "🧑‍⚖️ Prazos trabalhistas"]] as [string, string][]).map(([mod, lbl]) => (
+                        <button key={mod} type="button" onClick={() => { setGerenciarMenuAberto(false); navigate(`/r/${ridAtivo}/${mod}`); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
-            );
-          })()}
+              <div className="relative">
+                <Button size="sm" onClick={() => setPrazoMenuAberto((v) => !v)}>+ Novo prazo</Button>
+                {prazoMenuAberto && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setPrazoMenuAberto(false)} />
+                    <div className="absolute right-0 mt-1 z-20 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
+                      {([
+                        ["✍️ Prazo próprio", () => setNovaAberta({ projetoId: prazosProjId })],
+                        ["💰 Conta fixa", () => setCriarContaFixa(true)],
+                        ["🛠️ Prazo técnico", () => setCriarManutencao(true)],
+                        ["🧑‍⚖️ Prazo trabalhista", () => setNovaAberta({ projetoId: prazosProjId, tipoPrazo: "trabalhista" })],
+                      ] as [string, () => void][]).map(([lbl, fn]) => (
+                        <button key={lbl} type="button" onClick={() => { setPrazoMenuAberto(false); fn(); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
           <ProjetoView
             projetos={projetos}
             subprojetos={subprojetos}
@@ -715,7 +724,8 @@ export function TarefasPage() {
 function ProjetosTopBar({
   tabAtual, projetoFiltroAtual, subFiltroAtual, minhasPendentes,
   projetos, subprojetos, tarefasProjeto,
-  onAbrirMinhas, onAbrirProjeto, onAbrirSubprojeto,
+  prazosProjId, prazoTipos, prazoTipoAtivo, subPrazosTecnicos,
+  onAbrirMinhas, onAbrirProjeto, onAbrirPrazoTipo, onAbrirSubprojeto, onAbrirSubPrazo,
 }: {
   tabAtual: string;
   projetoFiltroAtual: string;
@@ -724,13 +734,24 @@ function ProjetosTopBar({
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
   tarefasProjeto: Tarefa[];
+  prazosProjId: string;
+  prazoTipos: { key: string; label: string; emoji: string; count: number }[];
+  prazoTipoAtivo: string;
+  subPrazosTecnicos: TarefaSubprojeto[];
   onAbrirMinhas: () => void;
   onAbrirProjeto: (id: string) => void;
+  onAbrirPrazoTipo: (tipo: string) => void;
   onAbrirSubprojeto: (projetoId: string, subId: string) => void;
+  onAbrirSubPrazo: (subId: string) => void;
 }) {
   const ativas = (ts: Tarefa[]) => ts.filter(t => t.status !== "concluida" && t.status !== "cancelada").length;
-  const subs = tabAtual === "projeto" && projetoFiltroAtual ? subprojetos.filter(s => s.projetoId === projetoFiltroAtual) : [];
+  const emPrazos = !!prazosProjId && tabAtual === "projeto" && projetoFiltroAtual === prazosProjId;
+  // Grupo "Tarefas" = todos os projetos menos o Prazos (que vira grupo próprio).
+  const projTarefas = projetos.filter(p => p.id !== prazosProjId);
+  // Subprojetos só pra projeto normal selecionado (Prazos usa a nav por tipo).
+  const subs = tabAtual === "projeto" && projetoFiltroAtual && !emPrazos ? subprojetos.filter(s => s.projetoId === projetoFiltroAtual) : [];
   const chip = (active: boolean) => `shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-colors ${active ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`;
+  const rotulo = "shrink-0 w-[70px] text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500";
   return (
     <div className="mb-4 space-y-2">
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
@@ -738,7 +759,11 @@ function ProjetosTopBar({
           📥 Minhas tarefas
           {minhasPendentes > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">{minhasPendentes}</span>}
         </button>
-        {projetos.map(p => (
+      </div>
+
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+        <span className={rotulo}>Tarefas</span>
+        {projTarefas.map(p => (
           <button key={p.id} onClick={() => onAbrirProjeto(p.id)} className={chip(tabAtual === "projeto" && projetoFiltroAtual === p.id)} title={p.nome}>
             <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.cor || "#6b7280" }} />
             <span>{p.emoji || "📁"}</span>
@@ -746,7 +771,19 @@ function ProjetosTopBar({
           </button>
         ))}
       </div>
-      {tabAtual === "projeto" && subs.length > 0 && (
+
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+        <button onClick={() => onAbrirPrazoTipo("")} className={`${rotulo} text-left hover:text-indigo-500 ${emPrazos && !prazoTipoAtivo ? "text-indigo-600 dark:text-indigo-300" : ""}`}>Prazos</button>
+        {prazoTipos.map(t => (
+          <button key={t.key} onClick={() => onAbrirPrazoTipo(t.key)} className={chip(emPrazos && prazoTipoAtivo === t.key)} title={t.label}>
+            <span>{t.emoji}</span>
+            <span className="whitespace-nowrap">{t.label}</span>
+            {t.count > 0 && <span className="text-[10px] opacity-60">{t.count}</span>}
+          </button>
+        ))}
+      </div>
+
+      {subs.length > 0 && (
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pl-1">
           {subs.map(s => {
             const ativ = ativas(tarefasProjeto.filter(t => t.subprojetoId === s.id));
@@ -759,6 +796,18 @@ function ProjetosTopBar({
               </button>
             );
           })}
+        </div>
+      )}
+
+      {emPrazos && prazoTipoAtivo === "manutencao" && subPrazosTecnicos.length > 0 && (
+        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pl-1 ml-[70px] border-l-2 border-indigo-300 dark:border-indigo-700">
+          <button onClick={() => onAbrirSubPrazo("")} className={`shrink-0 ml-2 inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs transition-colors ${!subFiltroAtual ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>Todos</button>
+          {subPrazosTecnicos.map(s => (
+            <button key={s.id} onClick={() => onAbrirSubPrazo(s.id)} title={s.nome}
+              className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs transition-colors ${subFiltroAtual === s.id ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+              <span className="whitespace-nowrap">{s.nome}</span>
+            </button>
+          ))}
         </div>
       )}
     </div>
