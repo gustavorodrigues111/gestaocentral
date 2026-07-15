@@ -4040,7 +4040,8 @@ export type CandidaturaTrabalhe = {
   areaInteresse: string;             // texto livre ou lista
   experiencia?: string;              // descrição livre
   disponibilidade?: string;          // "imediato", "30 dias", etc
-  curriculoUrl?: string;             // upload opcional
+  curriculoUrl?: string;             // legado: URL resolvida (uploads internos autenticados)
+  curriculoPath?: string;            // path no Storage; a URL é resolvida no lado do DP (com auth)
   // Atribuição
   responsavelId?: string;
   responsavelNome?: string;

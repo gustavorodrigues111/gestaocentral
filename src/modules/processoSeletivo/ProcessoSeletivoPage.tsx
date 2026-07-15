@@ -18,6 +18,7 @@ import { DiasTabela, CicloDomingoEditor } from "../pessoas/HorariosTab";
 import { emptyDays, validateWorkScheduleDays, getActiveWorkSchedule } from "../../core/escala/horarios";
 import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, PerguntaVaga, Pessoa, Cargo, Empregado, Unidade, WorkSchedule, HorarioDia, SundayCycle } from "../../core/types";
 import { puxarRemuneracao, type RemuneracaoPuxada } from "./remuneracao";
+import { CurriculoLink } from "../_shared/CurriculoLink";
 
 // Empregado completo — o cálculo da gorjeta média (calcularDivisaoDia) precisa
 // de cargoId/períodos de TODOS os empregados, não só id+nome.
@@ -740,7 +741,7 @@ function CandidatoDrawer({ cand, pessoas, podeTriar, podeTransferir, podeAprovar
           {cand.email && <div>✉️ {cand.email}</div>}
           {cand.areaInteresse && <div>🎯 {cand.areaInteresse}</div>}
           {cand.disponibilidade && <div>🗓️ {cand.disponibilidade}</div>}
-          {cand.curriculoUrl && <div>📎 <a href={cand.curriculoUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">Currículo (PDF) ↗</a></div>}
+          {(cand.curriculoUrl || cand.curriculoPath) && <div>📎 <CurriculoLink url={cand.curriculoUrl} path={cand.curriculoPath} className="text-blue-600 hover:underline" /></div>}
         </div>
         {cand.experiencia && <div><div className="text-[11px] font-semibold text-gray-500 uppercase">Experiência</div><p className="text-sm whitespace-pre-wrap text-gray-700 dark:text-gray-200">{cand.experiencia}</p></div>}
         {cand.observacoes && <div><div className="text-[11px] font-semibold text-gray-500 uppercase">Observações do candidato</div><p className="text-sm whitespace-pre-wrap text-gray-700 dark:text-gray-200">{cand.observacoes}</p></div>}

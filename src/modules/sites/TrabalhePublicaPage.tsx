@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { doc, setDoc } from "firebase/firestore";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref as storageRef, uploadBytes } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type { CandidaturaTrabalhe } from "../../core/types";
@@ -61,14 +61,13 @@ export function TrabalhePublicaPage() {
       const id = `cand_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       const now = new Date().toISOString();
 
-      // Upload de currículo (opcional)
-      let curriculoUrl: string | undefined;
+      // Upload de currículo (opcional). Candidato anônimo: NÃO chamamos
+      // getDownloadURL (READ exige auth). Guarda só o path; o DP resolve depois.
+      let curriculoPath: string | undefined;
       if (curriculo) {
         const ext = curriculo.name.split(".").pop()?.toLowerCase() || "pdf";
-        const path = `candidaturas/${rid}/${id}.${ext}`;
-        const r = storageRef(storage, path);
-        const snap = await uploadBytes(r, curriculo, { contentType: curriculo.type });
-        curriculoUrl = await getDownloadURL(snap.ref);
+        curriculoPath = `candidaturas/${rid}/${id}.${ext}`;
+        await uploadBytes(storageRef(storage, curriculoPath), curriculo, { contentType: curriculo.type });
       }
 
       const candidatura: CandidaturaTrabalhe = {
@@ -84,7 +83,7 @@ export function TrabalhePublicaPage() {
         areaInteresse: form.areaInteresse.trim(),
         experiencia: form.experiencia.trim() || undefined,
         disponibilidade: form.disponibilidade.trim() || undefined,
-        curriculoUrl,
+        curriculoPath,
         origem: "publico",
         createdAt: now,
         updatedAt: now,

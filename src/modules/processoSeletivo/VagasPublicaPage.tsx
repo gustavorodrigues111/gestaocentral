@@ -5,7 +5,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { collection, doc, getDoc, getDocs, query, where, setDoc } from "firebase/firestore";
-import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
+import { ref as storageRef, uploadBytes } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type { Vaga, PerguntaVaga, CandidaturaTrabalhe, SiteConfig, HorarioDia, SundayCycle } from "../../core/types";
@@ -166,12 +166,13 @@ export function VagaCandidaturaPage() {
     try {
       let d = whatsapp.replace(/\D/g, ""); if (d.length <= 11) d = "55" + d;
       const id = `cand_${rid}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-      let curriculoUrl: string | undefined;
+      // Candidato é anônimo (sem login). NÃO chamamos getDownloadURL aqui — o
+      // READ do Storage exige auth. Guardamos só o path; o DP resolve a URL.
+      let curriculoPath: string | undefined;
       if (curriculo) {
         const ext = curriculo.name.split(".").pop()?.toLowerCase() || "pdf";
-        const r = storageRef(storage, `candidaturas/${rid}/${id}.${ext}`);
-        const snap = await uploadBytes(r, curriculo, { contentType: curriculo.type });
-        curriculoUrl = await getDownloadURL(snap.ref);
+        curriculoPath = `candidaturas/${rid}/${id}.${ext}`;
+        await uploadBytes(storageRef(storage, curriculoPath), curriculo, { contentType: curriculo.type });
       }
       const respLabels: Record<string, string> = {};
       for (const p of vaga?.perguntas || []) { const v = (respostas[p.id] || "").trim(); if (v) respLabels[p.label] = v; }
@@ -179,7 +180,7 @@ export function VagaCandidaturaPage() {
         id, restaurantId: rid || "", status: "nova", etapa: "nova",
         vagaId: vagaId || null, vagaTitulo: vaga?.titulo || null,
         respostas: Object.keys(respLabels).length ? respLabels : undefined,
-        observacoes: observacoes.trim() || undefined, curriculoUrl,
+        observacoes: observacoes.trim() || undefined, curriculoPath,
         responsavelIds: vaga?.responsavelIds?.length ? vaga.responsavelIds : (vaga?.responsavelId ? [vaga.responsavelId] : undefined),
         responsavelId: (vaga?.responsavelIds?.[0]) || vaga?.responsavelId || undefined, responsavelNome: (vaga?.responsavelNomes?.[0]) || vaga?.responsavelNome || undefined,
         nome: nome.trim(), whatsapp: d, email: email.trim(), areaInteresse: vaga?.area || vaga?.titulo || "",

@@ -4,6 +4,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
+import { CurriculoLink } from "../_shared/CurriculoLink";
 import type { CandidaturaTrabalhe, StatusCandidatura } from "../../core/types";
 
 type Props = {
@@ -254,11 +255,9 @@ function CandidaturaModal({
                   <p className="whitespace-pre-wrap text-gray-700 dark:text-gray-300 mt-0.5">{candidatura.experiencia}</p>
                 </div>
               )}
-              {candidatura.curriculoUrl && (
+              {(candidatura.curriculoUrl || candidatura.curriculoPath) && (
                 <div>
-                  <a href={candidatura.curriculoUrl} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
-                    📄 abrir currículo
-                  </a>
+                  📄 <CurriculoLink url={candidatura.curriculoUrl} path={candidatura.curriculoPath} label="abrir currículo" className="text-indigo-600 hover:underline" />
                 </div>
               )}
             </div>
