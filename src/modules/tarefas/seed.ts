@@ -33,8 +33,8 @@ const SUBPROJETOS: Array<Omit<TarefaSubprojeto, "criadoEm" | "atualizadoEm" | "c
   { id: "sub-pessoas-demissao",      projetoId: "proj-pessoas-rot", nome: "Demissão", auto: true, gatilho: "Início de processo de desligamento", campos: "Empresa(s) · Iniciativa · Aviso prévio", pastaDriveTemplate: "[Empresa]/Pessoas/Empregados Desligados/[Nome]", ordem: 2, ativo: true },
   { id: "sub-pessoas-alteracoes",    projetoId: "proj-pessoas-rot", nome: "Alterações Contratuais", auto: true, gatilho: "Promoção / mudança de cargo / aditivo", campos: "Empresa · Tipo · Vigência", ordem: 3, ativo: true },
   { id: "sub-pessoas-ferias",        projetoId: "proj-pessoas-rot", nome: "Férias", auto: true, gatilho: "Férias programadas", campos: "Empresa(s) · Período · Dias · Compra de dias?", ordem: 4, ativo: true },
-  { id: "sub-pessoas-experiencia",   projetoId: "proj-pessoas-rot", nome: "Prazos de Experiência (45/90)", auto: true, gatilho: "Calculado automaticamente da data de admissão", campos: "Empresa · Etapa · Decisão", ordem: 5, ativo: true },
-  { id: "sub-pessoas-prazos",        projetoId: "proj-pessoas-rot", nome: "Prazos do Empregado", auto: true, gatilho: "Cálculo automático a partir do cadastro", campos: "Empresa · Tipo (exame/aniversário aquisitivo)", ordem: 6, ativo: true },
+  // Removidos: "Prazos de Experiência (45/90)" e "Prazos do Empregado" — viraram
+  // prazos trabalhistas DERIVADOS ao vivo, mostrados em Gestor › Prazos › Trabalhistas.
   { id: "sub-pessoas-disciplinares", projetoId: "proj-pessoas-rot", nome: "Disciplinares", auto: true, gatilho: "Registro de advertência/suspensão", campos: "Empresa · Tipo · Motivo", ordem: 7, ativo: true },
   { id: "sub-pessoas-licencas",      projetoId: "proj-pessoas-rot", nome: "Licenças", auto: true, gatilho: "Início de licença (atestado/parto/INSS)", campos: "Empresa · Tipo · Período", ordem: 8, ativo: true },
   { id: "sub-pessoas-folha",         projetoId: "proj-pessoas-rot", nome: "Folha de Pagamento (Adiantamento + Salário)", auto: true, gatilho: "Recorrente — Adiantamento (dia 20) + Salário (5º dia útil)", campos: "Empresa(s) · Mês/Ano · Tipo (adiantamento/salário)", ordem: 9, ativo: true },
@@ -42,7 +42,7 @@ const SUBPROJETOS: Array<Omit<TarefaSubprojeto, "criadoEm" | "atualizadoEm" | "c
   { id: "sub-pessoas-portal",        projetoId: "proj-pessoas-dem", nome: "Demandas de Empregados (futuro)", auto: true, gatilho: "Empregado abre demanda pelo portal", campos: "Empregado · Categoria · Restaurante · Urgência", ordem: 1, ativo: true },
   { id: "sub-pessoas-internas",      projetoId: "proj-pessoas-dem", nome: "Demandas Internas DP", auto: false, ordem: 2, ativo: true },
   // Financeiro - Rotinas
-  { id: "sub-financ-contas",         projetoId: "proj-financ-rot",  nome: "Contas Fixas Mensais", auto: true, gatilho: "Gerado pelo cadastro mestre 'Contas Fixas'. Cada conta cria sua tarefa-lembrete X dias antes do vencimento.", campos: "Empresa(s) · Categoria · Dia · Valor estimado", ordem: 1, ativo: true },
+  // Removido: "Contas Fixas Mensais" — virou prazo DERIVADO em Prazos › Contas.
   { id: "sub-financ-fechamento",     projetoId: "proj-financ-rot",  nome: "Fechamento Financeiro Mensal", auto: true, gatilho: "Início de cada mês (recorrência)", campos: "Mês/Ano · Restaurantes envolvidos", ordem: 2, ativo: true },
   { id: "sub-financ-caixas",         projetoId: "proj-financ-rot",  nome: "Fechamento de Caixas", auto: true, gatilho: "Toda segunda-feira", campos: "Restaurante · Semana", ordem: 3, ativo: true },
   { id: "sub-financ-guias",          projetoId: "proj-financ-rot",  nome: "Guias de Imposto", auto: false, campos: "Empresa · Tipo · Mês competência", ordem: 4, ativo: true },

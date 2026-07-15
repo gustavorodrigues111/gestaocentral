@@ -60,7 +60,6 @@ import { ProrrogarContratoModal } from "../admissao/ProrrogarContratoModal";
 import { AcaoModal as PrazoTrabModal, computarPrazosTrab, resolverPrazoTrab, desresolverPrazoTrab, baixarExameTrab, type Item as PrazoTrabItem } from "../prazosTrabalhistas/PrazosTrabalhistasPage";
 import { ContaFixaDetalheModal } from "../contasFixas/ContaFixaDetalheModal";
 
-const SUBPROJETO_PRAZOS_TRAB = "sub-pessoas-experiencia";
 import { podeVerTarefa, podeVerProjeto, isConfidencial } from "./visibilidade";
 import { parseCSV, mapearLinhas, executarImport, detectarOrfas } from "./importador";
 import type { LinhaImportada } from "./importador";
@@ -299,9 +298,10 @@ export function TarefasPage() {
   const derivadas = useMemo(() => {
     if (!pessoa) return [];
     const hoje = new Date().toISOString().slice(0, 10);
-    const subPT = subprojetos.find((s) => s.id === SUBPROJETO_PRAZOS_TRAB);
-    const prazosTrab = subPT
-      ? derivarPrazosTrab(computarPrazosTrab(empregadosTrab, examesTrab, entregasTrab, hoje), hoje, resolvidosTrab, subPT.projetoId, subPT.id, setPrazoTrabAberto)
+    // Trabalhistas: derivados direto pro projeto Prazos (sem depender de um
+    // subprojeto âncora — o antigo "Prazos de Experiência" foi aposentado).
+    const prazosTrab = prazosProjId
+      ? derivarPrazosTrab(computarPrazosTrab(empregadosTrab, examesTrab, entregasTrab, hoje), hoje, resolvidosTrab, prazosProjId, "", setPrazoTrabAberto)
       : [];
     const all = [
       ...derivarContasFixas(contasFixas, hoje, (conta, cmp) => setContaFixaAberta({ conta, cmp })),
@@ -309,7 +309,7 @@ export function TarefasPage() {
       ...prazosTrab,
     ];
     return prazosProjId ? all.map((d): Tarefa => ({ ...d, projetoId: prazosProjId })) : all;
-  }, [contasFixas, manutencoes, empregadosTrab, examesTrab, entregasTrab, resolvidosTrab, subprojetos, pessoa, prazosProjId]);
+  }, [contasFixas, manutencoes, empregadosTrab, examesTrab, entregasTrab, resolvidosTrab, pessoa, prazosProjId]);
   // "Minhas": esconde as cópias persistidas antigas (origem conta_fixa) e injeta
   // os derivados dos quais sou responsável-padrão.
   const minhasComDerivados = useMemo(
