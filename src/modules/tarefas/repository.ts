@@ -69,6 +69,27 @@ export async function contarTarefasDoSubprojeto(subId: string): Promise<number> 
   return s.size;
 }
 
+// Cleanup 1x: desativa (ativo:false) os subprojetos que viraram PRAZOS derivados
+// (experiência, prazos do empregado → Prazos Trabalhistas; contas fixas mensais
+// → Prazos Contas). NÃO apaga tarefa nenhuma — só some da lista de subprojetos.
+// Devolve o que mexeu + quantas tarefas manuais ainda existiam em cada (pra
+// avisar; elas continuam no projeto, acessíveis em "todos os subprojetos").
+const SUBPROJETOS_PRAZOS_APOSENTADOS = ["sub-pessoas-experiencia", "sub-pessoas-prazos", "sub-financ-contas"];
+export async function limparSubprojetosPrazos(): Promise<{ id: string; nome: string; tarefas: number }[]> {
+  const out: { id: string; nome: string; tarefas: number }[] = [];
+  for (const id of SUBPROJETOS_PRAZOS_APOSENTADOS) {
+    const ref = doc(db, COL_SUBPROJETOS, id);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) continue;
+    const d = snap.data() as { nome?: string; ativo?: boolean };
+    if (d.ativo === false) continue;   // já desativado
+    const tarefas = await contarTarefasDoSubprojeto(id);
+    await updateDoc(ref, { ativo: false, atualizadoEm: new Date().toISOString() });
+    out.push({ id, nome: d.nome || id, tarefas });
+  }
+  return out;
+}
+
 // Move um subprojeto pra outro projeto e cascateia: atualiza projetoId +
 // corHerdada de TODAS as tarefas que pertenciam ao subprojeto. Mantém o
 // subprojetoId (mesma referência) — só re-aponta o projeto pai.

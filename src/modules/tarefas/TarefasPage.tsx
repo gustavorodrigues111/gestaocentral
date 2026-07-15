@@ -20,7 +20,7 @@ import {
   ouvirLixeira, ouvirTodasTarefas, criarTarefa, mudarStatus, softDeleteTarefa, restaurarTarefa,
   marcarSubtarefa, adicionarComentario, atualizarTarefa,
   salvarProjeto, salvarSubprojeto, CamposObrigatoriosFaltantesError,
-  migrarGruposParaPrivadoLegado, aposentarCaixaPessoal,
+  migrarGruposParaPrivadoLegado, aposentarCaixaPessoal, limparSubprojetosPrazos,
   contarTarefasDoSubprojeto, moverSubprojetoParaProjeto,
   ouvirAutomacoes, salvarAutomacao, propagarAutomacaoEmAbertas,
 } from "./repository";
@@ -210,6 +210,28 @@ export function TarefasPage() {
         }
       })
       .catch(e => console.warn("[tarefas] migração falhou:", e));
+  }, [pessoaReal?.isMaster]);
+
+  // Cleanup 1x: desativa os subprojetos que viraram prazos derivados
+  // (experiência, prazos do empregado, contas fixas mensais). Não apaga tarefas.
+  useEffect(() => {
+    if (!pessoaReal?.isMaster) return;
+    const FLAG = "tarefas_limpou_subprazos_v1";
+    try { if (localStorage.getItem(FLAG) === "1") return; } catch { /* ignore */ }
+    limparSubprojetosPrazos()
+      .then(r => {
+        try { localStorage.setItem(FLAG, "1"); } catch { /* ignore */ }
+        if (r.length) {
+          const comTarefas = r.filter(x => x.tarefas > 0);
+          console.log("[tarefas] subprojetos de prazos desativados:", r);
+          const base = `✅ Limpeza: ${r.length} subprojeto(s) de prazos desativados (viraram cards derivados no grupo Prazos). Nenhuma tarefa foi apagada.`;
+          const aviso = comTarefas.length
+            ? `\n\n⚠️ ${comTarefas.map(x => `"${x.nome}" ainda tinha ${x.tarefas} tarefa(s)`).join("; ")} — elas continuam no projeto (em "todos os subprojetos"), não foram perdidas.`
+            : "";
+          alert(base + aviso);
+        }
+      })
+      .catch(e => console.warn("[tarefas] limpeza de subprazos falhou:", e));
   }, [pessoaReal?.isMaster]);
 
   // Migração 1x: remove projeto "Caixa Pessoal" (substituído por Banco de Ideias).
