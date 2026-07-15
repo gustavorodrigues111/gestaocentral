@@ -4,7 +4,7 @@
 // Caixa POR USUÁRIO: Minhas Tarefas = onde sou responsável OU co-responsável,
 // independente do restaurante selecionado no topo.
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, type ReactNode } from "react";
 import { Navigate, useNavigate } from "react-router-dom";
 import { ContaFixaForm } from "../contasFixas/ContasFixasPage";
 import { ManutencaoForm } from "../manutencoes/ManutencoesPage";
@@ -392,17 +392,52 @@ export function TarefasPage() {
     return <Navigate to="/" replace />;
   }
 
+  // Ações fixas (na linha do seletor de visão): Nova tarefa sempre; Novo prazo +
+  // Gerenciar só quando você está no grupo Prazos.
+  const emPrazosView = !!prazosProjId && tab === "projeto" && projetoFiltro === prazosProjId;
+  const acoesHeader = (
+    <div className="flex items-center gap-1.5 shrink-0">
+      <Button size="sm" onClick={() => setNovaAberta({})}>+ Nova tarefa</Button>
+      {emPrazosView && (
+        <>
+          <div className="relative">
+            <Button size="sm" variant="secondary" onClick={() => setPrazoMenuAberto((v) => !v)}>+ Novo prazo</Button>
+            {prazoMenuAberto && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setPrazoMenuAberto(false)} />
+                <div className="absolute right-0 mt-1 z-20 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
+                  {([
+                    ["✍️ Prazo próprio", () => setNovaAberta({ projetoId: prazosProjId })],
+                    ["💰 Conta fixa", () => setCriarContaFixa(true)],
+                    ["🛠️ Prazo técnico", () => setCriarManutencao(true)],
+                    ["🧑‍⚖️ Prazo trabalhista", () => setNovaAberta({ projetoId: prazosProjId, tipoPrazo: "trabalhista" })],
+                  ] as [string, () => void][]).map(([lbl, fn]) => (
+                    <button key={lbl} type="button" onClick={() => { setPrazoMenuAberto(false); fn(); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+          <div className="relative">
+            <button type="button" onClick={() => setGerenciarMenuAberto((v) => !v)} className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">⚙ Gerenciar ▾</button>
+            {gerenciarMenuAberto && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setGerenciarMenuAberto(false)} />
+                <div className="absolute right-0 mt-1 z-20 w-52 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
+                  {([["contasFixas", "💰 Contas fixas"], ["manutencoes", "🛠️ Prazos técnicos"], ["prazosTrabalhistas", "🧑‍⚖️ Prazos trabalhistas"]] as [string, string][]).map(([mod, lbl]) => (
+                    <button key={mod} type="button" onClick={() => { setGerenciarMenuAberto(false); navigate(`/r/${ridAtivo}/${mod}`); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+
   return (
     <div className="max-w-7xl mx-auto p-3 sm:p-4">
-      <header className="flex items-center gap-2 sm:gap-3 mb-3 sm:mb-4">
-        <div className="flex-1" />
-        <Button
-          onClick={() => setNovaAberta({})}
-          className="whitespace-nowrap text-xs sm:text-sm px-3 sm:px-4 py-1.5 sm:py-2"
-        >
-          + Nova<span className="hidden sm:inline"> Tarefa</span>
-        </Button>
-      </header>
 
       {/* Banner "Visualizando como…" — só renderiza quando master ativou
           a impersonação. Indica claramente que o conteúdo abaixo é o que
@@ -482,6 +517,8 @@ export function TarefasPage() {
               </>
             )}
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
+            <div className="flex-1" />
+            {acoesHeader}
           </div>
           {viewMinhas === "calendario" && (
             <CalendarioView
@@ -526,6 +563,8 @@ export function TarefasPage() {
             <button type="button" onClick={() => setTab("minhas")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">← Minhas</button>
             <span className="mx-1 h-5 w-px bg-gray-200 dark:bg-gray-700" />
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
+            <div className="flex-1" />
+            {acoesHeader}
           </div>
           {viewMinhas === "calendario" && (
             <CalendarioView tarefas={todasComDerivados} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} />
@@ -572,41 +611,6 @@ export function TarefasPage() {
             )}
           </div>
 
-          {prazosProjId && projetoFiltro === prazosProjId && (
-            <div className="flex items-center justify-end gap-1.5 mb-3">
-              <div className="relative">
-                <button type="button" onClick={() => setGerenciarMenuAberto((v) => !v)} className="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">⚙ Gerenciar ▾</button>
-                {gerenciarMenuAberto && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setGerenciarMenuAberto(false)} />
-                    <div className="absolute right-0 mt-1 z-20 w-52 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
-                      {([["contasFixas", "💰 Contas fixas"], ["manutencoes", "🛠️ Prazos técnicos"], ["prazosTrabalhistas", "🧑‍⚖️ Prazos trabalhistas"]] as [string, string][]).map(([mod, lbl]) => (
-                        <button key={mod} type="button" onClick={() => { setGerenciarMenuAberto(false); navigate(`/r/${ridAtivo}/${mod}`); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-              <div className="relative">
-                <Button size="sm" onClick={() => setPrazoMenuAberto((v) => !v)}>+ Novo prazo</Button>
-                {prazoMenuAberto && (
-                  <>
-                    <div className="fixed inset-0 z-10" onClick={() => setPrazoMenuAberto(false)} />
-                    <div className="absolute right-0 mt-1 z-20 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
-                      {([
-                        ["✍️ Prazo próprio", () => setNovaAberta({ projetoId: prazosProjId })],
-                        ["💰 Conta fixa", () => setCriarContaFixa(true)],
-                        ["🛠️ Prazo técnico", () => setCriarManutencao(true)],
-                        ["🧑‍⚖️ Prazo trabalhista", () => setNovaAberta({ projetoId: prazosProjId, tipoPrazo: "trabalhista" })],
-                      ] as [string, () => void][]).map(([lbl, fn]) => (
-                        <button key={lbl} type="button" onClick={() => { setPrazoMenuAberto(false); fn(); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
-                      ))}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
-          )}
           <ProjetoView
             projetos={projetos}
             subprojetos={subprojetos}
@@ -618,6 +622,7 @@ export function TarefasPage() {
             onChangeView={setViewProjeto}
             autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
             onNovaTarefa={(opts) => setNovaAberta(opts)}
+            acoes={acoesHeader}
           />
         </>
       )}
@@ -755,14 +760,11 @@ function ProjetosTopBar({
   return (
     <div className="mb-4 space-y-2">
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
+        <span className={rotulo}>Tarefas</span>
         <button onClick={onAbrirMinhas} className={chip(tabAtual === "minhas")}>
-          📥 Minhas tarefas
+          📥 Minhas
           {minhasPendentes > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">{minhasPendentes}</span>}
         </button>
-      </div>
-
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-        <span className={rotulo}>Tarefas</span>
         {projTarefas.map(p => (
           <button key={p.id} onClick={() => onAbrirProjeto(p.id)} className={chip(tabAtual === "projeto" && projetoFiltroAtual === p.id)} title={p.nome}>
             <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.cor || "#6b7280" }} />
@@ -773,7 +775,10 @@ function ProjetosTopBar({
       </div>
 
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-        <button onClick={() => onAbrirPrazoTipo("")} className={`${rotulo} text-left hover:text-indigo-500 ${emPrazos && !prazoTipoAtivo ? "text-indigo-600 dark:text-indigo-300" : ""}`}>Prazos</button>
+        <span className={rotulo}>Prazos</span>
+        <button onClick={() => onAbrirPrazoTipo("")} className={chip(emPrazos && !prazoTipoAtivo)}>
+          <span className="whitespace-nowrap">Todos</span>
+        </button>
         {prazoTipos.map(t => (
           <button key={t.key} onClick={() => onAbrirPrazoTipo(t.key)} className={chip(emPrazos && prazoTipoAtivo === t.key)} title={t.label}>
             <span>{t.emoji}</span>
@@ -1250,7 +1255,7 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
 
 // ─── VIEW: Por Projeto ────────────────────────────────────────────────────
 
-function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas, onAbrir, view, onChangeView, autor, onNovaTarefa }: {
+function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas, onAbrir, view, onChangeView, autor, onNovaTarefa, acoes }: {
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
   projetoFiltro: string;
@@ -1264,6 +1269,7 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
   // Abre modal de nova tarefa já com prazo/projeto/subprojeto pré-preenchidos
   // — usado pelos botões "+ Nova tarefa" nas colunas do calendário.
   onNovaTarefa: (opts: { prazo?: string; projetoId?: string; subprojetoId?: string }) => void;
+  acoes?: ReactNode;
 }) {
   const proj = projetos.find(p => p.id === projetoFiltro);
   const subsDoProj = subprojetos.filter(s => s.projetoId === projetoFiltro);
@@ -1284,13 +1290,16 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
           </div>
         ) : (
           <>
-            <div className="mb-3 flex items-baseline gap-2 flex-wrap">
+            <div className="mb-3 flex items-center gap-x-3 gap-y-2 flex-wrap">
               <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
                 {proj.emoji} {proj.nome}{subAtual && <span className="text-gray-400 dark:text-gray-500 font-normal"> · {subAtual.nome}</span>}
               </h2>
               <span className="text-sm text-gray-500 dark:text-gray-400">
                 {tarefasFiltradas.length} tarefa(s) · {ativas(tarefasFiltradas)} ativas
               </span>
+              <div className="[&>div]:!mb-0"><ViewSwitcher value={view} onChange={onChangeView} /></div>
+              <div className="flex-1" />
+              {acoes}
             </div>
 
             {/* Banner pra subprojeto automático/bloqueado — explica como
@@ -1303,8 +1312,6 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
                 restTravadoId={subAtual.moduloOrigemRestaurantId}
               />
             )}
-
-            <ViewSwitcher value={view} onChange={onChangeView} />
             {view === "lista" && (
               <ProjetoListaView
                 projeto={proj}
@@ -2827,15 +2834,10 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
               📭 Sem data ({semProprio.length})
             </span>
           )}
-          <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-400 cursor-pointer">
-            <input
-              type="checkbox"
-              checked={expandirFds}
-              onChange={(e) => setExpandirFds(e.target.checked)}
-              className="accent-indigo-600"
-            />
-            Expandir fim de semana
-          </label>
+          <button type="button" onClick={() => setExpandirFds(!expandirFds)} title="Mostrar sábado e domingo"
+            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs transition-colors ${expandirFds ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+            📅 Sáb+Dom
+          </button>
           <span className="text-xs text-gray-500 dark:text-gray-400">{totalSemana} tarefa(s)</span>
         </div>
       </div>
