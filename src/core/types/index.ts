@@ -4468,6 +4468,9 @@ export type Tarefa = {
   id: string;
   projetoId: string;
   subprojetoId: string;
+  // Etiqueta opcional pra tarefas no projeto Prazos: "trabalhista" faz um prazo
+  // manual cair no chip 🧑‍⚖️ Trabalhistas em vez de ✍️ Próprios.
+  tipoPrazo?: "trabalhista";
   titulo: string;
   descricao?: string;
   responsavelId: string;

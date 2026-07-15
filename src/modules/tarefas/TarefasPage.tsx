@@ -176,6 +176,7 @@ export function TarefasPage() {
   const [contaFixaAberta, setContaFixaAberta] = useState<{ conta: ContaFixa; cmp: string } | null>(null);
   // "+ Novo prazo" no projeto Prazos: menu de escolha + forms de criação inline.
   const [prazoMenuAberto, setPrazoMenuAberto] = useState(false);
+  const [gerenciarMenuAberto, setGerenciarMenuAberto] = useState(false);
   const [criarContaFixa, setCriarContaFixa] = useState(false);
   const [criarManutencao, setCriarManutencao] = useState(false);
   const [enderecos, setEnderecos] = useState<Endereco[]>([]);
@@ -183,7 +184,7 @@ export function TarefasPage() {
   // Modal de nova tarefa. Aceita pré-preenchimento de prazo, projeto e
   // subprojeto pra fluxos diferentes (botão por dia, "+ Nova tarefa" dentro
   // de um projeto, etc.).
-  const [novaAberta, setNovaAberta] = useState<{ prazo?: string; projetoId?: string; subprojetoId?: string } | null>(null);
+  const [novaAberta, setNovaAberta] = useState<{ prazo?: string; projetoId?: string; subprojetoId?: string; tipoPrazo?: "trabalhista" } | null>(null);
   const [detalheId, setDetalheId] = useState<string | null>(null);
 
   // Ouvir projetos + subprojetos
@@ -318,10 +319,12 @@ export function TarefasPage() {
     () => {
       const manuais = tarefasProjeto.filter((t) => !ORIGEM_DERIVADA.has(t.origem) && podeVerTarefa(t, projetos.find((p) => p.id === t.projetoId), pessoa));
       const derivs = derivadas.filter((d) => d.projetoId === projetoFiltro);
-      // No projeto Prazos: aplica os chips de tipo (próprios = tarefas manuais).
+      // No projeto Prazos: aplica os chips de tipo. Tarefas manuais com
+      // tipoPrazo="trabalhista" caem no chip 🧑‍⚖️; as demais em ✍️ Próprios.
       if (prazosProjId && projetoFiltro === prazosProjId) {
         return [
-          ...(prazoTipoFiltro.has("proprio") ? manuais : []),
+          ...(prazoTipoFiltro.has("proprio") ? manuais.filter((t) => t.tipoPrazo !== "trabalhista") : []),
+          ...(prazoTipoFiltro.has("prazo_trabalhista") ? manuais.filter((t) => t.tipoPrazo === "trabalhista") : []),
           ...derivs.filter((d) => d.__derivado && prazoTipoFiltro.has(d.__derivado.tipo)),
         ];
       }
@@ -537,11 +540,13 @@ export function TarefasPage() {
           {prazosProjId && projetoFiltro === prazosProjId && (() => {
             const cnt: Record<string, number> = { conta_fixa: 0, manutencao: 0, prazo_trabalhista: 0 };
             derivadas.forEach((d) => { const t = d.__derivado?.tipo; if (t && t in cnt) cnt[t] += 1; });
-            const proprios = tarefasProjeto.filter((t) => !ORIGEM_DERIVADA.has(t.origem)).length;
+            const manuais = tarefasProjeto.filter((t) => !ORIGEM_DERIVADA.has(t.origem));
+            const proprios = manuais.filter((t) => t.tipoPrazo !== "trabalhista").length;
+            const trabManuais = manuais.filter((t) => t.tipoPrazo === "trabalhista").length;
             const defs: [string, string, number][] = [
               ["conta_fixa", "💰 Contas fixas", cnt.conta_fixa],
               ["manutencao", "🛠️ Técnicos", cnt.manutencao],
-              ["prazo_trabalhista", "🧑‍⚖️ Trabalhistas", cnt.prazo_trabalhista],
+              ["prazo_trabalhista", "🧑‍⚖️ Trabalhistas", cnt.prazo_trabalhista + trabManuais],
               ["proprio", "✍️ Próprios", proprios],
             ];
             const ocultos = defs.filter(([t]) => !prazoTipoFiltro.has(t)).reduce((s, [, , n]) => s + n, 0);
@@ -549,7 +554,7 @@ export function TarefasPage() {
               ["✍️ Prazo próprio", () => setNovaAberta({ projetoId: prazosProjId })],
               ["💰 Conta fixa", () => setCriarContaFixa(true)],
               ["🛠️ Prazo técnico", () => setCriarManutencao(true)],
-              ["🧑‍⚖️ Trabalhista (via Admissão)", () => navigate(`/r/${ridAtivo}/admissao`)],
+              ["🧑‍⚖️ Prazo trabalhista", () => setNovaAberta({ projetoId: prazosProjId, tipoPrazo: "trabalhista" })],
             ];
             return (
               <div className="flex items-center gap-1.5 flex-wrap mb-3">
@@ -565,6 +570,19 @@ export function TarefasPage() {
                 })}
                 {ocultos > 0 && <span className="text-[11px] text-amber-600 dark:text-amber-400 ml-1">👁️ {ocultos} oculto(s)</span>}
                 <div className="relative ml-auto">
+                  <button type="button" onClick={() => setGerenciarMenuAberto((v) => !v)} className="text-[11px] font-medium px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">⚙ Gerenciar ▾</button>
+                  {gerenciarMenuAberto && (
+                    <>
+                      <div className="fixed inset-0 z-10" onClick={() => setGerenciarMenuAberto(false)} />
+                      <div className="absolute right-0 mt-1 z-20 w-52 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
+                        {([["contasFixas", "💰 Contas fixas"], ["manutencoes", "🛠️ Prazos técnicos"], ["prazosTrabalhistas", "🧑‍⚖️ Prazos trabalhistas"]] as [string, string][]).map(([mod, lbl]) => (
+                          <button key={mod} type="button" onClick={() => { setGerenciarMenuAberto(false); navigate(`/r/${ridAtivo}/${mod}`); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
+                <div className="relative">
                   <Button size="sm" onClick={() => setPrazoMenuAberto((v) => !v)}>+ Novo prazo</Button>
                   {prazoMenuAberto && (
                     <>
@@ -622,6 +640,7 @@ export function TarefasPage() {
           prazoInicial={novaAberta.prazo}
           projetoIdInicial={novaAberta.projetoId}
           subprojetoIdInicial={novaAberta.subprojetoId}
+          tipoPrazoInicial={novaAberta.tipoPrazo}
         />
       )}
 
@@ -2982,7 +3001,7 @@ function LixeiraView({ tarefas, projetos, autor }: {
 
 // ─── MODAL: Nova Tarefa ───────────────────────────────────────────────────
 
-function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaId, pessoaNome, prazoInicial, projetoIdInicial, subprojetoIdInicial }: {
+function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaId, pessoaNome, prazoInicial, projetoIdInicial, subprojetoIdInicial, tipoPrazoInicial }: {
   onClose: () => void;
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
@@ -2992,6 +3011,7 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
   prazoInicial?: string;
   projetoIdInicial?: string;
   subprojetoIdInicial?: string;
+  tipoPrazoInicial?: "trabalhista";
 }) {
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
@@ -3079,7 +3099,9 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
     || (responsavelId === pessoaId ? pessoaNome : "");
 
   // Validação: título, projeto, subprojeto, prazo e responsável elegível.
-  const formValido = !!titulo.trim() && !!projetoId && !!subprojetoId && !!prazo && !!responsavelId && responsavelEhElegivel;
+  // Subprojeto só é obrigatório quando o projeto tem algum manual-criável
+  // (ex: projeto Prazos pode não ter → cria na raiz).
+  const formValido = !!titulo.trim() && !!projetoId && (subsDoProjeto.length === 0 || !!subprojetoId) && !!prazo && !!responsavelId && responsavelEhElegivel;
 
   function salvar() {
     if (!formValido) return;
@@ -3097,6 +3119,7 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
       : undefined;
     const payload = {
       projetoId, subprojetoId, titulo,
+      tipoPrazo: tipoPrazoInicial || undefined,
       descricao: descricao || undefined,
       responsavelId, responsavelNome,
       coResponsaveis: coResponsaveisIds.length ? coResponsaveisIds : undefined,
