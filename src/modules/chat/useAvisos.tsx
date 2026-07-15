@@ -440,6 +440,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       }
     }
     for (const [r, g] of manutGrp) {
+      // Gate: só recebe aviso de Manutenções quem pode VER o módulo nessa empresa.
+      if (!pessoa || !canAcao(pessoa, r, "manutencoes", "ver", perfis)) continue;
       const partes: string[] = [];
       if (g.vencidas) partes.push(`${g.vencidas} vencida${g.vencidas === 1 ? "" : "s"}`);
       if (g.laudoAtras) partes.push(`${g.laudoAtras} laudo${g.laudoAtras === 1 ? "" : "s"} atrasado${g.laudoAtras === 1 ? "" : "s"}`);
@@ -494,6 +496,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     }
     for (const [k, g] of trabGrp) {
       const [r, cat] = k.split("|");
+      // Gate: só recebe aviso de prazos trabalhistas quem pode VER o módulo aqui.
+      if (!pessoa || !canAcao(pessoa, r, "prazosTrabalhistas", "ver", perfis)) continue;
       const meta = TRAB_META[cat] || { icone: "🧑‍⚖️", titulo: "Prazos Trabalhistas" };
       const partes: string[] = [];
       if (g.venc) partes.push(`${g.venc} vencido${g.venc === 1 ? "" : "s"}`);
