@@ -20,7 +20,7 @@ import {
   ouvirLixeira, ouvirTodasTarefas, criarTarefa, mudarStatus, softDeleteTarefa, restaurarTarefa,
   marcarSubtarefa, adicionarComentario, atualizarTarefa,
   salvarProjeto, salvarSubprojeto, CamposObrigatoriosFaltantesError,
-  migrarGruposParaPrivadoLegado, aposentarCaixaPessoal, limparSubprojetosPrazos,
+  migrarGruposParaPrivadoLegado, aposentarCaixaPessoal, limparSubprojetosPrazos, reorganizarGestorTarefas,
   contarTarefasDoSubprojeto, moverSubprojetoParaProjeto,
   ouvirAutomacoes, salvarAutomacao, propagarAutomacaoEmAbertas,
 } from "./repository";
@@ -233,6 +233,28 @@ export function TarefasPage() {
       })
       .catch(e => console.warn("[tarefas] limpeza de subprazos falhou:", e));
   }, [pessoaReal?.isMaster]);
+
+  // Reorganização 1x: destrava rotinas recorrentes, apaga event-driven sem
+  // sentido no Gestor, e mescla Eventos → Operação.
+  useEffect(() => {
+    if (!pessoaReal?.isMaster) return;
+    const FLAG = "tarefas_reorganizou_v1";
+    try { if (localStorage.getItem(FLAG) === "1") return; } catch { /* ignore */ }
+    reorganizarGestorTarefas(pessoaReal?.id || "")
+      .then(r => {
+        try { localStorage.setItem(FLAG, "1"); } catch { /* ignore */ }
+        console.log("[tarefas] reorganização:", r);
+        const partes: string[] = [];
+        if (r.destravados) partes.push(`${r.destravados} rotina(s) destravada(s) (agora editáveis)`);
+        if (r.apagados.length) {
+          const comT = r.apagados.filter(x => x.tarefas > 0);
+          partes.push(`${r.apagados.length} subprojeto(s) event-driven removido(s)${comT.length ? ` (${comT.map(x => `"${x.nome}" tinha ${x.tarefas} tarefa(s), continuam no projeto`).join("; ")})` : ""}`);
+        }
+        if (r.eventos) partes.push(`Eventos mesclado em ${r.eventos.operacao}: ${r.eventos.subs} subprojeto(s) + ${r.eventos.tarefas} tarefa(s) movidas`);
+        if (partes.length) alert("✅ Reorganização do Gestor:\n\n• " + partes.join("\n• ") + "\n\nNenhuma tarefa foi apagada.");
+      })
+      .catch(e => console.warn("[tarefas] reorganização falhou:", e));
+  }, [pessoaReal?.isMaster, pessoaReal?.id]);
 
   // Migração 1x: remove projeto "Caixa Pessoal" (substituído por Banco de Ideias).
   useEffect(() => {

@@ -18,7 +18,7 @@ const PROJETOS: Array<Omit<TarefaProjeto, "criadoEm" | "atualizadoEm" | "criadoP
   { id: "proj-financ-dem",    nome: "Financeiro — Demandas",emoji: "💰", cor: "#10b981", dono: "system", visibilidade: "privado", tipo: "demanda", ordem: 4,  ativo: true },
   { id: "proj-diretoria-rot", nome: "Diretoria — Rotinas", emoji: "🎩", cor: "#8b5cf6", dono: "system", visibilidade: "privado", tipo: "rotina",  ordem: 5,  ativo: true },
   { id: "proj-diretoria-dem", nome: "Diretoria — Demandas",emoji: "🎩", cor: "#8b5cf6", dono: "system", visibilidade: "privado", tipo: "demanda", ordem: 6,  ativo: true },
-  { id: "proj-eventos",       nome: "Eventos",             emoji: "🎉", cor: "#ec4899", dono: "system", visibilidade: "escritorio",tipo: "misto",   ordem: 7,  ativo: true },
+  // "proj-eventos" removido — mesclado em Operação (subprojetos 🎉 movidos).
   { id: "proj-operacao-rot",  nome: "Operação — Rotinas",  emoji: "🍳", cor: "#f97316", dono: "system", visibilidade: "privado", tipo: "rotina",  ordem: 8,  ativo: true },
   { id: "proj-operacao-dem",  nome: "Operação — Demandas", emoji: "🍳", cor: "#f97316", dono: "system", visibilidade: "privado", tipo: "demanda", ordem: 9,  ativo: true },
   { id: "proj-prazos",        nome: "Prazos de Licenças, Certificados e Manutenções", emoji: "📅", cor: "#f97316", dono: "system", visibilidade: "escritorio", tipo: "rotina", ordem: 10, ativo: true },
@@ -29,43 +29,39 @@ const PROJETOS: Array<Omit<TarefaProjeto, "criadoEm" | "atualizadoEm" | "criadoP
 
 const SUBPROJETOS: Array<Omit<TarefaSubprojeto, "criadoEm" | "atualizadoEm" | "criadoPor">> = [
   // Pessoas - Rotinas
-  { id: "sub-pessoas-admissao",      projetoId: "proj-pessoas-rot", nome: "Admissão", auto: true, gatilho: "Nova admissão no kanban de processos", campos: "Empresa · Cargo · Data de admissão", pastaDriveTemplate: "[Empresa]/Pessoas/Empregados Ativos/[Nome]", ordem: 1, ativo: true },
-  { id: "sub-pessoas-demissao",      projetoId: "proj-pessoas-rot", nome: "Demissão", auto: true, gatilho: "Início de processo de desligamento", campos: "Empresa(s) · Iniciativa · Aviso prévio", pastaDriveTemplate: "[Empresa]/Pessoas/Empregados Desligados/[Nome]", ordem: 2, ativo: true },
-  { id: "sub-pessoas-alteracoes",    projetoId: "proj-pessoas-rot", nome: "Alterações Contratuais", auto: true, gatilho: "Promoção / mudança de cargo / aditivo", campos: "Empresa · Tipo · Vigência", ordem: 3, ativo: true },
+  // Removidos (event-driven, sem sentido no Gestor → futuro Central de Avisos):
+  // Admissão, Demissão, Alterações Contratuais, Disciplinares, Licenças.
   { id: "sub-pessoas-ferias",        projetoId: "proj-pessoas-rot", nome: "Férias", auto: true, gatilho: "Férias programadas", campos: "Empresa(s) · Período · Dias · Compra de dias?", ordem: 4, ativo: true },
   // Removidos: "Prazos de Experiência (45/90)" e "Prazos do Empregado" — viraram
   // prazos trabalhistas DERIVADOS ao vivo, mostrados em Gestor › Prazos › Trabalhistas.
-  { id: "sub-pessoas-disciplinares", projetoId: "proj-pessoas-rot", nome: "Disciplinares", auto: true, gatilho: "Registro de advertência/suspensão", campos: "Empresa · Tipo · Motivo", ordem: 7, ativo: true },
-  { id: "sub-pessoas-licencas",      projetoId: "proj-pessoas-rot", nome: "Licenças", auto: true, gatilho: "Início de licença (atestado/parto/INSS)", campos: "Empresa · Tipo · Período", ordem: 8, ativo: true },
-  { id: "sub-pessoas-folha",         projetoId: "proj-pessoas-rot", nome: "Folha de Pagamento (Adiantamento + Salário)", auto: true, gatilho: "Recorrente — Adiantamento (dia 20) + Salário (5º dia útil)", campos: "Empresa(s) · Mês/Ano · Tipo (adiantamento/salário)", ordem: 9, ativo: true },
-  // Pessoas - Demandas
-  { id: "sub-pessoas-portal",        projetoId: "proj-pessoas-dem", nome: "Demandas de Empregados (futuro)", auto: true, gatilho: "Empregado abre demanda pelo portal", campos: "Empregado · Categoria · Restaurante · Urgência", ordem: 1, ativo: true },
+  { id: "sub-pessoas-folha",         projetoId: "proj-pessoas-rot", nome: "Folha de Pagamento (Adiantamento + Salário)", auto: false, gatilho: "Adiantamento (dia 20) + Salário (5º dia útil)", campos: "Empresa(s) · Mês/Ano · Tipo (adiantamento/salário)", ordem: 9, ativo: true },
+  // Pessoas - Demandas ("Demandas de Empregados (futuro)" removido → Central de Avisos)
   { id: "sub-pessoas-internas",      projetoId: "proj-pessoas-dem", nome: "Demandas Internas DP", auto: false, ordem: 2, ativo: true },
   // Financeiro - Rotinas
   // Removido: "Contas Fixas Mensais" — virou prazo DERIVADO em Prazos › Contas.
-  { id: "sub-financ-fechamento",     projetoId: "proj-financ-rot",  nome: "Fechamento Financeiro Mensal", auto: true, gatilho: "Início de cada mês (recorrência)", campos: "Mês/Ano · Restaurantes envolvidos", ordem: 2, ativo: true },
-  { id: "sub-financ-caixas",         projetoId: "proj-financ-rot",  nome: "Fechamento de Caixas", auto: true, gatilho: "Toda segunda-feira", campos: "Restaurante · Semana", ordem: 3, ativo: true },
+  { id: "sub-financ-fechamento",     projetoId: "proj-financ-rot",  nome: "Fechamento Financeiro Mensal", auto: false, gatilho: "Início de cada mês", campos: "Mês/Ano · Restaurantes envolvidos", ordem: 2, ativo: true },
+  { id: "sub-financ-caixas",         projetoId: "proj-financ-rot",  nome: "Fechamento de Caixas", auto: false, gatilho: "Toda segunda-feira", campos: "Restaurante · Semana", ordem: 3, ativo: true },
   { id: "sub-financ-guias",          projetoId: "proj-financ-rot",  nome: "Guias de Imposto", auto: false, campos: "Empresa · Tipo · Mês competência", ordem: 4, ativo: true },
   // Financeiro - Demandas
   { id: "sub-financ-pedidos",        projetoId: "proj-financ-dem",  nome: "Pedidos de Pagamento Específicos", auto: false, campos: "Solicitante · Empresa · Valor · Categoria", ordem: 1, ativo: true },
   { id: "sub-financ-internas",       projetoId: "proj-financ-dem",  nome: "Demandas Internas Financeiro", auto: false, ordem: 2, ativo: true },
   // Diretoria - Rotinas
-  { id: "sub-dir-plan",              projetoId: "proj-diretoria-rot", nome: "Planejamento Administrativo Mensal", auto: true, gatilho: "Recorrente — 1 tarefa-pai por mês com checklist de planejamento", campos: "Mês/Ano", ordem: 1, ativo: true },
+  { id: "sub-dir-plan",              projetoId: "proj-diretoria-rot", nome: "Planejamento Administrativo Mensal", auto: false, gatilho: "1 tarefa-pai por mês com checklist de planejamento", campos: "Mês/Ano", ordem: 1, ativo: true },
   { id: "sub-dir-reunioes",          projetoId: "proj-diretoria-rot", nome: "Reuniões com Pauta", auto: false, gatilho: "Reunião agendada — pauta = subtarefas", campos: "Tipo · Participantes · Data", ordem: 2, ativo: true },
   { id: "sub-dir-indicadores",       projetoId: "proj-diretoria-rot", nome: "Indicadores e Acompanhamento", auto: false, campos: "Mês/Ano", ordem: 3, ativo: true },
   // Diretoria - Demandas
   { id: "sub-dir-gustavo",           projetoId: "proj-diretoria-dem", nome: "Gustavo — Demandas", auto: false, ordem: 1, ativo: true },
   { id: "sub-dir-outras",            projetoId: "proj-diretoria-dem", nome: "Diretoria — Demandas", auto: false, ordem: 2, ativo: true },
-  // Eventos
-  { id: "sub-eventos-captacao",      projetoId: "proj-eventos", nome: "Captação & Divulgação", auto: false, campos: "Restaurante · Origem do lead", ordem: 1, ativo: true },
-  { id: "sub-eventos-lobozo",        projetoId: "proj-eventos", nome: "Lobozó", auto: true, gatilho: "Cada evento captado no Lobozó", campos: "Data · Nº convidados · Cliente · Valor", ordem: 2, ativo: true },
-  { id: "sub-eventos-pubabar",       projetoId: "proj-eventos", nome: "Pubabar", auto: true, gatilho: "Cada evento captado no Pubabar", campos: "Data · Nº convidados · Cliente · Valor", ordem: 3, ativo: true },
-  { id: "sub-eventos-sororoca",      projetoId: "proj-eventos", nome: "Sororoca", auto: true, gatilho: "Cada evento captado no Sororoca", campos: "Data · Nº convidados · Cliente · Valor", ordem: 4, ativo: true },
+  // Eventos — mesclados em Operação (projeto próprio removido). Prefixo 🎉.
+  { id: "sub-eventos-captacao",      projetoId: "proj-operacao-rot", nome: "🎉 Captação & Divulgação", auto: false, campos: "Restaurante · Origem do lead", ordem: 5, ativo: true },
+  { id: "sub-eventos-lobozo",        projetoId: "proj-operacao-rot", nome: "🎉 Eventos Lobozó", auto: false, gatilho: "Cada evento captado no Lobozó", campos: "Data · Nº convidados · Cliente · Valor", ordem: 6, ativo: true },
+  { id: "sub-eventos-pubabar",       projetoId: "proj-operacao-rot", nome: "🎉 Eventos Pubabar", auto: false, gatilho: "Cada evento captado no Pubabar", campos: "Data · Nº convidados · Cliente · Valor", ordem: 7, ativo: true },
+  { id: "sub-eventos-sororoca",      projetoId: "proj-operacao-rot", nome: "🎉 Eventos Sororoca", auto: false, gatilho: "Cada evento captado no Sororoca", campos: "Data · Nº convidados · Cliente · Valor", ordem: 8, ativo: true },
   // Operação - Rotinas
-  { id: "sub-ops-lobozo",            projetoId: "proj-operacao-rot", nome: "Lobozó", auto: true, gatilho: "Tarefas recorrentes do líder do Lobozó", campos: "Semana", ordem: 1, ativo: true },
-  { id: "sub-ops-pubabar",           projetoId: "proj-operacao-rot", nome: "Pubabar", auto: true, gatilho: "Tarefas recorrentes do líder do Pubabar", campos: "Semana", ordem: 2, ativo: true },
-  { id: "sub-ops-sororoca",          projetoId: "proj-operacao-rot", nome: "Sororoca", auto: true, gatilho: "Tarefas recorrentes do líder do Sororoca", campos: "Semana", ordem: 3, ativo: true },
-  { id: "sub-ops-quibebe",           projetoId: "proj-operacao-rot", nome: "Quibebe", auto: true, gatilho: "Tarefas recorrentes do líder do Quibebe", campos: "Semana", ordem: 4, ativo: true },
+  { id: "sub-ops-lobozo",            projetoId: "proj-operacao-rot", nome: "Lobozó", auto: false, gatilho: "Tarefas recorrentes do líder do Lobozó", campos: "Semana", ordem: 1, ativo: true },
+  { id: "sub-ops-pubabar",           projetoId: "proj-operacao-rot", nome: "Pubabar", auto: false, gatilho: "Tarefas recorrentes do líder do Pubabar", campos: "Semana", ordem: 2, ativo: true },
+  { id: "sub-ops-sororoca",          projetoId: "proj-operacao-rot", nome: "Sororoca", auto: false, gatilho: "Tarefas recorrentes do líder do Sororoca", campos: "Semana", ordem: 3, ativo: true },
+  { id: "sub-ops-quibebe",           projetoId: "proj-operacao-rot", nome: "Quibebe", auto: false, gatilho: "Tarefas recorrentes do líder do Quibebe", campos: "Semana", ordem: 4, ativo: true },
   // Operação - Demandas
   { id: "sub-opsd-lobozo",           projetoId: "proj-operacao-dem", nome: "Lobozó", auto: false, ordem: 1, ativo: true },
   { id: "sub-opsd-pubabar",          projetoId: "proj-operacao-dem", nome: "Pubabar", auto: false, ordem: 2, ativo: true },

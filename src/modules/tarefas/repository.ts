@@ -119,6 +119,62 @@ export async function moverSubprojetoParaProjeto(
   return { tarefasAfetadas: count };
 }
 
+// Reorganização 1x (15/07/2026): (A) destrava subprojetos de rotinas recorrentes
+// (viram editáveis), (B) apaga subprojetos event-driven que não fazem sentido no
+// Gestor (admissão/demissão/etc — futuro: Central de Avisos), (C) mescla o
+// projeto Eventos dentro de Operação. Nada apaga tarefa: subprojeto apagado só
+// tira a referência; projeto Eventos é esvaziado (subs+tarefas → Operação) antes.
+const SUB_DESTRAVAR = ["sub-pessoas-folha", "sub-financ-fechamento", "sub-financ-caixas", "sub-ops-lobozo", "sub-ops-pubabar", "sub-ops-sororoca", "sub-ops-quibebe", "sub-dir-plan"];
+const SUB_APAGAR = ["sub-pessoas-admissao", "sub-pessoas-demissao", "sub-pessoas-alteracoes", "sub-pessoas-disciplinares", "sub-pessoas-licencas", "sub-pessoas-portal"];
+export async function reorganizarGestorTarefas(pessoaId: string): Promise<{
+  destravados: number;
+  apagados: { nome: string; tarefas: number }[];
+  eventos: { projeto: string; operacao: string; subs: number; tarefas: number } | null;
+}> {
+  const agora = new Date().toISOString();
+  // A) destravar rotinas recorrentes
+  let destravados = 0;
+  for (const id of SUB_DESTRAVAR) {
+    const ref = doc(db, COL_SUBPROJETOS, id);
+    if (!(await getDoc(ref)).exists()) continue;
+    await updateDoc(ref, { auto: false, bloqueadoCriacaoManual: false, atualizadoEm: agora });
+    destravados += 1;
+  }
+  // B) apagar event-driven
+  const apagados: { nome: string; tarefas: number }[] = [];
+  for (const id of SUB_APAGAR) {
+    const ref = doc(db, COL_SUBPROJETOS, id);
+    const s = await getDoc(ref);
+    if (!s.exists()) continue;
+    const nome = (s.data() as { nome?: string }).nome || id;
+    const tarefas = await contarTarefasDoSubprojeto(id);
+    await deleteDoc(ref);
+    apagados.push({ nome, tarefas });
+  }
+  // C) mesclar Eventos → Operação
+  let eventos: { projeto: string; operacao: string; subs: number; tarefas: number } | null = null;
+  const projs = (await getDocs(collection(db, COL_PROJETOS))).docs.map(d => ({ id: d.id, ...(d.data() as { nome?: string; cor?: string }) }));
+  const evt = projs.find(p => p.id === "proj-eventos" || /event/i.test(p.nome || ""));
+  const ops = projs.find(p => p.id !== evt?.id && (p.id.startsWith("proj-operacao") || /opera[cç]/i.test(p.nome || "")));
+  if (evt && ops) {
+    let subs = 0, tarefas = 0;
+    const subsSnap = await getDocs(query(collection(db, COL_SUBPROJETOS), where("projetoId", "==", evt.id)));
+    for (const d of subsSnap.docs) {
+      const sub = { id: d.id, ...(d.data() as Record<string, unknown>) } as TarefaSubprojeto;
+      // Prefixo 🎉 pra distinguir dos subprojetos de rotina de Operação (mesmos nomes).
+      const nome = sub.nome?.startsWith("🎉") ? sub.nome : `🎉 ${sub.nome}`;
+      const r = await moverSubprojetoParaProjeto({ ...sub, nome }, ops.id, ops.cor, pessoaId);
+      subs += 1; tarefas += r.tarefasAfetadas;
+    }
+    // Tarefas soltas direto no projeto Eventos (sem subprojeto) → Operação.
+    const tsnap = await getDocs(query(collection(db, COL_TAREFAS), where("projetoId", "==", evt.id)));
+    await Promise.all(tsnap.docs.map(d => { tarefas += 1; return setDoc(doc(db, COL_TAREFAS, d.id), sanitizeForFirestore({ ...d.data(), projetoId: ops.id, corHerdada: ops.cor })); }));
+    await deleteDoc(doc(db, COL_PROJETOS, evt.id));   // projeto vazio agora
+    eventos = { projeto: evt.nome || evt.id, operacao: ops.nome || ops.id, subs, tarefas };
+  }
+  return { destravados, apagados, eventos };
+}
+
 // ─── TAREFAS ──────────────────────────────────────────────────────────────
 
 export function ouvirTarefasDeUsuario(pessoaId: string, cb: (tarefas: Tarefa[]) => void): Unsubscribe {
