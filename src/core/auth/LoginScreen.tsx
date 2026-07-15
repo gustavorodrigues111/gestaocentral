@@ -1,5 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
+import { sendPasswordResetEmail } from "firebase/auth";
+import { auth } from "../firebase/config";
 import { useAuth } from "./AuthContext";
 import { Button } from "../ui/Button";
 import { Input } from "../ui/Input";
@@ -15,6 +17,26 @@ export function LoginScreen() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [resetMsg, setResetMsg] = useState("");
+  const [resetting, setResetting] = useState(false);
+
+  async function handleReset() {
+    const alvo = email.trim().toLowerCase();
+    setError(""); setResetMsg("");
+    if (!alvo) { setError("Digite seu email acima primeiro, aí clico o reset."); return; }
+    setResetting(true);
+    try {
+      await sendPasswordResetEmail(auth, alvo);
+      setResetMsg(`Enviei um link de redefinição pra ${alvo}. Confira a caixa de entrada e o spam.`);
+    } catch (err: unknown) {
+      const code = (err as { code?: string })?.code;
+      // Não revela se o email existe (privacidade): trata user-not-found como sucesso.
+      if (code === "auth/user-not-found") setResetMsg(`Se ${alvo} tiver conta, o link de redefinição chega em instantes.`);
+      else if (code === "auth/invalid-email") setError("Email inválido.");
+      else if (code === "auth/too-many-requests") setError("Muitas tentativas — aguarde alguns minutos.");
+      else setError(err instanceof Error ? err.message : "Não consegui enviar o email de redefinição.");
+    } finally { setResetting(false); }
+  }
 
   async function handleSubmit(e: FormEvent) {
     e.preventDefault();
@@ -86,10 +108,24 @@ export function LoginScreen() {
               {error}
             </div>
           )}
+          {resetMsg && (
+            <div className="text-sm text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-900 rounded-lg px-3 py-2">
+              {resetMsg}
+            </div>
+          )}
 
           <Button type="submit" disabled={loading || !email || !password} size="lg" className="mt-2">
             {loading ? "Entrando..." : "Entrar"}
           </Button>
+
+          <button
+            type="button"
+            onClick={handleReset}
+            disabled={resetting}
+            className="text-xs text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline disabled:opacity-60"
+          >
+            {resetting ? "Enviando…" : "Esqueci minha senha"}
+          </button>
 
           <div className="text-center mt-4 pt-4 border-t border-gray-200 dark:border-gray-800">
             <p className="text-xs text-gray-500 dark:text-gray-500 mb-2">

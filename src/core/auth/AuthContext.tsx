@@ -261,10 +261,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   async function signIn(email: string, password: string) {
-    await signInWithEmailAndPassword(auth, email, password);
+    // Normaliza aqui (fonte única): login e signup precisam bater byte a byte no
+    // Firebase Auth. Espaço em branco/caixa diferente = "invalid-credential".
+    await signInWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
   }
   async function signUp(email: string, password: string) {
-    await createUserWithEmailAndPassword(auth, email, password);
+    await createUserWithEmailAndPassword(auth, email.trim().toLowerCase(), password);
   }
   async function signOut() {
     await fbSignOut(auth);
