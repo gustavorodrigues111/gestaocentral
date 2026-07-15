@@ -1,7 +1,7 @@
 // Execução de checklist — COLABORATIVO AO VIVO. Vários usuários preenchem o
 // mesmo run simultaneamente: cada mudança grava só o item (campo resultado.{id}),
 // todos veem via onSnapshot, e cada ação fica assinada (feitoPor) + no log.
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { arrayUnion, collection, doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -14,6 +14,7 @@ import type {
   ChecklistTemplate, Empregado,
 } from "../../core/types";
 import { FotoUpload } from "./FotoUpload";
+import { itemDoDia, temFreqPorItem } from "./recorrencia";
 
 const uid = () => `${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 const hhmm = (iso: string) => { const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }); };
@@ -35,7 +36,8 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
   function mapaInicial(): ResMap {
     if (run?.resultado) return { ...run.resultado };
     const m: ResMap = {};
-    const arr = run?.itens || template.itens.map(i => ({ itemId: i.id, textoSnapshot: i.texto, feito: false }));
+    const baseItens = temFreqPorItem(template.itens) ? template.itens.filter(i => itemDoDia(i, run?.data || todayYmd())) : template.itens;
+    const arr = run?.itens || baseItens.map(i => ({ itemId: i.id, textoSnapshot: i.texto, feito: false }));
     for (const r of arr) m[r.itemId] = r;
     return m;
   }
@@ -79,13 +81,19 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
     return () => unsub();
   }, [runId]);
 
+  // Itens que valem PRA ESTE DIA (freq por item). Sem freq → todos (retrocompat).
+  const itensDia = useMemo(
+    () => temFreqPorItem(template.itens) ? template.itens.filter(i => itemDoDia(i, data)) : template.itens,
+    [template.itens, data],
+  );
+
   function resArray(map: ResMap = resMap): ChecklistRunItemResultado[] {
-    return template.itens.map(i => map[i.id] ?? { itemId: i.id, textoSnapshot: i.texto, feito: false });
+    return itensDia.map(i => map[i.id] ?? { itemId: i.id, textoSnapshot: i.texto, feito: false });
   }
   function statsFrom(map: ResMap) {
-    const total = template.itens.length;
-    const feitos = template.itens.filter(i => map[i.id]?.feito).length;
-    const obrig = template.itens.filter(i => i.obrigatorio);
+    const total = itensDia.length;
+    const feitos = itensDia.filter(i => map[i.id]?.feito).length;
+    const obrig = itensDia.filter(i => i.obrigatorio);
     return { total, feitos, obrigatoriosTotal: obrig.length, obrigatoriosFeitos: obrig.filter(i => map[i.id]?.feito).length };
   }
 
@@ -168,7 +176,7 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
     const st = statsFrom(resMap);
     if (finalizar) {
       if (st.obrigatoriosFeitos < st.obrigatoriosTotal && !confirm(`Faltam ${st.obrigatoriosTotal - st.obrigatoriosFeitos} item(ns) obrigatório(s). Finalizar mesmo assim como INCOMPLETO?`)) return;
-      for (const item of template.itens) {
+      for (const item of itensDia) {
         const r = resMap[item.id];
         if (item.exigeObs && r?.feito && !r.observacao?.trim()) { setErr(`Item "${item.texto}" exige observação quando marcado.`); return; }
         if (item.exigeFoto && r?.feito && !r.fotoUrl) { setErr(`Item "${item.texto}" exige foto quando marcado.`); return; }
@@ -215,7 +223,7 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
                 {empregadosOrdenados.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
               </select>
             </div>
-            <p className="text-xs text-gray-400">{template.itens.length} {template.itens.length === 1 ? "item" : "itens"} pra marcar</p>
+            <p className="text-xs text-gray-400">{itensDia.length} {itensDia.length === 1 ? "item" : "itens"} pra marcar{temFreqPorItem(template.itens) ? " hoje" : ""}</p>
             {err && <div className="text-sm text-rose-600">{err}</div>}
             <Button onClick={() => void comecar()} disabled={saving} className="w-full">{saving ? "Abrindo…" : "Começar checklist →"}</Button>
           </div>
@@ -237,7 +245,7 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
           </div>
 
           <div className="space-y-2">
-            {template.itens.map((item, idx) => {
+            {itensDia.map((item, idx) => {
               const r = resMap[item.id] || { itemId: item.id, textoSnapshot: item.texto, feito: false };
               const obsVisivel = item.exigeObs || r.observacao != null || obsAbertas.has(item.id);
               return (

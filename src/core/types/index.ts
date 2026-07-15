@@ -1752,6 +1752,7 @@ export const CHECKLIST_FREQ_LABEL: Record<ChecklistFrequencia, string> = {
   avulsa:  "Avulsa",
 };
 
+export type ChecklistItemFreq = "diaria" | "semanal" | "quinzenal" | "mensal";
 export type ChecklistItemTemplate = {
   id: string;
   texto: string;
@@ -1761,6 +1762,12 @@ export type ChecklistItemTemplate = {
   exigeObs?: boolean;         // se true, run pede observação no item
   descricao?: string;         // instrução de "como fazer" este item
   fotoGuiaUrl?: string;       // foto de referência (como deve ficar) — Storage
+  // Frequência POR ITEM (ausente = diário todo dia). Quando QUALQUER item tem
+  // freq, o "checklist do dia" passa a mostrar só os itens do dia.
+  freq?: ChecklistItemFreq;
+  diasSemana?: number[];      // diaria/semanal/quinzenal: 0=Dom..6=Sáb (vazio = todos p/ diária)
+  semanaParidade?: "A" | "B"; // quinzenal: semana A (ímpar ISO) ou B (par)
+  diaDoMes?: number;          // mensal: 1..31 (clampa ao último dia do mês)
 };
 
 // Turno do checklist (abertura / meio / fechamento). Ajuda a separar as rotinas

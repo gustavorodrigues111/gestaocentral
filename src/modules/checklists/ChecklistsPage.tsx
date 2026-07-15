@@ -14,6 +14,7 @@ import type { Area, ChecklistFrequencia, ChecklistRun, ChecklistTemplate, Empreg
 import { ChecklistTemplateModal } from "./ChecklistTemplateModal";
 import { ImportarChecklistModal } from "./ImportarChecklistModal";
 import { ChecklistRunModal } from "./ChecklistRunModal";
+import { itemDoDia, temFreqPorItem } from "./recorrencia";
 
 type Tab = "hoje" | "templates" | "historico";
 
@@ -90,6 +91,8 @@ export function ChecklistsPage() {
   const templatesHoje = useMemo(() => {
     return templates.filter(t => {
       if (!t.ativo) return false;
+      // Frequência POR ITEM: aparece se tiver pelo menos 1 item do dia.
+      if (temFreqPorItem(t.itens || [])) return (t.itens || []).some(i => itemDoDia(i, today));
       if (t.frequencia === "diaria") {
         if (!t.diasSemana || t.diasSemana.length === 0) return true;
         return t.diasSemana.includes(dow);

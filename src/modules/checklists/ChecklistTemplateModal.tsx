@@ -9,6 +9,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { AREAS, CHECKLIST_TURNO_LABEL } from "../../core/types";
 import type { Area, Cargo, ChecklistItemTemplate, ChecklistTemplate, ChecklistTurno, Empregado, Pessoa } from "../../core/types";
 import { FotoUpload } from "./FotoUpload";
+import { temFreqPorItem, freqItemLabel } from "./recorrencia";
 
 type Props = {
   template: ChecklistTemplate | null;
@@ -176,6 +177,9 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
               {diasSemana.length === 0 && <span className="text-[11px] text-gray-400 mt-1 block">= todos os dias</span>}
             </div>
           )}
+          {temFreqPorItem(itens) && (
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1.5">Alguns itens têm frequência própria — para esses, a regra abaixo de cada item vale; esta configuração geral é ignorada nos itens com frequência definida.</p>
+          )}
         </div>
 
         {/* Turno (opcional) */}
@@ -239,6 +243,44 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
                   {([["obrigatorio", "Obrigatório"], ["exigeObs", "Exige obs"], ["exigeFoto", "Exige foto"]] as const).map(([k, l]) => (
                     <button key={k} type="button" onClick={() => patchItem(item.id, { [k]: !item[k] } as Partial<ChecklistItemTemplate>)} className={CHIP(!!item[k])}>{l}</button>
                   ))}
+                </div>
+                <div className="mt-2 pl-8 space-y-1.5">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="text-[11px] text-gray-400 mr-0.5">Frequência:</span>
+                    {([["diaria", "Todo dia"], ["semanal", "Dia da semana"], ["quinzenal", "Quinzenal"], ["mensal", "Mensal"]] as const).map(([f, l]) => (
+                      <button key={f} type="button" onClick={() => patchItem(item.id, { freq: f, ...(f === "diaria" ? { diasSemana: undefined, semanaParidade: undefined, diaDoMes: undefined } : {}), ...(f === "mensal" ? { diasSemana: undefined, semanaParidade: undefined, diaDoMes: item.diaDoMes || 1 } : {}), ...(f === "quinzenal" ? { semanaParidade: item.semanaParidade || "A" } : {}) })} className={CHIP((item.freq || "diaria") === f)}>{l}</button>
+                    ))}
+                    {item.freq && <span className="text-[11px] text-gray-400 ml-1">→ {freqItemLabel(item)}</span>}
+                  </div>
+                  {(item.freq === "semanal" || item.freq === "quinzenal" || (item.freq === "diaria" && item.diasSemana?.length)) && (
+                    <div className="grid grid-cols-7 gap-1">
+                      {DOW_LABELS.map((lbl, dow) => {
+                        const on = (item.diasSemana || []).includes(dow);
+                        return (
+                          <button key={dow} type="button" onClick={() => { const cur = item.diasSemana || []; patchItem(item.id, { diasSemana: on ? cur.filter(x => x !== dow) : [...cur, dow].sort() }); }} className={CHIP_DOW(on)}>{lbl}</button>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {item.freq === "diaria" && !item.diasSemana?.length && (
+                    <button type="button" onClick={() => patchItem(item.id, { diasSemana: [0, 1, 2, 3, 4, 5, 6] })} className="text-[11px] text-indigo-500 hover:underline">restringir a dias específicos</button>
+                  )}
+                  {item.freq === "quinzenal" && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-gray-400 mr-0.5">Semana:</span>
+                      {(["A", "B"] as const).map(p => (
+                        <button key={p} type="button" onClick={() => patchItem(item.id, { semanaParidade: p })} className={CHIP((item.semanaParidade || "A") === p)}>Semana {p}</button>
+                      ))}
+                      <span className="text-[11px] text-gray-400">(a 1ª semana de 2026 é A)</span>
+                    </div>
+                  )}
+                  {item.freq === "mensal" && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[11px] text-gray-400">Todo dia</span>
+                      <input type="number" min={1} max={31} value={item.diaDoMes || 1} onChange={(e) => patchItem(item.id, { diaDoMes: Math.min(31, Math.max(1, parseInt(e.target.value) || 1)) })} className="w-16 px-2 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                      <span className="text-[11px] text-gray-400">do mês</span>
+                    </div>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 mt-2 pl-8 flex-wrap">
                   <input value={item.descricao || ""} onChange={(e) => patchItem(item.id, { descricao: e.target.value })} placeholder="como fazer (opcional)" className="flex-1 min-w-[160px] px-2.5 py-1 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
