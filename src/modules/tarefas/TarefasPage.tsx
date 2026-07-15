@@ -420,7 +420,15 @@ export function TarefasPage() {
         {gerenciarMenuAberto && (
           <>
             <div className="fixed inset-0 z-10" onClick={() => setGerenciarMenuAberto(false)} />
-            <div className="absolute right-0 mt-1 z-20 w-52 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
+            <div className="absolute right-0 mt-1 z-20 w-60 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
+              {isMaster && (
+                <>
+                  <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Tarefas</div>
+                  <button type="button" onClick={() => { setGerenciarMenuAberto(false); setTab("admin"); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">🗂️ Projetos e subprojetos</button>
+                  <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
+                </>
+              )}
+              <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Prazos</div>
               {([["contasFixas", "💰 Contas fixas"], ["manutencoes", "🛠️ Prazos técnicos"], ["prazosTrabalhistas", "🧑‍⚖️ Prazos trabalhistas"]] as [string, string][]).map(([mod, lbl]) => (
                 <button key={mod} type="button" onClick={() => { setGerenciarMenuAberto(false); navigate(`/r/${ridAtivo}/${mod}`); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
               ))}
