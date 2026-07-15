@@ -69,11 +69,11 @@ export async function contarTarefasDoSubprojeto(subId: string): Promise<number> 
   return s.size;
 }
 
-// Cleanup 1x: desativa (ativo:false) os subprojetos que viraram PRAZOS derivados
-// (experiência, prazos do empregado → Prazos Trabalhistas; contas fixas mensais
-// → Prazos Contas). NÃO apaga tarefa nenhuma — só some da lista de subprojetos.
-// Devolve o que mexeu + quantas tarefas manuais ainda existiam em cada (pra
-// avisar; elas continuam no projeto, acessíveis em "todos os subprojetos").
+// Cleanup 1x: APAGA os subprojetos que viraram PRAZOS derivados (experiência,
+// prazos do empregado → Prazos Trabalhistas; contas fixas mensais → Prazos
+// Contas). Apagar o subprojeto NÃO apaga tarefa — as tarefas existentes só
+// perdem a referência e continuam no projeto (acessíveis em "todos os
+// subprojetos"). Devolve o que apagou + quantas tarefas cada um ainda tinha.
 const SUBPROJETOS_PRAZOS_APOSENTADOS = ["sub-pessoas-experiencia", "sub-pessoas-prazos", "sub-financ-contas"];
 export async function limparSubprojetosPrazos(): Promise<{ id: string; nome: string; tarefas: number }[]> {
   const out: { id: string; nome: string; tarefas: number }[] = [];
@@ -81,10 +81,9 @@ export async function limparSubprojetosPrazos(): Promise<{ id: string; nome: str
     const ref = doc(db, COL_SUBPROJETOS, id);
     const snap = await getDoc(ref);
     if (!snap.exists()) continue;
-    const d = snap.data() as { nome?: string; ativo?: boolean };
-    if (d.ativo === false) continue;   // já desativado
+    const d = snap.data() as { nome?: string };
     const tarefas = await contarTarefasDoSubprojeto(id);
-    await updateDoc(ref, { ativo: false, atualizadoEm: new Date().toISOString() });
+    await deleteDoc(ref);
     out.push({ id, nome: d.nome || id, tarefas });
   }
   return out;
