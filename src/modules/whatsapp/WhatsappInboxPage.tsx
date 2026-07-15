@@ -364,9 +364,12 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       // dígito), não numa forma normalizada que poderia não existir.
       const inbound = thread.filter(m => m.direcao === "in");
       const paraEnviar = inbound.length ? inbound[inbound.length - 1].waId : sel;
+      // Prefixo enviado AO CLIENTE usa o apelido cadastrado neste número (se houver);
+      // internamente (doc) gravamos sempre o nome real.
+      const autorCliente = (numeros.find(n => n.id === numeroSel)?.apelidos?.[me?.id || ""] || "").trim() || me?.nome || "";
       const r = await fetch("/api/evolution-enviar", {
         method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ instancia: numeroSel, to: paraEnviar, texto: txt, autorNome: me?.nome || "" }),
+        body: JSON.stringify({ instancia: numeroSel, to: paraEnviar, texto: txt, autorNome: autorCliente }),
       });
       const j = await r.json().catch(() => ({}));
       if (r.ok && (j as { ok?: boolean }).ok) {
@@ -393,9 +396,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     const paraEnviar = inbound.length ? inbound[inbound.length - 1].waId : sel;
     setEnviandoMidia(true);
     try {
+      const autorCliente = (numeros.find(n => n.id === numeroSel)?.apelidos?.[me?.id || ""] || "").trim() || me?.nome || "";
       const r = await fetch("/api/evolution-enviar-midia", {
         method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ instancia: numeroSel, to: paraEnviar, tipo, base64: dataUrl, mimetype, fileName, caption, autorNome: me?.nome || "" }),
+        body: JSON.stringify({ instancia: numeroSel, to: paraEnviar, tipo, base64: dataUrl, mimetype, fileName, caption, autorNome: autorCliente }),
       });
       const j = await r.json().catch(() => ({}));
       if (r.ok && (j as { ok?: boolean }).ok) {
@@ -1193,14 +1197,14 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
   const [aberto, setAberto] = useState(false);
   const [buscaU, setBuscaU] = useState("");
   const [salvando, setSalvando] = useState(false);
-  const [draft, setDraft] = useState(() => ({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], regras: numero.regras || "", ativo: numero.ativo !== false }));
+  const [draft, setDraft] = useState(() => ({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], apelidos: numero.apelidos || {}, regras: numero.regras || "", ativo: numero.ativo !== false }));
   // Ressincroniza o rascunho quando o doc muda (ex.: depois de salvar).
-  useEffect(() => { setDraft({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], regras: numero.regras || "", ativo: numero.ativo !== false });
+  useEffect(() => { setDraft({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], apelidos: numero.apelidos || {}, regras: numero.regras || "", ativo: numero.ativo !== false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [numero.id, numero.nome, numero.descricao, (numero.restaurantIds || []).join(","), (numero.usuariosIds || []).join(","), numero.regras, numero.ativo]);
+  }, [numero.id, numero.nome, numero.descricao, (numero.restaurantIds || []).join(","), (numero.usuariosIds || []).join(","), JSON.stringify(numero.apelidos || {}), numero.regras, numero.ativo]);
 
   const eqArr = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",");
-  const dirty = draft.nome !== numero.nome || draft.descricao !== (numero.descricao || "") || !eqArr(draft.restaurantIds, numero.restaurantIds || []) || !eqArr(draft.usuariosIds, numero.usuariosIds || []) || draft.regras !== (numero.regras || "") || draft.ativo !== (numero.ativo !== false);
+  const dirty = draft.nome !== numero.nome || draft.descricao !== (numero.descricao || "") || !eqArr(draft.restaurantIds, numero.restaurantIds || []) || !eqArr(draft.usuariosIds, numero.usuariosIds || []) || JSON.stringify(draft.apelidos) !== JSON.stringify(numero.apelidos || {}) || draft.regras !== (numero.regras || "") || draft.ativo !== (numero.ativo !== false);
 
   const em = ESTADO_META[estado] || { label: "…", cls: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" };
   const cor = estado === "open" ? "border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-900/10"
@@ -1219,8 +1223,12 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
   })();
   const inp = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
 
-  async function salvar() { setSalvando(true); try { await setDoc(doc(db, "whatsappNumeros", numero.id), sanitizeForFirestore({ nome: draft.nome.trim() || numero.nome, descricao: draft.descricao.trim() || null, restaurantIds: draft.restaurantIds, usuariosIds: draft.usuariosIds, regras: draft.regras.trim() || null, ativo: draft.ativo, atualizadoEm: new Date().toISOString() }), { merge: true }); } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); } finally { setSalvando(false); } }
-  const cancelar = () => setDraft({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], regras: numero.regras || "", ativo: numero.ativo !== false });
+  async function salvar() { setSalvando(true); try {
+    // Só guarda apelidos de quem tem acesso e com valor preenchido.
+    const apelidosLimpo: { [id: string]: string } = {};
+    for (const uid of draft.usuariosIds) { const a = (draft.apelidos[uid] || "").trim(); if (a) apelidosLimpo[uid] = a; }
+    await setDoc(doc(db, "whatsappNumeros", numero.id), sanitizeForFirestore({ nome: draft.nome.trim() || numero.nome, descricao: draft.descricao.trim() || null, restaurantIds: draft.restaurantIds, usuariosIds: draft.usuariosIds, apelidos: apelidosLimpo, regras: draft.regras.trim() || null, ativo: draft.ativo, atualizadoEm: new Date().toISOString() }), { merge: true }); } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); } finally { setSalvando(false); } }
+  const cancelar = () => setDraft({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], apelidos: numero.apelidos || {}, regras: numero.regras || "", ativo: numero.ativo !== false });
 
   return (
     <div className={`rounded-xl border ${cor}`}>
@@ -1283,15 +1291,19 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
             </div>
             <div className="pt-1">
               <label className="text-[11px] text-gray-500">Usuários que podem usar</label>
-              <div className="flex flex-wrap gap-1.5 mt-1 mb-1.5">
+              <div className="space-y-1.5 mt-1 mb-1.5">
                 {selecionados.length === 0 && <span className="text-[11px] text-gray-400">Ninguém ainda.</span>}
                 {selecionados.map(p => (
-                  <span key={p.id} className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                    {p.nome}
-                    <button type="button" onClick={() => setDraft(d => ({ ...d, usuariosIds: d.usuariosIds.filter(x => x !== p.id) }))} className="opacity-70 hover:opacity-100">✕</button>
-                  </span>
+                  <div key={p.id} className="flex items-center gap-2">
+                    <span className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800 shrink-0 max-w-[45%] truncate">
+                      {p.nome}
+                      <button type="button" onClick={() => setDraft(d => { const ap = { ...d.apelidos }; delete ap[p.id]; return { ...d, usuariosIds: d.usuariosIds.filter(x => x !== p.id), apelidos: ap }; })} className="opacity-70 hover:opacity-100">✕</button>
+                    </span>
+                    <input value={draft.apelidos[p.id] || ""} onChange={e => setDraft(d => ({ ...d, apelidos: { ...d.apelidos, [p.id]: e.target.value } }))} placeholder={`apelido (vazio → “${p.nome.split(" ")[0]}”)`} className="flex-1 min-w-0 px-2.5 py-1 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                  </div>
                 ))}
               </div>
+              <p className="text-[11px] text-gray-400 mb-1">O apelido troca só o nome que o <b>cliente</b> vê no início da mensagem (ex.: <i>*Gu:*</i>). Vazio = primeiro nome real.</p>
               <input value={buscaU} onChange={e => setBuscaU(e.target.value)} className={inp} placeholder="Digite o nome pra adicionar…" />
               {buscaU.trim() && (
                 <div className="mt-1 max-h-40 overflow-y-auto rounded-lg border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
