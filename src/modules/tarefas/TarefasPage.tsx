@@ -67,7 +67,7 @@ import type { AccessProfile, Pessoa, Restaurant } from "../../core/types";
 import { pickDriveFolder, pickDriveFile } from "../../core/google/drivePicker";
 import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal";
 
-type Tab = "minhas" | "projeto" | "admin" | "lixeira" | "todas";
+type Tab = "minhas" | "tudo" | "projeto" | "admin" | "lixeira" | "todas";
 type ViewMode = "calendario" | "lista" | "kanban";
 
 // Avatar de iniciais do responsável (2 letras) numa bolinha de cor estável por
@@ -373,6 +373,11 @@ export function TarefasPage() {
     () => [...todasTarefas.filter((t) => !ORIGEM_DERIVADA.has(t.origem)), ...derivadas],
     [todasTarefas, derivadas],
   );
+  // "Tudo": minhas tarefas + TODOS os prazos que tenho acesso (todos os derivados).
+  const tudoComDerivados = useMemo(
+    () => [...minhas.filter((t) => !ORIGEM_DERIVADA.has(t.origem)), ...derivadas],
+    [minhas, derivadas],
+  );
   const tarefasProjetoComDerivados = useMemo(
     () => {
       const manuais = tarefasProjeto.filter((t) => !ORIGEM_DERIVADA.has(t.origem) && podeVerTarefa(t, projetos.find((p) => p.id === t.projetoId), pessoa));
@@ -483,6 +488,17 @@ export function TarefasPage() {
     </div>
   );
 
+  // Chooser do calendário (botão "+ Novo" por dia): tarefa ou tipo de prazo.
+  const novoNoDia = (tipo: string, data: string) => {
+    if (tipo === "conta_fixa") { setCriarContaFixa(true); return; }
+    if (tipo === "manutencao") { setCriarManutencao(true); return; }
+    if (tipo === "trabalhista") { setNovaAberta({ projetoId: prazosProjId, tipoPrazo: "trabalhista", prazo: data }); return; }
+    if (tipo === "proprio") { setNovaAberta({ projetoId: prazosProjId, prazo: data }); return; }
+    // tarefa: no contexto do projeto atual (menos Prazos), com subprojeto se filtrado.
+    const proj = tab === "projeto" && projetoFiltro && projetoFiltro !== prazosProjId ? projetoFiltro : undefined;
+    setNovaAberta({ prazo: data, projetoId: proj, subprojetoId: proj ? (subFiltro || undefined) : undefined });
+  };
+
   return (
     <div className="max-w-7xl mx-auto p-3 sm:p-4">
 
@@ -526,6 +542,7 @@ export function TarefasPage() {
           prazoTipoAtivo={tab === "projeto" && projetoFiltro === prazosProjId ? prazoTipoAtivo : ""}
           subPrazosTecnicos={subPrazosTecnicos}
           onAbrirMinhas={() => setTab("minhas")}
+          onAbrirTudo={() => { setPrazoTipoAtivo(""); setTab("tudo"); }}
           onAbrirProjeto={(pid) => {
             setPrazoTipoAtivo("");
             if (tab === "projeto" && projetoFiltro === pid) { setTab("minhas"); setSubFiltro(""); }
@@ -574,6 +591,7 @@ export function TarefasPage() {
               onAbrir={setDetalheId}
               autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
               onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })}
+              onNovoNoDia={novoNoDia}
             />
           )}
           {viewMinhas === "lista" && (
@@ -597,6 +615,21 @@ export function TarefasPage() {
         </div>
       )}
 
+      {tab === "tudo" && (
+        <div>
+          <div className="mb-3 flex items-center gap-x-3 gap-y-2 flex-wrap">
+            <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">🗂️ Tudo</h2>
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">minhas tarefas + todos os prazos · {tudoComDerivados.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativos</span>
+            <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
+            <div className="flex-1" />
+            {acoesHeader}
+          </div>
+          {viewMinhas === "calendario" && <CalendarioView tarefas={tudoComDerivados} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onNovoNoDia={novoNoDia} />}
+          {viewMinhas === "lista" && <MinhasTarefasView tarefas={tudoComDerivados} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />}
+          {viewMinhas === "kanban" && <KanbanView tarefas={tudoComDerivados} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />}
+        </div>
+      )}
+
       {tab === "todas" && isMaster && (
         <div>
           <div className="mb-3 flex items-baseline gap-2 flex-wrap">
@@ -613,7 +646,7 @@ export function TarefasPage() {
             {acoesHeader}
           </div>
           {viewMinhas === "calendario" && (
-            <CalendarioView tarefas={todasComDerivados} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} />
+            <CalendarioView tarefas={todasComDerivados} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onNovoNoDia={novoNoDia} />
           )}
           {viewMinhas === "lista" && (
             <MinhasTarefasView tarefas={todasComDerivados} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />
@@ -669,6 +702,7 @@ export function TarefasPage() {
             autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
             onNovaTarefa={(opts) => setNovaAberta(opts)}
             acoes={acoesHeader}
+            onNovoNoDia={novoNoDia}
           />
         </>
       )}
@@ -776,7 +810,7 @@ function ProjetosTopBar({
   tabAtual, projetoFiltroAtual, subFiltroAtual, minhasPendentes,
   projetos, subprojetos, tarefasProjeto,
   prazosProjId, prazoTipos, prazoTipoAtivo, subPrazosTecnicos,
-  onAbrirMinhas, onAbrirProjeto, onAbrirPrazoTipo, onAbrirSubprojeto, onAbrirSubPrazo,
+  onAbrirMinhas, onAbrirTudo, onAbrirProjeto, onAbrirPrazoTipo, onAbrirSubprojeto, onAbrirSubPrazo,
 }: {
   tabAtual: string;
   projetoFiltroAtual: string;
@@ -790,6 +824,7 @@ function ProjetosTopBar({
   prazoTipoAtivo: string;
   subPrazosTecnicos: TarefaSubprojeto[];
   onAbrirMinhas: () => void;
+  onAbrirTudo: () => void;
   onAbrirProjeto: (id: string) => void;
   onAbrirPrazoTipo: (tipo: string) => void;
   onAbrirSubprojeto: (projetoId: string, subId: string) => void;
@@ -811,6 +846,7 @@ function ProjetosTopBar({
           📥 Minhas
           {minhasPendentes > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">{minhasPendentes}</span>}
         </button>
+        <button onClick={onAbrirTudo} className={chip(tabAtual === "tudo")}>🗂️ Tudo</button>
         {projTarefas.map(p => (
           <button key={p.id} onClick={() => onAbrirProjeto(p.id)} className={chip(tabAtual === "projeto" && projetoFiltroAtual === p.id)} title={p.nome}>
             <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.cor || "#6b7280" }} />
@@ -1301,7 +1337,7 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
 
 // ─── VIEW: Por Projeto ────────────────────────────────────────────────────
 
-function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas, onAbrir, view, onChangeView, autor, onNovaTarefa, acoes }: {
+function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas, onAbrir, view, onChangeView, autor, onNovaTarefa, acoes, onNovoNoDia }: {
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
   projetoFiltro: string;
@@ -1316,6 +1352,7 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
   // — usado pelos botões "+ Nova tarefa" nas colunas do calendário.
   onNovaTarefa: (opts: { prazo?: string; projetoId?: string; subprojetoId?: string }) => void;
   acoes?: ReactNode;
+  onNovoNoDia?: (tipo: string, data: string) => void;
 }) {
   const proj = projetos.find(p => p.id === projetoFiltro);
   const subsDoProj = subprojetos.filter(s => s.projetoId === projetoFiltro);
@@ -1388,6 +1425,7 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
                     projetoId: projetoFiltro,
                     subprojetoId: subFiltro || undefined,
                   })}
+                  onNovoNoDia={subBloqueado ? undefined : onNovoNoDia}
                 />
               );
             })()}
@@ -2633,7 +2671,39 @@ function catDaTarefa(origem: string, proj?: { nome?: string; cor?: string; emoji
   return TAREFA_CAT_META[origem] || { label: proj?.nome || "Tarefa", cor: proj?.cor || "#6b7280", icon: proj?.emoji || "📁" };
 }
 
-function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }: {
+// Botão "+ Novo" nas colunas do calendário: pergunta se é tarefa ou qual prazo.
+function NovoNoDiaBtn({ data, onEscolher, className }: {
+  data: string; onEscolher: (tipo: string, data: string) => void; className: string;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const opcoes: [string, string][] = [
+    ["📝 Tarefa", "tarefa"],
+    ["💰 Conta fixa", "conta_fixa"],
+    ["🛠️ Prazo técnico", "manutencao"],
+    ["🧑‍⚖️ Prazo trabalhista", "trabalhista"],
+    ["✍️ Prazo próprio", "proprio"],
+  ];
+  return (
+    <div className="relative">
+      <button type="button" onClick={(e) => { e.stopPropagation(); setAberto(v => !v); }} className={className} title="Criar tarefa ou prazo neste dia">+ Novo</button>
+      {aberto && (
+        <>
+          <div className="fixed inset-0 z-20" onClick={(e) => { e.stopPropagation(); setAberto(false); }} />
+          <div className="absolute left-0 mt-1 z-30 w-44 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-xs">
+            {opcoes.map(([lbl, tipo], i) => (
+              <div key={tipo}>
+                {i === 1 && <div className="my-1 border-t border-gray-100 dark:border-gray-800" />}
+                <button type="button" onClick={(e) => { e.stopPropagation(); setAberto(false); onEscolher(tipo, data); }} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia, onNovoNoDia }: {
   tarefas: Tarefa[];
   projetos: TarefaProjeto[];
   subprojetos?: TarefaSubprojeto[];
@@ -2641,6 +2711,8 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
   autor?: { id: string; nome: string };
   // Quando chamado com `prazo`, vai pra aquele dia; sem args, cria sem data.
   onNovaTarefaNoDia?: (prazo?: string) => void;
+  // Chooser tarefa/prazo por dia (preferido). tipo ∈ tarefa|conta_fixa|manutencao|trabalhista|proprio
+  onNovoNoDia?: (tipo: string, data: string) => void;
 }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(hoje));
@@ -2848,15 +2920,17 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
               </button>
             );
           })}
-          {onNovaTarefaNoDia && (
-            <button
-              onClick={() => onNovaTarefaNoDia(data)}
-              className="w-full text-left text-[11px] px-1.5 py-1 rounded border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors"
-              title={`+ nova tarefa em ${label} ${Number(data.slice(8, 10))}`}
-            >
-              + Nova tarefa
-            </button>
-          )}
+          {onNovoNoDia
+            ? <NovoNoDiaBtn data={data} onEscolher={onNovoNoDia} className="w-full text-left text-[11px] px-1.5 py-1 rounded border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors" />
+            : onNovaTarefaNoDia && (
+              <button
+                onClick={() => onNovaTarefaNoDia(data)}
+                className="w-full text-left text-[11px] px-1.5 py-1 rounded border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors"
+                title={`+ nova tarefa em ${label} ${Number(data.slice(8, 10))}`}
+              >
+                + Nova tarefa
+              </button>
+            )}
         </div>
       </div>
     );
@@ -2952,17 +3026,19 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }
               {tarefasFdsAtivas.length > 3 && (
                 <div className="text-[10px] text-gray-500 dark:text-gray-400">+{tarefasFdsAtivas.length - 3}</div>
               )}
-              {onNovaTarefaNoDia && (
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); }}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); } }}
-                  className="block text-[11px] px-1.5 py-1 rounded border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors mt-1"
-                >
-                  + Nova tarefa
-                </span>
-              )}
+              {onNovoNoDia
+                ? <div className="mt-1"><NovoNoDiaBtn data={dias[5]} onEscolher={onNovoNoDia} className="block w-full text-left text-[11px] px-1.5 py-1 rounded border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors" /></div>
+                : onNovaTarefaNoDia && (
+                  <span
+                    role="button"
+                    tabIndex={0}
+                    onClick={(e) => { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); }}
+                    onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); } }}
+                    className="block text-[11px] px-1.5 py-1 rounded border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors mt-1"
+                  >
+                    + Nova tarefa
+                  </span>
+                )}
               <div className="text-[10px] text-indigo-600 dark:text-indigo-400 underline mt-1">Expandir →</div>
             </div>
           </button>
