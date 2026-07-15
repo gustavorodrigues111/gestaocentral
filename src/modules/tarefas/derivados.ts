@@ -137,7 +137,9 @@ export function derivarPrazosTrab(
     out.push({
       id: `pt::${it.id}`,
       projetoId, subprojetoId,
-      titulo: it.titulo,
+      // Inclui de QUEM é (it.sub = nome do empregado) — senão vira vários
+      // "Coprocultura" iguais sem dá pra saber a pessoa.
+      titulo: it.sub ? `${it.titulo} — ${it.sub}` : it.titulo,
       responsavelId: "",
       restaurantIds: it.restaurantId ? [it.restaurantId] : undefined,
       prazo: it.data,
