@@ -392,47 +392,42 @@ export function TarefasPage() {
     return <Navigate to="/" replace />;
   }
 
-  // Ações fixas (na linha do seletor de visão): Nova tarefa sempre; Novo prazo +
-  // Gerenciar só quando você está no grupo Prazos.
-  const emPrazosView = !!prazosProjId && tab === "projeto" && projetoFiltro === prazosProjId;
+  // Ações fixas (na linha do seletor de visão), sempre visíveis: Nova tarefa,
+  // Novo prazo (cria dentro dos prazos existentes de qualquer lugar) e Gerenciar.
   const acoesHeader = (
     <div className="flex items-center gap-1.5 shrink-0">
       <Button size="sm" onClick={() => setNovaAberta({})}>+ Nova tarefa</Button>
-      {emPrazosView && (
-        <>
-          <div className="relative">
-            <Button size="sm" variant="secondary" onClick={() => setPrazoMenuAberto((v) => !v)}>+ Novo prazo</Button>
-            {prazoMenuAberto && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setPrazoMenuAberto(false)} />
-                <div className="absolute right-0 mt-1 z-20 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
-                  {([
-                    ["✍️ Prazo próprio", () => setNovaAberta({ projetoId: prazosProjId })],
-                    ["💰 Conta fixa", () => setCriarContaFixa(true)],
-                    ["🛠️ Prazo técnico", () => setCriarManutencao(true)],
-                    ["🧑‍⚖️ Prazo trabalhista", () => setNovaAberta({ projetoId: prazosProjId, tipoPrazo: "trabalhista" })],
-                  ] as [string, () => void][]).map(([lbl, fn]) => (
-                    <button key={lbl} type="button" onClick={() => { setPrazoMenuAberto(false); fn(); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-          <div className="relative">
-            <button type="button" onClick={() => setGerenciarMenuAberto((v) => !v)} className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">⚙ Gerenciar ▾</button>
-            {gerenciarMenuAberto && (
-              <>
-                <div className="fixed inset-0 z-10" onClick={() => setGerenciarMenuAberto(false)} />
-                <div className="absolute right-0 mt-1 z-20 w-52 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
-                  {([["contasFixas", "💰 Contas fixas"], ["manutencoes", "🛠️ Prazos técnicos"], ["prazosTrabalhistas", "🧑‍⚖️ Prazos trabalhistas"]] as [string, string][]).map(([mod, lbl]) => (
-                    <button key={mod} type="button" onClick={() => { setGerenciarMenuAberto(false); navigate(`/r/${ridAtivo}/${mod}`); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
-        </>
-      )}
+      <div className="relative">
+        <Button size="sm" variant="secondary" onClick={() => setPrazoMenuAberto((v) => !v)}>+ Novo prazo</Button>
+        {prazoMenuAberto && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setPrazoMenuAberto(false)} />
+            <div className="absolute right-0 mt-1 z-20 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
+              {([
+                ["✍️ Prazo próprio", () => setNovaAberta({ projetoId: prazosProjId })],
+                ["💰 Conta fixa", () => setCriarContaFixa(true)],
+                ["🛠️ Prazo técnico", () => setCriarManutencao(true)],
+                ["🧑‍⚖️ Prazo trabalhista", () => setNovaAberta({ projetoId: prazosProjId, tipoPrazo: "trabalhista" })],
+              ] as [string, () => void][]).map(([lbl, fn]) => (
+                <button key={lbl} type="button" onClick={() => { setPrazoMenuAberto(false); fn(); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+      <div className="relative">
+        <button type="button" onClick={() => setGerenciarMenuAberto((v) => !v)} className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">⚙ Gerenciar ▾</button>
+        {gerenciarMenuAberto && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setGerenciarMenuAberto(false)} />
+            <div className="absolute right-0 mt-1 z-20 w-52 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
+              {([["contasFixas", "💰 Contas fixas"], ["manutencoes", "🛠️ Prazos técnicos"], ["prazosTrabalhistas", "🧑‍⚖️ Prazos trabalhistas"]] as [string, string][]).map(([mod, lbl]) => (
+                <button key={mod} type="button" onClick={() => { setGerenciarMenuAberto(false); navigate(`/r/${ridAtivo}/${mod}`); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
     </div>
   );
 
