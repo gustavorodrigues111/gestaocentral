@@ -162,6 +162,18 @@ export function VagaCandidaturaPage() {
       if (p.obrigatoria && !(respostas[p.id] || "").trim()) return setErro(`Responda: ${p.label}`);
     }
     if (curriculo && curriculo.size > 10 * 1024 * 1024) return setErro("Currículo muito grande (máx 10 MB).");
+    // Content-type DETERMINÍSTICO pela extensão: o iOS/Safari às vezes manda
+    // octet-stream ou vazio pra .docx, o que fazia a regra do Storage barrar o
+    // upload (storage/unauthorized). Aqui garantimos um tipo que a regra aceita.
+    const CT_POR_EXT: Record<string, string> = {
+      pdf: "application/pdf",
+      doc: "application/msword",
+      docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      odt: "application/vnd.oasis.opendocument.text",
+      jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", heic: "image/heic",
+    };
+    const extCv = curriculo ? (curriculo.name.split(".").pop()?.toLowerCase() || "") : "";
+    if (curriculo && !CT_POR_EXT[extCv]) return setErro("Formato não aceito. Envie o currículo em PDF, Word (.doc/.docx) ou imagem (JPG/PNG).");
     setEnviando(true);
     try {
       let d = whatsapp.replace(/\D/g, ""); if (d.length <= 11) d = "55" + d;
@@ -170,9 +182,8 @@ export function VagaCandidaturaPage() {
       // READ do Storage exige auth. Guardamos só o path; o DP resolve a URL.
       let curriculoPath: string | undefined;
       if (curriculo) {
-        const ext = curriculo.name.split(".").pop()?.toLowerCase() || "pdf";
-        curriculoPath = `candidaturas/${rid}/${id}.${ext}`;
-        await uploadBytes(storageRef(storage, curriculoPath), curriculo, { contentType: curriculo.type });
+        curriculoPath = `candidaturas/${rid}/${id}.${extCv}`;
+        await uploadBytes(storageRef(storage, curriculoPath), curriculo, { contentType: CT_POR_EXT[extCv] });
       }
       const respLabels: Record<string, string> = {};
       for (const p of vaga?.perguntas || []) { const v = (respostas[p.id] || "").trim(); if (v) respLabels[p.label] = v; }
@@ -274,8 +285,8 @@ export function VagaCandidaturaPage() {
           ))}
 
           <div>
-            <label style={lbl}>Currículo (PDF{vaga.curriculoObrigatorio ? ", obrigatório *" : ", opcional"})</label>
-            <input type="file" accept="application/pdf,.pdf,.doc,.docx" onChange={(e) => setCurriculo(e.target.files?.[0] || null)} style={{ fontSize: 13 }} />
+            <label style={lbl}>Currículo (PDF, Word ou imagem{vaga.curriculoObrigatorio ? ", obrigatório *" : ", opcional"})</label>
+            <input type="file" accept="application/pdf,.pdf,.doc,.docx,.odt,image/*" onChange={(e) => setCurriculo(e.target.files?.[0] || null)} style={{ fontSize: 13 }} />
             {curriculo && <div style={{ fontSize: 12, opacity: 0.6, marginTop: 4 }}>📎 {curriculo.name}</div>}
           </div>
 

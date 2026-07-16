@@ -65,10 +65,16 @@ service firebase.storage {
     // sem auth, mas só lê com auth.
     match /candidaturas/{rid}/{file=**} {
       allow read: if request.auth != null;
+      // Candidato anônimo: aceita PDF, Word (.doc/.docx), ODT e imagens. O
+      // octet-stream é fallback pra navegadores (iOS) que não detectam o tipo.
       allow create: if request.resource.size < 10 * 1024 * 1024
         && (
           request.resource.contentType.matches("application/pdf")
           || request.resource.contentType.matches("image/.*")
+          || request.resource.contentType.matches("application/msword")
+          || request.resource.contentType.matches("application/vnd.openxmlformats-officedocument.wordprocessingml.document")
+          || request.resource.contentType.matches("application/vnd.oasis.opendocument.text")
+          || request.resource.contentType.matches("application/octet-stream")
         );
       allow update, delete: if request.auth != null;
     }
