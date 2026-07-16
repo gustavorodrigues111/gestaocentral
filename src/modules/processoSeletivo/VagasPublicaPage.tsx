@@ -8,6 +8,7 @@ import { collection, doc, getDoc, getDocs, query, where, setDoc } from "firebase
 import { ref as storageRef, uploadBytes } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { reportarFalha } from "../../core/monitor/reportarFalha";
 import type { Vaga, PerguntaVaga, CandidaturaTrabalhe, SiteConfig, HorarioDia, SundayCycle } from "../../core/types";
 
 const DIAS_SEMANA = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -199,7 +200,13 @@ export function VagaCandidaturaPage() {
       };
       await setDoc(doc(db, "candidaturasTrabalhe", id), sanitizeForFirestore(cand));
       setOk(true);
-    } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao enviar."); }
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao enviar.");
+      reportarFalha("Candidatura (público)", e, {
+        restaurantId: rid || undefined, restauranteNome: vaga?.titulo,
+        pessoaNome: nome.trim(), contexto: `email: ${email.trim()} · whatsapp: ${whatsapp} · vaga: ${vaga?.titulo || "espontânea"}${curriculo ? ` · anexou ${curriculo.name}` : ""}`,
+      });
+    }
     setEnviando(false);
   }
 

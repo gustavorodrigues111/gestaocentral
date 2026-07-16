@@ -6,6 +6,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { reportarFalha } from "../../core/monitor/reportarFalha";
 import type {
   Cliente, ClientePublicLookup, ConfiguracaoReservas, ExcecaoReserva, Reserva, ReservaPII, Salao,
 } from "../../core/types";
@@ -562,6 +563,10 @@ export function ReservasPublicaPage() {
       console.error(e);
       setErro(e instanceof Error ? e.message : "Erro ao enviar — tenta novamente");
       setStep("slot");
+      reportarFalha("Reserva (público)", e, {
+        restaurantId: rid || undefined, pessoaNome: nome.trim(),
+        contexto: `data: ${data} · pessoas: ${pessoas}`,
+      });
     } finally {
       setSubmitting(false);
     }

@@ -8,6 +8,7 @@ import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { reportarFalha } from "../../core/monitor/reportarFalha";
 import { authHeader } from "../../core/firebase/idToken";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -599,7 +600,10 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
       const url = await getDownloadURL(snap.ref);
       setArquivoPath(path);          // guarda pra permitir reler depois
       await extrairDeUrl(url);
-    } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao subir/extrair."); }
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Erro ao subir/extrair.");
+      reportarFalha("Faturas · subir/extrair", e, { restaurantId: rid || undefined, contexto: `arquivo: ${file.name}${meId ? ` · por ${meId}` : ""}` });
+    }
     finally { setSubindo(false); }
   }
 

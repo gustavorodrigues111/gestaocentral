@@ -6007,6 +6007,23 @@ export type AgenteLog = {
 
 // Número de WhatsApp plugado (uma "caixa" do inbox). O id do doc = o nome da
 // INSTÂNCIA na Evolution (ex.: "sororoca"), pra o webhook mapear direto.
+// Monitor de falhas: erro capturado (formulário público ou ação interna
+// crítica). Gravado pelo /api/reportar-falha; lido pelo master na Central.
+export type FalhaLog = {
+  id: string;
+  modulo: string;
+  mensagem: string;
+  codigo?: string;
+  url?: string;
+  userAgent?: string;
+  restaurantId?: string;
+  restauranteNome?: string;
+  contexto?: string;
+  pessoaNome?: string;
+  criadoEm: string;           // ISO
+  resolvidoEm?: string;       // master marcou como resolvido
+};
+
 export type WhatsappNumero = {
   id: string;                 // = nome da instância na Evolution
   nome: string;               // rótulo amigável (ex.: "Sororoca · Clientes")

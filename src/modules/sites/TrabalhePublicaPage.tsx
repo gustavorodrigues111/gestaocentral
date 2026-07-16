@@ -4,6 +4,7 @@ import { doc, setDoc } from "firebase/firestore";
 import { ref as storageRef, uploadBytes } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { reportarFalha } from "../../core/monitor/reportarFalha";
 import type { CandidaturaTrabalhe } from "../../core/types";
 import { validarEmail } from "../eventos/validacoes";
 import {
@@ -65,9 +66,18 @@ export function TrabalhePublicaPage() {
       // getDownloadURL (READ exige auth). Guarda só o path; o DP resolve depois.
       let curriculoPath: string | undefined;
       if (curriculo) {
-        const ext = curriculo.name.split(".").pop()?.toLowerCase() || "pdf";
+        // Content-type determinístico pela extensão (iOS às vezes manda
+        // octet-stream/vazio p/ .docx → a regra do Storage barrava o upload).
+        const CT_POR_EXT: Record<string, string> = {
+          pdf: "application/pdf", doc: "application/msword",
+          docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+          odt: "application/vnd.oasis.opendocument.text",
+          jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", heic: "image/heic",
+        };
+        const ext = curriculo.name.split(".").pop()?.toLowerCase() || "";
+        if (!CT_POR_EXT[ext]) throw new Error("Formato não aceito. Envie em PDF, Word (.doc/.docx) ou imagem.");
         curriculoPath = `candidaturas/${rid}/${id}.${ext}`;
-        await uploadBytes(storageRef(storage, curriculoPath), curriculo, { contentType: curriculo.type });
+        await uploadBytes(storageRef(storage, curriculoPath), curriculo, { contentType: CT_POR_EXT[ext] });
       }
 
       const candidatura: CandidaturaTrabalhe = {
@@ -93,6 +103,10 @@ export function TrabalhePublicaPage() {
     } catch (e) {
       console.error(e);
       setErro(e instanceof Error ? e.message : "Erro ao enviar — tenta novamente");
+      reportarFalha("Trabalhe conosco (público)", e, {
+        restaurantId: rid || undefined, pessoaNome: form.nome.trim(),
+        contexto: `email: ${form.email.trim()} · área: ${form.areaInteresse.trim()}${curriculo ? ` · anexou ${curriculo.name}` : ""}`,
+      });
     } finally {
       setSubmitting(false);
     }

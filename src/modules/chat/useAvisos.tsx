@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { collection, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, setDoc, where, orderBy, limit } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -22,7 +22,7 @@ import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { canAcao, resolverPerfil } from "../../core/auth/permissions";
 import { SETORES } from "../../core/wiki/setores";
 import { useAvisoSource, type AvisoDoc } from "./useAvisoSource";
-import type { AvisoDirecionado, FaleDpMensagem, Rotina, RotinaConclusao, WikiProcesso } from "../../core/types";
+import type { AvisoDirecionado, FaleDpMensagem, Rotina, RotinaConclusao, WikiProcesso, FalhaLog } from "../../core/types";
 import { FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE } from "../../core/types";
 import { pendentesParaPessoa } from "../rotinas/repository";
 import { recorrenciaLabel } from "../rotinas/rotinasEngine";
@@ -293,9 +293,37 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     return () => u();
   }, [pid]);
 
+  // ── Monitor de falhas: só o master vê. Últimas falhas não resolvidas. ──
+  const ehMaster = !!pessoa?.isMaster;
+  const [falhas, setFalhas] = useState<FalhaLog[]>([]);
+  useEffect(() => {
+    if (!ehMaster) { setFalhas([]); return; }
+    const u = onSnapshot(
+      query(collection(db, "falhasLog"), orderBy("criadoEm", "desc"), limit(40)),
+      (s) => setFalhas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as FalhaLog).filter((f) => !f.resolvidoEm)),
+      () => setFalhas([]),
+    );
+    return () => u();
+  }, [ehMaster]);
+
   const todos = useMemo<Aviso[]>(() => {
     const out: Aviso[] = [];
     const hoje = new Date().toISOString().slice(0, 10);
+
+    // ── Monitor de falhas (master) ──
+    for (const f of falhas) {
+      out.push({
+        id: `falha_${f.id}`,
+        tipo: "falha", icone: "🚨",
+        titulo: `Erro em ${f.modulo}`,
+        descricao: `${f.mensagem}${f.codigo ? ` (${f.codigo})` : ""}${f.pessoaNome ? ` · ${f.pessoaNome}` : ""}${f.contexto ? ` · ${f.contexto}` : ""}`,
+        em: f.criadoEm,
+        restauranteId: f.restaurantId || "",
+        restauranteNome: f.restauranteNome || nomePorRid[f.restaurantId || ""] || "—",
+        cta: f.url ? "Abrir onde ocorreu" : "Ver detalhe", href: f.url || undefined,
+        categoria: "Monitor de falhas", categoriaIcone: "🚨",
+      });
+    }
     const limite30 = addDiasYmd(hoje, 30);
 
     // ── Avisos direcionados a mim ──
@@ -785,6 +813,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     minhaAcao, minhaProducao, checklistTpl, checklistRun, cobrancasInt,
     reembReceber, reembPagos, manuts,
     empTrab, exTrab, uniTrab, trabResolv, iaAlertas, avisosDir, candidaturasAdmissao,
+    falhas,
   ]);
 
   // ── Estado de leitura (overlay persistido por pessoa) ──

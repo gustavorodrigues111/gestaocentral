@@ -39,6 +39,14 @@ service cloud.firestore {
       allow write: if isMaster();
     }
 
+    // ── /falhasLog ── Monitor de falhas. Gravado pelo usuário de serviço
+    //   (/api/reportar-falha, authed); só o master lê e resolve. ───────────
+    match /falhasLog/{id} {
+      allow read:   if isMaster();
+      allow create: if authed() && request.resource.data.size() < 30;
+      allow update, delete: if isMaster();
+    }
+
     // ── /pessoas ── identidades + permissões ─────────────────────────────
     match /pessoas/{id} {
       allow read:   if authed();
