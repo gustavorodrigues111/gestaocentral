@@ -15,11 +15,24 @@ import { reportarFalha } from "../../core/monitor/reportarFalha";
 import type { Gorjeta, Empregado } from "../../core/types";
 import { conferir, findingsReportaveis } from "./regras";
 import { gorjetaMensalPorCpf } from "./gorjetaMensal";
-import { cpfDigits, type FolhaEspelho, type Finding, type FolhaWhitelistItem, type FolhaTipo } from "./tipos";
+import { cpfDigits, type FolhaEspelho, type Finding, type FolhaWhitelistItem, type FolhaTipo, type FolhaConferencia } from "./tipos";
+
+const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 const brl = (n?: number) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const maskCpf = (c: string) => { const d = cpfDigits(c); return d.length === 11 ? `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}` : c; };
 const mesAtual = () => new Date().toISOString().slice(0, 7);
+// Desloca "YYYY-MM" por N meses.
+function mudarMes(comp: string, delta: number): string {
+  const ano = parseInt(comp.slice(0, 4)), mes = parseInt(comp.slice(5, 7)) - 1;
+  const d = new Date(ano, mes + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+// Anos oferecidos no seletor: do ano atual +1 até 3 anos atrás.
+function anosDisponiveis(): number[] {
+  const y = new Date().getFullYear();
+  return [y + 1, y, y - 1, y - 2, y - 3];
+}
 
 const SEV_META: Record<string, { label: string; cls: string; dot: string }> = {
   P0: { label: "P0 · bloqueia pagamento", cls: "border-rose-300 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800", dot: "bg-rose-500" },
@@ -43,6 +56,7 @@ export function FolhasPage() {
   const [gorjetas, setGorjetas] = useState<Gorjeta[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [whitelist, setWhitelist] = useState<FolhaWhitelistItem[]>([]);
+  const [conferencias, setConferencias] = useState<FolhaConferencia[]>([]);
   const [subindo, setSubindo] = useState<FolhaTipo | null>(null);
   const [erro, setErro] = useState("");
   const [aba, setAba] = useState<"conferencia" | "whitelist">("conferencia");
@@ -55,8 +69,18 @@ export function FolhasPage() {
     const u1 = onSnapshot(query(collection(db, "gorjetas"), where("restaurantId", "==", rid)), (s) => setGorjetas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Gorjeta)), () => setGorjetas([]));
     const u2 = onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)), (s) => setEmpregados(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado)), () => setEmpregados([]));
     const u3 = onSnapshot(query(collection(db, "folhasWhitelist"), where("restaurantId", "==", rid)), (s) => setWhitelist(s.docs.map((d) => ({ id: d.id, ...d.data() }) as FolhaWhitelistItem)), () => setWhitelist([]));
-    return () => { u1(); u2(); u3(); };
+    const u4 = onSnapshot(query(collection(db, "folhasConferencia"), where("restaurantId", "==", rid)), (s) => setConferencias(s.docs.map((d) => ({ id: d.id, ...d.data() }) as FolhaConferencia)), () => setConferencias([]));
+    return () => { u1(); u2(); u3(); u4(); };
   }, [rid]);
+
+  // ── Memória: hidrata a folha/adiantamento da competência a partir do que já
+  //    foi salvo. Firestore é a fonte da verdade — subir um PDF grava lá, e este
+  //    efeito reflete de volta. Muda de competência → mostra o que já existe. ──
+  const docCompetencia = useMemo(() => conferencias.find((c) => c.competencia === competencia), [conferencias, competencia]);
+  useEffect(() => {
+    setFolha(docCompetencia?.folha || null);
+    setAdiantamento(docCompetencia?.adiantamento || null);
+  }, [docCompetencia]);
 
   // ── Gorjeta do mês por CPF + conferência (memo determinístico) ──
   const { porCpf } = useMemo(() => gorjetaMensalPorCpf(gorjetas, empregados, competencia), [gorjetas, empregados, competencia]);
@@ -85,7 +109,18 @@ export function FolhasPage() {
       const data = await r.json().catch(() => ({}));
       if (!r.ok || !data.espelho) throw new Error((data as { error?: string }).error || `Erro ${r.status}`);
       const esp = data.espelho as FolhaEspelho;
-      if (tipo === "folha") setFolha(esp); else setAdiantamento(esp);
+      // Grava DIRETO no Firestore (a memória): sobe o PDF → fica salvo. A tela
+      // reflete via onSnapshot. Merge preserva o outro espelho da competência.
+      const id = `${rid}_${competencia}`;
+      const criadoEm = docCompetencia?.criadoEm || new Date().toISOString();
+      await setDoc(doc(db, "folhasConferencia", id), sanitizeForFirestore({
+        id, restaurantId: rid, competencia,
+        [tipo]: esp,
+        status: docCompetencia?.status === "fechada" ? "com_pendencias" : (docCompetencia?.status || "aberta"),
+        criadoEm, criadoPor: docCompetencia?.criadoPor || me?.id || "",
+        atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id || "",
+      }), { merge: true });
+      setErro(`✓ ${tipo === "folha" ? "Folha" : "Adiantamento"} lido e salvo.`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setErro(`Falha ao ler o ${tipo}: ${msg}`);
@@ -98,14 +133,17 @@ export function FolhasPage() {
     try {
       const id = `${rid}_${competencia}`;
       await setDoc(doc(db, "folhasConferencia", id), sanitizeForFirestore({
-        id, restaurantId: rid, competencia, folha, adiantamento: adiantamento || null,
         findings, status: reportaveis.length ? "com_pendencias" : "fechada",
         resumo: { liquidoClt: resumoFolha?.liquido, headcount: resumoFolha?.headcount, gps: resumoFolha?.gps },
-        criadoEm: new Date().toISOString(), criadoPor: me?.id || "",
         fechadaEm: new Date().toISOString(), fechadaPor: me?.id || "",
       }), { merge: true });
-      setErro("✓ Competência salva como baseline.");
+      setErro("✓ Competência fechada como baseline.");
     } catch (e) { setErro("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); }
+  }
+
+  async function removerEspelho(tipo: FolhaTipo) {
+    if (!rid || !docCompetencia) return;
+    await setDoc(doc(db, "folhasConferencia", docCompetencia.id), sanitizeForFirestore({ [tipo]: null, atualizadoEm: new Date().toISOString() }), { merge: true });
   }
 
   if (!podeVer) return <div className="p-6 text-sm text-gray-500">Você não tem acesso à Conferência de Folhas.</div>;
@@ -117,9 +155,16 @@ export function FolhasPage() {
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">🧾 Conferência de Folhas</h1>
           <p className="text-sm text-gray-500">{activeRestaurant?.nome || "—"} · audita a folha do Senador contra gorjeta, adiantamento e integridade.</p>
         </div>
-        <div className="flex items-center gap-2">
-          <label className="text-xs text-gray-500">Competência</label>
-          <input type="month" value={competencia} onChange={(e) => { setCompetencia(e.target.value); setFolha(null); setAdiantamento(null); }} className="px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+        <div className="flex items-center gap-1.5">
+          <label className="text-xs text-gray-500 mr-1">Competência</label>
+          <button type="button" onClick={() => setCompetencia(mudarMes(competencia, -1))} className="w-7 h-8 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800">‹</button>
+          <select value={parseInt(competencia.slice(5, 7)) - 1} onChange={(e) => setCompetencia(`${competencia.slice(0, 4)}-${String(parseInt(e.target.value) + 1).padStart(2, "0")}`)} className="px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+            {MESES.map((m, i) => <option key={i} value={i}>{m}</option>)}
+          </select>
+          <select value={competencia.slice(0, 4)} onChange={(e) => setCompetencia(`${e.target.value}-${competencia.slice(5, 7)}`)} className="px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+            {anosDisponiveis().map((a) => <option key={a} value={a}>{a}</option>)}
+          </select>
+          <button type="button" onClick={() => setCompetencia(mudarMes(competencia, 1))} className="w-7 h-8 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800">›</button>
         </div>
       </header>
 
@@ -131,6 +176,24 @@ export function FolhasPage() {
 
       {aba === "conferencia" ? (
         <>
+          {/* Histórico — competências que já têm espelho salvo (a memória) */}
+          {conferencias.length > 0 && (
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[11px] text-gray-400">histórico:</span>
+              {[...conferencias].sort((a, b) => b.competencia.localeCompare(a.competencia)).map((c) => {
+                const [ano, mes] = c.competencia.split("-");
+                const ativo = c.competencia === competencia;
+                return (
+                  <button key={c.id} type="button" onClick={() => setCompetencia(c.competencia)}
+                    className={`text-[11px] px-2 py-0.5 rounded-full border ${ativo ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+                    title={c.status}>
+                    {MESES[parseInt(mes) - 1].slice(0, 3)}/{ano}{c.status === "fechada" ? " 🔒" : c.status === "com_pendencias" ? " ⚠" : ""}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* Upload */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             {([["folha", "Espelho da folha mensal", folha], ["adiantamento", "Espelho de adiantamento (opcional)", adiantamento]] as const).map(([tipo, label, val]) => (
@@ -141,12 +204,13 @@ export function FolhasPage() {
                 </div>
                 {val && <p className="text-[11px] text-gray-400 mt-0.5">{val.colaboradores.length} colaboradores · líquido {brl(val.resumoGeral?.liquido)}</p>}
                 {podeConferir && (
-                  <>
+                  <div className="mt-2 flex items-center gap-2">
                     <input ref={tipo === "folha" ? folhaRef : adiantRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void subir(f, tipo); e.target.value = ""; }} />
-                    <button type="button" disabled={subindo === tipo} onClick={() => (tipo === "folha" ? folhaRef : adiantRef).current?.click()} className="mt-2 text-xs px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 disabled:opacity-50">
+                    <button type="button" disabled={subindo === tipo} onClick={() => (tipo === "folha" ? folhaRef : adiantRef).current?.click()} className="text-xs px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 disabled:opacity-50">
                       {subindo === tipo ? "lendo PDF…" : val ? "trocar PDF" : "📄 subir PDF"}
                     </button>
-                  </>
+                    {val && <button type="button" onClick={() => void removerEspelho(tipo)} className="text-xs text-gray-400 hover:text-rose-600">remover</button>}
+                  </div>
                 )}
               </div>
             ))}
