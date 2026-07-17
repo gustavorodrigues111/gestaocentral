@@ -484,6 +484,19 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "folhas",
+    icon: "🧾",
+    label: "Conferência de Folhas",
+    desc: "Auditoria das folhas de pagamento (espelhos do Senador) contra gorjeta, adiantamento e mês anterior",
+    area: "gestao",
+    acoes: [
+      { id: "ver",        label: "Ver conferências e findings", sensivel: true },
+      { id: "conferir",   label: "Subir espelhos e rodar a conferência", sensivel: true },
+      { id: "whitelist",  label: "Editar exceções (whitelist)", sensivel: true },
+      { id: "fechar",     label: "Fechar competência (vira baseline)", sensivel: true },
+    ],
+  },
+  {
     id: "pessoas",
     icon: "👥",
     label: "Pessoas",

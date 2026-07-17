@@ -78,6 +78,8 @@ export type ModuleId =
   | "tarefas" | "contasFixas" | "manutencoes"
   // Agentes de IA
   | "agentes"
+  // Conferência de folhas de pagamento (auditor)
+  | "folhas"
   // Prazos Trabalhistas — agenda que agrega prazos de RH (experiências 45/90,
   // exames, uniformes/EPIs). Área AGENDA junto com Técnicos e Contas.
   | "prazosTrabalhistas"

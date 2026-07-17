@@ -47,6 +47,15 @@ service cloud.firestore {
       allow update, delete: if isMaster();
     }
 
+    // ── Conferência de folhas de pagamento (dados sensíveis: financeiro +
+    //   PII de empregado). Qualquer authed lê/grava; UI gateia por permissão.
+    match /folhasConferencia/{id} {
+      allow read, write: if authed();
+    }
+    match /folhasWhitelist/{id} {
+      allow read, write: if authed();
+    }
+
     // ── /pessoas ── identidades + permissões ─────────────────────────────
     match /pessoas/{id} {
       allow read:   if authed();
