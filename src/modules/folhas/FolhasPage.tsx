@@ -14,6 +14,7 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { reportarFalha } from "../../core/monitor/reportarFalha";
 import type { Gorjeta, Empregado } from "../../core/types";
 import { conferir, findingsReportaveis, blocoA } from "./regras";
+import { linhasPorColaborador } from "./porColaborador";
 import { gorjetaMensalPorCpf } from "./gorjetaMensal";
 import { cpfDigits, type FolhaEspelho, type Finding, type FolhaWhitelistItem, type FolhaTipo, type FolhaConferencia } from "./tipos";
 
@@ -41,10 +42,12 @@ function anosDisponiveis(): number[] {
   return [y + 1, y, y - 1, y - 2, y - 3];
 }
 
-const SEV_META: Record<string, { label: string; cls: string; dot: string }> = {
-  P0: { label: "P0 · bloqueia pagamento", cls: "border-rose-300 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800", dot: "bg-rose-500" },
-  P1: { label: "P1 · erro provável", cls: "border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800", dot: "bg-amber-500" },
-  P2: { label: "P2 · confirmar", cls: "border-sky-300 bg-sky-50 dark:bg-sky-900/20 dark:border-sky-800", dot: "bg-sky-500" },
+// Cor da linha do colaborador pela pior observação (OK = neutro/verde).
+const OBS_META: Record<string, { cls: string; dot: string }> = {
+  P0: { cls: "border-rose-300 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800", dot: "bg-rose-500" },
+  P1: { cls: "border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800", dot: "bg-amber-500" },
+  P2: { cls: "border-sky-300 bg-sky-50 dark:bg-sky-900/20 dark:border-sky-800", dot: "bg-sky-500" },
+  OK: { cls: "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900", dot: "bg-emerald-400" },
 };
 
 export function FolhasPage() {
@@ -67,6 +70,7 @@ export function FolhasPage() {
   const [subindo, setSubindo] = useState<FolhaTipo | null>(null);
   const [erro, setErro] = useState("");
   const [aba, setAba] = useState<"conferencia" | "whitelist">("conferencia");
+  const [soPendencias, setSoPendencias] = useState(false);
   const folhaRef = useRef<HTMLInputElement | null>(null);
   const adiantRef = useRef<HTMLInputElement | null>(null);
 
@@ -99,6 +103,7 @@ export function FolhasPage() {
   }, [folha, adiantamento, porCpf, whitelist, competencia]);
   const reportaveis = useMemo(() => (findings ? findingsReportaveis(findings) : []), [findings]);
   const silenciados = useMemo(() => (findings ? findings.filter((f) => f.whitelisted) : []), [findings]);
+  const linhas = useMemo(() => (findings ? linhasPorColaborador({ folha, adiantamento, gorjetaApp: porCpf, findings }) : []), [folha, adiantamento, porCpf, findings]);
 
   const resumoFolha = useMemo(() => {
     if (!folha) return null;
@@ -267,40 +272,46 @@ export function FolhasPage() {
                 </div>
               )}
 
-              {reportaveis.length === 0 ? (
-                <div className="rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-4 text-sm text-emerald-800 dark:text-emerald-300">
-                  ✓ Nada a corrigir nesta competência. {silenciados.length ? `(${silenciados.length} silenciado(s) por exceção.)` : ""}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  <p className="text-sm font-semibold text-gray-700 dark:text-gray-200">{reportaveis.length} {reportaveis.length === 1 ? "pendência" : "pendências"}</p>
-                  {reportaveis.map((f, i) => {
-                    const m = SEV_META[f.severidade] || SEV_META.P2;
-                    return (
-                      <div key={i} className={`rounded-xl border p-3 ${m.cls}`}>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className={`w-2 h-2 rounded-full ${m.dot}`} />
-                          <span className="text-[11px] font-bold uppercase text-gray-600 dark:text-gray-300">{m.label}</span>
-                          <span className="text-[11px] text-gray-400">Bloco {f.bloco} · {f.tipo}</span>
-                          {f.colaborador && <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 ml-auto">{f.colaborador}{f.cpf ? ` · ${maskCpf(f.cpf)}` : ""}</span>}
-                        </div>
-                        <p className="text-sm text-gray-800 dark:text-gray-200 mt-1.5">{f.explicacao}</p>
-                        {(f.esperado != null || f.encontrado != null) && (
-                          <div className="text-xs text-gray-500 mt-1 flex gap-3">
-                            {f.esperado != null && <span>esperado {brl(f.esperado)}</span>}
-                            {f.encontrado != null && <span>encontrado {brl(f.encontrado)}</span>}
-                            {f.delta != null && <span className="font-semibold">Δ {brl(f.delta)}</span>}
-                          </div>
-                        )}
-                        {f.acao && <p className="text-xs text-gray-500 mt-1">→ {f.acao}</p>}
-                        {podeWhitelist && f.cpf && (
-                          <button type="button" onClick={() => void addWhitelist(f)} className="mt-1.5 text-[11px] text-gray-400 hover:text-gray-700 underline">silenciar (criar exceção)</button>
-                        )}
+              {/* Resumo + filtro */}
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <p className="text-sm">
+                  {reportaveis.length === 0
+                    ? <span className="text-emerald-700 dark:text-emerald-400 font-semibold">✓ Nada a corrigir</span>
+                    : <span className="font-semibold text-gray-700 dark:text-gray-200">{reportaveis.length} {reportaveis.length === 1 ? "pendência" : "pendências"}</span>}
+                  <span className="text-gray-400"> · {linhas.length} colaboradores</span>
+                </p>
+                <label className="text-xs text-gray-500 flex items-center gap-1.5 cursor-pointer">
+                  <input type="checkbox" checked={soPendencias} onChange={(e) => setSoPendencias(e.target.checked)} /> só quem tem pendência
+                </label>
+              </div>
+
+              {/* Lista de TODOS os colaboradores, cada um com suas observações (✓ inclusive) */}
+              <div className="space-y-1.5">
+                {linhas.filter((l) => !soPendencias || l.pior !== "OK").map((l) => {
+                  const m = OBS_META[l.pior] || OBS_META.OK;
+                  return (
+                    <div key={l.cpf || l.nome} className={`rounded-xl border p-2.5 ${m.cls}`}>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className={`w-2 h-2 rounded-full shrink-0 ${m.dot}`} />
+                        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{l.nome}</span>
+                        <span className="text-[11px] text-gray-400 font-mono">{maskCpf(l.cpf)}</span>
+                        {l.situacao && l.situacao !== "normal" && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 capitalize">{l.situacao}</span>}
+                        <span className="text-xs text-gray-500 ml-auto">líquido {brl(l.liquido)}</span>
+                        {podeWhitelist && l.pior !== "OK" && l.cpf && <button type="button" onClick={() => void silenciarCpf(l.cpf, l.nome)} className="text-[10px] text-gray-400 hover:text-gray-700 underline">silenciar</button>}
                       </div>
-                    );
-                  })}
-                </div>
-              )}
+                      <ul className="mt-1 space-y-0.5 pl-4">
+                        {l.observacoes.map((o, i) => (
+                          <li key={i} className="text-xs flex items-center gap-1.5">
+                            <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${(OBS_META[o.severidade] || OBS_META.OK).dot}`} />
+                            <span className={o.severidade === "OK" ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-gray-100 font-medium"}>{o.texto}</span>
+                            {o.severidade !== "OK" && <span className="text-[9px] font-bold uppercase text-gray-400">{o.severidade}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  );
+                })}
+              </div>
 
               {silenciados.length > 0 && (
                 <details className="text-xs text-gray-500">
@@ -325,14 +336,13 @@ export function FolhasPage() {
     </div>
   );
 
-  async function addWhitelist(f: Finding) {
-    if (!rid || !f.cpf) return;
-    const motivo = prompt(`Exceção para ${f.colaborador} (${maskCpf(f.cpf)}).\nPor quê silenciar "${f.tipo}"?`);
+  async function silenciarCpf(cpf: string, nome: string) {
+    if (!rid || !cpf) return;
+    const motivo = prompt(`Criar exceção para ${nome} (${maskCpf(cpf)}) — silencia as observações dele nesta conferência.\nMotivo:`);
     if (!motivo) return;
-    const tipoWl = f.tipo.startsWith("adiantamento") ? "sem_adiantamento" : f.tipo.startsWith("cadastral") || f.tipo.startsWith("lote") ? "cadastral" : "geral";
     const id = `wl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     await setDoc(doc(db, "folhasWhitelist", id), sanitizeForFirestore({
-      id, restaurantId: rid, cpf: cpfDigits(f.cpf), tipo: tipoWl, motivo, inicio: `${competencia}-01`, criadoEm: new Date().toISOString(), criadoPor: me?.id || "",
+      id, restaurantId: rid, cpf: cpfDigits(cpf), tipo: "geral", motivo, inicio: `${competencia}-01`, criadoEm: new Date().toISOString(), criadoPor: me?.id || "",
     }));
   }
 }
