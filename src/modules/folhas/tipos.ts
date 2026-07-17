@@ -34,6 +34,10 @@ export type FolhaColaborador = {
   proventos: VerbaLinha[];
   descontos: VerbaLinha[];
   liquido: number;
+  // Totais IMPRESSOS no espelho ("Total de proventos ->", "Total de descontos ->").
+  // Usados pelo Bloco A pra pegar o parser perdendo uma verba (Σ verbas vs total impresso).
+  totalProventos?: number;
+  totalDescontos?: number;
   bases?: { inss?: number; fgts?: number; irrf?: number; salarioFamilia?: number };
   multiplosVinculos?: boolean;
 };

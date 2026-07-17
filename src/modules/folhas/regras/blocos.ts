@@ -33,6 +33,23 @@ export function blocoA(folha: FolhaEspelho): Finding[] {
     const p = soma(c.proventos), d = soma(c.descontos);
     const calc = r2(p - d);
     somaLiquidos += c.liquido;
+    // Σ verbas vs TOTAL IMPRESSO no espelho → pega o parser perdendo uma verba.
+    if (typeof c.totalProventos === "number" && c.totalProventos > 0 && Math.abs(r2(p) - c.totalProventos) > TOL_HOLERITE) {
+      out.push({
+        bloco: "A", severidade: "P2", tipo: "proventos_vs_total_impresso",
+        cpf: cpfDigits(c.cpf), colaborador: c.nome, esperado: c.totalProventos, encontrado: r2(p), delta: r2(p - c.totalProventos),
+        explicacao: `Σ das verbas de provento (${r2(p)}) ≠ 'Total de proventos' impresso (${c.totalProventos}). Provável verba não lida pelo parser.`,
+        acao: "Reprocessar o PDF; conferir se alguma verba de provento ficou de fora.",
+      });
+    }
+    if (typeof c.totalDescontos === "number" && c.totalDescontos > 0 && Math.abs(r2(d) - c.totalDescontos) > TOL_HOLERITE) {
+      out.push({
+        bloco: "A", severidade: "P2", tipo: "descontos_vs_total_impresso",
+        cpf: cpfDigits(c.cpf), colaborador: c.nome, esperado: c.totalDescontos, encontrado: r2(d), delta: r2(d - c.totalDescontos),
+        explicacao: `Σ das verbas de desconto (${r2(d)}) ≠ 'Total de descontos' impresso (${c.totalDescontos}). Provável verba não lida pelo parser.`,
+        acao: "Reprocessar o PDF; conferir se algum desconto ficou de fora.",
+      });
+    }
     if (Math.abs(calc - c.liquido) > TOL_HOLERITE) {
       out.push({
         bloco: "A", severidade: "P1", tipo: "integridade_holerite",

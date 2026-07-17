@@ -21,20 +21,25 @@ type VercelReq = { method?: string; headers?: Record<string, string | string[] |
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
 
 const PROMPT =
-  "Você recebe o ESPELHO de folha de pagamento (ou de adiantamento salarial) de um restaurante, emitido pelo sistema SCI/Senador. " +
+  "Você recebe o ESPELHO de folha de pagamento (ou de adiantamento salarial) de um restaurante, emitido pelo sistema SCI/Senador (SENADOR ORGANIZAÇÃO CONTÁBIL). " +
   "Extraia os dados de forma FIEL, sem recalcular nada. NÃO some, NÃO confira — só transcreva o que está impresso.\n\n" +
-  "ATENÇÃO ao layout: a descrição de uma verba às vezes QUEBRA em várias linhas e o código aparece em outra linha (ex.: 'Arredondamento provento adiant.' / 'salarial' / '90011'). Reagrupe por CÓDIGO da verba, não por posição de linha.\n\n" +
-  "Para CADA colaborador, extraia: matricula, nome, cpf (só dígitos), ctps, cbo, funcao, admissao (YYYY-MM-DD), salarioBase (número), horasMensais, temSalarioFamilia (bool), temIR (bool), " +
-  "situacao ({tipo: 'normal'|'ferias'|'demitido'|'afastado', inicio?, fim?} — use 'demitido' se houver bloco de rescisão, 'ferias' se houver bloco de férias, 'afastado' se acidente/auxílio-doença), " +
-  "multiplosVinculos (bool — true se o espelho marcar 'múltiplos vínculos'), " +
-  "proventos e descontos como listas de {codigo, descricao, referencia?, valor} (valor SEMPRE número, ponto decimal), " +
-  "liquido (número), bases ({inss, fgts, irrf, salarioFamilia} — números quando impressos).\n\n" +
-  "Extraia também: empresa (razão social), competencia ('YYYY-MM'), tipo ('folha' ou 'adiantamento'), " +
-  "resumoGeral ({liquido, totalProventos, totalDescontos} — do quadro RESUMO GERAL do PDF), e gps (valor do INSS/GPS a recolher, se houver).\n\n" +
+  "LAYOUT (importante):\n" +
+  "- É um relatório de DUAS COLUNAS: PROVENTOS à ESQUERDA, DESCONTOS à DIREITA. Uma mesma linha de texto pode conter UM provento (esquerda) E UM desconto (direita) ao mesmo tempo — separe pela coluna. Ex.: 'Adiantamento salarial com IR' (20504) é PROVENTO; 'Ad. sal. Créd. Trabalhador com IR' (20904), 'IR adiantamento' (91555) são DESCONTOS.\n" +
+  "- Em cada verba, o VALOR vem ANTES da descrição e o CÓDIGO vem DEPOIS (ex.: '1.040,00Adiantamento salarial com IR20504'). A descrição pode QUEBRAR em várias linhas antes do código (ex.: 'Arredondamento provento adiant.' / 'salarial' / '90011'). Reagrupe por CÓDIGO, não por linha.\n" +
+  "- O NOME do colaborador pode quebrar em 2 linhas — junte.\n" +
+  "- Cada colaborador imprime 'Total de proventos ->', 'Total de descontos ->' e 'Líquido ->'. EXTRAIA esses três como totalProventos, totalDescontos e liquido (são a verdade impressa).\n" +
+  "- O RESUMO GERAL / 'Total Geral' fica na ÚLTIMA página, com Quantidade, Proventos, Descontos, Líquido totais e o bloco Previdenciários (GPS).\n\n" +
+  "Para CADA colaborador, extraia: matricula (número antes do nome), nome, cpf (só dígitos), ctps, cbo, funcao, admissao (YYYY-MM-DD), salarioBase (número), horasMensais, temSalarioFamilia (bool), temIR (bool), " +
+  "situacao ({tipo: 'normal'|'ferias'|'demitido'|'afastado', inicio?, fim?} — 'demitido' se houver bloco de rescisão, 'ferias' se houver bloco/demonstrativo de férias, 'afastado' se acidente/auxílio-doença), " +
+  "multiplosVinculos (bool — true se marcar 'múltiplos vínculos'), " +
+  "proventos e descontos como listas de {codigo, descricao, referencia?, valor} (valor SEMPRE número com ponto decimal; 'referencia' é o número de qtd/% que às vezes aparece, ex.: '27,50' ou '2/36'), " +
+  "totalProventos, totalDescontos, liquido (números impressos), bases ({inss, fgts, irrf, salarioFamilia} — números quando impressos).\n\n" +
+  "Extraia também no topo: empresa (razão social), competencia ('YYYY-MM'), tipo ('folha' ou 'adiantamento' — o cabeçalho diz 'adiantamento salarial' quando é adiantamento), " +
+  "resumoGeral ({liquido, totalProventos, totalDescontos} — da última página), e gps (valor de 'GPS' / 'Total DARF previdenciário', 0 se não houver).\n\n" +
   "Responda SOMENTE um objeto JSON válido (sem texto antes/depois), no formato: " +
-  "{ \"empresa\": \"...\", \"competencia\": \"YYYY-MM\", \"tipo\": \"folha\", \"resumoGeral\": {\"liquido\": 0}, \"gps\": 0, " +
+  "{ \"empresa\": \"...\", \"competencia\": \"YYYY-MM\", \"tipo\": \"folha\", \"resumoGeral\": {\"liquido\": 0, \"totalProventos\": 0, \"totalDescontos\": 0}, \"gps\": 0, " +
   "\"colaboradores\": [ { \"matricula\": \"\", \"nome\": \"\", \"cpf\": \"\", \"situacao\": {\"tipo\":\"normal\"}, " +
-  "\"proventos\": [{\"codigo\":\"\",\"descricao\":\"\",\"valor\":0}], \"descontos\": [{\"codigo\":\"\",\"descricao\":\"\",\"valor\":0}], \"liquido\": 0, \"bases\": {} } ] }";
+  "\"proventos\": [{\"codigo\":\"\",\"descricao\":\"\",\"valor\":0}], \"descontos\": [{\"codigo\":\"\",\"descricao\":\"\",\"valor\":0}], \"totalProventos\": 0, \"totalDescontos\": 0, \"liquido\": 0, \"bases\": {} } ] }";
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
   try { await requireUser(req); } catch (e) {
@@ -107,6 +112,7 @@ function normColab(c: Record<string, unknown>) {
     temSalarioFamilia: !!c.temSalarioFamilia, temIR: !!c.temIR, multiplosVinculos: !!c.multiplosVinculos,
     situacao: obj(c.situacao),
     proventos: linhas(c.proventos), descontos: linhas(c.descontos),
+    totalProventos: num(c.totalProventos), totalDescontos: num(c.totalDescontos),
     liquido: num(c.liquido), bases: obj(c.bases),
   };
 }
