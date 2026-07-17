@@ -13,13 +13,20 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { reportarFalha } from "../../core/monitor/reportarFalha";
 import type { Gorjeta, Empregado } from "../../core/types";
-import { conferir, findingsReportaveis } from "./regras";
+import { conferir, findingsReportaveis, blocoA } from "./regras";
 import { gorjetaMensalPorCpf } from "./gorjetaMensal";
 import { cpfDigits, type FolhaEspelho, type Finding, type FolhaWhitelistItem, type FolhaTipo, type FolhaConferencia } from "./tipos";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
 const brl = (n?: number) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+// Confere se o parser leu o espelho todo: Σ dos líquidos vs RESUMO GERAL do PDF.
+function leitura(e: FolhaEspelho) {
+  const soma = Math.round(e.colaboradores.reduce((s, c) => s + (c.liquido || 0), 0) * 100) / 100;
+  const resumo = e.resumoGeral?.liquido;
+  const bate = resumo == null || Math.abs(soma - resumo) <= 1;
+  return { count: e.colaboradores.length, soma, resumo, bate };
+}
 const maskCpf = (c: string) => { const d = cpfDigits(c); return d.length === 11 ? `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}` : c; };
 const mesAtual = () => new Date().toISOString().slice(0, 7);
 // Desloca "YYYY-MM" por N meses.
@@ -86,8 +93,9 @@ export function FolhasPage() {
   const { porCpf } = useMemo(() => gorjetaMensalPorCpf(gorjetas, empregados, competencia), [gorjetas, empregados, competencia]);
 
   const findings = useMemo<Finding[] | null>(() => {
-    if (!folha) return null;
-    return conferir({ folha, adiantamento: adiantamento || undefined, gorjetaApp: porCpf, whitelist, competencia });
+    if (folha) return conferir({ folha, adiantamento: adiantamento || undefined, gorjetaApp: porCpf, whitelist, competencia });
+    if (adiantamento) return blocoA(adiantamento);   // só o adiantamento: valida integridade dele
+    return null;
   }, [folha, adiantamento, porCpf, whitelist, competencia]);
   const reportaveis = useMemo(() => (findings ? findingsReportaveis(findings) : []), [findings]);
   const silenciados = useMemo(() => (findings ? findings.filter((f) => f.whitelisted) : []), [findings]);
@@ -216,17 +224,48 @@ export function FolhasPage() {
             ))}
           </div>
 
+          {subindo && (
+            <div className="text-sm rounded-lg px-3 py-2 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/20 dark:text-indigo-300 flex items-center gap-2">
+              <span className="inline-block w-3.5 h-3.5 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin" />
+              Lendo o {subindo === "folha" ? "espelho da folha" : "adiantamento"} com a IA — espelhos grandes levam até ~1-2 min. Pode deixar rodando.
+            </div>
+          )}
           {erro && <div className={`text-sm rounded-lg px-3 py-2 ${erro.startsWith("✓") ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400" : "bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400"}`}>{erro}</div>}
 
+          {/* Leitura: confirma que o parser leu certo (Σ bate com o RESUMO GERAL) */}
+          {(folha || adiantamento) && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {([["folha", folha], ["adiantamento", adiantamento]] as const).filter(([, e]) => e).map(([tipo, e]) => {
+                const l = leitura(e!);
+                return (
+                  <div key={tipo} className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2.5 text-xs">
+                    <div className="font-medium text-gray-700 dark:text-gray-200 capitalize">{tipo === "folha" ? "Folha mensal" : "Adiantamento"} lido</div>
+                    <div className="text-gray-500 mt-0.5">{l.count} colaboradores · Σ líquidos {brl(l.soma)}</div>
+                    <div className={l.bate ? "text-emerald-600 dark:text-emerald-400 mt-0.5" : "text-rose-600 dark:text-rose-400 mt-0.5"}>
+                      {l.resumo == null ? "sem RESUMO GERAL no PDF" : l.bate ? `✓ bate com o RESUMO GERAL (${brl(l.resumo)})` : `⚠ RESUMO GERAL diz ${brl(l.resumo)} — parser divergiu`}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {/* Resultado */}
-          {folha && findings && (
+          {(folha || adiantamento) && findings && (
             <div className="space-y-3">
-              <div className="flex items-center gap-3 flex-wrap text-xs text-gray-500">
-                <span>👥 {resumoFolha?.headcount} ativos</span>
-                <span>💵 líquido {brl(resumoFolha?.liquido)}</span>
-                {resumoFolha?.gps ? <span>🏛️ GPS {brl(resumoFolha.gps)}</span> : null}
-                <span>💸 {Object.keys(porCpf).length} com gorjeta no app</span>
-              </div>
+              {!folha && adiantamento && (
+                <div className="rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/20 p-3 text-sm text-sky-800 dark:text-sky-300">
+                  Só o <b>adiantamento</b> foi lido — validei a integridade dele acima. Suba a <b>folha mensal</b> pra rodar a conferência completa (gorjeta 154/155 e reconciliação da verba 953). Ela costuma sair no 5º dia útil do mês seguinte.
+                </div>
+              )}
+              {folha && (
+                <div className="flex items-center gap-3 flex-wrap text-xs text-gray-500">
+                  <span>👥 {resumoFolha?.headcount} ativos</span>
+                  <span>💵 líquido {brl(resumoFolha?.liquido)}</span>
+                  {resumoFolha?.gps ? <span>🏛️ GPS {brl(resumoFolha.gps)}</span> : null}
+                  <span>💸 {Object.keys(porCpf).length} com gorjeta no app</span>
+                </div>
+              )}
 
               {reportaveis.length === 0 ? (
                 <div className="rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-4 text-sm text-emerald-800 dark:text-emerald-300">
