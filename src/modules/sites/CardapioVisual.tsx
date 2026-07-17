@@ -7,6 +7,7 @@ import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { baixarOuCompartilhar, podeCompartilharArquivo } from "../../core/pdf/baixarOuCompartilhar";
 import { resolverFonte } from "./shared/cardapioFontes";
 import { carregarFontesCardapio } from "./shared/FontePicker";
 import type { CardapioEstruturado, CardapioLayout, SecaoCardapio } from "../../core/types";
@@ -540,8 +541,13 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
         restaurarImgs();
         if (wrap) wrap.style.transform = prevT;
       }
-      pdf.save(`${(nomeRestaurante || "cardapio").toLowerCase().replace(/\s+/g, "-")}-cardapio${en ? "-en" : ""}.pdf`);
-      setErroBaixar(`✓ PDF gerado a ${dims} (scale ${scale}). Se ainda estiver mole, me mande esse número.`);
+      const nomeArq = `${(nomeRestaurante || "cardapio").toLowerCase().replace(/\s+/g, "-")}-cardapio${en ? "-en" : ""}.pdf`;
+      // No mobile abre a folha de compartilhamento (WhatsApp/Mail/Arquivos); no
+      // desktop baixa direto. jsPDF.save() sozinho trava no iOS (só exibe).
+      const saida = await baixarOuCompartilhar(pdf.output("blob"), nomeArq, { titulo: nomeRestaurante || "Cardápio" });
+      setErroBaixar(saida === "compartilhado"
+        ? "✓ PDF pronto — escolha onde enviar ou salvar."
+        : `✓ PDF baixado (${dims}, scale ${scale}).`);
     } catch (e) {
       console.error("cardapio PDF:", e);
       const msg = e instanceof Error ? e.message : String(e);
@@ -735,7 +741,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
              : <span className="text-gray-400">Tudo salvo</span>}
          </span>
          <div className="flex items-center gap-2">
-           <button type="button" disabled={baixando} onClick={() => void baixar()} className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50">{baixando ? "gerando…" : "⬇ Baixar PDF"}</button>
+           <button type="button" disabled={baixando} onClick={() => void baixar()} className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50">{baixando ? "gerando…" : (podeCompartilharArquivo() ? "📤 Enviar PDF" : "⬇ Baixar PDF")}</button>
            <button type="button" disabled={!dirty || salvando} onClick={() => void salvarLayout()} className="text-[13px] font-semibold px-4 py-1.5 rounded-lg bg-emerald-600 text-white disabled:opacity-50">💾 Salvar</button>
            <button type="button" onClick={tentarFechar} className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Fechar</button>
          </div>
