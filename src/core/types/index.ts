@@ -919,6 +919,7 @@ export type Restaurant = {
   cartoesCadastrados?: string[];           // nomes dos cartões que sobem fatura aqui — a IA casa cada PDF com um deles
   fechamentoSociosEmails?: string[];
   fechamentoSociosWhatsapp?: string[];     // números (só dígitos) que recebem o aviso por WhatsApp
+  fechamentoCanalEnvio?: "email" | "whatsapp" | "ambos";  // canal do aviso aos sócios (default "ambos")
   fechamentoEmailRemetente?: string;       // remetente do email aos sócios (domínio verificado na Resend)
   fechamentoComandas?: ComandaCadastro[];  // comandas cadastradas (nº + finalidade)
   fechamentoTemIfood?: boolean;            // restaurante tem iFood → conciliação aceita planilha do iFood
