@@ -399,7 +399,7 @@ function PerfilEditor({ perfil, isNew, restaurantes, pessoas, perfis, onSalvar, 
   }, [menuOrder]);
 
   // Ordem das áreas igual ao menu, com bucket final pros só-do-catálogo.
-  const AREA_ORDER: (ModuleArea | "outros")[] = ["ops", "dp", "fin", "inst", "master", "outros"];
+  const AREA_ORDER: (ModuleArea | "outros")[] = ["ops", "dp", "fin", "planejamento", "inst", "master", "outros"];
   const AREA_LABEL: Record<string, { label: string; color: string }> = {
     ...AREA_INFO,
     outros: { label: "Outros / Sistema", color: "#6b7280" },
