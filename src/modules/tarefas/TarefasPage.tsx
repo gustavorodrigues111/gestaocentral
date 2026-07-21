@@ -3114,29 +3114,46 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
             <input value={titulo} onChange={(e) => setTitulo(e.target.value)} className="input" placeholder="Conferir estoque do bar" autoFocus />
           </Field>
           {subsDoProjeto.length > 0 && (
-            <Field label="Projeto *">
-              <select value={subprojetoId} onChange={(e) => setSubprojetoId(e.target.value)} className="input">
-                <option value="" disabled>Selecione…</option>
-                {subsDoProjeto.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-              </select>
-            </Field>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5">Projeto *</label>
+              <div className="flex flex-wrap gap-1.5">
+                {subsDoProjeto.map(s => {
+                  const on = subprojetoId === s.id;
+                  return (
+                    <button key={s.id} type="button" onClick={() => setSubprojetoId(s.id)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                      {s.nome}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
           )}
-          <Field label="Responsável *">
-            <select value={responsavelId} onChange={(e) => setResponsavelId(e.target.value)} className="input" disabled={!projetoId}>
-              {!projetoId && <option value="">Escolha uma área primeiro</option>}
-              {projetoId && !responsaveisElegiveis.find(p => p.id === responsavelId) && (
-                <option value="" disabled>Selecione…</option>
-              )}
-              {responsaveisElegiveis.map(p => (
-                <option key={p.id} value={p.id}>{p.id === pessoaId ? `${p.nome} (você)` : p.nome}</option>
-              ))}
-            </select>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5">Responsável *</label>
+            {!projetoId ? (
+              <p className="text-xs text-gray-400 italic py-1">Escolha uma área primeiro</p>
+            ) : responsaveisElegiveis.length === 0 ? (
+              <p className="text-xs text-gray-400 italic py-1">Ninguém elegível nesta área.</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {responsaveisElegiveis.map(p => {
+                  const on = responsavelId === p.id;
+                  return (
+                    <button key={p.id} type="button" onClick={() => setResponsavelId(p.id)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                      {p.id === pessoaId ? `${p.nome} (você)` : p.nome}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
             {projetoAtual && projetoAtual.visibilidade === "privado" && (
               <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
                 🔒 Área privada — só pessoas autorizadas podem ser responsáveis.
               </p>
             )}
-          </Field>
+          </div>
           <div className="grid grid-cols-2 gap-3">
             <Field label="Prazo *">
               <DatePickerBR value={ymdParaBr(prazo)} onChange={(br) => setPrazo(brParaYmd(br))} />
@@ -3422,6 +3439,34 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
 
   const subprojeto = subprojetos.find(s => s.id === tarefa.subprojetoId);
 
+  // Responsáveis elegíveis (mesma regra da criação): área aberta → todos;
+  // privada → só autorizados. O responsável atual entra sempre como chip.
+  const respElegiveis = (() => {
+    const vis = (projeto?.visibilidade || "privado");
+    const aberto = vis === "escritorio" || vis === "publico";
+    const base = (!projeto || aberto)
+      ? pessoasLista
+      : pessoasLista.filter(p => new Set([
+          ...((projeto.usuariosAutorizados || []) as string[]),
+          ...((tarefa.usuariosAutorizados || []) as string[]),
+        ]).has(p.id));
+    // Garante que o responsável atual apareça mesmo se não estiver na lista.
+    if (tarefa.responsavelId && !base.some(p => p.id === tarefa.responsavelId)) {
+      return [{ id: tarefa.responsavelId, nome: `${tarefa.responsavelNome || "?"} (atual)` }, ...base];
+    }
+    return base;
+  })();
+
+  function mudarResponsavel(novoId: string, novoNome: string) {
+    if (novoId === tarefa.responsavelId) return;
+    atualizarTarefa(tarefa.id, { responsavelId: novoId, responsavelNome: novoNome }, autor, {
+      acao: "responsavel_mudou",
+      campo: "responsável",
+      valorAntes: tarefa.responsavelNome || "—",
+      valorDepois: novoNome,
+    });
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={onClose}>
       <div
@@ -3476,32 +3521,9 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
 
         {/* ─── Corpo scrollável ────────────────────────────────────────── */}
         <div className="flex-1 overflow-y-auto">
-          {/* Breadcrumb + Título */}
+          {/* Título + Área/Projeto (chips) */}
           <div className="px-5 pt-4 pb-3">
-            <div className="text-xs text-gray-500 dark:text-gray-400 flex items-center gap-1 flex-wrap">
-              <select
-                value={tarefa.projetoId}
-                onChange={(e) => trocarProjeto(e.target.value)}
-                className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-1 text-xs cursor-pointer"
-                title="Trocar área"
-              >
-                {projetos.map(p => (
-                  <option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>
-                ))}
-              </select>
-              <span className="text-gray-400">›</span>
-              <select
-                value={tarefa.subprojetoId}
-                onChange={(e) => salvarCampo("subprojetoId", e.target.value, "subprojeto")}
-                className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-1 text-xs cursor-pointer"
-                title="Trocar projeto"
-              >
-                {subprojetos.filter(s => s.projetoId === tarefa.projetoId).map(s => (
-                  <option key={s.id} value={s.id}>{s.nome}</option>
-                ))}
-              </select>
-            </div>
-            <div className="mt-2">
+            <div>
               {editandoTitulo ? (
                 <input
                   value={tituloDraft}
@@ -3529,33 +3551,58 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                 </h2>
               )}
             </div>
+            {/* Área (chips) */}
+            <div className="mt-3">
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5">Área</label>
+              <div className="flex flex-wrap gap-1.5">
+                {projetos.map(p => {
+                  const on = tarefa.projetoId === p.id;
+                  return (
+                    <button key={p.id} type="button" onClick={() => { if (!on) trocarProjeto(p.id); }}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                      {p.emoji} {p.nome}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            {/* Projeto (chips) */}
+            {subprojetos.filter(s => s.projetoId === tarefa.projetoId).length > 0 && (
+              <div className="mt-3">
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5">Projeto</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {subprojetos.filter(s => s.projetoId === tarefa.projetoId).map(s => {
+                    const on = tarefa.subprojetoId === s.id;
+                    return (
+                      <button key={s.id} type="button" onClick={() => { if (!on) salvarCampo("subprojetoId", s.id, "subprojeto"); }}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                        {s.nome}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ─── Bloco de campos (linhas horizontais label/valor) ─── */}
           <div className="px-5 pb-4 space-y-2">
             <FieldRow label="Responsável">
-              <select
-                value={tarefa.responsavelId}
-                onChange={(e) => {
-                  const novo = pessoasLista.find(p => p.id === e.target.value);
-                  if (!novo) return;
-                  atualizarTarefa(tarefa.id, {
-                    responsavelId: novo.id,
-                    responsavelNome: novo.nome,
-                  }, autor, {
-                    acao: "responsavel_mudou",
-                    campo: "responsável",
-                    valorAntes: tarefa.responsavelNome || "—",
-                    valorDepois: novo.nome,
-                  });
-                }}
-                className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-2 py-1 text-sm cursor-pointer w-full"
-              >
-                {!pessoasLista.find(p => p.id === tarefa.responsavelId) && tarefa.responsavelNome && (
-                  <option value={tarefa.responsavelId}>{tarefa.responsavelNome} (atual)</option>
-                )}
-                {pessoasLista.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-              </select>
+              {respElegiveis.length === 0 ? (
+                <span className="text-xs text-gray-400 italic py-1">Ninguém elegível nesta área.</span>
+              ) : (
+                <div className="flex flex-wrap gap-1.5 py-0.5">
+                  {respElegiveis.map(p => {
+                    const on = tarefa.responsavelId === p.id;
+                    return (
+                      <button key={p.id} type="button" onClick={() => mudarResponsavel(p.id, p.nome)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                        {p.nome}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </FieldRow>
             <FieldRow label="Data de conclusão">
               <DatePickerBR
