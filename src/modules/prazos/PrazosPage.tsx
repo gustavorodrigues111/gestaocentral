@@ -154,7 +154,7 @@ export function PrazosPage() {
     setMigrando(true); setErro("");
     try {
       const r = await migrarExistentesParaPrazos(rid, me?.id);
-      setErro(r.criados === 0 ? "✓ Nada novo pra puxar — já está tudo aqui." : `✓ Puxados ${r.criados}: ${r.porTipo.conta} contas fixas, ${r.porTipo.manutencao} manutenções, ${r.porTipo.exame} exames, ${r.porTipo.uniforme} uniformes/EPIs.`);
+      setErro(r.criados === 0 ? "✓ Nada novo pra puxar — já está tudo aqui." : `✓ Puxados ${r.criados}: ${r.porTipo.conta} contas fixas, ${r.porTipo.manutencao} manutenções, ${r.porTipo.exame} exames, ${r.porTipo.uniforme} uniformes/EPIs, ${r.porTipo.experiencia} experiências (45/90).`);
     } catch (e) { setErro("Falha ao puxar: " + (e instanceof Error ? e.message : "?")); }
     finally { setMigrando(false); }
   }

@@ -5,8 +5,9 @@
 import { collection, getDocs, getDoc, doc, setDoc, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import type { Prazo, PrazoRecorrencia, Manutencao, ExameEmpregado, EntregaUniforme, ContaFixa } from "../../core/types";
+import type { Prazo, PrazoRecorrencia, PrazoSubtipoTrab, Manutencao, ExameEmpregado, EntregaUniforme, ContaFixa, Empregado } from "../../core/types";
 import { MANUTENCAO_TIPO_LABEL, CONTA_FIXA_CATEGORIA_LABEL } from "../../core/types";
+import { ANTECEDENCIA_PADRAO } from "./logic";
 
 async function criarSeNovo(prazo: Prazo): Promise<boolean> {
   const ref = doc(db, "prazos", prazo.id);
@@ -129,6 +130,47 @@ function exameParaPrazo(e: ExameEmpregado, rid: string, por?: string | null): Pr
   };
 }
 
+// Soma N dias a uma data YYYY-MM-DD.
+function addDiasYmd(ymd: string, n: number): string {
+  const [a, m, d] = ymd.split("-").map(Number);
+  const dt = new Date(a, (m || 1) - 1, d || 1, 12, 0, 0);
+  dt.setDate(dt.getDate() + n);
+  return ymdDe(dt);
+}
+
+const EXPERIENCIAS_MIG: Array<{ subtipo: PrazoSubtipoTrab; dias: number; titulo: string }> = [
+  { subtipo: "exp45", dias: 45, titulo: "Fim de experiência (45 dias)" },
+  { subtipo: "exp90", dias: 90, titulo: "Fim de experiência (90 dias)" },
+];
+
+// Prazos de fim de experiência (45/90) de um empregado ativo — só os A VENCER
+// (vencimento >= hoje). IDs iguais aos do hook de admissão (idempotente).
+function experienciaParaPrazos(emp: Empregado, hoje: string, por?: string | null): Prazo[] {
+  const adm = emp.admissaoAtual;
+  if (!emp.estaAtivo || !adm || !/^\d{4}-\d{2}-\d{2}$/.test(adm)) return [];
+  const out: Prazo[] = [];
+  for (const e of EXPERIENCIAS_MIG) {
+    const vencimento = addDiasYmd(adm, e.dias);
+    if (vencimento < hoje) continue;   // já passou → não puxa (só a vencer correntes)
+    out.push({
+      id: `prazo_trab_${emp.id}_${e.subtipo}`,
+      restaurantIds: [emp.restaurantId],
+      titulo: `${e.titulo} — ${emp.nome}`,
+      tipo: "trabalhista",
+      vencimento,
+      antecedenciaDias: ANTECEDENCIA_PADRAO.trabalhista,
+      recorrencia: null,
+      exigeLaudo: false,
+      status: "aberto",
+      dados: { empregadoId: emp.id, empregadoNome: emp.nome, subtipoTrab: e.subtipo },
+      origem: { modulo: "admissao", refId: emp.id },
+      historico: [],
+      criadoEm: nowIso(), criadoPor: por ?? null,
+    });
+  }
+  return out;
+}
+
 function uniformeParaPrazos(u: EntregaUniforme, rid: string, por?: string | null): Prazo[] {
   const nome = u.candidatoSnapshot?.nome || "";
   return (u.itens || []).map((it, idx) => ({ it, idx })).filter(({ it }) => !!it.validadeAte).map(({ it, idx }) => ({
@@ -178,9 +220,12 @@ export async function semearPrazosUniforme(u: EntregaUniforme, por?: string | nu
   for (const p of uniformeParaPrazos(u, u.restaurantId, por)) await criarSeNovo(p);
 }
 
-// Puxa contas fixas + manutenções + exames + uniformes da empresa ativa. Retorna quantos criou.
+// Puxa contas fixas + manutenções + exames + uniformes + experiências (45/90) da
+// empresa ativa. Retorna quantos criou.
 export async function migrarExistentesParaPrazos(rid: string, por?: string | null): Promise<{ criados: number; porTipo: Record<string, number> }> {
-  const porTipo = { conta: 0, manutencao: 0, exame: 0, uniforme: 0 };
+  const porTipo = { conta: 0, manutencao: 0, exame: 0, uniforme: 0, experiencia: 0 };
+  const agora = new Date(); agora.setHours(12, 0, 0, 0);
+  const hojeStr = ymdDe(agora);
 
   const contas = (await getDocs(query(collection(db, "contasFixas"), where("restaurantIds", "array-contains", rid)))).docs
     .map((d) => ({ id: d.id, ...d.data() }) as ContaFixa)
@@ -200,5 +245,9 @@ export async function migrarExistentesParaPrazos(rid: string, por?: string | nul
     .map((d) => ({ id: d.id, ...d.data() }) as EntregaUniforme & { deletadoEm?: string | null });
   for (const u of unifs) { if ((u as { deletadoEm?: string | null }).deletadoEm) continue; for (const p of uniformeParaPrazos(u, rid, por)) { if (await criarSeNovo(p)) porTipo.uniforme++; } }
 
-  return { criados: porTipo.conta + porTipo.manutencao + porTipo.exame + porTipo.uniforme, porTipo };
+  const emps = (await getDocs(query(collection(db, "empregados"), where("restaurantId", "==", rid)))).docs
+    .map((d) => ({ id: d.id, ...d.data() }) as Empregado);
+  for (const emp of emps) { for (const p of experienciaParaPrazos(emp, hojeStr, por)) { if (await criarSeNovo(p)) porTipo.experiencia++; } }
+
+  return { criados: porTipo.conta + porTipo.manutencao + porTipo.exame + porTipo.uniforme + porTipo.experiencia, porTipo };
 }
