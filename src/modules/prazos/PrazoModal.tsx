@@ -183,41 +183,46 @@ function RecorrenciaEditor({ rec, onChange }: { rec: PrazoRecorrencia | null; on
         </div>
       </div>
       {on && (
-        <div className="mt-2 space-y-2">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-sm text-gray-600 dark:text-gray-300">A cada</span>
+        <div className="mt-3 rounded-xl bg-gray-50 dark:bg-gray-800/40 p-3 space-y-3">
+          {/* A cada N semanas/meses */}
+          <div className="flex items-center gap-2.5 flex-wrap">
+            <span className="text-xs text-gray-500 w-16 shrink-0">A cada</span>
             <Stepper value={r.intervalo} onChange={(n) => patch({ intervalo: Math.max(1, n) })} min={1} max={60} />
             <div className="flex gap-1.5">
               <button type="button" onClick={() => patch({ unidade: "semana" })} className={chip(r.unidade === "semana")}>semana(s)</button>
               <button type="button" onClick={() => patch({ unidade: "mes" })} className={chip(r.unidade === "mes")}>mês(es)</button>
             </div>
           </div>
+
           {r.unidade === "mes" ? (
-            <div className="space-y-2">
-              <div className="flex gap-1.5">
+            <>
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <span className="text-xs text-gray-500 w-16 shrink-0">Quando</span>
                 <button type="button" onClick={() => patch({ modo: "dia_absoluto" })} className={chip(r.modo !== "dia_util")}>Dia do mês</button>
                 <button type="button" onClick={() => patch({ modo: "dia_util" })} className={chip(r.modo === "dia_util")}>Dia útil</button>
               </div>
-              {r.modo === "dia_util" ? (
-                <div className="flex items-center gap-2"><span className="text-xs text-gray-500">No</span>
-                  <select value={String(r.diaUtil ?? 1)} onChange={(e) => patch({ diaUtil: e.target.value === "ultimo" ? "ultimo" : parseInt(e.target.value) })} className="px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-                    {[1, 2, 3, 4, 5, 10].map((n) => <option key={n} value={n}>{n}º</option>)}<option value="ultimo">último</option>
-                  </select><span className="text-xs text-gray-500">dia útil</span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2"><span className="text-sm text-gray-600 dark:text-gray-300">Dia</span>
-                  <Stepper value={r.diaDoMes || 1} onChange={(n) => patch({ diaDoMes: Math.min(31, Math.max(1, n)) })} min={1} max={31} />
-                </div>
-              )}
-            </div>
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-xs text-gray-500 w-16 shrink-0">{r.modo === "dia_util" ? "No" : "Dia"}</span>
+                {r.modo === "dia_util"
+                  ? ([1, 2, 3, 4, 5, 10, "ultimo"] as const).map((n) => (
+                      <button key={n} type="button" onClick={() => patch({ diaUtil: n })} className={chip((r.diaUtil ?? 1) === n)}>{n === "ultimo" ? "último" : `${n}º`}</button>
+                    ))
+                  : <Stepper value={r.diaDoMes || 1} onChange={(n) => patch({ diaDoMes: Math.min(31, Math.max(1, n)) })} min={1} max={31} />}
+                {r.modo === "dia_util" && <span className="text-xs text-gray-500">dia útil</span>}
+              </div>
+            </>
           ) : (
-            <div className="grid grid-cols-7 gap-1">
-              {DOW.map((lbl, dow) => { const sel = (r.diasSemana || []).includes(dow); return (
-                <button key={dow} type="button" onClick={() => { const cur = r.diasSemana || []; patch({ diasSemana: sel ? cur.filter((x) => x !== dow) : [...cur, dow].sort() }); }} className={`py-1.5 text-xs rounded-lg border ${sel ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>{lbl}</button>
-              ); })}
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs text-gray-500 w-16 shrink-0">Nos dias</span>
+              <div className="grid grid-cols-7 gap-1 flex-1">
+                {DOW.map((lbl, dow) => { const sel = (r.diasSemana || []).includes(dow); return (
+                  <button key={dow} type="button" onClick={() => { const cur = r.diasSemana || []; patch({ diasSemana: sel ? cur.filter((x) => x !== dow) : [...cur, dow].sort() }); }} className={`py-1.5 text-xs rounded-lg border ${sel ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>{lbl}</button>
+                ); })}
+              </div>
             </div>
           )}
-          <div className="text-xs text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-900/20 rounded-lg px-2.5 py-1.5">🔁 {resumoRecorrencia(r)}</div>
+
+          <div className="text-xs text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5 bg-indigo-100/60 dark:bg-indigo-900/30 rounded-lg px-2.5 py-2 font-medium">🔁 {resumoRecorrencia(r)}</div>
         </div>
       )}
     </div>
