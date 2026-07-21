@@ -82,6 +82,7 @@ function contaFixaParaPrazo(c: ContaFixa, por?: string | null): Prazo | null {
     antecedenciaDias: c.diasAntecedencia ?? 3,
     recorrencia: recorrenciaConta(c),
     exigeLaudo: false,
+    permiteAgendamento: false,   // conta você paga/conclui, não agenda
     status: "aberto",
     dados: { valor: c.valorEstimado, pix: c.pix, categoria: CONTA_FIXA_CATEGORIA_LABEL[c.categoria] },
     origem: { modulo: "contasFixas", refId: c.id },
@@ -103,6 +104,7 @@ function manutencaoParaPrazo(m: Manutencao, rid: string, por?: string | null): P
     antecedenciaDias: m.diasAntecedencia ?? 30,
     recorrencia: recorrenciaManut(m),
     exigeLaudo: !!m.obrigatorio,
+    permiteAgendamento: true,    // vistoria/manutenção técnica agenda data de execução
     status: "aberto",
     dados: { fornecedor: m.fornecedor },
     origem: { modulo: "manutencoes", refId: m.id },
@@ -122,6 +124,7 @@ function exameParaPrazo(e: ExameEmpregado, rid: string, por?: string | null): Pr
     antecedenciaDias: e.diasAntecedencia ?? 15,
     recorrencia: null,
     exigeLaudo: false,
+    permiteAgendamento: false,   // exame/trabalhista: só concluir
     status: "aberto",
     dados: { empregadoId: e.empregadoId, empregadoNome: e.empregadoNomeSnapshot, subtipoTrab: "exame" },
     origem: { modulo: "exames", refId: e.id },
@@ -161,6 +164,7 @@ function experienciaParaPrazos(emp: Empregado, hoje: string, por?: string | null
       antecedenciaDias: ANTECEDENCIA_PADRAO.trabalhista,
       recorrencia: null,
       exigeLaudo: false,
+      permiteAgendamento: false,   // fim de experiência: só concluir
       status: "aberto",
       dados: { empregadoId: emp.id, empregadoNome: emp.nome, subtipoTrab: e.subtipo },
       origem: { modulo: "admissao", refId: emp.id },
@@ -182,6 +186,7 @@ function uniformeParaPrazos(u: EntregaUniforme, rid: string, por?: string | null
     antecedenciaDias: 15,
     recorrencia: null,
     exigeLaudo: false,
+    permiteAgendamento: false,   // uniforme/trabalhista: só concluir
     status: "aberto" as const,
     dados: { empregadoId: u.empregadoId, empregadoNome: nome, subtipoTrab: "uniforme" as const },
     origem: { modulo: "uniformes", refId: u.id },

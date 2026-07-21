@@ -33,6 +33,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
   const [antec, setAntec] = useState<number>(prazo?.antecedenciaDias ?? ANTECEDENCIA_PADRAO[prazo?.tipo || "conta"]);
   const [rec, setRec] = useState<PrazoRecorrencia | null>(prazo?.recorrencia ?? null);
   const [exigeLaudo, setExigeLaudo] = useState<boolean>(prazo?.exigeLaudo ?? (prazo?.tipo === "tecnico"));
+  const [permiteAg, setPermiteAg] = useState<boolean>(prazo?.permiteAgendamento ?? (prazo?.tipo === "tecnico"));
   const [dados, setDados] = useState<NonNullable<Prazo["dados"]>>(prazo?.dados || {});
   const [imovelId, setImovelId] = useState<string>(prazo?.imovelId || "");
   const [salvando, setSalvando] = useState(false);
@@ -48,6 +49,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
     // Se o responsável escolhido não acessa a nova categoria, limpa.
     if (respId && !(responsaveisPorCat[t] || []).some((p) => p.id === respId)) setRespId("");
     if (t === "tecnico") setExigeLaudo(true); else if (t === "conta" || t === "avulso") setExigeLaudo(false);
+    setPermiteAg(t === "tecnico");
     if (!rec && (t === "conta" || t === "tecnico")) setRec({ unidade: "mes", intervalo: 1, modo: "dia_absoluto", diaDoMes: parseInt(venc.split("/")[0]) || 1 });
   }
 
@@ -68,6 +70,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
         antecedenciaDias: antec,
         recorrencia: rec,
         exigeLaudo,
+        permiteAgendamento: permiteAg,
         status: prazo?.status || "aberto",
         dados: { ...dados, ...(emp ? { empregadoNome: emp.nome } : {}) },
         laudo: prazo?.laudo ?? null,
@@ -147,6 +150,12 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
             <input type="checkbox" checked={exigeLaudo} onChange={(e) => setExigeLaudo(e.target.checked)} /> Exige laudo pra concluir
           </label>
         )}
+
+        {/* Permite agendamento — alguns prazos são só "concluir" (ex.: conta), outros
+            agendam uma data de execução antes (ex.: vistoria técnica). */}
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer">
+          <input type="checkbox" checked={permiteAg} onChange={(e) => setPermiteAg(e.target.checked)} /> Permite agendar data de execução
+        </label>
 
         {/* Imóvel (opcional) — pros técnicos e aluguel. Cada imóvel é de 1 empresa. */}
         {(tipo === "tecnico" || tipo === "conta") && (

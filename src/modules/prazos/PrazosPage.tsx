@@ -318,7 +318,11 @@ function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, imovelNome, o
         </div>
       ) : (
         <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
-          {p.status === "agendado"
+          {/* Default por tipo quando não setado (técnico agenda; resto só conclui) —
+              cobre prazos antigos/migrados sem permiteAgendamento explícito. */}
+          {(p.permiteAgendamento ?? (p.tipo === "tecnico")) === false
+            ? <button type="button" onClick={onRealizar} className="text-xs px-2.5 py-1 rounded-lg bg-indigo-600 text-white">✓ {rotuloRealizar}</button>
+            : p.status === "agendado"
             ? <><button type="button" onClick={onRealizar} className="text-xs px-2.5 py-1 rounded-lg bg-indigo-600 text-white">✓ {rotuloRealizar}</button><button type="button" onClick={onAbrirAg} className="text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Reagendar</button><button type="button" onClick={onRemoverAg} className="text-xs text-gray-400">desagendar</button></>
             : <><button type="button" onClick={onAbrirAg} className="text-xs px-2.5 py-1 rounded-lg bg-indigo-600 text-white">📅 Agendar</button><button type="button" onClick={onRealizar} className="text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">✓ {rotuloRealizar}</button></>}
           {p.exigeLaudo && <button type="button" onClick={onLaudo} className="text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">📎 Laudo</button>}

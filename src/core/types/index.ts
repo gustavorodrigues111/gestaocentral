@@ -6094,6 +6094,9 @@ export type Prazo = {
     empregadoId?: string; empregadoNome?: string; subtipoTrab?: PrazoSubtipoTrab;  // trabalhista
   };
   laudo?: PrazoLaudo | null;            // laudo da ocorrência atual
+  // Se false, o prazo é só "concluir" (sem etapa de Agendar). undefined/true =
+  // permite agendar uma data de execução. Ex.: conta você paga; vistoria agenda.
+  permiteAgendamento?: boolean;
   agendamento?: PrazoAgendamento | null;
   // Origem (alimentador): admissão etc. Prazos é dono; se a origem mudar, marca revisão.
   origem?: { modulo: string; refId: string } | null;

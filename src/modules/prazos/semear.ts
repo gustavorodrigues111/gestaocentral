@@ -39,6 +39,7 @@ export async function semearPrazosExperiencia(p: {
       antecedenciaDias: ANTECEDENCIA_PADRAO.trabalhista,
       recorrencia: null,
       exigeLaudo: false,
+      permiteAgendamento: false,   // fim de experiência: só concluir
       status: "aberto",
       dados: { empregadoId: p.empregadoId, empregadoNome: p.empregadoNome, subtipoTrab: e.subtipo },
       origem: { modulo: "admissao", refId: p.empregadoId },
