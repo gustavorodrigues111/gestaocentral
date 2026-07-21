@@ -1,14 +1,17 @@
-// Preenchimento da avaliação — MOBILE-FIRST. É a tela que a nutricionista usa
-// andando pela operação: chips de área, itens Conforme/Não conforme com alvos
-// de toque grandes, foto pela câmera e observação nos não-conformes. Grava
+// Preenchimento da avaliação. Renderiza DENTRO da área de conteúdo (o shell —
+// menu/header — continua visível, como todo módulo). Responsivo: no celular os
+// alvos de toque ficam confortáveis; no desktop a largura é limitada. Grava
 // item-a-item ao vivo (retoma de onde parou).
 import { useEffect, useMemo, useState } from "react";
+import { Button } from "../../core/ui/Button";
 import type { Area, SegurancaAvaliacao, SegurancaItem, SegurancaResposta } from "../../core/types";
 import { AREAS, AREA_SLUG, segKey, segurancaFaixaDe } from "../../core/types";
 import {
   ouvirAvaliacao, salvarResultado, limparResultado, calcularScore, finalizarAvaliacao,
 } from "./repository";
 import { SegurancaFotos } from "./SegurancaFotos";
+
+const dmy = (ymd: string) => (ymd || "").split("-").reverse().join("/");
 
 export function Preenchimento({ avaliacaoId, autor, onClose }: {
   avaliacaoId: string;
@@ -26,7 +29,6 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
   const blocos = (av?.blocosSnapshot || []).slice().sort((a, b) => a.ordem - b.ordem);
   const readOnly = av?.status === "finalizada";
 
-  // Nº de não-conformes por área (pro badge do chip).
   const ncPorArea = useMemo(() => {
     const m: Record<string, number> = {};
     for (const [key, r] of Object.entries(av?.resultado || {})) {
@@ -40,7 +42,6 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
   const resumo = useMemo(() => calcularScore(av?.resultado || {}, itens), [av?.resultado, itens]);
   const faixa = segurancaFaixaDe(resumo.score, av?.faixasSnapshot || []);
 
-  // Itens da área selecionada, agrupados por bloco.
   const porBloco = useMemo(() => {
     const daArea = itens.filter((i) => i.areas.includes(area)).sort((a, b) => a.ordem - b.ordem);
     return blocos
@@ -52,7 +53,7 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
     if (!av || readOnly) return;
     const key = segKey(area, item.id);
     const cur = av.resultado?.[key];
-    if (cur?.resposta === resposta) { void limparResultado(av.id, key); return; } // toca de novo = desmarca
+    if (cur?.resposta === resposta) { void limparResultado(av.id, key); return; }
     void salvarResultado(av.id, key, {
       resposta,
       observacao: cur?.observacao,
@@ -72,108 +73,93 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
     finally { setSalvando(false); }
   }
 
-  if (!av) {
-    return (
-      <div className="fixed inset-0 z-50 bg-white dark:bg-gray-950 flex items-center justify-center text-sm text-gray-500">
-        Carregando avaliação…
-      </div>
-    );
-  }
+  if (!av) return <p className="text-sm text-gray-500 py-16 text-center">Carregando avaliação…</p>;
 
   return (
-    <div className="fixed inset-0 z-50 bg-gray-50 dark:bg-gray-950 flex flex-col">
-      {/* Cabeçalho fixo */}
-      <div className="sticky top-0 z-10 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
-        <div className="px-4 pt-3 pb-2 flex items-center gap-2">
-          <div className="w-9 h-9 rounded-xl bg-teal-600 text-white grid place-items-center text-lg shrink-0">🧪</div>
-          <div className="min-w-0 flex-1">
-            <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">
-              {readOnly ? "Avaliação finalizada" : "Avaliação em andamento"}
-            </div>
-            <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">
-              {av.avaliadorNome || "—"} · {av.data.split("-").reverse().join("/")}
-            </div>
-          </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-2xl leading-none px-1">×</button>
+    <div className="space-y-4 pb-4">
+      {/* Toolbar: voltar + título + status */}
+      <div className="flex items-center gap-3">
+        <button onClick={onClose} className="text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 text-sm inline-flex items-center gap-1">
+          <span className="text-base leading-none">←</span> Voltar
+        </button>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100 truncate">
+            {readOnly ? "Avaliação finalizada" : "Avaliação em andamento"}
+          </h1>
+          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{av.avaliadorNome || "—"} · {dmy(av.data)}</p>
         </div>
-        {/* Chips de área (scroll horizontal) */}
-        <div className="px-4 pb-2 flex gap-2 overflow-x-auto">
+        {readOnly && faixa && (
+          <span className="shrink-0 text-xs font-bold px-2.5 py-1 rounded-full tabular-nums" style={{ background: `color-mix(in srgb, ${faixa.cor} 14%, transparent)`, color: faixa.cor }}>
+            {av.score}% · {av.faixaLabel}
+          </span>
+        )}
+      </div>
+
+      {/* Chips de área + progresso */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+        <div className="flex gap-2 overflow-x-auto">
           {AREAS.map((a) => {
             const nc = ncPorArea[AREA_SLUG[a]] || 0;
             const on = area === a;
             return (
               <button key={a} type="button" onClick={() => setArea(a)}
-                className={`shrink-0 px-3.5 py-2 rounded-full text-[13px] font-semibold border transition-colors ${on ? "bg-teal-600 border-teal-600 text-white" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>
+                className={`shrink-0 px-3 py-1.5 rounded-full text-[13px] font-medium border transition-colors ${on ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
                 {a}{nc > 0 && <span className={`ml-1.5 text-[11px] ${on ? "opacity-90" : "text-rose-600 dark:text-rose-400"}`}>{nc}⚠</span>}
               </button>
             );
           })}
         </div>
-        {/* Barra de progresso + nota parcial */}
-        <div className="px-4 pb-2.5 flex items-center gap-3 text-[11px] text-gray-500 dark:text-gray-400">
-          <span className="tabular-nums">{resumo.respondidos} respondidos</span>
+        <div className="flex items-center gap-3 mt-3 text-[11px] text-gray-500 dark:text-gray-400">
+          <span className="tabular-nums shrink-0">{resumo.respondidos} respondidos</span>
           <div className="flex-1 h-1.5 rounded-full bg-gray-200 dark:bg-gray-800 overflow-hidden">
-            <div className="h-full rounded-full" style={{ width: `${resumo.score}%`, background: faixa?.cor || "#0f766e" }} />
+            <div className="h-full rounded-full transition-all" style={{ width: `${resumo.score}%`, background: faixa?.cor || "#4f46e5" }} />
           </div>
-          <span className="tabular-nums font-semibold" style={{ color: faixa?.cor || "inherit" }}>{resumo.score}%</span>
+          <span className="tabular-nums font-semibold shrink-0" style={{ color: faixa?.cor || "inherit" }}>{resumo.score}%</span>
         </div>
       </div>
 
-      {/* Corpo scrollável */}
-      <div className="flex-1 overflow-y-auto px-4 pt-2 pb-28">
-        {porBloco.length === 0 && (
-          <p className="text-sm text-gray-400 text-center py-16">Nenhum item nesta área.</p>
-        )}
-        {porBloco.map(({ bloco, itens: its }) => (
-          <div key={bloco.id} className="mt-4 first:mt-2">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2 px-0.5">{bloco.nome}</div>
-            <div className="space-y-2.5">
-              {its.map((item) => (
-                <ItemCard
-                  key={item.id}
-                  item={item}
-                  rid={rid}
-                  readOnly={readOnly}
-                  resultado={av.resultado?.[segKey(area, item.id)]}
-                  onMarcar={(resp) => marcar(item, resp)}
-                  onObs={(txt) => {
-                    const key = segKey(area, item.id);
-                    const cur = av.resultado?.[key];
-                    if (!cur) return;
-                    void salvarResultado(av.id, key, { ...cur, observacao: txt || undefined });
-                  }}
-                  onFotos={(fotos) => {
-                    const key = segKey(area, item.id);
-                    const cur = av.resultado?.[key];
-                    if (!cur) return;
-                    void salvarResultado(av.id, key, { ...cur, fotos: fotos.length ? fotos : undefined });
-                  }}
-                />
-              ))}
-            </div>
+      {/* Itens */}
+      {porBloco.length === 0 && <p className="text-sm text-gray-400 text-center py-12">Nenhum item nesta área.</p>}
+      {porBloco.map(({ bloco, itens: its }) => (
+        <div key={bloco.id}>
+          <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2 px-0.5">{bloco.nome}</div>
+          <div className="space-y-2">
+            {its.map((item) => (
+              <ItemCard
+                key={item.id}
+                item={item}
+                rid={rid}
+                readOnly={readOnly}
+                resultado={av.resultado?.[segKey(area, item.id)]}
+                onMarcar={(resp) => marcar(item, resp)}
+                onObs={(txt) => {
+                  const key = segKey(area, item.id); const cur = av.resultado?.[key];
+                  if (cur) void salvarResultado(av.id, key, { ...cur, observacao: txt || undefined });
+                }}
+                onFotos={(fotos) => {
+                  const key = segKey(area, item.id); const cur = av.resultado?.[key];
+                  if (cur) void salvarResultado(av.id, key, { ...cur, fotos: fotos.length ? fotos : undefined });
+                }}
+              />
+            ))}
           </div>
-        ))}
-      </div>
-
-      {/* Rodapé fixo */}
-      <div className="absolute inset-x-0 bottom-0 bg-white dark:bg-gray-900 border-t border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center gap-3">
-        <div className="text-[11px] text-gray-500 dark:text-gray-400 leading-tight">
-          Nota parcial<br /><b className="text-xl text-gray-900 dark:text-gray-100 tabular-nums">{resumo.score}%</b>
         </div>
-        {readOnly ? (
-          <button onClick={onClose} className="flex-1 bg-gray-200 dark:bg-gray-800 text-gray-700 dark:text-gray-200 font-semibold text-[15px] py-3.5 rounded-2xl">Fechar</button>
-        ) : (
-          <button onClick={() => void finalizar()} disabled={salvando}
-            className="flex-1 bg-teal-600 text-white font-semibold text-[15px] py-3.5 rounded-2xl disabled:opacity-60 active:scale-[.99] transition-transform">
-            {salvando ? "Finalizando…" : "Finalizar avaliação"}
-          </button>
-        )}
+      ))}
+
+      {/* Barra de ação (flutua no rodapé, sem cobrir o shell) */}
+      <div className="sticky bottom-3 z-10 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur shadow-lg px-4 py-2.5 flex items-center gap-3">
+        <div className="text-[11px] text-gray-500 dark:text-gray-400 leading-tight shrink-0">
+          Nota parcial<br /><b className="text-lg text-gray-900 dark:text-gray-100 tabular-nums">{resumo.score}%</b>
+        </div>
+        {readOnly
+          ? <Button variant="secondary" onClick={onClose} className="flex-1">Fechar</Button>
+          : <Button onClick={() => void finalizar()} disabled={salvando} className="flex-1">{salvando ? "Finalizando…" : "Finalizar avaliação"}</Button>}
       </div>
     </div>
   );
 }
 
-// ── Card de um item (mantém o texto da observação em estado local) ──
+// ── Card de um item ──
 function ItemCard({ item, rid, readOnly, resultado, onMarcar, onObs, onFotos }: {
   item: SegurancaItem;
   rid: string;
@@ -188,33 +174,30 @@ function ItemCard({ item, rid, readOnly, resultado, onMarcar, onObs, onFotos }: 
   const [obs, setObs] = useState(resultado?.observacao || "");
   useEffect(() => { setObs(resultado?.observacao || ""); }, [resultado?.observacao]);
 
+  const btnBase = "py-2.5 rounded-lg text-[13.5px] font-semibold flex items-center justify-center gap-1.5 border transition-colors disabled:opacity-60";
+
   return (
-    <div className={`rounded-2xl border p-3.5 ${nc ? "border-rose-300 dark:border-rose-800 bg-rose-50/60 dark:bg-rose-950/20" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
-      <div className="text-[14px] leading-snug text-gray-900 dark:text-gray-100 mb-2.5">
+    <div className={`rounded-xl border p-3.5 ${nc ? "border-rose-300 dark:border-rose-800 bg-rose-50/50 dark:bg-rose-950/20" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
+      <div className="text-[15px] leading-snug text-gray-900 dark:text-gray-100 mb-3">
         {item.texto}
         {!item.pontua && <span className="text-gray-400 text-[12px]"> (sem pontuação)</span>}
       </div>
-      <div className="grid grid-cols-2 gap-2.5">
+      <div className="grid grid-cols-2 gap-2 max-w-md">
         <button type="button" disabled={readOnly} onClick={() => onMarcar("conforme")}
-          className={`py-3 rounded-xl text-[14px] font-bold flex items-center justify-center gap-1.5 border transition-colors ${resp === "conforme" ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-300"} disabled:opacity-60`}>
-          <span className="text-base">✓</span> Conforme
+          className={`${btnBase} ${resp === "conforme" ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-300 hover:border-emerald-400"}`}>
+          <span className="text-[15px]">✓</span> Conforme
         </button>
         <button type="button" disabled={readOnly} onClick={() => onMarcar("nao_conforme")}
-          className={`py-3 rounded-xl text-[14px] font-bold flex items-center justify-center gap-1.5 border transition-colors ${nc ? "bg-rose-600 border-rose-600 text-white" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-300"} disabled:opacity-60`}>
-          <span className="text-base">✕</span> Não conf.
+          className={`${btnBase} ${nc ? "bg-rose-600 border-rose-600 text-white" : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-300 hover:border-rose-400"}`}>
+          <span className="text-[15px]">✕</span> Não conforme
         </button>
       </div>
       {nc && (
         <div className="mt-3 space-y-2.5">
           <textarea
-            value={obs}
-            onChange={(e) => setObs(e.target.value)}
-            onBlur={() => onObs(obs)}
-            disabled={readOnly}
-            rows={2}
-            placeholder="O que foi observado…"
-            className="w-full text-[14px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2.5 text-gray-900 dark:text-gray-100"
-          />
+            value={obs} onChange={(e) => setObs(e.target.value)} onBlur={() => onObs(obs)}
+            disabled={readOnly} rows={2} placeholder="O que foi observado…"
+            className="w-full text-[15px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-gray-900 dark:text-gray-100" />
           <SegurancaFotos rid={rid} urls={resultado?.fotos || []} onChange={onFotos} disabled={readOnly} />
         </div>
       )}

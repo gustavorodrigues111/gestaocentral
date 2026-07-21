@@ -63,6 +63,14 @@ export function SegurancaPage() {
     </div>;
   }
 
+  if (abertaId) {
+    return (
+      <div className="max-w-3xl mx-auto">
+        <Preenchimento avaliacaoId={abertaId} autor={autor} onClose={() => setAbertaId(null)} />
+      </div>
+    );
+  }
+
   return (
     <div className="max-w-3xl mx-auto space-y-5">
       <header className="flex items-start justify-between gap-3">
@@ -102,7 +110,7 @@ export function SegurancaPage() {
               const final = a.status === "finalizada";
               return (
                 <button key={a.id} type="button" onClick={() => setAbertaId(a.id)}
-                  className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3.5 flex items-center gap-3 hover:border-teal-400 dark:hover:border-teal-700 transition-colors">
+                  className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3.5 flex items-center gap-3 hover:border-indigo-400 dark:hover:border-indigo-700 transition-colors">
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 tabular-nums">{dmy(a.data)}</div>
                     <div className="text-[12px] text-gray-500 dark:text-gray-400 truncate">{a.avaliadorNome || "—"}</div>
@@ -123,8 +131,6 @@ export function SegurancaPage() {
           </div>
         </section>
       )}
-
-      {abertaId && <Preenchimento avaliacaoId={abertaId} autor={autor} onClose={() => setAbertaId(null)} />}
     </div>
   );
 }

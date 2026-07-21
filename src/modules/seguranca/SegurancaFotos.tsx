@@ -52,7 +52,7 @@ export function SegurancaFotos({ rid, urls, onChange, disabled }: {
           <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ""; }} />
           <button type="button" disabled={uploading} onClick={() => inputRef.current?.click()}
-            className="w-16 h-16 rounded-xl border border-dashed border-teal-400/70 text-teal-600 dark:text-teal-300 flex flex-col items-center justify-center gap-0.5 disabled:opacity-50 active:scale-95 transition-transform">
+            className="w-16 h-16 rounded-xl border border-dashed border-indigo-400/70 text-indigo-600 dark:text-indigo-300 flex flex-col items-center justify-center gap-0.5 disabled:opacity-50 active:scale-95 transition-transform">
             <span className="text-xl leading-none">📷</span>
             <span className="text-[10px] font-semibold">{uploading ? `${prog}%` : "foto"}</span>
           </button>
