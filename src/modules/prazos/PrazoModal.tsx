@@ -19,12 +19,14 @@ const chip = (on: boolean) => `px-3 py-1.5 text-xs font-medium rounded-full bord
 
 const TIPOS: Array<{ v: PrazoTipo; icon: string }> = [{ v: "conta", icon: "💰" }, { v: "tecnico", icon: "🛠️" }, { v: "trabalhista", icon: "🧑‍⚖️" }, { v: "avulso", icon: "🚩" }];
 
-export function PrazoModal({ rid, prazo, empregados, pessoas, imoveis, onGerenciarImoveis, onClose, onSalvar }: {
-  rid: string; prazo: Prazo | null; empregados: Empregado[]; pessoas: Pessoa[]; imoveis: Imovel[];
+export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, pessoas, imoveis, onGerenciarImoveis, onClose, onSalvar }: {
+  rid: string; prazo: Prazo | null; tiposPermitidos: PrazoTipo[]; empregados: Empregado[]; pessoas: Pessoa[]; imoveis: Imovel[];
   onGerenciarImoveis: () => void; onClose: () => void; onSalvar: (p: Prazo) => Promise<void>;
 }) {
   const editando = !!prazo;
-  const [tipo, setTipo] = useState<PrazoTipo>(prazo?.tipo || "conta");
+  // Ao editar, o tipo é fixo (a categoria não muda). Ao criar, só as permitidas.
+  const tiposDisponiveis = editando && prazo ? [prazo.tipo] : (tiposPermitidos.length ? tiposPermitidos : ["avulso" as PrazoTipo]);
+  const [tipo, setTipo] = useState<PrazoTipo>(prazo?.tipo || tiposDisponiveis[0]);
   const [titulo, setTitulo] = useState(prazo?.titulo || "");
   const [venc, setVenc] = useState(ymdToBr(prazo?.vencimento) || "");
   const [respId, setRespId] = useState(prazo?.responsavelId || "");
@@ -80,8 +82,8 @@ export function PrazoModal({ rid, prazo, empregados, pessoas, imoveis, onGerenci
       <div className="space-y-3">
         {/* Tipo */}
         <div className="flex gap-1.5">
-          {TIPOS.map(({ v, icon }) => (
-            <button key={v} type="button" onClick={() => trocarTipo(v)} style={{ height: 66 }} className={`flex-1 flex flex-col items-center justify-center gap-1.5 text-xs rounded-lg border box-border ${tipo === v ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
+          {TIPOS.filter(({ v }) => tiposDisponiveis.includes(v)).map(({ v, icon }) => (
+            <button key={v} type="button" onClick={() => trocarTipo(v)} disabled={editando} style={{ height: 66 }} className={`flex-1 flex flex-col items-center justify-center gap-1.5 text-xs rounded-lg border box-border ${tipo === v ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"} ${editando ? "opacity-90 cursor-default" : ""}`}>
               <span style={{ height: 22, fontSize: 20 }} className="flex items-center justify-center leading-none">{icon}</span>
               <span className="leading-none">{PRAZO_TIPO_LABEL[v]}</span>
             </button>

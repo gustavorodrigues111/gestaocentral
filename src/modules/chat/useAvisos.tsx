@@ -433,10 +433,15 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    // ── Prazos (módulo novo): 1 card por prazo no radar (vencido ou a vencer). ──
+    // ── Prazos (módulo novo): 1 card por prazo no radar (vencido ou a vencer).
+    //    Só das categorias que a pessoa PODE VER (granular) + receberAvisos. ──
+    const SUF_CAT_AV: Record<string, string> = { conta: "Conta", tecnico: "Tecnico", trabalhista: "Trabalhista", avulso: "Avulso" };
     for (const p of prazosAv) {
       if (!noRadar(p, hoje)) continue;
-      const r = (p.restaurantIds || []).find((x) => meusRids.has(x) && pessoa && canAcao(pessoa, x, "prazos", "receberAvisos", perfis));
+      const suf = SUF_CAT_AV[p.tipo] || "";
+      const r = (p.restaurantIds || []).find((x) => meusRids.has(x) && pessoa
+        && canAcao(pessoa, x, "prazos", "receberAvisos", perfis)
+        && canAcao(pessoa, x, "prazos", `ver${suf}`, perfis));
       if (!r) continue;
       const dias = diasAte(hoje, p.vencimento);
       const vencido = dias < 0;

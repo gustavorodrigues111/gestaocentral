@@ -31,6 +31,9 @@ const TIPO_META: Record<PrazoTipo, { icon: string; cls: string }> = {
   trabalhista: { icon: "🧑‍⚖️", cls: "bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" },
   avulso: { icon: "🚩", cls: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" },
 };
+const TODAS_CATS: PrazoTipo[] = ["conta", "tecnico", "trabalhista", "avulso"];
+// tipo → sufixo da ação de permissão (verConta, gerirTecnico, …).
+const SUF_CAT: Record<PrazoTipo, string> = { conta: "Conta", tecnico: "Tecnico", trabalhista: "Trabalhista", avulso: "Avulso" };
 
 export function PrazosPage() {
   const { pessoa: me } = useAuth();
@@ -39,8 +42,13 @@ export function PrazosPage() {
   const isMaster = !!me?.isMaster;
   const { can } = useCanAcao(rid || "");
   const { perfis } = useAccessProfiles();
-  const podeVer = isMaster || can("prazos", "ver");
-  const podeGerir = isMaster || can("prazos", "gerir");
+  // Permissão granular por categoria (ver × gerir).
+  const podeVerCat = (t: PrazoTipo) => isMaster || can("prazos", `ver${SUF_CAT[t]}`);
+  const podeGerirCat = (t: PrazoTipo) => isMaster || can("prazos", `gerir${SUF_CAT[t]}`);
+  const catsVisiveis = TODAS_CATS.filter(podeVerCat);
+  const catsGeriveis = TODAS_CATS.filter(podeGerirCat);
+  const podeVer = catsVisiveis.length > 0;
+  const podeConfig = isMaster || can("prazos", "configurar");
 
   const [prazos, setPrazos] = useState<Prazo[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
@@ -78,10 +86,12 @@ export function PrazosPage() {
   const restNome = (ids: string[]) => restaurants.find((r) => ids.includes(r.id))?.nome || "";
 
   const visiveis = useMemo(() => {
-    let ps = prazos.filter((p) => (tipoFiltro === "todos" || p.tipo === tipoFiltro));
+    // Só categorias que a pessoa pode VER; e respeita o chip de filtro.
+    let ps = prazos.filter((p) => catsVisiveis.includes(p.tipo) && (tipoFiltro === "todos" || p.tipo === tipoFiltro));
     if (aba === "resolvidos") return ps.filter((p) => p.status === "resolvido").sort((a, b) => (b.vencimento).localeCompare(a.vencimento));
     return ps.filter((p) => p.status !== "resolvido").sort((a, b) => a.vencimento.localeCompare(b.vencimento));
-  }, [prazos, tipoFiltro, aba]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prazos, tipoFiltro, aba, catsVisiveis.join(",")]);
 
   const grupos = useMemo(() => {
     const g: Record<string, Prazo[]> = { vencido: [], semana: [], proximo: [], futuro: [] };
@@ -91,9 +101,10 @@ export function PrazosPage() {
 
   const contagem = useMemo(() => {
     const c: Record<string, number> = { todos: 0, conta: 0, tecnico: 0, trabalhista: 0, avulso: 0 };
-    for (const p of prazos) { if (p.status === "resolvido") continue; c.todos++; c[p.tipo]++; }
+    for (const p of prazos) { if (p.status === "resolvido" || !catsVisiveis.includes(p.tipo)) continue; c.todos++; c[p.tipo]++; }
     return c;
-  }, [prazos]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prazos, catsVisiveis.join(",")]);
 
   async function salvarPrazo(p: Prazo) {
     await setDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ ...p, atualizadoEm: new Date().toISOString() }), { merge: true });
@@ -167,16 +178,16 @@ export function PrazosPage() {
           <p className="text-sm text-gray-500">{todosRest ? "Todos os restaurantes" : activeRestaurant?.nome || "—"} · o que vence e quando</p>
         </div>
         <div className="flex items-center gap-2">
-          {podeGerir && <button type="button" disabled={migrando} onClick={() => void puxarExistentes()} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-50">{migrando ? "puxando…" : "⇊ Puxar existentes"}</button>}
-          {podeGerir && <button type="button" onClick={() => setShowImoveis(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">🏠 Imóveis</button>}
-          {!activeRestaurant?.prazosDriveFolderId && podeGerir && <button type="button" onClick={() => void configurarPasta()} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">📁 Pasta do Drive</button>}
-          {podeGerir && <button type="button" onClick={() => setModal({ prazo: null })} className="text-sm font-semibold px-3 py-2 rounded-lg bg-indigo-600 text-white">+ Novo prazo</button>}
+          {podeConfig && <button type="button" disabled={migrando} onClick={() => void puxarExistentes()} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-50">{migrando ? "puxando…" : "⇊ Puxar existentes"}</button>}
+          {podeConfig && <button type="button" onClick={() => setShowImoveis(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">🏠 Imóveis</button>}
+          {!activeRestaurant?.prazosDriveFolderId && podeConfig && <button type="button" onClick={() => void configurarPasta()} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">📁 Pasta do Drive</button>}
+          {catsGeriveis.length > 0 && <button type="button" onClick={() => setModal({ prazo: null })} className="text-sm font-semibold px-3 py-2 rounded-lg bg-indigo-600 text-white">+ Novo prazo</button>}
         </div>
       </header>
 
-      {/* Filtros por tipo + abas */}
+      {/* Filtros por tipo (só categorias visíveis) + abas */}
       <div className="flex items-center gap-2 flex-wrap">
-        {(["todos", "conta", "tecnico", "trabalhista", "avulso"] as const).map((t) => (
+        {(["todos", ...catsVisiveis] as const).map((t) => (
           <button key={t} type="button" onClick={() => setTipoFiltro(t)} className={`text-xs px-3 py-1.5 rounded-full border ${tipoFiltro === t ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
             {t === "todos" ? "Todos" : `${TIPO_META[t].icon} ${PRAZO_TIPO_LABEL[t]}`} <span className="opacity-60">{contagem[t]}</span>
           </button>
@@ -200,7 +211,7 @@ export function PrazosPage() {
               <div className={`text-xs font-semibold uppercase tracking-wide mb-2 ${GRUPO_LABEL[g].danger ? "text-rose-600" : "text-gray-500"}`}>{GRUPO_LABEL[g].label}</div>
               <div className="space-y-2">
                 {grupos[g].map((p) => (
-                  <PrazoCard key={p.id} p={p} hoje={hoje} podeGerir={podeGerir} mostrarEmpresa={todosRest} restNome={restNome} imovelNome={imovelNome(p.imovelId)}
+                  <PrazoCard key={p.id} p={p} hoje={hoje} podeGerir={podeGerirCat(p.tipo)} mostrarEmpresa={todosRest} restNome={restNome} imovelNome={imovelNome(p.imovelId)}
                     onEditar={() => setModal({ prazo: p })} onRealizar={() => void realizar(p)} onExcluir={() => void excluir(p)}
                     onLaudo={() => pedirLaudo(p)} onRemoverAg={() => void removerAgendamento(p)}
                     agendando={agendando === p.id} dataAg={dataAg} setDataAg={setDataAg}
@@ -236,7 +247,7 @@ export function PrazosPage() {
       )}
 
       {modal && (
-        <PrazoModal rid={rid || ""} prazo={modal.prazo} empregados={empregados} pessoas={responsaveis} imoveis={imoveis} onGerenciarImoveis={() => setShowImoveis(true)} onClose={() => setModal(null)} onSalvar={salvarPrazo} />
+        <PrazoModal rid={rid || ""} prazo={modal.prazo} tiposPermitidos={catsGeriveis} empregados={empregados} pessoas={responsaveis} imoveis={imoveis} onGerenciarImoveis={() => setShowImoveis(true)} onClose={() => setModal(null)} onSalvar={salvarPrazo} />
       )}
       {showImoveis && <ImoveisModal rid={rid || ""} restauranteNome={activeRestaurant?.nome || ""} imoveis={imoveis} meId={me?.id || ""} onClose={() => setShowImoveis(false)} />}
     </div>
