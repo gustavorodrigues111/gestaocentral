@@ -65,7 +65,7 @@ export type ModuleArea = "ops" | "dp" | "fin" | "planejamento" | "inst" | "maste
 export type ModuleId =
   // Operação
   | "ocorrencias" | "reservas" | "checklists" | "contagens" | "temperaturas" | "fichas" | "eventos"
-  | "horarios"
+  | "horarios" | "seguranca"
   // Time
   | "escala" | "freelas" | "reunioes" | "trilha" | "ideias" | "planoDeAcao" | "whatsappInbox"
   // Rotinas — lembretes recorrentes de tarefas do sistema (fechar ponto etc.)
@@ -202,6 +202,96 @@ export type ModuleDef = {
 
 export type Area = "Bar" | "Cozinha" | "Salão" | "Limpeza";
 export const AREAS: Area[] = ["Bar", "Cozinha", "Salão", "Limpeza"];
+export const AREA_SLUG: Record<Area, string> = { Bar: "bar", Cozinha: "cozinha", "Salão": "salao", Limpeza: "limpeza" };
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  SEGURANÇA SANITÁRIA — avaliação de boas práticas (RDC 216)
+//  Preenchida pela nutricionista, por área (reusa Area). Resposta binária
+//  Conforme/Não conforme; não-conforme detalha foto+obs e vira ação no Plano
+//  de Ação. Modelo (checklist) + Avaliação (execução). Ver módulo `seguranca`.
+// ═══════════════════════════════════════════════════════════════════════════
+
+export type SegurancaResposta = "conforme" | "nao_conforme";
+
+// Faixa de classificação da nota (padrão FoodChecker; editável no modelo).
+export type SegurancaFaixa = { label: string; min: number; max: number; cor: string };
+export const SEGURANCA_FAIXAS_PADRAO: SegurancaFaixa[] = [
+  { label: "Excelente", min: 91, max: 100, cor: "#15803d" },
+  { label: "Satisfatório", min: 80, max: 90, cor: "#b45309" },
+  { label: "Insatisfatório", min: 0, max: 79, cor: "#c62828" },
+];
+export function segurancaFaixaDe(score: number, faixas: SegurancaFaixa[]): SegurancaFaixa | null {
+  return faixas.find((f) => score >= f.min && score <= f.max) || null;
+}
+
+export type SegurancaBloco = { id: string; nome: string; ordem: number };
+
+export type SegurancaItem = {
+  id: string;
+  texto: string;
+  blocoId: string;
+  areas: Area[];         // áreas onde este item é avaliado (1+)
+  ordem: number;
+  pontua: boolean;       // false = informativo, não entra na nota
+  descricao?: string;    // "o que observar" (guia opcional)
+};
+
+export type SegurancaModelo = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  blocos: SegurancaBloco[];
+  itens: SegurancaItem[];
+  faixas: SegurancaFaixa[];
+  ativo: boolean;
+  criadoEm: string;
+  criadoPor?: string | null;
+  atualizadoEm?: string;
+};
+
+// Resultado de UM item numa área. Chave no mapa = segKey(area, itemId).
+export type SegurancaResultadoItem = {
+  resposta: SegurancaResposta;
+  observacao?: string;
+  fotos?: string[];            // URLs no Firebase Storage
+  acaoId?: string | null;      // ação gerada no Plano de Ação (Fase 3)
+  marcadoEm: string;
+  marcadoPorId?: string;
+  marcadoPorNome?: string;
+};
+
+export type SegurancaAvaliacaoStatus = "rascunho" | "finalizada";
+
+export type SegurancaAvaliacaoLog = {
+  id: string; acao: string; detalhe?: string;
+  autorId?: string; autorNome?: string; em: string;
+};
+
+export type SegurancaAvaliacao = {
+  id: string;
+  restaurantId: string;
+  modeloId: string;
+  modeloNomeSnapshot?: string;
+  // Snapshots congelam o questionário no momento — o relatório não muda se o
+  // modelo for editado depois.
+  itensSnapshot?: SegurancaItem[];
+  blocosSnapshot?: SegurancaBloco[];
+  faixasSnapshot?: SegurancaFaixa[];
+  data: string;                       // YYYY-MM-DD
+  avaliadorId?: string | null;
+  avaliadorNome?: string | null;
+  resultado: Record<string, SegurancaResultadoItem>;
+  score?: number;                     // % de conformidade (0-100)
+  faixaLabel?: string;
+  status: SegurancaAvaliacaoStatus;
+  iniciadoEm: string;
+  finalizadoEm?: string | null;
+  log?: SegurancaAvaliacaoLog[];
+};
+
+// Chave do resultado por (área, item). Slug evita '.'/acento no field-path do
+// Firestore (updateDoc usa caminho pontuado `resultado.<key>`).
+export const segKey = (area: Area, itemId: string): string => `${AREA_SLUG[area]}__${itemId}`;
 
 // Tipo de vínculo do CARGO (define se quem tem esse cargo vê Portal do Empregado)
 export type TipoVinculo = "registrado" | "provisorio" | "estagiario" | "terceirizado";

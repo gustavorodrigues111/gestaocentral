@@ -434,6 +434,8 @@ service cloud.firestore {
     match /mesas/{id}               { allow read, write: if authed(); }
     match /checklistTemplates/{id}  { allow read, write: if authed(); }
     match /checklistRuns/{id}       { allow read, write: if authed(); }
+    match /segurancaModelos/{id}    { allow read, write: if authed(); }
+    match /segurancaAvaliacoes/{id} { allow read, write: if authed(); }
     match /contagens/{id}           { allow read, write: if authed(); }
     match /insumos/{id}             { allow read, write: if authed(); }
     match /fornecedores/{id}        { allow read, write: if authed(); }

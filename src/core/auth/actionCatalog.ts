@@ -186,6 +186,21 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "seguranca",
+    icon: "🧪",
+    label: "Segurança Sanitária",
+    desc: "Avaliação de boas práticas (nutricionista) → plano de ação",
+    area: "operacao",
+    acoes: [
+      { id: "preencher",  label: "Preencher avaliação (nutricionista)" },
+      { id: "ver",        label: "Ver avaliações e histórico" },
+      { id: "configurar", label: "Editar o checklist-modelo" },
+      { id: "resolverAcoes", label: "Resolver ações do plano (operação)" },
+      { id: "transferirResponsavel", label: "Transferir responsável de uma ação" },
+      { id: "receberAvisos", label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
+    ],
+  },
+  {
     id: "recebimento",
     icon: "🧾",
     label: "Recebimento de produtos",
