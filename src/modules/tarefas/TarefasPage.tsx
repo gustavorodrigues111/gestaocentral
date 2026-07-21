@@ -70,6 +70,12 @@ type ViewMode = "calendario" | "lista" | "kanban";
 const ORFAS_PRAZO = new Set(["conta_fixa", "manutencao", "admissao"]);
 const semOrfasPrazo = (ts: Tarefa[]): Tarefa[] => ts.filter((t) => !ORFAS_PRAZO.has(t.origem));
 
+// A área legada "Prazos" foi aposentada — datas que vencem vivem no módulo
+// Prazos dedicado. Removida de toda a UI do gestor (chips, breadcrumb, admin,
+// sidebar). Filtramos na fonte pra garantir consistência em todos consumidores.
+const ehAreaPrazos = (p: { id?: string; nome?: string }): boolean =>
+  p.id === "proj-prazos" || /praz/i.test(p.nome || "");
+
 // Conversão YYYY-MM-DD ↔ dd/mm/aaaa pro DatePickerBR no modal de tarefa.
 const ymdParaBr = (ymd: string): string => { if (!ymd) return ""; const [a, m, d] = ymd.split("-"); return d ? `${d}/${m}/${a}` : ""; };
 const brParaYmd = (br: string): string => { const [d, m, a] = br.split("/"); return (d && m && a) ? `${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}` : ""; };
@@ -176,9 +182,11 @@ export function TarefasPage() {
   const [novaAberta, setNovaAberta] = useState<{ prazo?: string; projetoId?: string; subprojetoId?: string } | null>(null);
   const [detalheId, setDetalheId] = useState<string | null>(null);
 
-  // Ouvir projetos + subprojetos
+  // Ouvir projetos + subprojetos.
+  // Filtra a área legada "Prazos" na fonte — ninguém no gestor deve mais vê-la
+  // (criar/editar/mover), já que prazos agora vivem no módulo Prazos dedicado.
   useEffect(() => {
-    const u1 = ouvirProjetos(setProjetos);
+    const u1 = ouvirProjetos((lista) => setProjetos(lista.filter(p => !ehAreaPrazos(p))));
     const u2 = ouvirSubprojetos(setSubprojetos);
     return () => { u1(); u2(); };
   }, []);
@@ -623,8 +631,9 @@ function ProjetosTopBar({
   onAbrirSubprojeto: (projetoId: string, subId: string) => void;
 }) {
   const ativas = (ts: Tarefa[]) => ts.filter(t => t.status !== "concluida" && t.status !== "cancelada").length;
-  // Esconde o projeto legado "Prazos" — agora existe o módulo Prazos dedicado.
-  const projTarefas = projetos.filter(p => !(p.id === "proj-prazos" || /praz/i.test(p.nome || "")));
+  // A área "Prazos" já sai filtrada na fonte (módulo Prazos dedicado); mantém
+  // defesa-em-profundidade caso projetos venha de outra origem.
+  const projTarefas = projetos.filter(p => !ehAreaPrazos(p));
   const subs = tabAtual === "projeto" && projetoFiltroAtual ? subprojetos.filter(s => s.projetoId === projetoFiltroAtual) : [];
   const chip = (active: boolean) => `shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-colors ${active ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`;
   const rotulo = "shrink-0 w-[70px] text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500";
@@ -1470,9 +1479,8 @@ function AdminView({ projetos, subprojetos, pessoaId }: {
         />
       )}
 
-      {/* Esconde o projeto "Prazos" — ele é a espinha do grupo Prazos (derivados),
-          não um projeto de Tarefas comum. Some daqui pra não ser apagado sem querer. */}
-      {projetos.filter(p => !(p.id === "proj-prazos" || /praz/i.test(p.nome || ""))).map(p => {
+      {/* A área "Prazos" já sai filtrada na fonte — não aparece aqui no admin. */}
+      {projetos.filter(p => !ehAreaPrazos(p)).map(p => {
         const subs = subprojetos.filter(s => s.projetoId === p.id);
         // "Quem vê" — texto resumido
         const v = (p.visibilidade || "privado") as string;
