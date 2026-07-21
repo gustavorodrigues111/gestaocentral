@@ -4,8 +4,12 @@
 // Relatório detalhado, plano de ação e gráficos entram nas próximas fases.
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import { doc, updateDoc } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
+import { pickDriveFolder } from "../../core/google/drivePicker";
 import { Button } from "../../core/ui/Button";
 import type { SegurancaAvaliacao, SegurancaModelo } from "../../core/types";
 import { ouvirModelos, ouvirAvaliacoes, criarModeloSemente, criarAvaliacao, excluirAvaliacao } from "./repository";
@@ -16,6 +20,7 @@ const dmy = (ymd: string) => (ymd || "").split("-").reverse().join("/");
 
 export function SegurancaPage() {
   const { pessoa: me } = useAuth();
+  const { activeRestaurant } = useRestaurant();
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
   const isMaster = !!me?.isMaster;
@@ -54,6 +59,13 @@ export function SegurancaPage() {
     if (!confirm(`Excluir a avaliação de ${dmy(a.data)}?`)) return;
     await excluirAvaliacao(a.id);
   }
+  async function configurarPasta() {
+    try {
+      const pasta = await pickDriveFolder("Pasta das fotos da Segurança Sanitária");
+      if (!pasta) return;
+      await updateDoc(doc(db, "restaurants", rid), { segurancaDriveFolderId: pasta.id, segurancaDriveFolderNome: pasta.name });
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao selecionar a pasta."); }
+  }
 
   function ncDe(a: SegurancaAvaliacao): number {
     return Object.values(a.resultado || {}).filter((r) => r.resposta === "nao_conforme").length;
@@ -88,6 +100,11 @@ export function SegurancaPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Avaliação de boas práticas por área. Cada não-conforme vira ação para a operação.</p>
         </div>
         <div className="flex items-center gap-2 shrink-0">
+          {podeConfig && (
+            <Button variant="secondary" onClick={() => void configurarPasta()} title={activeRestaurant?.segurancaDriveFolderNome ? `Pasta: ${activeRestaurant.segurancaDriveFolderNome}` : "Definir pasta do Drive"}>
+              📁 {activeRestaurant?.segurancaDriveFolderId ? "Pasta ✓" : "Pasta"}
+            </Button>
+          )}
           {podeConfig && modeloAtivo && (
             <Button variant="secondary" onClick={() => setEditando(true)}>⚙ Checklist</Button>
           )}
@@ -96,6 +113,11 @@ export function SegurancaPage() {
           )}
         </div>
       </header>
+      {podeConfig && !activeRestaurant?.segurancaDriveFolderId && (
+        <div className="text-xs rounded-lg px-3 py-2 bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
+          📁 Defina a <b>pasta do Drive</b> onde as fotos ficarão (uma subpasta por data). Sem isso, não dá pra anexar fotos.
+        </div>
+      )}
 
       {erro && <div className="text-sm rounded-lg px-3 py-2 bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400">{erro}</div>}
 

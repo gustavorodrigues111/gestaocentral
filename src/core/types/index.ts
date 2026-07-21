@@ -251,12 +251,15 @@ export type SegurancaModelo = {
   atualizadoEm?: string;
 };
 
+// Uma foto de não-conformidade, armazenada no Google Drive (subpasta por data).
+export type SegurancaFoto = { driveId: string; nome: string; webViewLink?: string };
+
 // Resultado de UM item. Chave no mapa `resultado` = o próprio itemId (cada item
 // já é de uma área única, então não precisa compor com a área).
 export type SegurancaResultadoItem = {
   resposta: SegurancaResposta;
   observacao?: string;
-  fotos?: string[];            // URLs no Firebase Storage
+  fotos?: SegurancaFoto[];     // no Google Drive (não no Storage)
   acaoId?: string | null;      // ação gerada no Plano de Ação (Fase 3)
   marcadoEm: string;
   marcadoPorId?: string;
@@ -1010,6 +1013,8 @@ export type Restaurant = {
   manutencoesDriveFolderNome?: string;
   prazosDriveFolderId?: string;            // pasta-raiz dos laudos/comprovantes do módulo Prazos
   prazosDriveFolderNome?: string;
+  segurancaDriveFolderId?: string;         // pasta-raiz das fotos do módulo Segurança Sanitária (subpasta por data)
+  segurancaDriveFolderNome?: string;
   cartaoChavePixPadrao?: string;           // Pix padrão pra receber reembolsos de cartão (módulo Faturas)
   cartoesCadastrados?: string[];           // nomes dos cartões que sobem fatura aqui — a IA casa cada PDF com um deles
   fechamentoSociosEmails?: string[];

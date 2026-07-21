@@ -4,7 +4,8 @@
 // parou). Responsivo (largura limitada no desktop, confortável no toque).
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../core/ui/Button";
-import type { Area, SegurancaAvaliacao, SegurancaItem, SegurancaResposta } from "../../core/types";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import type { Area, SegurancaAvaliacao, SegurancaFoto, SegurancaItem, SegurancaResposta } from "../../core/types";
 import { AREAS, AREA_CHIP, segurancaFaixaDe } from "../../core/types";
 import {
   ouvirAvaliacao, salvarResultado, limparResultado, calcularScore, finalizarAvaliacao,
@@ -18,13 +19,14 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
   autor: { id: string; nome: string };
   onClose: () => void;
 }) {
+  const { activeRestaurant } = useRestaurant();
   const [av, setAv] = useState<SegurancaAvaliacao | null>(null);
   const [filtro, setFiltro] = useState<Area | "todas">("todas");
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => ouvirAvaliacao(avaliacaoId, setAv), [avaliacaoId]);
 
-  const rid = av?.restaurantId || "";
+  const rootFolderId = activeRestaurant?.segurancaDriveFolderId;
   const itens = av?.itensSnapshot || [];
   const blocos = (av?.blocosSnapshot || []).slice().sort((a, b) => a.ordem - b.ordem);
   const readOnly = av?.status === "finalizada";
@@ -132,7 +134,8 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
               <ItemCard
                 key={item.id}
                 item={item}
-                rid={rid}
+                rootFolderId={rootFolderId}
+                data={av.data}
                 readOnly={readOnly}
                 resultado={av.resultado?.[item.id]}
                 onMarcar={(resp) => marcar(item, resp)}
@@ -168,14 +171,15 @@ function AreaChip({ area }: { area?: Area }) {
 }
 
 // ── Card de um item ──
-function ItemCard({ item, rid, readOnly, resultado, onMarcar, onObs, onFotos }: {
+function ItemCard({ item, rootFolderId, data, readOnly, resultado, onMarcar, onObs, onFotos }: {
   item: SegurancaItem;
-  rid: string;
+  rootFolderId?: string;
+  data: string;
   readOnly: boolean;
-  resultado?: { resposta: SegurancaResposta; observacao?: string; fotos?: string[] };
+  resultado?: { resposta: SegurancaResposta; observacao?: string; fotos?: SegurancaFoto[] };
   onMarcar: (r: SegurancaResposta) => void;
   onObs: (txt: string) => void;
-  onFotos: (fotos: string[]) => void;
+  onFotos: (fotos: SegurancaFoto[]) => void;
 }) {
   const resp = resultado?.resposta;
   const nc = resp === "nao_conforme";
@@ -207,7 +211,7 @@ function ItemCard({ item, rid, readOnly, resultado, onMarcar, onObs, onFotos }: 
             value={obs} onChange={(e) => setObs(e.target.value)} onBlur={() => onObs(obs)}
             disabled={readOnly} rows={2} placeholder="O que foi observado…"
             className="w-full text-[15px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-gray-900 dark:text-gray-100" />
-          <SegurancaFotos rid={rid} urls={resultado?.fotos || []} onChange={onFotos} disabled={readOnly} />
+          <SegurancaFotos rootFolderId={rootFolderId} data={data} fotos={resultado?.fotos || []} onChange={onFotos} disabled={readOnly} />
         </div>
       )}
     </div>
