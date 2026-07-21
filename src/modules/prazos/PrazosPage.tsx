@@ -20,6 +20,7 @@ import { resumoRecorrencia } from "./recorrencia";
 import { resolverPrazo, podeResolver, grupoAgenda, diasAte, hojeYmd } from "./logic";
 import { PrazoModal } from "./PrazoModal";
 import { ImoveisModal } from "./ImoveisModal";
+import { migrarExistentesParaPrazos } from "./migrar";
 
 const brl = (n?: number | null) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const ymdToBr = (ymd?: string) => { if (!ymd) return ""; const [a, m, d] = ymd.split("-"); return `${d}/${m}/${a}`; };
@@ -53,6 +54,7 @@ export function PrazosPage() {
   const [agendando, setAgendando] = useState<string | null>(null);
   const [dataAg, setDataAg] = useState("");
   const [erro, setErro] = useState("");
+  const [migrando, setMigrando] = useState(false);
   const laudoRef = useRef<HTMLInputElement | null>(null);
   const laudoAlvo = useRef<Prazo | null>(null);
 
@@ -116,6 +118,15 @@ export function PrazosPage() {
     if (!confirm(`Excluir o prazo "${p.titulo}"?`)) return;
     await updateDoc(doc(db, "prazos", p.id), { deletadoEm: new Date().toISOString(), deletadoPor: me?.id || null });
   }
+  async function puxarExistentes() {
+    if (!rid) return;
+    setMigrando(true); setErro("");
+    try {
+      const r = await migrarExistentesParaPrazos(rid, me?.id);
+      setErro(r.criados === 0 ? "✓ Nada novo pra puxar — já está tudo aqui." : `✓ Puxados ${r.criados}: ${r.porTipo.manutencao} manutenções, ${r.porTipo.exame} exames, ${r.porTipo.uniforme} uniformes/EPIs.`);
+    } catch (e) { setErro("Falha ao puxar: " + (e instanceof Error ? e.message : "?")); }
+    finally { setMigrando(false); }
+  }
 
   // ── Laudo (Google Drive) ──
   async function configurarPasta() {
@@ -156,6 +167,7 @@ export function PrazosPage() {
           <p className="text-sm text-gray-500">{todosRest ? "Todos os restaurantes" : activeRestaurant?.nome || "—"} · o que vence e quando</p>
         </div>
         <div className="flex items-center gap-2">
+          {podeGerir && <button type="button" disabled={migrando} onClick={() => void puxarExistentes()} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 disabled:opacity-50">{migrando ? "puxando…" : "⇊ Puxar existentes"}</button>}
           {podeGerir && <button type="button" onClick={() => setShowImoveis(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">🏠 Imóveis</button>}
           {!activeRestaurant?.prazosDriveFolderId && podeGerir && <button type="button" onClick={() => void configurarPasta()} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">📁 Pasta do Drive</button>}
           {podeGerir && <button type="button" onClick={() => setModal({ prazo: null })} className="text-sm font-semibold px-3 py-2 rounded-lg bg-indigo-600 text-white">+ Novo prazo</button>}
@@ -178,7 +190,7 @@ export function PrazosPage() {
         ))}
       </div>
 
-      {erro && <div className="text-sm rounded-lg px-3 py-2 bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400 flex justify-between"><span>{erro}</span><button onClick={() => setErro("")}>✕</button></div>}
+      {erro && <div className={`text-sm rounded-lg px-3 py-2 flex justify-between ${erro.startsWith("✓") ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400" : "bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400"}`}><span>{erro}</span><button onClick={() => setErro("")}>✕</button></div>}
 
       {aba === "agenda" ? (
         <div className="space-y-4">
