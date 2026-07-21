@@ -46,7 +46,7 @@ export const MODULES: ModuleDef[] = [
 
   // ── Pessoas Externas & Infra ─────────────────────────────────────
   { id: "freelas",     area: "ops", subarea: "Pessoas Externas & Infra", label: "Freelas",        icon: "🎒", status: "ativo", etapa: "beta",               desc: "Cadastro, agendamento, lançamento e pagamento de freelas", dependsOn: ["pessoas", "escala"] },
-  { id: "prazos",      area: "planejamento", subarea: "Prazos", label: "Prazos", icon: "📅", status: "ativo", etapa: "em_desenvolvimento", desc: "Agenda única do que vence: contas, técnicos (com laudo no Drive), trabalhistas e avulsos. Recorrência flexível, agendamento e histórico de realizados. Fonte única — substitui Contas Fixas, Manutenções e Prazos Trabalhistas.", dependsOn: ["pessoas"] },
+  { id: "prazos",      area: "planejamento", subarea: "Prazos", label: "Prazos", icon: "📅", status: "ativo", etapa: "beta", desc: "Agenda única do que vence: contas, técnicos (com laudo no Drive), trabalhistas e avulsos. Recorrência flexível, agendamento e histórico de realizados. Fonte única — substitui Contas Fixas, Manutenções e Prazos Trabalhistas.", dependsOn: ["pessoas"] },
 
   // ── ocultos (operação) ───────────────────────────────────────────
   { id: "temperaturas", area: "ops", label: "Temperaturas",      icon: "🌡️", status: "planejado", etapa: "em_desenvolvimento", desc: "Monitoramento e alertas", oculto: true },
