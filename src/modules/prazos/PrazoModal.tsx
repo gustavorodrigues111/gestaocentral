@@ -32,6 +32,7 @@ export function PrazoModal({ rid, prazo, empregados, pessoas, restaurantes, onCl
   const [exigeLaudo, setExigeLaudo] = useState<boolean>(prazo?.exigeLaudo ?? (prazo?.tipo === "tecnico"));
   const [dados, setDados] = useState<NonNullable<Prazo["dados"]>>(prazo?.dados || {});
   const [restIds, setRestIds] = useState<string[]>(prazo?.restaurantIds || [rid]);
+  const [compartilhar, setCompartilhar] = useState<boolean>((prazo?.restaurantIds?.length || 1) > 1);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
@@ -137,16 +138,21 @@ export function PrazoModal({ rid, prazo, empregados, pessoas, restaurantes, onCl
           </label>
         )}
 
-        {/* Empresas (compartilhado quando >1) */}
+        {/* Empresa: nasce da ativa. Compartilhar com outra é opcional (caso raro:
+            prédio/endereço usado por 2 empresas). */}
         {restaurantes.length > 1 && (
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Empresa(s) deste prazo</label>
-            <div className="flex flex-wrap gap-1.5">
-              {restaurantes.map((r) => { const on = restIds.includes(r.id); return (
-                <button key={r.id} type="button" onClick={() => setRestIds(on ? restIds.filter((x) => x !== r.id) : [...restIds, r.id])} className={chip(on)}>{on ? "✓ " : ""}{r.nome}</button>
-              ); })}
+          !compartilhar ? (
+            <button type="button" onClick={() => setCompartilhar(true)} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">+ compartilhar com outra empresa</button>
+          ) : (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Empresas deste prazo <span className="text-gray-400">(compartilhado)</span></label>
+              <div className="flex flex-wrap gap-1.5">
+                {restaurantes.map((r) => { const on = restIds.includes(r.id); const dona = r.id === rid; return (
+                  <button key={r.id} type="button" disabled={dona} onClick={() => setRestIds(on ? restIds.filter((x) => x !== r.id) : [...restIds, r.id])} className={`${chip(on)} ${dona ? "opacity-70 cursor-default" : ""}`}>{on ? "✓ " : ""}{r.nome}{dona ? " · dona" : ""}</button>
+                ); })}
+              </div>
             </div>
-          </div>
+          )
         )}
 
         {erro && <p className="text-sm text-rose-600">{erro}</p>}
