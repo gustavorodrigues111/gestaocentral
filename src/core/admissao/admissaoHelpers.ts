@@ -1897,6 +1897,13 @@ export async function aprovarAdmissao(
   const empregadoRef = await addDoc(collection(db, "empregados"), stripUndefined(novoEmpregado));
   const empregadoId = empregadoRef.id;
 
+  // Alimenta o módulo Prazos: fim de experiência (45/90 dias) a partir da
+  // admissão. Best-effort — não pode quebrar a conclusão da admissão.
+  try {
+    const { semearPrazosExperiencia } = await import("../../modules/prazos/semear");
+    await semearPrazosExperiencia({ empregadoId, empregadoNome: candidato.nome, restaurantId: admissao.restaurantId, dataAdmissao: dataAdmissaoStr, criadoPor: aprovadoPor.id });
+  } catch (e) { console.warn("semear prazos experiência:", e); }
+
   // ── 3. Atualiza a admissão ──
   await updateDoc(doc(db, "admissoes", admissao.id), {
     aprovadoEm: now,
