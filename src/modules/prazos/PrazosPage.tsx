@@ -79,8 +79,17 @@ export function PrazosPage() {
     return () => { u1(); u2(); u3(); u4(); };
   }, [rid, todosRest, isMaster]);
   const imovelNome = (id?: string | null) => imoveis.find((im) => im.id === id)?.apelido || "";
-  // Responsáveis possíveis = só quem tem acesso ao módulo Prazos nesta empresa.
-  const responsaveis = useMemo(() => pessoas.filter((pp) => (pp.restaurantIds || []).includes(rid || "") && (pp.isMaster || canAcao(pp, rid || "", "prazos", "ver", perfis) || canAcao(pp, rid || "", "prazos", "gerir", perfis))), [pessoas, rid, perfis]);
+  // Responsáveis possíveis POR CATEGORIA = quem acessa (vê/gere) aquele tipo nesta empresa.
+  const responsaveisPorCat = useMemo(() => {
+    const base = pessoas.filter((pp) => (pp.restaurantIds || []).includes(rid || ""));
+    const m = {} as Record<PrazoTipo, Pessoa[]>;
+    for (const t of TODAS_CATS) {
+      const suf = SUF_CAT[t];
+      m[t] = base.filter((pp) => pp.isMaster || canAcao(pp, rid || "", "prazos", `ver${suf}`, perfis) || canAcao(pp, rid || "", "prazos", `gerir${suf}`, perfis));
+    }
+    return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pessoas, rid, perfis]);
 
   const hoje = hojeYmd();
   const restNome = (ids: string[]) => restaurants.find((r) => ids.includes(r.id))?.nome || "";
@@ -247,7 +256,7 @@ export function PrazosPage() {
       )}
 
       {modal && (
-        <PrazoModal rid={rid || ""} prazo={modal.prazo} tiposPermitidos={catsGeriveis} empregados={empregados} pessoas={responsaveis} imoveis={imoveis} onGerenciarImoveis={() => setShowImoveis(true)} onClose={() => setModal(null)} onSalvar={salvarPrazo} />
+        <PrazoModal rid={rid || ""} prazo={modal.prazo} tiposPermitidos={catsGeriveis} empregados={empregados} responsaveisPorCat={responsaveisPorCat} imoveis={imoveis} onGerenciarImoveis={() => setShowImoveis(true)} onClose={() => setModal(null)} onSalvar={salvarPrazo} />
       )}
       {showImoveis && <ImoveisModal rid={rid || ""} restauranteNome={activeRestaurant?.nome || ""} imoveis={imoveis} meId={me?.id || ""} onClose={() => setShowImoveis(false)} />}
     </div>

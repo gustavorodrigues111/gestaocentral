@@ -19,8 +19,8 @@ const chip = (on: boolean) => `px-3 py-1.5 text-xs font-medium rounded-full bord
 
 const TIPOS: Array<{ v: PrazoTipo; icon: string }> = [{ v: "conta", icon: "💰" }, { v: "tecnico", icon: "🛠️" }, { v: "trabalhista", icon: "🧑‍⚖️" }, { v: "avulso", icon: "🚩" }];
 
-export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, pessoas, imoveis, onGerenciarImoveis, onClose, onSalvar }: {
-  rid: string; prazo: Prazo | null; tiposPermitidos: PrazoTipo[]; empregados: Empregado[]; pessoas: Pessoa[]; imoveis: Imovel[];
+export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsaveisPorCat, imoveis, onGerenciarImoveis, onClose, onSalvar }: {
+  rid: string; prazo: Prazo | null; tiposPermitidos: PrazoTipo[]; empregados: Empregado[]; responsaveisPorCat: Record<PrazoTipo, Pessoa[]>; imoveis: Imovel[];
   onGerenciarImoveis: () => void; onClose: () => void; onSalvar: (p: Prazo) => Promise<void>;
 }) {
   const editando = !!prazo;
@@ -39,10 +39,14 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, pessoas, i
   const [erro, setErro] = useState("");
 
   const empDoRest = useMemo(() => empregados.filter((e) => e.restaurantId === rid), [empregados, rid]);
+  // Responsáveis possíveis = só quem acessa a categoria (tipo) atual.
+  const pessoas = responsaveisPorCat[tipo] || [];
 
   function trocarTipo(t: PrazoTipo) {
     setTipo(t);
     setAntec(ANTECEDENCIA_PADRAO[t]);
+    // Se o responsável escolhido não acessa a nova categoria, limpa.
+    if (respId && !(responsaveisPorCat[t] || []).some((p) => p.id === respId)) setRespId("");
     if (t === "tecnico") setExigeLaudo(true); else if (t === "conta" || t === "avulso") setExigeLaudo(false);
     if (!rec && (t === "conta" || t === "tecnico")) setRec({ unidade: "mes", intervalo: 1, modo: "dia_absoluto", diaDoMes: parseInt(venc.split("/")[0]) || 1 });
   }
