@@ -56,6 +56,7 @@ import type { LinhaImportada } from "./importador";
 import type { AccessProfile, Pessoa, Restaurant } from "../../core/types";
 import { pickDriveFolder, pickDriveFile } from "../../core/google/drivePicker";
 import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal";
+import { DatePickerBR } from "../prazos/campos";
 
 type Tab = "minhas" | "tudo" | "projeto" | "admin" | "lixeira" | "todas";
 type ViewMode = "calendario" | "lista" | "kanban";
@@ -67,6 +68,10 @@ type ViewMode = "calendario" | "lista" | "kanban";
 // na Fase 3). Agora vivem no módulo Prazos — não devem aparecer no Tarefas.
 const ORFAS_PRAZO = new Set(["conta_fixa", "manutencao"]);
 const semOrfasPrazo = (ts: Tarefa[]): Tarefa[] => ts.filter((t) => !ORFAS_PRAZO.has(t.origem));
+
+// Conversão YYYY-MM-DD ↔ dd/mm/aaaa pro DatePickerBR no modal de tarefa.
+const ymdParaBr = (ymd: string): string => { if (!ymd) return ""; const [a, m, d] = ymd.split("-"); return d ? `${d}/${m}/${a}` : ""; };
+const brParaYmd = (br: string): string => { const [d, m, a] = br.split("/"); return (d && m && a) ? `${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}` : ""; };
 
 const AVATAR_CORES = ["#4f46e5", "#0891b2", "#059669", "#d97706", "#db2777", "#7c3aed", "#dc2626", "#0d9488", "#2563eb", "#9333ea"];
 function iniciaisNome(nome?: string): string {
@@ -2909,6 +2914,7 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
   // Co-responsáveis (podem editar) e observadores (só acompanham) — opcionais.
   const [coResponsaveisIds, setCoResponsaveisIds] = useState<string[]>([]);
   const [observadoresIds, setObservadoresIds] = useState<string[]>([]);
+  const [maisOpcoes, setMaisOpcoes] = useState(false);
 
   // Lista de pessoas — pra select de responsável. Snapshot direto da coleção.
   const [pessoasLista, setPessoasLista] = useState<Array<{ id: string; nome: string }>>([]);
@@ -3079,17 +3085,9 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
           </div>
         )}
         <div className="space-y-3">
-          <Field label="Título *">
-            <input value={titulo} onChange={(e) => setTitulo(e.target.value)} className="input" autoFocus />
-          </Field>
-          <Field label="Descrição">
-            <textarea
-              value={descricao}
-              onChange={(e) => setDescricao(e.target.value)}
-              rows={2}
-              className="input resize-y"
-              placeholder="Detalhes, contexto, links..."
-            />
+          {/* ── Essenciais ── */}
+          <Field label="O que precisa ser feito *">
+            <input value={titulo} onChange={(e) => setTitulo(e.target.value)} className="input" placeholder="Conferir estoque do bar" autoFocus />
           </Field>
           <Field label="Projeto *">
             <select value={projetoId} onChange={(e) => setProjetoId(e.target.value)} className="input">
@@ -3097,59 +3095,43 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
               {projetos.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>)}
             </select>
           </Field>
-          <Field label="Subprojeto *">
-            <select
-              value={subprojetoId}
-              onChange={(e) => setSubprojetoId(e.target.value)}
-              className="input"
-              disabled={!projetoId}
-            >
-              <option value="" disabled>{projetoId ? "Selecione…" : "Escolha um projeto primeiro"}</option>
-              {subsDoProjeto.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
-            </select>
-          </Field>
+          {subsDoProjeto.length > 0 && (
+            <Field label="Subprojeto *">
+              <select value={subprojetoId} onChange={(e) => setSubprojetoId(e.target.value)} className="input">
+                <option value="" disabled>Selecione…</option>
+                {subsDoProjeto.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
+              </select>
+            </Field>
+          )}
           <Field label="Responsável *">
-            <select
-              value={responsavelId}
-              onChange={(e) => setResponsavelId(e.target.value)}
-              className="input"
-              disabled={!projetoId}
-            >
+            <select value={responsavelId} onChange={(e) => setResponsavelId(e.target.value)} className="input" disabled={!projetoId}>
               {!projetoId && <option value="">Escolha um projeto primeiro</option>}
               {projetoId && !responsaveisElegiveis.find(p => p.id === responsavelId) && (
                 <option value="" disabled>Selecione…</option>
               )}
               {responsaveisElegiveis.map(p => (
-                <option key={p.id} value={p.id}>
-                  {p.id === pessoaId ? `${p.nome} (você)` : p.nome}
-                </option>
+                <option key={p.id} value={p.id}>{p.id === pessoaId ? `${p.nome} (você)` : p.nome}</option>
               ))}
             </select>
             {projetoAtual && projetoAtual.visibilidade === "privado" && (
               <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
-                🔒 Projeto privado — só pessoas autorizadas no projeto podem ser responsáveis.
-                {responsaveisElegiveis.length === 1 && " Adicione pessoas autorizadas em Configurações de Tarefas pra atribuir a outros."}
+                🔒 Projeto privado — só pessoas autorizadas podem ser responsáveis.
               </p>
             )}
           </Field>
-          <Field label="Co-responsáveis (podem editar)">
-            <PessoasMultiPicker
-              value={coResponsaveisIds}
-              onChange={setCoResponsaveisIds}
-              pessoas={responsaveisElegiveis}
-              excluir={[responsavelId, ...observadoresIds]}
-              placeholder={!projetoId ? "Escolha um projeto primeiro" : "+ adicionar"}
-            />
-          </Field>
-          <Field label="Observadores (só acompanham)">
-            <PessoasMultiPicker
-              value={observadoresIds}
-              onChange={setObservadoresIds}
-              pessoas={responsaveisElegiveis}
-              excluir={[responsavelId, ...coResponsaveisIds]}
-              placeholder={!projetoId ? "Escolha um projeto primeiro" : "+ adicionar"}
-            />
-          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Prazo *">
+              <DatePickerBR value={ymdParaBr(prazo)} onChange={(br) => setPrazo(brParaYmd(br))} />
+            </Field>
+            <Field label="Prioridade">
+              <select value={prioridade} onChange={(e) => setPrioridade(e.target.value as TarefaPrioridade)} className="input">
+                <option value="baixa">Baixa</option>
+                <option value="normal">Normal</option>
+                <option value="alta">Alta</option>
+                <option value="urgente">Urgente</option>
+              </select>
+            </Field>
+          </div>
           {temTemplate && (
             <label className="flex items-center gap-2 text-sm bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-md p-2">
               <input type="checkbox" checked={usarTemplate} onChange={(e) => setUsarTemplate(e.target.checked)} />
@@ -3161,37 +3143,37 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
               </span>
             </label>
           )}
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Prazo *">
-              <input type="date" value={prazo} onChange={(e) => setPrazo(e.target.value)} className="input" />
-            </Field>
-            <Field label="Prioridade">
-              <select value={prioridade} onChange={(e) => setPrioridade(e.target.value as TarefaPrioridade)} className="input">
-                <option value="baixa">Baixa</option>
-                <option value="normal">Normal</option>
-                <option value="alta">Alta</option>
-                <option value="urgente">Urgente</option>
-              </select>
-            </Field>
-          </div>
-          {restaurantes.length > 0 && (
-            <Field label="Empresa(s) — opcional">
-              <div className="flex flex-wrap gap-2">
-                {restaurantes.map(r => (
-                  <label key={r.id} className="flex items-center gap-1 text-xs">
-                    <input
-                      type="checkbox"
-                      checked={restaurantIds.includes(r.id)}
-                      onChange={(e) => {
-                        if (e.target.checked) setRestaurantIds([...restaurantIds, r.id]);
-                        else setRestaurantIds(restaurantIds.filter(id => id !== r.id));
-                      }}
-                    />
-                    {r.nome}
-                  </label>
-                ))}
+
+          {/* ── Mais opções (recolhido) ── */}
+          <button type="button" onClick={() => setMaisOpcoes(v => !v)} className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+            <span className={`transition-transform ${maisOpcoes ? "rotate-90" : ""}`}>▸</span> Mais opções <span className="text-xs text-gray-400">— descrição, co-responsáveis, observadores{restaurantes.length > 0 ? ", empresas" : ""}</span>
+          </button>
+          {maisOpcoes && (
+            <div className="space-y-3 pl-1 border-l-2 border-gray-100 dark:border-gray-800 ml-1">
+              <div className="pl-3 space-y-3">
+                <Field label="Descrição">
+                  <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={2} className="input resize-y" placeholder="Detalhes, contexto, links..." />
+                </Field>
+                <Field label="Co-responsáveis (podem editar)">
+                  <PessoasMultiPicker value={coResponsaveisIds} onChange={setCoResponsaveisIds} pessoas={responsaveisElegiveis} excluir={[responsavelId, ...observadoresIds]} placeholder={!projetoId ? "Escolha um projeto primeiro" : "+ adicionar"} />
+                </Field>
+                <Field label="Observadores (só acompanham)">
+                  <PessoasMultiPicker value={observadoresIds} onChange={setObservadoresIds} pessoas={responsaveisElegiveis} excluir={[responsavelId, ...coResponsaveisIds]} placeholder={!projetoId ? "Escolha um projeto primeiro" : "+ adicionar"} />
+                </Field>
+                {restaurantes.length > 0 && (
+                  <Field label="Empresa(s)">
+                    <div className="flex flex-wrap gap-2">
+                      {restaurantes.map(r => (
+                        <label key={r.id} className="flex items-center gap-1 text-xs">
+                          <input type="checkbox" checked={restaurantIds.includes(r.id)} onChange={(e) => { if (e.target.checked) setRestaurantIds([...restaurantIds, r.id]); else setRestaurantIds(restaurantIds.filter(id => id !== r.id)); }} />
+                          {r.nome}
+                        </label>
+                      ))}
+                    </div>
+                  </Field>
+                )}
               </div>
-            </Field>
+            </div>
           )}
         </div>
         {/* Altura fixa em todos os campos (input/select/textarea pequeno)
