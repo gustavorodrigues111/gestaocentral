@@ -94,12 +94,12 @@ export function SegurancaPage() {
 
   return (
     <div className="max-w-3xl mx-auto space-y-5">
-      <header className="flex items-start justify-between gap-3">
-        <div>
+      <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div className="min-w-0">
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">🧪 Segurança Sanitária</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Avaliação de boas práticas por área. Cada não-conforme vira ação para a operação.</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-2 flex-wrap sm:justify-end sm:shrink-0">
           {podeConfig && (
             <Button variant="secondary" onClick={() => void configurarPasta()} title={activeRestaurant?.segurancaDriveFolderNome ? `Pasta: ${activeRestaurant.segurancaDriveFolderNome}` : "Definir pasta do Drive"}>
               📁 {activeRestaurant?.segurancaDriveFolderId ? "Pasta ✓" : "Pasta"}

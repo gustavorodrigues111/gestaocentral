@@ -28,7 +28,14 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
   function updItem(id: string, patch: Partial<SegurancaItem>) { mut((d) => { const i = d.itens.find((x) => x.id === id); if (i) Object.assign(i, patch); }); }
   function delItem(id: string) { mut((d) => { d.itens = d.itens.filter((x) => x.id !== id); }); }
   function dupItem(item: SegurancaItem) {
-    mut((d) => { const max = Math.max(0, ...d.itens.filter((i) => i.blocoId === item.blocoId).map((i) => i.ordem)); d.itens.push({ ...clone(item), id: uid(), ordem: max + 1 }); });
+    mut((d) => {
+      const nova: SegurancaItem = { ...clone(item), id: uid() };
+      const doBloco = d.itens.filter((i) => i.blocoId === item.blocoId).sort((a, b) => a.ordem - b.ordem);
+      const idx = doBloco.findIndex((i) => i.id === item.id);
+      doBloco.splice(idx + 1, 0, nova);         // insere logo abaixo do original
+      doBloco.forEach((i, k) => { i.ordem = k + 1; }); // renumera o bloco
+      d.itens.push(nova);
+    });
   }
   function moveItem(id: string, dir: -1 | 1) {
     mut((d) => {
