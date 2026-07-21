@@ -64,9 +64,10 @@ type ViewMode = "calendario" | "lista" | "kanban";
 // Avatar de iniciais do responsável (2 letras) numa bolinha de cor estável por
 // pessoa — pra bater o olho em quem é o dono do card.
 // Órfãs do sistema de prazo ANTIGO: tarefas persistidas com origem conta_fixa/
-// manutencao (o filtro que as escondia saiu junto com o maquinário de derivados
-// na Fase 3). Agora vivem no módulo Prazos — não devem aparecer no Tarefas.
-const ORFAS_PRAZO = new Set(["conta_fixa", "manutencao"]);
+// manutencao/admissao (esta última = exames/uniformes gerados na admissão). O
+// filtro que as escondia (ORIGEM_DERIVADA) saiu junto com o maquinário de
+// derivados na Fase 3. Agora essas datas vivem no módulo Prazos.
+const ORFAS_PRAZO = new Set(["conta_fixa", "manutencao", "admissao"]);
 const semOrfasPrazo = (ts: Tarefa[]): Tarefa[] => ts.filter((t) => !ORFAS_PRAZO.has(t.origem));
 
 // Conversão YYYY-MM-DD ↔ dd/mm/aaaa pro DatePickerBR no modal de tarefa.
