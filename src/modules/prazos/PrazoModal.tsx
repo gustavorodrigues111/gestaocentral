@@ -4,7 +4,7 @@
 import { useMemo, useState } from "react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
-import type { Prazo, PrazoTipo, PrazoRecorrencia, PrazoSubtipoTrab, Empregado, Pessoa, Restaurant } from "../../core/types";
+import type { Prazo, PrazoTipo, PrazoRecorrencia, PrazoSubtipoTrab, Empregado, Pessoa, Imovel } from "../../core/types";
 import { PRAZO_TIPO_LABEL, PRAZO_SUBTIPO_TRAB_LABEL } from "../../core/types";
 import { resumoRecorrencia } from "./recorrencia";
 import { ANTECEDENCIA_PADRAO } from "./logic";
@@ -18,9 +18,9 @@ const chip = (on: boolean) => `px-3 py-1.5 text-xs font-medium rounded-full bord
 
 const TIPOS: Array<{ v: PrazoTipo; icon: string }> = [{ v: "conta", icon: "💰" }, { v: "tecnico", icon: "🛠️" }, { v: "trabalhista", icon: "🧑‍⚖️" }, { v: "avulso", icon: "🚩" }];
 
-export function PrazoModal({ rid, prazo, empregados, pessoas, restaurantes, onClose, onSalvar }: {
-  rid: string; prazo: Prazo | null; empregados: Empregado[]; pessoas: Pessoa[]; restaurantes: Restaurant[];
-  onClose: () => void; onSalvar: (p: Prazo) => Promise<void>;
+export function PrazoModal({ rid, prazo, empregados, pessoas, imoveis, onGerenciarImoveis, onClose, onSalvar }: {
+  rid: string; prazo: Prazo | null; empregados: Empregado[]; pessoas: Pessoa[]; imoveis: Imovel[];
+  onGerenciarImoveis: () => void; onClose: () => void; onSalvar: (p: Prazo) => Promise<void>;
 }) {
   const editando = !!prazo;
   const [tipo, setTipo] = useState<PrazoTipo>(prazo?.tipo || "conta");
@@ -31,8 +31,7 @@ export function PrazoModal({ rid, prazo, empregados, pessoas, restaurantes, onCl
   const [rec, setRec] = useState<PrazoRecorrencia | null>(prazo?.recorrencia ?? null);
   const [exigeLaudo, setExigeLaudo] = useState<boolean>(prazo?.exigeLaudo ?? (prazo?.tipo === "tecnico"));
   const [dados, setDados] = useState<NonNullable<Prazo["dados"]>>(prazo?.dados || {});
-  const [restIds, setRestIds] = useState<string[]>(prazo?.restaurantIds || [rid]);
-  const [compartilhar, setCompartilhar] = useState<boolean>((prazo?.restaurantIds?.length || 1) > 1);
+  const [imovelId, setImovelId] = useState<string>(prazo?.imovelId || "");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
@@ -55,8 +54,9 @@ export function PrazoModal({ rid, prazo, empregados, pessoas, restaurantes, onCl
       const emp = empDoRest.find((e) => e.id === dados.empregadoId);
       const p: Prazo = {
         id: prazo?.id || uid(),
-        restaurantIds: restIds.length ? restIds : [rid],
+        restaurantIds: [rid],
         titulo: titulo.trim(), tipo, vencimento: vy,
+        imovelId: imovelId || null,
         responsavelId: respId || null, responsavelNome: resp?.nome || null,
         antecedenciaDias: antec,
         recorrencia: rec,
@@ -138,21 +138,18 @@ export function PrazoModal({ rid, prazo, empregados, pessoas, restaurantes, onCl
           </label>
         )}
 
-        {/* Empresa: nasce da ativa. Compartilhar com outra é opcional (caso raro:
-            prédio/endereço usado por 2 empresas). */}
-        {restaurantes.length > 1 && (
-          !compartilhar ? (
-            <button type="button" onClick={() => setCompartilhar(true)} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">+ compartilhar com outra empresa</button>
-          ) : (
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">Empresas deste prazo <span className="text-gray-400">(compartilhado)</span></label>
-              <div className="flex flex-wrap gap-1.5">
-                {restaurantes.map((r) => { const on = restIds.includes(r.id); const dona = r.id === rid; return (
-                  <button key={r.id} type="button" disabled={dona} onClick={() => setRestIds(on ? restIds.filter((x) => x !== r.id) : [...restIds, r.id])} className={`${chip(on)} ${dona ? "opacity-70 cursor-default" : ""}`}>{on ? "✓ " : ""}{r.nome}{dona ? " · dona" : ""}</button>
-                ); })}
-              </div>
+        {/* Imóvel (opcional) — pros técnicos e aluguel. Cada imóvel é de 1 empresa. */}
+        {(tipo === "tecnico" || tipo === "conta") && (
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Imóvel <span className="text-gray-400">(opcional)</span></label>
+            <div className="flex gap-2">
+              <select value={imovelId} onChange={(e) => setImovelId(e.target.value)} className={inp}>
+                <option value="">— nenhum</option>
+                {imoveis.map((im) => <option key={im.id} value={im.id}>{im.apelido}</option>)}
+              </select>
+              <button type="button" onClick={onGerenciarImoveis} className="text-xs px-2.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 whitespace-nowrap">🏠 Gerenciar</button>
             </div>
-          )
+          </div>
         )}
 
         {erro && <p className="text-sm text-rose-600">{erro}</p>}

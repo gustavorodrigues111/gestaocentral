@@ -61,6 +61,10 @@ service cloud.firestore {
     match /prazos/{id} {
       allow read, write: if authed();
     }
+    // Imóveis (cadastro compartilhado — prédios/endereços por empresa).
+    match /imoveis/{id} {
+      allow read, write: if authed();
+    }
 
     // ── /pessoas ── identidades + permissões ─────────────────────────────
     match /pessoas/{id} {

@@ -6042,6 +6042,24 @@ export type PrazoSubtipoTrab = "exp45" | "exp90" | "exame" | "uniforme";
 export const PRAZO_TIPO_LABEL: Record<PrazoTipo, string> = { conta: "Conta", tecnico: "Técnico", trabalhista: "Trabalhista", avulso: "Avulso" };
 export const PRAZO_SUBTIPO_TRAB_LABEL: Record<PrazoSubtipoTrab, string> = { exp45: "Fim de experiência (45 dias)", exp90: "Fim de experiência (90 dias)", exame: "Exame periódico", uniforme: "Entrega de uniforme" };
 
+// Imóvel — cadastro compartilhado (aluguel, manutenções, prazos técnicos apontam
+// pra ele). Cada imóvel é de UMA empresa; uma empresa pode ter vários.
+export type ImovelEndereco = { logradouro?: string; numero?: string; complemento?: string; bairro?: string; cidade?: string; uf?: string; cep?: string };
+export type Imovel = {
+  id: string;
+  restaurantId: string;                 // empresa dona (1 só)
+  apelido: string;                      // "Salão principal", "Depósito", "Unidade 2"
+  endereco?: ImovelEndereco;
+  ativo?: boolean;
+  criadoEm: string;
+  criadoPor?: string | null;
+  deletadoEm?: string | null;
+};
+export function enderecoResumo(e?: ImovelEndereco): string {
+  if (!e) return "";
+  return [ [e.logradouro, e.numero].filter(Boolean).join(", "), e.bairro, [e.cidade, e.uf].filter(Boolean).join("/") ].filter(Boolean).join(" · ");
+}
+
 // Recorrência: por semana ou por mês; no mês, por dia absoluto ou dia útil.
 export type PrazoRecorrencia = {
   unidade: "semana" | "mes";
@@ -6086,6 +6104,7 @@ export type Prazo = {
   titulo: string;
   tipo: PrazoTipo;
   vencimento: string;                   // YYYY-MM-DD — a ocorrência da vez
+  imovelId?: string | null;             // imóvel a que o prazo se refere (técnicos/aluguel)
   responsavelId?: string | null;
   responsavelNome?: string | null;
   antecedenciaDias?: number;            // avisa/aparece X dias antes do vencimento

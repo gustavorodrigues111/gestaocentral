@@ -12,11 +12,12 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { uploadFileToFolder } from "../../core/google/driveShared";
-import type { Prazo, PrazoTipo, Empregado, Pessoa } from "../../core/types";
+import type { Prazo, PrazoTipo, Empregado, Pessoa, Imovel } from "../../core/types";
 import { PRAZO_TIPO_LABEL, PRAZO_SUBTIPO_TRAB_LABEL } from "../../core/types";
 import { resumoRecorrencia } from "./recorrencia";
 import { resolverPrazo, podeResolver, grupoAgenda, diasAte, hojeYmd } from "./logic";
 import { PrazoModal } from "./PrazoModal";
+import { ImoveisModal } from "./ImoveisModal";
 
 const brl = (n?: number | null) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const ymdToBr = (ymd?: string) => { if (!ymd) return ""; const [a, m, d] = ymd.split("-"); return `${d}/${m}/${a}`; };
@@ -40,6 +41,8 @@ export function PrazosPage() {
   const [prazos, setPrazos] = useState<Prazo[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  const [imoveis, setImoveis] = useState<Imovel[]>([]);
+  const [showImoveis, setShowImoveis] = useState(false);
   const [tipoFiltro, setTipoFiltro] = useState<PrazoTipo | "todos">("todos");
   const [aba, setAba] = useState<"agenda" | "resolvidos">("agenda");
   const [todosRest, setTodosRest] = useState(false);
@@ -59,8 +62,10 @@ export function PrazosPage() {
     const u1 = onSnapshot(qy, (s) => setPrazos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Prazo).filter((p) => !p.deletadoEm)), () => setPrazos([]));
     const u2 = onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)), (s) => setEmpregados(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado)), () => setEmpregados([]));
     const u3 = onSnapshot(collection(db, "pessoas"), (s) => setPessoas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Pessoa)), () => setPessoas([]));
-    return () => { u1(); u2(); u3(); };
+    const u4 = onSnapshot(query(collection(db, "imoveis"), where("restaurantId", "==", rid)), (s) => setImoveis(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Imovel).filter((im) => !im.deletadoEm)), () => setImoveis([]));
+    return () => { u1(); u2(); u3(); u4(); };
   }, [rid, todosRest, isMaster]);
+  const imovelNome = (id?: string | null) => imoveis.find((im) => im.id === id)?.apelido || "";
 
   const hoje = hojeYmd();
   const restNome = (ids: string[]) => restaurants.find((r) => ids.includes(r.id))?.nome || "";
@@ -146,6 +151,7 @@ export function PrazosPage() {
           <p className="text-sm text-gray-500">{todosRest ? "Todos os restaurantes" : activeRestaurant?.nome || "—"} · o que vence e quando</p>
         </div>
         <div className="flex items-center gap-2">
+          {podeGerir && <button type="button" onClick={() => setShowImoveis(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">🏠 Imóveis</button>}
           {!activeRestaurant?.prazosDriveFolderId && podeGerir && <button type="button" onClick={() => void configurarPasta()} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">📁 Pasta do Drive</button>}
           {podeGerir && <button type="button" onClick={() => setModal({ prazo: null })} className="text-sm font-semibold px-3 py-2 rounded-lg bg-indigo-600 text-white">+ Novo prazo</button>}
         </div>
@@ -177,7 +183,7 @@ export function PrazosPage() {
               <div className={`text-xs font-semibold uppercase tracking-wide mb-2 ${GRUPO_LABEL[g].danger ? "text-rose-600" : "text-gray-500"}`}>{GRUPO_LABEL[g].label}</div>
               <div className="space-y-2">
                 {grupos[g].map((p) => (
-                  <PrazoCard key={p.id} p={p} hoje={hoje} podeGerir={podeGerir} mostrarEmpresa={todosRest} restNome={restNome}
+                  <PrazoCard key={p.id} p={p} hoje={hoje} podeGerir={podeGerir} mostrarEmpresa={todosRest} restNome={restNome} imovelNome={imovelNome(p.imovelId)}
                     onEditar={() => setModal({ prazo: p })} onRealizar={() => void realizar(p)} onExcluir={() => void excluir(p)}
                     onLaudo={() => pedirLaudo(p)} onRemoverAg={() => void removerAgendamento(p)}
                     agendando={agendando === p.id} dataAg={dataAg} setDataAg={setDataAg}
@@ -213,15 +219,16 @@ export function PrazosPage() {
       )}
 
       {modal && (
-        <PrazoModal rid={rid || ""} prazo={modal.prazo} empregados={empregados} pessoas={pessoas.filter((pp) => (pp.restaurantIds || []).includes(rid || ""))} restaurantes={restaurants} onClose={() => setModal(null)} onSalvar={salvarPrazo} />
+        <PrazoModal rid={rid || ""} prazo={modal.prazo} empregados={empregados} pessoas={pessoas.filter((pp) => (pp.restaurantIds || []).includes(rid || ""))} imoveis={imoveis} onGerenciarImoveis={() => setShowImoveis(true)} onClose={() => setModal(null)} onSalvar={salvarPrazo} />
       )}
+      {showImoveis && <ImoveisModal rid={rid || ""} restauranteNome={activeRestaurant?.nome || ""} imoveis={imoveis} meId={me?.id || ""} onClose={() => setShowImoveis(false)} />}
     </div>
   );
 }
 
 // ── Card do prazo na agenda ──
-function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, onEditar, onRealizar, onExcluir, onLaudo, onRemoverAg, agendando, dataAg, setDataAg, onAbrirAg, onCancelarAg, onConfirmarAg }: {
-  p: Prazo; hoje: string; podeGerir: boolean; mostrarEmpresa: boolean; restNome: (ids: string[]) => string;
+function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, imovelNome, onEditar, onRealizar, onExcluir, onLaudo, onRemoverAg, agendando, dataAg, setDataAg, onAbrirAg, onCancelarAg, onConfirmarAg }: {
+  p: Prazo; hoje: string; podeGerir: boolean; mostrarEmpresa: boolean; restNome: (ids: string[]) => string; imovelNome: string;
   onEditar: () => void; onRealizar: () => void; onExcluir: () => void; onLaudo: () => void; onRemoverAg: () => void;
   agendando: boolean; dataAg: string; setDataAg: (v: string) => void; onAbrirAg: () => void; onCancelarAg: () => void; onConfirmarAg: () => void;
 }) {
@@ -238,6 +245,7 @@ function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, onEditar, onR
       <div className="flex items-center gap-1.5 flex-wrap text-xs">
         <span className={`text-[10px] px-2 py-0.5 rounded-full ${TIPO_META[p.tipo].cls}`}>{TIPO_META[p.tipo].icon} {PRAZO_TIPO_LABEL[p.tipo]}</span>
         {mostrarEmpresa && <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{restNome(p.restaurantIds)}</span>}
+        {imovelNome && <span className="text-gray-500">🏠 {imovelNome}</span>}
         {p.exigeLaudo && !p.laudo && <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">📄 exige laudo</span>}
         {p.laudo && <span className="text-[10px] text-emerald-600 dark:text-emerald-400">📄 laudo ok</span>}
         {p.recorrencia && <span className="text-gray-400">🔁 {resumoRecorrencia(p.recorrencia)}</span>}
