@@ -241,7 +241,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                           </div>
                         )}
                         <NavLink
-                          to={m.id === "planner" ? "/planner" : (rid ? `/r/${rid}/${m.id}` : "#")}
+                          to={rid ? `/r/${rid}/${m.id}` : "#"}
                           onClick={guardedClose}
                           className={({ isActive }) => `
                             flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm
@@ -299,7 +299,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                 {!fechada && (
                 <div className="space-y-0.5">
                   {masterMods.map(m => {
-                    const to = m.id === "planner" ? "/planner" : (rid ? `/r/${rid}/${m.id}` : "#");
+                    const to = rid ? `/r/${rid}/${m.id}` : "#";
                     return (
                       <NavLink
                         key={m.id}

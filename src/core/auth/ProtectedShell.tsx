@@ -65,7 +65,6 @@ import { DemissaoPage } from "../../modules/demissao/DemissaoPage";
 import { FerramentasCredenciaisPage } from "../../modules/ferramentasCredenciais/FerramentasCredenciaisPage";
 import { ChatPage } from "../../modules/chat/ChatPage";
 import { AvisosProvider } from "../../modules/chat/useAvisos";
-import { PlannerPage } from "../../modules/planner/PlannerPage";
 
 function ModuleRouter() {
   const { moduleId, rid } = useParams<{ moduleId: string; rid: string }>();
@@ -164,8 +163,6 @@ export function ProtectedShell() {
             <Route path="/" element={<HomePage />} />
             <Route path="/arquitetura" element={<ArquiteturaPage />} />
             <Route path="/perfis" element={<PerfisAcessoPage />} />
-            {/* Planner — pessoal/single-user (gate dentro da própria página) */}
-            <Route path="/planner" element={<PlannerPage />} />
             <Route path="/portal/:rid" element={<PortalPage />} />
             <Route path="/r/:rid/:moduleId" element={<ModuleRouter />} />
             <Route path="*" element={<Navigate to="/" replace />} />

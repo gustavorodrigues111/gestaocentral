@@ -10,7 +10,6 @@ import { APP_COMMIT, APP_BUILD_DATE, APP_VERSION_LABEL } from "../version";
 // Nome + descrição do módulo atual a partir da rota — mostrado no header
 // (o "Planejamento.app" e o seletor de restaurante vivem na sidebar agora).
 function moduloDoPath(pathname: string): { icon: string; label: string; desc?: string } | null {
-  if (pathname === "/planner") return { icon: "🗓", label: "Planner", desc: "Pessoal · sua agenda do Google" };
   if (pathname === "/arquitetura") return { icon: "🏗️", label: "Arquitetura", desc: "Mapa de módulos do sistema" };
   if (pathname === "/perfis") return { icon: "🛡️", label: "Perfis de Acesso", desc: "Permissões por perfil" };
   if (pathname.startsWith("/portal/")) return { icon: "👤", label: "Meu Portal" };

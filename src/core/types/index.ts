@@ -113,10 +113,7 @@ export type ModuleId =
   // meus exames, meu VT, fale com DP). NÃO é item de sidebar (sidebar tem
   // o link "Meu Portal" separado); existe só pra o sistema de perfis decidir
   // o que cada empregado vê dentro da PortalPage.
-  | "portalEmpregado"
-  // Planner — agenda pessoal do dono (Google Calendar), single-user. Roteia em
-  // /planner (fora do escopo de restaurante). Fica na seção "master".
-  | "planner";
+  | "portalEmpregado";
 
 // ─── PLANO DE AÇÃO ───
 // A Ação é a unidade executável do sistema. Nasce avulsa, ou a partir de uma

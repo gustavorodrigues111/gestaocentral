@@ -42,7 +42,6 @@ export const MODULES: ModuleDef[] = [
 
   // ── Tarefas (item-pivô global) — colocada no topo do Sidebar separadamente
   { id: "tarefas",     area: "planejamento", subarea: "Tarefas",       label: "Gestor de Tarefas", icon: "🗂️", status: "ativo", etapa: "beta",             desc: "Gestor de Tarefas: rotinas e demandas, caixa por usuário, cascatas dos cadastros mestres" },
-  { id: "planner",     area: "master", subarea: "Master",              label: "Planner",           icon: "📅", status: "ativo", etapa: "beta",             desc: "Agenda pessoal integrada ao Google Calendar. Lança prazos de qualquer tipo (conta, técnico, trabalhista) que registram no módulo de origem." },
   { id: "agentes",     area: "master", subarea: "Master",              label: "Agentes de IA",     icon: "🤖", status: "ativo", etapa: "em_desenvolvimento", desc: "Agentes de IA (DP e Financeiro) que consultam e — com confirmação — alteram dados dentro da plataforma. Acesso controlado herdado de Pessoas; futuramente respondem no WhatsApp em números autorizados." },
 
   // ── Pessoas Externas & Infra ─────────────────────────────────────
@@ -106,7 +105,7 @@ export const AREA_INFO = {
   ops:  { label: "Operação",               color: "#d4a017", desc: "Quem toca o restaurante no dia a dia" },
   dp:   { label: "Pessoas & DP",           color: "#3b82f6", desc: "RH, admissão, escala e desenvolvimento" },
   fin:  { label: "Financeiro",             color: "#10b981", desc: "Benefícios, gorjetas e pagamentos" },
-  planejamento: { label: "Planejamento",   color: "#0ea5e9", desc: "Planner, prazos (trabalhistas/técnicos) e contas — o que vence e quando" },
+  planejamento: { label: "Planejamento",   color: "#0ea5e9", desc: "Tarefas e prazos — o que precisa ser feito e o que vence" },
   inst: { label: "Institucional / Config", color: "#8b5cf6", desc: "Site público e configurações" },
   master: { label: "Master",               color: "#6b7280", desc: "Ferramentas pessoais do dono — ligue/desligue quando quiser" },
 } as const;
