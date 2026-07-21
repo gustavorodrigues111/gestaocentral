@@ -21,7 +21,6 @@ import { resolverPrazo, podeResolver, grupoAgenda, diasAte, hojeYmd } from "./lo
 import { PrazoModal } from "./PrazoModal";
 import { ImoveisModal } from "./ImoveisModal";
 import { migrarExistentesParaPrazos } from "./migrar";
-import { criarOuAtualizarTarefaAgendamento, removerTarefaAgendamento, concluirTarefaAgendamento } from "./ponte";
 
 const brl = (n?: number | null) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const ymdToBr = (ymd?: string) => { if (!ymd) return ""; const [a, m, d] = ymd.split("-"); return `${d}/${m}/${a}`; };
@@ -56,7 +55,7 @@ export function PrazosPage() {
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [imoveis, setImoveis] = useState<Imovel[]>([]);
   const [showImoveis, setShowImoveis] = useState(false);
-  const [tipoFiltro, setTipoFiltro] = useState<PrazoTipo | "todos">("todos");
+  const [tipoFiltro, setTipoFiltro] = useState<PrazoTipo | "todos" | "agendados">("todos");
   const [aba, setAba] = useState<"agenda" | "resolvidos">("agenda");
   const [todosRest, setTodosRest] = useState(false);
   const [modal, setModal] = useState<{ prazo: Prazo | null } | null>(null);
@@ -97,7 +96,14 @@ export function PrazosPage() {
 
   const visiveis = useMemo(() => {
     // Só categorias que a pessoa pode VER; e respeita o chip de filtro.
-    let ps = prazos.filter((p) => catsVisiveis.includes(p.tipo) && (tipoFiltro === "todos" || p.tipo === tipoFiltro));
+    let ps = prazos.filter((p) => catsVisiveis.includes(p.tipo));
+    // Chip "Agendados": corta transversalmente os tipos e ignora a aba —
+    // mostra tudo que já tem data marcada, ordenado pela data agendada.
+    if (tipoFiltro === "agendados") {
+      return ps.filter((p) => p.status === "agendado")
+        .sort((a, b) => (a.agendamento?.data || a.vencimento).localeCompare(b.agendamento?.data || b.vencimento));
+    }
+    ps = ps.filter((p) => tipoFiltro === "todos" || p.tipo === tipoFiltro);
     if (aba === "resolvidos") return ps.filter((p) => p.status === "resolvido").sort((a, b) => (b.vencimento).localeCompare(a.vencimento));
     return ps.filter((p) => p.status !== "resolvido").sort((a, b) => a.vencimento.localeCompare(b.vencimento));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -110,8 +116,12 @@ export function PrazosPage() {
   }, [visiveis, hoje]);
 
   const contagem = useMemo(() => {
-    const c: Record<string, number> = { todos: 0, conta: 0, tecnico: 0, trabalhista: 0, avulso: 0 };
-    for (const p of prazos) { if (p.status === "resolvido" || !catsVisiveis.includes(p.tipo)) continue; c.todos++; c[p.tipo]++; }
+    const c: Record<string, number> = { todos: 0, conta: 0, tecnico: 0, trabalhista: 0, avulso: 0, agendados: 0 };
+    for (const p of prazos) {
+      if (p.status === "resolvido" || !catsVisiveis.includes(p.tipo)) continue;
+      c.todos++; c[p.tipo]++;
+      if (p.status === "agendado") c.agendados++;
+    }
     return c;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [prazos, catsVisiveis.join(",")]);
@@ -122,9 +132,6 @@ export function PrazosPage() {
   }
   async function realizar(p: Prazo) {
     if (!podeResolver(p)) { setErro(`${p.titulo}: anexe o laudo antes de resolver.`); return; }
-    // Conclui a tarefa de execução vinculada (se agendado) antes de arquivar,
-    // pois resolverPrazo zera o agendamento no recorrente.
-    await concluirTarefaAgendamento(p, { id: me?.id || "", nome: me?.nome || "—" });
     const atualizado = resolverPrazo(p, { em: new Date().toISOString(), por: me?.id, porNome: me?.nome });
     await setDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ ...atualizado, atualizadoEm: new Date().toISOString() }), { merge: true });
   }
@@ -132,19 +139,10 @@ export function PrazosPage() {
     const [d, m, a] = dataAg.split("/");
     if (!d || !m || !a) { setErro("Data inválida (dd/mm/aaaa)."); return; }
     const data = `${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-    const autor = { id: me?.id || "", nome: me?.nome || "—" };
-    // Cria (ou reaproveita, se reagendamento) a tarefa REAL no Gestor de Tarefas.
-    let tarefaId: string | null = p.agendamento?.tarefaId || null;
-    try {
-      tarefaId = await criarOuAtualizarTarefaAgendamento(p, data, autor);
-    } catch (e) {
-      setErro("Agendado, mas falhou ao criar a tarefa: " + (e instanceof Error ? e.message : "?"));
-    }
-    await updateDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ status: "agendado", agendamento: { data, tarefaId, agendadoEm: new Date().toISOString(), agendadoPor: me?.id || null }, atualizadoEm: new Date().toISOString() }));
+    await updateDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ status: "agendado", agendamento: { data, agendadoEm: new Date().toISOString(), agendadoPor: me?.id || null }, atualizadoEm: new Date().toISOString() }));
     setAgendando(null); setDataAg("");
   }
   async function removerAgendamento(p: Prazo) {
-    await removerTarefaAgendamento(p, { id: me?.id || "", nome: me?.nome || "—" });
     await updateDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ status: "aberto", agendamento: null, atualizadoEm: new Date().toISOString() }));
   }
   async function excluir(p: Prazo) {
@@ -214,12 +212,16 @@ export function PrazosPage() {
             {t === "todos" ? "Todos" : `${TIPO_META[t].icon} ${PRAZO_TIPO_LABEL[t]}`} <span className="opacity-60">{contagem[t]}</span>
           </button>
         ))}
+        <span className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-0.5" />
+        <button type="button" onClick={() => { setTipoFiltro("agendados"); setAba("agenda"); }} className={`text-xs px-3 py-1.5 rounded-full border ${tipoFiltro === "agendados" ? "border-sky-500 bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
+          📅 Agendados <span className="opacity-60">{contagem.agendados}</span>
+        </button>
         <div className="flex-1" />
         {isMaster && <label className="text-xs text-gray-500 flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={todosRest} onChange={(e) => setTodosRest(e.target.checked)} /> todas as empresas</label>}
       </div>
       <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800">
         {([["agenda", "Agenda"], ["resolvidos", "Resolvidos"]] as const).map(([k, l]) => (
-          <button key={k} type="button" onClick={() => setAba(k)} className={`px-3 py-2 text-sm font-medium -mb-px border-b-2 ${aba === k ? "border-indigo-500 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500"}`}>{l}</button>
+          <button key={k} type="button" onClick={() => { setAba(k); if (tipoFiltro === "agendados") setTipoFiltro("todos"); }} className={`px-3 py-2 text-sm font-medium -mb-px border-b-2 ${aba === k && tipoFiltro !== "agendados" ? "border-indigo-500 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500"}`}>{l}</button>
         ))}
       </div>
 
@@ -227,7 +229,7 @@ export function PrazosPage() {
 
       {aba === "agenda" ? (
         <div className="space-y-4">
-          {visiveis.length === 0 && <p className="text-sm text-gray-400 py-8 text-center">Nenhum prazo em aberto.</p>}
+          {visiveis.length === 0 && <p className="text-sm text-gray-400 py-8 text-center">{tipoFiltro === "agendados" ? "Nenhum prazo agendado." : "Nenhum prazo em aberto."}</p>}
           {(["vencido", "semana", "proximo", "futuro"] as const).map((g) => grupos[g].length > 0 && (
             <div key={g}>
               <div className={`text-xs font-semibold uppercase tracking-wide mb-2 ${GRUPO_LABEL[g].danger ? "text-rose-600" : "text-gray-500"}`}>{GRUPO_LABEL[g].label}</div>

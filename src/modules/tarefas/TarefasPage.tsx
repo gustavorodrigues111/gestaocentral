@@ -57,7 +57,6 @@ import type { AccessProfile, Pessoa, Restaurant } from "../../core/types";
 import { pickDriveFolder, pickDriveFile } from "../../core/google/drivePicker";
 import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal";
 import { DatePickerBR } from "../prazos/campos";
-import { resolverPrazoDaTarefa } from "../prazos/ponte";
 
 type Tab = "minhas" | "tudo" | "projeto" | "admin" | "lixeira" | "todas";
 type ViewMode = "calendario" | "lista" | "kanban";
@@ -3434,19 +3433,6 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
   async function toggleConcluida() {
     const novo: TarefaStatus = isConcluida ? "a_fazer" : "concluida";
     await mudarStatusComErro(tarefa.id, novo, autor);
-    // Se essa tarefa veio de um agendamento de prazo, OFERECE resolver o prazo.
-    if (novo === "concluida" && tarefa.origem === "prazo" && tarefa.origemRefId) {
-      if (confirm(`Marcar o prazo "${tarefa.origemRefLabel || "vinculado"}" como realizado também?`)) {
-        const r = await resolverPrazoDaTarefa(tarefa.origemRefId, autor);
-        if (!r.ok && r.motivo === "precisa_laudo") {
-          alert("O prazo exige laudo/comprovante. Anexe no módulo Prazos antes de resolver — a tarefa foi concluída mesmo assim.");
-        } else if (r.ok) {
-          alert(r.recorrente
-            ? "Prazo realizado — a próxima ocorrência recorrente já foi agendada no módulo Prazos."
-            : "Prazo marcado como realizado.");
-        }
-      }
-    }
   }
 
   // Tab de atividade no fim do drawer — comentários ou log (atividade)
