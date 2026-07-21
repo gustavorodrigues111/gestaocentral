@@ -80,8 +80,9 @@ export function PrazoModal({ rid, prazo, empregados, pessoas, imoveis, onGerenci
         {/* Tipo */}
         <div className="flex gap-1.5">
           {TIPOS.map(({ v, icon }) => (
-            <button key={v} type="button" onClick={() => trocarTipo(v)} style={{ height: 66 }} className={`flex-1 flex flex-col items-center justify-center gap-1 text-xs rounded-lg border box-border ${tipo === v ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
-              <span className="text-lg leading-none">{icon}</span><span className="leading-none">{PRAZO_TIPO_LABEL[v]}</span>
+            <button key={v} type="button" onClick={() => trocarTipo(v)} style={{ height: 66 }} className={`flex-1 flex flex-col items-center justify-center gap-1.5 text-xs rounded-lg border box-border ${tipo === v ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
+              <span style={{ height: 22, fontSize: 20 }} className="flex items-center justify-center leading-none">{icon}</span>
+              <span className="leading-none">{PRAZO_TIPO_LABEL[v]}</span>
             </button>
           ))}
         </div>
@@ -95,9 +96,13 @@ export function PrazoModal({ rid, prazo, empregados, pessoas, imoveis, onGerenci
           </div>
         </div>
 
-        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+        <div className="flex items-center justify-center gap-2.5 text-sm text-gray-600 dark:text-gray-300 py-1">
           <span>Avisar</span>
-          <input type="number" min={0} max={365} value={antec} onChange={(e) => setAntec(Math.max(0, parseInt(e.target.value) || 0))} className="w-14 px-2 py-1.5 text-sm text-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+          <div className="inline-flex items-center rounded-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden">
+            <button type="button" onClick={() => setAntec(Math.max(0, antec - 1))} className="w-8 h-8 flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 text-base">−</button>
+            <span className="w-9 text-center font-medium tabular-nums text-gray-900 dark:text-gray-100">{antec}</span>
+            <button type="button" onClick={() => setAntec(Math.min(365, antec + 1))} className="w-8 h-8 flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 text-base">+</button>
+          </div>
           <span>dias antes do vencimento</span>
         </div>
 
