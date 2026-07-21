@@ -13,7 +13,7 @@ const ymdToBr = (ymd?: string) => { if (!ymd) return ""; const [a, m, d] = ymd.s
 const brToYmd = (br: string) => { const [d, m, a] = br.split("/"); return (d && m && a) ? `${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}` : ""; };
 const DOW = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const uid = () => `prazo_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
-const inp = "w-full px-2.5 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+const inp = "w-full h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
 const chip = (on: boolean) => `px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500"}`;
 
 const TIPOS: Array<{ v: PrazoTipo; icon: string }> = [{ v: "conta", icon: "💰" }, { v: "tecnico", icon: "🛠️" }, { v: "trabalhista", icon: "🧑‍⚖️" }, { v: "avulso", icon: "🚩" }];
