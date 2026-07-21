@@ -1,18 +1,12 @@
 // Listener global de tarefas — montado no shell autenticado.
 //
-// Funções:
-//   1. Detecta quando uma tarefa nova é atribuída ao usuário (responsável OU
-//      co-resp) e mostra toast in-app.
-//   2. Auto-roda gerador de tarefas-lembrete 1× por dia (se master), usando
-//      localStorage pra evitar rodar 2× no mesmo dia.
-//
-// Substituto do cron server-side enquanto não temos Firebase Admin liberado.
+// Detecta quando uma tarefa nova é atribuída ao usuário (responsável OU
+// co-resp), ou quando ele é mencionado num comentário, e mostra toast in-app.
 
 import { useEffect, useRef, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
-import { gerarTarefasDoDia } from "./generator";
 import type { Tarefa } from "../../core/types";
 
 type Toast = {
@@ -22,7 +16,6 @@ type Toast = {
   cor?: string;
 };
 
-const KEY_ULTIMA_GERACAO = "tarefas_lastgen_ymd";
 const KEY_TAREFAS_VISTAS = "tarefas_seen_ids";
 const KEY_COMENTARIOS_VISTOS = "tarefas_seen_comments";
 
@@ -30,32 +23,6 @@ export function ToastListener() {
   const { pessoa } = useAuth();
   const [toasts, setToasts] = useState<Toast[]>([]);
   const mounted = useRef(false);
-
-  // Auto-rodar gerador de tarefas-lembrete 1× por dia (só master)
-  useEffect(() => {
-    if (!pessoa?.isMaster) return;
-    const hoje = new Date().toISOString().slice(0, 10);
-    const ultima = localStorage.getItem(KEY_ULTIMA_GERACAO);
-    if (ultima === hoje) return;
-    (async () => {
-      try {
-        const r = await gerarTarefasDoDia({ id: pessoa.id, nome: pessoa.nome });
-        localStorage.setItem(KEY_ULTIMA_GERACAO, hoje);
-        const total = r.contasGeradas + r.manutencoesGeradas;
-        if (total > 0) {
-          pushToast({
-            id: `gen-${Date.now()}`,
-            titulo: `🔁 ${total} tarefa(s)-lembrete gerada(s)`,
-            subtitulo: `${r.contasGeradas} conta(s) fixa(s), ${r.manutencoesGeradas} manutenção(ões)`,
-            cor: "#10b981",
-          });
-        }
-      } catch (e) {
-        console.warn("[ToastListener] falha no auto-gerar:", e);
-      }
-    })();
-    // pessoa.id pode mudar entre sessões; pessoa.nome também — mas só rodamos 1×/dia
-  }, [pessoa?.isMaster, pessoa?.id, pessoa?.nome]);
 
   // Detectar tarefas novas atribuídas ao usuário
   useEffect(() => {

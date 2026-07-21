@@ -16,19 +16,6 @@ function addDias(yyyymmdd: string, dias: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-/**
- * Contas Fixas e Manutenções deixaram de virar tarefa — agora vivem no módulo
- * Prazos (agenda própria). Mantido como no-op pra compat com o ToastListener,
- * que ainda chama isto 1×/dia.
- */
-export async function gerarTarefasDoDia(_autor: { id: string; nome: string }): Promise<{
-  contasGeradas: number;
-  manutencoesGeradas: number;
-  jaExistiam: number;
-}> {
-  return { contasGeradas: 0, manutencoesGeradas: 0, jaExistiam: 0 };
-}
-
 // ── Auto-clone de rotinas ────────────────────────────────────────────────
 // Chamado quando uma tarefa é concluída. Se o subprojeto dela é auto:true
 // + recorrenciaTipo definida, agenda próxima ocorrência com prazo recalculado.
