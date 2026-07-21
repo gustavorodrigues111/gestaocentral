@@ -18,6 +18,7 @@ import {
 } from "firebase/firestore";
 import { db } from "../firebase/config";
 import { sanitizeForFirestore } from "../firebase/sanitize";
+import { semearPrazosUniforme } from "../../modules/prazos/migrar";
 import type {
   EntregaUniforme, ItemUniforme, KitAreaUniforme, MotivoMovEstoque,
   MovEstoqueUniforme, Pessoa, TipoItemUniforme, VariacaoItem,
@@ -297,6 +298,14 @@ export async function criarEntrega(opts: {
       motivo: motivoMov, refEntregaId: id,
       pessoa,
     });
+  }
+
+  // Hook ongoing: semeia prazos de validade (EPIs com validadeAte) no módulo
+  // Prazos. Create-if-new, best-effort — nunca quebra o fluxo de entrega.
+  try {
+    await semearPrazosUniforme(entrega, pessoa.id);
+  } catch (err) {
+    console.warn("[uniformes] falha ao semear prazos:", err);
   }
 
   return entrega;

@@ -48,8 +48,6 @@ export const MODULES: ModuleDef[] = [
   // ── Pessoas Externas & Infra ─────────────────────────────────────
   { id: "freelas",     area: "ops", subarea: "Pessoas Externas & Infra", label: "Freelas",        icon: "🎒", status: "ativo", etapa: "beta",               desc: "Cadastro, agendamento, lançamento e pagamento de freelas", dependsOn: ["pessoas", "escala"] },
   { id: "prazos",      area: "planejamento", subarea: "Prazos", label: "Prazos", icon: "📅", status: "ativo", etapa: "em_desenvolvimento", desc: "Agenda única do que vence: contas, técnicos (com laudo no Drive), trabalhistas e avulsos. Recorrência flexível, agendamento e histórico de realizados. Fonte única — substitui Contas Fixas, Manutenções e Prazos Trabalhistas.", dependsOn: ["pessoas"] },
-  { id: "prazosTrabalhistas", area: "planejamento", subarea: "Prazos", label: "Prazos Trabalhistas", icon: "🧑‍⚖️", status: "ativo", etapa: "em_desenvolvimento", oculto: true, desc: "Agenda de prazos de RH: fim de experiência (45/90), exames e uniformes/EPIs. Agora dentro do Gestor de Tarefas › Prazos (rota mantida via 'Gerenciar')." },
-  { id: "manutencoes", area: "planejamento", subarea: "Prazos", label: "Prazos Técnicos", icon: "🛠️", status: "ativo", etapa: "beta", oculto: true,         desc: "Prazos técnicos: manutenções, licenças e certificados. Agora dentro do Gestor de Tarefas › Prazos (rota mantida via 'Gerenciar')." },
 
   // ── ocultos (operação) ───────────────────────────────────────────
   { id: "temperaturas", area: "ops", label: "Temperaturas",      icon: "🌡️", status: "planejado", etapa: "em_desenvolvimento", desc: "Monitoramento e alertas", oculto: true },
@@ -91,7 +89,6 @@ export const MODULES: ModuleDef[] = [
   { id: "vr",          area: "fin", subarea: "Equipe (benefícios + variáveis)", label: "Vale Refeição", icon: "🍱", status: "ativo", etapa: "beta", desc: "VR diário (migrando pra Benefícios)", dependsOn: ["pessoas", "escala"] },
 
   // ── Despesas ─────────────────────────────────────────────────────
-  { id: "contasFixas", area: "planejamento", subarea: "Contas",             label: "Contas Fixas",    icon: "💵", status: "ativo", etapa: "beta", oculto: true, desc: "Cadastro mestre de pagamentos recorrentes (aluguel, sistemas, impostos). Agora dentro do Gestor de Tarefas › Prazos (rota mantida via 'Gerenciar')." },
   { id: "vendas",      area: "fin", subarea: "Vendas & Permutas",      label: "Vendas",          icon: "🧾", status: "ativo", etapa: "beta", desc: "Registro de vendas fora do sistema fiscal (entre empresas, permutas, sem margem). Cobrança via WhatsApp, quitação e permuta recíproca." },
   { id: "faturas",     area: "fin", subarea: "Cartões & Faturas",      label: "Faturas",         icon: "💳", status: "ativo", etapa: "em_desenvolvimento", desc: "Faturas de cartão: sobe o PDF, a IA extrai e você classifica os gastos por categoria/empresa. Gastos atribuídos a outra empresa viram reembolso na Central de Avisos dela." },
   { id: "folhas",      area: "dp", subarea: "Folha de Pagamento",     label: "Conferência de Folhas", icon: "🧾", status: "ativo", etapa: "em_desenvolvimento", desc: "Agente auditor: sobe os espelhos da folha (Senador), a IA extrai e o motor de regras confere contra gorjeta, adiantamento (verba 953) e integridade. Reporta só os erros (P0/P1/P2), não o que está certo.", dependsOn: ["pessoas", "gorjetas"] },

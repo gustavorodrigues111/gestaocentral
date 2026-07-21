@@ -75,16 +75,13 @@ export type ModuleId =
   | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "analise-ponto" | "admissao" | "processoSeletivo" | "sites" | "cardapio"
   | "uniformes"
   // Gestor de Tarefas + cadastros mestres
-  | "tarefas" | "contasFixas" | "manutencoes"
+  | "tarefas"
   // Prazos (novo módulo unificado — substitui contasFixas/manutencoes/prazosTrabalhistas)
   | "prazos"
   // Agentes de IA
   | "agentes"
   // Conferência de folhas de pagamento (auditor)
   | "folhas"
-  // Prazos Trabalhistas — agenda que agrega prazos de RH (experiências 45/90,
-  // exames, uniformes/EPIs). Área AGENDA junto com Técnicos e Contas.
-  | "prazosTrabalhistas"
   // Vendas — registro de vendas fora do sistema fiscal (entre empresas, permutas)
   | "vendas"
   // Faturas — faturas de cartão: subir, IA extrai/classifica, reembolso entre entidades

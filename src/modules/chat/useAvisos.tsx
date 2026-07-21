@@ -161,21 +161,6 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     return () => { u1(); u2(); };
   }, [ridsKeyAll]);
 
-  // ── Manutenções/Licenças: vencidas + laudo atrasado (statusCiclo realizado c/
-  //    previsão de laudo já passada). Manutencao.restaurantIds é array. ──
-  type ManutAviso = { id: string; restaurantIds?: string[]; proximoVencimento?: string; statusCiclo?: string; laudoPrevisto?: string | null; ativo?: boolean; deletadoEm?: string | null };
-  const [manuts, setManuts] = useState<ManutAviso[]>([]);
-  useEffect(() => {
-    const rids = ridsKeyAll ? ridsKeyAll.split(",").slice(0, 10) : [];
-    if (!rids.length) { setManuts([]); return; }
-    const u = onSnapshot(
-      query(collection(db, "manutencoes"), where("restaurantIds", "array-contains-any", rids)),
-      (snap) => setManuts(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ManutAviso).filter((m) => !m.deletadoEm && m.ativo !== false)),
-      () => setManuts([]),
-    );
-    return () => u();
-  }, [ridsKeyAll]);
-
   // ── Prazos (módulo novo unificado): vencidos + a vencer dentro da antecedência ──
   const [prazosAv, setPrazosAv] = useState<Prazo[]>([]);
   useEffect(() => {
@@ -187,26 +172,6 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       () => setPrazosAv([]),
     );
     return () => u();
-  }, [ridsKeyAll]);
-
-  // ── Prazos Trabalhistas: experiências (45/90), exames e uniformes/EPIs ──
-  type EmpAv = { id: string; restaurantId?: string; admissaoAtual?: string | null; estaAtivo?: boolean; demitidoEm?: string | null };
-  type ExAv = { id: string; restaurantId?: string; proximoVencimento?: string; diasAntecedencia?: number; ativo?: boolean };
-  type UniAv = { id: string; restaurantId?: string; cancelamento?: unknown; itens?: { itemId?: string; validadeAte?: string; caEpi?: string }[] };
-  const [empTrab, setEmpTrab] = useState<EmpAv[]>([]);
-  const [exTrab, setExTrab] = useState<ExAv[]>([]);
-  const [uniTrab, setUniTrab] = useState<UniAv[]>([]);
-  const [trabResolv, setTrabResolv] = useState<Set<string>>(new Set());
-  useEffect(() => {
-    const rids = ridsKeyAll ? ridsKeyAll.split(",").slice(0, 10) : [];
-    if (!rids.length) { setEmpTrab([]); setExTrab([]); setUniTrab([]); setTrabResolv(new Set()); return; }
-    const us = [
-      onSnapshot(query(collection(db, "empregados"), where("restaurantId", "in", rids)), (s) => setEmpTrab(s.docs.map((d) => ({ id: d.id, ...d.data() }) as EmpAv)), () => setEmpTrab([])),
-      onSnapshot(query(collection(db, "examesEmpregado"), where("restaurantId", "in", rids)), (s) => setExTrab(s.docs.map((d) => ({ id: d.id, ...d.data() }) as ExAv)), () => setExTrab([])),
-      onSnapshot(query(collection(db, "entregasUniforme"), where("restaurantId", "in", rids)), (s) => setUniTrab(s.docs.map((d) => ({ id: d.id, ...d.data() }) as UniAv)), () => setUniTrab([])),
-      onSnapshot(query(collection(db, "agendaTrabResolvidos"), where("restaurantId", "in", rids)), (s) => setTrabResolv(new Set(s.docs.map((d) => d.id))), () => setTrabResolv(new Set())),
-    ];
-    return () => us.forEach((u) => u());
   }, [ridsKeyAll]);
 
   // ── Config de canais por notificação (gating in-app da Central) ──
@@ -468,34 +433,6 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    // ── Manutenções/Licenças: vencidas + laudo atrasado, agrupado por empresa ──
-    const manutGrp = new Map<string, { vencidas: number; laudoAtras: number }>();
-    for (const mm of manuts) {
-      const venc = !!mm.proximoVencimento && mm.proximoVencimento < hoje;
-      const laudoAtras = mm.statusCiclo === "realizado" && !!mm.laudoPrevisto && mm.laudoPrevisto < hoje;
-      if (!venc && !laudoAtras) continue;
-      for (const r of mm.restaurantIds || []) {
-        if (!meusRids.has(r)) continue;
-        const g = manutGrp.get(r) || { vencidas: 0, laudoAtras: 0 };
-        if (venc) g.vencidas++; if (laudoAtras) g.laudoAtras++;
-        manutGrp.set(r, g);
-      }
-    }
-    for (const [r, g] of manutGrp) {
-      // Gate: só recebe aviso de Manutenções quem pode VER o módulo nessa empresa.
-      if (!pessoa || !canAcao(pessoa, r, "manutencoes", "ver", perfis)) continue;
-      const partes: string[] = [];
-      if (g.vencidas) partes.push(`${g.vencidas} vencida${g.vencidas === 1 ? "" : "s"}`);
-      if (g.laudoAtras) partes.push(`${g.laudoAtras} laudo${g.laudoAtras === 1 ? "" : "s"} atrasado${g.laudoAtras === 1 ? "" : "s"}`);
-      out.push({
-        id: `manut_${r}`, tipo: "manutencoes", icone: g.vencidas ? "⚠️" : "⏳",
-        titulo: "Manutenções & Licenças", descricao: partes.join(" · "), em: hoje,
-        restauranteId: r, restauranteNome: nomePorRid[r] || "Restaurante",
-        cta: "Abrir Manutenções", href: `/r/${r}/manutencoes`,
-        categoria: "Manutenções", categoriaIcone: "🧰",
-      });
-    }
-
     // ── Prazos (módulo novo): 1 card por prazo no radar (vencido ou a vencer). ──
     for (const p of prazosAv) {
       if (!noRadar(p, hoje)) continue;
@@ -512,63 +449,6 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         restauranteId: r, restauranteNome: nomePorRid[r] || "Restaurante",
         cta: "Abrir Prazos", href: `/r/${r}/prazos`,
         categoria: "Prazos", categoriaIcone: "📅",
-      });
-    }
-
-    // ── Prazos Trabalhistas: iminentes + vencidos, 1 card por CATEGORIA/empresa ──
-    const TRAB_META: Record<string, { icone: string; titulo: string }> = {
-      experiencia: { icone: "🧑‍⚖️", titulo: "Experiência" },
-      exame: { icone: "🩺", titulo: "Exames" },
-      uniforme: { icone: "👕", titulo: "Uniformes" },
-      epi: { icone: "🦺", titulo: "EPIs" },
-    };
-    const trabGrp = new Map<string, { imin: number; venc: number }>(); // chave `${rid}|${cat}`
-    const addTrab = (r: string | undefined, cat: string, kind: "imin" | "venc") => {
-      if (!r || !meusRids.has(r)) return;
-      const k = `${r}|${cat}`; const g = trabGrp.get(k) || { imin: 0, venc: 0 };
-      g[kind]++; trabGrp.set(k, g);
-    };
-    // Experiências (45/90) — decisão iminente 10d antes; vencido recente (até 15d).
-    for (const e of empTrab) {
-      if (!e.estaAtivo || e.demitidoEm || !e.admissaoAtual) continue;
-      for (const [suf, dias] of [["exp1", 45], ["exp2", 90]] as const) {
-        const fim = addDiasYmd(e.admissaoAtual, dias);
-        if (trabResolv.has(`${suf}-${e.id}`)) continue;
-        if (fim < hoje && fim >= addDiasYmd(hoje, -15)) addTrab(e.restaurantId, "experiencia", "venc");
-        else if (fim >= hoje && fim <= addDiasYmd(hoje, 10)) addTrab(e.restaurantId, "experiencia", "imin");
-      }
-    }
-    // Exames — usa a antecedência do próprio exame.
-    for (const ex of exTrab) {
-      if (ex.ativo === false || !ex.proximoVencimento) continue;
-      if (ex.proximoVencimento < hoje) addTrab(ex.restaurantId, "exame", "venc");
-      else if (ex.proximoVencimento <= addDiasYmd(hoje, ex.diasAntecedencia || 15)) addTrab(ex.restaurantId, "exame", "imin");
-    }
-    // Uniformes/EPIs — validade do item (iminente 15d).
-    for (const en of uniTrab) {
-      if (en.cancelamento) continue;
-      for (const it of en.itens || []) {
-        if (!it.validadeAte) continue;
-        if (trabResolv.has(`uni-${en.id}-${it.itemId}-${it.validadeAte}`)) continue;
-        const cat = it.caEpi ? "epi" : "uniforme";
-        if (it.validadeAte < hoje) addTrab(en.restaurantId, cat, "venc");
-        else if (it.validadeAte <= addDiasYmd(hoje, 15)) addTrab(en.restaurantId, cat, "imin");
-      }
-    }
-    for (const [k, g] of trabGrp) {
-      const [r, cat] = k.split("|");
-      // Gate: só recebe aviso de prazos trabalhistas quem pode VER o módulo aqui.
-      if (!pessoa || !canAcao(pessoa, r, "prazosTrabalhistas", "ver", perfis)) continue;
-      const meta = TRAB_META[cat] || { icone: "🧑‍⚖️", titulo: "Prazos Trabalhistas" };
-      const partes: string[] = [];
-      if (g.venc) partes.push(`${g.venc} vencido${g.venc === 1 ? "" : "s"}`);
-      if (g.imin) partes.push(`${g.imin} próximo${g.imin === 1 ? "" : "s"}`);
-      out.push({
-        id: `trab_${cat}_${r}`, tipo: "prazosTrabalhistas", icone: meta.icone,
-        titulo: meta.titulo, descricao: partes.join(" · "), em: hoje,
-        restauranteId: r, restauranteNome: nomePorRid[r] || "Restaurante",
-        cta: "Abrir Prazos Trabalhistas", href: `/r/${r}/prazosTrabalhistas`,
-        categoria: "Prazos Trabalhistas", categoriaIcone: "🧑‍⚖️",
       });
     }
 
@@ -844,8 +724,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     escala, faleDp, fechamento, gorjetas, vt, vr, beneficios,
     ocorrencias, eventos, recebimento, compras, ideias, admissoes, candidaturasNovas, demissoes, exames, uniformes,
     minhaAcao, minhaProducao, checklistTpl, checklistRun, cobrancasInt,
-    reembReceber, reembPagos, manuts,
-    empTrab, exTrab, uniTrab, trabResolv, iaAlertas, avisosDir, candidaturasAdmissao,
+    reembReceber, reembPagos,
+    iaAlertas, avisosDir, candidaturasAdmissao,
     falhas, prazosAv,
   ]);
 

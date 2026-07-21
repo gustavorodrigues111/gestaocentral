@@ -88,6 +88,17 @@ function uniformeParaPrazos(u: EntregaUniforme, rid: string, por?: string | null
   }));
 }
 
+// ── Hooks ongoing: chamados quando um exame/uniforme é CRIADO nos módulos que
+//    ficam (Exames/Uniformes), pra o prazo nascer automático. Create-if-new
+//    (não sobrescreve). Best-effort — quem chama envolve em try/catch. ──
+export async function semearPrazoExame(e: ExameEmpregado, por?: string | null): Promise<void> {
+  const p = exameParaPrazo(e, e.restaurantId, por);
+  if (p) await criarSeNovo(p);
+}
+export async function semearPrazosUniforme(u: EntregaUniforme, por?: string | null): Promise<void> {
+  for (const p of uniformeParaPrazos(u, u.restaurantId, por)) await criarSeNovo(p);
+}
+
 // Puxa manutenções + exames + uniformes da empresa ativa. Retorna quantos criou.
 export async function migrarExistentesParaPrazos(rid: string, por?: string | null): Promise<{ criados: number; porTipo: Record<string, number> }> {
   const porTipo = { manutencao: 0, exame: 0, uniforme: 0 };

@@ -574,19 +574,6 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
-    id: "contasFixas",
-    icon: "💵",
-    label: "Contas Fixas",
-    desc: "Cadastro mestre de pagamentos recorrentes (gera tarefas-lembrete)",
-    area: "gestao",
-    acoes: [
-      { id: "ver",      label: "Ver contas fixas cadastradas" },
-      { id: "criar",    label: "Cadastrar nova conta fixa", sensivel: true },
-      { id: "editar",   label: "Editar conta fixa (valor, PIX, recorrência)", sensivel: true },
-      { id: "deletar",  label: "Excluir conta fixa", sensivel: true },
-    ],
-  },
-  {
     id: "wikiProcessos",
     icon: "📚",
     label: "Wiki de Processos",
@@ -607,30 +594,6 @@ export const CATALOGO: CatalogoModulo[] = [
     area: "gestao",
     acoes: [
       { id: "receberAlertas", label: "Receber alertas de perguntas fora do escopo (na Central de Avisos)", sensivel: true },
-    ],
-  },
-  {
-    id: "prazosTrabalhistas",
-    icon: "🧑‍⚖️",
-    label: "Prazos Trabalhistas",
-    desc: "Agenda de RH: fim de experiência (45/90), exames e uniformes/EPIs (agrega dos módulos de origem)",
-    area: "gestao",
-    acoes: [
-      { id: "ver",       label: "Ver a agenda de prazos trabalhistas" },
-      { id: "resolver",  label: "Marcar prazo como resolvido / dar baixa" },
-    ],
-  },
-  {
-    id: "manutencoes",
-    icon: "🛠️",
-    label: "Prazos Técnicos",
-    desc: "Prazos técnicos: manutenções, licenças e certificados (gera lembretes na Central de Avisos)",
-    area: "gestao",
-    acoes: [
-      { id: "ver",      label: "Ver manutenções e licenças cadastradas" },
-      { id: "criar",    label: "Cadastrar nova manutenção/licença" },
-      { id: "editar",   label: "Editar manutenção (fornecedor, periodicidade)" },
-      { id: "deletar",  label: "Excluir manutenção" },
     ],
   },
   {

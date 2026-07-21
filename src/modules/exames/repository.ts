@@ -16,6 +16,7 @@ import type {
   ExameSubtarefaTemplate,
 } from "../../core/types";
 import { EXAME_SUBTAREFAS_TEMPLATE_DEFAULT } from "../../core/types";
+import { semearPrazoExame } from "../prazos/migrar";
 
 const COL_TIPOS = "exameTiposConfig";
 const COL_EXAMES = "examesEmpregado";
@@ -93,6 +94,13 @@ export async function criarExame(e: Omit<ExameEmpregado, "id" | "criadoEm" | "at
     criadoEm: now,
     atualizadoEm: now,
   }));
+  // Hook ongoing: semeia o prazo correspondente no módulo Prazos (create-if-new,
+  // best-effort — nunca quebra o fluxo de criação do exame).
+  try {
+    await semearPrazoExame({ ...e, id: ref.id } as ExameEmpregado, e.criadoPor ?? null);
+  } catch (err) {
+    console.warn("[exames] falha ao semear prazo:", err);
+  }
   return ref.id;
 }
 
