@@ -60,6 +60,13 @@ export function proximoVencimento(rec: PrazoRecorrencia | null | undefined, apar
   const base = parse(apartirDe);
   const intervalo = Math.max(1, Math.round(rec.intervalo || 1));
 
+  if (rec.unidade === "ano") {
+    // Mesmo dia/mês do vencimento, +N anos (clampa 29/02 em ano não bissexto).
+    const ano = base.getFullYear() + intervalo, m0 = base.getMonth();
+    const dia = Math.min(base.getDate(), ultimoDiaDoMes(ano, m0));
+    return toYmd(new Date(ano, m0, dia, 12, 0, 0));
+  }
+
   if (rec.unidade === "mes") {
     // Anda de `intervalo` em `intervalo` meses a partir do mês base até passar de `apartirDe`.
     let ano = base.getFullYear(), mes0 = base.getMonth();
@@ -98,6 +105,7 @@ export function proximoVencimento(rec: PrazoRecorrencia | null | undefined, apar
 export function resumoRecorrencia(rec: PrazoRecorrencia | null | undefined): string {
   if (!rec) return "Não repete";
   const n = Math.max(1, Math.round(rec.intervalo || 1));
+  if (rec.unidade === "ano") return n === 1 ? "Todo ano, no dia do vencimento" : `A cada ${n} anos, no dia do vencimento`;
   if (rec.unidade === "mes") {
     const sab = rec.modo === "dia_util" && rec.contaSabado ? " (sáb conta)" : "";
     const base = rec.modo === "dia_util"

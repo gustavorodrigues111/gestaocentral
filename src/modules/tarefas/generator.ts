@@ -7,19 +7,8 @@
 
 import { collection, getDocs, query, where, doc, getDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import { criarTarefa, aplicarAutomacaoNoPayload, atualizarTarefa } from "./repository";
-import type {
-  ContaFixa, Manutencao, Tarefa, TarefaSubprojeto, Subtarefa,
-} from "../../core/types";
-
-const ANTECEDENCIA_DEFAULT_DIAS = 3;
-
-/** Dias entre duas datas (YYYY-MM-DD). Positivo se b > a. */
-function diasEntre(a: string, b: string): number {
-  const da = new Date(a + "T00:00:00");
-  const db_ = new Date(b + "T00:00:00");
-  return Math.round((db_.getTime() - da.getTime()) / (1000 * 60 * 60 * 24));
-}
+import { criarTarefa, atualizarTarefa } from "./repository";
+import type { Tarefa, TarefaSubprojeto, Subtarefa } from "../../core/types";
 
 function addDias(yyyymmdd: string, dias: number): string {
   const d = new Date(yyyymmdd + "T00:00:00");
@@ -27,163 +16,17 @@ function addDias(yyyymmdd: string, dias: number): string {
   return d.toISOString().slice(0, 10);
 }
 
-// Carrega observadoresPadraoIds de um subprojeto. Retorna [] em falha
-// pra não quebrar a criação da tarefa.
-async function loadObservadoresPadraoSub(subprojetoId: string): Promise<string[]> {
-  try {
-    const snap = await getDoc(doc(db, "tarefaSubprojetos", subprojetoId));
-    if (!snap.exists()) return [];
-    const data = snap.data() as { observadoresPadraoIds?: string[] };
-    return data.observadoresPadraoIds || [];
-  } catch {
-    return [];
-  }
-}
-
-/** Próximo vencimento de uma Conta Fixa a partir de hoje. */
-export const ANTECEDENCIA_CONTA_FIXA_DIAS = ANTECEDENCIA_DEFAULT_DIAS;
-export function proximoVencimentoContaFixa(cf: ContaFixa): string | null {
-  const hoje = new Date();
-  if (cf.recorrencia === "mensal" && cf.diaDoMes) {
-    let alvo = new Date(hoje.getFullYear(), hoje.getMonth(), cf.diaDoMes);
-    if (alvo < hoje) alvo = new Date(hoje.getFullYear(), hoje.getMonth() + 1, cf.diaDoMes);
-    return alvo.toISOString().slice(0, 10);
-  }
-  if (cf.recorrencia === "semanal" && cf.diaDaSemana !== undefined) {
-    const diff = (cf.diaDaSemana - hoje.getDay() + 7) % 7 || 7;
-    const alvo = new Date(hoje.getTime() + diff * 24 * 60 * 60 * 1000);
-    return alvo.toISOString().slice(0, 10);
-  }
-  // Anual/trimestral/semestral: usar mesDoAno + diaDoMes
-  if (cf.diaDoMes && cf.mesDoAno) {
-    let alvo = new Date(hoje.getFullYear(), cf.mesDoAno - 1, cf.diaDoMes);
-    if (alvo < hoje) alvo = new Date(hoje.getFullYear() + 1, cf.mesDoAno - 1, cf.diaDoMes);
-    return alvo.toISOString().slice(0, 10);
-  }
-  return null;
-}
-
 /**
- * Roda o gerador completo:
- *   1. Contas Fixas ativas com vencimento próximo → gera tarefa
- *   2. Manutenções ativas com vencimento próximo → gera tarefa
- * Retorna contagens.
+ * Contas Fixas e Manutenções deixaram de virar tarefa — agora vivem no módulo
+ * Prazos (agenda própria). Mantido como no-op pra compat com o ToastListener,
+ * que ainda chama isto 1×/dia.
  */
-export async function gerarTarefasDoDia(autor: { id: string; nome: string }): Promise<{
+export async function gerarTarefasDoDia(_autor: { id: string; nome: string }): Promise<{
   contasGeradas: number;
   manutencoesGeradas: number;
   jaExistiam: number;
 }> {
-  let contasGeradas = 0;
-  let manutencoesGeradas = 0;
-  let jaExistiam = 0;
-  const hoje = new Date().toISOString().slice(0, 10);
-
-  // ── Contas Fixas ──
-  // DESATIVADO: contas fixas agora aparecem no Gestor como CARD DERIVADO ao vivo
-  // (ver derivados.ts), não mais como cópia de tarefa. Fonte única = módulo Contas
-  // Fixas. Loop preservado abaixo (não itera) — fase A da integração.
-  const cfSnap = { docs: [] as { id: string; data: () => Record<string, unknown> }[] };
-  for (const d of cfSnap.docs) {
-    const cf = { id: d.id, ...d.data() } as ContaFixa;
-    if (cf.deletadoEm) continue;
-    const venc = proximoVencimentoContaFixa(cf);
-    if (!venc) continue;
-    const dias = diasEntre(hoje, venc);
-    const antec = cf.diasAntecedencia ?? ANTECEDENCIA_DEFAULT_DIAS;
-    if (dias > antec) continue; // ainda longe
-    const chave = `cf-${cf.id}-${venc}`;
-    if (cf.ultimaGeracaoChave === chave) { jaExistiam++; continue; }
-    // Idempotência extra: verifica se já existe tarefa com essa recorrenciaKey
-    const existSnap = await getDocs(query(collection(db, "tarefas"), where("recorrenciaKey", "==", chave)));
-    if (!existSnap.empty) { jaExistiam++; continue; }
-    const notes = [
-      cf.fornecedor && `Fornecedor: ${cf.fornecedor}`,
-      cf.valorEstimado && `Valor estimado: R$ ${cf.valorEstimado.toFixed(2)}`,
-      cf.pix && `PIX: ${cf.pix}`,
-      cf.banco && `Banco: ${cf.banco}`,
-      cf.titular && `Titular: ${cf.titular}`,
-      cf.observacoes && `\n${cf.observacoes}`,
-    ].filter(Boolean).join("\n");
-    const obsCF = await loadObservadoresPadraoSub(cf.subprojetoId);
-    const tBase: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm"> = {
-      projetoId: cf.projetoId,
-      subprojetoId: cf.subprojetoId,
-      titulo: cf.fornecedor?.trim() || cf.nome,
-      descricao: notes || undefined,
-      responsavelId: cf.responsavelPadraoId,
-      responsavelNome: cf.responsavelPadraoNome,
-      observadoresIds: obsCF.length > 0 ? obsCF : undefined,
-      restaurantIds: cf.restaurantIds,
-      prazo: venc,
-      status: "a_fazer",
-      prioridade: "normal",
-      origem: "conta_fixa",
-      origemRefId: cf.id,
-      origemRefLabel: `Conta Fixa: ${cf.nome}`,
-      recorrenciaKey: chave,
-      criadoPor: autor.id,
-      criadoPorNome: autor.nome,
-    };
-    // Override pela config Automações se houver — admin define no Gestor
-    // de Tarefas → Admin Projetos → Automações. Restaurante: usa o 1º do
-    // array (conta fixa pode estar em N restaurantes; config é por restaurante).
-    const t = await aplicarAutomacaoNoPayload(tBase, cf.restaurantIds[0] || "", "conta_fixa");
-    await criarTarefa(t);
-    contasGeradas++;
-  }
-
-  // ── Manutenções ──
-  // DESATIVADO: manutenções (prazos técnicos) agora aparecem no Gestor como CARD
-  // DERIVADO ao vivo (derivados.ts), abrindo o ApontamentoModal do módulo. Loop
-  // preservado abaixo (não itera) — fase B da integração.
-  const mtSnap = { docs: [] as { id: string; data: () => Record<string, unknown> }[] };
-  for (const d of mtSnap.docs) {
-    const m = { id: d.id, ...d.data() } as Manutencao;
-    if (m.deletadoEm) continue;
-    const venc = m.proximoVencimento;
-    const dias = diasEntre(hoje, venc);
-    const antec = m.diasAntecedencia ?? 30;
-    if (dias > antec) continue;
-    const chave = `mt-${m.id}-${venc}`;
-    if (m.ultimaGeracaoChave === chave) { jaExistiam++; continue; }
-    const existSnap = await getDocs(query(collection(db, "tarefas"), where("recorrenciaKey", "==", chave)));
-    if (!existSnap.empty) { jaExistiam++; continue; }
-    const obsM = await loadObservadoresPadraoSub(m.subprojetoId);
-    const tBase: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm"> = {
-      projetoId: m.projetoId,
-      subprojetoId: m.subprojetoId,
-      titulo: `${nomeTipo(m.tipo)} — vence ${venc}${m.fornecedor ? ` (${m.fornecedor})` : ""}`,
-      descricao: [
-        m.descricao,
-        m.fornecedor && `Fornecedor: ${m.fornecedor}`,
-        m.pastaDrive && `Drive: ${m.pastaDrive}`,
-        m.observacoes,
-      ].filter(Boolean).join("\n"),
-      responsavelId: m.responsavelPadraoId,
-      responsavelNome: m.responsavelPadraoNome,
-      observadoresIds: obsM.length > 0 ? obsM : undefined,
-      restaurantIds: m.restaurantIds,
-      prazo: venc,
-      status: "a_fazer",
-      prioridade: dias < 0 ? "urgente" : "alta",
-      origem: "manutencao",
-      origemRefId: m.id,
-      origemRefLabel: `Manutenção: ${nomeTipo(m.tipo)}`,
-      recorrenciaKey: chave,
-      criadoPor: autor.id,
-      criadoPorNome: autor.nome,
-    };
-    const t = await aplicarAutomacaoNoPayload(tBase, m.restaurantIds[0] || "", "manutencao");
-    await criarTarefa(t);
-    manutencoesGeradas++;
-  }
-
-  return { contasGeradas, manutencoesGeradas, jaExistiam };
-}
-
-function nomeTipo(tipo: string): string {
-  return tipo.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase());
+  return { contasGeradas: 0, manutencoesGeradas: 0, jaExistiam: 0 };
 }
 
 // ── Auto-clone de rotinas ────────────────────────────────────────────────

@@ -188,13 +188,19 @@ function RecorrenciaEditor({ rec, onChange }: { rec: PrazoRecorrencia | null; on
           <div className="flex items-center gap-2.5 flex-wrap">
             <span className="text-xs text-gray-500 w-16 shrink-0">A cada</span>
             <Stepper value={r.intervalo} onChange={(n) => patch({ intervalo: Math.max(1, n) })} min={1} max={60} />
-            <div className="flex gap-1.5">
+            <div className="flex gap-1.5 flex-wrap">
               <button type="button" onClick={() => patch({ unidade: "semana" })} className={chip(r.unidade === "semana")}>semana(s)</button>
               <button type="button" onClick={() => patch({ unidade: "mes" })} className={chip(r.unidade === "mes")}>mês(es)</button>
+              <button type="button" onClick={() => patch({ unidade: "ano" })} className={chip(r.unidade === "ano")}>ano(s)</button>
             </div>
           </div>
 
-          {r.unidade === "mes" ? (
+          {r.unidade === "ano" ? (
+            <div className="flex items-center gap-2.5">
+              <span className="text-xs text-gray-500 w-16 shrink-0">Quando</span>
+              <span className="text-sm text-gray-600 dark:text-gray-300">no mesmo dia do vencimento, todo ano</span>
+            </div>
+          ) : r.unidade === "mes" ? (
             <>
               <div className="flex items-center gap-2.5 flex-wrap">
                 <span className="text-xs text-gray-500 w-16 shrink-0">Quando</span>

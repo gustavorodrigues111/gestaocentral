@@ -4489,9 +4489,6 @@ export type Tarefa = {
   id: string;
   projetoId: string;
   subprojetoId: string;
-  // Etiqueta opcional pra tarefas no projeto Prazos: "trabalhista" faz um prazo
-  // manual cair no chip 🧑‍⚖️ Trabalhistas em vez de ✍️ Próprios.
-  tipoPrazo?: "trabalhista";
   titulo: string;
   descricao?: string;
   responsavelId: string;
@@ -4548,22 +4545,6 @@ export type Tarefa = {
   criadoPor: string;
   criadoPorNome?: string;
   atualizadoEm: string;
-  // RUNTIME-ONLY (nunca persistido): marca um card DERIVADO ao vivo de outro
-  // módulo (conta fixa/manutenção/prazo), exibido no Gestor sem virar tarefa de
-  // verdade. Concluir delega pro módulo dono.
-  __derivado?: TarefaDerivadaInfo;
-};
-
-// Item derivado de outro módulo, exibido como card leve no Gestor de Tarefas.
-export type TarefaDerivadaInfo = {
-  tipo: "conta_fixa" | "manutencao" | "prazo_trabalhista";
-  refId: string;                    // id no módulo de origem
-  competencia?: string;             // "YYYY-MM" (contas fixas)
-  // Conclui/reabre no módulo dono direto (ex.: marca a conta paga). Ausente
-  // quando concluir exige um fluxo (então usa abrirModal).
-  setConcluida?: (v: boolean) => Promise<void>;
-  // Card abre um modal do módulo (manutenção/trabalhista) pra concluir/apontar.
-  abrirModal?: () => void;
 };
 
 // ─── CONTA FIXA (cadastro mestre) ─────────────────────────────────────────
@@ -6062,7 +6043,7 @@ export function enderecoResumo(e?: ImovelEndereco): string {
 
 // Recorrência: por semana ou por mês; no mês, por dia absoluto ou dia útil.
 export type PrazoRecorrencia = {
-  unidade: "semana" | "mes";
+  unidade: "semana" | "mes" | "ano";    // ano = mesmo dia/mês do vencimento
   intervalo: number;                    // a cada N
   modo?: "dia_absoluto" | "dia_util";   // só mes
   diaDoMes?: number;                    // dia_absoluto: 1..31

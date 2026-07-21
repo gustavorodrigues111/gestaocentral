@@ -5,15 +5,13 @@
 // independente do restaurante selecionado no topo.
 
 import { useEffect, useState, useMemo, type ReactNode } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
-import { ContaFixaForm } from "../contasFixas/ContasFixasPage";
-import { ManutencaoForm } from "../manutencoes/ManutencoesPage";
+import { Navigate } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { aplicarPerfisNaPessoa } from "../../core/auth/profileToLegacy";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
-import { collection, doc, getDoc, getDocs, onSnapshot, query, where, writeBatch } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, onSnapshot, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import {
   ouvirProjetos, ouvirSubprojetos, ouvirTarefasDeUsuario, ouvirTarefasDeProjeto,
@@ -24,10 +22,6 @@ import {
   contarTarefasDoSubprojeto, moverSubprojetoParaProjeto,
   ouvirAutomacoes, salvarAutomacao, propagarAutomacaoEmAbertas,
 } from "./repository";
-
-// Origens que agora aparecem como CARD DERIVADO ao vivo (não mais cópia de
-// tarefa). As cópias persistidas antigas dessas origens ficam escondidas.
-const ORIGEM_DERIVADA = new Set(["conta_fixa", "manutencao", "admissao"]);
 
 async function mudarStatusComErro(id: string, status: TarefaStatus, autor: { id: string; nome: string }) {
   try {
@@ -51,14 +45,10 @@ import {
   TAREFA_VISIBILIDADE_LABEL, RECORRENCIA_TIPO_LABEL,
   TAREFA_CUSTOM_FIELD_TIPO_LABEL, MODULOS_ORIGEM_TAREFA,
 } from "../../core/types";
-import type { TarefaAnexo, Subtarefa, ContaFixa, Manutencao, Empregado, ExameEmpregado, EntregaUniforme, Endereco } from "../../core/types";
+import type { TarefaAnexo, Subtarefa } from "../../core/types";
 import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
-import { derivarContasFixas, derivarManutencoes, derivarPrazosTrab } from "./derivados";
-import { ApontamentoModal } from "../manutencoes/ManutencoesPage";
 import { ProrrogarContratoModal } from "../admissao/ProrrogarContratoModal";
-import { AcaoModal as PrazoTrabModal, computarPrazosTrab, resolverPrazoTrab, desresolverPrazoTrab, baixarExameTrab, type Item as PrazoTrabItem } from "../prazosTrabalhistas/PrazosTrabalhistasPage";
-import { ContaFixaDetalheModal } from "../contasFixas/ContaFixaDetalheModal";
 
 import { podeVerTarefa, podeVerProjeto, isConfidencial } from "./visibilidade";
 import { parseCSV, mapearLinhas, executarImport, detectarOrfas } from "./importador";
@@ -106,14 +96,6 @@ function EmpresaBadge({ ids, className = "" }: { ids?: string[]; className?: str
     </span>
   );
 }
-
-// Membros do grupo "Prazos" (mesma ordem dos chips).
-const PRAZO_TIPOS: { key: string; label: string; emoji: string }[] = [
-  { key: "conta_fixa", label: "Contas", emoji: "💰" },
-  { key: "manutencao", label: "Técnicos", emoji: "🛠️" },
-  { key: "prazo_trabalhista", label: "Trabalhistas", emoji: "🧑‍⚖️" },
-  { key: "proprio", label: "Próprios", emoji: "✍️" },
-];
 
 export function TarefasPage() {
   const { pessoa: pessoaReal } = useAuth();
@@ -169,37 +151,17 @@ export function TarefasPage() {
   const [subprojetos, setSubprojetos] = useState<TarefaSubprojeto[]>([]);
   const [minhas, setMinhas] = useState<Tarefa[]>([]);
   const [projetoFiltro, setProjetoFiltro] = useState<string>("");
-  // Grupo "Prazos": o tipo ativo (navegável, single-select). "" = todos os tipos.
-  const [prazoTipoAtivo, setPrazoTipoAtivo] = useState<string>("");
-  // Tarefas do projeto Prazos, sempre ouvidas (pra contar próprios/trabalhistas
-  // manuais nos chips do grupo Prazos mesmo estando noutra aba).
-  const [tarefasPrazos, setTarefasPrazos] = useState<Tarefa[]>([]);
   // subFiltro vive aqui (não no ProjetoView) pra a sidebar conseguir mostrar
   // os subprojetos como accordion dentro do próprio projeto selecionado.
   const [subFiltro, setSubFiltro] = useState<string>("");
   const [tarefasProjeto, setTarefasProjeto] = useState<Tarefa[]>([]);
   const [lixeira, setLixeira] = useState<Tarefa[]>([]);
   const [todasTarefas, setTodasTarefas] = useState<Tarefa[]>([]);
-  const [contasFixas, setContasFixas] = useState<ContaFixa[]>([]);
-  const [manutencoes, setManutencoes] = useState<Manutencao[]>([]);
-  const [manutencaoAberta, setManutencaoAberta] = useState<Manutencao | null>(null);
-  const [empregadosTrab, setEmpregadosTrab] = useState<Empregado[]>([]);
-  const [examesTrab, setExamesTrab] = useState<ExameEmpregado[]>([]);
-  const [entregasTrab, setEntregasTrab] = useState<EntregaUniforme[]>([]);
-  const [resolvidosTrab, setResolvidosTrab] = useState<Set<string>>(new Set());
-  const [prazoTrabAberto, setPrazoTrabAberto] = useState<PrazoTrabItem | null>(null);
-  const [contaFixaAberta, setContaFixaAberta] = useState<{ conta: ContaFixa; cmp: string } | null>(null);
-  // "+ Novo prazo" no projeto Prazos: menu de escolha + forms de criação inline.
-  const [prazoMenuAberto, setPrazoMenuAberto] = useState(false);
   const [gerenciarMenuAberto, setGerenciarMenuAberto] = useState(false);
-  const [criarContaFixa, setCriarContaFixa] = useState(false);
-  const [criarManutencao, setCriarManutencao] = useState(false);
-  const [enderecos, setEnderecos] = useState<Endereco[]>([]);
-  const navigate = useNavigate();
   // Modal de nova tarefa. Aceita pré-preenchimento de prazo, projeto e
   // subprojeto pra fluxos diferentes (botão por dia, "+ Nova tarefa" dentro
   // de um projeto, etc.).
-  const [novaAberta, setNovaAberta] = useState<{ prazo?: string; projetoId?: string; subprojetoId?: string; tipoPrazo?: "trabalhista" } | null>(null);
+  const [novaAberta, setNovaAberta] = useState<{ prazo?: string; projetoId?: string; subprojetoId?: string } | null>(null);
   const [detalheId, setDetalheId] = useState<string | null>(null);
 
   // Ouvir projetos + subprojetos
@@ -317,108 +279,11 @@ export function TarefasPage() {
     return () => u();
   }, [tab, pessoaReal?.isMaster]);
 
-  // Contas fixas + manutenções ativas — pra derivar cards leves no Gestor
-  // (fonte única = módulo dono).
-  useEffect(() => {
-    const u1 = onSnapshot(query(collection(db, "contasFixas"), where("ativo", "==", true)),
-      (s) => setContasFixas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as ContaFixa)), () => setContasFixas([]));
-    const u2 = onSnapshot(query(collection(db, "manutencoes"), where("ativo", "==", true)),
-      (s) => setManutencoes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Manutencao)), () => setManutencoes([]));
-    // Prazos trabalhistas: fontes RH (org-wide). Concluir abre o modal do módulo.
-    const u3 = onSnapshot(collection(db, "empregados"), (s) => setEmpregadosTrab(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado)), () => setEmpregadosTrab([]));
-    const u4 = onSnapshot(collection(db, "examesEmpregado"), (s) => setExamesTrab(s.docs.map((d) => ({ id: d.id, ...d.data() }) as ExameEmpregado)), () => setExamesTrab([]));
-    const u5 = onSnapshot(collection(db, "entregasUniforme"), (s) => setEntregasTrab(s.docs.map((d) => ({ id: d.id, ...d.data() }) as EntregaUniforme)), () => setEntregasTrab([]));
-    const u6 = onSnapshot(collection(db, "agendaTrabResolvidos"), (s) => setResolvidosTrab(new Set(s.docs.map((d) => d.id))), () => setResolvidosTrab(new Set()));
-    const u7 = onSnapshot(collection(db, "enderecos"), (s) => setEnderecos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Endereco)), () => setEnderecos([]));
-    return () => { u1(); u2(); u3(); u4(); u5(); u6(); u7(); };
-  }, []);
-
-  // Projeto "Prazos" (casa única dos itens com data). Resolve por id do seed com
-  // fallback por nome — se não existir, os derivados mantêm o projeto de origem.
-  const prazosProjId = useMemo(
-    () => projetos.find((p) => p.id === "proj-prazos" || /praz/i.test(p.nome || ""))?.id || "",
-    [projetos],
+  // Tarefas do projeto filtrado, restritas ao que a pessoa pode ver.
+  const tarefasProjetoVisiveis = useMemo(
+    () => tarefasProjeto.filter((t) => podeVerTarefa(t, projetos.find((p) => p.id === t.projetoId), pessoa)),
+    [tarefasProjeto, projetos, pessoa],
   );
-  // Ouve as tarefas do projeto Prazos o tempo todo (pra contar próprios/
-  // trabalhistas manuais nos chips do grupo, mesmo fora da aba Prazos).
-  useEffect(() => {
-    if (!prazosProjId) { setTarefasPrazos([]); return; }
-    const u = ouvirTarefasDeProjeto(prazosProjId, setTarefasPrazos);
-    return () => u();
-  }, [prazosProjId]);
-  // Sub-prazos de Técnicos = subprojetos do projeto Prazos (Licenças, Manutenções).
-  const subPrazosTecnicos = useMemo(
-    () => (prazosProjId ? subprojetos.filter((s) => s.projetoId === prazosProjId) : []),
-    [subprojetos, prazosProjId],
-  );
-  // Itens derivados (contas fixas + manutenções + prazos trabalhistas). Todos são
-  // roteados pro projeto Prazos (nível de exibição — sem migrar dados de origem).
-  const derivadas = useMemo(() => {
-    if (!pessoa) return [];
-    const hoje = new Date().toISOString().slice(0, 10);
-    // Trabalhistas: derivados direto pro projeto Prazos (sem depender de um
-    // subprojeto âncora — o antigo "Prazos de Experiência" foi aposentado).
-    const prazosTrab = prazosProjId
-      ? derivarPrazosTrab(computarPrazosTrab(empregadosTrab, examesTrab, entregasTrab, hoje), hoje, resolvidosTrab, prazosProjId, "", setPrazoTrabAberto)
-      : [];
-    const all = [
-      ...derivarContasFixas(contasFixas, hoje, (conta, cmp) => setContaFixaAberta({ conta, cmp })),
-      ...derivarManutencoes(manutencoes, hoje, setManutencaoAberta),
-      ...prazosTrab,
-    ];
-    return prazosProjId ? all.map((d): Tarefa => ({ ...d, projetoId: prazosProjId })) : all;
-  }, [contasFixas, manutencoes, empregadosTrab, examesTrab, entregasTrab, resolvidosTrab, pessoa, prazosProjId]);
-  // "Minhas": esconde as cópias persistidas antigas (origem conta_fixa) e injeta
-  // os derivados dos quais sou responsável-padrão.
-  const minhasComDerivados = useMemo(
-    () => [
-      ...minhas.filter((t) => !ORIGEM_DERIVADA.has(t.origem)),
-      // Derivados: sou o responsável (conta fixa/manutenção) OU o item não tem
-      // responsável (prazo trabalhista) e eu tenho acesso ao projeto dele.
-      ...derivadas.filter((d) =>
-        d.responsavelId === pessoa?.id
-        || (!d.responsavelId && podeVerTarefa(d, projetos.find((p) => p.id === d.projetoId), pessoa)),
-      ),
-    ],
-    [minhas, derivadas, pessoa, projetos],
-  );
-  // Master "Todas": todas as tarefas + todos os derivados (sem filtro de dono).
-  const todasComDerivados = useMemo(
-    () => [...todasTarefas.filter((t) => !ORIGEM_DERIVADA.has(t.origem)), ...derivadas],
-    [todasTarefas, derivadas],
-  );
-  // "Tudo": minhas tarefas + TODOS os prazos que tenho acesso (todos os derivados).
-  const tudoComDerivados = useMemo(
-    () => [...minhas.filter((t) => !ORIGEM_DERIVADA.has(t.origem)), ...derivadas],
-    [minhas, derivadas],
-  );
-  const tarefasProjetoComDerivados = useMemo(
-    () => {
-      const manuais = tarefasProjeto.filter((t) => !ORIGEM_DERIVADA.has(t.origem) && podeVerTarefa(t, projetos.find((p) => p.id === t.projetoId), pessoa));
-      const derivs = derivadas.filter((d) => d.projetoId === projetoFiltro);
-      // No projeto Prazos: navega por tipo (single-select). "" = todos.
-      // subFiltro (sub-prazo de Técnicos) é aplicado depois pelo ProjetoView.
-      if (prazosProjId && projetoFiltro === prazosProjId) {
-        const t = prazoTipoAtivo;
-        if (!t) return [...manuais, ...derivs];
-        if (t === "proprio") return manuais.filter((x) => x.tipoPrazo !== "trabalhista");
-        if (t === "prazo_trabalhista") return [...manuais.filter((x) => x.tipoPrazo === "trabalhista"), ...derivs.filter((d) => d.__derivado?.tipo === "prazo_trabalhista")];
-        return derivs.filter((d) => d.__derivado?.tipo === t);
-      }
-      return [...manuais, ...derivs];
-    },
-    [tarefasProjeto, derivadas, projetoFiltro, projetos, pessoa, prazosProjId, prazoTipoAtivo],
-  );
-
-  // Contagem por tipo de prazo (derivados + manuais do projeto Prazos).
-  const prazoCounts = useMemo(() => {
-    const c: Record<string, number> = { conta_fixa: 0, manutencao: 0, prazo_trabalhista: 0, proprio: 0 };
-    derivadas.forEach((d) => { const k = d.__derivado?.tipo; if (k && k in c) c[k] += 1; });
-    const manuais = tarefasPrazos.filter((t) => !ORIGEM_DERIVADA.has(t.origem));
-    c.prazo_trabalhista += manuais.filter((t) => t.tipoPrazo === "trabalhista").length;
-    c.proprio += manuais.filter((t) => t.tipoPrazo !== "trabalhista").length;
-    return c;
-  }, [derivadas, tarefasPrazos]);
 
   // `isMaster` reflete o USER REAL (não a pessoa impersonada). Permissão de
   // master pra usar AdminView/Lixeira/Ver-como vem da identidade autêntica.
@@ -455,63 +320,26 @@ export function TarefasPage() {
     return <Navigate to="/" replace />;
   }
 
-  // Ações fixas (na linha do seletor de visão), sempre visíveis: Nova tarefa,
-  // Novo prazo (cria dentro dos prazos existentes de qualquer lugar) e Gerenciar.
+  // Ações fixas (na linha do seletor de visão): Nova tarefa + Gerenciar (master).
   const acoesHeader = (
     <div className="flex items-center gap-1.5 shrink-0">
       <Button size="sm" onClick={() => setNovaAberta({})}>+ Nova tarefa</Button>
-      <div className="relative">
-        <Button size="sm" variant="secondary" onClick={() => setPrazoMenuAberto((v) => !v)}>+ Novo prazo</Button>
-        {prazoMenuAberto && (
-          <>
-            <div className="fixed inset-0 z-10" onClick={() => setPrazoMenuAberto(false)} />
-            <div className="absolute right-0 mt-1 z-20 w-56 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
-              {([
-                ["✍️ Prazo próprio", () => setNovaAberta({ projetoId: prazosProjId })],
-                ["💰 Conta fixa", () => setCriarContaFixa(true)],
-                ["🛠️ Prazo técnico", () => setCriarManutencao(true)],
-                ["🧑‍⚖️ Prazo trabalhista", () => setNovaAberta({ projetoId: prazosProjId, tipoPrazo: "trabalhista" })],
-              ] as [string, () => void][]).map(([lbl, fn]) => (
-                <button key={lbl} type="button" onClick={() => { setPrazoMenuAberto(false); fn(); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
-      <div className="relative">
-        <button type="button" onClick={() => setGerenciarMenuAberto((v) => !v)} className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">⚙ Gerenciar ▾</button>
-        {gerenciarMenuAberto && (
-          <>
-            <div className="fixed inset-0 z-10" onClick={() => setGerenciarMenuAberto(false)} />
-            <div className="absolute right-0 mt-1 z-20 w-60 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
-              {isMaster && (
-                <>
-                  <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Tarefas</div>
-                  <button type="button" onClick={() => { setGerenciarMenuAberto(false); setTab("admin"); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">🗂️ Projetos e subprojetos</button>
-                  <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
-                </>
-              )}
-              <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Prazos</div>
-              {([["contasFixas", "💰 Contas fixas"], ["manutencoes", "🛠️ Prazos técnicos"], ["prazosTrabalhistas", "🧑‍⚖️ Prazos trabalhistas"]] as [string, string][]).map(([mod, lbl]) => (
-                <button key={mod} type="button" onClick={() => { setGerenciarMenuAberto(false); navigate(`/r/${ridAtivo}/${mod}`); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
-              ))}
-            </div>
-          </>
-        )}
-      </div>
+      {isMaster && (
+        <div className="relative">
+          <button type="button" onClick={() => setGerenciarMenuAberto((v) => !v)} className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">⚙ Gerenciar ▾</button>
+          {gerenciarMenuAberto && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setGerenciarMenuAberto(false)} />
+              <div className="absolute right-0 mt-1 z-20 w-60 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
+                <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Tarefas</div>
+                <button type="button" onClick={() => { setGerenciarMenuAberto(false); setTab("admin"); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">🗂️ Projetos e subprojetos</button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
-
-  // Chooser do calendário (botão "+ Novo" por dia): tarefa ou tipo de prazo.
-  const novoNoDia = (tipo: string, data: string) => {
-    if (tipo === "conta_fixa") { setCriarContaFixa(true); return; }
-    if (tipo === "manutencao") { setCriarManutencao(true); return; }
-    if (tipo === "trabalhista") { setNovaAberta({ projetoId: prazosProjId, tipoPrazo: "trabalhista", prazo: data }); return; }
-    if (tipo === "proprio") { setNovaAberta({ projetoId: prazosProjId, prazo: data }); return; }
-    // tarefa: no contexto do projeto atual (menos Prazos), com subprojeto se filtrado.
-    const proj = tab === "projeto" && projetoFiltro && projetoFiltro !== prazosProjId ? projetoFiltro : undefined;
-    setNovaAberta({ prazo: data, projetoId: proj, subprojetoId: proj ? (subFiltro || undefined) : undefined });
-  };
 
   return (
     <div className="max-w-7xl mx-auto p-3 sm:p-4">
@@ -551,24 +379,13 @@ export function TarefasPage() {
           projetos={projetosVisiveis}
           subprojetos={subprojetosVisiveis}
           tarefasProjeto={tarefasProjeto}
-          prazosProjId={prazosProjId}
-          prazoTipos={PRAZO_TIPOS.map(t => ({ ...t, count: prazoCounts[t.key] || 0 }))}
-          prazoTipoAtivo={tab === "projeto" && projetoFiltro === prazosProjId ? prazoTipoAtivo : ""}
-          subPrazosTecnicos={subPrazosTecnicos}
           onAbrirMinhas={() => setTab("minhas")}
-          onAbrirTudo={() => { setPrazoTipoAtivo(""); setTab("tudo"); }}
+          onAbrirTudo={() => setTab("tudo")}
           onAbrirProjeto={(pid) => {
-            setPrazoTipoAtivo("");
             if (tab === "projeto" && projetoFiltro === pid) { setTab("minhas"); setSubFiltro(""); }
             else { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(""); }
           }}
-          onAbrirPrazoTipo={(tipo) => {
-            const jaEm = tab === "projeto" && projetoFiltro === prazosProjId;
-            setTab("projeto"); setProjetoFiltro(prazosProjId); setSubFiltro("");
-            setPrazoTipoAtivo(jaEm && prazoTipoAtivo === tipo ? "" : tipo);
-          }}
-          onAbrirSubprojeto={(pid, sid) => { setPrazoTipoAtivo(""); setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(sid); }}
-          onAbrirSubPrazo={(sid) => { setTab("projeto"); setProjetoFiltro(prazosProjId); setPrazoTipoAtivo("manutencao"); setSubFiltro(sid); }}
+          onAbrirSubprojeto={(pid, sid) => { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(sid); }}
         />
 
         <div className="min-w-0">
@@ -599,18 +416,17 @@ export function TarefasPage() {
           </div>
           {viewMinhas === "calendario" && (
             <CalendarioView
-              tarefas={minhasComDerivados}
+              tarefas={minhas}
               projetos={projetos}
               subprojetos={subprojetos}
               onAbrir={setDetalheId}
               autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
               onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })}
-              onNovoNoDia={novoNoDia}
             />
           )}
           {viewMinhas === "lista" && (
             <MinhasTarefasView
-              tarefas={minhasComDerivados}
+              tarefas={minhas}
               projetos={projetos}
               subprojetos={subprojetos}
               onAbrir={setDetalheId}
@@ -620,7 +436,7 @@ export function TarefasPage() {
           )}
           {viewMinhas === "kanban" && (
             <KanbanView
-              tarefas={minhasComDerivados}
+              tarefas={minhas}
               projetos={projetos}
               autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
               onAbrir={setDetalheId}
@@ -633,14 +449,14 @@ export function TarefasPage() {
         <div>
           <div className="mb-3 flex items-center gap-x-3 gap-y-2 flex-wrap">
             <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">🗂️ Tudo</h2>
-            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">minhas tarefas + todos os prazos · {tudoComDerivados.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativos</span>
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">minhas tarefas · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
             <div className="flex-1" />
             {acoesHeader}
           </div>
-          {viewMinhas === "calendario" && <CalendarioView tarefas={tudoComDerivados} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onNovoNoDia={novoNoDia} />}
-          {viewMinhas === "lista" && <MinhasTarefasView tarefas={tudoComDerivados} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />}
-          {viewMinhas === "kanban" && <KanbanView tarefas={tudoComDerivados} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />}
+          {viewMinhas === "calendario" && <CalendarioView tarefas={minhas} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} />}
+          {viewMinhas === "lista" && <MinhasTarefasView tarefas={minhas} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />}
+          {viewMinhas === "kanban" && <KanbanView tarefas={minhas} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />}
         </div>
       )}
 
@@ -649,7 +465,7 @@ export function TarefasPage() {
           <div className="mb-3 flex items-baseline gap-2 flex-wrap">
             <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">🌐 Todas as tarefas</h2>
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-              {todasComDerivados.length} tarefa(s) · {todasComDerivados.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas
+              {todasTarefas.length} tarefa(s) · {todasTarefas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas
             </span>
           </div>
           <div className="flex items-center gap-2 flex-wrap mb-4">
@@ -660,13 +476,13 @@ export function TarefasPage() {
             {acoesHeader}
           </div>
           {viewMinhas === "calendario" && (
-            <CalendarioView tarefas={todasComDerivados} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onNovoNoDia={novoNoDia} />
+            <CalendarioView tarefas={todasTarefas} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} />
           )}
           {viewMinhas === "lista" && (
-            <MinhasTarefasView tarefas={todasComDerivados} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />
+            <MinhasTarefasView tarefas={todasTarefas} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />
           )}
           {viewMinhas === "kanban" && (
-            <KanbanView tarefas={todasComDerivados} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />
+            <KanbanView tarefas={todasTarefas} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />
           )}
         </div>
       )}
@@ -709,14 +525,13 @@ export function TarefasPage() {
             subprojetos={subprojetos}
             projetoFiltro={projetoFiltro}
             subFiltro={subFiltro}
-            tarefas={tarefasProjetoComDerivados}
+            tarefas={tarefasProjetoVisiveis}
             onAbrir={setDetalheId}
             view={viewProjeto}
             onChangeView={setViewProjeto}
             autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
             onNovaTarefa={(opts) => setNovaAberta(opts)}
             acoes={acoesHeader}
-            onNovoNoDia={novoNoDia}
           />
         </>
       )}
@@ -748,7 +563,6 @@ export function TarefasPage() {
           prazoInicial={novaAberta.prazo}
           projetoIdInicial={novaAberta.projetoId}
           subprojetoIdInicial={novaAberta.subprojetoId}
-          tipoPrazoInicial={novaAberta.tipoPrazo}
         />
       )}
 
@@ -769,47 +583,6 @@ export function TarefasPage() {
         )
       )}
 
-      {/* Modal de apontamento de manutenção (prazo técnico) — aberto pelo card
-          derivado; o próprio módulo cuida de agendar/subir laudo/concluir ciclo. */}
-      {manutencaoAberta && (
-        <ApontamentoModal
-          manutencao={manutencaoAberta}
-          pessoaId={pessoa?.id || ""}
-          onClose={() => setManutencaoAberta(null)}
-        />
-      )}
-
-      {/* Modal de conta fixa — detalhes + marcar pago (não marca ao clicar). */}
-      {contaFixaAberta && (
-        <ContaFixaDetalheModal conta={contaFixaAberta.conta} competencia={contaFixaAberta.cmp} pessoaId={pessoa?.id || ""} onClose={() => setContaFixaAberta(null)} />
-      )}
-
-      {/* Criação inline a partir do "+ Novo prazo" (reusa os forms dos módulos). */}
-      {criarContaFixa && (
-        <ContaFixaForm conta={null} init={prazosProjId ? { projetoId: prazosProjId } : undefined}
-          restaurantes={restaurants.map((r) => ({ id: r.id, nome: r.nome || r.id }))} enderecos={enderecos} pessoaId={pessoa?.id || ""}
-          onClose={() => setCriarContaFixa(false)} />
-      )}
-      {criarManutencao && (
-        <ManutencaoForm manutencao={null}
-          restaurants={restaurants.map((r) => ({ id: r.id, nome: r.nome || r.id }))} enderecos={enderecos} pessoaId={pessoa?.id || ""}
-          onClose={() => setCriarManutencao(false)} />
-      )}
-
-      {/* Modal de prazo trabalhista (experiência/exame/uniforme) — aberto pelo
-          card derivado; reusa o modal do módulo (resolver/dar baixa/decisão). */}
-      {prazoTrabAberto && (
-        <PrazoTrabModal
-          it={prazoTrabAberto}
-          resolvido={resolvidosTrab.has(prazoTrabAberto.id)}
-          hoje={new Date().toISOString().slice(0, 10)}
-          autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
-          onResolver={async (it) => { await resolverPrazoTrab(it, it.restaurantId || "", pessoa?.id || null); setPrazoTrabAberto(null); }}
-          onDesresolver={async (it) => { await desresolverPrazoTrab(it); setPrazoTrabAberto(null); }}
-          onBaixarExame={async (it, realizadoEm) => { await baixarExameTrab(it, realizadoEm, { id: pessoa?.id || "", nome: pessoa?.nome || "" }); setPrazoTrabAberto(null); }}
-          onClose={() => setPrazoTrabAberto(null)}
-        />
-      )}
     </div>
   );
 }
@@ -823,8 +596,7 @@ export function TarefasPage() {
 function ProjetosTopBar({
   tabAtual, projetoFiltroAtual, subFiltroAtual, minhasPendentes,
   projetos, subprojetos, tarefasProjeto,
-  prazosProjId, prazoTipos, prazoTipoAtivo, subPrazosTecnicos,
-  onAbrirMinhas, onAbrirTudo, onAbrirProjeto, onAbrirPrazoTipo, onAbrirSubprojeto, onAbrirSubPrazo,
+  onAbrirMinhas, onAbrirTudo, onAbrirProjeto, onAbrirSubprojeto,
 }: {
   tabAtual: string;
   projetoFiltroAtual: string;
@@ -833,23 +605,15 @@ function ProjetosTopBar({
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
   tarefasProjeto: Tarefa[];
-  prazosProjId: string;
-  prazoTipos: { key: string; label: string; emoji: string; count: number }[];
-  prazoTipoAtivo: string;
-  subPrazosTecnicos: TarefaSubprojeto[];
   onAbrirMinhas: () => void;
   onAbrirTudo: () => void;
   onAbrirProjeto: (id: string) => void;
-  onAbrirPrazoTipo: (tipo: string) => void;
   onAbrirSubprojeto: (projetoId: string, subId: string) => void;
-  onAbrirSubPrazo: (subId: string) => void;
 }) {
   const ativas = (ts: Tarefa[]) => ts.filter(t => t.status !== "concluida" && t.status !== "cancelada").length;
-  const emPrazos = !!prazosProjId && tabAtual === "projeto" && projetoFiltroAtual === prazosProjId;
-  // Grupo "Tarefas" = todos os projetos menos o Prazos (que vira grupo próprio).
-  const projTarefas = projetos.filter(p => p.id !== prazosProjId);
-  // Subprojetos só pra projeto normal selecionado (Prazos usa a nav por tipo).
-  const subs = tabAtual === "projeto" && projetoFiltroAtual && !emPrazos ? subprojetos.filter(s => s.projetoId === projetoFiltroAtual) : [];
+  // Esconde o projeto legado "Prazos" — agora existe o módulo Prazos dedicado.
+  const projTarefas = projetos.filter(p => !(p.id === "proj-prazos" || /praz/i.test(p.nome || "")));
+  const subs = tabAtual === "projeto" && projetoFiltroAtual ? subprojetos.filter(s => s.projetoId === projetoFiltroAtual) : [];
   const chip = (active: boolean) => `shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-colors ${active ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`;
   const rotulo = "shrink-0 w-[70px] text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500";
   return (
@@ -870,20 +634,6 @@ function ProjetosTopBar({
         ))}
       </div>
 
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-        <span className={rotulo}>Prazos</span>
-        <button onClick={() => onAbrirPrazoTipo("")} className={chip(emPrazos && !prazoTipoAtivo)}>
-          <span className="whitespace-nowrap">Todos</span>
-        </button>
-        {prazoTipos.map(t => (
-          <button key={t.key} onClick={() => onAbrirPrazoTipo(t.key)} className={chip(emPrazos && prazoTipoAtivo === t.key)} title={t.label}>
-            <span>{t.emoji}</span>
-            <span className="whitespace-nowrap">{t.label}</span>
-            {t.count > 0 && <span className="text-[10px] opacity-60">{t.count}</span>}
-          </button>
-        ))}
-      </div>
-
       {subs.length > 0 && (
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pl-1">
           {subs.map(s => {
@@ -897,18 +647,6 @@ function ProjetosTopBar({
               </button>
             );
           })}
-        </div>
-      )}
-
-      {emPrazos && prazoTipoAtivo === "manutencao" && subPrazosTecnicos.length > 0 && (
-        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pl-1 ml-[70px] border-l-2 border-indigo-300 dark:border-indigo-700">
-          <button onClick={() => onAbrirSubPrazo("")} className={`shrink-0 ml-2 inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs transition-colors ${!subFiltroAtual ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>Todos</button>
-          {subPrazosTecnicos.map(s => (
-            <button key={s.id} onClick={() => onAbrirSubPrazo(s.id)} title={s.nome}
-              className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs transition-colors ${subFiltroAtual === s.id ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-              <span className="whitespace-nowrap">{s.nome}</span>
-            </button>
-          ))}
         </div>
       )}
     </div>
@@ -1092,7 +830,7 @@ function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pessoaId, 
         <div className="space-y-2 pb-20">
           {filtradas.map(t => (
             <div key={t.id} className="flex items-start gap-2">
-              {modoSelecao && !t.__derivado && (
+              {modoSelecao && (
                 <input
                   type="checkbox"
                   checked={selecionadas.has(t.id)}
@@ -1104,7 +842,6 @@ function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pessoaId, 
                   className="mt-3"
                 />
               )}
-              {modoSelecao && t.__derivado && <span className="w-4 mt-3 shrink-0" />}
               <div className="flex-1 min-w-0">
                 <TarefaCard
                   tarefa={t}
@@ -1282,23 +1019,20 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
   const subtarefasFeitas = (tarefa.subtarefas || []).filter(s => s.feito).length;
   const subtarefasTotal = (tarefa.subtarefas || []).length;
   const confidencial = isConfidencial(tarefa, projeto);
-  const der = tarefa.__derivado;   // card derivado de outro módulo (conta fixa etc.)
 
   return (
     <div
-      onClick={der ? (der.abrirModal || undefined) : onAbrir}
+      onClick={onAbrir}
       className={`
         p-3 rounded-xl border transition-all
         ${concluida ? "opacity-60" : ""}
-        ${der
-          ? "bg-amber-50/60 dark:bg-amber-900/10 border-dashed border-amber-300 dark:border-amber-800/60" + (der.abrirModal ? " cursor-pointer hover:shadow-md" : "")
-          : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 cursor-pointer hover:shadow-md"}
+        bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 cursor-pointer hover:shadow-md
       `}
       style={{ borderLeftWidth: 4, borderLeftColor: cor }}
     >
       <div className="flex items-start gap-2">
         <button
-          onClick={(e) => { e.stopPropagation(); if (der?.abrirModal) der.abrirModal(); else if (der?.setConcluida) void der.setConcluida(!concluida); else mudarStatusComErro(tarefa.id, concluida ? "a_fazer" : "concluida", autor); }}
+          onClick={(e) => { e.stopPropagation(); mudarStatusComErro(tarefa.id, concluida ? "a_fazer" : "concluida", autor); }}
           className={`mt-1 w-5 h-5 rounded-md border-2 flex items-center justify-center flex-shrink-0 ${
             concluida
               ? "bg-emerald-500 border-emerald-500 text-white"
@@ -1352,7 +1086,7 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
 
 // ─── VIEW: Por Projeto ────────────────────────────────────────────────────
 
-function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas, onAbrir, view, onChangeView, autor, onNovaTarefa, acoes, onNovoNoDia }: {
+function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas, onAbrir, view, onChangeView, autor, onNovaTarefa, acoes }: {
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
   projetoFiltro: string;
@@ -1367,7 +1101,6 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
   // — usado pelos botões "+ Nova tarefa" nas colunas do calendário.
   onNovaTarefa: (opts: { prazo?: string; projetoId?: string; subprojetoId?: string }) => void;
   acoes?: ReactNode;
-  onNovoNoDia?: (tipo: string, data: string) => void;
 }) {
   const proj = projetos.find(p => p.id === projetoFiltro);
   const subsDoProj = subprojetos.filter(s => s.projetoId === projetoFiltro);
@@ -1440,7 +1173,6 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
                     projetoId: projetoFiltro,
                     subprojetoId: subFiltro || undefined,
                   })}
-                  onNovoNoDia={subBloqueado ? undefined : onNovoNoDia}
                 />
               );
             })()}
@@ -2589,14 +2321,6 @@ function KanbanView({ tarefas, projetos, autor, onAbrir }: {
     const id = e.dataTransfer.getData("text/plain") || dragId;
     setDragId(null);
     if (!id) return;
-    // Card derivado (conta fixa etc.): concluir/reabrir delega pro módulo dono.
-    const t = tarefas.find((x) => x.id === id);
-    if (t?.__derivado) {
-      const der = t.__derivado;
-      if (der.abrirModal) der.abrirModal();                       // manutenção: abre o modal
-      else if (der.setConcluida && (col === "concluida" || col === "a_fazer")) await der.setConcluida(col === "concluida");
-      return;
-    }
     await mudarStatusComErro(id, col, autor);
   }
 
@@ -2625,16 +2349,13 @@ function KanbanView({ tarefas, projetos, autor, onAbrir }: {
               {items.map(t => {
                 const proj = projetos.find(p => p.id === t.projetoId);
                 const cor = t.corHerdada || proj?.cor || "#6b7280";
-                const der = t.__derivado;
                 return (
                   <div
                     key={t.id}
                     draggable
                     onDragStart={(e) => onDragStart(e, t.id)}
-                    onClick={der ? (der.abrirModal || undefined) : () => onAbrir(t.id)}
-                    className={`p-2 rounded-lg border transition-shadow ${der
-                      ? "bg-amber-50/60 dark:bg-amber-900/10 border-dashed border-amber-300 dark:border-amber-800/60 " + (der.abrirModal ? "cursor-pointer hover:shadow-md" : "cursor-grab")
-                      : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md"}`}
+                    onClick={() => onAbrir(t.id)}
+                    className="p-2 rounded-lg border transition-shadow bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 cursor-pointer hover:shadow-md"
                     style={{ borderLeftWidth: 3, borderLeftColor: cor }}
                   >
                     <div className="flex items-start gap-1.5">
@@ -2644,7 +2365,6 @@ function KanbanView({ tarefas, projetos, autor, onAbrir }: {
                     <div className="flex items-center gap-1 mt-1 flex-wrap text-[10px] text-gray-500 dark:text-gray-400">
                       {proj && <span style={{ color: cor }}>{proj.emoji}</span>}
                       {t.prazo && <span>📅 {fmtBR(t.prazo)}</span>}
-                      {der && <span className="px-1 rounded bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">{der.tipo === "manutencao" ? "🔧 prazo técnico" : der.tipo === "prazo_trabalhista" ? "🧑‍⚖️ trabalhista" : "💰 conta fixa"}</span>}
                       <EmpresaBadge ids={t.restaurantIds} />
                       {(t.subtarefas?.length ?? 0) > 0 && <span>☑️ {t.subtarefas?.filter(s => s.feito).length}/{t.subtarefas?.length}</span>}
                     </div>
@@ -2687,39 +2407,7 @@ function catDaTarefa(origem: string, proj?: { nome?: string; cor?: string; emoji
   return TAREFA_CAT_META[origem] || { label: proj?.nome || "Tarefa", cor: proj?.cor || "#6b7280", icon: proj?.emoji || "📁" };
 }
 
-// Botão "+ Novo" nas colunas do calendário: pergunta se é tarefa ou qual prazo.
-function NovoNoDiaBtn({ data, onEscolher, className }: {
-  data: string; onEscolher: (tipo: string, data: string) => void; className: string;
-}) {
-  const [aberto, setAberto] = useState(false);
-  const opcoes: [string, string][] = [
-    ["📝 Tarefa", "tarefa"],
-    ["💰 Conta fixa", "conta_fixa"],
-    ["🛠️ Prazo técnico", "manutencao"],
-    ["🧑‍⚖️ Prazo trabalhista", "trabalhista"],
-    ["✍️ Prazo próprio", "proprio"],
-  ];
-  return (
-    <div className="relative">
-      <button type="button" onClick={(e) => { e.stopPropagation(); setAberto(v => !v); }} className={className} title="Criar tarefa ou prazo neste dia">+ Novo</button>
-      {aberto && (
-        <>
-          <div className="fixed inset-0 z-20" onClick={(e) => { e.stopPropagation(); setAberto(false); }} />
-          <div className="absolute left-0 mt-1 z-30 w-44 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-xs">
-            {opcoes.map(([lbl, tipo], i) => (
-              <div key={tipo}>
-                {i === 1 && <div className="my-1 border-t border-gray-100 dark:border-gray-800" />}
-                <button type="button" onClick={(e) => { e.stopPropagation(); setAberto(false); onEscolher(tipo, data); }} className="w-full text-left px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">{lbl}</button>
-              </div>
-            ))}
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia, onNovoNoDia }: {
+function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }: {
   tarefas: Tarefa[];
   projetos: TarefaProjeto[];
   subprojetos?: TarefaSubprojeto[];
@@ -2727,8 +2415,6 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia, 
   autor?: { id: string; nome: string };
   // Quando chamado com `prazo`, vai pra aquele dia; sem args, cria sem data.
   onNovaTarefaNoDia?: (prazo?: string) => void;
-  // Chooser tarefa/prazo por dia (preferido). tipo ∈ tarefa|conta_fixa|manutencao|trabalhista|proprio
-  onNovoNoDia?: (tipo: string, data: string) => void;
 }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(hoje));
@@ -2776,8 +2462,7 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia, 
     if (!autor || id.includes("::")) return;   // derivado não reordena/persiste
     const dragged = tarefas.find(t => t.id === id);
     if (!dragged) return;
-    // Exclui os derivados (id sintético) — não têm doc pra gravar ordem.
-    const atual = (tarefasPorDia.get(dia) || []).filter(t => t.id !== id && !t.__derivado);
+    const atual = (tarefasPorDia.get(dia) || []).filter(t => t.id !== id);
     const idx = antesDeId ? atual.findIndex(t => t.id === antesDeId) : atual.length;
     const nova = idx < 0 ? [...atual, dragged] : [...atual.slice(0, idx), dragged, ...atual.slice(idx)];
     try {
@@ -2895,8 +2580,7 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia, 
             const meta = catDaTarefa(t.origem, proj);
             const concluida = t.status === "concluida";
             const arrastando = draggingId === t.id;
-            const der = t.__derivado;
-            const arrastavel = podeArrastar && !der;
+            const arrastavel = podeArrastar;
             return (
               <button
                 key={t.id}
@@ -2923,10 +2607,10 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia, 
                   setDropAntes(null); setDropTarget(null); setDraggingId(null);
                   if (id && id !== t.id) reordenarNoDia(id, data, t.id);
                 } : undefined}
-                onClick={() => { if (der?.abrirModal) der.abrirModal(); else if (der?.setConcluida) void der.setConcluida(!concluida); else onAbrir(t.id); }}
-                className={`relative w-full text-left text-[11px] px-2 py-1.5 rounded-md text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${dropAntes === t.id ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${der ? "cursor-pointer" : podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${der ? "ring-1 ring-amber-300/70 dark:ring-amber-800/60" : ""}`}
+                onClick={() => onAbrir(t.id)}
+                className={`relative w-full text-left text-[11px] px-2 py-1.5 rounded-md text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${dropAntes === t.id ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
                 style={{ background: meta.cor + "14", borderLeft: `3px solid ${meta.cor}` }}
-                title={der ? (der.abrirModal ? `${t.titulo} — abrir` : `${t.titulo} — marcar pago`) : podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
+                title={podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
               >
                 {t.responsavelNome && <AvatarIniciais nome={t.responsavelNome} id={t.responsavelId} size={16} className="absolute top-1 right-1" />}
                 <div className="font-medium leading-snug line-clamp-2 mb-1 pr-4">{t.titulo}</div>
@@ -2939,17 +2623,15 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia, 
               </button>
             );
           })}
-          {onNovoNoDia
-            ? <NovoNoDiaBtn data={data} onEscolher={onNovoNoDia} className="w-full text-left text-[11px] px-1.5 py-1 rounded border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors" />
-            : onNovaTarefaNoDia && (
-              <button
-                onClick={() => onNovaTarefaNoDia(data)}
-                className="w-full text-left text-[11px] px-1.5 py-1 rounded border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors"
-                title={`+ nova tarefa em ${label} ${Number(data.slice(8, 10))}`}
-              >
-                + Nova tarefa
-              </button>
-            )}
+          {onNovaTarefaNoDia && (
+            <button
+              onClick={() => onNovaTarefaNoDia(data)}
+              className="w-full text-left text-[11px] px-1.5 py-1 rounded border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors"
+              title={`+ nova tarefa em ${label} ${Number(data.slice(8, 10))}`}
+            >
+              + Nova tarefa
+            </button>
+          )}
         </div>
       </div>
     );
@@ -3045,19 +2727,17 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia, 
               {tarefasFdsAtivas.length > 3 && (
                 <div className="text-[10px] text-gray-500 dark:text-gray-400">+{tarefasFdsAtivas.length - 3}</div>
               )}
-              {onNovoNoDia
-                ? <div className="mt-1"><NovoNoDiaBtn data={dias[5]} onEscolher={onNovoNoDia} className="block w-full text-left text-[11px] px-1.5 py-1 rounded border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors" /></div>
-                : onNovaTarefaNoDia && (
-                  <span
-                    role="button"
-                    tabIndex={0}
-                    onClick={(e) => { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); }}
-                    onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); } }}
-                    className="block text-[11px] px-1.5 py-1 rounded border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors mt-1"
-                  >
-                    + Nova tarefa
-                  </span>
-                )}
+              {onNovaTarefaNoDia && (
+                <span
+                  role="button"
+                  tabIndex={0}
+                  onClick={(e) => { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); }}
+                  onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); } }}
+                  className="block text-[11px] px-1.5 py-1 rounded border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors mt-1"
+                >
+                  + Nova tarefa
+                </span>
+              )}
               <div className="text-[10px] text-indigo-600 dark:text-indigo-400 underline mt-1">Expandir →</div>
             </div>
           </button>
@@ -3074,9 +2754,8 @@ function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia, 
             {atrasadas.slice(0, 20).map(t => {
               const proj = projetos.find(p => p.id === t.projetoId);
               const cor = t.corHerdada || proj?.cor || "#6b7280";
-              const der = t.__derivado;
               return (
-                <div key={t.id} onClick={() => { if (der?.abrirModal) der.abrirModal(); else if (der?.setConcluida) void der.setConcluida(true); else onAbrir(t.id); }} className={`p-2 rounded-md border cursor-pointer hover:shadow-sm flex items-center gap-2 ${der ? "bg-amber-50/60 dark:bg-amber-900/10 border-dashed border-amber-300 dark:border-amber-800/60" : "bg-white dark:bg-gray-900 border-rose-200 dark:border-rose-900/40"}`} style={{ borderLeftWidth: 3, borderLeftColor: cor }}>
+                <div key={t.id} onClick={() => onAbrir(t.id)} className="p-2 rounded-md border cursor-pointer hover:shadow-sm flex items-center gap-2 bg-white dark:bg-gray-900 border-rose-200 dark:border-rose-900/40" style={{ borderLeftWidth: 3, borderLeftColor: cor }}>
                   <span style={{ color: cor }}>{proj?.emoji}</span>
                   <span className="flex-1">{t.titulo}</span>
                   <span className="text-[10px] text-rose-600 dark:text-rose-400">{fmtBR(t.prazo)}</span>
@@ -3195,7 +2874,7 @@ function LixeiraView({ tarefas, projetos, autor }: {
 
 // ─── MODAL: Nova Tarefa ───────────────────────────────────────────────────
 
-function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaId, pessoaNome, prazoInicial, projetoIdInicial, subprojetoIdInicial, tipoPrazoInicial }: {
+function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaId, pessoaNome, prazoInicial, projetoIdInicial, subprojetoIdInicial }: {
   onClose: () => void;
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
@@ -3205,7 +2884,6 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
   prazoInicial?: string;
   projetoIdInicial?: string;
   subprojetoIdInicial?: string;
-  tipoPrazoInicial?: "trabalhista";
 }) {
   const [titulo, setTitulo] = useState("");
   const [descricao, setDescricao] = useState("");
@@ -3313,7 +2991,6 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
       : undefined;
     const payload = {
       projetoId, subprojetoId, titulo,
-      tipoPrazo: tipoPrazoInicial || undefined,
       descricao: descricao || undefined,
       responsavelId, responsavelNome,
       coResponsaveis: coResponsaveisIds.length ? coResponsaveisIds : undefined,

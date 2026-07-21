@@ -21,6 +21,21 @@ describe("proximoVencimento — mensal por dia absoluto", () => {
   });
 });
 
+describe("proximoVencimento — anual", () => {
+  it("todo ano no mesmo dia: 03/09/2026 → 03/09/2027", () => {
+    const r: PrazoRecorrencia = { unidade: "ano", intervalo: 1 };
+    expect(proximoVencimento(r, "2026-09-03")).toBe("2027-09-03");
+  });
+  it("a cada 2 anos", () => {
+    const r: PrazoRecorrencia = { unidade: "ano", intervalo: 2 };
+    expect(proximoVencimento(r, "2026-09-03")).toBe("2028-09-03");
+  });
+  it("29/02 clampa pra 28/02 em ano não bissexto", () => {
+    const r: PrazoRecorrencia = { unidade: "ano", intervalo: 1 };
+    expect(proximoVencimento(r, "2028-02-29")).toBe("2029-02-28");
+  });
+});
+
 describe("proximoVencimento — mensal por dia útil", () => {
   it("5º dia útil de agosto/2026", () => {
     // Ago/2026: 01=sáb,02=dom,03=seg(1),04(2),05(3),06(4),07(5) → 5º útil = 07/08
