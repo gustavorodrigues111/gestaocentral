@@ -3086,18 +3086,27 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
           </div>
         )}
         <div className="space-y-3">
+          {/* ── Área (chips no topo) ── */}
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5">Área *</label>
+            <div className="flex flex-wrap gap-1.5">
+              {projetos.map(p => {
+                const on = projetoId === p.id;
+                return (
+                  <button key={p.id} type="button" onClick={() => setProjetoId(p.id)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                    {p.emoji} {p.nome}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           {/* ── Essenciais ── */}
           <Field label="O que precisa ser feito *">
             <input value={titulo} onChange={(e) => setTitulo(e.target.value)} className="input" placeholder="Conferir estoque do bar" autoFocus />
           </Field>
-          <Field label="Projeto *">
-            <select value={projetoId} onChange={(e) => setProjetoId(e.target.value)} className="input">
-              <option value="" disabled>Selecione…</option>
-              {projetos.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>)}
-            </select>
-          </Field>
           {subsDoProjeto.length > 0 && (
-            <Field label="Subprojeto *">
+            <Field label="Projeto *">
               <select value={subprojetoId} onChange={(e) => setSubprojetoId(e.target.value)} className="input">
                 <option value="" disabled>Selecione…</option>
                 {subsDoProjeto.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
@@ -3106,7 +3115,7 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
           )}
           <Field label="Responsável *">
             <select value={responsavelId} onChange={(e) => setResponsavelId(e.target.value)} className="input" disabled={!projetoId}>
-              {!projetoId && <option value="">Escolha um projeto primeiro</option>}
+              {!projetoId && <option value="">Escolha uma área primeiro</option>}
               {projetoId && !responsaveisElegiveis.find(p => p.id === responsavelId) && (
                 <option value="" disabled>Selecione…</option>
               )}
@@ -3116,7 +3125,7 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
             </select>
             {projetoAtual && projetoAtual.visibilidade === "privado" && (
               <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
-                🔒 Projeto privado — só pessoas autorizadas podem ser responsáveis.
+                🔒 Área privada — só pessoas autorizadas podem ser responsáveis.
               </p>
             )}
           </Field>
@@ -3156,10 +3165,10 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
                   <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={2} className="input resize-y" placeholder="Detalhes, contexto, links..." />
                 </Field>
                 <Field label="Co-responsáveis (podem editar)">
-                  <PessoasMultiPicker value={coResponsaveisIds} onChange={setCoResponsaveisIds} pessoas={responsaveisElegiveis} excluir={[responsavelId, ...observadoresIds]} placeholder={!projetoId ? "Escolha um projeto primeiro" : "+ adicionar"} />
+                  <PessoasMultiPicker value={coResponsaveisIds} onChange={setCoResponsaveisIds} pessoas={responsaveisElegiveis} excluir={[responsavelId, ...observadoresIds]} placeholder={!projetoId ? "Escolha uma área primeiro" : "+ adicionar"} />
                 </Field>
                 <Field label="Observadores (só acompanham)">
-                  <PessoasMultiPicker value={observadoresIds} onChange={setObservadoresIds} pessoas={responsaveisElegiveis} excluir={[responsavelId, ...coResponsaveisIds]} placeholder={!projetoId ? "Escolha um projeto primeiro" : "+ adicionar"} />
+                  <PessoasMultiPicker value={observadoresIds} onChange={setObservadoresIds} pessoas={responsaveisElegiveis} excluir={[responsavelId, ...coResponsaveisIds]} placeholder={!projetoId ? "Escolha uma área primeiro" : "+ adicionar"} />
                 </Field>
                 {restaurantes.length > 0 && (
                   <Field label="Empresa(s)">
@@ -3201,7 +3210,7 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
           <Button
             onClick={salvar}
             disabled={!formValido}
-            title={!formValido ? "Preencha título, projeto, subprojeto, prazo e responsável" : undefined}
+            title={!formValido ? "Preencha área, título, projeto, prazo e responsável" : undefined}
           >
             Criar Tarefa
           </Button>
