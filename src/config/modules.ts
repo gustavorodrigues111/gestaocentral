@@ -47,6 +47,7 @@ export const MODULES: ModuleDef[] = [
 
   // ── Pessoas Externas & Infra ─────────────────────────────────────
   { id: "freelas",     area: "ops", subarea: "Pessoas Externas & Infra", label: "Freelas",        icon: "🎒", status: "ativo", etapa: "beta",               desc: "Cadastro, agendamento, lançamento e pagamento de freelas", dependsOn: ["pessoas", "escala"] },
+  { id: "prazos",      area: "planejamento", subarea: "Prazos", label: "Prazos", icon: "📅", status: "ativo", etapa: "em_desenvolvimento", desc: "Agenda única do que vence: contas, técnicos (com laudo no Drive), trabalhistas e avulsos. Recorrência flexível, agendamento e histórico de realizados. Fonte única — substitui Contas Fixas, Manutenções e Prazos Trabalhistas.", dependsOn: ["pessoas"] },
   { id: "prazosTrabalhistas", area: "planejamento", subarea: "Prazos", label: "Prazos Trabalhistas", icon: "🧑‍⚖️", status: "ativo", etapa: "em_desenvolvimento", oculto: true, desc: "Agenda de prazos de RH: fim de experiência (45/90), exames e uniformes/EPIs. Agora dentro do Gestor de Tarefas › Prazos (rota mantida via 'Gerenciar')." },
   { id: "manutencoes", area: "planejamento", subarea: "Prazos", label: "Prazos Técnicos", icon: "🛠️", status: "ativo", etapa: "beta", oculto: true,         desc: "Prazos técnicos: manutenções, licenças e certificados. Agora dentro do Gestor de Tarefas › Prazos (rota mantida via 'Gerenciar')." },
 

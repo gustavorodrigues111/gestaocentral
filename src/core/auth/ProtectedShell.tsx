@@ -60,6 +60,7 @@ import { WhatsappPage } from "../../modules/whatsapp/WhatsappPage";
 import { VendasPage } from "../../modules/vendas/VendasPage";
 import { FaturasPage } from "../../modules/faturas/FaturasPage";
 import { FolhasPage } from "../../modules/folhas/FolhasPage";
+import { PrazosPage } from "../../modules/prazos/PrazosPage";
 import { AgentesPage } from "../../modules/agentes/AgentesPage";
 import { FichasPage } from "../../modules/fichas/FichasPage";
 import { ExamesPage } from "../../modules/exames/ExamesPage";
@@ -123,6 +124,7 @@ function ModuleRouter() {
     case "vendas":        return <VendasPage key={k} />;
     case "faturas":       return <FaturasPage key={k} />;
     case "folhas":        return <FolhasPage key={k} />;
+    case "prazos":        return <PrazosPage key={k} />;
     case "agentes":       return <AgentesPage key={k} />;
     case "fichas":        return <FichasPage key={k} />;
     case "exames":        return <ExamesPage key={k} />;

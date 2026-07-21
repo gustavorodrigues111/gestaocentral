@@ -484,6 +484,18 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "prazos",
+    icon: "📅",
+    label: "Prazos",
+    desc: "Agenda única de vencimentos: contas, técnicos, trabalhistas e avulsos, com laudo e agendamento",
+    area: "gestao",
+    acoes: [
+      { id: "ver",           label: "Ver a agenda de prazos" },
+      { id: "gerir",         label: "Criar, editar, agendar, resolver e anexar laudo", sensivel: true },
+      { id: "receberAvisos", label: "Receber avisos de vencimento na Central" },
+    ],
+  },
+  {
     id: "folhas",
     icon: "🧾",
     label: "Conferência de Folhas",

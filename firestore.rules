@@ -56,6 +56,12 @@ service cloud.firestore {
       allow read, write: if authed();
     }
 
+    // Prazos (módulo unificado). Sensível (financeiro + PII). Authed lê/grava;
+    // a UI gateia por permissão (prazos.ver / prazos.gerir).
+    match /prazos/{id} {
+      allow read, write: if authed();
+    }
+
     // ── /pessoas ── identidades + permissões ─────────────────────────────
     match /pessoas/{id} {
       allow read:   if authed();

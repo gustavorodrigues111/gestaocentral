@@ -76,6 +76,8 @@ export type ModuleId =
   | "uniformes"
   // Gestor de Tarefas + cadastros mestres
   | "tarefas" | "contasFixas" | "manutencoes"
+  // Prazos (novo módulo unificado — substitui contasFixas/manutencoes/prazosTrabalhistas)
+  | "prazos"
   // Agentes de IA
   | "agentes"
   // Conferência de folhas de pagamento (auditor)
@@ -915,6 +917,8 @@ export type Restaurant = {
   fechamentoDriveFolderNome?: string;
   manutencoesDriveFolderId?: string;       // pasta-raiz dos laudos de Manutenções no Drive
   manutencoesDriveFolderNome?: string;
+  prazosDriveFolderId?: string;            // pasta-raiz dos laudos/comprovantes do módulo Prazos
+  prazosDriveFolderNome?: string;
   cartaoChavePixPadrao?: string;           // Pix padrão pra receber reembolsos de cartão (módulo Faturas)
   cartoesCadastrados?: string[];           // nomes dos cartões que sobem fatura aqui — a IA casa cada PDF com um deles
   fechamentoSociosEmails?: string[];
@@ -6025,6 +6029,88 @@ export type FalhaLog = {
   pessoaNome?: string;
   criadoEm: string;           // ISO
   resolvidoEm?: string;       // master marcou como resolvido
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  PRAZOS — módulo unificado (datas que vencem e pedem ação). Fonte única:
+//  contas, técnicos, trabalhistas e avulsos num molde só. Substitui os módulos
+//  contasFixas/manutencoes/prazosTrabalhistas. Ver [[project_gestor_redesign_2modulos]].
+// ═══════════════════════════════════════════════════════════════════════════
+export type PrazoTipo = "conta" | "tecnico" | "trabalhista" | "avulso";
+export type PrazoStatus = "aberto" | "agendado" | "resolvido";
+export type PrazoSubtipoTrab = "exp45" | "exp90" | "exame" | "uniforme";
+export const PRAZO_TIPO_LABEL: Record<PrazoTipo, string> = { conta: "Conta", tecnico: "Técnico", trabalhista: "Trabalhista", avulso: "Avulso" };
+export const PRAZO_SUBTIPO_TRAB_LABEL: Record<PrazoSubtipoTrab, string> = { exp45: "Fim de experiência (45 dias)", exp90: "Fim de experiência (90 dias)", exame: "Exame periódico", uniforme: "Entrega de uniforme" };
+
+// Recorrência: por semana ou por mês; no mês, por dia absoluto ou dia útil.
+export type PrazoRecorrencia = {
+  unidade: "semana" | "mes";
+  intervalo: number;                    // a cada N
+  modo?: "dia_absoluto" | "dia_util";   // só mes
+  diaDoMes?: number;                    // dia_absoluto: 1..31
+  diaUtil?: number | "ultimo";          // dia_util: Nº dia útil ou "último"
+  diasSemana?: number[];                // semana: 0=Dom..6=Sáb
+};
+
+export type PrazoLaudo = {
+  driveFileId?: string;
+  driveUrl?: string;
+  nome: string;
+  anexadoEm: string;
+  anexadoPor?: string | null;
+  anexadoPorNome?: string | null;
+};
+
+export type PrazoAgendamento = {
+  data: string;                         // YYYY-MM-DD (dia da execução)
+  tarefaId?: string | null;             // tarefa criada no Gestor de Tarefas
+  agendadoEm: string;
+  agendadoPor?: string | null;
+};
+
+// Uma ocorrência já realizada (arquivada no histórico). Congelada — editar a
+// definição do prazo NÃO reescreve o histórico.
+export type PrazoOcorrenciaHist = {
+  vencimento: string;                   // a data que venceu
+  resolvidoEm: string;
+  resolvidoPor?: string | null;
+  resolvidoPorNome?: string | null;
+  agendamento?: PrazoAgendamento | null;
+  laudo?: PrazoLaudo | null;
+  valor?: number | null;                // conta: valor pago
+};
+
+export type Prazo = {
+  id: string;
+  restaurantIds: string[];              // 1+ (compartilhado entre empresas quando >1)
+  titulo: string;
+  tipo: PrazoTipo;
+  vencimento: string;                   // YYYY-MM-DD — a ocorrência da vez
+  responsavelId?: string | null;
+  responsavelNome?: string | null;
+  antecedenciaDias?: number;            // avisa/aparece X dias antes do vencimento
+  recorrencia?: PrazoRecorrencia | null;
+  exigeLaudo?: boolean;                 // trava a resolução até anexar o laudo
+  status: PrazoStatus;
+  // Extras por tipo:
+  dados?: {
+    valor?: number; pix?: string; categoria?: string;                       // conta
+    fornecedor?: string; numeroLaudo?: string;                              // tecnico
+    empregadoId?: string; empregadoNome?: string; subtipoTrab?: PrazoSubtipoTrab;  // trabalhista
+  };
+  laudo?: PrazoLaudo | null;            // laudo da ocorrência atual
+  agendamento?: PrazoAgendamento | null;
+  // Origem (alimentador): admissão etc. Prazos é dono; se a origem mudar, marca revisão.
+  origem?: { modulo: string; refId: string } | null;
+  precisaRevisao?: boolean;             // selo "revisar" quando o fato de origem mudou
+  revisaoMotivo?: string | null;
+  historico?: PrazoOcorrenciaHist[];    // ocorrências realizadas (auditável)
+  notas?: string;
+  criadoEm: string;
+  criadoPor?: string | null;
+  atualizadoEm?: string;
+  deletadoEm?: string | null;
+  deletadoPor?: string | null;
 };
 
 export type WhatsappNumero = {

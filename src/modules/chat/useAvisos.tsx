@@ -22,8 +22,9 @@ import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { canAcao, resolverPerfil } from "../../core/auth/permissions";
 import { SETORES } from "../../core/wiki/setores";
 import { useAvisoSource, type AvisoDoc } from "./useAvisoSource";
-import type { AvisoDirecionado, FaleDpMensagem, Rotina, RotinaConclusao, WikiProcesso, FalhaLog } from "../../core/types";
-import { FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE } from "../../core/types";
+import type { AvisoDirecionado, FaleDpMensagem, Rotina, RotinaConclusao, WikiProcesso, FalhaLog, Prazo } from "../../core/types";
+import { FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE, PRAZO_TIPO_LABEL } from "../../core/types";
+import { noRadar, diasAte } from "../prazos/logic";
 import { pendentesParaPessoa } from "../rotinas/repository";
 import { recorrenciaLabel } from "../rotinas/rotinasEngine";
 import { deepLinkRotina } from "../rotinas/subDestinos";
@@ -171,6 +172,19 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       query(collection(db, "manutencoes"), where("restaurantIds", "array-contains-any", rids)),
       (snap) => setManuts(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ManutAviso).filter((m) => !m.deletadoEm && m.ativo !== false)),
       () => setManuts([]),
+    );
+    return () => u();
+  }, [ridsKeyAll]);
+
+  // ── Prazos (módulo novo unificado): vencidos + a vencer dentro da antecedência ──
+  const [prazosAv, setPrazosAv] = useState<Prazo[]>([]);
+  useEffect(() => {
+    const rids = ridsKeyAll ? ridsKeyAll.split(",").slice(0, 10) : [];
+    if (!rids.length) { setPrazosAv([]); return; }
+    const u = onSnapshot(
+      query(collection(db, "prazos"), where("restaurantIds", "array-contains-any", rids)),
+      (s) => setPrazosAv(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Prazo).filter((p) => !p.deletadoEm && p.status !== "resolvido")),
+      () => setPrazosAv([]),
     );
     return () => u();
   }, [ridsKeyAll]);
@@ -479,6 +493,25 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         restauranteId: r, restauranteNome: nomePorRid[r] || "Restaurante",
         cta: "Abrir Manutenções", href: `/r/${r}/manutencoes`,
         categoria: "Manutenções", categoriaIcone: "🧰",
+      });
+    }
+
+    // ── Prazos (módulo novo): 1 card por prazo no radar (vencido ou a vencer). ──
+    for (const p of prazosAv) {
+      if (!noRadar(p, hoje)) continue;
+      const r = (p.restaurantIds || []).find((x) => meusRids.has(x) && pessoa && canAcao(pessoa, x, "prazos", "receberAvisos", perfis));
+      if (!r) continue;
+      const dias = diasAte(hoje, p.vencimento);
+      const vencido = dias < 0;
+      out.push({
+        id: `prazo_${p.id}`,
+        tipo: "prazo", icone: vencido ? "⚠️" : "📅",
+        titulo: `Prazo ${vencido ? "vencido" : "a vencer"} · ${PRAZO_TIPO_LABEL[p.tipo]}`,
+        descricao: `${p.titulo} — ${vencido ? `venceu há ${-dias} dia(s)` : dias === 0 ? "vence hoje" : `vence em ${dias} dia(s)`}${p.exigeLaudo && !p.laudo ? " · exige laudo" : ""}`,
+        em: p.vencimento,
+        restauranteId: r, restauranteNome: nomePorRid[r] || "Restaurante",
+        cta: "Abrir Prazos", href: `/r/${r}/prazos`,
+        categoria: "Prazos", categoriaIcone: "📅",
       });
     }
 
@@ -813,7 +846,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     minhaAcao, minhaProducao, checklistTpl, checklistRun, cobrancasInt,
     reembReceber, reembPagos, manuts,
     empTrab, exTrab, uniTrab, trabResolv, iaAlertas, avisosDir, candidaturasAdmissao,
-    falhas,
+    falhas, prazosAv,
   ]);
 
   // ── Estado de leitura (overlay persistido por pessoa) ──
