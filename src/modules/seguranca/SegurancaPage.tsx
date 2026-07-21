@@ -10,6 +10,7 @@ import { Button } from "../../core/ui/Button";
 import type { SegurancaAvaliacao, SegurancaModelo } from "../../core/types";
 import { ouvirModelos, ouvirAvaliacoes, criarModeloSemente, criarAvaliacao, excluirAvaliacao } from "./repository";
 import { Preenchimento } from "./Preenchimento";
+import { ModeloEditor } from "./ModeloEditor";
 
 const dmy = (ymd: string) => (ymd || "").split("-").reverse().join("/");
 
@@ -26,6 +27,7 @@ export function SegurancaPage() {
   const [modelos, setModelos] = useState<SegurancaModelo[]>([]);
   const [avaliacoes, setAvaliacoes] = useState<SegurancaAvaliacao[]>([]);
   const [abertaId, setAbertaId] = useState<string | null>(null);
+  const [editando, setEditando] = useState(false);
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState("");
 
@@ -70,6 +72,13 @@ export function SegurancaPage() {
       </div>
     );
   }
+  if (editando && modeloAtivo) {
+    return (
+      <div className="max-w-3xl mx-auto">
+        <ModeloEditor modelo={modeloAtivo} onClose={() => setEditando(false)} />
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-3xl mx-auto space-y-5">
@@ -78,9 +87,14 @@ export function SegurancaPage() {
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">🧪 Segurança Sanitária</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Avaliação de boas práticas por área. Cada não-conforme vira ação para a operação.</p>
         </div>
-        {podePreencher && modeloAtivo && (
-          <Button onClick={() => void novaAvaliacao()} disabled={busy}>+ Nova avaliação</Button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {podeConfig && modeloAtivo && (
+            <Button variant="secondary" onClick={() => setEditando(true)}>⚙ Checklist</Button>
+          )}
+          {podePreencher && modeloAtivo && (
+            <Button onClick={() => void novaAvaliacao()} disabled={busy}>+ Nova avaliação</Button>
+          )}
+        </div>
       </header>
 
       {erro && <div className="text-sm rounded-lg px-3 py-2 bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400">{erro}</div>}

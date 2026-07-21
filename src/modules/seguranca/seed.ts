@@ -4,7 +4,7 @@
 // (Cozinha/Bar/Salão/Limpeza); a nutricionista responde os que se aplicam em
 // cada área e refina depois na configuração. Item "sem pontuação" → pontua:false.
 import type { SegurancaBloco, SegurancaItem } from "../../core/types";
-import { AREAS, SEGURANCA_FAIXAS_PADRAO } from "../../core/types";
+import { SEGURANCA_FAIXAS_PADRAO } from "../../core/types";
 
 export const SEED_FAIXAS = SEGURANCA_FAIXAS_PADRAO;
 
@@ -17,9 +17,11 @@ export const SEED_BLOCOS: SegurancaBloco[] = [
   { id: "b_documentacao", nome: "Documentação obrigatória", ordem: 6 },
 ];
 
-// Helper: monta o item com áreas = todas e pontua = true (default).
+// Helper: monta o item. Bootstrap com área "Cozinha" (o PDF-semente é a lista
+// da área de alimentos); no editor a nutricionista redistribui cada item pra
+// sua área e duplica os que valem pra mais de uma. pontua = true por padrão.
 const it = (id: string, blocoId: string, ordem: number, texto: string, pontua = true): SegurancaItem =>
-  ({ id, texto, blocoId, ordem, pontua, areas: [...AREAS] });
+  ({ id, texto, blocoId, ordem, pontua, area: "Cozinha" });
 
 export const SEED_ITENS: SegurancaItem[] = [
   // Qualidade dos alimentos

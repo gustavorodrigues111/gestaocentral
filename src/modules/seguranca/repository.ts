@@ -93,7 +93,7 @@ export async function criarAvaliacao(
   return ref.id;
 }
 
-// Grava a resposta de UM item (numa área) ao vivo. key = segKey(area,itemId).
+// Grava a resposta de UM item ao vivo. key = itemId (cada item é de uma área).
 export async function salvarResultado(avaliacaoId: string, key: string, r: SegurancaResultadoItem): Promise<void> {
   await updateDoc(doc(db, COL_AVALIACOES, avaliacaoId), { [`resultado.${key}`]: sanitizeForFirestore(r) });
 }
@@ -102,14 +102,14 @@ export async function limparResultado(avaliacaoId: string, key: string): Promise
 }
 
 // Cálculo puro da nota: % de conformes entre os itens PONTUÁVEIS respondidos.
+// A chave do `resultado` é o próprio itemId.
 export function calcularScore(
   resultado: Record<string, SegurancaResultadoItem>,
   itens: SegurancaItem[],
 ): { score: number; conformes: number; naoConformes: number; respondidos: number } {
   const pontua = new Set(itens.filter((i) => i.pontua).map((i) => i.id));
   let conf = 0, nc = 0;
-  for (const [key, r] of Object.entries(resultado || {})) {
-    const itemId = key.slice(key.indexOf("__") + 2);
+  for (const [itemId, r] of Object.entries(resultado || {})) {
     if (!pontua.has(itemId)) continue;
     if (r.resposta === "conforme") conf++;
     else if (r.resposta === "nao_conforme") nc++;

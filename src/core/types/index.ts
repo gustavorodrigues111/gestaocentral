@@ -230,7 +230,9 @@ export type SegurancaItem = {
   id: string;
   texto: string;
   blocoId: string;
-  areas: Area[];         // áreas onde este item é avaliado (1+)
+  area?: Area;           // a área a que este item pertence (checklist é ÚNICO;
+                         // cada item é de UMA área; a mesma pergunta em 2 áreas
+                         // = cadastrar 2 itens). undefined = ainda não atribuída.
   ordem: number;
   pontua: boolean;       // false = informativo, não entra na nota
   descricao?: string;    // "o que observar" (guia opcional)
@@ -249,7 +251,8 @@ export type SegurancaModelo = {
   atualizadoEm?: string;
 };
 
-// Resultado de UM item numa área. Chave no mapa = segKey(area, itemId).
+// Resultado de UM item. Chave no mapa `resultado` = o próprio itemId (cada item
+// já é de uma área única, então não precisa compor com a área).
 export type SegurancaResultadoItem = {
   resposta: SegurancaResposta;
   observacao?: string;
@@ -289,9 +292,13 @@ export type SegurancaAvaliacao = {
   log?: SegurancaAvaliacaoLog[];
 };
 
-// Chave do resultado por (área, item). Slug evita '.'/acento no field-path do
-// Firestore (updateDoc usa caminho pontuado `resultado.<key>`).
-export const segKey = (area: Area, itemId: string): string => `${AREA_SLUG[area]}__${itemId}`;
+// Cor de chip por área (identidade visual do módulo — só realce).
+export const AREA_CHIP: Record<Area, { bg: string; fg: string; dot: string }> = {
+  Cozinha: { bg: "bg-orange-50 dark:bg-orange-950/30", fg: "text-orange-700 dark:text-orange-300", dot: "#ea580c" },
+  Bar:     { bg: "bg-indigo-50 dark:bg-indigo-950/30", fg: "text-indigo-700 dark:text-indigo-300", dot: "#4f46e5" },
+  "Salão": { bg: "bg-emerald-50 dark:bg-emerald-950/30", fg: "text-emerald-700 dark:text-emerald-300", dot: "#059669" },
+  Limpeza: { bg: "bg-sky-50 dark:bg-sky-950/30", fg: "text-sky-700 dark:text-sky-300", dot: "#0284c7" },
+};
 
 // Tipo de vínculo do CARGO (define se quem tem esse cargo vê Portal do Empregado)
 export type TipoVinculo = "registrado" | "provisorio" | "estagiario" | "terceirizado";
