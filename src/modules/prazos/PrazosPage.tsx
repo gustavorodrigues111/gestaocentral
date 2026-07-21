@@ -10,6 +10,8 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
+import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
+import { canAcao } from "../../core/auth/permissions";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { uploadFileToFolder } from "../../core/google/driveShared";
 import type { Prazo, PrazoTipo, Empregado, Pessoa, Imovel } from "../../core/types";
@@ -35,6 +37,7 @@ export function PrazosPage() {
   const { restaurants, activeRestaurant } = useRestaurant();
   const isMaster = !!me?.isMaster;
   const { can } = useCanAcao(rid || "");
+  const { perfis } = useAccessProfiles();
   const podeVer = isMaster || can("prazos", "ver");
   const podeGerir = isMaster || can("prazos", "gerir");
 
@@ -66,6 +69,8 @@ export function PrazosPage() {
     return () => { u1(); u2(); u3(); u4(); };
   }, [rid, todosRest, isMaster]);
   const imovelNome = (id?: string | null) => imoveis.find((im) => im.id === id)?.apelido || "";
+  // Responsáveis possíveis = só quem tem acesso ao módulo Prazos nesta empresa.
+  const responsaveis = useMemo(() => pessoas.filter((pp) => (pp.restaurantIds || []).includes(rid || "") && (pp.isMaster || canAcao(pp, rid || "", "prazos", "ver", perfis) || canAcao(pp, rid || "", "prazos", "gerir", perfis))), [pessoas, rid, perfis]);
 
   const hoje = hojeYmd();
   const restNome = (ids: string[]) => restaurants.find((r) => ids.includes(r.id))?.nome || "";
@@ -219,7 +224,7 @@ export function PrazosPage() {
       )}
 
       {modal && (
-        <PrazoModal rid={rid || ""} prazo={modal.prazo} empregados={empregados} pessoas={pessoas.filter((pp) => (pp.restaurantIds || []).includes(rid || ""))} imoveis={imoveis} onGerenciarImoveis={() => setShowImoveis(true)} onClose={() => setModal(null)} onSalvar={salvarPrazo} />
+        <PrazoModal rid={rid || ""} prazo={modal.prazo} empregados={empregados} pessoas={responsaveis} imoveis={imoveis} onGerenciarImoveis={() => setShowImoveis(true)} onClose={() => setModal(null)} onSalvar={salvarPrazo} />
       )}
       {showImoveis && <ImoveisModal rid={rid || ""} restauranteNome={activeRestaurant?.nome || ""} imoveis={imoveis} meId={me?.id || ""} onClose={() => setShowImoveis(false)} />}
     </div>

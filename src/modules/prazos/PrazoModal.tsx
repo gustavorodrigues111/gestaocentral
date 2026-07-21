@@ -80,8 +80,8 @@ export function PrazoModal({ rid, prazo, empregados, pessoas, imoveis, onGerenci
         {/* Tipo */}
         <div className="flex gap-1.5">
           {TIPOS.map(({ v, icon }) => (
-            <button key={v} type="button" onClick={() => trocarTipo(v)} className={`flex-1 flex flex-col items-center gap-1 py-2 text-xs rounded-lg border ${tipo === v ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
-              <span className="text-lg">{icon}</span>{PRAZO_TIPO_LABEL[v]}
+            <button key={v} type="button" onClick={() => trocarTipo(v)} className={`flex-1 flex flex-col items-center justify-center gap-1 min-h-[64px] py-2 text-xs rounded-lg border ${tipo === v ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
+              <span className="text-lg leading-none">{icon}</span><span className="leading-none">{PRAZO_TIPO_LABEL[v]}</span>
             </button>
           ))}
         </div>
@@ -142,12 +142,12 @@ export function PrazoModal({ rid, prazo, empregados, pessoas, imoveis, onGerenci
         {(tipo === "tecnico" || tipo === "conta") && (
           <div>
             <label className="text-xs text-gray-500 block mb-1">Imóvel <span className="text-gray-400">(opcional)</span></label>
-            <div className="flex gap-2">
-              <select value={imovelId} onChange={(e) => setImovelId(e.target.value)} className={inp}>
-                <option value="">— nenhum</option>
-                {imoveis.map((im) => <option key={im.id} value={im.id}>{im.apelido}</option>)}
-              </select>
-              <button type="button" onClick={onGerenciarImoveis} className="text-xs px-2.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 whitespace-nowrap">🏠 Gerenciar</button>
+            <div className="flex flex-wrap gap-1.5">
+              <button type="button" onClick={() => setImovelId("")} className={chip(imovelId === "")}>Nenhum</button>
+              {imoveis.map((im) => (
+                <button key={im.id} type="button" onClick={() => setImovelId(im.id)} className={chip(imovelId === im.id)}>🏠 {im.apelido}</button>
+              ))}
+              <button type="button" onClick={onGerenciarImoveis} className="px-3 py-1.5 text-xs rounded-full border border-dashed border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400">+ Imóvel</button>
             </div>
           </div>
         )}
