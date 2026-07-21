@@ -6067,6 +6067,7 @@ export type PrazoRecorrencia = {
   modo?: "dia_absoluto" | "dia_util";   // só mes
   diaDoMes?: number;                    // dia_absoluto: 1..31
   diaUtil?: number | "ultimo";          // dia_util: Nº dia útil ou "último"
+  contaSabado?: boolean;                // dia_util: sábado conta como dia útil (algumas empresas)
   diasSemana?: number[];                // semana: 0=Dom..6=Sáb
 };
 

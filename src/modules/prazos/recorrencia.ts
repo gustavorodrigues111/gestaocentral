@@ -13,29 +13,32 @@ function parse(ymd: string): Date {
   const [a, m, d] = ymd.split("-").map(Number);
   return new Date(a, (m || 1) - 1, d || 1, 12, 0, 0);
 }
-function ehFimDeSemana(d: Date): boolean {
+// Domingo nunca é dia útil; sábado só é NÃO-útil quando contaSabado=false.
+function ehNaoUtil(d: Date, contaSabado: boolean): boolean {
   const w = d.getDay();
-  return w === 0 || w === 6;
+  if (w === 0) return true;
+  if (w === 6) return !contaSabado;
+  return false;
 }
 function ultimoDiaDoMes(ano: number, mes0: number): number {
   return new Date(ano, mes0 + 1, 0).getDate();
 }
 
-// Nº-ésimo dia útil do mês (seg–sex). Se n excede os dias úteis, retorna o último.
-export function nthDiaUtil(ano: number, mes0: number, n: number): Date {
+// Nº-ésimo dia útil do mês. Se n excede os dias úteis, retorna o último.
+export function nthDiaUtil(ano: number, mes0: number, n: number, contaSabado = false): Date {
   const ult = ultimoDiaDoMes(ano, mes0);
   let contados = 0, ultimoUtil = 1;
   for (let dia = 1; dia <= ult; dia++) {
     const d = new Date(ano, mes0, dia, 12, 0, 0);
-    if (!ehFimDeSemana(d)) { contados++; ultimoUtil = dia; if (contados === n) return d; }
+    if (!ehNaoUtil(d, contaSabado)) { contados++; ultimoUtil = dia; if (contados === n) return d; }
   }
   return new Date(ano, mes0, ultimoUtil, 12, 0, 0);
 }
-export function ultimoDiaUtil(ano: number, mes0: number): Date {
+export function ultimoDiaUtil(ano: number, mes0: number, contaSabado = false): Date {
   const ult = ultimoDiaDoMes(ano, mes0);
   for (let dia = ult; dia >= 1; dia--) {
     const d = new Date(ano, mes0, dia, 12, 0, 0);
-    if (!ehFimDeSemana(d)) return d;
+    if (!ehNaoUtil(d, contaSabado)) return d;
   }
   return new Date(ano, mes0, 1, 12, 0, 0);
 }
@@ -43,7 +46,8 @@ export function ultimoDiaUtil(ano: number, mes0: number): Date {
 // Data do prazo num mês específico, conforme o modo (dia absoluto ou dia útil).
 function dataNoMes(rec: PrazoRecorrencia, ano: number, mes0: number): Date {
   if (rec.modo === "dia_util") {
-    return rec.diaUtil === "ultimo" ? ultimoDiaUtil(ano, mes0) : nthDiaUtil(ano, mes0, Math.max(1, Number(rec.diaUtil) || 1));
+    const cs = !!rec.contaSabado;
+    return rec.diaUtil === "ultimo" ? ultimoDiaUtil(ano, mes0, cs) : nthDiaUtil(ano, mes0, Math.max(1, Number(rec.diaUtil) || 1), cs);
   }
   const dia = Math.min(Math.max(1, rec.diaDoMes || 1), ultimoDiaDoMes(ano, mes0));
   return new Date(ano, mes0, dia, 12, 0, 0);
@@ -95,10 +99,11 @@ export function resumoRecorrencia(rec: PrazoRecorrencia | null | undefined): str
   if (!rec) return "Não repete";
   const n = Math.max(1, Math.round(rec.intervalo || 1));
   if (rec.unidade === "mes") {
+    const sab = rec.modo === "dia_util" && rec.contaSabado ? " (sáb conta)" : "";
     const base = rec.modo === "dia_util"
       ? (rec.diaUtil === "ultimo" ? "Último dia útil" : `${rec.diaUtil || 1}º dia útil`)
       : `Dia ${rec.diaDoMes || 1}`;
-    return n === 1 ? `${base} do mês` : `${base}, a cada ${n} meses`;
+    return (n === 1 ? `${base} do mês` : `${base}, a cada ${n} meses`) + sab;
   }
   const nomes = (rec.diasSemana || []).slice().sort((a, b) => a - b).map((d) => DIAS_SEMANA_CURTO[d]);
   if (!nomes.length) return "Semanal";

@@ -37,6 +37,23 @@ describe("proximoVencimento — mensal por dia útil", () => {
   });
 });
 
+describe("proximoVencimento — dia útil com sábado contando", () => {
+  it("1º dia útil de ago/2026 SEM sábado = seg 03/08", () => {
+    const r: PrazoRecorrencia = { unidade: "mes", intervalo: 1, modo: "dia_util", diaUtil: 1, contaSabado: false };
+    expect(proximoVencimento(r, "2026-07-31")).toBe("2026-08-03");
+  });
+  it("1º dia útil de ago/2026 COM sábado = sáb 01/08", () => {
+    // Ago/2026: 01=sáb. Com sábado contando, o 1º dia útil é o próprio sábado.
+    const r: PrazoRecorrencia = { unidade: "mes", intervalo: 1, modo: "dia_util", diaUtil: 1, contaSabado: true };
+    expect(proximoVencimento(r, "2026-07-31")).toBe("2026-08-01");
+  });
+  it("último dia útil de maio/2026 COM sábado = sáb 30/05", () => {
+    // Mai/2026: 31=dom, 30=sáb. Sem sábado → 29 (sex). Com sábado → 30 (sáb).
+    const r: PrazoRecorrencia = { unidade: "mes", intervalo: 1, modo: "dia_util", diaUtil: "ultimo", contaSabado: true };
+    expect(proximoVencimento(r, "2026-04-30")).toBe("2026-05-30");
+  });
+});
+
 describe("proximoVencimento — semanal", () => {
   it("toda segunda (2026-07-20 é segunda → próxima 27/07)", () => {
     const r: PrazoRecorrencia = { unidade: "semana", intervalo: 1, diasSemana: [1] };

@@ -220,6 +220,11 @@ function RecorrenciaEditor({ rec, onChange }: { rec: PrazoRecorrencia | null; on
                   <Stepper value={r.diaDoMes || 1} onChange={(n) => patch({ diaDoMes: Math.min(31, Math.max(1, n)) })} min={1} max={31} />
                 )}
               </div>
+              {r.modo === "dia_util" && (
+                <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 cursor-pointer pl-[4.5rem]">
+                  <input type="checkbox" checked={!!r.contaSabado} onChange={(e) => patch({ contaSabado: e.target.checked })} /> Sábado conta como dia útil
+                </label>
+              )}
             </>
           ) : (
             <div className="flex items-center gap-2.5">
