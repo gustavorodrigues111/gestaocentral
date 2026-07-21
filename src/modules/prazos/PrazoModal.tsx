@@ -80,7 +80,7 @@ export function PrazoModal({ rid, prazo, empregados, pessoas, imoveis, onGerenci
         {/* Tipo */}
         <div className="flex gap-1.5">
           {TIPOS.map(({ v, icon }) => (
-            <button key={v} type="button" onClick={() => trocarTipo(v)} className={`flex-1 flex flex-col items-center justify-center gap-1 min-h-[64px] py-2 text-xs rounded-lg border ${tipo === v ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
+            <button key={v} type="button" onClick={() => trocarTipo(v)} style={{ height: 66 }} className={`flex-1 flex flex-col items-center justify-center gap-1 text-xs rounded-lg border box-border ${tipo === v ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
               <span className="text-lg leading-none">{icon}</span><span className="leading-none">{PRAZO_TIPO_LABEL[v]}</span>
             </button>
           ))}
@@ -95,8 +95,10 @@ export function PrazoModal({ rid, prazo, empregados, pessoas, imoveis, onGerenci
           </div>
         </div>
 
-        <div><label className="text-xs text-gray-500 block mb-1">Avisar {antec} dias antes</label>
-          <input type="number" min={0} max={365} value={antec} onChange={(e) => setAntec(Math.max(0, parseInt(e.target.value) || 0))} className="w-24 px-2.5 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+        <div className="flex items-center gap-2 text-sm text-gray-600 dark:text-gray-300">
+          <span>Avisar</span>
+          <input type="number" min={0} max={365} value={antec} onChange={(e) => setAntec(Math.max(0, parseInt(e.target.value) || 0))} className="w-14 px-2 py-1.5 text-sm text-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+          <span>dias antes do vencimento</span>
         </div>
 
         <RecorrenciaEditor rec={rec} onChange={setRec} />
