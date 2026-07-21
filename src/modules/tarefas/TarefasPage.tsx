@@ -3243,6 +3243,7 @@ function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaI
         {puxarAberto && (
           <PuxarIdeiaOcorrenciaModal
             pessoaIdAtual={pessoaId}
+            restaurantes={restaurantes}
             onClose={() => setPuxarAberto(false)}
             onEscolher={(item) => {
               setPuxando({ tipo: item.tipo, id: item.id, titulo: item.titulo });
