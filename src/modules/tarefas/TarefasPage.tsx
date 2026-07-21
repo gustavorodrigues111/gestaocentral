@@ -3275,6 +3275,7 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
 
   const [novaSubtarefa, setNovaSubtarefa] = useState("");
   const [novoComentario, setNovoComentario] = useState("");
+  const [detMais, setDetMais] = useState(false);
   const [editandoTitulo, setEditandoTitulo] = useState(false);
   const [tituloDraft, setTituloDraft] = useState(tarefa.titulo);
   const [editandoDescricao, setEditandoDescricao] = useState(false);
@@ -3549,11 +3550,9 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
               </select>
             </FieldRow>
             <FieldRow label="Data de conclusão">
-              <input
-                type="date"
-                value={tarefa.prazo || ""}
-                onChange={(e) => salvarCampo("prazo", e.target.value || null, "prazo")}
-                className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-2 py-1 text-sm cursor-pointer w-full"
+              <DatePickerBR
+                value={ymdParaBr(tarefa.prazo || "")}
+                onChange={(br) => salvarCampo("prazo", brParaYmd(br) || null, "prazo")}
               />
             </FieldRow>
             <FieldRow label="Status">
@@ -3578,6 +3577,15 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                 )}
               </select>
             </FieldRow>
+            <button
+              type="button"
+              onClick={() => setDetMais(v => !v)}
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 pt-1"
+            >
+              <span className={`transition-transform ${detMais ? "rotate-90" : ""}`}>▸</span> Mais opções
+              <span className="text-gray-400">— co-responsáveis, observadores, empresas, visibilidade</span>
+            </button>
+            {detMais && (<>
             <FieldRow label="Co-responsáveis">
               <CoRespPicker tarefa={tarefa} pessoas={pessoasLista} autor={autor} />
             </FieldRow>
@@ -3645,6 +3653,7 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                 {tarefa.origemRefLabel && <span className="text-gray-400"> · {tarefa.origemRefLabel}</span>}
               </div>
             </FieldRow>
+            </>)}
           </div>
 
           <div className="border-t border-gray-100 dark:border-gray-800 mx-5" />
