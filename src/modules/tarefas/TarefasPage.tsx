@@ -62,6 +62,12 @@ type ViewMode = "calendario" | "lista" | "kanban";
 
 // Avatar de iniciais do responsável (2 letras) numa bolinha de cor estável por
 // pessoa — pra bater o olho em quem é o dono do card.
+// Órfãs do sistema de prazo ANTIGO: tarefas persistidas com origem conta_fixa/
+// manutencao (o filtro que as escondia saiu junto com o maquinário de derivados
+// na Fase 3). Agora vivem no módulo Prazos — não devem aparecer no Tarefas.
+const ORFAS_PRAZO = new Set(["conta_fixa", "manutencao"]);
+const semOrfasPrazo = (ts: Tarefa[]): Tarefa[] => ts.filter((t) => !ORFAS_PRAZO.has(t.origem));
+
 const AVATAR_CORES = ["#4f46e5", "#0891b2", "#059669", "#d97706", "#db2777", "#7c3aed", "#dc2626", "#0d9488", "#2563eb", "#9333ea"];
 function iniciaisNome(nome?: string): string {
   const parts = (nome || "").trim().split(/\s+/).filter(Boolean);
@@ -254,14 +260,14 @@ export function TarefasPage() {
   // Minhas tarefas
   useEffect(() => {
     if (!pessoa?.id) return;
-    const u = ouvirTarefasDeUsuario(pessoa.id, setMinhas);
+    const u = ouvirTarefasDeUsuario(pessoa.id, (ts) => setMinhas(semOrfasPrazo(ts)));
     return () => u();
   }, [pessoa?.id]);
 
   // Tarefas do projeto filtrado
   useEffect(() => {
     if (tab !== "projeto" || !projetoFiltro) { setTarefasProjeto([]); return; }
-    const u = ouvirTarefasDeProjeto(projetoFiltro, setTarefasProjeto);
+    const u = ouvirTarefasDeProjeto(projetoFiltro, (ts) => setTarefasProjeto(semOrfasPrazo(ts)));
     return () => u();
   }, [tab, projetoFiltro]);
 
@@ -275,7 +281,7 @@ export function TarefasPage() {
   // Todas as tarefas (master) — só ouve quando a aba está aberta.
   useEffect(() => {
     if (tab !== "todas" || !pessoaReal?.isMaster) return;
-    const u = ouvirTodasTarefas(setTodasTarefas);
+    const u = ouvirTodasTarefas((ts) => setTodasTarefas(semOrfasPrazo(ts)));
     return () => u();
   }, [tab, pessoaReal?.isMaster]);
 
