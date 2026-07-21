@@ -6,7 +6,7 @@ export function Stepper({ value, onChange, min = 0, max = 999, sufixo }: { value
   return (
     <div className="inline-flex items-center rounded-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden select-none">
       <button type="button" onClick={() => onChange(Math.max(min, value - 1))} className="w-8 h-8 flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 text-base leading-none">−</button>
-      <span className="min-w-[2.5rem] px-1 text-center text-sm font-medium tabular-nums text-gray-900 dark:text-gray-100">{value}{sufixo ? <span className="text-xs text-gray-400 font-normal ml-0.5">{sufixo}</span> : null}</span>
+      <span className="min-w-[2.25rem] px-1 text-center text-sm font-medium tabular-nums text-gray-900 dark:text-gray-100">{value}{sufixo || ""}</span>
       <button type="button" onClick={() => onChange(Math.min(max, value + 1))} className="w-8 h-8 flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 text-base leading-none">+</button>
     </div>
   );

@@ -203,12 +203,22 @@ function RecorrenciaEditor({ rec, onChange }: { rec: PrazoRecorrencia | null; on
               </div>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <span className="text-xs text-gray-500 w-16 shrink-0">{r.modo === "dia_util" ? "No" : "Dia"}</span>
-                {r.modo === "dia_util"
-                  ? ([1, 2, 3, 4, 5, 10, "ultimo"] as const).map((n) => (
-                      <button key={n} type="button" onClick={() => patch({ diaUtil: n })} className={chip((r.diaUtil ?? 1) === n)}>{n === "ultimo" ? "último" : `${n}º`}</button>
-                    ))
-                  : <Stepper value={r.diaDoMes || 1} onChange={(n) => patch({ diaDoMes: Math.min(31, Math.max(1, n)) })} min={1} max={31} />}
-                {r.modo === "dia_util" && <span className="text-xs text-gray-500">dia útil</span>}
+                {r.modo === "dia_util" ? (
+                  r.diaUtil === "ultimo" ? (
+                    <>
+                      <span className="text-sm font-medium text-gray-700 dark:text-gray-200">Último dia útil</span>
+                      <button type="button" onClick={() => patch({ diaUtil: 1 })} className="px-3 py-1.5 text-xs rounded-full border border-gray-200 dark:border-gray-700 text-gray-500">escolher número</button>
+                    </>
+                  ) : (
+                    <>
+                      <Stepper value={typeof r.diaUtil === "number" ? r.diaUtil : 1} onChange={(n) => patch({ diaUtil: Math.min(23, Math.max(1, n)) })} min={1} max={23} sufixo="º" />
+                      <span className="text-sm text-gray-600 dark:text-gray-300">dia útil</span>
+                      <button type="button" onClick={() => patch({ diaUtil: "ultimo" })} className={chip(false)}>ou o último</button>
+                    </>
+                  )
+                ) : (
+                  <Stepper value={r.diaDoMes || 1} onChange={(n) => patch({ diaDoMes: Math.min(31, Math.max(1, n)) })} min={1} max={31} />
+                )}
               </div>
             </>
           ) : (
