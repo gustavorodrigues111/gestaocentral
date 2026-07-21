@@ -194,7 +194,7 @@ export function TarefasPage() {
         console.log("[tarefas] migração de grupos legados:", r);
         try { localStorage.setItem(FLAG, "1"); } catch {}
         if (r.projetos > 0 || r.tarefas > 0) {
-          alert(`Permissões migradas: ${r.projetos} projeto(s) e ${r.tarefas} tarefa(s) viraram "Privado". Adicione as pessoas autorizadas em cada um conforme necessário.`);
+          alert(`Permissões migradas: ${r.projetos} área(s) e ${r.tarefas} tarefa(s) viraram "Privado". Adicione as pessoas autorizadas em cada uma conforme necessário.`);
         }
       })
       .catch(e => console.warn("[tarefas] migração falhou:", e));
@@ -214,7 +214,7 @@ export function TarefasPage() {
           console.log("[tarefas] subprojetos de prazos apagados:", r);
           const base = `✅ Limpeza: ${r.length} subprojeto(s) de prazos apagados (viraram cards derivados no grupo Prazos).`;
           const aviso = comTarefas.length
-            ? `\n\n⚠️ ${comTarefas.map(x => `"${x.nome}" ainda tinha ${x.tarefas} tarefa(s)`).join("; ")} — elas continuam no projeto (em "todos os subprojetos"), só perderam a referência ao subprojeto. Nenhuma tarefa foi apagada.`
+            ? `\n\n⚠️ ${comTarefas.map(x => `"${x.nome}" ainda tinha ${x.tarefas} tarefa(s)`).join("; ")} — elas continuam na área (em "todos os projetos"), só perderam a referência ao projeto. Nenhuma tarefa foi apagada.`
             : " Nenhuma tarefa foi afetada.";
           alert(base + aviso);
         }
@@ -236,9 +236,9 @@ export function TarefasPage() {
         if (r.destravados) partes.push(`${r.destravados} rotina(s) destravada(s) (agora editáveis)`);
         if (r.apagados.length) {
           const comT = r.apagados.filter(x => x.tarefas > 0);
-          partes.push(`${r.apagados.length} subprojeto(s) event-driven removido(s)${comT.length ? ` (${comT.map(x => `"${x.nome}" tinha ${x.tarefas} tarefa(s), continuam no projeto`).join("; ")})` : ""}`);
+          partes.push(`${r.apagados.length} projeto(s) event-driven removido(s)${comT.length ? ` (${comT.map(x => `"${x.nome}" tinha ${x.tarefas} tarefa(s), continuam na área`).join("; ")})` : ""}`);
         }
-        if (r.eventos) partes.push(`Eventos mesclado em ${r.eventos.operacao}: ${r.eventos.subs} subprojeto(s) + ${r.eventos.tarefas} tarefa(s) movidas`);
+        if (r.eventos) partes.push(`Eventos mesclado em ${r.eventos.operacao}: ${r.eventos.subs} projeto(s) + ${r.eventos.tarefas} tarefa(s) movidas`);
         if (partes.length) alert("✅ Reorganização do Gestor:\n\n• " + partes.join("\n• ") + "\n\nNenhuma tarefa foi apagada.");
       })
       .catch(e => console.warn("[tarefas] reorganização falhou:", e));
@@ -254,7 +254,7 @@ export function TarefasPage() {
         try { localStorage.setItem(FLAG, "1"); } catch {}
         if (r.removido) {
           if (r.tarefasMexidas > 0) {
-            alert(`Caixa Pessoal aposentado. ${r.tarefasMexidas} tarefa(s) ficaram órfãs no projeto removido. Você pode editá-las e movê-las pra outro projeto, ou usar o Banco de Ideias dali pra frente.`);
+            alert(`Caixa Pessoal aposentado. ${r.tarefasMexidas} tarefa(s) ficaram órfãs na área removida. Você pode editá-las e movê-las pra outra área, ou usar o Banco de Ideias dali pra frente.`);
           } else {
             console.log("[tarefas] Caixa Pessoal removido (estava vazio)");
           }
@@ -344,7 +344,7 @@ export function TarefasPage() {
               <div className="fixed inset-0 z-10" onClick={() => setGerenciarMenuAberto(false)} />
               <div className="absolute right-0 mt-1 z-20 w-60 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
                 <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Tarefas</div>
-                <button type="button" onClick={() => { setGerenciarMenuAberto(false); setTab("admin"); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">🗂️ Projetos e subprojetos</button>
+                <button type="button" onClick={() => { setGerenciarMenuAberto(false); setTab("admin"); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">🗂️ Áreas e projetos</button>
               </div>
             </>
           )}
@@ -509,7 +509,7 @@ export function TarefasPage() {
               onChange={(e) => { setProjetoFiltro(e.target.value); setSubFiltro(""); }}
               className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
             >
-              <option value="">— Escolha um projeto —</option>
+              <option value="">— Escolha uma área —</option>
               {projetosVisiveis.map(p => (
                 <option key={p.id} value={p.id}>{p.emoji || "📁"} {p.nome}</option>
               ))}
@@ -520,7 +520,7 @@ export function TarefasPage() {
                 onChange={(e) => setSubFiltro(e.target.value)}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
               >
-                <option value="">— Todos os subprojetos —</option>
+                <option value="">— Todos os projetos —</option>
                 {subprojetosVisiveis
                   .filter(s => s.projetoId === projetoFiltro)
                   .map(s => (
@@ -808,7 +808,7 @@ function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pessoaId, 
       {mostrarFiltros && (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3 p-2 rounded-lg bg-gray-50 dark:bg-gray-800/40">
           <label className="text-xs">
-            <div className="text-gray-500 dark:text-gray-400 mb-1">Projeto</div>
+            <div className="text-gray-500 dark:text-gray-400 mb-1">Área</div>
             <select value={filtroProjeto} onChange={(e) => setFiltroProjeto(e.target.value)} className="w-full px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
               <option value="">— todos —</option>
               {projetos.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>)}
@@ -1128,8 +1128,8 @@ function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas,
       <main className="flex-1 min-w-0">
         {!proj ? (
           <div className="text-center py-12 text-gray-500 dark:text-gray-400 text-sm">
-            <span className="hidden md:inline">Escolha um projeto na lateral pra ver suas tarefas.</span>
-            <span className="md:hidden">Escolha um projeto acima pra ver suas tarefas.</span>
+            <span className="hidden md:inline">Escolha uma área na lateral pra ver suas tarefas.</span>
+            <span className="md:hidden">Escolha uma área acima pra ver suas tarefas.</span>
           </div>
         ) : (
           <>
@@ -1227,7 +1227,7 @@ function BannerSubAuto({ sub, restTravadoId }: {
       <span className="text-3xl shrink-0 leading-none" aria-hidden>🤖</span>
       <div className="flex-1 min-w-0 space-y-1">
         <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm flex items-center gap-2 flex-wrap leading-tight">
-          Subprojeto automático
+          Projeto automático
           {restTravado && (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100">
               🔒 {restTravado.nome}
@@ -1391,7 +1391,7 @@ function AdminView({ projetos, subprojetos, pessoaId }: {
   }, []);
 
   async function deletarProjeto(p: TarefaProjeto) {
-    if (!confirm(`Excluir "${p.nome}"? Todos os subprojetos vão junto. Tarefas existentes não são afetadas (só perdem referência).`)) return;
+    if (!confirm(`Excluir "${p.nome}"? Todos os projetos vão junto. Tarefas existentes não são afetadas (só perdem referência).`)) return;
     await salvarProjeto({
       ...p,
       deletadoEm: new Date().toISOString(),
@@ -1405,13 +1405,13 @@ function AdminView({ projetos, subprojetos, pessoaId }: {
     // num sub que não existe.
     if (s.bloqueadoCriacaoManual) {
       alert(
-        `Subprojeto "${s.nome}" não pode ser excluído porque está marcado como ` +
+        `Projeto "${s.nome}" não pode ser excluído porque está marcado como ` +
         `bloqueado pra criação manual (recebe tarefas de hooks automáticos). ` +
         `Pra excluir, primeiro desmarque o bloqueio no editor.`,
       );
       return;
     }
-    if (!confirm(`Excluir subprojeto "${s.nome}"?`)) return;
+    if (!confirm(`Excluir projeto "${s.nome}"?`)) return;
     await salvarSubprojeto({
       ...s,
       deletadoEm: new Date().toISOString(),
@@ -1454,11 +1454,11 @@ function AdminView({ projetos, subprojetos, pessoaId }: {
       <>
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
         <p className="text-xs sm:text-sm text-gray-500 dark:text-gray-400 sm:flex-1 sm:pr-3">
-          Configuração de projetos e subprojetos do gestor. Mexa com cuidado — afeta todas as tarefas.
+          Configuração de áreas e projetos do gestor. Mexa com cuidado — afeta todas as tarefas.
         </p>
         <div className="flex gap-2 flex-wrap sm:flex-nowrap sm:flex-shrink-0">
           <Button size="sm" variant="ghost" onClick={() => setImportando(true)}>📥 Importar CSV</Button>
-          <Button size="sm" onClick={() => setCriandoProjeto(true)}>+ Novo Projeto</Button>
+          <Button size="sm" onClick={() => setCriandoProjeto(true)}>+ Nova Área</Button>
         </div>
       </div>
       {importando && (
@@ -1489,7 +1489,7 @@ function AdminView({ projetos, subprojetos, pessoaId }: {
                   {p.emoji} {p.nome}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {p.tipo} · {subs.length} subprojeto(s)
+                  {p.tipo} · {subs.length} projeto(s)
                 </div>
                 {/* Quem vê — destaque visual */}
                 <div className="mt-1.5 flex items-start gap-1.5 flex-wrap">
@@ -1568,7 +1568,7 @@ function AdminView({ projetos, subprojetos, pessoaId }: {
                 />
               ) : (
                 <button onClick={() => setCriandoSubIn(p.id)} className="mt-2 text-xs text-emerald-700 dark:text-emerald-300 hover:underline">
-                  + adicionar subprojeto
+                  + adicionar projeto
                 </button>
               )}
             </div>
@@ -1862,10 +1862,10 @@ function ProjetoForm({ projeto, pessoaId, onClose, isModal }: {
 
   const body = (
     <div className={`${isModal ? "p-5" : "p-3 bg-gray-50 dark:bg-gray-800/40 border-t border-gray-100 dark:border-gray-800"} space-y-2`}>
-      {isModal && <h3 className="font-bold mb-2 text-gray-900 dark:text-gray-100">Novo Projeto</h3>}
+      {isModal && <h3 className="font-bold mb-2 text-gray-900 dark:text-gray-100">Nova Área</h3>}
       <div className="grid grid-cols-[80px_1fr] gap-2 text-sm">
         <input value={f.emoji || ""} onChange={(e) => setF({ ...f, emoji: e.target.value })} placeholder="📁" className="adm-input text-center" maxLength={3} />
-        <input value={f.nome || ""} onChange={(e) => setF({ ...f, nome: e.target.value })} placeholder="Nome do projeto" className="adm-input" />
+        <input value={f.nome || ""} onChange={(e) => setF({ ...f, nome: e.target.value })} placeholder="Nome da área" className="adm-input" />
       </div>
       <div className="grid grid-cols-[100px_1fr_1fr_1fr] gap-2 text-xs">
         <input type="color" value={f.cor || "#6366f1"} onChange={(e) => setF({ ...f, cor: e.target.value })} className="adm-input p-0.5 h-7" />
@@ -1879,7 +1879,7 @@ function ProjetoForm({ projeto, pessoaId, onClose, isModal }: {
         </select>
         <input type="number" value={f.ordem ?? 99} onChange={(e) => setF({ ...f, ordem: parseInt(e.target.value) || 99 })} placeholder="ordem" className="adm-input" />
       </div>
-      <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Pessoas autorizadas no projeto inteiro (acesso explícito):</div>
+      <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">Pessoas autorizadas na área inteira (acesso explícito):</div>
       <UsuariosAutorizadosPicker
         ids={f.usuariosAutorizados || []}
         pessoas={pessoasLista}
@@ -2008,8 +2008,8 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
       const projDe = projetos.find(p => p.id === sub.projetoId)?.nome || sub.projetoId;
       const projPra = projetos.find(p => p.id === projetoIdFinal)?.nome || projetoIdFinal;
       const aviso = n > 0
-        ? `Mover subprojeto "${sub.nome}" de "${projDe}" pra "${projPra}"?\n\n${n} tarefa(s) existente(s) vão acompanhar (projeto pai e cor do card atualizam).`
-        : `Mover subprojeto "${sub.nome}" de "${projDe}" pra "${projPra}"?\n\nNão há tarefas existentes — só o subprojeto muda.`;
+        ? `Mover projeto "${sub.nome}" de "${projDe}" pra "${projPra}"?\n\n${n} tarefa(s) existente(s) vão acompanhar (área pai e cor do card atualizam).`
+        : `Mover projeto "${sub.nome}" de "${projDe}" pra "${projPra}"?\n\nNão há tarefas existentes — só o projeto muda.`;
       if (!confirm(aviso)) return;
       const novoProj = projetos.find(p => p.id === projetoIdFinal);
       // Move o subprojeto + cascateia nas tarefas, depois grava os outros
@@ -2053,14 +2053,14 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
 
   return (
     <div className="p-2 mt-1 bg-gray-50 dark:bg-gray-800/40 rounded-md space-y-1.5">
-      <input value={f.nome || ""} onChange={(e) => setF({ ...f, nome: e.target.value })} placeholder="Nome do subprojeto" className="adm-input" />
+      <input value={f.nome || ""} onChange={(e) => setF({ ...f, nome: e.target.value })} placeholder="Nome do projeto" className="adm-input" />
 
       {/* Select de "Projeto pai" — só faz sentido ao editar subprojeto
           existente, pra permitir movê-lo entre projetos. */}
       {sub && (
         <div className="text-xs">
           <label className="block text-gray-600 dark:text-gray-400 mb-0.5">
-            Projeto pai
+            Área pai
             {f.projetoId !== sub.projetoId && (
               <span className="ml-1 text-amber-700 dark:text-amber-400 font-medium">
                 · alteração pendente — tarefas serão movidas junto ao salvar
@@ -2100,7 +2100,7 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
           <div className="flex-1">
             <div className="font-medium text-amber-900 dark:text-amber-200">🔒 Bloquear criação manual</div>
             <div className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
-              Quando ativo, esse sub não aceita "+ Nova tarefa" no app — só recebe
+              Quando ativo, esse projeto não aceita "+ Nova tarefa" no app — só recebe
               tarefas geradas por hooks de outros módulos (Admissão, Exames, etc).
               Bloqueado também não pode ser excluído.
             </div>
@@ -2140,7 +2140,7 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
                 ))}
               </select>
               <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 mt-1">
-                O banner do sub vai mostrar um botão "Ir pra {MODULES.find(m => m.id === moduloAtualId)?.label || "Módulo"}".
+                O banner do projeto vai mostrar um botão "Ir pra {MODULES.find(m => m.id === moduloAtualId)?.label || "Módulo"}".
               </p>
 
               <label className="block text-[10px] uppercase tracking-wider font-bold text-amber-800 dark:text-amber-300 mt-2 mb-0.5">
@@ -2209,7 +2209,7 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
 
       {/* Responsável padrão */}
       <label className="block text-xs">
-        <div className="text-gray-600 dark:text-gray-400 mb-1">Responsável padrão (pra novas tarefas deste subprojeto)</div>
+        <div className="text-gray-600 dark:text-gray-400 mb-1">Responsável padrão (pra novas tarefas deste projeto)</div>
         <select
           value={f.responsavelPadraoId || ""}
           onChange={(e) => setF({ ...f, responsavelPadraoId: e.target.value || undefined })}
@@ -2224,7 +2224,7 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
           neste subprojeto. Filtrado pela visibilidade do projeto pai. */}
       <div className="block text-xs">
         <div className="text-gray-600 dark:text-gray-400 mb-1">
-          Observadores padrão (recebem notificações de toda tarefa nova deste subprojeto)
+          Observadores padrão (recebem notificações de toda tarefa nova deste projeto)
         </div>
         <PessoasMultiPicker
           value={f.observadoresPadraoIds || []}
@@ -3302,7 +3302,7 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
     // Ao trocar projeto, escolhe o 1º subprojeto disponível como default
     const novoSub = subprojetos.find(s => s.projetoId === novoProjetoId);
     if (!novoSub) {
-      alert("Esse projeto não tem subprojetos. Crie um antes ou escolha outro.");
+      alert("Essa área não tem projetos. Crie um antes ou escolha outro.");
       return;
     }
     const novoProj = projetos.find(p => p.id === novoProjetoId);
@@ -3474,7 +3474,7 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                 value={tarefa.projetoId}
                 onChange={(e) => trocarProjeto(e.target.value)}
                 className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-1 text-xs cursor-pointer"
-                title="Trocar projeto"
+                title="Trocar área"
               >
                 {projetos.map(p => (
                   <option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>
@@ -3485,7 +3485,7 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                 value={tarefa.subprojetoId}
                 onChange={(e) => salvarCampo("subprojetoId", e.target.value, "subprojeto")}
                 className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-1 text-xs cursor-pointer"
-                title="Trocar subprojeto"
+                title="Trocar projeto"
               >
                 {subprojetos.filter(s => s.projetoId === tarefa.projetoId).map(s => (
                   <option key={s.id} value={s.id}>{s.nome}</option>
@@ -3626,7 +3626,7 @@ function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: {
                   }}
                   className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-2 py-1 text-sm cursor-pointer w-full"
                 >
-                  <option value="">— A mesma do projeto ({projeto && TAREFA_VISIBILIDADE_LABEL[projeto.visibilidade]}) —</option>
+                  <option value="">— A mesma da área ({projeto && TAREFA_VISIBILIDADE_LABEL[projeto.visibilidade]}) —</option>
                   {(Object.keys(TAREFA_VISIBILIDADE_LABEL) as TarefaVisibilidade[]).map(v =>
                     <option key={v} value={v}>{TAREFA_VISIBILIDADE_LABEL[v]}</option>
                   )}
@@ -4016,7 +4016,7 @@ function ImportadorModal({ projetos, subprojetos, pessoaId, onClose }: {
 
   async function importar() {
     if (linhasFinal.length === 0 || !projetoDestino || !subprojetoDestino) {
-      alert("Carregue um CSV e escolha projeto/subprojeto");
+      alert("Carregue um CSV e escolha área/projeto");
       return;
     }
     setImportando(true);
@@ -4184,13 +4184,13 @@ function ImportadorModal({ projetos, subprojetos, pessoaId, onClose }: {
                     </div>
                     <div className="grid grid-cols-2 gap-2">
                       <label className="text-xs">
-                        <div className="text-gray-500 mb-1">Projeto</div>
+                        <div className="text-gray-500 mb-1">Área</div>
                         <select value={projetoDestino} onChange={(e) => setProjetoDestino(e.target.value)} className="w-full px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
                           {projetos.map(p => <option key={p.id} value={p.id}>{p.emoji} {p.nome}</option>)}
                         </select>
                       </label>
                       <label className="text-xs">
-                        <div className="text-gray-500 mb-1">Subprojeto</div>
+                        <div className="text-gray-500 mb-1">Projeto</div>
                         <select value={subprojetoDestino} onChange={(e) => setSubprojetoDestino(e.target.value)} className="w-full px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800">
                           {subsDoProjeto.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
                         </select>

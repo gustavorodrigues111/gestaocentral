@@ -567,7 +567,7 @@ export const CATALOGO: CatalogoModulo[] = [
     id: "tarefas",
     icon: "📋",
     label: "Tarefas",
-    desc: "Gestor de Tarefas (Projeto > Subprojeto > Tarefa)",
+    desc: "Gestor de Tarefas (Área > Projeto > Tarefa)",
     area: "gestao",
     acoes: [
       { id: "verProprias",       label: "Ver suas tarefas (Minhas Tarefas)" },
@@ -575,7 +575,7 @@ export const CATALOGO: CatalogoModulo[] = [
       { id: "editarProprias",    label: "Editar suas tarefas (responsável/co-resp)" },
       { id: "editarTodas",       label: "Editar qualquer tarefa visível" },
       { id: "deletar",           label: "Excluir tarefa (vai pra lixeira)" },
-      { id: "adminProjetos",     label: "Gerenciar projetos e subprojetos" },
+      { id: "adminProjetos",     label: "Gerenciar áreas e projetos" },
       { id: "verLixeira",        label: "Acessar lixeira e restaurar tarefas", sensivel: true },
       { id: "gerarRecorrencias", label: "Disparar geração manual de tarefas-lembrete" },
     ],
