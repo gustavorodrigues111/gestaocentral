@@ -4229,7 +4229,7 @@ export const TAREFA_VISIBILIDADE_LABEL: Record<TarefaVisibilidade, string> = {
 export type TarefaOrigem =
   | "manual" | "recorrencia" | "admissao" | "demissao" | "ferias"
   | "reuniao" | "conta_fixa" | "manutencao" | "evento" | "lote_financeiro"
-  | "portal_empregado";
+  | "portal_empregado" | "prazo";
 
 export const TAREFA_ORIGEM_LABEL: Record<TarefaOrigem, string> = {
   manual:           "Manual",
@@ -4243,6 +4243,7 @@ export const TAREFA_ORIGEM_LABEL: Record<TarefaOrigem, string> = {
   evento:           "Evento",
   lote_financeiro:  "Lote Financeiro",
   portal_empregado: "Portal do Empregado",
+  prazo:            "Prazo (agendamento)",
 };
 
 // Config "Tarefas Automáticas" por (restaurantId, módulo origem). Define

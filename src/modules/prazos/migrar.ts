@@ -5,8 +5,8 @@
 import { collection, getDocs, getDoc, doc, setDoc, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import type { Prazo, PrazoRecorrencia, Manutencao, ExameEmpregado, EntregaUniforme } from "../../core/types";
-import { MANUTENCAO_TIPO_LABEL } from "../../core/types";
+import type { Prazo, PrazoRecorrencia, Manutencao, ExameEmpregado, EntregaUniforme, ContaFixa } from "../../core/types";
+import { MANUTENCAO_TIPO_LABEL, CONTA_FIXA_CATEGORIA_LABEL } from "../../core/types";
 
 async function criarSeNovo(prazo: Prazo): Promise<boolean> {
   const ref = doc(db, "prazos", prazo.id);
@@ -27,6 +27,66 @@ function recorrenciaManut(m: Manutencao): PrazoRecorrencia | null {
     case "trianual": return { unidade: "ano", intervalo: 3 };
     default: return null;
   }
+}
+
+// Último dia de um mês (0-based) — clampa diaDoMes em meses curtos.
+function ultimoDiaMes(ano: number, mes0: number): number { return new Date(ano, mes0 + 1, 0).getDate(); }
+const ymdDe = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+// ContaFixaRecorrencia → PrazoRecorrencia (o prazo recorrente "anda" no Realizado).
+function recorrenciaConta(c: ContaFixa): PrazoRecorrencia | null {
+  const diaDoMes = Math.min(Math.max(1, c.diaDoMes || 1), 31);
+  switch (c.recorrencia) {
+    case "mensal": return { unidade: "mes", intervalo: 1, modo: "dia_absoluto", diaDoMes };
+    case "trimestral": return { unidade: "mes", intervalo: 3, modo: "dia_absoluto", diaDoMes };
+    case "semestral": return { unidade: "mes", intervalo: 6, modo: "dia_absoluto", diaDoMes };
+    case "anual": return { unidade: "ano", intervalo: 1 };
+    case "semanal": return { unidade: "semana", intervalo: 1, diasSemana: [c.diaDaSemana ?? 1] };
+    default: return null;
+  }
+}
+
+// Próxima ocorrência (>= hoje) da conta, pra ser o vencimento inicial do prazo.
+function proximaDataConta(c: ContaFixa): string {
+  const hoje = new Date(); hoje.setHours(12, 0, 0, 0);
+  if (c.recorrencia === "semanal") {
+    const alvo = c.diaDaSemana ?? 1; const d = new Date(hoje);
+    for (let i = 0; i < 7 && d.getDay() !== alvo; i++) d.setDate(d.getDate() + 1);
+    return ymdDe(d);
+  }
+  if (c.recorrencia === "anual") {
+    const mes0 = Math.min(Math.max(0, (c.mesDoAno ?? 1) - 1), 11);
+    let ano = hoje.getFullYear();
+    const mk = (y: number) => new Date(y, mes0, Math.min(Math.max(1, c.diaDoMes || 1), ultimoDiaMes(y, mes0)), 12, 0, 0);
+    let d = mk(ano); if (d.getTime() < hoje.getTime()) d = mk(++ano);
+    return ymdDe(d);
+  }
+  // mensal/trimestral/semestral → próxima ocorrência do diaDoMes a partir de hoje.
+  const mk = (y: number, m0: number) => new Date(y, m0, Math.min(Math.max(1, c.diaDoMes || 1), ultimoDiaMes(y, m0)), 12, 0, 0);
+  let d = mk(hoje.getFullYear(), hoje.getMonth());
+  if (d.getTime() < hoje.getTime()) { const m0 = hoje.getMonth() + 1; d = mk(hoje.getFullYear() + Math.floor(m0 / 12), m0 % 12); }
+  return ymdDe(d);
+}
+
+function contaFixaParaPrazo(c: ContaFixa, por?: string | null): Prazo | null {
+  if (!c.restaurantIds?.length) return null;
+  return {
+    id: `prazo_mig_conta_${c.id}`,
+    restaurantIds: c.restaurantIds,
+    titulo: `${c.nome}${c.fornecedor ? ` — ${c.fornecedor}` : ""}`,
+    tipo: "conta",
+    vencimento: proximaDataConta(c),
+    responsavelId: c.responsavelPadraoId || null,
+    responsavelNome: c.responsavelPadraoNome || null,
+    antecedenciaDias: c.diasAntecedencia ?? 3,
+    recorrencia: recorrenciaConta(c),
+    exigeLaudo: false,
+    status: "aberto",
+    dados: { valor: c.valorEstimado, pix: c.pix, categoria: CONTA_FIXA_CATEGORIA_LABEL[c.categoria] },
+    origem: { modulo: "contasFixas", refId: c.id },
+    historico: [],
+    criadoEm: nowIso(), criadoPor: por ?? null,
+  };
 }
 
 function manutencaoParaPrazo(m: Manutencao, rid: string, por?: string | null): Prazo | null {
@@ -95,13 +155,37 @@ export async function semearPrazoExame(e: ExameEmpregado, por?: string | null): 
   const p = exameParaPrazo(e, e.restaurantId, por);
   if (p) await criarSeNovo(p);
 }
+
+// Ciclo do exame AVANÇOU (deu baixa → novo proximoVencimento). Ao contrário do
+// semear (create-if-new), este SINCRONIZA: avança o vencimento do prazo já
+// existente e o reabre, sem apagar histórico/laudo do doc. Cria se ainda não
+// existe (exame antigo, anterior ao hook). Best-effort — chamador usa try/catch.
+export async function sincronizarPrazoExame(e: ExameEmpregado, por?: string | null): Promise<void> {
+  const p = exameParaPrazo(e, e.restaurantId, por);
+  if (!p) return;   // inativo ou sem próximo vencimento → nada a sincronizar
+  const ref = doc(db, "prazos", p.id);
+  if (!(await getDoc(ref)).exists()) { await setDoc(ref, sanitizeForFirestore(p)); return; }
+  await setDoc(ref, sanitizeForFirestore({
+    vencimento: p.vencimento,
+    status: "aberto",
+    agendamento: null,
+    titulo: p.titulo,
+    antecedenciaDias: p.antecedenciaDias,
+    atualizadoEm: nowIso(),
+  }), { merge: true });
+}
 export async function semearPrazosUniforme(u: EntregaUniforme, por?: string | null): Promise<void> {
   for (const p of uniformeParaPrazos(u, u.restaurantId, por)) await criarSeNovo(p);
 }
 
-// Puxa manutenções + exames + uniformes da empresa ativa. Retorna quantos criou.
+// Puxa contas fixas + manutenções + exames + uniformes da empresa ativa. Retorna quantos criou.
 export async function migrarExistentesParaPrazos(rid: string, por?: string | null): Promise<{ criados: number; porTipo: Record<string, number> }> {
-  const porTipo = { manutencao: 0, exame: 0, uniforme: 0 };
+  const porTipo = { conta: 0, manutencao: 0, exame: 0, uniforme: 0 };
+
+  const contas = (await getDocs(query(collection(db, "contasFixas"), where("restaurantIds", "array-contains", rid)))).docs
+    .map((d) => ({ id: d.id, ...d.data() }) as ContaFixa)
+    .filter((c) => !c.deletadoEm && c.ativo !== false);
+  for (const c of contas) { const p = contaFixaParaPrazo(c, por); if (p && (await criarSeNovo(p))) porTipo.conta++; }
 
   const manuts = (await getDocs(query(collection(db, "manutencoes"), where("restaurantIds", "array-contains", rid)))).docs
     .map((d) => ({ id: d.id, ...d.data() }) as Manutencao & { deletadoEm?: string | null; ativo?: boolean })
@@ -116,5 +200,5 @@ export async function migrarExistentesParaPrazos(rid: string, por?: string | nul
     .map((d) => ({ id: d.id, ...d.data() }) as EntregaUniforme & { deletadoEm?: string | null });
   for (const u of unifs) { if ((u as { deletadoEm?: string | null }).deletadoEm) continue; for (const p of uniformeParaPrazos(u, rid, por)) { if (await criarSeNovo(p)) porTipo.uniforme++; } }
 
-  return { criados: porTipo.manutencao + porTipo.exame + porTipo.uniforme, porTipo };
+  return { criados: porTipo.conta + porTipo.manutencao + porTipo.exame + porTipo.uniforme, porTipo };
 }

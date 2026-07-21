@@ -16,7 +16,7 @@ import type {
   ExameSubtarefaTemplate,
 } from "../../core/types";
 import { EXAME_SUBTAREFAS_TEMPLATE_DEFAULT } from "../../core/types";
-import { semearPrazoExame } from "../prazos/migrar";
+import { semearPrazoExame, sincronizarPrazoExame } from "../prazos/migrar";
 
 const COL_TIPOS = "exameTiposConfig";
 const COL_EXAMES = "examesEmpregado";
@@ -221,6 +221,13 @@ export async function darBaixa(input: BaixaInput): Promise<string> {
     });
   } catch (e) {
     console.warn("[exames] falha ao registrar trilha:", e);
+  }
+
+  // Sincroniza o prazo vinculado: avança o vencimento pro novo ciclo (reabre).
+  try {
+    await sincronizarPrazoExame({ ...exame, proximoVencimento: proximo, ativo: true } as ExameEmpregado, input.autor.id);
+  } catch (e) {
+    console.warn("[exames] falha ao sincronizar prazo:", e);
   }
 
   return proximo;

@@ -21,6 +21,7 @@ import { resolverPrazo, podeResolver, grupoAgenda, diasAte, hojeYmd } from "./lo
 import { PrazoModal } from "./PrazoModal";
 import { ImoveisModal } from "./ImoveisModal";
 import { migrarExistentesParaPrazos } from "./migrar";
+import { criarOuAtualizarTarefaAgendamento, removerTarefaAgendamento, concluirTarefaAgendamento } from "./ponte";
 
 const brl = (n?: number | null) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const ymdToBr = (ymd?: string) => { if (!ymd) return ""; const [a, m, d] = ymd.split("-"); return `${d}/${m}/${a}`; };
@@ -121,6 +122,9 @@ export function PrazosPage() {
   }
   async function realizar(p: Prazo) {
     if (!podeResolver(p)) { setErro(`${p.titulo}: anexe o laudo antes de resolver.`); return; }
+    // Conclui a tarefa de execução vinculada (se agendado) antes de arquivar,
+    // pois resolverPrazo zera o agendamento no recorrente.
+    await concluirTarefaAgendamento(p, { id: me?.id || "", nome: me?.nome || "—" });
     const atualizado = resolverPrazo(p, { em: new Date().toISOString(), por: me?.id, porNome: me?.nome });
     await setDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ ...atualizado, atualizadoEm: new Date().toISOString() }), { merge: true });
   }
@@ -128,10 +132,19 @@ export function PrazosPage() {
     const [d, m, a] = dataAg.split("/");
     if (!d || !m || !a) { setErro("Data inválida (dd/mm/aaaa)."); return; }
     const data = `${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}`;
-    await updateDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ status: "agendado", agendamento: { data, agendadoEm: new Date().toISOString(), agendadoPor: me?.id || null }, atualizadoEm: new Date().toISOString() }));
+    const autor = { id: me?.id || "", nome: me?.nome || "—" };
+    // Cria (ou reaproveita, se reagendamento) a tarefa REAL no Gestor de Tarefas.
+    let tarefaId: string | null = p.agendamento?.tarefaId || null;
+    try {
+      tarefaId = await criarOuAtualizarTarefaAgendamento(p, data, autor);
+    } catch (e) {
+      setErro("Agendado, mas falhou ao criar a tarefa: " + (e instanceof Error ? e.message : "?"));
+    }
+    await updateDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ status: "agendado", agendamento: { data, tarefaId, agendadoEm: new Date().toISOString(), agendadoPor: me?.id || null }, atualizadoEm: new Date().toISOString() }));
     setAgendando(null); setDataAg("");
   }
   async function removerAgendamento(p: Prazo) {
+    await removerTarefaAgendamento(p, { id: me?.id || "", nome: me?.nome || "—" });
     await updateDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ status: "aberto", agendamento: null, atualizadoEm: new Date().toISOString() }));
   }
   async function excluir(p: Prazo) {
@@ -143,7 +156,7 @@ export function PrazosPage() {
     setMigrando(true); setErro("");
     try {
       const r = await migrarExistentesParaPrazos(rid, me?.id);
-      setErro(r.criados === 0 ? "✓ Nada novo pra puxar — já está tudo aqui." : `✓ Puxados ${r.criados}: ${r.porTipo.manutencao} manutenções, ${r.porTipo.exame} exames, ${r.porTipo.uniforme} uniformes/EPIs.`);
+      setErro(r.criados === 0 ? "✓ Nada novo pra puxar — já está tudo aqui." : `✓ Puxados ${r.criados}: ${r.porTipo.conta} contas fixas, ${r.porTipo.manutencao} manutenções, ${r.porTipo.exame} exames, ${r.porTipo.uniforme} uniformes/EPIs.`);
     } catch (e) { setErro("Falha ao puxar: " + (e instanceof Error ? e.message : "?")); }
     finally { setMigrando(false); }
   }
