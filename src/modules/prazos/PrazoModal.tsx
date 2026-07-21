@@ -8,6 +8,7 @@ import type { Prazo, PrazoTipo, PrazoRecorrencia, PrazoSubtipoTrab, Empregado, P
 import { PRAZO_TIPO_LABEL, PRAZO_SUBTIPO_TRAB_LABEL } from "../../core/types";
 import { resumoRecorrencia } from "./recorrencia";
 import { ANTECEDENCIA_PADRAO } from "./logic";
+import { Stepper, DatePickerBR } from "./campos";
 
 const ymdToBr = (ymd?: string) => { if (!ymd) return ""; const [a, m, d] = ymd.split("-"); return `${d}/${m}/${a}`; };
 const brToYmd = (br: string) => { const [d, m, a] = br.split("/"); return (d && m && a) ? `${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}` : ""; };
@@ -75,7 +76,7 @@ export function PrazoModal({ rid, prazo, empregados, pessoas, imoveis, onGerenci
   }
 
   return (
-    <Modal title={editando ? "Editar prazo" : "Novo prazo"} onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={editando ? "Editar prazo" : "Novo prazo"} onClose={onClose} maxWidth="max-w-xl">
       <div className="space-y-3">
         {/* Tipo */}
         <div className="flex gap-1.5">
@@ -90,7 +91,7 @@ export function PrazoModal({ rid, prazo, empregados, pessoas, imoveis, onGerenci
         <div><label className="text-xs text-gray-500 block mb-1">Título</label><input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ex.: Aluguel do salão" className={inp} /></div>
 
         <div className="grid grid-cols-2 gap-2">
-          <div><label className="text-xs text-gray-500 block mb-1">Vencimento</label><input value={venc} onChange={(e) => setVenc(e.target.value)} placeholder="dd/mm/aaaa" className={inp} /></div>
+          <div><label className="text-xs text-gray-500 block mb-1">Vencimento</label><DatePickerBR value={venc} onChange={setVenc} /></div>
           <div><label className="text-xs text-gray-500 block mb-1">Responsável</label>
             <select value={respId} onChange={(e) => setRespId(e.target.value)} className={inp}><option value="">—</option>{pessoas.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}</select>
           </div>
@@ -98,11 +99,7 @@ export function PrazoModal({ rid, prazo, empregados, pessoas, imoveis, onGerenci
 
         <div className="flex items-center justify-center gap-2.5 text-sm text-gray-600 dark:text-gray-300 py-1">
           <span>Avisar</span>
-          <div className="inline-flex items-center rounded-full border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden">
-            <button type="button" onClick={() => setAntec(Math.max(0, antec - 1))} className="w-8 h-8 flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 text-base">−</button>
-            <span className="w-9 text-center font-medium tabular-nums text-gray-900 dark:text-gray-100">{antec}</span>
-            <button type="button" onClick={() => setAntec(Math.min(365, antec + 1))} className="w-8 h-8 flex items-center justify-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 text-base">+</button>
-          </div>
+          <Stepper value={antec} onChange={setAntec} min={0} max={365} />
           <span>dias antes do vencimento</span>
         </div>
 
@@ -188,8 +185,8 @@ function RecorrenciaEditor({ rec, onChange }: { rec: PrazoRecorrencia | null; on
       {on && (
         <div className="mt-2 space-y-2">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="text-xs text-gray-500">A cada</span>
-            <input type="number" min={1} value={r.intervalo} onChange={(e) => patch({ intervalo: Math.max(1, parseInt(e.target.value) || 1) })} className="w-16 px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+            <span className="text-sm text-gray-600 dark:text-gray-300">A cada</span>
+            <Stepper value={r.intervalo} onChange={(n) => patch({ intervalo: Math.max(1, n) })} min={1} max={60} />
             <div className="flex gap-1.5">
               <button type="button" onClick={() => patch({ unidade: "semana" })} className={chip(r.unidade === "semana")}>semana(s)</button>
               <button type="button" onClick={() => patch({ unidade: "mes" })} className={chip(r.unidade === "mes")}>mês(es)</button>
@@ -208,8 +205,8 @@ function RecorrenciaEditor({ rec, onChange }: { rec: PrazoRecorrencia | null; on
                   </select><span className="text-xs text-gray-500">dia útil</span>
                 </div>
               ) : (
-                <div className="flex items-center gap-2"><span className="text-xs text-gray-500">Dia</span>
-                  <input type="number" min={1} max={31} value={r.diaDoMes || 1} onChange={(e) => patch({ diaDoMes: Math.min(31, Math.max(1, parseInt(e.target.value) || 1)) })} className="w-16 px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                <div className="flex items-center gap-2"><span className="text-sm text-gray-600 dark:text-gray-300">Dia</span>
+                  <Stepper value={r.diaDoMes || 1} onChange={(n) => patch({ diaDoMes: Math.min(31, Math.max(1, n)) })} min={1} max={31} />
                 </div>
               )}
             </div>

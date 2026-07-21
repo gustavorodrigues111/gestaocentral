@@ -39,8 +39,8 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
       <div className="flex items-baseline gap-2 min-w-0">
         {modulo ? (
           <>
-            <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 truncate whitespace-nowrap">{modulo.icon} {modulo.label}</span>
-            {modulo.desc && <span className="hidden md:inline text-xs text-gray-500 dark:text-gray-400 truncate">{modulo.desc}</span>}
+            <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap shrink-0">{modulo.icon} {modulo.label}</span>
+            {modulo.desc && <span className="hidden md:inline text-xs text-gray-500 dark:text-gray-400 truncate min-w-0">{modulo.desc}</span>}
           </>
         ) : (
           <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 truncate">Início</span>
