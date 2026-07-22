@@ -332,7 +332,6 @@ export function TarefasPage() {
                 <span className="mx-1 h-5 w-px bg-gray-200 dark:bg-gray-700" />
               </>
             )}
-            <button type="button" onClick={() => setTab("ideias")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20">💡 Caixa de ideias</button>
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
             <div className="flex-1" />
             {acoesHeader}
