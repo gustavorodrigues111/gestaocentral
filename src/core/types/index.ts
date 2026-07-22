@@ -230,9 +230,9 @@ export type SegurancaItem = {
   id: string;
   texto: string;
   blocoId: string;
-  area?: Area;           // a área a que este item pertence (checklist é ÚNICO;
-                         // cada item é de UMA área; a mesma pergunta em 2 áreas
-                         // = cadastrar 2 itens). undefined = ainda não atribuída.
+  area?: string;         // área (cadastrável por template) a que o item pertence.
+                         // Checklist é ÚNICO; cada item é de UMA área; a mesma
+                         // pergunta em 2 áreas = 2 itens. undefined = sem área.
   ordem: number;
   pontua: boolean;       // false = informativo, não entra na nota
   descricao?: string;    // "o que observar" (guia opcional)
@@ -242,6 +242,7 @@ export type SegurancaModelo = {
   id: string;
   restaurantId: string;
   nome: string;
+  areas: string[];       // áreas cadastráveis deste template
   blocos: SegurancaBloco[];
   itens: SegurancaItem[];
   faixas: SegurancaFaixa[];
@@ -283,6 +284,7 @@ export type SegurancaAvaliacao = {
   itensSnapshot?: SegurancaItem[];
   blocosSnapshot?: SegurancaBloco[];
   faixasSnapshot?: SegurancaFaixa[];
+  areasSnapshot?: string[];
   data: string;                       // YYYY-MM-DD
   avaliadorId?: string | null;
   avaliadorNome?: string | null;
@@ -302,6 +304,25 @@ export const AREA_CHIP: Record<Area, { bg: string; fg: string; dot: string }> = 
   "Salão": { bg: "bg-emerald-50 dark:bg-emerald-950/30", fg: "text-emerald-700 dark:text-emerald-300", dot: "#059669" },
   Limpeza: { bg: "bg-sky-50 dark:bg-sky-950/30", fg: "text-sky-700 dark:text-sky-300", dot: "#0284c7" },
 };
+
+// Áreas da Segurança Sanitária são CADASTRÁVEIS por template (string livre).
+// Cor derivada por hash do nome (estável), tirada de uma paleta fixa.
+export const SEG_AREAS_PADRAO: string[] = ["Cozinha", "Bar", "Salão", "Limpeza"];
+const SEG_AREA_PALETTE: { bg: string; fg: string; dot: string }[] = [
+  { bg: "bg-orange-50 dark:bg-orange-950/30", fg: "text-orange-700 dark:text-orange-300", dot: "#ea580c" },
+  { bg: "bg-indigo-50 dark:bg-indigo-950/30", fg: "text-indigo-700 dark:text-indigo-300", dot: "#4f46e5" },
+  { bg: "bg-emerald-50 dark:bg-emerald-950/30", fg: "text-emerald-700 dark:text-emerald-300", dot: "#059669" },
+  { bg: "bg-sky-50 dark:bg-sky-950/30", fg: "text-sky-700 dark:text-sky-300", dot: "#0284c7" },
+  { bg: "bg-rose-50 dark:bg-rose-950/30", fg: "text-rose-700 dark:text-rose-300", dot: "#e11d48" },
+  { bg: "bg-amber-50 dark:bg-amber-950/30", fg: "text-amber-700 dark:text-amber-300", dot: "#d97706" },
+  { bg: "bg-violet-50 dark:bg-violet-950/30", fg: "text-violet-700 dark:text-violet-300", dot: "#7c3aed" },
+  { bg: "bg-teal-50 dark:bg-teal-950/30", fg: "text-teal-700 dark:text-teal-300", dot: "#0d9488" },
+];
+export function segAreaCor(nome?: string): { bg: string; fg: string; dot: string } {
+  let h = 0; const s = nome || "";
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
+  return SEG_AREA_PALETTE[h % SEG_AREA_PALETTE.length];
+}
 
 // Tipo de vínculo do CARGO (define se quem tem esse cargo vê Portal do Empregado)
 export type TipoVinculo = "registrado" | "provisorio" | "estagiario" | "terceirizado";

@@ -3,8 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import type { Acao, Area, SegurancaAvaliacao } from "../../core/types";
-import { AREAS, AREA_CHIP } from "../../core/types";
+import type { Acao, SegurancaAvaliacao } from "../../core/types";
+import { segAreaCor } from "../../core/types";
 import { ouvirAvaliacoes } from "./repository";
 
 const dmy = (ymd?: string | null) => (ymd || "").split("-").reverse().join("/");
@@ -33,21 +33,26 @@ export function Painel({ rid }: { rid: string }) {
   const concluidas = acoes.filter((a) => a.status === "concluida").length;
   const taxaResolucao = acoes.length ? Math.round((concluidas / acoes.length) * 100) : null;
 
+  // Lista de áreas (união de todas as avaliações — snapshot ou derivada).
+  const areasLista = useMemo(() => Array.from(new Set(
+    avaliacoes.flatMap((a) => a.areasSnapshot?.length ? a.areasSnapshot : (a.itensSnapshot || []).map((it) => it.area).filter(Boolean))
+  )) as string[], [avaliacoes]);
+
   // Não-conformes por área (acumulado, todas as avaliações).
   const ncPorArea = useMemo(() => {
-    const itemArea = new Map<string, Area | undefined>();
+    const itemArea = new Map<string, string | undefined>();
     for (const a of avaliacoes) for (const it of a.itensSnapshot || []) itemArea.set(it.id, it.area);
-    const m = {} as Record<Area, number>;
+    const m = {} as Record<string, number>;
     for (const a of avaliacoes) {
-      const areaLocal = new Map<string, Area | undefined>((a.itensSnapshot || []).map((it) => [it.id, it.area]));
+      const areaLocal = new Map<string, string | undefined>((a.itensSnapshot || []).map((it) => [it.id, it.area]));
       for (const [itemId, r] of Object.entries(a.resultado || {})) {
         if (r.resposta !== "nao_conforme") continue;
         const area = areaLocal.get(itemId) ?? itemArea.get(itemId);
         if (area) m[area] = (m[area] || 0) + 1;
       }
     }
-    return AREAS.map((area) => ({ area, n: m[area] || 0 }));
-  }, [avaliacoes]);
+    return areasLista.map((area) => ({ area, n: m[area] || 0 }));
+  }, [avaliacoes, areasLista]);
   const maxArea = Math.max(1, ...ncPorArea.map((x) => x.n));
 
   return (
@@ -79,7 +84,7 @@ export function Painel({ rid }: { rid: string }) {
                   <div key={x.area} className="flex items-center gap-2">
                     <span className="w-24 shrink-0 text-[12px] text-gray-600 dark:text-gray-300 truncate">{x.area}</span>
                     <div className="flex-1 h-4 rounded bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                      <div className="h-full rounded" style={{ width: `${(x.n / maxArea) * 100}%`, background: AREA_CHIP[x.area].dot }} />
+                      <div className="h-full rounded" style={{ width: `${(x.n / maxArea) * 100}%`, background: segAreaCor(x.area).dot }} />
                     </div>
                     <span className="w-6 shrink-0 text-right text-[12px] font-semibold tabular-nums text-gray-700 dark:text-gray-200">{x.n}</span>
                   </div>

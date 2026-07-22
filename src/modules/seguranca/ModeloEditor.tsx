@@ -4,15 +4,23 @@
 // Edição em estado local; "Salvar" persiste. Requer permissão `configurar`.
 import { useState } from "react";
 import { Button } from "../../core/ui/Button";
-import type { Area, SegurancaFaixa, SegurancaItem, SegurancaModelo } from "../../core/types";
-import { AREAS } from "../../core/types";
+import type { SegurancaFaixa, SegurancaItem, SegurancaModelo } from "../../core/types";
+import { SEG_AREAS_PADRAO, segAreaCor } from "../../core/types";
 import { salvarModelo } from "./repository";
 
 const uid = () => Math.random().toString(36).slice(2, 11);
 const clone = <T,>(x: T): T => JSON.parse(JSON.stringify(x));
 
 export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onClose: () => void }) {
-  const [m, setM] = useState<SegurancaModelo>(() => clone(modelo));
+  const [m, setM] = useState<SegurancaModelo>(() => {
+    const c = clone(modelo);
+    // Retrocompat: templates antigos sem `areas` → deriva dos itens ou padrão.
+    if (!Array.isArray(c.areas) || c.areas.length === 0) {
+      const dosItens = Array.from(new Set((c.itens || []).map((i) => i.area).filter(Boolean))) as string[];
+      c.areas = dosItens.length ? dosItens : [...SEG_AREAS_PADRAO];
+    }
+    return c;
+  });
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [dirty, setDirty] = useState(false);
@@ -23,7 +31,32 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
   // ── Itens ──
   const itensDoBloco = (bid: string) => m.itens.filter((i) => i.blocoId === bid).sort((a, b) => a.ordem - b.ordem);
   function addItem(bid: string) {
-    mut((d) => { const max = Math.max(0, ...d.itens.filter((i) => i.blocoId === bid).map((i) => i.ordem)); d.itens.push({ id: uid(), texto: "", blocoId: bid, area: "Cozinha", ordem: max + 1, pontua: true }); });
+    mut((d) => { const max = Math.max(0, ...d.itens.filter((i) => i.blocoId === bid).map((i) => i.ordem)); d.itens.push({ id: uid(), texto: "", blocoId: bid, area: d.areas[0], ordem: max + 1, pontua: true }); });
+  }
+
+  // ── Áreas (cadastráveis) ──
+  function addArea() {
+    const nome = prompt("Nome da nova área:");
+    if (!nome || !nome.trim()) return;
+    const nn = nome.trim();
+    mut((d) => { if (!d.areas.includes(nn)) d.areas.push(nn); });
+  }
+  function renomearArea(idx: number) {
+    const antigo = m.areas[idx];
+    const novo = prompt("Renomear área:", antigo);
+    if (novo === null) return;
+    const nn = novo.trim(); if (!nn) return;
+    mut((d) => {
+      if (d.areas.includes(nn) && nn !== antigo) { return; }
+      d.areas[idx] = nn;
+      d.itens.forEach((i) => { if (i.area === antigo) i.area = nn; }); // reatribui itens
+    });
+  }
+  function removerArea(idx: number) {
+    const nome = m.areas[idx];
+    const usados = m.itens.filter((i) => i.area === nome).length;
+    if (usados > 0 && !confirm(`${usados} item(ns) usam a área "${nome}". Remover mesmo? Esses itens ficam SEM área.`)) return;
+    mut((d) => { d.areas.splice(idx, 1); d.itens.forEach((i) => { if (i.area === nome) i.area = undefined; }); });
   }
   function updItem(id: string, patch: Partial<SegurancaItem>) { mut((d) => { const i = d.itens.find((x) => x.id === id); if (i) Object.assign(i, patch); }); }
   function delItem(id: string) { mut((d) => { d.itens = d.itens.filter((x) => x.id !== id); }); }
@@ -88,6 +121,24 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
         <input className={inp + " mt-1"} value={m.nome} onChange={(e) => { setM({ ...m, nome: e.target.value }); setDirty(true); }} />
       </div>
 
+      {/* Áreas cadastráveis */}
+      <div>
+        <label className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 block mb-1.5">Áreas</label>
+        <div className="flex flex-wrap gap-2 items-center">
+          {m.areas.map((a, idx) => {
+            const c = segAreaCor(a);
+            return (
+              <span key={idx} className={`inline-flex items-center gap-1.5 text-[13px] font-medium pl-2.5 pr-1.5 py-1 rounded-full ${c.bg} ${c.fg}`}>
+                <span className="w-2 h-2 rounded-full" style={{ background: c.dot }} />
+                <button type="button" onClick={() => renomearArea(idx)} title="Renomear">{a}</button>
+                <button type="button" onClick={() => removerArea(idx)} title="Remover" className="opacity-60 hover:opacity-100 text-sm leading-none">×</button>
+              </span>
+            );
+          })}
+          <button type="button" onClick={addArea} className="text-sm text-indigo-600 dark:text-indigo-400 hover:underline">+ área</button>
+        </div>
+      </div>
+
       {/* Blocos + itens */}
       {blocos.map((b) => (
         <section key={b.id} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
@@ -101,9 +152,9 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
                 <textarea rows={2} className={inp} placeholder="Texto da pergunta…" value={item.texto} onChange={(e) => updItem(item.id, { texto: e.target.value })} />
                 <div className="flex items-center gap-2 mt-2 flex-wrap">
                   <select className="text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-gray-900 dark:text-gray-100"
-                    value={item.area || ""} onChange={(e) => updItem(item.id, { area: (e.target.value || undefined) as Area | undefined })}>
+                    value={item.area || ""} onChange={(e) => updItem(item.id, { area: e.target.value || undefined })}>
                     <option value="">— área —</option>
-                    {AREAS.map((a) => <option key={a} value={a}>{a}</option>)}
+                    {m.areas.map((a) => <option key={a} value={a}>{a}</option>)}
                   </select>
                   <label className="text-xs text-gray-600 dark:text-gray-300 inline-flex items-center gap-1.5">
                     <input type="checkbox" checked={item.pontua} onChange={(e) => updItem(item.id, { pontua: e.target.checked })} /> conta na nota

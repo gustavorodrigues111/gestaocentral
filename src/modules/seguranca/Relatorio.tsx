@@ -10,10 +10,10 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import type {
-  Acao, AcaoLog, Area, PlanoAcaoStatus, Pessoa,
+  Acao, AcaoLog, PlanoAcaoStatus, Pessoa,
   SegurancaAvaliacao, SegurancaResultadoItem,
 } from "../../core/types";
-import { ACAO_STATUS_LABEL, AREAS, AREA_CHIP, segurancaFaixaDe } from "../../core/types";
+import { ACAO_STATUS_LABEL, segAreaCor, segurancaFaixaDe } from "../../core/types";
 import { ouvirAvaliacao, salvarResultado, calcularScore, reabrirAvaliacao } from "./repository";
 import { SegurancaFotos } from "./SegurancaFotos";
 import { VirarAcaoModal } from "../planoDeAcao/VirarAcaoModal";
@@ -79,6 +79,9 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
   const itens = useMemo(() => av?.itensSnapshot || [], [av]);
   const blocos = useMemo(() => (av?.blocosSnapshot || []).slice().sort((a, b) => a.ordem - b.ordem), [av]);
   const faixas = av?.faixasSnapshot || [];
+  const areasLista = useMemo(() => (
+    av?.areasSnapshot?.length ? av.areasSnapshot : (Array.from(new Set(itens.map((i) => i.area).filter(Boolean))) as string[])
+  ), [av?.areasSnapshot, itens]);
   const itemById = useMemo(() => new Map(itens.map((i) => [i.id, i])), [itens]);
   const blocoById = useMemo(() => new Map(blocos.map((b) => [b.id, b])), [blocos]);
 
@@ -91,13 +94,13 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
 
   // Inconformidades (itens não-conformes) ordenadas por área e bloco.
   const inconformidades = useMemo(() => {
-    const out: Array<{ itemId: string; r: SegurancaResultadoItem; area?: Area; blocoNome: string; texto: string }> = [];
+    const out: Array<{ itemId: string; r: SegurancaResultadoItem; area?: string; blocoNome: string; texto: string }> = [];
     for (const [itemId, r] of Object.entries(av?.resultado || {})) {
       if (r.resposta !== "nao_conforme") continue;
       const it = itemById.get(itemId);
       out.push({ itemId, r, area: it?.area, blocoNome: blocoById.get(it?.blocoId || "")?.nome || "—", texto: it?.texto || "(item removido)" });
     }
-    const areaOrder = (a?: Area) => (a ? AREAS.indexOf(a) : 99);
+    const areaOrder = (a?: string) => (a ? areasLista.indexOf(a) : 99);
     return out.sort((a, b) => areaOrder(a.area) - areaOrder(b.area) || a.blocoNome.localeCompare(b.blocoNome) || a.texto.localeCompare(b.texto));
   }, [av?.resultado, itemById, blocoById]);
 
@@ -115,13 +118,13 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
 
   // Não-conformes por área.
   const ncPorArea = useMemo(() => {
-    const m = {} as Record<Area, number>;
+    const m = {} as Record<string, number>;
     for (const [itemId, r] of Object.entries(av?.resultado || {})) {
       if (r.resposta !== "nao_conforme") continue;
       const a = itemById.get(itemId)?.area;
       if (a) m[a] = (m[a] || 0) + 1;
     }
-    return AREAS.map((a) => ({ area: a, n: m[a] || 0 })).filter((x) => x.n > 0);
+    return areasLista.map((a) => ({ area: a, n: m[a] || 0 })).filter((x) => x.n > 0);
   }, [av?.resultado, itemById]);
 
   const acaoPorItem = useMemo(() => {
@@ -257,7 +260,7 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
                 <div key={x.area} className="flex items-center gap-2">
                   <span className="w-24 shrink-0 text-[12px] text-gray-600 dark:text-gray-300 truncate">{x.area}</span>
                   <div className="flex-1 h-4 rounded bg-gray-100 dark:bg-gray-800 overflow-hidden">
-                    <div className="h-full rounded" style={{ width: `${(x.n / maxArea) * 100}%`, background: AREA_CHIP[x.area].dot }} />
+                    <div className="h-full rounded" style={{ width: `${(x.n / maxArea) * 100}%`, background: segAreaCor(x.area).dot }} />
                   </div>
                   <span className="w-6 shrink-0 text-right text-[12px] font-semibold tabular-nums text-gray-700 dark:text-gray-200">{x.n}</span>
                 </div>
@@ -398,9 +401,9 @@ function AcaoAcompanhamento({ acao, autor, pessoas, podeResolver, podeTransferir
   );
 }
 
-function AreaChip({ area }: { area?: Area }) {
+function AreaChip({ area }: { area?: string }) {
   if (!area) return <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-400">sem área</span>;
-  const c = AREA_CHIP[area];
+  const c = segAreaCor(area);
   return (
     <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${c.bg} ${c.fg}`}>
       <span className="w-1.5 h-1.5 rounded-full" style={{ background: c.dot }} />{area}

@@ -4,9 +4,10 @@
 // (Cozinha/Bar/Salão/Limpeza); a nutricionista responde os que se aplicam em
 // cada área e refina depois na configuração. Item "sem pontuação" → pontua:false.
 import type { SegurancaBloco, SegurancaItem } from "../../core/types";
-import { SEGURANCA_FAIXAS_PADRAO } from "../../core/types";
+import { SEGURANCA_FAIXAS_PADRAO, SEG_AREAS_PADRAO } from "../../core/types";
 
 export const SEED_FAIXAS = SEGURANCA_FAIXAS_PADRAO;
+export const SEED_AREAS = SEG_AREAS_PADRAO;
 
 export const SEED_BLOCOS: SegurancaBloco[] = [
   { id: "b_qualidade", nome: "Qualidade dos alimentos", ordem: 1 },

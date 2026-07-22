@@ -5,8 +5,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../core/ui/Button";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import type { Area, SegurancaAvaliacao, SegurancaFoto, SegurancaItem, SegurancaResposta } from "../../core/types";
-import { AREAS, AREA_CHIP, segurancaFaixaDe } from "../../core/types";
+import type { SegurancaAvaliacao, SegurancaFoto, SegurancaItem, SegurancaResposta } from "../../core/types";
+import { segAreaCor, segurancaFaixaDe } from "../../core/types";
 import {
   ouvirAvaliacao, salvarResultado, limparResultado, calcularScore, finalizarAvaliacao,
 } from "./repository";
@@ -21,7 +21,7 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
 }) {
   const { activeRestaurant } = useRestaurant();
   const [av, setAv] = useState<SegurancaAvaliacao | null>(null);
-  const [filtro, setFiltro] = useState<Area | "todas">("todas");
+  const [filtro, setFiltro] = useState<string>("todas");
   const [salvando, setSalvando] = useState(false);
 
   useEffect(() => ouvirAvaliacao(avaliacaoId, setAv), [avaliacaoId]);
@@ -37,12 +37,16 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
   const itens = av?.itensSnapshot || [];
   const blocos = (av?.blocosSnapshot || []).slice().sort((a, b) => a.ordem - b.ordem);
   const readOnly = av?.status === "finalizada";
+  // Áreas: do snapshot da avaliação; fallback deriva dos itens (retrocompat).
+  const areas = useMemo(() => (
+    av?.areasSnapshot?.length ? av.areasSnapshot : (Array.from(new Set(itens.map((i) => i.area).filter(Boolean))) as string[])
+  ), [av?.areasSnapshot, itens]);
 
   const itemArea = useMemo(() => new Map(itens.map((i) => [i.id, i.area])), [itens]);
 
   // Não-conformes por área (badge do chip).
   const ncPorArea = useMemo(() => {
-    const m = {} as Record<Area, number>;
+    const m = {} as Record<string, number>;
     for (const [itemId, r] of Object.entries(av?.resultado || {})) {
       if (r.resposta !== "nao_conforme") continue;
       const a = itemArea.get(itemId);
@@ -89,7 +93,7 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
 
   if (!av) return <p className="text-sm text-gray-500 py-16 text-center">Carregando avaliação…</p>;
 
-  const chips: Array<Area | "todas"> = ["todas", ...AREAS];
+  const chips: string[] = ["todas", ...areas];
 
   return (
     <div className="space-y-4 pb-4">
@@ -167,9 +171,9 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
 }
 
 // ── Chip de área ──
-function AreaChip({ area }: { area?: Area }) {
+function AreaChip({ area }: { area?: string }) {
   if (!area) return <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-400">sem área</span>;
-  const c = AREA_CHIP[area];
+  const c = segAreaCor(area);
   return (
     <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${c.bg} ${c.fg}`}>
       <span className="w-1.5 h-1.5 rounded-full" style={{ background: c.dot }} />{area}

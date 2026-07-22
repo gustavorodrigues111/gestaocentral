@@ -12,7 +12,7 @@ import type {
   SegurancaModelo, SegurancaAvaliacao, SegurancaResultadoItem, SegurancaItem, SegurancaFaixa,
 } from "../../core/types";
 import { segurancaFaixaDe } from "../../core/types";
-import { SEED_BLOCOS, SEED_ITENS, SEED_FAIXAS } from "./seed";
+import { SEED_BLOCOS, SEED_ITENS, SEED_FAIXAS, SEED_AREAS } from "./seed";
 
 const COL_MODELOS = "segurancaModelos";
 const COL_AVALIACOES = "segurancaAvaliacoes";
@@ -35,18 +35,18 @@ export function ouvirModelos(rid: string, cb: (m: SegurancaModelo[]) => void): U
 export async function criarModeloSemente(rid: string, por?: string | null, nome = "Avaliação de boas práticas"): Promise<string> {
   const modelo: Omit<SegurancaModelo, "id"> = {
     restaurantId: rid, nome,
-    blocos: SEED_BLOCOS, itens: SEED_ITENS, faixas: SEED_FAIXAS,
+    areas: [...SEED_AREAS], blocos: SEED_BLOCOS, itens: SEED_ITENS, faixas: SEED_FAIXAS,
     ativo: true, criadoEm: nowIso(), criadoPor: por ?? null,
   };
   const ref = await addDoc(collection(db, COL_MODELOS), sanitizeForFirestore(modelo));
   return ref.id;
 }
 
-// Cria um template EM BRANCO (só os blocos e faixas padrão; sem itens).
+// Cria um template EM BRANCO (áreas, blocos e faixas padrão; sem itens).
 export async function criarModeloVazio(rid: string, nome: string, por?: string | null): Promise<string> {
   const modelo: Omit<SegurancaModelo, "id"> = {
     restaurantId: rid, nome: nome.trim() || "Novo checklist",
-    blocos: SEED_BLOCOS, itens: [], faixas: SEED_FAIXAS,
+    areas: [...SEED_AREAS], blocos: SEED_BLOCOS, itens: [], faixas: SEED_FAIXAS,
     ativo: true, criadoEm: nowIso(), criadoPor: por ?? null,
   };
   const ref = await addDoc(collection(db, COL_MODELOS), sanitizeForFirestore(modelo));
@@ -101,6 +101,7 @@ export async function criarAvaliacao(
     itensSnapshot: modelo.itens,
     blocosSnapshot: modelo.blocos,
     faixasSnapshot: modelo.faixas,
+    areasSnapshot: modelo.areas || [],
     data: nowIso().slice(0, 10),
     avaliadorId: avaliador.id,
     avaliadorNome: avaliador.nome,
