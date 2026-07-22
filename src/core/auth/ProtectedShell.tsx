@@ -66,6 +66,7 @@ import { DemissaoPage } from "../../modules/demissao/DemissaoPage";
 import { FerramentasCredenciaisPage } from "../../modules/ferramentasCredenciais/FerramentasCredenciaisPage";
 import { ChatPage } from "../../modules/chat/ChatPage";
 import { AvisosProvider } from "../../modules/chat/useAvisos";
+import { PrimeiroAcesso } from "./PrimeiroAcesso";
 
 function ModuleRouter() {
   const { moduleId, rid } = useParams<{ moduleId: string; rid: string }>();
@@ -131,7 +132,7 @@ function ModuleRouter() {
 }
 
 export function ProtectedShell() {
-  const { fbUser, pessoa, loading } = useAuth();
+  const { fbUser, pessoa, pessoaReal, isImpersonating, loading } = useAuth();
 
   if (loading) {
     return (
@@ -154,6 +155,12 @@ export function ProtectedShell() {
         </div>
       </div>
     );
+  }
+
+  // Primeiro acesso: quem entrou com senha inicial precisa confirmar CPF +
+  // criar nova senha antes de usar o app. (Master impersonando não cai aqui.)
+  if (pessoaReal?.mustTrocarSenha && !isImpersonating) {
+    return <PrimeiroAcesso pessoa={pessoaReal} />;
   }
 
   return (

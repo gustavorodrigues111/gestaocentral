@@ -1107,6 +1107,12 @@ export type Pessoa = {
   whatsapp?: string;
   whatsappOptIn?: boolean;     // aceita receber avisos/lembretes pelo WhatsApp
   pix?: string;                // chave PIX (CPF, email, telefone ou chave aleatória) — obrigatório pra freelas
+  // ── Acesso provisionado por WhatsApp (onboarding) ───────────────────────
+  // Setado pelo botão "Convidar pra acessar": o sistema criou a conta no
+  // Firebase Auth com senha inicial. `mustTrocarSenha` obriga a 1ª tela de
+  // acesso (CPF + nova senha). Limpo quando a pessoa conclui o 1º acesso.
+  acessoProvisionadoEm?: string;   // ISO — quando o acesso foi criado
+  mustTrocarSenha?: boolean;       // true = força tela de 1º acesso
   isMaster: boolean;
   restaurantIds: string[];
   permissions: { [restaurantId: string]: RestaurantPermissions };

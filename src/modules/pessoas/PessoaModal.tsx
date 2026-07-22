@@ -1,6 +1,9 @@
 import { useEffect, useState } from "react";
 import { addDoc, collection, doc, getDoc, getDocs, limit, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { gerarSenhaInicial, provisionarAcesso } from "../../core/auth/provisionar";
+import { enviarWhatsapp } from "../../core/whatsapp/enviar";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canExcluirPessoa } from "../../core/auth/permissions";
@@ -91,26 +94,15 @@ export function PessoaModal({ pessoa, restaurantId, onClose }: Props) {
 // TAB 1: IDENTIDADE
 // ════════════════════════════════════════════════════════════════
 
-// Monta o link wa.me com mensagem de convite. Retorna null se faltar
-// whatsapp ou email (precisa dos 2 pra fazer sentido).
-function buildConviteWhatsLink(pessoa: Pessoa, subdomain: string | null): string | null {
-  const digits = (pessoa.whatsapp || "").replace(/\D/g, "");
-  if (digits.length < 10) return null;
-  if (!pessoa.email) return null;
-  // Adiciona 55 se for número BR sem código do país
-  const phone = digits.startsWith("55") ? digits : `55${digits}`;
-  const baseUrl = subdomain ? `https://${subdomain}.planejamento.app` : "https://planejamento.app";
-  const signupUrl = `${baseUrl}/signup`;
-  const nomePrimeiro = (pessoa.nome || "").split(/\s+/)[0] || "";
-  const msg =
-    `Oi ${nomePrimeiro}! 👋\n\n` +
-    `Te cadastrei no nosso sistema de gestão. Pra criar sua senha de acesso:\n\n` +
-    `1️⃣ Abre o link: ${signupUrl}\n` +
-    `2️⃣ Coloca o email: ${pessoa.email}\n` +
-    `3️⃣ Cria a senha que quiser (mínimo 6 caracteres)\n\n` +
-    `Pronto, é só usar email + senha pra entrar.\n` +
-    `Qualquer dúvida me chama!`;
-  return `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+// Mensagem do convite de acesso (com a senha inicial). Fallback wa.me pra
+// mandar manual quando a Cloud API ainda não está configurada.
+function buildConviteMsg(nomePrimeiro: string, email: string, senha: string, baseUrl: string): string {
+  return `Oi ${nomePrimeiro}! 👋\n\n` +
+    `Seu acesso ao nosso sistema de gestão está pronto:\n\n` +
+    `🔗 ${baseUrl}\n` +
+    `📧 Email: ${email}\n` +
+    `🔑 Senha inicial: ${senha}\n\n` +
+    `No primeiro acesso o sistema vai pedir seu CPF e pra você criar uma nova senha. Qualquer dúvida me chama!`;
 }
 
 function TabIdentidade({
@@ -127,7 +119,8 @@ function TabIdentidade({
   const isNew = !pessoa;
   const isInativa = !!pessoa && pessoa.ativa === false;
   const subdomainAtivo = restaurants.find((r) => r.id === restaurantId)?.subdomain || null;
-  const conviteUrl = pessoa && !isInativa ? buildConviteWhatsLink(pessoa, subdomainAtivo) : null;
+  // Convite de acesso: precisa de email + WhatsApp e pessoa salva/ativa.
+  const podeConvidar = !!pessoa && !isInativa && !!pessoa.email && (pessoa.whatsapp || "").replace(/\D/g, "").length >= 10;
 
   // "Visualizar como" — só master, não na própria pessoa, não em nova,
   // não em inativada. Inicia impersonação + redireciona pro home.
@@ -148,6 +141,10 @@ function TabIdentidade({
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [savedAt, setSavedAt] = useState("");
+  // Convite de acesso (provisionamento)
+  const [convidando, setConvidando] = useState(false);
+  const [conviteErro, setConviteErro] = useState("");
+  const [convite, setConvite] = useState<{ senha: string; waLink: string; enviado: boolean } | null>(null);
   const [showInativar, setShowInativar] = useState(false);
   const [showReativar, setShowReativar] = useState(false);
   const [showExcluir, setShowExcluir] = useState(false);
@@ -173,11 +170,49 @@ function TabIdentidade({
     return s.replace(/\D/g, "");
   }
 
+  // Convite express: gera senha inicial, cria a conta no Firebase Auth (app
+  // secundário, sem deslogar o admin), marca mustTrocarSenha e dispara o
+  // WhatsApp. Fallback: abre wa.me + mostra a senha pra mandar manual.
+  async function convidarAcesso() {
+    if (!pessoa || !me) return;
+    const email = (pessoa.email || "").trim().toLowerCase();
+    const whats = (pessoa.whatsapp || "").replace(/\D/g, "");
+    if (!email || whats.length < 10) { setConviteErro("Preencha email e WhatsApp (e salve) antes de convidar."); return; }
+    setConvidando(true); setConviteErro(""); setConvite(null);
+    const senha = gerarSenhaInicial();
+    const prov = await provisionarAcesso(email, senha);
+    if (!prov.ok) {
+      setConvidando(false);
+      setConviteErro(prov.motivo === "email_em_uso"
+        ? "Já existe uma conta com esse email. A pessoa pode usar “Esqueci a senha” no login."
+        : "Não foi possível criar o acesso: " + (prov.detalhe || prov.motivo));
+      return;
+    }
+    try {
+      await updateDoc(doc(db, "pessoas", pessoa.id), sanitizeForFirestore({
+        mustTrocarSenha: true, acessoProvisionadoEm: new Date().toISOString(), whatsappOptIn: true,
+      }));
+    } catch { /* best-effort */ }
+    const phone = whats.startsWith("55") ? whats : `55${whats}`;
+    const baseUrl = subdomainAtivo ? `https://${subdomainAtivo}.planejamento.app` : "https://planejamento.app";
+    const nomePrimeiro = (pessoa.nome || "").split(/\s+/)[0] || "";
+    const waLink = `https://wa.me/${phone}?text=${encodeURIComponent(buildConviteMsg(nomePrimeiro, email, senha, baseUrl))}`;
+    // Tenta o disparo pela Cloud API (template aprovado). Inerte até credenciais.
+    const r = await enviarWhatsapp({
+      to: whats, template: "acesso_inicial", idioma: "pt_BR",
+      params: [nomePrimeiro, email, senha, baseUrl],
+      contexto: "acesso_convite", pessoaId: pessoa.id, restaurantId, criadoPor: me.id,
+    });
+    setConvite({ senha, waLink, enviado: r.ok });
+    setConvidando(false);
+  }
+
   async function salvar() {
     if (!form.nome.trim()) { setErr("Nome obrigatório"); return; }
     const cpfDigits = cpfLimpo(form.cpf);
-    if (!cpfDigits) { setErr("CPF obrigatório"); return; }
-    if (cpfDigits.length !== 11) { setErr("CPF inválido — precisa de 11 dígitos"); return; }
+    // CPF é opcional na criação — a pessoa preenche no 1º acesso. Se informado,
+    // valida os 11 dígitos.
+    if (cpfDigits && cpfDigits.length !== 11) { setErr("CPF inválido — precisa de 11 dígitos"); return; }
     if (isNew && !vinculoNovo) { setErr("Escolha o vínculo da pessoa neste restaurante"); return; }
     if (!me) return;
     setErr("");
@@ -186,23 +221,21 @@ function TabIdentidade({
     try {
       const now = new Date().toISOString();
       if (isNew) {
-        // Verifica se já existe Pessoa com esse CPF
-        const dupQ = query(
-          collection(db, "pessoas"),
-          where("cpf", "==", cpfDigits),
-          limit(1),
-        );
-        const dupSnap = await getDocs(dupQ);
-        if (!dupSnap.empty) {
-          const existente = { id: dupSnap.docs[0].id, ...dupSnap.docs[0].data() } as Pessoa;
-          setDuplicada(existente);
-          setSaving(false);
-          return;
+        // Verifica se já existe Pessoa com esse CPF (só quando o CPF foi informado)
+        if (cpfDigits) {
+          const dupSnap = await getDocs(query(collection(db, "pessoas"), where("cpf", "==", cpfDigits), limit(1)));
+          if (!dupSnap.empty) {
+            const existente = { id: dupSnap.docs[0].id, ...dupSnap.docs[0].data() } as Pessoa;
+            setDuplicada(existente);
+            setSaving(false);
+            return;
+          }
         }
         const ref = await addDoc(collection(db, "pessoas"), {
           email: form.email.trim().toLowerCase(),
           nome: form.nome.trim(),
-          cpf: cpfDigits,
+          cpf: cpfDigits || null,
+          cadastroIncompleto: !cpfDigits,
           whatsapp: form.whatsapp.trim() || null,
           pix: form.pix.trim() || null,
           isMaster: false,
@@ -221,26 +254,23 @@ function TabIdentidade({
         });
         onCreated();
       } else {
-        // Editando — checa se outro doc tem o mesmo CPF (não o próprio)
-        const dupQ = query(
-          collection(db, "pessoas"),
-          where("cpf", "==", cpfDigits),
-          limit(2),
-        );
-        const dupSnap = await getDocs(dupQ);
-        const conflito = dupSnap.docs.find(d => d.id !== pessoa.id);
-        if (conflito) {
-          setErr(`CPF já está cadastrado em outra pessoa (${(conflito.data() as Pessoa).nome}).`);
-          setSaving(false);
-          return;
+        // Editando — checa se outro doc tem o mesmo CPF (só quando informado)
+        if (cpfDigits) {
+          const dupSnap = await getDocs(query(collection(db, "pessoas"), where("cpf", "==", cpfDigits), limit(2)));
+          const conflito = dupSnap.docs.find(d => d.id !== pessoa.id);
+          if (conflito) {
+            setErr(`CPF já está cadastrado em outra pessoa (${(conflito.data() as Pessoa).nome}).`);
+            setSaving(false);
+            return;
+          }
         }
         const update: Record<string, unknown> = {
           email: form.email.trim().toLowerCase(),
           nome: form.nome.trim(),
-          cpf: cpfDigits,
+          cpf: cpfDigits || null,
           whatsapp: form.whatsapp.trim() || null,
           pix: form.pix.trim() || null,
-          cadastroIncompleto: false,  // CPF preenchido manualmente → completo
+          cadastroIncompleto: !cpfDigits,
         };
         await updateDoc(doc(db, "pessoas", pessoa.id), update);
         await logAudit({
@@ -404,15 +434,19 @@ function TabIdentidade({
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3 flex flex-wrap gap-2">
           {!isInativa ? (
             <>
-              {conviteUrl && (
+              {podeConvidar && !pessoa?.acessoProvisionadoEm && (
                 <Button
                   size="sm"
-                  onClick={() => window.open(conviteUrl, "_blank", "noopener")}
-                  title="Abre o WhatsApp com uma mensagem pronta pra essa pessoa criar a conta"
+                  disabled={convidando}
+                  onClick={() => void convidarAcesso()}
+                  title="Cria o acesso com uma senha inicial e convida a pessoa pelo WhatsApp"
                   className="!bg-emerald-600 hover:!bg-emerald-700 !border-emerald-600"
                 >
-                  💬 Convidar via WhatsApp
+                  {convidando ? "Criando acesso…" : "🔑 Convidar pra acessar (WhatsApp)"}
                 </Button>
+              )}
+              {pessoa?.acessoProvisionadoEm && !convite && (
+                <span className="text-xs text-emerald-700 dark:text-emerald-400 self-center">✓ Acesso já enviado{pessoa.mustTrocarSenha ? " — aguardando 1º acesso" : ""}</span>
               )}
               {podeVisualizarComo && pessoa && (
                 <Button
@@ -461,18 +495,37 @@ function TabIdentidade({
               )}
             </>
           )}
-          {!isInativa && !conviteUrl && (pessoa && (!pessoa.whatsapp || !pessoa.email)) && (
+          {!isInativa && !podeConvidar && pessoa && (!pessoa.whatsapp || !pessoa.email) && !pessoa.acessoProvisionadoEm && (
             <span className="text-xs text-gray-400 dark:text-gray-500 self-center">
-              💬 Convite via WhatsApp: preencha {!pessoa.whatsapp && !pessoa.email ? "email e WhatsApp" : !pessoa.email ? "email" : "WhatsApp"} pra habilitar
+              🔑 Convite pra acessar: preencha {!pessoa.whatsapp && !pessoa.email ? "email e WhatsApp" : !pessoa.email ? "email" : "WhatsApp"} pra habilitar
             </span>
           )}
         </div>
       )}
 
+      {/* Resultado do convite: senha inicial + envio/fallback */}
+      {conviteErro && <div className="text-sm rounded-lg px-3 py-2 bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400">{conviteErro}</div>}
+      {convite && (
+        <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3 space-y-2">
+          <div className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
+            {convite.enviado ? "✓ Convite enviado pelo WhatsApp" : "Acesso criado — envie o convite:"}
+          </div>
+          <div className="text-sm text-gray-700 dark:text-gray-200 flex items-center gap-2 flex-wrap">
+            Senha inicial: <code className="px-2 py-0.5 rounded bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-800 font-mono">{convite.senha}</code>
+            <button type="button" onClick={() => navigator.clipboard?.writeText(convite.senha)} className="text-xs text-emerald-700 dark:text-emerald-400 hover:underline">copiar</button>
+          </div>
+          {!convite.enviado && (
+            <a href={convite.waLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">
+              💬 Abrir WhatsApp com a mensagem
+            </a>
+          )}
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">No 1º acesso ela confirma o CPF e cria a própria senha.</p>
+        </div>
+      )}
+
       {isNew && (
         <p className="text-xs text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
-          📩 Após criar com email, peça pra pessoa acessar e clicar em <strong>"Criar conta"</strong> com a mesma senha.
-          O sistema vincula automaticamente.
+          📩 Basta <strong>nome, email e WhatsApp</strong>. Depois de salvar, use <strong>🔑 Convidar pra acessar</strong> — o sistema cria o acesso com uma senha inicial e você manda pelo WhatsApp. O CPF a pessoa preenche no 1º acesso.
         </p>
       )}
 
