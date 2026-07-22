@@ -47,6 +47,7 @@ export function ReunioesPage() {
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [filtroStatus, setFiltroStatus] = useState<"proximas" | "passadas" | "todas">("proximas");
+  const [filtroDono, setFiltroDono] = useState<"minhas" | "todas">("todas");
   const [editing, setEditing] = useState<Reuniao | "new" | null>(null);
   const [detalhe, setDetalhe] = useState<Reuniao | null>(null);
   const [view, setView] = useState<"lista" | "kanban">(() => {
@@ -71,8 +72,12 @@ export function ReunioesPage() {
   }, [rid]);
 
   const today = todayYmd();
+  // "Minhas" = reuniões que EU marquei (organizador). Participação não-criador
+  // não conta aqui (participante só tem empregadoId, sem pessoaId).
+  const ehMinha = (r: Reuniao) => r.criadoPor === me?.id;
   const filtered = useMemo(() => {
     return reunioes.filter(r => {
+      if (filtroDono === "minhas" && !ehMinha(r)) return false;
       if (filtroStatus === "proximas" && (r.data < today || r.status === "realizada" || r.status === "cancelada")) return false;
       if (filtroStatus === "passadas" && r.data >= today && r.status === "planejada") return false;
       if (search.trim()) {
@@ -81,7 +86,8 @@ export function ReunioesPage() {
       }
       return true;
     });
-  }, [reunioes, filtroStatus, search, today]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [reunioes, filtroStatus, filtroDono, search, today, me?.id]);
 
   // Sync detalhe quando a reunião muda no snapshot (ex: mudou pauta)
   const detalheLive = detalhe ? reunioes.find(r => r.id === detalhe.id) || null : null;
@@ -149,6 +155,16 @@ export function ReunioesPage() {
             </button>
           ))}
         </div>
+        {podeVerTodas && (
+          <div className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+            {(["minhas", "todas"] as const).map(d => (
+              <button key={d} type="button" onClick={() => setFiltroDono(d)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${filtroDono === d ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"}`}>
+                {d === "minhas" ? "🙋 Minhas" : "Todas"}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {view === "lista" && (
@@ -171,7 +187,7 @@ export function ReunioesPage() {
       )}
 
       {view === "kanban" && <KanbanReunioes
-        reunioes={reunioes.filter(r => !search.trim() || r.titulo.toLowerCase().includes(search.toLowerCase()))}
+        reunioes={reunioes.filter(r => (filtroDono === "todas" || ehMinha(r)) && (!search.trim() || r.titulo.toLowerCase().includes(search.toLowerCase())))}
         loading={loading}
         podeConfig={podeConfig}
         onAbrir={(r) => setDetalhe(r)}
@@ -305,20 +321,15 @@ function KanbanReunioes({ reunioes, loading, podeConfig, onAbrir, onNova, draggi
   }
 
   // Cutoff pra mover automático pro histórico (mantém o kanban limpo):
-  // - canceladas com mais de 14 dias  → histórico
-  // - realizadas com mais de 45 dias  → histórico
-  // Planejadas nunca vão pra histórico (mesmo vencidas) — DP precisa ver
-  // pra tomar ação. Comparação pela data da REUNIÃO, não atualizadoEm.
+  // realizadas OU canceladas com mais de 7 dias → histórico. Planejadas nunca
+  // vão (mesmo vencidas) — DP precisa ver pra agir. Comparação pela data da
+  // REUNIÃO, não atualizadoEm.
   const todayDate = new Date(today + "T00:00:00");
-  const cutoff14 = new Date(todayDate); cutoff14.setDate(cutoff14.getDate() - 14);
-  const cutoff45 = new Date(todayDate); cutoff45.setDate(cutoff45.getDate() - 45);
-  const cutoff14Ymd = cutoff14.toISOString().slice(0, 10);
-  const cutoff45Ymd = cutoff45.toISOString().slice(0, 10);
+  const cutoff7 = new Date(todayDate); cutoff7.setDate(cutoff7.getDate() - 7);
+  const cutoff7Ymd = cutoff7.toISOString().slice(0, 10);
 
   function vaiPraHistorico(r: Reuniao): boolean {
-    if (r.status === "cancelada" && r.data && r.data < cutoff14Ymd) return true;
-    if (r.status === "realizada" && r.data && r.data < cutoff45Ymd) return true;
-    return false;
+    return (r.status === "cancelada" || r.status === "realizada") && !!r.data && r.data < cutoff7Ymd;
   }
 
   const porCol: Record<ReuniaoStatus, Reuniao[]> = { planejada: [], realizada: [], cancelada: [] };

@@ -1,5 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
-import { Navigate, Link } from "react-router-dom";
+import { Navigate } from "react-router-dom";
+import { ReuniaoEditorModal } from "../reunioes/ReuniaoEditorModal";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { aplicarPerfisNaPessoa } from "../../core/auth/profileToLegacy";
@@ -81,6 +82,7 @@ export function TarefasPage() {
   // subprojeto pra fluxos diferentes (botão por dia, "+ Nova tarefa" dentro
   // de um projeto, etc.).
   const [novaAberta, setNovaAberta] = useState<{ prazo?: string; projetoId?: string; subprojetoId?: string; titulo?: string; descricao?: string; puxando?: { tipo: "ideia" | "ocorrencia"; id: string; titulo: string } } | null>(null);
+  const [novaReuniao, setNovaReuniao] = useState(false);
   const [detalheId, setDetalheId] = useState<string | null>(null);
 
   // Ouvir projetos + subprojetos.
@@ -244,7 +246,7 @@ export function TarefasPage() {
   // Ações fixas (na linha do seletor de visão): Nova tarefa + Gerenciar (master).
   const acoesHeader = (
     <div className="flex items-center gap-1.5 shrink-0">
-      {ridAtivo && <Link to={`/r/${ridAtivo}/reunioes`} className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">🗣️ Reuniões</Link>}
+      {ridAtivo && <button type="button" onClick={() => setNovaReuniao(true)} className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">🗣️ Nova reunião</button>}
       <Button size="sm" onClick={() => setNovaAberta({})}>+ Nova tarefa</Button>
       {isMaster && (
         <div className="relative">
@@ -514,6 +516,10 @@ export function TarefasPage() {
           descricaoInicial={novaAberta.descricao}
           puxandoInicial={novaAberta.puxando || null}
         />
+      )}
+
+      {novaReuniao && ridAtivo && (
+        <ReuniaoEditorModal reuniao={null} restaurantId={ridAtivo} onClose={() => setNovaReuniao(false)} />
       )}
 
         </div> {/* fecha .min-w-0 (área de conteúdo principal) */}
