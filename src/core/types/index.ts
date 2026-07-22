@@ -1013,8 +1013,11 @@ export type Restaurant = {
   manutencoesDriveFolderNome?: string;
   prazosDriveFolderId?: string;            // pasta-raiz dos laudos/comprovantes do módulo Prazos
   prazosDriveFolderNome?: string;
-  segurancaDriveFolderId?: string;         // pasta-raiz das fotos do módulo Segurança Sanitária (subpasta por data)
-  segurancaDriveFolderNome?: string;
+  // Pasta-RAIZ única do restaurante no Drive. O sistema cria "planejamento.app"
+  // dentro e organiza por módulo (Segurança Sanitária, etc.). Substitui os
+  // pickers por-módulo daqui pra frente.
+  driveRootFolderId?: string;
+  driveRootFolderNome?: string;
   cartaoChavePixPadrao?: string;           // Pix padrão pra receber reembolsos de cartão (módulo Faturas)
   cartoesCadastrados?: string[];           // nomes dos cartões que sobem fatura aqui — a IA casa cada PDF com um deles
   fechamentoSociosEmails?: string[];

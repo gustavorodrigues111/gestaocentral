@@ -12,6 +12,7 @@ import { AREA_INFO, modulesByArea, getModule } from "../../config/modules";
 import { UNIDADE_TIPO_LABEL } from "../../core/types";
 import type { Endereco, ModuleArea, ModuleId, Unidade, UnidadeTipo } from "../../core/types";
 import { isValidSubdomain } from "../../core/restaurant/subdomain";
+import { pickDriveFolder } from "../../core/google/drivePicker";
 
 export function ConfiguracoesPage() {
   const { pessoa: me } = useAuth();
@@ -224,6 +225,17 @@ export function ConfiguracoesPage() {
         />
       </section>
 
+      {/* Google Drive — pasta raiz única do restaurante */}
+      <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
+        <h2 className="text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">☁️ Google Drive</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
+          Escolha <b>uma pasta do seu Drive</b> para este restaurante. O sistema cria uma
+          pasta <code>planejamento.app</code> dentro dela e organiza tudo por módulo
+          (fotos da Segurança Sanitária, e futuramente os demais). Uma raiz só — sem indicar pasta por módulo.
+        </p>
+        <DriveRaizForm rid={rid} atualId={activeRestaurant.driveRootFolderId} atualNome={activeRestaurant.driveRootFolderNome} podeConfig={podeConfig} />
+      </section>
+
       {/* Portal do Empregado */}
       <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
         <h2 className="text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">Portal do Empregado</h2>
@@ -282,6 +294,42 @@ export function ConfiguracoesPage() {
           })}
         </div>
       </section>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+// Pasta raiz do Drive (única por restaurante)
+// ────────────────────────────────────────────────────────────────────────────
+function DriveRaizForm({ rid, atualId, atualNome, podeConfig }: {
+  rid: string; atualId?: string; atualNome?: string; podeConfig: boolean;
+}) {
+  const [salvando, setSalvando] = useState(false);
+  const [erro, setErro] = useState("");
+  async function escolher() {
+    setErro(""); setSalvando(true);
+    try {
+      const pasta = await pickDriveFolder("Pasta raiz deste restaurante no Drive");
+      if (pasta) await updateDoc(doc(db, "restaurants", rid), { driveRootFolderId: pasta.id, driveRootFolderNome: pasta.name });
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao selecionar a pasta."); }
+    finally { setSalvando(false); }
+  }
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex-1 text-sm min-w-[180px]">
+          {atualId
+            ? <>Pasta: <b className="text-gray-900 dark:text-gray-100">{atualNome || "(selecionada)"}</b> <span className="text-emerald-600 dark:text-emerald-400">✓</span></>
+            : <span className="text-gray-500 dark:text-gray-400">Nenhuma pasta definida ainda.</span>}
+        </div>
+        {podeConfig && (
+          <Button variant="secondary" size="sm" disabled={salvando} onClick={() => void escolher()}>
+            {salvando ? "Salvando…" : atualId ? "Trocar pasta" : "Selecionar pasta"}
+          </Button>
+        )}
+      </div>
+      {erro && <div className="text-xs text-rose-600">{erro}</div>}
+      {atualId && <p className="text-[11px] text-gray-400">Dentro dela: <code>planejamento.app / Segurança Sanitária / (uma pasta por avaliação)</code>.</p>}
     </div>
   );
 }

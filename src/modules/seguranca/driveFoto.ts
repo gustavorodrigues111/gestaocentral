@@ -1,16 +1,19 @@
-// Fotos das não-conformidades no Google Drive. A pasta-raiz é escolhida pela
-// nutricionista/master (por restaurante); dentro dela criamos uma SUBPASTA por
-// data da avaliação. Exibição é in-app: baixamos os bytes (base64) e mostramos
-// como data URL, sem sair do planejamento.app.
-import { findOrCreateSubfolder, uploadFileToFolder, downloadDriveFileBase64 } from "../../core/google/driveShared";
+// Fotos das não-conformidades no Google Drive. Estrutura:
+//   {pasta-raiz do restaurante}/planejamento.app/Segurança Sanitária/{data horário}/
+// A pasta-raiz é única por restaurante (configurada em Configurações). Exibição
+// in-app: baixamos os bytes (base64) e mostramos como data URL, sem sair do app.
+import { findOrCreateSubfolder, uploadFileToFolder, downloadDriveFileBase64 } from "../../core/google/driveClient";
+import { ensureModuloFolder } from "../../core/google/driveModulo";
 import type { SegurancaFoto } from "../../core/types";
 
-// dd-mm-aaaa → nome da subpasta da data.
-const nomePastaData = (ymd: string) => (ymd || "sem-data").split("-").reverse().join("-");
+const MODULO = "Segurança Sanitária";
 
-export async function subirFotoSeguranca(rootFolderId: string, data: string, file: File): Promise<SegurancaFoto> {
-  const subId = await findOrCreateSubfolder(rootFolderId, nomePastaData(data));
-  const f = await uploadFileToFolder(subId, file);
+// pastaLabel = nome da pasta da avaliação (ex.: "20-07-2026 08h25"). Estável por
+// avaliação (derivada do iniciadoEm), então findOrCreateSubfolder reaproveita.
+export async function subirFotoSeguranca(rootFolderId: string, pastaLabel: string, file: File): Promise<SegurancaFoto> {
+  const moduloId = await ensureModuloFolder(rootFolderId, MODULO);
+  const formId = await findOrCreateSubfolder(moduloId, pastaLabel || "sem-data");
+  const f = await uploadFileToFolder(formId, file);
   return { driveId: f.id, nome: f.name, ...(f.webViewLink ? { webViewLink: f.webViewLink } : {}) };
 }
 

@@ -7,9 +7,9 @@ import { subirFotoSeguranca, carregarFotoDataUrl } from "./driveFoto";
 
 const MAX_MB = 15;
 
-export function SegurancaFotos({ rootFolderId, data, fotos, onChange, disabled }: {
+export function SegurancaFotos({ rootFolderId, pastaLabel, fotos, onChange, disabled }: {
   rootFolderId?: string;
-  data: string;
+  pastaLabel: string;
   fotos: SegurancaFoto[];
   onChange: (fotos: SegurancaFoto[]) => void;
   disabled?: boolean;
@@ -26,7 +26,7 @@ export function SegurancaFotos({ rootFolderId, data, fotos, onChange, disabled }
     if (!rootFolderId) { setErro("Configure a pasta do Drive primeiro."); return; }
     setUploading(true);
     try {
-      const foto = await subirFotoSeguranca(rootFolderId, data, file);
+      const foto = await subirFotoSeguranca(rootFolderId, pastaLabel, file);
       onChange([...fotos, foto]);
     } catch (e) {
       setErro("Falha ao enviar pro Drive: " + (e instanceof Error ? e.message : "?"));

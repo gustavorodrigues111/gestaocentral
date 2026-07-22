@@ -4,12 +4,9 @@
 // Relatório detalhado, plano de ação e gráficos entram nas próximas fases.
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
-import { doc, updateDoc } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
-import { pickDriveFolder } from "../../core/google/drivePicker";
 import { Button } from "../../core/ui/Button";
 import type { SegurancaAvaliacao, SegurancaModelo } from "../../core/types";
 import { ouvirModelos, ouvirAvaliacoes, criarModeloSemente, criarAvaliacao, excluirAvaliacao } from "./repository";
@@ -59,13 +56,6 @@ export function SegurancaPage() {
     if (!confirm(`Excluir a avaliação de ${dmy(a.data)}?`)) return;
     await excluirAvaliacao(a.id);
   }
-  async function configurarPasta() {
-    try {
-      const pasta = await pickDriveFolder("Pasta das fotos da Segurança Sanitária");
-      if (!pasta) return;
-      await updateDoc(doc(db, "restaurants", rid), { segurancaDriveFolderId: pasta.id, segurancaDriveFolderNome: pasta.name });
-    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao selecionar a pasta."); }
-  }
 
   function ncDe(a: SegurancaAvaliacao): number {
     return Object.values(a.resultado || {}).filter((r) => r.resposta === "nao_conforme").length;
@@ -100,11 +90,6 @@ export function SegurancaPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Avaliação de boas práticas por área. Cada não-conforme vira ação para a operação.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap sm:justify-end sm:shrink-0">
-          {podeConfig && (
-            <Button variant="secondary" onClick={() => void configurarPasta()} title={activeRestaurant?.segurancaDriveFolderNome ? `Pasta: ${activeRestaurant.segurancaDriveFolderNome}` : "Definir pasta do Drive"}>
-              📁 {activeRestaurant?.segurancaDriveFolderId ? "Pasta ✓" : "Pasta"}
-            </Button>
-          )}
           {podeConfig && modeloAtivo && (
             <Button variant="secondary" onClick={() => setEditando(true)}>⚙ Checklist</Button>
           )}
@@ -113,9 +98,9 @@ export function SegurancaPage() {
           )}
         </div>
       </header>
-      {podeConfig && !activeRestaurant?.segurancaDriveFolderId && (
+      {podeConfig && !activeRestaurant?.driveRootFolderId && (
         <div className="text-xs rounded-lg px-3 py-2 bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
-          📁 Defina a <b>pasta do Drive</b> onde as fotos ficarão (uma subpasta por data). Sem isso, não dá pra anexar fotos.
+          📁 Defina a <b>pasta raiz do restaurante no Drive</b> em <b>Configurações › Google Drive</b>. As fotos vão pra <code>planejamento.app › Segurança Sanitária</code>, organizadas por avaliação. Sem isso, não dá pra anexar fotos.
         </div>
       )}
 

@@ -26,7 +26,14 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
 
   useEffect(() => ouvirAvaliacao(avaliacaoId, setAv), [avaliacaoId]);
 
-  const rootFolderId = activeRestaurant?.segurancaDriveFolderId;
+  const rootFolderId = activeRestaurant?.driveRootFolderId;
+  // Nome da pasta da avaliação: "dd-mm-aaaa HHhMM" (estável pelo iniciadoEm).
+  const pastaLabel = useMemo(() => {
+    if (!av) return "";
+    const d = new Date(av.iniciadoEm);
+    const p = (n: number) => String(n).padStart(2, "0");
+    return `${dmy(av.data)} ${p(d.getHours())}h${p(d.getMinutes())}`;
+  }, [av]);
   const itens = av?.itensSnapshot || [];
   const blocos = (av?.blocosSnapshot || []).slice().sort((a, b) => a.ordem - b.ordem);
   const readOnly = av?.status === "finalizada";
@@ -135,7 +142,7 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
                 key={item.id}
                 item={item}
                 rootFolderId={rootFolderId}
-                data={av.data}
+                pastaLabel={pastaLabel}
                 readOnly={readOnly}
                 resultado={av.resultado?.[item.id]}
                 onMarcar={(resp) => marcar(item, resp)}
@@ -171,10 +178,10 @@ function AreaChip({ area }: { area?: Area }) {
 }
 
 // ── Card de um item ──
-function ItemCard({ item, rootFolderId, data, readOnly, resultado, onMarcar, onObs, onFotos }: {
+function ItemCard({ item, rootFolderId, pastaLabel, readOnly, resultado, onMarcar, onObs, onFotos }: {
   item: SegurancaItem;
   rootFolderId?: string;
-  data: string;
+  pastaLabel: string;
   readOnly: boolean;
   resultado?: { resposta: SegurancaResposta; observacao?: string; fotos?: SegurancaFoto[] };
   onMarcar: (r: SegurancaResposta) => void;
@@ -211,7 +218,7 @@ function ItemCard({ item, rootFolderId, data, readOnly, resultado, onMarcar, onO
             value={obs} onChange={(e) => setObs(e.target.value)} onBlur={() => onObs(obs)}
             disabled={readOnly} rows={2} placeholder="O que foi observado…"
             className="w-full text-[15px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-gray-900 dark:text-gray-100" />
-          <SegurancaFotos rootFolderId={rootFolderId} data={data} fotos={resultado?.fotos || []} onChange={onFotos} disabled={readOnly} />
+          <SegurancaFotos rootFolderId={rootFolderId} pastaLabel={pastaLabel} fotos={resultado?.fotos || []} onChange={onFotos} disabled={readOnly} />
         </div>
       )}
     </div>
