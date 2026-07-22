@@ -22,7 +22,7 @@ import { WhatsappTemplatesTab } from "./WhatsappTemplatesTab";
 import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
 
-type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean };
+type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean };
 
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const fmtBRcurto = (ymd?: string | null) => { if (!ymd) return ""; const [a, m, d] = String(ymd).split("-"); return d ? `${d}/${m}/${a?.slice(2) || ""}` : String(ymd); };
@@ -856,17 +856,19 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                         </div>
                       </div>
                     ) : (() => {
-                      const isImg = m.midia && (m.mime?.startsWith("image") || m.tipo === "stickerMessage");
-                      const isVid = m.midia && (m.mime?.startsWith("video") || m.tipo === "videoMessage");
-                      const isAud = m.midia && (m.mime?.startsWith("audio") || m.tipo === "audioMessage");
-                      const isDoc = m.midia && m.tipo === "documentMessage";
+                      const src = m.midiaUrl || m.midia;
+                      const isImg = src && (m.mime?.startsWith("image") || m.tipo === "stickerMessage");
+                      const isVid = src && (m.mime?.startsWith("video") || m.tipo === "videoMessage");
+                      const isAud = src && (m.mime?.startsWith("audio") || m.tipo === "audioMessage");
+                      const isDoc = src && m.tipo === "documentMessage";
                       const rotuloAuto = ["🖼️ Imagem", "🎬 Vídeo", "🎤 Áudio"].includes(m.texto || "");
+                      const nomeDoc = m.midiaNome || m.texto?.replace(/^📄 /, "") || "documento";
                       return (
                         <>
-                          {isImg && <img src={m.midia} alt={m.texto || "imagem"} className={`rounded-lg ${m.tipo === "stickerMessage" ? "w-32 h-32 object-contain" : "max-w-full max-h-64 object-contain"}`} />}
-                          {isVid && <video src={m.midia} controls className="rounded-lg max-w-full max-h-64" />}
-                          {isAud && <audio src={m.midia} controls className="max-w-[220px]" />}
-                          {isDoc && <a href={m.midia} download className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 underline">📄 {m.texto?.replace(/^📄 /, "") || "documento"}</a>}
+                          {isImg && <img src={src} alt={m.texto || "imagem"} className={`rounded-lg ${m.tipo === "stickerMessage" ? "w-32 h-32 object-contain" : "max-w-full max-h-64 object-contain"}`} />}
+                          {isVid && <video src={src} controls className="rounded-lg max-w-full max-h-64" />}
+                          {isAud && <audio src={src} controls className="max-w-[220px]" />}
+                          {isDoc && <a href={src} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 underline">📄 {nomeDoc}</a>}
                           {!isImg && !isVid && !isAud && !isDoc && <div className="whitespace-pre-wrap break-words">{m.texto || `[${m.tipo || "msg"}]`}</div>}
                           {(isImg || isVid) && m.texto && !rotuloAuto && <div className="whitespace-pre-wrap break-words mt-1">{m.texto}</div>}
                         </>

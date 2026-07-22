@@ -8,7 +8,7 @@
 //    <APP_URL>/api/evolution-webhook?token=<EVOLUTION_WEBHOOK_TOKEN>
 //  com o evento MESSAGES_UPSERT ligado.
 // ════════════════════════════════════════════════════════════════════════════
-import { firestoreCriar, firestoreLer, firestoreAtualizar, firestoreDisponivel } from "./_firestoreRest.js";
+import { firestoreCriar, firestoreLer, firestoreAtualizar, firestoreDisponivel, subirStorage } from "./_firestoreRest.js";
 
 type RotOpcao = { id?: string; rotulo?: string; pessoaId?: string; pessoaNome?: string; atalhos?: string[] };
 type Roteamento = { ativo?: boolean; saudacao?: string; mensagemRoteado?: string; opcoes?: RotOpcao[] };
@@ -76,15 +76,26 @@ function textoDe(m?: EvoMsg["message"], tipo?: string): string {
     || (tipo ? `[${tipo}]` : "");
 }
 
-// Busca o conteúdo real da mídia (figurinha/imagem) na Evolution → data URL.
-// Só pra tipos leves; erro/grande → volta vazio (fica só o rótulo).
-async function baixarMidia(instancia: string, msg: EvoMsg): Promise<{ midia: string; mime: string } | null> {
+// Extensão a partir do mime (pro nome do arquivo no Storage).
+function extDe(mime: string): string {
+  const sub = (mime.split("/")[1] || "").split(";")[0].trim().toLowerCase();
+  if (sub === "jpeg") return "jpg";
+  if (sub === "quicktime") return "mov";
+  if (sub === "vnd.openxmlformats-officedocument.wordprocessingml.document") return "docx";
+  if (sub === "vnd.openxmlformats-officedocument.spreadsheetml.sheet") return "xlsx";
+  return sub || "bin";
+}
+
+// Baixa a mídia na Evolution e SOBE pro Firebase Storage → devolve a URL
+// (abre em <img>/<audio>/<a>). Qualquer tipo e tamanho (até ~20MB). Erro → null
+// (fica só o rótulo).
+async function baixarMidia(instancia: string, msg: EvoMsg): Promise<{ url: string; mime: string; nome?: string } | null> {
   const base = (process.env.EVOLUTION_API_URL || "").replace(/\/+$/, "");
   const key = process.env.EVOLUTION_API_KEY;
   if (!base || !key) return null;
   try {
     const ctrl = new AbortController();
-    const t = setTimeout(() => ctrl.abort(), 12_000);
+    const t = setTimeout(() => ctrl.abort(), 25_000);
     const resp = await fetch(`${base}/chat/getBase64FromMediaMessage/${encodeURIComponent(instancia)}`, {
       method: "POST",
       headers: { apikey: key, "Content-Type": "application/json" },
@@ -95,9 +106,14 @@ async function baixarMidia(instancia: string, msg: EvoMsg): Promise<{ midia: str
     if (!resp.ok) return null;
     const j = (await resp.json()) as { base64?: string; mimetype?: string } | null;
     const b64 = j?.base64 || "";
-    if (!b64 || b64.length > 800_000) return null;   // ~600KB — não estoura o doc do Firestore
+    if (!b64 || b64.length > 27_000_000) return null;   // ~20MB — evita estourar a função serverless
     const mime = j?.mimetype || "application/octet-stream";
-    return { midia: `data:${mime};base64,${b64}`, mime };
+    const id = msg.key?.id || Math.random().toString(36).slice(2);
+    const nome = msg.message?.documentMessage?.fileName || undefined;
+    const path = `whatsapp/${instancia}/${id}.${extDe(mime)}`;
+    const url = await subirStorage(path, b64, mime);
+    if (!url) return null;
+    return { url, mime, nome };
   } catch { return null; }
 }
 
@@ -164,18 +180,20 @@ async function processar(body: EvoBody): Promise<void> {
       ? reabrirSeFinalizada(numeroId, waId).catch((e) => console.log("[evo-webhook] reabrir:", (e as Error)?.message))
       : null;
 
-    // Figurinha, imagem e ÁUDIO (voice notes): tenta baixar o conteúdo pra
-    // exibir/tocar de verdade. Áudio longo que estourar o limite do doc cai no
-    // rótulo "🎤 Áudio" (baixarMidia devolve null acima de ~600KB).
-    let midia: { midia: string; mime: string } | null = null;
-    if (m.message?.stickerMessage || m.message?.imageMessage || m.message?.audioMessage) midia = await baixarMidia(numeroId, m);
+    // Toda mídia (imagem, figurinha, áudio, vídeo, documento/PDF) sobe pro
+    // Storage e a URL fica no doc — abre de verdade na conversa. Erro/grande
+    // (>~20MB) cai no rótulo.
+    let midia: { url: string; mime: string; nome?: string } | null = null;
+    if (m.message?.stickerMessage || m.message?.imageMessage || m.message?.audioMessage || m.message?.videoMessage || m.message?.documentMessage) {
+      midia = await baixarMidia(numeroId, m);
+    }
     try {
       await firestoreCriar("whatsappMensagens", `${numeroId}_${id}`, {
         waId, nome: m.pushName || null, direcao: fromMe ? "out" : "in",
         tipo: m.messageType || "text", texto, timestamp: ts, recebidoEm: new Date().toISOString(),
         lido: fromMe, numeroId, messageId: id,
         autorNome: fromMe ? "via aparelho" : null, viaAparelho: fromMe,
-        ...(midia ? { midia: midia.midia, mime: midia.mime } : {}),
+        ...(midia ? { midiaUrl: midia.url, mime: midia.mime, ...(midia.nome ? { midiaNome: midia.nome } : {}) } : {}),
       });
       // Semeia o contato na 1ª mensagem (create-if-not-exists — não sobrescreve
       // ajustes manuais posteriores, que vêm pelo app com merge).

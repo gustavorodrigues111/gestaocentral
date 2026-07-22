@@ -19,6 +19,7 @@ const PROJECT_ID = process.env.FIREBASE_PROJECT_ID || "gestaocentral-85b13";
 const API_KEY = process.env.FIREBASE_WEB_API_KEY || process.env.VITE_FIREBASE_API_KEY || "";
 const SVC_EMAIL = process.env.WEBHOOK_FB_EMAIL || "";
 const SVC_PASSWORD = process.env.WEBHOOK_FB_PASSWORD || "";
+const BUCKET = process.env.FIREBASE_STORAGE_BUCKET || process.env.VITE_FIREBASE_STORAGE_BUCKET || `${PROJECT_ID}.appspot.com`;
 
 export function firestoreDisponivel(): boolean {
   return !!(API_KEY && SVC_EMAIL && SVC_PASSWORD);
@@ -40,6 +41,22 @@ async function idToken(): Promise<string> {
   const ttlMs = (parseInt(j.expiresIn || "3600", 10) || 3600) * 1000;
   tokenCache = { token: j.idToken, exp: now + ttlMs };
   return j.idToken;
+}
+
+// Sobe bytes (base64) pro Firebase Storage como o usuário de serviço e devolve a
+// URL de download tokenizada (pública com o token, abre em <img>/<a>/<audio>).
+export async function subirStorage(path: string, base64: string, mime: string): Promise<string | null> {
+  try {
+    const token = await idToken();
+    const bytes = Buffer.from(base64, "base64");
+    const url = `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o?name=${encodeURIComponent(path)}`;
+    const resp = await fetch(url, { method: "POST", headers: { Authorization: `Firebase ${token}`, "Content-Type": mime || "application/octet-stream" }, body: bytes });
+    if (!resp.ok) return null;
+    const j = (await resp.json()) as { downloadTokens?: string };
+    const tk = (j.downloadTokens || "").split(",")[0];
+    if (!tk) return null;
+    return `https://firebasestorage.googleapis.com/v0/b/${BUCKET}/o/${encodeURIComponent(path)}?alt=media&token=${tk}`;
+  } catch { return null; }
 }
 
 // Converte um valor JS pro formato de campo da REST API do Firestore.
