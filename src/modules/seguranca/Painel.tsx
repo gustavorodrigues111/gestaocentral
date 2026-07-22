@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import type { Acao, SegurancaAvaliacao } from "../../core/types";
+import type { Tarefa, SegurancaAvaliacao } from "../../core/types";
 import { segAreaCor } from "../../core/types";
 import { ouvirAvaliacoes } from "./repository";
 
@@ -11,13 +11,13 @@ const dmy = (ymd?: string | null) => (ymd || "").split("-").reverse().join("/");
 
 export function Painel({ rid }: { rid: string }) {
   const [avaliacoes, setAvaliacoes] = useState<SegurancaAvaliacao[]>([]);
-  const [acoes, setAcoes] = useState<Acao[]>([]);
+  const [acoes, setAcoes] = useState<Tarefa[]>([]);
 
   useEffect(() => { if (rid) return ouvirAvaliacoes(rid, setAvaliacoes); }, [rid]);
   useEffect(() => {
     if (!rid) return;
-    return onSnapshot(query(collection(db, "acoes"), where("restaurantId", "==", rid)), (snap) => {
-      setAcoes(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Acao).filter((a) => a.origem?.tipo === "avaliacao_sanitaria"));
+    return onSnapshot(query(collection(db, "tarefas"), where("origem", "==", "avaliacao_sanitaria")), (snap) => {
+      setAcoes(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Tarefa).filter((a) => !a.deletadoEm && (a.restaurantIds || []).includes(rid)));
     }, () => setAcoes([]));
   }, [rid]);
 

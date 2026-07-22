@@ -3,29 +3,27 @@
 // por bloco e por área, e a lista de inconformidades — cada uma pode virar/
 // acompanhar uma Ação do módulo Plano de Ação (coleção `acoes`).
 import { useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import type {
-  Acao, AcaoLog, PlanoAcaoStatus, Pessoa,
+  Tarefa, TarefaStatus, Pessoa,
   SegurancaAvaliacao, SegurancaResultadoItem,
 } from "../../core/types";
-import { ACAO_STATUS_LABEL, segAreaCor, segurancaFaixaDe } from "../../core/types";
+import { TAREFA_STATUS_LABEL, segAreaCor, segurancaFaixaDe } from "../../core/types";
 import { ouvirAvaliacao, salvarResultado, calcularScore, reabrirAvaliacao } from "./repository";
+import { criarTarefaOperacional, atualizarTarefa } from "../tarefas/repository";
 import { SegurancaFotos } from "./SegurancaFotos";
 import { VirarAcaoModal } from "../planoDeAcao/VirarAcaoModal";
 import { DatePickerBR } from "../prazos/campos";
 
-const uid = () => Math.random().toString(36).slice(2, 11);
-const nowIso = () => new Date().toISOString();
 const dmy = (ymd?: string | null) => (ymd || "").split("-").reverse().join("/");
 const brToYmd = (br: string) => { const m = br.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? `${m[3]}-${m[2]}-${m[1]}` : ""; };
 
-const STATUS_PILL: Record<PlanoAcaoStatus, string> = {
-  aberta: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
+const STATUS_PILL: Record<TarefaStatus, string> = {
+  a_fazer: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
   em_andamento: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
   concluida: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
   cancelada: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300",
@@ -44,7 +42,7 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
   const { pessoa: me } = useAuth();
   const isMaster = !!me?.isMaster;
   const [av, setAv] = useState<SegurancaAvaliacao | null>(null);
-  const [acoes, setAcoes] = useState<Acao[]>([]);
+  const [acoes, setAcoes] = useState<Tarefa[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [criarPara, setCriarPara] = useState<string | null>(null); // itemId
   const [gerando, setGerando] = useState(false);
@@ -61,9 +59,9 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
   // Ações desta avaliação (filtro client-side por origem + refId).
   useEffect(() => {
     if (!rid) return;
-    return onSnapshot(query(collection(db, "acoes"), where("restaurantId", "==", rid)), (snap) => {
-      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Acao)
-        .filter((a) => a.origem?.tipo === "avaliacao_sanitaria" && refItemId(avaliacaoId, a.origem?.refId) != null);
+    return onSnapshot(query(collection(db, "tarefas"), where("origem", "==", "avaliacao_sanitaria")), (snap) => {
+      const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Tarefa)
+        .filter((a) => !a.deletadoEm && refItemId(avaliacaoId, a.origemRefId) != null);
       setAcoes(list);
     }, () => setAcoes([]));
   }, [rid, avaliacaoId]);
@@ -128,8 +126,8 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
   }, [av?.resultado, itemById]);
 
   const acaoPorItem = useMemo(() => {
-    const m = new Map<string, Acao>();
-    for (const a of acoes) { const k = refItemId(avaliacaoId, a.origem?.refId); if (k) m.set(k, a); }
+    const m = new Map<string, Tarefa>();
+    for (const a of acoes) { const k = refItemId(avaliacaoId, a.origemRefId); if (k) m.set(k, a); }
     return m;
   }, [acoes, avaliacaoId]);
 
@@ -142,19 +140,14 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
     onVerPreenchimento();
   }
 
-  // Cria uma ação DIRETO (sem modal) e amarra o acaoId ao resultado.
+  // Cria uma TAREFA operacional DIRETO (sem modal) e amarra o id ao resultado.
   async function criarAcaoDireta(itemId: string, texto: string, obs?: string) {
     if (!av) return;
-    const now = nowIso();
-    const id = `acao_${Date.now()}_${uid()}`;
-    const acao: Acao = {
-      id, restaurantId: rid, titulo: texto, descricao: obs || "",
-      responsavelId: null, responsavelNome: "", prazo: null, status: "aberta", prioridade: "media",
-      origem: { tipo: "avaliacao_sanitaria", refId: `${av.id}:${itemId}`, label: texto },
-      log: [{ id: uid(), em: now, autorId: autor.id, autorNome: autor.nome, tipo: "criada", texto: `Ação criada a partir de avaliação sanitária: "${texto}"` }],
-      criadoEm: now, criadoPor: autor.id, criadoPorNome: autor.nome, atualizadoEm: now, ativo: true,
-    };
-    await setDoc(doc(db, "acoes", id), sanitizeForFirestore(acao));
+    const id = await criarTarefaOperacional({
+      rid, titulo: texto, descricao: obs || "",
+      origem: "avaliacao_sanitaria", origemRefId: `${av.id}:${itemId}`, origemRefLabel: texto,
+      prioridade: "normal", criadoPor: autor.id, criadoPorNome: autor.nome,
+    });
     const cur = av.resultado?.[itemId];
     if (cur) await salvarResultado(av.id, itemId, { ...cur, acaoId: id });
   }
@@ -317,6 +310,7 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
             rid={rid} meId={autor.id} meNome={autor.nome}
             origem={{ tipo: "avaliacao_sanitaria", refId: `${av.id}:${inc.itemId}`, label: inc.texto }}
             tituloInicial={inc.texto} descricaoInicial={inc.r.observacao}
+            destino="tarefa"
             onClose={() => setCriarPara(null)}
             onCriada={async (acao) => {
               const cur = av.resultado?.[inc.itemId];
@@ -331,7 +325,7 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
 
 // ── Acompanhamento de uma ação vinculada ──────────────────────────────────────
 function AcaoAcompanhamento({ acao, autor, pessoas, podeResolver, podeTransferir }: {
-  acao: Acao;
+  acao: Tarefa;
   autor: { id: string; nome: string };
   pessoas: Pessoa[];
   podeResolver: boolean;
@@ -343,28 +337,26 @@ function AcaoAcompanhamento({ acao, autor, pessoas, podeResolver, podeTransferir
   const [busy, setBusy] = useState(false);
   const pessoasOrd = useMemo(() => [...pessoas].sort((a, b) => a.nome.localeCompare(b.nome)), [pessoas]);
 
-  async function patch(p: Partial<Acao>, tipo: AcaoLog["tipo"], texto: string) {
+  async function patch(p: Partial<Tarefa>, logAcao: "status_mudou" | "responsavel_mudou" | "editada", texto: string) {
     setBusy(true);
-    try {
-      const entry: AcaoLog = { id: uid(), em: nowIso(), autorId: autor.id, autorNome: autor.nome, tipo, texto };
-      await updateDoc(doc(db, "acoes", acao.id), sanitizeForFirestore({ ...p, atualizadoEm: nowIso(), log: [...(acao.log || []), entry] }));
-    } finally { setBusy(false); }
+    try { await atualizarTarefa(acao.id, p, autor, { acao: logAcao, detalhe: texto }); }
+    finally { setBusy(false); }
   }
 
-  const resolver = () => patch({ status: "concluida", concluidoEm: nowIso(), concluidoPor: autor.id }, "status", "Ação concluída");
+  const resolver = () => patch({ status: "concluida" }, "status_mudou", "Concluída");
   const salvarPrazo = () => {
     const ymd = brToYmd(prazoBr);
     if (!ymd) { alert("Data inválida (use dd/mm/aaaa)."); return; }
-    void patch({ prazo: ymd }, "andamento", `Novo prazo: ${dmy(ymd)}`).then(() => setPrazoOpen(false));
+    void patch({ prazo: ymd }, "editada", `Novo prazo: ${dmy(ymd)}`).then(() => setPrazoOpen(false));
   };
   const transferir = (pid: string) => {
     const nome = pessoasOrd.find((p) => p.id === pid)?.nome || "";
-    void patch({ responsavelId: pid || null, responsavelNome: nome }, "andamento", `Responsável: ${nome || "—"}`).then(() => setTransfOpen(false));
+    void patch({ responsavelId: pid || "", responsavelNome: nome }, "responsavel_mudou", `Responsável: ${nome || "—"}`).then(() => setTransfOpen(false));
   };
   const solicitar = () => {
     const t = prompt("Descreva a solicitação (compra, serviço, etc.):");
     if (!t?.trim()) return;
-    void patch({ status: "em_andamento" }, "andamento", `Solicitação: ${t.trim()}`);
+    void patch({ status: "em_andamento" }, "status_mudou", `Solicitação: ${t.trim()}`);
   };
 
   const concluida = acao.status === "concluida";
@@ -372,7 +364,7 @@ function AcaoAcompanhamento({ acao, autor, pessoas, podeResolver, podeTransferir
   return (
     <div className="space-y-2">
       <div className="flex items-center gap-2 flex-wrap text-[12px]">
-        <span className={`px-2 py-0.5 rounded-full font-semibold ${STATUS_PILL[acao.status]}`}>{ACAO_STATUS_LABEL[acao.status]}</span>
+        <span className={`px-2 py-0.5 rounded-full font-semibold ${STATUS_PILL[acao.status]}`}>{TAREFA_STATUS_LABEL[acao.status]}</span>
         <span className="text-gray-500 dark:text-gray-400">{acao.responsavelNome || "sem responsável"}</span>
         {acao.prazo && <span className="text-gray-500 dark:text-gray-400 tabular-nums">📅 {dmy(acao.prazo)}</span>}
       </div>
