@@ -11,6 +11,76 @@ import { IdeiaModal } from "../ideias/IdeiaModal";
 // Status que ainda são "rascunho/backlog" (não puxadas nem descartadas).
 const ABERTAS: IdeiaStatus[] = ["aberta", "em_discussao", "gerada_reuniao", "em_pauta", "discutida"];
 
+// ── Faixa da Caixa de Ideias — vai FIXA logo abaixo do calendário (aba Minhas).
+// Caixa amarela "acesa" (glow de lâmpada), largura cheia Seg→Dom, com as ideias
+// como cards fluindo lado a lado e quebrando pra linha de baixo.
+export function CaixaIdeiasFaixa({ rids, ridAtivo, meId, isMaster, restaurants, podePrivadas, onVerTodas, onVirarTarefa }: {
+  rids: string[];
+  ridAtivo: string;
+  meId: string;
+  isMaster: boolean;
+  restaurants: { id: string; nome: string }[];
+  podePrivadas: boolean;
+  onVerTodas: () => void;
+  onVirarTarefa: (ideia: Ideia) => void;
+}) {
+  const [ideias, setIdeias] = useState<Ideia[]>([]);
+  const [editing, setEditing] = useState<Ideia | "new" | null>(null);
+  const nomeDe = useMemo(() => { const m: Record<string, string> = {}; restaurants.forEach(r => { m[r.id] = r.nome; }); return m; }, [restaurants]);
+
+  useEffect(() => {
+    if (!meId || !rids.length) { setIdeias([]); return; }
+    return ouvirIdeiasVisiveis(rids, meId, isMaster, setIdeias);
+  }, [rids.join(","), meId, isMaster]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Minhas ideias em aberto (o backlog pessoal). As mais recentes primeiro.
+  const minhas = useMemo(() => ideias
+    .filter(i => i.criadoPor === meId && ABERTAS.includes(i.status))
+    .sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || "")), [ideias, meId]);
+
+  const multiEmpresa = rids.length > 1;
+  const ridParaNova = ridAtivo || rids[0] || "";
+
+  return (
+    <div className="mt-3 rounded-2xl border border-amber-200/80 dark:border-amber-800/50 bg-amber-50/80 dark:bg-amber-900/10 p-3 shadow-[0_0_35px_-8px_rgba(251,191,36,0.55)] dark:shadow-[0_0_35px_-10px_rgba(251,191,36,0.35)]">
+      <div className="flex items-center gap-2 flex-wrap mb-2">
+        <span className="text-sm font-bold text-amber-900 dark:text-amber-200">💡 Caixa de ideias</span>
+        <span className="text-[11px] text-amber-700/70 dark:text-amber-300/60">rascunhos do que fazer — sem prazo nem responsável</span>
+        <span className="flex-1" />
+        {ridParaNova && <button type="button" onClick={() => setEditing("new")} className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white">+ Nova ideia</button>}
+        <button type="button" onClick={onVerTodas} className="text-xs font-medium px-2.5 py-1 rounded-lg border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/20">Ver todas →</button>
+      </div>
+
+      {minhas.length === 0 ? (
+        <button type="button" onClick={() => ridParaNova && setEditing("new")} className="w-full rounded-xl border border-dashed border-amber-300 dark:border-amber-800 py-6 text-center text-[13px] text-amber-700/80 dark:text-amber-300/70 hover:bg-amber-100/50 dark:hover:bg-amber-900/10">
+          Nenhuma ideia ainda — capture aqui o que quiser fazer. {ridParaNova ? "Clique pra adicionar." : ""}
+        </button>
+      ) : (
+        <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
+          {minhas.map(i => (
+            <div key={i.id} className="group relative rounded-lg border border-amber-200/70 dark:border-amber-900/40 bg-white dark:bg-gray-900 p-2 hover:border-amber-400 dark:hover:border-amber-600 transition-colors">
+              <button type="button" onClick={() => setEditing(i)} className="w-full text-left">
+                <div className="text-[12px] font-medium text-gray-900 dark:text-gray-100 line-clamp-2 leading-snug">{i.visibilidade === "privada" && <span title="privada" className="text-indigo-600 dark:text-indigo-400">🔒 </span>}{i.titulo}</div>
+                {(multiEmpresa || i.categoria) && (
+                  <div className="flex items-center gap-1 flex-wrap mt-1">
+                    {multiEmpresa && <span className="text-[9px] px-1 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 truncate max-w-full">🏢 {nomeDe[i.restaurantId] || "—"}</span>}
+                    {i.categoria && <span className="text-[9px] px-1 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">{i.categoria}</span>}
+                  </div>
+                )}
+              </button>
+              <button type="button" onClick={() => onVirarTarefa(i)} title="Virar tarefa" className="absolute top-1 right-1 opacity-0 group-hover:opacity-100 transition-opacity text-[10px] px-1.5 py-0.5 rounded bg-indigo-600 text-white">→ tarefa</button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {editing && (
+        <IdeiaModal ideia={editing === "new" ? null : editing} restaurantId={editing === "new" ? ridParaNova : editing.restaurantId} podePrivadas={podePrivadas} onClose={() => setEditing(null)} />
+      )}
+    </div>
+  );
+}
+
 export function CaixaDeIdeias({ rids, ridAtivo, meId, isMaster, restaurants, podePrivadas, onVoltar, onVirarTarefa }: {
   rids: string[];
   ridAtivo: string;

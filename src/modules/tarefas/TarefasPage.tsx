@@ -14,7 +14,7 @@ import { type Tab, type ViewMode, ViewSwitcher, ehAreaPrazos, semOrfasPrazo } fr
 import { CalendarioView, KanbanView, LixeiraView, MinhasTarefasView, ProjetoView, ProjetosTopBar } from "./views";
 import { AdminView } from "./admin";
 import { DetalheModal, NovaTarefaModal, SemPermissaoModal } from "./modais";
-import { CaixaDeIdeias } from "./CaixaDeIdeias";
+import { CaixaDeIdeias, CaixaIdeiasFaixa } from "./CaixaDeIdeias";
 
 export function TarefasPage() {
   const { pessoa: pessoaReal } = useAuth();
@@ -337,14 +337,26 @@ export function TarefasPage() {
             {acoesHeader}
           </div>
           {viewMinhas === "calendario" && (
-            <CalendarioView
-              tarefas={minhas}
-              projetos={projetos}
-              subprojetos={subprojetos}
-              onAbrir={setDetalheId}
-              autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
-              onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })}
-            />
+            <>
+              <CalendarioView
+                tarefas={minhas}
+                projetos={projetos}
+                subprojetos={subprojetos}
+                onAbrir={setDetalheId}
+                autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
+                onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })}
+              />
+              <CaixaIdeiasFaixa
+                rids={pessoa?.restaurantIds || []}
+                ridAtivo={ridAtivo || ""}
+                meId={pessoa?.id || ""}
+                isMaster={!!pessoa?.isMaster}
+                restaurants={restaurants}
+                podePrivadas={!!pessoa?.isMaster || canAcaoRid("ideias", "privadas")}
+                onVerTodas={() => setTab("ideias")}
+                onVirarTarefa={(i) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })}
+              />
+            </>
           )}
           {viewMinhas === "lista" && (
             <MinhasTarefasView
