@@ -30,6 +30,7 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
   const [local, setLocal] = useState(reuniao?.local || "");
   const [participantes, setParticipantes] = useState<ParticipanteReuniao[]>(reuniao?.participantes || []);
   const [extName, setExtName] = useState("");
+  const [busca, setBusca] = useState("");
 
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
@@ -65,7 +66,7 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
     setParticipantes(s => [...s, { nome: n }]);
     setExtName("");
   }
-  function removerExterno(idx: number) {
+  function removerParticipante(idx: number) {
     setParticipantes(s => s.filter((_, i) => i !== idx));
   }
 
@@ -138,7 +139,10 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
     });
 
   const empregadosSelecionados = new Set(participantes.filter(p => p.empregadoId).map(p => p.empregadoId!));
-  const externos = participantes.map((p, i) => ({ ...p, _idx: i })).filter(p => !p.empregadoId);
+  const bq = busca.trim().toLowerCase();
+  const matches = bq
+    ? empregadosOrdenados.filter(e => !empregadosSelecionados.has(e.id) && e.nome.toLowerCase().includes(bq)).slice(0, 8)
+    : [];
 
   return (
     <Modal
@@ -155,80 +159,71 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
           autoFocus
         />
 
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Tipo</label>
-            <select
-              value={tipo}
-              onChange={(e) => setTipo(e.target.value as ReuniaoTipo)}
-              className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
-            >
-              {TIPOS.map(t => <option key={t} value={t}>{REUNIAO_TIPO_LABEL[t]}</option>)}
-            </select>
+        <div>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Tipo</label>
+          <div className="inline-flex flex-wrap gap-0.5 rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+            {TIPOS.map(t => (
+              <button key={t} type="button" onClick={() => setTipo(t)}
+                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${tipo === t ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
+                {REUNIAO_TIPO_LABEL[t]}
+              </button>
+            ))}
           </div>
-          <Input
-            label="Data *"
-            type="date"
-            value={data}
-            onChange={(e) => setData(e.target.value)}
-          />
-          <Input
-            label="Horário"
-            type="time"
-            value={horario}
-            onChange={(e) => setHorario(e.target.value)}
-          />
-          <Input
-            label="Local"
-            value={local}
-            onChange={(e) => setLocal(e.target.value)}
-            placeholder="ex: Sala da gerência"
-          />
         </div>
 
-        {/* Participantes */}
+        <div className="grid grid-cols-2 gap-3">
+          <Input label="Data *" type="date" value={data} onChange={(e) => setData(e.target.value)} />
+          <Input label="Horário" type="time" value={horario} onChange={(e) => setHorario(e.target.value)} />
+        </div>
+        <Input label="Local" value={local} onChange={(e) => setLocal(e.target.value)} placeholder="ex: Sala da gerência" />
+
+        {/* Participantes — busca por nome (typeahead) + chips dos selecionados */}
         <div>
-          <label className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 block mb-2">
-            Participantes ({participantes.length})
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5">
+            Participantes {participantes.length > 0 && <span className="text-gray-400">· {participantes.length}</span>}
           </label>
 
-          <div className="border border-gray-200 dark:border-gray-800 rounded-lg max-h-[200px] overflow-y-auto mb-2">
-            {empregadosOrdenados.length === 0 ? (
-              <div className="p-4 text-center text-sm text-gray-500">Sem empregados ativos.</div>
-            ) : empregadosOrdenados.map(e => {
-              const cargo = cargoMap[e.cargoId];
-              const checked = empregadosSelecionados.has(e.id);
-              return (
-                <label
-                  key={e.id}
-                  className="flex items-center gap-3 px-3 py-1.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800 last:border-b-0"
-                >
-                  <input type="checkbox" checked={checked} onChange={() => toggleEmp(e)} />
-                  <div className="flex-1 text-sm">
-                    <div className="font-medium">{e.nome}</div>
-                    <div className="text-[10px] text-gray-500">{cargo?.nome} · {cargo?.area}</div>
-                  </div>
-                </label>
-              );
-            })}
-          </div>
-
-          {externos.length > 0 && (
-            <div className="space-y-1 mb-2">
-              {externos.map(p => (
-                <div key={p._idx} className="flex items-center justify-between gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 rounded text-sm">
-                  <span>👤 {p.nome} <span className="text-xs text-gray-500">(externo)</span></span>
-                  <button type="button" onClick={() => removerExterno(p._idx)} className="text-rose-600 hover:text-rose-700 text-xs">remover</button>
-                </div>
+          {participantes.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {participantes.map((p, i) => (
+                <span key={i} className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-[13px]">
+                  {p.empregadoId ? p.nome : <span>👤 {p.nome} <span className="text-indigo-400 text-[11px]">externo</span></span>}
+                  <button type="button" onClick={() => removerParticipante(i)} aria-label="remover" className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-indigo-200 dark:hover:bg-indigo-800 text-indigo-500 leading-none">×</button>
+                </span>
               ))}
             </div>
           )}
 
-          <div className="flex gap-2">
+          <Input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="🔍 Digite o nome do empregado…"
+          />
+          {bq && (
+            <div className="border border-gray-200 dark:border-gray-800 rounded-lg mt-1 max-h-48 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800">
+              {matches.length === 0 ? (
+                <div className="p-3 text-sm text-gray-500 text-center">Nenhum empregado ativo com esse nome.</div>
+              ) : matches.map(e => {
+                const cargo = cargoMap[e.cargoId];
+                return (
+                  <button key={e.id} type="button" onClick={() => { toggleEmp(e); setBusca(""); }}
+                    className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 flex items-center justify-between gap-2">
+                    <span className="min-w-0">
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{e.nome}</span>
+                      <span className="text-[11px] text-gray-500 block truncate">{cargo?.nome || "—"}{cargo?.area ? ` · ${cargo.area}` : ""}</span>
+                    </span>
+                    <span className="text-indigo-500 text-xs shrink-0">+ adicionar</span>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="flex gap-2 mt-2">
             <Input
               value={extName}
               onChange={(e) => setExtName(e.target.value)}
-              placeholder="Adicionar participante externo (não-empregado)"
+              placeholder="Participante externo (não-empregado)"
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addExterno(); } }}
               className="flex-1"
             />
