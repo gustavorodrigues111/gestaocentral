@@ -9,7 +9,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { logAudit } from "../../core/audit/versionedChange";
 import { todayYmd } from "../../core/utils/date";
 import { TAREFA_STATUS_LABEL, REUNIAO_TIPO_LABEL } from "../../core/types";
-import type { Tarefa, AcaoReuniao, AcaoStatus, Empregado, EventoTrilha, Ideia, Ocorrencia, PautaItem, Reuniao } from "../../core/types";
+import type { Tarefa, Empregado, Ideia, Ocorrencia, PautaItem, Reuniao } from "../../core/types";
 import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal";
 import { VirarAcaoModal, type ItemCriado } from "../planoDeAcao/VirarAcaoModal";
 
@@ -36,7 +36,6 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
   const [gerarTipo, setGerarTipo] = useState<"ideia" | "ocorrencia" | null>(null);
   const [geradosIdeias, setGeradosIdeias] = useState<Ideia[]>([]);
   const [geradosOcorrencias, setGeradosOcorrencias] = useState<Ocorrencia[]>([]);
-  const [virarTarefaAcao, setVirarTarefaAcao] = useState<AcaoReuniao | null>(null);
   const [virarTarefaPauta, setVirarTarefaPauta] = useState<PautaItem | null>(null);
   const [virarAcaoPauta, setVirarAcaoPauta] = useState<PautaItem | null>(null);
   const [novaAcaoAberta, setNovaAcaoAberta] = useState(false);
@@ -283,20 +282,6 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
     }
   }
 
-  // ── Ações ────────────────────────────────────────────────────────────────
-  async function setAcaoStatus(id: string, status: AcaoStatus) {
-    const novaList = (reuniao.acoes || []).map(a =>
-      a.id === id
-        ? { ...a, status, concluidoEm: status === "feito" ? new Date().toISOString() : null }
-        : a
-    );
-    await patchReuniao({ acoes: novaList });
-  }
-  async function removerAcao(id: string) {
-    if (!confirm("Remover essa ação?")) return;
-    await patchReuniao({ acoes: (reuniao.acoes || []).filter(a => a.id !== id) });
-  }
-
   // Depois de transformar um item da pauta em Ação (Plano de Ação): marca o item
   // e registra no log da ocorrência/ideia de origem (se o item veio de uma).
   async function aposVirarAcaoPauta(t: PautaItem, acao: ItemCriado) {
@@ -313,35 +298,6 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
       } catch { /* origem pode ter sido removida — segue */ }
     }
   }
-
-  // Cria evento de Trilha pra empregado a partir de uma ação concluída
-  async function virarEventoTrilha(a: AcaoReuniao) {
-    if (!a.responsavelEmpregadoId) {
-      alert("Essa ação não tem responsável-empregado definido.");
-      return;
-    }
-    if (!me) return;
-    if (!confirm(`Registrar essa ação como evento de trilha do ${a.responsavelNome || "empregado"}?`)) return;
-    try {
-      const evento: Omit<EventoTrilha, "id"> = {
-        restaurantId,
-        empregadoId: a.responsavelEmpregadoId,
-        tipo: a.status === "feito" ? "treinamento" : "outro",
-        data: a.concluidoEm ? a.concluidoEm.slice(0, 10) : todayYmd(),
-        titulo: a.descricao,
-        descricao: `Ação da reunião: ${reuniao.titulo}`,
-        fonte: "manual",
-        registradoEm: new Date().toISOString(),
-        registradoPor: me.id,
-      };
-      await addDoc(collection(db, "eventosTrilha"), sanitizeForFirestore(evento));
-      alert("Evento adicionado à trilha do empregado.");
-    } catch (e) {
-      console.error(e);
-      alert("Erro ao adicionar evento.");
-    }
-  }
-
 
   const isPlanejada = reuniao.status === "planejada";
   const isRealizada = reuniao.status === "realizada";
@@ -426,7 +382,7 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
           {([
             ["pauta", `📋 Pauta (${reuniao.pauta?.length || 0})`, true],
             ["ata",   "📝 Ata",                                    !!reuniao.ata],
-            ["acoes", `🎯 Tarefas (${tarefasReuniao.filter(a => a.status === "a_fazer" || a.status === "em_andamento").length + (reuniao.acoes || []).filter(a => a.status === "pendente").length})`, true],
+            ["acoes", `🎯 Tarefas (${tarefasReuniao.filter(a => a.status === "a_fazer" || a.status === "em_andamento").length})`, true],
           ] as const).filter(([_, __, mostrar]) => mostrar).map(([id, label]) => (
             <button
               key={id}
@@ -622,52 +578,6 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
                 <p className="text-[10px] text-gray-400">Acompanhe e conclua no módulo Tarefas.</p>
               </div>
             )}
-            {(reuniao.acoes || []).length > 0 && (
-              <h4 className="text-xs font-bold uppercase tracking-wider text-gray-500 pt-3 border-t border-gray-200 dark:border-gray-800">Ações antigas (registradas na reunião)</h4>
-            )}
-            {(reuniao.acoes || []).map((a) => {
-              const stCls = a.status === "feito"
-                ? "bg-emerald-50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800"
-                : a.status === "cancelado"
-                  ? "bg-gray-50 dark:bg-gray-800/50 border-gray-200 dark:border-gray-800 opacity-60"
-                  : "bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800";
-              return (
-                <div key={a.id} className={`border rounded-lg p-3 ${stCls}`}>
-                  <div className="flex items-start justify-between gap-2 flex-wrap">
-                    <div className="flex-1">
-                      <div className={`font-medium text-gray-900 dark:text-gray-100 ${a.status === "cancelado" ? "line-through" : ""}`}>
-                        {a.descricao}
-                      </div>
-                      <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 flex items-center gap-2 flex-wrap">
-                        {a.responsavelNome && <span>👤 {a.responsavelNome}</span>}
-                        {a.prazo && <span>📅 {new Date(a.prazo + "T12:00:00").toLocaleDateString("pt-BR")}</span>}
-                        <span className="font-medium">
-                          {a.status === "pendente" ? "⏳ Pendente" : a.status === "feito" ? "✓ Feito" : "✕ Cancelado"}
-                        </span>
-                      </div>
-                    </div>
-                    {podeConfig && (
-                      <div className="flex gap-1 flex-wrap">
-                        {a.status !== "feito" && <Button variant="secondary" size="sm" onClick={() => setAcaoStatus(a.id, "feito")}>✓ Feito</Button>}
-                        {a.status !== "pendente" && <Button variant="secondary" size="sm" onClick={() => setAcaoStatus(a.id, "pendente")}>↻ Reabrir</Button>}
-                        {a.status !== "cancelado" && <Button variant="secondary" size="sm" onClick={() => setAcaoStatus(a.id, "cancelado")}>✕</Button>}
-                        {!a.tarefaIdGerada && (
-                          <Button variant="secondary" size="sm" onClick={() => setVirarTarefaAcao(a)}>📋 Virar tarefa</Button>
-                        )}
-                        {a.responsavelEmpregadoId && <Button variant="secondary" size="sm" onClick={() => virarEventoTrilha(a)}>🎯 Trilha</Button>}
-                        <Button variant="danger" size="sm" onClick={() => removerAcao(a.id)}>×</Button>
-                      </div>
-                    )}
-                  </div>
-                  {a.tarefaIdGerada && (
-                    <div className="mt-2 inline-flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-2 py-0.5 rounded">
-                      ✓ Virou tarefa no Gestor de Tarefas
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-
           </div>
         )}
 
@@ -710,26 +620,6 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
           destino="tarefa"
           onClose={() => setNovaAcaoAberta(false)}
           onCriada={() => { /* a lista atualiza pelo onSnapshot */ }}
-        />
-      )}
-      {virarTarefaAcao && me && (
-        <VirarTarefaModal
-          tituloInicial={virarTarefaAcao.descricao}
-          descricaoInicial={`Ação registrada na reunião "${reuniao.titulo}" em ${new Date(reuniao.data + "T12:00:00").toLocaleDateString("pt-BR")}.${virarTarefaAcao.observacao ? `\n\n${virarTarefaAcao.observacao}` : ""}`}
-          prazoInicial={virarTarefaAcao.prazo || ""}
-          responsavelEmpregadoId={virarTarefaAcao.responsavelEmpregadoId || null}
-          reuniao={reuniao}
-          restaurantId={restaurantId}
-          empregados={empregados}
-          autor={{ id: me.id, nome: me.nome }}
-          onClose={() => setVirarTarefaAcao(null)}
-          onCriada={async (tarefaId) => {
-            const novasAcoes = (reuniao.acoes || []).map(a =>
-              a.id === virarTarefaAcao.id ? { ...a, tarefaIdGerada: tarefaId } : a
-            );
-            await patchReuniao({ acoes: novasAcoes });
-            setVirarTarefaAcao(null);
-          }}
         />
       )}
       {virarTarefaPauta && me && (
