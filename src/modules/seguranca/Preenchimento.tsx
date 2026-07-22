@@ -202,7 +202,7 @@ function ItemCard({ item, rootFolderId, pastaLabel, readOnly, resultado, onMarca
         {item.texto}
         {!item.pontua && <span className="text-gray-400 text-[12px]"> (sem pontuação)</span>}
       </div>
-      <div className="grid grid-cols-2 gap-2 max-w-md">
+      <div className="grid grid-cols-2 gap-3">
         <button type="button" disabled={readOnly} onClick={() => onMarcar("conforme")}
           className={`${btnBase} ${resp === "conforme" ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-300 hover:border-emerald-400"}`}>
           <span className="text-[15px]">✓</span> Conforme

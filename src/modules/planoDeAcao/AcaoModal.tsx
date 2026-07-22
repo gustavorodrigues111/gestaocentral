@@ -18,7 +18,7 @@ const PRIOS: [AcaoPrioridade, string, string][] = [
   ["media", "Média", "text-amber-600 dark:text-amber-400"],
   ["alta", "Alta", "text-rose-600 dark:text-rose-400"],
 ];
-const ORIGEM_LABEL: Record<string, string> = { ocorrencia: "🚨 de ocorrência", ideia: "💡 de ideia", reuniao: "🗣️ de reunião", avulsa: "✍️ avulsa" };
+const ORIGEM_LABEL: Record<string, string> = { ocorrencia: "🚨 de ocorrência", ideia: "💡 de ideia", reuniao: "🗣️ de reunião", avulsa: "✍️ avulsa", avaliacao_sanitaria: "🧪 de avaliação sanitária" };
 
 export function AcaoModal({ acao, rid, pessoas, meId, meNome, onClose }: {
   acao: Acao | null; rid: string; pessoas: Pessoa[]; meId?: string; meNome?: string; onClose: () => void;

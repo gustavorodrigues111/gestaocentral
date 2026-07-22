@@ -11,7 +11,7 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 
 const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-const ORIGEM_TXT: Record<AcaoOrigemTipo, string> = { ocorrencia: "ocorrência", ideia: "ideia", reuniao: "reunião", avulsa: "ação avulsa" };
+const ORIGEM_TXT: Record<AcaoOrigemTipo, string> = { ocorrencia: "ocorrência", ideia: "ideia", reuniao: "reunião", avulsa: "ação avulsa", avaliacao_sanitaria: "avaliação sanitária" };
 const PRIOS: [AcaoPrioridade, string, string][] = [["baixa", "Baixa", "text-gray-500"], ["media", "Média", "text-amber-600 dark:text-amber-400"], ["alta", "Alta", "text-rose-600 dark:text-rose-400"]];
 
 export function VirarAcaoModal({ rid, meId, meNome, origem, tituloInicial, descricaoInicial, onClose, onCriada }: {

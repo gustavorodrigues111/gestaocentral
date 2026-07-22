@@ -124,7 +124,7 @@ export const ACAO_STATUS_LABEL: Record<PlanoAcaoStatus, string> = {
   aberta: "Aberta", em_andamento: "Em andamento", concluida: "Concluída", cancelada: "Cancelada",
 };
 export type AcaoPrioridade = "baixa" | "media" | "alta";
-export type AcaoOrigemTipo = "ocorrencia" | "ideia" | "reuniao" | "avulsa";
+export type AcaoOrigemTipo = "ocorrencia" | "ideia" | "reuniao" | "avulsa" | "avaliacao_sanitaria";
 export type AcaoLog = {
   id: string; em: string; autorId?: string | null; autorNome?: string;
   tipo: "criada" | "status" | "andamento" | "comentario"; texto: string;

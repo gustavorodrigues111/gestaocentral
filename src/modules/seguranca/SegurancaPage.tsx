@@ -69,21 +69,21 @@ export function SegurancaPage() {
 
   if (abertaId) {
     return (
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         <Preenchimento avaliacaoId={abertaId} autor={autor} onClose={() => setAbertaId(null)} />
       </div>
     );
   }
   if (editando && modeloAtivo) {
     return (
-      <div className="max-w-3xl mx-auto">
+      <div className="max-w-5xl mx-auto">
         <ModeloEditor modelo={modeloAtivo} onClose={() => setEditando(false)} />
       </div>
     );
   }
 
   return (
-    <div className="max-w-3xl mx-auto space-y-5">
+    <div className="max-w-5xl mx-auto space-y-5">
       <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">🧪 Segurança Sanitária</h1>
