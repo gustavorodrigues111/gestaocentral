@@ -13,7 +13,6 @@ const SEED: Seed[] = [
 
   // ── Segurança Sanitária ──
   { modulo: "seguranca", resp: "gustavo", titulo: "Criar o template da lista-base, atribuir áreas dos itens e apagar as avaliações de teste antigas" },
-  { modulo: "seguranca", resp: "gustavo", titulo: "Aprovar o template 'acesso_inicial' na Meta pra o disparo automático (hoje funciona pelo fallback manual)" },
 
   // ── Pessoas / onboarding ──
   { modulo: "pessoas", resp: "ia", titulo: "P3 do redesenho de Pessoas: fundir o EmpregadoModal no cadastro" },

@@ -3,7 +3,6 @@ import { addDoc, collection, doc, getDoc, getDocs, limit, onSnapshot, query, upd
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { gerarSenhaInicial, provisionarAcesso } from "../../core/auth/provisionar";
-import { enviarWhatsapp } from "../../core/whatsapp/enviar";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canExcluirPessoa } from "../../core/auth/permissions";
@@ -197,13 +196,10 @@ function TabIdentidade({
     const baseUrl = subdomainAtivo ? `https://${subdomainAtivo}.planejamento.app` : "https://planejamento.app";
     const nomePrimeiro = (pessoa.nome || "").split(/\s+/)[0] || "";
     const waLink = `https://wa.me/${phone}?text=${encodeURIComponent(buildConviteMsg(nomePrimeiro, email, senha, baseUrl))}`;
-    // Tenta o disparo pela Cloud API (template aprovado). Inerte até credenciais.
-    const r = await enviarWhatsapp({
-      to: whats, template: "acesso_inicial", idioma: "pt_BR",
-      params: [nomePrimeiro, email, senha, baseUrl],
-      contexto: "acesso_convite", pessoaId: pessoa.id, restaurantId, criadoPor: me.id,
-    });
-    setConvite({ senha, waLink, enviado: r.ok });
+    // Envio MANUAL: a Meta não aprova template com senha (INCORRECT_CATEGORY),
+    // então o convite vai por wa.me (você envia). A conta e a senha já estão
+    // criadas; é só mandar a mensagem.
+    setConvite({ senha, waLink, enviado: false });
     setConvidando(false);
   }
 
