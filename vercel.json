@@ -41,6 +41,10 @@
     {
       "path": "/api/rotinas-notificar",
       "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/evolution-healthcheck",
+      "schedule": "*/15 * * * *"
     }
   ]
 }

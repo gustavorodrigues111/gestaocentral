@@ -44,7 +44,16 @@ service cloud.firestore {
     match /falhasLog/{id} {
       allow read:   if isMaster();
       allow create: if authed() && request.resource.data.size() < 30;
-      allow update, delete: if isMaster();
+      // Master edita/remove; o usuário de serviço (healthcheck) só pode marcar resolvido.
+      allow update: if isMaster()
+        || (authed() && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['resolvidoEm']));
+      allow delete: if isMaster();
+    }
+
+    // ── /monitorEstado ── estado do Monitor (ex.: saúde da Evolution). Gravado
+    //   pelo cron/usuário de serviço; lido pelo app pra mostrar status. ────────
+    match /monitorEstado/{id} {
+      allow read, write: if authed();
     }
 
     // ── Conferência de folhas de pagamento (dados sensíveis: financeiro +
