@@ -8,7 +8,8 @@ type Seed = { modulo: string; titulo: string; resp: "gustavo" | "ia" | string; d
 
 const SEED: Seed[] = [
   // ── Geral / infra ──
-  { modulo: "geral", resp: "gustavo", titulo: "Configurar credenciais do WhatsApp Cloud API na Vercel (WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_WABA_ID)", descricao: "Sem isso, disparo automático e templates ficam inertes." },
+  { modulo: "geral", resp: "gustavo", titulo: "Configurar o Resend na Vercel (RESEND_API_KEY + domínio verificado) pra o email de convite de acesso sair", descricao: "Sem isso, o convite por email não envia — cai no fallback manual (WhatsApp/copiar senha)." },
+  { modulo: "geral", resp: "gustavo", titulo: "OPCIONAL: credenciais do WhatsApp Cloud API (WHATSAPP_TOKEN/PHONE_ID/WABA_ID) — só pra disparo proativo pelo número oficial (aviso de fechamento aos sócios, avisos/lembretes) e a tela de templates", descricao: "Não é necessário pra onboarding (email) nem pra inbox dos restaurantes (Evolution)." },
   { modulo: "geral", resp: "ia", titulo: "Padronizar layout/botões dos módulos no core/ui (design system) — executar no gatilho 'bora unificação', piloto Análise de Ponto" },
 
   // ── Segurança Sanitária ──
