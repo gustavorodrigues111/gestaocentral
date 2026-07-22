@@ -6281,6 +6281,11 @@ export type WhatsappContato = {
   // Reabre (volta pra pendentes) quando o cliente manda nova mensagem.
   finalizadoEm?: string | null;
   finalizadoPor?: string | null;      // pessoaId de quem finalizou
+  // Spam: contato marcado como spam some das listas ativas e aparece só no
+  // filtro "Spam".
+  spam?: boolean;
+  spamPor?: string | null;
+  spamEm?: string | null;
   roteamentoEstado?: "menu_enviado" | "roteado" | null;  // estado do menu automático (bot)
   tagIds?: string[];
   atualizadoEm?: string;

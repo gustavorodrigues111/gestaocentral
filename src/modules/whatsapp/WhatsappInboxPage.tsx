@@ -67,7 +67,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [editMsg, setEditMsg] = useState<{ id: string; texto: string } | null>(null);   // edição inline
   const [emojiAberto, setEmojiAberto] = useState(false);
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
-  const [filtroAtrib, setFiltroAtrib] = useState<"minhas" | "pendentes" | "todas" | "outros" | "finalizados">("pendentes");
+  const [filtroAtrib, setFiltroAtrib] = useState<"minhas" | "pendentes" | "todas" | "spam" | "finalizados">("pendentes");
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const msgsEndRef = useRef<HTMLDivElement | null>(null);
   const painelRef = useRef<HTMLDivElement | null>(null);
@@ -276,25 +276,26 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // Dono (responsável) de uma conversa, pela chave normalizada.
   const donoDe = (waId: string): string | null => contatos[foneKey(waId)]?.atribuidoA || null;
   const finalizadaDe = (waId: string): boolean => !!contatos[foneKey(waId)]?.finalizadoEm;
-  // Contadores por atribuição (pra chips). Finalizadas ficam fora das listas ativas.
-  const contMinhas = useMemo(() => conversas.filter(c => donoDe(c.waId) === me?.id && !finalizadaDe(c.waId)).length, [conversas, contatos, me?.id]);
-  const contPend = useMemo(() => conversas.filter(c => !donoDe(c.waId) && !finalizadaDe(c.waId)).length, [conversas, contatos]);
-  const contOutros = useMemo(() => conversas.filter(c => { const d = donoDe(c.waId); return d && d !== me?.id && !finalizadaDe(c.waId); }).length, [conversas, contatos, me?.id]);
-  const contFinalizadas = useMemo(() => conversas.filter(c => finalizadaDe(c.waId)).length, [conversas, contatos]);
+  const spamDe = (waId: string): boolean => !!contatos[foneKey(waId)]?.spam;
+  // Contadores por atribuição (pra chips). Finalizadas/spam ficam fora das ativas.
+  const contMinhas = useMemo(() => conversas.filter(c => donoDe(c.waId) === me?.id && !finalizadaDe(c.waId) && !spamDe(c.waId)).length, [conversas, contatos, me?.id]);
+  const contPend = useMemo(() => conversas.filter(c => !donoDe(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)).length, [conversas, contatos]);
+  const contSpam = useMemo(() => conversas.filter(c => spamDe(c.waId)).length, [conversas, contatos]);
+  const contFinalizadas = useMemo(() => conversas.filter(c => finalizadaDe(c.waId) && !spamDe(c.waId)).length, [conversas, contatos]);
 
   // Tem conversa NÃO LIDA em cada filtro? (pra sombrear o chip de vermelho)
   const naoLidasPorFiltro = useMemo(() => {
-    const r = { pendentes: false, minhas: false, todas: false, finalizados: false, outros: false };
+    const r = { pendentes: false, minhas: false, todas: false, finalizados: false, spam: false };
     for (const c of conversas) {
       const cont = contatos[foneKey(c.waId)];
       if (!(c.naoLidas > 0 || cont?.naoLidaManual)) continue;
+      if (cont?.spam) { r.spam = true; continue; }
       const dono = cont?.atribuidoA || null;
       const fin = !!cont?.finalizadoEm;
       if (fin) { r.finalizados = true; continue; }
       r.todas = true;
       if (!dono) r.pendentes = true;
       else if (dono === me?.id) r.minhas = true;
-      else r.outros = true;
     }
     return r;
   }, [conversas, contatos, me?.id]);
@@ -302,13 +303,15 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // Filtro por atribuição + tag (o número já é da empresa; não filtra por empresa aqui).
   const conversasFiltradas = useMemo(() => conversas.filter(c => {
     if (filtroTag) { if (!(contatos[foneKey(c.waId)]?.tagIds || []).includes(filtroTag)) return false; }
+    const spam = spamDe(c.waId);
+    if (filtroAtrib === "spam") return spam;                 // aba Spam só mostra spam
+    if (spam) return false;                                  // spam some das outras listas
     const finalizada = finalizadaDe(c.waId);
     if (filtroAtrib === "finalizados") return finalizada;   // aba Finalizados só mostra finalizadas
     if (finalizada) return false;                           // finalizadas somem das listas ativas
     const dono = donoDe(c.waId);
     if (filtroAtrib === "minhas" && dono !== me?.id) return false;
     if (filtroAtrib === "pendentes" && dono) return false;
-    if (filtroAtrib === "outros" && (!dono || dono === me?.id)) return false;
     return true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [conversas, filtroTag, contatos, filtroAtrib, me?.id]);
@@ -525,6 +528,17 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       texto: `✅ ${me?.nome || "—"} finalizou o atendimento`, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), autorNome: me?.nome || null,
     }));
   }
+  // Marca/desmarca contato como SPAM. Spam some das listas ativas e vai pro
+  // filtro Spam.
+  async function marcarSpam(waId: string) {
+    const novoSpam = !spamDe(waId);
+    if (novoSpam && !confirm("Marcar este contato como SPAM?\n\nEle sai das listas ativas (Pendentes/Minhas/Todas) e passa a aparecer só no filtro Spam.")) return;
+    await salvarContato(waId, {
+      spam: novoSpam,
+      spamPor: novoSpam ? (me?.id || null) : null,
+      spamEm: novoSpam ? new Date().toISOString() : null,
+    });
+  }
   // Reabertura manual (pelo atendente) — mantém o responsável. A reabertura por
   // mensagem do cliente acontece no webhook e devolve pra pendentes.
   async function reabrirConversa(waId: string) {
@@ -632,7 +646,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 ["minhas", "Minhas", contMinhas],
                 ["todas", "Todas", 0],
                 ["finalizados", "Finalizados", contFinalizadas],
-                ...(isMaster ? [["outros", "Outros", contOutros] as const] : []),
+                ["spam", "🚫 Spam", contSpam],
               ] as const).map(([v, label, cont]) => {
                 const temNaoLida = naoLidasPorFiltro[v];
                 const ativo = filtroAtrib === v;
@@ -758,6 +772,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                           <button type="button" onClick={() => { setTransferWaId(null); setTransferir(true); }} className="px-2.5 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300">{dono ? "↪ Transferir" : "🙋 Atribuir"}</button>
                         </>}
                     <button type="button" onClick={() => void finalizarConversa(sel)} className="px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300">✅ Finalizar</button>
+                    <button type="button" onClick={() => void marcarSpam(sel)} title={spamDe(sel) ? "Tirar do spam" : "Marcar contato como spam"}
+                      className={`px-2.5 py-1 rounded-lg border ${spamDe(sel) ? "border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300" : "border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300"}`}>
+                      {spamDe(sel) ? "↩ Não é spam" : "🚫 Spam"}
+                    </button>
                   </div>
                 )}
               </div>
