@@ -1011,8 +1011,10 @@ function ConversaItem({ naoLida, temDono, onAbrir, onNaoLida, onLida, onTransfer
 
   return (
     <div className="relative overflow-hidden">
-      {/* Ações reveladas atrás (à esquerda) */}
-      <div className="absolute inset-y-0 left-0 flex" style={{ width: MAX }}>
+      {/* Ações reveladas atrás (à esquerda). Só pintam quando a linha está sendo
+          arrastada/aberta — senão vazam por baixo do fundo translúcido da linha
+          não lida no dark mode. */}
+      <div className={`absolute inset-y-0 left-0 flex ${dx > 0 || aberto ? "" : "invisible"}`} style={{ width: MAX }}>
         {naoLida
           ? <button type="button" onClick={() => { onLida(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-gray-500 text-white text-[11px] font-medium"><span className="text-base">✓</span>Lida</button>
           : <button type="button" onClick={() => { onNaoLida(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-blue-500 text-white text-[11px] font-medium"><span className="text-base">🔵</span>Não lida</button>}
@@ -1023,7 +1025,7 @@ function ConversaItem({ naoLida, temDono, onAbrir, onNaoLida, onLida, onTransfer
         onClick={() => { if (aberto) { fechar(); return; } if (moveu.current) { moveu.current = false; return; } onAbrir(); }}
         onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd}
         style={{ transform: `translateX(${dx}px)`, touchAction: "pan-y", transition: arrastando ? "none" : "transform 0.2s" }}
-        className={`relative w-full text-left flex items-center gap-3 px-4 py-3 ${naoLida ? "bg-rose-50 dark:bg-rose-900/20" : "bg-white dark:bg-gray-900"}`}>
+        className={`relative w-full text-left flex items-center gap-3 px-4 py-3 ${naoLida ? "bg-rose-50 dark:bg-rose-950" : "bg-white dark:bg-gray-900"}`}>
         {children}
       </button>
     </div>
