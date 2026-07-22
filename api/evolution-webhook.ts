@@ -164,9 +164,11 @@ async function processar(body: EvoBody): Promise<void> {
       ? reabrirSeFinalizada(numeroId, waId).catch((e) => console.log("[evo-webhook] reabrir:", (e as Error)?.message))
       : null;
 
-    // Figurinha e imagem: tenta baixar o conteúdo pra exibir de verdade.
+    // Figurinha, imagem e ÁUDIO (voice notes): tenta baixar o conteúdo pra
+    // exibir/tocar de verdade. Áudio longo que estourar o limite do doc cai no
+    // rótulo "🎤 Áudio" (baixarMidia devolve null acima de ~600KB).
     let midia: { midia: string; mime: string } | null = null;
-    if (m.message?.stickerMessage || m.message?.imageMessage) midia = await baixarMidia(numeroId, m);
+    if (m.message?.stickerMessage || m.message?.imageMessage || m.message?.audioMessage) midia = await baixarMidia(numeroId, m);
     try {
       await firestoreCriar("whatsappMensagens", `${numeroId}_${id}`, {
         waId, nome: m.pushName || null, direcao: fromMe ? "out" : "in",
