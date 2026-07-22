@@ -12,8 +12,8 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { canAcao } from "../../core/auth/permissions";
-import { pickDriveFolder } from "../../core/google/drivePicker";
-import { uploadFileToFolder } from "../../core/google/driveShared";
+import { uploadFileToFolder } from "../../core/google/driveClient";
+import { ensureModuloFolder } from "../../core/google/driveModulo";
 import type { Prazo, PrazoTipo, Empregado, Pessoa, Imovel } from "../../core/types";
 import { PRAZO_TIPO_LABEL, PRAZO_SUBTIPO_TRAB_LABEL } from "../../core/types";
 import { resumoRecorrencia } from "./recorrencia";
@@ -149,26 +149,20 @@ export function PrazosPage() {
   }
 
   // ── Laudo (Google Drive) ──
-  async function configurarPasta() {
-    if (!rid) return;
-    try {
-      const pasta = await pickDriveFolder("Pasta dos laudos e comprovantes de Prazos");
-      if (!pasta) return;
-      await updateDoc(doc(db, "restaurants", rid), { prazosDriveFolderId: pasta.id, prazosDriveFolderNome: pasta.name });
-    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao selecionar a pasta."); }
-  }
+  // Sobe em {raiz}/planejamento.app/Prazos/ — a raiz é única por restaurante
+  // (Configurações › Google Drive) e do Drive pessoal de quem configurou.
   function pedirLaudo(p: Prazo) {
-    const folderId = activeRestaurant?.prazosDriveFolderId;
-    if (!folderId) { setErro("Configure a pasta do Drive dos prazos primeiro (botão no topo)."); return; }
+    if (!activeRestaurant?.driveRootFolderId) { setErro("Defina a pasta raiz do restaurante em Configurações › Google Drive."); return; }
     laudoAlvo.current = p; laudoRef.current?.click();
   }
   async function onLaudoFile(file: File) {
-    const p = laudoAlvo.current; const folderId = activeRestaurant?.prazosDriveFolderId;
-    if (!p || !folderId) return;
+    const p = laudoAlvo.current; const rootId = activeRestaurant?.driveRootFolderId;
+    if (!p || !rootId) return;
     try {
       const ext = file.name.split(".").pop() || "pdf";
       const nome = `laudo-${p.titulo.toLowerCase().replace(/[^\w]+/g, "-").slice(0, 40)}-${p.vencimento.replace(/-/g, "")}.${ext}`;
       const renomeado = new File([file], nome, { type: file.type });
+      const folderId = await ensureModuloFolder(rootId, "Prazos");
       const up = await uploadFileToFolder(folderId, renomeado);
       await updateDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ laudo: { driveFileId: up.id, driveUrl: (up as { webViewLink?: string }).webViewLink || null, nome, anexadoEm: new Date().toISOString(), anexadoPor: me?.id || null, anexadoPorNome: me?.nome || null }, atualizadoEm: new Date().toISOString() }));
     } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao subir o laudo."); }
@@ -188,7 +182,6 @@ export function PrazosPage() {
         </div>
         <div className="flex items-center gap-2">
           {podeConfig && <button type="button" onClick={() => setShowImoveis(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">🏠 Imóveis</button>}
-          {!activeRestaurant?.prazosDriveFolderId && podeConfig && <button type="button" onClick={() => void configurarPasta()} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">📁 Pasta do Drive</button>}
           {catsGeriveis.length > 0 && <button type="button" onClick={() => setModal({ prazo: null })} className="text-sm font-semibold px-3 py-2 rounded-lg bg-indigo-600 text-white">+ Novo prazo</button>}
         </div>
       </header>

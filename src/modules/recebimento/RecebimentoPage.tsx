@@ -21,18 +21,15 @@ import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import type { BoletoNota, DuplicataNota, FormaPagamento, ItemNota, RecebimentoNota, TipoDocumento } from "../../core/types";
 import { FORMA_PAGAMENTO_LABEL, TIPO_DOCUMENTO_LABEL, CONTA_FIXA_CATEGORIAS } from "../../core/types";
-import { pickDriveFolder } from "../../core/google/drivePicker";
 import { requestAccessToken, findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveClient";
-import { centralConfigured, centralEnsureRoot, centralEnsureFolder, centralEnsureWeek, centralUpload, centralMoveFolder, parseDriveFolderId } from "../../core/google/driveCentral";
+import { ensureModuloFolder } from "../../core/google/driveModulo";
 import { authHeader } from "../../core/firebase/idToken";
 
-// Dispatch: conta central (backend) × OAuth do navegador (fallback). `central`
-// é resolvido uma vez por salvamento.
-async function ensureSemanaFolder(central: boolean, parentId: string, label: string): Promise<string> {
-  return central ? centralEnsureWeek(parentId, label) : findOrCreateSubfolder(parentId, label);
-}
-async function subirArquivo(central: boolean, parentId: string, file: File): Promise<{ id: string; webViewLink?: string; name: string }> {
-  if (central) return centralUpload(parentId, file);
+// Pasta do módulo dentro da pasta-raiz do restaurante:
+// {root}/planejamento.app/Recebimento/. A raiz é o Drive pessoal de quem
+// configurou → sempre fluxo do navegador (driveClient).
+const MODULO = "Recebimento";
+async function subirArquivo(parentId: string, file: File): Promise<{ id: string; webViewLink?: string; name: string }> {
   const s = await uploadFileToFolder(parentId, file);
   return { id: s.id, name: s.name, ...(s.webViewLink ? { webViewLink: s.webViewLink } : {}) };
 }
@@ -269,21 +266,10 @@ export function RecebimentoPage() {
     catch (e) { setErro(e instanceof Error ? e.message : "Falha ao restaurar."); }
   }
 
-  // Exclusão definitiva (só config): move os arquivos pra "excluídos" no Drive + apaga o doc.
+  // Exclusão definitiva (só config): apaga o doc. Os arquivos ficam no Drive.
   async function excluirDefinitivo(n: RecebimentoNota) {
-    if (!window.confirm(`Excluir DEFINITIVAMENTE o recebimento de ${n.emissor || "nota sem emissor"} (${fmtDataHora(n.recebidoEm)})?\n\nO registro é apagado e os arquivos (nota, páginas, boletos) vão pra "excluídos" no Drive. Não dá pra desfazer.`)) return;
+    if (!window.confirm(`Excluir DEFINITIVAMENTE o recebimento de ${n.emissor || "nota sem emissor"} (${fmtDataHora(n.recebidoEm)})?\n\nO registro é apagado; os arquivos (nota, páginas, boletos) permanecem no Drive. Não dá pra desfazer.`)) return;
     try {
-      const fileIds = [
-        n.notaDriveFileId,
-        n.fotoDivergenciaDriveFileId,
-        ...(n.notaPaginas || []).map((p) => p.driveFileId),
-        ...(n.boletos || []).map((b) => b.driveFileId),
-        ...(n.comprovantes || []).map((c) => c.driveFileId),
-      ].filter((x): x is string => !!x);
-      if (fileIds.length && restaurant?.recebimentoDriveFolderId && (await centralConfigured())) {
-        const excluidosId = await centralEnsureFolder(restaurant.recebimentoDriveFolderId, "excluídos");
-        for (const fid of fileIds) { try { await centralMoveFolder(fid, excluidosId); } catch { /* segue — best-effort */ } }
-      }
       await deleteDoc(doc(db, "recebimentos", n.id));
     } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao excluir definitivamente."); }
   }
@@ -338,7 +324,7 @@ export function RecebimentoPage() {
         </div>
       )}
 
-      {abaEfetiva === "config" && podeConfig && <RecebimentoConfig rid={rid} restaurant={restaurant} />}
+      {abaEfetiva === "config" && podeConfig && <RecebimentoConfig restaurant={restaurant} />}
 
       {abaEfetiva === "notas" && podeVer && (
         <div className="space-y-3">
@@ -383,7 +369,7 @@ export function RecebimentoPage() {
             <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
               <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">🗑 Excluídos <span className="text-gray-400 font-normal">({excluidas.length})</span> <span className="text-[11px] font-normal text-gray-400">— somem em 60 dias</span></summary>
               <div className="px-3 pb-3 space-y-2">
-                <p className="text-[11px] text-gray-400 px-1">Podem ser <strong>restaurados</strong>. Somem sozinhos depois de <strong>60 dias</strong> (registro apagado; arquivos no Drive permanecem). "Excluir definitivo" apaga na hora e move os arquivos do Drive pra "excluídos".</p>
+                <p className="text-[11px] text-gray-400 px-1">Podem ser <strong>restaurados</strong>. Somem sozinhos depois de <strong>60 dias</strong> (registro apagado; arquivos no Drive permanecem). "Excluir definitivo" apaga o registro na hora; os arquivos ficam no Drive.</p>
                 {excluidas.map((n) => (
                   <div key={n.id} className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
                     <div className="min-w-0">
@@ -517,108 +503,18 @@ function EscolhaFonteModal({ titulo, semManual, onClose, onArquivo, onManual }: 
 }
 
 // ─── Configurações: pasta do Drive ──────────────────────────────────────────
-function RecebimentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome?: string; recebimentoDriveFolderId?: string; recebimentoDriveFolderNome?: string } }) {
-  const [salvando, setSalvando] = useState(false);
-  const [erro, setErro] = useState("");
-  const [central, setCentral] = useState<boolean | null>(null);
-  const [destino, setDestino] = useState("");
-
-  useEffect(() => { void centralConfigured().then(setCentral); }, []);
-
-  // Navegador (fallback): escolhe a pasta no Drive do próprio usuário.
-  async function escolherPasta() {
-    setErro("");
-    try {
-      const pasta = await pickDriveFolder("Pasta das notas de recebimento");
-      if (!pasta) return;
-      setSalvando(true);
-      await updateDoc(doc(db, "restaurants", rid), {
-        recebimentoDriveFolderId: pasta.id,
-        recebimentoDriveFolderNome: pasta.name,
-      });
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao selecionar a pasta.");
-    } finally { setSalvando(false); }
-  }
-
-  // Conta central: cria "Recebimentos — <restaurante>" dentro do destino colado
-  // (link do Drive) ou no raiz da conta central se o campo estiver vazio.
-  async function inicializarCentral() {
-    setErro(""); setSalvando(true);
-    try {
-      const nome = restaurant.nome || "Restaurante";
-      let folderId: string;
-      const parent = destino.trim() ? parseDriveFolderId(destino) : null;
-      if (destino.trim() && !parent) throw new Error("Link/ID da pasta de destino inválido.");
-      if (parent) folderId = await centralEnsureFolder(parent, `Recebimentos — ${nome}`);
-      else folderId = (await centralEnsureRoot(nome)).folderId;
-      await updateDoc(doc(db, "restaurants", rid), {
-        recebimentoDriveFolderId: folderId,
-        recebimentoDriveFolderNome: `Recebimentos — ${nome}`,
-      });
-      setDestino("");
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao inicializar a pasta central.");
-    } finally { setSalvando(false); }
-  }
-
-  // Move a pasta já criada pra dentro do destino colado (id não muda).
-  async function moverParaDestino() {
-    setErro("");
-    const parent = parseDriveFolderId(destino);
-    if (!parent) { setErro("Cole um link/ID de pasta do Drive válido."); return; }
-    if (!restaurant.recebimentoDriveFolderId) { setErro("Não há pasta pra mover ainda."); return; }
-    setSalvando(true);
-    try {
-      await centralMoveFolder(restaurant.recebimentoDriveFolderId, parent);
-      setDestino("");
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao mover a pasta.");
-    } finally { setSalvando(false); }
-  }
-
+// A pasta é derivada da pasta-raiz única do restaurante (Configurações › Google
+// Drive). O módulo grava em {raiz}/planejamento.app/Recebimento/<semana>/.
+function RecebimentoConfig({ restaurant }: { restaurant: { nome?: string; driveRootFolderId?: string; driveRootFolderNome?: string } }) {
   return (
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3 max-w-2xl">
       <h3 className="font-semibold text-gray-900 dark:text-gray-100">Pasta do Drive pras notas</h3>
       <p className="text-sm text-gray-500 dark:text-gray-400">
-        As notas recebidas são arquivadas aqui. O sistema cria automaticamente subpastas por semana (segunda→domingo), nomeadas <code>dd.mm.aa a dd.mm.aa</code>.
+        As notas recebidas são arquivadas na pasta-raiz do restaurante, em <code>planejamento.app/Recebimento/</code>. O sistema cria automaticamente subpastas por semana (segunda→domingo), nomeadas <code>dd.mm.aa a dd.mm.aa</code>.
       </p>
-      {central === true && (
-        <p className="text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2">
-          ✓ Conta central do Drive ativa — os operadores não precisam conectar o próprio Drive. Os arquivos ficam na conta central.
-        </p>
-      )}
-      {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
-      <div className="flex items-center gap-3">
-        <div className="flex-1 text-sm">
-          {restaurant.recebimentoDriveFolderId
-            ? <span className="text-emerald-700 dark:text-emerald-300">📁 {restaurant.recebimentoDriveFolderNome || "pasta selecionada"}</span>
-            : <span className="text-amber-600">Nenhuma pasta selecionada</span>}
-        </div>
-        {central !== true && (
-          <Button variant="secondary" size="sm" disabled={salvando} onClick={() => void escolherPasta()}>
-            {salvando ? "Salvando…" : restaurant.recebimentoDriveFolderId ? "Trocar pasta" : "Selecionar pasta"}
-          </Button>
-        )}
-      </div>
-      {central === true && (
-        <div className="space-y-2 pt-1 border-t border-gray-100 dark:border-gray-800">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block">Onde guardar no Drive <span className="font-normal text-gray-400">— opcional</span></label>
-          <p className="text-[11px] text-gray-500 dark:text-gray-400">Cole o link de uma pasta do Drive (ex: de um Shared Drive) pra criar/mover lá dentro. Vazio = raiz da conta central.</p>
-          <input value={destino} onChange={(e) => setDestino(e.target.value)} placeholder="https://drive.google.com/drive/folders/…"
-            className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
-          <div className="flex gap-2 flex-wrap">
-            <Button variant="secondary" size="sm" disabled={salvando} onClick={() => void inicializarCentral()}>
-              {salvando ? "Criando…" : restaurant.recebimentoDriveFolderId ? "Recriar pasta aqui" : "Inicializar pasta central"}
-            </Button>
-            {restaurant.recebimentoDriveFolderId && (
-              <Button variant="secondary" size="sm" disabled={salvando || !destino.trim()} onClick={() => void moverParaDestino()}>
-                Mover pasta atual pra cá
-              </Button>
-            )}
-          </div>
-        </div>
-      )}
+      {restaurant.driveRootFolderId
+        ? <p className="text-sm text-emerald-700 dark:text-emerald-300">📁 {restaurant.driveRootFolderNome || "pasta-raiz configurada"}</p>
+        : <p className="text-sm text-amber-600">Defina a pasta raiz do restaurante em Configurações › Google Drive.</p>}
     </div>
   );
 }
@@ -643,7 +539,7 @@ function tintCard(n: RecebimentoNota): string {
 }
 function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, por, onExcluir, onConferir }: {
   notas: RecebimentoNota[];
-  restaurant: { recebimentoDriveFolderId?: string };
+  restaurant: { driveRootFolderId?: string };
   podeEditar: boolean;
   podeConfig: boolean;
   por: { id: string; nome: string };
@@ -990,7 +886,7 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir, onInclu
 // re-anexar arquivos. Salva via updateDoc; campos esvaziados são removidos.
 function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
   nota: RecebimentoNota;
-  restaurant: { recebimentoDriveFolderId?: string };
+  restaurant: { driveRootFolderId?: string };
   onClose: () => void;
   onSaved: () => void;
 }) {
@@ -1052,7 +948,7 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
   async function salvar() {
     setErro("");
     if (!conforme && !divergencia.trim()) { setErro("Descreva a divergência."); return; }
-    if (boletosNovos.length && !restaurant.recebimentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações pra anexar boletos."); return; }
+    if (boletosNovos.length && !restaurant.driveRootFolderId) { setErro("Defina a pasta raiz do restaurante em Configurações › Google Drive."); return; }
     setSalvando(true);
     try {
       const dupsLimpas = dups
@@ -1065,11 +961,11 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
       // Sobe os boletos novos pro Drive (mesma semana da nota) e junta aos existentes.
       let boletosFinais: BoletoNota[] | undefined = nota.boletos ? [...nota.boletos] : undefined;
       if (boletosNovos.length) {
-        const central = await centralConfigured();
-        if (!central) await requestAccessToken();
+        await requestAccessToken();
         const label = nota.semanaLabel || semanaDe(new Date()).label;
-        const semanaId = await ensureSemanaFolder(central, restaurant.recebimentoDriveFolderId as string, label);
-        const boletosFolderId = await ensureSemanaFolder(central, semanaId, `boletos da semana ${label}`);
+        const base = await ensureModuloFolder(restaurant.driveRootFolderId as string, MODULO);
+        const semanaId = await findOrCreateSubfolder(base, label);
+        const boletosFolderId = await findOrCreateSubfolder(semanaId, `boletos da semana ${label}`);
         const fornecedorSlug = (emissor.trim() || "fornecedor").replace(/[\\/]/g, "-");
         const dataSlug = dataEmissao ? dataEmissao.split("-").reverse().join(".") : "";
         const baseNome = `${fornecedorSlug} ${dataSlug}`.trim();
@@ -1080,7 +976,7 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
           const bf = boletosNovos[i];
           const ext = (bf.name.match(/\.[a-z0-9]+$/i) || [""])[0] || (bf.type.includes("pdf") ? ".pdf" : ".jpg");
           const alvo = await carimbarImagem(new File([bf], `${baseNome} boleto${jaExistentes + i + 1}${ext}`, { type: bf.type }), carimbo, false);
-          const s = await subirArquivo(central, boletosFolderId, alvo);
+          const s = await subirArquivo(boletosFolderId, alvo);
           acc.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
         }
         boletosFinais = [...(boletosFinais || []), ...acc];
@@ -1251,7 +1147,7 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
 // fiscais, o romaneio original é preservado e o tipo do recebimento é promovido.
 function IncluirDanfeModal({ nota, restaurant, por, onClose, onSaved }: {
   nota: RecebimentoNota;
-  restaurant: { recebimentoDriveFolderId?: string };
+  restaurant: { driveRootFolderId?: string };
   por: { id: string; nome: string };
   onClose: () => void;
   onSaved: () => void;
@@ -1355,14 +1251,15 @@ function IncluirDanfeModal({ nota, restaurant, por, onClose, onSaved }: {
   async function salvar() {
     setErro("");
     if (!podeSalvar) { setErro("Anexe a DANFE (ou informe o nº da nota / chave de acesso)."); return; }
-    if ((danfeFiles.length || boletoFiles.length) && !restaurant.recebimentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações pra anexar os arquivos."); return; }
+    if ((danfeFiles.length || boletoFiles.length) && !restaurant.driveRootFolderId) { setErro("Defina a pasta raiz do restaurante em Configurações › Google Drive."); return; }
     setSalvando(true);
     try {
-      const central = (danfeFiles.length || boletoFiles.length) ? await centralConfigured() : false;
-      if ((danfeFiles.length || boletoFiles.length) && !central) await requestAccessToken();
+      const temArquivos = danfeFiles.length > 0 || boletoFiles.length > 0;
+      if (temArquivos) await requestAccessToken();
       const agora = new Date();
       const label = nota.semanaLabel || semanaDe(agora).label; // mantém os arquivos junto do romaneio
-      const semanaId = (danfeFiles.length || boletoFiles.length) ? await ensureSemanaFolder(central, restaurant.recebimentoDriveFolderId as string, label) : "";
+      const base = temArquivos ? await ensureModuloFolder(restaurant.driveRootFolderId as string, MODULO) : "";
+      const semanaId = temArquivos ? await findOrCreateSubfolder(base, label) : "";
       const fornecedorSlug = (emissor.trim() || "fornecedor").replace(/[\\/]/g, "-");
       const dataSlug = dataEmissao ? dataEmissao.split("-").reverse().join(".") : `${pad(agora.getDate())}.${pad(agora.getMonth() + 1)}.${String(agora.getFullYear()).slice(2)}`;
       const baseNome = `${fornecedorSlug} ${dataSlug}`;
@@ -1375,19 +1272,19 @@ function IncluirDanfeModal({ nota, restaurant, por, onClose, onSaved }: {
         const df = danfeFiles[i];
         const sufixo = danfeFiles.length > 1 ? `nota${i + 1}` : "nota";
         const alvo = await carimbarImagem(new File([df], `${baseNome} ${sufixo}${ext(df, ".jpg")}`, { type: df.type }), carimbo, false);
-        const s = await subirArquivo(central, semanaId, alvo);
+        const s = await subirArquivo(semanaId, alvo);
         danfePaginas.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
       }
       // Boletos → subpasta "boletos da semana <label>", anexados aos já existentes.
       let boletosFinais: BoletoNota[] | undefined = nota.boletos ? [...nota.boletos] : undefined;
       if (boletoFiles.length) {
-        const boletosFolderId = await ensureSemanaFolder(central, semanaId, `boletos da semana ${label}`);
+        const boletosFolderId = await findOrCreateSubfolder(semanaId, `boletos da semana ${label}`);
         const jaExistentes = nota.boletos?.length || 0;
         const acc: BoletoNota[] = [];
         for (let i = 0; i < boletoFiles.length; i++) {
           const bf = boletoFiles[i];
           const alvo = await carimbarImagem(new File([bf], `${baseNome} boleto${jaExistentes + i + 1}${ext(bf, ".jpg")}`, { type: bf.type }), carimbo, false);
-          const s = await subirArquivo(central, boletosFolderId, alvo);
+          const s = await subirArquivo(boletosFolderId, alvo);
           acc.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
         }
         boletosFinais = [...(boletosFinais || []), ...acc];
@@ -1571,7 +1468,7 @@ function IncluirDanfeModal({ nota, restaurant, por, onClose, onSaved }: {
 // ─── Modal: novo recebimento ────────────────────────────────────────────────
 function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocumento, contaCategoria, onClose, onSalvo }: {
   rid: string;
-  restaurant: { recebimentoDriveFolderId?: string };
+  restaurant: { driveRootFolderId?: string };
   por: { id: string; nome: string };
   arquivoInicial?: File | null;
   tipoDocumento?: TipoDocumento;
@@ -1710,17 +1607,17 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
     const temArquivos = temNota || boletoFiles.length > 0 || comprovanteFiles.length > 0 || (!conforme && !!fotoDivFile);
     if (!temNota && !emissor.trim() && parseBRL(valor) == null) { setErro("Anexe a nota ou preencha ao menos emissor/valor."); return; }
     if (!conforme && !divergencia.trim()) { setErro("Descreva a divergência."); return; }
-    if (temArquivos && !restaurant.recebimentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações antes de receber."); return; }
+    if (temArquivos && !restaurant.driveRootFolderId) { setErro("Defina a pasta raiz do restaurante em Configurações › Google Drive."); return; }
     setSalvando(true);
     try {
-      // Conta central configurada → sobe pelo backend (operador não conecta Drive).
-      // Senão, fluxo antigo: OAuth no navegador (popup reabre se preciso).
-      const central = temArquivos ? await centralConfigured() : false;
-      if (temArquivos && !central) await requestAccessToken();
+      // Arquivos vão pra {raiz}/planejamento.app/Recebimento/<semana>/ — fluxo do
+      // navegador (a raiz é o Drive pessoal de quem configurou).
+      if (temArquivos) await requestAccessToken();
       const agora = new Date();
       const recebidoEm = agora.toISOString();
       const { label } = semanaDe(agora);
-      const semanaId = temArquivos ? await ensureSemanaFolder(central, restaurant.recebimentoDriveFolderId as string, label) : "";
+      const base = temArquivos ? await ensureModuloFolder(restaurant.driveRootFolderId as string, MODULO) : "";
+      const semanaId = temArquivos ? await findOrCreateSubfolder(base, label) : "";
       // Nome dos arquivos: "<fornecedor> <data emissão> nota" (e ...boleto / boleto1, boleto2…).
       const fornecedorSlug = (emissor.trim() || "fornecedor").replace(/[\\/]/g, "-");
       const dataSlug = dataEmissao
@@ -1736,19 +1633,19 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
         const nf = notaFiles[i];
         const sufixo = notaFiles.length > 1 ? `nota${i + 1}` : "nota";
         const alvo = await carimbarImagem(new File([nf], `${baseNome} ${sufixo}${ext(nf, ".jpg")}`, { type: nf.type }), carimbo, false);
-        const s = await subirArquivo(central, semanaId, alvo);
+        const s = await subirArquivo(semanaId, alvo);
         notaPaginas.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
       }
       const subidaNota = notaPaginas[0];
       // Boletos: subpasta "boletos da semana <label>" dentro da pasta da semana.
       const boletos: BoletoNota[] = [];
       if (boletoFiles.length) {
-        const boletosFolderId = await ensureSemanaFolder(central, semanaId, `boletos da semana ${label}`);
+        const boletosFolderId = await findOrCreateSubfolder(semanaId, `boletos da semana ${label}`);
         for (let i = 0; i < boletoFiles.length; i++) {
           const bf = boletoFiles[i];
           const sufixo = boletoFiles.length > 1 ? `boleto${i + 1}` : "boleto";
           const alvo = await carimbarImagem(new File([bf], `${baseNome} ${sufixo}${ext(bf, ".jpg")}`, { type: bf.type }), carimbo, false);
-          const s = await subirArquivo(central, boletosFolderId, alvo);
+          const s = await subirArquivo(boletosFolderId, alvo);
           boletos.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
         }
       }
@@ -1758,14 +1655,14 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
         const cf = comprovanteFiles[i];
         const sufixo = comprovanteFiles.length > 1 ? `comprovante${i + 1}` : "comprovante";
         const alvo = await carimbarImagem(new File([cf], `${baseNome} ${sufixo}${ext(cf, ".jpg")}`, { type: cf.type }), carimbo, false);
-        const s = await subirArquivo(central, semanaId, alvo);
+        const s = await subirArquivo(semanaId, alvo);
         comprovantes.push({ driveFileId: s.id, nome: alvo.name, ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
       }
       let fotoDiv: { id: string; url?: string } | null = null;
       if (!conforme && fotoDivFile) {
         const extFoto = (fotoDivFile.name.match(/\.[a-z0-9]+$/i) || [".jpg"])[0];
         const alvo = await carimbarImagem(new File([fotoDivFile], `${baseNome} - divergencia${extFoto}`, { type: fotoDivFile.type }), carimbo);
-        const s = await subirArquivo(central, semanaId, alvo);
+        const s = await subirArquivo(semanaId, alvo);
         fotoDiv = { id: s.id, url: s.webViewLink };
       }
       const nota: Omit<RecebimentoNota, "id"> = {

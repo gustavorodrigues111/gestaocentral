@@ -8,8 +8,9 @@
 //  pro Drive (pasta do dia → subpasta do turno) e dispara email de resumo pros
 //  sócios escolhidos nas Configurações.
 //
-//  Reaproveita a infra do Recebimento: conta Drive central (driveShared), carimbo
-//  e filtro scanner (processarImagem), e o /api/send-email (Resend).
+//  Arquiva na pasta-raiz do restaurante ({raiz}/planejamento.app/Fechamentos/,
+//  via driveModulo + driveClient), carimba e aplica filtro scanner
+//  (processarImagem), e dispara o /api/send-email (Resend).
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
 import { useParams } from "react-router-dom";
@@ -23,9 +24,8 @@ import { Modal } from "../../core/ui/Modal";
 import { enviarWhatsapp } from "../../core/whatsapp/enviar";
 import type { AnexoFechamento, ComandaCadastro, ComandaConsumo, FechamentoCaixa, GrupoAnexoFechamento, MaquininhaFechamento, TurnoCaixa } from "../../core/types";
 import { GRUPO_ANEXO_LABEL, TURNO_CAIXA_LABEL } from "../../core/types";
-import { pickDriveFolder } from "../../core/google/drivePicker";
-import { findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveShared";
-import { centralConfigured, centralEnsureTopFolder, centralEnsureFolder, centralMoveFolder, parseDriveFolderId } from "../../core/google/driveCentral";
+import { findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveClient";
+import { ensureModuloFolder } from "../../core/google/driveModulo";
 import { authHeader } from "../../core/firebase/idToken";
 import { paraOcrBlock, carimbarImagem } from "../../core/imagem/processarImagem";
 import { exportarFechamentosPDF, exportarFechamentosXLSX, exportarComandasPDF, exportarComandasXLSX } from "./exportFechamentos";
@@ -257,15 +257,10 @@ export function FechamentoCaixaPage() {
     } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao restaurar."); }
   }
 
-  // Exclusão definitiva (só config): move a pasta pra "excluídos" no Drive + apaga o doc.
+  // Exclusão definitiva (só config): apaga o doc. A pasta/arquivos ficam no Drive.
   async function excluirDefinitivo(f: FechamentoCaixa) {
-    if (!window.confirm(`Excluir DEFINITIVAMENTE o fechamento de ${fmtData(f.data)} (${TURNO_CAIXA_LABEL[f.turno]})?\n\nO registro é apagado e a pasta vai pra "excluídos" no Drive. Não dá pra desfazer.`)) return;
+    if (!window.confirm(`Excluir DEFINITIVAMENTE o fechamento de ${fmtData(f.data)} (${TURNO_CAIXA_LABEL[f.turno]})?\n\nO registro é apagado; a pasta e os arquivos permanecem no Drive. Não dá pra desfazer.`)) return;
     try {
-      const folderId = f.driveFolderUrl ? parseDriveFolderId(f.driveFolderUrl) : null;
-      if (folderId && restaurant?.fechamentoDriveFolderId && (await centralConfigured())) {
-        const excluidosId = await centralEnsureFolder(restaurant.fechamentoDriveFolderId, "excluídos");
-        await centralMoveFolder(folderId, excluidosId, `${diaLabel(f.data)} ${TURNO_CAIXA_LABEL[f.turno]}`);
-      }
       await deleteDoc(doc(db, "fechamentosCaixa", f.id));
     } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao excluir definitivamente."); }
   }
@@ -438,7 +433,7 @@ function ComandaModal({ comandas, onClose, onPick }: { comandas: ComandaCadastro
 type AnexoLocal = { file: File; grupo: GrupoAnexoFechamento; rotulo?: string };
 function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo }: {
   rid: string;
-  restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoSociosEmails?: string[]; fechamentoSociosWhatsapp?: string[]; fechamentoCanalEnvio?: "email" | "whatsapp" | "ambos"; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[]; fechamentoPedirObsTurno?: boolean };
+  restaurant: { nome?: string; driveRootFolderId?: string; fechamentoSociosEmails?: string[]; fechamentoSociosWhatsapp?: string[]; fechamentoCanalEnvio?: "email" | "whatsapp" | "ambos"; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[]; fechamentoPedirObsTurno?: boolean };
   por: { id: string; nome: string };
   recentes: FechamentoCaixa[];
   onClose: () => void;
@@ -565,7 +560,7 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
     setErro("");
     if (!data) { setErro("Informe a data."); return; }
     if (parseBRL(totalVendas) == null) { setErro("Informe o faturamento total."); return; }
-    if (anexos.length && !restaurant.fechamentoDriveFolderId) { setErro("Configure a pasta do Drive em Configurações antes de fechar."); return; }
+    if (anexos.length && !restaurant.driveRootFolderId) { setErro("Defina a pasta raiz do restaurante em Configurações › Google Drive."); return; }
     if (!naoLacrado && !numeroLacre.trim()) { setErro("Informe o número do lacre ou marque \"Não foi lacrado\"."); return; }
     if (pedirObs) {
       if (movForaDaMedia && !observacao.trim()) { setErro(`O ${TURNO_CAIXA_LABEL[turno].toLowerCase()} veio fora da média — conte rapidamente o que aconteceu nesse turno.`); return; }
@@ -583,8 +578,9 @@ function NovoFechamentoModal({ rid, restaurant, por, recentes, onClose, onSalvo 
       let anexosSalvos: AnexoFechamento[] = [];
       let driveFolderUrl: string | undefined;
       if (anexos.length) {
-        // <pasta config> / <dia dd.mm.aaaa> / <turno> /
-        const diaId = await findOrCreateSubfolder(restaurant.fechamentoDriveFolderId as string, diaLabel(data));
+        // {raiz}/planejamento.app/Fechamentos / <dia dd.mm.aaaa> / <turno> /
+        const base = await ensureModuloFolder(restaurant.driveRootFolderId as string, "Fechamentos");
+        const diaId = await findOrCreateSubfolder(base, diaLabel(data));
         const turnoId = await findOrCreateSubfolder(diaId, TURNO_CAIXA_LABEL[turno]);
         driveFolderUrl = `https://drive.google.com/drive/folders/${turnoId}`;
         const carimbo = [`Fechado por ${por.nome}`, `${TURNO_CAIXA_LABEL[turno]} · ${fmtData(data)}`, fmtDataHora(fechadoEm)];
@@ -1542,8 +1538,7 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
 }
 
 // ─── Configurações: pasta do Drive + sócios ─────────────────────────────────
-function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome?: string; fechamentoDriveFolderId?: string; fechamentoDriveFolderNome?: string; fechamentoSociosEmails?: string[]; fechamentoSociosWhatsapp?: string[]; fechamentoCanalEnvio?: "email" | "whatsapp" | "ambos"; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[]; fechamentoTemIfood?: boolean; fechamentoPedirObsTurno?: boolean } }) {
-  const [salvando, setSalvando] = useState(false);
+function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome?: string; driveRootFolderId?: string; driveRootFolderNome?: string; fechamentoSociosEmails?: string[]; fechamentoSociosWhatsapp?: string[]; fechamentoCanalEnvio?: "email" | "whatsapp" | "ambos"; fechamentoEmailRemetente?: string; fechamentoComandas?: ComandaCadastro[]; fechamentoTemIfood?: boolean; fechamentoPedirObsTurno?: boolean } }) {
   const [erro, setErro] = useState("");
   const [temIfood, setTemIfood] = useState(!!restaurant.fechamentoTemIfood);
   async function salvarTemIfood(v: boolean) {
@@ -1557,8 +1552,6 @@ function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome
     try { await updateDoc(doc(db, "restaurants", rid), { fechamentoPedirObsTurno: v }); }
     catch (e) { setErro(e instanceof Error ? e.message : "Falha ao salvar."); }
   }
-  const [central, setCentral] = useState<boolean | null>(null);
-  const [destino, setDestino] = useState("");
   const [emails, setEmails] = useState<string[]>(restaurant.fechamentoSociosEmails || []);
   const [novoEmail, setNovoEmail] = useState("");
   const [zaps, setZaps] = useState<string[]>(restaurant.fechamentoSociosWhatsapp || []);
@@ -1569,7 +1562,6 @@ function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome
   const [comandas, setComandas] = useState<ComandaCadastro[]>(restaurant.fechamentoComandas || []);
   const [cmdNome, setCmdNome] = useState("");
   const [cmdNumero, setCmdNumero] = useState("");
-  useEffect(() => { void centralConfigured().then(setCentral); }, []);
 
   async function salvarComandas(lista: ComandaCadastro[]) {
     setComandas(lista);
@@ -1584,38 +1576,6 @@ function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome
     void salvarComandas([...comandas, { nome, numero }]);
   }
 
-  async function escolherPasta() {
-    setErro("");
-    try {
-      const pasta = await pickDriveFolder("Pasta dos fechamentos de caixa");
-      if (!pasta) return;
-      setSalvando(true);
-      await updateDoc(doc(db, "restaurants", rid), { fechamentoDriveFolderId: pasta.id, fechamentoDriveFolderNome: pasta.name });
-    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao selecionar a pasta."); }
-    finally { setSalvando(false); }
-  }
-  async function inicializarCentral() {
-    setErro(""); setSalvando(true);
-    try {
-      const nome = restaurant.nome || "Restaurante";
-      const parent = destino.trim() ? parseDriveFolderId(destino) : null;
-      if (destino.trim() && !parent) throw new Error("Link/ID da pasta de destino inválido.");
-      const folderId = parent ? await centralEnsureFolder(parent, `Fechamentos de Caixa — ${nome}`) : (await centralEnsureTopFolder(`Fechamentos de Caixa — ${nome}`)).folderId;
-      await updateDoc(doc(db, "restaurants", rid), { fechamentoDriveFolderId: folderId, fechamentoDriveFolderNome: `Fechamentos de Caixa — ${nome}` });
-      setDestino("");
-    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao inicializar a pasta central."); }
-    finally { setSalvando(false); }
-  }
-  async function moverParaDestino() {
-    setErro("");
-    const parent = parseDriveFolderId(destino);
-    if (!parent) { setErro("Cole um link/ID de pasta do Drive válido."); return; }
-    if (!restaurant.fechamentoDriveFolderId) { setErro("Não há pasta pra mover ainda."); return; }
-    setSalvando(true);
-    try { await centralMoveFolder(restaurant.fechamentoDriveFolderId, parent); setDestino(""); }
-    catch (e) { setErro(e instanceof Error ? e.message : "Falha ao mover a pasta."); }
-    finally { setSalvando(false); }
-  }
   async function salvarEmails(lista: string[]) {
     setEmails(lista);
     try { await updateDoc(doc(db, "restaurants", rid), { fechamentoSociosEmails: lista.length ? lista : deleteField() }); }
@@ -1658,25 +1618,11 @@ function FechamentoConfig({ rid, restaurant }: { rid: string; restaurant: { nome
     <div className="space-y-4 max-w-2xl">
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
         <h3 className="font-semibold text-gray-900 dark:text-gray-100">Pasta do Drive dos fechamentos</h3>
-        <p className="text-sm text-gray-500 dark:text-gray-400">Os anexos são arquivados aqui — o app cria subpastas por <strong>dia</strong> e, dentro, por <strong>turno</strong> (almoço/jantar).</p>
-        {central === true && <p className="text-xs text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2">✓ Conta central do Drive ativa — quem fecha o caixa não conecta o próprio Drive.</p>}
+        <p className="text-sm text-gray-500 dark:text-gray-400">Os anexos são arquivados na pasta-raiz do restaurante, em <code>planejamento.app/Fechamentos/</code> — o app cria subpastas por <strong>dia</strong> e, dentro, por <strong>turno</strong> (almoço/jantar).</p>
         {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
-        <div className="flex items-center gap-3">
-          <div className="flex-1 text-sm">{restaurant.fechamentoDriveFolderId
-            ? <span className="text-emerald-700 dark:text-emerald-300">📁 {restaurant.fechamentoDriveFolderNome || "pasta selecionada"}</span>
-            : <span className="text-amber-600">Nenhuma pasta selecionada</span>}</div>
-          {central !== true && <Button variant="secondary" size="sm" disabled={salvando} onClick={() => void escolherPasta()}>{salvando ? "Salvando…" : restaurant.fechamentoDriveFolderId ? "Trocar pasta" : "Selecionar pasta"}</Button>}
-        </div>
-        {central === true && (
-          <div className="space-y-2 pt-1 border-t border-gray-100 dark:border-gray-800">
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block">Onde guardar no Drive <span className="font-normal text-gray-400">— opcional</span></label>
-            <input value={destino} onChange={(e) => setDestino(e.target.value)} placeholder="https://drive.google.com/drive/folders/…" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
-            <div className="flex gap-2 flex-wrap">
-              <Button variant="secondary" size="sm" disabled={salvando} onClick={() => void inicializarCentral()}>{salvando ? "Criando…" : restaurant.fechamentoDriveFolderId ? "Recriar pasta aqui" : "Inicializar pasta central"}</Button>
-              {restaurant.fechamentoDriveFolderId && <Button variant="secondary" size="sm" disabled={salvando || !destino.trim()} onClick={() => void moverParaDestino()}>Mover pasta atual pra cá</Button>}
-            </div>
-          </div>
-        )}
+        {restaurant.driveRootFolderId
+          ? <p className="text-sm text-emerald-700 dark:text-emerald-300">📁 {restaurant.driveRootFolderNome || "pasta-raiz configurada"}</p>
+          : <p className="text-sm text-amber-600">Defina a pasta raiz do restaurante em Configurações › Google Drive.</p>}
       </div>
 
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
