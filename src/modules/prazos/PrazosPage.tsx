@@ -17,7 +17,7 @@ import { ensureModuloFolder } from "../../core/google/driveModulo";
 import type { Prazo, PrazoTipo, Empregado, Pessoa, Imovel } from "../../core/types";
 import { PRAZO_TIPO_LABEL, PRAZO_SUBTIPO_TRAB_LABEL } from "../../core/types";
 import { resumoRecorrencia } from "./recorrencia";
-import { resolverPrazo, podeResolver, grupoAgenda, diasAte, hojeYmd } from "./logic";
+import { resolverPrazo, podeResolver, grupoAgenda, diasAte, hojeYmd, ymdExibicao, ehFimDeSemana, diaSemanaCurto } from "./logic";
 import { PrazoModal } from "./PrazoModal";
 import { ImoveisModal } from "./ImoveisModal";
 
@@ -56,6 +56,8 @@ export function PrazosPage() {
   const [showImoveis, setShowImoveis] = useState(false);
   const [tipoFiltro, setTipoFiltro] = useState<PrazoTipo | "todos" | "agendados">("todos");
   const [aba, setAba] = useState<"agenda" | "resolvidos">("agenda");
+  const [visao, setVisao] = useState<"calendario" | "lista">("calendario");
+  const [diaSel, setDiaSel] = useState<string>(hojeYmd()); // ymd ou "__atrasados__"
   const [todosRest, setTodosRest] = useState(false);
   const [modal, setModal] = useState<{ prazo: Prazo | null } | null>(null);
   const [agendando, setAgendando] = useState<string | null>(null);
@@ -112,6 +114,14 @@ export function PrazosPage() {
     for (const p of visiveis) g[grupoAgenda(p, hoje)].push(p);
     return g;
   }, [visiveis, hoje]);
+
+  // Calendário: atrasados (não somem na navegação de mês) e prazos do dia
+  // selecionado, colocados pela data de EXIBIÇÃO (fim de semana → sexta).
+  const atrasados = useMemo(() => visiveis.filter((p) => diasAte(hoje, p.vencimento) < 0), [visiveis, hoje]);
+  const doDia = useMemo(() => {
+    if (diaSel === "__atrasados__") return atrasados;
+    return visiveis.filter((p) => ymdExibicao(p.vencimento) === diaSel).sort((a, b) => a.vencimento.localeCompare(b.vencimento));
+  }, [visiveis, diaSel, atrasados]);
 
   const contagem = useMemo(() => {
     const c: Record<string, number> = { todos: 0, conta: 0, tecnico: 0, trabalhista: 0, avulso: 0, agendados: 0 };
@@ -172,6 +182,16 @@ export function PrazosPage() {
 
   const GRUPO_LABEL: Record<string, { label: string; danger?: boolean }> = { vencido: { label: "Vencidos", danger: true }, semana: { label: "Esta semana" }, proximo: { label: "Próximos" }, futuro: { label: "Mais pra frente" } };
 
+  const renderCard = (p: Prazo) => (
+    <PrazoCard key={p.id} p={p} hoje={hoje} podeGerir={podeGerirCat(p.tipo)} mostrarEmpresa={todosRest} restNome={restNome} imovelNome={imovelNome(p.imovelId)}
+      onEditar={() => setModal({ prazo: p })} onRealizar={() => void realizar(p)} onExcluir={() => void excluir(p)}
+      onLaudo={() => pedirLaudo(p)} onRemoverAg={() => void removerAgendamento(p)}
+      agendando={agendando === p.id} dataAg={dataAg} setDataAg={setDataAg}
+      onAbrirAg={() => { setAgendando(p.id); setDataAg(ymdToBr(p.vencimento)); }} onCancelarAg={() => setAgendando(null)} onConfirmarAg={() => void agendar(p)} />
+  );
+
+  const detalheLabel = diaSel === "__atrasados__" ? "Atrasados" : `${diaSemanaCurto(diaSel)} · ${ymdToBr(diaSel)}`;
+
   return (
     <div className="max-w-5xl mx-auto p-4 space-y-4">
       <input ref={laudoRef} type="file" accept="application/pdf,image/*,.pdf,.doc,.docx" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void onLaudoFile(f); e.target.value = ""; }} />
@@ -200,33 +220,51 @@ export function PrazosPage() {
         <div className="flex-1" />
         {isMaster && <label className="text-xs text-gray-500 flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={todosRest} onChange={(e) => setTodosRest(e.target.checked)} /> todas as empresas</label>}
       </div>
-      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800">
+      <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800 items-center">
         {([["agenda", "Agenda"], ["resolvidos", "Resolvidos"]] as const).map(([k, l]) => (
           <button key={k} type="button" onClick={() => { setAba(k); if (tipoFiltro === "agendados") setTipoFiltro("todos"); }} className={`px-3 py-2 text-sm font-medium -mb-px border-b-2 ${aba === k && tipoFiltro !== "agendados" ? "border-indigo-500 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500"}`}>{l}</button>
         ))}
+        <div className="flex-1" />
+        {aba === "agenda" && (
+          <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 mb-1.5">
+            {([["calendario", "📅 Calendário"], ["lista", "☰ Lista"]] as const).map(([k, l]) => (
+              <button key={k} type="button" onClick={() => setVisao(k)} className={`px-2.5 py-1 text-xs font-medium rounded-md ${visao === k ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
+            ))}
+          </div>
+        )}
       </div>
 
       {erro && <div className={`text-sm rounded-lg px-3 py-2 flex justify-between ${erro.startsWith("✓") ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400" : "bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400"}`}><span>{erro}</span><button onClick={() => setErro("")}>✕</button></div>}
 
-      {aba === "agenda" ? (
+      {aba === "agenda" ? (visao === "calendario" ? (
+        <div className="space-y-4">
+          {atrasados.length > 0 && (
+            <button type="button" onClick={() => setDiaSel("__atrasados__")}
+              className={`w-full text-left text-sm px-3 py-2 rounded-lg border ${diaSel === "__atrasados__" ? "border-rose-500 bg-rose-50 dark:bg-rose-900/30" : "border-rose-200 dark:border-rose-900/40 bg-rose-50/50 dark:bg-rose-900/10"} text-rose-700 dark:text-rose-300 font-medium`}>
+              ⚠ {atrasados.length} {atrasados.length === 1 ? "prazo atrasado" : "prazos atrasados"} — clique pra ver
+            </button>
+          )}
+          <PrazoCalendario prazos={visiveis} hoje={hoje} diaSel={diaSel} onSelDia={setDiaSel} />
+          <div>
+            <div className="text-xs font-semibold uppercase tracking-wide mb-2 text-gray-500">{detalheLabel} {doDia.length > 0 && <span className="text-gray-400">· {doDia.length}</span>}</div>
+            <div className="space-y-2">
+              {doDia.length === 0 ? <p className="text-sm text-gray-400 py-6 text-center">Nada para {diaSel === "__atrasados__" ? "atrasados" : "este dia"}.</p> : doDia.map(renderCard)}
+            </div>
+          </div>
+        </div>
+      ) : (
         <div className="space-y-4">
           {visiveis.length === 0 && <p className="text-sm text-gray-400 py-8 text-center">{tipoFiltro === "agendados" ? "Nenhum prazo agendado." : "Nenhum prazo em aberto."}</p>}
           {(["vencido", "semana", "proximo", "futuro"] as const).map((g) => grupos[g].length > 0 && (
             <div key={g}>
               <div className={`text-xs font-semibold uppercase tracking-wide mb-2 ${GRUPO_LABEL[g].danger ? "text-rose-600" : "text-gray-500"}`}>{GRUPO_LABEL[g].label}</div>
               <div className="space-y-2">
-                {grupos[g].map((p) => (
-                  <PrazoCard key={p.id} p={p} hoje={hoje} podeGerir={podeGerirCat(p.tipo)} mostrarEmpresa={todosRest} restNome={restNome} imovelNome={imovelNome(p.imovelId)}
-                    onEditar={() => setModal({ prazo: p })} onRealizar={() => void realizar(p)} onExcluir={() => void excluir(p)}
-                    onLaudo={() => pedirLaudo(p)} onRemoverAg={() => void removerAgendamento(p)}
-                    agendando={agendando === p.id} dataAg={dataAg} setDataAg={setDataAg}
-                    onAbrirAg={() => { setAgendando(p.id); setDataAg(ymdToBr(p.vencimento)); }} onCancelarAg={() => setAgendando(null)} onConfirmarAg={() => void agendar(p)} />
-                ))}
+                {grupos[g].map(renderCard)}
               </div>
             </div>
           ))}
         </div>
-      ) : (
+      )) : (
         <div className="space-y-2">
           {visiveis.length === 0 && <p className="text-sm text-gray-400 py-8 text-center">Nada resolvido ainda.</p>}
           {visiveis.map((p) => (
@@ -273,7 +311,7 @@ function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, imovelNome, o
     <div className={`rounded-xl border border-gray-200 dark:border-gray-800 border-l-[3px] ${borda} bg-white dark:bg-gray-900 p-3 space-y-2`}>
       <div className="flex items-start gap-2">
         <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{p.titulo}</span>
-        <span className={`text-xs ml-auto whitespace-nowrap ${vencido ? "text-rose-600" : "text-gray-500"}`}>🕐 {vencido ? "venceu" : "vence"} {ymdToBr(p.vencimento)}</span>
+        <span className={`text-xs ml-auto whitespace-nowrap ${vencido ? "text-rose-600" : "text-gray-500"}`}>🕐 {vencido ? "venceu" : "vence"} {ymdToBr(p.vencimento)}{ehFimDeSemana(p.vencimento) ? <span className="text-amber-600 dark:text-amber-400"> ({diaSemanaCurto(p.vencimento)})</span> : null}</span>
       </div>
       <div className="flex items-center gap-1.5 flex-wrap text-xs">
         <span className={`text-[10px] px-2 py-0.5 rounded-full ${TIPO_META[p.tipo].cls}`}>{TIPO_META[p.tipo].icon} {PRAZO_TIPO_LABEL[p.tipo]}</span>
@@ -311,6 +349,82 @@ function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, imovelNome, o
           <button type="button" onClick={onExcluir} className="text-xs px-2 py-1 rounded-lg text-gray-300 hover:text-rose-600">🗑</button>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ── Calendário mensal (visão primária) ──
+// Coloca cada prazo pela data de EXIBIÇÃO (fim de semana volta pra sexta).
+// Clicar num dia seleciona-o; o detalhe com as ações aparece abaixo do calendário.
+const WEEKDAYS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const toYmdLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+
+function PrazoCalendario({ prazos, hoje, diaSel, onSelDia }: {
+  prazos: Prazo[]; hoje: string; diaSel: string; onSelDia: (ymd: string) => void;
+}) {
+  const [ym, setYm] = useState(() => { const d = new Date(hoje + "T12:00:00"); return { y: d.getFullYear(), m: d.getMonth() }; });
+
+  const porDia = useMemo(() => {
+    const map = new Map<string, Prazo[]>();
+    for (const p of prazos) {
+      const k = ymdExibicao(p.vencimento);
+      const arr = map.get(k);
+      if (arr) arr.push(p); else map.set(k, [p]);
+    }
+    return map;
+  }, [prazos]);
+
+  const weeks = useMemo(() => {
+    const first = new Date(ym.y, ym.m, 1);
+    const cur = new Date(ym.y, ym.m, 1 - first.getDay());
+    const out: { ymd: string; inMonth: boolean; dow: number }[][] = [];
+    for (let w = 0; w < 6; w++) {
+      const row: { ymd: string; inMonth: boolean; dow: number }[] = [];
+      for (let d = 0; d < 7; d++) { row.push({ ymd: toYmdLocal(cur), inMonth: cur.getMonth() === ym.m, dow: cur.getDay() }); cur.setDate(cur.getDate() + 1); }
+      out.push(row);
+    }
+    // Descarta a última semana se for inteira do mês seguinte (mês de 4-5 linhas).
+    return out.filter((row) => row.some((c) => c.inMonth));
+  }, [ym]);
+
+  const nomeMes = new Date(ym.y, ym.m, 1).toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+  const irMes = (delta: number) => setYm((s) => { const d = new Date(s.y, s.m + delta, 1); return { y: d.getFullYear(), m: d.getMonth() }; });
+  const irHoje = () => { const d = new Date(hoje + "T12:00:00"); setYm({ y: d.getFullYear(), m: d.getMonth() }); onSelDia(hoje); };
+
+  return (
+    <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+      <div className="flex items-center justify-between mb-2">
+        <button type="button" onClick={() => irMes(-1)} className="w-7 h-7 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">‹</button>
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 capitalize">{nomeMes}</span>
+          <button type="button" onClick={irHoje} className="text-[11px] px-2 py-0.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-indigo-600">hoje</button>
+        </div>
+        <button type="button" onClick={() => irMes(1)} className="w-7 h-7 rounded-lg text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800">›</button>
+      </div>
+      <div className="grid grid-cols-7 gap-1">
+        {WEEKDAYS.map((w, i) => (
+          <div key={w} className={`text-[10px] text-center font-semibold py-1 ${i === 0 || i === 6 ? "text-gray-300 dark:text-gray-600" : "text-gray-400"}`}>{w}</div>
+        ))}
+        {weeks.flat().map((c) => {
+          const lista = porDia.get(c.ymd) || [];
+          const ehHoje = c.ymd === hoje;
+          const sel = c.ymd === diaSel;
+          const fds = c.dow === 0 || c.dow === 6;
+          return (
+            <button key={c.ymd} type="button" onClick={() => onSelDia(c.ymd)}
+              className={`min-h-[64px] rounded-lg border p-1 text-left flex flex-col gap-0.5 transition-colors ${sel ? "border-indigo-500 ring-1 ring-indigo-400" : "border-gray-100 dark:border-gray-800"} ${fds ? "bg-gray-50/60 dark:bg-gray-800/20" : "bg-white dark:bg-gray-900"} ${!c.inMonth ? "opacity-40" : ""} hover:border-indigo-300`}>
+              <span className={`text-[11px] font-medium self-end leading-none w-5 h-5 flex items-center justify-center rounded-full ${ehHoje ? "bg-indigo-600 text-white" : fds ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}`}>{Number(c.ymd.slice(-2))}</span>
+              {lista.slice(0, 3).map((p) => (
+                <span key={p.id} className={`block truncate text-[9px] leading-tight px-1 py-0.5 rounded ${TIPO_META[p.tipo].cls}`} title={p.titulo}>
+                  {ehFimDeSemana(p.vencimento) ? "↩ " : ""}{p.titulo}
+                </span>
+              ))}
+              {lista.length > 3 && <span className="text-[9px] text-gray-400 px-1">+{lista.length - 3}</span>}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-2 text-[10px] text-gray-400">↩ prazo que vence no fim de semana, exibido na sexta</div>
     </div>
   );
 }

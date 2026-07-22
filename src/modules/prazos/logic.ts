@@ -4,6 +4,30 @@ import { proximoVencimento } from "./recorrencia";
 
 export const hojeYmd = (): string => new Date().toISOString().slice(0, 10);
 
+// Fim de semana? (0=dom, 6=sáb)
+export function ehFimDeSemana(ymd: string): boolean {
+  const dow = new Date(ymd + "T12:00:00").getDay();
+  return dow === 0 || dow === 6;
+}
+
+// Data de EXIBIÇÃO na agenda/calendário: sáb/dom não têm operação, então o
+// prazo "volta" pro dia útil anterior (sexta). Sáb→sex (−1), Dom→sex (−2).
+// O vencimento real do prazo NÃO muda — só onde ele aparece.
+export function ymdExibicao(vencimentoYmd: string): string {
+  const d = new Date(vencimentoYmd + "T12:00:00");
+  const dow = d.getDay();
+  if (dow === 6) d.setDate(d.getDate() - 1);
+  else if (dow === 0) d.setDate(d.getDate() - 2);
+  const y = d.getFullYear(), m = d.getMonth() + 1, dd = d.getDate();
+  return `${y}-${String(m).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
+}
+
+// Rótulo curto do dia da semana (pra marcar "(sáb)"/"(dom)" quando volta).
+const DOW_CURTO = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+export function diaSemanaCurto(ymd: string): string {
+  return DOW_CURTO[new Date(ymd + "T12:00:00").getDay()] || "";
+}
+
 // Antecedência padrão por tipo (dias antes do vencimento que o prazo "acende").
 export const ANTECEDENCIA_PADRAO: Record<PrazoTipo, number> = { conta: 3, tecnico: 30, trabalhista: 15, avulso: 7 };
 
