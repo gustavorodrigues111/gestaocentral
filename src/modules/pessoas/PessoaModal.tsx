@@ -177,14 +177,14 @@ function TabIdentidade({
     if (!pessoa || !me) return;
     const email = (pessoa.email || "").trim().toLowerCase();
     const whats = (pessoa.whatsapp || "").replace(/\D/g, "");
-    if (!email || whats.length < 10) { setConviteErro("Preencha email e WhatsApp (e salve) antes de convidar."); return; }
+    if (!email) { setConviteErro("Preencha o email (e salve) antes de convidar/reenviar."); return; }
     setConvidando(true); setConviteErro(""); setConvite(null);
     const senha = gerarSenhaInicial();
     const prov = await provisionarAcesso(email, senha);
     if (!prov.ok) {
       setConvidando(false);
       setConviteErro(prov.motivo === "email_em_uso"
-        ? "Já existe uma conta com esse email. A pessoa pode usar “Esqueci a senha” no login."
+        ? "Essa pessoa já tem conta ativa. Se ela esqueceu a senha e o email do Firebase não chega (comum no Hotmail/Outlook): apague o acesso dela no Firebase Console → Authentication → Users e clique em Reenviar de novo — aí recrio a conta e mando a senha inicial pelo email (Resend)."
         : "Não foi possível criar o acesso: " + (prov.detalhe || prov.motivo));
       return;
     }
@@ -193,10 +193,11 @@ function TabIdentidade({
         mustTrocarSenha: true, acessoProvisionadoEm: new Date().toISOString(), whatsappOptIn: true,
       }));
     } catch { /* best-effort */ }
-    const phone = whats.startsWith("55") ? whats : `55${whats}`;
     const baseUrl = subdomainAtivo ? `https://${subdomainAtivo}.planejamento.app` : "https://planejamento.app";
     const nomePrimeiro = (pessoa.nome || "").split(/\s+/)[0] || "";
-    const waLink = `https://wa.me/${phone}?text=${encodeURIComponent(buildConviteMsg(nomePrimeiro, email, senha, baseUrl))}`;
+    const waLink = whats.length >= 10
+      ? `https://wa.me/${whats.startsWith("55") ? whats : `55${whats}`}?text=${encodeURIComponent(buildConviteMsg(nomePrimeiro, email, senha, baseUrl))}`
+      : "";
     // Convite por EMAIL (canal certo pra credencial — sem as travas de template
     // da Meta). O WhatsApp fica como alternativa manual (wa.me).
     const enviadoEmail = await enviarEmailAcesso(email, pessoa.nome, email, senha, baseUrl);
@@ -443,7 +444,20 @@ function TabIdentidade({
                 </Button>
               )}
               {pessoa?.acessoProvisionadoEm && !convite && (
-                <span className="text-xs text-emerald-700 dark:text-emerald-400 self-center">✓ Acesso já enviado{pessoa.mustTrocarSenha ? " — aguardando 1º acesso" : ""}</span>
+                <>
+                  <span className="text-xs text-emerald-700 dark:text-emerald-400 self-center">✓ Acesso já enviado{pessoa.mustTrocarSenha ? " — aguardando 1º acesso" : ""}</span>
+                  {podeConvidar && (
+                    <Button
+                      size="sm"
+                      disabled={convidando}
+                      onClick={() => void convidarAcesso()}
+                      title="Recria o acesso com uma nova senha inicial e reenvia por email (Resend). Se a conta já existir, apague-a antes no Firebase Console."
+                      className="!bg-indigo-600 hover:!bg-indigo-700 !border-indigo-600"
+                    >
+                      {convidando ? "Reenviando…" : "🔁 Reenviar acesso (email)"}
+                    </Button>
+                  )}
+                </>
               )}
               {podeVisualizarComo && pessoa && (
                 <Button
@@ -511,9 +525,11 @@ function TabIdentidade({
             Senha inicial: <code className="px-2 py-0.5 rounded bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-800 font-mono">{convite.senha}</code>
             <button type="button" onClick={() => navigator.clipboard?.writeText(convite.senha)} className="text-xs text-emerald-700 dark:text-emerald-400 hover:underline">copiar</button>
           </div>
-          <a href={convite.waLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline">
-            💬 {convite.enviadoEmail ? "Mandar também pelo WhatsApp" : "Mandar pelo WhatsApp"}
-          </a>
+          {convite.waLink && (
+            <a href={convite.waLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline">
+              💬 {convite.enviadoEmail ? "Mandar também pelo WhatsApp" : "Mandar pelo WhatsApp"}
+            </a>
+          )}
           <p className="text-[11px] text-gray-500 dark:text-gray-400">No 1º acesso ela confirma o CPF e cria a própria senha.</p>
         </div>
       )}
