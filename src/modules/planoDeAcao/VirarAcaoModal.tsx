@@ -5,21 +5,27 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import type { Acao, AcaoLog, AcaoOrigemTipo, AcaoPrioridade, Pessoa } from "../../core/types";
+import type { Acao, AcaoLog, AcaoOrigemTipo, AcaoPrioridade, Pessoa, TarefaOrigem, TarefaPrioridade } from "../../core/types";
+import { criarTarefaOperacional } from "../tarefas/repository";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
+
+// O que o modal devolve ao chamador (a origem registra a tratativa de volta).
+export type ItemCriado = { id: string; titulo: string; responsavelNome?: string };
 
 const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 const ORIGEM_TXT: Record<AcaoOrigemTipo, string> = { ocorrencia: "ocorrência", ideia: "ideia", reuniao: "reunião", avulsa: "ação avulsa", avaliacao_sanitaria: "avaliação sanitária" };
 const PRIOS: [AcaoPrioridade, string, string][] = [["baixa", "Baixa", "text-gray-500"], ["media", "Média", "text-amber-600 dark:text-amber-400"], ["alta", "Alta", "text-rose-600 dark:text-rose-400"]];
 
-export function VirarAcaoModal({ rid, meId, meNome, origem, tituloInicial, descricaoInicial, onClose, onCriada }: {
+export function VirarAcaoModal({ rid, meId, meNome, origem, tituloInicial, descricaoInicial, destino = "acao", onClose, onCriada }: {
   rid: string; meId?: string; meNome?: string;
   origem: { tipo: AcaoOrigemTipo; refId?: string | null; reuniaoId?: string | null; label?: string };
   tituloInicial?: string; descricaoInicial?: string;
-  onClose: () => void; onCriada: (acao: Acao) => void | Promise<void>;
+  destino?: "acao" | "tarefa";
+  onClose: () => void; onCriada: (item: ItemCriado) => void | Promise<void>;
 }) {
+  const rotulo = destino === "tarefa" ? "tarefa" : "ação";
   const [titulo, setTitulo] = useState(tituloInicial || "");
   const [descricao, setDescricao] = useState(descricaoInicial || "");
   const [responsavelId, setResponsavelId] = useState("");
@@ -35,30 +41,44 @@ export function VirarAcaoModal({ rid, meId, meNome, origem, tituloInicial, descr
   const pessoasOrd = useMemo(() => [...pessoas].sort((a, b) => a.nome.localeCompare(b.nome)), [pessoas]);
 
   async function criar() {
-    if (!titulo.trim()) { alert("Dê um título à ação."); return; }
+    if (!titulo.trim()) { alert(`Dê um título à ${rotulo}.`); return; }
     setSalvando(true);
     const now = new Date().toISOString();
     const respNome = pessoasOrd.find(p => p.id === responsavelId)?.nome || "";
-    const id = uid("acao");
-    const log: AcaoLog[] = [{ id: uid("lg"), em: now, autorId: meId, autorNome: meNome, tipo: "criada", texto: `Ação criada a partir de ${ORIGEM_TXT[origem.tipo]}${origem.label ? `: "${origem.label}"` : ""}` }];
-    const acao: Acao = {
-      id, restaurantId: rid, titulo: titulo.trim(), descricao: descricao.trim(),
-      responsavelId: responsavelId || null, responsavelNome: respNome,
-      prazo: prazo || null, status: "aberta", prioridade,
-      origem: { tipo: origem.tipo, refId: origem.refId || null, reuniaoId: origem.reuniaoId || null, label: origem.label },
-      log, criadoEm: now, criadoPor: meId, criadoPorNome: meNome, atualizadoEm: now, ativo: true,
-    };
     try {
+      if (destino === "tarefa") {
+        const origemT: TarefaOrigem = origem.tipo === "avulsa" ? "manual" : origem.tipo;
+        const prioT: TarefaPrioridade = prioridade === "media" ? "normal" : prioridade;
+        const id = await criarTarefaOperacional({
+          rid, titulo: titulo.trim(), descricao: descricao.trim(),
+          responsavelId: responsavelId || null, responsavelNome: respNome,
+          prazo: prazo || null, prioridade: prioT, origem: origemT,
+          origemRefId: origem.refId || undefined, origemRefLabel: origem.label,
+          criadoPor: meId, criadoPorNome: meNome,
+        });
+        await onCriada({ id, titulo: titulo.trim(), responsavelNome: respNome });
+        onClose();
+        return;
+      }
+      const id = uid("acao");
+      const log: AcaoLog[] = [{ id: uid("lg"), em: now, autorId: meId, autorNome: meNome, tipo: "criada", texto: `Ação criada a partir de ${ORIGEM_TXT[origem.tipo]}${origem.label ? `: "${origem.label}"` : ""}` }];
+      const acao: Acao = {
+        id, restaurantId: rid, titulo: titulo.trim(), descricao: descricao.trim(),
+        responsavelId: responsavelId || null, responsavelNome: respNome,
+        prazo: prazo || null, status: "aberta", prioridade,
+        origem: { tipo: origem.tipo, refId: origem.refId || null, reuniaoId: origem.reuniaoId || null, label: origem.label },
+        log, criadoEm: now, criadoPor: meId, criadoPorNome: meNome, atualizadoEm: now, ativo: true,
+      };
       await setDoc(doc(db, "acoes", id), sanitizeForFirestore(acao));
       await onCriada(acao);
       onClose();
-    } catch (e) { alert("Erro ao criar ação: " + (e instanceof Error ? e.message : String(e))); setSalvando(false); }
+    } catch (e) { alert(`Erro ao criar ${rotulo}: ` + (e instanceof Error ? e.message : String(e))); setSalvando(false); }
   }
 
   return (
-    <Modal title={`🎯 Virar ação · de ${ORIGEM_TXT[origem.tipo]}`} onClose={onClose} maxWidth="max-w-xl">
+    <Modal title={`🎯 Virar ${rotulo} · de ${ORIGEM_TXT[origem.tipo]}`} onClose={onClose} maxWidth="max-w-xl">
       <div className="space-y-3">
-        <Input label="Título da ação *" value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="O que precisa ser feito" />
+        <Input label={`Título da ${rotulo} *`} value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="O que precisa ser feito" />
         <div className="flex flex-col gap-1">
           <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Descrição</span>
           <textarea value={descricao} onChange={e => setDescricao(e.target.value)} rows={3} className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100 resize-y" />
@@ -84,10 +104,10 @@ export function VirarAcaoModal({ rid, meId, meNome, origem, tituloInicial, descr
             ))}
           </div>
         </div>
-        <p className="text-[11px] text-gray-400">A ação vai pro Plano de Ação e a origem guarda no log que virou ação.</p>
+        <p className="text-[11px] text-gray-400">{destino === "tarefa" ? "A tarefa vai pra lista da pessoa (lente enxuta) e a origem fica registrada." : "A ação vai pro Plano de Ação e a origem guarda no log que virou ação."}</p>
         <div className="flex justify-end gap-2 pt-1 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => void criar()} disabled={salvando}>{salvando ? "Criando…" : "Criar ação"}</Button>
+          <Button onClick={() => void criar()} disabled={salvando}>{salvando ? "Criando…" : `Criar ${rotulo}`}</Button>
         </div>
       </div>
     </Modal>

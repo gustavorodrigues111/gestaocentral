@@ -11,7 +11,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type {
   Tarefa, TarefaProjeto, TarefaSubprojeto, TarefaStatus, TarefaLogEntry,
   Subtarefa, TarefaComentario, TarefaVisibilidade,
-  TarefaAutomacao, ModuloOrigemTarefa,
+  TarefaAutomacao, ModuloOrigemTarefa, TarefaPrioridade, TarefaOrigem,
 } from "../../core/types";
 
 const COL_PROJETOS = "tarefaProjetos";
@@ -272,6 +272,47 @@ export async function criarTarefa(t: Omit<Tarefa, "id" | "criadoEm" | "atualizad
     ],
   }));
   return ref.id;
+}
+
+// Cria uma tarefa OPERACIONAL (a "lente enxuta" / antigo Plano de Ação) a
+// partir de uma origem (ocorrência, ideia, reunião, avaliação sanitária). Vive
+// na mesma coleção `tarefas` — é a unificação: tarefa e ação são o mesmo dado,
+// só mudam a lente e o público. Cai no projeto "Operação — Demandas".
+export async function criarTarefaOperacional(input: {
+  rid: string;
+  titulo: string;
+  descricao?: string;
+  responsavelId?: string | null;
+  responsavelNome?: string;
+  prazo?: string | null;
+  prioridade?: TarefaPrioridade;
+  origem: TarefaOrigem;
+  origemRefId?: string;
+  origemRefLabel?: string;
+  criadoPor?: string;
+  criadoPorNome?: string;
+}): Promise<string> {
+  const t: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm"> = {
+    projetoId: "proj-operacao-dem",
+    subprojetoId: "",
+    titulo: input.titulo,
+    descricao: input.descricao,
+    responsavelId: input.responsavelId || "",
+    responsavelNome: input.responsavelNome,
+    restaurantIds: input.rid ? [input.rid] : [],
+    prazo: input.prazo ?? null,
+    status: "a_fazer",
+    prioridade: input.prioridade || "normal",
+    origem: input.origem,
+    origemRefId: input.origemRefId,
+    origemRefLabel: input.origemRefLabel,
+    // "escritorio" garante visibilidade previsível sem depender do doc do
+    // projeto existir; o responsável sempre vê as próprias em "Minhas".
+    visibilidadeOverride: "escritorio",
+    criadoPor: input.criadoPor || "",
+    criadoPorNome: input.criadoPorNome,
+  };
+  return criarTarefa(t);
 }
 
 async function resolverVisibilidadeProjeto(projetoId: string): Promise<TarefaVisibilidade> {

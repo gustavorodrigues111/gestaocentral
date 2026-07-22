@@ -3,8 +3,7 @@ import { useParams } from "react-router-dom";
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import { VirarAcaoModal } from "../planoDeAcao/VirarAcaoModal";
-import type { Acao } from "../../core/types";
+import { VirarAcaoModal, type ItemCriado } from "../planoDeAcao/VirarAcaoModal";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
@@ -177,9 +176,9 @@ export function OcorrenciasPage() {
   }
 
   // Registra no log da ocorrência que ela virou ação (Plano de Ação).
-  async function aposVirarAcao(o: Ocorrencia, acao: Acao) {
+  async function aposVirarAcao(o: Ocorrencia, acao: ItemCriado) {
     const now = new Date().toISOString();
-    const lg = { id: `lg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, em: now, autorId: me?.id, autorNome: me?.nome, tipo: "comentario" as const, texto: `Virou ação: "${acao.titulo}"${acao.responsavelNome ? ` — resp. ${acao.responsavelNome}` : ""}` };
+    const lg = { id: `lg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, em: now, autorId: me?.id, autorNome: me?.nome, tipo: "comentario" as const, texto: `Virou tarefa: "${acao.titulo}"${acao.responsavelNome ? ` — resp. ${acao.responsavelNome}` : ""}` };
     await updateDoc(doc(db, "ocorrencias", o.id), sanitizeForFirestore({ log: [...(o.log || []), lg], acaoIdGerada: acao.id, atualizadaEm: now }));
   }
 
@@ -406,7 +405,7 @@ export function OcorrenciasPage() {
                         {o.categoria}
                       </span>
                     )}
-                    {o.acaoIdGerada && <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" title="Virou uma ação no Plano de Ação">🎯 virou ação</span>}
+                    {o.acaoIdGerada && <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" title="Virou uma tarefa">🎯 virou tarefa</span>}
                   </div>
                   {podeEditar && (
                     <div className="flex gap-1 flex-wrap">
@@ -422,7 +421,7 @@ export function OcorrenciasPage() {
                       {(o.status === "resolvida" || o.status === "arquivada") && (
                         <Button variant="secondary" size="sm" onClick={() => setStatus(o, "aberta")}>↻ Reabrir</Button>
                       )}
-                      {!o.acaoIdGerada && <Button variant="secondary" size="sm" onClick={() => setVirarDe(o)}>🎯 Virar ação</Button>}
+                      {!o.acaoIdGerada && <Button variant="secondary" size="sm" onClick={() => setVirarDe(o)}>🎯 Virar tarefa</Button>}
                       <Button variant="secondary" size="sm" onClick={() => setEditing(o)}>Editar</Button>
                       <Button variant="danger" size="sm" onClick={() => excluir(o)}>×</Button>
                     </div>
@@ -464,6 +463,7 @@ export function OcorrenciasPage() {
           rid={rid} meId={me?.id} meNome={me?.nome}
           origem={{ tipo: "ocorrencia", refId: virarDe.id, label: virarDe.titulo }}
           tituloInicial={virarDe.titulo} descricaoInicial={virarDe.descricao}
+          destino="tarefa"
           onClose={() => setVirarDe(null)}
           onCriada={(acao) => aposVirarAcao(virarDe, acao)}
         />

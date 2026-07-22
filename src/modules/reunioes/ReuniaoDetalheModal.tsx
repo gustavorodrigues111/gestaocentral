@@ -11,7 +11,7 @@ import { todayYmd } from "../../core/utils/date";
 import { ACAO_STATUS_LABEL, REUNIAO_TIPO_LABEL } from "../../core/types";
 import type { Acao, AcaoReuniao, AcaoStatus, Empregado, EventoTrilha, Ideia, Ocorrencia, PautaItem, Reuniao } from "../../core/types";
 import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal";
-import { VirarAcaoModal } from "../planoDeAcao/VirarAcaoModal";
+import { VirarAcaoModal, type ItemCriado } from "../planoDeAcao/VirarAcaoModal";
 
 type Props = {
   reuniao: Reuniao;
@@ -299,7 +299,7 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
 
   // Depois de transformar um item da pauta em Ação (Plano de Ação): marca o item
   // e registra no log da ocorrência/ideia de origem (se o item veio de uma).
-  async function aposVirarAcaoPauta(t: PautaItem, acao: Acao) {
+  async function aposVirarAcaoPauta(t: PautaItem, acao: ItemCriado) {
     await patchReuniao({ pauta: (reuniao.pauta || []).map(x => x.id === t.id ? { ...x, acaoIdGerada: acao.id, discutido: true } : x) });
     const now = new Date().toISOString();
     const lg = { id: `lg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`, em: now, autorId: me?.id, autorNome: me?.nome, tipo: "comentario" as const, texto: `Virou ação na reunião "${reuniao.titulo}": "${acao.titulo}"${acao.responsavelNome ? ` — resp. ${acao.responsavelNome}` : ""}` };
