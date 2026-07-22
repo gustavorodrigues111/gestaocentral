@@ -43,8 +43,7 @@ const SEED: Seed[] = [
   { modulo: "fichas", resp: "gustavo", titulo: "Definir as 5 decisões pendentes antes de codar a evolução das Fichas Técnicas" },
 
   // ── Unificação tarefa/ação (Gestor de Tarefas × lente enxuta) ──
-  { modulo: "planoDeAcao", resp: "ia", titulo: "Fase 3: Reuniões deriva TAREFA (não acao) + link do módulo Reuniões dentro do Gestor + origem carimbada na tarefa", descricao: "Hoje a reunião ainda cria acao e mostra a lista de geradas lendo acoes; migrar pra tarefas." },
-  { modulo: "planoDeAcao", resp: "ia", titulo: "Fase 4: Segurança Sanitária cria/lê TAREFA (Relatorio + Painel saem de acoes) e a Central de Avisos passa a mostrar as tarefas do dia (hoje lê acoes)", descricao: "Fecha a aposentadoria da coleção acoes." },
+  { modulo: "planoDeAcao", resp: "ia", titulo: "Fase 4: Segurança Sanitária cria/lê TAREFA (Relatorio + Painel saem de acoes) e a Central de Avisos passa a mostrar as tarefas do dia (hoje lê acoes)", descricao: "Fecha a aposentadoria da coleção acoes. Fases 1-3 feitas." },
 
   // ── Fechamento de Caixa ──
   { modulo: "fechamentoCaixa", resp: "gustavo", titulo: "OPCIONAL: vincular os sócios (Pessoas cadastradas) em Configurações pra receberem o resumo — email/WhatsApp vêm da ficha da pessoa", descricao: "Cadastre a pessoa em Pessoas e marque aqui. Sem vincular ninguém, o fechamento arquiva no Drive do mesmo jeito." },
