@@ -919,13 +919,13 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
           ehAlvo
             ? "border-indigo-500 ring-2 ring-indigo-300 dark:ring-indigo-700 bg-indigo-50 dark:bg-indigo-900/30"
             : naoUtil
-              ? "border-amber-200 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/15"
+              ? "border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/15"
               : "border-blue-200 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/15"
         }`}
       >
-        <div className={`flex items-baseline justify-between mb-1.5 pb-1.5 border-b ${ehHoje ? "border-indigo-300 dark:border-indigo-800" : naoUtil ? "border-amber-200 dark:border-amber-900/40" : "border-blue-200 dark:border-blue-900/40"}`}>
+        <div className={`flex items-baseline justify-between mb-1.5 pb-1.5 border-b ${ehHoje ? "border-indigo-300 dark:border-indigo-800" : naoUtil ? "border-emerald-200 dark:border-emerald-900/40" : "border-blue-200 dark:border-blue-900/40"}`}>
           <div>
-            <div className={`text-[10px] font-bold uppercase tracking-wider ${ehHoje ? "text-indigo-600 dark:text-indigo-400" : naoUtil ? "text-amber-700 dark:text-amber-400" : "text-blue-700 dark:text-blue-400"}`}>{label}</div>
+            <div className={`text-[10px] font-bold uppercase tracking-wider ${ehHoje ? "text-indigo-600 dark:text-indigo-400" : naoUtil ? "text-emerald-700 dark:text-emerald-400" : "text-blue-700 dark:text-blue-400"}`}>{label}</div>
             <div className={`text-base font-bold ${ehHoje ? "text-indigo-700 dark:text-indigo-300" : "text-gray-900 dark:text-gray-100"}`}>
               {Number(data.slice(8, 10))}
               <span className="ml-1 text-[10px] font-normal text-gray-500 dark:text-gray-400">{data.slice(5, 7)}</span>
@@ -1056,13 +1056,13 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
             className={`flex flex-col min-h-[200px] rounded-lg border border-dashed p-2 text-left transition-colors ${
               dropTarget === "fds"
                 ? "border-indigo-500 ring-2 ring-indigo-300 dark:ring-indigo-700 bg-indigo-50 dark:bg-indigo-900/30"
-                : "border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-900/40 hover:border-gray-400 dark:hover:border-gray-600"
+                : "border-emerald-300 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/15 hover:border-emerald-400 dark:hover:border-emerald-700"
             }`}
             title="Clique pra expandir sábado e domingo"
           >
-            <div className="flex items-baseline justify-between mb-1.5 pb-1.5 border-b border-gray-200 dark:border-gray-800">
+            <div className="flex items-baseline justify-between mb-1.5 pb-1.5 border-b border-emerald-200 dark:border-emerald-900/40">
               <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Sáb · Dom</div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Sáb · Dom</div>
                 <div className="text-base font-bold text-gray-700 dark:text-gray-300">
                   {Number(dias[5].slice(8, 10))}–{Number(dias[6].slice(8, 10))}
                 </div>
