@@ -16,6 +16,7 @@ const SEED: Seed[] = [
   { modulo: "seguranca", resp: "gustavo", titulo: "Criar o template da lista-base, atribuir áreas dos itens e apagar as avaliações de teste antigas" },
 
   // ── Pessoas / onboarding ──
+  { modulo: "pessoas", resp: "gustavo", titulo: "Recuperação de senha 100% automática: liberar Admin SDK (org policy) OU configurar domínio/remetente verificado nos templates de Authentication do Firebase (pra o email de reset parar de cair no spam do Hotmail)", descricao: "Sem Admin não dá pra resetar senha de conta existente por código — só recriar. Hoje: apagar no Console + '🔁 Reenviar acesso (email)' recria e manda pelo Resend." },
   { modulo: "pessoas", resp: "ia", titulo: "P3 do redesenho de Pessoas: fundir o EmpregadoModal no cadastro" },
   { modulo: "pessoas", resp: "ia", titulo: "Escalas nomeadas — Parte B: alternância de escala no empregado (Parte A/catálogo já feita)" },
   { modulo: "pessoas", resp: "gustavo", titulo: "Corrigir admissões placeholder (~30 empregados com admissão fake 01/04/2026) via CSV pra os prazos 45/90 baterem" },
