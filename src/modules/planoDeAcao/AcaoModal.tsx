@@ -20,8 +20,8 @@ const PRIOS: [AcaoPrioridade, string, string][] = [
 ];
 const ORIGEM_LABEL: Record<string, string> = { ocorrencia: "🚨 de ocorrência", ideia: "💡 de ideia", reuniao: "🗣️ de reunião", avulsa: "✍️ avulsa", avaliacao_sanitaria: "🧪 de avaliação sanitária" };
 
-export function AcaoModal({ acao, rid, pessoas, meId, meNome, onClose }: {
-  acao: Acao | null; rid: string; pessoas: Pessoa[]; meId?: string; meNome?: string; onClose: () => void;
+export function AcaoModal({ acao, rid, pessoas, meId, meNome, readOnly = false, onClose }: {
+  acao: Acao | null; rid: string; pessoas: Pessoa[]; meId?: string; meNome?: string; readOnly?: boolean; onClose: () => void;
 }) {
   const novo = !acao;
   const [titulo, setTitulo] = useState(acao?.titulo || "");
@@ -69,6 +69,7 @@ export function AcaoModal({ acao, rid, pessoas, meId, meNome, onClose }: {
   return (
     <Modal title={novo ? "🎯 Nova ação" : "🎯 Ação"} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
+       <fieldset disabled={readOnly} className="space-y-3 border-0 p-0 m-0 min-w-0 disabled:opacity-95">
         {!novo && acao && (
           <div className="flex items-center gap-2 flex-wrap text-[11px] text-gray-500">
             <span className="px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">{ORIGEM_LABEL[acao.origem?.tipo || "avulsa"]}</span>
@@ -132,9 +133,11 @@ export function AcaoModal({ acao, rid, pessoas, meId, meNome, onClose }: {
           </>
         )}
 
+       </fieldset>
+
         <div className="flex justify-end gap-2 pt-1 border-t border-gray-200 dark:border-gray-800">
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando…" : novo ? "Criar ação" : "Salvar"}</Button>
+          <Button variant="secondary" onClick={onClose}>{readOnly ? "Fechar" : "Cancelar"}</Button>
+          {!readOnly && <Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando…" : novo ? "Criar ação" : "Salvar"}</Button>}
         </div>
       </div>
     </Modal>

@@ -38,8 +38,13 @@ export function PlanoDeAcaoPage() {
   const isMaster = !!me?.isMaster;
   const { can, loading: loadingPerfis } = useCanAcao(rid);
   const podeCriar = isMaster || can("planoDeAcao", "criar");
-  const podeGerenciar = isMaster || can("planoDeAcao", "gerenciar") || can("planoDeAcao", "ver");
+  // Escopo de leitura: "todas" também engloba "minhas". Retrocompat com os ids
+  // antigos (ver/gerenciar liberavam o Kanban de todas).
+  const podeVerTodas = isMaster || can("planoDeAcao", "verTodas") || can("planoDeAcao", "ver") || can("planoDeAcao", "gerenciar");
+  const podeVerMinhas = podeVerTodas || can("planoDeAcao", "verMinhas");
+  const podeKanban = isMaster || can("planoDeAcao", "kanban") || can("planoDeAcao", "gerenciar") || can("planoDeAcao", "ver");
   const podeEditar = isMaster || can("planoDeAcao", "editar");
+  const podeGerenciar = podeVerMinhas; // acesso ao módulo (vê ao menos as suas)
 
   const [acoes, setAcoes] = useState<Acao[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
@@ -118,8 +123,11 @@ export function PlanoDeAcaoPage() {
   if (loadingPerfis && !isMaster) return <div className="text-sm text-gray-500 py-12 text-center">Carregando permissões…</div>;
   if (!podeGerenciar && !podeCriar) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p></div>;
 
-  const mostrarTabs = podeGerenciar; // "minhas" sempre; "kanban" pra quem gerencia
-  const abaEfetiva: "minhas" | "kanban" = aba === "kanban" && podeGerenciar ? "kanban" : "minhas";
+  const mostrarKanban = podeKanban && podeVerMinhas; // precisa poder ver algo
+  const mostrarTabs = mostrarKanban;                 // "minhas" sempre; "kanban" pra quem tem o quadro
+  const abaEfetiva: "minhas" | "kanban" = aba === "kanban" && mostrarKanban ? "kanban" : "minhas";
+  // O Kanban mostra todas (verTodas) ou só as minhas (só verMinhas).
+  const kanbanBase = podeVerTodas ? filtradas : filtradas.filter(a => a.responsavelId === me?.id);
   const prazoBadge = (a: Acao) => {
     if (!a.prazo || a.status === "concluida" || a.status === "cancelada") return null;
     const atrasada = a.prazo < today;
@@ -139,7 +147,7 @@ export function PlanoDeAcaoPage() {
 
       {mostrarTabs && (
         <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
-          {([{ k: "minhas", l: `🙋 Minhas ações${minhasAbertas + minhasProducoes.length ? ` (${minhasAbertas + minhasProducoes.length})` : ""}` }, { k: "kanban", l: "📊 Todas (Kanban)" }] as const).map(t => (
+          {([{ k: "minhas", l: `🙋 Minhas ações${minhasAbertas + minhasProducoes.length ? ` (${minhasAbertas + minhasProducoes.length})` : ""}` }, { k: "kanban", l: podeVerTodas ? "📊 Todas (Kanban)" : "📊 Kanban (minhas)" }] as const).map(t => (
             <button key={t.k} type="button" onClick={() => setAba(t.k)} className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${abaEfetiva === t.k ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"}`}>{t.l}</button>
           ))}
         </div>
@@ -197,13 +205,13 @@ export function PlanoDeAcaoPage() {
       )}
 
       {/* KANBAN (gestão) */}
-      {abaEfetiva === "kanban" && podeGerenciar && (
+      {abaEfetiva === "kanban" && mostrarKanban && (
         <>
           <div className="mb-3"><Input placeholder="🔍 Buscar por título, descrição ou responsável…" value={busca} onChange={e => setBusca(e.target.value)} /></div>
           {loading ? <div className="text-sm text-gray-500">Carregando…</div> : (
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-2 items-start">
               {COLS.map(col => {
-                const lista = filtradas.filter(a => a.status === col.id);
+                const lista = kanbanBase.filter(a => a.status === col.id);
                 const alvo = dropTarget === col.id;
                 return (
                   <div key={col.id}
@@ -243,7 +251,7 @@ export function PlanoDeAcaoPage() {
         </>
       )}
 
-      {editing && <AcaoModal acao={editing === "new" ? null : editing} rid={rid} pessoas={pessoas} meId={me?.id} meNome={me?.nome} onClose={() => setEditing(null)} />}
+      {editing && <AcaoModal acao={editing === "new" ? null : editing} rid={rid} pessoas={pessoas} meId={me?.id} meNome={me?.nome} readOnly={editing === "new" ? !podeCriar : !podeEditar} onClose={() => setEditing(null)} />}
     </div>
   );
 }
