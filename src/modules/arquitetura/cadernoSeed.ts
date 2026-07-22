@@ -43,7 +43,7 @@ const SEED: Seed[] = [
   { modulo: "fichas", resp: "gustavo", titulo: "Definir as 5 decisões pendentes antes de codar a evolução das Fichas Técnicas" },
 
   // ── Fechamento de Caixa ──
-  { modulo: "fechamentoCaixa", resp: "gustavo", titulo: "OPCIONAL: cadastrar os emails dos sócios em Configurações pra receberem o resumo do fechamento (pasta do Drive já apontada)", descricao: "Se não quiser o aviso automático, deixe em branco — o fechamento arquiva no Drive do mesmo jeito." },
+  { modulo: "fechamentoCaixa", resp: "gustavo", titulo: "OPCIONAL: vincular os sócios (Pessoas cadastradas) em Configurações pra receberem o resumo — email/WhatsApp vêm da ficha da pessoa", descricao: "Cadastre a pessoa em Pessoas e marque aqui. Sem vincular ninguém, o fechamento arquiva no Drive do mesmo jeito." },
 
   // ── Agentes de IA ──
   { modulo: "agentes", resp: "ia", titulo: "F1b: motor api/agente + chat (F1a de gestão já no ar)" },

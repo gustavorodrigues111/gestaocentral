@@ -1041,8 +1041,11 @@ export type Restaurant = {
   driveRootFolderNome?: string;
   cartaoChavePixPadrao?: string;           // Pix padrão pra receber reembolsos de cartão (módulo Faturas)
   cartoesCadastrados?: string[];           // nomes dos cartões que sobem fatura aqui — a IA casa cada PDF com um deles
-  fechamentoSociosEmails?: string[];
-  fechamentoSociosWhatsapp?: string[];     // números (só dígitos) que recebem o aviso por WhatsApp
+  // Sócios que recebem o aviso do fechamento = Pessoas cadastradas VINCULADAS.
+  // Email/WhatsApp vêm da ficha da pessoa (fonte única). Só quem está aqui recebe.
+  fechamentoSociosPessoaIds?: string[];
+  fechamentoSociosEmails?: string[];       // legado (avulso) — mantido pra retrocompat
+  fechamentoSociosWhatsapp?: string[];     // legado (avulso)
   fechamentoCanalEnvio?: "email" | "whatsapp" | "ambos";  // canal do aviso aos sócios (default "ambos")
   fechamentoEmailRemetente?: string;       // remetente do email aos sócios (domínio verificado na Resend)
   fechamentoComandas?: ComandaCadastro[];  // comandas cadastradas (nº + finalidade)
