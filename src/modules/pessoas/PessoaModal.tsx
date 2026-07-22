@@ -3,6 +3,7 @@ import { addDoc, collection, doc, getDoc, getDocs, limit, onSnapshot, query, upd
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { gerarSenhaInicial, provisionarAcesso } from "../../core/auth/provisionar";
+import { enviarEmailAcesso } from "../../core/auth/emailAcesso";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canExcluirPessoa } from "../../core/auth/permissions";
@@ -143,7 +144,7 @@ function TabIdentidade({
   // Convite de acesso (provisionamento)
   const [convidando, setConvidando] = useState(false);
   const [conviteErro, setConviteErro] = useState("");
-  const [convite, setConvite] = useState<{ senha: string; waLink: string; enviado: boolean } | null>(null);
+  const [convite, setConvite] = useState<{ senha: string; waLink: string; enviadoEmail: boolean; emailDest: string } | null>(null);
   const [showInativar, setShowInativar] = useState(false);
   const [showReativar, setShowReativar] = useState(false);
   const [showExcluir, setShowExcluir] = useState(false);
@@ -196,10 +197,10 @@ function TabIdentidade({
     const baseUrl = subdomainAtivo ? `https://${subdomainAtivo}.planejamento.app` : "https://planejamento.app";
     const nomePrimeiro = (pessoa.nome || "").split(/\s+/)[0] || "";
     const waLink = `https://wa.me/${phone}?text=${encodeURIComponent(buildConviteMsg(nomePrimeiro, email, senha, baseUrl))}`;
-    // Envio MANUAL: a Meta não aprova template com senha (INCORRECT_CATEGORY),
-    // então o convite vai por wa.me (você envia). A conta e a senha já estão
-    // criadas; é só mandar a mensagem.
-    setConvite({ senha, waLink, enviado: false });
+    // Convite por EMAIL (canal certo pra credencial — sem as travas de template
+    // da Meta). O WhatsApp fica como alternativa manual (wa.me).
+    const enviadoEmail = await enviarEmailAcesso(email, pessoa.nome, email, senha, baseUrl);
+    setConvite({ senha, waLink, enviadoEmail, emailDest: email });
     setConvidando(false);
   }
 
@@ -504,17 +505,15 @@ function TabIdentidade({
       {convite && (
         <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3 space-y-2">
           <div className="text-sm font-semibold text-emerald-800 dark:text-emerald-300">
-            {convite.enviado ? "✓ Convite enviado pelo WhatsApp" : "Acesso criado — envie o convite:"}
+            {convite.enviadoEmail ? `✓ Convite enviado por email para ${convite.emailDest}` : "Acesso criado — o email não saiu, envie manualmente:"}
           </div>
           <div className="text-sm text-gray-700 dark:text-gray-200 flex items-center gap-2 flex-wrap">
             Senha inicial: <code className="px-2 py-0.5 rounded bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-800 font-mono">{convite.senha}</code>
             <button type="button" onClick={() => navigator.clipboard?.writeText(convite.senha)} className="text-xs text-emerald-700 dark:text-emerald-400 hover:underline">copiar</button>
           </div>
-          {!convite.enviado && (
-            <a href={convite.waLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-sm font-medium px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">
-              💬 Abrir WhatsApp com a mensagem
-            </a>
-          )}
+          <a href={convite.waLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline">
+            💬 {convite.enviadoEmail ? "Mandar também pelo WhatsApp" : "Mandar pelo WhatsApp"}
+          </a>
           <p className="text-[11px] text-gray-500 dark:text-gray-400">No 1º acesso ela confirma o CPF e cria a própria senha.</p>
         </div>
       )}
