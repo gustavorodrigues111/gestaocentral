@@ -11,9 +11,6 @@ const SEED: Seed[] = [
   { modulo: "geral", resp: "gustavo", titulo: "Configurar credenciais do WhatsApp Cloud API na Vercel (WHATSAPP_TOKEN, WHATSAPP_PHONE_ID, WHATSAPP_WABA_ID)", descricao: "Sem isso, disparo automático e templates ficam inertes." },
   { modulo: "geral", resp: "ia", titulo: "Padronizar layout/botões dos módulos no core/ui (design system) — executar no gatilho 'bora unificação', piloto Análise de Ponto" },
 
-  // ── Configurações + Perfis de Acesso ──
-  { modulo: "configuracoes", resp: "ia", titulo: "Reordenar a lista de módulos ativos na MESMA ordem/agrupamento do menu (por área)" },
-
   // ── Segurança Sanitária ──
   { modulo: "seguranca", resp: "gustavo", titulo: "Criar o template da lista-base, atribuir áreas dos itens e apagar as avaliações de teste antigas" },
   { modulo: "seguranca", resp: "gustavo", titulo: "Aprovar o template 'acesso_inicial' na Meta pra o disparo automático (hoje funciona pelo fallback manual)" },
