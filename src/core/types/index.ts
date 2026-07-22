@@ -6263,6 +6263,22 @@ export type WhatsappRoteamento = {
   mensagemRoteado?: string;   // confirmação após escolher (use {atendente} pra o nome)
   opcoes?: Array<{ id: string; rotulo: string; pessoaId: string; pessoaNome?: string; atalhos?: string[] }>;
 };
+// ─── CADERNO (log de pendências por módulo — módulo "arquitetura") ───────────
+export type CadernoStatus = "pendente" | "feito";
+export type CadernoItem = {
+  id: string;
+  moduloId: string;          // ModuleId ou "geral"
+  titulo: string;
+  descricao?: string;
+  status: CadernoStatus;
+  responsavel: string;       // "gustavo" | "ia" | nome livre
+  criadoEm: string;
+  criadoPor?: string | null;
+  feitoEm?: string | null;
+  ordem?: number;
+  origem?: "seed" | "manual";
+};
+
 export type WhatsappContato = {
   id: string;                 // = foneKey (DDD + 8 últimos; normaliza o 9º dígito)
   waId?: string;              // número cru mais recente visto (com DDI), pra referência

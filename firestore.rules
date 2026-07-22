@@ -168,6 +168,7 @@ service cloud.firestore {
     match /ftPlanosProducao/{id}       { allow read, write: if authed(); }
     match /ftConfig/{id}               { allow read, write: if authed(); }
     match /acoes/{id}                  { allow read, write: if authed(); }
+    match /caderno/{id}                { allow read, write: if authed(); }
     match /whatsappEnvios/{id}         { allow read, write: if authed(); }
     match /whatsappMensagens/{id}      { allow read, write: if authed(); }
     match /whatsappStatus/{id}         { allow read, write: if authed(); }
