@@ -15,7 +15,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { setUnsavedCheck, confirmarSaida } from "../../core/nav/unsaved";
-import { exportarFaturasXLSX, exportarFaturasPDF } from "./exportFaturas";
+import { exportarFaturasXLSX, exportarFaturasPDF, exportarReembolsoEmpresaPDF, type ReembolsoItem } from "./exportFaturas";
 import type { CartaoCategoria, CartaoFatura, CartaoLancamento, CartaoRateioParte } from "../../core/types";
 
 type RateioSimples = { empresaId: string; percentual: number };
@@ -118,7 +118,7 @@ export function FaturasPage() {
         ))}
       </nav>
 
-      {aba === "visualizacao" && <Visualizacao rid={rid} minhas={minhas} outras={outras} faturas={faturas} catNome={catNome} restNome={restNome} meId={me?.id} meNome={me?.nome} onSubir={() => setAba("classificacao")} />}
+      {aba === "visualizacao" && <Visualizacao rid={rid} minhas={minhas} outras={outras} faturas={faturas} catNome={catNome} restNome={restNome} meId={me?.id} meNome={me?.nome} pixRecebimento={activeRestaurant?.cartaoChavePixPadrao} onSubir={() => setAba("classificacao")} />}
       {aba === "classificacao" && podeClassificar && (
         <Classificacao rid={rid} meId={me?.id} pixPadrao={activeRestaurant?.cartaoChavePixPadrao} cartoes={activeRestaurant?.cartoesCadastrados || []} empresaPropriaNome={activeRestaurant?.nome || restNome[rid] || ""} outrasEmpresas={outrasEmpresas} catsDe={catsDe} minhas={minhas} faturas={faturas} />
       )}
@@ -128,7 +128,7 @@ export function FaturasPage() {
 }
 
 // ─── Visualização ────────────────────────────────────────────────────────────
-function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNome, meId, meNome, onSubir }: { rid: string; minhas: CartaoLancamento[]; outras: CartaoLancamento[]; faturas: CartaoFatura[]; catNome: (id?: string | null) => string; restNome: Record<string, string>; meId?: string; meNome?: string; onSubir?: () => void }) {
+function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNome, meId, meNome, pixRecebimento, onSubir }: { rid: string; minhas: CartaoLancamento[]; outras: CartaoLancamento[]; faturas: CartaoFatura[]; catNome: (id?: string | null) => string; restNome: Record<string, string>; meId?: string; meNome?: string; pixRecebimento?: string | null; onSubir?: () => void }) {
   const [sub, setSub] = useState<"minhas" | "pendentes" | "outras">("minhas");
   const [faturaAberta, setFaturaAberta] = useState<string | null>(null);   // fatura aberta dentro do mês
   const [empAberta, setEmpAberta] = useState<string | null>(null);         // empresa expandida em "A me reembolsar"
@@ -202,6 +202,26 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
     return [...m.entries()].sort((a, b) => b[1].total - a[1].total);
   };
   const parteDe = (l: CartaoLancamento, empId: string) => (l.rateio || []).find(x => x.empresaId === empId);
+
+  // Export do reembolso de UMA empresa (quem vai me reembolsar) em PDF.
+  const itensReembolso = (empId: string): ReembolsoItem[] => {
+    const out: ReembolsoItem[] = [];
+    for (const l of minhasTodas) {
+      if (l.ignorado) continue;
+      const p = parteDe(l, empId);
+      if (!p) continue;
+      out.push({ data: l.data, descricao: l.descricao || "", cartao: l.cartao || "", parcela: l.parcela, percentual: p.percentual, valor: p.valor || 0, pago: p.status === "pago" });
+    }
+    return out;
+  };
+  const exportarEmpresa = async (empId: string) => {
+    const itens = itensReembolso(empId);
+    if (!itens.length) return;
+    await exportarReembolsoEmpresaPDF({ empresaNome: restNome[empId] || "empresa", solicitanteNome: restNome[rid] || "", periodoLabel: fmtMes(mesAtivo), pix: pixRecebimento, itens });
+  };
+  const exportarTodasEmpresas = async () => {
+    for (const [empId] of aReceberPorEmpresa) { await exportarEmpresa(empId); await new Promise((r) => setTimeout(r, 350)); }
+  };
 
   // Agrupa "outras" por dono (restaurantId).
   const outrasPorDono = useMemo(() => {
@@ -310,20 +330,26 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
             {/* 3. A me reembolsar — total + por empresa (respeita o cartão filtrado) */}
             {aReceberPorEmpresa.length > 0 && (
               <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 mb-3">
-                <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-1.5">↩ A me reembolsar · <span className="text-violet-600 dark:text-violet-300">{fmtBRL(totalAReceber)}</span></div>
+                <div className="flex items-center justify-between gap-2 mb-1.5">
+                  <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">↩ A me reembolsar · <span className="text-violet-600 dark:text-violet-300">{fmtBRL(totalAReceber)}</span></div>
+                  {aReceberPorEmpresa.length > 1 && <button type="button" onClick={() => void exportarTodasEmpresas()} title="Gera um PDF por empresa" className="text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">⬇ 1 PDF por empresa</button>}
+                </div>
                 <div className="divide-y divide-gray-100 dark:divide-gray-800">
                   {aReceberPorEmpresa.map(([empId, g]) => {
                     const aberta = empAberta === empId;
                     return (
                     <div key={empId}>
-                      <button type="button" onClick={() => setEmpAberta(aberta ? null : empId)} className="w-full flex items-center justify-between gap-2 py-1.5 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 rounded-lg px-1 -mx-1">
-                        <span className="text-gray-800 dark:text-gray-200 flex items-center gap-1.5"><span className={`text-gray-400 text-[10px] transition-transform ${aberta ? "rotate-90" : ""}`}>▶</span><span className={"w-2.5 h-2.5 rounded-full " + empCor(empId).dot} />{restNome[empId] || "empresa"}</span>
+                      <div className="flex items-center gap-1">
+                      <button type="button" onClick={() => setEmpAberta(aberta ? null : empId)} className="flex-1 min-w-0 flex items-center justify-between gap-2 py-1.5 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 rounded-lg px-1 -mx-1">
+                        <span className="text-gray-800 dark:text-gray-200 flex items-center gap-1.5 min-w-0"><span className={`text-gray-400 text-[10px] transition-transform ${aberta ? "rotate-90" : ""}`}>▶</span><span className={"w-2.5 h-2.5 rounded-full shrink-0 " + empCor(empId).dot} /><span className="truncate">{restNome[empId] || "empresa"}</span></span>
                         <span className="flex items-center gap-2.5 whitespace-nowrap">
                           {g.pend > 0 && <span className="text-[11px] text-amber-600">pendente {fmtBRL(g.pend)}</span>}
                           {g.pago > 0 && <span className="text-[11px] text-emerald-600">pago {fmtBRL(g.pago)}</span>}
                           <b className="tabular-nums text-gray-900 dark:text-gray-100">{fmtBRL(g.total)}</b>
                         </span>
                       </button>
+                      <button type="button" onClick={() => void exportarEmpresa(empId)} title={`Exportar PDF do reembolso de ${restNome[empId] || "empresa"}`} className="shrink-0 text-[11px] font-medium px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">⬇ PDF</button>
+                      </div>
                       {aberta && (
                         <div className="pl-4 pb-2 space-y-2">
                           {reembolsoDe(empId).map(([card, cg]) => (
