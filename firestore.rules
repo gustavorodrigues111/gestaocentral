@@ -214,7 +214,13 @@ service cloud.firestore {
     match /comunicados/{id}         { allow read, write: if authed(); }
     match /comunicadoLeituras/{id}  { allow read, write: if authed(); }
     match /ocorrencias/{id}         { allow read, write: if authed(); }
-    match /ideias/{id}              { allow read, write: if authed(); }
+    // Banco de Ideias: privada só o dono lê/edita (o master vê todas). Pública
+    // (ou legado sem o campo) = qualquer autenticado. Enforce real da privacidade.
+    match /ideias/{id} {
+      allow read:          if authed() && (resource.data.visibilidade != 'privada' || resource.data.criadoPor == request.auth.uid || isMaster());
+      allow create:        if authed();
+      allow update, delete: if authed() && (resource.data.visibilidade != 'privada' || resource.data.criadoPor == request.auth.uid || isMaster());
+    }
     match /reunioes/{id}            { allow read, write: if authed(); }
     // Trilha do Empregado — dados ULTRA sensíveis (LGPD + trabalhista).
     // Por padrão só master pode ver/escrever. Pra liberar outras pessoas:

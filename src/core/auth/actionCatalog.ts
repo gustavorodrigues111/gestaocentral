@@ -376,6 +376,7 @@ export const CATALOGO: CatalogoModulo[] = [
     acoes: [
       { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
       { id: "submeter", label: "Submeter ideia" },
+      { id: "privadas", label: "Pode criar ideias privadas (só dele; o master vê todas)", sensivel: true },
       { id: "gerenciar", label: "Gerenciar no Kanban (ver todas + mover)" },
       { id: "ver",      label: "Ver ideias submetidas" },
       { id: "moderar",  label: "Aprovar / rejeitar / classificar" },

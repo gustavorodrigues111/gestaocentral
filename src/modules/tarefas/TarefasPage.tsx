@@ -14,6 +14,7 @@ import { type Tab, type ViewMode, ViewSwitcher, ehAreaPrazos, semOrfasPrazo } fr
 import { CalendarioView, KanbanView, LixeiraView, MinhasTarefasView, ProjetoView, ProjetosTopBar } from "./views";
 import { AdminView } from "./admin";
 import { DetalheModal, NovaTarefaModal, SemPermissaoModal } from "./modais";
+import { CaixaDeIdeias } from "./CaixaDeIdeias";
 
 export function TarefasPage() {
   const { pessoa: pessoaReal } = useAuth();
@@ -79,7 +80,7 @@ export function TarefasPage() {
   // Modal de nova tarefa. Aceita pré-preenchimento de prazo, projeto e
   // subprojeto pra fluxos diferentes (botão por dia, "+ Nova tarefa" dentro
   // de um projeto, etc.).
-  const [novaAberta, setNovaAberta] = useState<{ prazo?: string; projetoId?: string; subprojetoId?: string } | null>(null);
+  const [novaAberta, setNovaAberta] = useState<{ prazo?: string; projetoId?: string; subprojetoId?: string; titulo?: string; descricao?: string; puxando?: { tipo: "ideia" | "ocorrencia"; id: string; titulo: string } } | null>(null);
   const [detalheId, setDetalheId] = useState<string | null>(null);
 
   // Ouvir projetos + subprojetos.
@@ -330,6 +331,7 @@ export function TarefasPage() {
                 <span className="mx-1 h-5 w-px bg-gray-200 dark:bg-gray-700" />
               </>
             )}
+            <button type="button" onClick={() => setTab("ideias")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20">💡 Caixa de ideias</button>
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
             <div className="flex-1" />
             {acoesHeader}
@@ -378,6 +380,19 @@ export function TarefasPage() {
           {viewMinhas === "lista" && <MinhasTarefasView tarefas={minhas} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />}
           {viewMinhas === "kanban" && <KanbanView tarefas={minhas} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />}
         </div>
+      )}
+
+      {tab === "ideias" && (
+        <CaixaDeIdeias
+          rids={pessoa?.restaurantIds || []}
+          ridAtivo={ridAtivo || ""}
+          meId={pessoa?.id || ""}
+          isMaster={!!pessoa?.isMaster}
+          restaurants={restaurants}
+          podePrivadas={!!pessoa?.isMaster || canAcaoRid("ideias", "privadas")}
+          onVoltar={() => setTab("minhas")}
+          onVirarTarefa={(i) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })}
+        />
       )}
 
       {tab === "todas" && isMaster && (
@@ -483,6 +498,9 @@ export function TarefasPage() {
           prazoInicial={novaAberta.prazo}
           projetoIdInicial={novaAberta.projetoId}
           subprojetoIdInicial={novaAberta.subprojetoId}
+          tituloInicial={novaAberta.titulo}
+          descricaoInicial={novaAberta.descricao}
+          puxandoInicial={novaAberta.puxando || null}
         />
       )}
 

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -13,6 +13,7 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import type { Ideia, IdeiaStatus, Reuniao } from "../../core/types";
 import { IdeiaModal } from "./IdeiaModal";
+import { ouvirIdeiasVisiveis, backfillVisibilidade } from "./ideiasData";
 import { LevarParaReuniaoModal } from "./LevarParaReuniaoModal";
 
 const STATUS_INFO: Record<IdeiaStatus, { label: string; cls: string }> = {
@@ -37,6 +38,7 @@ export function IdeiasPage() {
   const { can } = useCanAcao(rid);
   const isMaster = !!me?.isMaster;
   const podeSubmeter = isMaster || can("ideias", "submeter");
+  const podePrivadas = isMaster || can("ideias", "privadas");
   const podeGerenciar = isMaster || can("ideias", "gerenciar") || can("ideias", "moderar") || canVer(me, rid, "ideias");
   const podeModerar  = isMaster || can("ideias", "moderar");
   const podeExecutar = isMaster || can("ideias", "executar");
@@ -69,17 +71,19 @@ export function IdeiasPage() {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!rid) return;
+    if (!rid || !me?.id) return;
     setLoading(true);
-    const q = query(collection(db, "ideias"), where("restaurantId", "==", rid));
-    const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as Ideia);
-      list.sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""));
-      setIdeias(list);
-      setLoading(false);
-    });
+    const unsub = ouvirIdeiasVisiveis([rid], me.id, isMaster, (list) => { setIdeias(list); setLoading(false); });
     return () => unsub();
-  }, [rid]);
+  }, [rid, me?.id, isMaster]);
+
+  // Backfill 1x por sessão: legado sem visibilidade → "publica" (senão não
+  // aparece nas queries de público pra quem não é master).
+  const backfilledRef = useRef(false);
+  useEffect(() => {
+    if (backfilledRef.current || !ideias.length) return;
+    if (ideias.some((i) => i.visibilidade == null)) { backfilledRef.current = true; void backfillVisibilidade(ideias); }
+  }, [ideias]);
 
   useEffect(() => {
     if (!rid) return;
@@ -329,6 +333,7 @@ export function IdeiasPage() {
                   <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap mb-2">{i.descricao}</p>
                 )}
                 <div className="text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-100 dark:border-gray-800">
+                  {i.visibilidade === "privada" && <span className="text-indigo-600 dark:text-indigo-400 font-medium">🔒 privada · </span>}
                   📅 {i.criadoEm && new Date(i.criadoEm).toLocaleDateString("pt-BR")}
                   {i.criadoPorNome && <> · ✍️ {i.criadoPorNome}</>}
                   {reuniao && (
@@ -347,6 +352,7 @@ export function IdeiasPage() {
         <IdeiaModal
           ideia={editing === "new" ? null : editing}
           restaurantId={rid}
+          podePrivadas={podePrivadas}
           onClose={() => setEditing(null)}
         />
       )}
@@ -470,7 +476,7 @@ function KanbanIdeias({ ideias, loading, podeModerar, onAbrir, onNova, draggingI
                     className={`w-full text-left bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-md p-2 text-xs ${podeModerar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${arrastando ? "opacity-40" : ""} hover:border-indigo-400 transition-colors`}
                     title={podeModerar ? `${i.titulo} (arrastar pra mover)` : i.titulo}
                   >
-                    <div className="font-medium text-gray-900 dark:text-gray-100">{i.titulo}</div>
+                    <div className="font-medium text-gray-900 dark:text-gray-100">{i.visibilidade === "privada" && <span title="privada">🔒 </span>}{i.titulo}</div>
                     {i.categoria && (
                       <div className="text-[9px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mt-0.5">{i.categoria}</div>
                     )}

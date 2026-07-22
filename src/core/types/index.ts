@@ -1623,6 +1623,9 @@ export type Ideia = {
   puxadaEm?: string | null;
   puxadaPor?: string | null;
   puxadaPorNome?: string;
+  // Visibilidade: pública (padrão — todo o time vê) ou privada (só o criador; o
+  // master vê todas). Ausente = pública (retrocompat). Enforce real via rules.
+  visibilidade?: "publica" | "privada";
   criadoEm: string;
   criadoPor: string;             // pessoaId
   criadoPorNome?: string;

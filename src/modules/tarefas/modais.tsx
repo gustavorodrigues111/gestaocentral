@@ -60,7 +60,7 @@ export function EscolhaRestauranteModal({ restaurants, rota, tituloModulo, onClo
   );
 }
 
-export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaId, pessoaNome, prazoInicial, projetoIdInicial, subprojetoIdInicial }: {
+export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaId, pessoaNome, prazoInicial, projetoIdInicial, subprojetoIdInicial, tituloInicial, descricaoInicial, puxandoInicial }: {
   onClose: () => void;
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
@@ -70,9 +70,12 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
   prazoInicial?: string;
   projetoIdInicial?: string;
   subprojetoIdInicial?: string;
+  tituloInicial?: string;
+  descricaoInicial?: string;
+  puxandoInicial?: { tipo: "ideia" | "ocorrencia"; id: string; titulo: string } | null;
 }) {
-  const [titulo, setTitulo] = useState("");
-  const [descricao, setDescricao] = useState("");
+  const [titulo, setTitulo] = useState(tituloInicial || "");
+  const [descricao, setDescricao] = useState(descricaoInicial || "");
   // Sem default — vazio força o usuário a escolher conscientemente.
   // Pré-preenche só quando vem do contexto (calendário, click num dia).
   const [projetoId, setProjetoId] = useState(projetoIdInicial || "");
@@ -81,7 +84,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
   const [prioridade, setPrioridade] = useState<TarefaPrioridade>("normal");
   const [restaurantIds, setRestaurantIds] = useState<string[]>([]);
   const [usarTemplate, setUsarTemplate] = useState(true);
-  const [puxando, setPuxando] = useState<{ tipo: "ideia" | "ocorrencia"; id: string; titulo: string } | null>(null);
+  const [puxando, setPuxando] = useState<{ tipo: "ideia" | "ocorrencia"; id: string; titulo: string } | null>(puxandoInicial || null);
   const [puxarAberto, setPuxarAberto] = useState(false);
   // Responsável: começa em quem criou; user pode trocar pra outra pessoa
   // autorizada no projeto.

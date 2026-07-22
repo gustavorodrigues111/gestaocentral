@@ -11,18 +11,24 @@ import type { Ideia } from "../../core/types";
 type Props = {
   ideia: Ideia | null;
   restaurantId: string;
+  podePrivadas?: boolean;   // usuário pode marcar ideia como privada
   onClose: () => void;
 };
 
 const CATEGORIAS_SUGERIDAS = ["Operação", "Cardápio", "Cultura", "Atendimento", "Custos", "Treinamento", "Outro"];
 
-export function IdeiaModal({ ideia, restaurantId, onClose }: Props) {
+export function IdeiaModal({ ideia, restaurantId, podePrivadas = false, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !ideia;
 
   const [titulo, setTitulo] = useState(ideia?.titulo || "");
   const [descricao, setDescricao] = useState(ideia?.descricao || "");
   const [categoria, setCategoria] = useState(ideia?.categoria || "");
+  // Quem pode ter privadas: ideia nova nasce PRIVADA por padrão (o pedido do
+  // dono). Editando, mantém o que já estava. Quem não pode, sempre pública.
+  const [privada, setPrivada] = useState(
+    ideia ? ideia.visibilidade === "privada" : podePrivadas
+  );
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -40,6 +46,7 @@ export function IdeiaModal({ ideia, restaurantId, onClose }: Props) {
         categoria: categoria.trim() || undefined,
         status: ideia?.status || "aberta",
         reuniaoId: ideia?.reuniaoId ?? null,
+        visibilidade: podePrivadas ? (privada ? "privada" : "publica") : (ideia?.visibilidade || "publica"),
         criadoEm: ideia?.criadoEm || now,
         criadoPor: ideia?.criadoPor || me.id,
         criadoPorNome: ideia?.criadoPorNome || me.nome,
@@ -105,6 +112,16 @@ export function IdeiaModal({ ideia, restaurantId, onClose }: Props) {
             placeholder="ou digite outra"
           />
         </div>
+
+        {podePrivadas && (
+          <div className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 p-2.5">
+            <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+              <button type="button" onClick={() => setPrivada(true)} className={`px-2.5 py-1 text-xs font-medium rounded-md ${privada ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>🔒 Privada</button>
+              <button type="button" onClick={() => setPrivada(false)} className={`px-2.5 py-1 text-xs font-medium rounded-md ${!privada ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>🌐 Pública</button>
+            </div>
+            <span className="text-[11px] text-gray-500">{privada ? "Só você vê (e o master). Não aparece pro time." : "Todo o time com acesso vê."}</span>
+          </div>
+        )}
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
 

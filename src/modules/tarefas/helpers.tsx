@@ -14,7 +14,7 @@ export async function mudarStatusComErro(id: string, status: TarefaStatus, autor
     throw e;
   }
 }
-export type Tab = "minhas" | "tudo" | "projeto" | "admin" | "lixeira" | "todas";
+export type Tab = "minhas" | "tudo" | "projeto" | "admin" | "lixeira" | "todas" | "ideias";
 export type ViewMode = "calendario" | "lista" | "kanban";
 
 // Avatar de iniciais do responsável (2 letras) numa bolinha de cor estável por
