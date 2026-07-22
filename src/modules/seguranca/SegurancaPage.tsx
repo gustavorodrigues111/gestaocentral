@@ -12,6 +12,8 @@ import type { SegurancaAvaliacao, SegurancaModelo } from "../../core/types";
 import { ouvirModelos, ouvirAvaliacoes, criarModeloSemente, criarAvaliacao, excluirAvaliacao } from "./repository";
 import { Preenchimento } from "./Preenchimento";
 import { ModeloEditor } from "./ModeloEditor";
+import { Relatorio } from "./Relatorio";
+import { Painel } from "./Painel";
 
 const dmy = (ymd: string) => (ymd || "").split("-").reverse().join("/");
 
@@ -29,6 +31,8 @@ export function SegurancaPage() {
   const [modelos, setModelos] = useState<SegurancaModelo[]>([]);
   const [avaliacoes, setAvaliacoes] = useState<SegurancaAvaliacao[]>([]);
   const [abertaId, setAbertaId] = useState<string | null>(null);
+  const [modoAberto, setModoAberto] = useState<"relatorio" | "preenchimento">("preenchimento");
+  const [aba, setAba] = useState<"avaliacoes" | "painel">("avaliacoes");
   const [editando, setEditando] = useState(false);
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState("");
@@ -48,7 +52,7 @@ export function SegurancaPage() {
   async function novaAvaliacao() {
     if (!modeloAtivo) return;
     setBusy(true); setErro("");
-    try { const id = await criarAvaliacao(rid, modeloAtivo, autor); setAbertaId(id); }
+    try { const id = await criarAvaliacao(rid, modeloAtivo, autor); setModoAberto("preenchimento"); setAbertaId(id); }
     catch (e) { setErro("Falha ao iniciar: " + (e instanceof Error ? e.message : "?")); }
     finally { setBusy(false); }
   }
@@ -70,7 +74,9 @@ export function SegurancaPage() {
   if (abertaId) {
     return (
       <div className="max-w-5xl mx-auto">
-        <Preenchimento avaliacaoId={abertaId} autor={autor} onClose={() => setAbertaId(null)} />
+        {modoAberto === "relatorio"
+          ? <Relatorio avaliacaoId={abertaId} autor={autor} onClose={() => setAbertaId(null)} onVerPreenchimento={() => setModoAberto("preenchimento")} />
+          : <Preenchimento avaliacaoId={abertaId} autor={autor} onClose={() => setAbertaId(null)} />}
       </div>
     );
   }
@@ -120,8 +126,22 @@ export function SegurancaPage() {
         </div>
       )}
 
-      {/* Histórico */}
+      {/* Abas */}
       {modeloAtivo && (
+        <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800">
+          {([["avaliacoes", "Avaliações"], ["painel", "Painel"]] as const).map(([k, lbl]) => (
+            <button key={k} type="button" onClick={() => setAba(k)}
+              className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${aba === k ? "border-indigo-600 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"}`}>
+              {lbl}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {modeloAtivo && aba === "painel" && <Painel rid={rid} />}
+
+      {/* Histórico */}
+      {modeloAtivo && aba === "avaliacoes" && (
         <section>
           <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">Histórico de avaliações</div>
           {avaliacoes.length === 0 && <p className="text-sm text-gray-400 py-8 text-center">Nenhuma avaliação ainda. Toque em “Nova avaliação” para começar.</p>}
@@ -130,7 +150,7 @@ export function SegurancaPage() {
               const nc = ncDe(a);
               const final = a.status === "finalizada";
               return (
-                <button key={a.id} type="button" onClick={() => setAbertaId(a.id)}
+                <button key={a.id} type="button" onClick={() => { setModoAberto(final ? "relatorio" : "preenchimento"); setAbertaId(a.id); }}
                   className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3.5 flex items-center gap-3 hover:border-indigo-400 dark:hover:border-indigo-700 transition-colors">
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 tabular-nums">{dmy(a.data)}</div>
