@@ -4,7 +4,7 @@
 // vivo (updateDoc por field-path), igual ao Checklists.
 import {
   collection, doc, addDoc, setDoc, updateDoc, deleteDoc, deleteField,
-  onSnapshot, query, where, getDocs, type Unsubscribe,
+  onSnapshot, query, where, type Unsubscribe,
 } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -30,19 +30,35 @@ export function ouvirModelos(rid: string, cb: (m: SegurancaModelo[]) => void): U
 // Botão provisório: cria o modelo-semente (checklist da Amanda) pra este
 // restaurante. Idempotente por conveniência — se já houver modelo ativo, não
 // duplica.
-export async function criarModeloSemente(rid: string, por?: string | null): Promise<string> {
-  const existentes = (await getDocs(query(collection(db, COL_MODELOS), where("restaurantId", "==", rid)))).docs;
-  const jaAtivo = existentes.find((d) => (d.data() as SegurancaModelo).ativo);
-  if (jaAtivo) return jaAtivo.id;
+// Cria um template a partir da lista-base (semente). Sempre cria um NOVO —
+// são templates, dá pra ter vários.
+export async function criarModeloSemente(rid: string, por?: string | null, nome = "Avaliação de boas práticas"): Promise<string> {
   const modelo: Omit<SegurancaModelo, "id"> = {
-    restaurantId: rid,
-    nome: "Avaliação de boas práticas",
-    blocos: SEED_BLOCOS,
-    itens: SEED_ITENS,
-    faixas: SEED_FAIXAS,
-    ativo: true,
-    criadoEm: nowIso(),
-    criadoPor: por ?? null,
+    restaurantId: rid, nome,
+    blocos: SEED_BLOCOS, itens: SEED_ITENS, faixas: SEED_FAIXAS,
+    ativo: true, criadoEm: nowIso(), criadoPor: por ?? null,
+  };
+  const ref = await addDoc(collection(db, COL_MODELOS), sanitizeForFirestore(modelo));
+  return ref.id;
+}
+
+// Cria um template EM BRANCO (só os blocos e faixas padrão; sem itens).
+export async function criarModeloVazio(rid: string, nome: string, por?: string | null): Promise<string> {
+  const modelo: Omit<SegurancaModelo, "id"> = {
+    restaurantId: rid, nome: nome.trim() || "Novo checklist",
+    blocos: SEED_BLOCOS, itens: [], faixas: SEED_FAIXAS,
+    ativo: true, criadoEm: nowIso(), criadoPor: por ?? null,
+  };
+  const ref = await addDoc(collection(db, COL_MODELOS), sanitizeForFirestore(modelo));
+  return ref.id;
+}
+
+// Duplica um template (novo id, nome + " (cópia)").
+export async function duplicarModelo(m: SegurancaModelo, por?: string | null): Promise<string> {
+  const { id: _id, ...resto } = m;
+  void _id;
+  const modelo: Omit<SegurancaModelo, "id"> = {
+    ...resto, nome: `${m.nome} (cópia)`, ativo: true, criadoEm: nowIso(), criadoPor: por ?? null, atualizadoEm: undefined,
   };
   const ref = await addDoc(collection(db, COL_MODELOS), sanitizeForFirestore(modelo));
   return ref.id;
@@ -50,6 +66,10 @@ export async function criarModeloSemente(rid: string, por?: string | null): Prom
 
 export async function salvarModelo(m: SegurancaModelo): Promise<void> {
   await setDoc(doc(db, COL_MODELOS, m.id), sanitizeForFirestore({ ...m, atualizadoEm: nowIso() }), { merge: true });
+}
+
+export async function excluirModelo(id: string): Promise<void> {
+  await deleteDoc(doc(db, COL_MODELOS, id));
 }
 
 // ── Avaliações ───────────────────────────────────────────────────────────────

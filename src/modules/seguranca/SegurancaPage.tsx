@@ -1,7 +1,6 @@
 // Módulo SEGURANÇA SANITÁRIA — página principal.
-// Fase 1: modelo-semente (botão provisório), iniciar/retomar avaliação
-// (preenchimento mobile-first) e histórico das avaliações do restaurante ativo.
-// Relatório detalhado, plano de ação e gráficos entram nas próximas fases.
+// Templates de checklist (Configurações) · avaliações (preenchimento/relatório)
+// · painel. Nova avaliação usa o template ativo; se houver mais de um, pergunta.
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -11,9 +10,10 @@ import { Button } from "../../core/ui/Button";
 import type { SegurancaAvaliacao, SegurancaModelo } from "../../core/types";
 import { ouvirModelos, ouvirAvaliacoes, criarModeloSemente, criarAvaliacao, excluirAvaliacao } from "./repository";
 import { Preenchimento } from "./Preenchimento";
-import { ModeloEditor } from "./ModeloEditor";
 import { Relatorio } from "./Relatorio";
 import { Painel } from "./Painel";
+import { ModeloEditor } from "./ModeloEditor";
+import { ConfigChecklists } from "./ConfigChecklists";
 
 const dmy = (ymd: string) => (ymd || "").split("-").reverse().join("/");
 
@@ -30,17 +30,22 @@ export function SegurancaPage() {
 
   const [modelos, setModelos] = useState<SegurancaModelo[]>([]);
   const [avaliacoes, setAvaliacoes] = useState<SegurancaAvaliacao[]>([]);
-  const [abertaId, setAbertaId] = useState<string | null>(null);
-  const [modoAberto, setModoAberto] = useState<"relatorio" | "preenchimento">("preenchimento");
   const [aba, setAba] = useState<"avaliacoes" | "painel">("avaliacoes");
-  const [editando, setEditando] = useState(false);
+
+  // Navegação por sub-view (tudo inline, shell intacto).
+  const [abertaId, setAbertaId] = useState<string | null>(null);
+  const [modoAberto, setModoAberto] = useState<"preenchimento" | "relatorio">("preenchimento");
+  const [configAberto, setConfigAberto] = useState(false);
+  const [editandoId, setEditandoId] = useState<string | null>(null);
+  const [pickerAberto, setPickerAberto] = useState(false);
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState("");
 
   useEffect(() => { if (rid) return ouvirModelos(rid, setModelos); }, [rid]);
   useEffect(() => { if (rid) return ouvirAvaliacoes(rid, setAvaliacoes); }, [rid]);
 
-  const modeloAtivo = useMemo(() => modelos.find((m) => m.ativo) || null, [modelos]);
+  const disponiveis = useMemo(() => modelos.filter((m) => m.ativo !== false), [modelos]);
+  const temModelo = modelos.length > 0;
   const autor = { id: me?.id || "", nome: me?.nome || "—" };
 
   async function semear() {
@@ -49,18 +54,21 @@ export function SegurancaPage() {
     catch (e) { setErro("Falha ao criar o modelo: " + (e instanceof Error ? e.message : "?")); }
     finally { setBusy(false); }
   }
-  async function novaAvaliacao() {
-    if (!modeloAtivo) return;
-    setBusy(true); setErro("");
-    try { const id = await criarAvaliacao(rid, modeloAtivo, autor); setModoAberto("preenchimento"); setAbertaId(id); }
+  async function iniciarComTemplate(m: SegurancaModelo) {
+    setPickerAberto(false); setBusy(true); setErro("");
+    try { const id = await criarAvaliacao(rid, m, autor); setModoAberto("preenchimento"); setAbertaId(id); }
     catch (e) { setErro("Falha ao iniciar: " + (e instanceof Error ? e.message : "?")); }
     finally { setBusy(false); }
+  }
+  function novaAvaliacao() {
+    if (disponiveis.length === 0) { setErro("Nenhum checklist ativo. Crie um em Configurações."); return; }
+    if (disponiveis.length === 1) { void iniciarComTemplate(disponiveis[0]); return; }
+    setPickerAberto(true);
   }
   async function excluir(a: SegurancaAvaliacao) {
     if (!confirm(`Excluir a avaliação de ${dmy(a.data)}?`)) return;
     await excluirAvaliacao(a.id);
   }
-
   function ncDe(a: SegurancaAvaliacao): number {
     return Object.values(a.resultado || {}).filter((r) => r.resposta === "nao_conforme").length;
   }
@@ -71,6 +79,7 @@ export function SegurancaPage() {
     </div>;
   }
 
+  // ── Sub-views ──
   if (abertaId) {
     return (
       <div className="max-w-5xl mx-auto">
@@ -80,10 +89,15 @@ export function SegurancaPage() {
       </div>
     );
   }
-  if (editando && modeloAtivo) {
+  if (editandoId) {
+    const m = modelos.find((x) => x.id === editandoId);
+    if (m) return <div className="max-w-5xl mx-auto"><ModeloEditor modelo={m} onClose={() => setEditandoId(null)} /></div>;
+    setEditandoId(null);
+  }
+  if (configAberto) {
     return (
       <div className="max-w-5xl mx-auto">
-        <ModeloEditor modelo={modeloAtivo} onClose={() => setEditando(false)} />
+        <ConfigChecklists rid={rid} modelos={modelos} autorId={me?.id} onEditar={(id) => setEditandoId(id)} onClose={() => setConfigAberto(false)} />
       </div>
     );
   }
@@ -96,38 +110,39 @@ export function SegurancaPage() {
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Avaliação de boas práticas por área. Cada não-conforme vira ação para a operação.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap sm:justify-end sm:shrink-0">
-          {podeConfig && modeloAtivo && (
-            <Button variant="secondary" onClick={() => setEditando(true)}>⚙ Checklist</Button>
-          )}
-          {podePreencher && modeloAtivo && (
-            <Button onClick={() => void novaAvaliacao()} disabled={busy}>+ Nova avaliação</Button>
+          {podeConfig && <Button variant="secondary" onClick={() => setConfigAberto(true)}>⚙ Configurações</Button>}
+          {podePreencher && temModelo && (
+            <Button onClick={novaAvaliacao} disabled={busy}>+ Nova avaliação</Button>
           )}
         </div>
       </header>
+
       {podeConfig && !activeRestaurant?.driveRootFolderId && (
         <div className="text-xs rounded-lg px-3 py-2 bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
           📁 Defina a <b>pasta raiz do restaurante no Drive</b> em <b>Configurações › Google Drive</b>. As fotos vão pra <code>planejamento.app › Segurança Sanitária</code>, organizadas por avaliação. Sem isso, não dá pra anexar fotos.
         </div>
       )}
-
       {erro && <div className="text-sm rounded-lg px-3 py-2 bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400">{erro}</div>}
 
-      {/* Sem modelo → botão-semente provisório */}
-      {!modeloAtivo && (
+      {/* Sem nenhum template */}
+      {!temModelo && (
         <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center">
           <div className="text-4xl mb-3">🧪</div>
-          <h2 className="font-semibold text-gray-900 dark:text-gray-100">Nenhum checklist-modelo ainda</h2>
+          <h2 className="font-semibold text-gray-900 dark:text-gray-100">Nenhum checklist ainda</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 max-w-sm mx-auto">
-            Carregue o modelo inicial com todos os itens da lista da nutricionista (Sororoca/Lobozó). Dá pra editar depois.
+            Crie o primeiro template a partir da lista-base (todos os itens da nutricionista) — dá pra editar depois em Configurações.
           </p>
           {podeConfig
-            ? <Button className="mt-4" onClick={() => void semear()} disabled={busy}>{busy ? "Criando…" : "⚡ Criar modelo inicial"}</Button>
-            : <p className="text-xs text-gray-400 mt-4">Peça a um administrador para criar o modelo.</p>}
+            ? <div className="flex items-center justify-center gap-2 mt-4">
+                <Button onClick={() => void semear()} disabled={busy}>{busy ? "Criando…" : "⚡ Criar da lista-base"}</Button>
+                <Button variant="secondary" onClick={() => setConfigAberto(true)}>⚙ Configurações</Button>
+              </div>
+            : <p className="text-xs text-gray-400 mt-4">Peça a um administrador para criar o checklist.</p>}
         </div>
       )}
 
       {/* Abas */}
-      {modeloAtivo && (
+      {temModelo && (
         <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800">
           {([["avaliacoes", "Avaliações"], ["painel", "Painel"]] as const).map(([k, lbl]) => (
             <button key={k} type="button" onClick={() => setAba(k)}
@@ -138,10 +153,9 @@ export function SegurancaPage() {
         </div>
       )}
 
-      {modeloAtivo && aba === "painel" && <Painel rid={rid} />}
+      {temModelo && aba === "painel" && <Painel rid={rid} />}
 
-      {/* Histórico */}
-      {modeloAtivo && aba === "avaliacoes" && (
+      {temModelo && aba === "avaliacoes" && (
         <section>
           <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">Histórico de avaliações</div>
           {avaliacoes.length === 0 && <p className="text-sm text-gray-400 py-8 text-center">Nenhuma avaliação ainda. Toque em “Nova avaliação” para começar.</p>}
@@ -154,7 +168,7 @@ export function SegurancaPage() {
                   className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3.5 flex items-center gap-3 hover:border-indigo-400 dark:hover:border-indigo-700 transition-colors">
                   <div className="min-w-0 flex-1">
                     <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 tabular-nums">{dmy(a.data)}</div>
-                    <div className="text-[12px] text-gray-500 dark:text-gray-400 truncate">{a.avaliadorNome || "—"}</div>
+                    <div className="text-[12px] text-gray-500 dark:text-gray-400 truncate">{a.avaliadorNome || "—"}{a.modeloNomeSnapshot ? ` · ${a.modeloNomeSnapshot}` : ""}</div>
                   </div>
                   {nc > 0 && <span className="text-[12px] font-semibold text-rose-600 dark:text-rose-400 tabular-nums shrink-0">{nc} não-conf.</span>}
                   {final
@@ -171,6 +185,26 @@ export function SegurancaPage() {
             })}
           </div>
         </section>
+      )}
+
+      {/* Seletor de template (quando há mais de um ativo) */}
+      {pickerAberto && (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4" onClick={() => setPickerAberto(false)}>
+          <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md p-5 shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 mb-1">Qual checklist?</h3>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">Escolha o template para esta avaliação.</p>
+            <div className="space-y-2">
+              {disponiveis.map((m) => (
+                <button key={m.id} type="button" disabled={busy} onClick={() => void iniciarComTemplate(m)}
+                  className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 hover:border-indigo-400 dark:hover:border-indigo-700 transition-colors">
+                  <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">{m.nome}</div>
+                  <div className="text-[12px] text-gray-500 dark:text-gray-400">{m.itens.length} itens</div>
+                </button>
+              ))}
+            </div>
+            <div className="flex justify-end mt-4"><Button variant="ghost" onClick={() => setPickerAberto(false)}>Cancelar</Button></div>
+          </div>
+        </div>
       )}
     </div>
   );
