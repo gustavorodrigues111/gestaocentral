@@ -12,18 +12,25 @@ type Props = {
   ideia: Ideia | null;
   restaurantId: string;
   podePrivadas?: boolean;   // usuário pode marcar ideia como privada
+  // Contexto transversal (Caixa de Ideias no Gestor): deixa escolher a(s)
+  // empresa(s) ao criar. Se escolher várias, cria 1 ideia por empresa.
+  empresas?: { id: string; nome: string }[];
   onClose: () => void;
 };
 
 const CATEGORIAS_SUGERIDAS = ["Operação", "Cardápio", "Cultura", "Atendimento", "Custos", "Treinamento", "Outro"];
 
-export function IdeiaModal({ ideia, restaurantId, podePrivadas = false, onClose }: Props) {
+export function IdeiaModal({ ideia, restaurantId, podePrivadas = false, empresas, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !ideia;
+  const comSeletor = !!empresas && isNew;   // seletor de empresa só ao criar no contexto transversal
 
   const [titulo, setTitulo] = useState(ideia?.titulo || "");
   const [descricao, setDescricao] = useState(ideia?.descricao || "");
   const [categoria, setCategoria] = useState(ideia?.categoria || "");
+  const [empresasSel, setEmpresasSel] = useState<string[]>(
+    empresas ? (empresas.some(e => e.id === restaurantId) ? [restaurantId] : []) : []
+  );
   // Quem pode ter privadas: ideia nova nasce PRIVADA por padrão (o pedido do
   // dono). Editando, mantém o que já estava. Quem não pode, sempre pública.
   const [privada, setPrivada] = useState(
@@ -34,13 +41,13 @@ export function IdeiaModal({ ideia, restaurantId, podePrivadas = false, onClose 
 
   async function salvar() {
     if (!titulo.trim()) { setErr("Título obrigatório"); return; }
+    if (comSeletor && empresasSel.length === 0) { setErr("Escolha ao menos uma empresa"); return; }
     if (!me) return;
     setErr("");
     setSaving(true);
     try {
       const now = new Date().toISOString();
-      const data: Omit<Ideia, "id"> = {
-        restaurantId,
+      const base: Omit<Ideia, "id" | "restaurantId"> = {
         titulo: titulo.trim(),
         descricao: descricao.trim() || undefined,
         categoria: categoria.trim() || undefined,
@@ -53,9 +60,11 @@ export function IdeiaModal({ ideia, restaurantId, podePrivadas = false, onClose 
         atualizadoEm: now,
       };
       if (isNew) {
-        await addDoc(collection(db, "ideias"), sanitizeForFirestore(data));
+        // Uma ideia por empresa escolhida (ou a empresa do contexto).
+        const alvos = comSeletor ? empresasSel : [restaurantId];
+        for (const rid of alvos) await addDoc(collection(db, "ideias"), sanitizeForFirestore({ ...base, restaurantId: rid }));
       } else {
-        await updateDoc(doc(db, "ideias", ideia.id), sanitizeForFirestore(data));
+        await updateDoc(doc(db, "ideias", ideia.id), sanitizeForFirestore({ ...base, restaurantId }));
       }
       onClose();
     } catch (e) {
@@ -76,6 +85,25 @@ export function IdeiaModal({ ideia, restaurantId, podePrivadas = false, onClose 
           placeholder="ex: Reorganizar fluxo de saída do salão"
           autoFocus
         />
+
+        {comSeletor && (
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Empresa(s) *</label>
+            <div className="flex gap-2 flex-wrap mt-1">
+              {empresas!.map((e) => {
+                const on = empresasSel.includes(e.id);
+                return (
+                  <button key={e.id} type="button"
+                    onClick={() => setEmpresasSel(on ? empresasSel.filter(x => x !== e.id) : [...empresasSel, e.id])}
+                    className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                    🏢 {e.nome}
+                  </button>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-gray-400 mt-1">{empresasSel.length > 1 ? `Cria ${empresasSel.length} ideias — uma por empresa.` : "Escolha uma ou mais — cria uma ideia por empresa."}</p>
+          </div>
+        )}
 
         <div>
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Descrição</label>

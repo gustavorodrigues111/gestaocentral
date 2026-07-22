@@ -75,7 +75,7 @@ export function CaixaIdeiasFaixa({ rids, ridAtivo, meId, isMaster, restaurants, 
       )}
 
       {editing && (
-        <IdeiaModal ideia={editing === "new" ? null : editing} restaurantId={editing === "new" ? ridParaNova : editing.restaurantId} podePrivadas={podePrivadas} onClose={() => setEditing(null)} />
+        <IdeiaModal ideia={editing === "new" ? null : editing} restaurantId={editing === "new" ? ridParaNova : editing.restaurantId} podePrivadas={podePrivadas} empresas={restaurants.filter(r => rids.includes(r.id))} onClose={() => setEditing(null)} />
       )}
     </div>
   );
@@ -187,6 +187,7 @@ export function CaixaDeIdeias({ rids, ridAtivo, meId, isMaster, restaurants, pod
           ideia={editing === "new" ? null : editing}
           restaurantId={editing === "new" ? ridParaNova : editing.restaurantId}
           podePrivadas={podePrivadas}
+          empresas={restaurants.filter(r => rids.includes(r.id))}
           onClose={() => setEditing(null)}
         />
       )}
