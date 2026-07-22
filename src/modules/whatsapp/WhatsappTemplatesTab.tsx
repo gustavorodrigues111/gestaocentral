@@ -105,11 +105,14 @@ function NovoTemplateModal({ editar, onClose, onSalvo }: { editar?: { id: string
   const terminaVar = /\{\{\s*\d+\s*\}\}\s*$/.test(corpoTrim);
   const comecaVar = /^\s*\{\{\s*\d+\s*\}\}/.test(corpoTrim);
   const varComQuebra = exemplos.some(e => /\n|\t/.test(e));
+  // Variável com NOME ({{restaurante}}) → a Meta rejeita (INVALID_FORMAT).
+  const temVarNomeada = /\{\{\s*[a-zA-Z_]\w*\s*\}\}/.test(corpoTrim);
 
   async function salvar() {
     setErro("");
     if (!editando && !name.trim()) return setErro("Dê um nome (ex: lembrete_reuniao).");
     if (!corpoTrim) return setErro("Escreva o corpo da mensagem.");
+    if (temVarNomeada) return setErro("Use variáveis NUMERADAS: {{1}}, {{2}}, {{3}}… — não {{nome}}. A Meta rejeita variáveis com nome.");
     if (comecaVar || terminaVar) return setErro("A mensagem não pode começar nem terminar com variável ({{n}}). Ponha texto antes/depois.");
     setEnviando(true);
     try {
