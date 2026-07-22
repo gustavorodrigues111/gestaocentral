@@ -222,10 +222,30 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   const checklistRun = useAvisoSource({ ...base,
     gates: [["checklists", "receberAvisos"]], collectionName: "checklistRuns" });
 
-  // ── Plano de Ação: minhas ações + minhas produções (pessoais) ──
-  const minhaAcao = useAvisoSource({ ...base,
-    gates: [["planoDeAcao", "receberAvisos"]], collectionName: "acoes",
-    filtros: [["responsavelId", "==", pid || "__none__"]] });
+  // ── Tarefas (lente enxuta): minhas tarefas operacionais em aberto ──
+  // Unificado: lê da coleção `tarefas` (projeto Operação — Demandas), por
+  // restaurante. Listener próprio porque tarefa usa restaurantIds (array).
+  const [minhaAcao, setMinhaAcao] = useState<Record<string, Array<Record<string, unknown>>>>({});
+  useEffect(() => {
+    if (!pid) { setMinhaAcao({}); return; }
+    const u = onSnapshot(
+      query(collection(db, "tarefas"), where("responsavelId", "==", pid), where("projetoId", "==", "proj-operacao-dem")),
+      (snap) => {
+        const m: Record<string, Array<Record<string, unknown>>> = {};
+        for (const d of snap.docs) {
+          const t = { id: d.id, ...d.data() } as Record<string, unknown>;
+          if (t.deletadoEm) continue;
+          const rid = (Array.isArray(t.restaurantIds) && (t.restaurantIds as string[])[0]) || "";
+          if (!rid) continue;
+          if (!m[rid]) m[rid] = [];
+          m[rid].push(t);
+        }
+        setMinhaAcao(m);
+      },
+      () => setMinhaAcao({}),
+    );
+    return () => u();
+  }, [pid]);
   const minhaProducao = useAvisoSource({ ...base,
     gates: [["planoDeAcao", "receberAvisos"]], collectionName: "ftPlanosProducao" });
 
@@ -595,17 +615,17 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       });
     }
 
-    // ── Plano de Ação: minhas ações abertas (agregado por restaurante) ──
+    // ── Tarefas (lente enxuta): minhas tarefas operacionais em aberto ──
     for (const rid of Object.keys(minhaAcao)) {
-      const abertas = (minhaAcao[rid] || []).filter(d => d.status === "aberta" || d.status === "em_andamento");
+      const abertas = (minhaAcao[rid] || []).filter(d => d.status === "a_fazer" || d.status === "em_andamento");
       if (abertas.length === 0) continue;
       const atrasadas = abertas.filter(d => d.prazo && String(d.prazo) < hoje).length;
       const em = abertas.reduce((mx, d) => { const t = String(d.criadoEm || ""); return t > mx ? t : mx; }, "");
       out.push({
-        id: `acoes_${rid}`, tipo: "acoes", icone: atrasadas ? "⏰" : "🎯", titulo: "Plano de Ação",
-        descricao: `${abertas.length} ${abertas.length === 1 ? "ação sua em aberto" : "ações suas em aberto"}${atrasadas ? ` · ${atrasadas} atrasada${atrasadas === 1 ? "" : "s"}` : ""}`,
+        id: `acoes_${rid}`, tipo: "acoes", icone: atrasadas ? "⏰" : "✅", titulo: "Tarefas",
+        descricao: `${abertas.length} ${abertas.length === 1 ? "tarefa sua em aberto" : "tarefas suas em aberto"}${atrasadas ? ` · ${atrasadas} atrasada${atrasadas === 1 ? "" : "s"}` : ""}`,
         em, restauranteId: rid, restauranteNome: nomePorRid[rid] || "Restaurante",
-        cta: "Abrir Plano de Ação", href: `/r/${rid}/planoDeAcao`, categoria: "Plano de Ação", categoriaIcone: "🎯",
+        cta: "Abrir Tarefas", href: `/r/${rid}/planoDeAcao`, categoria: "Tarefas", categoriaIcone: "✅",
       });
     }
     // ── Plano de Ação: produções atribuídas a mim e não produzidas ──
