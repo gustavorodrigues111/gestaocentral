@@ -43,7 +43,8 @@ const SEED: Seed[] = [
   { modulo: "fichas", resp: "gustavo", titulo: "Definir as 5 decisões pendentes antes de codar a evolução das Fichas Técnicas" },
 
   // ── Unificação tarefa/ação (Gestor de Tarefas × lente enxuta) ──
-  { modulo: "planoDeAcao", resp: "ia", titulo: "Fase 4: Segurança Sanitária cria/lê TAREFA (Relatorio + Painel saem de acoes) e a Central de Avisos passa a mostrar as tarefas do dia (hoje lê acoes)", descricao: "Fecha a aposentadoria da coleção acoes. Fases 1-3 feitas." },
+  { modulo: "planoDeAcao", resp: "ia", titulo: "Limpeza pós-unificação: apagar PlanoDeAcaoPage.tsx + AcaoModal.tsx (órfãos) e simplificar VirarAcaoModal pra só criar tarefa (remover o path 'acao' morto)", descricao: "Unificação Fases 1-4 feitas: tudo é Tarefa, coleção acoes aposentada. Sobrou código morto." },
+  { modulo: "reunioes", resp: "ia", titulo: "Polish: modal da reunião em SEÇÕES roláveis (pauta→ata→tarefas) no lugar das abas + faixa 'Próximas reuniões' no Gestor", descricao: "O modal já ficou bem mais limpo (removido acoes legado + botão único); falta o redesenho em seções." },
 
   // ── Fechamento de Caixa ──
   { modulo: "fechamentoCaixa", resp: "gustavo", titulo: "OPCIONAL: vincular os sócios (Pessoas cadastradas) em Configurações pra receberem o resumo — email/WhatsApp vêm da ficha da pessoa", descricao: "Cadastre a pessoa em Pessoas e marque aqui. Sem vincular ninguém, o fechamento arquiva no Drive do mesmo jeito." },
