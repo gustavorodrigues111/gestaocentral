@@ -23,18 +23,35 @@ const TIPOS: ReuniaoTipo[] = ["lideres", "equipe", "individual", "outro"];
 export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !reuniao;
+  const rascunhoKey = `reuniao_rascunho_${restaurantId}`;
+  // Rascunho: reunião nova em andamento fica salva no navegador — se a pessoa
+  // sair, não perde. Limpa ao criar. (Só pra criação, não pra edição.)
+  const [rascunho] = useState<Partial<Reuniao> | null>(() => {
+    if (reuniao) return null;
+    try { const s = localStorage.getItem(rascunhoKey); return s ? JSON.parse(s) : null; } catch { return null; }
+  });
 
-  const [titulo, setTitulo] = useState(reuniao?.titulo || "");
-  const [tipo, setTipo] = useState<ReuniaoTipo>(reuniao?.tipo || "equipe");
-  const [data, setData] = useState(reuniao?.data || todayYmd());
-  const [horario, setHorario] = useState(reuniao?.horario || "");
-  const [local, setLocal] = useState(reuniao?.local || "");
-  const [participantes, setParticipantes] = useState<ParticipanteReuniao[]>(reuniao?.participantes || []);
+  const [titulo, setTitulo] = useState(reuniao?.titulo ?? rascunho?.titulo ?? "");
+  const [tipo, setTipo] = useState<ReuniaoTipo>(reuniao?.tipo ?? rascunho?.tipo ?? "equipe");
+  const [data, setData] = useState(reuniao?.data ?? rascunho?.data ?? todayYmd());
+  const [horario, setHorario] = useState(reuniao?.horario ?? rascunho?.horario ?? "");
+  const [local, setLocal] = useState(reuniao?.local ?? rascunho?.local ?? "");
+  const [participantes, setParticipantes] = useState<ParticipanteReuniao[]>(reuniao?.participantes ?? rascunho?.participantes ?? []);
   const [extName, setExtName] = useState("");
   const [busca, setBusca] = useState("");
-  const [pautaInicial, setPautaInicial] = useState<PautaItem[]>([]);
+  const [pautaInicial, setPautaInicial] = useState<PautaItem[]>(rascunho?.pauta ?? []);
+  const [novoTopico, setNovoTopico] = useState("");
   const [puxarAberto, setPuxarAberto] = useState(false);
-  const [mostrarMais, setMostrarMais] = useState(false);
+  const [mostrarMais, setMostrarMais] = useState(!!rascunho?.local);
+
+  // Salva o rascunho conforme o usuário preenche.
+  useEffect(() => {
+    if (!isNew) return;
+    const draft = { titulo, tipo, data, horario, local, participantes, pauta: pautaInicial };
+    try {
+      if (titulo || participantes.length || pautaInicial.length || local) localStorage.setItem(rascunhoKey, JSON.stringify(draft));
+    } catch { /* quota etc. */ }
+  }, [isNew, rascunhoKey, titulo, tipo, data, horario, local, participantes, pautaInicial]);
 
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
@@ -92,6 +109,12 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
     setPuxarAberto(false);
   }
   function removerDaPauta(idx: number) { setPautaInicial(s => s.filter((_, i) => i !== idx)); }
+  function addTopicoLivre() {
+    const t = novoTopico.trim();
+    if (!t) return;
+    setPautaInicial(s => [...s, { id: `t_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, titulo: t, ordem: s.length + 1, discutido: false }]);
+    setNovoTopico("");
+  }
 
   async function salvar() {
     if (!titulo.trim()) { setErr("Título obrigatório"); return; }
@@ -151,6 +174,7 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
           registradoPor: me.id,
         });
       }
+      if (isNew) { try { localStorage.removeItem(rascunhoKey); } catch { /* ok */ } }
       onClose();
     } catch (e) {
       console.error(e);
@@ -282,7 +306,11 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
                 ))}
               </div>
             )}
-            <Button variant="secondary" onClick={() => setPuxarAberto(true)}>📋 Puxar ideia / ocorrência aberta</Button>
+            <div className="flex gap-2 mb-2">
+              <Input value={novoTopico} onChange={(e) => setNovoTopico(e.target.value)} placeholder="Adicionar tópico…" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTopicoLivre(); } }} className="flex-1 min-w-0" />
+              <Button variant="secondary" onClick={addTopicoLivre} disabled={!novoTopico.trim()} className="shrink-0">+ Tópico</Button>
+            </div>
+            <Button variant="secondary" onClick={() => setPuxarAberto(true)} className="w-full">📋 Puxar de ideia / ocorrência aberta</Button>
           </div>
         )}
 
