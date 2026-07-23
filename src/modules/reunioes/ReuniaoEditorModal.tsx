@@ -9,7 +9,8 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { logAudit } from "../../core/audit/versionedChange";
 import { todayYmd } from "../../core/utils/date";
 import { REUNIAO_TIPO_LABEL } from "../../core/types";
-import type { Cargo, Empregado, ParticipanteReuniao, Reuniao, ReuniaoTipo } from "../../core/types";
+import type { Cargo, Empregado, ParticipanteReuniao, PautaItem, Reuniao, ReuniaoTipo } from "../../core/types";
+import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal";
 
 type Props = {
   reuniao: Reuniao | null;
@@ -31,6 +32,9 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
   const [participantes, setParticipantes] = useState<ParticipanteReuniao[]>(reuniao?.participantes || []);
   const [extName, setExtName] = useState("");
   const [busca, setBusca] = useState("");
+  const [pautaInicial, setPautaInicial] = useState<PautaItem[]>([]);
+  const [puxarAberto, setPuxarAberto] = useState(false);
+  const [mostrarMais, setMostrarMais] = useState(false);
 
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
@@ -70,6 +74,25 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
     setParticipantes(s => s.filter((_, i) => i !== idx));
   }
 
+  // Puxa uma ideia/ocorrência aberta pra pauta da reunião NOVA. O status da
+  // origem só muda depois que a reunião é criada (precisa do id dela).
+  function puxarParaPauta(item: { tipo: "ideia" | "ocorrencia"; id: string; titulo: string; descricao?: string }) {
+    setPautaInicial(s => {
+      if (s.some(p => (item.tipo === "ideia" ? p.ideiaId : p.ocorrenciaId) === item.id)) return s;
+      return [...s, {
+        id: `t_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        titulo: item.titulo,
+        descricao: item.descricao,
+        ordem: s.length + 1,
+        discutido: false,
+        ideiaId: item.tipo === "ideia" ? item.id : null,
+        ocorrenciaId: item.tipo === "ocorrencia" ? item.id : null,
+      }];
+    });
+    setPuxarAberto(false);
+  }
+  function removerDaPauta(idx: number) { setPautaInicial(s => s.filter((_, i) => i !== idx)); }
+
   async function salvar() {
     if (!titulo.trim()) { setErr("Título obrigatório"); return; }
     if (!data) { setErr("Data obrigatória"); return; }
@@ -86,7 +109,7 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
         horario: horario || undefined,
         local: local.trim() || undefined,
         participantes,
-        pauta: reuniao?.pauta || [],
+        pauta: isNew ? pautaInicial : (reuniao?.pauta || []),
         ata: reuniao?.ata || undefined,
         acoes: reuniao?.acoes || [],
         status: reuniao?.status || "planejada",
@@ -95,7 +118,19 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
         atualizadoEm: now,
       };
       if (isNew) {
-        await addDoc(collection(db, "reunioes"), sanitizeForFirestore(payload));
+        const ref = await addDoc(collection(db, "reunioes"), sanitizeForFirestore(payload));
+        // Marca as ideias/ocorrências puxadas como em discussão/apuração + linka a reunião.
+        for (const p of pautaInicial) {
+          const col = p.ideiaId ? "ideias" : p.ocorrenciaId ? "ocorrencias" : null;
+          const srcId = p.ideiaId || p.ocorrenciaId;
+          if (!col || !srcId) continue;
+          try {
+            await updateDoc(doc(db, col, srcId), sanitizeForFirestore({
+              status: col === "ideias" ? "em_discussao" : "em_apuracao",
+              reuniaoId: ref.id, atualizadoEm: now, atualizadaEm: now,
+            }));
+          } catch (e) { console.error("[reuniao] linkar origem:", e); }
+        }
         await logAudit({
           entityType: "restaurant",
           entityId: restaurantId,
@@ -171,11 +206,10 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <Input label="Data *" type="date" value={data} onChange={(e) => setData(e.target.value)} />
           <Input label="Horário" type="time" value={horario} onChange={(e) => setHorario(e.target.value)} />
         </div>
-        <Input label="Local" value={local} onChange={(e) => setLocal(e.target.value)} placeholder="ex: Sala da gerência" />
 
         {/* Participantes — busca por nome (typeahead) + chips dos selecionados */}
         <div>
@@ -231,6 +265,37 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
           </div>
         </div>
 
+        {/* Pauta — puxar ideias/ocorrências abertas (só na criação) */}
+        {isNew && (
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5">
+              Pauta {pautaInicial.length > 0 && <span className="text-gray-400">· {pautaInicial.length}</span>}
+            </label>
+            {pautaInicial.length > 0 && (
+              <div className="space-y-1.5 mb-2">
+                {pautaInicial.map((p, i) => (
+                  <div key={p.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-sm">
+                    <span className="shrink-0">{p.ideiaId ? "💡" : p.ocorrenciaId ? "🚨" : "📋"}</span>
+                    <span className="flex-1 min-w-0 truncate text-gray-800 dark:text-gray-200">{p.titulo}</span>
+                    <button type="button" onClick={() => removerDaPauta(i)} aria-label="remover" className="text-gray-400 hover:text-rose-600 shrink-0 leading-none">×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <Button variant="secondary" onClick={() => setPuxarAberto(true)}>📋 Puxar ideia / ocorrência aberta</Button>
+          </div>
+        )}
+
+        {/* Mais detalhes (opcionais) */}
+        <div>
+          <button type="button" onClick={() => setMostrarMais(!mostrarMais)} className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">{mostrarMais ? "− Menos detalhes" : "+ Mais detalhes"}</button>
+          {mostrarMais && (
+            <div className="mt-2">
+              <Input label="Local" value={local} onChange={(e) => setLocal(e.target.value)} placeholder="ex: Sala da gerência (opcional)" />
+            </div>
+          )}
+        </div>
+
         {err && <div className="text-sm text-rose-600">{err}</div>}
 
         <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
@@ -240,6 +305,16 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
           </Button>
         </div>
       </div>
+
+      {puxarAberto && (
+        <PuxarIdeiaOcorrenciaModal
+          restaurantId={restaurantId}
+          pessoaIdAtual={me?.id}
+          titulo="Puxar pra pauta da reunião"
+          onClose={() => setPuxarAberto(false)}
+          onEscolher={puxarParaPauta}
+        />
+      )}
     </Modal>
   );
 }
