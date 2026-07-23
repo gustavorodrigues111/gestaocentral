@@ -13,6 +13,7 @@ import { todayYmd } from "../../core/utils/date";
 import { TAREFA_ORIGEM_LABEL } from "../../core/types";
 import type { Tarefa, Pessoa, TarefaOrigem, TarefaPrioridade } from "../../core/types";
 import { ouvirTarefasDeUsuario, atualizarTarefa, adicionarComentario, criarTarefaOperacional } from "../tarefas/repository";
+import { semOrfasPrazo } from "../tarefas/helpers";
 
 const OPERACIONAL = "proj-operacao-dem";
 const fmtDia = (ymd?: string | null) => { if (!ymd) return ""; const [, m, d] = ymd.split("-"); return `${d}/${m}`; };
@@ -55,7 +56,9 @@ export function LenteEnxutaPage() {
 
   const hoje = todayYmd();
   const base = escopo === "equipe" && podeVerTodas ? equipeTarefas : minhasTarefas.filter(t => !t.restaurantIds?.length || t.restaurantIds.includes(rid));
-  const semLixo = useMemo(() => base.filter(t => !t.deletadoEm), [base]);
+  // Esconde as órfãs do sistema de prazo antigo (conta_fixa/manutencao/admissao)
+  // — hoje essas datas vivem no módulo Prazos. Mesmo filtro do Gestor.
+  const semLixo = useMemo(() => semOrfasPrazo(base.filter(t => !t.deletadoEm)), [base]);
 
   const abertas = useMemo(() => semLixo
     .filter(t => t.status === "a_fazer" || t.status === "em_andamento")
