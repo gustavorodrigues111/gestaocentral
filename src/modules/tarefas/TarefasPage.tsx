@@ -246,7 +246,7 @@ export function TarefasPage() {
   // Ações fixas (na linha do seletor de visão): Nova tarefa + Gerenciar (master).
   const acoesHeader = (
     <div className="flex items-center gap-1.5 shrink-0">
-      {ridAtivo && <button type="button" onClick={() => setNovaReuniao(true)} className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">🗣️ Nova reunião</button>}
+      {ridAtivo && (isMaster || canAcaoRid("reunioes", "criar")) && <button type="button" onClick={() => setNovaReuniao(true)} className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">🗣️ Nova reunião</button>}
       <Button size="sm" onClick={() => setNovaAberta({})}>+ Nova tarefa</Button>
       {isMaster && (
         <div className="relative">
