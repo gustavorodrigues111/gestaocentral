@@ -180,17 +180,6 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
   );
 }
 
-// ── Chip de área ──
-function AreaChip({ area }: { area?: string }) {
-  if (!area) return null;
-  const c = segAreaCor(area);
-  return (
-    <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${c.bg} ${c.fg}`}>
-      <span className="w-1.5 h-1.5 rounded-full" style={{ background: c.dot }} />{area}
-    </span>
-  );
-}
-
 // ── Card de uma pergunta (com 1 linha de resposta por área) ──
 function ItemCard({ item, areasToShow, rootFolderId, pastaLabel, readOnly, resultadoDe, onMarcar, onObs, onFotos }: {
   item: SegurancaItem;
@@ -248,10 +237,17 @@ function AreaAnswer({ area, multi, readOnly, rootFolderId, pastaLabel, resultado
   useEffect(() => { setObs(resultado?.observacao || ""); }, [resultado?.observacao]);
 
   const btnBase = "py-2 rounded-lg text-[13.5px] font-semibold flex items-center justify-center gap-1.5 border transition-colors disabled:opacity-60";
+  const c = multi && area ? segAreaCor(area) : null;
 
   return (
-    <div className={multi ? "rounded-lg border border-gray-200 dark:border-gray-800 p-2.5 bg-gray-50/50 dark:bg-gray-800/20" : ""}>
-      {multi && area && <div className="mb-2"><AreaChip area={area} /></div>}
+    <div
+      className={multi ? `rounded-lg border p-2.5 ${c ? c.bg : "bg-gray-50/50 dark:bg-gray-800/20 border-gray-200 dark:border-gray-800"}` : ""}
+      style={c ? { borderColor: `color-mix(in srgb, ${c.dot} 35%, transparent)` } : undefined}>
+      {multi && area && (
+        <div className="mb-2.5 text-center text-[13px] font-extrabold uppercase tracking-wider inline-flex items-center justify-center gap-1.5 w-full" style={{ color: c!.dot }}>
+          <span className="w-2 h-2 rounded-full" style={{ background: c!.dot }} />{area}
+        </div>
+      )}
       <div className="grid grid-cols-2 gap-3">
         <button type="button" disabled={readOnly} onClick={() => onMarcar("conforme")}
           className={`${btnBase} ${resp === "conforme" ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-300 hover:border-emerald-400"}`}>
