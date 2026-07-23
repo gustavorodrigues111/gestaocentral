@@ -355,8 +355,18 @@ const SEG_AREA_PALETTE: { bg: string; fg: string; dot: string }[] = [
   { bg: "bg-violet-50 dark:bg-violet-950/30", fg: "text-violet-700 dark:text-violet-300", dot: "#7c3aed" },
   { bg: "bg-teal-50 dark:bg-teal-950/30", fg: "text-teal-700 dark:text-teal-300", dot: "#0d9488" },
 ];
+// Cores FIXAS das áreas padrão (pedido do Gustavo). Áreas customizadas caem no
+// hash da paleta acima.
+const SEG_AREA_CORES_FIXAS: Record<string, { bg: string; fg: string; dot: string }> = {
+  Cozinha: { bg: "bg-amber-50 dark:bg-amber-950/30", fg: "text-amber-700 dark:text-amber-300", dot: "#d97706" },
+  Bar: { bg: "bg-blue-50 dark:bg-blue-950/30", fg: "text-blue-700 dark:text-blue-300", dot: "#2563eb" },
+  "Salão": { bg: "bg-orange-50 dark:bg-orange-950/30", fg: "text-orange-700 dark:text-orange-300", dot: "#ea580c" },
+  Limpeza: { bg: "bg-violet-50 dark:bg-violet-950/30", fg: "text-violet-700 dark:text-violet-300", dot: "#7c3aed" },
+};
 export function segAreaCor(nome?: string): { bg: string; fg: string; dot: string } {
-  let h = 0; const s = nome || "";
+  const s = nome || "";
+  if (SEG_AREA_CORES_FIXAS[s]) return SEG_AREA_CORES_FIXAS[s];
+  let h = 0;
   for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) >>> 0;
   return SEG_AREA_PALETTE[h % SEG_AREA_PALETTE.length];
 }
