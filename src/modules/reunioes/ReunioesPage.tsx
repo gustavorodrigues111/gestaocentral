@@ -15,12 +15,6 @@ import type { Reuniao, ReuniaoStatus, ReuniaoTipo } from "../../core/types";
 import { ReuniaoEditorModal } from "./ReuniaoEditorModal";
 import { ReuniaoDetalheModal } from "./ReuniaoDetalheModal";
 
-const STATUS_INFO: Record<ReuniaoStatus, { label: string; cls: string }> = {
-  planejada:  { label: "Planejada",  cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
-  realizada:  { label: "Realizada",  cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
-  cancelada:  { label: "Cancelada",  cls: "bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-400" },
-};
-
 const TIPO_ICON: Record<ReuniaoTipo, string> = {
   lideres:    "👔",
   equipe:     "👥",
@@ -46,13 +40,13 @@ export function ReunioesPage() {
   const [reunioes, setReunioes] = useState<Reuniao[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [filtroStatus, setFiltroStatus] = useState<"proximas" | "passadas" | "todas">("proximas");
   const [filtroDono, setFiltroDono] = useState<"minhas" | "todas">("todas");
   const [editing, setEditing] = useState<Reuniao | "new" | null>(null);
   const [detalhe, setDetalhe] = useState<Reuniao | null>(null);
+  const [mostrarHistorico, setMostrarHistorico] = useState(false);
   const [view, setView] = useState<"lista" | "kanban">(() => {
-    try { return (localStorage.getItem("reunioes_view") as "lista" | "kanban") || "kanban"; }
-    catch { return "kanban"; }
+    try { return (localStorage.getItem("reunioes_view") as "lista" | "kanban") || "lista"; }
+    catch { return "lista"; }
   });
   useEffect(() => { try { localStorage.setItem("reunioes_view", view); } catch {} }, [view]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -75,19 +69,15 @@ export function ReunioesPage() {
   // "Minhas" = reuniões que EU marquei (organizador). Participação não-criador
   // não conta aqui (participante só tem empregadoId, sem pessoaId).
   const ehMinha = (r: Reuniao) => r.criadoPor === me?.id;
-  const filtered = useMemo(() => {
-    return reunioes.filter(r => {
-      if (filtroDono === "minhas" && !ehMinha(r)) return false;
-      if (filtroStatus === "proximas" && (r.data < today || r.status === "realizada" || r.status === "cancelada")) return false;
-      if (filtroStatus === "passadas" && r.data >= today && r.status === "planejada") return false;
-      if (search.trim()) {
-        const s = search.toLowerCase();
-        if (!r.titulo.toLowerCase().includes(s)) return false;
-      }
-      return true;
-    });
+  // Agenda: base (dono + busca), depois separa Próximas (planejadas, ordem
+  // crescente) e Histórico (realizadas/canceladas, decrescente).
+  const base = useMemo(() => reunioes.filter(r =>
+    (filtroDono === "todas" || ehMinha(r)) &&
+    (!search.trim() || r.titulo.toLowerCase().includes(search.toLowerCase()))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [reunioes, filtroStatus, filtroDono, search, today, me?.id]);
+  ), [reunioes, filtroDono, search, me?.id]);
+  const proximas = useMemo(() => base.filter(r => r.status === "planejada").sort((a, b) => (a.data || "").localeCompare(b.data || "")), [base]);
+  const historico = useMemo(() => base.filter(r => r.status !== "planejada").sort((a, b) => (b.data || "").localeCompare(a.data || "")), [base]);
 
   // Sync detalhe quando a reunião muda no snapshot (ex: mudou pauta)
   const detalheLive = detalhe ? reunioes.find(r => r.id === detalhe.id) || null : null;
@@ -117,6 +107,46 @@ export function ReunioesPage() {
     .flatMap(r => r.acoes || [])
     .filter(a => a.status === "pendente").length;
 
+  const mesAbrev = (ymd: string) => new Date(ymd + "T12:00:00").toLocaleDateString("pt-BR", { month: "short" }).replace(".", "");
+  const statusBadge = (r: Reuniao): { txt: string; cls: string } => {
+    if (r.status === "realizada") return { txt: "Realizada", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" };
+    if (r.status === "cancelada") return { txt: "Cancelada", cls: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" };
+    if (r.data === today) return { txt: "Hoje", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" };
+    if (r.data < today) return { txt: "Atrasada", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" };
+    return { txt: "Planejada", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" };
+  };
+  const renderRow = (r: Reuniao) => {
+    const b = statusBadge(r);
+    const ehHoje = r.status === "planejada" && r.data === today;
+    return (
+      <div key={r.id} className="flex items-center gap-1.5">
+        <button type="button" onClick={() => setDetalhe(r)}
+          className={`flex-1 min-w-0 text-left flex gap-3 items-center p-3 bg-white dark:bg-gray-900 border rounded-xl transition-colors hover:border-indigo-400 dark:hover:border-indigo-700 ${ehHoje ? "border-indigo-400 dark:border-indigo-600 ring-1 ring-indigo-200 dark:ring-indigo-900" : "border-gray-200 dark:border-gray-800"}`}>
+          <div className="text-center w-11 shrink-0">
+            <div className="text-[11px] font-semibold uppercase text-gray-400 dark:text-gray-500 leading-none">{mesAbrev(r.data)}</div>
+            <div className="text-xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{Number(r.data.slice(8, 10))}</div>
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{TIPO_ICON[r.tipo]} {r.titulo}</div>
+            <div className="flex gap-3 text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex-wrap items-center">
+              {r.horario && <span>🕐 {r.horario}</span>}
+              <span>👥 {r.participantes?.length || 0}</span>
+              {r.local && <span className="truncate max-w-[140px]">📍 {r.local}</span>}
+              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">{REUNIAO_TIPO_LABEL[r.tipo]}</span>
+            </div>
+          </div>
+          <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full shrink-0 ${b.cls}`}>{b.txt}</span>
+        </button>
+        {podeConfig && (
+          <div className="flex flex-col gap-0.5 shrink-0">
+            <button type="button" onClick={() => setEditing(r)} title="Editar" className="text-gray-400 hover:text-indigo-600 px-1 text-sm">✎</button>
+            <button type="button" onClick={() => excluir(r)} title="Excluir" className="text-gray-300 hover:text-rose-600 px-1 text-sm">×</button>
+          </div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="max-w-4xl">
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
@@ -140,7 +170,7 @@ export function ReunioesPage() {
           className="flex-1 min-w-[200px]"
         />
         <div className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
-          {(["kanban", "lista"] as const).map(v => (
+          {(["lista", "kanban"] as const).map(v => (
             <button
               key={v}
               type="button"
@@ -151,7 +181,7 @@ export function ReunioesPage() {
                   : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
               }`}
             >
-              {v === "kanban" ? "📊 Kanban" : "📋 Lista"}
+              {v === "kanban" ? "📊 Kanban" : "☰ Agenda"}
             </button>
           ))}
         </div>
@@ -167,27 +197,8 @@ export function ReunioesPage() {
         )}
       </div>
 
-      {view === "lista" && (
-      <div className="flex items-center gap-2 mb-4">
-        {(["proximas", "passadas", "todas"] as const).map(f => (
-          <button
-            key={f}
-            type="button"
-            onClick={() => setFiltroStatus(f)}
-            className={`px-3 py-1 rounded-full text-xs font-medium transition-colors ${
-              filtroStatus === f
-                ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
-                : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
-            }`}
-          >
-            {f === "proximas" ? "📅 Próximas" : f === "passadas" ? "✓ Passadas" : "Todas"}
-          </button>
-        ))}
-      </div>
-      )}
-
       {view === "kanban" && <KanbanReunioes
-        reunioes={reunioes.filter(r => (filtroDono === "todas" || ehMinha(r)) && (!search.trim() || r.titulo.toLowerCase().includes(search.toLowerCase())))}
+        reunioes={base}
         loading={loading}
         podeConfig={podeConfig}
         onAbrir={(r) => setDetalhe(r)}
@@ -200,68 +211,26 @@ export function ReunioesPage() {
 
       {view === "lista" && (loading ? (
         <div className="text-sm text-gray-500">Carregando...</div>
-      ) : filtered.length === 0 ? (
+      ) : base.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
           <div className="text-4xl mb-3">🗣️</div>
-          <p className="text-gray-700 dark:text-gray-300 font-medium">
-            {search ? "Nada encontrado" : "Nenhuma reunião"}
-          </p>
-          {!search && podeConfig && (
-            <p className="text-sm text-gray-500 mt-2">Crie clicando em "+ Nova reunião"</p>
-          )}
+          <p className="text-gray-700 dark:text-gray-300 font-medium">{search ? "Nada encontrado" : "Nenhuma reunião"}</p>
+          {!search && podeConfig && <p className="text-sm text-gray-500 mt-2">Crie clicando em "+ Nova reunião"</p>}
         </div>
       ) : (
-        <div className="space-y-2">
-          {filtered.map(r => {
-            const status = STATUS_INFO[r.status];
-            const acoesPend = (r.acoes || []).filter(a => a.status === "pendente").length;
-            const topicosDisc = (r.pauta || []).filter(t => t.discutido).length;
-            return (
-              <button
-                key={r.id}
-                type="button"
-                onClick={() => setDetalhe(r)}
-                className="w-full text-left bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 hover:border-indigo-400 dark:hover:border-indigo-700 transition-colors"
-              >
-                <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-base">{TIPO_ICON[r.tipo]}</span>
-                    <h3 className="font-bold text-gray-900 dark:text-gray-100">{r.titulo}</h3>
-                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${status.cls}`}>
-                      {status.label}
-                    </span>
-                    <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
-                      {REUNIAO_TIPO_LABEL[r.tipo]}
-                    </span>
-                  </div>
-                  {podeConfig && (
-                    <div className="flex gap-1" onClick={(e) => e.stopPropagation()}>
-                      <Button variant="secondary" size="sm" onClick={() => setEditing(r)}>Editar</Button>
-                      <Button variant="danger" size="sm" onClick={() => excluir(r)}>×</Button>
-                    </div>
-                  )}
-                </div>
-                <div className="text-sm text-gray-700 dark:text-gray-300 flex items-center gap-3 flex-wrap">
-                  <span>📅 {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-                  {r.horario && <span>⏰ {r.horario}</span>}
-                  {r.local && <span>📍 {r.local}</span>}
-                </div>
-                <div className="flex items-center justify-between gap-3 flex-wrap text-xs text-gray-500 dark:text-gray-400 pt-2 mt-2 border-t border-gray-100 dark:border-gray-800">
-                  <div>
-                    👥 {r.participantes?.length || 0} participante(s)
-                    {r.pauta && r.pauta.length > 0 && (
-                      <> · 📋 {topicosDisc}/{r.pauta.length} tópico(s) discutido(s)</>
-                    )}
-                  </div>
-                  {acoesPend > 0 && (
-                    <span className="text-amber-700 dark:text-amber-400 font-medium">
-                      ⚠️ {acoesPend} aç{acoesPend > 1 ? "ões" : "ão"} pendente{acoesPend > 1 ? "s" : ""}
-                    </span>
-                  )}
-                </div>
-              </button>
-            );
-          })}
+        <div className="space-y-4">
+          <div>
+            <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-2">Próximas · {proximas.length}</div>
+            {proximas.length === 0
+              ? <p className="text-xs text-gray-400 italic">Nenhuma reunião planejada.</p>
+              : <div className="space-y-2">{proximas.map(renderRow)}</div>}
+          </div>
+          {historico.length > 0 && (
+            <div>
+              <button type="button" onClick={() => setMostrarHistorico(!mostrarHistorico)} className="text-xs font-semibold text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 mb-2">{mostrarHistorico ? "▾" : "▸"} Histórico · {historico.length}</button>
+              {mostrarHistorico && <div className="space-y-2">{historico.map(renderRow)}</div>}
+            </div>
+          )}
         </div>
       ))}
 
