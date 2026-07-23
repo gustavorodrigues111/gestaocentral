@@ -255,14 +255,29 @@ export function segResParse(key: string): { itemId: string; area?: string } {
   return i === -1 ? { itemId: key } : { itemId: key.slice(0, i), area: key.slice(i + 2) };
 }
 
+// Líder responsável por uma área. Uma área pode ter VÁRIOS líderes — todos
+// recebem a mesma ação (o 1º vira responsável; os demais, co-responsáveis).
+export type SegLider = { id: string; nome: string };
+// Lê os líderes de uma área com retrocompat: valor pode ser lista (novo) ou um
+// objeto único (schema antigo, antes de suportar múltiplos).
+export function segLideresDe(
+  resp: Record<string, SegLider[] | SegLider> | undefined | null,
+  area?: string | null,
+): SegLider[] {
+  if (!resp || !area) return [];
+  const v = resp[area];
+  if (!v) return [];
+  return Array.isArray(v) ? v.filter((l) => l && l.id) : (v.id ? [v] : []);
+}
+
 export type SegurancaModelo = {
   id: string;
   restaurantId: string;
   nome: string;
   areas: string[];       // áreas cadastráveis deste template
-  // Líder responsável por cada área. Ao "virar ação" uma não-conformidade, a
-  // tarefa já nasce atribuída ao líder da área respectiva.
-  responsaveisArea?: Record<string, { id: string; nome: string }>;
+  // Líderes responsáveis por cada área (um ou mais). Ao "virar ação" uma
+  // não-conformidade, a tarefa já nasce atribuída aos líderes da área.
+  responsaveisArea?: Record<string, SegLider[]>;
   blocos: SegurancaBloco[];
   itens: SegurancaItem[];
   faixas: SegurancaFaixa[];
@@ -306,7 +321,7 @@ export type SegurancaAvaliacao = {
   blocosSnapshot?: SegurancaBloco[];
   faixasSnapshot?: SegurancaFaixa[];
   areasSnapshot?: string[];
-  responsaveisAreaSnapshot?: Record<string, { id: string; nome: string }>;
+  responsaveisAreaSnapshot?: Record<string, SegLider[]>;
   data: string;                       // YYYY-MM-DD
   avaliadorId?: string | null;
   avaliadorNome?: string | null;

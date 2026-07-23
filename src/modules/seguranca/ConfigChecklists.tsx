@@ -46,17 +46,17 @@ export function ConfigChecklists({ rid, modelos, autorId, onEditar, onClose }: {
 
   return (
     <div className="space-y-4 pb-6">
-      <div className="flex items-center gap-3">
+      <div className="space-y-3">
         <button onClick={onClose} className="text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 text-sm inline-flex items-center gap-1">
           <span className="text-base leading-none">←</span> Voltar
         </button>
-        <div className="flex-1">
+        <div>
           <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">Configurações · Checklists</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Templates de checklist. Uma nova avaliação usa o ativo — se houver mais de um, o app pergunta qual.</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Modelos de checklist. Uma nova avaliação usa o ativo — se houver mais de um, o app pergunta qual.</p>
         </div>
-        <div className="flex items-center gap-2 shrink-0">
-          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void novoEmBranco()}>+ Em branco</Button>
-          <Button size="sm" disabled={busy} onClick={() => void novoDaBase()}>+ Da lista-base</Button>
+        <div className="grid grid-cols-1 sm:flex sm:flex-wrap gap-2">
+          <Button size="sm" disabled={busy} onClick={() => void novoDaBase()}>+ Novo da lista-base</Button>
+          <Button variant="secondary" size="sm" disabled={busy} onClick={() => void novoEmBranco()}>+ Novo em branco</Button>
         </div>
       </div>
 
@@ -72,18 +72,23 @@ export function ConfigChecklists({ rid, modelos, autorId, onEditar, onClose }: {
         {modelos.map((m) => {
           const ativo = m.ativo !== false;
           return (
-            <div key={m.id} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3.5 flex items-center gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{m.nome}</div>
-                <div className="text-[12px] text-gray-500 dark:text-gray-400">{m.itens.length} {m.itens.length === 1 ? "item" : "itens"} · {m.blocos.length} blocos</div>
+            <div key={m.id} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3.5">
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1">
+                  <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">{m.nome}</div>
+                  <div className="text-[12px] text-gray-500 dark:text-gray-400">{m.itens.length} {m.itens.length === 1 ? "item" : "itens"} · {m.blocos.length} blocos</div>
+                </div>
+                <button type="button" onClick={() => void toggleAtivo(m)} title={ativo ? "Ativo (aparece em nova avaliação)" : "Inativo — clique pra ativar"}
+                  className={`shrink-0 text-[12px] font-semibold px-2.5 py-1 rounded-full ${ativo ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
+                  {ativo ? "ativo" : "inativo"}
+                </button>
               </div>
-              <button type="button" onClick={() => void toggleAtivo(m)} title={ativo ? "Ativo (aparece em nova avaliação)" : "Inativo"}
-                className={`shrink-0 text-[12px] font-semibold px-2.5 py-1 rounded-full ${ativo ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>
-                {ativo ? "ativo" : "inativo"}
-              </button>
-              <Button size="sm" variant="secondary" onClick={() => onEditar(m.id)}>Editar</Button>
-              <button onClick={() => void duplicar(m)} disabled={busy} title="Duplicar" className="shrink-0 text-gray-400 hover:text-indigo-600 text-sm px-1">⧉</button>
-              <button onClick={() => void excluir(m)} disabled={busy} title="Excluir" className="shrink-0 text-gray-300 hover:text-rose-500 text-sm px-1">🗑</button>
+              <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                <Button size="sm" variant="secondary" onClick={() => onEditar(m.id)}>Editar</Button>
+                <button onClick={() => void duplicar(m)} disabled={busy} className="text-[12px] text-gray-500 hover:text-indigo-600 inline-flex items-center gap-1 px-1">⧉ Duplicar</button>
+                <div className="flex-1" />
+                <button onClick={() => void excluir(m)} disabled={busy} title="Excluir" className="text-gray-300 hover:text-rose-500 text-sm px-1">🗑</button>
+              </div>
             </div>
           );
         })}

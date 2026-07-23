@@ -14,7 +14,7 @@ import type {
   Tarefa, TarefaStatus,
   SegurancaAvaliacao, SegurancaResultadoItem,
 } from "../../core/types";
-import { TAREFA_STATUS_LABEL, segAreaCor, segurancaFaixaDe, segResParse } from "../../core/types";
+import { TAREFA_STATUS_LABEL, segAreaCor, segurancaFaixaDe, segResParse, segLideresDe } from "../../core/types";
 import { ouvirAvaliacao, salvarResultado, calcularScore, reabrirAvaliacao } from "./repository";
 import { criarTarefaOperacional } from "../tarefas/repository";
 import { SegurancaFotos } from "./SegurancaFotos";
@@ -132,19 +132,22 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
     onVerPreenchimento();
   }
 
-  // Cria a AÇÃO já atribuída ao líder da área, prazo = hoje. Sem líder → erro.
+  // Cria a AÇÃO já atribuída aos líderes da área (1º = responsável, demais =
+  // co-responsáveis), prazo = hoje. Sem nenhum líder → erro.
   async function criarAcao(inc: { key: string; area?: string; texto: string; r: SegurancaResultadoItem }): Promise<boolean> {
     if (!av) return false;
-    const lider = inc.area ? responsaveisArea[inc.area] : undefined;
-    if (!lider?.id) {
-      alert(`A área "${inc.area || "—"}" não tem líder definido. Defina o líder no ⚙ Checklist antes de gerar a ação.`);
+    const lideres = segLideresDe(responsaveisArea, inc.area);
+    if (!lideres.length) {
+      alert(`A área "${inc.area || "—"}" não tem líder definido. Defina o(s) líder(es) no ⚙ Checklist antes de gerar a ação.`);
       return false;
     }
+    const [primeiro, ...resto] = lideres;
     const id = await criarTarefaOperacional({
       rid, titulo: inc.texto, descricao: inc.r.observacao || "",
       origem: "avaliacao_sanitaria", origemRefId: `${av.id}:${inc.key}`, origemRefLabel: inc.texto,
       prioridade: "normal", prazo: hojeYmd(),
-      responsavelId: lider.id, responsavelNome: lider.nome,
+      responsavelId: primeiro.id, responsavelNome: primeiro.nome,
+      coResponsaveis: resto.map((l) => l.id), coResponsaveisNomes: resto.map((l) => l.nome),
       criadoPor: autor.id, criadoPorNome: autor.nome,
     });
     const cur = av.resultado?.[inc.key];
@@ -158,8 +161,7 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
     let semLider = 0;
     try {
       for (const i of semAcao) {
-        const lider = i.area ? responsaveisArea[i.area] : undefined;
-        if (!lider?.id) { semLider++; continue; }
+        if (!segLideresDe(responsaveisArea, i.area).length) { semLider++; continue; }
         await criarAcao(i);
       }
     } finally { setGerando(false); }
@@ -204,18 +206,20 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
   return (
     <div className="space-y-5 pb-6">
       {/* Cabeçalho */}
-      <div className="flex items-start gap-3 flex-wrap">
-        <button onClick={onClose} className="text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 text-sm inline-flex items-center gap-1 mt-1">
+      <div className="space-y-3">
+        <button onClick={onClose} className="text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 text-sm inline-flex items-center gap-1">
           <span className="text-base leading-none">←</span> Voltar
         </button>
-        <div className="min-w-0 flex-1">
-          <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100 truncate">Relatório da avaliação</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400 truncate">{av.avaliadorNome || "—"} · {dmy(av.data)}</p>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="secondary" size="sm" onClick={() => void exportarPdf()} disabled={exportando}>{exportando ? "Gerando…" : "⤓ PDF"}</Button>
-          <Button variant="secondary" size="sm" onClick={onVerPreenchimento}>Ver preenchimento</Button>
-          {podePreencher && <Button variant="secondary" size="sm" onClick={() => void reabrir()}>Reabrir</Button>}
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <div className="min-w-0">
+            <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">Relatório da avaliação</h1>
+            <p className="text-xs text-gray-500 dark:text-gray-400">{av.avaliadorNome || "—"} · {dmy(av.data)}</p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button variant="secondary" size="sm" onClick={() => void exportarPdf()} disabled={exportando}>{exportando ? "Gerando…" : "⤓ PDF"}</Button>
+            <Button variant="secondary" size="sm" onClick={onVerPreenchimento}>Ver preenchimento</Button>
+            {podePreencher && <Button variant="secondary" size="sm" onClick={() => void reabrir()}>Reabrir</Button>}
+          </div>
         </div>
       </div>
 
@@ -285,7 +289,7 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
         {inconformidades.length === 0 && <p className="text-sm text-gray-400 py-8 text-center">Nenhuma inconformidade nesta avaliação. 🎉</p>}
         <div className="space-y-2.5">
           {inconformidades.map((i) => {
-            const lider = i.area ? responsaveisArea[i.area] : undefined;
+            const lideres = segLideresDe(responsaveisArea, i.area);
             return (
               <div key={i.key} className="rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/40 dark:bg-rose-950/20 p-3.5">
                 <div className="flex items-start gap-2 flex-wrap">
@@ -304,8 +308,8 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
                     ? <AcaoStatus acao={acaoPorKey.get(i.key)!} />
                     : podeGerar
                       ? <button type="button" onClick={() => void criarAcao(i)}
-                          className="text-[13px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
-                          🎯 Virar ação{lider ? ` → ${lider.nome}` : ""}
+                          className="text-[13px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline text-left">
+                          🎯 Virar ação{lideres.length ? ` → ${lideres.map((l) => l.nome).join(", ")}` : ""}
                         </button>
                       : <span className="text-[12px] text-gray-400">Sem ação vinculada.</span>}
                 </div>
@@ -328,7 +332,9 @@ function AcaoStatus({ acao }: { acao: Tarefa }) {
     <div className="space-y-1.5">
       <div className="flex items-center gap-2 flex-wrap text-[12px]">
         <span className={`px-2 py-0.5 rounded-full font-semibold ${STATUS_PILL[acao.status]}`}>{TAREFA_STATUS_LABEL[acao.status]}</span>
-        <span className="text-gray-500 dark:text-gray-400">{acao.responsavelNome || "sem responsável"}</span>
+        <span className="text-gray-500 dark:text-gray-400">
+          {[acao.responsavelNome || "sem responsável", ...(acao.coResponsaveisNomes || [])].join(", ")}
+        </span>
         {acao.prazo && <span className="text-gray-500 dark:text-gray-400 tabular-nums">📅 {dmy(acao.prazo)}</span>}
       </div>
       {concluida && resolvLog && (

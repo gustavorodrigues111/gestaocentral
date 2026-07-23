@@ -225,27 +225,47 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   // ── Tarefas (lente enxuta): minhas tarefas operacionais em aberto ──
   // Unificado: lê da coleção `tarefas` (projeto Operação — Demandas), por
   // restaurante. Listener próprio porque tarefa usa restaurantIds (array).
-  const [minhaAcao, setMinhaAcao] = useState<Record<string, Array<Record<string, unknown>>>>({});
+  // Duas fontes: tarefas onde sou responsável E onde sou co-responsável (uma
+  // ação pode ter vários responsáveis). Agrupadas por restaurante e unidas
+  // (dedupe por id). A query de co-resp usa só array-contains (sem exigir índice
+  // composto) e filtra o projeto no cliente.
+  const [minhaAcaoResp, setMinhaAcaoResp] = useState<Record<string, Array<Record<string, unknown>>>>({});
+  const [minhaAcaoCo, setMinhaAcaoCo] = useState<Record<string, Array<Record<string, unknown>>>>({});
+  const agruparTarefas = (docs: Array<{ id: string; data: () => Record<string, unknown> }>) => {
+    const m: Record<string, Array<Record<string, unknown>>> = {};
+    for (const d of docs) {
+      const t = { id: d.id, ...d.data() } as Record<string, unknown>;
+      if (t.deletadoEm) continue;
+      if (t.projetoId !== "proj-operacao-dem") continue;
+      const rid = (Array.isArray(t.restaurantIds) && (t.restaurantIds as string[])[0]) || "";
+      if (!rid) continue;
+      if (!m[rid]) m[rid] = [];
+      m[rid].push(t);
+    }
+    return m;
+  };
   useEffect(() => {
-    if (!pid) { setMinhaAcao({}); return; }
-    const u = onSnapshot(
+    if (!pid) { setMinhaAcaoResp({}); setMinhaAcaoCo({}); return; }
+    const u1 = onSnapshot(
       query(collection(db, "tarefas"), where("responsavelId", "==", pid), where("projetoId", "==", "proj-operacao-dem")),
-      (snap) => {
-        const m: Record<string, Array<Record<string, unknown>>> = {};
-        for (const d of snap.docs) {
-          const t = { id: d.id, ...d.data() } as Record<string, unknown>;
-          if (t.deletadoEm) continue;
-          const rid = (Array.isArray(t.restaurantIds) && (t.restaurantIds as string[])[0]) || "";
-          if (!rid) continue;
-          if (!m[rid]) m[rid] = [];
-          m[rid].push(t);
-        }
-        setMinhaAcao(m);
-      },
-      () => setMinhaAcao({}),
+      (snap) => setMinhaAcaoResp(agruparTarefas(snap.docs)), () => setMinhaAcaoResp({}),
     );
-    return () => u();
+    const u2 = onSnapshot(
+      query(collection(db, "tarefas"), where("coResponsaveis", "array-contains", pid)),
+      (snap) => setMinhaAcaoCo(agruparTarefas(snap.docs)), () => setMinhaAcaoCo({}),
+    );
+    return () => { u1(); u2(); };
   }, [pid]);
+  const minhaAcao = useMemo(() => {
+    const m: Record<string, Array<Record<string, unknown>>> = {};
+    for (const src of [minhaAcaoResp, minhaAcaoCo]) {
+      for (const [rid, arr] of Object.entries(src)) {
+        if (!m[rid]) m[rid] = [];
+        for (const t of arr) if (!m[rid].some((x) => x.id === t.id)) m[rid].push(t);
+      }
+    }
+    return m;
+  }, [minhaAcaoResp, minhaAcaoCo]);
   const minhaProducao = useAvisoSource({ ...base,
     gates: [["planoDeAcao", "receberAvisos"]], collectionName: "ftPlanosProducao" });
 

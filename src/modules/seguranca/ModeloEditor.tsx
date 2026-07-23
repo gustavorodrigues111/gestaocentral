@@ -24,7 +24,14 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
     }
     // Retrocompat: item com `area` única → migra pra `areas: [area]`.
     (c.itens || []).forEach((i) => { if (!Array.isArray(i.areas)) i.areas = i.area ? [i.area] : []; });
-    if (!c.responsaveisArea) c.responsaveisArea = {};
+    // Retrocompat: líder único (objeto) → lista de líderes.
+    const ra = (c.responsaveisArea || {}) as Record<string, unknown>;
+    const normalizado: Record<string, { id: string; nome: string }[]> = {};
+    for (const [area, v] of Object.entries(ra)) {
+      if (Array.isArray(v)) normalizado[area] = v as { id: string; nome: string }[];
+      else if (v && typeof v === "object" && (v as { id?: string }).id) normalizado[area] = [v as { id: string; nome: string }];
+    }
+    c.responsaveisArea = normalizado;
     return c;
   });
   const [salvando, setSalvando] = useState(false);
@@ -66,7 +73,7 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
       if (d.areas.includes(nn) && nn !== antigo) { return; }
       d.areas[idx] = nn;
       d.itens.forEach((i) => { i.areas = (i.areas || []).map((a) => (a === antigo ? nn : a)); }); // reatribui itens
-      if (d.responsaveisArea?.[antigo]) { d.responsaveisArea[nn] = d.responsaveisArea[antigo]; delete d.responsaveisArea[antigo]; }
+      if (d.responsaveisArea?.[antigo]) { d.responsaveisArea![nn] = d.responsaveisArea![antigo]; delete d.responsaveisArea![antigo]; }
     });
   }
   function removerArea(idx: number) {
@@ -79,12 +86,21 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
       if (d.responsaveisArea) delete d.responsaveisArea[nome];
     });
   }
-  function setLiderArea(area: string, pid: string) {
+  function addLiderArea(area: string, pid: string) {
+    if (!pid) return;
     mut((d) => {
       if (!d.responsaveisArea) d.responsaveisArea = {};
-      if (!pid) { delete d.responsaveisArea[area]; return; }
+      const atuais = d.responsaveisArea[area] || [];
+      if (atuais.some((l) => l.id === pid)) return;
       const nome = pessoasOrd.find((p) => p.id === pid)?.nome || "";
-      d.responsaveisArea[area] = { id: pid, nome };
+      d.responsaveisArea[area] = [...atuais, { id: pid, nome }];
+    });
+  }
+  function removeLiderArea(area: string, pid: string) {
+    mut((d) => {
+      if (!d.responsaveisArea?.[area]) return;
+      d.responsaveisArea[area] = d.responsaveisArea[area].filter((l) => l.id !== pid);
+      if (d.responsaveisArea[area].length === 0) delete d.responsaveisArea[area];
     });
   }
   function toggleItemArea(id: string, area: string) {
@@ -175,24 +191,34 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
         </div>
       </div>
 
-      {/* Líder responsável por área — recebe as ações das não-conformidades */}
+      {/* Líderes responsáveis por área — recebem as ações das não-conformidades */}
       <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
-        <label className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 block mb-2">Líder de cada área</label>
-        <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-2.5">Ao virar ação uma não-conformidade, a tarefa já vai pro líder da área (e aparece na Central de Avisos dele).</p>
-        <div className="space-y-2">
+        <label className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 block mb-2">Líderes de cada área</label>
+        <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-3">Ao virar ação uma não-conformidade, a tarefa vai pra todos os líderes da área (cada um a recebe na Central de Avisos). Pode ter mais de um por área.</p>
+        <div className="space-y-3">
           {m.areas.map((a) => {
             const c = segAreaCor(a);
+            const lideres = m.responsaveisArea?.[a] || [];
+            const disponiveis = pessoasOrd.filter((p) => !lideres.some((l) => l.id === p.id));
             return (
-              <div key={a} className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-center">
-                <span className={`inline-flex items-center gap-1.5 text-[13px] font-medium px-2.5 py-1 rounded-full w-fit ${c.bg} ${c.fg}`}>
+              <div key={a} className="flex flex-col gap-1.5 sm:flex-row sm:items-start sm:gap-3">
+                <span className={`inline-flex items-center gap-1.5 text-[13px] font-medium px-2.5 py-1 rounded-full w-fit shrink-0 sm:mt-0.5 ${c.bg} ${c.fg}`}>
                   <span className="w-2 h-2 rounded-full" style={{ background: c.dot }} />{a}
                 </span>
-                <select
-                  className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-gray-900 dark:text-gray-100"
-                  value={m.responsaveisArea?.[a]?.id || ""} onChange={(e) => setLiderArea(a, e.target.value)}>
-                  <option value="">— sem líder —</option>
-                  {pessoasOrd.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                </select>
+                <div className="flex flex-wrap gap-1.5 items-center flex-1">
+                  {lideres.map((l) => (
+                    <span key={l.id} className="inline-flex items-center gap-1.5 text-[13px] pl-2.5 pr-1 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200">
+                      {l.nome || "?"}
+                      <button type="button" onClick={() => removeLiderArea(a, l.id)} title="Remover" className="opacity-50 hover:opacity-100 text-sm leading-none">×</button>
+                    </span>
+                  ))}
+                  <select
+                    value="" onChange={(e) => { addLiderArea(a, e.target.value); e.target.value = ""; }}
+                    className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-gray-600 dark:text-gray-300">
+                    <option value="">{lideres.length ? "+ líder" : "— escolher líder —"}</option>
+                    {disponiveis.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </select>
+                </div>
               </div>
             );
           })}

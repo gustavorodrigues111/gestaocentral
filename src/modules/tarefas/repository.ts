@@ -284,6 +284,8 @@ export async function criarTarefaOperacional(input: {
   descricao?: string;
   responsavelId?: string | null;
   responsavelNome?: string;
+  coResponsaveis?: string[];
+  coResponsaveisNomes?: string[];
   prazo?: string | null;
   prioridade?: TarefaPrioridade;
   origem: TarefaOrigem;
@@ -299,6 +301,8 @@ export async function criarTarefaOperacional(input: {
     descricao: input.descricao,
     responsavelId: input.responsavelId || "",
     responsavelNome: input.responsavelNome,
+    coResponsaveis: input.coResponsaveis?.length ? input.coResponsaveis : undefined,
+    coResponsaveisNomes: input.coResponsaveisNomes?.length ? input.coResponsaveisNomes : undefined,
     restaurantIds: input.rid ? [input.rid] : [],
     prazo: input.prazo ?? null,
     status: "a_fazer",
