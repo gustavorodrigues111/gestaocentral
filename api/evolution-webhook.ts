@@ -18,6 +18,7 @@ export const config = { maxDuration: 15 };
 type Req = { method?: string; query?: Record<string, string | string[] | undefined>; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type Res = { status: (c: number) => Res; json: (b: unknown) => void; send: (b: string) => void };
 
+type HydratedTpl = { hydratedContentText?: string; hydratedTitleText?: string; hydratedFooterText?: string };
 type EvoMsg = {
   key?: { remoteJid?: string; fromMe?: boolean; id?: string };
   pushName?: string;
@@ -37,6 +38,12 @@ type EvoMsg = {
     contactMessage?: { displayName?: string };
     contactsArrayMessage?: unknown;
     pollCreationMessage?: { name?: string };
+    templateMessage?: { hydratedTemplate?: HydratedTpl; hydratedFourRowTemplate?: HydratedTpl };
+    buttonsMessage?: { contentText?: string };
+    listMessage?: { description?: string };
+    buttonsResponseMessage?: { selectedDisplayText?: string };
+    templateButtonReplyMessage?: { selectedDisplayText?: string };
+    interactiveMessage?: { body?: { text?: string } };
   };
 };
 type EvoBody = { event?: string; instance?: string; data?: EvoMsg | EvoMsg[] };
@@ -58,11 +65,21 @@ function chaveBR(raw?: string): string {
 }
 function textoDe(m?: EvoMsg["message"], tipo?: string): string {
   if (!m) return tipo ? `[${tipo}]` : "";
+  // Template do WhatsApp (empresas mandam notificação/marketing): o texto vive
+  // no hydratedTemplate (título + corpo + rodapé).
+  const tpl = m.templateMessage?.hydratedTemplate || m.templateMessage?.hydratedFourRowTemplate;
+  const tplTxt = tpl ? [tpl.hydratedTitleText, tpl.hydratedContentText, tpl.hydratedFooterText].filter(Boolean).join("\n") : "";
   return m.conversation
     || m.extendedTextMessage?.text
     || m.imageMessage?.caption
     || m.videoMessage?.caption
     || m.documentMessage?.caption
+    || tplTxt
+    || m.buttonsMessage?.contentText
+    || m.listMessage?.description
+    || m.buttonsResponseMessage?.selectedDisplayText
+    || m.templateButtonReplyMessage?.selectedDisplayText
+    || m.interactiveMessage?.body?.text
     || (m.reactionMessage?.text ? `reagiu ${m.reactionMessage.text}` : "")
     || (m.stickerMessage ? "🟢 Figurinha" : "")
     || (m.documentMessage?.fileName ? `📄 ${m.documentMessage.fileName}` : "")
