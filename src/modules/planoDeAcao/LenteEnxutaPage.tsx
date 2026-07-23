@@ -113,7 +113,7 @@ export function LenteEnxutaPage() {
   };
 
   return (
-    <div className="max-w-xl mx-auto p-3">
+    <div className="max-w-5xl mx-auto p-3 sm:p-4">
       <div className="flex items-center justify-between gap-2 mb-3">
         <div>
           <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">✅ Tarefas</h1>
@@ -130,15 +130,18 @@ export function LenteEnxutaPage() {
         </div>
       )}
 
-      <div className="space-y-2">
-        {abertas.length === 0 && <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">Nada pra fazer aqui. 🎉</div>}
-        {abertas.map(t => <Card key={t.id} t={t} />)}
-      </div>
+      {abertas.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">Nada pra fazer aqui. 🎉</div>
+      ) : (
+        <div className="grid gap-2 lg:grid-cols-2 items-start">
+          {abertas.map(t => <Card key={t.id} t={t} />)}
+        </div>
+      )}
 
       {feitas.length > 0 && (
         <div className="mt-4">
           <button type="button" onClick={() => setMostrarFeitas(!mostrarFeitas)} className="text-xs font-medium text-gray-500 hover:text-gray-700">{mostrarFeitas ? "▾" : "▸"} Feitas · {feitas.length}</button>
-          {mostrarFeitas && <div className="space-y-2 mt-2">{feitas.map(t => <Card key={t.id} t={t} />)}</div>}
+          {mostrarFeitas && <div className="grid gap-2 lg:grid-cols-2 items-start mt-2">{feitas.map(t => <Card key={t.id} t={t} />)}</div>}
         </div>
       )}
 
