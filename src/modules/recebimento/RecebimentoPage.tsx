@@ -21,7 +21,9 @@ import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import type { BoletoNota, DuplicataNota, FormaPagamento, ItemNota, RecebimentoNota, TipoDocumento } from "../../core/types";
 import { FORMA_PAGAMENTO_LABEL, TIPO_DOCUMENTO_LABEL, CONTA_FIXA_CATEGORIAS } from "../../core/types";
-import { requestAccessToken, findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveClient";
+import { requestAccessToken } from "../../core/google/driveClient";
+import { findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveShared";
+import { centralConfigured } from "../../core/google/driveCentral";
 import { ensureModuloFolder } from "../../core/google/driveModulo";
 import { authHeader } from "../../core/firebase/idToken";
 
@@ -961,7 +963,7 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
       // Sobe os boletos novos pro Drive (mesma semana da nota) e junta aos existentes.
       let boletosFinais: BoletoNota[] | undefined = nota.boletos ? [...nota.boletos] : undefined;
       if (boletosNovos.length) {
-        await requestAccessToken();
+        if (!(await centralConfigured())) await requestAccessToken();
         const label = nota.semanaLabel || semanaDe(new Date()).label;
         const base = await ensureModuloFolder(restaurant.driveRootFolderId as string, MODULO);
         const semanaId = await findOrCreateSubfolder(base, label);
@@ -1255,7 +1257,7 @@ function IncluirDanfeModal({ nota, restaurant, por, onClose, onSaved }: {
     setSalvando(true);
     try {
       const temArquivos = danfeFiles.length > 0 || boletoFiles.length > 0;
-      if (temArquivos) await requestAccessToken();
+      if (temArquivos && !(await centralConfigured())) await requestAccessToken();
       const agora = new Date();
       const label = nota.semanaLabel || semanaDe(agora).label; // mantém os arquivos junto do romaneio
       const base = temArquivos ? await ensureModuloFolder(restaurant.driveRootFolderId as string, MODULO) : "";
@@ -1612,7 +1614,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
     try {
       // Arquivos vão pra {raiz}/planejamento.app/Recebimento/<semana>/ — fluxo do
       // navegador (a raiz é o Drive pessoal de quem configurou).
-      if (temArquivos) await requestAccessToken();
+      if (temArquivos && !(await centralConfigured())) await requestAccessToken();
       const agora = new Date();
       const recebidoEm = agora.toISOString();
       const { label } = semanaDe(agora);

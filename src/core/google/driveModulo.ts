@@ -3,9 +3,10 @@
 // "planejamento.app" dentro dela e, abaixo, uma pasta por módulo. Cada módulo
 // cuida da sua organização interna a partir do id que este helper devolve.
 //
-// Usa o fluxo do NAVEGADOR (driveClient) — a pasta-raiz é do Drive pessoal de
-// quem configurou, então as operações vão com o token OAuth dele.
-import { findOrCreateSubfolder } from "./driveClient";
+// Central-aware: se a conta central do Drive estiver configurada (env do
+// backend), as pastas são criadas por ela (o operador NÃO loga Google);
+// senão cai no fluxo do navegador. Ver driveShared.
+import { findOrCreateSubfolder } from "./driveShared";
 
 export const APP_FOLDER = "planejamento.app";
 

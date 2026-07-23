@@ -24,7 +24,7 @@ import { Modal } from "../../core/ui/Modal";
 import { enviarWhatsapp } from "../../core/whatsapp/enviar";
 import type { AnexoFechamento, ComandaCadastro, ComandaConsumo, FechamentoCaixa, GrupoAnexoFechamento, MaquininhaFechamento, Pessoa, TurnoCaixa } from "../../core/types";
 import { GRUPO_ANEXO_LABEL, TURNO_CAIXA_LABEL } from "../../core/types";
-import { findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveClient";
+import { findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveShared";
 import { ensureModuloFolder } from "../../core/google/driveModulo";
 import { authHeader } from "../../core/firebase/idToken";
 import { paraOcrBlock, carimbarImagem } from "../../core/imagem/processarImagem";
