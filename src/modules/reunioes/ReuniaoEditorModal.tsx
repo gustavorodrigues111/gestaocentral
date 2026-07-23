@@ -160,11 +160,11 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
         />
 
         <div>
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Tipo</label>
-          <div className="inline-flex flex-wrap gap-0.5 rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5">Tipo</label>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
             {TIPOS.map(t => (
               <button key={t} type="button" onClick={() => setTipo(t)}
-                className={`px-3 py-1.5 text-sm font-medium rounded-md transition-colors ${tipo === t ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
+                className={`px-3 py-2 text-sm font-medium rounded-lg border transition-colors ${tipo === t ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
                 {REUNIAO_TIPO_LABEL[t]}
               </button>
             ))}
@@ -223,11 +223,11 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
             <Input
               value={extName}
               onChange={(e) => setExtName(e.target.value)}
-              placeholder="Participante externo (não-empregado)"
+              placeholder="Convidado externo"
               onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addExterno(); } }}
-              className="flex-1"
+              className="flex-1 min-w-0"
             />
-            <Button variant="secondary" onClick={addExterno} disabled={!extName.trim()}>+ Externo</Button>
+            <Button variant="secondary" onClick={addExterno} disabled={!extName.trim()} className="shrink-0 whitespace-nowrap">+ Externo</Button>
           </div>
         </div>
 
