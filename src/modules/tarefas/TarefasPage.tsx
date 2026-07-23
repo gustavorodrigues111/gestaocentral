@@ -266,7 +266,7 @@ export function TarefasPage() {
   );
 
   return (
-    <div className="max-w-7xl mx-auto p-3 sm:p-4">
+    <div className="max-w-[1760px] mx-auto p-3 sm:p-4 xl:px-6">
 
       {/* Banner "Visualizando como…" — só renderiza quando master ativou
           a impersonação. Indica claramente que o conteúdo abaixo é o que
