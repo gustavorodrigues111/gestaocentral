@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import type { Tarefa, SegurancaAvaliacao } from "../../core/types";
-import { segAreaCor } from "../../core/types";
+import { segAreaCor, segItemAreas, segResParse } from "../../core/types";
 import { ouvirAvaliacoes } from "./repository";
 
 const dmy = (ymd?: string | null) => (ymd || "").split("-").reverse().join("/");
@@ -35,20 +35,21 @@ export function Painel({ rid }: { rid: string }) {
 
   // Lista de áreas (união de todas as avaliações — snapshot ou derivada).
   const areasLista = useMemo(() => Array.from(new Set(
-    avaliacoes.flatMap((a) => a.areasSnapshot?.length ? a.areasSnapshot : (a.itensSnapshot || []).map((it) => it.area).filter(Boolean))
+    avaliacoes.flatMap((a) => a.areasSnapshot?.length ? a.areasSnapshot : (a.itensSnapshot || []).flatMap(segItemAreas))
   )) as string[], [avaliacoes]);
 
-  // Não-conformes por área (acumulado, todas as avaliações).
+  // Não-conformes por área (acumulado, todas as avaliações). A área vem da CHAVE
+  // do resultado (`itemId::área`); legado (chave = itemId) cai no lookup do item.
   const ncPorArea = useMemo(() => {
-    const itemArea = new Map<string, string | undefined>();
-    for (const a of avaliacoes) for (const it of a.itensSnapshot || []) itemArea.set(it.id, it.area);
+    const itemAreaUnica = new Map<string, string | undefined>();
+    for (const a of avaliacoes) for (const it of a.itensSnapshot || []) itemAreaUnica.set(it.id, segItemAreas(it)[0]);
     const m = {} as Record<string, number>;
     for (const a of avaliacoes) {
-      const areaLocal = new Map<string, string | undefined>((a.itensSnapshot || []).map((it) => [it.id, it.area]));
-      for (const [itemId, r] of Object.entries(a.resultado || {})) {
+      for (const [key, r] of Object.entries(a.resultado || {})) {
         if (r.resposta !== "nao_conforme") continue;
-        const area = areaLocal.get(itemId) ?? itemArea.get(itemId);
-        if (area) m[area] = (m[area] || 0) + 1;
+        const { itemId, area } = segResParse(key);
+        const ar = area ?? itemAreaUnica.get(itemId);
+        if (ar) m[ar] = (m[ar] || 0) + 1;
       }
     }
     return areasLista.map((area) => ({ area, n: m[area] || 0 }));

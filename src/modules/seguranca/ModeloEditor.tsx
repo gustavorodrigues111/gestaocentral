@@ -1,11 +1,14 @@
-// Editor do checklist-modelo (cadastro/edição). Checklist ÚNICO: cada item é
-// de UMA área. A mesma pergunta pode valer pra 2 áreas → botão "duplicar" cria
-// uma cópia pra atribuir a outra área. Também edita blocos e faixas.
-// Edição em estado local; "Salvar" persiste. Requer permissão `configurar`.
-import { useState } from "react";
+// Editor do checklist-modelo (cadastro/edição). UMA pergunta pode valer pra
+// VÁRIAS áreas (marque as áreas no item) — no preenchimento recebe uma resposta
+// por área. Também define o LÍDER responsável por cada área (quem recebe as
+// ações), blocos e faixas. Edição em estado local; "Salvar" persiste.
+// Requer permissão `configurar`.
+import { useEffect, useMemo, useState } from "react";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
-import type { SegurancaFaixa, SegurancaItem, SegurancaModelo } from "../../core/types";
-import { SEG_AREAS_PADRAO, segAreaCor } from "../../core/types";
+import type { SegurancaFaixa, SegurancaItem, SegurancaModelo, Pessoa } from "../../core/types";
+import { SEG_AREAS_PADRAO, segAreaCor, segItemAreas } from "../../core/types";
 import { salvarModelo } from "./repository";
 
 const uid = () => Math.random().toString(36).slice(2, 11);
@@ -16,14 +19,27 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
     const c = clone(modelo);
     // Retrocompat: templates antigos sem `areas` → deriva dos itens ou padrão.
     if (!Array.isArray(c.areas) || c.areas.length === 0) {
-      const dosItens = Array.from(new Set((c.itens || []).map((i) => i.area).filter(Boolean))) as string[];
+      const dosItens = Array.from(new Set((c.itens || []).flatMap(segItemAreas)));
       c.areas = dosItens.length ? dosItens : [...SEG_AREAS_PADRAO];
     }
+    // Retrocompat: item com `area` única → migra pra `areas: [area]`.
+    (c.itens || []).forEach((i) => { if (!Array.isArray(i.areas)) i.areas = i.area ? [i.area] : []; });
+    if (!c.responsaveisArea) c.responsaveisArea = {};
     return c;
   });
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [dirty, setDirty] = useState(false);
+  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+
+  useEffect(() => {
+    const rid = modelo.restaurantId;
+    if (!rid) return;
+    return onSnapshot(query(collection(db, "pessoas"), where("restaurantIds", "array-contains", rid)),
+      (snap) => setPessoas(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Pessoa).filter((p) => p.ativa !== false)),
+      () => setPessoas([]));
+  }, [modelo.restaurantId]);
+  const pessoasOrd = useMemo(() => [...pessoas].sort((a, b) => a.nome.localeCompare(b.nome)), [pessoas]);
 
   const blocos = m.blocos.slice().sort((a, b) => a.ordem - b.ordem);
   function mut(fn: (d: SegurancaModelo) => void) { setM((prev) => { const d = clone(prev); fn(d); return d; }); setDirty(true); }
@@ -31,7 +47,7 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
   // ── Itens ──
   const itensDoBloco = (bid: string) => m.itens.filter((i) => i.blocoId === bid).sort((a, b) => a.ordem - b.ordem);
   function addItem(bid: string) {
-    mut((d) => { const max = Math.max(0, ...d.itens.filter((i) => i.blocoId === bid).map((i) => i.ordem)); d.itens.push({ id: uid(), texto: "", blocoId: bid, area: d.areas[0], ordem: max + 1, pontua: true }); });
+    mut((d) => { const max = Math.max(0, ...d.itens.filter((i) => i.blocoId === bid).map((i) => i.ordem)); d.itens.push({ id: uid(), texto: "", blocoId: bid, areas: d.areas.length ? [d.areas[0]] : [], ordem: max + 1, pontua: true }); });
   }
 
   // ── Áreas (cadastráveis) ──
@@ -49,14 +65,34 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
     mut((d) => {
       if (d.areas.includes(nn) && nn !== antigo) { return; }
       d.areas[idx] = nn;
-      d.itens.forEach((i) => { if (i.area === antigo) i.area = nn; }); // reatribui itens
+      d.itens.forEach((i) => { i.areas = (i.areas || []).map((a) => (a === antigo ? nn : a)); }); // reatribui itens
+      if (d.responsaveisArea?.[antigo]) { d.responsaveisArea[nn] = d.responsaveisArea[antigo]; delete d.responsaveisArea[antigo]; }
     });
   }
   function removerArea(idx: number) {
     const nome = m.areas[idx];
-    const usados = m.itens.filter((i) => i.area === nome).length;
-    if (usados > 0 && !confirm(`${usados} item(ns) usam a área "${nome}". Remover mesmo? Esses itens ficam SEM área.`)) return;
-    mut((d) => { d.areas.splice(idx, 1); d.itens.forEach((i) => { if (i.area === nome) i.area = undefined; }); });
+    const usados = m.itens.filter((i) => segItemAreas(i).includes(nome)).length;
+    if (usados > 0 && !confirm(`${usados} item(ns) usam a área "${nome}". Remover mesmo? A área sai desses itens.`)) return;
+    mut((d) => {
+      d.areas.splice(idx, 1);
+      d.itens.forEach((i) => { i.areas = (i.areas || []).filter((a) => a !== nome); });
+      if (d.responsaveisArea) delete d.responsaveisArea[nome];
+    });
+  }
+  function setLiderArea(area: string, pid: string) {
+    mut((d) => {
+      if (!d.responsaveisArea) d.responsaveisArea = {};
+      if (!pid) { delete d.responsaveisArea[area]; return; }
+      const nome = pessoasOrd.find((p) => p.id === pid)?.nome || "";
+      d.responsaveisArea[area] = { id: pid, nome };
+    });
+  }
+  function toggleItemArea(id: string, area: string) {
+    mut((d) => {
+      const i = d.itens.find((x) => x.id === id); if (!i) return;
+      const cur = i.areas || [];
+      i.areas = cur.includes(area) ? cur.filter((a) => a !== area) : [...cur, area];
+    });
   }
   function updItem(id: string, patch: Partial<SegurancaItem>) { mut((d) => { const i = d.itens.find((x) => x.id === id); if (i) Object.assign(i, patch); }); }
   function delItem(id: string) { mut((d) => { d.itens = d.itens.filter((x) => x.id !== id); }); }
@@ -109,7 +145,7 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
         </button>
         <div className="flex-1">
           <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">Editar checklist</h1>
-          <p className="text-xs text-gray-500 dark:text-gray-400">Um checklist só. Cada item é de uma área — a mesma pergunta em 2 áreas = duplicar.</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400">Uma pergunta pode valer pra várias áreas — marque as áreas no item. Cada área responde separado.</p>
         </div>
       </div>
 
@@ -139,6 +175,31 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
         </div>
       </div>
 
+      {/* Líder responsável por área — recebe as ações das não-conformidades */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+        <label className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 block mb-2">Líder de cada área</label>
+        <p className="text-[11px] text-gray-400 dark:text-gray-500 mb-2.5">Ao virar ação uma não-conformidade, a tarefa já vai pro líder da área (e aparece na Central de Avisos dele).</p>
+        <div className="space-y-2">
+          {m.areas.map((a) => {
+            const c = segAreaCor(a);
+            return (
+              <div key={a} className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-center">
+                <span className={`inline-flex items-center gap-1.5 text-[13px] font-medium px-2.5 py-1 rounded-full w-fit ${c.bg} ${c.fg}`}>
+                  <span className="w-2 h-2 rounded-full" style={{ background: c.dot }} />{a}
+                </span>
+                <select
+                  className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-gray-900 dark:text-gray-100"
+                  value={m.responsaveisArea?.[a]?.id || ""} onChange={(e) => setLiderArea(a, e.target.value)}>
+                  <option value="">— sem líder —</option>
+                  {pessoasOrd.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                </select>
+              </div>
+            );
+          })}
+          {m.areas.length === 0 && <p className="text-sm text-gray-400">Cadastre áreas acima primeiro.</p>}
+        </div>
+      </div>
+
       {/* Blocos + itens */}
       {blocos.map((b) => (
         <section key={b.id} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
@@ -150,19 +211,28 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
             {itensDoBloco(b.id).map((item) => (
               <div key={item.id} className="rounded-lg border border-gray-200 dark:border-gray-800 p-2.5 bg-gray-50/60 dark:bg-gray-800/30">
                 <textarea rows={2} className={inp} placeholder="Texto da pergunta…" value={item.texto} onChange={(e) => updItem(item.id, { texto: e.target.value })} />
+                {/* Áreas da pergunta (marque uma ou mais) */}
+                <div className="flex flex-wrap gap-1.5 mt-2">
+                  {m.areas.map((a) => {
+                    const on = (item.areas || []).includes(a);
+                    const c = segAreaCor(a);
+                    return (
+                      <button key={a} type="button" onClick={() => toggleItemArea(item.id, a)}
+                        className={`text-[12px] font-medium px-2.5 py-1 rounded-full border transition-colors inline-flex items-center gap-1.5 ${on ? `${c.bg} ${c.fg} border-transparent` : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-400 dark:text-gray-500"}`}>
+                        <span className="w-1.5 h-1.5 rounded-full" style={{ background: on ? c.dot : "currentColor" }} />{a}
+                      </button>
+                    );
+                  })}
+                  {(item.areas || []).length === 0 && <span className="text-[11px] text-rose-500 self-center">sem área</span>}
+                </div>
                 <div className="flex items-center gap-2 mt-2 flex-wrap">
-                  <select className="text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 text-gray-900 dark:text-gray-100"
-                    value={item.area || ""} onChange={(e) => updItem(item.id, { area: e.target.value || undefined })}>
-                    <option value="">— área —</option>
-                    {m.areas.map((a) => <option key={a} value={a}>{a}</option>)}
-                  </select>
                   <label className="text-xs text-gray-600 dark:text-gray-300 inline-flex items-center gap-1.5">
                     <input type="checkbox" checked={item.pontua} onChange={(e) => updItem(item.id, { pontua: e.target.checked })} /> conta na nota
                   </label>
                   <div className="flex-1" />
                   <button onClick={() => moveItem(item.id, -1)} className="text-gray-400 hover:text-gray-700 text-xs px-1" title="Subir">↑</button>
                   <button onClick={() => moveItem(item.id, 1)} className="text-gray-400 hover:text-gray-700 text-xs px-1" title="Descer">↓</button>
-                  <button onClick={() => dupItem(item)} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline px-1" title="Duplicar (pra outra área)">⧉ duplicar</button>
+                  <button onClick={() => dupItem(item)} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline px-1" title="Duplicar pergunta">⧉ duplicar</button>
                   <button onClick={() => delItem(item.id)} className="text-gray-300 hover:text-rose-500 text-sm px-1" title="Excluir item">🗑</button>
                 </div>
               </div>

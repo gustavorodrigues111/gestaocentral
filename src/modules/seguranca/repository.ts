@@ -11,7 +11,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type {
   SegurancaModelo, SegurancaAvaliacao, SegurancaResultadoItem, SegurancaItem, SegurancaFaixa,
 } from "../../core/types";
-import { segurancaFaixaDe } from "../../core/types";
+import { segurancaFaixaDe, segResParse } from "../../core/types";
 import { SEED_BLOCOS, SEED_ITENS, SEED_FAIXAS, SEED_AREAS } from "./seed";
 
 const COL_MODELOS = "segurancaModelos";
@@ -102,6 +102,7 @@ export async function criarAvaliacao(
     blocosSnapshot: modelo.blocos,
     faixasSnapshot: modelo.faixas,
     areasSnapshot: modelo.areas || [],
+    responsaveisAreaSnapshot: modelo.responsaveisArea || {},
     data: nowIso().slice(0, 10),
     avaliadorId: avaliador.id,
     avaliadorNome: avaliador.nome,
@@ -122,16 +123,16 @@ export async function limparResultado(avaliacaoId: string, key: string): Promise
   await updateDoc(doc(db, COL_AVALIACOES, avaliacaoId), { [`resultado.${key}`]: deleteField() });
 }
 
-// Cálculo puro da nota: % de conformes entre os itens PONTUÁVEIS respondidos.
-// A chave do `resultado` é o próprio itemId.
+// Cálculo puro da nota: % de conformes entre as respostas PONTUÁVEIS. Cada
+// resposta é de um (item×área) — a chave do `resultado` é segResKey(itemId,área).
 export function calcularScore(
   resultado: Record<string, SegurancaResultadoItem>,
   itens: SegurancaItem[],
 ): { score: number; conformes: number; naoConformes: number; respondidos: number } {
   const pontua = new Set(itens.filter((i) => i.pontua).map((i) => i.id));
   let conf = 0, nc = 0;
-  for (const [itemId, r] of Object.entries(resultado || {})) {
-    if (!pontua.has(itemId)) continue;
+  for (const [key, r] of Object.entries(resultado || {})) {
+    if (!pontua.has(segResParse(key).itemId)) continue;
     if (r.resposta === "conforme") conf++;
     else if (r.resposta === "nao_conforme") nc++;
   }

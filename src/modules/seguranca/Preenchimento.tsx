@@ -1,12 +1,13 @@
 // Preenchimento da avaliação. Renderiza DENTRO da área de conteúdo (shell
-// intacto). Checklist ÚNICO: cada item é de uma área e mostra seu chip. Filtro
-// por área ("Todas" + cada área). Grava item-a-item ao vivo (retoma de onde
-// parou). Responsivo (largura limitada no desktop, confortável no toque).
+// intacto). UMA pergunta pode valer pra VÁRIAS áreas — aparece uma vez e recebe
+// um Conforme/Não conforme POR ÁREA. Filtro por área ("Todas" + cada área);
+// filtrando, mostra só a resposta daquela área. Grava resposta-a-resposta ao
+// vivo (retoma de onde parou). Responsivo (mobile-first).
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "../../core/ui/Button";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import type { SegurancaAvaliacao, SegurancaFoto, SegurancaItem, SegurancaResposta } from "../../core/types";
-import { segAreaCor, segurancaFaixaDe } from "../../core/types";
+import type { SegurancaAvaliacao, SegurancaFoto, SegurancaItem, SegurancaResposta, SegurancaResultadoItem } from "../../core/types";
+import { segAreaCor, segurancaFaixaDe, segItemAreas, segResKey, segResParse } from "../../core/types";
 import {
   ouvirAvaliacao, salvarResultado, limparResultado, calcularScore, finalizarAvaliacao,
 } from "./repository";
@@ -34,26 +35,24 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
     const p = (n: number) => String(n).padStart(2, "0");
     return `${dmy(av.data)} ${p(d.getHours())}h${p(d.getMinutes())}`;
   }, [av]);
-  const itens = av?.itensSnapshot || [];
+  const itens = useMemo(() => av?.itensSnapshot || [], [av]);
   const blocos = (av?.blocosSnapshot || []).slice().sort((a, b) => a.ordem - b.ordem);
   const readOnly = av?.status === "finalizada";
-  // Áreas: do snapshot da avaliação; fallback deriva dos itens (retrocompat).
+  // Áreas: do snapshot da avaliação; fallback deriva das áreas dos itens.
   const areas = useMemo(() => (
-    av?.areasSnapshot?.length ? av.areasSnapshot : (Array.from(new Set(itens.map((i) => i.area).filter(Boolean))) as string[])
+    av?.areasSnapshot?.length ? av.areasSnapshot : Array.from(new Set(itens.flatMap(segItemAreas)))
   ), [av?.areasSnapshot, itens]);
 
-  const itemArea = useMemo(() => new Map(itens.map((i) => [i.id, i.area])), [itens]);
-
-  // Não-conformes por área (badge do chip).
+  // Não-conformes por área (badge do chip) — lê a área da chave do resultado.
   const ncPorArea = useMemo(() => {
     const m = {} as Record<string, number>;
-    for (const [itemId, r] of Object.entries(av?.resultado || {})) {
+    for (const [key, r] of Object.entries(av?.resultado || {})) {
       if (r.resposta !== "nao_conforme") continue;
-      const a = itemArea.get(itemId);
+      const a = segResParse(key).area;
       if (a) m[a] = (m[a] || 0) + 1;
     }
     return m;
-  }, [av?.resultado, itemArea]);
+  }, [av?.resultado]);
 
   const resumo = useMemo(() => calcularScore(av?.resultado || {}, itens), [av?.resultado, itens]);
   const faixa = segurancaFaixaDe(resumo.score, av?.faixasSnapshot || []);
@@ -61,18 +60,19 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
   // Itens visíveis (filtro por área) agrupados por bloco.
   const porBloco = useMemo(() => {
     const vis = itens
-      .filter((i) => filtro === "todas" || i.area === filtro)
+      .filter((i) => filtro === "todas" || segItemAreas(i).includes(filtro))
       .sort((a, b) => a.ordem - b.ordem);
     return blocos
       .map((b) => ({ bloco: b, itens: vis.filter((i) => i.blocoId === b.id) }))
       .filter((g) => g.itens.length > 0);
   }, [itens, blocos, filtro]);
 
-  function marcar(item: SegurancaItem, resposta: SegurancaResposta) {
+  function marcar(item: SegurancaItem, area: string | undefined, resposta: SegurancaResposta) {
     if (!av || readOnly) return;
-    const cur = av.resultado?.[item.id];
-    if (cur?.resposta === resposta) { void limparResultado(av.id, item.id); return; }
-    void salvarResultado(av.id, item.id, {
+    const key = segResKey(item.id, area);
+    const cur = av.resultado?.[key];
+    if (cur?.resposta === resposta) { void limparResultado(av.id, key); return; }
+    void salvarResultado(av.id, key, {
       resposta,
       observacao: cur?.observacao,
       fotos: cur?.fotos,
@@ -81,6 +81,11 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
       marcadoPorId: autor.id,
       marcadoPorNome: autor.nome,
     });
+  }
+  function patchResultado(key: string, patch: Partial<SegurancaResultadoItem>) {
+    if (!av) return;
+    const cur = av.resultado?.[key];
+    if (cur) void salvarResultado(av.id, key, { ...cur, ...patch });
   }
 
   async function finalizar() {
@@ -141,19 +146,24 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
         <div key={bloco.id}>
           <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2 px-0.5">{bloco.nome}</div>
           <div className="space-y-2">
-            {its.map((item) => (
-              <ItemCard
-                key={item.id}
-                item={item}
-                rootFolderId={rootFolderId}
-                pastaLabel={pastaLabel}
-                readOnly={readOnly}
-                resultado={av.resultado?.[item.id]}
-                onMarcar={(resp) => marcar(item, resp)}
-                onObs={(txt) => { const cur = av.resultado?.[item.id]; if (cur) void salvarResultado(av.id, item.id, { ...cur, observacao: txt || undefined }); }}
-                onFotos={(fotos) => { const cur = av.resultado?.[item.id]; if (cur) void salvarResultado(av.id, item.id, { ...cur, fotos: fotos.length ? fotos : undefined }); }}
-              />
-            ))}
+            {its.map((item) => {
+              const todas = segItemAreas(item);
+              const areasToShow: (string | undefined)[] = filtro === "todas" ? (todas.length ? todas : [undefined]) : [filtro];
+              return (
+                <ItemCard
+                  key={item.id}
+                  item={item}
+                  areasToShow={areasToShow}
+                  rootFolderId={rootFolderId}
+                  pastaLabel={pastaLabel}
+                  readOnly={readOnly}
+                  resultadoDe={(area) => av.resultado?.[segResKey(item.id, area)]}
+                  onMarcar={(area, resp) => marcar(item, area, resp)}
+                  onObs={(area, txt) => patchResultado(segResKey(item.id, area), { observacao: txt || undefined })}
+                  onFotos={(area, fotos) => patchResultado(segResKey(item.id, area), { fotos: fotos.length ? fotos : undefined })}
+                />
+              );
+            })}
           </div>
         </div>
       ))}
@@ -172,7 +182,7 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
 
 // ── Chip de área ──
 function AreaChip({ area }: { area?: string }) {
-  if (!area) return <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-400">sem área</span>;
+  if (!area) return null;
   const c = segAreaCor(area);
   return (
     <span className={`inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${c.bg} ${c.fg}`}>
@@ -181,13 +191,53 @@ function AreaChip({ area }: { area?: string }) {
   );
 }
 
-// ── Card de um item ──
-function ItemCard({ item, rootFolderId, pastaLabel, readOnly, resultado, onMarcar, onObs, onFotos }: {
+// ── Card de uma pergunta (com 1 linha de resposta por área) ──
+function ItemCard({ item, areasToShow, rootFolderId, pastaLabel, readOnly, resultadoDe, onMarcar, onObs, onFotos }: {
   item: SegurancaItem;
+  areasToShow: (string | undefined)[];
   rootFolderId?: string;
   pastaLabel: string;
   readOnly: boolean;
-  resultado?: { resposta: SegurancaResposta; observacao?: string; fotos?: SegurancaFoto[] };
+  resultadoDe: (area: string | undefined) => SegurancaResultadoItem | undefined;
+  onMarcar: (area: string | undefined, r: SegurancaResposta) => void;
+  onObs: (area: string | undefined, txt: string) => void;
+  onFotos: (area: string | undefined, fotos: SegurancaFoto[]) => void;
+}) {
+  const algumNc = areasToShow.some((a) => resultadoDe(a)?.resposta === "nao_conforme");
+  return (
+    <div className={`rounded-xl border p-3.5 ${algumNc ? "border-rose-300 dark:border-rose-800 bg-rose-50/50 dark:bg-rose-950/20" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
+      <div className="text-[15px] leading-snug text-gray-900 dark:text-gray-100 mb-3">
+        {item.texto}
+        {!item.pontua && <span className="text-gray-400 text-[12px]"> (sem pontuação)</span>}
+      </div>
+      <div className="space-y-3">
+        {areasToShow.map((area) => (
+          <AreaAnswer
+            key={area || "_"}
+            area={area}
+            multi={areasToShow.length > 1}
+            readOnly={readOnly}
+            rootFolderId={rootFolderId}
+            pastaLabel={pastaLabel}
+            resultado={resultadoDe(area)}
+            onMarcar={(r) => onMarcar(area, r)}
+            onObs={(txt) => onObs(area, txt)}
+            onFotos={(fotos) => onFotos(area, fotos)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Uma resposta (Conforme/Não conforme) de uma área ──
+function AreaAnswer({ area, multi, readOnly, rootFolderId, pastaLabel, resultado, onMarcar, onObs, onFotos }: {
+  area?: string;
+  multi: boolean;
+  readOnly: boolean;
+  rootFolderId?: string;
+  pastaLabel: string;
+  resultado?: SegurancaResultadoItem;
   onMarcar: (r: SegurancaResposta) => void;
   onObs: (txt: string) => void;
   onFotos: (fotos: SegurancaFoto[]) => void;
@@ -197,15 +247,11 @@ function ItemCard({ item, rootFolderId, pastaLabel, readOnly, resultado, onMarca
   const [obs, setObs] = useState(resultado?.observacao || "");
   useEffect(() => { setObs(resultado?.observacao || ""); }, [resultado?.observacao]);
 
-  const btnBase = "py-2.5 rounded-lg text-[13.5px] font-semibold flex items-center justify-center gap-1.5 border transition-colors disabled:opacity-60";
+  const btnBase = "py-2 rounded-lg text-[13.5px] font-semibold flex items-center justify-center gap-1.5 border transition-colors disabled:opacity-60";
 
   return (
-    <div className={`rounded-xl border p-3.5 ${nc ? "border-rose-300 dark:border-rose-800 bg-rose-50/50 dark:bg-rose-950/20" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
-      <div className="mb-2"><AreaChip area={item.area} /></div>
-      <div className="text-[15px] leading-snug text-gray-900 dark:text-gray-100 mb-3">
-        {item.texto}
-        {!item.pontua && <span className="text-gray-400 text-[12px]"> (sem pontuação)</span>}
-      </div>
+    <div className={multi ? "rounded-lg border border-gray-200 dark:border-gray-800 p-2.5 bg-gray-50/50 dark:bg-gray-800/20" : ""}>
+      {multi && area && <div className="mb-2"><AreaChip area={area} /></div>}
       <div className="grid grid-cols-2 gap-3">
         <button type="button" disabled={readOnly} onClick={() => onMarcar("conforme")}
           className={`${btnBase} ${resp === "conforme" ? "bg-emerald-600 border-emerald-600 text-white" : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-300 hover:border-emerald-400"}`}>

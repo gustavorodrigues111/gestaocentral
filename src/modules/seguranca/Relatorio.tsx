@@ -1,7 +1,9 @@
-// Relatório de uma avaliação FINALIZADA (Fase 2) + Plano de Ação por
-// inconformidade (Fase 3). Mostra nota/classificação, gráficos de não-conformes
-// por bloco e por área, e a lista de inconformidades — cada uma pode virar/
-// acompanhar uma Ação do módulo Plano de Ação (coleção `acoes`).
+// Relatório de uma avaliação FINALIZADA + geração de ações por inconformidade.
+// Mostra nota/classificação, gráficos de não-conformes por bloco e por área, e a
+// lista de inconformidades (por item×área). Cada não-conformidade vira uma AÇÃO
+// (tarefa operacional) atribuída AO LÍDER DAQUELA ÁREA, com prazo = hoje, num
+// clique. A partir daí a Segurança só ACOMPANHA o status (quem resolve é o líder,
+// nas Tarefas dele — a ação já cai na Central de Avisos dele).
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -9,18 +11,16 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import type {
-  Tarefa, TarefaStatus, Pessoa,
+  Tarefa, TarefaStatus,
   SegurancaAvaliacao, SegurancaResultadoItem,
 } from "../../core/types";
-import { TAREFA_STATUS_LABEL, segAreaCor, segurancaFaixaDe } from "../../core/types";
+import { TAREFA_STATUS_LABEL, segAreaCor, segurancaFaixaDe, segResParse } from "../../core/types";
 import { ouvirAvaliacao, salvarResultado, calcularScore, reabrirAvaliacao } from "./repository";
-import { criarTarefaOperacional, atualizarTarefa } from "../tarefas/repository";
+import { criarTarefaOperacional } from "../tarefas/repository";
 import { SegurancaFotos } from "./SegurancaFotos";
-import { VirarAcaoModal } from "../planoDeAcao/VirarAcaoModal";
-import { DatePickerBR } from "../prazos/campos";
 
 const dmy = (ymd?: string | null) => (ymd || "").split("-").reverse().join("/");
-const brToYmd = (br: string) => { const m = br.match(/^(\d{2})\/(\d{2})\/(\d{4})$/); return m ? `${m[3]}-${m[2]}-${m[1]}` : ""; };
+const hojeYmd = () => new Date().toISOString().slice(0, 10);
 
 const STATUS_PILL: Record<TarefaStatus, string> = {
   a_fazer: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
@@ -29,8 +29,9 @@ const STATUS_PILL: Record<TarefaStatus, string> = {
   cancelada: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300",
 };
 
-// Prefixo do refId que amarra uma ação a esta avaliação: `${av.id}:${itemId}`.
-const refItemId = (avId: string, refId?: string | null) =>
+// Sufixo do refId que amarra uma ação a esta avaliação: `${av.id}:${resKey}`,
+// onde resKey = segResKey(itemId, área) = `itemId::área`.
+const refKeyDe = (avId: string, refId?: string | null) =>
   (refId || "").startsWith(avId + ":") ? (refId as string).slice(avId.length + 1) : null;
 
 export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
@@ -43,8 +44,6 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
   const isMaster = !!me?.isMaster;
   const [av, setAv] = useState<SegurancaAvaliacao | null>(null);
   const [acoes, setAcoes] = useState<Tarefa[]>([]);
-  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
-  const [criarPara, setCriarPara] = useState<string | null>(null); // itemId
   const [gerando, setGerando] = useState(false);
   const [exportando, setExportando] = useState(false);
 
@@ -53,35 +52,27 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
   const rid = av?.restaurantId || "";
   const { can } = useCanAcao(rid);
   const podePreencher = isMaster || can("seguranca", "preencher");
-  const podeResolver = isMaster || can("seguranca", "resolverAcoes");
-  const podeTransferir = isMaster || can("seguranca", "transferirResponsavel");
+  const podeGerar = isMaster || can("seguranca", "resolverAcoes");
 
   // Ações desta avaliação (filtro client-side por origem + refId).
   useEffect(() => {
     if (!rid) return;
     return onSnapshot(query(collection(db, "tarefas"), where("origem", "==", "avaliacao_sanitaria")), (snap) => {
       const list = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Tarefa)
-        .filter((a) => !a.deletadoEm && refItemId(avaliacaoId, a.origemRefId) != null);
+        .filter((a) => !a.deletadoEm && refKeyDe(avaliacaoId, a.origemRefId) != null);
       setAcoes(list);
     }, () => setAcoes([]));
   }, [rid, avaliacaoId]);
-
-  // Pessoas do restaurante (para transferir responsável).
-  useEffect(() => {
-    if (!rid) return;
-    return onSnapshot(query(collection(db, "pessoas"), where("restaurantIds", "array-contains", rid)),
-      (snap) => setPessoas(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Pessoa).filter((p) => p.ativa !== false)),
-      () => setPessoas([]));
-  }, [rid]);
 
   const itens = useMemo(() => av?.itensSnapshot || [], [av]);
   const blocos = useMemo(() => (av?.blocosSnapshot || []).slice().sort((a, b) => a.ordem - b.ordem), [av]);
   const faixas = av?.faixasSnapshot || [];
   const areasLista = useMemo(() => (
-    av?.areasSnapshot?.length ? av.areasSnapshot : (Array.from(new Set(itens.map((i) => i.area).filter(Boolean))) as string[])
+    av?.areasSnapshot?.length ? av.areasSnapshot : Array.from(new Set(itens.flatMap((i) => i.areas || (i.area ? [i.area] : []))))
   ), [av?.areasSnapshot, itens]);
   const itemById = useMemo(() => new Map(itens.map((i) => [i.id, i])), [itens]);
   const blocoById = useMemo(() => new Map(blocos.map((b) => [b.id, b])), [blocos]);
+  const responsaveisArea = av?.responsaveisAreaSnapshot || {};
 
   // Nota: usa a persistida se finalizada; senão recompute.
   const calc = useMemo(() => calcularScore(av?.resultado || {}, itens), [av?.resultado, itens]);
@@ -90,24 +81,25 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
   const faixaLabel = av?.status === "finalizada" && av.faixaLabel ? av.faixaLabel : faixa?.label || "—";
   const cor = faixa?.cor || "#4f46e5";
 
-  // Inconformidades (itens não-conformes) ordenadas por área e bloco.
+  // Inconformidades (respostas não-conformes) ordenadas por área e bloco.
   const inconformidades = useMemo(() => {
-    const out: Array<{ itemId: string; r: SegurancaResultadoItem; area?: string; blocoNome: string; texto: string }> = [];
-    for (const [itemId, r] of Object.entries(av?.resultado || {})) {
+    const out: Array<{ key: string; itemId: string; r: SegurancaResultadoItem; area?: string; blocoNome: string; texto: string }> = [];
+    for (const [key, r] of Object.entries(av?.resultado || {})) {
       if (r.resposta !== "nao_conforme") continue;
+      const { itemId, area } = segResParse(key);
       const it = itemById.get(itemId);
-      out.push({ itemId, r, area: it?.area, blocoNome: blocoById.get(it?.blocoId || "")?.nome || "—", texto: it?.texto || "(item removido)" });
+      out.push({ key, itemId, r, area, blocoNome: blocoById.get(it?.blocoId || "")?.nome || "—", texto: it?.texto || "(item removido)" });
     }
     const areaOrder = (a?: string) => (a ? areasLista.indexOf(a) : 99);
     return out.sort((a, b) => areaOrder(a.area) - areaOrder(b.area) || a.blocoNome.localeCompare(b.blocoNome) || a.texto.localeCompare(b.texto));
-  }, [av?.resultado, itemById, blocoById]);
+  }, [av?.resultado, itemById, blocoById, areasLista]);
 
   // Não-conformes PONTUÁVEIS por bloco.
   const ncPorBloco = useMemo(() => {
     const m = new Map<string, number>();
-    for (const [itemId, r] of Object.entries(av?.resultado || {})) {
+    for (const [key, r] of Object.entries(av?.resultado || {})) {
       if (r.resposta !== "nao_conforme") continue;
-      const it = itemById.get(itemId);
+      const it = itemById.get(segResParse(key).itemId);
       if (!it || !it.pontua) continue;
       m.set(it.blocoId, (m.get(it.blocoId) || 0) + 1);
     }
@@ -117,21 +109,21 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
   // Não-conformes por área.
   const ncPorArea = useMemo(() => {
     const m = {} as Record<string, number>;
-    for (const [itemId, r] of Object.entries(av?.resultado || {})) {
+    for (const [key, r] of Object.entries(av?.resultado || {})) {
       if (r.resposta !== "nao_conforme") continue;
-      const a = itemById.get(itemId)?.area;
+      const a = segResParse(key).area;
       if (a) m[a] = (m[a] || 0) + 1;
     }
     return areasLista.map((a) => ({ area: a, n: m[a] || 0 })).filter((x) => x.n > 0);
-  }, [av?.resultado, itemById]);
+  }, [av?.resultado, areasLista]);
 
-  const acaoPorItem = useMemo(() => {
+  const acaoPorKey = useMemo(() => {
     const m = new Map<string, Tarefa>();
-    for (const a of acoes) { const k = refItemId(avaliacaoId, a.origemRefId); if (k) m.set(k, a); }
+    for (const a of acoes) { const k = refKeyDe(avaliacaoId, a.origemRefId); if (k) m.set(k, a); }
     return m;
   }, [acoes, avaliacaoId]);
 
-  const semAcao = useMemo(() => inconformidades.filter((i) => !acaoPorItem.has(i.itemId)), [inconformidades, acaoPorItem]);
+  const semAcao = useMemo(() => inconformidades.filter((i) => !acaoPorKey.has(i.key)), [inconformidades, acaoPorKey]);
 
   async function reabrir() {
     if (!av) return;
@@ -140,23 +132,38 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
     onVerPreenchimento();
   }
 
-  // Cria uma TAREFA operacional DIRETO (sem modal) e amarra o id ao resultado.
-  async function criarAcaoDireta(itemId: string, texto: string, obs?: string) {
-    if (!av) return;
+  // Cria a AÇÃO já atribuída ao líder da área, prazo = hoje. Sem líder → erro.
+  async function criarAcao(inc: { key: string; area?: string; texto: string; r: SegurancaResultadoItem }): Promise<boolean> {
+    if (!av) return false;
+    const lider = inc.area ? responsaveisArea[inc.area] : undefined;
+    if (!lider?.id) {
+      alert(`A área "${inc.area || "—"}" não tem líder definido. Defina o líder no ⚙ Checklist antes de gerar a ação.`);
+      return false;
+    }
     const id = await criarTarefaOperacional({
-      rid, titulo: texto, descricao: obs || "",
-      origem: "avaliacao_sanitaria", origemRefId: `${av.id}:${itemId}`, origemRefLabel: texto,
-      prioridade: "normal", criadoPor: autor.id, criadoPorNome: autor.nome,
+      rid, titulo: inc.texto, descricao: inc.r.observacao || "",
+      origem: "avaliacao_sanitaria", origemRefId: `${av.id}:${inc.key}`, origemRefLabel: inc.texto,
+      prioridade: "normal", prazo: hojeYmd(),
+      responsavelId: lider.id, responsavelNome: lider.nome,
+      criadoPor: autor.id, criadoPorNome: autor.nome,
     });
-    const cur = av.resultado?.[itemId];
-    if (cur) await salvarResultado(av.id, itemId, { ...cur, acaoId: id });
+    const cur = av.resultado?.[inc.key];
+    if (cur) await salvarResultado(av.id, inc.key, { ...cur, acaoId: id });
+    return true;
   }
 
   async function gerarTodas() {
     if (!av || semAcao.length === 0) return;
     setGerando(true);
-    try { for (const i of semAcao) await criarAcaoDireta(i.itemId, i.texto, i.r.observacao); }
-    finally { setGerando(false); }
+    let semLider = 0;
+    try {
+      for (const i of semAcao) {
+        const lider = i.area ? responsaveisArea[i.area] : undefined;
+        if (!lider?.id) { semLider++; continue; }
+        await criarAcao(i);
+      }
+    } finally { setGerando(false); }
+    if (semLider > 0) alert(`${semLider} inconformidade(s) ficaram sem ação: a área não tem líder definido. Configure no ⚙ Checklist.`);
   }
 
   async function exportarPdf() {
@@ -263,13 +270,13 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
         </div>
       </div>
 
-      {/* Inconformidades + plano de ação */}
+      {/* Inconformidades + geração de ações */}
       <section>
         <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
           <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">
             Inconformidades ({inconformidades.length})
           </div>
-          {podeResolver && semAcao.length > 0 && (
+          {podeGerar && semAcao.length > 0 && (
             <Button size="sm" onClick={() => void gerarTodas()} disabled={gerando}>
               {gerando ? "Gerando…" : `🎯 Gerar ações (${semAcao.length})`}
             </Button>
@@ -277,117 +284,63 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
         </div>
         {inconformidades.length === 0 && <p className="text-sm text-gray-400 py-8 text-center">Nenhuma inconformidade nesta avaliação. 🎉</p>}
         <div className="space-y-2.5">
-          {inconformidades.map((i) => (
-            <div key={i.itemId} className="rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/40 dark:bg-rose-950/20 p-3.5">
-              <div className="flex items-start gap-2 flex-wrap">
-                <AreaChip area={i.area} />
-                <span className="text-[11px] text-gray-400 dark:text-gray-500">{i.blocoNome}</span>
-              </div>
-              <div className="text-[15px] leading-snug text-gray-900 dark:text-gray-100 mt-1.5">{i.texto}</div>
-              {i.r.observacao && <div className="text-[13px] text-gray-600 dark:text-gray-300 mt-1 whitespace-pre-wrap">{i.r.observacao}</div>}
-              {(i.r.fotos?.length || 0) > 0 && (
-                <div className="mt-2">
-                  <SegurancaFotos disabled fotos={i.r.fotos || []} pastaLabel="" onChange={() => {}} />
+          {inconformidades.map((i) => {
+            const lider = i.area ? responsaveisArea[i.area] : undefined;
+            return (
+              <div key={i.key} className="rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/40 dark:bg-rose-950/20 p-3.5">
+                <div className="flex items-start gap-2 flex-wrap">
+                  <AreaChip area={i.area} />
+                  <span className="text-[11px] text-gray-400 dark:text-gray-500">{i.blocoNome}</span>
                 </div>
-              )}
-              <div className="mt-3 pt-3 border-t border-rose-200/60 dark:border-rose-900/40">
-                {acaoPorItem.has(i.itemId)
-                  ? <AcaoAcompanhamento acao={acaoPorItem.get(i.itemId)!} autor={autor} pessoas={pessoas} podeResolver={podeResolver} podeTransferir={podeTransferir} />
-                  : podeResolver
-                    ? <button type="button" onClick={() => setCriarPara(i.itemId)} className="text-[13px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline">🎯 Virar ação</button>
-                    : <span className="text-[12px] text-gray-400">Sem ação vinculada.</span>}
+                <div className="text-[15px] leading-snug text-gray-900 dark:text-gray-100 mt-1.5">{i.texto}</div>
+                {i.r.observacao && <div className="text-[13px] text-gray-600 dark:text-gray-300 mt-1 whitespace-pre-wrap">{i.r.observacao}</div>}
+                {(i.r.fotos?.length || 0) > 0 && (
+                  <div className="mt-2">
+                    <SegurancaFotos disabled fotos={i.r.fotos || []} pastaLabel="" onChange={() => {}} />
+                  </div>
+                )}
+                <div className="mt-3 pt-3 border-t border-rose-200/60 dark:border-rose-900/40">
+                  {acaoPorKey.has(i.key)
+                    ? <AcaoStatus acao={acaoPorKey.get(i.key)!} />
+                    : podeGerar
+                      ? <button type="button" onClick={() => void criarAcao(i)}
+                          className="text-[13px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+                          🎯 Virar ação{lider ? ` → ${lider.nome}` : ""}
+                        </button>
+                      : <span className="text-[12px] text-gray-400">Sem ação vinculada.</span>}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </section>
-
-      {criarPara && (() => {
-        const inc = inconformidades.find((x) => x.itemId === criarPara);
-        if (!inc) return null;
-        return (
-          <VirarAcaoModal
-            rid={rid} meId={autor.id} meNome={autor.nome}
-            origem={{ tipo: "avaliacao_sanitaria", refId: `${av.id}:${inc.itemId}`, label: inc.texto }}
-            tituloInicial={inc.texto} descricaoInicial={inc.r.observacao}
-            destino="tarefa"
-            onClose={() => setCriarPara(null)}
-            onCriada={async (acao) => {
-              const cur = av.resultado?.[inc.itemId];
-              if (cur) await salvarResultado(av.id, inc.itemId, { ...cur, acaoId: acao.id });
-            }}
-          />
-        );
-      })()}
     </div>
   );
 }
 
-// ── Acompanhamento de uma ação vinculada ──────────────────────────────────────
-function AcaoAcompanhamento({ acao, autor, pessoas, podeResolver, podeTransferir }: {
-  acao: Tarefa;
-  autor: { id: string; nome: string };
-  pessoas: Pessoa[];
-  podeResolver: boolean;
-  podeTransferir: boolean;
-}) {
-  const [prazoOpen, setPrazoOpen] = useState(false);
-  const [prazoBr, setPrazoBr] = useState(dmy(acao.prazo));
-  const [transfOpen, setTransfOpen] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const pessoasOrd = useMemo(() => [...pessoas].sort((a, b) => a.nome.localeCompare(b.nome)), [pessoas]);
-
-  async function patch(p: Partial<Tarefa>, logAcao: "status_mudou" | "responsavel_mudou" | "editada", texto: string) {
-    setBusy(true);
-    try { await atualizarTarefa(acao.id, p, autor, { acao: logAcao, detalhe: texto }); }
-    finally { setBusy(false); }
-  }
-
-  const resolver = () => patch({ status: "concluida" }, "status_mudou", "Concluída");
-  const salvarPrazo = () => {
-    const ymd = brToYmd(prazoBr);
-    if (!ymd) { alert("Data inválida (use dd/mm/aaaa)."); return; }
-    void patch({ prazo: ymd }, "editada", `Novo prazo: ${dmy(ymd)}`).then(() => setPrazoOpen(false));
-  };
-  const transferir = (pid: string) => {
-    const nome = pessoasOrd.find((p) => p.id === pid)?.nome || "";
-    void patch({ responsavelId: pid || "", responsavelNome: nome }, "responsavel_mudou", `Responsável: ${nome || "—"}`).then(() => setTransfOpen(false));
-  };
-  const solicitar = () => {
-    const t = prompt("Descreva a solicitação (compra, serviço, etc.):");
-    if (!t?.trim()) return;
-    void patch({ status: "em_andamento" }, "status_mudou", `Solicitação: ${t.trim()}`);
-  };
-
+// ── Acompanhamento de uma ação vinculada (SÓ-LEITURA) ─────────────────────────
+// Quem resolve é o líder, nas Tarefas dele. Aqui só mostramos o status.
+function AcaoStatus({ acao }: { acao: Tarefa }) {
   const concluida = acao.status === "concluida";
-
+  const resolvLog = concluida ? [...(acao.log || [])].reverse().find((l) => l.acao === "status_mudou") : null;
+  const ultimoComentario = (acao.comentarios || []).slice(-1)[0];
   return (
-    <div className="space-y-2">
+    <div className="space-y-1.5">
       <div className="flex items-center gap-2 flex-wrap text-[12px]">
         <span className={`px-2 py-0.5 rounded-full font-semibold ${STATUS_PILL[acao.status]}`}>{TAREFA_STATUS_LABEL[acao.status]}</span>
         <span className="text-gray-500 dark:text-gray-400">{acao.responsavelNome || "sem responsável"}</span>
         {acao.prazo && <span className="text-gray-500 dark:text-gray-400 tabular-nums">📅 {dmy(acao.prazo)}</span>}
       </div>
-      {!concluida && (podeResolver || podeTransferir) && (
-        <div className="flex items-center gap-1.5 flex-wrap">
-          {podeResolver && <button type="button" disabled={busy} onClick={() => void resolver()} className="text-[12px] px-2 py-1 rounded-md border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/30">✓ Resolver</button>}
-          {podeResolver && <button type="button" disabled={busy} onClick={() => setPrazoOpen((o) => !o)} className="text-[12px] px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">📅 Novo prazo</button>}
-          {podeTransferir && <button type="button" disabled={busy} onClick={() => setTransfOpen((o) => !o)} className="text-[12px] px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">↔ Transferir</button>}
-          {podeResolver && <button type="button" disabled={busy} onClick={solicitar} className="text-[12px] px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">🛒 Solicitação</button>}
+      {concluida && resolvLog && (
+        <div className="text-[12px] text-emerald-700 dark:text-emerald-400">
+          ✓ Resolvida em {dmy((resolvLog.em || "").slice(0, 10))}{resolvLog.autorNome ? ` por ${resolvLog.autorNome}` : ""}
         </div>
       )}
-      {prazoOpen && !concluida && (
-        <div className="flex items-center gap-2">
-          <div className="w-44"><DatePickerBR value={prazoBr} onChange={setPrazoBr} /></div>
-          <Button size="sm" onClick={salvarPrazo} disabled={busy}>Salvar</Button>
+      {ultimoComentario && (
+        <div className="text-[12px] text-gray-600 dark:text-gray-300">
+          <span className="text-gray-400">“</span>{ultimoComentario.texto}<span className="text-gray-400">”</span>
+          <span className="text-gray-400"> — {ultimoComentario.autorNome}</span>
         </div>
-      )}
-      {transfOpen && !concluida && (
-        <select autoFocus value={acao.responsavelId || ""} onChange={(e) => transferir(e.target.value)} disabled={busy}
-          className="h-8 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-[13px] dark:text-gray-100 max-w-xs">
-          <option value="">— sem responsável —</option>
-          {pessoasOrd.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
-        </select>
       )}
     </div>
   );

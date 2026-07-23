@@ -230,19 +230,39 @@ export type SegurancaItem = {
   id: string;
   texto: string;
   blocoId: string;
-  area?: string;         // área (cadastrável por template) a que o item pertence.
-                         // Checklist é ÚNICO; cada item é de UMA área; a mesma
-                         // pergunta em 2 áreas = 2 itens. undefined = sem área.
+  areas?: string[];      // áreas (cadastráveis) a que a pergunta se aplica. UMA
+                         // pergunta pode valer pra várias áreas (ex.: "alimentos
+                         // e bebidas fora do prazo" → Cozinha+Bar); cada (item×área)
+                         // recebe sua própria resposta Conforme/Não conforme.
+  area?: string;         // LEGADO: itens antigos tinham 1 área só. Lido via
+                         // segItemAreas() (retrocompat); novos itens usam `areas`.
   ordem: number;
   pontua: boolean;       // false = informativo, não entra na nota
   descricao?: string;    // "o que observar" (guia opcional)
 };
+
+// Áreas efetivas de um item (retrocompat: `area` única vira lista de 1).
+export function segItemAreas(it: { areas?: string[]; area?: string }): string[] {
+  if (Array.isArray(it.areas) && it.areas.length) return it.areas;
+  return it.area ? [it.area] : [];
+}
+
+// Chave do resultado por (item × área). Item sem área → só o itemId (legado).
+export const segResKey = (itemId: string, area?: string | null): string =>
+  area ? `${itemId}::${area}` : itemId;
+export function segResParse(key: string): { itemId: string; area?: string } {
+  const i = key.indexOf("::");
+  return i === -1 ? { itemId: key } : { itemId: key.slice(0, i), area: key.slice(i + 2) };
+}
 
 export type SegurancaModelo = {
   id: string;
   restaurantId: string;
   nome: string;
   areas: string[];       // áreas cadastráveis deste template
+  // Líder responsável por cada área. Ao "virar ação" uma não-conformidade, a
+  // tarefa já nasce atribuída ao líder da área respectiva.
+  responsaveisArea?: Record<string, { id: string; nome: string }>;
   blocos: SegurancaBloco[];
   itens: SegurancaItem[];
   faixas: SegurancaFaixa[];
@@ -255,8 +275,9 @@ export type SegurancaModelo = {
 // Uma foto de não-conformidade, armazenada no Google Drive (subpasta por data).
 export type SegurancaFoto = { driveId: string; nome: string; webViewLink?: string };
 
-// Resultado de UM item. Chave no mapa `resultado` = o próprio itemId (cada item
-// já é de uma área única, então não precisa compor com a área).
+// Resultado de UMA resposta. Chave no mapa `resultado` = segResKey(itemId, área)
+// = `itemId::área` (ou só `itemId` p/ item sem área / legado). Como uma pergunta
+// pode ter várias áreas, cada (item×área) tem seu próprio resultado.
 export type SegurancaResultadoItem = {
   resposta: SegurancaResposta;
   observacao?: string;
@@ -285,6 +306,7 @@ export type SegurancaAvaliacao = {
   blocosSnapshot?: SegurancaBloco[];
   faixasSnapshot?: SegurancaFaixa[];
   areasSnapshot?: string[];
+  responsaveisAreaSnapshot?: Record<string, { id: string; nome: string }>;
   data: string;                       // YYYY-MM-DD
   avaliadorId?: string | null;
   avaliadorNome?: string | null;
