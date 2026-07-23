@@ -12,6 +12,9 @@ const SEED: Seed[] = [
   { modulo: "geral", resp: "gustavo", titulo: "Criar os templates válidos na Meta (aviso_fechamento com variáveis NUMERADAS, aviso_geral, lembrete_prazo) e excluir os rejeitados (acesso_inicial, novo_fechamento_de_caixa)", descricao: "As credenciais do WhatsApp Cloud API já estão na Vercel; foi só conteúdo/categoria." },
   { modulo: "geral", resp: "ia", titulo: "Padronizar layout/botões dos módulos no core/ui (design system) — executar no gatilho 'bora unificação', piloto Análise de Ponto" },
 
+  // ── Drive / conta central ──
+  { modulo: "recebimento", resp: "gustavo", titulo: "Configurar a CONTA CENTRAL do Drive na Vercel (GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_DRIVE_REFRESH_TOKEN) — sem isso os uploads caem no login Google de cada usuário e batem no bloqueio 'app só pode ser usado dentro da organização'", descricao: "Código já usa driveShared (central quando configurada). Refresh token via OAuth Playground com um client Web + a conta que dona da pasta. Vale pra Fechamento e Recebimento." },
+
   // ── Segurança Sanitária ──
   { modulo: "seguranca", resp: "gustavo", titulo: "Criar o template da lista-base, atribuir áreas dos itens e apagar as avaliações de teste antigas" },
 
