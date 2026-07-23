@@ -43,6 +43,7 @@ export function ReunioesPage() {
   const [filtroDono, setFiltroDono] = useState<"minhas" | "todas">("todas");
   const [editing, setEditing] = useState<Reuniao | "new" | null>(null);
   const [detalhe, setDetalhe] = useState<Reuniao | null>(null);
+  const [pendingDetalheId, setPendingDetalheId] = useState<string | null>(null);
   const [mostrarHistorico, setMostrarHistorico] = useState(false);
   const [view, setView] = useState<"lista" | "kanban">(() => {
     try { return (localStorage.getItem("reunioes_view2") as "lista" | "kanban") || "lista"; }
@@ -81,6 +82,13 @@ export function ReunioesPage() {
 
   // Sync detalhe quando a reunião muda no snapshot (ex: mudou pauta)
   const detalheLive = detalhe ? reunioes.find(r => r.id === detalhe.id) || null : null;
+
+  // Ao criar uma reunião nova, abre o detalhe assim que ela aparece no snapshot
+  useEffect(() => {
+    if (!pendingDetalheId) return;
+    const nova = reunioes.find(r => r.id === pendingDetalheId);
+    if (nova) { setDetalhe(nova); setPendingDetalheId(null); }
+  }, [pendingDetalheId, reunioes]);
 
   async function excluir(r: Reuniao) {
     if (!confirm(`Excluir "${r.titulo}"? Pauta, ata e ações vão junto.`)) return;
@@ -240,6 +248,7 @@ export function ReunioesPage() {
           reuniao={editing === "new" ? null : editing}
           restaurantId={rid}
           onClose={() => setEditing(null)}
+          onCriada={(id) => setPendingDetalheId(id)}
         />
       )}
       {detalheLive && (

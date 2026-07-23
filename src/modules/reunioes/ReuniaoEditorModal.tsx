@@ -16,11 +16,12 @@ type Props = {
   reuniao: Reuniao | null;
   restaurantId: string;
   onClose: () => void;
+  onCriada?: (id: string) => void;   // avisa o pai (pra abrir o detalhe da reunião nova)
 };
 
 const TIPOS: ReuniaoTipo[] = ["lideres", "equipe", "individual", "outro"];
 
-export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
+export function ReuniaoEditorModal({ reuniao, restaurantId, onClose, onCriada }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !reuniao;
   const rascunhoKey = `reuniao_rascunho_${restaurantId}`;
@@ -163,6 +164,7 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose }: Props) {
           motivo: `Reunião: ${titulo.trim()}`,
           registradoPor: me.id,
         });
+        onCriada?.(ref.id);
       } else {
         await updateDoc(doc(db, "reunioes", reuniao.id), sanitizeForFirestore(payload));
         await logAudit({
