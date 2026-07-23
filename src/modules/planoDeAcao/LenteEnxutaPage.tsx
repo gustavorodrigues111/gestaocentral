@@ -38,6 +38,7 @@ export function LenteEnxutaPage() {
   const [expandido, setExpandido] = useState<string | null>(null);
   const [novo, setNovo] = useState(false);
   const [mostrarFeitas, setMostrarFeitas] = useState(false);
+  const [mostrarProximas, setMostrarProximas] = useState(false);
 
   useEffect(() => { if (!me?.id) return; return ouvirTarefasDeUsuario(me.id, setMinhasTarefas); }, [me?.id]);
   useEffect(() => {
@@ -61,6 +62,20 @@ export function LenteEnxutaPage() {
     .sort((a, b) => (a.prazo || "9999").localeCompare(b.prazo || "9999")), [semLixo]);
   const feitas = useMemo(() => semLixo.filter(t => t.status === "concluida")
     .sort((a, b) => (b.atualizadoEm || "").localeCompare(a.atualizadoEm || "")).slice(0, 20), [semLixo]);
+
+  // "Meu dia": agrupa por urgência. Sem prazo cai em Hoje (é o que fazer agora).
+  const grupos = useMemo(() => {
+    const atrasadas: Tarefa[] = [], hojeL: Tarefa[] = [], prox: Tarefa[] = [];
+    for (const t of abertas) {
+      if (t.prazo && t.prazo < hoje) atrasadas.push(t);
+      else if (!t.prazo || t.prazo === hoje) hojeL.push(t);
+      else prox.push(t);
+    }
+    return { atrasadas, hojeL, prox };
+  }, [abertas, hoje]);
+  const feitasHoje = useMemo(() => feitas.filter(t => (t.atualizadoEm || "").slice(0, 10) === hoje), [feitas, hoje]);
+  const totalDia = grupos.atrasadas.length + grupos.hojeL.length + feitasHoje.length;
+  const pct = totalDia ? Math.round((feitasHoje.length / totalDia) * 100) : 0;
 
   const autor = { id: me?.id || "", nome: me?.nome || "?" };
   async function concluir(t: Tarefa, feito: boolean) {
@@ -130,11 +145,35 @@ export function LenteEnxutaPage() {
         </div>
       )}
 
+      {totalDia > 0 && (
+        <div className="mb-4">
+          <div className="flex justify-between text-xs text-gray-500 mb-1"><span>{feitasHoje.length} de {totalDia} feitas hoje</span><span className="text-gray-400 tabular-nums">{pct}%</span></div>
+          <div className="h-1.5 rounded-full bg-gray-100 dark:bg-gray-800 overflow-hidden"><div className="h-full bg-emerald-500 transition-all" style={{ width: `${pct}%` }} /></div>
+        </div>
+      )}
+
       {abertas.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">Nada pra fazer aqui. 🎉</div>
       ) : (
-        <div className="grid gap-2 lg:grid-cols-2 items-start">
-          {abertas.map(t => <Card key={t.id} t={t} />)}
+        <div className="space-y-4">
+          {grupos.atrasadas.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-rose-600 dark:text-rose-400 mb-2">⚠ Atrasadas · {grupos.atrasadas.length}</div>
+              <div className="grid gap-2 lg:grid-cols-2 items-start">{grupos.atrasadas.map(t => <Card key={t.id} t={t} />)}</div>
+            </div>
+          )}
+          {grupos.hojeL.length > 0 && (
+            <div>
+              <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">☀ Hoje · {grupos.hojeL.length}</div>
+              <div className="grid gap-2 lg:grid-cols-2 items-start">{grupos.hojeL.map(t => <Card key={t.id} t={t} />)}</div>
+            </div>
+          )}
+          {grupos.prox.length > 0 && (
+            <div>
+              <button type="button" onClick={() => setMostrarProximas(!mostrarProximas)} className="text-xs font-semibold text-gray-500 hover:text-gray-700 mb-2">{mostrarProximas ? "▾" : "▸"} Próximas · {grupos.prox.length}</button>
+              {mostrarProximas && <div className="grid gap-2 lg:grid-cols-2 items-start">{grupos.prox.map(t => <Card key={t.id} t={t} />)}</div>}
+            </div>
+          )}
         </div>
       )}
 
