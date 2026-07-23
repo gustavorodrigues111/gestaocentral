@@ -45,10 +45,10 @@ export function ReunioesPage() {
   const [detalhe, setDetalhe] = useState<Reuniao | null>(null);
   const [mostrarHistorico, setMostrarHistorico] = useState(false);
   const [view, setView] = useState<"lista" | "kanban">(() => {
-    try { return (localStorage.getItem("reunioes_view") as "lista" | "kanban") || "lista"; }
+    try { return (localStorage.getItem("reunioes_view2") as "lista" | "kanban") || "lista"; }
     catch { return "lista"; }
   });
-  useEffect(() => { try { localStorage.setItem("reunioes_view", view); } catch {} }, [view]);
+  useEffect(() => { try { localStorage.setItem("reunioes_view2", view); } catch {} }, [view]);
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
 
@@ -119,28 +119,26 @@ export function ReunioesPage() {
     const b = statusBadge(r);
     const ehHoje = r.status === "planejada" && r.data === today;
     return (
-      <div key={r.id} className="flex items-center gap-1.5">
-        <button type="button" onClick={() => setDetalhe(r)}
-          className={`flex-1 min-w-0 text-left flex gap-3 items-center p-3 bg-white dark:bg-gray-900 border rounded-xl transition-colors hover:border-indigo-400 dark:hover:border-indigo-700 ${ehHoje ? "border-indigo-400 dark:border-indigo-600 ring-1 ring-indigo-200 dark:ring-indigo-900" : "border-gray-200 dark:border-gray-800"}`}>
-          <div className="text-center w-11 shrink-0">
-            <div className="text-[11px] font-semibold uppercase text-gray-400 dark:text-gray-500 leading-none">{mesAbrev(r.data)}</div>
-            <div className="text-xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{Number(r.data.slice(8, 10))}</div>
+      <div key={r.id} onClick={() => setDetalhe(r)}
+        className={`flex gap-3 items-center p-3 bg-white dark:bg-gray-900 border rounded-xl cursor-pointer transition-colors hover:border-indigo-400 dark:hover:border-indigo-700 ${ehHoje ? "border-indigo-400 dark:border-indigo-600 ring-1 ring-indigo-200 dark:ring-indigo-900" : "border-gray-200 dark:border-gray-800"}`}>
+        <div className="text-center w-11 shrink-0">
+          <div className="text-[11px] font-semibold uppercase text-gray-400 dark:text-gray-500 leading-none">{mesAbrev(r.data)}</div>
+          <div className="text-xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{Number(r.data.slice(8, 10))}</div>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{TIPO_ICON[r.tipo]} {r.titulo}</div>
+          <div className="flex gap-3 text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex-wrap items-center">
+            {r.horario && <span>🕐 {r.horario}</span>}
+            <span>👥 {r.participantes?.length || 0}</span>
+            {r.local && <span className="truncate max-w-[140px]">📍 {r.local}</span>}
+            <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">{REUNIAO_TIPO_LABEL[r.tipo]}</span>
           </div>
-          <div className="flex-1 min-w-0">
-            <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{TIPO_ICON[r.tipo]} {r.titulo}</div>
-            <div className="flex gap-3 text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex-wrap items-center">
-              {r.horario && <span>🕐 {r.horario}</span>}
-              <span>👥 {r.participantes?.length || 0}</span>
-              {r.local && <span className="truncate max-w-[140px]">📍 {r.local}</span>}
-              <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">{REUNIAO_TIPO_LABEL[r.tipo]}</span>
-            </div>
-          </div>
-          <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full shrink-0 ${b.cls}`}>{b.txt}</span>
-        </button>
+        </div>
+        <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full shrink-0 ${b.cls}`}>{b.txt}</span>
         {podeConfig && (
-          <div className="flex flex-col gap-0.5 shrink-0">
-            <button type="button" onClick={() => setEditing(r)} title="Editar" className="text-gray-400 hover:text-indigo-600 px-1 text-sm">✎</button>
-            <button type="button" onClick={() => excluir(r)} title="Excluir" className="text-gray-300 hover:text-rose-600 px-1 text-sm">×</button>
+          <div className="flex flex-col gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
+            <button type="button" onClick={() => setEditing(r)} title="Editar" className="text-gray-400 hover:text-indigo-600 px-1 text-sm leading-none">✎</button>
+            <button type="button" onClick={() => excluir(r)} title="Excluir" className="text-gray-300 hover:text-rose-600 px-1 text-sm leading-none">×</button>
           </div>
         )}
       </div>
@@ -148,9 +146,12 @@ export function ReunioesPage() {
   };
 
   return (
-    <div className="max-w-4xl">
-      <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
-        <div />
+    <div className="max-w-4xl mx-auto">
+      <div className="flex items-center justify-between mb-4 gap-3">
+        <div>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">🗣️ Reuniões</h1>
+          <p className="text-xs text-gray-500">{restaurant.nome} · agenda do restaurante</p>
+        </div>
         {podeConfig && (
           <Button onClick={() => setEditing("new")}>+ Nova reunião</Button>
         )}
@@ -162,13 +163,13 @@ export function ReunioesPage() {
         </div>
       )}
 
-      <div className="flex gap-2 mb-3 flex-wrap items-center">
-        <Input
-          placeholder="🔍 Buscar..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          className="flex-1 min-w-[200px]"
-        />
+      <Input
+        placeholder="🔍 Buscar..."
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        className="w-full mb-3"
+      />
+      <div className="flex justify-center gap-2 mb-4 flex-wrap">
         <div className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
           {(["lista", "kanban"] as const).map(v => (
             <button

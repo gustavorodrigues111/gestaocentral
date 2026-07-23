@@ -141,10 +141,12 @@ export function LenteEnxutaPage() {
       </div>
 
       {podeVerTodas && (
-        <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 mb-3">
-          {([["minhas", "🙋 Minhas"], ["equipe", "👥 Da equipe"]] as const).map(([k, l]) => (
-            <button key={k} type="button" onClick={() => setEscopo(k)} className={`px-3 py-1 text-sm font-medium rounded-md ${escopo === k ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
-          ))}
+        <div className="flex justify-center mb-3">
+          <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+            {([["minhas", "🙋 Minhas"], ["equipe", "👥 Da equipe"]] as const).map(([k, l]) => (
+              <button key={k} type="button" onClick={() => setEscopo(k)} className={`px-3 py-1 text-sm font-medium rounded-md ${escopo === k ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
+            ))}
+          </div>
         </div>
       )}
 
