@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
-import { addDoc, collection, doc, getDoc, getDocs, limit, onSnapshot, query, updateDoc, where } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
+import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { db, auth } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { gerarSenhaInicial, provisionarAcesso } from "../../core/auth/provisionar";
 import { enviarEmailAcesso } from "../../core/auth/emailAcesso";
@@ -146,6 +146,9 @@ function TabIdentidade({
   const [conviteErro, setConviteErro] = useState("");
   const [convite, setConvite] = useState<{ senha: string; waLink: string; enviadoEmail: boolean; emailDest: string } | null>(null);
   const [showInativar, setShowInativar] = useState(false);
+  // Redefinir senha de acesso (via Cloud Function processarResetSenha)
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetResult, setResetResult] = useState<{ ok: true; senha: string; email: string } | { ok: false; erro: string } | null>(null);
   const [showReativar, setShowReativar] = useState(false);
   const [showExcluir, setShowExcluir] = useState(false);
   const [showLiberarEmail, setShowLiberarEmail] = useState(false);
@@ -184,7 +187,7 @@ function TabIdentidade({
     if (!prov.ok) {
       setConvidando(false);
       setConviteErro(prov.motivo === "email_em_uso"
-        ? "Essa pessoa já tem conta ativa. Se ela esqueceu a senha e o email do Firebase não chega (comum no Hotmail/Outlook): apague o acesso dela no Firebase Console → Authentication → Users e clique em Reenviar de novo — aí recrio a conta e mando a senha inicial pelo email (Resend)."
+        ? "Essa pessoa já tem conta. Pra ela acessar de novo, use o botão 🔑 Redefinir senha — gera uma senha temporária na hora (você testa e ela troca no 1º acesso)."
         : "Não foi possível criar o acesso: " + (prov.detalhe || prov.motivo));
       return;
     }
@@ -203,6 +206,44 @@ function TabIdentidade({
     const enviadoEmail = await enviarEmailAcesso(email, pessoa.nome, email, senha, baseUrl);
     setConvite({ senha, waLink, enviadoEmail, emailDest: email });
     setConvidando(false);
+  }
+
+  // Redefinir a senha de uma conta que JÁ existe (a pessoa travou no 1º acesso,
+  // esqueceu a senha, etc.). Grava um pedido em resetSenhaRequests; a Cloud
+  // Function `processarResetSenha` (roda com Auth admin) gera uma senha
+  // temporária, seta na conta e devolve aqui. Você testa o login e a pessoa é
+  // obrigada a trocar no próximo acesso.
+  async function redefinirSenha() {
+    if (!pessoa) return;
+    const u = auth.currentUser;
+    if (!u) { setResetResult({ ok: false, erro: "Sessão expirada — recarregue e tente de novo." }); return; }
+    setResetLoading(true); setResetResult(null);
+    let unsub: (() => void) | null = null;
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    let done = false;
+    const finish = (r: { ok: true; senha: string; email: string } | { ok: false; erro: string }, ref?: ReturnType<typeof doc>) => {
+      if (done) return; done = true;
+      if (unsub) unsub();
+      if (timer) clearTimeout(timer);
+      setResetLoading(false);
+      setResetResult(r);
+      if (ref) void deleteDoc(ref).catch(() => {});
+    };
+    try {
+      const ref = await addDoc(collection(db, "resetSenhaRequests"), {
+        pessoaId: pessoa.id, solicitadoPorUid: u.uid, solicitadoPorEmail: u.email || "",
+        status: "pendente", criadoEm: new Date().toISOString(),
+      });
+      unsub = onSnapshot(ref, (snap) => {
+        const d = snap.data() as { status?: string; senhaTemporaria?: string; emailAlvo?: string; erro?: string } | undefined;
+        if (!d) return;
+        if (d.status === "ok") finish({ ok: true, senha: d.senhaTemporaria || "", email: d.emailAlvo || pessoa.email || "" }, ref);
+        else if (d.status === "erro") finish({ ok: false, erro: d.erro || "Falha ao redefinir." }, ref);
+      }, () => finish({ ok: false, erro: "Erro ao acompanhar o pedido." }, ref));
+      timer = setTimeout(() => finish({ ok: false, erro: "Demorou demais — tente de novo em instantes." }, ref), 30000);
+    } catch (e) {
+      finish({ ok: false, erro: e instanceof Error ? e.message : "Erro ao criar o pedido." });
+    }
   }
 
   async function salvar() {
@@ -451,13 +492,41 @@ function TabIdentidade({
                       size="sm"
                       disabled={convidando}
                       onClick={() => void convidarAcesso()}
-                      title="Recria o acesso com uma nova senha inicial e reenvia por email (Resend). Se a conta já existir, apague-a antes no Firebase Console."
+                      title="Recria o acesso com uma nova senha inicial e reenvia por email (Resend). Se a conta já existir, use '🔑 Redefinir senha'."
                       className="!bg-indigo-600 hover:!bg-indigo-700 !border-indigo-600"
                     >
                       {convidando ? "Reenviando…" : "🔁 Reenviar acesso (email)"}
                     </Button>
                   )}
                 </>
+              )}
+              {pessoaReal?.isMaster && pessoa && !!pessoa.email && !isNew && !isInativa && (
+                <Button
+                  size="sm"
+                  disabled={resetLoading}
+                  onClick={() => void redefinirSenha()}
+                  title="Gera uma senha temporária pra uma conta que já existe (pessoa travou no 1º acesso, esqueceu a senha). Você testa o login; ela troca no próximo acesso."
+                  className="!bg-slate-600 hover:!bg-slate-700 !border-slate-600"
+                >
+                  {resetLoading ? "Redefinindo…" : "🔑 Redefinir senha"}
+                </Button>
+              )}
+              {resetResult && (
+                <div className={`w-full mt-1 rounded-lg border px-3 py-2.5 text-sm ${resetResult.ok ? "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30" : "border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30"}`}>
+                  {resetResult.ok ? (
+                    <div className="space-y-1.5">
+                      <div className="text-emerald-800 dark:text-emerald-300">✅ Senha temporária de <b>{resetResult.email}</b>:</div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <code className="font-mono text-base font-bold px-2.5 py-1 rounded bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-800 tracking-wider">{resetResult.senha}</code>
+                        <button type="button" onClick={() => { void navigator.clipboard?.writeText(resetResult.senha).catch(() => {}); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">📋 copiar</button>
+                      </div>
+                      <p className="text-[12px] text-emerald-700/90 dark:text-emerald-400/90">Teste o login numa aba anônima pra confirmar que funciona. A pessoa vai <b>trocar a senha no próximo acesso</b>. Anote agora — isso não fica salvo.</p>
+                    </div>
+                  ) : (
+                    <div className="text-rose-700 dark:text-rose-300">⚠ {resetResult.erro}</div>
+                  )}
+                  <button type="button" onClick={() => setResetResult(null)} className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-1.5">fechar</button>
+                </div>
               )}
               {podeVisualizarComo && pessoa && (
                 <Button
@@ -467,7 +536,7 @@ function TabIdentidade({
                     onClose();
                     navigate("/");
                   }}
-                  title="Entra na tela como essa pessoa pra ver o que ela vê (master vê tudo, esse modo simula a visão limitada)"
+                  title="Simulação: entra na tela COMO essa pessoa pra ver o que o perfil dela mostra (não testa login/senha — pra isso use 'Redefinir senha')"
                   className="!bg-amber-600 hover:!bg-amber-700 !border-amber-600"
                 >
                   👁️ Visualizar como

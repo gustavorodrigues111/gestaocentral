@@ -465,6 +465,18 @@ service cloud.firestore {
     //   Status só pode ir pra "formulario_preenchido" se estava
     //   "formulario_enviado". Restante (criação, aprovação, cancelamento) só
     //   por authed. Iteração futura: migrar pra endpoint Vercel com admin SDK.
+    // ── /resetSenhaRequests ── pedido de reset de senha (processado por Cloud
+    // Function que roda com Auth admin). O cliente só cria/lê/apaga o SEU pedido
+    // (isolado por uid); quem valida se é master + faz o reset é a função (que
+    // escreve o resultado via Admin SDK, ignorando estas regras).
+    match /resetSenhaRequests/{id} {
+      allow create: if authed()
+        && request.resource.data.solicitadoPorUid == request.auth.uid
+        && request.resource.data.status == "pendente";
+      allow read, delete: if authed() && resource.data.solicitadoPorUid == request.auth.uid;
+      allow update: if false;
+    }
+
     match /admissoes/{id} {
       allow read: if true;
       allow create, delete: if authed();
