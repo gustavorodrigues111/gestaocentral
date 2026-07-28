@@ -171,6 +171,24 @@ function TabIdentidade({
   const vincPessoa = pessoa?.vinculos?.[restaurantId];
   const ehDesligavel = vincPessoa === "clt" || vincPessoa === "estagiario";
 
+  // Estado do acesso (pro painel guiado por status). Usa o email do form (ao vivo).
+  const uidVinc = (pessoa as unknown as { uidVinculado?: string } | null)?.uidVinculado;
+  const estadoAcesso: "master" | "sem_login" | "falta_email" | "sem_acesso" | "aguardando" | "pronto" =
+    pessoa?.isMaster ? "master"
+      : !temLogin ? "sem_login"
+      : !form.email.trim() ? "falta_email"
+      : !pessoa?.acessoProvisionadoEm ? "sem_acesso"
+      : (uidVinc && !pessoa?.mustTrocarSenha) ? "pronto"
+      : "aguardando";
+  const ACESSO_INFO: Record<typeof estadoAcesso, { label: string; cls: string; expl: string }> = {
+    master:      { label: "Master", cls: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300", expl: "Acesso total ao sistema." },
+    sem_login:   { label: "Sem login", cls: "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400", expl: "Não usa o sistema. Pra dar acesso, marque “vai ter login: Sim” acima." },
+    falta_email: { label: "Falta email", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300", expl: "Preencha o email no cadastro acima (e salve) — sem ele não dá pra criar acesso." },
+    sem_acesso:  { label: "Sem acesso ainda", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300", expl: "Falta criar o acesso e enviar pra pessoa." },
+    aguardando:  { label: "Aguardando 1º acesso", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300", expl: "Convite enviado — a pessoa ainda não concluiu (CPF + nova senha)." },
+    pronto:      { label: "Pronto", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300", expl: "Tem login, perfil e já acessou. Tudo certo." },
+  };
+
   // Detecção de pessoa duplicada por CPF — quando user tenta criar nova com
   // CPF que já existe (em qualquer restaurante). Oferece vincular em vez de
   // criar duplicada.
@@ -501,89 +519,70 @@ function TabIdentidade({
       {!isNew && (
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3 flex flex-wrap gap-2">
           {!isInativa ? (
-            <>
-              {!temLogin && (
-                <div className="w-full text-[12.5px] text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 rounded-lg px-3 py-2 border border-slate-200 dark:border-slate-700">
-                  🚫 <b>Sem login</b> — essa pessoa não usa o sistema. Pra dar acesso, marque <b>“vai ter login: Sim”</b> acima.
+            <div className="w-full space-y-3">
+              {/* ── Painel de Acesso (guiado por status) ── */}
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3">
+                <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">🔐 Acesso</span>
+                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${ACESSO_INFO[estadoAcesso].cls}`}>{ACESSO_INFO[estadoAcesso].label}</span>
                 </div>
-              )}
-              {temLogin && (<>
-              {podeConvidar && !pessoa?.acessoProvisionadoEm && (
-                <Button
-                  size="sm"
-                  disabled={convidando}
-                  onClick={() => void convidarAcesso()}
-                  title="Cria o acesso com uma senha inicial e convida a pessoa pelo WhatsApp"
-                  className="!bg-emerald-600 hover:!bg-emerald-700 !border-emerald-600"
-                >
-                  {convidando ? "Criando acesso…" : "🔑 Convidar pra acessar (WhatsApp)"}
-                </Button>
-              )}
-              {pessoa?.acessoProvisionadoEm && !convite && (
-                <>
-                  <span className="text-xs text-emerald-700 dark:text-emerald-400 self-center">✓ Acesso já enviado{pessoa.mustTrocarSenha ? " — aguardando 1º acesso" : ""}</span>
-                  {podeConvidar && (
-                    <Button
-                      size="sm"
-                      disabled={convidando}
-                      onClick={() => void convidarAcesso()}
-                      title="Recria o acesso com uma nova senha inicial e reenvia por email (Resend). Se a conta já existir, use '🔑 Redefinir senha'."
-                      className="!bg-indigo-600 hover:!bg-indigo-700 !border-indigo-600"
-                    >
-                      {convidando ? "Reenviando…" : "🔁 Reenviar acesso (email)"}
+                <p className="text-[12.5px] text-gray-500 dark:text-gray-400 mb-2.5">{ACESSO_INFO[estadoAcesso].expl}</p>
+
+                <div className="flex flex-wrap gap-2 items-center">
+                  {estadoAcesso === "sem_acesso" && podeConvidar && (
+                    <Button size="sm" disabled={convidando} onClick={() => void convidarAcesso()} title="Cria o acesso com uma senha inicial e convida a pessoa pelo WhatsApp" className="!bg-emerald-600 hover:!bg-emerald-700 !border-emerald-600">
+                      {convidando ? "Criando acesso…" : "🔑 Convidar pra acessar"}
                     </Button>
                   )}
-                </>
-              )}
-              {pessoaReal?.isMaster && pessoa && !!pessoa.email && !isNew && !isInativa && (
-                <Button
-                  size="sm"
-                  disabled={resetLoading}
-                  onClick={() => void redefinirSenha()}
-                  title="Gera uma senha temporária pra uma conta que já existe (pessoa travou no 1º acesso, esqueceu a senha). Você testa o login; ela troca no próximo acesso."
-                  className="!bg-slate-600 hover:!bg-slate-700 !border-slate-600"
-                >
-                  {resetLoading ? "Redefinindo…" : "🔑 Redefinir senha"}
-                </Button>
-              )}
-              {resetResult && (
-                <div className={`w-full mt-1 rounded-lg border px-3 py-2.5 text-sm ${resetResult.ok ? "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30" : "border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30"}`}>
-                  {resetResult.ok ? (
-                    <div className="space-y-1.5">
-                      <div className="text-emerald-800 dark:text-emerald-300">✅ Senha temporária de <b>{resetResult.email}</b>:</div>
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <code className="font-mono text-base font-bold px-2.5 py-1 rounded bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-800 tracking-wider">{resetResult.senha}</code>
-                        <button type="button" onClick={() => { void navigator.clipboard?.writeText(resetResult.senha).catch(() => {}); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">📋 copiar</button>
-                      </div>
-                      <p className="text-[12px] text-emerald-700/90 dark:text-emerald-400/90">Teste o login numa aba anônima pra confirmar que funciona. A pessoa vai <b>trocar a senha no próximo acesso</b>. Anote agora — isso não fica salvo.</p>
-                    </div>
-                  ) : (
-                    <div className="text-rose-700 dark:text-rose-300">⚠ {resetResult.erro}</div>
+                  {estadoAcesso === "sem_acesso" && !podeConvidar && (
+                    <span className="text-[12px] text-gray-400 dark:text-gray-500">Preencha {!pessoa?.email ? "email" : ""}{!pessoa?.email && !pessoa?.whatsapp ? " e " : ""}{!pessoa?.whatsapp ? "WhatsApp" : ""} pra habilitar o convite.</span>
                   )}
-                  <button type="button" onClick={() => setResetResult(null)} className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-1.5">fechar</button>
+                  {estadoAcesso === "aguardando" && podeConvidar && (
+                    <Button size="sm" disabled={convidando} onClick={() => void convidarAcesso()} title="Recria o acesso com uma nova senha inicial e reenvia por email (Resend)." className="!bg-indigo-600 hover:!bg-indigo-700 !border-indigo-600">
+                      {convidando ? "Reenviando…" : "🔁 Reenviar convite"}
+                    </Button>
+                  )}
+                  {pessoaReal?.isMaster && temLogin && !!pessoa?.email && (estadoAcesso === "aguardando" || estadoAcesso === "pronto") && (
+                    <Button size="sm" variant="secondary" disabled={resetLoading} onClick={() => void redefinirSenha()} title="Gera uma senha temporária pra conta existente (travou no 1º acesso, esqueceu a senha). Você testa o login; ela troca no próximo acesso.">
+                      {resetLoading ? "Redefinindo…" : "🔑 Redefinir senha"}
+                    </Button>
+                  )}
+                  {podeVisualizarComo && pessoa && (
+                    <Button size="sm" variant="secondary" onClick={() => { startImpersonate(pessoa.id); onClose(); navigate("/"); }} title="Simulação: entra na tela COMO essa pessoa pra ver o que o perfil dela mostra (não testa login — pra isso use 'Redefinir senha')">
+                      👁️ Ver como
+                    </Button>
+                  )}
+                </div>
+
+                {resetResult && (
+                  <div className={`mt-2.5 rounded-lg border px-3 py-2.5 text-sm ${resetResult.ok ? "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30" : "border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30"}`}>
+                    {resetResult.ok ? (
+                      <div className="space-y-1.5">
+                        <div className="text-emerald-800 dark:text-emerald-300">✅ Senha temporária de <b>{resetResult.email}</b>:</div>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <code className="font-mono text-base font-bold px-2.5 py-1 rounded bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-800 tracking-wider">{resetResult.senha}</code>
+                          <button type="button" onClick={() => { void navigator.clipboard?.writeText(resetResult.senha).catch(() => {}); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">📋 copiar</button>
+                        </div>
+                        <p className="text-[12px] text-emerald-700/90 dark:text-emerald-400/90">Teste o login numa aba anônima. A pessoa vai <b>trocar a senha no próximo acesso</b>. Anote agora — não fica salvo.</p>
+                      </div>
+                    ) : (
+                      <div className="text-rose-700 dark:text-rose-300">⚠ {resetResult.erro}</div>
+                    )}
+                    <button type="button" onClick={() => setResetResult(null)} className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-1.5">fechar</button>
+                  </div>
+                )}
+              </div>
+
+              {/* ── Situação da pessoa — separado do acesso ── */}
+              {podeDemitir && (
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Situação</span>
+                  <Button variant="danger" size="sm" onClick={() => setShowInativar(true)}>
+                    {ehDesligavel ? "👋 Demitir" : "🚫 Inativar pessoa"}
+                  </Button>
                 </div>
               )}
-              </>)}
-              {podeVisualizarComo && pessoa && (
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    startImpersonate(pessoa.id);
-                    onClose();
-                    navigate("/");
-                  }}
-                  title="Simulação: entra na tela COMO essa pessoa pra ver o que o perfil dela mostra (não testa login/senha — pra isso use 'Redefinir senha')"
-                  className="!bg-amber-600 hover:!bg-amber-700 !border-amber-600"
-                >
-                  👁️ Visualizar como
-                </Button>
-              )}
-              {podeDemitir && (
-                <Button variant="danger" size="sm" onClick={() => setShowInativar(true)}>
-                  {ehDesligavel ? "👋 Demitir" : "🚫 Inativar pessoa"}
-                </Button>
-              )}
-            </>
+            </div>
           ) : (
             <>
               {podeDemitir && (
@@ -610,11 +609,6 @@ function TabIdentidade({
                 </Button>
               )}
             </>
-          )}
-          {!isInativa && !podeConvidar && pessoa && (!pessoa.whatsapp || !pessoa.email) && !pessoa.acessoProvisionadoEm && (
-            <span className="text-xs text-gray-400 dark:text-gray-500 self-center">
-              🔑 Convite pra acessar: preencha {!pessoa.whatsapp && !pessoa.email ? "email e WhatsApp" : !pessoa.email ? "email" : "WhatsApp"} pra habilitar
-            </span>
           )}
         </div>
       )}
