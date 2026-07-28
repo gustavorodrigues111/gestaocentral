@@ -5,7 +5,6 @@ import { useState } from "react";
 import { updatePassword, signOut } from "firebase/auth";
 import { doc, updateDoc, deleteField } from "firebase/firestore";
 import { auth, db } from "../firebase/config";
-import { sanitizeForFirestore } from "../firebase/sanitize";
 import { Button } from "../ui/Button";
 import type { Pessoa } from "../types";
 
@@ -29,12 +28,18 @@ export function PrimeiroAcesso({ pessoa }: { pessoa: Pessoa }) {
     setSalvando(true);
     try {
       await updatePassword(auth.currentUser, senha);
-      await updateDoc(doc(db, "pessoas", pessoa.id), sanitizeForFirestore({
+      // IMPORTANTE: deleteField() é um sentinel do Firestore — NÃO pode passar
+      // por sanitizeForFirestore (que reconstrói objetos e o transformaria num
+      // {} truthy, deixando mustTrocarSenha "ligado" pra sempre → loop no 1º
+      // acesso). Monta o patch direto.
+      const patch: Record<string, unknown> = {
         cpf: cpfD,
-        pix: pix.trim() || undefined,
         mustTrocarSenha: deleteField(),
         primeiroAcessoEm: new Date().toISOString(),
-      }));
+      };
+      const pixTrim = pix.trim();
+      if (pixTrim) patch.pix = pixTrim;
+      await updateDoc(doc(db, "pessoas", pessoa.id), patch);
       // Recarrega pra o AuthContext reler a pessoa (flag limpo → entra no app).
       window.location.reload();
     } catch (e) {
