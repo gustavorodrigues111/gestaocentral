@@ -52,21 +52,27 @@ export function PreencherFormManualModal({ admissao, onClose, onSaved, modo = "m
     setDados((cur) => ({ ...cur, [id]: value }));
   }
 
-  async function salvar() {
+  // finalizar=true → RH ASSUME o formulário e conclui (valida obrigatórios,
+  //   marca status "formulario_preenchido" + preenchimentoManual). Serve pra
+  //   puxar um form parcial do candidato e terminar aqui a qualquer momento.
+  // finalizar=false → só salva as correções (modo revisão), sem concluir.
+  async function salvar(finalizar: boolean) {
     setErro("");
-    // Validação dos campos obrigatórios — mesma da tela pública
-    const faltando: string[] = [];
-    for (const f of admissao.schemaUsado) {
-      if (!f.obrigatorio || !f.ativo) continue;
-      if (vazio(dados[f.id], f.tipo)) faltando.push(f.label);
-    }
-    if (faltando.length > 0) {
-      setErro(
-        `Faltam ${faltando.length} campo(s) obrigatório(s):\n• ` +
-        faltando.slice(0, 8).join("\n• ") +
-        (faltando.length > 8 ? `\n… +${faltando.length - 8}` : ""),
-      );
-      return;
+    if (finalizar) {
+      // Validação dos campos obrigatórios — mesma da tela pública
+      const faltando: string[] = [];
+      for (const f of admissao.schemaUsado) {
+        if (!f.obrigatorio || !f.ativo) continue;
+        if (vazio(dados[f.id], f.tipo)) faltando.push(f.label);
+      }
+      if (faltando.length > 0) {
+        setErro(
+          `Faltam ${faltando.length} campo(s) obrigatório(s):\n• ` +
+          faltando.slice(0, 8).join("\n• ") +
+          (faltando.length > 8 ? `\n… +${faltando.length - 8}` : ""),
+        );
+        return;
+      }
     }
     setSalvando(true);
     try {
@@ -75,9 +81,9 @@ export function PreencherFormManualModal({ admissao, onClose, onSaved, modo = "m
         dadosPreenchidos: dados,
         updatedAt: now,
       };
-      if (modo === "manual") {
-        // Caminho original — RH preenche pelo candidato. Marca status e
-        // grava preenchimentoManual pra distinguir no histórico.
+      if (finalizar) {
+        // RH assume e conclui: marca status + grava preenchimentoManual pra
+        // distinguir no histórico (quem assumiu, quando).
         patch.status = "formulario_preenchido";
         patch.preenchidoEm = now;
         patch.preenchimentoManual = {
@@ -85,8 +91,7 @@ export function PreencherFormManualModal({ admissao, onClose, onSaved, modo = "m
           em: now,
         };
       } else {
-        // Revisão — candidato já preencheu. Não mexe em status/preenchidoEm/
-        // preenchimentoManual. Só registra que RH revisou.
+        // Só correções — candidato já preencheu. Não mexe em status/preenchidoEm.
         patch.dadosRevisadosEm = now;
         patch.dadosRevisadosPor = me ? { id: me.id, nome: me.nome } : null;
       }
@@ -115,9 +120,9 @@ export function PreencherFormManualModal({ admissao, onClose, onSaved, modo = "m
           </div>
         ) : (
           <div className="rounded-lg bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800 p-3 text-xs text-sky-900 dark:text-sky-300">
-            ✏️ Modo revisão — corrija erros de digitação ou ajuste o que
-            precisar. O preenchimento original do candidato é preservado no
-            histórico; só fica registrado que você revisou em {new Date().toLocaleString("pt-BR")}.
+            ✏️ O candidato já começou a preencher. Você pode <b>assumir e concluir</b>{" "}
+            (termina o preenchimento por ele e marca como preenchido) ou só{" "}
+            <b>salvar correções</b> sem concluir. O que o candidato já digitou fica preservado.
           </div>
         )}
 
@@ -150,15 +155,20 @@ export function PreencherFormManualModal({ admissao, onClose, onSaved, modo = "m
           </div>
         )}
 
-        <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+        <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose} disabled={salvando}>
             Cancelar
           </Button>
-          <Button onClick={salvar} disabled={salvando}>
+          {modo === "revisao" && (
+            <Button variant="secondary" onClick={() => salvar(false)} disabled={salvando}>
+              {salvando ? "Salvando…" : "Salvar sem concluir"}
+            </Button>
+          )}
+          <Button onClick={() => salvar(true)} disabled={salvando}>
             {salvando
               ? "Salvando…"
               : modo === "revisao"
-              ? "💾 Salvar correções"
+              ? "✅ Assumir e concluir"
               : "💾 Salvar e marcar preenchido"}
           </Button>
         </div>
