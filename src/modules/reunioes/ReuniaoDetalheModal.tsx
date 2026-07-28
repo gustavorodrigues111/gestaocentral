@@ -168,26 +168,11 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
         <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-3xl max-h-[90vh] flex flex-col">
           {/* ── Cabeçalho ── */}
           <div className="px-5 pt-4 pb-3.5 border-b border-gray-200 dark:border-gray-800">
-            <div className="flex items-start gap-3">
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2 mb-1.5">
-                  <span className={`text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${statusPill.cls}`}>{statusPill.txt}</span>
-                  <span className="text-[12px] text-gray-400 dark:text-gray-500">👥 {REUNIAO_TIPO_LABEL[reuniao.tipo]}</span>
-                </div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 leading-snug break-words">{reuniao.titulo}</h2>
-                <div className="flex items-center gap-2.5 flex-wrap mt-1.5 text-[12.5px] text-gray-500 dark:text-gray-400">
-                  <span>📅 {new Date(reuniao.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-                  {reuniao.horario && <><span className="text-gray-300 dark:text-gray-700">·</span><span>⏰ {reuniao.horario}</span></>}
-                  {reuniao.local && <><span className="text-gray-300 dark:text-gray-700">·</span><span>📍 {reuniao.local}</span></>}
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 flex-none">
-                {podeConfig && isPlanejada && (
-                  <button onClick={marcarRealizada} disabled={saving} className="px-2.5 py-1.5 rounded-lg text-[12.5px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-60 whitespace-nowrap">✅ Marcar realizada</button>
-                )}
-                {podeConfig && (isRealizada || isCancelada) && (
-                  <button onClick={reabrirComoPlanejada} disabled={saving} className="px-2.5 py-1.5 rounded-lg text-[12.5px] font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 whitespace-nowrap">↻ Voltar pra planejada</button>
-                )}
+            {/* faixa superior: status + tipo, e (editar / fechar) à direita */}
+            <div className="flex items-center gap-2">
+              <span className={`shrink-0 text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${statusPill.cls}`}>{statusPill.txt}</span>
+              <span className="text-[12px] text-gray-400 dark:text-gray-500 truncate min-w-0">👥 {REUNIAO_TIPO_LABEL[reuniao.tipo]}</span>
+              <div className="ml-auto flex items-center gap-1 flex-none">
                 {podeConfig && onEditar && (
                   <button onClick={onEditar} title="Editar reunião (título, data, participantes)" className="w-8 h-8 grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800">✎</button>
                 )}
@@ -195,11 +180,31 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
               </div>
             </div>
 
-            {/* ações secundárias/destrutivas */}
-            {podeConfig && (isPlanejada || (isCancelada && me?.isMaster)) && (
-              <div className="flex gap-4 mt-2">
-                {isPlanejada && <button onClick={cancelarReuniao} disabled={saving} className="text-[12px] text-gray-400 hover:text-rose-600 dark:hover:text-rose-400">🚫 Cancelar reunião</button>}
-                {isCancelada && me?.isMaster && <button onClick={excluirDefinitivo} disabled={saving} className="text-[12px] text-rose-500 hover:text-rose-700 dark:hover:text-rose-400">🗑 Excluir definitivo</button>}
+            {/* título */}
+            <h2 className="text-lg sm:text-xl font-bold text-gray-900 dark:text-gray-100 leading-snug break-words mt-2">{reuniao.titulo}</h2>
+
+            {/* data / hora / local */}
+            <div className="flex items-center gap-x-3 gap-y-0.5 flex-wrap mt-1.5 text-[12.5px] text-gray-500 dark:text-gray-400">
+              <span>📅 {new Date(reuniao.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+              {reuniao.horario && <span>⏰ {reuniao.horario}</span>}
+              {reuniao.local && <span>📍 {reuniao.local}</span>}
+            </div>
+
+            {/* ações de status — linha própria (não espremem o título) */}
+            {podeConfig && (
+              <div className="flex flex-wrap items-center gap-2 mt-3">
+                {isPlanejada && (
+                  <>
+                    <button onClick={marcarRealizada} disabled={saving} className="px-3 py-1.5 rounded-lg text-[12.5px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-60">✅ Marcar realizada</button>
+                    <button onClick={cancelarReuniao} disabled={saving} className="px-3 py-1.5 rounded-lg text-[12.5px] font-medium border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-800">🚫 Cancelar</button>
+                  </>
+                )}
+                {(isRealizada || isCancelada) && (
+                  <button onClick={reabrirComoPlanejada} disabled={saving} className="px-3 py-1.5 rounded-lg text-[12.5px] font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">↻ Voltar pra planejada</button>
+                )}
+                {isCancelada && me?.isMaster && (
+                  <button onClick={excluirDefinitivo} disabled={saving} className="px-3 py-1.5 rounded-lg text-[12.5px] font-medium border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30">🗑 Excluir definitivo</button>
+                )}
               </div>
             )}
 
