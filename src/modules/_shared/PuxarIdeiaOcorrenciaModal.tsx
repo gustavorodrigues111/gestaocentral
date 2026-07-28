@@ -121,13 +121,13 @@ export function PuxarIdeiaOcorrenciaModal({ onClose, onEscolher, restaurantId, t
           </select>
         </div>
         {pessoaIdAtual && (
-          <div className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 mb-3">
+          <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 mb-3">
             {(["todas", "minhas"] as const).map(e => (
               <button
                 key={e}
                 type="button"
                 onClick={() => setEscopo(e)}
-                className={`px-3 py-1 text-xs font-medium rounded-md transition-colors ${
+                className={`flex-1 px-3 py-1.5 text-xs font-medium rounded-md text-center transition-colors ${
                   escopo === e
                     ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm"
                     : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
