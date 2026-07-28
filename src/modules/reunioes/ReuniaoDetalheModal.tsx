@@ -190,20 +190,20 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
               {reuniao.local && <span>📍 {reuniao.local}</span>}
             </div>
 
-            {/* ações de status — linha própria (não espremem o título) */}
+            {/* ações de status — largura cheia no mobile (de fora a fora), inline no desktop */}
             {podeConfig && (
-              <div className="flex flex-wrap items-center gap-2 mt-3">
+              <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 mt-3">
                 {isPlanejada && (
                   <>
-                    <button onClick={marcarRealizada} disabled={saving} className="px-3 py-1.5 rounded-lg text-[12.5px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-60">✅ Marcar realizada</button>
-                    <button onClick={cancelarReuniao} disabled={saving} className="px-3 py-1.5 rounded-lg text-[12.5px] font-medium border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-800">🚫 Cancelar</button>
+                    <button onClick={marcarRealizada} disabled={saving} className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-60">✅ Marcar realizada</button>
+                    <button onClick={cancelarReuniao} disabled={saving} className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-[13px] font-medium border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-800">🚫 Cancelar</button>
                   </>
                 )}
                 {(isRealizada || isCancelada) && (
-                  <button onClick={reabrirComoPlanejada} disabled={saving} className="px-3 py-1.5 rounded-lg text-[12.5px] font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">↻ Voltar pra planejada</button>
+                  <button onClick={reabrirComoPlanejada} disabled={saving} className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-[13px] font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">↻ Voltar pra planejada</button>
                 )}
                 {isCancelada && me?.isMaster && (
-                  <button onClick={excluirDefinitivo} disabled={saving} className="px-3 py-1.5 rounded-lg text-[12.5px] font-medium border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30">🗑 Excluir definitivo</button>
+                  <button onClick={excluirDefinitivo} disabled={saving} className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-[13px] font-medium border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30">🗑 Excluir definitivo</button>
                 )}
               </div>
             )}
