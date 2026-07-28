@@ -257,6 +257,7 @@ export function ReunioesPage() {
           restaurantId={rid}
           podeConfig={podeConfig}
           onClose={() => setDetalhe(null)}
+          onEditar={() => { const r = detalheLive; setDetalhe(null); setEditing(r); }}
         />
       )}
     </div>
