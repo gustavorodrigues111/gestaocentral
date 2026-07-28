@@ -2,7 +2,6 @@ import { useState } from "react";
 import { doc, getDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
-import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { logAudit } from "../../core/audit/versionedChange";
@@ -282,7 +281,8 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
             {podeConfig && (
               <div className="mt-3 pt-3 border-t border-gray-200 dark:border-gray-800 space-y-2">
                 <div className="flex gap-2">
-                  <Input value={novoTopico} onChange={(e) => setNovoTopico(e.target.value)} placeholder="+ Adicionar tópico de pauta" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); adicionarTopico(); } }} className="flex-1 min-w-0" />
+                  <input value={novoTopico} onChange={(e) => setNovoTopico(e.target.value)} placeholder="+ Adicionar tópico de pauta" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); adicionarTopico(); } }}
+                    className="flex-1 min-w-0 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500" />
                   <Button onClick={adicionarTopico} disabled={!novoTopico.trim()} className="shrink-0">Adicionar</Button>
                 </div>
                 <Button variant="secondary" onClick={() => setPuxarAberto(true)} className="w-full">📋 Puxar de ideia / ocorrência aberta</Button>

@@ -129,7 +129,10 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     if (!pessoa?.isMaster) return false;
     return modulosAtivos.includes(moduleId);
   }
-  const masterMods = modulesByArea("master").filter(m => !m.oculto && masterModuloLigado(m.id));
+  // Agentes de IA e Governança de IA sobem pra Institucional (badge "master"),
+  // como Caderno/Perfis — não formam mais uma seção Master própria.
+  const NO_INSTITUCIONAL_MASTER = new Set<ModuleId>(["agentes", "iaGovernanca"]);
+  const masterMods = modulesByArea("master").filter(m => !m.oculto && masterModuloLigado(m.id) && !NO_INSTITUCIONAL_MASTER.has(m.id));
 
   return (
     <>
@@ -270,6 +273,18 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                         <span>🛡️</span><span className="flex-1 truncate">Perfis de Acesso</span>
                         <span className="text-[9px] text-gray-400">master</span>
                       </NavLink>
+                      {masterModuloLigado("agentes") && (
+                        <NavLink to={rid ? `/r/${rid}/agentes` : "#"} onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                          <span>🤖</span><span className="flex-1 truncate">Agentes de IA</span>
+                          <span className="text-[9px] text-gray-400">master</span>
+                        </NavLink>
+                      )}
+                      {masterModuloLigado("iaGovernanca") && (
+                        <NavLink to={rid ? `/r/${rid}/iaGovernanca` : "#"} onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                          <span>🛡️</span><span className="flex-1 truncate">Governança de IA</span>
+                          <span className="text-[9px] text-gray-400">master</span>
+                        </NavLink>
+                      )}
                     </>
                   )}
                 </div>

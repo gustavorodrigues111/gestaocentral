@@ -37,7 +37,11 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose, onCriada }:
   const [data, setData] = useState(reuniao?.data ?? rascunho?.data ?? todayYmd());
   const [horario, setHorario] = useState(reuniao?.horario ?? rascunho?.horario ?? "");
   const [local, setLocal] = useState(reuniao?.local ?? rascunho?.local ?? "");
-  const [participantes, setParticipantes] = useState<ParticipanteReuniao[]>(reuniao?.participantes ?? rascunho?.participantes ?? []);
+  // Reunião nova: quem cria já entra como participante (é opcional — dá pra
+  // remover na lista abaixo). Edição/rascunho preservam o que já havia.
+  const [participantes, setParticipantes] = useState<ParticipanteReuniao[]>(
+    reuniao?.participantes ?? rascunho?.participantes ?? (me ? [{ nome: me.nome }] : []),
+  );
   const [extName, setExtName] = useState("");
   const [busca, setBusca] = useState("");
   const [pautaInicial, setPautaInicial] = useState<PautaItem[]>(rascunho?.pauta ?? []);
