@@ -257,6 +257,10 @@ export function PessoasList({ restaurantId }: Props) {
             const cargo = emp ? cargoMap[emp.cargoId] : null;
             const acessoBadges = statusAcesso(p, restaurantId, emp, perfis, cargo);
             const vinculo = resolverVinculo(p, restaurantId, emp, cargo);
+            // Sombreamento por ACESSO: âmbar = tem pendência (precisa de ação);
+            // branco = Pronto ou Sem login (freela) ou Master; apagado = inativa.
+            const precisaAtencaoAcesso = p.ativa !== false &&
+              !acessoBadges.some(b => b.status === "pronto" || b.status === "master" || b.status === "sem_login");
             return (
               <button
                 key={p.id}
@@ -266,10 +270,10 @@ export function PessoasList({ restaurantId }: Props) {
                 className={`w-full flex items-center gap-3 px-4 py-3 text-left transition-colors ${
                   i > 0 ? "border-t border-gray-100 dark:border-gray-800" : ""
                 } ${p.ativa === false ? "opacity-60" : ""} ${
-                  // Pessoas que são equipe (têm doc /empregados) ficam com
-                  // fundo levemente azulado pra varredura rápida da lista
-                  // — distingue de "só usuário do sistema" sem cargo.
-                  emp ? "bg-sky-100/60 dark:bg-sky-900/25" : ""
+                  // Sombreamento por ACESSO: âmbar destaca quem tem pendência de
+                  // acesso (precisa de ação). Pronto/Sem login/Master = sem fundo.
+                  // O que a pessoa É (equipe/freela/cargo) já aparece nos badges.
+                  precisaAtencaoAcesso ? "bg-amber-50/70 dark:bg-amber-900/15" : ""
                 } ${
                   podeConfig ? "hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-pointer" : "cursor-default"
                 }`}
