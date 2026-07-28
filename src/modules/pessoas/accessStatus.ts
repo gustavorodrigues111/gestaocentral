@@ -18,7 +18,7 @@
 
 import type { AccessProfile, Cargo, Empregado, Pessoa } from "../../core/types";
 import { resolverPerfil } from "../../core/auth/permissions";
-import { resolverVinculo } from "../../core/vinculos/comportamento";
+import { resolverVinculo, getComportamento } from "../../core/vinculos/comportamento";
 
 export type AccessStatus =
   | "inativa"
@@ -143,19 +143,25 @@ export function statusAcesso(
   if (semEmail) badges.push(BADGE_FALTA_EMAIL);
   if (semCpf) badges.push(BADGE_FALTA_CPF);
 
+  // Vínculo lógico da pessoa NESTE restaurante (define o comportamento).
+  const vinc = resolverVinculo(p, restaurantId, empregado, cargo ?? null);
+
   // Soma: perfil no restaurante ativo
   const profileId = p.profileIds?.[restaurantId];
   if (!profileId) {
     badges.push(BADGE_PRECISA_PERFIL);
   } else {
-    // Soma: perfil dá portal mas pessoa não tem empregado
+    // Soma: perfil dá Portal do Empregado mas a pessoa não é empregada aqui.
+    // MAS só cobra empregado quando o VÍNCULO deveria ter empregado. Prestador
+    // Adm / Diretoria (apareceEmEmpregados: "nunca") acessam como admin/prestador
+    // — não são equipe operacional deste restaurante, então NÃO é pendência.
     const perfil = resolverPerfil(profileId, perfis);
     const perfilLiberaPortal = perfil?.permissions?.portalEmpregado?.acessar === true;
-    if (perfilLiberaPortal && !empregado) badges.push(BADGE_PRECISA_EMPREGADO);
+    const vinculoExigeEmpregado = !vinc || getComportamento(vinc, "apareceEmEmpregados") !== "nunca";
+    if (perfilLiberaPortal && !empregado && vinculoExigeEmpregado) badges.push(BADGE_PRECISA_EMPREGADO);
   }
 
   // Soma: sem vínculo definido — admin precisa atribuir
-  const vinc = resolverVinculo(p, restaurantId, empregado, cargo ?? null);
   if (!vinc) badges.push(BADGE_PRECISA_VINCULO);
 
   // Soma: nunca logou (info, não bloqueia)
