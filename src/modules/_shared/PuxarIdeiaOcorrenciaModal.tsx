@@ -97,7 +97,7 @@ export function PuxarIdeiaOcorrenciaModal({ onClose, onEscolher, restaurantId, t
   );
 
   return (
-    <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={onClose}>
+    <div className="fixed inset-0 bg-black/60 z-[210] flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-xl p-5 max-h-[80vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-base font-bold mb-3 text-gray-900 dark:text-gray-100">
           {titulo || "Puxar de Banco de Ideias / Ocorrências"}
