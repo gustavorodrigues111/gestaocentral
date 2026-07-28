@@ -488,16 +488,15 @@ function TabIdentidade({
           sistema oferece criar acesso. Independe do vínculo/perfil. */}
       <div className="flex flex-col gap-1.5">
         <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Essa pessoa vai ter login no sistema?</label>
-        <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 w-full max-w-xs">
-          {([["nao", "Não"], ["sim", "Sim"]] as const).map(([v, label]) => {
-            const on = (v === "sim") === temLogin;
-            return (
-              <button key={v} type="button" onClick={() => void setTemLoginPersist(v === "sim")}
-                className={`flex-1 px-3 py-1.5 text-[13px] font-medium rounded-md text-center transition-colors ${on ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"}`}>
-                {label}
-              </button>
-            );
-          })}
+        <div className="flex w-full gap-0.5 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+          <button type="button" onClick={() => void setTemLoginPersist(false)}
+            className={`flex-1 px-3 py-2 text-[13.5px] font-semibold rounded-md text-center transition-colors ${!temLogin ? "bg-rose-600 text-white shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"}`}>
+            Não
+          </button>
+          <button type="button" onClick={() => void setTemLoginPersist(true)}
+            className={`flex-1 px-3 py-2 text-[13.5px] font-semibold rounded-md text-center transition-colors ${temLogin ? "bg-emerald-600 text-white shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"}`}>
+            Sim
+          </button>
         </div>
         <p className="text-[11px] text-gray-500 dark:text-gray-400">
           Padrão <b>Não</b> — ex.: freela não acessa (e nem gera acesso). Marque <b>Sim</b> só pra quem vai usar o sistema. Independe do perfil/vínculo.
