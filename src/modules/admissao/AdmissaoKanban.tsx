@@ -398,15 +398,6 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
 
   // Lembrete ao candidato (WhatsApp) — mensagem preparada, você confirma ao
   // abrir. Diferente do "reenviar": não renova prazo, só cutuca.
-  function lembrar(adm: Admissao) {
-    const url = urlPublicaAdmissao(adm.token, activeRestaurant.subdomain);
-    const nome1 = (adm.candidato.nome || "").split(" ")[0];
-    const msg = `Oi, ${nome1}! Passando pra lembrar da sua ficha de admissão do ${activeRestaurant.nome} 🙂\n\nO link ainda está te esperando:\n${url}\n\nSe precisar de ajuda ou de mais tempo, é só me chamar por aqui!`;
-    const link = linkWhatsAppCandidato(adm.candidato.whatsapp, msg);
-    if (link) window.open(link, "_blank");
-    else alert("WhatsApp do candidato inválido — confira o cadastro.");
-  }
-
   async function copiarLink(adm: Admissao) {
     const url = urlPublicaAdmissao(adm.token, activeRestaurant.subdomain);
     try { await navigator.clipboard.writeText(url); alert("Link copiado:\n\n" + url); }
@@ -653,7 +644,6 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
                     onEstender={(h) => estender(a, h)}
                     onDesfazerExtensao={() => desfazerExtensao(a)}
                     onNovoToken={() => novoToken(a)}
-                    onLembrar={() => lembrar(a)}
                   />
                 ))}
                 {cards.length === 0 && (
@@ -674,7 +664,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
 
 function KanbanCard({
   adm, cargo, colunas, colunaAtualId, isMaster, isDragging,
-  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir, onAbrirFormulario, onEnviarLink, onCriarEmpregado, onConcluir, onCopiarLink, onEstender, onDesfazerExtensao, onNovoToken, onLembrar,
+  onClickCard, onDragStart, onDragEnd, onMoverPara, onExcluir, onCancelar, onReabrir, onAbrirFormulario, onEnviarLink, onCriarEmpregado, onConcluir, onCopiarLink, onEstender, onDesfazerExtensao, onNovoToken,
 }: {
   adm: Admissao;
   cargo: Cargo | undefined;
@@ -697,7 +687,6 @@ function KanbanCard({
   onEstender: (horas: number) => void;
   onDesfazerExtensao: () => void;
   onNovoToken: () => void;
-  onLembrar: () => void;
 }) {
   const st = statusEfetivo(adm);
   const colAtual = colunas.find((c) => c.id === colunaAtualId);
@@ -710,6 +699,14 @@ function KanbanCard({
   const proxColId = prox ? colunas.find((c) => colunaCapturaStatus(c, prox))?.id : null;
   const anteColId = ante ? colunas.find((c) => colunaCapturaStatus(c, ante))?.id : null;
   const ehTerminal = adm.status === "cancelada" || adm.status === "expirada";
+  const [menu, setMenu] = useState<null | "kebab" | "link">(null);
+
+  const fechaMenu = (e: React.MouseEvent, fn?: () => void) => { e.stopPropagation(); setMenu(null); fn?.(); };
+  const btnPrim = "w-full px-2 py-1.5 rounded-md text-[11px] font-semibold";
+  const btnGhost = "w-full mt-1.5 px-2 py-1.5 rounded-md text-[11px] font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800";
+  const itemMenu = "w-full flex items-center gap-2 text-left text-[12px] px-2 py-1.5 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200";
+  const mostraCriar = !ehTerminal && !adm.empregadoIdCriado && temDadosFinaisCompletos(adm);
+  const pz = adm.status === "formulario_enviado" ? prazoLabel(adm.expiraEm) : null;
 
   return (
     <div
@@ -717,7 +714,7 @@ function KanbanCard({
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onClick={onClickCard}
-      className={`bg-white dark:bg-gray-900 border rounded-lg px-3 py-2 cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-600 transition-all ${
+      className={`relative bg-white dark:bg-gray-900 border rounded-lg px-3 py-2 cursor-pointer hover:border-indigo-400 dark:hover:border-indigo-600 transition-all ${
         isDragging ? "opacity-40" : ""
       } ${
         atrasos > 0
@@ -725,6 +722,9 @@ function KanbanCard({
           : "border-gray-200 dark:border-gray-800"
       }`}
     >
+      {/* Backdrop pra fechar menus ao clicar fora */}
+      {menu && <div className="fixed inset-0 z-40" onClick={(e) => { e.stopPropagation(); setMenu(null); }} />}
+
       <div className="flex items-start gap-1.5">
         <div className="min-w-0 flex-1">
           <div className="font-medium text-sm text-gray-900 dark:text-gray-100 truncate">
@@ -741,6 +741,29 @@ function KanbanCard({
           >
             ⚠️ {atrasos}
           </span>
+        )}
+        {/* ⋯ menu (mover etapa / cancelar) — não-terminal */}
+        {!ehTerminal && (
+          <div className="relative flex-none">
+            <button
+              type="button"
+              title="Mais ações"
+              onClick={(e) => { e.stopPropagation(); setMenu(menu === "kebab" ? null : "kebab"); }}
+              className="-mr-1 w-7 h-7 grid place-items-center rounded-md text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 text-lg leading-none"
+            >
+              ⋯
+            </button>
+            {menu === "kebab" && (
+              <div className="absolute z-50 right-0 mt-1 w-52 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg p-1.5">
+                <div className="text-[9px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 px-2 pt-1 pb-0.5">Mover etapa</div>
+                {proxColId && <button type="button" onClick={(e) => fechaMenu(e, () => onMoverPara(proxColId))} className={itemMenu}>▶ Avançar etapa</button>}
+                {anteColId && <button type="button" onClick={(e) => fechaMenu(e, () => onMoverPara(anteColId))} className={itemMenu}>◀ Voltar etapa</button>}
+                {!proxColId && !anteColId && <div className="text-[11px] text-gray-400 px-2 py-1">Sem etapa pra mover.</div>}
+                <div className="h-px bg-gray-100 dark:bg-gray-800 my-1.5" />
+                <button type="button" onClick={(e) => fechaMenu(e, onCancelar)} className={`${itemMenu} !text-rose-600 dark:!text-rose-400`}>✕ Cancelar admissão</button>
+              </div>
+            )}
+          </div>
         )}
       </div>
 
@@ -763,133 +786,81 @@ function KanbanCard({
         </div>
       )}
 
-      {/* Próxima ação em destaque: enviar/reenviar o formulário ao candidato */}
-      {adm.status === "a_admitir" && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onEnviarLink(); }}
-          className="w-full mt-2 px-2 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold"
-          title="Gera o link e abre o WhatsApp pro candidato preencher. Move o card pra 'Aguardando' e inicia o prazo."
-        >
-          📨 Enviar formulário (WhatsApp)
-        </button>
+      {/* Prazo (aguardando preenchimento) */}
+      {pz && (
+        <div className={`mt-2 text-[10px] font-semibold ${pz.vencido ? "text-rose-600 dark:text-rose-400" : pz.urgente ? "text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400"}`}>
+          ⏰ {pz.txt}
+        </div>
       )}
-      {adm.status === "formulario_enviado" && (() => {
-        const pz = prazoLabel(adm.expiraEm);
-        return (
-          <>
-            {pz && (
-              <div className={`mt-2 text-[10px] font-semibold ${pz.vencido ? "text-rose-600 dark:text-rose-400" : pz.urgente ? "text-amber-600 dark:text-amber-400" : "text-gray-500 dark:text-gray-400"}`}>
-                ⏰ {pz.txt}
-              </div>
-            )}
-            <div className="flex gap-1.5 mt-1.5">
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onEnviarLink(); }}
-                className="flex-1 px-2 py-1.5 rounded-md border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-[11px] font-semibold"
-                title="Reabre o WhatsApp com o mesmo link e renova o prazo"
-              >
-                🔄 Reenviar
-              </button>
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); onLembrar(); }}
-                className="flex-1 px-2 py-1.5 rounded-md border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 text-[11px] font-semibold"
-                title="Cutuca o candidato no WhatsApp (não renova o prazo)"
-              >
-                🔔 Lembrar
-              </button>
-            </div>
-            <div className="flex items-center flex-wrap gap-x-2 gap-y-1 mt-1.5 text-[10px] text-gray-500 dark:text-gray-400">
-              <button type="button" onClick={(e) => { e.stopPropagation(); onCopiarLink(); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">📋 copiar link</button>
-              <span className="text-gray-300 dark:text-gray-700">·</span>
-              <button type="button" onClick={(e) => { e.stopPropagation(); onEstender(12); }} className="hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">⏱ +12h</button>
-              {(adm.extensoesPrazo?.length ?? 0) > 0 && (
-                <button type="button" onClick={(e) => { e.stopPropagation(); onDesfazerExtensao(); }} className="hover:text-amber-600 dark:hover:text-amber-400 hover:underline" title={`Desfaz a última extensão (+${adm.extensoesPrazo!.slice(-1)[0].horas}h)`}>↩ desfazer</button>
-              )}
-              <span className="text-gray-300 dark:text-gray-700">·</span>
-              <button type="button" onClick={(e) => { e.stopPropagation(); onNovoToken(); }} className="hover:text-rose-600 dark:hover:text-rose-400 hover:underline" title="Gera um link novo (invalida o anterior) — pra link expirado">🔑 novo link</button>
-            </div>
-          </>
-        );
-      })()}
 
-      {/* Botões ◀ ▶ — só pra cards não-terminais e com etapa próxima/anterior */}
-      {!ehTerminal && (anteColId || proxColId) && (
-        <div className="flex items-center gap-1 mt-2 pt-2 border-t border-gray-100 dark:border-gray-800">
-          {anteColId ? (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onMoverPara(anteColId); }}
-              className="text-[10px] px-2 py-1 rounded border border-gray-200 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300"
-              title="Voltar pra etapa anterior"
-            >
-              ◀ voltar
-            </button>
-          ) : <span className="flex-1" />}
-          {proxColId && (
-            <button
-              type="button"
-              onClick={(e) => { e.stopPropagation(); onMoverPara(proxColId); }}
-              className="ml-auto text-[10px] px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
-              title="Avançar pra próxima etapa"
-            >
-              avançar ▶
+      {/* ── Ações por etapa (não-terminal) ── */}
+      {!ehTerminal && (
+        <div className="mt-2">
+          {/* A admitir: enviar o formulário */}
+          {adm.status === "a_admitir" && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); onEnviarLink(); }}
+              className={`${btnPrim} bg-emerald-600 hover:bg-emerald-700 text-white`}
+              title="Gera o link e abre o WhatsApp pro candidato preencher. Move o card pra 'Aguardando' e inicia o prazo.">
+              📨 Enviar formulário
             </button>
           )}
-        </div>
-      )}
 
-      {/* Formulário (visualizar/editar) + Cancelar admissão — status não-terminal */}
-      {!ehTerminal && (
-        <div className="mt-1.5 flex items-center justify-between gap-2">
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onAbrirFormulario(); }}
-            className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline font-medium"
-            title="Ver o que o candidato preencheu (só leitura). Dá pra editar de lá."
-          >
-            👁 Ver preenchimento
-          </button>
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); onCancelar(); }}
-            className="text-[10px] text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 hover:underline"
-            title="Cancelar admissão (precisa motivo) — pode reabrir depois se master"
-          >
-            ❌ cancelar admissão
-          </button>
-        </div>
-      )}
+          {/* Aguardando: split "Enviar no WhatsApp" + menu de link */}
+          {adm.status === "formulario_enviado" && (
+            <div className="relative flex">
+              <button type="button" onClick={(e) => { e.stopPropagation(); onEnviarLink(); }}
+                className="flex-1 px-2 py-1.5 rounded-l-md bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold"
+                title="Reabre o WhatsApp com o link e renova o prazo">
+                📨 Enviar no WhatsApp
+              </button>
+              <button type="button" onClick={(e) => { e.stopPropagation(); setMenu(menu === "link" ? null : "link"); }}
+                className="px-2 rounded-r-md bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] border-l border-emerald-500/60"
+                title="Mais opções de link">
+                ▾
+              </button>
+              {menu === "link" && (
+                <div className="absolute z-50 right-0 top-full mt-1 w-56 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg p-1.5">
+                  <button type="button" onClick={(e) => fechaMenu(e, onCopiarLink)} className={itemMenu}>📋 Copiar link</button>
+                  <button type="button" onClick={(e) => fechaMenu(e, () => onEstender(12))} className={itemMenu}>⏱ Estender prazo +12h</button>
+                  {(adm.extensoesPrazo?.length ?? 0) > 0 && (
+                    <button type="button" onClick={(e) => fechaMenu(e, onDesfazerExtensao)} className={itemMenu}>↩ Desfazer extensão</button>
+                  )}
+                  <button type="button" onClick={(e) => fechaMenu(e, onNovoToken)} className={`${itemMenu} !text-rose-600 dark:!text-rose-400`}>🔑 Gerar link novo</button>
+                </div>
+              )}
+            </div>
+          )}
 
-      {/* Criar empregado — quando os dados da vaga estão completos e ainda não
-          foi criado. Pode ser feito cedo (não encerra a admissão). */}
-      {!ehTerminal && !adm.empregadoIdCriado && temDadosFinaisCompletos(adm) && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onCriarEmpregado(); }}
-          className="w-full mt-1.5 px-2 py-1.5 rounded-md text-[11px] font-semibold border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
-          title="Cria Pessoa + Empregado no sistema e dá acesso. A admissão continua no Kanban."
-        >
-          👤 Criar empregado
-        </button>
-      )}
-      {!ehTerminal && adm.empregadoIdCriado && (
-        <div className="mt-1.5 text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold">
-          👤 empregado criado no sistema ✓
+          {/* Criar empregado — dados completos */}
+          {mostraCriar && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); onCriarEmpregado(); }}
+              className={`${btnPrim} ${adm.status === "formulario_enviado" || adm.status === "a_admitir" ? "mt-1.5 " : ""}bg-indigo-600 hover:bg-indigo-700 text-white`}
+              title="Cria Pessoa + Empregado no sistema e dá acesso. A admissão continua no Kanban.">
+              👤 Criar empregado
+            </button>
+          )}
+          {adm.empregadoIdCriado && (
+            <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1.5">
+              👤 empregado criado no sistema ✓
+            </div>
+          )}
+
+          {/* Concluir — etapa final */}
+          {adm.status === "admitido" && (
+            <button type="button" onClick={(e) => { e.stopPropagation(); onConcluir(); }}
+              className={`${btnPrim} mt-1.5 bg-emerald-600 hover:bg-emerald-700 text-white`}
+              title="Encerra e arquiva a admissão (vai pra aba Finalizadas).">
+              ✅ Concluir admissão
+            </button>
+          )}
+
+          {/* Ver / editar formulário — secundário, todas as etapas */}
+          <button type="button" onClick={(e) => { e.stopPropagation(); onAbrirFormulario(); }}
+            className={btnGhost}
+            title="Abre o formulário do candidato. Se você editar e salvar, assume o preenchimento.">
+            📝 Ver / editar formulário
+          </button>
         </div>
-      )}
-      {/* Concluir admissão — só na etapa final (admitido). Arquiva. */}
-      {!ehTerminal && adm.status === "admitido" && (
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); onConcluir(); }}
-          className="w-full mt-1.5 px-2 py-1.5 rounded-md text-[11px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white"
-          title="Encerra e arquiva a admissão (vai pra aba Finalizadas)."
-        >
-          ✅ Concluir admissão
-        </button>
       )}
 
       {/* Cancelada/Expirada: badges cumulativas dos motivos + data + autor */}
