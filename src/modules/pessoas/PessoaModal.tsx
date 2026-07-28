@@ -29,6 +29,7 @@ import {
   resolverVinculo,
   type VinculoLogico,
 } from "../../core/vinculos/comportamento";
+import { pessoaTemLogin } from "./accessStatus";
 import { Link, useNavigate } from "react-router-dom";
 
 type Tab = "identidade" | "vinculos";
@@ -138,6 +139,12 @@ function TabIdentidade({
     pix: pessoa?.pix || "",
   });
   const [vinculoNovo, setVinculoNovo] = useState<VinculoLogico | "">("");
+  // Terá login? Decisão explícita por pessoa (padrão Não). Independe do vínculo.
+  const [temLogin, setTemLogin] = useState<boolean>(() => (pessoa ? pessoaTemLogin(pessoa) : false));
+  async function setTemLoginPersist(v: boolean) {
+    setTemLogin(v);
+    if (pessoa) { try { await updateDoc(doc(db, "pessoas", pessoa.id), { temLogin: v }); } catch { /* salva junto no Salvar */ } }
+  }
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [savedAt, setSavedAt] = useState("");
@@ -278,6 +285,7 @@ function TabIdentidade({
           whatsapp: form.whatsapp.trim() || null,
           pix: form.pix.trim() || null,
           isMaster: false,
+          temLogin,
           restaurantIds: [restaurantId],
           permissions: { [restaurantId]: {} },
           vinculos: { [restaurantId]: vinculoNovo },
@@ -310,6 +318,7 @@ function TabIdentidade({
           whatsapp: form.whatsapp.trim() || null,
           pix: form.pix.trim() || null,
           cadastroIncompleto: !cpfDigits,
+          temLogin,
         };
         await updateDoc(doc(db, "pessoas", pessoa.id), update);
         await logAudit({
@@ -457,6 +466,26 @@ function TabIdentidade({
         </div>
       )}
 
+      {/* Terá login? — decisão explícita por pessoa (padrão Não). Só quando Sim o
+          sistema oferece criar acesso. Independe do vínculo/perfil. */}
+      <div className="flex flex-col gap-1.5">
+        <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Essa pessoa vai ter login no sistema?</label>
+        <div className="flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 w-full max-w-xs">
+          {([["nao", "Não"], ["sim", "Sim"]] as const).map(([v, label]) => {
+            const on = (v === "sim") === temLogin;
+            return (
+              <button key={v} type="button" onClick={() => void setTemLoginPersist(v === "sim")}
+                className={`flex-1 px-3 py-1.5 text-[13px] font-medium rounded-md text-center transition-colors ${on ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"}`}>
+                {label}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-[11px] text-gray-500 dark:text-gray-400">
+          Padrão <b>Não</b> — ex.: freela não acessa (e nem gera acesso). Marque <b>Sim</b> só pra quem vai usar o sistema. Independe do perfil/vínculo.
+        </p>
+      </div>
+
       {/* Atribuição de perfil de acesso — substitui a tab "🔐 Permissões"
           antiga (checkboxes ver/configurar) que foi removida. */}
       {!isNew && pessoa && (
@@ -473,6 +502,12 @@ function TabIdentidade({
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3 flex flex-wrap gap-2">
           {!isInativa ? (
             <>
+              {!temLogin && (
+                <div className="w-full text-[12.5px] text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/60 rounded-lg px-3 py-2 border border-slate-200 dark:border-slate-700">
+                  🚫 <b>Sem login</b> — essa pessoa não usa o sistema. Pra dar acesso, marque <b>“vai ter login: Sim”</b> acima.
+                </div>
+              )}
+              {temLogin && (<>
               {podeConvidar && !pessoa?.acessoProvisionadoEm && (
                 <Button
                   size="sm"
@@ -528,6 +563,7 @@ function TabIdentidade({
                   <button type="button" onClick={() => setResetResult(null)} className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-1.5">fechar</button>
                 </div>
               )}
+              </>)}
               {podeVisualizarComo && pessoa && (
                 <Button
                   size="sm"

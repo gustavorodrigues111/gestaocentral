@@ -1163,6 +1163,11 @@ export type Pessoa = {
   // acesso (CPF + nova senha). Limpo quando a pessoa conclui o 1º acesso.
   acessoProvisionadoEm?: string;   // ISO — quando o acesso foi criado
   mustTrocarSenha?: boolean;       // true = força tela de 1º acesso
+  // Essa pessoa TERÁ login no sistema? Decisão explícita, POR PESSOA (não vem do
+  // vínculo/perfil). Padrão = false (sem login — ex.: freela, que nem deve gerar
+  // acesso). Só quando true o sistema oferece convidar/provisionar. Retrocompat:
+  // undefined → tratado como "tem login" se já foi provisionado/logou.
+  temLogin?: boolean;
   isMaster: boolean;
   restaurantIds: string[];
   permissions: { [restaurantId: string]: RestaurantPermissions };

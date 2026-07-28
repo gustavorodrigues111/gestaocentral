@@ -23,6 +23,7 @@ import { resolverVinculo } from "../../core/vinculos/comportamento";
 export type AccessStatus =
   | "inativa"
   | "master"
+  | "sem_login"
   | "falta_email"
   | "falta_cpf"
   | "precisa_perfil"
@@ -39,6 +40,22 @@ export type AccessBadge = {
   classes: string;
 };
 
+// Essa pessoa TERÁ login? Decisão explícita por pessoa (não vem do vínculo).
+// Padrão = false (sem login). Retrocompat: undefined → tem login se já foi
+// provisionado/logou (base antiga). Master sempre tem.
+export function pessoaTemLogin(p: Pessoa): boolean {
+  if (p.isMaster) return true;
+  if (typeof p.temLogin === "boolean") return p.temLogin;
+  const uid = (p as unknown as { uidVinculado?: string }).uidVinculado;
+  return !!p.acessoProvisionadoEm || !!uid;
+}
+
+const BADGE_SEM_LOGIN: AccessBadge = {
+  status: "sem_login",
+  label: "Sem login",
+  tooltip: "Essa pessoa não usa o sistema (definido no cadastro). Nenhum acesso é criado — não conta como pendência.",
+  classes: "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400",
+};
 const BADGE_INATIVA: AccessBadge = {
   status: "inativa",
   label: "Inativa",
@@ -115,6 +132,8 @@ export function statusAcesso(
   // Estados terminais — curto-circuitam
   if (p.ativa === false) return [BADGE_INATIVA];
   if (p.isMaster) return [BADGE_MASTER];
+  // Sem login (ex.: freela): não usa o sistema → nenhuma pendência de acesso.
+  if (!pessoaTemLogin(p)) return [BADGE_SEM_LOGIN];
 
   const badges: AccessBadge[] = [];
 
