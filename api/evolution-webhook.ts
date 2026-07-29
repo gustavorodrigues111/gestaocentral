@@ -234,7 +234,7 @@ async function processar(body: EvoBody): Promise<void> {
         tipo: m.messageType || "text", texto, timestamp: ts, recebidoEm: new Date().toISOString(),
         lido: fromMe, numeroId, messageId: id,
         autorNome: fromMe ? "via aparelho" : (ehGrupo ? (m.pushName || null) : null), viaAparelho: fromMe,
-        ...(ehGrupo ? { ehGrupo: true, autor: soDig((m.key?.participant || "").split("@")[0]) || null } : {}),
+        ...(ehGrupo ? { ehGrupo: true, autor: soDig((m.key?.participant || "").split("@")[0]) || null, autorJid: m.key?.participant || null } : {}),
         ...(midia ? { midiaUrl: midia.url, mime: midia.mime, ...(midia.nome ? { midiaNome: midia.nome } : {}) } : {}),
       });
       // Semeia o contato na 1ª mensagem (create-if-not-exists).

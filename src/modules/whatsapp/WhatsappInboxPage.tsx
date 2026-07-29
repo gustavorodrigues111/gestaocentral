@@ -22,7 +22,7 @@ import { WhatsappTemplatesTab } from "./WhatsappTemplatesTab";
 import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
 
-type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; ehGrupo?: boolean; autor?: string | null };
+type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null };
 
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const fmtBRcurto = (ymd?: string | null) => { if (!ymd) return ""; const [a, m, d] = String(ymd).split("-"); return d ? `${d}/${m}/${a?.slice(2) || ""}` : String(ymd); };
@@ -64,7 +64,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [respostas, setRespostas] = useState<WhatsappResposta[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [resposta, setResposta] = useState("");
-  const [mencionados, setMencionados] = useState<Set<string>>(new Set());  // números @-marcados (grupo)
+  const [mencionados, setMencionados] = useState<{ numero: string; jid: string }[]>([]);  // @-marcados (grupo)
   const [enviando, setEnviando] = useState(false);
   const enviandoRef = useRef(false);   // trava síncrona contra duplo-envio (state é async)
   const [acaoMsgId, setAcaoMsgId] = useState<string | null>(null);   // popover de ações aberto (id da msg)
@@ -392,7 +392,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       // internamente (doc) gravamos sempre o nome real.
       const autorCliente = (numeros.find(n => n.id === numeroSel)?.apelidos?.[me?.id || ""] || "").trim() || me?.nome || "";
       // @-marcações (só grupo): JIDs cujos @número ainda estão no texto.
-      const mentioned = grupoSel ? Array.from(mencionados).filter(n => txt.includes(`@${n}`)).map(n => `${n}@s.whatsapp.net`) : [];
+      const mentioned = grupoSel ? mencionados.filter(mn => txt.includes(`@${mn.numero}`)).map(mn => mn.jid) : [];
       const r = await fetch("/api/evolution-enviar", {
         method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
         body: JSON.stringify({ instancia: numeroSel, to: paraEnviar, texto: txt, autorNome: autorCliente, ...(mentioned.length ? { mentioned } : {}) }),
@@ -406,7 +406,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         const docMsg = sanitizeForFirestore({ waId: sel, nome: nomeSel || null, direcao: "out", tipo: "text", texto: txt, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null, ...(mid ? { messageId: mid } : {}) });
         if (mid) await setDoc(doc(db, "whatsappMensagens", `${numeroSel}_${mid}`), docMsg, { merge: true });
         else await addDoc(collection(db, "whatsappMensagens"), docMsg);
-        setResposta(""); setMencionados(new Set());
+        setResposta(""); setMencionados([]);
       } else {
         alert((j as { naoConfigurado?: boolean }).naoConfigurado ? "Evolution ainda não configurada (env vars na Vercel)." : ((j as { error?: string }).error || "Falha ao enviar."));
       }
@@ -495,24 +495,34 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // Participantes do grupo: números do contato (findGroupInfos) + nomes que
   // vieram dos autores do thread. Base do picker de "@".
   const grupoSelKey = ehGrupoWaId(sel || "");
+  // Candidatos pra "@": SÓ quem já falou no grupo (tem nome + JID confiável).
+  // Os "participantes" do findGroupInfos vêm em formato LID (número gigante, sem
+  // nome) — inúteis pra marcar; ignorados de propósito.
   const participantesGrupo = useMemo(() => {
-    if (!grupoSelKey) return [] as { numero: string; nome: string }[];
-    const nomePorNum = new Map<string, string>();
-    for (const m of thread) if (m.ehGrupo && m.autor && m.autorNome) nomePorNum.set(m.autor, m.autorNome);
-    const nums = new Set<string>([...(contatos[foneKey(sel || "")]?.participantes || []), ...nomePorNum.keys()]);
-    return Array.from(nums).map((n) => ({ numero: n, nome: nomePorNum.get(n) || `+${n}` })).sort((a, b) => a.nome.localeCompare(b.nome));
+    if (!grupoSelKey) return [] as { numero: string; nome: string; jid: string }[];
+    const porJid = new Map<string, { numero: string; nome: string; jid: string }>();
+    for (const m of thread) {
+      if (!m.ehGrupo || m.direcao !== "in" || !m.autorNome) continue;
+      const jid = m.autorJid || (m.autor ? `${m.autor}@s.whatsapp.net` : "");
+      if (!jid) continue;
+      const numero = soDig(jid.split("@")[0]);
+      porJid.set(jid, { numero, nome: m.autorNome, jid });
+    }
+    return Array.from(porJid.values()).sort((a, b) => a.nome.localeCompare(b.nome));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grupoSelKey, sel, thread, contatos]);
+  }, [grupoSelKey, sel, thread]);
   // Token "@..." sendo digitado no fim do texto (só em grupo).
   const menMatch = grupoSelKey ? resposta.match(/(^|\s)@([^\s@]*)$/) : null;
   const menQ = menMatch ? menMatch[2].toLowerCase() : "";
   const menCandidatos = menMatch ? participantesGrupo.filter((p) => !menQ || p.nome.toLowerCase().includes(menQ) || p.numero.includes(menQ)).slice(0, 8) : [];
-  function inserirMencao(p: { numero: string; nome: string }) {
+  function inserirMencao(p: { numero: string; nome: string; jid: string }) {
+    // Texto tem @<número> (o WhatsApp resolve pro nome do lado de quem lê) + o
+    // JID vai no "mentioned" pra a marcação de fato acontecer.
     setResposta((r) => r.replace(/(^|\s)@([^\s@]*)$/, (_m, pre) => `${pre}@${p.numero} `));
-    setMencionados((s) => new Set(s).add(p.numero));
+    setMencionados((prev) => prev.some(x => x.jid === p.jid) ? prev : [...prev, { numero: p.numero, jid: p.jid }]);
     taRef.current?.focus();
   }
-  useEffect(() => { setMencionados(new Set()); }, [sel]);
+  useEffect(() => { setMencionados([]); }, [sel]);
 
   // Respostas rápidas do número selecionado + picker acionado por "/" no campo.
   const respostasNum = respostas.filter(r => r.numeroId === numeroSel);
@@ -787,7 +797,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             <div className="flex-1 min-w-0 leading-tight">
               <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{nomeSel}</div>
               <div className="text-[11px] text-gray-400 truncate">
-                {foneBonito(sel)}
+                {ehGrupoWaId(sel || "") ? "👥 Grupo" : foneBonito(sel)}
                 {clienteSel && <span className="text-emerald-600 dark:text-emerald-300"> · 🧑 {clienteSel.nome}</span>}
                 {pessoaSel && <span className="text-indigo-600 dark:text-indigo-300"> · 👤 {pessoaSel.nome}</span>}
                 {contatoSel?.atribuidoNome && <span> · 🙋 {contatoSel.atribuidoNome}</span>}
