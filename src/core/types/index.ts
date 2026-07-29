@@ -6372,6 +6372,7 @@ export type WhatsappContato = {
   // uma). `atribuidoA` (single) continua valendo pra conversas individuais.
   ehGrupo?: boolean;
   nomeGrupo?: string | null;
+  participantes?: string[];           // números (dígitos) dos membros — pro "@ marcar"
   atendentes?: string[];              // pessoaIds (grupo)
   atendentesNomes?: string[];
   triadoEm?: string | null;           // quando definiram atendentes/spam (some o prompt)

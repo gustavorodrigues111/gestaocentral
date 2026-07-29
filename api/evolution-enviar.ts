@@ -37,9 +37,13 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const key = process.env.EVOLUTION_API_KEY;
   if (!base || !key) { res.status(503).json({ error: "Evolution ainda não configurada (faltam EVOLUTION_API_URL / EVOLUTION_API_KEY nas env vars).", naoConfigurado: true }); return; }
 
-  const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as { instancia?: string; to?: string; texto?: string; autorNome?: string } | null;
+  const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as { instancia?: string; to?: string; texto?: string; autorNome?: string; mentioned?: string[] } | null;
   const instancia = (body?.instancia || "").toString().trim();
-  const to = normalizarFone((body?.to || "").toString());
+  const toRaw = (body?.to || "").toString();
+  // Grupo: JID "<id>@g.us" vai VERBATIM (não normaliza — senão perde o @g.us e
+  // vira envio pra um número). Individual: normaliza pra E.164 sem "+".
+  const to = toRaw.endsWith("@g.us") ? toRaw : normalizarFone(toRaw);
+  const mentioned = Array.isArray(body?.mentioned) ? body!.mentioned.filter((x) => typeof x === "string" && x) : [];
   const textoBase = (body?.texto || "").toString();
   const autor = (body?.autorNome || "").toString().trim();
   if (!instancia) { res.status(400).json({ error: "Informe a instância (número)." }); return; }
@@ -55,7 +59,8 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     const resp = await fetch(`${base}/message/sendText/${encodeURIComponent(instancia)}`, {
       method: "POST",
       headers: { apikey: key, "Content-Type": "application/json" },
-      body: JSON.stringify({ number: to, text: texto }),
+      // `mentioned`: JIDs (<num>@s.whatsapp.net) marcados no texto (@num) — em grupo.
+      body: JSON.stringify({ number: to, text: texto, ...(mentioned.length ? { mentioned } : {}) }),
       signal: ctrl.signal,
     });
     const txt = await resp.text();

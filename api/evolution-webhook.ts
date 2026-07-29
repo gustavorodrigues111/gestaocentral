@@ -134,21 +134,24 @@ async function baixarMidia(instancia: string, msg: EvoMsg): Promise<{ url: strin
   } catch { return null; }
 }
 
-// Nome (subject) do grupo na Evolution. Best-effort — se falhar, null. Chamado
-// só ao SEMEAR um grupo novo (não a cada mensagem).
-async function nomeDoGrupo(instancia: string, jid: string): Promise<string | null> {
+// Nome (subject) + participantes do grupo na Evolution. Best-effort. Chamado só
+// ao SEMEAR um grupo novo (não a cada mensagem). Participantes = números (dígitos)
+// pra alimentar o "@ marcar" no app.
+async function infoDoGrupo(instancia: string, jid: string): Promise<{ subject: string | null; participantes: string[] }> {
+  const vazio = { subject: null, participantes: [] as string[] };
   const base = (process.env.EVOLUTION_API_URL || "").replace(/\/+$/, "");
   const key = process.env.EVOLUTION_API_KEY;
-  if (!base || !key) return null;
+  if (!base || !key) return vazio;
   try {
     const ctrl = new AbortController();
     const t = setTimeout(() => ctrl.abort(), 8_000);
     const resp = await fetch(`${base}/group/findGroupInfos/${encodeURIComponent(instancia)}?groupJid=${encodeURIComponent(jid)}`, { headers: { apikey: key }, signal: ctrl.signal });
     clearTimeout(t);
-    if (!resp.ok) return null;
-    const j = (await resp.json()) as { subject?: string } | null;
-    return (j?.subject || "").trim() || null;
-  } catch { return null; }
+    if (!resp.ok) return vazio;
+    const j = (await resp.json()) as { subject?: string; participants?: Array<{ id?: string }> } | null;
+    const participantes = (j?.participants || []).map((p) => soDig((p.id || "").split("@")[0])).filter(Boolean);
+    return { subject: (j?.subject || "").trim() || null, participantes };
+  } catch { return vazio; }
 }
 
 export default async function handler(req: Req, res: Res): Promise<void> {
@@ -231,7 +234,7 @@ async function processar(body: EvoBody): Promise<void> {
         tipo: m.messageType || "text", texto, timestamp: ts, recebidoEm: new Date().toISOString(),
         lido: fromMe, numeroId, messageId: id,
         autorNome: fromMe ? "via aparelho" : (ehGrupo ? (m.pushName || null) : null), viaAparelho: fromMe,
-        ...(ehGrupo ? { ehGrupo: true } : {}),
+        ...(ehGrupo ? { ehGrupo: true, autor: soDig((m.key?.participant || "").split("@")[0]) || null } : {}),
         ...(midia ? { midiaUrl: midia.url, mime: midia.mime, ...(midia.nome ? { midiaNome: midia.nome } : {}) } : {}),
       });
       // Semeia o contato na 1ª mensagem (create-if-not-exists).
@@ -239,8 +242,8 @@ async function processar(body: EvoBody): Promise<void> {
         try {
           const existe = await firestoreLer("whatsappContatos", waId);
           if (!existe) {
-            const nomeG = await nomeDoGrupo(numeroId, jid);
-            await firestoreCriar("whatsappContatos", waId, { id: waId, waId, ehGrupo: true, nomeGrupo: nomeG || null, atualizadoEm: new Date().toISOString() });
+            const info = await infoDoGrupo(numeroId, jid);
+            await firestoreCriar("whatsappContatos", waId, { id: waId, waId, ehGrupo: true, nomeGrupo: info.subject || null, participantes: info.participantes, atualizadoEm: new Date().toISOString() });
           }
         } catch (e) { console.log("[evo-webhook] seed grupo:", (e as Error)?.message); }
       } else if (m.pushName) {
