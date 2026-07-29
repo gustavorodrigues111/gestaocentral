@@ -8,7 +8,7 @@
 // caixa por restaurante e filtrar por tag. Metadados em whatsappContatos/{waId}
 // e catálogo de tags em whatsappTags.
 import { useEffect, useMemo, useRef, useState, type ReactNode, type ChangeEvent, type TouchEvent as RTouchEvent } from "react";
-import { useParams } from "react-router-dom";
+import { useParams, useSearchParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -21,6 +21,7 @@ import { Modal } from "../../core/ui/Modal";
 import { WhatsappTemplatesTab } from "./WhatsappTemplatesTab";
 import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
+import { PAPEIS_WHATSAPP, type PapelWhatsapp, type WhatsappRoteio } from "../../core/whatsapp/roteios";
 
 type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null };
 
@@ -45,6 +46,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const embutido = modo === "conversas";
   const { pessoa: me } = useAuth();
   const { rid } = useParams<{ rid: string }>();
+  const [searchParams, setSearchParams] = useSearchParams();
   const { restaurants } = useRestaurant();
   const isMaster = !!me?.isMaster;
   const { can } = useCanAcao(rid || "");
@@ -215,6 +217,27 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   }, [numerosVisiveis.map(n => n.id).join(","), numeroSel]);
   // Clique na aba "Chat" (no topo) → volta pra lista de todas as conversas.
   useEffect(() => { if (voltarListaSignal) setSel(null); }, [voltarListaSignal]);
+
+  // Deep-link "Falar pelo WhatsApp": ?numero=<id>&to=<fone>&nome=<>. Pré-seleciona
+  // o número (se a pessoa tiver acesso — senão fica o padrão, dá pra trocar) e
+  // abre a conversa com o telefone. Aplica uma vez e limpa os params da URL.
+  const deepLinkRef = useRef(false);
+  useEffect(() => {
+    if (deepLinkRef.current) return;
+    const pNum = searchParams.get("numero");
+    const pTo = searchParams.get("to");
+    if (!pNum && !pTo) return;
+    if (numerosVisiveis.length === 0) return;   // aguarda os números carregarem
+    deepLinkRef.current = true;
+    if (pNum && numerosVisiveis.some(n => n.id === pNum)) setNumeroSel(pNum);
+    if (pTo) {
+      setSel(pTo);
+      const pNome = searchParams.get("nome");
+      if (pNome) { const ck = foneKey(pTo); if (!contatos[ck]?.nomeManual && !contatos[ck]?.nomePush) void salvarContato(pTo, { nomeManual: pNome }); }
+    }
+    setSearchParams({}, { replace: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, numerosVisiveis]);
 
   // Só as mensagens do número selecionado.
   const msgsDoNumero = useMemo(() => msgs.filter(m => m.numeroId === numeroSel), [msgs, numeroSel]);
@@ -1255,6 +1278,17 @@ export function NumerosManager() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me?.isMaster, restaurants.map(r => r.id).join(",")]);
 
+  // Roteios: mapa (restaurante × papel) → número. Doc /whatsappRoteios/{rid}.
+  const [roteios, setRoteios] = useState<Record<string, WhatsappRoteio>>({});
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "whatsappRoteios"), snap => setRoteios(Object.fromEntries(snap.docs.map(d => [d.id, d.data() as WhatsappRoteio]))));
+    return () => u();
+  }, []);
+  async function setPapel(rid: string, papel: PapelWhatsapp, numeroId: string) {
+    await setDoc(doc(db, "whatsappRoteios", rid), { [papel]: numeroId || null, atualizadoEm: new Date().toISOString() }, { merge: true });
+  }
+  const restaurantesGerir = me?.isMaster ? restaurants : restaurants.filter(r => (r.id));
+
   const [nome, setNome] = useState("");
   const [instancia, setInstancia] = useState("");
   const [descricao, setDescricao] = useState("");
@@ -1300,6 +1334,37 @@ export function NumerosManager() {
       <div className="space-y-4">
         {/* Adicionar — só um botão; o resto vai num modal */}
         <Button className="w-full" onClick={() => { setNome(""); setInstancia(""); setDescricao(""); setAddOpen(true); }}>➕ Adicionar novo número</Button>
+
+        {/* Números por papel — qual número atende cada tipo em cada restaurante.
+            É isso que o botão "Falar pelo WhatsApp" dos módulos usa. */}
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1">Números por papel</div>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400 mb-3">Qual número o "Falar pelo WhatsApp" usa pra cada tipo de contato, por restaurante.</p>
+          <div className="space-y-4">
+            {restaurantesGerir.map(r => {
+              const disp = numeros.filter(n => (n.ativo !== false) && ((n.restaurantIds || []).length === 0 || (n.restaurantIds || []).includes(r.id)));
+              const rot = roteios[r.id] || {};
+              return (
+                <div key={r.id}>
+                  <div className="text-[13px] font-semibold text-gray-800 dark:text-gray-100 mb-1.5">{r.nome}</div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {PAPEIS_WHATSAPP.map(p => (
+                      <label key={p.id} className="flex items-center gap-2 text-[13px]">
+                        <span className="w-40 shrink-0 text-gray-600 dark:text-gray-300 truncate" title={p.desc}>{p.icon} {p.label}</span>
+                        <select value={rot[p.id] || ""} onChange={(e) => void setPapel(r.id, p.id, e.target.value)}
+                          className="flex-1 min-w-0 text-[13px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5">
+                          <option value="">— sem número —</option>
+                          {disp.map(n => <option key={n.id} value={n.id}>{n.nome}</option>)}
+                        </select>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+            {restaurantesGerir.length === 0 && <p className="text-sm text-gray-400">Nenhum restaurante.</p>}
+          </div>
+        </div>
 
         {/* Lista de números */}
         <div className="space-y-2.5">
