@@ -797,7 +797,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             <div className="flex-1 min-w-0 leading-tight">
               <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{nomeSel}</div>
               <div className="text-[11px] text-gray-400 truncate">
-                {ehGrupoWaId(sel || "") ? "👥 Grupo" : foneBonito(sel)}
+                {ehGrupoWaId(sel || "") ? `👥 Grupo${(contatoSel?.participantes?.length || 0) > 0 ? ` · ${contatoSel!.participantes!.length} participantes` : ""}` : foneBonito(sel)}
                 {clienteSel && <span className="text-emerald-600 dark:text-emerald-300"> · 🧑 {clienteSel.nome}</span>}
                 {pessoaSel && <span className="text-indigo-600 dark:text-indigo-300"> · 👤 {pessoaSel.nome}</span>}
                 {contatoSel?.atribuidoNome && <span> · 🙋 {contatoSel.atribuidoNome}</span>}
