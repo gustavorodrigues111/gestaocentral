@@ -48,6 +48,10 @@ export function PrazosPage() {
   const catsGeriveis = TODAS_CATS.filter(podeGerirCat);
   const podeVer = catsVisiveis.length > 0;
   const podeConfig = isMaster || can("prazos", "configurar");
+  // "Todas as empresas": master sempre; usuário normal precisa da permissão —
+  // e aí vê só as empresas que ELE tem acesso (não literalmente todas).
+  const podeTodasEmpresas = isMaster || can("prazos", "verTodasEmpresas");
+  const meRests = useMemo(() => (me?.restaurantIds || []).filter(Boolean).slice(0, 10), [me?.restaurantIds]);
 
   const [prazos, setPrazos] = useState<Prazo[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
@@ -68,16 +72,19 @@ export function PrazosPage() {
 
   useEffect(() => {
     if (!rid) return;
-    // Master pode ver todos os restaurantes; senão só o ativo.
-    const qy = (todosRest && isMaster)
-      ? collection(db, "prazos")
-      : query(collection(db, "prazos"), where("restaurantIds", "array-contains", rid));
+    // Todas as empresas: master → tudo; usuário normal com permissão → só as
+    // empresas que ele tem acesso (array-contains-any). Senão, só a ativa.
+    const qy = !todosRest
+      ? query(collection(db, "prazos"), where("restaurantIds", "array-contains", rid))
+      : isMaster
+        ? collection(db, "prazos")
+        : query(collection(db, "prazos"), where("restaurantIds", "array-contains-any", meRests.length ? meRests : [rid]));
     const u1 = onSnapshot(qy, (s) => setPrazos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Prazo).filter((p) => !p.deletadoEm)), () => setPrazos([]));
     const u2 = onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)), (s) => setEmpregados(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado)), () => setEmpregados([]));
     const u3 = onSnapshot(collection(db, "pessoas"), (s) => setPessoas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Pessoa)), () => setPessoas([]));
     const u4 = onSnapshot(query(collection(db, "imoveis"), where("restaurantId", "==", rid)), (s) => setImoveis(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Imovel).filter((im) => !im.deletadoEm)), () => setImoveis([]));
     return () => { u1(); u2(); u3(); u4(); };
-  }, [rid, todosRest, isMaster]);
+  }, [rid, todosRest, isMaster, meRests]);
   const imovelNome = (id?: string | null) => imoveis.find((im) => im.id === id)?.apelido || "";
   // Responsáveis possíveis POR CATEGORIA = quem acessa (vê/gere) aquele tipo nesta empresa.
   const responsaveisPorCat = useMemo(() => {
@@ -94,9 +101,21 @@ export function PrazosPage() {
   const hoje = hojeYmd();
   const restNome = (ids: string[]) => restaurants.find((r) => ids.includes(r.id))?.nome || "";
 
+  // Pode ver ESTE prazo? Em modo "todas as empresas" (não-master), checa a
+  // permissão da categoria NA EMPRESA do prazo (não vaza trabalhista de uma
+  // empresa onde ela não pode ver). Modo normal usa o perfil da empresa ativa.
+  const podeVerPrazoCat = (p: Prazo): boolean => {
+    if (isMaster) return true;
+    if (!todosRest) return catsVisiveis.includes(p.tipo);
+    const suf = SUF_CAT[p.tipo];
+    return (p.restaurantIds || []).some((r) =>
+      (me?.restaurantIds || []).includes(r) &&
+      (canAcao(me, r, "prazos", `ver${suf}`, perfis) || canAcao(me, r, "prazos", `gerir${suf}`, perfis)));
+  };
+
   const visiveis = useMemo(() => {
     // Só categorias que a pessoa pode VER; e respeita o chip de filtro.
-    let ps = prazos.filter((p) => catsVisiveis.includes(p.tipo));
+    let ps = prazos.filter((p) => podeVerPrazoCat(p));
     // Chip "Agendados": corta transversalmente os tipos e ignora a aba —
     // mostra tudo que já tem data marcada, ordenado pela data agendada.
     if (tipoFiltro === "agendados") {
@@ -126,7 +145,7 @@ export function PrazosPage() {
   const contagem = useMemo(() => {
     const c: Record<string, number> = { todos: 0, conta: 0, tecnico: 0, trabalhista: 0, avulso: 0, agendados: 0 };
     for (const p of prazos) {
-      if (p.status === "resolvido" || !catsVisiveis.includes(p.tipo)) continue;
+      if (p.status === "resolvido" || !podeVerPrazoCat(p)) continue;
       c.todos++; c[p.tipo]++;
       if (p.status === "agendado") c.agendados++;
     }
@@ -218,7 +237,7 @@ export function PrazosPage() {
           📅 Agendados <span className="opacity-60">{contagem.agendados}</span>
         </button>
         <div className="flex-1" />
-        {isMaster && <label className="text-xs text-gray-500 flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={todosRest} onChange={(e) => setTodosRest(e.target.checked)} /> todas as empresas</label>}
+        {podeTodasEmpresas && <label className="text-xs text-gray-500 flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={todosRest} onChange={(e) => setTodosRest(e.target.checked)} /> todas as empresas</label>}
       </div>
       <div className="flex gap-2 border-b border-gray-200 dark:border-gray-800 items-center">
         {([["agenda", "Agenda"], ["resolvidos", "Resolvidos"]] as const).map(([k, l]) => (

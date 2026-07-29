@@ -517,6 +517,7 @@ export const CATALOGO: CatalogoModulo[] = [
       { id: "gerirAvulso",      label: "Gerir Avulsos (criar/editar/agendar/resolver)" },
       { id: "configurar",       label: "Gerenciar imóveis, pasta do Drive e puxar existentes" },
       { id: "receberAvisos",    label: "Receber avisos de vencimento na Central (só das categorias que vê)" },
+      { id: "verTodasEmpresas", label: "Ver todas as empresas de uma vez (só as que a pessoa tem acesso)", sensivel: true },
     ],
   },
   {
