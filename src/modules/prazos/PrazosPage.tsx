@@ -18,6 +18,7 @@ import type { Prazo, PrazoTipo, Empregado, Pessoa, Imovel } from "../../core/typ
 import { PRAZO_TIPO_LABEL, PRAZO_SUBTIPO_TRAB_LABEL } from "../../core/types";
 import { resumoRecorrencia } from "./recorrencia";
 import { resolverPrazo, podeResolver, grupoAgenda, diasAte, hojeYmd, ymdExibicao, ehFimDeSemana, diaSemanaCurto } from "./logic";
+import { DatePickerBR } from "./campos";
 import { PrazoModal } from "./PrazoModal";
 import { ImoveisModal } from "./ImoveisModal";
 
@@ -63,6 +64,10 @@ export function PrazosPage() {
   const [visao, setVisao] = useState<"calendario" | "lista">("calendario");
   const [diaSel, setDiaSel] = useState<string>(hojeYmd()); // ymd ou "__atrasados__"
   const [todosRest, setTodosRest] = useState(false);
+  const [busca, setBusca] = useState("");
+  // Confirmar data de realização/pagamento ao concluir um prazo.
+  const [resolvendo, setResolvendo] = useState<Prazo | null>(null);
+  const [dataResol, setDataResol] = useState("");
   const [modal, setModal] = useState<{ prazo: Prazo | null } | null>(null);
   const [agendando, setAgendando] = useState<string | null>(null);
   const [dataAg, setDataAg] = useState("");
@@ -116,6 +121,9 @@ export function PrazosPage() {
   const visiveis = useMemo(() => {
     // Só categorias que a pessoa pode VER; e respeita o chip de filtro.
     let ps = prazos.filter((p) => podeVerPrazoCat(p));
+    // Busca por título / responsável.
+    const q = busca.trim().toLowerCase();
+    if (q) ps = ps.filter((p) => `${p.titulo || ""} ${p.responsavelNome || ""}`.toLowerCase().includes(q));
     // Chip "Agendados": corta transversalmente os tipos e ignora a aba —
     // mostra tudo que já tem data marcada, ordenado pela data agendada.
     if (tipoFiltro === "agendados") {
@@ -126,7 +134,7 @@ export function PrazosPage() {
     if (aba === "resolvidos") return ps.filter((p) => p.status === "resolvido").sort((a, b) => (b.vencimento).localeCompare(a.vencimento));
     return ps.filter((p) => p.status !== "resolvido").sort((a, b) => a.vencimento.localeCompare(b.vencimento));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [prazos, tipoFiltro, aba, catsVisiveis.join(",")]);
+  }, [prazos, tipoFiltro, aba, busca, catsVisiveis.join(",")]);
 
   const grupos = useMemo(() => {
     const g: Record<string, Prazo[]> = { vencido: [], semana: [], proximo: [], futuro: [] };
@@ -157,10 +165,19 @@ export function PrazosPage() {
     await setDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ ...p, atualizadoEm: new Date().toISOString() }), { merge: true });
     setModal(null);
   }
-  async function realizar(p: Prazo) {
+  // Abre o modal de confirmação da data (checa laudo antes).
+  function abrirResolver(p: Prazo) {
     if (!podeResolver(p)) { setErro(`${p.titulo}: anexe o laudo antes de resolver.`); return; }
-    const atualizado = resolverPrazo(p, { em: new Date().toISOString(), por: me?.id, porNome: me?.nome });
+    setResolvendo(p);
+    setDataResol(ymdToBr(hojeYmd()));
+  }
+  async function realizar(p: Prazo, dataBr: string) {
+    const [d, m, a] = (dataBr || "").split("/");
+    if (!d || !m || !a) { setErro("Data inválida (dd/mm/aaaa)."); return; }
+    const em = new Date(`${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}T12:00:00`).toISOString();
+    const atualizado = resolverPrazo(p, { em, por: me?.id, porNome: me?.nome });
     await setDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ ...atualizado, atualizadoEm: new Date().toISOString() }), { merge: true });
+    setResolvendo(null);
   }
   async function agendar(p: Prazo) {
     const [d, m, a] = dataAg.split("/");
@@ -203,7 +220,7 @@ export function PrazosPage() {
 
   const renderCard = (p: Prazo) => (
     <PrazoCard key={p.id} p={p} hoje={hoje} podeGerir={podeGerirCat(p.tipo)} mostrarEmpresa={todosRest} restNome={restNome} imovelNome={imovelNome(p.imovelId)}
-      onEditar={() => setModal({ prazo: p })} onRealizar={() => void realizar(p)} onExcluir={() => void excluir(p)}
+      onEditar={() => setModal({ prazo: p })} onRealizar={() => abrirResolver(p)} onExcluir={() => void excluir(p)}
       onLaudo={() => pedirLaudo(p)} onRemoverAg={() => void removerAgendamento(p)}
       agendando={agendando === p.id} dataAg={dataAg} setDataAg={setDataAg}
       onAbrirAg={() => { setAgendando(p.id); setDataAg(ymdToBr(p.vencimento)); }} onCancelarAg={() => setAgendando(null)} onConfirmarAg={() => void agendar(p)} />
@@ -244,8 +261,10 @@ export function PrazosPage() {
           <button key={k} type="button" onClick={() => { setAba(k); if (tipoFiltro === "agendados") setTipoFiltro("todos"); }} className={`px-3 py-2 text-sm font-medium -mb-px border-b-2 ${aba === k && tipoFiltro !== "agendados" ? "border-indigo-500 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500"}`}>{l}</button>
         ))}
         <div className="flex-1" />
+        <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔍 Buscar prazo…"
+          className="text-xs px-2.5 py-1.5 mb-1.5 w-40 sm:w-48 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
         {aba === "agenda" && (
-          <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 mb-1.5">
+          <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 mb-1.5 ml-2">
             {([["calendario", "📅 Calendário"], ["lista", "☰ Lista"]] as const).map(([k, l]) => (
               <button key={k} type="button" onClick={() => setVisao(k)} className={`px-2.5 py-1 text-xs font-medium rounded-md ${visao === k ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
             ))}
@@ -312,6 +331,21 @@ export function PrazosPage() {
         <PrazoModal rid={rid || ""} prazo={modal.prazo} tiposPermitidos={catsGeriveis} empregados={empregados} responsaveisPorCat={responsaveisPorCat} imoveis={imoveis} onGerenciarImoveis={() => setShowImoveis(true)} onClose={() => setModal(null)} onSalvar={salvarPrazo} />
       )}
       {showImoveis && <ImoveisModal rid={rid || ""} restauranteNome={activeRestaurant?.nome || ""} imoveis={imoveis} meId={me?.id || ""} onClose={() => setShowImoveis(false)} />}
+
+      {resolvendo && (
+        <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4" onClick={() => setResolvendo(null)}>
+          <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-sm p-5">
+            <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">{resolvendo.tipo === "conta" ? "Confirmar pagamento" : "Confirmar realização"}</h3>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 mb-4 truncate">{resolvendo.titulo}</p>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5">Data em que foi {resolvendo.tipo === "conta" ? "pago" : "realizado"}</label>
+            <DatePickerBR value={dataResol} onChange={setDataResol} />
+            <div className="flex justify-end gap-2 mt-5">
+              <button type="button" onClick={() => setResolvendo(null)} className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>
+              <button type="button" onClick={() => void realizar(resolvendo, dataResol)} className="text-sm px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">✓ Confirmar {resolvendo.tipo === "conta" ? "pagamento" : "realização"}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
