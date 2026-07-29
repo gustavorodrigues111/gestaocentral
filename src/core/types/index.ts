@@ -6365,6 +6365,16 @@ export type WhatsappContato = {
   spamEm?: string | null;
   roteamentoEstado?: "menu_enviado" | "roteado" | null;  // estado do menu automático (bot)
   tagIds?: string[];
+  // ── Grupo de WhatsApp ──────────────────────────────────────────────────
+  // Conversa de grupo: id = "g:<groupId>" (chave virtual, não é telefone).
+  // `nomeGrupo` = subject do grupo (mostrado como nome da conversa; NÃO o dono).
+  // `atendentes` = 1+ pessoas responsáveis (grupo aparece em "Minhas" de cada
+  // uma). `atribuidoA` (single) continua valendo pra conversas individuais.
+  ehGrupo?: boolean;
+  nomeGrupo?: string | null;
+  atendentes?: string[];              // pessoaIds (grupo)
+  atendentesNomes?: string[];
+  triadoEm?: string | null;           // quando definiram atendentes/spam (some o prompt)
   atualizadoEm?: string;
   atualizadoPor?: string;
 };

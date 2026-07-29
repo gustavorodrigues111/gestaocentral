@@ -22,7 +22,7 @@ import { WhatsappTemplatesTab } from "./WhatsappTemplatesTab";
 import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
 
-type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean };
+type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; ehGrupo?: boolean };
 
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const fmtBRcurto = (ymd?: string | null) => { if (!ymd) return ""; const [a, m, d] = String(ymd).split("-"); return d ? `${d}/${m}/${a?.slice(2) || ""}` : String(ymd); };
@@ -30,10 +30,13 @@ const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
 const foneBonito = (wa: string) => { const d = soDig(wa); const n = d.startsWith("55") ? d.slice(2) : d; return n.length >= 10 ? `+55 ${n.slice(0, 2)} ${n.slice(2, n.length - 4)}-${n.slice(-4)}` : wa; };
 // Chave de comparação que ignora DDI 55 e o 9º dígito de celular (DDD + 8 últimos).
 function foneKey(raw?: string | null): string {
+  const s = (raw || "").trim();
+  if (s.startsWith("g:")) return s;   // grupo — chave virtual, não normaliza como telefone
   let d = soDig(raw);
   if ((d.length === 12 || d.length === 13) && d.startsWith("55")) d = d.slice(2);
   return d.length >= 10 ? d.slice(0, 2) + d.slice(-8) : d;
 }
+const ehGrupoWaId = (waId?: string | null): boolean => (waId || "").startsWith("g:");
 
 const PALETA = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#ef4444", "#0ea5e9", "#8b5cf6", "#64748b"];
 const EMOJIS = ["😀","😁","😂","🤣","😊","😍","😘","😉","😎","🤗","🤔","😅","🙃","😴","😮","😢","😭","😡","👍","👎","👏","🙏","💪","🤝","👌","✌️","🔥","✨","🎉","❤️","🧡","💛","💚","💙","💜","🖤","💯","✅","❌","⚠️","⭐","📌","📎","📄","📷","🎁","💰","💳","🛵","🍔","🍕","🍟","🥤","☕","🍺","🎂","😋","🤤","👋","🫶","😇","🥳","🤩"];
@@ -270,16 +273,34 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     return [...m.values()].sort((a, b) => (b.ultima.timestamp || "").localeCompare(a.ultima.timestamp || ""));
   }, [msgsDoNumero]);
 
-  const nomeConversa = (waId: string, waNome?: string | null) =>
-    contatos[foneKey(waId)]?.nomeManual || pessoaDaConversa(waId)?.nome || waNome || foneBonito(waId);
+  const contatoDe = (waId: string) => contatos[foneKey(waId)];
+  const nomeConversa = (waId: string, waNome?: string | null) => {
+    const c = contatoDe(waId);
+    if (ehGrupoWaId(waId) || c?.ehGrupo) return c?.nomeManual || c?.nomeGrupo || "Grupo";
+    return c?.nomeManual || pessoaDaConversa(waId)?.nome || waNome || foneBonito(waId);
+  };
 
-  // Dono (responsável) de uma conversa, pela chave normalizada.
-  const donoDe = (waId: string): string | null => contatos[foneKey(waId)]?.atribuidoA || null;
-  const finalizadaDe = (waId: string): boolean => !!contatos[foneKey(waId)]?.finalizadoEm;
-  const spamDe = (waId: string): boolean => !!contatos[foneKey(waId)]?.spam;
+  // Responsável de uma conversa: individual = atribuidoA (1); grupo = atendentes (N).
+  const donoDe = (waId: string): string | null => contatoDe(waId)?.atribuidoA || null;
+  const temResponsavel = (waId: string): boolean => {
+    const c = contatoDe(waId);
+    return ehGrupoWaId(waId) ? !!(c?.atendentes && c.atendentes.length > 0) : !!c?.atribuidoA;
+  };
+  const souResponsavel = (waId: string): boolean => {
+    const c = contatoDe(waId);
+    return ehGrupoWaId(waId) ? (c?.atendentes || []).includes(me?.id || "") : c?.atribuidoA === me?.id;
+  };
+  const finalizadaDe = (waId: string): boolean => !!contatoDe(waId)?.finalizadoEm;
+  const spamDe = (waId: string): boolean => !!contatoDe(waId)?.spam;
+  // Grupo já triado? (definiram atendentes OU marcaram spam) — senão pede ao abrir.
+  const triadoDe = (waId: string): boolean => {
+    if (!ehGrupoWaId(waId)) return true;
+    const c = contatoDe(waId);
+    return !!(c?.triadoEm || (c?.atendentes && c.atendentes.length > 0) || c?.spam);
+  };
   // Contadores por atribuição (pra chips). Finalizadas/spam ficam fora das ativas.
-  const contMinhas = useMemo(() => conversas.filter(c => donoDe(c.waId) === me?.id && !finalizadaDe(c.waId) && !spamDe(c.waId)).length, [conversas, contatos, me?.id]);
-  const contPend = useMemo(() => conversas.filter(c => !donoDe(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)).length, [conversas, contatos]);
+  const contMinhas = useMemo(() => conversas.filter(c => souResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)).length, [conversas, contatos, me?.id]);
+  const contPend = useMemo(() => conversas.filter(c => !temResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)).length, [conversas, contatos]);
   const contSpam = useMemo(() => conversas.filter(c => spamDe(c.waId)).length, [conversas, contatos]);
   const contFinalizadas = useMemo(() => conversas.filter(c => finalizadaDe(c.waId) && !spamDe(c.waId)).length, [conversas, contatos]);
 
@@ -290,12 +311,11 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       const cont = contatos[foneKey(c.waId)];
       if (!(c.naoLidas > 0 || cont?.naoLidaManual)) continue;
       if (cont?.spam) { r.spam = true; continue; }
-      const dono = cont?.atribuidoA || null;
       const fin = !!cont?.finalizadoEm;
       if (fin) { r.finalizados = true; continue; }
       r.todas = true;
-      if (!dono) r.pendentes = true;
-      else if (dono === me?.id) r.minhas = true;
+      if (!temResponsavel(c.waId)) r.pendentes = true;
+      else if (souResponsavel(c.waId)) r.minhas = true;
     }
     return r;
   }, [conversas, contatos, me?.id]);
@@ -309,9 +329,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     const finalizada = finalizadaDe(c.waId);
     if (filtroAtrib === "finalizados") return finalizada;   // aba Finalizados só mostra finalizadas
     if (finalizada) return false;                           // finalizadas somem das listas ativas
-    const dono = donoDe(c.waId);
-    if (filtroAtrib === "minhas" && dono !== me?.id) return false;
-    if (filtroAtrib === "pendentes" && dono) return false;
+    if (filtroAtrib === "minhas" && !souResponsavel(c.waId)) return false;
+    if (filtroAtrib === "pendentes" && temResponsavel(c.waId)) return false;
     return true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [conversas, filtroTag, contatos, filtroAtrib, me?.id]);
@@ -361,12 +380,13 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     enviandoRef.current = true;
     setEnviando(true);
     try {
-      // Assume a conversa pra mim ao responder (se declinar assumir de outro, aborta).
-      if (!(await assumirConversa(sel))) return;
-      // Responde no número que o cliente REALMENTE usou por último (com/sem o 9º
-      // dígito), não numa forma normalizada que poderia não existir.
+      // Grupo não reatribui ao responder (já tem atendentes). Individual: assume.
+      const grupoSel = ehGrupoWaId(sel);
+      if (!grupoSel && !(await assumirConversa(sel))) return;
+      // Grupo → envia pro JID do grupo (<id>@g.us). Individual → o número que o
+      // cliente REALMENTE usou por último (com/sem o 9º dígito).
       const inbound = thread.filter(m => m.direcao === "in");
-      const paraEnviar = inbound.length ? inbound[inbound.length - 1].waId : sel;
+      const paraEnviar = grupoSel ? `${sel.slice(2)}@g.us` : (inbound.length ? inbound[inbound.length - 1].waId : sel);
       // Prefixo enviado AO CLIENTE usa o apelido cadastrado neste número (se houver);
       // internamente (doc) gravamos sempre o nome real.
       const autorCliente = (numeros.find(n => n.id === numeroSel)?.apelidos?.[me?.id || ""] || "").trim() || me?.nome || "";
@@ -394,9 +414,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // ── Mídia: foto/vídeo/documento/áudio ──────────────────────────────────────
   async function enviarMidia(tipo: "image" | "video" | "document" | "audio", dataUrl: string, fileName: string, mimetype: string, caption = "") {
     if (!sel || !numeroSel) return;
-    if (!(await assumirConversa(sel))) return;
+    const grupoSel = ehGrupoWaId(sel);
+    if (!grupoSel && !(await assumirConversa(sel))) return;
     const inbound = thread.filter(m => m.direcao === "in");
-    const paraEnviar = inbound.length ? inbound[inbound.length - 1].waId : sel;
+    const paraEnviar = grupoSel ? `${sel.slice(2)}@g.us` : (inbound.length ? inbound[inbound.length - 1].waId : sel);
     setEnviandoMidia(true);
     try {
       const autorCliente = (numeros.find(n => n.id === numeroSel)?.apelidos?.[me?.id || ""] || "").trim() || me?.nome || "";
@@ -482,6 +503,20 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const clienteAuto = sel ? clienteByFone[foneKey(sel)] : null;
   const [transferir, setTransferir] = useState(false);
   const [transferWaId, setTransferWaId] = useState<string | null>(null);
+  // Triagem de grupo: define atendente(s) ou marca spam (some).
+  const [triagemGrupo, setTriagemGrupo] = useState<string | null>(null);
+  const [triagemIds, setTriagemIds] = useState<string[]>([]);
+  const abrirTriagem = (waId: string) => { setTriagemIds(contatos[foneKey(waId)]?.atendentes || []); setTriagemGrupo(waId); };
+  async function salvarTriagem(waId: string) {
+    if (!triagemIds.length) { alert("Escolha pelo menos um atendente — ou marque como spam."); return; }
+    const nomes = triagemIds.map(id => pessoas.find(p => p.id === id)?.nome || "").filter(Boolean);
+    await salvarContato(waId, { atendentes: triagemIds, atendentesNomes: nomes, triadoEm: new Date().toISOString(), spam: false });
+    setTriagemGrupo(null);
+  }
+  async function marcarGrupoSpam(waId: string) {
+    await salvarContato(waId, { spam: true, spamPor: me?.id || null, spamEm: new Date().toISOString(), triadoEm: new Date().toISOString() });
+    setTriagemGrupo(null); setSel(null);
+  }
 
   // Vincular/desvincular cliente do CRM.
   async function vincularCliente(clienteId: string | null) { if (sel) await salvarContato(sel, { clienteId }); }
@@ -687,17 +722,18 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
           <div className="border-y border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
             {conversasFiltradas.map(c => {
               const cont = contatos[foneKey(c.waId)];
+              const grupo = ehGrupoWaId(c.waId) || !!cont?.ehGrupo;
               const cTags = (cont?.tagIds || []).map(id => tagById[id]).filter(Boolean) as WhatsappTag[];
               const naoLida = c.naoLidas > 0 || !!cont?.naoLidaManual;
-              const atribuido = cont?.atribuidoNome;
+              const atribuido = grupo ? (cont?.atendentesNomes || []).join(", ") : cont?.atribuidoNome;
               return (
-                <ConversaItem key={c.waId} naoLida={naoLida} temDono={!!donoDe(c.waId)}
-                  onAbrir={() => { setSel(c.waId); setDetalhes(false); }}
+                <ConversaItem key={c.waId} naoLida={naoLida} temDono={temResponsavel(c.waId)}
+                  onAbrir={() => { setSel(c.waId); setDetalhes(false); if (grupo && !triadoDe(c.waId)) abrirTriagem(c.waId); }}
                   onNaoLida={() => void marcarNaoLida(c.waId)}
                   onLida={() => void marcarLida(c.waId)}
                   onTransferir={() => { setTransferWaId(c.waId); setTransferir(true); }}
                   podeResponder={podeResponder}>
-                  <div className="w-10 h-10 rounded-full bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center text-lg shrink-0">💬</div>
+                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0 ${grupo ? "bg-indigo-50 dark:bg-indigo-900/20" : "bg-emerald-50 dark:bg-emerald-900/20"}`}>{grupo ? "👥" : "💬"}</div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span className={`truncate ${naoLida ? "font-bold text-gray-900 dark:text-gray-50" : "font-medium text-gray-900 dark:text-gray-100"}`}>{nomeConversa(c.waId, c.nome)}</span>
@@ -738,6 +774,29 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
           {/* Barra de atribuição (responsável) */}
           {(() => {
+            // Grupo: atendentes (1+) em vez de responsável único.
+            if (ehGrupoWaId(sel || "")) {
+              const ats = contatoSel?.atendentesNomes || [];
+              const fin = !!contatoSel?.finalizadoEm;
+              return (
+                <div className={`flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 text-xs shrink-0 ${fin ? "bg-gray-100 dark:bg-gray-800/60" : ats.length ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>
+                  <span className="truncate">
+                    {fin ? <span className="text-gray-600 dark:text-gray-300">✅ Finalizado <span className="text-gray-400">· reabre quando alguém escrever</span></span>
+                      : ats.length ? <span className="text-emerald-700 dark:text-emerald-300">👥 Atende: <b>{ats.join(", ")}</b></span>
+                      : <span className="text-amber-700 dark:text-amber-300">⏳ Sem atendente — defina quem atende esse grupo</span>}
+                  </span>
+                  {podeResponder && (
+                    <div className="ml-auto shrink-0 flex items-center gap-1.5">
+                      <button type="button" onClick={() => abrirTriagem(sel!)} className="px-2.5 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300">{ats.length ? "Editar atendentes" : "Definir atendentes"}</button>
+                      {!fin
+                        ? <button type="button" onClick={() => void finalizarConversa(sel!)} className="px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300">✅ Finalizar</button>
+                        : <button type="button" onClick={() => void reabrirConversa(sel!)} className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">🔄 Reabrir</button>}
+                      <button type="button" onClick={() => void marcarGrupoSpam(sel!)} className="px-2.5 py-1 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">🚫 Spam</button>
+                    </div>
+                  )}
+                </div>
+              );
+            }
             const dono = contatoSel?.atribuidoA || null;
             const minha = dono === me?.id;
             const finalizada = !!contatoSel?.finalizadoEm;
@@ -843,6 +902,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 <div className="relative max-w-[80%]">
                   <div className={`rounded-2xl px-2.5 py-1.5 text-sm shadow-sm ${m.direcao === "out" ? "bg-[#dcf8c6] dark:bg-emerald-900/40 text-gray-900 dark:text-gray-100 rounded-br-md" : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-md"} ${m.reacao && !m.apagada ? "mb-2" : ""}`}>
                     {m.direcao === "out" && m.autorNome && <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 mb-0.5">{m.autorNome}</div>}
+                    {m.direcao === "in" && m.ehGrupo && m.autorNome && <div className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-300 mb-0.5">{m.autorNome}</div>}
                     {m.apagada ? (
                       <div className="italic text-gray-400 dark:text-gray-500">🚫 Mensagem apagada</div>
                     ) : editMsg?.id === m.id ? (
@@ -984,6 +1044,44 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         meId={me?.id || null} onClose={() => { setTransferir(false); setTransferWaId(null); }} onTransferir={transferirPara} />}
       {qrRecon && <QrModal instancia={qrRecon.instancia} nome={qrRecon.nome} qrInicial={null}
         onClose={() => { setQrRecon(null); if (numeroSel) void chamarInstancia("status", numeroSel).then(r => setStatusConexao(r.estado || "unknown")).catch(() => {}); }} />}
+
+      {triagemGrupo && (() => {
+        const elegiveis = pessoas.filter(p => { const n = numeros.find(x => x.id === numeroSel); const uids = n?.usuariosIds || []; return uids.length === 0 || uids.includes(p.id); }).sort((a, b) => a.nome.localeCompare(b.nome));
+        const disponiveis = elegiveis.filter(p => !triagemIds.includes(p.id));
+        const g = triagemGrupo;
+        return (
+          <div className="fixed inset-0 bg-black/50 z-[210] flex items-center justify-center p-4" onClick={() => setTriagemGrupo(null)}>
+            <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-md p-5">
+              <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">👥 Quem atende esse grupo?</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 mb-3 truncate">{nomeConversa(g)}</p>
+              <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-2">Escolha <b>1 ou mais</b> atendentes — o grupo aparece em "Minhas" de cada um. Todo grupo precisa de atendente (ou marque como spam).</p>
+              <div className="flex flex-wrap gap-1.5 items-center mb-3">
+                {triagemIds.map(id => {
+                  const nome = pessoas.find(p => p.id === id)?.nome || "?";
+                  return (
+                    <span key={id} className="inline-flex items-center gap-1.5 text-[13px] pl-2.5 pr-1 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300">
+                      {nome}
+                      <button type="button" onClick={() => setTriagemIds(ids => ids.filter(x => x !== id))} className="opacity-60 hover:opacity-100 text-sm leading-none">×</button>
+                    </span>
+                  );
+                })}
+                {triagemIds.length === 0 && <span className="text-[12px] text-gray-400 italic">nenhum atendente ainda</span>}
+              </div>
+              <select value="" onChange={(e) => { if (e.target.value) setTriagemIds(ids => [...ids, e.target.value]); }}
+                className="w-full text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 py-2 text-gray-700 dark:text-gray-200">
+                <option value="">＋ Adicionar atendente…</option>
+                {disponiveis.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
+              <div className="flex items-center gap-2 mt-5">
+                <button type="button" onClick={() => void marcarGrupoSpam(g)} className="text-sm px-3 py-1.5 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">🚫 É spam</button>
+                <div className="flex-1" />
+                <button type="button" onClick={() => setTriagemGrupo(null)} className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>
+                <button type="button" onClick={() => void salvarTriagem(g)} disabled={!triagemIds.length} className="text-sm px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold disabled:opacity-50">✓ Confirmar</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

@@ -134,6 +134,23 @@ async function baixarMidia(instancia: string, msg: EvoMsg): Promise<{ url: strin
   } catch { return null; }
 }
 
+// Nome (subject) do grupo na Evolution. Best-effort — se falhar, null. Chamado
+// só ao SEMEAR um grupo novo (não a cada mensagem).
+async function nomeDoGrupo(instancia: string, jid: string): Promise<string | null> {
+  const base = (process.env.EVOLUTION_API_URL || "").replace(/\/+$/, "");
+  const key = process.env.EVOLUTION_API_KEY;
+  if (!base || !key) return null;
+  try {
+    const ctrl = new AbortController();
+    const t = setTimeout(() => ctrl.abort(), 8_000);
+    const resp = await fetch(`${base}/group/findGroupInfos/${encodeURIComponent(instancia)}?groupJid=${encodeURIComponent(jid)}`, { headers: { apikey: key }, signal: ctrl.signal });
+    clearTimeout(t);
+    if (!resp.ok) return null;
+    const j = (await resp.json()) as { subject?: string } | null;
+    return (j?.subject || "").trim() || null;
+  } catch { return null; }
+}
+
 export default async function handler(req: Req, res: Res): Promise<void> {
   if (req.method === "GET") { res.status(200).send("ok"); return; }   // teste de saúde
   if (req.method !== "POST") { res.status(405).json({ error: "Método não suportado." }); return; }
@@ -158,11 +175,13 @@ async function processar(body: EvoBody): Promise<void> {
 
   for (const m of itens) {
     const jid = m.key?.remoteJid || "";
-    if (!jid || jid.endsWith("@g.us")) continue;          // ignora grupos por enquanto
+    if (!jid) continue;
+    const ehGrupo = jid.endsWith("@g.us");                 // grupo = chave virtual "g:<id>"
     const id = m.key?.id;
     if (!id) continue;
-    const waId = soDig(jid.split("@")[0]);
-    if (!waId) continue;
+    const baseId = soDig(jid.split("@")[0]);
+    if (!baseId) continue;
+    const waId = ehGrupo ? `g:${baseId}` : baseId;
     const fromMe = !!m.key?.fromMe;
 
     // Reação → anexa na mensagem-alvo (não vira mensagem nova). text vazio = removeu.
@@ -206,15 +225,27 @@ async function processar(body: EvoBody): Promise<void> {
     }
     try {
       await firestoreCriar("whatsappMensagens", `${numeroId}_${id}`, {
-        waId, nome: m.pushName || null, direcao: fromMe ? "out" : "in",
+        // Em grupo, `nome` (nome da conversa) NÃO é o autor — vem do nomeGrupo
+        // no contato. `autorNome` guarda quem falou (aparece no balão).
+        waId, nome: ehGrupo ? null : (m.pushName || null), direcao: fromMe ? "out" : "in",
         tipo: m.messageType || "text", texto, timestamp: ts, recebidoEm: new Date().toISOString(),
         lido: fromMe, numeroId, messageId: id,
-        autorNome: fromMe ? "via aparelho" : null, viaAparelho: fromMe,
+        autorNome: fromMe ? "via aparelho" : (ehGrupo ? (m.pushName || null) : null), viaAparelho: fromMe,
+        ...(ehGrupo ? { ehGrupo: true } : {}),
         ...(midia ? { midiaUrl: midia.url, mime: midia.mime, ...(midia.nome ? { midiaNome: midia.nome } : {}) } : {}),
       });
-      // Semeia o contato na 1ª mensagem (create-if-not-exists — não sobrescreve
-      // ajustes manuais posteriores, que vêm pelo app com merge).
-      if (m.pushName) { const ck = chaveBR(waId); await firestoreCriar("whatsappContatos", ck, { id: ck, waId, nomePush: m.pushName, atualizadoEm: new Date().toISOString() }); }
+      // Semeia o contato na 1ª mensagem (create-if-not-exists).
+      if (ehGrupo) {
+        try {
+          const existe = await firestoreLer("whatsappContatos", waId);
+          if (!existe) {
+            const nomeG = await nomeDoGrupo(numeroId, jid);
+            await firestoreCriar("whatsappContatos", waId, { id: waId, waId, ehGrupo: true, nomeGrupo: nomeG || null, atualizadoEm: new Date().toISOString() });
+          }
+        } catch (e) { console.log("[evo-webhook] seed grupo:", (e as Error)?.message); }
+      } else if (m.pushName) {
+        const ck = chaveBR(waId); await firestoreCriar("whatsappContatos", ck, { id: ck, waId, nomePush: m.pushName, atualizadoEm: new Date().toISOString() });
+      }
     } catch (e) { console.log("[evo-webhook] falha ao gravar:", (e as Error)?.message); }
 
     // Automação: só pra mensagens RECEBIDAS e RECENTES (evita disparar no
@@ -222,7 +253,8 @@ async function processar(body: EvoBody): Promise<void> {
     // (a automação só age se a conversa ainda ficar sem responsável).
     if (recente) {
       if (pReabrir) await pReabrir;
-      try { await automacao(numeroId, waId, texto); } catch (e) { console.log("[evo-webhook] automacao:", (e as Error)?.message); }
+      // Bot de triagem NÃO age em grupo (só reabre acima, se estava finalizado).
+      if (!ehGrupo) { try { await automacao(numeroId, waId, texto); } catch (e) { console.log("[evo-webhook] automacao:", (e as Error)?.message); } }
     }
   }
 }
@@ -231,9 +263,15 @@ async function processar(body: EvoBody): Promise<void> {
 // - Se o contato tem ATENDENTE PADRÃO → reabre já atribuída a ele.
 // - Senão → volta pra pendentes (sem responsável) e reseta a triagem.
 async function reabrirSeFinalizada(numeroId: string, waIdCru: string): Promise<void> {
-  const ck = chaveBR(waIdCru);
+  const ehGrupo = waIdCru.startsWith("g:");
+  const ck = ehGrupo ? waIdCru : chaveBR(waIdCru);
   const contato = await firestoreLer("whatsappContatos", ck);
   if (!contato?.finalizadoEm) return;
+  // Grupo: reabre mantendo os atendentes (se houver); sem bot/menu.
+  if (ehGrupo) {
+    await firestoreAtualizar("whatsappContatos", ck, { finalizadoEm: null, finalizadoPor: null, atualizadoEm: new Date().toISOString() });
+    return;
+  }
   const padrao = (contato.atendentePadrao as string) || null;
   if (padrao) {
     const nome = (contato.atendentePadraoNome as string) || null;
