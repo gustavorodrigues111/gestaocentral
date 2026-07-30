@@ -375,8 +375,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     if (ehGrupoWaId(waId) || c?.ehGrupo) return c?.nomeManual || c?.nomeGrupo || "Grupo";
     // Pessoa da equipe vinculada é a identidade autoritativa: tem prioridade sobre
     // o nomeManual (que pode ter sido semeado de um lead e ficar desatualizado).
-    // nomePush = nome do perfil do WhatsApp (fallback antes do número cru).
-    return pessoaDaConversa(waId)?.nome || c?.nomeManual || waNome || c?.nomePush || foneBonito(waId);
+    // waNome vem só de mensagem recebida (pushName do contato). NÃO usar nomePush
+    // como fallback: registros antigos foram poluídos pelo eco fromMe (nome do
+    // próprio número, ex.: "Escritório Central").
+    return pessoaDaConversa(waId)?.nome || c?.nomeManual || waNome || foneBonito(waId);
   };
 
   // Responsável de uma conversa: individual = atribuidoA (1); grupo = atendentes (N).

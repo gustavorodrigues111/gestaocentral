@@ -230,7 +230,7 @@ async function processar(body: EvoBody): Promise<void> {
       await firestoreCriar("whatsappMensagens", `${numeroId}_${id}`, {
         // Em grupo, `nome` (nome da conversa) NÃO é o autor — vem do nomeGrupo
         // no contato. `autorNome` guarda quem falou (aparece no balão).
-        waId, nome: ehGrupo ? null : (m.pushName || null), direcao: fromMe ? "out" : "in",
+        waId, nome: (ehGrupo || fromMe) ? null : (m.pushName || null), direcao: fromMe ? "out" : "in",
         tipo: m.messageType || "text", texto, timestamp: ts, recebidoEm: new Date().toISOString(),
         lido: fromMe, numeroId, messageId: id,
         autorNome: fromMe ? "via aparelho" : (ehGrupo ? (m.pushName || null) : null), viaAparelho: fromMe,
@@ -246,7 +246,9 @@ async function processar(body: EvoBody): Promise<void> {
             await firestoreCriar("whatsappContatos", waId, { id: waId, waId, ehGrupo: true, nomeGrupo: info.subject || null, participantes: info.participantes, atualizadoEm: new Date().toISOString() });
           }
         } catch (e) { console.log("[evo-webhook] seed grupo:", (e as Error)?.message); }
-      } else if (m.pushName) {
+      } else if (m.pushName && !fromMe) {
+        // Só mensagem RECEBIDA carrega o pushName do contato. Em fromMe, o pushName
+        // é o nome do PRÓPRIO número (ex.: "Escritório Central") → não semear.
         const ck = chaveBR(waId); await firestoreCriar("whatsappContatos", ck, { id: ck, waId, nomePush: m.pushName, atualizadoEm: new Date().toISOString() });
       }
     } catch (e) { console.log("[evo-webhook] falha ao gravar:", (e as Error)?.message); }
