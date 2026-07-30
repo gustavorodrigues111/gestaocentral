@@ -234,6 +234,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       setSel(pTo);
       const pNome = searchParams.get("nome");
       if (pNome) { const ck = foneKey(pTo); if (!contatos[ck]?.nomeManual && !contatos[ck]?.nomePush) void salvarContato(pTo, { nomeManual: pNome }); }
+      const pTexto = searchParams.get("texto");
+      if (pTexto) setResposta(pTexto);   // pré-preenche o compositor (ex.: confirmação de reserva)
     }
     setSearchParams({}, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps

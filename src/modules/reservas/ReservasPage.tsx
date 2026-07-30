@@ -16,7 +16,8 @@ import { AgendaTab } from "./AgendaTab";
 import { TabBadge } from "../../core/ui/TabBadge";
 import { ChegouModal } from "./ChegouModal";
 import { ClienteHistoricoModal } from "./ClienteHistoricoModal";
-import { montarLinkWhatsapp, montarMensagemConfirmacao } from "./whatsappConfirmacao";
+import { montarMensagemConfirmacao } from "./whatsappConfirmacao";
+import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 
 type Tab = "reservas" | "agenda" | "clientes" | "config";
 
@@ -46,6 +47,7 @@ export function ReservasPage() {
   const { restaurants } = useRestaurant();
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
+  const abrirWhatsapp = useAbrirWhatsapp();
   const restaurant = restaurants.find(r => r.id === rid) || null;
 
   // Checks granulares baseados em Perfis de Acesso. Pra cada ação especifica,
@@ -308,12 +310,8 @@ export function ReservasPage() {
       salao,
       template: templateConfirmacao,
     });
-    const link = montarLinkWhatsapp(telefone, mensagem);
-    if (!link) {
-      alert("Telefone inválido — não consigo montar o link do WhatsApp.");
-      return;
-    }
-    window.open(link, "_blank", "noopener,noreferrer");
+    // Abre o WhatsApp INTERNO no número de "Reservas" com a confirmação pronta.
+    void abrirWhatsapp(rid, "reservas", telefone, r.clienteNomeSnapshot, mensagem);
   }
 
   // Agrupa reservas ATIVAS do dia por horário. FICA ANTES dos early returns —

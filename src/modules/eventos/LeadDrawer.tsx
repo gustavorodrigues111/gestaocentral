@@ -6,6 +6,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import { parseYmd, pad2 } from "../../core/utils/date";
 import type { CanalTratativa, LeadEvento, LeadEventoStatus, LogMensagemEvento, PacoteEvento, Pessoa } from "../../core/types";
 import { CANAL_TRATATIVA_ICONE, CANAL_TRATATIVA_LABEL } from "../../core/types";
@@ -79,6 +80,7 @@ type Props = {
 export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], onClose }: Props) {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
+  const abrirWhatsapp = useAbrirWhatsapp();
   const restaurant = restaurants.find(r => r.id === lead.restaurantId) || null;
   const pessoasComerciaisIds = restaurant?.eventosConfig?.pessoasComerciaisIds || [];
 
@@ -264,10 +266,8 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], onC
     }));
   }
 
-  // Link WhatsApp já preenchido com saudação inicial
-  const whatsappLink = lead.cliente.whatsapp
-    ? `https://api.whatsapp.com/send?phone=${encodeURIComponent(lead.cliente.whatsapp.replace(/\D/g, ""))}&text=${encodeURIComponent(`Oi ${lead.cliente.nome.split(" ")[0]}, tudo bem? Vi seu interesse pelo evento.`)}`
-    : null;
+  // Saudação inicial pré-preenchida no compositor do WhatsApp interno.
+  const saudacaoWhats = `Oi ${lead.cliente.nome.split(" ")[0]}, tudo bem? Vi seu interesse pelo evento.`;
 
   return (
     <Modal title={`Lead — ${lead.cliente.nome}`} onClose={onClose} maxWidth="max-w-2xl">
@@ -345,15 +345,14 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], onC
             )}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-gray-600 dark:text-gray-400">📱 {lead.cliente.whatsapp}</span>
-              {whatsappLink && (
-                <a
-                  href={whatsappLink}
-                  target="_blank"
-                  rel="noreferrer"
+              {lead.cliente.whatsapp && (
+                <button
+                  type="button"
+                  onClick={() => void abrirWhatsapp(lead.restaurantId, "eventos", lead.cliente.whatsapp!, lead.cliente.nome, saudacaoWhats)}
                   className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-semibold hover:bg-emerald-200"
                 >
-                  💬 abrir WhatsApp
-                </a>
+                  💬 Falar pelo WhatsApp
+                </button>
               )}
             </div>
             {lead.cliente.email && (

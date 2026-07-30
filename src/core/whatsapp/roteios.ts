@@ -26,7 +26,7 @@ export type WhatsappRoteio = Partial<Record<PapelWhatsapp, string>>;
 // e navega pro inbox interno. Sem número configurado → avisa (não abre wa.me).
 export function useAbrirWhatsapp() {
   const navigate = useNavigate();
-  return async function abrir(rid: string, papel: PapelWhatsapp, telefone: string, nome?: string): Promise<boolean> {
+  return async function abrir(rid: string, papel: PapelWhatsapp, telefone: string, nome?: string, texto?: string): Promise<boolean> {
     const fone = (telefone || "").replace(/\D/g, "");
     if (!fone) { alert("Essa pessoa não tem número de WhatsApp cadastrado."); return false; }
     let numeroId: string | undefined;
@@ -40,6 +40,7 @@ export function useAbrirWhatsapp() {
     }
     const qs = new URLSearchParams({ numero: numeroId, to: fone });
     if (nome) qs.set("nome", nome);
+    if (texto) qs.set("texto", texto);
     navigate(`/r/${rid}/whatsapp?${qs.toString()}`);
     return true;
   };
