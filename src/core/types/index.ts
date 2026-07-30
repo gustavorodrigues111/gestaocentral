@@ -6312,6 +6312,7 @@ export type WhatsappNumero = {
   restaurantIds?: string[];   // empresa(s) dona(s) do número (vazio = sem empresa/qualquer)
   usuariosIds?: string[];     // pessoas que podem usar/ver este número (vazio = ninguém além do master)
   apelidos?: { [pessoaId: string]: string };  // apelido usado no prefixo enviado ao cliente (só p/ o cliente; interno segue nome real)
+  modo?: "atribuicao" | "livre";  // "atribuicao" (padrão): conversas têm dono, tela Início. "livre": quem vê responde, lista única lido/não lido.
   regras?: string;            // regras de uso (texto livre, exibido aos atendentes)
   roteamento?: WhatsappRoteamento;   // menu automático de áreas (bot de triagem)
   criadoEm?: string;

@@ -132,7 +132,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [editMsg, setEditMsg] = useState<{ id: string; texto: string } | null>(null);   // edição inline
   const [emojiAberto, setEmojiAberto] = useState(false);
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
-  const [filtroAtrib, setFiltroAtrib] = useState<"inicio" | "minhas" | "sem_resp" | "todas" | "spam" | "finalizados">("inicio");
+  // Atribuição: inicio (Sem resp.|Minhas) · outras (De outros|Finalizadas) · spam.
+  // Livre: conversas (lista única) · finalizados · spam. abaAtual normaliza por modo.
+  const [filtroAtrib, setFiltroAtrib] = useState<"inicio" | "outras" | "spam" | "conversas" | "finalizados">("inicio");
   const [agora, setAgora] = useState(() => Date.now());   // relógio p/ o contador "tempo sem resposta"
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const msgsEndRef = useRef<HTMLDivElement | null>(null);
@@ -437,44 +439,50 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [conversas, contatos, filtroTag]);
 
-  // Contadores por atribuição (pra chips). Finalizadas/spam ficam fora das ativas.
-  const contMinhas = useMemo(() => conversas.filter(c => souResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)).length, [conversas, contatos, me?.id]);
-  const contSpam = useMemo(() => conversas.filter(c => spamDe(c.waId)).length, [conversas, contatos]);
-  const contFinalizadas = useMemo(() => conversas.filter(c => finalizadaDe(c.waId) && !spamDe(c.waId)).length, [conversas, contatos]);
-  // Badge do chip Início = o que precisa de ação (minhas aguardando + sem responsável).
+  // Modo do número selecionado. "livre" = sem dono, lista única lido/não lido.
+  const numeroLivre = numeros.find(n => n.id === numeroSel)?.modo === "livre";
+
+  // Coluna esquerda de "Outras": conversas atribuídas a OUTRA pessoa (não a mim).
+  const deOutros = useMemo(() => conversas
+    .filter(c => passaTag(c.waId) && temResponsavel(c.waId) && !souResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conversas, contatos, me?.id, filtroTag]);
+  const finalizadasList = useMemo(() => conversas
+    .filter(c => passaTag(c.waId) && finalizadaDe(c.waId) && !spamDe(c.waId)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conversas, contatos, filtroTag]);
+  const spamList = useMemo(() => conversas
+    .filter(c => passaTag(c.waId) && spamDe(c.waId)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conversas, contatos, filtroTag]);
+  // Modo livre: lista única ativa, não-lidas no topo, depois por recência.
+  const conversasLivre = useMemo(() => conversas
+    .filter(c => passaTag(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId))
+    .sort((a, b) => {
+      const na = a.naoLidas > 0 || !!contatos[foneKey(a.waId)]?.naoLidaManual;
+      const nb = b.naoLidas > 0 || !!contatos[foneKey(b.waId)]?.naoLidaManual;
+      if (na !== nb) return na ? -1 : 1;
+      return (b.ultima.timestamp || "").localeCompare(a.ultima.timestamp || "");
+    }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conversas, contatos, filtroTag]);
+
+  // Contadores dos chips.
   const minhasAguardando = minhas.filter(c => c.naoLidas > 0 || c.ultima.direcao === "in").length;
   const contInicio = minhasAguardando + semRespAinda.length;
+  const contOutras = deOutros.length + finalizadasList.length;
+  const contFinalizadas = finalizadasList.length;
+  const contSpam = spamList.length;
+  const naoLidasLivre = conversasLivre.filter(c => c.naoLidas > 0 || !!contatos[foneKey(c.waId)]?.naoLidaManual).length;
 
-  // Tem conversa NÃO LIDA em cada filtro? (pra sombrear o chip de vermelho)
-  const naoLidasPorFiltro = useMemo(() => {
-    const r = { inicio: false, minhas: false, todas: false, finalizados: false, spam: false };
-    for (const c of conversas) {
-      const cont = contatos[foneKey(c.waId)];
-      if (!(c.naoLidas > 0 || cont?.naoLidaManual)) continue;
-      if (cont?.spam) { r.spam = true; continue; }
-      const fin = !!cont?.finalizadoEm;
-      if (fin) { r.finalizados = true; continue; }
-      r.todas = true;
-      if (souResponsavel(c.waId)) { r.minhas = true; r.inicio = true; }
-      else if (!temResponsavel(c.waId)) r.inicio = true;   // sem responsável entra no Início
-    }
-    return r;
-  }, [conversas, contatos, me?.id]);
+  // Aba efetiva por modo (normaliza um filtro que não existe no modo atual).
+  const abaAtual = numeroLivre
+    ? (filtroAtrib === "finalizados" || filtroAtrib === "spam" ? filtroAtrib : "conversas")
+    : (filtroAtrib === "outras" || filtroAtrib === "spam" ? filtroAtrib : "inicio");
 
-  // Filtro por atribuição + tag (o número já é da empresa; não filtra por empresa aqui).
-  const conversasFiltradas = useMemo(() => conversas.filter(c => {
-    if (filtroTag) { if (!(contatos[foneKey(c.waId)]?.tagIds || []).includes(filtroTag)) return false; }
-    const spam = spamDe(c.waId);
-    if (filtroAtrib === "spam") return spam;                 // aba Spam só mostra spam
-    if (spam) return false;                                  // spam some das outras listas
-    const finalizada = finalizadaDe(c.waId);
-    if (filtroAtrib === "finalizados") return finalizada;   // aba Finalizados só mostra finalizadas
-    if (finalizada) return false;                           // finalizadas somem das listas ativas
-    if (filtroAtrib === "minhas" && !souResponsavel(c.waId)) return false;
-    if (filtroAtrib === "sem_resp" && temResponsavel(c.waId)) return false;
-    return true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }), [conversas, filtroTag, contatos, filtroAtrib, me?.id]);
+  // Tem não-lida numa lista? (pra sombrear o chip de vermelho).
+  const temNaoLida = (lista: { waId: string; naoLidas: number }[]) =>
+    lista.some(c => c.naoLidas > 0 || !!contatos[foneKey(c.waId)]?.naoLidaManual);
 
   const thread = useMemo(() => msgsDoNumero.filter(x => foneKey(x.waId) === foneKey(sel || "")), [msgsDoNumero, sel]);
   // Rola pro fim ao abrir a conversa ou chegar mensagem nova.
@@ -523,7 +531,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     try {
       // Grupo não reatribui ao responder (já tem atendentes). Individual: assume.
       const grupoSel = ehGrupoWaId(sel);
-      if (!grupoSel && !(await assumirConversa(sel))) return;
+      if (!numeroLivre && !grupoSel && !(await assumirConversa(sel))) return;   // livre = quem vê responde, sem assumir
       // Grupo → envia pro JID do grupo (<id>@g.us). Individual → o número que o
       // cliente REALMENTE usou por último (com/sem o 9º dígito).
       const inbound = thread.filter(m => m.direcao === "in");
@@ -818,7 +826,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     const espera = mostrarEspera && c.ultima.direcao === "in" ? tempoEsperaLabel(agora - new Date(c.ultima.timestamp || 0).getTime()) : null;
     return (
       <ConversaItem key={c.waId} naoLida={naoLida} temDono={temResponsavel(c.waId)}
-        onAbrir={() => { setSel(c.waId); setDetalhes(false); if (grupo && !triadoDe(c.waId)) abrirTriagem(c.waId); }}
+        onAbrir={() => { setSel(c.waId); setDetalhes(false); if (!numeroLivre && grupo && !triadoDe(c.waId)) abrirTriagem(c.waId); }}
         onNaoLida={() => void marcarNaoLida(c.waId)}
         onLida={() => void marcarLida(c.waId)}
         onTransferir={() => { setTransferWaId(c.waId); setTransferir(true); }}
@@ -903,25 +911,30 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             </div>
           )}
 
-          {/* Filtro por atribuição — segmented control (largura igual, 1 linha) */}
+          {/* Filtro — chips mudam conforme o modo do número (atribuição × livre) */}
           {numerosVisiveis.length > 0 && (
             <div className="flex mb-2 p-0.5 rounded-lg bg-gray-100 dark:bg-gray-800/60">
-              {([
-                ["inicio", "Início", contInicio],
-                ["minhas", "Minhas", contMinhas],
-                ["todas", "Todas", 0],
-                ["finalizados", "Finalizados", contFinalizadas],
-                ["spam", "🚫 Spam", contSpam],
-              ] as const).map(([v, label, cont]) => {
-                const temNaoLida = naoLidasPorFiltro[v];
-                const ativo = filtroAtrib === v;
-                const cls = temNaoLida
+              {(numeroLivre
+                ? [
+                    ["conversas", "Conversas", naoLidasLivre, conversasLivre],
+                    ["finalizados", "Finalizados", contFinalizadas, finalizadasList],
+                    ["spam", "🚫 Spam", contSpam, spamList],
+                  ]
+                : [
+                    ["inicio", "Início", contInicio, [...minhas, ...semRespAinda]],
+                    ["outras", "Outras", contOutras, [...deOutros, ...finalizadasList]],
+                    ["spam", "🚫 Spam", contSpam, spamList],
+                  ]
+              ).map(([v, label, cont, lista]) => {
+                const nl = temNaoLida(lista as { waId: string; naoLidas: number }[]);
+                const ativo = abaAtual === v;
+                const cls = nl
                   ? (ativo ? "bg-rose-100 text-rose-700 dark:bg-rose-900/50 dark:text-rose-200 shadow-sm" : "bg-rose-50 text-rose-600 dark:bg-rose-900/25 dark:text-rose-300")
                   : (ativo ? "bg-white dark:bg-gray-900 text-emerald-600 dark:text-emerald-300 shadow-sm" : "text-gray-500 dark:text-gray-400");
                 return (
-                  <button key={v} type="button" onClick={() => setFiltroAtrib(v)}
+                  <button key={v as string} type="button" onClick={() => setFiltroAtrib(v as typeof filtroAtrib)}
                     className={`flex-1 min-w-0 text-xs font-semibold px-1 py-1.5 rounded-md transition-colors truncate ${cls}`}>
-                    {label}{cont ? ` (${cont})` : ""}
+                    {label as string}{cont ? ` (${cont as number})` : ""}
                   </button>
                 );
               })}
@@ -946,12 +959,50 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       </div>}
 
       {!sel ? (
-        filtroAtrib === "inicio" ? (
+        numeroLivre ? (
+          // ── Modo LIVRE: lista única (não-lidas no topo), + Finalizados/Spam ──
+          (() => {
+            const lista = abaAtual === "finalizados" ? finalizadasList : abaAtual === "spam" ? spamList : conversasLivre;
+            if (lista.length === 0) return (
+              <div className="mx-4 mt-2 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">{conversas.length === 0 ? "Nenhuma mensagem recebida ainda. Quando alguém mandar no WhatsApp do planejamento.app, aparece aqui." : abaAtual === "finalizados" ? "Nenhuma conversa finalizada." : abaAtual === "spam" ? "Nenhuma conversa marcada como spam." : "🎉 Nenhuma conversa em aberto."}</div>
+            );
+            return <div className="border-y border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">{lista.map(c => linhaConversa(c, abaAtual === "conversas"))}</div>;
+          })()
+        ) : abaAtual === "spam" ? (
+          spamList.length === 0 ? (
+            <div className="mx-4 mt-2 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">Nenhuma conversa marcada como spam.</div>
+          ) : (
+            <div className="border-y border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">{spamList.map(c => linhaConversa(c))}</div>
+          )
+        ) : abaAtual === "outras" ? (
+          (deOutros.length + finalizadasList.length) === 0 ? (
+            <div className="mx-4 mt-2 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">Nada aqui — nenhuma conversa de outros nem finalizada.</div>
+          ) : (
+            // 2 colunas: esquerda = De outros (atribuídas a outra pessoa), direita = Finalizadas.
+            <div className="grid grid-cols-1 md:grid-cols-2 md:gap-px md:bg-gray-200 md:dark:bg-gray-800 border-t border-gray-200 dark:border-gray-800">
+              <div className="bg-white dark:bg-gray-950">
+                <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-100 dark:border-indigo-900/40">👥 De outros ({deOutros.length})</div>
+                {deOutros.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-xs text-gray-400">Ninguém atendendo além de você.</div>
+                ) : (
+                  <div className="divide-y divide-gray-100 dark:divide-gray-800">{deOutros.map(c => linhaConversa(c, true))}</div>
+                )}
+              </div>
+              <div className="bg-white dark:bg-gray-950">
+                <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700">✅ Finalizadas ({finalizadasList.length})</div>
+                {finalizadasList.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-xs text-gray-400">Nenhuma conversa finalizada.</div>
+                ) : (
+                  <div className="divide-y divide-gray-100 dark:divide-gray-800">{finalizadasList.map(c => linhaConversa(c))}</div>
+                )}
+              </div>
+            </div>
+          )
+        ) : (
+          // ── Início (atribuição): 2 colunas — Sem responsável | Minhas ──
           (minhas.length + semRespAinda.length) === 0 ? (
             <div className="mx-4 mt-2 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">{conversas.length === 0 ? "Nenhuma mensagem recebida ainda. Quando alguém mandar no WhatsApp do planejamento.app, aparece aqui." : "🎉 Tudo em dia — nada aguardando você e nada sem responsável."}</div>
           ) : (
-            // Duas colunas no computador/tablet; empilha no celular (linha de conversa
-            // não cabe em coluna estreita). Esquerda = Sem responsável, direita = Minhas.
             <div className="grid grid-cols-1 md:grid-cols-2 md:gap-px md:bg-gray-200 md:dark:bg-gray-800 border-t border-gray-200 dark:border-gray-800">
               <div className="bg-white dark:bg-gray-950">
                 <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-900/40">🟡 Sem responsável ainda ({semRespAinda.length})</div>
@@ -974,12 +1025,6 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
               </div>
             </div>
           )
-        ) : conversasFiltradas.length === 0 ? (
-          <div className="mx-4 mt-2 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">{conversas.length === 0 ? "Nenhuma mensagem recebida ainda. Quando alguém mandar no WhatsApp do planejamento.app, aparece aqui." : filtroAtrib === "minhas" ? "Você não tem conversas atribuídas." : filtroAtrib === "finalizados" ? "Nenhuma conversa finalizada." : filtroAtrib === "spam" ? "Nenhuma conversa marcada como spam." : "Nenhuma conversa nesse filtro."}</div>
-        ) : (
-          <div className="border-y border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
-            {conversasFiltradas.map(c => linhaConversa(c))}
-          </div>
         )
       ) : (
         <>
@@ -1030,6 +1075,20 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             const dono = contatoSel?.atribuidoA || null;
             const minha = dono === me?.id;
             const finalizada = !!contatoSel?.finalizadoEm;
+            // Modo livre: sem atribuição — barra enxuta (quem vê responde).
+            if (numeroLivre && !finalizada) {
+              return (
+                <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 text-xs shrink-0 bg-gray-50 dark:bg-gray-800/40">
+                  <span className="truncate text-gray-500 dark:text-gray-400">💬 Quem vê responde · sem responsável fixo</span>
+                  {podeResponder && (
+                    <div className="ml-auto shrink-0 flex items-center gap-1.5">
+                      <button type="button" onClick={() => void finalizarConversa(sel)} className="px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300">✅ Finalizar</button>
+                      <button type="button" onClick={() => void marcarSpam(sel)} className={`px-2.5 py-1 rounded-lg border ${spamDe(sel) ? "border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300" : "border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300"}`}>{spamDe(sel) ? "↩ Não é spam" : "🚫 Spam"}</button>
+                    </div>
+                  )}
+                </div>
+              );
+            }
             if (finalizada) {
               return (
                 <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 text-xs shrink-0 bg-gray-100 dark:bg-gray-800/60">
@@ -1667,14 +1726,14 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
   const [aberto, setAberto] = useState(false);
   const [buscaU, setBuscaU] = useState("");
   const [salvando, setSalvando] = useState(false);
-  const [draft, setDraft] = useState(() => ({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], apelidos: numero.apelidos || {}, regras: numero.regras || "", ativo: numero.ativo !== false }));
+  const [draft, setDraft] = useState(() => ({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], apelidos: numero.apelidos || {}, regras: numero.regras || "", modo: numero.modo || "atribuicao", ativo: numero.ativo !== false }));
   // Ressincroniza o rascunho quando o doc muda (ex.: depois de salvar).
-  useEffect(() => { setDraft({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], apelidos: numero.apelidos || {}, regras: numero.regras || "", ativo: numero.ativo !== false });
+  useEffect(() => { setDraft({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], apelidos: numero.apelidos || {}, regras: numero.regras || "", modo: numero.modo || "atribuicao", ativo: numero.ativo !== false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [numero.id, numero.nome, numero.descricao, (numero.restaurantIds || []).join(","), (numero.usuariosIds || []).join(","), JSON.stringify(numero.apelidos || {}), numero.regras, numero.ativo]);
+  }, [numero.id, numero.nome, numero.descricao, (numero.restaurantIds || []).join(","), (numero.usuariosIds || []).join(","), JSON.stringify(numero.apelidos || {}), numero.regras, numero.modo, numero.ativo]);
 
   const eqArr = (a: string[], b: string[]) => a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",");
-  const dirty = draft.nome !== numero.nome || draft.descricao !== (numero.descricao || "") || !eqArr(draft.restaurantIds, numero.restaurantIds || []) || !eqArr(draft.usuariosIds, numero.usuariosIds || []) || JSON.stringify(draft.apelidos) !== JSON.stringify(numero.apelidos || {}) || draft.regras !== (numero.regras || "") || draft.ativo !== (numero.ativo !== false);
+  const dirty = draft.nome !== numero.nome || draft.descricao !== (numero.descricao || "") || !eqArr(draft.restaurantIds, numero.restaurantIds || []) || !eqArr(draft.usuariosIds, numero.usuariosIds || []) || JSON.stringify(draft.apelidos) !== JSON.stringify(numero.apelidos || {}) || draft.regras !== (numero.regras || "") || draft.modo !== (numero.modo || "atribuicao") || draft.ativo !== (numero.ativo !== false);
 
   const em = ESTADO_META[estado] || { label: "…", cls: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" };
   const cor = estado === "open" ? "border-emerald-300 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-900/10"
@@ -1697,8 +1756,8 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
     // Só guarda apelidos de quem tem acesso e com valor preenchido.
     const apelidosLimpo: { [id: string]: string } = {};
     for (const uid of draft.usuariosIds) { const a = (draft.apelidos[uid] || "").trim(); if (a) apelidosLimpo[uid] = a; }
-    await setDoc(doc(db, "whatsappNumeros", numero.id), sanitizeForFirestore({ nome: draft.nome.trim() || numero.nome, descricao: draft.descricao.trim() || null, restaurantIds: draft.restaurantIds, usuariosIds: draft.usuariosIds, apelidos: apelidosLimpo, regras: draft.regras.trim() || null, ativo: draft.ativo, atualizadoEm: new Date().toISOString() }), { merge: true }); } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); } finally { setSalvando(false); } }
-  const cancelar = () => setDraft({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], apelidos: numero.apelidos || {}, regras: numero.regras || "", ativo: numero.ativo !== false });
+    await setDoc(doc(db, "whatsappNumeros", numero.id), sanitizeForFirestore({ nome: draft.nome.trim() || numero.nome, descricao: draft.descricao.trim() || null, restaurantIds: draft.restaurantIds, usuariosIds: draft.usuariosIds, apelidos: apelidosLimpo, regras: draft.regras.trim() || null, modo: draft.modo, ativo: draft.ativo, atualizadoEm: new Date().toISOString() }), { merge: true }); } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); } finally { setSalvando(false); } }
+  const cancelar = () => setDraft({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], apelidos: numero.apelidos || {}, regras: numero.regras || "", modo: numero.modo || "atribuicao", ativo: numero.ativo !== false });
 
   return (
     <div className={`rounded-xl border ${cor}`}>
@@ -1787,6 +1846,24 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
           </SecaoCfg>
 
           {/* Regras */}
+          <SecaoCfg icon="🎛️" titulo="Modo de atendimento">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {([
+                ["atribuicao", "Com atribuição", "Conversas têm dono. Tela Início (Sem responsável | Minhas), assumir, transferir. Bom pro escritório."],
+                ["livre", "Livre — quem vê responde", "Sem dono e sem assumir. Lista única, não-lidas no topo. Bom pra operação."],
+              ] as const).map(([v, titulo, desc]) => {
+                const ativo = draft.modo === v;
+                return (
+                  <button key={v} type="button" onClick={() => setDraft(d => ({ ...d, modo: v }))}
+                    className={`text-left p-3 rounded-xl border transition-colors ${ativo ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20" : "border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40"}`}>
+                    <div className={`text-sm font-semibold ${ativo ? "text-emerald-700 dark:text-emerald-300" : "text-gray-800 dark:text-gray-200"}`}>{ativo ? "● " : "○ "}{titulo}</div>
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{desc}</div>
+                  </button>
+                );
+              })}
+            </div>
+          </SecaoCfg>
+
           <SecaoCfg icon="📋" titulo="Regras de uso" hint="opcional">
             <textarea value={draft.regras} onChange={e => setDraft(d => ({ ...d, regras: e.target.value }))} rows={2} className={inp} placeholder="Ex.: só responder em horário comercial; confirmar preço antes de fechar…" />
           </SecaoCfg>
