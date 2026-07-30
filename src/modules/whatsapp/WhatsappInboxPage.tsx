@@ -28,7 +28,16 @@ type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "ou
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const fmtBRcurto = (ymd?: string | null) => { if (!ymd) return ""; const [a, m, d] = String(ymd).split("-"); return d ? `${d}/${m}/${a?.slice(2) || ""}` : String(ymd); };
 const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
-const foneBonito = (wa: string) => { const d = soDig(wa); const n = d.startsWith("55") ? d.slice(2) : d; return n.length >= 10 ? `+55 ${n.slice(0, 2)} ${n.slice(2, n.length - 4)}-${n.slice(-4)}` : wa; };
+const foneBonito = (wa: string) => {
+  const d = soDig(wa);
+  // Tira o DDI 55 só quando o tamanho bate com telefone BR (12/13 dígitos).
+  const n = (d.length === 12 || d.length === 13) && d.startsWith("55") ? d.slice(2) : d;
+  // Telefone BR = DDD(2) + 8 ou 9 dígitos. Fora disso (ex.: LID do WhatsApp,
+  // um número gigante de privacidade) não é discável → rótulo neutro em vez de
+  // um "+55 …" falso e malformado.
+  if (n.length === 10 || n.length === 11) return `+55 ${n.slice(0, 2)} ${n.slice(2, n.length - 4)}-${n.slice(-4)}`;
+  return d ? `Contato ···${d.slice(-4)}` : wa;
+};
 // Chave de comparação que ignora DDI 55 e o 9º dígito de celular (DDD + 8 últimos).
 function foneKey(raw?: string | null): string {
   const s = (raw || "").trim();
@@ -38,6 +47,14 @@ function foneKey(raw?: string | null): string {
   return d.length >= 10 ? d.slice(0, 2) + d.slice(-8) : d;
 }
 const ehGrupoWaId = (waId?: string | null): boolean => (waId || "").startsWith("g:");
+
+// Texto a exibir de uma mensagem. Reação criptografada (encReactionMessage) vem
+// sem texto → mostra "reagiu a uma mensagem" em vez do código cru.
+const textoMostra = (m: { texto?: string | null; tipo?: string | null }): string => {
+  if (m.texto) return m.texto;
+  if (m.tipo === "encReactionMessage" || m.tipo === "reactionMessage") return "reagiu a uma mensagem";
+  return `[${m.tipo || "msg"}]`;
+};
 
 // Assina uma query com retry. Se o attach falha (ex.: permission-denied porque o
 // token de auth ainda não propagou ao abrir o módulo), re-tenta com backoff em
@@ -358,7 +375,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     if (ehGrupoWaId(waId) || c?.ehGrupo) return c?.nomeManual || c?.nomeGrupo || "Grupo";
     // Pessoa da equipe vinculada é a identidade autoritativa: tem prioridade sobre
     // o nomeManual (que pode ter sido semeado de um lead e ficar desatualizado).
-    return pessoaDaConversa(waId)?.nome || c?.nomeManual || waNome || foneBonito(waId);
+    // nomePush = nome do perfil do WhatsApp (fallback antes do número cru).
+    return pessoaDaConversa(waId)?.nome || c?.nomeManual || waNome || c?.nomePush || foneBonito(waId);
   };
 
   // Responsável de uma conversa: individual = atribuidoA (1); grupo = atendentes (N).
@@ -875,7 +893,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                       <span className={`truncate ${naoLida ? "font-bold text-gray-900 dark:text-gray-50" : "font-medium text-gray-900 dark:text-gray-100"}`}>{nomeConversa(c.waId, c.nome)}</span>
                       {cTags.map(t => <span key={t.id} className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: t.cor || "#6366f1" }} title={t.nome} />)}
                     </div>
-                    <div className={`text-xs truncate ${naoLida ? "text-gray-700 dark:text-gray-200 font-medium" : "text-gray-500"}`}>{c.ultima.direcao === "out" ? "Você: " : ""}{c.ultima.texto || `[${c.ultima.tipo || "msg"}]`}</div>
+                    <div className={`text-xs truncate ${naoLida ? "text-gray-700 dark:text-gray-200 font-medium" : "text-gray-500"}`}>{c.ultima.direcao === "out" ? "Você: " : ""}{textoMostra(c.ultima)}</div>
                     {atribuido && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 truncate">🙋 {atribuido}</div>}
                   </div>
                   <div className="flex flex-col items-end gap-1 shrink-0">
@@ -1065,7 +1083,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                           {isVid && <video src={src} controls className="rounded-lg max-w-full max-h-64" />}
                           {isAud && <audio src={src} controls className="max-w-[220px]" />}
                           {isDoc && <a href={src} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 underline">📄 {nomeDoc}</a>}
-                          {!isImg && !isVid && !isAud && !isDoc && <div className="whitespace-pre-wrap break-words">{m.texto || `[${m.tipo || "msg"}]`}</div>}
+                          {!isImg && !isVid && !isAud && !isDoc && <div className="whitespace-pre-wrap break-words">{textoMostra(m)}</div>}
                           {(isImg || isVid) && m.texto && !rotuloAuto && <div className="whitespace-pre-wrap break-words mt-1">{m.texto}</div>}
                         </>
                       );
