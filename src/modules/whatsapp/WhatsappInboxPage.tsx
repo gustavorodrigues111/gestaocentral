@@ -57,6 +57,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [numeros, setNumeros] = useState<WhatsappNumero[]>([]);
   const [numeroSel, setNumeroSel] = useState<string | null>(null);
   const [novaConversa, setNovaConversa] = useState(false);
+  const [novoGrupo, setNovoGrupo] = useState(false);
   const [qrRecon, setQrRecon] = useState<{ instancia: string; nome: string } | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
@@ -578,6 +579,22 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     await salvarContato(waId, { spam: true, spamPor: me?.id || null, spamEm: new Date().toISOString(), triadoEm: new Date().toISOString() });
     setTriagemGrupo(null); setSel(null);
   }
+  // Cria um grupo de WhatsApp pela Evolution e já o mostra no inbox.
+  async function criarGrupo(subject: string, participants: string[]): Promise<boolean> {
+    if (!numeroSel) return false;
+    try {
+      const r = await fetch("/api/evolution-grupo-criar", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ instancia: numeroSel, subject, participants }) });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && (j as { ok?: boolean }).ok) {
+        const gid = ((j as { groupId?: string }).groupId || "").replace(/\D/g, "");
+        if (gid) { const waId = `g:${gid}`; await salvarContato(waId, { ehGrupo: true, nomeGrupo: subject, triadoEm: new Date().toISOString() }); setSel(waId); }
+        else alert(`Grupo "${subject}" criado! Aparece no inbox assim que chegar a primeira mensagem.`);
+        return true;
+      }
+      alert((j as { naoConfigurado?: boolean }).naoConfigurado ? "Evolution ainda não configurada (env vars na Vercel)." : ((j as { error?: string }).error || "Falha ao criar grupo."));
+      return false;
+    } catch (e) { alert("Falha ao criar grupo: " + (e instanceof Error ? e.message : "?")); return false; }
+  }
 
   // Vincular/desvincular cliente do CRM.
   async function vincularCliente(clienteId: string | null) { if (sel) await salvarContato(sel, { clienteId }); }
@@ -726,7 +743,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 📱 {n.nome}
               </button>
             ))}
-            {podeResponder && numeroSel && <button type="button" onClick={() => setNovaConversa(true)} className="ml-auto text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 shrink-0">＋ Nova conversa</button>}
+            {podeResponder && numeroSel && <div className="ml-auto flex items-center gap-1.5 shrink-0">
+              <button type="button" onClick={() => setNovoGrupo(true)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">👥 Novo grupo</button>
+              <button type="button" onClick={() => setNovaConversa(true)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">＋ Nova conversa</button>
+            </div>}
           </div>
           {numerosVisiveis.length === 0 && (
             <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500 mb-3">
@@ -1112,6 +1132,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
       {novaConversa && <NovaConversaModal pessoas={pessoas} onClose={() => setNovaConversa(false)}
         onAbrir={(waId, pid) => { setNovaConversa(false); setSel(waId); if (pid) void salvarContato(waId, { pessoaId: pid }); }} />}
+      {novoGrupo && <NovoGrupoModal pessoas={pessoas} onCriar={criarGrupo} onClose={() => setNovoGrupo(false)} />}
       {transferir && (transferWaId || sel) && <TransferModal
         pessoas={pessoas.filter(p => { const n = numeros.find(x => x.id === numeroSel); const uids = n?.usuariosIds || []; return uids.length === 0 || uids.includes(p.id); })}
         modo={donoDe(transferWaId || sel || "") ? "transferir" : "atribuir"}
@@ -1201,6 +1222,70 @@ function ConversaItem({ naoLida, temDono, onAbrir, onNaoLida, onLida, onTransfer
         {children}
       </button>
     </div>
+  );
+}
+
+// Criar um GRUPO de WhatsApp: nome + participantes (por pessoa cadastrada ou
+// número digitado). Precisa do telefone de cada participante.
+function NovoGrupoModal({ pessoas, onCriar, onClose }: { pessoas: Pessoa[]; onCriar: (subject: string, participants: string[]) => Promise<boolean>; onClose: () => void }) {
+  const [subject, setSubject] = useState("");
+  const [busca, setBusca] = useState("");
+  const [manual, setManual] = useState("");
+  const [membros, setMembros] = useState<{ label: string; fone: string }[]>([]);
+  const [criando, setCriando] = useState(false);
+  const comFone = pessoas.filter(p => (p.whatsapp || "").replace(/\D/g, "").length >= 10);
+  const q = busca.trim().toLowerCase();
+  const cand = q ? comFone.filter(p => p.nome.toLowerCase().includes(q) && !membros.some(m => m.fone === (p.whatsapp || "").replace(/\D/g, ""))).slice(0, 6) : [];
+  function add(label: string, foneRaw: string) {
+    const fone = (foneRaw || "").replace(/\D/g, "");
+    if (fone.length < 10 || membros.some(m => m.fone === fone)) return;
+    setMembros(v => [...v, { label: label || fone, fone }]); setBusca(""); setManual("");
+  }
+  async function criar() {
+    if (!subject.trim()) { alert("Dê um nome pro grupo."); return; }
+    if (!membros.length) { alert("Adicione pelo menos um participante."); return; }
+    setCriando(true);
+    const ok = await onCriar(subject.trim(), membros.map(m => m.fone));
+    setCriando(false);
+    if (ok) onClose();
+  }
+  const inp = "w-full text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 dark:text-gray-100";
+  return (
+    <Modal onClose={onClose} title="👥 Novo grupo" maxWidth="max-w-md">
+      <div className="space-y-3">
+        <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Nome do grupo" className={inp} autoFocus />
+        <div>
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">Participantes</div>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            {membros.map(m => (
+              <span key={m.fone} className="inline-flex items-center gap-1.5 text-[13px] pl-2.5 pr-1 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300">
+                {m.label}
+                <button type="button" onClick={() => setMembros(v => v.filter(x => x.fone !== m.fone))} className="opacity-60 hover:opacity-100 text-sm leading-none">×</button>
+              </span>
+            ))}
+            {membros.length === 0 && <span className="text-[12px] text-gray-400 italic">nenhum participante ainda</span>}
+          </div>
+          <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="🔍 Buscar pessoa cadastrada…" className={inp} />
+          {cand.length > 0 && (
+            <div className="mt-1 rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800">
+              {cand.map(p => (
+                <button key={p.id} type="button" onClick={() => add(p.nome, p.whatsapp || "")} className="w-full text-left px-3 py-2 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  {p.nome} <span className="text-gray-400 text-xs">· {p.whatsapp}</span>
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2 mt-2">
+            <input value={manual} onChange={e => setManual(e.target.value)} placeholder="ou digite o número (DDD + número)" className={`${inp} flex-1`} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); add(manual, manual); } }} />
+            <Button variant="secondary" onClick={() => add(manual, manual)} disabled={manual.replace(/\D/g, "").length < 10}>Adicionar</Button>
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+          <Button variant="secondary" onClick={onClose} disabled={criando}>Cancelar</Button>
+          <Button onClick={() => void criar()} disabled={criando}>{criando ? "Criando…" : "👥 Criar grupo"}</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
