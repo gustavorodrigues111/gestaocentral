@@ -713,6 +713,15 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const clienteAuto = sel ? clienteByFone[foneKey(sel)] : null;
   const [transferir, setTransferir] = useState(false);
   const [transferWaId, setTransferWaId] = useState<string | null>(null);
+  // "Passar contexto pra alguém externo": resumo (IA) + recado + anexar recebidas.
+  const [passarCtx, setPassarCtx] = useState(false);
+  const [pcResumo, setPcResumo] = useState("");
+  const [pcCarregando, setPcCarregando] = useState(false);
+  const [pcRecado, setPcRecado] = useState("");
+  const [pcAnexar, setPcAnexar] = useState(false);
+  const [pcBusca, setPcBusca] = useState("");
+  const [pcDest, setPcDest] = useState<{ nome?: string; telefone: string } | null>(null);
+  const [pcEnviando, setPcEnviando] = useState(false);
   // Triagem de grupo: define atendente(s) ou marca spam (some).
   const [triagemGrupo, setTriagemGrupo] = useState<string | null>(null);
   const [triagemIds, setTriagemIds] = useState<string[]>([]);
@@ -838,6 +847,68 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   async function apagarMsg(m: Msg) {
     if (!confirm("Apagar esta mensagem para todos? Some pra você e pro cliente — não tem 'apagar só pra mim'.")) return;
     if (await acaoMsg(m, "apagar")) await updateDoc(doc(db, "whatsappMensagens", m.id), { apagada: true, texto: "", midia: null, mime: null }).catch(() => {});
+  }
+
+  // ── "Passar contexto pra alguém externo" ──────────────────────────────────
+  async function gerarResumoPc() {
+    if (!sel) return;
+    setPcCarregando(true);
+    try {
+      const msgs = thread.filter(m => !m.sistema && m.tipo !== "sistema" && m.texto).slice(-30).map(m => ({ de: m.direcao === "in" ? "cliente" : "atendente", texto: m.texto }));
+      const info = [clienteSel ? `Cliente: ${clienteSel.nome}` : "", (contatoSel?.tagIds || []).map(id => tagById[id]?.nome).filter(Boolean).join(", ")].filter(Boolean).join(" · ");
+      const r = await fetch("/api/whatsapp-resumo", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ contato: { nome: nomeSel, telefone: ehTelefoneBR(sel) ? foneBonito(sel) : "", info }, mensagens: msgs }) });
+      const j = await r.json().catch(() => ({}));
+      if (r.ok && typeof (j as { resumo?: string }).resumo === "string") setPcResumo((j as { resumo: string }).resumo);
+      else { setPcResumo(""); const err = (j as { error?: string }).error; if (err) console.warn("[resumo]", err); }
+    } catch { setPcResumo(""); }
+    finally { setPcCarregando(false); }
+  }
+  useEffect(() => {
+    if (!passarCtx) return;
+    setPcResumo(""); setPcRecado(""); setPcAnexar(false); setPcBusca(""); setPcDest(null);
+    void gerarResumoPc();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [passarCtx]);
+  const pcSugestoes = useMemo(() => {
+    const q = pcBusca.trim().toLowerCase(); const qd = soDig(pcBusca);
+    if (!q && !qd) return [];
+    const arr: { nome: string; telefone: string }[] = [];
+    for (const c of clientes) if (c.telefone) arr.push({ nome: c.nome, telefone: c.telefone });
+    for (const p of pessoas) if (p.whatsapp) arr.push({ nome: p.nome, telefone: p.whatsapp });
+    for (const k in contatos) { const ct = contatos[k]; const nome = ct.nomeManual || ct.nomePush; if (nome && ct.waId && !ehGrupoWaId(ct.waId)) arr.push({ nome, telefone: ct.waId }); }
+    const seen = new Set<string>(); const out: { nome: string; telefone: string }[] = [];
+    for (const a of arr) { const key = soDig(a.telefone); if (!key || seen.has(key)) continue; if (a.nome.toLowerCase().includes(q) || (qd.length >= 4 && key.includes(qd))) { seen.add(key); out.push(a); } if (out.length >= 8) break; }
+    return out;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pcBusca, clientes, pessoas, contatos]);
+  async function enviarPassarCtx() {
+    const tel = soDig(pcDest?.telefone || pcBusca);
+    if (!tel) { alert("Escolha ou digite o número de quem vai receber."); return; }
+    if (!numeroSel || !sel) return;
+    if (!pcResumo.trim() && !pcRecado.trim()) { alert("O resumo está vazio."); return; }
+    setPcEnviando(true);
+    try {
+      let texto = "📋 *Resumo de atendimento*\n\n";
+      texto += `Contato: ${nomeSel}${ehTelefoneBR(sel) ? ` (${foneBonito(sel)})` : ""}`;
+      if (pcResumo.trim()) texto += "\n\n" + pcResumo.trim();
+      if (pcRecado.trim()) texto += "\n\n" + pcRecado.trim();
+      if (pcAnexar) {
+        const recebidas = thread.filter(m => m.direcao === "in" && !m.sistema && m.texto).slice(-15).map(m => `• ${m.texto}`).join("\n");
+        if (recebidas) texto += "\n\n— Mensagens do cliente —\n" + recebidas;
+      }
+      texto += `\n\n_Encaminhado por ${me?.nome || ""} via planejamento.app_`;
+      const r = await fetch("/api/evolution-enviar", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ instancia: numeroSel, to: tel, texto, autorNome: me?.nome || "" }) });
+      const j = await r.json().catch(() => ({}));
+      if (!(r.ok && (j as { ok?: boolean }).ok)) { alert((j as { error?: string }).error || "Falha ao enviar."); setPcEnviando(false); return; }
+      const mid = (j as { messageId?: string }).messageId || null;
+      const docMsg = sanitizeForFirestore({ waId: tel, nome: pcDest?.nome || null, direcao: "out", tipo: "text", texto, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null, status: 1, ...(mid ? { messageId: mid } : {}) });
+      if (mid) await setDoc(doc(db, "whatsappMensagens", `${numeroSel}_${mid}`), docMsg, { merge: true }); else await addDoc(collection(db, "whatsappMensagens"), docMsg);
+      if (pcDest?.nome) void salvarContato(tel, { nomeManual: pcDest.nome });
+      await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({ waId: sel, numeroId: numeroSel, direcao: "out", tipo: "sistema", sistema: true, lido: true, texto: `📤 Contexto enviado para ${pcDest?.nome || foneBonito(tel)} por ${me?.nome || "—"}`, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString() }));
+      setPassarCtx(false);
+      setSel(tel);
+    } catch (e) { alert("Falha: " + (e instanceof Error ? e.message : "?")); }
+    finally { setPcEnviando(false); }
   }
 
   // Render de UMA linha da lista (reusado na lista plana e nos blocos do Início).
@@ -1071,7 +1142,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 {contatoSel?.atribuidoNome && <span> · 🙋 {contatoSel.atribuidoNome}</span>}
               </div>
             </div>
-            {podeResponder && <button type="button" onClick={() => { setTransferWaId(null); setTransferir(true); }} title={contatoSel?.atribuidoA ? "Transferir" : "Atribuir"} className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">↪</button>}
+            {podeResponder && !numeroLivre && <button type="button" onClick={() => { setTransferWaId(null); setTransferir(true); }} title={contatoSel?.atribuidoA ? "Transferir" : "Atribuir"} className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">↪</button>}
+            {podeResponder && !ehGrupoWaId(sel || "") && <button type="button" onClick={() => setPassarCtx(true)} title="Passar contexto pra alguém" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">📤</button>}
             <button type="button" onClick={() => marcarNaoLida(sel)} title="Marcar como não lida" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">🔵</button>
             {podeVincular && <button type="button" onClick={() => setDetalhes(v => !v)} title="Detalhes" className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${detalhes ? "text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30" : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>ⓘ</button>}
           </div>
@@ -1379,6 +1451,57 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       {novaConversa && <NovaConversaModal pessoas={pessoas} onClose={() => setNovaConversa(false)}
         onAbrir={(waId, pid) => { setNovaConversa(false); setSel(waId); if (pid) void salvarContato(waId, { pessoaId: pid }); }} />}
       {novoGrupo && <NovoGrupoModal pessoas={pessoas} onCriar={criarGrupo} onClose={() => setNovoGrupo(false)} />}
+      {passarCtx && sel && (
+        <Modal title="📤 Passar contexto pra alguém" onClose={() => setPassarCtx(false)} maxWidth="max-w-lg">
+          <div className="space-y-3">
+            <div>
+              <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Para quem</label>
+              {pcDest ? (
+                <div className="mt-1 flex items-center gap-2 rounded-lg border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 px-3 py-2">
+                  <span className="text-sm flex-1 min-w-0 truncate">{pcDest.nome || foneBonito(pcDest.telefone)}{pcDest.nome && <span className="text-gray-400"> · {foneBonito(pcDest.telefone)}</span>}</span>
+                  <button type="button" onClick={() => { setPcDest(null); setPcBusca(""); }} className="text-gray-400 hover:text-gray-600 text-lg leading-none">×</button>
+                </div>
+              ) : (
+                <div className="relative">
+                  <input value={pcBusca} onChange={e => setPcBusca(e.target.value)} placeholder="Buscar por nome ou digitar o número…" className="w-full mt-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm outline-none" />
+                  {pcSugestoes.length > 0 && (
+                    <div className="absolute z-10 left-0 right-0 mt-1 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 shadow-lg max-h-52 overflow-y-auto">
+                      {pcSugestoes.map((s, i) => (
+                        <button key={i} type="button" onClick={() => { setPcDest(s); setPcBusca(""); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-700/50 border-b border-gray-50 dark:border-gray-800/60 last:border-0">
+                          <div className="text-sm font-medium truncate">{s.nome}</div>
+                          <div className="text-[11px] text-gray-400">{foneBonito(s.telefone)}</div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {soDig(pcBusca).length >= 8 && pcSugestoes.length === 0 && (
+                    <button type="button" onClick={() => setPcDest({ telefone: pcBusca })} className="mt-1 text-xs text-emerald-600 dark:text-emerald-300 hover:underline">Usar o número {foneBonito(pcBusca)}</button>
+                  )}
+                </div>
+              )}
+            </div>
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Resumo (IA) — edite à vontade</label>
+                <button type="button" onClick={() => void gerarResumoPc()} disabled={pcCarregando} className="text-[11px] text-indigo-600 dark:text-indigo-300 hover:underline disabled:opacity-50">{pcCarregando ? "gerando…" : "↻ Regenerar"}</button>
+              </div>
+              <textarea value={pcResumo} onChange={e => setPcResumo(e.target.value)} rows={5} placeholder={pcCarregando ? "Gerando resumo…" : "Resumo do atendimento…"} className="w-full mt-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm outline-none resize-none" />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Recado (opcional)</label>
+              <input value={pcRecado} onChange={e => setPcRecado(e.target.value)} placeholder="Ex.: consegue passar o preço até amanhã?" className="w-full mt-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm outline-none" />
+            </div>
+            <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+              <input type="checkbox" checked={pcAnexar} onChange={e => setPcAnexar(e.target.checked)} />
+              Anexar as últimas mensagens do cliente na íntegra
+            </label>
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setPassarCtx(false)} className="px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300">Cancelar</button>
+              <button type="button" onClick={() => void enviarPassarCtx()} disabled={pcEnviando || (!pcDest && soDig(pcBusca).length < 8)} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">{pcEnviando ? "Enviando…" : "📤 Enviar contexto"}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
       {transferir && (transferWaId || sel) && <TransferModal
         pessoas={pessoas.filter(p => { const n = numeros.find(x => x.id === numeroSel); const uids = n?.usuariosIds || []; return uids.length === 0 || uids.includes(p.id); })}
         modo={donoDe(transferWaId || sel || "") ? "transferir" : "atribuir"}
