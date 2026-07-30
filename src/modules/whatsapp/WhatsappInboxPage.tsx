@@ -1150,8 +1150,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
           {/* Barra de atribuição (responsável) */}
           {(() => {
-            // Grupo: atendentes (1+) em vez de responsável único.
-            if (ehGrupoWaId(sel || "")) {
+            // Grupo: atendentes (1+) em vez de responsável único. Só no modo COM
+            // ATRIBUIÇÃO — em livre, grupo é só lido/não lido (cai na barra enxuta).
+            if (!numeroLivre && ehGrupoWaId(sel || "")) {
               const ats = contatoSel?.atendentesNomes || [];
               const fin = !!contatoSel?.finalizadoEm;
               return (
