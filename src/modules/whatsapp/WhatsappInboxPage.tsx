@@ -9,7 +9,7 @@
 // e catálogo de tags em whatsappTags.
 import { useEffect, useMemo, useRef, useState, type ReactNode, type ChangeEvent, type TouchEvent as RTouchEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, setDoc, updateDoc, where, type Query, type QuerySnapshot, type DocumentData } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, orderBy, query, setDoc, updateDoc, where, type Query, type QuerySnapshot, type DocumentData } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -434,7 +434,13 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     const c = contatoDe(waId);
     return ehGrupoWaId(waId) ? (c?.atendentes || []).includes(me?.id || "") : c?.atribuidoA === me?.id;
   };
-  const finalizadaDe = (waId: string): boolean => !!contatoDe(waId)?.finalizadoEm;
+  // Finalizado é POR NÚMERO: estados[numeroSel] sobrepõe o legado global de topo.
+  const finalizadaDe = (waId: string, numId: string | null = numeroSel): boolean => {
+    const c = contatoDe(waId);
+    const e = numId ? c?.estados?.[numId] : undefined;
+    const f = e && e.finalizadoEm !== undefined ? e.finalizadoEm : c?.finalizadoEm;
+    return !!f;
+  };
   const spamDe = (waId: string): boolean => !!contatoDe(waId)?.spam;
   // Grupo já triado? (definiram atendentes OU marcaram spam) — senão pede ao abrir.
   const triadoDe = (waId: string): boolean => {
@@ -524,11 +530,21 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   }, [sel, msgs]);
 
   // ── Writers ──────────────────────────────────────────────────────────────
-  async function salvarContato(waId: string, patch: Partial<WhatsappContato>) {
+  // Campos cujo estado é POR NÚMERO (não global). Vão pra estados[numeroId] e o
+  // campo de topo legado é limpo, pra não vazar entre caixas.
+  const CAMPOS_POR_NUMERO = new Set(["finalizadoEm", "finalizadoPor"]);
+  async function salvarContato(waId: string, patch: Partial<WhatsappContato>, numeroIdAlvo: string | null = numeroSel) {
     // Doc keyed pela chave normalizada (DDD + 8 últimos) → tags/vínculos casam
     // com/sem o 9º dígito. Guarda o waId cru pra referência.
     const k = foneKey(waId);
-    await setDoc(doc(db, "whatsappContatos", k), sanitizeForFirestore({ ...patch, id: k, waId, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id || null }), { merge: true });
+    const write: Record<string, unknown> = { id: k, waId, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id || null };
+    const estado: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(patch)) {
+      if (CAMPOS_POR_NUMERO.has(key) && numeroIdAlvo) { estado[key] = val; write[key] = deleteField(); }
+      else write[key] = val;
+    }
+    if (numeroIdAlvo && Object.keys(estado).length) write.estados = { [numeroIdAlvo]: estado };
+    await setDoc(doc(db, "whatsappContatos", k), sanitizeForFirestore(write), { merge: true });
   }
   async function toggleTagConversa(waId: string, tagId: string) {
     const atuais = contatos[foneKey(waId)]?.tagIds || [];
@@ -982,10 +998,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       }));
       // Semeia o nome do cliente + atribui direto (se escolheu atendente).
       const ck = foneKey(sel);
-      const patch: Partial<WhatsappContato> = {};
+      const patch: Partial<WhatsappContato> = { naoLidaManual: true };   // aparece como não-lida no destino
       if (nomeSel && ehTelefoneBR(sel) && !contatos[ck]?.nomeManual) patch.nomeManual = nomeSel;
       if (atendente) { patch.atribuidoA = atendente.id; patch.atribuidoNome = atendente.nome; }
-      if (Object.keys(patch).length) void salvarContato(clientePhone, patch);
+      void salvarContato(clientePhone, patch);
       // Mensagem automática ao cliente (revisada/aprovada no modal) — opcional.
       if (encAvisar && encMsgCliente.trim()) await enviarProgramatico(sel, encMsgCliente.trim());
       // Rastro na conversa original.
@@ -1245,7 +1261,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             // ATRIBUIÇÃO — em livre, grupo é só lido/não lido (cai na barra enxuta).
             if (!numeroLivre && ehGrupoWaId(sel || "")) {
               const ats = contatoSel?.atendentesNomes || [];
-              const fin = !!contatoSel?.finalizadoEm;
+              const fin = finalizadaDe(sel || "");
               return (
                 <div className={`flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 text-xs shrink-0 ${fin ? "bg-gray-100 dark:bg-gray-800/60" : ats.length ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>
                   <span className="truncate">
@@ -1267,7 +1283,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             }
             const dono = contatoSel?.atribuidoA || null;
             const minha = dono === me?.id;
-            const finalizada = !!contatoSel?.finalizadoEm;
+            const finalizada = finalizadaDe(sel || "");
             // Modo livre: sem atribuição — barra enxuta (quem vê responde).
             if (numeroLivre && !finalizada) {
               return (

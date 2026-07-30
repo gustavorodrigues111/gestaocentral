@@ -6359,6 +6359,9 @@ export type WhatsappContato = {
   // Reabre (volta pra pendentes) quando o cliente manda nova mensagem.
   finalizadoEm?: string | null;
   finalizadoPor?: string | null;      // pessoaId de quem finalizou
+  // Estado POR NÚMERO (o contato é global por telefone, mas finalizar é por caixa).
+  // Sobrepõe os campos de topo (legado global). Hoje só finalizado; extensível.
+  estados?: { [numeroId: string]: { finalizadoEm?: string | null; finalizadoPor?: string | null } };
   // Spam: contato marcado como spam some das listas ativas e aparece só no
   // filtro "Spam".
   spam?: boolean;

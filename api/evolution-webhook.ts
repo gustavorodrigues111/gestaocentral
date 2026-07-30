@@ -303,25 +303,24 @@ async function reabrirSeFinalizada(numeroId: string, waIdCru: string): Promise<v
   const ehGrupo = waIdCru.startsWith("g:");
   const ck = ehGrupo ? waIdCru : chaveBR(waIdCru);
   const contato = await firestoreLer("whatsappContatos", ck);
-  if (!contato?.finalizadoEm) return;
+  if (!contato) return;
+  // Finalizado é POR NÚMERO (estados[numeroId]); com fallback pro legado global.
+  const estadosMap = (contato.estados as Record<string, { finalizadoEm?: string | null }> | undefined) || {};
+  const est = estadosMap[numeroId];
+  const finalizado = est && est.finalizadoEm !== undefined ? est.finalizadoEm : contato.finalizadoEm;
+  if (!finalizado) return;
+  // Zera o finalizado nesse número (mantém os outros) + limpa o legado de topo.
+  const novosEstados = { ...estadosMap, [numeroId]: { ...(estadosMap[numeroId] || {}), finalizadoEm: null, finalizadoPor: null } };
+  const base = { estados: novosEstados, finalizadoEm: null, finalizadoPor: null, atualizadoEm: new Date().toISOString() };
   // Grupo: reabre mantendo os atendentes (se houver); sem bot/menu.
-  if (ehGrupo) {
-    await firestoreAtualizar("whatsappContatos", ck, { finalizadoEm: null, finalizadoPor: null, atualizadoEm: new Date().toISOString() });
-    return;
-  }
+  if (ehGrupo) { await firestoreAtualizar("whatsappContatos", ck, base); return; }
   const padrao = (contato.atendentePadrao as string) || null;
   if (padrao) {
     const nome = (contato.atendentePadraoNome as string) || null;
-    await firestoreAtualizar("whatsappContatos", ck, {
-      finalizadoEm: null, finalizadoPor: null,
-      atribuidoA: padrao, atribuidoNome: nome, atualizadoEm: new Date().toISOString(),
-    });
+    await firestoreAtualizar("whatsappContatos", ck, { ...base, atribuidoA: padrao, atribuidoNome: nome });
     await msgSistema(numeroId, waIdCru, `🙋 Reaberta e atribuída automaticamente a ${nome || "atendente padrão"}`);
   } else {
-    await firestoreAtualizar("whatsappContatos", ck, {
-      finalizadoEm: null, finalizadoPor: null, atribuidoA: null, atribuidoNome: null,
-      roteamentoEstado: null, atualizadoEm: new Date().toISOString(),
-    });
+    await firestoreAtualizar("whatsappContatos", ck, { ...base, atribuidoA: null, atribuidoNome: null, roteamentoEstado: null });
   }
 }
 
