@@ -9,7 +9,7 @@
 // e catálogo de tags em whatsappTags.
 import { useEffect, useMemo, useRef, useState, type ReactNode, type ChangeEvent, type TouchEvent as RTouchEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, orderBy, query, setDoc, updateDoc, where, type Query, type QuerySnapshot, type DocumentData } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -39,12 +39,34 @@ function foneKey(raw?: string | null): string {
 }
 const ehGrupoWaId = (waId?: string | null): boolean => (waId || "").startsWith("g:");
 
+// Assina uma query com retry. Se o attach falha (ex.: permission-denied porque o
+// token de auth ainda não propagou ao abrir o módulo), re-tenta com backoff em
+// vez de morrer calada — senão a lista de números/conversas fica vazia até um
+// reload manual.
+function assinarComRetry(q: Query<DocumentData>, onData: (s: QuerySnapshot<DocumentData>) => void): () => void {
+  let unsub = () => {};
+  let cancelado = false;
+  let tentativa = 0;
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  const attach = () => {
+    if (cancelado) return;
+    unsub = onSnapshot(q, (s) => { tentativa = 0; onData(s); }, () => {
+      unsub();
+      if (cancelado) return;
+      timer = setTimeout(attach, Math.min(800 * 2 ** tentativa++, 6000));
+    });
+  };
+  attach();
+  return () => { cancelado = true; if (timer) clearTimeout(timer); unsub(); };
+}
+
 const PALETA = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#ef4444", "#0ea5e9", "#8b5cf6", "#64748b"];
 const EMOJIS = ["😀","😁","😂","🤣","😊","😍","😘","😉","😎","🤗","🤔","😅","🙃","😴","😮","😢","😭","😡","👍","👎","👏","🙏","💪","🤝","👌","✌️","🔥","✨","🎉","❤️","🧡","💛","💚","💙","💜","🖤","💯","✅","❌","⚠️","⭐","📌","📎","📄","📷","🎁","💰","💳","🛵","🍔","🍕","🍟","🥤","☕","🍺","🎂","😋","🤤","👋","🫶","😇","🥳","🤩"];
 
 export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { modo?: "conversas" | "completo"; voltarListaSignal?: number } = {}) {
   const embutido = modo === "conversas";
-  const { pessoa: me } = useAuth();
+  const { pessoa: me, fbUser } = useAuth();
+  const authPronta = !!fbUser;   // token do Firebase disponível → listeners podem atacar
   const { rid } = useParams<{ rid: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const { restaurants } = useRestaurant();
@@ -140,57 +162,60 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const ridsKey = restaurants.map(r => r.id).join(",");
 
   // ── Loads ──────────────────────────────────────────────────────────────
+  // Todos os listeners só atacam quando a auth do Firebase está pronta (token
+  // disponível). Sem isso, ao abrir o módulo antes do token propagar, o Firestore
+  // devolve permission-denied e o listener morre → tela vazia até reload manual.
   useEffect(() => {
-    const u = onSnapshot(query(collection(db, "whatsappMensagens"), orderBy("timestamp", "asc")), snap =>
+    if (!authPronta) return;
+    return assinarComRetry(query(collection(db, "whatsappMensagens"), orderBy("timestamp", "asc")), snap =>
       setMsgs(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Msg)));
-    return () => u();
-  }, []);
+  }, [authPronta]);
 
   useEffect(() => {
-    const u = onSnapshot(collection(db, "whatsappNumeros"), snap =>
+    if (!authPronta) return;
+    return assinarComRetry(collection(db, "whatsappNumeros"), snap =>
       setNumeros(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WhatsappNumero).filter(n => n.ativo !== false)));
-    return () => u();
-  }, []);
+  }, [authPronta]);
 
   useEffect(() => {
+    if (!authPronta) return;
     const base = collection(db, "pessoas");
     const rids = ridsKey ? ridsKey.split(",").slice(0, 10) : [];
     const q = isMaster ? base : (rids.length ? query(base, where("restaurantIds", "array-contains-any", rids)) : null);
     if (!q) { setPessoas([]); return; }
-    const u = onSnapshot(q, snap => setPessoas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa)));
-    return () => u();
-  }, [isMaster, ridsKey]);
+    return assinarComRetry(q, snap => setPessoas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa)));
+  }, [authPronta, isMaster, ridsKey]);
 
   useEffect(() => {
-    const u = onSnapshot(collection(db, "whatsappContatos"), snap => {
+    if (!authPronta) return;
+    return assinarComRetry(collection(db, "whatsappContatos"), snap => {
       const m: Record<string, WhatsappContato> = {};
       // Indexa pela chave normalizada (DDD + 8 últimos), pra casar as duas formas
       // do número (com/sem o 9º dígito) no mesmo contato.
       snap.docs.forEach(d => { const data = { id: d.id, ...d.data() } as WhatsappContato; const k = foneKey(d.id); if (!m[k] || (data.atualizadoEm || "") > (m[k].atualizadoEm || "")) m[k] = data; });
       setContatos(m);
     });
-    return () => u();
-  }, []);
+  }, [authPronta]);
 
   // Clientes do Reservas+CRM (das empresas do usuário) — pra casar por telefone.
   useEffect(() => {
+    if (!authPronta) return;
     const rids = ridsKey ? ridsKey.split(",").slice(0, 10) : [];
     if (!rids.length) { setClientes([]); return; }
-    const u = onSnapshot(query(collection(db, "clientes"), where("restaurantId", "in", rids)),
+    return assinarComRetry(query(collection(db, "clientes"), where("restaurantId", "in", rids)),
       snap => setClientes(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Cliente)));
-    return () => u();
-  }, [ridsKey]);
+  }, [authPronta, ridsKey]);
 
   useEffect(() => {
-    const u = onSnapshot(collection(db, "whatsappTags"), snap =>
+    if (!authPronta) return;
+    return assinarComRetry(collection(db, "whatsappTags"), snap =>
       setTags(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WhatsappTag).sort((a, b) => a.nome.localeCompare(b.nome))));
-    return () => u();
-  }, []);
+  }, [authPronta]);
   useEffect(() => {
-    const u = onSnapshot(collection(db, "whatsappRespostas"), snap =>
+    if (!authPronta) return;
+    return assinarComRetry(collection(db, "whatsappRespostas"), snap =>
       setRespostas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WhatsappResposta)));
-    return () => u();
-  }, []);
+  }, [authPronta]);
 
   // ── Índices ────────────────────────────────────────────────────────────
   const pessoaById = useMemo(() => Object.fromEntries(pessoas.map(p => [p.id, p])), [pessoas]);
