@@ -56,6 +56,18 @@ const textoMostra = (m: { texto?: string | null; tipo?: string | null }): string
   return `[${m.tipo || "msg"}]`;
 };
 
+// "Tempo sem resposta" de uma conversa aguardando o atendente. Cor por urgência:
+// verde < 15 min, amarelo < 1 h, vermelho depois.
+function tempoEsperaLabel(ms: number): { txt: string; cor: string } {
+  const min = Math.floor(ms / 60000);
+  const cor = min >= 60 ? "text-rose-600 dark:text-rose-400" : min >= 15 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400";
+  if (min < 1) return { txt: "agora", cor: "text-emerald-600 dark:text-emerald-400" };
+  if (min < 60) return { txt: `${min} min`, cor };
+  const h = Math.floor(min / 60), rm = min % 60;
+  if (h < 24) return { txt: rm ? `${h}h${String(rm).padStart(2, "0")}` : `${h}h`, cor };
+  return { txt: `${Math.floor(h / 24)}d`, cor };
+}
+
 // Assina uma query com retry. Se o attach falha (ex.: permission-denied porque o
 // token de auth ainda não propagou ao abrir o módulo), re-tenta com backoff em
 // vez de morrer calada — senão a lista de números/conversas fica vazia até um
@@ -120,7 +132,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [editMsg, setEditMsg] = useState<{ id: string; texto: string } | null>(null);   // edição inline
   const [emojiAberto, setEmojiAberto] = useState(false);
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
-  const [filtroAtrib, setFiltroAtrib] = useState<"minhas" | "pendentes" | "todas" | "spam" | "finalizados">("pendentes");
+  const [filtroAtrib, setFiltroAtrib] = useState<"inicio" | "minhas" | "sem_resp" | "todas" | "spam" | "finalizados">("inicio");
+  const [agora, setAgora] = useState(() => Date.now());   // relógio p/ o contador "tempo sem resposta"
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const msgsEndRef = useRef<HTMLDivElement | null>(null);
   const painelRef = useRef<HTMLDivElement | null>(null);
@@ -155,6 +168,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     el.style.height = "auto";
     el.style.height = Math.min(el.scrollHeight, 132) + "px";
   }, [resposta, sel]);
+  // Relógio do contador "tempo sem resposta" — atualiza a cada 30 s.
+  useEffect(() => { const t = setInterval(() => setAgora(Date.now()), 30_000); return () => clearInterval(t); }, []);
   // Trava o scroll do fundo enquanto a conversa em tela cheia está aberta.
   useEffect(() => {
     if (!sel) return;
@@ -399,15 +414,31 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     const c = contatoDe(waId);
     return !!(c?.triadoEm || (c?.atendentes && c.atendentes.length > 0) || c?.spam);
   };
+  // Respeita o filtro de tag também na tela Início.
+  const passaTag = (waId: string) => !filtroTag || (contatos[foneKey(waId)]?.tagIds || []).includes(filtroTag);
+
+  // Bloco A do Início: "Aguardando você" — minhas em que o cliente falou por
+  // último (ou não lida). Mais ANTIGO no topo (mais atrasado = mais urgente).
+  const aguardandoVoce = useMemo(() => conversas
+    .filter(c => passaTag(c.waId) && souResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId) && (c.naoLidas > 0 || c.ultima.direcao === "in"))
+    .sort((a, b) => (a.ultima.timestamp || "").localeCompare(b.ultima.timestamp || "")),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conversas, contatos, me?.id, filtroTag]);
+  // Bloco B do Início: "Sem responsável ainda" — ninguém assumiu (recente primeiro).
+  const semRespAinda = useMemo(() => conversas
+    .filter(c => passaTag(c.waId) && !temResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [conversas, contatos, filtroTag]);
+
   // Contadores por atribuição (pra chips). Finalizadas/spam ficam fora das ativas.
   const contMinhas = useMemo(() => conversas.filter(c => souResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)).length, [conversas, contatos, me?.id]);
-  const contPend = useMemo(() => conversas.filter(c => !temResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)).length, [conversas, contatos]);
   const contSpam = useMemo(() => conversas.filter(c => spamDe(c.waId)).length, [conversas, contatos]);
   const contFinalizadas = useMemo(() => conversas.filter(c => finalizadaDe(c.waId) && !spamDe(c.waId)).length, [conversas, contatos]);
+  const contInicio = aguardandoVoce.length + semRespAinda.length;
 
   // Tem conversa NÃO LIDA em cada filtro? (pra sombrear o chip de vermelho)
   const naoLidasPorFiltro = useMemo(() => {
-    const r = { pendentes: false, minhas: false, todas: false, finalizados: false, spam: false };
+    const r = { inicio: false, minhas: false, todas: false, finalizados: false, spam: false };
     for (const c of conversas) {
       const cont = contatos[foneKey(c.waId)];
       if (!(c.naoLidas > 0 || cont?.naoLidaManual)) continue;
@@ -415,8 +446,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       const fin = !!cont?.finalizadoEm;
       if (fin) { r.finalizados = true; continue; }
       r.todas = true;
-      if (!temResponsavel(c.waId)) r.pendentes = true;
-      else if (souResponsavel(c.waId)) r.minhas = true;
+      if (souResponsavel(c.waId)) { r.minhas = true; r.inicio = true; }
+      else if (!temResponsavel(c.waId)) r.inicio = true;   // sem responsável entra no Início
     }
     return r;
   }, [conversas, contatos, me?.id]);
@@ -431,7 +462,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     if (filtroAtrib === "finalizados") return finalizada;   // aba Finalizados só mostra finalizadas
     if (finalizada) return false;                           // finalizadas somem das listas ativas
     if (filtroAtrib === "minhas" && !souResponsavel(c.waId)) return false;
-    if (filtroAtrib === "pendentes" && temResponsavel(c.waId)) return false;
+    if (filtroAtrib === "sem_resp" && temResponsavel(c.waId)) return false;
     return true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }), [conversas, filtroTag, contatos, filtroAtrib, me?.id]);
@@ -767,6 +798,40 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     if (await acaoMsg(m, "apagar")) await updateDoc(doc(db, "whatsappMensagens", m.id), { apagada: true, texto: "", midia: null, mime: null }).catch(() => {});
   }
 
+  // Render de UMA linha da lista (reusado na lista plana e nos blocos do Início).
+  // mostrarEspera = exibe o contador "tempo sem resposta" (bloco Aguardando você).
+  const linhaConversa = (c: { waId: string; nome?: string | null; ultima: Msg; naoLidas: number }, mostrarEspera = false) => {
+    const cont = contatos[foneKey(c.waId)];
+    const grupo = ehGrupoWaId(c.waId) || !!cont?.ehGrupo;
+    const cTags = (cont?.tagIds || []).map(id => tagById[id]).filter(Boolean) as WhatsappTag[];
+    const naoLida = c.naoLidas > 0 || !!cont?.naoLidaManual;
+    const atribuido = grupo ? (cont?.atendentesNomes || []).join(", ") : cont?.atribuidoNome;
+    const espera = mostrarEspera && c.ultima.direcao === "in" ? tempoEsperaLabel(agora - new Date(c.ultima.timestamp || 0).getTime()) : null;
+    return (
+      <ConversaItem key={c.waId} naoLida={naoLida} temDono={temResponsavel(c.waId)}
+        onAbrir={() => { setSel(c.waId); setDetalhes(false); if (grupo && !triadoDe(c.waId)) abrirTriagem(c.waId); }}
+        onNaoLida={() => void marcarNaoLida(c.waId)}
+        onLida={() => void marcarLida(c.waId)}
+        onTransferir={() => { setTransferWaId(c.waId); setTransferir(true); }}
+        podeResponder={podeResponder}>
+        <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0 ${grupo ? "bg-indigo-50 dark:bg-indigo-900/20" : "bg-emerald-50 dark:bg-emerald-900/20"}`}>{grupo ? "👥" : "💬"}</div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <span className={`truncate ${naoLida ? "font-bold text-gray-900 dark:text-gray-50" : "font-medium text-gray-900 dark:text-gray-100"}`}>{nomeConversa(c.waId, c.nome)}</span>
+            {cTags.map(t => <span key={t.id} className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: t.cor || "#6366f1" }} title={t.nome} />)}
+          </div>
+          <div className={`text-xs truncate ${naoLida ? "text-gray-700 dark:text-gray-200 font-medium" : "text-gray-500"}`}>{c.ultima.direcao === "out" ? "Você: " : ""}{textoMostra(c.ultima)}</div>
+          {atribuido && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 truncate">🙋 {atribuido}</div>}
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span className="text-[10px] text-gray-400">{hhmm(c.ultima.timestamp)}</span>
+          {espera && <span className={`text-[10px] font-semibold ${espera.cor}`}>⏱ {espera.txt}</span>}
+          {naoLida && <span className="min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center text-[10px] font-bold rounded-full bg-rose-500 text-white">{c.naoLidas > 0 ? c.naoLidas : ""}</span>}
+        </div>
+      </ConversaItem>
+    );
+  };
+
   const abaEfetiva = embutido ? "conversas" : tab;
   return (
     <div className={embutido ? "" : "max-w-4xl"}>
@@ -833,7 +898,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
           {numerosVisiveis.length > 0 && (
             <div className="flex mb-2 p-0.5 rounded-lg bg-gray-100 dark:bg-gray-800/60">
               {([
-                ["pendentes", "Pendentes", contPend],
+                ["inicio", "Início", contInicio],
                 ["minhas", "Minhas", contMinhas],
                 ["todas", "Todas", 0],
                 ["finalizados", "Finalizados", contFinalizadas],
@@ -872,39 +937,31 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       </div>}
 
       {!sel ? (
-        conversasFiltradas.length === 0 ? (
-          <div className="mx-4 mt-2 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">{conversas.length === 0 ? "Nenhuma mensagem recebida ainda. Quando alguém mandar no WhatsApp do planejamento.app, aparece aqui." : filtroAtrib === "pendentes" ? "🎉 Nenhuma conversa pendente — tudo atribuído." : filtroAtrib === "minhas" ? "Você não tem conversas atribuídas." : "Nenhuma conversa nesse filtro."}</div>
+        filtroAtrib === "inicio" ? (
+          contInicio === 0 ? (
+            <div className="mx-4 mt-2 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">{conversas.length === 0 ? "Nenhuma mensagem recebida ainda. Quando alguém mandar no WhatsApp do planejamento.app, aparece aqui." : "🎉 Tudo em dia — nada aguardando você e nada sem responsável."}</div>
+          ) : (
+            <div>
+              {aguardandoVoce.length > 0 && (
+                <div>
+                  <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-900/20 border-y border-sky-100 dark:border-sky-900/40">🔵 Aguardando você ({aguardandoVoce.length})</div>
+                  <div className="divide-y divide-gray-100 dark:divide-gray-800">{aguardandoVoce.map(c => linhaConversa(c, true))}</div>
+                </div>
+              )}
+              {semRespAinda.length > 0 && (
+                <div>
+                  <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border-y border-amber-100 dark:border-amber-900/40">🟡 Sem responsável ainda ({semRespAinda.length})</div>
+                  <div className="px-4 py-2 text-xs text-amber-800 dark:text-amber-200 bg-amber-50/60 dark:bg-amber-900/10">{semRespAinda.length === 1 ? "1 conversa esperando alguém assumir. É sua? Toque para assumir." : `${semRespAinda.length} conversas esperando alguém assumir. Alguma é sua? Toque para assumir.`}</div>
+                  <div className="divide-y divide-gray-100 dark:divide-gray-800">{semRespAinda.map(c => linhaConversa(c))}</div>
+                </div>
+              )}
+            </div>
+          )
+        ) : conversasFiltradas.length === 0 ? (
+          <div className="mx-4 mt-2 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">{conversas.length === 0 ? "Nenhuma mensagem recebida ainda. Quando alguém mandar no WhatsApp do planejamento.app, aparece aqui." : filtroAtrib === "minhas" ? "Você não tem conversas atribuídas." : filtroAtrib === "finalizados" ? "Nenhuma conversa finalizada." : filtroAtrib === "spam" ? "Nenhuma conversa marcada como spam." : "Nenhuma conversa nesse filtro."}</div>
         ) : (
           <div className="border-y border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
-            {conversasFiltradas.map(c => {
-              const cont = contatos[foneKey(c.waId)];
-              const grupo = ehGrupoWaId(c.waId) || !!cont?.ehGrupo;
-              const cTags = (cont?.tagIds || []).map(id => tagById[id]).filter(Boolean) as WhatsappTag[];
-              const naoLida = c.naoLidas > 0 || !!cont?.naoLidaManual;
-              const atribuido = grupo ? (cont?.atendentesNomes || []).join(", ") : cont?.atribuidoNome;
-              return (
-                <ConversaItem key={c.waId} naoLida={naoLida} temDono={temResponsavel(c.waId)}
-                  onAbrir={() => { setSel(c.waId); setDetalhes(false); if (grupo && !triadoDe(c.waId)) abrirTriagem(c.waId); }}
-                  onNaoLida={() => void marcarNaoLida(c.waId)}
-                  onLida={() => void marcarLida(c.waId)}
-                  onTransferir={() => { setTransferWaId(c.waId); setTransferir(true); }}
-                  podeResponder={podeResponder}>
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center text-lg shrink-0 ${grupo ? "bg-indigo-50 dark:bg-indigo-900/20" : "bg-emerald-50 dark:bg-emerald-900/20"}`}>{grupo ? "👥" : "💬"}</div>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span className={`truncate ${naoLida ? "font-bold text-gray-900 dark:text-gray-50" : "font-medium text-gray-900 dark:text-gray-100"}`}>{nomeConversa(c.waId, c.nome)}</span>
-                      {cTags.map(t => <span key={t.id} className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: t.cor || "#6366f1" }} title={t.nome} />)}
-                    </div>
-                    <div className={`text-xs truncate ${naoLida ? "text-gray-700 dark:text-gray-200 font-medium" : "text-gray-500"}`}>{c.ultima.direcao === "out" ? "Você: " : ""}{textoMostra(c.ultima)}</div>
-                    {atribuido && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 truncate">🙋 {atribuido}</div>}
-                  </div>
-                  <div className="flex flex-col items-end gap-1 shrink-0">
-                    <span className="text-[10px] text-gray-400">{hhmm(c.ultima.timestamp)}</span>
-                    {naoLida && <span className="min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center text-[10px] font-bold rounded-full bg-rose-500 text-white">{c.naoLidas > 0 ? c.naoLidas : ""}</span>}
-                  </div>
-                </ConversaItem>
-              );
-            })}
+            {conversasFiltradas.map(c => linhaConversa(c))}
           </div>
         )
       ) : (
