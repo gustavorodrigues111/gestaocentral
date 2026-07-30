@@ -458,18 +458,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // Respeita o filtro de tag também na tela Início.
   const passaTag = (waId: string) => !filtroTag || (contatos[foneKey(waId)]?.tagIds || []).includes(filtroTag);
 
-  // Coluna direita do Início: "Minhas" — todas as minhas ativas. Ordena as que
-  // aguardam resposta primeiro (mais antiga no topo = mais atrasada), depois as
-  // já respondidas por recência.
+  // Coluna direita do Início: "Minhas" — todas as minhas ativas, sempre por
+  // mensagem mais recente (herda a ordem de `conversas`).
   const minhas = useMemo(() => conversas
-    .filter(c => passaTag(c.waId) && souResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId))
-    .sort((a, b) => {
-      const na = a.naoLidas > 0 || a.ultima.direcao === "in";
-      const nb = b.naoLidas > 0 || b.ultima.direcao === "in";
-      if (na !== nb) return na ? -1 : 1;
-      return na ? (a.ultima.timestamp || "").localeCompare(b.ultima.timestamp || "")
-                : (b.ultima.timestamp || "").localeCompare(a.ultima.timestamp || "");
-    }),
+    .filter(c => passaTag(c.waId) && souResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [conversas, contatos, me?.id, filtroTag]);
   // Coluna esquerda do Início: "Sem responsável ainda" — ninguém assumiu (recente primeiro).
@@ -494,15 +486,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     .filter(c => passaTag(c.waId) && spamDe(c.waId)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [conversas, contatos, filtroTag]);
-  // Modo livre: lista única ativa, não-lidas no topo, depois por recência.
+  // Modo livre: lista única ativa, sempre por mensagem mais recente (herda a ordem
+  // de `conversas`, que já vem do mais recente pro mais antigo).
   const conversasLivre = useMemo(() => conversas
-    .filter(c => passaTag(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId))
-    .sort((a, b) => {
-      const na = a.naoLidas > 0 || naoLidaManualDe(a.waId);
-      const nb = b.naoLidas > 0 || naoLidaManualDe(b.waId);
-      if (na !== nb) return na ? -1 : 1;
-      return (b.ultima.timestamp || "").localeCompare(a.ultima.timestamp || "");
-    }),
+    .filter(c => passaTag(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [conversas, contatos, filtroTag]);
 
