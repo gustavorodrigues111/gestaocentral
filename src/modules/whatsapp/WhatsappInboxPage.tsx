@@ -67,6 +67,13 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [respostas, setRespostas] = useState<WhatsappResposta[]>([]);
   const [sel, setSel] = useState<string | null>(null);
   const [resposta, setResposta] = useState("");
+  // Rascunho por conversa: o texto digitado fica preso à conversa em que foi
+  // escrito. Ao trocar de conversa, salva o rascunho da anterior e carrega o da
+  // nova (vazio se não houver). rascunhosRef guarda os textos por chave de fone.
+  const rascunhosRef = useRef<Record<string, string>>({});
+  const respostaRef = useRef("");
+  respostaRef.current = resposta;
+  const selPrevRef = useRef<string | null>(null);
   const [mencionados, setMencionados] = useState<{ numero: string; jid: string }[]>([]);  // @-marcados (grupo)
   const [enviando, setEnviando] = useState(false);
   const enviandoRef = useRef(false);   // trava síncrona contra duplo-envio (state é async)
@@ -91,6 +98,17 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     vv?.addEventListener("resize", apply);
     vv?.addEventListener("scroll", apply);
     return () => { vv?.removeEventListener("resize", apply); vv?.removeEventListener("scroll", apply); const el = painelRef.current; if (el) { el.style.height = ""; el.style.transform = ""; } };
+  }, [sel]);
+  // Troca de conversa: salva o rascunho da anterior e carrega o da nova. Roda
+  // antes de qualquer leitura do compositor porque `resposta` ainda contém o
+  // texto da conversa anterior neste ponto (só é trocado aqui).
+  useEffect(() => {
+    const cur = sel ? foneKey(sel) : null;
+    const prev = selPrevRef.current;
+    if (cur === prev) return;
+    if (prev) rascunhosRef.current[prev] = respostaRef.current;
+    selPrevRef.current = cur;
+    setResposta(cur ? (rascunhosRef.current[cur] ?? "") : "");
   }, [sel]);
   // Auto-expande o campo de resposta conforme o texto (até ~5 linhas → rola).
   useEffect(() => {
@@ -236,7 +254,12 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       const pNome = searchParams.get("nome");
       if (pNome) { const ck = foneKey(pTo); if (!contatos[ck]?.nomeManual && !contatos[ck]?.nomePush) void salvarContato(pTo, { nomeManual: pNome }); }
       const pTexto = searchParams.get("texto");
-      if (pTexto) setResposta(pTexto);   // pré-preenche o compositor (ex.: confirmação de reserva)
+      if (pTexto) {
+        // Grava no rascunho da conversa alvo pra sobreviver ao efeito de troca
+        // de conversa (que carrega o rascunho da chave ao mudar `sel`).
+        rascunhosRef.current[foneKey(pTo)] = pTexto;
+        setResposta(pTexto);   // pré-preenche o compositor (ex.: confirmação de reserva)
+      }
     }
     setSearchParams({}, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -434,6 +457,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         const docMsg = sanitizeForFirestore({ waId: sel, nome: nomeSel || null, direcao: "out", tipo: "text", texto: txt, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null, ...(mid ? { messageId: mid } : {}) });
         if (mid) await setDoc(doc(db, "whatsappMensagens", `${numeroSel}_${mid}`), docMsg, { merge: true });
         else await addDoc(collection(db, "whatsappMensagens"), docMsg);
+        rascunhosRef.current[foneKey(sel)] = "";   // rascunho enviado → limpa
         setResposta(""); setMencionados([]);
       } else {
         alert((j as { naoConfigurado?: boolean }).naoConfigurado ? "Evolution ainda não configurada (env vars na Vercel)." : ((j as { error?: string }).error || "Falha ao enviar."));
