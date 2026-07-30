@@ -441,6 +441,13 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     const f = e && e.finalizadoEm !== undefined ? e.finalizadoEm : c?.finalizadoEm;
     return !!f;
   };
+  // Não-lida (flag manual) também é POR NÚMERO — senão o "auto-marcar lida" da
+  // conversa de origem apagava o não-lido do destino (mesmo contato global).
+  const naoLidaManualDe = (waId: string, numId: string | null = numeroSel): boolean => {
+    const c = contatoDe(waId);
+    const e = numId ? c?.estados?.[numId] : undefined;
+    return !!(e && e.naoLidaManual !== undefined ? e.naoLidaManual : c?.naoLidaManual);
+  };
   const spamDe = (waId: string): boolean => !!contatoDe(waId)?.spam;
   // Grupo já triado? (definiram atendentes OU marcaram spam) — senão pede ao abrir.
   const triadoDe = (waId: string): boolean => {
@@ -491,8 +498,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const conversasLivre = useMemo(() => conversas
     .filter(c => passaTag(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId))
     .sort((a, b) => {
-      const na = a.naoLidas > 0 || !!contatos[foneKey(a.waId)]?.naoLidaManual;
-      const nb = b.naoLidas > 0 || !!contatos[foneKey(b.waId)]?.naoLidaManual;
+      const na = a.naoLidas > 0 || naoLidaManualDe(a.waId);
+      const nb = b.naoLidas > 0 || naoLidaManualDe(b.waId);
       if (na !== nb) return na ? -1 : 1;
       return (b.ultima.timestamp || "").localeCompare(a.ultima.timestamp || "");
     }),
@@ -505,7 +512,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const contOutras = deOutros.length + finalizadasList.length;
   const contFinalizadas = finalizadasList.length;
   const contSpam = spamList.length;
-  const naoLidasLivre = conversasLivre.filter(c => c.naoLidas > 0 || !!contatos[foneKey(c.waId)]?.naoLidaManual).length;
+  const naoLidasLivre = conversasLivre.filter(c => c.naoLidas > 0 || naoLidaManualDe(c.waId)).length;
 
   // Aba efetiva por modo (normaliza um filtro que não existe no modo atual).
   const abaAtual = numeroLivre
@@ -514,7 +521,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
   // Tem não-lida numa lista? (pra sombrear o chip de vermelho).
   const temNaoLida = (lista: { waId: string; naoLidas: number }[]) =>
-    lista.some(c => c.naoLidas > 0 || !!contatos[foneKey(c.waId)]?.naoLidaManual);
+    lista.some(c => c.naoLidas > 0 || naoLidaManualDe(c.waId));
 
   const thread = useMemo(() => msgsDoNumero.filter(x => foneKey(x.waId) === foneKey(sel || "")), [msgsDoNumero, sel]);
   // Rola pro fim ao abrir a conversa ou chegar mensagem nova.
@@ -525,14 +532,14 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   useEffect(() => {
     if (!sel) return;
     for (const m of msgs) if (foneKey(m.waId) === foneKey(sel) && m.direcao === "in" && !m.lido) void updateDoc(doc(db, "whatsappMensagens", m.id), { lido: true }).catch(() => {});
-    if (contatos[foneKey(sel)]?.naoLidaManual) void salvarContato(sel, { naoLidaManual: false });
+    if (naoLidaManualDe(sel)) void salvarContato(sel, { naoLidaManual: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sel, msgs]);
 
   // ── Writers ──────────────────────────────────────────────────────────────
   // Campos cujo estado é POR NÚMERO (não global). Vão pra estados[numeroId] e o
   // campo de topo legado é limpo, pra não vazar entre caixas.
-  const CAMPOS_POR_NUMERO = new Set(["finalizadoEm", "finalizadoPor"]);
+  const CAMPOS_POR_NUMERO = new Set(["finalizadoEm", "finalizadoPor", "naoLidaManual"]);
   async function salvarContato(waId: string, patch: Partial<WhatsappContato>, numeroIdAlvo: string | null = numeroSel) {
     // Doc keyed pela chave normalizada (DDD + 8 últimos) → tags/vínculos casam
     // com/sem o 9º dígito. Guarda o waId cru pra referência.
@@ -998,10 +1005,12 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       }));
       // Semeia o nome do cliente + atribui direto (se escolheu atendente).
       const ck = foneKey(sel);
-      const patch: Partial<WhatsappContato> = { naoLidaManual: true };   // aparece como não-lida no destino
+      // naoLidaManual é POR NÚMERO → grava no número de DESTINO (encAlvo), senão o
+      // "auto-marcar lida" da origem apagava. nomeManual/atribuidoA seguem globais.
+      const patch: Partial<WhatsappContato> = { naoLidaManual: true };
       if (nomeSel && ehTelefoneBR(sel) && !contatos[ck]?.nomeManual) patch.nomeManual = nomeSel;
       if (atendente) { patch.atribuidoA = atendente.id; patch.atribuidoNome = atendente.nome; }
-      void salvarContato(clientePhone, patch);
+      void salvarContato(clientePhone, patch, encAlvo);
       // Mensagem automática ao cliente (revisada/aprovada no modal) — opcional.
       if (encAvisar && encMsgCliente.trim()) await enviarProgramatico(sel, encMsgCliente.trim());
       // Rastro na conversa original.
@@ -1023,7 +1032,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     const cont = contatos[foneKey(c.waId)];
     const grupo = ehGrupoWaId(c.waId) || !!cont?.ehGrupo;
     const cTags = (cont?.tagIds || []).map(id => tagById[id]).filter(Boolean) as WhatsappTag[];
-    const naoLida = c.naoLidas > 0 || !!cont?.naoLidaManual;
+    const naoLida = c.naoLidas > 0 || naoLidaManualDe(c.waId);
     const atribuido = grupo ? (cont?.atendentesNomes || []).join(", ") : cont?.atribuidoNome;
     const espera = mostrarEspera && c.ultima.direcao === "in" ? tempoEsperaLabel(agora - new Date(c.ultima.timestamp || 0).getTime()) : null;
     return (
