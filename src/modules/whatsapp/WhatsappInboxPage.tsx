@@ -47,6 +47,7 @@ function foneKey(raw?: string | null): string {
   return d.length >= 10 ? d.slice(0, 2) + d.slice(-8) : d;
 }
 const ehGrupoWaId = (waId?: string | null): boolean => (waId || "").startsWith("g:");
+const MSG_CLIENTE_ENCAMINHO = "Obrigado! Estou encaminhando seu atendimento para o setor responsável, que em breve entra em contato com você. 🙏";
 
 // Texto a exibir de uma mensagem. Reação criptografada (encReactionMessage) vem
 // sem texto → mostra "reagiu a uma mensagem" em vez do código cru.
@@ -722,6 +723,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [pcBusca, setPcBusca] = useState("");
   const [pcDest, setPcDest] = useState<{ nome?: string; telefone: string } | null>(null);
   const [pcEnviando, setPcEnviando] = useState(false);
+  const [pcAvisar, setPcAvisar] = useState(false);       // externo: avisar cliente (padrão off)
+  const [pcFinalizar, setPcFinalizar] = useState(false); // externo: finalizar original (padrão off)
+  const [pcMsgCliente, setPcMsgCliente] = useState(MSG_CLIENTE_ENCAMINHO);
   // "Encaminhar para outro número (interno)": entrega a conversa pra outra equipe.
   const [encaminhar, setEncaminhar] = useState(false);
   const [encResumo, setEncResumo] = useState("");
@@ -730,6 +734,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [encAlvo, setEncAlvo] = useState<string | null>(null);
   const [encAtendente, setEncAtendente] = useState<string | null>(null);   // atribuir direto (opcional)
   const [encEnviando, setEncEnviando] = useState(false);
+  const [encAvisar, setEncAvisar] = useState(true);        // interno: avisar cliente (padrão on)
+  const [encFinalizar, setEncFinalizar] = useState(true);  // interno: finalizar original (padrão on)
+  const [encMsgCliente, setEncMsgCliente] = useState(MSG_CLIENTE_ENCAMINHO);
   // Triagem de grupo: define atendente(s) ou marca spam (some).
   const [triagemGrupo, setTriagemGrupo] = useState<string | null>(null);
   const [triagemIds, setTriagemIds] = useState<string[]>([]);
@@ -879,6 +886,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   useEffect(() => {
     if (!passarCtx) return;
     setPcResumo(""); setPcRecado(""); setPcAnexar(false); setPcBusca(""); setPcDest(null);
+    setPcAvisar(false); setPcFinalizar(false); setPcMsgCliente(MSG_CLIENTE_ENCAMINHO);
     void gerarResumoPc();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [passarCtx]);
@@ -894,6 +902,21 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     return out;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pcBusca, clientes, pessoas, contatos]);
+  // Envia um texto pelo número atual e grava no thread do destino. Sem "assumir".
+  async function enviarProgramatico(destinoWaId: string, texto: string, nome?: string | null): Promise<boolean> {
+    if (!numeroSel) return false;
+    const to = soDig(destinoWaId);
+    try {
+      const r = await fetch("/api/evolution-enviar", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ instancia: numeroSel, to, texto, autorNome: me?.nome || "" }) });
+      const j = await r.json().catch(() => ({}));
+      if (!(r.ok && (j as { ok?: boolean }).ok)) { alert((j as { error?: string }).error || "Falha ao enviar."); return false; }
+      const mid = (j as { messageId?: string }).messageId || null;
+      const docMsg = sanitizeForFirestore({ waId: destinoWaId, nome: nome || null, direcao: "out", tipo: "text", texto, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null, status: 1, ...(mid ? { messageId: mid } : {}) });
+      if (mid) await setDoc(doc(db, "whatsappMensagens", `${numeroSel}_${mid}`), docMsg, { merge: true }); else await addDoc(collection(db, "whatsappMensagens"), docMsg);
+      return true;
+    } catch (e) { alert("Falha ao enviar: " + (e instanceof Error ? e.message : "?")); return false; }
+  }
+
   async function enviarPassarCtx() {
     const tel = soDig(pcDest?.telefone || pcBusca);
     if (!tel) { alert("Escolha ou digite o número de quem vai receber."); return; }
@@ -910,14 +933,12 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         if (recebidas) texto += "\n\n— Mensagens do cliente —\n" + recebidas;
       }
       texto += `\n\n_Encaminhado por ${me?.nome || ""} via planejamento.app_`;
-      const r = await fetch("/api/evolution-enviar", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ instancia: numeroSel, to: tel, texto, autorNome: me?.nome || "" }) });
-      const j = await r.json().catch(() => ({}));
-      if (!(r.ok && (j as { ok?: boolean }).ok)) { alert((j as { error?: string }).error || "Falha ao enviar."); setPcEnviando(false); return; }
-      const mid = (j as { messageId?: string }).messageId || null;
-      const docMsg = sanitizeForFirestore({ waId: tel, nome: pcDest?.nome || null, direcao: "out", tipo: "text", texto, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null, status: 1, ...(mid ? { messageId: mid } : {}) });
-      if (mid) await setDoc(doc(db, "whatsappMensagens", `${numeroSel}_${mid}`), docMsg, { merge: true }); else await addDoc(collection(db, "whatsappMensagens"), docMsg);
+      if (!(await enviarProgramatico(tel, texto, pcDest?.nome))) { setPcEnviando(false); return; }
       if (pcDest?.nome) void salvarContato(tel, { nomeManual: pcDest.nome });
+      // Mensagem automática ao cliente (revisada/aprovada no modal) — opcional.
+      if (pcAvisar && pcMsgCliente.trim()) await enviarProgramatico(sel, pcMsgCliente.trim());
       await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({ waId: sel, numeroId: numeroSel, direcao: "out", tipo: "sistema", sistema: true, lido: true, texto: `📤 Contexto enviado para ${pcDest?.nome || foneBonito(tel)} por ${me?.nome || "—"}`, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString() }));
+      if (pcFinalizar) await finalizarConversa(sel);
       setPassarCtx(false);
       setSel(tel);
     } catch (e) { alert("Falha: " + (e instanceof Error ? e.message : "?")); }
@@ -928,6 +949,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   useEffect(() => {
     if (!encaminhar) return;
     setEncResumo(""); setEncObs(""); setEncAlvo(null); setEncAtendente(null); setEncCarregando(true);
+    setEncAvisar(true); setEncFinalizar(true); setEncMsgCliente(MSG_CLIENTE_ENCAMINHO);
     void gerarResumo().then(s => setEncResumo(s)).finally(() => setEncCarregando(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encaminhar]);
@@ -964,12 +986,16 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       if (nomeSel && ehTelefoneBR(sel) && !contatos[ck]?.nomeManual) patch.nomeManual = nomeSel;
       if (atendente) { patch.atribuidoA = atendente.id; patch.atribuidoNome = atendente.nome; }
       if (Object.keys(patch).length) void salvarContato(clientePhone, patch);
+      // Mensagem automática ao cliente (revisada/aprovada no modal) — opcional.
+      if (encAvisar && encMsgCliente.trim()) await enviarProgramatico(sel, encMsgCliente.trim());
       // Rastro na conversa original.
       await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({
         waId: sel, numeroId: numeroSel, direcao: "out", tipo: "sistema", sistema: true, lido: true,
         texto: `↪ Encaminhado para *${alvo?.nome || "outro número"}* por ${me?.nome || "—"}`, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(),
       }));
+      if (encFinalizar) await finalizarConversa(sel);
       setEncaminhar(false);
+      if (encFinalizar) setSel(null);
       alert(`Encaminhado para ${alvo?.nome || "o outro número"}${atendente ? ` — atribuída a ${atendente.nome}` : ` — aparece lá em "Sem responsável ainda"`}, com o contexto.`);
     } catch (e) { alert("Falha: " + (e instanceof Error ? e.message : "?")); }
     finally { setEncEnviando(false); }
@@ -1561,6 +1587,17 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
               <input type="checkbox" checked={pcAnexar} onChange={e => setPcAnexar(e.target.checked)} />
               Anexar as últimas mensagens do cliente na íntegra
             </label>
+            <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                <input type="checkbox" checked={pcFinalizar} onChange={e => setPcFinalizar(e.target.checked)} />
+                Finalizar esta conversa
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                <input type="checkbox" checked={pcAvisar} onChange={e => setPcAvisar(e.target.checked)} />
+                Avisar o cliente (mensagem automática)
+              </label>
+              {pcAvisar && <textarea value={pcMsgCliente} onChange={e => setPcMsgCliente(e.target.value)} rows={2} placeholder="Mensagem enviada ao cliente…" className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm outline-none resize-none" />}
+            </div>
             <div className="flex justify-end gap-2 pt-1">
               <button type="button" onClick={() => setPassarCtx(false)} className="px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300">Cancelar</button>
               <button type="button" onClick={() => void enviarPassarCtx()} disabled={pcEnviando || (!pcDest && soDig(pcBusca).length < 8)} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">{pcEnviando ? "Enviando…" : "📤 Enviar contexto"}</button>
@@ -1611,6 +1648,17 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             <div>
               <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Observação (opcional)</label>
               <input value={encObs} onChange={e => setEncObs(e.target.value)} placeholder="Ex.: cliente prefere ser chamado à tarde." className="w-full mt-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm outline-none" />
+            </div>
+            <div className="space-y-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                <input type="checkbox" checked={encFinalizar} onChange={e => setEncFinalizar(e.target.checked)} />
+                Finalizar esta conversa (o repasse foi feito)
+              </label>
+              <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                <input type="checkbox" checked={encAvisar} onChange={e => setEncAvisar(e.target.checked)} />
+                Avisar o cliente que foi encaminhado
+              </label>
+              {encAvisar && <textarea value={encMsgCliente} onChange={e => setEncMsgCliente(e.target.value)} rows={2} placeholder="Mensagem enviada ao cliente…" className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm outline-none resize-none" />}
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <button type="button" onClick={() => setEncaminhar(false)} className="px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300">Cancelar</button>
