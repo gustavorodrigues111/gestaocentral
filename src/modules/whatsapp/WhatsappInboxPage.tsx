@@ -23,7 +23,7 @@ import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
 import { PAPEIS_WHATSAPP, type PapelWhatsapp, type WhatsappRoteio } from "../../core/whatsapp/roteios";
 
-type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null };
+type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean };
 
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const fmtBRcurto = (ymd?: string | null) => { if (!ymd) return ""; const [a, m, d] = String(ymd).split("-"); return d ? `${d}/${m}/${a?.slice(2) || ""}` : String(ymd); };
@@ -55,6 +55,31 @@ const textoMostra = (m: { texto?: string | null; tipo?: string | null }): string
   if (m.tipo === "encReactionMessage" || m.tipo === "reactionMessage") return "reagiu a uma mensagem";
   return `[${m.tipo || "msg"}]`;
 };
+
+// É um telefone BR discável (10/11 díg. sem DDI, ou 12/13 com 55)? Se não, é LID.
+const ehTelefoneBR = (wa: string) => {
+  const d = soDig(wa);
+  const n = (d.length === 12 || d.length === 13) && d.startsWith("55") ? d.slice(2) : d;
+  return n.length === 10 || n.length === 11;
+};
+
+// Selo informativo: um "i" que, ao tocar, abre uma explicação curta (linguagem do
+// usuário) sobre por que algo aparece "diferente" do WhatsApp normal.
+function InfoBadge({ texto }: { texto: string }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <span className="relative inline-flex align-middle">
+      <button type="button" aria-label="Entenda" onClick={(e) => { e.stopPropagation(); setOpen(o => !o); }}
+        className="w-3.5 h-3.5 inline-flex items-center justify-center rounded-full bg-gray-300 dark:bg-gray-600 text-white text-[9px] font-bold leading-none">i</button>
+      {open && (
+        <>
+          <button type="button" aria-hidden className="fixed inset-0 z-40 cursor-default" onClick={(e) => { e.stopPropagation(); setOpen(false); }} />
+          <span className="absolute z-50 top-5 left-1/2 -translate-x-1/2 w-52 p-2.5 rounded-lg bg-gray-900 dark:bg-gray-700 text-gray-50 text-[11px] font-normal normal-case tracking-normal leading-snug shadow-xl text-left whitespace-normal">{texto}</span>
+        </>
+      )}
+    </span>
+  );
+}
 
 // "Tempo sem resposta" de uma conversa aguardando o atendente. Cor por urgência:
 // verde < 15 min, amarelo < 1 h, vermelho depois.
@@ -1036,7 +1061,11 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             <div className="flex-1 min-w-0 leading-tight">
               <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{nomeSel}</div>
               <div className="text-[11px] text-gray-400 truncate">
-                {ehGrupoWaId(sel || "") ? `👥 Grupo${(contatoSel?.participantes?.length || 0) > 0 ? ` · ${contatoSel!.participantes!.length} participantes` : ""}` : foneBonito(sel)}
+                {ehGrupoWaId(sel || "") ? (
+                  <>👥 Grupo{(contatoSel?.participantes?.length || 0) > 0 ? ` · ${contatoSel!.participantes!.length} participantes` : ""} <InfoBadge texto="Só conseguimos ver quem participa do grupo depois que a pessoa envia uma mensagem. A lista pode estar incompleta." /></>
+                ) : (
+                  <>{foneBonito(sel)}{!ehTelefoneBR(sel || "") && !clienteSel && !pessoaSel && !contatoSel?.nomeManual && <> <InfoBadge texto="Por privacidade do WhatsApp, ainda não temos o número nem o nome desta pessoa. Isso aparece assim que ela te enviar uma mensagem." /></>}</>
+                )}
                 {clienteSel && <span className="text-emerald-600 dark:text-emerald-300"> · 🧑 {clienteSel.nome}</span>}
                 {pessoaSel && <span className="text-indigo-600 dark:text-indigo-300"> · 👤 {pessoaSel.nome}</span>}
                 {contatoSel?.atribuidoNome && <span> · 🙋 {contatoSel.atribuidoNome}</span>}
@@ -1182,6 +1211,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
           {/* Mensagens */}
           <div className="flex-1 overflow-y-auto p-3 space-y-2">
+            <div className="flex justify-center pb-1">
+              <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800/60 rounded-full px-3 py-1 text-center max-w-[90%]">As mensagens começam de quando este número foi ligado ao sistema. Conversas mais antigas ficam só no celular.</div>
+            </div>
             {thread.map(m => m.sistema || m.tipo === "sistema" ? (
               <div key={m.id} className="flex justify-center">
                 <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800/60 rounded-full px-3 py-1 text-center max-w-[90%]">{m.texto} · {hhmm(m.timestamp)}</div>
@@ -1190,8 +1222,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
               <div key={m.id} className={`flex group ${m.direcao === "out" ? "justify-end" : "justify-start"}`}>
                 <div className="relative max-w-[80%]">
                   <div className={`rounded-2xl px-2.5 py-1.5 text-sm shadow-sm ${m.direcao === "out" ? "bg-[#dcf8c6] dark:bg-emerald-900/40 text-gray-900 dark:text-gray-100 rounded-br-md" : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-md"} ${m.reacao && !m.apagada ? "mb-2" : ""}`}>
-                    {m.direcao === "out" && m.autorNome && <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 mb-0.5">{m.autorNome}</div>}
+                    {m.direcao === "out" && m.autorNome && <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 mb-0.5">{m.autorNome}{m.viaAparelho && <> <InfoBadge texto="Enviada direto pelo celular, fora do sistema." /></>}</div>}
                     {m.direcao === "in" && m.ehGrupo && m.autorNome && <div className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-300 mb-0.5">{m.autorNome}</div>}
+                    {m.direcao === "in" && m.ehGrupo && !m.autorNome && <div className="text-[11px] font-semibold text-gray-400 mb-0.5 inline-flex items-center gap-1">Participante <InfoBadge texto="Ainda não sabemos quem é. O nome aparece quando essa pessoa fala com você em particular." /></div>}
                     {m.apagada ? (
                       <div className="italic text-gray-400 dark:text-gray-500">🚫 Mensagem apagada</div>
                     ) : editMsg?.id === m.id ? (
@@ -1212,13 +1245,15 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                       const isDoc = src && m.tipo === "documentMessage";
                       const rotuloAuto = ["🖼️ Imagem", "🎬 Vídeo", "🎤 Áudio"].includes(m.texto || "");
                       const nomeDoc = m.midiaNome || m.texto?.replace(/^📄 /, "") || "documento";
+                      const ehReacao = m.tipo === "encReactionMessage" || m.tipo === "reactionMessage";
+                      const midiaSemPrevia = !src && ["imageMessage", "videoMessage", "audioMessage", "documentMessage", "stickerMessage"].includes(m.tipo || "");
                       return (
                         <>
                           {isImg && <img src={src} alt={m.texto || "imagem"} className={`rounded-lg ${m.tipo === "stickerMessage" ? "w-32 h-32 object-contain" : "max-w-full max-h-64 object-contain"}`} />}
                           {isVid && <video src={src} controls className="rounded-lg max-w-full max-h-64" />}
                           {isAud && <audio src={src} controls className="max-w-[220px]" />}
                           {isDoc && <a href={src} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 underline">📄 {nomeDoc}</a>}
-                          {!isImg && !isVid && !isAud && !isDoc && <div className="whitespace-pre-wrap break-words">{textoMostra(m)}</div>}
+                          {!isImg && !isVid && !isAud && !isDoc && <div className="whitespace-pre-wrap break-words">{textoMostra(m)}{ehReacao && <> <InfoBadge texto="Esta pessoa reagiu com um emoji. O WhatsApp protege as reações, então não dá pra mostrar qual foi nem em qual mensagem." /></>}{midiaSemPrevia && <> <InfoBadge texto="Arquivo grande demais para mostrar aqui. Ele foi entregue normalmente — abra no WhatsApp do celular para ver." /></>}</div>}
                           {(isImg || isVid) && m.texto && !rotuloAuto && <div className="whitespace-pre-wrap break-words mt-1">{m.texto}</div>}
                         </>
                       );
