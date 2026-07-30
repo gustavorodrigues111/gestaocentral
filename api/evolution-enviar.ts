@@ -53,33 +53,50 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   // Prefixo de autoria: "*Gustavo Rodrigues:*\n<texto>"
   const texto = autor ? `*${autor}:*\n${textoBase}` : textoBase;
 
+  type EnvResp = { key?: { id?: string }; response?: { message?: Array<{ exists?: boolean }> } };
+  const existsFalse = (j: EnvResp | null) => { const m = j?.response?.message; return Array.isArray(m) && m.some((x) => x && x.exists === false); };
+
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
-  try {
+  const enviar = async (numero: string) => {
     const resp = await fetch(`${base}/message/sendText/${encodeURIComponent(instancia)}`, {
       method: "POST",
       headers: { apikey: key, "Content-Type": "application/json" },
       // `mentioned`: JIDs (<num>@s.whatsapp.net) marcados no texto (@num) — em grupo.
-      body: JSON.stringify({ number: to, text: texto, ...(mentioned.length ? { mentioned } : {}) }),
+      body: JSON.stringify({ number: numero, text: texto, ...(mentioned.length ? { mentioned } : {}) }),
       signal: ctrl.signal,
     });
     const txt = await resp.text();
-    const j = safeParse(txt) as { key?: { id?: string }; message?: unknown; error?: unknown; response?: { message?: Array<{ exists?: boolean }> } } | null;
-    if (!resp.ok) {
-      // Evolution devolve exists:false quando o número não tem conta no WhatsApp.
-      const msgs = j?.response?.message;
-      if (Array.isArray(msgs) && msgs.some((m) => m && m.exists === false)) {
-        res.status(400).json({ error: "Este número não tem WhatsApp — não há uma conta ativa nele, então não é possível enviar a mensagem.", numeroInexistente: true });
-        return;
-      }
-      res.status(502).json({ error: `Evolution retornou HTTP ${resp.status}. ${txt.slice(0, 300)}` });
+    return { ok: resp.ok, status: resp.status, txt, j: safeParse(txt) as EnvResp | null };
+  };
+  try {
+    let r = await enviar(to);
+    // 9º dígito BR: WhatsApp pode ter a conta com/sem o 9 depois do DDD. Se deu
+    // exists:false (e não é grupo), tenta a forma alternada antes de desistir.
+    if (!r.ok && existsFalse(r.j) && !to.endsWith("@g.us")) {
+      const alt = altFone9(to);
+      if (alt && alt !== to) { const r2 = await enviar(alt); if (r2.ok || !existsFalse(r2.j)) r = r2; else r = r2; }
+    }
+    if (!r.ok) {
+      if (existsFalse(r.j)) { res.status(400).json({ error: "Este número não tem WhatsApp — não há uma conta ativa nele, então não é possível enviar a mensagem.", numeroInexistente: true }); return; }
+      res.status(502).json({ error: `Evolution retornou HTTP ${r.status}. ${r.txt.slice(0, 300)}` });
       return;
     }
-    res.status(200).json({ ok: true, messageId: j?.key?.id || null, to, texto });
+    res.status(200).json({ ok: true, messageId: r.j?.key?.id || null, to, texto });
   } catch (e) {
     const msg = e instanceof Error && e.name === "AbortError" ? "Timeout ao falar com a Evolution." : (e instanceof Error ? e.message : "Falha ao enviar.");
     res.status(502).json({ error: msg });
   } finally { clearTimeout(timer); }
+}
+
+// Alterna o 9º dígito de um número BR (55 + DDD + número): 11 díg → remove o 3º
+// (o "9"); 10 díg → adiciona o 9. Pra casar contas antigas/novas no WhatsApp.
+function altFone9(n: string): string | null {
+  if (!n.startsWith("55")) return null;
+  const rest = n.slice(2);
+  if (rest.length === 11) return "55" + rest.slice(0, 2) + rest.slice(3);
+  if (rest.length === 10) return "55" + rest.slice(0, 2) + "9" + rest.slice(2);
+  return null;
 }
 
 function safeParse(s: string): unknown { try { return JSON.parse(s); } catch { return null; } }
