@@ -722,6 +722,13 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [pcBusca, setPcBusca] = useState("");
   const [pcDest, setPcDest] = useState<{ nome?: string; telefone: string } | null>(null);
   const [pcEnviando, setPcEnviando] = useState(false);
+  // "Encaminhar para outro número (interno)": entrega a conversa pra outra equipe.
+  const [encaminhar, setEncaminhar] = useState(false);
+  const [encResumo, setEncResumo] = useState("");
+  const [encCarregando, setEncCarregando] = useState(false);
+  const [encObs, setEncObs] = useState("");
+  const [encAlvo, setEncAlvo] = useState<string | null>(null);
+  const [encEnviando, setEncEnviando] = useState(false);
   // Triagem de grupo: define atendente(s) ou marca spam (some).
   const [triagemGrupo, setTriagemGrupo] = useState<string | null>(null);
   const [triagemIds, setTriagemIds] = useState<string[]>([]);
@@ -849,19 +856,24 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     if (await acaoMsg(m, "apagar")) await updateDoc(doc(db, "whatsappMensagens", m.id), { apagada: true, texto: "", midia: null, mime: null }).catch(() => {});
   }
 
-  // ── "Passar contexto pra alguém externo" ──────────────────────────────────
-  async function gerarResumoPc() {
-    if (!sel) return;
-    setPcCarregando(true);
+  // ── Resumo do atendimento (IA) — compartilhado entre "Passar contexto" e "Encaminhar" ──
+  async function gerarResumo(): Promise<string> {
+    if (!sel) return "";
     try {
       const msgs = thread.filter(m => !m.sistema && m.tipo !== "sistema" && m.texto).slice(-30).map(m => ({ de: m.direcao === "in" ? "cliente" : "atendente", texto: m.texto }));
       const info = [clienteSel ? `Cliente: ${clienteSel.nome}` : "", (contatoSel?.tagIds || []).map(id => tagById[id]?.nome).filter(Boolean).join(", ")].filter(Boolean).join(" · ");
       const r = await fetch("/api/whatsapp-resumo", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ contato: { nome: nomeSel, telefone: ehTelefoneBR(sel) ? foneBonito(sel) : "", info }, mensagens: msgs }) });
       const j = await r.json().catch(() => ({}));
-      if (r.ok && typeof (j as { resumo?: string }).resumo === "string") setPcResumo((j as { resumo: string }).resumo);
-      else { setPcResumo(""); const err = (j as { error?: string }).error; if (err) console.warn("[resumo]", err); }
-    } catch { setPcResumo(""); }
-    finally { setPcCarregando(false); }
+      if (r.ok && typeof (j as { resumo?: string }).resumo === "string") return (j as { resumo: string }).resumo;
+      const err = (j as { error?: string }).error; if (err) console.warn("[resumo]", err);
+      return "";
+    } catch { return ""; }
+  }
+  // ── "Passar contexto pra alguém externo" ──────────────────────────────────
+  async function gerarResumoPc() {
+    setPcCarregando(true);
+    setPcResumo(await gerarResumo());
+    setPcCarregando(false);
   }
   useEffect(() => {
     if (!passarCtx) return;
@@ -909,6 +921,45 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       setSel(tel);
     } catch (e) { alert("Falha: " + (e instanceof Error ? e.message : "?")); }
     finally { setPcEnviando(false); }
+  }
+
+  // ── "Encaminhar para outro número (interno)" ──────────────────────────────
+  useEffect(() => {
+    if (!encaminhar) return;
+    setEncResumo(""); setEncObs(""); setEncAlvo(null); setEncCarregando(true);
+    void gerarResumo().then(s => setEncResumo(s)).finally(() => setEncCarregando(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [encaminhar]);
+  // Números que podem receber um encaminhamento (todos os ativos, menos o atual).
+  const numerosDestino = useMemo(() => numeros.filter(n => n.ativo !== false && n.id !== numeroSel), [numeros, numeroSel]);
+  async function enviarEncaminhar() {
+    if (!sel || !numeroSel) return;
+    if (!encAlvo) { alert("Escolha o número/setor de destino."); return; }
+    const alvo = numeros.find(n => n.id === encAlvo);
+    const clientePhone = soDig(sel);
+    if (!clientePhone) { alert("Esta conversa não tem um telefone pra encaminhar."); return; }
+    setEncEnviando(true);
+    try {
+      const nota = `↪ *Encaminhado de ${numeroSelObj?.nome || "outro número"}* por ${me?.nome || "—"}`
+        + (encObs.trim() ? `\n${encObs.trim()}` : "")
+        + (encResumo.trim() ? `\n\n${encResumo.trim()}` : "");
+      // Cria a conversa pendente no inbox do número de destino (nota de contexto).
+      await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({
+        waId: clientePhone, numeroId: encAlvo, direcao: "out", tipo: "sistema", sistema: true, lido: true,
+        texto: nota, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(),
+      }));
+      // Semeia o nome do cliente no contato (global por telefone) se ainda não tem.
+      const ck = foneKey(sel);
+      if (nomeSel && ehTelefoneBR(sel) && !contatos[ck]?.nomeManual) void salvarContato(clientePhone, { nomeManual: nomeSel });
+      // Rastro na conversa original.
+      await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({
+        waId: sel, numeroId: numeroSel, direcao: "out", tipo: "sistema", sistema: true, lido: true,
+        texto: `↪ Encaminhado para *${alvo?.nome || "outro número"}* por ${me?.nome || "—"}`, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(),
+      }));
+      setEncaminhar(false);
+      alert(`Encaminhado para ${alvo?.nome || "o outro número"}. A conversa aparece lá em "Sem responsável ainda", com o contexto.`);
+    } catch (e) { alert("Falha: " + (e instanceof Error ? e.message : "?")); }
+    finally { setEncEnviando(false); }
   }
 
   // Render de UMA linha da lista (reusado na lista plana e nos blocos do Início).
@@ -1143,7 +1194,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
               </div>
             </div>
             {podeResponder && !numeroLivre && <button type="button" onClick={() => { setTransferWaId(null); setTransferir(true); }} title={contatoSel?.atribuidoA ? "Transferir" : "Atribuir"} className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">↪</button>}
-            {podeResponder && !ehGrupoWaId(sel || "") && <button type="button" onClick={() => setPassarCtx(true)} title="Passar contexto pra alguém" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">📤</button>}
+            {podeResponder && !ehGrupoWaId(sel || "") && <button type="button" onClick={() => setPassarCtx(true)} title="Passar contexto pra alguém externo" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">📤</button>}
+            {podeResponder && !ehGrupoWaId(sel || "") && numerosDestino.length > 0 && <button type="button" onClick={() => setEncaminhar(true)} title="Encaminhar para outro número/setor" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">🔀</button>}
             <button type="button" onClick={() => marcarNaoLida(sel)} title="Marcar como não lida" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">🔵</button>
             {podeVincular && <button type="button" onClick={() => setDetalhes(v => !v)} title="Detalhes" className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${detalhes ? "text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30" : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>ⓘ</button>}
           </div>
@@ -1499,6 +1551,39 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             <div className="flex justify-end gap-2 pt-1">
               <button type="button" onClick={() => setPassarCtx(false)} className="px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300">Cancelar</button>
               <button type="button" onClick={() => void enviarPassarCtx()} disabled={pcEnviando || (!pcDest && soDig(pcBusca).length < 8)} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">{pcEnviando ? "Enviando…" : "📤 Enviar contexto"}</button>
+            </div>
+          </div>
+        </Modal>
+      )}
+      {encaminhar && sel && (
+        <Modal title="🔀 Encaminhar para outro número" onClose={() => setEncaminhar(false)} maxWidth="max-w-lg">
+          <div className="space-y-3">
+            <p className="text-xs text-gray-500 dark:text-gray-400">A conversa entra na fila do número escolhido (em <b>Sem responsável ainda</b>) com o contexto. Nada é enviado ao cliente — a outra equipe assume e fala pelo número dela.</p>
+            <div>
+              <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Para qual número / setor</label>
+              <div className="mt-1 grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto">
+                {numerosDestino.map(n => (
+                  <button key={n.id} type="button" onClick={() => setEncAlvo(n.id)}
+                    className={`text-left px-3 py-2 rounded-lg border text-sm transition-colors ${encAlvo === n.id ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300" : "border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40"}`}>
+                    {encAlvo === n.id ? "● " : "○ "}📱 {n.nome}{n.modo === "livre" ? <span className="text-[10px] text-gray-400"> · livre</span> : ""}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <div className="flex items-center justify-between">
+                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Contexto (IA) — nota interna, editável</label>
+                <button type="button" onClick={() => { setEncCarregando(true); void gerarResumo().then(s => setEncResumo(s)).finally(() => setEncCarregando(false)); }} disabled={encCarregando} className="text-[11px] text-indigo-600 dark:text-indigo-300 hover:underline disabled:opacity-50">{encCarregando ? "gerando…" : "↻ Regenerar"}</button>
+              </div>
+              <textarea value={encResumo} onChange={e => setEncResumo(e.target.value)} rows={5} placeholder={encCarregando ? "Gerando resumo…" : "Contexto do atendimento…"} className="w-full mt-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm outline-none resize-none" />
+            </div>
+            <div>
+              <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Observação (opcional)</label>
+              <input value={encObs} onChange={e => setEncObs(e.target.value)} placeholder="Ex.: cliente prefere ser chamado à tarde." className="w-full mt-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm outline-none" />
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <button type="button" onClick={() => setEncaminhar(false)} className="px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300">Cancelar</button>
+              <button type="button" onClick={() => void enviarEncaminhar()} disabled={encEnviando || !encAlvo} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">{encEnviando ? "Encaminhando…" : "🔀 Encaminhar"}</button>
             </div>
           </div>
         </Modal>
