@@ -43,7 +43,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     return { ok: r.ok, status: r.status, json: safeParse(t), raw: t };
   };
   const setWebhook = () => call(`/webhook/set/${encodeURIComponent(instancia)}`, "POST", {
-    webhook: { enabled: true, url: `${appUrl}/api/evolution-webhook?token=${encodeURIComponent(webhookToken)}`, webhookByEvents: false, webhookBase64: false, events: ["MESSAGES_UPSERT"] },
+    webhook: { enabled: true, url: `${appUrl}/api/evolution-webhook?token=${encodeURIComponent(webhookToken)}`, webhookByEvents: false, webhookBase64: false, events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE"] },
   });
 
   try {

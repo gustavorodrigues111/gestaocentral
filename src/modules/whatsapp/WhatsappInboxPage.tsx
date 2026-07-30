@@ -23,7 +23,7 @@ import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
 import { PAPEIS_WHATSAPP, type PapelWhatsapp, type WhatsappRoteio } from "../../core/whatsapp/roteios";
 
-type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean };
+type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean; status?: number };
 
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const fmtBRcurto = (ymd?: string | null) => { if (!ymd) return ""; const [a, m, d] = String(ymd).split("-"); return d ? `${d}/${m}/${a?.slice(2) || ""}` : String(ymd); };
@@ -576,7 +576,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         // Grava com id determinístico ${numeroId}_${messageId} pra (1) permitir
         // editar/apagar depois e (2) casar com o eco fromMe do webhook (dedup).
         const mid = (j as { messageId?: string }).messageId || null;
-        const docMsg = sanitizeForFirestore({ waId: sel, nome: nomeSel || null, direcao: "out", tipo: "text", texto: txt, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null, ...(mid ? { messageId: mid } : {}) });
+        const docMsg = sanitizeForFirestore({ waId: sel, nome: nomeSel || null, direcao: "out", tipo: "text", texto: txt, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null, status: 1, ...(mid ? { messageId: mid } : {}) });
         if (mid) await setDoc(doc(db, "whatsappMensagens", `${numeroSel}_${mid}`), docMsg, { merge: true });
         else await addDoc(collection(db, "whatsappMensagens"), docMsg);
         rascunhosRef.current[foneKey(sel)] = "";   // rascunho enviado → limpa
@@ -611,7 +611,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         const docMedia = sanitizeForFirestore({
           waId: sel, nome: nomeSel || null, direcao: "out", tipo: tipoMsg, texto: rotulo,
           timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true,
-          numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null,
+          numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null, status: 1,
           ...(midMedia ? { messageId: midMedia } : {}),
           ...(guardaMidia ? { midia: dataUrl, mime: mimetype } : {}),
         });
@@ -1258,7 +1258,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                         </>
                       );
                     })()}
-                    <div className="text-[10px] text-gray-400 mt-0.5 text-right">{m.editado && !m.apagada && <span className="italic">editado · </span>}{hhmm(m.timestamp)}{m.direcao === "out" ? " ✓✓" : ""}</div>
+                    <div className="text-[10px] text-gray-400 mt-0.5 text-right">{m.editado && !m.apagada && <span className="italic">editado · </span>}{hhmm(m.timestamp)}{m.direcao === "out" && !m.apagada && (() => {
+                      const nivel = m.status ?? 1;   // enviado por padrão
+                      return <span className={`ml-0.5 ${nivel >= 3 ? "text-sky-500" : "text-gray-400"}`} title={nivel >= 3 ? "Lida" : nivel >= 2 ? "Entregue" : "Enviada"}>{nivel >= 2 ? "✓✓" : "✓"}</span>;
+                    })()}</div>
                   </div>
 
                   {/* Reação no canto da bolha */}

@@ -21,6 +21,10 @@ type Res = { status: (c: number) => Res; json: (b: unknown) => void; send: (b: s
 type HydratedTpl = { hydratedContentText?: string; hydratedTitleText?: string; hydratedFooterText?: string };
 type EvoMsg = {
   key?: { remoteJid?: string; fromMe?: boolean; id?: string };
+  keyId?: string;                         // messages.update às vezes manda o id aqui
+  status?: string | number;               // status de entrega (SERVER_ACK/DELIVERY_ACK/READ ou 2/3/4)
+  update?: { status?: string | number };  // …ou aninhado em update
+  remoteJid?: string;
   pushName?: string;
   messageType?: string;
   messageTimestamp?: number | string;
@@ -169,12 +173,40 @@ export default async function handler(req: Req, res: Res): Promise<void> {
   res.status(200).json({ ok: true });
 }
 
+// Status de entrega do WhatsApp → nível: 1 enviada · 2 entregue · 3 lida.
+function nivelStatus(s?: string | number): number {
+  if (s == null) return 0;
+  const t = String(s).toUpperCase();
+  if (t === "READ" || t === "PLAYED" || t === "4" || t === "5") return 3;
+  if (t === "DELIVERY_ACK" || t === "DELIVERED" || t === "3") return 2;
+  if (t === "SERVER_ACK" || t === "SENT" || t === "1" || t === "2") return 1;
+  return 0;
+}
+
+// Atualiza o tique (enviada→entregue→lida) das mensagens que ENVIAMOS. Só sobe.
+async function processarStatus(numeroId: string, itens: EvoMsg[]): Promise<void> {
+  for (const m of itens) {
+    if (m.key?.fromMe === false) continue;   // status de mensagem do cliente não interessa
+    const id = m.keyId || m.key?.id;
+    if (!id) continue;
+    const nivel = nivelStatus(m.status ?? m.update?.status);
+    if (!nivel) continue;
+    const docId = `${numeroId}_${id}`;
+    try {
+      const atual = await firestoreLer("whatsappMensagens", docId) as { status?: number } | null;
+      if (!atual) continue;
+      if (nivel > Number(atual.status || 0)) await firestoreAtualizar("whatsappMensagens", docId, { status: nivel });
+    } catch (e) { console.log("[evo-webhook] status:", (e as Error)?.message); }
+  }
+}
+
 async function processar(body: EvoBody): Promise<void> {
   const evento = String(body.event || "").toLowerCase();
-  if (evento && !evento.includes("messages.upsert") && !evento.includes("messages_upsert")) return;
   const numeroId = String(body.instance || "").trim();
   if (!numeroId) return;
   const itens = Array.isArray(body.data) ? body.data : (body.data ? [body.data] : []);
+  if (evento.includes("messages.update") || evento.includes("messages_update")) { await processarStatus(numeroId, itens); return; }
+  if (evento && !evento.includes("messages.upsert") && !evento.includes("messages_upsert")) return;
 
   for (const m of itens) {
     const jid = m.key?.remoteJid || "";
