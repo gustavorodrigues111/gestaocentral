@@ -5,6 +5,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { CurriculoLink } from "../_shared/CurriculoLink";
+import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import type { CandidaturaTrabalhe, StatusCandidatura } from "../../core/types";
 
 type Props = {
@@ -217,9 +218,7 @@ function CandidaturaModal({
 }) {
   const [obs, setObs] = useState(candidatura.observacoesInternas || "");
   const [savingObs, setSavingObs] = useState(false);
-
-  const numeroLimpo = candidatura.whatsapp.replace(/\D/g, "");
-  const whatsappLink = `https://api.whatsapp.com/send?phone=${numeroLimpo}&text=${encodeURIComponent(`Oi ${candidatura.nome.split(" ")[0]}, vi sua candidatura.`)}`;
+  const abrirWhatsapp = useAbrirWhatsapp();
 
   return (
     <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/50">
@@ -239,7 +238,7 @@ function CandidaturaModal({
           <section>
             <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">Contato</h3>
             <div className="text-sm space-y-1">
-              <div>📱 {candidatura.whatsapp} <a href={whatsappLink} target="_blank" rel="noreferrer" className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 ml-2">💬 abrir</a></div>
+              <div>📱 {candidatura.whatsapp} <button type="button" onClick={() => void abrirWhatsapp(candidatura.restaurantId, "empregados", candidatura.whatsapp, candidatura.nome, `Oi ${candidatura.nome.split(" ")[0]}, vi sua candidatura.`)} className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 ml-2">💬 WhatsApp</button></div>
               <div>✉ {candidatura.email}</div>
             </div>
           </section>

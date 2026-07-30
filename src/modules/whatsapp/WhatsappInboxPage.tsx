@@ -304,7 +304,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const nomeConversa = (waId: string, waNome?: string | null) => {
     const c = contatoDe(waId);
     if (ehGrupoWaId(waId) || c?.ehGrupo) return c?.nomeManual || c?.nomeGrupo || "Grupo";
-    return c?.nomeManual || pessoaDaConversa(waId)?.nome || waNome || foneBonito(waId);
+    // Pessoa da equipe vinculada é a identidade autoritativa: tem prioridade sobre
+    // o nomeManual (que pode ter sido semeado de um lead e ficar desatualizado).
+    return pessoaDaConversa(waId)?.nome || c?.nomeManual || waNome || foneBonito(waId);
   };
 
   // Responsável de uma conversa: individual = atribuidoA (1); grupo = atendentes (N).

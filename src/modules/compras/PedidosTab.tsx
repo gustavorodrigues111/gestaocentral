@@ -10,7 +10,7 @@ import {
   PEDIDO_STATUS_ICON, PEDIDO_STATUS_LABEL, UNIDADES_LABEL,
 } from "../../core/types";
 import type { Pedido, PedidoStatus, PedidoItem } from "../../core/types";
-import { onlyDigits } from "./FornecedoresTab";
+import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 
 type Props = {
   pedidos: Pedido[];
@@ -116,6 +116,7 @@ function PedidoCard({ pedido, podeConfig, onReceber }: {
   const { pessoa: me } = useAuth();
   const [busy, setBusy] = useState(false);
   const [expandido, setExpandido] = useState(false);
+  const abrirWhatsapp = useAbrirWhatsapp();
 
   async function setStatus(status: PedidoStatus, extra?: Partial<Pedido>) {
     if (!me) return;
@@ -168,16 +169,20 @@ function PedidoCard({ pedido, podeConfig, onReceber }: {
     return linhas.join("\n");
   }
 
-  function abrirWA() {
+  async function abrirWA() {
     if (!pedido.fornecedorWhatsappSnapshot) {
       alert("Fornecedor não tem WhatsApp cadastrado.");
       return;
     }
-    const numero = onlyDigits(pedido.fornecedorWhatsappSnapshot);
-    const msg = encodeURIComponent(gerarMensagemWA());
-    window.open(`https://wa.me/${numero}?text=${msg}`, "_blank");
-    // Marca como enviado se não estava
-    if (pedido.status === "rascunho" || pedido.status === "aprovado") {
+    const ok = await abrirWhatsapp(
+      pedido.restaurantId,
+      "fornecedores",
+      pedido.fornecedorWhatsappSnapshot,
+      pedido.fornecedorNomeSnapshot,
+      gerarMensagemWA(),
+    );
+    // Marca como enviado se não estava e a conversa abriu
+    if (ok && (pedido.status === "rascunho" || pedido.status === "aprovado")) {
       void setStatus("enviado");
     }
   }
@@ -207,7 +212,7 @@ function PedidoCard({ pedido, podeConfig, onReceber }: {
             <Button variant="secondary" size="sm" onClick={() => setStatus("aprovado")} disabled={busy}>✓ Aprovar</Button>
           )}
           {podeConfig && (pedido.status === "rascunho" || pedido.status === "aprovado" || pedido.status === "enviado") && pedido.fornecedorWhatsappSnapshot && (
-            <Button variant="secondary" size="sm" onClick={abrirWA}>📱 Enviar WA</Button>
+            <Button variant="secondary" size="sm" onClick={() => void abrirWA()}>💬 Enviar WhatsApp</Button>
           )}
           {podeConfig && (pedido.status === "rascunho" || pedido.status === "aprovado") && (
             <Button variant="secondary" size="sm" onClick={() => setStatus("enviado")} disabled={busy}>📤 Marcar enviado</Button>

@@ -6,6 +6,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import type { Fornecedor } from "../../core/types";
 
 type Props = {
@@ -17,6 +18,7 @@ type Props = {
 export function FornecedoresTab({ fornecedores, restaurantId, podeConfig }: Props) {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Fornecedor | "new" | null>(null);
+  const abrirWhatsapp = useAbrirWhatsapp();
 
   const filtered = useMemo(() => {
     if (!search.trim()) return fornecedores;
@@ -83,8 +85,8 @@ export function FornecedoresTab({ fornecedores, restaurantId, podeConfig }: Prop
                       <Button
                         variant="secondary"
                         size="sm"
-                        onClick={() => window.open(`https://wa.me/${onlyDigits(f.whatsapp!)}`, "_blank")}
-                      >📱 WA</Button>
+                        onClick={() => void abrirWhatsapp(restaurantId, "fornecedores", f.whatsapp!, f.nome)}
+                      >💬 WhatsApp</Button>
                     )}
                     <Button variant="secondary" size="sm" onClick={() => toggleAtivo(f)}>{f.ativo ? "🚫" : "✓"}</Button>
                     <Button variant="secondary" size="sm" onClick={() => setEditing(f)}>Editar</Button>

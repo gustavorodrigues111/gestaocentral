@@ -17,6 +17,7 @@ import { fetchPunches } from "../../core/excecoes/solidesClient";
 import type { SolidesPunch } from "../../core/excecoes/types";
 import { Modal } from "../../core/ui/Modal";
 import { useAuth } from "../../core/auth/AuthContext";
+import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import { canConfig } from "../../core/auth/permissions";
 import { daysInMonth, pad2 } from "../../core/utils/date";
 import { FecharMesModal } from "../escala/FecharMesModal";
@@ -153,12 +154,6 @@ function montarMensagem(colaborador: string, ocs: Ocorrencia[], prazoEm: string)
   const linhas = ocs.map((o) => `• ${fmtBRdata(o.data)} — ${ROTULOS[o.tipo]}`).join("\n");
   return `Olá ${primeiro}, tudo bem?\n\nIdentificamos pendências no seu registro de ponto que precisam de ajuste no aplicativo da Sólides:\n\n${linhas}\n\nPor favor, faça os ajustes até ${fmtDataHora(prazoEm)}. Depois disso eles passam pela nossa revisão e aprovação. Qualquer dúvida, é só falar com a gente. Obrigado! 🙏`;
 }
-function waLink(tel: string, msg: string): string {
-  const d = (tel || "").replace(/\D/g, "");
-  const num = d.startsWith("55") ? d : `55${d}`;
-  return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
-}
-
 // Estado do fluxo de inconsistência num dia do empregado.
 type EstadoDia = "aberto" | "enviado" | "ciente" | "aprovar";
 
@@ -186,6 +181,7 @@ export function FechamentoTab({
   podeAprovar?: boolean;
 }) {
   const { pessoa: me } = useAuth();
+  const abrirWhatsapp = useAbrirWhatsapp();
   const podeEncerrar = canConfig(me, rid, "escala");
   const [showEncerrar, setShowEncerrar] = useState(false);
   const [mes, setMes] = useState(mesInicial);
@@ -708,7 +704,7 @@ export function FechamentoTab({
     const ordenadas = [...ocs].sort((a, b) => a.data.localeCompare(b.data) || a.tipo.localeCompare(b.tipo));
     const prazoHoras = 6;
     const prazoEm = new Date(Date.now() + prazoHoras * 3_600_000).toISOString();
-    window.open(waLink(tel, montarMensagem(col.nome, ordenadas, prazoEm)), "_blank");
+    void abrirWhatsapp(rid, "empregados", tel, col.nome, montarMensagem(col.nome, ordenadas, prazoEm));
     const itens = ordenadas.map((o) => ({ key: ocKey(o.employeeId, o.data, o.tipo), tipo: o.tipo, data: o.data, rotulo: ROTULOS[o.tipo] }));
     void addDoc(collection(db, "pontoSolicitacoes"), {
       restaurantId: rid, employeeId: col.solId, colaborador: col.nome, itens,

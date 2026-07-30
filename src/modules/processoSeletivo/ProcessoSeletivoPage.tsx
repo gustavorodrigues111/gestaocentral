@@ -9,6 +9,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
+import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import { Button } from "../../core/ui/Button";
 import { IniciarAdmissaoModal } from "../admissao/IniciarAdmissaoModal";
 import { CadastroRapidoFreelaModal } from "../freelas/CadastroRapidoFreelaModal";
@@ -720,8 +721,7 @@ function CandidatoDrawer({ cand, pessoas, podeTriar, podeTransferir, podeAprovar
 }) {
   const [transf, setTransf] = useState(false);
   const [buscaT, setBuscaT] = useState("");
-  const fone = (cand.whatsapp || "").replace(/\D/g, "");
-  const waLink = fone ? `https://api.whatsapp.com/send?phone=${fone}&text=${encodeURIComponent(`Oi ${cand.nome.split(" ")[0]}, sobre sua candidatura…`)}` : "";
+  const abrirWhatsapp = useAbrirWhatsapp();
   const etapa = etapaDe(cand);
   const disponiveis = pessoas.filter((p) => !buscaT.trim() || p.nome.toLowerCase().includes(buscaT.trim().toLowerCase())).slice(0, 30);
   return (
@@ -737,7 +737,7 @@ function CandidatoDrawer({ cand, pessoas, podeTriar, podeTransferir, podeAprovar
         </div>
 
         <div className="space-y-1.5 text-sm">
-          {cand.whatsapp && <div>📱 {cand.whatsapp} {waLink && <a href={waLink} target="_blank" rel="noreferrer" className="text-emerald-600 hover:underline ml-1">WhatsApp ↗</a>}</div>}
+          {cand.whatsapp && <div>📱 {cand.whatsapp} <button type="button" onClick={() => void abrirWhatsapp(cand.restaurantId, "empregados", cand.whatsapp, cand.nome, `Oi ${cand.nome.split(" ")[0]}, sobre sua candidatura…`)} className="text-emerald-600 hover:underline ml-1">💬 WhatsApp</button></div>}
           {cand.email && <div>✉️ {cand.email}</div>}
           {cand.areaInteresse && <div>🎯 {cand.areaInteresse}</div>}
           {cand.disponibilidade && <div>🗓️ {cand.disponibilidade}</div>}

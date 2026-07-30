@@ -18,7 +18,7 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Select } from "../../core/ui/Select";
 import { Modal } from "../../core/ui/Modal";
-import { whatsLink } from "../../core/excecoes/whatsapp";
+import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import { fmtBR } from "../../core/utils/date";
 import type {
   Venda, VendaCliente, VendaCobranca, VendaFormaPagamento, VendaItem, VendaPagamento,
@@ -43,6 +43,7 @@ export function VendasPage() {
   const { activeRestaurant, restaurants } = useRestaurant();
   const rid = activeRestaurant?.id;
   const { can } = useCanAcao(rid || "");
+  const abrirWhatsapp = useAbrirWhatsapp();
   const [tab, setTab] = useState<Tab>("vendas");
 
   const [vendas, setVendas] = useState<Venda[]>([]);
@@ -157,8 +158,7 @@ export function VendasPage() {
       return;
     }
     const msg = montarMensagemCobranca(activeRestaurant?.nome || "", cliente, [v]);
-    const link = whatsLink(v.clienteWhatsappSnapshot || cliente?.whatsapp || undefined, msg);
-    window.open(link || `https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank");
+    void abrirWhatsapp(rid || "", "vendas", v.clienteWhatsappSnapshot || cliente?.whatsapp || "", v.clienteNomeSnapshot, msg);
   }
 
   if (!rid) return <div className="text-center py-12 text-gray-500">Selecione uma empresa.</div>;
@@ -642,6 +642,7 @@ function CobrancaModal({ rid, empresaNome, vendas, clientes, meId, meNome, onClo
   const [clienteId, setClienteId] = useState("");
   const [sel, setSel] = useState<Set<string>>(new Set());
   const [enviando, setEnviando] = useState(false);
+  const abrirWhatsapp = useAbrirWhatsapp();
   const cliente = clientes.find(c => c.id === clienteId) || null;
   const abertasDoCliente = useMemo(
     () => vendas.filter(v => v.clienteId === clienteId && v.status !== "quitada").sort((a, b) => (a.data || "").localeCompare(b.data || "")),
@@ -679,10 +680,8 @@ function CobrancaModal({ rid, empresaNome, vendas, clientes, meId, meNome, onClo
         onClose();
         return;
       }
-      // Externo: abre o WhatsApp do comprador com a mensagem.
-      const link = whatsLink(cliente.whatsapp || undefined, msg);
-      if (link) window.open(link, "_blank");
-      else { window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, "_blank"); }
+      // Externo: abre a conversa do comprador no WhatsApp interno com a mensagem.
+      void abrirWhatsapp(rid, "vendas", cliente.whatsapp || "", cliente.nome, msg);
       onClose();
     } catch (e) {
       alert("Erro: " + (e instanceof Error ? e.message : String(e)));

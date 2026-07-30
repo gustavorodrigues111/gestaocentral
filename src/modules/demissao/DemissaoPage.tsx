@@ -6,6 +6,7 @@ import { collection, getDocs, onSnapshot, query, where } from "firebase/firestor
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import { Button } from "../../core/ui/Button";
 import { pickDriveFile } from "../../core/google/drivePicker";
 import { fmtBR } from "../../core/utils/date";
@@ -375,6 +376,7 @@ function DetalheDrawer({ proc, autor, onClose }: {
 }) {
   const { activeRestaurant } = useRestaurant();
   const [empregado, setEmpregado] = useState<Empregado | null>(null);
+  const abrirWhatsapp = useAbrirWhatsapp();
 
   // Carrega empregado pra usar telefone do whatsapp_empregado
   useEffect(() => {
@@ -409,9 +411,8 @@ function DetalheDrawer({ proc, autor, onClose }: {
         alert(`Empregado ${empNome} não tem telefone cadastrado.`);
         return;
       }
-      const numCompleto = num.length === 10 || num.length === 11 ? `55${num}` : num;
       const msg = `Olá ${empNome}, vamos conversar sobre o desligamento. Pode me ligar ou marcar um horário?`;
-      window.open(`https://api.whatsapp.com/send?phone=${numCompleto}&text=${encodeURIComponent(msg)}`, "_blank");
+      void abrirWhatsapp(activeRestaurant.id, "empregados", num, empNome, msg);
       return;
     }
     if (!contato) return;
@@ -421,8 +422,7 @@ function DetalheDrawer({ proc, autor, onClose }: {
     } else if (contato.canalPreferido === "whatsapp") {
       const num = (contato.whatsapp || "").replace(/\D/g, "");
       if (!num) { alert(`${contato.nome} sem WhatsApp cadastrado.`); return; }
-      const numCompleto = num.length === 10 || num.length === 11 ? `55${num}` : num;
-      window.open(`https://api.whatsapp.com/send?phone=${numCompleto}&text=${encodeURIComponent(corpo)}`, "_blank");
+      void abrirWhatsapp(activeRestaurant.id, "empregados", num, contato.nome, corpo);
     } else {
       // telefone: copia número + script
       const num = contato.telefone || "—";

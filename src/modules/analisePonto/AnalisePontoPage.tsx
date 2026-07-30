@@ -21,6 +21,7 @@ import { AREAS, type Area, type Cargo, type Empregado, type Pessoa } from "../..
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
+import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import { fetchPunches } from "../../core/excecoes/solidesClient";
 import type { SolidesPunch } from "../../core/excecoes/types";
 import {
@@ -143,11 +144,6 @@ function montarMensagem(colaborador: string, itens: Ocorrencia[], prazoEm: strin
     `Qualquer dúvida, é só falar com a gente. Obrigado! 🙏`
   );
 }
-function waLink(tel: string, msg: string): string {
-  const d = soDigitos(tel);
-  const num = d.startsWith("55") ? d : `55${d}`;
-  return `https://wa.me/${num}?text=${encodeURIComponent(msg)}`;
-}
 function relogio(prazoEm: string, now: number): { txt: string; vencido: boolean } {
   const diff = new Date(prazoEm).getTime() - now;
   const vencido = diff < 0;
@@ -205,6 +201,7 @@ function AnalisePontoInner() {
   const { restaurants } = useRestaurant();
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
+  const abrirWhatsapp = useAbrirWhatsapp();
   const activeRestaurant = restaurants.find((r) => r.id === rid) || null;
   const { can, loading: permLoading } = useCanAcao(rid);
   const podeVer = can("analise-ponto", "ver");
@@ -392,8 +389,8 @@ function AnalisePontoInner() {
     if (!tel || itens.length === 0) return;
     const prazoEm = new Date(Date.now() + prazoHoras * 3_600_000).toISOString();
     const msg = montarMensagem(colaborador, itens, prazoEm);
-    // Abre o WhatsApp NA HORA do clique (evita bloqueio de popup).
-    window.open(waLink(tel, msg), "_blank");
+    // Abre a conversa no WhatsApp interno, no número do papel "empregados".
+    void abrirWhatsapp(rid, "empregados", tel, colaborador, msg);
     const solItens: SolItem[] = itens.map((o) => ({ key: ocKey(o), tipo: o.tipo, data: o.data, rotulo: ROTULOS[o.tipo] }));
     void addDoc(collection(db, "pontoSolicitacoes"), {
       restaurantId: rid, employeeId, colaborador,
