@@ -269,6 +269,22 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], onC
   // Saudação inicial pré-preenchida no compositor do WhatsApp interno.
   const saudacaoWhats = `Oi ${lead.cliente.nome.split(" ")[0]}, tudo bem? Vi seu interesse pelo evento.`;
 
+  // Editar o nome do cliente (corrige erros de digitação) — com log em logsEvento.
+  const [editNome, setEditNome] = useState(false);
+  const [nomeDraft, setNomeDraft] = useState(lead.cliente.nome);
+  async function salvarNome() {
+    const novo = nomeDraft.trim();
+    const antigo = lead.cliente.nome || "";
+    if (!novo) { alert("O nome não pode ficar vazio."); return; }
+    if (novo === antigo) { setEditNome(false); return; }
+    await updateDoc(doc(db, "leadsEvento", lead.id), sanitizeForFirestore({ "cliente.nome": novo, atualizadoEm: new Date().toISOString() }));
+    try {
+      await registrarTratativa({ restaurantId: lead.restaurantId, leadId: lead.id, canal: "sistema", porId: me?.id || "", porNome: me?.nome || "—", manual: true,
+        texto: `✏️ Nome do cliente corrigido: "${antigo}" → "${novo}"` });
+    } catch { /* log é best-effort */ }
+    setEditNome(false);
+  }
+
   return (
     <Modal title={`Lead — ${lead.cliente.nome}`} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-4">
@@ -334,8 +350,21 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], onC
         <div>
           <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">Cliente</div>
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-3 text-sm space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="font-semibold">{lead.cliente.nome}</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {editNome ? (
+                <>
+                  <input value={nomeDraft} onChange={e => setNomeDraft(e.target.value)} autoFocus
+                    onKeyDown={e => { if (e.key === "Enter") void salvarNome(); if (e.key === "Escape") { setEditNome(false); setNomeDraft(lead.cliente.nome); } }}
+                    className="text-sm font-semibold rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1" />
+                  <button type="button" onClick={() => void salvarNome()} className="text-xs px-2 py-1 rounded bg-indigo-600 text-white">Salvar</button>
+                  <button type="button" onClick={() => { setEditNome(false); setNomeDraft(lead.cliente.nome); }} className="text-xs text-gray-400">cancelar</button>
+                </>
+              ) : (
+                <>
+                  <span className="font-semibold">{lead.cliente.nome}</span>
+                  {podeEditar && <button type="button" onClick={() => { setNomeDraft(lead.cliente.nome); setEditNome(true); }} title="Corrigir o nome (fica registrado no histórico)" className="text-gray-400 hover:text-indigo-600 text-xs">✎</button>}
+                </>
+              )}
               <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
                 {lead.cliente.tipoPessoa}
               </span>
