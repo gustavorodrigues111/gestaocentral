@@ -417,14 +417,21 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // Respeita o filtro de tag também na tela Início.
   const passaTag = (waId: string) => !filtroTag || (contatos[foneKey(waId)]?.tagIds || []).includes(filtroTag);
 
-  // Bloco A do Início: "Aguardando você" — minhas em que o cliente falou por
-  // último (ou não lida). Mais ANTIGO no topo (mais atrasado = mais urgente).
-  const aguardandoVoce = useMemo(() => conversas
-    .filter(c => passaTag(c.waId) && souResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId) && (c.naoLidas > 0 || c.ultima.direcao === "in"))
-    .sort((a, b) => (a.ultima.timestamp || "").localeCompare(b.ultima.timestamp || "")),
+  // Coluna direita do Início: "Minhas" — todas as minhas ativas. Ordena as que
+  // aguardam resposta primeiro (mais antiga no topo = mais atrasada), depois as
+  // já respondidas por recência.
+  const minhas = useMemo(() => conversas
+    .filter(c => passaTag(c.waId) && souResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId))
+    .sort((a, b) => {
+      const na = a.naoLidas > 0 || a.ultima.direcao === "in";
+      const nb = b.naoLidas > 0 || b.ultima.direcao === "in";
+      if (na !== nb) return na ? -1 : 1;
+      return na ? (a.ultima.timestamp || "").localeCompare(b.ultima.timestamp || "")
+                : (b.ultima.timestamp || "").localeCompare(a.ultima.timestamp || "");
+    }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [conversas, contatos, me?.id, filtroTag]);
-  // Bloco B do Início: "Sem responsável ainda" — ninguém assumiu (recente primeiro).
+  // Coluna esquerda do Início: "Sem responsável ainda" — ninguém assumiu (recente primeiro).
   const semRespAinda = useMemo(() => conversas
     .filter(c => passaTag(c.waId) && !temResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -434,7 +441,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const contMinhas = useMemo(() => conversas.filter(c => souResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)).length, [conversas, contatos, me?.id]);
   const contSpam = useMemo(() => conversas.filter(c => spamDe(c.waId)).length, [conversas, contatos]);
   const contFinalizadas = useMemo(() => conversas.filter(c => finalizadaDe(c.waId) && !spamDe(c.waId)).length, [conversas, contatos]);
-  const contInicio = aguardandoVoce.length + semRespAinda.length;
+  // Badge do chip Início = o que precisa de ação (minhas aguardando + sem responsável).
+  const minhasAguardando = minhas.filter(c => c.naoLidas > 0 || c.ultima.direcao === "in").length;
+  const contInicio = minhasAguardando + semRespAinda.length;
 
   // Tem conversa NÃO LIDA em cada filtro? (pra sombrear o chip de vermelho)
   const naoLidasPorFiltro = useMemo(() => {
@@ -938,23 +947,31 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
       {!sel ? (
         filtroAtrib === "inicio" ? (
-          contInicio === 0 ? (
+          (minhas.length + semRespAinda.length) === 0 ? (
             <div className="mx-4 mt-2 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">{conversas.length === 0 ? "Nenhuma mensagem recebida ainda. Quando alguém mandar no WhatsApp do planejamento.app, aparece aqui." : "🎉 Tudo em dia — nada aguardando você e nada sem responsável."}</div>
           ) : (
-            <div>
-              {aguardandoVoce.length > 0 && (
-                <div>
-                  <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-900/20 border-y border-sky-100 dark:border-sky-900/40">🔵 Aguardando você ({aguardandoVoce.length})</div>
-                  <div className="divide-y divide-gray-100 dark:divide-gray-800">{aguardandoVoce.map(c => linhaConversa(c, true))}</div>
-                </div>
-              )}
-              {semRespAinda.length > 0 && (
-                <div>
-                  <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border-y border-amber-100 dark:border-amber-900/40">🟡 Sem responsável ainda ({semRespAinda.length})</div>
-                  <div className="px-4 py-2 text-xs text-amber-800 dark:text-amber-200 bg-amber-50/60 dark:bg-amber-900/10">{semRespAinda.length === 1 ? "1 conversa esperando alguém assumir. É sua? Toque para assumir." : `${semRespAinda.length} conversas esperando alguém assumir. Alguma é sua? Toque para assumir.`}</div>
-                  <div className="divide-y divide-gray-100 dark:divide-gray-800">{semRespAinda.map(c => linhaConversa(c))}</div>
-                </div>
-              )}
+            // Duas colunas no computador/tablet; empilha no celular (linha de conversa
+            // não cabe em coluna estreita). Esquerda = Sem responsável, direita = Minhas.
+            <div className="grid grid-cols-1 md:grid-cols-2 md:gap-px md:bg-gray-200 md:dark:bg-gray-800 border-t border-gray-200 dark:border-gray-800">
+              <div className="bg-white dark:bg-gray-950">
+                <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-900/40">🟡 Sem responsável ainda ({semRespAinda.length})</div>
+                {semRespAinda.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-xs text-gray-400">Ninguém esperando 🎉</div>
+                ) : (
+                  <>
+                    <div className="px-4 py-2 text-xs text-amber-800 dark:text-amber-200 bg-amber-50/60 dark:bg-amber-900/10">{semRespAinda.length === 1 ? "1 conversa esperando alguém assumir. É sua? Toque para assumir." : `${semRespAinda.length} conversas esperando alguém. Alguma é sua? Toque para assumir.`}</div>
+                    <div className="divide-y divide-gray-100 dark:divide-gray-800">{semRespAinda.map(c => linhaConversa(c, true))}</div>
+                  </>
+                )}
+              </div>
+              <div className="bg-white dark:bg-gray-950">
+                <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-900/20 border-b border-sky-100 dark:border-sky-900/40">🔵 Minhas ({minhas.length})</div>
+                {minhas.length === 0 ? (
+                  <div className="px-4 py-6 text-center text-xs text-gray-400">Você não tem conversas atribuídas.</div>
+                ) : (
+                  <div className="divide-y divide-gray-100 dark:divide-gray-800">{minhas.map(c => linhaConversa(c, true))}</div>
+                )}
+              </div>
             </div>
           )
         ) : conversasFiltradas.length === 0 ? (
