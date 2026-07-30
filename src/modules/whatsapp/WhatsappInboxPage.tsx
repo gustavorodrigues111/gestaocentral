@@ -162,6 +162,11 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // Livre: conversas (lista única) · finalizados · spam. abaAtual normaliza por modo.
   const [filtroAtrib, setFiltroAtrib] = useState<"inicio" | "outras" | "spam" | "conversas" | "finalizados">("inicio");
   const [agora, setAgora] = useState(() => Date.now());   // relógio p/ o contador "tempo sem resposta"
+  // Notificação no PC (navegador) de mensagem nova de WhatsApp.
+  const [notifPerm, setNotifPerm] = useState<string>(() => (typeof Notification !== "undefined" ? Notification.permission : "denied"));
+  const notifVistosRef = useRef<Set<string>>(new Set());   // ids de msg já vistos (não re-notifica)
+  const notifProntoRef = useRef(false);                    // 1ª carga não notifica (marca tudo como visto)
+  const notifDesdeRef = useRef(new Date().toISOString());  // só notifica msg mais nova que a abertura
   const taRef = useRef<HTMLTextAreaElement | null>(null);
   const msgsEndRef = useRef<HTMLDivElement | null>(null);
   const painelRef = useRef<HTMLDivElement | null>(null);
@@ -509,6 +514,29 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // Tem não-lida numa lista? (pra sombrear o chip de vermelho).
   const temNaoLida = (lista: { waId: string; naoLidas: number }[]) =>
     lista.some(c => c.naoLidas > 0 || naoLidaManualDe(c.waId));
+
+  // Notificação no PC: dispara pra cada mensagem RECEBIDA nova nos números que a
+  // pessoa acessa. 1ª carga (e histórico) não notifica.
+  useEffect(() => {
+    if (typeof Notification === "undefined") return;
+    const primeira = !notifProntoRef.current;
+    notifProntoRef.current = true;
+    const acessiveis = new Set(numerosVisiveis.map(n => n.id));
+    for (const m of msgs) {
+      if (notifVistosRef.current.has(m.id)) continue;
+      notifVistosRef.current.add(m.id);
+      if (primeira || notifPerm !== "granted") continue;
+      if (m.direcao !== "in" || m.sistema) continue;
+      if (m.numeroId && !acessiveis.has(m.numeroId)) continue;
+      if (m.timestamp && m.timestamp < notifDesdeRef.current) continue;   // histórico
+      if (!document.hidden && sel && foneKey(m.waId) === foneKey(sel) && m.numeroId === numeroSel) continue;
+      try {
+        const n = new Notification((m.ehGrupo ? "👥 " : "💬 ") + nomeConversa(m.waId, m.nome), { body: textoMostra(m), tag: (m.numeroId || "") + "|" + foneKey(m.waId) });
+        n.onclick = () => { window.focus(); if (m.numeroId) setNumeroSel(m.numeroId); setSel(m.waId); n.close(); };
+      } catch { /* navegador bloqueou */ }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [msgs, notifPerm, numerosVisiveis, sel, numeroSel]);
 
   const thread = useMemo(() => msgsDoNumero.filter(x => foneKey(x.waId) === foneKey(sel || "")), [msgsDoNumero, sel]);
   // Rola pro fim ao abrir a conversa ou chegar mensagem nova.
@@ -1098,6 +1126,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 📱 {n.nome}
               </button>
             ))}
+            {typeof Notification !== "undefined" && notifPerm !== "granted" && notifPerm !== "denied" && (
+              <button type="button" onClick={() => { try { void Notification.requestPermission().then(p => setNotifPerm(p)); } catch { /* ignore */ } }}
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20" title="Receber notificação no computador quando chegar mensagem nova">🔔 Ativar notificações</button>
+            )}
             {podeResponder && numeroSel && <div className="ml-auto flex items-center gap-1.5 shrink-0">
               <button type="button" onClick={() => setNovoGrupo(true)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">👥 Novo grupo</button>
               <button type="button" onClick={() => setNovaConversa(true)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">＋ Nova conversa</button>
