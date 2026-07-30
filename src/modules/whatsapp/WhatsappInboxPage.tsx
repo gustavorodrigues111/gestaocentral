@@ -47,7 +47,7 @@ function foneKey(raw?: string | null): string {
   return d.length >= 10 ? d.slice(0, 2) + d.slice(-8) : d;
 }
 const ehGrupoWaId = (waId?: string | null): boolean => (waId || "").startsWith("g:");
-const MSG_CLIENTE_ENCAMINHO = "Obrigado! Estou encaminhando seu atendimento para o setor responsável, que em breve entra em contato com você. 🙏";
+const MSG_CLIENTE_ENCAMINHO = "Obrigado! Estou encaminhando seu atendimento para o setor responsável, que em breve entra em contato com você. Qualquer coisa só chamar de novo aqui! 🙏";
 
 // Texto a exibir de uma mensagem. Reação criptografada (encReactionMessage) vem
 // sem texto → mostra "reagiu a uma mensagem" em vez do código cru.
