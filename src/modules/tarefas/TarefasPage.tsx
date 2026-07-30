@@ -3,6 +3,8 @@ import { Navigate } from "react-router-dom";
 import { ReuniaoEditorModal } from "../reunioes/ReuniaoEditorModal";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
+import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
+import { canAcao } from "../../core/auth/permissions";
 import { aplicarPerfisNaPessoa } from "../../core/auth/profileToLegacy";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
@@ -19,7 +21,8 @@ import { CaixaDeIdeias, CaixaIdeiasFaixa } from "./CaixaDeIdeias";
 
 export function TarefasPage() {
   const { pessoa: pessoaReal } = useAuth();
-  const { restaurants, activeId: ridAtivo } = useRestaurant();
+  const { restaurants, activeId: ridAtivo, setActiveId } = useRestaurant();
+  const { perfis: perfisAcesso } = useAccessProfiles();
   // Gate de acesso: pessoa sem permissão "tarefas.verProprias" cai pra
   // HomePage (que pode redirecionar pro Portal do Empregado se aplicável).
   // Master sempre passa. Hook precisa rodar — usamos no JSX, não early-return.
@@ -235,11 +238,25 @@ export function TarefasPage() {
     [subprojetos, idsProjetosVisiveis],
   );
 
-  // Gate de acesso: sem permissão "tarefas.verProprias" cai pra HomePage,
-  // que vai redirecionar pro Portal do Empregado se aplicável. Master sempre
-  // passa (bypass do isMaster real, antes da impersonação).
+  // Gate de acesso: sem permissão "tarefas.verProprias" cai pra HomePage.
+  // A permissão é POR RESTAURANTE — se o restaurante ativo não tem, mas OUTRO
+  // dos restaurantes da pessoa tem, troca pra ele em vez de redirecionar (senão
+  // a pessoa via o módulo no menu mas ele "piscava" e voltava pra Central).
+  const ridsComTarefas = useMemo(
+    () => (pessoaReal?.restaurantIds || []).filter(rid => canAcao(pessoaReal, rid, "tarefas", "verProprias", perfisAcesso)),
+    [pessoaReal, perfisAcesso],
+  );
+  useEffect(() => {
+    if (isMaster || !ridAtivo) return;
+    if (!canAcaoRid("tarefas", "verProprias") && ridsComTarefas.length > 0 && !ridsComTarefas.includes(ridAtivo)) {
+      setActiveId(ridsComTarefas[0]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ridAtivo, ridsComTarefas, isMaster]);
   const temAcessoTarefas = isMaster || (ridAtivo && canAcaoRid("tarefas", "verProprias"));
   if (!temAcessoTarefas && ridAtivo) {
+    // Tem acesso em outro restaurante → aguarda a troca (não redireciona).
+    if (ridsComTarefas.length > 0) return null;
     return <Navigate to="/" replace />;
   }
 
