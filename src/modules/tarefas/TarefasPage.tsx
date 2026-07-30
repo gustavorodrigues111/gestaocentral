@@ -22,7 +22,7 @@ import { CaixaDeIdeias, CaixaIdeiasFaixa } from "./CaixaDeIdeias";
 export function TarefasPage() {
   const { pessoa: pessoaReal } = useAuth();
   const { restaurants, activeId: ridAtivo, setActiveId } = useRestaurant();
-  const { perfis: perfisAcesso } = useAccessProfiles();
+  const { perfis: perfisAcesso, loading: perfisLoading } = useAccessProfiles();
   // Gate de acesso: pessoa sem permissão "tarefas.verProprias" cai pra
   // HomePage (que pode redirecionar pro Portal do Empregado se aplicável).
   // Master sempre passa. Hook precisa rodar — usamos no JSX, não early-return.
@@ -253,6 +253,10 @@ export function TarefasPage() {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [ridAtivo, ridsComTarefas, isMaster]);
+  // NÃO avalia o gate enquanto os perfis de acesso ainda estão carregando — senão
+  // canAcao retorna false por um instante e o <Navigate> redireciona à toa (o
+  // "pisca e volta pra Central"). Espera carregar pra decidir com dado real.
+  if (perfisLoading || !pessoaReal) return null;
   const temAcessoTarefas = isMaster || (ridAtivo && canAcaoRid("tarefas", "verProprias"));
   if (!temAcessoTarefas && ridAtivo) {
     // Tem acesso em outro restaurante → aguarda a troca (não redireciona).
