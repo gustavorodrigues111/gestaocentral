@@ -64,8 +64,17 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       signal: ctrl.signal,
     });
     const txt = await resp.text();
-    const j = safeParse(txt) as { key?: { id?: string }; message?: unknown; error?: unknown } | null;
-    if (!resp.ok) { res.status(502).json({ error: `Evolution retornou HTTP ${resp.status}. ${txt.slice(0, 300)}` }); return; }
+    const j = safeParse(txt) as { key?: { id?: string }; message?: unknown; error?: unknown; response?: { message?: Array<{ exists?: boolean }> } } | null;
+    if (!resp.ok) {
+      // Evolution devolve exists:false quando o número não tem conta no WhatsApp.
+      const msgs = j?.response?.message;
+      if (Array.isArray(msgs) && msgs.some((m) => m && m.exists === false)) {
+        res.status(400).json({ error: "Este número não tem WhatsApp — não há uma conta ativa nele, então não é possível enviar a mensagem.", numeroInexistente: true });
+        return;
+      }
+      res.status(502).json({ error: `Evolution retornou HTTP ${resp.status}. ${txt.slice(0, 300)}` });
+      return;
+    }
     res.status(200).json({ ok: true, messageId: j?.key?.id || null, to, texto });
   } catch (e) {
     const msg = e instanceof Error && e.name === "AbortError" ? "Timeout ao falar com a Evolution." : (e instanceof Error ? e.message : "Falha ao enviar.");
