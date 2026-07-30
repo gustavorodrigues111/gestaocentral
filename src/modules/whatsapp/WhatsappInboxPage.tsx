@@ -340,8 +340,12 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     const m = new Map<string, { waId: string; nome?: string | null; ultima: Msg; naoLidas: number }>();
     for (const msg of msgsDoNumero) {
       const k = foneKey(msg.waId);
-      const c = m.get(k) || { waId: msg.waId, nome: msg.nome, ultima: msg, naoLidas: 0 };
-      c.ultima = msg; c.waId = msg.waId; if (msg.nome) c.nome = msg.nome;   // msgsDoNumero está em ordem asc → fica o mais recente
+      const c = m.get(k) || { waId: msg.waId, nome: undefined, ultima: msg, naoLidas: 0 };
+      c.ultima = msg; c.waId = msg.waId;
+      // Só mensagens RECEBIDAS carregam o pushName do contato. As de saída trazem
+      // o nome do número (ex.: "Escritório Central"), que poluía o título quando a
+      // última mensagem era nossa. msgsDoNumero está em ordem asc → fica o mais recente.
+      if (msg.nome && msg.direcao === "in") c.nome = msg.nome;
       m.set(k, c);
     }
     for (const msg of msgsDoNumero) if (msg.direcao === "in" && !msg.lido) { const c = m.get(foneKey(msg.waId)); if (c) c.naoLidas++; }
