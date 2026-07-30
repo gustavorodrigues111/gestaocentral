@@ -728,6 +728,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [encCarregando, setEncCarregando] = useState(false);
   const [encObs, setEncObs] = useState("");
   const [encAlvo, setEncAlvo] = useState<string | null>(null);
+  const [encAtendente, setEncAtendente] = useState<string | null>(null);   // atribuir direto (opcional)
   const [encEnviando, setEncEnviando] = useState(false);
   // Triagem de grupo: define atendente(s) ou marca spam (some).
   const [triagemGrupo, setTriagemGrupo] = useState<string | null>(null);
@@ -926,12 +927,19 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // ── "Encaminhar para outro número (interno)" ──────────────────────────────
   useEffect(() => {
     if (!encaminhar) return;
-    setEncResumo(""); setEncObs(""); setEncAlvo(null); setEncCarregando(true);
+    setEncResumo(""); setEncObs(""); setEncAlvo(null); setEncAtendente(null); setEncCarregando(true);
     void gerarResumo().then(s => setEncResumo(s)).finally(() => setEncCarregando(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encaminhar]);
   // Números que podem receber um encaminhamento (todos os ativos, menos o atual).
   const numerosDestino = useMemo(() => numeros.filter(n => n.ativo !== false && n.id !== numeroSel), [numeros, numeroSel]);
+  const encAlvoObj = encAlvo ? numeros.find(n => n.id === encAlvo) : null;
+  // Atendentes do número de destino (só faz sentido se ele for por atribuição).
+  const encAtendentes = useMemo(() => {
+    if (!encAlvoObj || encAlvoObj.modo === "livre") return [];
+    const uids = encAlvoObj.usuariosIds || [];
+    return pessoas.filter(p => uids.includes(p.id)).sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [encAlvoObj, pessoas]);
   async function enviarEncaminhar() {
     if (!sel || !numeroSel) return;
     if (!encAlvo) { alert("Escolha o número/setor de destino."); return; }
@@ -940,7 +948,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     if (!clientePhone) { alert("Esta conversa não tem um telefone pra encaminhar."); return; }
     setEncEnviando(true);
     try {
+      const atendente = encAtendente ? pessoas.find(p => p.id === encAtendente) : null;
       const nota = `↪ *Encaminhado de ${numeroSelObj?.nome || "outro número"}* por ${me?.nome || "—"}`
+        + (atendente ? ` → atribuída a *${atendente.nome}*` : "")
         + (encObs.trim() ? `\n${encObs.trim()}` : "")
         + (encResumo.trim() ? `\n\n${encResumo.trim()}` : "");
       // Cria a conversa pendente no inbox do número de destino (nota de contexto).
@@ -948,16 +958,19 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         waId: clientePhone, numeroId: encAlvo, direcao: "out", tipo: "sistema", sistema: true, lido: true,
         texto: nota, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(),
       }));
-      // Semeia o nome do cliente no contato (global por telefone) se ainda não tem.
+      // Semeia o nome do cliente + atribui direto (se escolheu atendente).
       const ck = foneKey(sel);
-      if (nomeSel && ehTelefoneBR(sel) && !contatos[ck]?.nomeManual) void salvarContato(clientePhone, { nomeManual: nomeSel });
+      const patch: Partial<WhatsappContato> = {};
+      if (nomeSel && ehTelefoneBR(sel) && !contatos[ck]?.nomeManual) patch.nomeManual = nomeSel;
+      if (atendente) { patch.atribuidoA = atendente.id; patch.atribuidoNome = atendente.nome; }
+      if (Object.keys(patch).length) void salvarContato(clientePhone, patch);
       // Rastro na conversa original.
       await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({
         waId: sel, numeroId: numeroSel, direcao: "out", tipo: "sistema", sistema: true, lido: true,
         texto: `↪ Encaminhado para *${alvo?.nome || "outro número"}* por ${me?.nome || "—"}`, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(),
       }));
       setEncaminhar(false);
-      alert(`Encaminhado para ${alvo?.nome || "o outro número"}. A conversa aparece lá em "Sem responsável ainda", com o contexto.`);
+      alert(`Encaminhado para ${alvo?.nome || "o outro número"}${atendente ? ` — atribuída a ${atendente.nome}` : ` — aparece lá em "Sem responsável ainda"`}, com o contexto.`);
     } catch (e) { alert("Falha: " + (e instanceof Error ? e.message : "?")); }
     finally { setEncEnviando(false); }
   }
@@ -1563,13 +1576,31 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
               <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Para qual número / setor</label>
               <div className="mt-1 grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto">
                 {numerosDestino.map(n => (
-                  <button key={n.id} type="button" onClick={() => setEncAlvo(n.id)}
+                  <button key={n.id} type="button" onClick={() => { setEncAlvo(n.id); setEncAtendente(null); }}
                     className={`text-left px-3 py-2 rounded-lg border text-sm transition-colors ${encAlvo === n.id ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300" : "border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40"}`}>
                     {encAlvo === n.id ? "● " : "○ "}📱 {n.nome}{n.modo === "livre" ? <span className="text-[10px] text-gray-400"> · livre</span> : ""}
                   </button>
                 ))}
               </div>
             </div>
+            {/* Atribuir direto a um atendente do número de destino (só se ele tiver atendentes fixos e for por atribuição) */}
+            {encAtendentes.length > 0 && (
+              <div>
+                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Atribuir a (opcional)</label>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  <button type="button" onClick={() => setEncAtendente(null)}
+                    className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${!encAtendente ? "border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/40"}`}>
+                    🟡 Deixar na fila
+                  </button>
+                  {encAtendentes.map(p => (
+                    <button key={p.id} type="button" onClick={() => setEncAtendente(p.id)}
+                      className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${encAtendente === p.id ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/40"}`}>
+                      {encAtendente === p.id ? "● " : ""}{p.nome}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <div>
               <div className="flex items-center justify-between">
                 <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Contexto (IA) — nota interna, editável</label>
