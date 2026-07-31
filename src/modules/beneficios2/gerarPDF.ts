@@ -64,7 +64,10 @@ export async function gerarPagamentoPDF(params: {
       const partes: string[] = [];
       if (desc.length) partes.push(`descontados ${desc.join(", ")} (−${desc.length}d)`);
       if (cred.length) partes.push(`adicionados ${cred.join(", ")} (+${cred.length}d)`);
-      const txt = `${l.empregadoNome} — ref. ${l.ref}: ${partes.join("; ") || "sem diferença"} = ${fmt(l.ajusteTotal)}`;
+      const aux = (l.ajusteAuxVt || 0) + (l.ajusteAuxVr || 0);
+      if (aux) partes.push(`auxílio proporcional ${fmt(aux)}`);
+      const marca = l.demissao ? " [demissão — acerto do mês inteiro]" : "";
+      const txt = `${l.empregadoNome}${marca} — ref. ${l.ref}: ${partes.join("; ") || "sem diferença"} = ${fmt(l.ajusteTotal)}`;
       const wrapped = doc.splitTextToSize(txt, pageW - 2 * M);
       doc.text(wrapped, M, y);
       y += wrapped.length * 4 + 1;

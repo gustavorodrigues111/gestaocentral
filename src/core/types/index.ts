@@ -1669,8 +1669,10 @@ export type BeneficioAjusteLinha = {
   ajusteDias: number;      // praticada − prevista (negativo = desconto; positivo = crédito)
   vtValorDiario: number;
   vrValorDiario: number;
-  ajusteVt: number;        // ajusteDias × vtValorDiario (negativo = desconto)
+  ajusteVt: number;        // ajusteDias × vtValorDiario + proporcional do aux fixo VT (negativo = desconto)
   ajusteVr: number;
+  ajusteAuxVt?: number;    // parcela do ajusteVt vinda do auxílio fixo mensal (proporcional dias/faltas/demissão)
+  ajusteAuxVr?: number;    // idem pro VR
   ajusteTotal: number;
   diasDesconto?: string[]; // dias pagos mas não trabalhados (YYYY-MM-DD)
   diasCredito?: string[];  // dias trabalhados além do previsto

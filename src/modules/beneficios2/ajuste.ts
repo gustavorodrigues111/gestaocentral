@@ -5,7 +5,7 @@
 //  Pagamento do mês seguinte. Cursor = último dia apurado PARA TODOS.
 // ════════════════════════════════════════════════════════════════════════════
 import type { Empregado, EscalaMes, BeneficioPagLote, BeneficioAjusteLote, BeneficioAjusteLinha } from "../../core/types";
-import { contarDiasTrabalhadosNoRange, round2 } from "../vt/calc";
+import { contarDiasTrabalhados, contarDiasTrabalhadosNoRange, round2 } from "../vt/calc";
 import { statusEfetivoEmpMes } from "../../core/escala/statusEfetivo";
 import { vtDiarioDe, ativoNoMes } from "./calc";
 import { empregadoAtivoEm } from "../../core/utils/empregado";
@@ -129,17 +129,35 @@ export function montarLinhasAjuste(params: {
     const diasPrev = demitido ? base.diasTrabalhados : contarDiasTrabalhadosNoRange(e, escala, ano, mes, de, ate, "prevista").dias;
     const diasPrat = contarPraticadaAtiva(e, escala, ano, mes, deEmp, ateEmp);
     const ajusteDias = diasPrat - diasPrev;   // negativo = trabalhou menos que o pago = desconto
-    if (ajusteDias === 0) continue;
     const vtVd = base.vtValorDiario || vtDiarioDe(e);
     const vrVd = usaVR ? (base.vrValorDiario || e.vrValorDiario || 0) : 0;
     const ajVt = base.vtAtivo ? round2(ajusteDias * vtVd) : 0;
     const ajVr = base.vrAtivo ? round2(ajusteDias * vrVd) : 0;
+    // Auxílio fixo mensal — proporcional. O pagamento paga o aux cheio; aqui a gente
+    // acerta pelos dias. Falta (ativo): valor-dia = aux / dias PREVISTOS do mês inteiro,
+    // desconta por dia de diferença. Demissão: aux / 30 × dias trabalhados − aux pago
+    // (proporcional de rescisão sobre o que já foi pago cheio).
+    const auxVt = base.vtAuxFixo ?? 0, auxVr = base.vrAuxFixo ?? 0;
+    let ajAuxVt = 0, ajAuxVr = 0;
+    if (demitido) {
+      if (auxVt) ajAuxVt = round2((auxVt / 30) * diasPrat - auxVt);
+      if (auxVr) ajAuxVr = round2((auxVr / 30) * diasPrat - auxVr);
+    } else {
+      const diasPrevMes = contarDiasTrabalhados(e, escala, ano, mes, "prevista");  // divisor do mês inteiro
+      if (auxVt && diasPrevMes > 0) ajAuxVt = round2((auxVt / diasPrevMes) * ajusteDias);
+      if (auxVr && diasPrevMes > 0) ajAuxVr = round2((auxVr / diasPrevMes) * ajusteDias);
+    }
+    const ajusteVt = round2(ajVt + ajAuxVt);
+    const ajusteVr = round2(ajVr + ajAuxVr);
+    // Sem movimento de dinheiro nem de dias → não gera linha.
+    if (ajusteDias === 0 && ajusteVt === 0 && ajusteVr === 0) continue;
     const dd = diffDias(e, escala, ano, mes, deEmp, ateEmp);
     linhas.push({
       empregadoId: e.id, empregadoNome: e.nome,
       diasPrevista: diasPrev, diasPraticada: diasPrat, ajusteDias,
       vtValorDiario: vtVd, vrValorDiario: vrVd,
-      ajusteVt: ajVt, ajusteVr: ajVr, ajusteTotal: round2(ajVt + ajVr),
+      ajusteVt, ajusteVr, ajusteTotal: round2(ajusteVt + ajusteVr),
+      ...(ajAuxVt ? { ajusteAuxVt: ajAuxVt } : {}), ...(ajAuxVr ? { ajusteAuxVr: ajAuxVr } : {}),
       diasDesconto: dd.desconto, diasCredito: dd.credito,
       ...(demitido ? { demissao: true } : {}),
     });

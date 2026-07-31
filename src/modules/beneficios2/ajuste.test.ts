@@ -108,6 +108,33 @@ describe("montarLinhasAjuste", () => {
     expect(linhas[0].diasDesconto).toHaveLength(19);  // dias 02..20
   });
 
+  it("aux fixo mensal: falta desconta aux/dias-previstos × dias faltados", () => {
+    // aux 250; prevista 22 dias de trabalho (23-31 folga); faltou 2 (dias 21-22).
+    const prev = { ...trabalho(1, 22), "2026-07-23": "folga", "2026-07-24": "folga", "2026-07-25": "folga", "2026-07-26": "folga", "2026-07-27": "folga", "2026-07-28": "folga", "2026-07-29": "folga", "2026-07-30": "folga", "2026-07-31": "folga" } as Record<string, ScheduleStatus>;
+    const real = { ...trabalho(1, 20), "2026-07-21": "falta_i", "2026-07-22": "falta_i", ...Object.fromEntries(Object.entries(prev).filter(([d]) => d >= "2026-07-23")) } as Record<string, ScheduleStatus>;
+    const esc = escala({ e1: prev }, { e1: real });
+    const pg = { id: "pg1", restaurantId: "r1", ano: 2026, mes: 7, status: "pago",
+      linhas: [{ empregadoId: "e1", empregadoNome: "Ana", vtAtivo: true, vtValorDiario: 10, vtAuxFixo: 250, vrAtivo: false, vrValorDiario: 0, diasTrabalhados: 22 } as never],
+    } as unknown as BeneficioPagLote;
+    const linhas = montarLinhasAjuste({ pagamento: pg, empregados: [emp("e1", "Ana")], escala: esc, ano: 2026, mes: 7, de: "2026-07-01", ate: "2026-07-22", usaVR: false });
+    expect(linhas[0].ajusteDias).toBe(-2);
+    expect(linhas[0].ajusteAuxVt).toBe(-22.73);       // 250/22 × -2
+    expect(linhas[0].ajusteVt).toBe(-42.73);          // -20 (VT) + -22.73 (aux)
+  });
+
+  it("aux fixo mensal: demissão desconta aux/30 proporcional aos dias trabalhados", () => {
+    // Camila demitida dia 02, trabalhou só 01; aux 250 pago cheio.
+    const camila = emp("e1", "Camila", { periodos: [{ admissao: "2020-01-01", demissao: "2026-07-02", registradoEm: "x", registradoPor: "x" }] });
+    const esc = escala({ e1: trabalho(1, 20) }, { e1: trabalho(1, 20) });
+    const pg = { id: "pg1", restaurantId: "r1", ano: 2026, mes: 7, status: "pago",
+      linhas: [{ empregadoId: "e1", empregadoNome: "Camila", vtAtivo: true, vtValorDiario: 10, vtAuxFixo: 250, vrAtivo: false, vrValorDiario: 0, diasTrabalhados: 20 } as never],
+    } as unknown as BeneficioPagLote;
+    const linhas = montarLinhasAjuste({ pagamento: pg, empregados: [camila], escala: esc, ano: 2026, mes: 7, de: "2026-07-01", ate: "2026-07-31", usaVR: false });
+    expect(linhas[0].demissao).toBe(true);
+    expect(linhas[0].ajusteAuxVt).toBe(-241.67);      // 250/30 × 1 − 250
+    expect(linhas[0].ajusteVt).toBe(-431.67);         // -190 (VT) + -241.67 (aux)
+  });
+
   it("demitido já acertado não gera nova linha (evita desconto em dobro)", () => {
     const camila = emp("e1", "Camila", { periodos: [{ admissao: "2020-01-01", demissao: "2026-07-02", registradoEm: "x", registradoPor: "x" }] });
     const pg = { id: "pg1", restaurantId: "r1", ano: 2026, mes: 7, status: "pago",

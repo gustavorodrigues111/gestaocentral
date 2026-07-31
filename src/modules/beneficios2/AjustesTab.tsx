@@ -127,6 +127,7 @@ export function AjustesTab(props: {
                   title={[
                     (l.diasDesconto && l.diasDesconto.length) ? `Descontar (não trabalhou): ${l.diasDesconto.map(brDate).join(", ")}` : "",
                     (l.diasCredito && l.diasCredito.length) ? `Adicionar (trabalhou a mais): ${l.diasCredito.map(brDate).join(", ")}` : "",
+                    ((l.ajusteAuxVt || 0) + (l.ajusteAuxVr || 0)) ? `Auxílio proporcional: ${fmt((l.ajusteAuxVt || 0) + (l.ajusteAuxVr || 0))}${l.demissao ? " (÷30, rescisão)" : " (÷dias previstos)"}` : "",
                   ].filter(Boolean).join("\n") || "Sem diferença de dias"}>
                   {l.ajusteDias > 0 ? `+${l.ajusteDias}` : l.ajusteDias}
                 </td>
