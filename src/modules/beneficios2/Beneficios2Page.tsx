@@ -16,6 +16,7 @@ import { Button } from "../../core/ui/Button";
 import { nomeMes, pad2, shiftMonth } from "../../core/utils/date";
 import { montarLinhasPagamento, totaisDoLote } from "./calc";
 import { exportarCajuPag, exportarPixPag, baixarCsv } from "./exportar";
+import { gerarPagamentoPDF } from "./gerarPDF";
 import type { Cargo, Empregado, EscalaMes, BeneficioPagLote, BeneficioPagLinha } from "../../core/types";
 
 const fmt = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -135,6 +136,7 @@ export function Beneficios2Page() {
           <thead className="bg-gray-50 dark:bg-gray-800/40 text-gray-500 dark:text-gray-400 text-[11px] uppercase tracking-wide">
             <tr>
               <th className="text-left px-3 py-2">Empregado</th>
+              <th className="text-center px-2 py-2">Forma</th>
               <th className="text-center px-2 py-2">Dias</th>
               <th className="text-right px-3 py-2">VT</th>
               {usaVR && <th className="text-right px-3 py-2">VR</th>}
@@ -143,16 +145,18 @@ export function Beneficios2Page() {
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {linhas.length === 0 ? (
-              <tr><td colSpan={usaVR ? 5 : 4} className="px-3 py-8 text-center text-gray-400">Ninguém com benefício neste mês.</td></tr>
+              <tr><td colSpan={usaVR ? 6 : 5} className="px-3 py-8 text-center text-gray-400">Ninguém com benefício neste mês.</td></tr>
             ) : linhas.map((l) => (
               <tr key={l.empregadoId} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
                 <td className="px-3 py-2">
                   <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
                     {l.empregadoNome}
-                    <span className={`text-[9px] px-1 py-0.5 rounded-full ${l.forma === "pix" ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300" : "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"}`}>{l.forma === "pix" ? "⚡ Pix" : "🟣 Caju"}</span>
                     {l.semConfig && <span className="text-[9px] px-1 py-0.5 rounded-full bg-rose-100 text-rose-700" title="Ativo mas sem valor diário">sem valor</span>}
                   </div>
                   {l.cargoNome && <div className="text-[11px] text-gray-400">{l.cargoNome}</div>}
+                </td>
+                <td className="text-center px-2 py-2">
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${l.forma === "pix" ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300" : "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"}`}>{l.forma === "pix" ? "⚡ Pix" : "🟣 Caju"}</span>
                 </td>
                 <td className="text-center px-2 py-2 text-gray-600 dark:text-gray-300">{l.diasTrabalhados}</td>
                 <td className="text-right px-3 py-2 tabular-nums">{l.vtTotal > 0 ? fmt(l.vtTotal) : "—"}{l.vtAuxFixo > 0 && <span className="text-[10px] text-gray-400"> (+aux)</span>}</td>
@@ -164,7 +168,7 @@ export function Beneficios2Page() {
           {linhas.length > 0 && (
             <tfoot className="bg-gray-50 dark:bg-gray-800/40 font-bold text-gray-800 dark:text-gray-100">
               <tr>
-                <td className="px-3 py-2" colSpan={2}>Total</td>
+                <td className="px-3 py-2" colSpan={3}>Total</td>
                 <td className="text-right px-3 py-2 tabular-nums">{fmt(totais.totalVt)}</td>
                 {usaVR && <td className="text-right px-3 py-2 tabular-nums">{fmt(totais.totalVr)}</td>}
                 <td className="text-right px-3 py-2 tabular-nums">{fmt(totais.totalGeral)}</td>
@@ -176,6 +180,7 @@ export function Beneficios2Page() {
 
       {/* Ações */}
       <div className="flex flex-wrap gap-2 mt-3 justify-end">
+        {linhas.length > 0 && <Button variant="secondary" onClick={() => void gerarPagamentoPDF({ linhas, restaurantNome: rest?.nome || "", ano, mes, usaVR, totais })}>📄 Exportar PDF</Button>}
         {linhas.length > 0 && <Button variant="secondary" onClick={exportarCaju}>🟣 Exportar Caju (CSV)</Button>}
         {temPix && <Button variant="secondary" onClick={exportarPix}>⚡ Exportar Pix</Button>}
         {!loteAtivo && podeConfig && (
