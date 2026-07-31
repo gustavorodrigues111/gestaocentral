@@ -15,9 +15,11 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
 import { nomeMes, pad2, shiftMonth } from "../../core/utils/date";
 import { montarLinhasPagamento, totaisDoLote } from "./calc";
+import { ajustePorEmpregadoPendente } from "./ajuste";
+import { AjustesTab } from "./AjustesTab";
 import { exportarCajuPag, exportarPixPag, baixarCsv } from "./exportar";
 import { gerarPagamentoPDF } from "./gerarPDF";
-import type { Cargo, Empregado, EscalaMes, BeneficioPagLote, BeneficioPagLinha } from "../../core/types";
+import type { Cargo, Empregado, EscalaMes, BeneficioPagLote, BeneficioPagLinha, BeneficioAjusteLote } from "../../core/types";
 
 const fmt = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const slugify = (s: string) => (s || "rest").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
@@ -37,11 +39,12 @@ export function Beneficios2Page() {
   const now = new Date();
   const [ano, setAno] = useState(now.getFullYear());
   const [mes, setMes] = useState(now.getMonth() + 1);
-  const [aba, setAba] = useState<"pagamento" | "historico">("pagamento");
+  const [aba, setAba] = useState<"pagamento" | "ajustes" | "historico">("pagamento");
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [escala, setEscala] = useState<EscalaMes | null>(null);
   const [lotesTodos, setLotesTodos] = useState<BeneficioPagLote[]>([]);
+  const [ajustesTodos, setAjustesTodos] = useState<BeneficioAjusteLote[]>([]);
   const [salvando, setSalvando] = useState(false);
   const iniciadoRef = useRef(false);   // abre no próximo mês a pagar só 1×
 
@@ -54,6 +57,14 @@ export function Beneficios2Page() {
       (s) => setLotesTodos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as BeneficioPagLote)),
       () => setLotesTodos([]));
   }, [rid]);
+  useEffect(() => {
+    if (!rid) return;
+    return onSnapshot(query(collection(db, "beneficioAjustes"), where("restaurantId", "==", rid)),
+      (s) => setAjustesTodos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as BeneficioAjusteLote)),
+      () => setAjustesTodos([]));
+  }, [rid]);
+  // Ajustes fechados (pendentes) — abatem no pagamento em rascunho deste mês.
+  const ajustePendente = useMemo(() => ajustePorEmpregadoPendente(ajustesTodos), [ajustesTodos]);
 
   // Meses já PAGOS (histórico) e o próximo mês a pagar.
   const pagos = useMemo(() => lotesTodos.filter((l) => l.status === "pago").sort((a, b) => (b.ano * 12 + b.mes) - (a.ano * 12 + a.mes)), [lotesTodos]);
@@ -68,9 +79,10 @@ export function Beneficios2Page() {
   const lotesDoMes = useMemo(() => lotesTodos.filter((l) => l.ano === ano && l.mes === mes).sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || "")), [lotesTodos, ano, mes]);
   const previstaFechada = !!(escala && (escala as { previstaFechadaEm?: string | null }).previstaFechadaEm);
   const loteAtivo = useMemo(() => lotesDoMes.find((l) => l.status !== "cancelado") || null, [lotesDoMes]);
-  const preview = useMemo<BeneficioPagLinha[]>(() => loteAtivo ? [] : montarLinhasPagamento(empregados, cargos, escala, ano, mes, usaVR), [loteAtivo, empregados, cargos, escala, ano, mes, usaVR]);
+  const preview = useMemo<BeneficioPagLinha[]>(() => loteAtivo ? [] : montarLinhasPagamento(empregados, cargos, escala, ano, mes, usaVR, ajustePendente), [loteAtivo, empregados, cargos, escala, ano, mes, usaVR, ajustePendente]);
   const linhas = loteAtivo ? loteAtivo.linhas : preview;
   const totais = useMemo(() => totaisDoLote(linhas), [linhas]);
+  const temAjuste = linhas.some((l) => (l.ajuste || 0) !== 0);
 
   function irMes(delta: number) { const { ano: a, mes: m } = shiftMonth(ano, mes, delta); setAno(a); setMes(m); }
 
@@ -84,13 +96,18 @@ export function Beneficios2Page() {
       const nowIso = new Date().toISOString();
       const lote: Omit<BeneficioPagLote, "id"> = {
         restaurantId: rid, ano, mes, status: "pago", linhas,
-        totalVt: t.totalVt, totalVr: t.totalVr, totalGeral: t.totalGeral,
+        totalVt: t.totalVt, totalVr: t.totalVr, totalAjuste: t.totalAjuste, totalGeral: t.totalGeral,
         criadoEm: nowIso, criadoPor: me?.id || null, criadoPorNome: me?.nome || null,
         pagoEm: nowIso, pagoPor: me?.id || null,
         historico: [{ tipo: "pago", em: nowIso, por: me?.id || null, porNome: me?.nome || null }],
         updatedAt: nowIso,
       };
-      await addDoc(collection(db, "beneficioPagamentos"), sanitizeForFirestore(lote));
+      const novo = await addDoc(collection(db, "beneficioPagamentos"), sanitizeForFirestore(lote));
+      // Marca os ajustes pendentes como APLICADOS (consumidos por este pagamento).
+      const pendentes = ajustesTodos.filter((a) => a.status === "pendente" && !a.demissao);
+      for (const a of pendentes) {
+        await updateDoc(doc(db, "beneficioAjustes", a.id), { status: "aplicado", aplicadoEm: nowIso, aplicadoNoPagamentoId: novo.id }).catch(() => {});
+      }
     } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); }
     finally { setSalvando(false); }
   }
@@ -133,7 +150,7 @@ export function Beneficios2Page() {
 
       {/* Abas */}
       <div className="flex gap-1 mb-3 border-b border-gray-200 dark:border-gray-800">
-        {([["pagamento", "Pagamento"], ["historico", `Histórico${pagos.length ? ` (${pagos.length})` : ""}`]] as const).map(([v, l]) => (
+        {([["pagamento", "Pagamento"], ["ajustes", "Ajustes"], ["historico", `Histórico${pagos.length ? ` (${pagos.length})` : ""}`]] as const).map(([v, l]) => (
           <button key={v} type="button" onClick={() => setAba(v)} className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${aba === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
         ))}
       </div>
@@ -163,12 +180,13 @@ export function Beneficios2Page() {
               <th className="text-center px-2 py-2">Dias</th>
               <th className="text-right px-3 py-2">VT</th>
               {usaVR && <th className="text-right px-3 py-2">VR</th>}
+              {temAjuste && <th className="text-right px-3 py-2">Ajuste</th>}
               <th className="text-right px-3 py-2">Total</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {linhas.length === 0 ? (
-              <tr><td colSpan={usaVR ? 6 : 5} className="px-3 py-8 text-center text-gray-400">Ninguém com benefício neste mês.</td></tr>
+              <tr><td colSpan={5 + (usaVR ? 1 : 0) + (temAjuste ? 1 : 0)} className="px-3 py-8 text-center text-gray-400">Ninguém com benefício neste mês.</td></tr>
             ) : linhas.map((l) => (
               <tr key={l.empregadoId} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
                 <td className="px-3 py-2">
@@ -184,6 +202,7 @@ export function Beneficios2Page() {
                 <td className="text-center px-2 py-2 text-gray-600 dark:text-gray-300">{l.diasTrabalhados}</td>
                 <td className="text-right px-3 py-2 tabular-nums">{l.vtTotal > 0 ? fmt(l.vtTotal) : "—"}{l.vtAuxFixo > 0 && <span className="text-[10px] text-gray-400"> (+aux)</span>}</td>
                 {usaVR && <td className="text-right px-3 py-2 tabular-nums">{l.vrTotal > 0 ? fmt(l.vrTotal) : "—"}</td>}
+                {temAjuste && <td className={`text-right px-3 py-2 tabular-nums ${(l.ajuste || 0) < 0 ? "text-rose-600 dark:text-rose-400" : (l.ajuste || 0) > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400"}`}>{l.ajuste ? fmt(l.ajuste) : "—"}</td>}
                 <td className="text-right px-3 py-2 font-semibold tabular-nums">{fmt(l.total)}</td>
               </tr>
             ))}
@@ -194,6 +213,7 @@ export function Beneficios2Page() {
                 <td className="px-3 py-2" colSpan={3}>Total</td>
                 <td className="text-right px-3 py-2 tabular-nums">{fmt(totais.totalVt)}</td>
                 {usaVR && <td className="text-right px-3 py-2 tabular-nums">{fmt(totais.totalVr)}</td>}
+                {temAjuste && <td className="text-right px-3 py-2 tabular-nums">{fmt(totais.totalAjuste)}</td>}
                 <td className="text-right px-3 py-2 tabular-nums">{fmt(totais.totalGeral)}</td>
               </tr>
             </tfoot>
@@ -213,6 +233,10 @@ export function Beneficios2Page() {
         )}
       </div>
       </>)}
+
+      {aba === "ajustes" && (
+        <AjustesTab rid={rid} empregados={empregados} usaVR={usaVR} podeConfig={podeConfig} me={me} pagamentos={lotesTodos} ajustes={ajustesTodos} />
+      )}
 
       {aba === "historico" && (
         pagos.length === 0 ? (

@@ -1629,7 +1629,8 @@ export type BeneficioPagLinha = {
   vrValorDiario: number;
   vrAuxFixo: number;
   vrTotal: number;
-  total: number;                 // vtTotal + vrTotal
+  ajuste?: number;               // ref. mês anterior (negativo = desconto; positivo = crédito)
+  total: number;                 // vtTotal + vrTotal + ajuste
   semConfig?: boolean;           // ativo mas sem valor diário cadastrado
 };
 
@@ -1644,6 +1645,7 @@ export type BeneficioPagLote = {
   linhas: BeneficioPagLinha[];
   totalVt: number;
   totalVr: number;
+  totalAjuste?: number;
   totalGeral: number;
   criadoEm: string;
   criadoPor?: string | null;

@@ -105,6 +105,6 @@ describe("totaisDoLote", () => {
       { vtTotal: 100, vrTotal: 50 },
       { vtTotal: 200, vrTotal: 0 },
     ] as never;
-    expect(totaisDoLote(linhas)).toEqual({ totalVt: 300, totalVr: 50, totalGeral: 350 });
+    expect(totaisDoLote(linhas)).toEqual({ totalVt: 300, totalVr: 50, totalAjuste: 0, totalGeral: 350 });
   });
 });

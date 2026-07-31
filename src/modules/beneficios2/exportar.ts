@@ -28,15 +28,18 @@ export function exportarCajuPag(linhas: BeneficioPagLinha[], empregados: Emprega
   let totalVt = 0, totalVr = 0, qtd = 0;
   for (const l of linhas) {
     if (l.forma !== "caju") continue;                 // Pix vai na outra lista
-    if (l.vtTotal <= 0 && l.vrTotal <= 0) continue;
+    // Ajuste (desconto/crédito do mês anterior) abate na Mobilidade (VT).
+    const mobil = Math.max(0, Math.round((l.vtTotal + (l.ajuste || 0)) * 100) / 100);
+    const refei = l.vrTotal;
+    if (mobil <= 0 && refei <= 0) continue;
     const cpf = onlyDigits(empMap[l.empregadoId]?.cpf);
     if (cpf.length !== 11) { ignoradas.push({ nome: l.empregadoNome, motivo: "CPF inválido ou ausente", total: l.total }); continue; }
     const cols = new Array(NUM_COLUNAS).fill("0");
     cols[0] = cpf; cols[1] = "";
-    if (l.vrTotal > 0) cols[COL_REFEICAO] = brl(l.vrTotal);
-    if (l.vtTotal > 0) cols[COL_MOBILIDADE] = brl(l.vtTotal);
+    if (refei > 0) cols[COL_REFEICAO] = brl(refei);
+    if (mobil > 0) cols[COL_MOBILIDADE] = brl(mobil);
     out.push(cols.join(";"));
-    totalVt += l.vtTotal; totalVr += l.vrTotal; qtd++;
+    totalVt += mobil; totalVr += refei; qtd++;
   }
   return {
     csv: "﻿" + out.join("\r\n") + "\r\n",

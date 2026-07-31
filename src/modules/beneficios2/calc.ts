@@ -38,6 +38,7 @@ export function montarLinhasPagamento(
   ano: number,
   mes: number,
   usaVR: boolean,
+  ajustePorEmp: Record<string, number> = {},   // desconto/crédito do mês anterior
 ): BeneficioPagLinha[] {
   const cargoNomeDe = new Map(cargos.map((c) => [c.id, c.nome] as const));
   const linhas: BeneficioPagLinha[] = [];
@@ -55,6 +56,7 @@ export function montarLinhasPagamento(
     const vrValorDiario = e.vrValorDiario ?? 0;
     const vtTotal = round2((vtAtivo ? dias * vtValorDiario : 0) + auxVt);
     const vrTotal = round2((vrAtivo ? dias * vrValorDiario : 0) + auxVr);
+    const ajuste = round2(ajustePorEmp[e.id] || 0);
 
     const cargo = (e as { cargoId?: string }).cargoId;
     linhas.push({
@@ -73,15 +75,17 @@ export function montarLinhasPagamento(
       vrValorDiario,
       vrAuxFixo: auxVr,
       vrTotal,
-      total: round2(vtTotal + vrTotal),
+      ajuste,
+      total: round2(vtTotal + vrTotal + ajuste),
       semConfig: (vtAtivo && vtValorDiario <= 0) || (vrAtivo && vrValorDiario <= 0),
     });
   }
   return linhas.sort((a, b) => a.empregadoNome.localeCompare(b.empregadoNome, "pt-BR"));
 }
 
-export function totaisDoLote(linhas: BeneficioPagLinha[]): { totalVt: number; totalVr: number; totalGeral: number } {
+export function totaisDoLote(linhas: BeneficioPagLinha[]): { totalVt: number; totalVr: number; totalAjuste: number; totalGeral: number } {
   const totalVt = round2(linhas.reduce((s, l) => s + l.vtTotal, 0));
   const totalVr = round2(linhas.reduce((s, l) => s + l.vrTotal, 0));
-  return { totalVt, totalVr, totalGeral: round2(totalVt + totalVr) };
+  const totalAjuste = round2(linhas.reduce((s, l) => s + (l.ajuste || 0), 0));
+  return { totalVt, totalVr, totalAjuste, totalGeral: round2(totalVt + totalVr + totalAjuste) };
 }
