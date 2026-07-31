@@ -87,6 +87,17 @@ export function Beneficios2Page() {
   const linhas = loteAtivo ? loteAtivo.linhas : preview;
   const totais = useMemo(() => totaisDoLote(linhas), [linhas]);
   const temAjuste = linhas.some((l) => (l.ajuste || 0) !== 0);
+  // VT e VR agora mostram SÓ a parte diária (valor-dia × dias); o auxílio fixo
+  // mensal vira coluna própria (AUX). VR e AUX só aparecem se algum empregado tiver.
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const vtBaseDe = (l: BeneficioPagLinha) => r2((l.vtTotal || 0) - (l.vtAuxFixo || 0));
+  const vrBaseDe = (l: BeneficioPagLinha) => r2((l.vrTotal || 0) - (l.vrAuxFixo || 0));
+  const auxDe = (l: BeneficioPagLinha) => r2((l.vtAuxFixo || 0) + (l.vrAuxFixo || 0));
+  const temVR = linhas.some((l) => vrBaseDe(l) > 0);
+  const temAux = linhas.some((l) => auxDe(l) > 0);
+  const totalVtBase = r2(linhas.reduce((s, l) => s + vtBaseDe(l), 0));
+  const totalVrBase = r2(linhas.reduce((s, l) => s + vrBaseDe(l), 0));
+  const totalAux = r2(linhas.reduce((s, l) => s + auxDe(l), 0));
 
   // Antes de pagar o mês M, é preciso ter feito o ajuste do mês M-1 (se ele foi pago).
   const mesAnt = shiftMonth(ano, mes, -1);
@@ -213,14 +224,15 @@ export function Beneficios2Page() {
               <th className="text-center px-2 py-2">Forma</th>
               <th className="text-center px-2 py-2">Dias</th>
               <th className="text-right px-3 py-2">VT</th>
-              {usaVR && <th className="text-right px-3 py-2">VR</th>}
+              {temVR && <th className="text-right px-3 py-2">VR</th>}
+              {temAux && <th className="text-right px-3 py-2">Aux. mensal</th>}
               {mostrarAjuste && <th className="text-right px-3 py-2">Descontos / Acréscimo</th>}
               <th className="text-right px-3 py-2">Total</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {linhas.length === 0 ? (
-              <tr><td colSpan={5 + (usaVR ? 1 : 0) + (mostrarAjuste ? 1 : 0)} className="px-3 py-8 text-center text-gray-400">Ninguém com benefício neste mês.</td></tr>
+              <tr><td colSpan={5 + (temVR ? 1 : 0) + (temAux ? 1 : 0) + (mostrarAjuste ? 1 : 0)} className="px-3 py-8 text-center text-gray-400">Ninguém com benefício neste mês.</td></tr>
             ) : linhas.map((l) => (
               <tr key={l.empregadoId} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
                 <td className="px-3 py-2">
@@ -234,8 +246,9 @@ export function Beneficios2Page() {
                   <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${l.forma === "pix" ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300" : "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"}`}>{l.forma === "pix" ? "⚡ Pix" : "🟣 Caju"}</span>
                 </td>
                 <td className="text-center px-2 py-2 text-gray-600 dark:text-gray-300">{l.diasTrabalhados}</td>
-                <td className="text-right px-3 py-2 tabular-nums">{l.vtTotal > 0 ? fmt(l.vtTotal) : "—"}{l.vtAuxFixo > 0 && <span className="text-[10px] text-gray-400"> (+aux)</span>}</td>
-                {usaVR && <td className="text-right px-3 py-2 tabular-nums">{l.vrTotal > 0 ? fmt(l.vrTotal) : "—"}</td>}
+                <td className="text-right px-3 py-2 tabular-nums">{vtBaseDe(l) > 0 ? fmt(vtBaseDe(l)) : "—"}</td>
+                {temVR && <td className="text-right px-3 py-2 tabular-nums">{vrBaseDe(l) > 0 ? fmt(vrBaseDe(l)) : "—"}</td>}
+                {temAux && <td className="text-right px-3 py-2 tabular-nums">{auxDe(l) > 0 ? fmt(auxDe(l)) : "—"}</td>}
                 {mostrarAjuste && <td className={`text-right px-3 py-2 tabular-nums font-medium ${(l.ajuste || 0) < 0 ? "text-rose-600 dark:text-rose-400" : (l.ajuste || 0) > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400"}`}>{l.ajuste ? fmtSigned(l.ajuste) : "—"}</td>}
                 <td className="text-right px-3 py-2 font-semibold tabular-nums">{fmt(l.total)}</td>
               </tr>
@@ -245,8 +258,9 @@ export function Beneficios2Page() {
             <tfoot className="bg-gray-50 dark:bg-gray-800/40 font-bold text-gray-800 dark:text-gray-100">
               <tr>
                 <td className="px-3 py-2" colSpan={3}>Total</td>
-                <td className="text-right px-3 py-2 tabular-nums">{fmt(totais.totalVt)}</td>
-                {usaVR && <td className="text-right px-3 py-2 tabular-nums">{fmt(totais.totalVr)}</td>}
+                <td className="text-right px-3 py-2 tabular-nums">{fmt(totalVtBase)}</td>
+                {temVR && <td className="text-right px-3 py-2 tabular-nums">{fmt(totalVrBase)}</td>}
+                {temAux && <td className="text-right px-3 py-2 tabular-nums">{fmt(totalAux)}</td>}
                 {mostrarAjuste && <td className={`text-right px-3 py-2 tabular-nums ${totais.totalAjuste < 0 ? "text-rose-600 dark:text-rose-400" : totais.totalAjuste > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400"}`}>{totais.totalAjuste ? fmtSigned(totais.totalAjuste) : "—"}</td>}
                 <td className="text-right px-3 py-2 tabular-nums">{fmt(totais.totalGeral)}</td>
               </tr>

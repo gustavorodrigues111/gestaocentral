@@ -29,11 +29,22 @@ export async function gerarPagamentoPDF(params: {
   doc.text(`Gerado em ${pad2(ag.getDate())}/${pad2(ag.getMonth() + 1)}/${ag.getFullYear()} ${pad2(ag.getHours())}:${pad2(ag.getMinutes())}`, pageW - M, 14, { align: "right" });
 
   const formaLbl = (l: BeneficioPagLinha) => (l.forma === "pix" ? "Pix" : "Caju");
+  // VT/VR = só a parte diária; auxílio fixo mensal vira coluna AUX própria.
+  const r2 = (n: number) => Math.round(n * 100) / 100;
+  const vtBase = (l: BeneficioPagLinha) => r2((l.vtTotal || 0) - (l.vtAuxFixo || 0));
+  const vrBase = (l: BeneficioPagLinha) => r2((l.vrTotal || 0) - (l.vrAuxFixo || 0));
+  const auxDe = (l: BeneficioPagLinha) => r2((l.vtAuxFixo || 0) + (l.vrAuxFixo || 0));
+  const temVR = usaVR && linhas.some((l) => vrBase(l) > 0);
+  const temAux = linhas.some((l) => auxDe(l) > 0);
   const temAjuste = linhas.some((l) => (l.ajuste || 0) !== 0);
-  const cols = ["Empregado", "Forma", "Dias", "VT", ...(usaVR ? ["VR"] : []), ...(temAjuste ? ["Ajuste"] : []), "Total"];
-  const rowOf = (l: BeneficioPagLinha) => [l.empregadoNome, formaLbl(l), String(l.diasTrabalhados), fmt(l.vtTotal),
-    ...(usaVR ? [fmt(l.vrTotal)] : []), ...(temAjuste ? [l.ajuste ? fmt(l.ajuste) : "—"] : []), fmt(l.total)];
-  const footRow = ["Total", "", "", fmt(totais.totalVt), ...(usaVR ? [fmt(totais.totalVr)] : []),
+  const totalVtBase = r2(linhas.reduce((s, l) => s + vtBase(l), 0));
+  const totalVrBase = r2(linhas.reduce((s, l) => s + vrBase(l), 0));
+  const totalAux = r2(linhas.reduce((s, l) => s + auxDe(l), 0));
+  const dash = (n: number) => (n > 0 ? fmt(n) : "—");
+  const cols = ["Empregado", "Forma", "Dias", "VT", ...(temVR ? ["VR"] : []), ...(temAux ? ["Aux."] : []), ...(temAjuste ? ["Ajuste"] : []), "Total"];
+  const rowOf = (l: BeneficioPagLinha) => [l.empregadoNome, formaLbl(l), String(l.diasTrabalhados), dash(vtBase(l)),
+    ...(temVR ? [dash(vrBase(l))] : []), ...(temAux ? [dash(auxDe(l))] : []), ...(temAjuste ? [l.ajuste ? fmt(l.ajuste) : "—"] : []), fmt(l.total)];
+  const footRow = ["Total", "", "", fmt(totalVtBase), ...(temVR ? [fmt(totalVrBase)] : []), ...(temAux ? [fmt(totalAux)] : []),
     ...(temAjuste ? [fmt(totais.totalAjuste || 0)] : []), fmt(totais.totalGeral)];
   const rightFrom = 3;   // colunas numéricas alinhadas à direita a partir de VT
   const colStyles: Record<number, object> = { 2: { halign: "center" } };
