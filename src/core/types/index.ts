@@ -500,6 +500,14 @@ export type Empregado = {
   vrAuxilioFixoMensal?: number; // R$ — adicional fixo mensal (independente de vrAtivo)
   vrRecebePeloCaju?: boolean;   // mesmo conceito do vtRecebePeloCaju (default true)
 
+  // ── Benefícios (módulo novo) ──────────────────────────────────────────────
+  // VT como VALOR DIÁRIO único (substitui passagens×valor). Fallback no cálculo:
+  // se ausente, usa vtPassagensPorDia × vtValorPassagem (retrocompat na transição).
+  vtValorDiario?: number;
+  // Forma de recebimento do benefício: "caju" (vai no CSV) ou "pix" (lista à parte).
+  formaBeneficio?: "caju" | "pix";
+  chavePix?: string;
+
   // Multi-unidades — só faz sentido quando restaurante.multiUnidades = true.
   // Ao marcar "Trabalho" na escala, vem pré-preenchido com essa unidade
   // (pode ser sobrescrito dia a dia).
@@ -1594,6 +1602,57 @@ export type BeneficiosLote = {
 
   historico: BeneficiosLoteEvento[];
   updatedAt: string;
+};
+
+// ════════════════════════════════════════════════════════════════════════════
+//  Benefícios (módulo NOVO) — Pagamento por escala PREVISTA (valor diário).
+//  Coleção: beneficioPagamentos. Base congelada que o Ajuste (praticada) usa.
+// ════════════════════════════════════════════════════════════════════════════
+export type BeneficioPagStatus = "rascunho" | "pago" | "cancelado";
+export type BeneficioForma = "caju" | "pix";
+
+export type BeneficioPagLinha = {
+  empregadoId: string;
+  empregadoNome: string;
+  cargoNome?: string | null;
+  area?: string | null;
+  forma: BeneficioForma;
+  chavePix?: string | null;
+  diasTrabalhados: number;       // dias de trabalho+comp_trab na prevista
+  // VT
+  vtAtivo: boolean;
+  vtValorDiario: number;
+  vtAuxFixo: number;
+  vtTotal: number;               // dias×valor + auxFixo
+  // VR
+  vrAtivo: boolean;
+  vrValorDiario: number;
+  vrAuxFixo: number;
+  vrTotal: number;
+  total: number;                 // vtTotal + vrTotal
+  semConfig?: boolean;           // ativo mas sem valor diário cadastrado
+};
+
+export type BeneficioPagEvento = { tipo: "criado" | "pago" | "reaberto" | "cancelado"; em: string; por?: string | null; porNome?: string | null };
+
+export type BeneficioPagLote = {
+  id: string;
+  restaurantId: string;
+  ano: number;
+  mes: number;
+  status: BeneficioPagStatus;
+  linhas: BeneficioPagLinha[];
+  totalVt: number;
+  totalVr: number;
+  totalGeral: number;
+  criadoEm: string;
+  criadoPor?: string | null;
+  criadoPorNome?: string | null;
+  pagoEm?: string | null;
+  pagoPor?: string | null;
+  canceladoEm?: string | null;
+  historico?: BeneficioPagEvento[];
+  updatedAt?: string;
 };
 
 export const BENEFICIOS_LOTE_STATUS_LABEL: Record<BeneficiosLoteStatus, string> = {
