@@ -22,6 +22,8 @@ import { gerarPagamentoPDF } from "./gerarPDF";
 import type { Cargo, Empregado, EscalaMes, BeneficioPagLote, BeneficioPagLinha, BeneficioAjusteLote } from "../../core/types";
 
 const fmt = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+const fmtSigned = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", signDisplay: "exceptZero" });
+const brDate = (ymd: string) => (ymd ? ymd.split("-").reverse().slice(0, 2).join("/") : "—");
 const slugify = (s: string) => (s || "rest").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
 
 export function Beneficios2Page() {
@@ -93,6 +95,13 @@ export function Beneficios2Page() {
   const ajustesDoPagamento = useMemo(() => loteAtivo
     ? ajustesTodos.filter((a) => a.aplicadoNoPagamentoId === loteAtivo.id)
     : ajustesTodos.filter((a) => a.status === "pendente" && !a.demissao), [loteAtivo, ajustesTodos]);
+  // Coluna de ajuste aparece sempre que existe um mês anterior a reconciliar
+  // (mesmo sem valor ainda → mostra "—" e o banner pede o ajuste).
+  const mostrarAjuste = temAjuste || !!pagAnterior;
+  // Detalhe por empregado dos descontos/créditos que entram neste pagamento.
+  const detalheAjuste = useMemo(() => ajustesDoPagamento
+    .flatMap((a) => a.linhas.map((l) => ({ ...l, ref: `${nomeMes(a.mes)}/${a.ano}`, demissao: a.demissao || l.demissao })))
+    .sort((a, b) => a.empregadoNome.localeCompare(b.empregadoNome, "pt-BR")), [ajustesDoPagamento]);
 
   function irMes(delta: number) { const { ano: a, mes: m } = shiftMonth(ano, mes, delta); setAno(a); setMes(m); }
 
@@ -203,13 +212,13 @@ export function Beneficios2Page() {
               <th className="text-center px-2 py-2">Dias</th>
               <th className="text-right px-3 py-2">VT</th>
               {usaVR && <th className="text-right px-3 py-2">VR</th>}
-              {temAjuste && <th className="text-right px-3 py-2">Ajuste</th>}
+              {mostrarAjuste && <th className="text-right px-3 py-2">Descontos / Acréscimo</th>}
               <th className="text-right px-3 py-2">Total</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
             {linhas.length === 0 ? (
-              <tr><td colSpan={5 + (usaVR ? 1 : 0) + (temAjuste ? 1 : 0)} className="px-3 py-8 text-center text-gray-400">Ninguém com benefício neste mês.</td></tr>
+              <tr><td colSpan={5 + (usaVR ? 1 : 0) + (mostrarAjuste ? 1 : 0)} className="px-3 py-8 text-center text-gray-400">Ninguém com benefício neste mês.</td></tr>
             ) : linhas.map((l) => (
               <tr key={l.empregadoId} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
                 <td className="px-3 py-2">
@@ -225,7 +234,7 @@ export function Beneficios2Page() {
                 <td className="text-center px-2 py-2 text-gray-600 dark:text-gray-300">{l.diasTrabalhados}</td>
                 <td className="text-right px-3 py-2 tabular-nums">{l.vtTotal > 0 ? fmt(l.vtTotal) : "—"}{l.vtAuxFixo > 0 && <span className="text-[10px] text-gray-400"> (+aux)</span>}</td>
                 {usaVR && <td className="text-right px-3 py-2 tabular-nums">{l.vrTotal > 0 ? fmt(l.vrTotal) : "—"}</td>}
-                {temAjuste && <td className={`text-right px-3 py-2 tabular-nums ${(l.ajuste || 0) < 0 ? "text-rose-600 dark:text-rose-400" : (l.ajuste || 0) > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400"}`}>{l.ajuste ? fmt(l.ajuste) : "—"}</td>}
+                {mostrarAjuste && <td className={`text-right px-3 py-2 tabular-nums font-medium ${(l.ajuste || 0) < 0 ? "text-rose-600 dark:text-rose-400" : (l.ajuste || 0) > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400"}`}>{l.ajuste ? fmtSigned(l.ajuste) : "—"}</td>}
                 <td className="text-right px-3 py-2 font-semibold tabular-nums">{fmt(l.total)}</td>
               </tr>
             ))}
@@ -236,13 +245,47 @@ export function Beneficios2Page() {
                 <td className="px-3 py-2" colSpan={3}>Total</td>
                 <td className="text-right px-3 py-2 tabular-nums">{fmt(totais.totalVt)}</td>
                 {usaVR && <td className="text-right px-3 py-2 tabular-nums">{fmt(totais.totalVr)}</td>}
-                {temAjuste && <td className="text-right px-3 py-2 tabular-nums">{fmt(totais.totalAjuste)}</td>}
+                {mostrarAjuste && <td className={`text-right px-3 py-2 tabular-nums ${totais.totalAjuste < 0 ? "text-rose-600 dark:text-rose-400" : totais.totalAjuste > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400"}`}>{totais.totalAjuste ? fmtSigned(totais.totalAjuste) : "—"}</td>}
                 <td className="text-right px-3 py-2 tabular-nums">{fmt(totais.totalGeral)}</td>
               </tr>
             </tfoot>
           )}
         </table>
       </div>
+
+      {/* Detalhamento dos descontos / créditos que entram neste pagamento */}
+      {detalheAjuste.length > 0 && (
+        <div className="mt-4">
+          <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">Detalhamento dos descontos / créditos</h3>
+          <div className="grid gap-2 sm:grid-cols-2">
+            {detalheAjuste.map((l, i) => {
+              const desc = l.diasDesconto || [], cred = l.diasCredito || [];
+              const aux = (l.ajusteAuxVt || 0) + (l.ajusteAuxVr || 0);
+              const neg = l.ajusteTotal < 0;
+              return (
+                <div key={l.empregadoId + "_" + i} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-900/30 p-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <div className="font-medium text-sm text-gray-900 dark:text-gray-100 flex items-center gap-1.5 flex-wrap">
+                        {l.empregadoNome}
+                        {l.demissao && <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded px-1.5 py-0.5">👋 demissão</span>}
+                      </div>
+                      <div className="text-[10px] text-gray-400">ref. {l.ref}</div>
+                    </div>
+                    <div className={`text-sm font-bold tabular-nums shrink-0 ${neg ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmtSigned(l.ajusteTotal)}</div>
+                  </div>
+                  <div className="mt-1.5 space-y-0.5 text-[12px] text-gray-600 dark:text-gray-300">
+                    {desc.length > 0 && <div>🔻 Descontados ({desc.length}d): {desc.map(brDate).join(", ")}</div>}
+                    {cred.length > 0 && <div>🔺 Adicionados (+{cred.length}d): {cred.map(brDate).join(", ")}</div>}
+                    {aux !== 0 && <div>💠 Auxílio proporcional{l.demissao ? " (÷30, rescisão)" : " (÷dias previstos)"}: {fmtSigned(aux)}</div>}
+                    {desc.length === 0 && cred.length === 0 && aux === 0 && <div className="text-gray-400">Sem diferença de dias.</div>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* Ações — bloqueadas até fazer o ajuste do mês anterior */}
       <div className="flex flex-wrap gap-2 mt-3 justify-end">
