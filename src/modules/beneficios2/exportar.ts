@@ -31,7 +31,11 @@ export function exportarCajuPag(linhas: BeneficioPagLinha[], empregados: Emprega
     // Ajuste (desconto/crédito do mês anterior) abate na Mobilidade (VT).
     const mobil = Math.max(0, Math.round((l.vtTotal + (l.ajuste || 0)) * 100) / 100);
     const refei = l.vrTotal;
-    if (mobil <= 0 && refei <= 0) continue;
+    // Caju não carrega R$ 0 nem valor negativo — pula, mas registra o motivo.
+    if (mobil <= 0 && refei <= 0) {
+      ignoradas.push({ nome: l.empregadoNome, motivo: l.total < 0 ? "valor líquido negativo (desconto maior que o benefício — recuperar em folha/rescisão)" : "valor líquido zero (nada a carregar)", total: l.total });
+      continue;
+    }
     const cpf = onlyDigits(empMap[l.empregadoId]?.cpf);
     if (cpf.length !== 11) { ignoradas.push({ nome: l.empregadoNome, motivo: "CPF inválido ou ausente", total: l.total }); continue; }
     const cols = new Array(NUM_COLUNAS).fill("0");

@@ -138,7 +138,7 @@ export function Beneficios2Page() {
   function exportarCaju() {
     const r = exportarCajuPag(linhas, empregados, slugify(rest?.nome || ""), ano, mes);
     baixarCsv(r.csv, r.filename);
-    if (r.ignoradas.length) alert(`${r.qtd} no CSV do Caju.\nFora (CPF inválido): ${r.ignoradas.map((x) => x.nome).join(", ")}`);
+    if (r.ignoradas.length) alert(`${r.qtd} pessoa(s) no CSV do Caju.\n\n${r.ignoradas.length} ficaram de fora:\n${r.ignoradas.map((x) => `• ${x.nome} — ${x.motivo}`).join("\n")}`);
   }
   function exportarPix() {
     const r = exportarPixPag(linhas, slugify(rest?.nome || ""), ano, mes);
