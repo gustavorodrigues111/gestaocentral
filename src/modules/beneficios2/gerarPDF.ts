@@ -47,30 +47,56 @@ export async function gerarPagamentoPDF(params: {
     columnStyles: colStyles,
   });
 
-  // ── Descritivo dos ajustes por empregado (dias descontados/adicionados) ──
+  // ── Descritivo dos ajustes por empregado — um BOX por empregado ──
   const linhasAjuste = ajustes.flatMap((a) => a.linhas.map((l) => ({ ...l, ref: `${nomeMes(a.mes)}/${a.ano}` })));
   if (linhasAjuste.length > 0) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    let y = (doc as any).lastAutoTable.finalY + 8;
+    let y = (doc as any).lastAutoTable.finalY + 10;
+    const pageH = doc.internal.pageSize.getHeight();
     doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(30, 41, 59);
     doc.text("Descontos / créditos — detalhe por empregado", M, y);
-    doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(60, 60, 60);
-    y += 5;
-    const pageH = doc.internal.pageSize.getHeight();
+    y += 6;
+
+    const boxW = pageW - 2 * M;
+    const padX = 3.5, lineH = 4, innerW = boxW - 2 * padX;
+    const headTop = 5.2, bodyTop = 10;   // offsets do topo do box até a baseline
+
     for (const l of linhasAjuste) {
-      if (y > pageH - 12) { doc.addPage(); y = 14; }
       const desc = (l.diasDesconto || []).map(brDate);
       const cred = (l.diasCredito || []).map(brDate);
       const partes: string[] = [];
-      if (desc.length) partes.push(`descontados ${desc.join(", ")} (−${desc.length}d)`);
-      if (cred.length) partes.push(`adicionados ${cred.join(", ")} (+${cred.length}d)`);
+      if (desc.length) partes.push(`Descontados (${desc.length}d): ${desc.join(", ")}`);
+      if (cred.length) partes.push(`Adicionados (+${cred.length}d): ${cred.join(", ")}`);
       const aux = (l.ajusteAuxVt || 0) + (l.ajusteAuxVr || 0);
-      if (aux) partes.push(`auxílio proporcional ${fmt(aux)}`);
-      const marca = l.demissao ? " [demissão — acerto do mês inteiro]" : "";
-      const txt = `${l.empregadoNome}${marca} — ref. ${l.ref}: ${partes.join("; ") || "sem diferença"} = ${fmt(l.ajusteTotal)}`;
-      const wrapped = doc.splitTextToSize(txt, pageW - 2 * M);
-      doc.text(wrapped, M, y);
-      y += wrapped.length * 4 + 1;
+      if (aux) partes.push(`Auxílio proporcional${l.demissao ? " (÷30, rescisão)" : " (÷dias previstos)"}: ${fmt(aux)}`);
+      if (partes.length === 0) partes.push("Sem diferença de dias.");
+
+      // Quebra de linha de cada parte dentro da largura do box.
+      const body: string[] = [];
+      for (const p of partes) body.push(...(doc.splitTextToSize(p, innerW) as string[]));
+      const boxH = bodyTop + body.length * lineH + 1;
+
+      if (y + boxH > pageH - 10) { doc.addPage(); y = 14; }
+
+      // Moldura
+      doc.setDrawColor(226, 232, 240); doc.setFillColor(248, 250, 252);
+      doc.roundedRect(M, y, boxW, boxH, 1.6, 1.6, "FD");
+
+      // Cabeçalho: nome (esq.) + total (dir., colorido)
+      const isDesc = l.ajusteTotal < 0;
+      doc.setFont("helvetica", "bold"); doc.setFontSize(9); doc.setTextColor(30, 41, 59);
+      const nome = l.empregadoNome + (l.demissao ? "  •  demissão (acerto do mês inteiro)" : "");
+      doc.text((doc.splitTextToSize(nome, innerW - 40) as string[])[0], M + padX, y + headTop);
+      const rgb: [number, number, number] = isDesc ? [190, 18, 60] : [4, 120, 87];
+      doc.setTextColor(rgb[0], rgb[1], rgb[2]);
+      doc.text(`${fmt(l.ajusteTotal)}  ·  ref. ${l.ref}`, M + boxW - padX, y + headTop, { align: "right" });
+
+      // Corpo
+      doc.setFont("helvetica", "normal"); doc.setFontSize(8); doc.setTextColor(71, 85, 105);
+      let by = y + bodyTop;
+      for (const bl of body) { doc.text(bl, M + padX, by); by += lineH; }
+
+      y += boxH + 3;
     }
   }
 
