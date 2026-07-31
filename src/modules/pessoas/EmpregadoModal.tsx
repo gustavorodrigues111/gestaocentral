@@ -92,8 +92,6 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   const [vtAuxilioFixoMensal, setVtAuxilioFixoMensal] = useState<string>(
     empregado?.vtAuxilioFixoMensal ? String(empregado.vtAuxilioFixoMensal) : ""
   );
-  // Default true (recebe via Caju). Só vira false se o user desmarcar.
-  const [vtRecebePeloCaju, setVtRecebePeloCaju] = useState(empregado?.vtRecebePeloCaju ?? true);
   // VR — só aparece se o restaurante tem "vr" em modulosAtivos
   const usaVR = !!restaurant?.modulosAtivos?.includes("vr");
   const [vrAtivo, setVrAtivo] = useState(empregado?.vrAtivo ?? false);
@@ -103,7 +101,6 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   const [vrAuxilioFixoMensal, setVrAuxilioFixoMensal] = useState<string>(
     empregado?.vrAuxilioFixoMensal ? String(empregado.vrAuxilioFixoMensal) : ""
   );
-  const [vrRecebePeloCaju, setVrRecebePeloCaju] = useState(empregado?.vrRecebePeloCaju ?? true);
   // Benefícios (módulo novo): VT valor diário único + forma de recebimento (Caju/Pix).
   const [vtValorDiario, setVtValorDiario] = useState<string>(
     empregado?.vtValorDiario != null ? String(empregado.vtValorDiario) : ""
@@ -223,13 +220,14 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
       if ((empregado.vrAuxilioFixoMensal ?? 0) !== novoVrAuxFixo) {
         nonCritical.vrAuxilioFixoMensal = novoVrAuxFixo;
       }
-      const novoVrRec = !!vrRecebePeloCaju;
+      // Flag legado do VR = derivado do seletor Caju/Pix (módulos antigos leem daqui).
+      const novoVrRec = formaBeneficio !== "pix";
       if ((empregado.vrRecebePeloCaju ?? true) !== novoVrRec) {
         nonCritical.vrRecebePeloCaju = novoVrRec;
       }
     }
-    // Flag vtRecebePeloCaju — só afeta o export do CSV pro Caju.
-    const novoVtRec = !!vtRecebePeloCaju;
+    // Flag legado do VT = derivado do seletor Caju/Pix (mantém VT/VR/Benefícios antigos funcionando).
+    const novoVtRec = formaBeneficio !== "pix";
     if ((empregado.vtRecebePeloCaju ?? true) !== novoVtRec) {
       nonCritical.vtRecebePeloCaju = novoVtRec;
     }
@@ -336,8 +334,8 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           ...((parseFloat(vtAuxilioFixoMensal) || 0) > 0 ? {
             vtAuxilioFixoMensal: parseFloat(vtAuxilioFixoMensal),
           } : {}),
-          // Só grava se for false (default = ausente = true = recebe via Caju)
-          ...(vtRecebePeloCaju === false ? { vtRecebePeloCaju: false } : {}),
+          // Flag legado (só grava se Pix; default ausente = Caju), derivado do seletor.
+          ...(formaBeneficio === "pix" ? { vtRecebePeloCaju: false } : {}),
           // Benefícios (novo): valor diário + forma de recebimento
           ...((parseFloat(vtValorDiario) || 0) > 0 ? { vtValorDiario: parseFloat(vtValorDiario) } : {}),
           ...(formaBeneficio === "pix" ? { formaBeneficio: "pix" as const, ...(chavePix.trim() ? { chavePix: chavePix.trim() } : {}) } : {}),
@@ -347,7 +345,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
             ...((parseFloat(vrAuxilioFixoMensal) || 0) > 0 ? {
               vrAuxilioFixoMensal: parseFloat(vrAuxilioFixoMensal),
             } : {}),
-            ...(vrRecebePeloCaju === false ? { vrRecebePeloCaju: false } : {}),
+            ...(formaBeneficio === "pix" ? { vrRecebePeloCaju: false } : {}),
           } : {}),
           email: pessoa?.email || null,
           telefone: pessoa?.whatsapp || null,
@@ -834,35 +832,22 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
             </p>
           </div>
 
-          {/* Flag "recebe pelo Caju" — default ON. Desmarcar exclui do CSV
-              mas mantém no lote (pagamento manual). */}
-          {(vtAtivo || (parseFloat(vtAuxilioFixoMensal) || 0) > 0) && (
-            <label className="flex items-start gap-2 text-sm cursor-pointer py-1">
-              <input
-                type="checkbox"
-                checked={vtRecebePeloCaju}
-                onChange={(e) => setVtRecebePeloCaju(e.target.checked)}
-                className="mt-0.5"
-              />
-              <span>
-                <span className="font-medium">Recebe VT pelo Caju</span>
-                <span className="block text-[11px] text-gray-500 dark:text-gray-400">
-                  Desmarque se essa pessoa recebe por PIX direto ou outro meio.
-                  Continua aparecendo no lote (você precisa pagar), mas fica fora do CSV exportado pro Caju.
-                </span>
-              </span>
-            </label>
-          )}
-
-          {/* Forma de recebimento (módulo novo de Benefícios): Caju ou Pix. */}
+          {/* Forma de recebimento: Caju ou Pix. Único controle — o "caju/pix" aqui
+              define se a pessoa entra no CSV do Caju ou na lista Pix (vale pra VT, VR
+              e auxílio). Pix = fora do CSV do Caju, entra na lista Pix. */}
           <div className="pt-1">
-            <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Forma de recebimento (Benefícios) · Caju/Pix</label>
+            <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Forma de recebimento · Caju ou Pix</label>
             <div className="flex gap-2 mt-1">
               {([["caju", "🟣 Caju"], ["pix", "⚡ Pix"]] as const).map(([v, lbl]) => (
                 <button key={v} type="button" onClick={() => setFormaBeneficio(v)}
                   className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${formaBeneficio === v ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300"}`}>{lbl}</button>
               ))}
             </div>
+            <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+              {formaBeneficio === "pix"
+                ? "Pix: fica fora do CSV do Caju e entra na lista Pix (VT, VR e auxílio). Continua no lote — você paga por Pix."
+                : "Caju: VT, VR e auxílio saem no CSV pro Caju."}
+            </p>
             {formaBeneficio === "pix" && (
               <Input label="Chave Pix" value={chavePix} onChange={(e) => setChavePix(e.target.value)} placeholder="CPF, e-mail, telefone ou aleatória" />
             )}
@@ -905,24 +890,6 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
                   Valor fixo mensal de VR (não proporcional). Opcional.
                 </p>
               </div>
-
-              {(vrAtivo || (parseFloat(vrAuxilioFixoMensal) || 0) > 0) && (
-                <label className="flex items-start gap-2 text-sm cursor-pointer py-1">
-                  <input
-                    type="checkbox"
-                    checked={vrRecebePeloCaju}
-                    onChange={(e) => setVrRecebePeloCaju(e.target.checked)}
-                    className="mt-0.5"
-                  />
-                  <span>
-                    <span className="font-medium">Recebe VR pelo Caju</span>
-                    <span className="block text-[11px] text-gray-500 dark:text-gray-400">
-                      Desmarque se recebe por PIX direto ou outro meio. Continua no lote,
-                      mas fica fora do CSV pro Caju.
-                    </span>
-                  </span>
-                </label>
-              )}
             </>
           )}
         </div>
