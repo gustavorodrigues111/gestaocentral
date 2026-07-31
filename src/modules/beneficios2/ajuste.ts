@@ -26,11 +26,14 @@ function diffDias(e: Empregado, escala: EscalaMes | null, ano: number, mes: numb
   return { desconto, credito };
 }
 
-// Último dia com lançamento EXPLÍCITO na praticada (escala.real[empId]).
+// Último dia REALMENTE apurado da praticada. A praticada nasce como cópia da
+// prevista (todos os dias), então NÃO dá pra usar escala.real. O sinal certo é
+// realAjustes[empId][date].origem === "solides_sync" — marca gravada quando o DP
+// FECHA o dia no Fechamento de Ponto (Análise de Ponto). Sem essa marca = aberto.
 export function ultimoDiaPraticada(escala: EscalaMes | null, empId: string): string | null {
-  const m = (escala?.real as Record<string, Record<string, unknown>> | undefined)?.[empId];
+  const m = (escala?.realAjustes as Record<string, Record<string, { origem?: string }>> | undefined)?.[empId];
   if (!m) return null;
-  const dias = Object.keys(m).filter((d) => m[d] !== undefined).sort();
+  const dias = Object.keys(m).filter((d) => m[d]?.origem === "solides_sync").sort();
   return dias.length ? dias[dias.length - 1] : null;
 }
 

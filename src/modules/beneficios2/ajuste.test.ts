@@ -7,9 +7,9 @@ function emp(id: string, nome: string, over: Partial<Empregado> = {}): Empregado
     periodos: [{ admissao: "2020-01-01", demissao: null, registradoEm: "2020-01-01", registradoPor: "x" }],
     ...over } as unknown as Empregado;
 }
-// Escala com prevista e praticada (real) explícitas por empregado.
-function escala(prevista: Record<string, Record<string, ScheduleStatus>>, real: Record<string, Record<string, ScheduleStatus>>): EscalaMes {
-  return { id: "r1_2026-07", restaurantId: "r1", ano: 2026, mes: 7, prevista, real, previstaFechadaEm: "2026-06-30" } as unknown as EscalaMes;
+// Escala com prevista, praticada (real) e realAjustes (marca de apuração) por empregado.
+function escala(prevista: Record<string, Record<string, ScheduleStatus>>, real: Record<string, Record<string, ScheduleStatus>>, realAjustes: Record<string, Record<string, { origem?: string }>> = {}): EscalaMes {
+  return { id: "r1_2026-07", restaurantId: "r1", ano: 2026, mes: 7, prevista, real, realAjustes, previstaFechadaEm: "2026-06-30" } as unknown as EscalaMes;
 }
 // Gera N dias "trabalho" começando no dia `ini`.
 function trabalho(ini: number, n: number): Record<string, ScheduleStatus> {
@@ -17,21 +17,28 @@ function trabalho(ini: number, n: number): Record<string, ScheduleStatus> {
   for (let i = 0; i < n; i++) d[`2026-07-${String(ini + i).padStart(2, "0")}`] = "trabalho";
   return d;
 }
+// Marca N dias como apurados (solides_sync) começando em `ini`.
+function apurado(ini: number, n: number): Record<string, { origem?: string }> {
+  const d: Record<string, { origem?: string }> = {};
+  for (let i = 0; i < n; i++) d[`2026-07-${String(ini + i).padStart(2, "0")}`] = { origem: "solides_sync" };
+  return d;
+}
 
 describe("ultimoDiaPraticada / apuracaoPraticada", () => {
-  it("último dia lançado na praticada", () => {
-    const esc = escala({}, { e1: trabalho(1, 10) });
+  it("último dia apurado (solides_sync), não a cópia da praticada", () => {
+    // real tem o mês todo (cópia), mas só 1-10 estão apurados
+    const esc = escala({}, { e1: trabalho(1, 31) }, { e1: apurado(1, 10) });
     expect(ultimoDiaPraticada(esc, "e1")).toBe("2026-07-10");
     expect(ultimoDiaPraticada(esc, "e2")).toBe(null);
   });
   it("sugere o mínimo entre todos e lista os pendentes", () => {
-    const esc = escala({}, { e1: trabalho(1, 30), e2: trabalho(1, 25) });
+    const esc = escala({}, {}, { e1: apurado(1, 30), e2: apurado(1, 25) });
     const info = apuracaoPraticada([emp("e1", "Ana"), emp("e2", "Bia")], esc, 2026, 7);
     expect(info.sugerido).toBe("2026-07-25");            // mínimo (Bia atrasa)
     expect(info.pendentes.map((p) => p.empregadoId)).toEqual(["e2"]);
   });
-  it("sem praticada de alguém → sem data sugerida, ele fica pendente", () => {
-    const esc = escala({}, { e1: trabalho(1, 30) });
+  it("sem apuração de alguém → sem data sugerida, ele fica pendente", () => {
+    const esc = escala({}, {}, { e1: apurado(1, 30) });
     const info = apuracaoPraticada([emp("e1", "Ana"), emp("e2", "Bia")], esc, 2026, 7);
     expect(info.sugerido).toBe(null);
     expect(info.pendentes.map((p) => p.empregadoId)).toContain("e2");
