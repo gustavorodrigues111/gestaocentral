@@ -90,11 +90,12 @@ export function AjustesTab(props: {
             <span className="text-[11px] text-gray-400">alvo: até ontem ({brDate(alvo)})</span>
           </div>
           {apur && apur.pendentes.length > 0 ? (
-            <div className="text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-2.5 py-2">
-              ⚠️ Para reconciliar até <b>{brDate(alvo)}</b>, falta o DP fechar o ponto de: {apur.pendentes.map((p) => `${p.nome}${p.ultimoDia ? ` (confirmado até ${brDate(p.ultimoDia)})` : " (sem nenhum dia confirmado)"}`).join(" · ")}. Os dias não confirmados aparecem sem diferença (usam a cópia da prevista) e entram quando o DP fechar.
+            <div className="text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-2.5 py-2 space-y-1">
+              <div>⚠️ O ajuste vai só até <b>{brDate(ate)}</b> porque o ponto ainda não foi fechado até <b>{brDate(alvo)}</b> para todos.</div>
+              <div>Falta o DP fechar o ponto de: {apur.pendentes.map((p) => `${p.nome}${p.ultimoDia ? ` (fechado até ${brDate(p.ultimoDia)})` : " (nenhum dia fechado)"}`).join(" · ")}. Depois que fechar, esses dias entram no próximo ajuste.</div>
             </div>
           ) : (
-            <div className="text-[12px] text-emerald-700 dark:text-emerald-300">✅ Ponto confirmado até {brDate(alvo)} para todos.</div>
+            <div className="text-[12px] text-emerald-700 dark:text-emerald-300">✅ Ponto fechado até {brDate(alvo)} para todos — pode reconciliar até aí.</div>
           )}
         </div>
       )}
