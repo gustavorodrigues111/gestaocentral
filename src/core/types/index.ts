@@ -1672,6 +1672,8 @@ export type BeneficioAjusteLinha = {
   ajusteVt: number;        // ajusteDias × vtValorDiario (negativo = desconto)
   ajusteVr: number;
   ajusteTotal: number;
+  diasDesconto?: string[]; // dias pagos mas não trabalhados (YYYY-MM-DD)
+  diasCredito?: string[];  // dias trabalhados além do previsto
 };
 export type BeneficioAjusteLote = {
   id: string;

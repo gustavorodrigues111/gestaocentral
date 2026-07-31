@@ -106,7 +106,13 @@ export function AjustesTab(props: {
                 <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">{l.empregadoNome}</td>
                 <td className="text-center px-2 py-2 text-gray-500">{l.diasPrevista}</td>
                 <td className="text-center px-2 py-2 text-gray-500">{l.diasPraticada}</td>
-                <td className={`text-center px-2 py-2 font-semibold ${l.ajusteDias < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>{l.ajusteDias > 0 ? `+${l.ajusteDias}` : l.ajusteDias}</td>
+                <td className={`text-center px-2 py-2 font-semibold cursor-help ${l.ajusteDias < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}
+                  title={[
+                    (l.diasDesconto && l.diasDesconto.length) ? `Descontar (não trabalhou): ${l.diasDesconto.map(brDate).join(", ")}` : "",
+                    (l.diasCredito && l.diasCredito.length) ? `Adicionar (trabalhou a mais): ${l.diasCredito.map(brDate).join(", ")}` : "",
+                  ].filter(Boolean).join("\n") || "Sem diferença de dias"}>
+                  {l.ajusteDias > 0 ? `+${l.ajusteDias}` : l.ajusteDias}
+                </td>
                 <td className={`text-right px-3 py-2 font-semibold tabular-nums ${l.ajusteTotal < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmt(l.ajusteTotal)}</td>
               </tr>
             ))}

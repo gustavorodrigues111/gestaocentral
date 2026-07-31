@@ -84,6 +84,16 @@ export function Beneficios2Page() {
   const totais = useMemo(() => totaisDoLote(linhas), [linhas]);
   const temAjuste = linhas.some((l) => (l.ajuste || 0) !== 0);
 
+  // Antes de pagar o mês M, é preciso ter feito o ajuste do mês M-1 (se ele foi pago).
+  const mesAnt = shiftMonth(ano, mes, -1);
+  const pagAnterior = useMemo(() => lotesTodos.find((l) => l.status === "pago" && l.ano === mesAnt.ano && l.mes === mesAnt.mes) || null, [lotesTodos, mesAnt.ano, mesAnt.mes]);
+  const ajustesAnterior = useMemo(() => pagAnterior ? ajustesTodos.filter((a) => a.pagamentoLoteId === pagAnterior.id && a.status !== "cancelado") : [], [pagAnterior, ajustesTodos]);
+  const precisaAjuste = !loteAtivo && !!pagAnterior && ajustesAnterior.length === 0;
+  // Ajustes que alimentam este pagamento (aplicados, se pago; pendentes, se prévia) — pro PDF detalhar por dia.
+  const ajustesDoPagamento = useMemo(() => loteAtivo
+    ? ajustesTodos.filter((a) => a.aplicadoNoPagamentoId === loteAtivo.id)
+    : ajustesTodos.filter((a) => a.status === "pendente" && !a.demissao), [loteAtivo, ajustesTodos]);
+
   function irMes(delta: number) { const { ano: a, mes: m } = shiftMonth(ano, mes, delta); setAno(a); setMes(m); }
 
   async function confirmarPagamento() {
@@ -170,6 +180,19 @@ export function Beneficios2Page() {
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 p-3 mb-3 text-sm text-gray-600 dark:text-gray-300">Prévia em cima da escala prevista (fechada). Confira e confirme.</div>
       )}
 
+      {/* Bloqueio: precisa fazer o ajuste do mês anterior antes de pagar este */}
+      {precisaAjuste && (
+        <div className="rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 p-3 mb-3 text-sm text-rose-800 dark:text-rose-200 flex items-center justify-between gap-2 flex-wrap">
+          <span>🛑 Falta fazer o <b>ajuste de {nomeMes(mesAnt.mes)}/{mesAnt.ano}</b> (praticada × prevista) antes de fechar este pagamento. Os descontos entram aqui.</span>
+          <button type="button" onClick={() => setAba("ajustes")} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700">Ir para Ajustes →</button>
+        </div>
+      )}
+      {!precisaAjuste && temAjuste && (
+        <div className="rounded-xl border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/20 p-3 mb-3 text-sm text-sky-800 dark:text-sky-200">
+          🔻 Este pagamento já inclui os <b>descontos/créditos do ajuste de {nomeMes(mesAnt.mes)}</b> (coluna Ajuste). Ao confirmar, os ajustes pendentes são aplicados.
+        </div>
+      )}
+
       {/* Tabela */}
       <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
@@ -221,13 +244,13 @@ export function Beneficios2Page() {
         </table>
       </div>
 
-      {/* Ações */}
+      {/* Ações — bloqueadas até fazer o ajuste do mês anterior */}
       <div className="flex flex-wrap gap-2 mt-3 justify-end">
-        {linhas.length > 0 && <Button variant="secondary" onClick={() => void gerarPagamentoPDF({ linhas, restaurantNome: rest?.nome || "", ano, mes, usaVR, totais })}>📄 Exportar PDF</Button>}
-        {linhas.length > 0 && <Button variant="secondary" onClick={exportarCaju}>🟣 Exportar Caju (CSV)</Button>}
-        {temPix && <Button variant="secondary" onClick={exportarPix}>⚡ Exportar Pix</Button>}
+        {linhas.length > 0 && !precisaAjuste && <Button variant="secondary" onClick={() => void gerarPagamentoPDF({ linhas, restaurantNome: rest?.nome || "", ano, mes, usaVR, totais, ajustes: ajustesDoPagamento })}>📄 Exportar PDF</Button>}
+        {linhas.length > 0 && !precisaAjuste && <Button variant="secondary" onClick={exportarCaju}>🟣 Exportar Caju (CSV)</Button>}
+        {temPix && !precisaAjuste && <Button variant="secondary" onClick={exportarPix}>⚡ Exportar Pix</Button>}
         {!loteAtivo && podeConfig && (
-          <Button onClick={() => void confirmarPagamento()} disabled={salvando || !previstaFechada || linhas.length === 0}>
+          <Button onClick={() => void confirmarPagamento()} disabled={salvando || !previstaFechada || linhas.length === 0 || precisaAjuste}>
             {salvando ? "Confirmando…" : "✅ Confirmar pagamento"}
           </Button>
         )}

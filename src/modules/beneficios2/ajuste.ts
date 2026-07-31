@@ -6,8 +6,25 @@
 // ════════════════════════════════════════════════════════════════════════════
 import type { Empregado, EscalaMes, BeneficioPagLote, BeneficioAjusteLote, BeneficioAjusteLinha } from "../../core/types";
 import { contarDiasTrabalhadosNoRange, round2 } from "../vt/calc";
+import { statusEfetivoEmpMes } from "../../core/escala/statusEfetivo";
 import { vtDiarioDe, ativoNoMes } from "./calc";
 import { pad2 } from "../../core/utils/date";
+
+const ehTrabalho = (s?: string) => s === "trabalho" || s === "comp_trab";
+// Dias em que prevista×praticada divergem na janela (pra tooltip).
+function diffDias(e: Empregado, escala: EscalaMes | null, ano: number, mes: number, de: string, ate: string): { desconto: string[]; credito: string[] } {
+  const prev = statusEfetivoEmpMes(e, escala, ano, mes, "prevista");
+  const prat = statusEfetivoEmpMes(e, escala, ano, mes, "real");
+  const desconto: string[] = [], credito: string[] = [];
+  const dias = new Set([...Object.keys(prev), ...Object.keys(prat)]);
+  for (const d of [...dias].sort()) {
+    if (d < de || d > ate) continue;
+    const p = ehTrabalho(prev[d]), r = ehTrabalho(prat[d]);
+    if (p && !r) desconto.push(d);      // pagou mas não trabalhou
+    else if (!p && r) credito.push(d);  // trabalhou a mais que o previsto
+  }
+  return { desconto, credito };
+}
 
 // Último dia com lançamento EXPLÍCITO na praticada (escala.real[empId]).
 export function ultimoDiaPraticada(escala: EscalaMes | null, empId: string): string | null {
@@ -66,11 +83,13 @@ export function montarLinhasAjuste(params: {
     const vrVd = usaVR ? (base.vrValorDiario || e.vrValorDiario || 0) : 0;
     const ajVt = base.vtAtivo ? round2(ajusteDias * vtVd) : 0;
     const ajVr = base.vrAtivo ? round2(ajusteDias * vrVd) : 0;
+    const dd = diffDias(e, escala, ano, mes, de, ate);
     linhas.push({
       empregadoId: e.id, empregadoNome: e.nome,
       diasPrevista: diasPrev, diasPraticada: diasPrat, ajusteDias,
       vtValorDiario: vtVd, vrValorDiario: vrVd,
       ajusteVt: ajVt, ajusteVr: ajVr, ajusteTotal: round2(ajVt + ajVr),
+      diasDesconto: dd.desconto, diasCredito: dd.credito,
     });
   }
   return linhas.sort((a, b) => a.empregadoNome.localeCompare(b.empregadoNome, "pt-BR"));
