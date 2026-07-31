@@ -104,6 +104,12 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
     empregado?.vrAuxilioFixoMensal ? String(empregado.vrAuxilioFixoMensal) : ""
   );
   const [vrRecebePeloCaju, setVrRecebePeloCaju] = useState(empregado?.vrRecebePeloCaju ?? true);
+  // Benefícios (módulo novo): VT valor diário único + forma de recebimento (Caju/Pix).
+  const [vtValorDiario, setVtValorDiario] = useState<string>(
+    empregado?.vtValorDiario != null ? String(empregado.vtValorDiario) : ""
+  );
+  const [formaBeneficio, setFormaBeneficio] = useState<"caju" | "pix">(empregado?.formaBeneficio ?? "caju");
+  const [chavePix, setChavePix] = useState<string>(empregado?.chavePix ?? "");
 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -227,6 +233,12 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
     if ((empregado.vtRecebePeloCaju ?? true) !== novoVtRec) {
       nonCritical.vtRecebePeloCaju = novoVtRec;
     }
+    // Benefícios (novo): VT valor diário + forma de recebimento (Caju/Pix).
+    const novoVtVd = parseFloat(vtValorDiario) || 0;
+    if ((empregado.vtValorDiario ?? 0) !== novoVtVd) nonCritical.vtValorDiario = novoVtVd || null;
+    if ((empregado.formaBeneficio ?? "caju") !== formaBeneficio) nonCritical.formaBeneficio = formaBeneficio;
+    const novaChave = chavePix.trim();
+    if ((empregado.chavePix ?? "") !== novaChave) nonCritical.chavePix = novaChave || null;
     return { criticas, nonCritical };
   }
 
@@ -326,6 +338,9 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           } : {}),
           // Só grava se for false (default = ausente = true = recebe via Caju)
           ...(vtRecebePeloCaju === false ? { vtRecebePeloCaju: false } : {}),
+          // Benefícios (novo): valor diário + forma de recebimento
+          ...((parseFloat(vtValorDiario) || 0) > 0 ? { vtValorDiario: parseFloat(vtValorDiario) } : {}),
+          ...(formaBeneficio === "pix" ? { formaBeneficio: "pix" as const, ...(chavePix.trim() ? { chavePix: chavePix.trim() } : {}) } : {}),
           ...(usaVR ? {
             vrAtivo: !!vrAtivo,
             ...(vrAtivo ? { vrValorDiario: parseFloat(vrValorDiario) } : {}),
@@ -790,6 +805,20 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
                 />
               </div>
             )}
+            {vtAtivo && (
+              <div className="mt-2">
+                <Input
+                  label="VT — valor diário (R$) · novo Benefícios"
+                  type="number" min="0" step="0.01"
+                  value={vtValorDiario}
+                  onChange={(e) => setVtValorDiario(e.target.value)}
+                  placeholder="ex: 10,00"
+                />
+                <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
+                  Valor por dia trabalhado usado no <b>módulo novo de Benefícios</b>. Se vazio, ele usa passagens/dia × valor da passagem.
+                </p>
+              </div>
+            )}
           </div>
           <div>
             <Input
@@ -824,6 +853,20 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
               </span>
             </label>
           )}
+
+          {/* Forma de recebimento (módulo novo de Benefícios): Caju ou Pix. */}
+          <div className="pt-1">
+            <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Forma de recebimento (Benefícios) · Caju/Pix</label>
+            <div className="flex gap-2 mt-1">
+              {([["caju", "🟣 Caju"], ["pix", "⚡ Pix"]] as const).map(([v, lbl]) => (
+                <button key={v} type="button" onClick={() => setFormaBeneficio(v)}
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${formaBeneficio === v ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300"}`}>{lbl}</button>
+              ))}
+            </div>
+            {formaBeneficio === "pix" && (
+              <Input label="Chave Pix" value={chavePix} onChange={(e) => setChavePix(e.target.value)} placeholder="CPF, e-mail, telefone ou aleatória" />
+            )}
+          </div>
 
           {/* VR — só aparece se o restaurante tem "vr" em modulosAtivos.
               Quibebe é o caso atual. Master ativa pelo painel /admin. */}
