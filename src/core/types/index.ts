@@ -71,7 +71,7 @@ export type ModuleId =
   // Rotinas — lembretes recorrentes de tarefas do sistema (fechar ponto etc.)
   | "rotinas"
   // Escritório
-  | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "beneficios" | "compras" | "recebimento" | "fechamentoCaixa" | "recursos" | "faleDp"
+  | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "beneficios" | "beneficios2" | "compras" | "recebimento" | "fechamentoCaixa" | "recursos" | "faleDp"
   | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "analise-ponto" | "admissao" | "processoSeletivo" | "sites" | "cardapio"
   | "uniformes"
   // Gestor de Tarefas + cadastros mestres

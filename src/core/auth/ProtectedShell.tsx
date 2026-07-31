@@ -24,6 +24,7 @@ import { GorjetasPage } from "../../modules/gorjetas/GorjetasPage";
 import { VTPage } from "../../modules/vt/VTPage";
 import { VRPage } from "../../modules/vr/VRPage";
 import { BeneficiosPage } from "../../modules/beneficios/BeneficiosPage";
+import { Beneficios2Page } from "../../modules/beneficios2/Beneficios2Page";
 import { ComunicadosPage } from "../../modules/comunicados/ComunicadosPage";
 import { IdeiasPage } from "../../modules/ideias/IdeiasPage";
 import { ReunioesPage } from "../../modules/reunioes/ReunioesPage";
@@ -89,6 +90,7 @@ function ModuleRouter() {
     case "vt":            return <VTPage key={k} />;
     case "vr":            return <VRPage key={k} />;
     case "beneficios":    return <BeneficiosPage key={k} />;
+    case "beneficios2":   return <Beneficios2Page key={k} />;
     case "comunicados":   return <ComunicadosPage key={k} />;
     case "ideias":        return <IdeiasPage key={k} />;
     case "reunioes":      return <ReunioesPage key={k} />;

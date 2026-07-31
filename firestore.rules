@@ -209,6 +209,7 @@ service cloud.firestore {
     match /vtLotes/{id}             { allow read, write: if authed(); }
     match /vrLotes/{id}             { allow read, write: if authed(); }
     match /beneficiosLotes/{id}     { allow read, write: if authed(); }
+    match /beneficioPagamentos/{id} { allow read, write: if authed(); }
     match /recebimentos/{id}        { allow read, write: if authed(); }
     match /fechamentosCaixa/{id}    { allow read, write: if authed(); }
     match /conciliacoesCaixa/{id}   { allow read, write: if authed(); }
