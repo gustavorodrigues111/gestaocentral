@@ -291,6 +291,18 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "beneficios2",
+    icon: "🎁",
+    label: "Benefícios",
+    desc: "Pagamento e ajuste de VT/VR + auxílios por valor diário (novo módulo, substitui VT/VR/Benefícios)",
+    area: "time",
+    acoes: [
+      { id: "receberAvisos", label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
+      { id: "ver",           label: "Ver pagamentos e ajustes de todos", sensivel: true },
+      { id: "configurar",    label: "Confirmar pagamento, fechar ajuste, exportar (Caju/Pix/PDF)", sensivel: true },
+    ],
+  },
+  {
     id: "vt",
     icon: "🚌",
     label: "VT (Vale Transporte)",

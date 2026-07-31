@@ -35,8 +35,10 @@ export function Beneficios2Page() {
   const usaVR = !!rest?.modulosAtivos?.includes("vr");
   const { can } = useCanAcao(rid);
   const isMaster = !!me?.isMaster;
-  const podeVer = isMaster || can("vt", "verTime") || can("vr", "ver") || can("vt", "configurar") || can("vr", "configurar");
-  const podeConfig = isMaster || can("vt", "configurar") || can("vr", "configurar");
+  // Permissão própria do módulo novo (beneficios2). Durante a transição, aceita
+  // também as permissões legadas de VT/VR — quem já liberava VT/VR não perde acesso.
+  const podeVer = isMaster || can("beneficios2", "ver") || can("beneficios2", "configurar") || can("vt", "verTime") || can("vr", "ver") || can("vt", "configurar") || can("vr", "configurar");
+  const podeConfig = isMaster || can("beneficios2", "configurar") || can("vt", "configurar") || can("vr", "configurar");
 
   const now = new Date();
   const [ano, setAno] = useState(now.getFullYear());
