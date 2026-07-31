@@ -30,9 +30,20 @@ export function AjustesTab(props: {
     return onSnapshot(doc(db, "escalas", `${rid}_${sel.ano}-${pad2(sel.mes)}`), (snap) => setEscala(snap.exists() ? ({ id: snap.id, ...snap.data() } as EscalaMes) : null));
   }, [rid, sel?.ano, sel?.mes]);
 
-  const apur = useMemo(() => sel ? apuracaoPraticada(empregados, escala, sel.ano, sel.mes) : null, [sel, empregados, escala]);
+  // Alvo = ontem (ou o fim do mês ajustado, o que vier antes). É até onde a gente
+  // quer reconciliar; as pendências dizem quem não está confirmado até lá.
+  const alvo = useMemo(() => {
+    if (!sel) return "";
+    const ontem = new Date(); ontem.setDate(ontem.getDate() - 1);
+    const fimMes = new Date(sel.ano, sel.mes, 0);
+    const d = ontem < fimMes ? ontem : fimMes;
+    return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+  }, [sel?.ano, sel?.mes]);
+  const apur = useMemo(() => sel ? apuracaoPraticada(empregados, escala, sel.ano, sel.mes, alvo) : null, [sel, empregados, escala, alvo]);
   const cursor = useMemo(() => sel ? proximaJanela(sel, ajustes) : null, [sel, ajustes]);
-  const ate = ateManual || apur?.sugerido || "";
+  // Padrão = último dia confirmado por TODOS (seguro). Se todos confirmados até
+  // ontem, cai no alvo. Editável: você pode forçar outra data.
+  const ate = ateManual || apur?.sugerido || alvo || "";
   const linhas = useMemo<BeneficioAjusteLinha[]>(() => {
     if (!sel || !cursor || !ate || ate < cursor.de) return [];
     return montarLinhasAjuste({ pagamento: sel, empregados, escala, ano: sel.ano, mes: sel.mes, de: cursor.de, ate, usaVR });
@@ -76,12 +87,14 @@ export function AjustesTab(props: {
             <span className="flex items-center gap-1.5">até
               <input type="date" value={ate} min={cursor.de} max={`${sel.ano}-${pad2(sel.mes)}-${pad2(new Date(sel.ano, sel.mes, 0).getDate())}`} onChange={(e) => setAteManual(e.target.value)} className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1 text-sm" />
             </span>
-            {apur?.sugerido && <span className="text-[11px] text-gray-400">sugestão: praticada de todos até {brDate(apur.sugerido)}</span>}
+            <span className="text-[11px] text-gray-400">alvo: até ontem ({brDate(alvo)})</span>
           </div>
-          {apur && apur.pendentes.length > 0 && (
+          {apur && apur.pendentes.length > 0 ? (
             <div className="text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-2.5 py-2">
-              ⚠️ Praticada pendente (peça pro DP fechar pra avançar a data): {apur.pendentes.map((p) => `${p.nome}${p.ultimoDia ? ` (até ${brDate(p.ultimoDia)})` : " (sem lançamento)"}`).join(" · ")}
+              ⚠️ Para reconciliar até <b>{brDate(alvo)}</b>, falta o DP fechar o ponto de: {apur.pendentes.map((p) => `${p.nome}${p.ultimoDia ? ` (confirmado até ${brDate(p.ultimoDia)})` : " (sem nenhum dia confirmado)"}`).join(" · ")}. Os dias não confirmados aparecem sem diferença (usam a cópia da prevista) e entram quando o DP fechar.
             </div>
+          ) : (
+            <div className="text-[12px] text-emerald-700 dark:text-emerald-300">✅ Ponto confirmado até {brDate(alvo)} para todos.</div>
           )}
         </div>
       )}

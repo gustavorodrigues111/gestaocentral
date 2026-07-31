@@ -38,21 +38,23 @@ export function ultimoDiaPraticada(escala: EscalaMes | null, empId: string): str
 }
 
 export type ApuracaoInfo = {
-  sugerido: string | null;                                              // até que dia TODOS estão apurados
+  sugerido: string | null;                                              // menor dia confirmado entre todos
   porEmpregado: { empregadoId: string; nome: string; ultimoDia: string | null }[];
-  pendentes: { empregadoId: string; nome: string; ultimoDia: string | null }[];  // atrasam o fechamento
+  pendentes: { empregadoId: string; nome: string; ultimoDia: string | null }[];  // não confirmados até o alvo
 };
 
-// Sugere a data "apurado até" (mínimo entre os empregados ativos) e lista pendentes.
-export function apuracaoPraticada(empregados: Empregado[], escala: EscalaMes | null, ano: number, mes: number): ApuracaoInfo {
+// Lista o dia confirmado de cada empregado e quem está pendente. `alvo` (ex.: ontem)
+// = a meta: pendentes são os que não estão confirmados até lá. Sem `alvo`, usa o
+// maior dia confirmado como referência.
+export function apuracaoPraticada(empregados: Empregado[], escala: EscalaMes | null, ano: number, mes: number, alvo?: string): ApuracaoInfo {
   const ativos = empregados.filter((e) => ativoNoMes(e, ano, mes) && (e.vtAtivo || e.vrAtivo));
   const porEmpregado = ativos.map((e) => ({ empregadoId: e.id, nome: e.nome, ultimoDia: ultimoDiaPraticada(escala, e.id) }));
   const dias = porEmpregado.map((p) => p.ultimoDia);
   const sugerido = dias.length > 0 && dias.every((d): d is string => !!d)
     ? dias.reduce((a, b) => (a! < b! ? a : b))!
     : null;
-  const maxDia = dias.filter((d): d is string => !!d).sort().pop() || null;
-  const pendentes = porEmpregado.filter((p) => !p.ultimoDia || (maxDia && p.ultimoDia < maxDia));
+  const ref = alvo || (dias.filter((d): d is string => !!d).sort().pop() || null);
+  const pendentes = porEmpregado.filter((p) => !p.ultimoDia || (ref && p.ultimoDia < ref));
   return { sugerido, porEmpregado, pendentes };
 }
 
