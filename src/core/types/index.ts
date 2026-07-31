@@ -1655,6 +1655,42 @@ export type BeneficioPagLote = {
   updatedAt?: string;
 };
 
+// ── Ajuste (prevista × praticada) — abate no Pagamento seguinte, nunca folha ──
+// "pendente" = fechado, aguardando ser aplicado num Pagamento. "aplicado" = já
+// abatido num pagamento. "cancelado" = descartado.
+export type BeneficioAjusteStatus = "pendente" | "aplicado" | "cancelado";
+export type BeneficioAjusteLinha = {
+  empregadoId: string;
+  empregadoNome: string;
+  diasPrevista: number;    // dias pagos na janela (prevista)
+  diasPraticada: number;   // dias trabalhados na janela (praticada)
+  ajusteDias: number;      // praticada − prevista (negativo = desconto; positivo = crédito)
+  vtValorDiario: number;
+  vrValorDiario: number;
+  ajusteVt: number;        // ajusteDias × vtValorDiario (negativo = desconto)
+  ajusteVr: number;
+  ajusteTotal: number;
+};
+export type BeneficioAjusteLote = {
+  id: string;
+  restaurantId: string;
+  ano: number;             // mês ajustado (o mesmo do pagamento base)
+  mes: number;
+  pagamentoLoteId: string; // lote de pagamento que serve de base
+  janelaDe: string;        // YYYY-MM-DD reconciliado (cursor+1)
+  janelaAte: string;       // até o dia apurado (todos os empregados)
+  status: BeneficioAjusteStatus;
+  linhas: BeneficioAjusteLinha[];
+  totalAjuste: number;     // soma dos ajusteTotal (negativo = desconto líquido)
+  demissao?: boolean;      // lote de acerto final de desligado
+  aplicadoNoPagamentoId?: string | null;   // pagamento que consumiu este ajuste
+  criadoEm: string;
+  criadoPor?: string | null;
+  criadoPorNome?: string | null;
+  aplicadoEm?: string | null;
+  canceladoEm?: string | null;
+};
+
 export const BENEFICIOS_LOTE_STATUS_LABEL: Record<BeneficiosLoteStatus, string> = {
   rascunho:  "Rascunho",
   pago:      "Pago",
