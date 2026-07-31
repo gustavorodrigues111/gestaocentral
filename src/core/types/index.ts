@@ -1674,6 +1674,7 @@ export type BeneficioAjusteLinha = {
   ajusteTotal: number;
   diasDesconto?: string[]; // dias pagos mas não trabalhados (YYYY-MM-DD)
   diasCredito?: string[];  // dias trabalhados além do previsto
+  demissao?: boolean;      // acerto final: empregado desligado no mês → reconcilia o período pago inteiro
 };
 export type BeneficioAjusteLote = {
   id: string;

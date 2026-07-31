@@ -43,6 +43,14 @@ describe("ultimoDiaPraticada / apuracaoPraticada", () => {
     expect(info.sugerido).toBe(null);
     expect(info.pendentes.map((p) => p.empregadoId)).toContain("e2");
   });
+  it("demitido não trava a apuração: fora das pendências e não puxa o cursor", () => {
+    // Bia demitida dia 02 (sem sync); Ana apurada até 30. Só a Ana vale pro cursor.
+    const bia = emp("e2", "Bia", { periodos: [{ admissao: "2020-01-01", demissao: "2026-07-02", registradoEm: "x", registradoPor: "x" }] });
+    const esc = escala({}, {}, { e1: apurado(1, 30) });
+    const info = apuracaoPraticada([emp("e1", "Ana"), bia], esc, 2026, 7, "2026-07-30");
+    expect(info.pendentes.map((p) => p.empregadoId)).not.toContain("e2");
+    expect(info.sugerido).toBe("2026-07-30");   // só a Ana; Bia não zera o cursor
+  });
 });
 
 describe("montarLinhasAjuste", () => {
@@ -78,6 +86,36 @@ describe("montarLinhasAjuste", () => {
   it("sem diferença → não gera linha", () => {
     const esc = escala({ e1: trabalho(1, 20) }, { e1: trabalho(1, 20) });
     const linhas = montarLinhasAjuste({ pagamento, empregados: [emp("e1", "Ana")], escala: esc, ano: 2026, mes: 7, de: "2026-07-01", ate: "2026-07-20", usaVR: false });
+    expect(linhas).toHaveLength(0);
+  });
+
+  it("demitido: acerto do mês PAGO inteiro, descontando tudo após a demissão", () => {
+    // Camila demitida dia 02 (último dia trabalhado = 01). Prevista+praticada = cópia
+    // do mês (trabalho 1-20), mas ela só esteve ativa no dia 01. Pago = 20 dias.
+    const camila = emp("e1", "Camila", { periodos: [{ admissao: "2020-01-01", demissao: "2026-07-02", registradoEm: "x", registradoPor: "x" }] });
+    const pg = { id: "pg1", restaurantId: "r1", ano: 2026, mes: 7, status: "pago",
+      linhas: [{ empregadoId: "e1", empregadoNome: "Camila", vtAtivo: true, vtValorDiario: 10, vrAtivo: false, vrValorDiario: 0, diasTrabalhados: 20 } as never],
+    } as unknown as BeneficioPagLote;
+    const esc = escala({ e1: trabalho(1, 20) }, { e1: trabalho(1, 20) });
+    // Janela apurada dos ATIVOS é curta (10-15); o demitido ignora isso e fecha o mês.
+    const linhas = montarLinhasAjuste({ pagamento: pg, empregados: [camila], escala: esc, ano: 2026, mes: 7, de: "2026-07-10", ate: "2026-07-15", usaVR: false });
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0].demissao).toBe(true);
+    expect(linhas[0].diasPrevista).toBe(20);        // dias pagos (frozen)
+    expect(linhas[0].diasPraticada).toBe(1);        // só o dia 01, ativo
+    expect(linhas[0].ajusteDias).toBe(-19);
+    expect(linhas[0].ajusteVt).toBe(-190);
+    expect(linhas[0].diasDesconto).toHaveLength(19);  // dias 02..20
+  });
+
+  it("demitido já acertado não gera nova linha (evita desconto em dobro)", () => {
+    const camila = emp("e1", "Camila", { periodos: [{ admissao: "2020-01-01", demissao: "2026-07-02", registradoEm: "x", registradoPor: "x" }] });
+    const pg = { id: "pg1", restaurantId: "r1", ano: 2026, mes: 7, status: "pago",
+      linhas: [{ empregadoId: "e1", empregadoNome: "Camila", vtAtivo: true, vtValorDiario: 10, vrAtivo: false, vrValorDiario: 0, diasTrabalhados: 20 } as never],
+    } as unknown as BeneficioPagLote;
+    const esc = escala({ e1: trabalho(1, 20) }, { e1: trabalho(1, 20) });
+    const anteriores = [{ pagamentoLoteId: "pg1", status: "pendente", linhas: [{ empregadoId: "e1", demissao: true, ajusteTotal: -190 }] }] as unknown as BeneficioAjusteLote[];
+    const linhas = montarLinhasAjuste({ pagamento: pg, empregados: [camila], escala: esc, ano: 2026, mes: 7, de: "2026-07-01", ate: "2026-07-31", usaVR: false, ajustesAnteriores: anteriores });
     expect(linhas).toHaveLength(0);
   });
 });

@@ -8,10 +8,36 @@ import type { Empregado, EscalaMes, BeneficioPagLote, BeneficioAjusteLote, Benef
 import { contarDiasTrabalhadosNoRange, round2 } from "../vt/calc";
 import { statusEfetivoEmpMes } from "../../core/escala/statusEfetivo";
 import { vtDiarioDe, ativoNoMes } from "./calc";
-import { pad2 } from "../../core/utils/date";
+import { empregadoAtivoEm } from "../../core/utils/empregado";
+import { daysInMonth, pad2 } from "../../core/utils/date";
 
 const ehTrabalho = (s?: string) => s === "trabalho" || s === "comp_trab";
-// Dias em que prevista×praticada divergem na janela (pra tooltip).
+const fimDoMes = (ano: number, mes: number) => `${ano}-${pad2(mes)}-${pad2(daysInMonth(ano, mes))}`;
+
+// Empregado DESLIGADO durante o mês do lote: esteve ativo em algum dia, mas não
+// no último. A demissão é definitiva — os dias pós-desligamento são conhecidos
+// (não trabalhou), não dependem do DP fechar o ponto. Por isso o acerto dele
+// reconcilia o PERÍODO PAGO INTEIRO, não a janela apurada dos ativos.
+function demitidoNoMes(e: Empregado, ano: number, mes: number): boolean {
+  return ativoNoMes(e, ano, mes) && !empregadoAtivoEm(e, fimDoMes(ano, mes));
+}
+
+// Dias efetivamente trabalhados na praticada, RESPEITANDO o desligamento: um dia
+// após a demissão nunca conta (a praticada nasce cópia da prevista, então sem
+// esse filtro um demitido apareceria "trabalhando" o mês todo).
+function contarPraticadaAtiva(e: Empregado, escala: EscalaMes | null, ano: number, mes: number, de: string, ate: string): number {
+  const dias = statusEfetivoEmpMes(e, escala, ano, mes, "real");
+  let n = 0;
+  for (const d of Object.keys(dias)) {
+    if (d < de || d > ate) continue;
+    if (!empregadoAtivoEm(e, d)) continue;   // pós-demissão = não trabalhou
+    if (ehTrabalho(dias[d])) n++;
+  }
+  return n;
+}
+
+// Dias em que prevista×praticada divergem na janela (pra tooltip). Praticada
+// respeita o desligamento (dia pós-demissão = não trabalhou).
 function diffDias(e: Empregado, escala: EscalaMes | null, ano: number, mes: number, de: string, ate: string): { desconto: string[]; credito: string[] } {
   const prev = statusEfetivoEmpMes(e, escala, ano, mes, "prevista");
   const prat = statusEfetivoEmpMes(e, escala, ano, mes, "real");
@@ -19,7 +45,7 @@ function diffDias(e: Empregado, escala: EscalaMes | null, ano: number, mes: numb
   const dias = new Set([...Object.keys(prev), ...Object.keys(prat)]);
   for (const d of [...dias].sort()) {
     if (d < de || d > ate) continue;
-    const p = ehTrabalho(prev[d]), r = ehTrabalho(prat[d]);
+    const p = ehTrabalho(prev[d]), r = empregadoAtivoEm(e, d) && ehTrabalho(prat[d]);
     if (p && !r) desconto.push(d);      // pagou mas não trabalhou
     else if (!p && r) credito.push(d);  // trabalhou a mais que o previsto
   }
@@ -39,22 +65,25 @@ export function ultimoDiaPraticada(escala: EscalaMes | null, empId: string): str
 
 export type ApuracaoInfo = {
   sugerido: string | null;                                              // menor dia confirmado entre todos
-  porEmpregado: { empregadoId: string; nome: string; ultimoDia: string | null }[];
+  porEmpregado: { empregadoId: string; nome: string; ultimoDia: string | null; demitido: boolean }[];
   pendentes: { empregadoId: string; nome: string; ultimoDia: string | null }[];  // não confirmados até o alvo
 };
 
 // Lista o dia confirmado de cada empregado e quem está pendente. `alvo` (ex.: ontem)
 // = a meta: pendentes são os que não estão confirmados até lá. Sem `alvo`, usa o
-// maior dia confirmado como referência.
+// maior dia confirmado como referência. DEMITIDOS não entram no cálculo do cursor
+// nem nas pendências — a demissão já é a confirmação, o acerto deles fecha o mês
+// pago inteiro independentemente do DP.
 export function apuracaoPraticada(empregados: Empregado[], escala: EscalaMes | null, ano: number, mes: number, alvo?: string): ApuracaoInfo {
   const ativos = empregados.filter((e) => ativoNoMes(e, ano, mes) && (e.vtAtivo || e.vrAtivo));
-  const porEmpregado = ativos.map((e) => ({ empregadoId: e.id, nome: e.nome, ultimoDia: ultimoDiaPraticada(escala, e.id) }));
-  const dias = porEmpregado.map((p) => p.ultimoDia);
+  const porEmpregado = ativos.map((e) => ({ empregadoId: e.id, nome: e.nome, ultimoDia: ultimoDiaPraticada(escala, e.id), demitido: demitidoNoMes(e, ano, mes) }));
+  const emAberto = porEmpregado.filter((p) => !p.demitido);
+  const dias = emAberto.map((p) => p.ultimoDia);
   const sugerido = dias.length > 0 && dias.every((d): d is string => !!d)
     ? dias.reduce((a, b) => (a! < b! ? a : b))!
     : null;
   const ref = alvo || (dias.filter((d): d is string => !!d).sort().pop() || null);
-  const pendentes = porEmpregado.filter((p) => !p.ultimoDia || (ref && p.ultimoDia < ref));
+  const pendentes = emAberto.filter((p) => !p.ultimoDia || (ref && p.ultimoDia < ref));
   return { sugerido, porEmpregado, pendentes };
 }
 
@@ -70,31 +99,49 @@ export function proximaJanela(pagamento: BeneficioPagLote, ajustes: BeneficioAju
 }
 
 // Monta as linhas do ajuste na janela [de, ate] usando o lote de pagamento como base.
+// Empregado ATIVO: reconcilia só a janela apurada [de, ate] (prevista×praticada).
+// Empregado DEMITIDO no mês: acerto final — reconcilia o mês PAGO inteiro
+// (dias pagos frozen × dias realmente trabalhados até o desligamento), uma única
+// vez (`ajustesAnteriores` evita repetir quem já teve acerto neste pagamento).
 export function montarLinhasAjuste(params: {
   pagamento: BeneficioPagLote; empregados: Empregado[]; escala: EscalaMes | null;
   ano: number; mes: number; de: string; ate: string; usaVR: boolean;
+  ajustesAnteriores?: BeneficioAjusteLote[];
 }): BeneficioAjusteLinha[] {
-  const { pagamento, empregados, escala, ano, mes, de, ate, usaVR } = params;
+  const { pagamento, empregados, escala, ano, mes, de, ate, usaVR, ajustesAnteriores = [] } = params;
   const empById = new Map(empregados.map((e) => [e.id, e]));
+  const mesDe = `${ano}-${pad2(mes)}-01`, mesAte = fimDoMes(ano, mes);
+  // Quem já tem acerto (não cancelado) neste pagamento — pra não reconciliar 2×.
+  const jaAjustado = new Set<string>();
+  for (const a of ajustesAnteriores) {
+    if (a.pagamentoLoteId !== pagamento.id || a.status === "cancelado") continue;
+    for (const l of a.linhas) jaAjustado.add(l.empregadoId);
+  }
   const linhas: BeneficioAjusteLinha[] = [];
   for (const base of pagamento.linhas) {
     const e = empById.get(base.empregadoId);
     if (!e) continue;
-    const diasPrev = contarDiasTrabalhadosNoRange(e, escala, ano, mes, de, ate, "prevista").dias;
-    const diasPrat = contarDiasTrabalhadosNoRange(e, escala, ano, mes, de, ate, "real").dias;
+    const demitido = demitidoNoMes(e, ano, mes);
+    if (demitido && jaAjustado.has(e.id)) continue;   // acerto final já feito
+    // Demitido: mês pago inteiro; base = dias PAGOS (frozen), imune a edição da prevista.
+    const deEmp = demitido ? mesDe : de;
+    const ateEmp = demitido ? mesAte : ate;
+    const diasPrev = demitido ? base.diasTrabalhados : contarDiasTrabalhadosNoRange(e, escala, ano, mes, de, ate, "prevista").dias;
+    const diasPrat = contarPraticadaAtiva(e, escala, ano, mes, deEmp, ateEmp);
     const ajusteDias = diasPrat - diasPrev;   // negativo = trabalhou menos que o pago = desconto
     if (ajusteDias === 0) continue;
     const vtVd = base.vtValorDiario || vtDiarioDe(e);
     const vrVd = usaVR ? (base.vrValorDiario || e.vrValorDiario || 0) : 0;
     const ajVt = base.vtAtivo ? round2(ajusteDias * vtVd) : 0;
     const ajVr = base.vrAtivo ? round2(ajusteDias * vrVd) : 0;
-    const dd = diffDias(e, escala, ano, mes, de, ate);
+    const dd = diffDias(e, escala, ano, mes, deEmp, ateEmp);
     linhas.push({
       empregadoId: e.id, empregadoNome: e.nome,
       diasPrevista: diasPrev, diasPraticada: diasPrat, ajusteDias,
       vtValorDiario: vtVd, vrValorDiario: vrVd,
       ajusteVt: ajVt, ajusteVr: ajVr, ajusteTotal: round2(ajVt + ajVr),
       diasDesconto: dd.desconto, diasCredito: dd.credito,
+      ...(demitido ? { demissao: true } : {}),
     });
   }
   return linhas.sort((a, b) => a.empregadoNome.localeCompare(b.empregadoNome, "pt-BR"));

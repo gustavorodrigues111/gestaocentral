@@ -46,8 +46,8 @@ export function AjustesTab(props: {
   const ate = ateManual || apur?.sugerido || alvo || "";
   const linhas = useMemo<BeneficioAjusteLinha[]>(() => {
     if (!sel || !cursor || !ate || ate < cursor.de) return [];
-    return montarLinhasAjuste({ pagamento: sel, empregados, escala, ano: sel.ano, mes: sel.mes, de: cursor.de, ate, usaVR });
-  }, [sel, cursor, ate, empregados, escala, usaVR]);
+    return montarLinhasAjuste({ pagamento: sel, empregados, escala, ano: sel.ano, mes: sel.mes, de: cursor.de, ate, usaVR, ajustesAnteriores: ajustes });
+  }, [sel, cursor, ate, empregados, escala, usaVR, ajustes]);
   const total = totalAjuste(linhas);
   const ajustesDoLote = useMemo(() => sel ? ajustes.filter((a) => a.pagamentoLoteId === sel.id).sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || "")) : [], [sel, ajustes]);
 
@@ -117,7 +117,10 @@ export function AjustesTab(props: {
               <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">Nenhuma diferença nesta janela.</td></tr>
             ) : linhas.map((l) => (
               <tr key={l.empregadoId} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">{l.empregadoNome}</td>
+                <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
+                  {l.empregadoNome}
+                  {l.demissao && <span className="ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded px-1.5 py-0.5">👋 demitido · acerto do mês inteiro</span>}
+                </td>
                 <td className="text-center px-2 py-2 text-gray-500">{l.diasPrevista}</td>
                 <td className="text-center px-2 py-2 text-gray-500">{l.diasPraticada}</td>
                 <td className={`text-center px-2 py-2 font-semibold cursor-help ${l.ajusteDias < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}
