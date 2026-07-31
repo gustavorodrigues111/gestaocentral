@@ -4,7 +4,7 @@
 //  Carrega sozinho ao trocar o mês; exige a prevista fechada pra confirmar.
 //  Exporta Caju (CSV) e Pix (lista) separados. Lote congelado = histórico.
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -37,24 +37,37 @@ export function Beneficios2Page() {
   const now = new Date();
   const [ano, setAno] = useState(now.getFullYear());
   const [mes, setMes] = useState(now.getMonth() + 1);
+  const [aba, setAba] = useState<"pagamento" | "historico">("pagamento");
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [escala, setEscala] = useState<EscalaMes | null>(null);
-  const [lotes, setLotes] = useState<BeneficioPagLote[]>([]);
+  const [lotesTodos, setLotesTodos] = useState<BeneficioPagLote[]>([]);
   const [salvando, setSalvando] = useState(false);
+  const iniciadoRef = useRef(false);   // abre no próximo mês a pagar só 1×
 
   useEffect(() => { if (!rid) return; return onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)), (s) => setEmpregados(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado))); }, [rid]);
   useEffect(() => { if (!rid) return; return onSnapshot(query(collection(db, "cargos"), where("restaurantId", "==", rid)), (s) => setCargos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo))); }, [rid]);
   useEffect(() => { if (!rid) return; return onSnapshot(doc(db, "escalas", `${rid}_${ano}-${pad2(mes)}`), (snap) => setEscala(snap.exists() ? ({ id: snap.id, ...snap.data() } as EscalaMes) : null)); }, [rid, ano, mes]);
   useEffect(() => {
     if (!rid) return;
-    return onSnapshot(query(collection(db, "beneficioPagamentos"), where("restaurantId", "==", rid), where("ano", "==", ano), where("mes", "==", mes)),
-      (s) => { const l = s.docs.map((d) => ({ id: d.id, ...d.data() }) as BeneficioPagLote); l.sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || "")); setLotes(l); },
-      () => setLotes([]));
-  }, [rid, ano, mes]);
+    return onSnapshot(query(collection(db, "beneficioPagamentos"), where("restaurantId", "==", rid)),
+      (s) => setLotesTodos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as BeneficioPagLote)),
+      () => setLotesTodos([]));
+  }, [rid]);
 
+  // Meses já PAGOS (histórico) e o próximo mês a pagar.
+  const pagos = useMemo(() => lotesTodos.filter((l) => l.status === "pago").sort((a, b) => (b.ano * 12 + b.mes) - (a.ano * 12 + a.mes)), [lotesTodos]);
+  useEffect(() => {
+    if (iniciadoRef.current || !rid) return;
+    if (lotesTodos.length === 0 && empregados.length === 0) return;   // espera dados
+    iniciadoRef.current = true;
+    if (pagos.length > 0) { const p = shiftMonth(pagos[0].ano, pagos[0].mes, 1); setAno(p.ano); setMes(p.mes); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rid, lotesTodos, empregados]);
+
+  const lotesDoMes = useMemo(() => lotesTodos.filter((l) => l.ano === ano && l.mes === mes).sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || "")), [lotesTodos, ano, mes]);
   const previstaFechada = !!(escala && (escala as { previstaFechadaEm?: string | null }).previstaFechadaEm);
-  const loteAtivo = useMemo(() => lotes.find((l) => l.status !== "cancelado") || null, [lotes]);
+  const loteAtivo = useMemo(() => lotesDoMes.find((l) => l.status !== "cancelado") || null, [lotesDoMes]);
   const preview = useMemo<BeneficioPagLinha[]>(() => loteAtivo ? [] : montarLinhasPagamento(empregados, cargos, escala, ano, mes, usaVR), [loteAtivo, empregados, cargos, escala, ano, mes, usaVR]);
   const linhas = loteAtivo ? loteAtivo.linhas : preview;
   const totais = useMemo(() => totaisDoLote(linhas), [linhas]);
@@ -109,13 +122,23 @@ export function Beneficios2Page() {
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">🎁 Benefícios <span className="text-[10px] align-middle px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">novo</span></h1>
           <p className="text-xs text-gray-500">{rest?.nome} · Pagamento (escala prevista)</p>
         </div>
-        <div className="flex items-center gap-1">
-          <button type="button" onClick={() => irMes(-1)} className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300">◀</button>
-          <div className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-sm font-semibold text-gray-800 dark:text-gray-100 min-w-[130px] text-center">{nomeMes(mes)} {ano}</div>
-          <button type="button" onClick={() => irMes(1)} className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300">▶</button>
-        </div>
+        {aba === "pagamento" && (
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => irMes(-1)} className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300">◀</button>
+            <div className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-sm font-semibold text-gray-800 dark:text-gray-100 min-w-[130px] text-center">{nomeMes(mes)} {ano}</div>
+            <button type="button" onClick={() => irMes(1)} className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300">▶</button>
+          </div>
+        )}
       </header>
 
+      {/* Abas */}
+      <div className="flex gap-1 mb-3 border-b border-gray-200 dark:border-gray-800">
+        {([["pagamento", "Pagamento"], ["historico", `Histórico${pagos.length ? ` (${pagos.length})` : ""}`]] as const).map(([v, l]) => (
+          <button key={v} type="button" onClick={() => setAba(v)} className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${aba === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
+        ))}
+      </div>
+
+      {aba === "pagamento" && (<>
       {/* Status da prevista + do lote */}
       {loteAtivo ? (
         <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3 mb-3 text-sm text-emerald-800 dark:text-emerald-200 flex items-center justify-between gap-2 flex-wrap">
@@ -189,22 +212,28 @@ export function Beneficios2Page() {
           </Button>
         )}
       </div>
+      </>)}
 
-      {/* Histórico */}
-      {lotes.length > 0 && (
-        <div className="mt-6">
-          <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">Histórico deste mês</h3>
-          <div className="space-y-1">
-            {lotes.map((l) => (
-              <div key={l.id} className="text-xs flex items-center justify-between gap-2 rounded-lg border border-gray-100 dark:border-gray-800 px-3 py-2">
-                <span className={l.status === "cancelado" ? "text-gray-400 line-through" : "text-gray-700 dark:text-gray-200"}>
-                  {l.status === "cancelado" ? "🚫 Cancelado" : "✅ Pago"} · {new Date(l.criadoEm).toLocaleString("pt-BR")}
-                </span>
-                <span className="tabular-nums text-gray-600 dark:text-gray-300">{fmt(l.totalGeral)}</span>
-              </div>
+      {aba === "historico" && (
+        pagos.length === 0 ? (
+          <div className="mx-auto mt-2 rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">Nenhum mês pago ainda. Confirme um pagamento na aba Pagamento.</div>
+        ) : (
+          <div className="space-y-2">
+            {pagos.map((l) => (
+              <button key={l.id} type="button" onClick={() => { setAno(l.ano); setMes(l.mes); setAba("pagamento"); }}
+                className="w-full text-left flex items-center justify-between gap-3 rounded-xl border border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40 px-4 py-3">
+                <div>
+                  <div className="font-semibold text-gray-900 dark:text-gray-100">{nomeMes(l.mes)} {l.ano}</div>
+                  <div className="text-[11px] text-gray-400">Pago em {new Date(l.pagoEm || l.criadoEm).toLocaleDateString("pt-BR")} · VT {fmt(l.totalVt)}{usaVR ? ` · VR ${fmt(l.totalVr)}` : ""}</div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="font-bold tabular-nums text-gray-800 dark:text-gray-100">{fmt(l.totalGeral)}</div>
+                  <div className="text-[11px] text-emerald-600 dark:text-emerald-300">Ver →</div>
+                </div>
+              </button>
             ))}
           </div>
-        </div>
+        )
       )}
     </div>
   );
