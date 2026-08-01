@@ -17,6 +17,7 @@ import { nomeMes, pad2, shiftMonth } from "../../core/utils/date";
 import { montarLinhasPagamento, totaisDoLote } from "./calc";
 import { ajustePorEmpregadoPendente } from "./ajuste";
 import { AjustesTab } from "./AjustesTab";
+import { AplicarHorarios } from "./AplicarHorarios";   // ⚠️ provisório — remover depois
 import { exportarCajuPag, exportarPixPag, baixarCsv } from "./exportar";
 import { gerarPagamentoPDF } from "./gerarPDF";
 import type { Cargo, Empregado, EscalaMes, BeneficioPagLote, BeneficioPagLinha, BeneficioAjusteLote } from "../../core/types";
@@ -202,6 +203,10 @@ export function Beneficios2Page() {
       </div>
 
       {aba === "pagamento" && (<>
+      {/* ⚠️ PROVISÓRIO — aplicar horários novos do Lobozó (vigência 01/09). Remover depois. */}
+      {isMaster && /lobo/i.test(rest?.nome || "") && (
+        <AplicarHorarios empregados={empregados} me={me} />
+      )}
       {/* Pagamento cancelado por engano → oferecer reativar (restaura o que foi pago) */}
       {!loteAtivo && loteCancelado && podeConfig && (
         <div className="rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 mb-3 text-sm text-amber-800 dark:text-amber-200 flex items-center justify-between gap-2 flex-wrap">
