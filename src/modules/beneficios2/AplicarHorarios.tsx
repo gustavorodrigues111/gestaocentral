@@ -1,7 +1,7 @@
-// ⚠️ PROVISÓRIO — botão pra aplicar os horários novos do Lobozó (vigência 01/09).
-// Acrescenta um WorkSchedule novo (não apaga o antigo, que vale até 31/08).
-// Vigência 01/09 de propósito: NÃO mexe em agosto (a escala de agosto já está na
-// praticada, e a prevista de agosto é a base do VT pago). REMOVER após uso.
+// ⚠️ PROVISÓRIO — botão pra aplicar os horários novos do Lobozó (vigência 05/08).
+// Acrescenta um WorkSchedule novo (não apaga o antigo, que vale até 04/08).
+// Vigência 05/08: passa a valer do dia 5 (o usuário já capturou os valores do
+// ajuste de VT de agosto, então mexer na prevista derivada não afeta). REMOVER após uso.
 import { useMemo, useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -10,7 +10,8 @@ import { Button } from "../../core/ui/Button";
 import { calcDayHours } from "../../core/escala/horarios";
 import type { Empregado, HorarioDia, SundayCycle, WorkSchedule, Pessoa } from "../../core/types";
 
-const VALID_FROM = "2026-09-01";
+const VALID_FROM = "2026-08-05";
+const VF_BR = VALID_FROM.split("-").reverse().slice(0, 2).join("/");
 const norm = (s: string) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/\s+/g, " ").trim();
 const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 
@@ -55,7 +56,7 @@ export function AplicarHorarios({ empregados, me }: { empregados: Empregado[]; m
 
   async function aplicar() {
     if (semMatch.length && !confirm(`${semMatch.length} não encontrado(s): ${semMatch.map((l) => l.h.nome).join(", ")}.\nAplicar só os encontrados?`)) return;
-    if (!confirm(`Gravar horário novo (vigência ${VALID_FROM.split("-").reverse().join("/")}) para ${linhas.length - semMatch.length} pessoa(s)? O horário antigo continua valendo até 31/08.`)) return;
+    if (!confirm(`Gravar horário novo (vigência ${VALID_FROM.split("-").reverse().join("/")}) para ${linhas.length - semMatch.length} pessoa(s)? O horário antigo continua valendo até o dia anterior.`)) return;
     setSalvando(true);
     let n = 0;
     try {
@@ -79,13 +80,13 @@ export function AplicarHorarios({ empregados, me }: { empregados: Empregado[]; m
   return (
     <div className="mb-3 rounded-xl border border-sky-300 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-900/20">
       <button type="button" onClick={() => setAberto((v) => !v)} className="w-full flex items-center justify-between px-3 py-2 text-sm font-semibold text-sky-800 dark:text-sky-200">
-        <span>🕐 Provisório · aplicar horários novos do Lobozó (vigência 01/09)</span>
+        <span>🕐 Provisório · aplicar horários novos do Lobozó (vigência {VF_BR})</span>
         <span>{aberto ? "▲" : "▼"}</span>
       </button>
       {aberto && (
         <div className="px-3 pb-3 space-y-2">
           <p className="text-[12px] text-sky-800/80 dark:text-sky-200/80">
-            Acrescenta o horário novo com vigência <b>01/09</b> (o antigo vale até 31/08). Vigência 01/09 de propósito: não mexe em agosto, pra não bagunçar o ajuste de VT. Confira antes:
+            Acrescenta o horário novo com vigência <b>{VF_BR}</b> (o antigo vale até o dia anterior). Passa a valer do dia 5. Confira antes:
           </p>
           <div className="overflow-x-auto rounded-lg border border-sky-200 dark:border-sky-800 bg-white dark:bg-gray-900">
             <table className="w-full text-[12px]">
@@ -105,9 +106,9 @@ export function AplicarHorarios({ empregados, me }: { empregados: Empregado[]; m
             </table>
           </div>
           {feito > 0 ? (
-            <div className="text-sm text-emerald-700 dark:text-emerald-300">✅ Horários gravados para {feito} pessoa(s). Setembro em diante já sai com a grade nova.</div>
+            <div className="text-sm text-emerald-700 dark:text-emerald-300">✅ Horários gravados para {feito} pessoa(s). Do dia {VF_BR} em diante já sai com a grade nova.</div>
           ) : (
-            <Button onClick={() => void aplicar()} disabled={salvando}>{salvando ? "Gravando…" : "Aplicar horários (vigência 01/09)"}</Button>
+            <Button onClick={() => void aplicar()} disabled={salvando}>{salvando ? "Gravando…" : `Aplicar horários (vigência ${VF_BR})`}</Button>
           )}
         </div>
       )}

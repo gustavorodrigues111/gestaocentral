@@ -203,7 +203,7 @@ export function Beneficios2Page() {
       </div>
 
       {aba === "pagamento" && (<>
-      {/* ⚠️ PROVISÓRIO — aplicar horários novos do Lobozó (vigência 01/09). Remover depois. */}
+      {/* ⚠️ PROVISÓRIO — aplicar horários novos do Lobozó (vigência 05/08). Remover depois. */}
       {isMaster && /lobo/i.test(rest?.nome || "") && (
         <AplicarHorarios empregados={empregados} me={me} />
       )}
