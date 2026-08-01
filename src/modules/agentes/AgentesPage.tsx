@@ -72,7 +72,7 @@ export function AgentesPage() {
             <div className="flex gap-1.5">
               <Button size="sm" variant="secondary" onClick={() => novo("dp")}>🧑‍💼 Novo DP</Button>
               <Button size="sm" variant="secondary" onClick={() => novo("financeiro")}>💰 Novo Financeiro</Button>
-              <Button size="sm" variant="secondary" onClick={() => novo("cardapio")}>🍽️ Nova Skill Cardápio</Button>
+              <Button size="sm" variant="secondary" onClick={() => novo("cardapio")}>🍽️ Novo Cardápio</Button>
             </div>
           </div>
 

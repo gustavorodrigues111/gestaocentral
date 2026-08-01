@@ -162,6 +162,8 @@ service cloud.firestore {
     match /pontoRascunhos/{id}      { allow read, write: if authed(); }
     match /escalasNomeadas/{id}     { allow read, write: if authed(); }
     match /sundaySwaps/{id}         { allow read, write: if authed(); }
+    match /cardapioEstado/{id}      { allow read, write: if authed(); }
+    match /cardapioVersoes/{id}     { allow read, write: if authed(); }
     match /freelaShifts/{id}        { allow read, write: if authed(); }
     match /freelaPagamentos/{id}    { allow read, write: if authed(); }
     match /freelaMensalistaConfirmado/{id} { allow read, write: if authed(); }
