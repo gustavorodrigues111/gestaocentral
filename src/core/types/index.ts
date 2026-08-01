@@ -6238,7 +6238,7 @@ export type CartaoLancamento = {
 export type AgenteIA = {
   id: string;
   nome: string;
-  tipo: "dp" | "financeiro";
+  tipo: "dp" | "financeiro" | "cardapio";
   descricao?: string;
   systemPrompt?: string;                     // editável; default vem do catálogo
   tools: Record<string, boolean>;            // key da ferramenta → habilitada

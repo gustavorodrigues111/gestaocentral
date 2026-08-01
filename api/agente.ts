@@ -6,7 +6,8 @@
 //  Exige usuário logado (Firebase ID token). Chave em ANTHROPIC_API_KEY.
 // ════════════════════════════════════════════════════════════════════════════
 import { requireUser, AuthError } from "./_auth.js";
-import { firestoreListar, firestoreCriar } from "./_firestoreRest.js";
+import { firestoreListar, firestoreCriar, firestoreLer, firestoreAtualizar } from "./_firestoreRest.js";
+import { CARDAPIO_SEED, type CardapioEstado, type CardapioSecao, type CardapioItem } from "./_cardapioSeed.js";
 
 export const config = { maxDuration: 60 };
 
@@ -35,6 +36,105 @@ const READ_TOOLS: Record<string, { desc: string; cols: string[] }> = {
   ler_admissoes:        { desc: "Consulta processos de admissão em andamento.", cols: ["admissoes"] },
   ler_proc_seletivo:    { desc: "Consulta vagas abertas e candidaturas do processo seletivo.", cols: ["vagas", "candidaturasTrabalhe"] },
   ler_prazos_trab:      { desc: "Consulta dados de prazos trabalhistas: empregados (datas de admissão p/ experiência), exames e entregas de uniforme.", cols: ["empregados", "examesEmpregado", "entregasUniforme"] },
+};
+
+// ── SKILL TOOLS ─────────────────────────────────────────────────────────────
+// Tools "de tarefa" (não são consulta genérica a coleção). Cada uma tem schema
+// próprio e função de execução. A 1ª skill é o Cardápio do Puba.
+type SkillTool = {
+  desc: string; tipo: "read" | "write"; schema: Record<string, unknown>;
+  exec: (args: Doc, ctx: { pessoaId: string; pessoaNome: string }) => Promise<{ resumo: string; conteudo: string }>;
+};
+
+const CARDAPIO_DOC = "puba";
+const nrm = (s: unknown) => String(s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+
+async function lerCardapioEstado(): Promise<CardapioEstado & { versao: number }> {
+  const est = await firestoreLer("cardapioEstado", CARDAPIO_DOC);
+  if (est && (est as { comidas?: unknown }).comidas) return est as CardapioEstado & { versao: number };
+  return { ...CARDAPIO_SEED, versao: 0 };
+}
+
+type AltCardapio = { acao?: string; pagina?: string; secao?: string; item?: string; dados?: Record<string, unknown> };
+const PAGINAS: (keyof CardapioEstado)[] = ["comidas", "bebidas", "vendinha"];
+
+// Aplica um diff no estado. Defensivo: cada alteração é isolada; erros viram msg.
+function aplicaDiffCardapio(est: CardapioEstado, alts: AltCardapio[]): { aplicadas: string[]; erros: string[] } {
+  const aplicadas: string[] = [], erros: string[] = [];
+  const acha = (pagina: string | undefined, secaoNome: string | undefined, itemNome: string) => {
+    const pgs = (pagina && PAGINAS.includes(pagina as keyof CardapioEstado) ? [pagina] : PAGINAS) as (keyof CardapioEstado)[];
+    for (const pg of pgs) for (const sec of est[pg] || []) {
+      if (secaoNome && nrm(sec.secao) !== nrm(secaoNome)) continue;
+      const it = (sec.itens || []).find((i) => nrm(i.nome) === nrm(itemNome)) || (sec.itens || []).find((i) => nrm(i.nome).includes(nrm(itemNome)));
+      if (it) return { pg, sec, it };
+    }
+    return null;
+  };
+  for (const a of alts) {
+    try {
+      const acao = nrm(a.acao), d = a.dados || {};
+      if (acao === "adicionar") {
+        const pg = (a.pagina && PAGINAS.includes(a.pagina as keyof CardapioEstado) ? a.pagina : "comidas") as keyof CardapioEstado;
+        let sec = (est[pg] || []).find((s) => nrm(s.secao) === nrm(a.secao));
+        if (!sec) { sec = { secao: String(a.secao || "OUTROS").toUpperCase(), itens: [] }; (est[pg] as CardapioSecao[]).push(sec); }
+        const precos = (d.precos as CardapioItem["precos"]) || (d.preco ? [String(d.preco)] : ["R$ 0"]);
+        sec.itens.push({ nome: String(d.nome || a.item || "NOVO ITEM").toUpperCase(), descricao: String(d.descricao || ""), precos });
+        aplicadas.push(`adicionado ${d.nome || a.item} em ${sec.secao}`);
+      } else if (acao === "remover") {
+        const f = acha(a.pagina, a.secao, String(a.item)); if (!f) { erros.push(`não achei "${a.item}" pra remover`); continue; }
+        f.sec.itens = f.sec.itens.filter((i) => i !== f.it); aplicadas.push(`removido ${f.it.nome}`);
+      } else if (acao === "alterar_preco") {
+        const f = acha(a.pagina, a.secao, String(a.item)); if (!f) { erros.push(`não achei "${a.item}" pra alterar preço`); continue; }
+        f.it.precos = (d.precos as CardapioItem["precos"]) || [String(d.preco || d.valor || "R$ 0")];
+        aplicadas.push(`preço de ${f.it.nome} → ${JSON.stringify(f.it.precos)}`);
+      } else if (acao === "editar_descricao") {
+        const f = acha(a.pagina, a.secao, String(a.item)); if (!f) { erros.push(`não achei "${a.item}"`); continue; }
+        f.it.descricao = String(d.descricao ?? ""); aplicadas.push(`descrição de ${f.it.nome} atualizada`);
+      } else if (acao === "renomear") {
+        const f = acha(a.pagina, a.secao, String(a.item)); if (!f) { erros.push(`não achei "${a.item}"`); continue; }
+        const novo = String(d.nome || "").toUpperCase(); if (!novo) { erros.push("renomear sem nome novo"); continue; }
+        aplicadas.push(`${f.it.nome} → ${novo}`); f.it.nome = novo;
+      } else erros.push(`ação desconhecida: ${a.acao}`);
+    } catch (e) { erros.push(`erro em ${a.acao}: ${e instanceof Error ? e.message : "?"}`); }
+  }
+  return { aplicadas, erros };
+}
+
+const SKILL_TOOLS: Record<string, SkillTool> = {
+  ler_cardapio: {
+    desc: "Lê o cardápio atual do Puba Cidade Velha (comidas, bebidas, vendinha) com nomes, descrições e preços. Use SEMPRE antes de propor mudança.",
+    tipo: "read",
+    schema: { type: "object", properties: {}, required: [] },
+    exec: async () => {
+      const est = await lerCardapioEstado();
+      const c = JSON.stringify(est);
+      return { resumo: `cardápio v${est.versao}`, conteudo: c.length > MAX_RESULT_CHARS ? c.slice(0, MAX_RESULT_CHARS) : c };
+    },
+  },
+  aplicar_cardapio: {
+    desc: "APLICA alterações no cardápio. Só chame DEPOIS do usuário confirmar explicitamente ('confirma'/'pode aplicar'). alteracoes = lista de { acao: 'alterar_preco'|'adicionar'|'remover'|'editar_descricao'|'renomear', pagina: 'comidas'|'bebidas'|'vendinha', secao, item (nome atual do item), dados }. Em dados: preço novo em `precos` (ex.: [\"R$ 64\"]) ou `preco`; item novo em `nome`/`descricao`/`precos`. Bump de versão automático. (O PDF final é gerado numa etapa seguinte.)",
+    tipo: "write",
+    schema: { type: "object", properties: {
+      alteracoes: { type: "array", description: "lista de alterações", items: { type: "object", properties: {
+        acao: { type: "string" }, pagina: { type: "string" }, secao: { type: "string" }, item: { type: "string" }, dados: { type: "object" },
+      }, required: ["acao"] } },
+      resumo_humano: { type: "string", description: "resumo curto do que mudou, pra confirmar/registrar" },
+    }, required: ["alteracoes"] },
+    exec: async (args, ctx) => {
+      const alts = (Array.isArray(args.alteracoes) ? args.alteracoes : []) as AltCardapio[];
+      if (!alts.length) return { resumo: "nada a aplicar", conteudo: JSON.stringify({ erro: "Sem alterações." }) };
+      const est = await lerCardapioEstado();
+      const { aplicadas, erros } = aplicaDiffCardapio(est, alts);
+      const novaVersao = (est.versao || 0) + 1;
+      const nowIso = new Date().toISOString();
+      const salvo = await firestoreAtualizar("cardapioEstado", CARDAPIO_DOC, { comidas: est.comidas, bebidas: est.bebidas, vendinha: est.vendinha, versao: novaVersao, atualizadoEm: nowIso, atualizadoPor: ctx.pessoaNome });
+      if (salvo) {
+        const vid = `cardv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        await firestoreCriar("cardapioVersoes", vid, { id: vid, doc: CARDAPIO_DOC, versao: novaVersao, resumo: String(args.resumo_humano || aplicadas.join("; ")), alteracoes: alts as unknown as Doc[], autorId: ctx.pessoaId, autorNome: ctx.pessoaNome, criadoEm: nowIso } as Doc).catch(() => {});
+      }
+      return { resumo: `cardápio → v${novaVersao} (${aplicadas.length} alt)`, conteudo: JSON.stringify({ versao: novaVersao, aplicadas, erros, salvo, obs: "PDF será gerado na próxima etapa." }) };
+    },
+  },
 };
 
 function noEscopo(d: Doc, escopo: Escopo): boolean {
@@ -93,20 +193,28 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 
   const escopo: Escopo = agente.entidades === "todas" || !Array.isArray(agente.entidades) ? "todas" : (agente.entidades as string[]);
   const toolsLigadas = (agente.tools || {}) as Record<string, boolean>;
-  // Só expõe ferramentas de leitura implementadas E ligadas no agente.
-  const toolsDisp = Object.keys(READ_TOOLS).filter(k => toolsLigadas[k]);
-  const anthropicTools = toolsDisp.map(k => ({
-    name: k,
-    description: READ_TOOLS[k].desc + " Filtre por restaurantId (entidade), periodo (prefixo de data YYYY, YYYY-MM ou YYYY-MM-DD) e/ou busca (texto livre) quando fizer sentido.",
-    input_schema: { type: "object" as const, properties: {
-      restaurantId: { type: "string", description: "id da entidade, se quiser restringir" },
-      periodo: { type: "string", description: "prefixo de data: 2026, 2026-07, 2026-07-14" },
-      busca: { type: "string", description: "texto livre pra filtrar (nome, fornecedor, descrição)" },
-    }, required: [] },
-  }));
+  // Expõe as ferramentas de leitura (schema genérico) + as skill tools (schema próprio) ligadas.
+  const readDisp = Object.keys(READ_TOOLS).filter(k => toolsLigadas[k]);
+  const skillDisp = Object.keys(SKILL_TOOLS).filter(k => toolsLigadas[k]);
+  const temWrite = skillDisp.some(k => SKILL_TOOLS[k].tipo === "write");
+  const anthropicTools = [
+    ...readDisp.map(k => ({
+      name: k,
+      description: READ_TOOLS[k].desc + " Filtre por restaurantId (entidade), periodo (prefixo de data YYYY, YYYY-MM ou YYYY-MM-DD) e/ou busca (texto livre) quando fizer sentido.",
+      input_schema: { type: "object" as const, properties: {
+        restaurantId: { type: "string", description: "id da entidade, se quiser restringir" },
+        periodo: { type: "string", description: "prefixo de data: 2026, 2026-07, 2026-07-14" },
+        busca: { type: "string", description: "texto livre pra filtrar (nome, fornecedor, descrição)" },
+      }, required: [] },
+    })),
+    ...skillDisp.map(k => ({ name: k, description: SKILL_TOOLS[k].desc, input_schema: SKILL_TOOLS[k].schema })),
+  ];
 
   const sysBase = (agente.systemPrompt as string) || "Você é um assistente do planejamento.app.";
-  const system = sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa. Você NÃO pode alterar nada nesta versão (só consulta); se pedirem uma alteração, explique que a edição chega numa próxima etapa e que por ora você só consulta.";
+  const regras = temWrite
+    ? " Para QUALQUER alteração: primeiro PROPONHA em texto o que vai mudar e peça confirmação explícita; só chame a ferramenta de escrita DEPOIS que o usuário confirmar ('confirma'/'pode aplicar') na mensagem seguinte. Nunca aplique sem confirmação."
+    : " Você NÃO pode alterar nada nesta versão (só consulta); se pedirem uma alteração, explique que por ora você só consulta.";
+  const system = sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras;
 
   const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [];
   for (const h of (Array.isArray(body?.historico) ? body!.historico : []).slice(-10)) {
@@ -139,16 +247,20 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       const results: Array<{ type: "tool_result"; tool_use_id: string; content: string }> = [];
       for (const b of blocks) {
         if (b.type !== "tool_use" || !b.name || !b.id) continue;
-        const args = (b.input || {}) as { restaurantId?: string; periodo?: string; busca?: string };
-        const { resumo, conteudo } = await execTool(b.name, args, escopo);
+        const input = (b.input || {}) as Doc;
+        const skill = SKILL_TOOLS[b.name];
+        const pessoaNome = (body?.pessoaNome || user.email || "") as string;
+        const { resumo, conteudo } = skill
+          ? await skill.exec(input, { pessoaId: user.uid, pessoaNome })
+          : await execTool(b.name, input as { restaurantId?: string; periodo?: string; busca?: string }, escopo);
         toolCalls.push({ tool: b.name, resumo });
         results.push({ type: "tool_result", tool_use_id: b.id, content: conteudo });
         // Auditoria (append-only). Não bloqueia a resposta se falhar.
         try {
           const logId = `alog_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
           await firestoreCriar("agenteLogs", logId, {
-            id: logId, agenteId, pessoaId: user.uid, pessoaNome: (body?.pessoaNome || user.email || "") as string,
-            tool: b.name, tipo: "read", args, resumo, canal: "app", criadoEm: new Date().toISOString(),
+            id: logId, agenteId, pessoaId: user.uid, pessoaNome,
+            tool: b.name, tipo: skill ? skill.tipo : "read", args: input, resumo, canal: "app", criadoEm: new Date().toISOString(),
           });
         } catch { /* log é best-effort */ }
       }

@@ -51,7 +51,7 @@ export function AgentesPage() {
   }
   async function seed() {
     const agora = new Date().toISOString();
-    for (const tipo of ["dp", "financeiro"] as AgenteDominio[]) {
+    for (const tipo of ["dp", "financeiro", "cardapio"] as AgenteDominio[]) {
       if (agentes.some(a => a.tipo === tipo)) continue;
       const m = DOMINIO_META[tipo];
       await setDoc(doc(db, "agentesIA", uid()), sanitizeForFirestore({ nome: `Agente ${m.label}`, tipo, systemPrompt: m.promptPadrao, tools: toolsPadrao(tipo), entidades: "todas", modoEscrita: "confirmar", ativo: true, criadoEm: agora, criadoPor: pessoa?.id || null } as Omit<AgenteIA, "id">));
@@ -72,6 +72,7 @@ export function AgentesPage() {
             <div className="flex gap-1.5">
               <Button size="sm" variant="secondary" onClick={() => novo("dp")}>🧑‍💼 Novo DP</Button>
               <Button size="sm" variant="secondary" onClick={() => novo("financeiro")}>💰 Novo Financeiro</Button>
+              <Button size="sm" variant="secondary" onClick={() => novo("cardapio")}>🍽️ Nova Skill Cardápio</Button>
             </div>
           </div>
 

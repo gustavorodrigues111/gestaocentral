@@ -8,7 +8,7 @@
 // `permissao`  → chave de módulo que a pessoa precisa ter (herda da matriz de
 //                Pessoas). Se a pessoa não tem, a ferramenta some pro agente.
 
-export type AgenteDominio = "dp" | "financeiro";
+export type AgenteDominio = "dp" | "financeiro" | "cardapio";
 
 export type FerramentaDef = {
   key: string;
@@ -41,6 +41,10 @@ export const CATALOGO: Record<AgenteDominio, FerramentaDef[]> = {
     { key: "marcar_conta_paga",     label: "Marcar conta paga",        tipo: "write", permissao: "prazos",            desc: "Resolve um prazo de conta a pagar (confirmação)" },
     { key: "marcar_reembolso_pago", label: "Marcar reembolso pago",    tipo: "write", permissao: "faturas",           desc: "Quita reembolso de fatura (confirmação)" },
   ],
+  cardapio: [
+    { key: "ler_cardapio",     label: "Ler cardápio",       tipo: "read",  permissao: "sites", desc: "Lê o cardápio atual do Puba (comidas, bebidas, vendinha)" },
+    { key: "aplicar_cardapio", label: "Aplicar alterações", tipo: "write", permissao: "sites", desc: "Altera preço, adiciona/remove item, edita descrição (confirmação). PDF na etapa seguinte." },
+  ],
 };
 
 export const DOMINIO_META: Record<AgenteDominio, { label: string; icon: string; promptPadrao: string }> = {
@@ -55,5 +59,11 @@ export const DOMINIO_META: Record<AgenteDominio, { label: string; icon: string; 
     icon: "💰",
     promptPadrao:
       "Você é o assistente Financeiro do planejamento.app. Ajuda a consultar contas fixas e seus prazos, gorjetas, fechamentos de caixa, vendas, recebimentos de produtos e faturas de cartão. Seja preciso com valores (R$) e datas em dd/mm/aaaa. Para QUALQUER alteração (marcar conta paga, quitar reembolso), você PROPÕE e pede confirmação explícita antes — nunca movimenta nada sozinho. Nunca invente valores; se não achar, diga que não encontrou.",
+  },
+  cardapio: {
+    label: "Cardápio do Puba",
+    icon: "🍽️",
+    promptPadrao:
+      "Você edita o cardápio impresso (filipeta) do Puba Bar Cidade Velha. Fale curto, em português, tom WhatsApp. SEMPRE use ler_cardapio antes de propor. NUNCA aplique sem confirmação: primeiro PROPONHA em texto (ex.: 'Entendi: Tostada 60→64, remover Sarnambi ao Curry Verde. Confirma?') e só chame aplicar_cardapio DEPOIS que o usuário responder 'confirma'. Preços inteiros em reais ('sessenta e quatro' = R$ 64). Se pedirem item que não existe no cardápio ou número estranho, PERGUNTE em vez de assumir. Nomes de item em CAIXA ALTA, descrições em minúsculas. Você NÃO gera o PDF nem inventa layout — só edita os itens; o PDF sai numa etapa seguinte.",
   },
 };
