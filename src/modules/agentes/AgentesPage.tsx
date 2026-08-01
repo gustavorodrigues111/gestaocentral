@@ -144,7 +144,11 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onClose, onConfig }: { agent
   const [texto, setTexto] = useState("");
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
+  const [gravando, setGravando] = useState(false);
+  const [transcrevendo, setTranscrevendo] = useState(false);
   const fimRef = useRef<HTMLDivElement | null>(null);
+  const recRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
   // Carrega e mantém a conversa ao vivo (ordena no cliente — sem índice composto).
   useEffect(() => {
@@ -171,9 +175,8 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onClose, onConfig }: { agent
     await batch.commit();
   }
 
-  async function enviar() {
-    const m = texto.trim();
-    if (!m || enviando) return;
+  async function enviarMsg(m: string) {
+    if (!m.trim() || enviando) return;
     setErro(""); setTexto("");
     const historico = msgs.map(x => ({ role: x.role, texto: x.texto }));
     setEnviando(true);
@@ -186,10 +189,47 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onClose, onConfig }: { agent
     } catch (e) { setErro(e instanceof Error ? e.message : "Erro de rede."); }
     finally { setEnviando(false); }
   }
+  const enviar = () => enviarMsg(texto.trim());
+
+  // ── Áudio: grava pelo microfone, transcreve (/api/audio-transcrever) e envia ──
+  async function toggleGravar() {
+    if (gravando) { recRef.current?.stop(); return; }
+    setErro("");
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      chunksRef.current = [];
+      rec.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      rec.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop());
+        setGravando(false);
+        const blob = new Blob(chunksRef.current, { type: rec.mimeType || "audio/webm" });
+        if (blob.size < 800) return;   // clique acidental
+        setTranscrevendo(true);
+        try {
+          const b64 = await new Promise<string>((resolve, reject) => {
+            const fr = new FileReader();
+            fr.onload = () => resolve(String(fr.result).split(",")[1] || "");
+            fr.onerror = reject; fr.readAsDataURL(blob);
+          });
+          const r = await fetch("/api/audio-transcrever", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ audioBase64: b64, mimeType: blob.type }) });
+          const j = await r.json();
+          if (!r.ok) { setErro(j.error || "Falha ao transcrever."); return; }
+          const t = (j.texto || "").trim();
+          if (!t) { setErro(j.aviso || "Não entendi o áudio."); return; }
+          await enviarMsg(t);
+        } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao transcrever."); }
+        finally { setTranscrevendo(false); }
+      };
+      recRef.current = rec;
+      rec.start();
+      setGravando(true);
+    } catch { setErro("Não consegui acessar o microfone. Libere o acesso no navegador."); }
+  }
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="relative bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg h-[80vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="relative bg-white dark:bg-gray-900 rounded-2xl w-full max-w-3xl h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
           <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{DOMINIO_META[agente.tipo].icon} {agente.nome}</div>
           <div className="flex items-center gap-1">
@@ -225,7 +265,14 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onClose, onConfig }: { agent
         </div>
 
         <div className="p-3 border-t border-gray-100 dark:border-gray-800 flex items-end gap-2">
-          <textarea value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }} rows={1} placeholder="Escreva uma pergunta…" className="flex-1 resize-none text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 max-h-28" />
+          <button type="button" onClick={() => void toggleGravar()} disabled={enviando || transcrevendo}
+            title={gravando ? "Parar e transcrever" : "Gravar áudio"}
+            className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border ${gravando ? "bg-rose-600 border-rose-600 text-white animate-pulse" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"} disabled:opacity-50`}>
+            {transcrevendo ? "…" : gravando ? "⏹" : "🎤"}
+          </button>
+          <textarea value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }} rows={1}
+            placeholder={gravando ? "Gravando… fale e clique ⏹" : transcrevendo ? "Transcrevendo o áudio…" : "Escreva ou grave um áudio…"}
+            className="flex-1 resize-none text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 max-h-28" />
           <Button disabled={enviando || !texto.trim()} onClick={() => void enviar()}>{enviando ? "…" : "Enviar"}</Button>
         </div>
       </div>
