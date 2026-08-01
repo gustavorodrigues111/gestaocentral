@@ -17,7 +17,6 @@ import { nomeMes, pad2, shiftMonth } from "../../core/utils/date";
 import { montarLinhasPagamento, totaisDoLote } from "./calc";
 import { ajustePorEmpregadoPendente } from "./ajuste";
 import { AjustesTab } from "./AjustesTab";
-import { AplicarEscala0508 } from "./AplicarEscala0508";   // ⚠️ provisório — remover depois
 import { exportarCajuPag, exportarPixPag, baixarCsv } from "./exportar";
 import { gerarPagamentoPDF } from "./gerarPDF";
 import type { Cargo, Empregado, EscalaMes, BeneficioPagLote, BeneficioPagLinha, BeneficioAjusteLote } from "../../core/types";
@@ -189,10 +188,6 @@ export function Beneficios2Page() {
       </div>
 
       {aba === "pagamento" && (<>
-      {/* ⚠️ PROVISÓRIO — aplicar nova escala do Lobozó (praticada 05→31/08). Remover depois. */}
-      {isMaster && /lobo/i.test(rest?.nome || "") && ano === 2026 && mes === 8 && (
-        <AplicarEscala0508 rid={rid} empregados={empregados} escala={escala} />
-      )}
       {/* Status da prevista + do lote */}
       {loteAtivo ? (
         <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3 mb-3 text-sm text-emerald-800 dark:text-emerald-200 flex items-center justify-between gap-2 flex-wrap">
