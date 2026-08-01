@@ -11,7 +11,7 @@
 import { requireUser, AuthError } from "./_auth.js";
 
 export const config = { maxDuration: 60 };
-const MODEL = "gemini-2.5-flash";
+const MODEL = "gemini-2.0-flash";
 const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
 const REQ_TIMEOUT_MS = 55_000;
 
