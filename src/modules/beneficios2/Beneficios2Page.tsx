@@ -83,6 +83,9 @@ export function Beneficios2Page() {
   const lotesDoMes = useMemo(() => lotesTodos.filter((l) => l.ano === ano && l.mes === mes).sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || "")), [lotesTodos, ano, mes]);
   const previstaFechada = !!(escala && (escala as { previstaFechadaEm?: string | null }).previstaFechadaEm);
   const loteAtivo = useMemo(() => lotesDoMes.find((l) => l.status !== "cancelado") || null, [lotesDoMes]);
+  // Lote cancelado do mês (quando não há lote ativo) — permite reativar um pagamento
+  // que foi cancelado por engano, restaurando exatamente o que foi pago.
+  const loteCancelado = useMemo(() => (!loteAtivo ? (lotesDoMes.find((l) => l.status === "cancelado") || null) : null), [lotesDoMes, loteAtivo]);
   const preview = useMemo<BeneficioPagLinha[]>(() => loteAtivo ? [] : montarLinhasPagamento(empregados, cargos, escala, ano, mes, usaVR, ajustePendente), [loteAtivo, empregados, cargos, escala, ano, mes, usaVR, ajustePendente]);
   const linhas = loteAtivo ? loteAtivo.linhas : preview;
   const totais = useMemo(() => totaisDoLote(linhas), [linhas]);
@@ -148,6 +151,17 @@ export function Beneficios2Page() {
     if (!confirm("Cancelar este pagamento? Volta pra prévia (o lote fica no histórico como cancelado).")) return;
     await updateDoc(doc(db, "beneficioPagamentos", loteAtivo.id), { status: "cancelado", canceladoEm: new Date().toISOString() });
   }
+  // Reativa um pagamento cancelado por engano — restaura os valores exatos que
+  // foram pagos (as linhas ficam congeladas no lote). Não recalcula nada.
+  async function reativarLote() {
+    if (!loteCancelado || !podeConfig) return;
+    if (!confirm(`Reativar este pagamento (${fmt(loteCancelado.totalGeral)})? Ele volta a ficar como PAGO, com os mesmos valores.`)) return;
+    setSalvando(true);
+    try {
+      await updateDoc(doc(db, "beneficioPagamentos", loteCancelado.id), { status: "pago", canceladoEm: null, updatedAt: new Date().toISOString() });
+    } catch (e) { alert("Erro ao reativar: " + (e instanceof Error ? e.message : "?")); }
+    finally { setSalvando(false); }
+  }
   function exportarCaju() {
     const r = exportarCajuPag(linhas, empregados, slugify(rest?.nome || ""), ano, mes);
     baixarCsv(r.csv, r.filename);
@@ -188,6 +202,13 @@ export function Beneficios2Page() {
       </div>
 
       {aba === "pagamento" && (<>
+      {/* Pagamento cancelado por engano → oferecer reativar (restaura o que foi pago) */}
+      {!loteAtivo && loteCancelado && podeConfig && (
+        <div className="rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 mb-3 text-sm text-amber-800 dark:text-amber-200 flex items-center justify-between gap-2 flex-wrap">
+          <span>♻️ Existe um pagamento <b>cancelado</b> deste mês ({fmt(loteCancelado.totalGeral)}). Se ele foi cancelado por engano e o dinheiro já saiu, reative para voltar a valer.</span>
+          <button type="button" onClick={() => void reativarLote()} disabled={salvando} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-60">{salvando ? "Reativando…" : "Reativar pagamento"}</button>
+        </div>
+      )}
       {/* Status da prevista + do lote */}
       {loteAtivo ? (
         <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3 mb-3 text-sm text-emerald-800 dark:text-emerald-200 flex items-center justify-between gap-2 flex-wrap">
