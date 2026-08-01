@@ -11,8 +11,10 @@
 import { requireUser, AuthError } from "./_auth.js";
 
 export const config = { maxDuration: 60 };
-const MODEL = "gemini-2.0-flash";
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent`;
+// Lista de candidatos (aliases "-latest" primeiro pra não quebrar a cada
+// deprecação). Tenta em ordem; 404 (modelo indisponível) → tenta o próximo.
+const MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"];
+const geminiUrl = (m: string) => `https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent`;
 const REQ_TIMEOUT_MS = 55_000;
 
 type VercelReq = { method?: string; headers?: Record<string, string | string[] | undefined>; body?: unknown };
@@ -58,11 +60,19 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       ] }],
       generationConfig: { temperature: 0 },
     };
-    const resp = await fetch(`${GEMINI_URL}?key=${encodeURIComponent(key)}`, {
-      method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload), signal: ctrl.signal,
-    });
-    const txt = await resp.text();
-    if (!resp.ok) { res.status(502).json({ error: `Gemini HTTP ${resp.status}. ${txt.slice(0, 300)}` }); return; }
+    // Tenta os modelos em ordem. 404 (indisponível/deprecado) → próximo.
+    // Outros erros (ex.: 429 quota) → para e reporta (trocar de modelo não ajuda).
+    let txt = "", ok = false, ultimoErro = "";
+    for (const m of MODELS) {
+      const resp = await fetch(`${geminiUrl(m)}?key=${encodeURIComponent(key)}`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload), signal: ctrl.signal,
+      });
+      txt = await resp.text();
+      if (resp.ok) { ok = true; break; }
+      ultimoErro = `Gemini HTTP ${resp.status}. ${txt.slice(0, 240)}`;
+      if (resp.status !== 404) break;   // 429/403/500 → não adianta trocar de modelo
+    }
+    if (!ok) { res.status(502).json({ error: ultimoErro || "Falha na transcrição." }); return; }
     const json = JSON.parse(txt) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
     const texto = (json.candidates?.[0]?.content?.parts || []).map((p) => p.text || "").join(" ").replace(/\s+/g, " ").trim();
     if (!texto) { res.status(200).json({ texto: "", aviso: "Não consegui entender o áudio. Tente um áudio mais claro ou digite." }); return; }
