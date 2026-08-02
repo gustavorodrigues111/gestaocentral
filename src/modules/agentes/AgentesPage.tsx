@@ -60,6 +60,9 @@ export function AgentesPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
+      {conversando ? (
+        <AgenteChat agente={conversando} pessoaId={pessoa?.id} pessoaNome={pessoa?.nome} onVoltar={() => setConversando(null)} onConfig={() => { setEditando(conversando); setConversando(null); }} />
+      ) : (<>
       <div className="flex items-center gap-2 mb-3">
         <button type="button" onClick={() => setAba("agentes")} className={`text-sm font-medium pb-1.5 border-b-2 ${aba === "agentes" ? "border-indigo-600 text-indigo-600 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>Agentes</button>
         <button type="button" onClick={() => setAba("historico")} className={`text-sm font-medium pb-1.5 border-b-2 ${aba === "historico" ? "border-indigo-600 text-indigo-600 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>Histórico</button>
@@ -83,20 +86,27 @@ export function AgentesPage() {
               <Button onClick={() => void seed()}>Criar agentes padrão</Button>
             </div>
           ) : (
-            <div className="space-y-2">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
               {agentes.sort((a, b) => a.tipo.localeCompare(b.tipo)).map(a => {
                 const cat = CATALOGO[a.tipo];
-                const ligadas = cat.filter(f => a.tools?.[f.key]).length;
+                const reads = cat.filter(f => f.tipo === "read" && a.tools?.[f.key]).length;
                 const escritas = cat.filter(f => f.tipo === "write" && a.tools?.[f.key]).length;
                 return (
-                  <div key={a.id} className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 flex items-center justify-between gap-3">
-                    <button type="button" onClick={() => a.ativo ? setConversando(a) : setEditando(a)} className="min-w-0 text-left flex-1">
-                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">{DOMINIO_META[a.tipo].icon} {a.nome}{!a.ativo && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800">pausado</span>}</div>
-                      <div className="text-[11px] text-gray-400 mt-0.5">{ligadas} ferramenta(s) · {escritas > 0 ? `${escritas} de escrita (confirmação)` : "só leitura"} · {a.entidades === "todas" ? "todas as entidades" : `${(a.entidades as string[]).length} entidade(s)`}</div>
-                    </button>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      {a.ativo && <Button size="sm" onClick={() => setConversando(a)}>💬 Conversar</Button>}
-                      <button type="button" onClick={() => setEditando(a)} title="Configurar" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">⚙</button>
+                  <div key={a.id} className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 flex flex-col gap-2.5 shadow-sm">
+                    <div className="w-11 h-11 rounded-xl bg-gray-50 dark:bg-gray-800 grid place-items-center text-2xl">{DOMINIO_META[a.tipo].icon}</div>
+                    <div className="min-w-0">
+                      <div className="text-[15px] font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5 truncate">{a.nome}{!a.ativo && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800">pausado</span>}</div>
+                      <div className="text-[12px] text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2 min-h-[32px]">{DOMINIO_META[a.tipo].label}</div>
+                    </div>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {reads > 0 && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">{reads} leitura</span>}
+                      {escritas > 0 && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">{escritas} escrita</span>}
+                    </div>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      {a.ativo
+                        ? <Button size="sm" onClick={() => setConversando(a)} className="flex-1">💬 Conversar</Button>
+                        : <span className="flex-1 text-[11px] text-gray-400 self-center">pausado — ative em ⚙</span>}
+                      <button type="button" onClick={() => setEditando(a)} title="Configurar" className="w-9 h-9 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">⚙</button>
                     </div>
                   </div>
                 );
@@ -124,12 +134,10 @@ export function AgentesPage() {
           )}
         </div>
       )}
+      </>)}
 
       {editando && (
         <AgenteEditor agente={editando} restaurants={restaurants} onClose={() => setEditando(null)} onSalvar={salvar} onExcluir={excluir} />
-      )}
-      {conversando && (
-        <AgenteChat agente={conversando} pessoaId={pessoa?.id} pessoaNome={pessoa?.nome} onClose={() => setConversando(null)} onConfig={() => { setEditando(conversando); setConversando(null); }} />
       )}
     </div>
   );
@@ -137,7 +145,7 @@ export function AgentesPage() {
 
 type ChatMsg = { id: string; role: "user" | "assistant"; texto: string; tools?: { tool: string; resumo: string }[]; criadoEm: string };
 
-function AgenteChat({ agente, pessoaId, pessoaNome, onClose, onConfig }: { agente: AgenteIA; pessoaId?: string; pessoaNome?: string; onClose: () => void; onConfig: () => void }) {
+function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agente: AgenteIA; pessoaId?: string; pessoaNome?: string; onVoltar: () => void; onConfig: () => void }) {
   // Uma conversa contínua por (agente, pessoa). Persiste em agenteMensagens.
   const conversaId = `${agente.id}__${pessoaId || "anon"}`;
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
@@ -229,14 +237,13 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onClose, onConfig }: { agent
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="relative bg-white dark:bg-gray-900 rounded-2xl w-full max-w-3xl h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
-          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{DOMINIO_META[agente.tipo].icon} {agente.nome}</div>
-          <div className="flex items-center gap-1">
+    <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 h-[calc(100vh-140px)] min-h-[420px] flex flex-col overflow-hidden">
+        <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-gray-800">
+          <button type="button" onClick={onVoltar} className="text-sm font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">← Voltar</button>
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5 min-w-0 truncate">{DOMINIO_META[agente.tipo].icon} {agente.nome}</div>
+          <div className="flex items-center gap-1 ml-auto">
             {msgs.length > 0 && <button type="button" onClick={() => void limparConversa()} title="Limpar conversa" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">🗑</button>}
             <button type="button" onClick={onConfig} title="Configurar" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">⚙</button>
-            <button type="button" onClick={onClose} className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">✕</button>
           </div>
         </div>
 
@@ -276,7 +283,6 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onClose, onConfig }: { agent
             className="flex-1 resize-none text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 max-h-28" />
           <Button disabled={enviando || !texto.trim()} onClick={() => void enviar()}>{enviando ? "…" : "Enviar"}</Button>
         </div>
-      </div>
     </div>
   );
 }
