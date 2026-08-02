@@ -21,7 +21,8 @@ const toolsPadrao = (tipo: AgenteDominio): Record<string, boolean> =>
 export function AgentesPage() {
   const { pessoa } = useAuth();
   const { restaurants } = useRestaurant();
-  const [aba, setAba] = useState<"agentes" | "historico">("agentes");
+  const [aba, setAba] = useState<"agentes" | "config" | "historico">("agentes");
+  const [configSel, setConfigSel] = useState<string | null>(null);
   const [agentes, setAgentes] = useState<AgenteIA[]>([]);
   const [logs, setLogs] = useState<AgenteLog[]>([]);
   const [editando, setEditando] = useState<AgenteIA | null>(null);
@@ -65,6 +66,7 @@ export function AgentesPage() {
       ) : (<>
       <div className="flex items-center gap-2 mb-3">
         <button type="button" onClick={() => setAba("agentes")} className={`text-sm font-medium pb-1.5 border-b-2 ${aba === "agentes" ? "border-indigo-600 text-indigo-600 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>Agentes</button>
+        <button type="button" onClick={() => { setAba("config"); setConfigSel(s => s || agentes[0]?.id || null); }} className={`text-sm font-medium pb-1.5 border-b-2 ${aba === "config" ? "border-indigo-600 text-indigo-600 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>Configurações</button>
         <button type="button" onClick={() => setAba("historico")} className={`text-sm font-medium pb-1.5 border-b-2 ${aba === "historico" ? "border-indigo-600 text-indigo-600 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>Histórico</button>
       </div>
 
@@ -114,6 +116,25 @@ export function AgentesPage() {
             </div>
           )}
         </>
+      ) : aba === "config" ? (
+        <div className="grid grid-cols-1 sm:grid-cols-[210px_1fr] gap-4">
+          <div className="flex flex-col gap-1">
+            {agentes.sort((a, b) => a.tipo.localeCompare(b.tipo)).map(a => (
+              <button key={a.id} type="button" onClick={() => setConfigSel(a.id)} className={`text-left text-sm font-medium px-3 py-2 rounded-lg flex items-center gap-2 ${configSel === a.id ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300" : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>
+                {DOMINIO_META[a.tipo].icon} <span className="truncate">{a.nome}</span>
+              </button>
+            ))}
+            <button type="button" onClick={() => novo("cardapio")} className="text-left text-sm font-medium px-3 py-2 rounded-lg text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 mt-1">＋ Subir nova skill</button>
+          </div>
+          <div>
+            {(() => {
+              const ag = agentes.find(x => x.id === configSel) || agentes[0];
+              return ag
+                ? <AgenteEditor key={ag.id} agente={ag} restaurants={restaurants} inline onClose={() => {}} onSalvar={salvar} onExcluir={excluir} />
+                : <p className="text-sm text-gray-500 py-8 text-center">Nenhum agente ainda. Crie um na aba Agentes.</p>;
+            })()}
+          </div>
+        </div>
       ) : (
         <div>
           {logs.length === 0 ? (
@@ -329,12 +350,18 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
   );
 }
 
-function AgenteEditor({ agente, restaurants, onClose, onSalvar, onExcluir }: {
-  agente: AgenteIA; restaurants: { id: string; nome?: string }[];
+function AgenteEditor({ agente, restaurants, onClose, onSalvar, onExcluir, inline }: {
+  agente: AgenteIA; restaurants: { id: string; nome?: string }[]; inline?: boolean;
   onClose: () => void; onSalvar: (a: AgenteIA) => Promise<void>; onExcluir: (id: string) => Promise<void>;
 }) {
   const [a, setA] = useState<AgenteIA>(agente);
   const [busy, setBusy] = useState(false);
+  async function subirSkill(file: File) {
+    const txt = await file.text();
+    // Tira o front-matter (--- ... ---) do SKILL.md, se houver; o resto vira persona.
+    const corpo = txt.replace(/^---[\s\S]*?---\s*/, "").trim();
+    if (corpo) setA(p => ({ ...p, systemPrompt: corpo }));
+  }
   const cat = CATALOGO[a.tipo];
   const reads = cat.filter(f => f.tipo === "read");
   const writes = cat.filter(f => f.tipo === "write");
@@ -348,17 +375,19 @@ function AgenteEditor({ agente, restaurants, onClose, onSalvar, onExcluir }: {
   });
   const inp = "w-full text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 py-1.5";
 
-  return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="relative bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg max-h-[88vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>
-        <button type="button" onClick={onClose} className="absolute top-3 right-3 w-8 h-8 rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">✕</button>
+  const conteudo = (<>
+        {!inline && <button type="button" onClick={onClose} className="absolute top-3 right-3 w-8 h-8 rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">✕</button>}
         <div className="text-[11px] font-medium text-gray-400 mb-1">{DOMINIO_META[a.tipo].icon} Agente de {DOMINIO_META[a.tipo].label}</div>
 
         <label className="block text-xs font-semibold text-gray-500 mb-1">Nome</label>
         <input value={a.nome} onChange={e => setA({ ...a, nome: e.target.value })} className={inp + " mb-3"} />
 
         <label className="block text-xs font-semibold text-gray-500 mb-1">Instruções (persona)</label>
-        <textarea value={a.systemPrompt || ""} onChange={e => setA({ ...a, systemPrompt: e.target.value })} rows={4} className={inp + " mb-3 resize-y"} />
+        <textarea value={a.systemPrompt || ""} onChange={e => setA({ ...a, systemPrompt: e.target.value })} rows={4} className={inp + " mb-2 resize-y"} />
+        <label className="flex items-center gap-2 text-xs text-indigo-600 dark:text-indigo-300 mb-3 cursor-pointer w-fit">
+          <span className="px-2.5 py-1 rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700">⬆︎ Subir/atualizar skill (SKILL.md)</span>
+          <input type="file" accept=".md,.txt,text/markdown,text/plain" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) void subirSkill(f); e.target.value = ""; }} />
+        </label>
 
         <div className="text-xs font-semibold text-gray-500 mb-1.5">🔎 Ferramentas de leitura</div>
         <div className="space-y-1 mb-3">
@@ -388,16 +417,24 @@ function AgenteEditor({ agente, restaurants, onClose, onSalvar, onExcluir }: {
           ))}
         </div>
 
-        <label className="flex items-center gap-2 text-sm mb-4 cursor-pointer">
+        <label className="flex items-center gap-2 text-sm mb-3 cursor-pointer">
           <input type="checkbox" checked={a.ativo} onChange={e => setA({ ...a, ativo: e.target.checked })} className="w-4 h-4" />
           <span className="text-gray-700 dark:text-gray-300">Agente ativo</span>
         </label>
+
+        <div className="text-xs font-semibold text-gray-500 mb-1.5">👥 Quem acessa</div>
+        <p className="text-[11px] text-gray-400 mb-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-2.5 py-2">Hoje: <b>master</b> (aqui no app). O acesso <b>por pessoa</b> (chat + WhatsApp, herdado de Pessoas) entra quando plugarmos o WhatsApp.</p>
 
         <div className="flex items-center justify-between gap-2">
           <Button variant="danger" size="sm" disabled={busy} onClick={() => void onExcluir(a.id)}>Excluir</Button>
           <Button disabled={busy || !a.nome.trim()} onClick={async () => { setBusy(true); try { await onSalvar(a); } finally { setBusy(false); } }}>{busy ? "…" : "Salvar"}</Button>
         </div>
+  </>);
+  return inline
+    ? <div className="relative rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-5">{conteudo}</div>
+    : (
+      <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+        <div className="relative bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg max-h-[88vh] overflow-y-auto p-5" onClick={e => e.stopPropagation()}>{conteudo}</div>
       </div>
-    </div>
-  );
+    );
 }
