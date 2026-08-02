@@ -147,7 +147,7 @@ type CardPreco = string | { qual?: string; val: string };
 type CardItem = { nome: string; descricao?: string; precos?: CardPreco[] };
 type CardSecao = { secao: string; itens?: CardItem[] };
 type CardEstado = { comidas?: CardSecao[]; bebidas?: CardSecao[]; vendinha?: CardSecao[]; versao?: number };
-type ChatMsg = { id: string; role: "user" | "assistant"; texto: string; tools?: { tool: string; resumo: string }[]; cardapio?: CardEstado; criadoEm: string };
+type ChatMsg = { id: string; role: "user" | "assistant"; texto: string; tools?: { tool: string; resumo: string }[]; cardapio?: CardEstado; pdfUrl?: string; criadoEm: string };
 
 // Prévia leve do cardápio (HTML) — mostrada no chat quando a skill lê/altera.
 function CardapioPreview({ e }: { e: CardEstado }) {
@@ -204,10 +204,10 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
   }, [conversaId]);
   useEffect(() => { fimRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs.length, enviando]);
 
-  async function persistir(role: "user" | "assistant", texto: string, tools?: { tool: string; resumo: string }[], cardapio?: CardEstado) {
+  async function persistir(role: "user" | "assistant", texto: string, tools?: { tool: string; resumo: string }[], cardapio?: CardEstado, pdfUrl?: string) {
     await addDoc(collection(db, "agenteMensagens"), {
       agenteId: agente.id, conversaId, restaurantId: null, role, texto,
-      pessoaId: pessoaId || null, canal: "app", tools: tools || null, cardapio: cardapio || null,
+      pessoaId: pessoaId || null, canal: "app", tools: tools || null, cardapio: cardapio || null, pdfUrl: pdfUrl || null,
       criadoEm: new Date().toISOString(),
     });
   }
@@ -228,7 +228,7 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
       const r = await fetch("/api/agente", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ agenteId: agente.id, mensagem: m, historico, pessoaNome }) });
       const j = await r.json();
       if (!r.ok) { setErro(j.error || "Falha na resposta."); await persistir("assistant", "⚠️ " + (j.error || "Erro.")); return; }
-      await persistir("assistant", j.resposta || "(sem resposta)", j.toolCalls, j.estadoCardapio);
+      await persistir("assistant", j.resposta || "(sem resposta)", j.toolCalls, j.estadoCardapio, j.pdfUrl);
     } catch (e) { setErro(e instanceof Error ? e.message : "Erro de rede."); }
     finally { setEnviando(false); }
   }
@@ -301,6 +301,12 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
                 )}
               </div>
               {m.cardapio && <div className="w-full max-w-[92%]"><CardapioPreview e={m.cardapio} /></div>}
+              {m.pdfUrl && (
+                <a href={m.pdfUrl} target="_blank" rel="noreferrer" className="mt-1.5 inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800">
+                  <span className="w-8 h-9 rounded bg-[#FC7659] text-white grid place-items-center text-[9px] font-extrabold">PDF</span>
+                  <span className="text-[13px] font-semibold text-gray-800 dark:text-gray-100">Baixar filipeta (PDF) ↓</span>
+                </a>
+              )}
             </div>
           ))}
           {enviando && <div className="text-xs text-gray-400">consultando…</div>}

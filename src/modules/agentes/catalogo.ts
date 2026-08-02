@@ -43,7 +43,8 @@ export const CATALOGO: Record<AgenteDominio, FerramentaDef[]> = {
   ],
   cardapio: [
     { key: "ler_cardapio",     label: "Ler cardápio",       tipo: "read",  permissao: "sites", desc: "Lê o cardápio atual do Puba (comidas, bebidas, vendinha)" },
-    { key: "aplicar_cardapio", label: "Aplicar alterações", tipo: "write", permissao: "sites", desc: "Altera preço, adiciona/remove item, edita descrição (confirmação). PDF na etapa seguinte." },
+    { key: "aplicar_cardapio", label: "Aplicar alterações", tipo: "write", permissao: "sites", desc: "Altera preço, adiciona/remove item, edita descrição (confirmação)." },
+    { key: "gerar_pdf",        label: "Gerar PDF final",     tipo: "write", permissao: "sites", desc: "Renderiza a filipeta fiel e devolve o link (só no final)." },
   ],
 };
 

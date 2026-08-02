@@ -1,4 +1,7 @@
 {
+  "functions": {
+    "api/cardapio-pdf.py": { "includeFiles": "api/_cardapio_assets/**" }
+  },
   "rewrites": [
     {
       "source": "/",

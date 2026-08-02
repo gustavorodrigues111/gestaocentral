@@ -6,7 +6,7 @@
 //  Exige usuário logado (Firebase ID token). Chave em ANTHROPIC_API_KEY.
 // ════════════════════════════════════════════════════════════════════════════
 import { requireUser, AuthError } from "./_auth.js";
-import { firestoreListar, firestoreCriar, firestoreLer, firestoreAtualizar } from "./_firestoreRest.js";
+import { firestoreListar, firestoreCriar, firestoreLer, firestoreAtualizar, subirStorage } from "./_firestoreRest.js";
 import { CARDAPIO_SEED, type CardapioEstado, type CardapioSecao, type CardapioItem } from "./_cardapioSeed.js";
 
 export const config = { maxDuration: 60 };
@@ -143,7 +143,26 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
         const vid = `cardv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         await firestoreCriar("cardapioVersoes", vid, { id: vid, doc: CARDAPIO_DOC, versao: novaVersao, resumo: String(args.resumo_humano || aplicadas.join("; ")), alteracoes: alts as unknown as Doc[], autorId: ctx.pessoaId, autorNome: ctx.pessoaNome, criadoEm: nowIso } as Doc).catch(() => {});
       }
-      return { resumo: `cardápio → v${novaVersao} (${aplicadas.length} alt)`, conteudo: JSON.stringify({ versao: novaVersao, aplicadas, erros, salvo, obs: "PDF será gerado na próxima etapa." }) };
+      return { resumo: `cardápio → v${novaVersao} (${aplicadas.length} alt)`, conteudo: JSON.stringify({ versao: novaVersao, aplicadas, erros, salvo }) };
+    },
+  },
+  gerar_pdf: {
+    desc: "Gera o PDF FINAL da filipeta do Puba com o cardápio atual e devolve o link pra download. Use quando o usuário pedir o PDF / a filipeta / o arquivo final.",
+    tipo: "write",
+    schema: { type: "object", properties: {}, required: [] },
+    exec: async () => {
+      const est = await lerCardapioEstado();
+      const origin = process.env.APP_ORIGIN || "https://admin.planejamento.app";
+      let j: { pdfBase64?: string; error?: string };
+      try {
+        const resp = await fetch(origin + "/api/cardapio-pdf", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(est) });
+        j = (await resp.json()) as { pdfBase64?: string; error?: string };
+        if (!resp.ok || !j.pdfBase64) return { resumo: "falha no PDF", conteudo: JSON.stringify({ erro: j.error || `render HTTP ${resp.status}` }) };
+      } catch (e) { return { resumo: "falha no PDF", conteudo: JSON.stringify({ erro: e instanceof Error ? e.message : "render indisponível" }) }; }
+      const path = `cardapios/puba/v${est.versao || 0}_${Date.now()}.pdf`;
+      const url = await subirStorage(path, j.pdfBase64, "application/pdf");
+      if (!url) return { resumo: "falha no upload", conteudo: JSON.stringify({ erro: "PDF gerado mas o upload falhou." }) };
+      return { resumo: `PDF v${est.versao || 0} pronto`, conteudo: JSON.stringify({ pdfUrl: url, versao: est.versao || 0 }) };
     },
   },
 };
@@ -206,7 +225,10 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const toolsLigadas = (agente.tools || {}) as Record<string, boolean>;
   // Expõe as ferramentas de leitura (schema genérico) + as skill tools (schema próprio) ligadas.
   const readDisp = Object.keys(READ_TOOLS).filter(k => toolsLigadas[k]);
-  const skillDisp = Object.keys(SKILL_TOOLS).filter(k => toolsLigadas[k]);
+  // Agente do tipo "cardapio" expõe as tools da skill mesmo que o mapa `tools`
+  // (criado antes de gerar_pdf existir) não as tenha ligadas.
+  const ehCardapio = agente.tipo === "cardapio";
+  const skillDisp = Object.keys(SKILL_TOOLS).filter(k => ehCardapio || toolsLigadas[k]);
   const temWrite = skillDisp.some(k => SKILL_TOOLS[k].tipo === "write");
   const anthropicTools = [
     ...readDisp.map(k => ({
@@ -227,7 +249,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     : " Você NÃO pode alterar nada nesta versão (só consulta); se pedirem uma alteração, explique que por ora você só consulta.";
   const temCardapio = skillDisp.includes("ler_cardapio");
   const notaCardapio = temCardapio
-    ? " Quando pedirem pra VER/MOSTRAR o cardápio ou a prévia, chame ler_cardapio: a prévia visual (HTML) aparece SOZINHA na tela — não precisa listar item por item, só confirme que está mostrando. Depois de aplicar uma alteração, a prévia atualizada também aparece sozinha."
+    ? " Quando pedirem pra VER/MOSTRAR o cardápio ou a prévia, chame ler_cardapio: a prévia visual (HTML) aparece SOZINHA na tela — não precisa listar item por item, só confirme que está mostrando. Depois de aplicar uma alteração, a prévia atualizada também aparece sozinha. Quando pedirem o PDF / a filipeta / o arquivo final, chame gerar_pdf: o link pra download aparece na conversa."
     : "";
   const system = sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras + notaCardapio;
 
@@ -239,6 +261,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 
   const toolCalls: { tool: string; resumo: string }[] = [];
   let tocouCardapio = false;   // pra devolver a prévia HTML quando o cardápio foi lido/alterado
+  let pdfUrl: string | null = null;
   try {
     for (let loop = 0; loop < MAX_LOOPS; loop++) {
       const payload = { model: (agente.model as string) || MODEL_PADRAO, max_tokens: 2000, system, messages, tools: anthropicTools };
@@ -254,7 +277,9 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 
       if (j.stop_reason !== "tool_use") {
         const texto = blocks.filter(b => b.type === "text").map(b => b.text || "").join("").trim();
-        const extra = tocouCardapio ? { estadoCardapio: await lerCardapioEstado() } : {};
+        const extra: Record<string, unknown> = {};
+        if (tocouCardapio) extra.estadoCardapio = await lerCardapioEstado();
+        if (pdfUrl) extra.pdfUrl = pdfUrl;
         res.status(200).json({ resposta: texto || "(sem resposta)", toolCalls, ...extra });
         return;
       }
@@ -272,6 +297,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
           ? await skill.exec(input, { pessoaId: user.uid, pessoaNome })
           : await execTool(b.name, input as { restaurantId?: string; periodo?: string; busca?: string }, escopo);
         toolCalls.push({ tool: b.name, resumo });
+        if (b.name === "gerar_pdf") { try { const p = JSON.parse(conteudo) as { pdfUrl?: string }; if (p.pdfUrl) pdfUrl = p.pdfUrl; } catch { /* ignore */ } }
         results.push({ type: "tool_result", tool_use_id: b.id, content: conteudo });
         // Auditoria (append-only). Não bloqueia a resposta se falhar.
         try {
