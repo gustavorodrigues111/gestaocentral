@@ -143,7 +143,42 @@ export function AgentesPage() {
   );
 }
 
-type ChatMsg = { id: string; role: "user" | "assistant"; texto: string; tools?: { tool: string; resumo: string }[]; criadoEm: string };
+type CardPreco = string | { qual?: string; val: string };
+type CardItem = { nome: string; descricao?: string; precos?: CardPreco[] };
+type CardSecao = { secao: string; itens?: CardItem[] };
+type CardEstado = { comidas?: CardSecao[]; bebidas?: CardSecao[]; vendinha?: CardSecao[]; versao?: number };
+type ChatMsg = { id: string; role: "user" | "assistant"; texto: string; tools?: { tool: string; resumo: string }[]; cardapio?: CardEstado; criadoEm: string };
+
+// Prévia leve do cardápio (HTML) — mostrada no chat quando a skill lê/altera.
+function CardapioPreview({ e }: { e: CardEstado }) {
+  const paginas: [string, CardSecao[] | undefined][] = [["Comidas", e.comidas], ["Bebidas", e.bebidas], ["Vendinha", e.vendinha]];
+  const preco = (p: CardPreco) => typeof p === "string" ? p : `${p.qual ? p.qual + " " : ""}${p.val}`;
+  return (
+    <div className="mt-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden text-gray-800 dark:text-gray-100">
+      <div className="px-3 py-1.5 bg-[#2048CE] text-white text-[11px] font-bold flex items-center justify-between">
+        <span>🍽️ Prévia do cardápio{e.versao != null ? ` · v${e.versao}` : ""}</span><span className="opacity-80">atualiza na hora</span>
+      </div>
+      <div className="p-3 max-h-72 overflow-y-auto space-y-2.5">
+        {paginas.map(([lbl, secs]) => (secs && secs.length > 0) && (
+          <div key={lbl}>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-[#FC7659] mb-1">{lbl}</div>
+            {secs.map((s, si) => (
+              <div key={si} className="mb-1.5">
+                <div className="text-[10px] font-semibold text-gray-400 uppercase">{s.secao}</div>
+                {(s.itens || []).map((it, ii) => (
+                  <div key={ii} className="flex justify-between gap-3 text-[12px] py-0.5 border-b border-dashed border-gray-100 dark:border-gray-800 last:border-0">
+                    <span className="min-w-0"><span className="font-semibold">{it.nome}</span>{it.descricao ? <span className="text-gray-400"> · {it.descricao}</span> : ""}</span>
+                    <span className="font-bold whitespace-nowrap tabular-nums">{(it.precos || []).map(preco).join(" / ")}</span>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agente: AgenteIA; pessoaId?: string; pessoaNome?: string; onVoltar: () => void; onConfig: () => void }) {
   // Uma conversa contínua por (agente, pessoa). Persiste em agenteMensagens.
@@ -169,10 +204,10 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
   }, [conversaId]);
   useEffect(() => { fimRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs.length, enviando]);
 
-  async function persistir(role: "user" | "assistant", texto: string, tools?: { tool: string; resumo: string }[]) {
+  async function persistir(role: "user" | "assistant", texto: string, tools?: { tool: string; resumo: string }[], cardapio?: CardEstado) {
     await addDoc(collection(db, "agenteMensagens"), {
       agenteId: agente.id, conversaId, restaurantId: null, role, texto,
-      pessoaId: pessoaId || null, canal: "app", tools: tools || null,
+      pessoaId: pessoaId || null, canal: "app", tools: tools || null, cardapio: cardapio || null,
       criadoEm: new Date().toISOString(),
     });
   }
@@ -193,7 +228,7 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
       const r = await fetch("/api/agente", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ agenteId: agente.id, mensagem: m, historico, pessoaNome }) });
       const j = await r.json();
       if (!r.ok) { setErro(j.error || "Falha na resposta."); await persistir("assistant", "⚠️ " + (j.error || "Erro.")); return; }
-      await persistir("assistant", j.resposta || "(sem resposta)", j.toolCalls);
+      await persistir("assistant", j.resposta || "(sem resposta)", j.toolCalls, j.estadoCardapio);
     } catch (e) { setErro(e instanceof Error ? e.message : "Erro de rede."); }
     finally { setEnviando(false); }
   }
@@ -256,7 +291,7 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
             </div>
           )}
           {msgs.map(m => (
-            <div key={m.id} className={`flex ${m.role === "user" ? "justify-end" : "justify-start"}`}>
+            <div key={m.id} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
               <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${m.role === "user" ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200"}`}>
                 {m.texto}
                 {m.tools && m.tools.length > 0 && (
@@ -265,6 +300,7 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
                   </div>
                 )}
               </div>
+              {m.cardapio && <div className="w-full max-w-[92%]"><CardapioPreview e={m.cardapio} /></div>}
             </div>
           ))}
           {enviando && <div className="text-xs text-gray-400">consultando…</div>}

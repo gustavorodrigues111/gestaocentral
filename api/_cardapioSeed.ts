@@ -1,9 +1,8 @@
 // Cardápio atual do Puba Cidade Velha — seed default do estado da skill de cardápio.
-// Usado quando cardapioEstado/puba ainda não existe no Firestore. Extraído do
-// gerar_cardapio.py (preços aprovados jul/2026). Estrutura: cada página é lista de
-// seções { secao, itens:[{nome, descricao, precos, descW?}] }. precos = string
-// ("R$ 99") ou par [qualificador, valor].
-export type CardapioPreco = string | [string, string];
+// Usado quando cardapioEstado/puba ainda não existe no Firestore. Preço = string
+// ("R$ 99") OU objeto {qual, val} p/ preço com qualificador (ex.: "(dupla)"/"R$ 32").
+// Objeto em vez de array-de-array porque o Firestore não aceita array aninhado.
+export type CardapioPreco = string | { qual: string; val: string };
 export type CardapioItem = { nome: string; descricao: string; precos: CardapioPreco[]; descW?: number };
 export type CardapioSecao = { secao: string; itens: CardapioItem[] };
 export type CardapioEstado = { comidas: CardapioSecao[]; bebidas: CardapioSecao[]; vendinha: CardapioSecao[] };
@@ -24,14 +23,14 @@ export const CARDAPIO_SEED: CardapioEstado = {
           "nome": "OSTRAS DA AMAZÔNIA ATLÂNTICA",
           "descricao": "com tucupi, namplá, gengibre, cebola roxa e coentro",
           "precos": [
-            [
-              "(dupla)",
-              "R$ 32"
-            ],
-            [
-              "(½ dz)",
-              "R$ 86"
-            ]
+            {
+              "qual": "(dupla)",
+              "val": "R$ 32"
+            },
+            {
+              "qual": "(½ dz)",
+              "val": "R$ 86"
+            }
           ],
           "descW": 148
         }

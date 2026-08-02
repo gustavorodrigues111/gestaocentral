@@ -58,6 +58,16 @@ async function lerCardapioEstado(): Promise<CardapioEstado & { versao: number }>
 type AltCardapio = { acao?: string; pagina?: string; secao?: string; item?: string; dados?: Record<string, unknown> };
 const PAGINAS: (keyof CardapioEstado)[] = ["comidas", "bebidas", "vendinha"];
 
+// Normaliza preços do que o modelo mandar → string | {qual,val} (sem array aninhado).
+function normPrecos(raw: unknown): CardapioItem["precos"] {
+  const arr = Array.isArray(raw) ? raw : (raw != null && raw !== "" ? [raw] : []);
+  return arr.map((p) => {
+    if (p && typeof p === "object" && !Array.isArray(p) && "val" in (p as object)) return { qual: String((p as { qual?: unknown }).qual ?? ""), val: String((p as { val: unknown }).val) };
+    if (Array.isArray(p) && p.length === 2) return { qual: String(p[0]), val: String(p[1]) };
+    return String(p);
+  });
+}
+
 // Aplica um diff no estado. Defensivo: cada alteração é isolada; erros viram msg.
 function aplicaDiffCardapio(est: CardapioEstado, alts: AltCardapio[]): { aplicadas: string[]; erros: string[] } {
   const aplicadas: string[] = [], erros: string[] = [];
@@ -77,15 +87,16 @@ function aplicaDiffCardapio(est: CardapioEstado, alts: AltCardapio[]): { aplicad
         const pg = (a.pagina && PAGINAS.includes(a.pagina as keyof CardapioEstado) ? a.pagina : "comidas") as keyof CardapioEstado;
         let sec = (est[pg] || []).find((s) => nrm(s.secao) === nrm(a.secao));
         if (!sec) { sec = { secao: String(a.secao || "OUTROS").toUpperCase(), itens: [] }; (est[pg] as CardapioSecao[]).push(sec); }
-        const precos = (d.precos as CardapioItem["precos"]) || (d.preco ? [String(d.preco)] : ["R$ 0"]);
-        sec.itens.push({ nome: String(d.nome || a.item || "NOVO ITEM").toUpperCase(), descricao: String(d.descricao || ""), precos });
+        const precos = normPrecos(d.precos ?? d.preco ?? d.valor);
+        sec.itens.push({ nome: String(d.nome || a.item || "NOVO ITEM").toUpperCase(), descricao: String(d.descricao || ""), precos: precos.length ? precos : ["R$ 0"] });
         aplicadas.push(`adicionado ${d.nome || a.item} em ${sec.secao}`);
       } else if (acao === "remover") {
         const f = acha(a.pagina, a.secao, String(a.item)); if (!f) { erros.push(`não achei "${a.item}" pra remover`); continue; }
         f.sec.itens = f.sec.itens.filter((i) => i !== f.it); aplicadas.push(`removido ${f.it.nome}`);
       } else if (acao === "alterar_preco") {
         const f = acha(a.pagina, a.secao, String(a.item)); if (!f) { erros.push(`não achei "${a.item}" pra alterar preço`); continue; }
-        f.it.precos = (d.precos as CardapioItem["precos"]) || [String(d.preco || d.valor || "R$ 0")];
+        const np = normPrecos(d.precos ?? d.preco ?? d.valor);
+        if (np.length) f.it.precos = np;
         aplicadas.push(`preço de ${f.it.nome} → ${JSON.stringify(f.it.precos)}`);
       } else if (acao === "editar_descricao") {
         const f = acha(a.pagina, a.secao, String(a.item)); if (!f) { erros.push(`não achei "${a.item}"`); continue; }
@@ -214,7 +225,11 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const regras = temWrite
     ? " Para QUALQUER alteração: primeiro PROPONHA em texto o que vai mudar e peça confirmação explícita; só chame a ferramenta de escrita DEPOIS que o usuário confirmar ('confirma'/'pode aplicar') na mensagem seguinte. Nunca aplique sem confirmação."
     : " Você NÃO pode alterar nada nesta versão (só consulta); se pedirem uma alteração, explique que por ora você só consulta.";
-  const system = sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras;
+  const temCardapio = skillDisp.includes("ler_cardapio");
+  const notaCardapio = temCardapio
+    ? " Quando pedirem pra VER/MOSTRAR o cardápio ou a prévia, chame ler_cardapio: a prévia visual (HTML) aparece SOZINHA na tela — não precisa listar item por item, só confirme que está mostrando. Depois de aplicar uma alteração, a prévia atualizada também aparece sozinha."
+    : "";
+  const system = sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras + notaCardapio;
 
   const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [];
   for (const h of (Array.isArray(body?.historico) ? body!.historico : []).slice(-10)) {
@@ -223,6 +238,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   messages.push({ role: "user", content: mensagem });
 
   const toolCalls: { tool: string; resumo: string }[] = [];
+  let tocouCardapio = false;   // pra devolver a prévia HTML quando o cardápio foi lido/alterado
   try {
     for (let loop = 0; loop < MAX_LOOPS; loop++) {
       const payload = { model: (agente.model as string) || MODEL_PADRAO, max_tokens: 2000, system, messages, tools: anthropicTools };
@@ -238,7 +254,8 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 
       if (j.stop_reason !== "tool_use") {
         const texto = blocks.filter(b => b.type === "text").map(b => b.text || "").join("").trim();
-        res.status(200).json({ resposta: texto || "(sem resposta)", toolCalls });
+        const extra = tocouCardapio ? { estadoCardapio: await lerCardapioEstado() } : {};
+        res.status(200).json({ resposta: texto || "(sem resposta)", toolCalls, ...extra });
         return;
       }
 
@@ -249,6 +266,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
         if (b.type !== "tool_use" || !b.name || !b.id) continue;
         const input = (b.input || {}) as Doc;
         const skill = SKILL_TOOLS[b.name];
+        if (b.name === "ler_cardapio" || b.name === "aplicar_cardapio") tocouCardapio = true;
         const pessoaNome = (body?.pessoaNome || user.email || "") as string;
         const { resumo, conteudo } = skill
           ? await skill.exec(input, { pessoaId: user.uid, pessoaNome })
