@@ -217,7 +217,8 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onClose, onConfig }: { agent
           if (!r.ok) { setErro(j.error || "Falha ao transcrever."); return; }
           const t = (j.texto || "").trim();
           if (!t) { setErro(j.aviso || "Não entendi o áudio."); return; }
-          await enviarMsg(t);
+          // Coloca no campo pra o usuário revisar/editar antes de enviar (não manda sozinho).
+          setTexto((p) => (p.trim() ? p.trim() + " " + t : t));
         } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao transcrever."); }
         finally { setTranscrevendo(false); }
       };
