@@ -348,18 +348,22 @@ export function TarefasPage() {
         <div>
           {/* Título igual ao do ProjetoView, pra padronizar — "Minhas tarefas"
               é tratado conceitualmente como um pseudo-projeto: a caixa pessoal. */}
-          <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
+          {/* Linha 1: título + Todas/Lixeira … visões (Calendário/Lista/Kanban) à direita */}
+          <div className="mb-2.5 flex items-center gap-x-3 gap-y-2 flex-wrap">
             <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">📥 Minhas tarefas</h2>
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{minhas.length} tarefa(s) · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
-            {buscaInput}
             {isMaster && (
               <>
                 <button type="button" onClick={() => setTab("todas")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">🌐 Todas</button>
                 <button type="button" onClick={() => setTab("lixeira")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">🗑️ Lixeira</button>
-                <span className="mx-1 h-5 w-px bg-gray-200 dark:bg-gray-700" />
               </>
             )}
+            <div className="flex-1" />
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
+          </div>
+          {/* Linha 2: busca à esquerda … Nova reunião/Nova tarefa/Gerenciar à direita */}
+          <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
+            {buscaInput}
             <div className="flex-1" />
             {acoesHeader}
           </div>
