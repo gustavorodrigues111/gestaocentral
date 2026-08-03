@@ -412,11 +412,14 @@ export function TarefasPage() {
 
       {tab === "tudo" && (
         <div>
-          <div className="mb-3 flex items-center gap-x-3 gap-y-2 flex-wrap">
+          <div className="mb-2.5 flex items-center gap-x-3 gap-y-2 flex-wrap">
             <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">🗂️ Tudo</h2>
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">minhas tarefas · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
-            {buscaInput}
+            <div className="flex-1" />
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
+          </div>
+          <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
+            {buscaInput}
             <div className="flex-1" />
             {acoesHeader}
           </div>
@@ -441,16 +444,15 @@ export function TarefasPage() {
 
       {tab === "todas" && isMaster && (
         <div>
-          <div className="mb-3 flex items-baseline gap-2 flex-wrap">
+          <div className="mb-2.5 flex items-center gap-x-3 gap-y-2 flex-wrap">
             <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">🌐 Todas as tarefas</h2>
-            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-              {todasTarefas.length} tarefa(s) · {todasTarefas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas
-            </span>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap mb-4">
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{todasTarefas.length} tarefa(s) · {todasTarefas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
             <button type="button" onClick={() => setTab("minhas")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">← Minhas</button>
-            <span className="mx-1 h-5 w-px bg-gray-200 dark:bg-gray-700" />
+            <div className="flex-1" />
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
+          </div>
+          <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
+            {buscaInput}
             <div className="flex-1" />
             {acoesHeader}
           </div>
@@ -504,13 +506,14 @@ export function TarefasPage() {
             subprojetos={subprojetos}
             projetoFiltro={projetoFiltro}
             subFiltro={subFiltro}
-            tarefas={tarefasProjetoVisiveis}
+            tarefas={filtrar(tarefasProjetoVisiveis)}
             onAbrir={setDetalheId}
             view={viewProjeto}
             onChangeView={setViewProjeto}
             autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
             onNovaTarefa={(opts) => setNovaAberta(opts)}
             acoes={acoesHeader}
+            busca={buscaInput}
           />
         </>
       )}

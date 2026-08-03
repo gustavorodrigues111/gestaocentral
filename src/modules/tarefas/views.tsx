@@ -468,7 +468,7 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
 
 // ─── VIEW: Por Projeto ────────────────────────────────────────────────────
 
-export function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas, onAbrir, view, onChangeView, autor, onNovaTarefa, acoes }: {
+export function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, tarefas, onAbrir, view, onChangeView, autor, onNovaTarefa, acoes, busca }: {
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
   projetoFiltro: string;
@@ -483,6 +483,7 @@ export function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, t
   // — usado pelos botões "+ Nova tarefa" nas colunas do calendário.
   onNovaTarefa: (opts: { prazo?: string; projetoId?: string; subprojetoId?: string }) => void;
   acoes?: ReactNode;
+  busca?: ReactNode;
 }) {
   const proj = projetos.find(p => p.id === projetoFiltro);
   const subsDoProj = subprojetos.filter(s => s.projetoId === projetoFiltro);
@@ -503,17 +504,23 @@ export function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, t
           </div>
         ) : (
           <>
-            <div className="mb-3 flex items-center gap-x-3 gap-y-2 flex-wrap">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">
+            <div className="mb-2.5 flex items-center gap-x-3 gap-y-2 flex-wrap">
+              <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">
                 {proj.emoji} {proj.nome}{subAtual && <span className="text-gray-400 dark:text-gray-500 font-normal"> · {subAtual.nome}</span>}
               </h2>
-              <span className="text-sm text-gray-500 dark:text-gray-400">
+              <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
                 {tarefasFiltradas.length} tarefa(s) · {ativas(tarefasFiltradas)} ativas
               </span>
-              <div className="[&>div]:!mb-0"><ViewSwitcher value={view} onChange={onChangeView} /></div>
               <div className="flex-1" />
-              {acoes}
+              <div className="[&>div]:!mb-0"><ViewSwitcher value={view} onChange={onChangeView} /></div>
             </div>
+            {(busca || acoes) && (
+              <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
+                {busca}
+                <div className="flex-1" />
+                {acoes}
+              </div>
+            )}
 
             {/* Banner pra subprojeto automático/bloqueado — explica como
                 ele recebe tarefas e dá CTA pro módulo origem. CTA respeita
