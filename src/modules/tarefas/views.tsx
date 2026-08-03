@@ -887,17 +887,17 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
           if (id) reordenarNoDia(id, data, null);
         } : undefined}
         title={feriadoNome ? `Feriado: ${feriadoNome}` : undefined}
-        className={`flex flex-col min-h-[200px] rounded-lg border p-2 transition-colors ${ehHoje ? "ring-1 ring-indigo-400" : ""} ${
+        className={`flex flex-col min-h-[220px] rounded-lg border p-2 transition-colors ${
           ehAlvo
             ? "border-indigo-500 ring-2 ring-indigo-300 dark:ring-indigo-700 bg-indigo-50 dark:bg-indigo-900/30"
-            : naoUtil
-              ? "border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/15"
-              : "border-blue-200 dark:border-blue-900/40 bg-blue-50/50 dark:bg-blue-950/15"
+            : ehHoje
+              ? "border-indigo-300 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-950/20"
+              : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900/30"
         }`}
       >
-        <div className={`flex items-baseline justify-between mb-1.5 pb-1.5 border-b ${ehHoje ? "border-indigo-300 dark:border-indigo-800" : naoUtil ? "border-emerald-200 dark:border-emerald-900/40" : "border-blue-200 dark:border-blue-900/40"}`}>
+        <div className={`flex items-baseline justify-between mb-1.5 pb-1.5 border-b ${ehHoje ? "border-indigo-200 dark:border-indigo-900/50" : "border-gray-100 dark:border-gray-800"}`}>
           <div>
-            <div className={`text-[10px] font-bold uppercase tracking-wider ${ehHoje ? "text-indigo-600 dark:text-indigo-400" : naoUtil ? "text-emerald-700 dark:text-emerald-400" : "text-blue-700 dark:text-blue-400"}`}>{label}</div>
+            <div className={`text-[10px] font-bold uppercase tracking-wider ${ehHoje ? "text-indigo-600 dark:text-indigo-400" : naoUtil ? "text-rose-500/70 dark:text-rose-400/70" : "text-gray-400 dark:text-gray-500"}`}>{label}</div>
             <div className={`text-base font-bold ${ehHoje ? "text-indigo-700 dark:text-indigo-300" : "text-gray-900 dark:text-gray-100"}`}>
               {Number(data.slice(8, 10))}
               <span className="ml-1 text-[10px] font-normal text-gray-500 dark:text-gray-400">{data.slice(5, 7)}</span>
@@ -912,8 +912,9 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
           {lista.map(t => {
             const proj = projetos.find(p => p.id === t.projetoId);
             const meta = catDaTarefa(t.origem, proj);
-            // Faixa esquerda = PRIORIDADE (área fica no badge). null = normal → usa cor da área.
-            const prioC = t.prioridade === "urgente" ? "#e11d48" : t.prioridade === "alta" ? "#f59e0b" : t.prioridade === "baixa" ? "#94a3b8" : null;
+            // Faixa esquerda = PRIORIDADE (sempre visível; área fica no badge).
+            const prioC = t.prioridade === "urgente" ? "#e11d48" : t.prioridade === "alta" ? "#f59e0b" : t.prioridade === "baixa" ? "#94a3b8" : "#cbd5e1";
+            const temPrio = !!t.prioridade && t.prioridade !== "normal";
             const concluida = t.status === "concluida";
             const arrastando = draggingId === t.id;
             const arrastavel = podeArrastar;
@@ -944,14 +945,14 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
                   if (id && id !== t.id) reordenarNoDia(id, data, t.id);
                 } : undefined}
                 onClick={() => onAbrir(t.id)}
-                className={`relative w-full text-left text-[11px] px-2 py-1.5 rounded-md text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${dropAntes === t.id ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
-                style={{ background: meta.cor + "14", borderLeft: `4px solid ${prioC || meta.cor}` }}
+                className={`relative w-full text-left text-[11px] px-2 py-1.5 rounded-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${dropAntes === t.id ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
+                style={{ borderLeftWidth: 4, borderLeftColor: prioC }}
                 title={podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
               >
                 {t.responsavelNome && <AvatarIniciais nome={t.responsavelNome} id={t.responsavelId} size={16} className="absolute top-1 right-1" />}
                 <div className="font-medium leading-snug line-clamp-2 mb-1 pr-4">{t.titulo}</div>
                 <div className="flex items-center gap-1 flex-wrap">
-                  {prioC && (
+                  {temPrio && (
                     <span className="inline-flex items-center gap-0.5 px-1.5 py-[1px] rounded-full text-[8px] font-bold uppercase tracking-wide" style={{ color: prioC, background: prioC + "22" }}>
                       ● {TAREFA_PRIORIDADE_LABEL[t.prioridade]}
                     </span>
