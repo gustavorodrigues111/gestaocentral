@@ -780,9 +780,9 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
 }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(hoje));
-  const [expandirFds, setExpandirFds] = useState<boolean>(() => {
-    try { return localStorage.getItem("tarefas_calendario_fds") === "1"; } catch { return false; }
-  });
+  // Fim de semana opt-in por dia (Sáb / Dom separados). Lembra a escolha por usuário.
+  const [mostrarSab, setMostrarSab] = useState<boolean>(() => { try { return localStorage.getItem("tarefas_cal_sab") === "1"; } catch { return false; } });
+  const [mostrarDom, setMostrarDom] = useState<boolean>(() => { try { return localStorage.getItem("tarefas_cal_dom") === "1"; } catch { return false; } });
   const [draggingId, setDraggingId] = useState<string | null>(null);
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   const [dropAntes, setDropAntes] = useState<string | null>(null); // reordenar: soltar ANTES deste card
@@ -803,21 +803,6 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
   }, []);
 
   const podeArrastar = !!autor?.id;
-
-  async function moverParaData(id: string, novaData: string) {
-    if (!autor || id.includes("::")) return;   // card derivado não muda de data
-    // Otimista: snapshot atualiza. Não mostro spinner — só falha avisa.
-    try {
-      await atualizarTarefa(id, { prazo: novaData }, autor, {
-        acao: "editada",
-        campo: "prazo",
-        valorDepois: novaData,
-      });
-    } catch (e) {
-      console.error("[tarefas] falha ao mover:", e);
-      alert("Falha ao mover tarefa: " + (e instanceof Error ? e.message : String(e)));
-    }
-  }
   // Reordena dentro de um dia (arrasto vertical): insere a tarefa arrastada
   // antes de `antesDeId` (ou no fim se null) e regrava ordemDia de todo o dia.
   async function reordenarNoDia(id: string, dia: string, antesDeId: string | null) {
@@ -840,9 +825,7 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
       alert("Falha ao reordenar: " + (e instanceof Error ? e.message : String(e)));
     }
   }
-  useEffect(() => {
-    try { localStorage.setItem("tarefas_calendario_fds", expandirFds ? "1" : "0"); } catch {}
-  }, [expandirFds]);
+  useEffect(() => { try { localStorage.setItem("tarefas_cal_sab", mostrarSab ? "1" : "0"); localStorage.setItem("tarefas_cal_dom", mostrarDom ? "1" : "0"); } catch {} }, [mostrarSab, mostrarDom]);
 
   const dias = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(semanaInicio + "T12:00:00");
@@ -875,19 +858,8 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
     setSemanaInicio(d.toISOString().slice(0, 10));
   }
 
-  function fmtDia(yyyymmdd: string, comAno = false): string {
-    const d = new Date(yyyymmdd + "T12:00:00");
-    return d.toLocaleDateString("pt-BR", comAno
-      ? { day: "2-digit", month: "short", year: "numeric" }
-      : { day: "2-digit", month: "short" });
-  }
-
-  const titulo = `${fmtDia(dias[0])} — ${fmtDia(dias[6], true)}`;
-
-  // Conta tarefas ATIVAS do fim de semana, pra decidir se colapsado vale a pena
-  const fdsAtivos = ["sab", "dom"]; void fdsAtivos;
-  const tarefasFds = [...(tarefasPorDia.get(dias[5]) || []), ...(tarefasPorDia.get(dias[6]) || [])];
-  const tarefasFdsAtivas = tarefasFds.filter(t => t.status !== "concluida" && t.status !== "cancelada");
+  const sabQtd = (tarefasPorDia.get(dias[5]) || []).length;
+  const domQtd = (tarefasPorDia.get(dias[6]) || []).length;
 
   function renderDia(data: string, label: string, dia: number) {
     const ehHoje = data === hoje;
@@ -940,6 +912,8 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
           {lista.map(t => {
             const proj = projetos.find(p => p.id === t.projetoId);
             const meta = catDaTarefa(t.origem, proj);
+            // Faixa esquerda = PRIORIDADE (área fica no badge). null = normal → usa cor da área.
+            const prioC = t.prioridade === "urgente" ? "#e11d48" : t.prioridade === "alta" ? "#f59e0b" : t.prioridade === "baixa" ? "#94a3b8" : null;
             const concluida = t.status === "concluida";
             const arrastando = draggingId === t.id;
             const arrastavel = podeArrastar;
@@ -971,12 +945,17 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
                 } : undefined}
                 onClick={() => onAbrir(t.id)}
                 className={`relative w-full text-left text-[11px] px-2 py-1.5 rounded-md text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow ${concluida ? "line-through opacity-60" : ""} ${arrastando ? "opacity-40" : ""} ${dropAntes === t.id ? "ring-2 ring-indigo-400 ring-offset-1" : ""} ${podeArrastar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"}`}
-                style={{ background: meta.cor + "14", borderLeft: `3px solid ${meta.cor}` }}
+                style={{ background: meta.cor + "14", borderLeft: `4px solid ${prioC || meta.cor}` }}
                 title={podeArrastar ? `${t.titulo} (arrastar pra mover)` : t.titulo}
               >
                 {t.responsavelNome && <AvatarIniciais nome={t.responsavelNome} id={t.responsavelId} size={16} className="absolute top-1 right-1" />}
                 <div className="font-medium leading-snug line-clamp-2 mb-1 pr-4">{t.titulo}</div>
                 <div className="flex items-center gap-1 flex-wrap">
+                  {prioC && (
+                    <span className="inline-flex items-center gap-0.5 px-1.5 py-[1px] rounded-full text-[8px] font-bold uppercase tracking-wide" style={{ color: prioC, background: prioC + "22" }}>
+                      ● {TAREFA_PRIORIDADE_LABEL[t.prioridade]}
+                    </span>
+                  )}
                   <span className="inline-flex items-center gap-0.5 px-1.5 py-[1px] rounded-full text-[8px] font-bold uppercase tracking-wide text-white" style={{ background: meta.cor }}>
                     {meta.icon} {meta.label}
                   </span>
@@ -1005,105 +984,32 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
           Criação avulsa fica no botão "+ Nova Tarefa" do header global;
           criação por dia fica no botão tracejado dentro de cada coluna. */}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div className="flex items-center gap-1">
-          <Button size="sm" variant="ghost" onClick={() => navegarSemanas(-1)}>‹</Button>
-          <Button size="sm" variant="ghost" onClick={() => setSemanaInicio(inicioSemanaSeg(hoje))}>Hoje</Button>
-          <Button size="sm" variant="ghost" onClick={() => navegarSemanas(1)}>›</Button>
-          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100 ml-2">
-            {titulo}
-          </span>
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button type="button" onClick={() => navegarSemanas(-1)} title="Semana anterior" className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800">‹</button>
+          <input type="date" value={dias[0]} onChange={e => e.target.value && setSemanaInicio(inicioSemanaSeg(e.target.value))} title="Ir para uma data" className="text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5" />
+          <button type="button" onClick={() => navegarSemanas(1)} title="Próxima semana" className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800">›</button>
+          {dias[0] !== inicioSemanaSeg(hoje) && <button type="button" onClick={() => setSemanaInicio(inicioSemanaSeg(hoje))} className="text-xs font-semibold text-indigo-600 dark:text-indigo-300 px-2 py-1.5 hover:underline">Hoje</button>}
         </div>
-        <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 flex-wrap">
           {semProprio.length > 0 && (
-            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400">
-              📭 Sem data ({semProprio.length})
-            </span>
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400">📭 Sem data ({semProprio.length})</span>
           )}
-          <button type="button" onClick={() => setExpandirFds(!expandirFds)} title="Mostrar sábado e domingo"
-            className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs transition-colors ${expandirFds ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-            📅 Sáb+Dom
-          </button>
+          <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">Fim de semana</span>
+          {([["Sáb", mostrarSab, setMostrarSab, sabQtd], ["Dom", mostrarDom, setMostrarDom, domQtd]] as const).map(([lbl, on, set, qtd]) => (
+            <button key={lbl} type="button" onClick={() => set(v => !v)} title={!on && qtd > 0 ? `${qtd} tarefa(s) no ${lbl.toLowerCase()} escondida(s)` : `Mostrar ${lbl.toLowerCase()}`}
+              className={`relative inline-flex items-center px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors ${on ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+              {lbl}{!on && qtd > 0 && <span className="absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full bg-rose-500 border-2 border-white dark:border-gray-900" />}
+            </button>
+          ))}
           <span className="text-xs text-gray-500 dark:text-gray-400">{totalSemana} tarefa(s)</span>
         </div>
       </div>
 
-      {/* Grid de dias — 5 (úteis) + 2 ou +1 (fds colapsado) */}
-      <div className={`grid gap-2 ${expandirFds ? "grid-cols-2 sm:grid-cols-4 md:grid-cols-7" : "grid-cols-2 sm:grid-cols-3 md:grid-cols-6"}`}>
+      {/* Grid de dias — Seg–Sex + Sáb/Dom conforme os toggles (opt-in) */}
+      <div className={`grid gap-2 grid-cols-2 sm:grid-cols-3 ${(5 + (mostrarSab ? 1 : 0) + (mostrarDom ? 1 : 0)) === 7 ? "md:grid-cols-7" : (5 + (mostrarSab ? 1 : 0) + (mostrarDom ? 1 : 0)) === 6 ? "md:grid-cols-6" : "md:grid-cols-5"}`}>
         {dias.slice(0, 5).map((d, i) => renderDia(d, labelsDoW[i], i))}
-        {expandirFds ? (
-          dias.slice(5, 7).map((d, i) => renderDia(d, labelsDoW[5 + i], 5 + i))
-        ) : (
-          <button
-            onClick={() => setExpandirFds(true)}
-            onDragOver={podeArrastar ? (e) => {
-              e.preventDefault();
-              e.dataTransfer.dropEffect = "move";
-              if (dropTarget !== "fds") setDropTarget("fds");
-            } : undefined}
-            onDragLeave={podeArrastar ? () => {
-              if (dropTarget === "fds") setDropTarget(null);
-            } : undefined}
-            onDrop={podeArrastar ? (e) => {
-              e.preventDefault();
-              const id = e.dataTransfer.getData("text/plain");
-              setDropTarget(null);
-              setDraggingId(null);
-              if (id) {
-                moverParaData(id, dias[5]); // sábado
-                setExpandirFds(true);
-              }
-            } : undefined}
-            className={`flex flex-col min-h-[200px] rounded-lg border border-dashed p-2 text-left transition-colors ${
-              dropTarget === "fds"
-                ? "border-indigo-500 ring-2 ring-indigo-300 dark:ring-indigo-700 bg-indigo-50 dark:bg-indigo-900/30"
-                : "border-emerald-300 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-950/15 hover:border-emerald-400 dark:hover:border-emerald-700"
-            }`}
-            title="Clique pra expandir sábado e domingo"
-          >
-            <div className="flex items-baseline justify-between mb-1.5 pb-1.5 border-b border-emerald-200 dark:border-emerald-900/40">
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400">Sáb · Dom</div>
-                <div className="text-base font-bold text-gray-700 dark:text-gray-300">
-                  {Number(dias[5].slice(8, 10))}–{Number(dias[6].slice(8, 10))}
-                </div>
-              </div>
-              {tarefasFds.length > 0 && (
-                <span className="text-[10px] text-gray-500 dark:text-gray-400">{tarefasFds.length}</span>
-              )}
-            </div>
-            <div className="space-y-1 flex-1 overflow-y-auto">
-              {tarefasFdsAtivas.slice(0, 3).map(t => {
-                const proj = projetos.find(p => p.id === t.projetoId);
-                const cor = t.corHerdada || proj?.cor || "#6b7280";
-                return (
-                  <div
-                    key={t.id}
-                    className="text-[11px] px-1.5 py-1 rounded truncate"
-                    style={{ background: cor + "26", color: cor, borderLeft: `2px solid ${cor}` }}
-                    title={t.titulo}
-                  >
-                    {t.titulo}
-                  </div>
-                );
-              })}
-              {tarefasFdsAtivas.length > 3 && (
-                <div className="text-[10px] text-gray-500 dark:text-gray-400">+{tarefasFdsAtivas.length - 3}</div>
-              )}
-              {onNovaTarefaNoDia && (
-                <span
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); }}
-                  onKeyDown={(e) => { if (e.key === "Enter") { e.stopPropagation(); onNovaTarefaNoDia(dias[5]); } }}
-                  className="block text-[11px] px-1.5 py-1 rounded border border-dashed border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-900/20 hover:border-rose-500 transition-colors mt-1"
-                >
-                  + Nova tarefa
-                </span>
-              )}
-              <div className="text-[10px] text-indigo-600 dark:text-indigo-400 underline mt-1">Expandir →</div>
-            </div>
-          </button>
-        )}
+        {mostrarSab && renderDia(dias[5], labelsDoW[5], 5)}
+        {mostrarDom && renderDia(dias[6], labelsDoW[6], 6)}
       </div>
 
       {/* Atrasadas */}

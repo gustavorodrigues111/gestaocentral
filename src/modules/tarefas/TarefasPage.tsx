@@ -339,15 +339,9 @@ export function TarefasPage() {
         <div>
           {/* Título igual ao do ProjetoView, pra padronizar — "Minhas tarefas"
               é tratado conceitualmente como um pseudo-projeto: a caixa pessoal. */}
-          <div className="mb-3 flex items-baseline gap-2 flex-wrap">
-            <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">
-              📥 Minhas tarefas
-            </h2>
-            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
-              {minhas.length} tarefa(s) · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas
-            </span>
-          </div>
-          <div className="flex items-center gap-2 flex-wrap mb-4">
+          <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
+            <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">📥 Minhas tarefas</h2>
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{minhas.length} tarefa(s) · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
             {isMaster && (
               <>
                 <button type="button" onClick={() => setTab("todas")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">🌐 Todas</button>
