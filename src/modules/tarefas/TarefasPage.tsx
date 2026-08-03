@@ -81,6 +81,15 @@ export function TarefasPage() {
   const [lixeira, setLixeira] = useState<Tarefa[]>([]);
   const [todasTarefas, setTodasTarefas] = useState<Tarefa[]>([]);
   const [gerenciarMenuAberto, setGerenciarMenuAberto] = useState(false);
+  const [busca, setBusca] = useState("");
+  const filtrar = (ts: Tarefa[]) => { const q = busca.trim().toLowerCase(); return q ? ts.filter(t => (t.titulo || "").toLowerCase().includes(q) || (t.descricao || "").toLowerCase().includes(q)) : ts; };
+  const buscaInput = (
+    <div className="flex items-center gap-1.5 flex-1 min-w-[160px] max-w-[380px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 py-1.5">
+      <span className="text-gray-400 text-sm">🔍</span>
+      <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar tarefa…" className="flex-1 bg-transparent text-sm outline-none text-gray-800 dark:text-gray-100 placeholder:text-gray-400" />
+      {busca && <button type="button" onClick={() => setBusca("")} className="text-gray-400 hover:text-gray-600 text-sm">✕</button>}
+    </div>
+  );
   // Modal de nova tarefa. Aceita pré-preenchimento de prazo, projeto e
   // subprojeto pra fluxos diferentes (botão por dia, "+ Nova tarefa" dentro
   // de um projeto, etc.).
@@ -342,6 +351,7 @@ export function TarefasPage() {
           <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
             <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">📥 Minhas tarefas</h2>
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{minhas.length} tarefa(s) · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
+            {buscaInput}
             {isMaster && (
               <>
                 <button type="button" onClick={() => setTab("todas")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">🌐 Todas</button>
@@ -356,7 +366,7 @@ export function TarefasPage() {
           {viewMinhas === "calendario" && (
             <>
               <CalendarioView
-                tarefas={minhas}
+                tarefas={filtrar(minhas)}
                 projetos={projetos}
                 subprojetos={subprojetos}
                 onAbrir={setDetalheId}
@@ -377,7 +387,7 @@ export function TarefasPage() {
           )}
           {viewMinhas === "lista" && (
             <MinhasTarefasView
-              tarefas={minhas}
+              tarefas={filtrar(minhas)}
               projetos={projetos}
               subprojetos={subprojetos}
               onAbrir={setDetalheId}
@@ -387,7 +397,7 @@ export function TarefasPage() {
           )}
           {viewMinhas === "kanban" && (
             <KanbanView
-              tarefas={minhas}
+              tarefas={filtrar(minhas)}
               projetos={projetos}
               autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
               onAbrir={setDetalheId}
@@ -401,13 +411,14 @@ export function TarefasPage() {
           <div className="mb-3 flex items-center gap-x-3 gap-y-2 flex-wrap">
             <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">🗂️ Tudo</h2>
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">minhas tarefas · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
+            {buscaInput}
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
             <div className="flex-1" />
             {acoesHeader}
           </div>
-          {viewMinhas === "calendario" && <CalendarioView tarefas={minhas} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} />}
-          {viewMinhas === "lista" && <MinhasTarefasView tarefas={minhas} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />}
-          {viewMinhas === "kanban" && <KanbanView tarefas={minhas} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />}
+          {viewMinhas === "calendario" && <CalendarioView tarefas={filtrar(minhas)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} />}
+          {viewMinhas === "lista" && <MinhasTarefasView tarefas={filtrar(minhas)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />}
+          {viewMinhas === "kanban" && <KanbanView tarefas={filtrar(minhas)} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />}
         </div>
       )}
 
@@ -440,13 +451,13 @@ export function TarefasPage() {
             {acoesHeader}
           </div>
           {viewMinhas === "calendario" && (
-            <CalendarioView tarefas={todasTarefas} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} />
+            <CalendarioView tarefas={filtrar(todasTarefas)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} />
           )}
           {viewMinhas === "lista" && (
-            <MinhasTarefasView tarefas={todasTarefas} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />
+            <MinhasTarefasView tarefas={filtrar(todasTarefas)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />
           )}
           {viewMinhas === "kanban" && (
-            <KanbanView tarefas={todasTarefas} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />
+            <KanbanView tarefas={filtrar(todasTarefas)} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />
           )}
         </div>
       )}

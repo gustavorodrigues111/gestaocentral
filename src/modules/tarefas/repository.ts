@@ -182,40 +182,20 @@ export function ouvirTarefasDeUsuario(pessoaId: string, cb: (tarefas: Tarefa[]) 
   // responsável de alguma subtarefa (denormalizado em
   // subtarefaResponsaveisIds). Firestore não tem OR composto em queries
   // simples; fazemos 4 listeners.
-  const unsubResp = onSnapshot(
-    query(collection(db, COL_TAREFAS), where("responsavelId", "==", pessoaId)),
-    () => recarregar(),
-  );
-  const unsubCo = onSnapshot(
-    query(collection(db, COL_TAREFAS), where("coResponsaveis", "array-contains", pessoaId)),
-    () => recarregar(),
-  );
-  const unsubObs = onSnapshot(
-    query(collection(db, COL_TAREFAS), where("observadoresIds", "array-contains", pessoaId)),
-    () => recarregar(),
-  );
-  const unsubSub = onSnapshot(
-    query(collection(db, COL_TAREFAS), where("subtarefaResponsaveisIds", "array-contains", pessoaId)),
-    () => recarregar(),
-  );
-
-  async function recarregar() {
-    const [respSnap, coSnap, obsSnap, subSnap] = await Promise.all([
-      getDocs(query(collection(db, COL_TAREFAS), where("responsavelId", "==", pessoaId))),
-      getDocs(query(collection(db, COL_TAREFAS), where("coResponsaveis", "array-contains", pessoaId))),
-      getDocs(query(collection(db, COL_TAREFAS), where("observadoresIds", "array-contains", pessoaId))),
-      getDocs(query(collection(db, COL_TAREFAS), where("subtarefaResponsaveisIds", "array-contains", pessoaId))),
-    ]);
-    const respData = respSnap.docs.map(d => ({ id: d.id, ...d.data() }) as Tarefa);
-    const coData = coSnap.docs.map(d => ({ id: d.id, ...d.data() }) as Tarefa);
-    const obsData = obsSnap.docs.map(d => ({ id: d.id, ...d.data() }) as Tarefa);
-    const subData = subSnap.docs.map(d => ({ id: d.id, ...d.data() }) as Tarefa);
-    // Mescla deduplicando por id
+  // Usa os dados de CADA snapshot direto (com compensação de latência: escrita
+  // local aparece na hora, sem esperar o servidor) e mescla. Antes fazia getDocs
+  // por listener, o que perdia a compensação — tarefa nova só aparecia no refresh.
+  let resp: Tarefa[] = [], co: Tarefa[] = [], obs: Tarefa[] = [], sub: Tarefa[] = [];
+  const emitir = () => {
     const map = new Map<string, Tarefa>();
-    [...respData, ...coData, ...obsData, ...subData].forEach(t => { if (!t.deletadoEm) map.set(t.id, t); });
+    [...resp, ...co, ...obs, ...sub].forEach(t => { if (!t.deletadoEm) map.set(t.id, t); });
     cb(Array.from(map.values()));
-  }
-  recarregar();
+  };
+  const mapa = (s: import("firebase/firestore").QuerySnapshot) => s.docs.map(d => ({ id: d.id, ...d.data() }) as Tarefa);
+  const unsubResp = onSnapshot(query(collection(db, COL_TAREFAS), where("responsavelId", "==", pessoaId)), s => { resp = mapa(s); emitir(); });
+  const unsubCo = onSnapshot(query(collection(db, COL_TAREFAS), where("coResponsaveis", "array-contains", pessoaId)), s => { co = mapa(s); emitir(); });
+  const unsubObs = onSnapshot(query(collection(db, COL_TAREFAS), where("observadoresIds", "array-contains", pessoaId)), s => { obs = mapa(s); emitir(); });
+  const unsubSub = onSnapshot(query(collection(db, COL_TAREFAS), where("subtarefaResponsaveisIds", "array-contains", pessoaId)), s => { sub = mapa(s); emitir(); });
 
   return () => { unsubResp(); unsubCo(); unsubObs(); unsubSub(); };
 }
