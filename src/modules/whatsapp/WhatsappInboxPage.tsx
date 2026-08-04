@@ -9,7 +9,7 @@
 // e catálogo de tags em whatsappTags.
 import { useEffect, useMemo, useRef, useState, type ReactNode, type ChangeEvent, type TouchEvent as RTouchEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, orderBy, query, setDoc, updateDoc, where, type Query, type QuerySnapshot, type DocumentData } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, orderBy, query, setDoc, updateDoc, where, writeBatch, type Query, type QuerySnapshot, type DocumentData } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -23,7 +23,7 @@ import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
 import { PAPEIS_WHATSAPP, type PapelWhatsapp, type WhatsappRoteio } from "../../core/whatsapp/roteios";
 
-type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean; status?: number };
+type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean; status?: number; origTimestamp?: string };
 
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const fmtBRcurto = (ymd?: string | null) => { if (!ymd) return ""; const [a, m, d] = String(ymd).split("-"); return d ? `${d}/${m}/${a?.slice(2) || ""}` : String(ymd); };
@@ -775,6 +775,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [encAvisar, setEncAvisar] = useState(true);        // interno: avisar cliente (padrão on)
   const [encFinalizar, setEncFinalizar] = useState(true);  // interno: finalizar original (padrão on)
   const [encMsgCliente, setEncMsgCliente] = useState(MSG_CLIENTE_ENCAMINHO);
+  const [encDesdeId, setEncDesdeId] = useState<string | null>(null); // 1ª msg do histórico a encaminhar (dela p/ frente)
+  const [encIncluirResumo, setEncIncluirResumo] = useState(true);    // anexar resumo IA no topo
   // Triagem de grupo: define atendente(s) ou marca spam (some).
   const [triagemGrupo, setTriagemGrupo] = useState<string | null>(null);
   const [triagemIds, setTriagemIds] = useState<string[]>([]);
@@ -988,6 +990,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     if (!encaminhar) return;
     setEncResumo(""); setEncObs(""); setEncAlvo(null); setEncAtendente(null); setEncCarregando(true);
     setEncAvisar(true); setEncFinalizar(true); setEncMsgCliente(MSG_CLIENTE_ENCAMINHO);
+    setEncIncluirResumo(true);
+    // Por padrão inclui todo o histórico visível (1ª mensagem selecionável em diante).
+    setEncDesdeId(thread.filter(m => !m.sistema && m.tipo !== "sistema" && !m.apagada)[0]?.id ?? null);
     void gerarResumo().then(s => setEncResumo(s)).finally(() => setEncCarregando(false));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encaminhar]);
@@ -1000,24 +1005,56 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     const uids = encAlvoObj.usuariosIds || [];
     return pessoas.filter(p => uids.includes(p.id)).sort((a, b) => a.nome.localeCompare(b.nome));
   }, [encAlvoObj, pessoas]);
+  // Mensagens do histórico que dá pra encaminhar (fora avisos de sistema e apagadas).
+  const encMsgsSelecionaveis = useMemo(() => thread.filter(m => !m.sistema && m.tipo !== "sistema" && !m.apagada), [thread]);
+  const encIdx = useMemo(() => {
+    const i = encMsgsSelecionaveis.findIndex(m => m.id === encDesdeId);
+    return i >= 0 ? i : 0;
+  }, [encMsgsSelecionaveis, encDesdeId]);
+  const encIncluidas = useMemo(() => encMsgsSelecionaveis.slice(encIdx), [encMsgsSelecionaveis, encIdx]);
   async function enviarEncaminhar() {
     if (!sel || !numeroSel) return;
     if (!encAlvo) { alert("Escolha o número/setor de destino."); return; }
     const alvo = numeros.find(n => n.id === encAlvo);
     const clientePhone = soDig(sel);
     if (!clientePhone) { alert("Esta conversa não tem um telefone pra encaminhar."); return; }
+    if (encIncluidas.length === 0 && !encResumo.trim()) { alert("Selecione ao menos uma mensagem (ou inclua o resumo) pra encaminhar."); return; }
     setEncEnviando(true);
     try {
       const atendente = encAtendente ? pessoas.find(p => p.id === encAtendente) : null;
-      const nota = `↪ *Encaminhado de ${numeroSelObj?.nome || "outro número"}* por ${me?.nome || "—"}`
-        + (atendente ? ` → atribuída a *${atendente.nome}*` : "")
-        + (encObs.trim() ? `\n${encObs.trim()}` : "")
-        + (encResumo.trim() ? `\n\n${encResumo.trim()}` : "");
-      // Cria a conversa pendente no inbox do número de destino (nota de contexto).
-      await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({
+      // Grava no inbox do destino: (1) cabeçalho curto de contexto, (2) o histórico
+      // selecionado replayado COMO MENSAGENS (quem mandou + horário original), (3) o
+      // resumo da IA no fim (opcional). Timestamps incrementais → ordem certa.
+      const base = Date.now();
+      const iso = (k: number) => new Date(base + k * 1000).toISOString();
+      const batch = writeBatch(db);
+      const novaMsg = (data: Record<string, unknown>) => batch.set(doc(collection(db, "whatsappMensagens")), sanitizeForFirestore(data));
+      // (1) Cabeçalho — nota curta, não é o repasse inteiro.
+      novaMsg({
         waId: clientePhone, numeroId: encAlvo, direcao: "out", tipo: "sistema", sistema: true, lido: true,
-        texto: nota, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(),
-      }));
+        texto: `↪ Conversa encaminhada de *${numeroSelObj?.nome || "outro número"}* por ${me?.nome || "—"}`
+          + (atendente ? ` → atribuída a *${atendente.nome}*` : "")
+          + (encObs.trim() ? `\n📝 ${encObs.trim()}` : ""),
+        timestamp: iso(0), recebidoEm: iso(0),
+      });
+      // (2) Histórico selecionado, cada mensagem preservando autor + horário original.
+      encIncluidas.forEach((m, i) => {
+        const autorLabel = m.direcao === "in" ? (nomeSel || "Cliente") : (m.autorNome || numeroSelObj?.nome || "Atendente");
+        novaMsg({
+          waId: clientePhone, numeroId: encAlvo, direcao: m.direcao, tipo: "encaminhada", lido: true,
+          texto: textoMostra(m), autorNome: autorLabel,
+          origTimestamp: m.timestamp || m.recebidoEm || null,
+          timestamp: iso(i + 1), recebidoEm: iso(i + 1),
+        });
+      });
+      // (3) Resumo IA no fim (opcional).
+      if (encIncluirResumo && encResumo.trim()) {
+        novaMsg({
+          waId: clientePhone, numeroId: encAlvo, direcao: "out", tipo: "sistema", sistema: true, lido: true,
+          texto: `📋 Resumo do atendimento\n${encResumo.trim()}`, timestamp: iso(encIncluidas.length + 1), recebidoEm: iso(encIncluidas.length + 1),
+        });
+      }
+      await batch.commit();
       // Semeia o nome do cliente + atribui direto (se escolheu atendente).
       const ck = foneKey(sel);
       // naoLidaManual é POR NÚMERO → grava no número de DESTINO (encAlvo), senão o
@@ -1424,7 +1461,16 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             </div>
             {thread.map(m => m.sistema || m.tipo === "sistema" ? (
               <div key={m.id} className="flex justify-center">
-                <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800/60 rounded-full px-3 py-1 text-center max-w-[90%]">{m.texto} · {hhmm(m.timestamp)}</div>
+                <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-100 dark:bg-gray-800/60 rounded-full px-3 py-1 text-center max-w-[90%] whitespace-pre-wrap">{m.texto} · {hhmm(m.timestamp)}</div>
+              </div>
+            ) : m.tipo === "encaminhada" ? (
+              <div key={m.id} className={`flex ${m.direcao === "out" ? "justify-end" : "justify-start"}`}>
+                <div className={`max-w-[80%] rounded-2xl px-2.5 py-1.5 text-sm border border-dashed ${m.direcao === "out" ? "bg-emerald-50/70 dark:bg-emerald-900/20 border-emerald-300 dark:border-emerald-800 rounded-br-md" : "bg-gray-50 dark:bg-gray-800/70 border-gray-300 dark:border-gray-700 rounded-bl-md"}`}>
+                  <div className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 mb-0.5 flex items-center gap-1">
+                    <span className="text-emerald-600 dark:text-emerald-400">↪</span>{m.autorNome || (m.direcao === "in" ? "Cliente" : "Atendente")}{m.origTimestamp && <span className="font-normal text-gray-400"> · {hhmm(m.origTimestamp)}</span>}
+                  </div>
+                  <div className="whitespace-pre-wrap break-words text-gray-800 dark:text-gray-100">{m.texto}</div>
+                </div>
               </div>
             ) : (
               <div key={m.id} className={`flex group ${m.direcao === "out" ? "justify-end" : "justify-start"}`}>
@@ -1652,7 +1698,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       {encaminhar && sel && (
         <Modal title="🔀 Encaminhar para outro número" onClose={() => setEncaminhar(false)} maxWidth="max-w-lg">
           <div className="space-y-3">
-            <p className="text-xs text-gray-500 dark:text-gray-400">A conversa entra na fila do número escolhido (em <b>Sem responsável ainda</b>) com o contexto. Nada é enviado ao cliente — a outra equipe assume e fala pelo número dela.</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">A conversa entra na fila do número escolhido (em <b>Sem responsável ainda</b>). O histórico que você escolher chega lá <b>como mensagens</b> (com quem mandou e o horário), não como um aviso. Nada é enviado ao cliente — a outra equipe assume e fala pelo número dela.</p>
             <div>
               <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Para qual número / setor</label>
               <div className="mt-1 grid grid-cols-1 gap-1.5 max-h-48 overflow-y-auto">
@@ -1682,12 +1728,53 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 </div>
               </div>
             )}
+            {/* Seleção de mensagens: escolhe a partir de qual mensagem encaminhar (dela pra frente). */}
             <div>
               <div className="flex items-center justify-between">
-                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Contexto (IA) — nota interna, editável</label>
-                <button type="button" onClick={() => { setEncCarregando(true); void gerarResumo().then(s => setEncResumo(s)).finally(() => setEncCarregando(false)); }} disabled={encCarregando} className="text-[11px] text-indigo-600 dark:text-indigo-300 hover:underline disabled:opacity-50">{encCarregando ? "gerando…" : "↻ Regenerar"}</button>
+                <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">A partir de qual mensagem encaminhar</label>
+                <span className="text-[11px] text-gray-400">{encIncluidas.length} de {encMsgsSelecionaveis.length}</span>
               </div>
-              <textarea value={encResumo} onChange={e => setEncResumo(e.target.value)} rows={5} placeholder={encCarregando ? "Gerando resumo…" : "Contexto do atendimento…"} className="w-full mt-1 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm outline-none resize-none" />
+              <p className="text-[11px] text-gray-400 mt-0.5 mb-1.5">Toque na bolinha: tudo daquela mensagem <b>pra baixo</b> vai como mensagens pro próximo atendente.</p>
+              {encMsgsSelecionaveis.length === 0 ? (
+                <div className="text-xs text-gray-400 italic px-1 py-3">Sem mensagens no histórico pra encaminhar — só o resumo abaixo será enviado.</div>
+              ) : (
+                <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 p-1.5 max-h-56 overflow-y-auto space-y-0.5">
+                  {encMsgsSelecionaveis.map((m, i) => {
+                    const incl = i >= encIdx;
+                    const inicio = i === encIdx;
+                    const autor = m.direcao === "in" ? (nomeSel || "Cliente") : (m.autorNome || "Atendente");
+                    return (
+                      <div key={m.id}>
+                        {inicio && <div className="flex items-center gap-1.5 px-1 py-0.5"><span className="flex-1 h-px bg-emerald-300 dark:bg-emerald-800" /><span className="text-[9px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">encaminha daqui</span><span className="flex-1 h-px bg-emerald-300 dark:bg-emerald-800" /></div>}
+                        <button type="button" onClick={() => setEncDesdeId(m.id)}
+                          className={`w-full flex items-start gap-2 text-left rounded-md px-1.5 py-1 transition-colors ${incl ? "" : "opacity-55"} ${inicio ? "bg-emerald-50 dark:bg-emerald-900/20" : "hover:bg-white dark:hover:bg-gray-800/60"}`}
+                          style={incl ? { borderLeft: "2px solid #10b981" } : { borderLeft: "2px solid transparent" }}>
+                          <span className={`mt-0.5 w-3.5 h-3.5 rounded-full shrink-0 border flex items-center justify-center ${inicio ? "border-emerald-500 bg-emerald-500" : incl ? "border-emerald-400" : "border-gray-300 dark:border-gray-600"}`}>{inicio && <span className="w-1.5 h-1.5 rounded-full bg-white" />}</span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center gap-1.5">
+                              <span className={`text-[11px] font-semibold ${m.direcao === "in" ? "text-gray-600 dark:text-gray-300" : "text-emerald-700 dark:text-emerald-300"}`}>{autor}</span>
+                              <span className="text-[10px] text-gray-400">{hhmm(m.timestamp)}</span>
+                              {!incl && <span className="text-[9px] text-gray-400 uppercase">fora</span>}
+                            </span>
+                            <span className="block text-xs text-gray-700 dark:text-gray-200 truncate">{textoMostra(m)}</span>
+                          </span>
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            {/* Resumo IA — opcional, vai no topo do repasse. */}
+            <div>
+              <label className="flex items-center justify-between gap-2">
+                <span className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200">
+                  <input type="checkbox" checked={encIncluirResumo} onChange={e => setEncIncluirResumo(e.target.checked)} />
+                  Incluir resumo da IA no topo
+                </span>
+                <button type="button" onClick={() => { setEncCarregando(true); void gerarResumo().then(s => setEncResumo(s)).finally(() => setEncCarregando(false)); }} disabled={encCarregando} className="text-[11px] text-indigo-600 dark:text-indigo-300 hover:underline disabled:opacity-50">{encCarregando ? "gerando…" : "↻ Regenerar"}</button>
+              </label>
+              {encIncluirResumo && <textarea value={encResumo} onChange={e => setEncResumo(e.target.value)} rows={4} placeholder={encCarregando ? "Gerando resumo…" : "Resumo do atendimento…"} className="w-full mt-1.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-900 px-3 py-2 text-sm outline-none resize-none" />}
             </div>
             <div>
               <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Observação (opcional)</label>
