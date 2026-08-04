@@ -191,14 +191,13 @@ def render(estado):
         if secs:
             for dx in (0.0, 297.8): draw_copy(c, dx, 0.0, header, secs, title, 822.3)
         cut_line(c, PW/2, 8, PW/2, PH-8); c.showPage()
-    H3 = PH / 3
+    H2 = PH / 2
     if vendinha:
         for dx in (0.0, 297.8):
-            for row in range(3):
-                draw_copy(c, dx, row * H3, Hd('header_comidas_sem_titulo.png'), vendinha, ["VENDINHA", "DA NAUTA"], H3 - 14.0)
+            for row in range(2):
+                draw_copy(c, dx, row * H2, Hd('header_comidas_sem_titulo.png'), vendinha, ["ALMOÇO"], H2 - 14.0)
     cut_line(c, PW/2, 8, PW/2, PH-8)
-    cut_line(c, 8, PH - H3, PW-8, PH - H3)
-    cut_line(c, 8, PH - 2*H3, PW-8, PH - 2*H3)
+    cut_line(c, 8, PH - H2, PW-8, PH - H2)
     c.showPage(); c.save()
     return buf.getvalue()
 
