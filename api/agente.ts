@@ -80,6 +80,17 @@ function aplicaDiffCardapio(est: CardapioEstado, alts: AltCardapio[]): { aplicad
     }
     return null;
   };
+  // Localiza uma SEÇÃO (categoria) inteira pra remover/renomear.
+  const achaSecao = (pagina: string | undefined, secaoNome: string | undefined) => {
+    const pgs = (pagina && PAGINAS.includes(pagina as keyof CardapioEstado) ? [pagina] : PAGINAS) as (keyof CardapioEstado)[];
+    for (const pg of pgs) {
+      const arr = (est[pg] || []) as CardapioSecao[];
+      let idx = arr.findIndex((s) => nrm(s.secao) === nrm(secaoNome || ""));
+      if (idx < 0 && secaoNome) idx = arr.findIndex((s) => nrm(s.secao).includes(nrm(secaoNome)));
+      if (idx >= 0) return { pg, arr, idx, sec: arr[idx] };
+    }
+    return null;
+  };
   for (const a of alts) {
     try {
       const acao = nrm(a.acao), d = a.dados || {};
@@ -105,6 +116,16 @@ function aplicaDiffCardapio(est: CardapioEstado, alts: AltCardapio[]): { aplicad
         const f = acha(a.pagina, a.secao, String(a.item)); if (!f) { erros.push(`não achei "${a.item}"`); continue; }
         const novo = String(d.nome || "").toUpperCase(); if (!novo) { erros.push("renomear sem nome novo"); continue; }
         aplicadas.push(`${f.it.nome} → ${novo}`); f.it.nome = novo;
+      } else if (acao === "remover_secao") {
+        const f = achaSecao(a.pagina, a.secao); if (!f) { erros.push(`não achei a seção "${a.secao}" pra remover`); continue; }
+        const nome = f.sec.secao, qtd = (f.sec.itens || []).length;
+        f.arr.splice(f.idx, 1);
+        aplicadas.push(`seção "${nome}" removida${qtd ? ` (com ${qtd} item(ns))` : " (estava vazia)"}`);
+      } else if (acao === "renomear_secao") {
+        const f = achaSecao(a.pagina, a.secao); if (!f) { erros.push(`não achei a seção "${a.secao}" pra renomear`); continue; }
+        const novo = String((d.nome ?? d.secao ?? "")).trim(); if (!novo) { erros.push("renomear_secao sem nome novo"); continue; }
+        const antigo = f.sec.secao; f.sec.secao = novo.toUpperCase();
+        aplicadas.push(`seção "${antigo}" → "${f.sec.secao}"`);
       } else erros.push(`ação desconhecida: ${a.acao}`);
     } catch (e) { erros.push(`erro em ${a.acao}: ${e instanceof Error ? e.message : "?"}`); }
   }
@@ -123,7 +144,7 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
     },
   },
   aplicar_cardapio: {
-    desc: "APLICA alterações no cardápio. Só chame DEPOIS do usuário confirmar explicitamente ('confirma'/'pode aplicar'). alteracoes = lista de { acao: 'alterar_preco'|'adicionar'|'remover'|'editar_descricao'|'renomear', pagina: 'comidas'|'bebidas'|'vendinha', secao, item (nome atual do item), dados }. Em dados: preço novo em `precos` (ex.: [\"R$ 64\"]) ou `preco`; item novo em `nome`/`descricao`/`precos`. Bump de versão automático. (O PDF final é gerado numa etapa seguinte.)",
+    desc: "APLICA alterações no cardápio. Só chame DEPOIS do usuário confirmar explicitamente ('confirma'/'pode aplicar'). alteracoes = lista de { acao, pagina: 'comidas'|'bebidas'|'vendinha', secao, item (nome atual do item), dados }. Ações de ITEM: 'alterar_preco'|'adicionar'|'remover'|'editar_descricao'|'renomear'. Ações de SEÇÃO/categoria inteira (o título, ex.: 'SANDUBAS'): 'remover_secao' (remove a seção e o que tiver dentro — use pra sumir com título órfão/vazio) e 'renomear_secao' (novo nome em dados.nome). Em dados: preço novo em `precos` (ex.: [\"R$ 64\"]) ou `preco`; item novo em `nome`/`descricao`/`precos`. Bump de versão automático. (O PDF final é gerado numa etapa seguinte.)",
     tipo: "write",
     schema: { type: "object", properties: {
       alteracoes: { type: "array", description: "lista de alterações", items: { type: "object", properties: {
