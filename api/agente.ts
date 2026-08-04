@@ -43,7 +43,7 @@ const READ_TOOLS: Record<string, { desc: string; cols: string[] }> = {
 // próprio e função de execução. A 1ª skill é o Cardápio do Puba.
 type SkillTool = {
   desc: string; tipo: "read" | "write"; schema: Record<string, unknown>;
-  exec: (args: Doc, ctx: { pessoaId: string; pessoaNome: string; restaurantId?: string }) => Promise<{ resumo: string; conteudo: string }>;
+  exec: (args: Doc, ctx: { pessoaId: string; pessoaNome: string; restaurantId?: string; onProgress?: (msg: string) => Promise<void> }) => Promise<{ resumo: string; conteudo: string }>;
 };
 
 const CARDAPIO_DOC = "puba";
@@ -383,6 +383,7 @@ const SKILL_TOOLS_SITE: Record<string, SkillTool> = {
     exec: async (args, ctx) => {
       const rid = ctx.restaurantId || "";
       if (!rid) return { resumo: "sem restaurante", conteudo: JSON.stringify({ erro: "agente sem restaurante no escopo" }) };
+      await ctx.onProgress?.(`⏳ Gerando o PDF de ${args.cardapio || "cardápio"} — leva uns 30-40s (o navegador precisa desenhar o layout). Já te mando aqui.`);
       try {
         const r = await fetch(APP_ORIGIN() + "/api/cardapio-site-pdf", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rid, menu: String(args.cardapio || "") }) });
         const j = (await r.json()) as { pdfUrl?: string; error?: string };
@@ -470,7 +471,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 export type AgenteResultado = { resposta: string; toolCalls: { tool: string; resumo: string }[]; estadoCardapio?: unknown; pdfUrl?: string; previaUrl?: string };
 export async function runAgenteCore(
   agente: Doc,
-  opts: { mensagem: string; historico?: { role: string; texto: string }[]; pessoaNome: string; pessoaId: string; anexo?: { base64?: string; mediaType?: string }; canal?: string },
+  opts: { mensagem: string; historico?: { role: string; texto: string }[]; pessoaNome: string; pessoaId: string; anexo?: { base64?: string; mediaType?: string }; canal?: string; onProgress?: (msg: string) => Promise<void> },
 ): Promise<AgenteResultado> {
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY não configurada.");
@@ -564,7 +565,7 @@ export async function runAgenteCore(
       const skill = SKILLS[b.name];
       if (b.name === "ler_cardapio" || b.name === "aplicar_cardapio") tocouCardapio = true;
       const { resumo, conteudo } = skill
-        ? await skill.exec(input, { pessoaId: opts.pessoaId, pessoaNome: opts.pessoaNome, restaurantId: agenteRid })
+        ? await skill.exec(input, { pessoaId: opts.pessoaId, pessoaNome: opts.pessoaNome, restaurantId: agenteRid, onProgress: opts.onProgress })
         : await execTool(b.name, input as { restaurantId?: string; periodo?: string; busca?: string }, escopo);
       toolCalls.push({ tool: b.name, resumo });
       if (b.name === "gerar_pdf" || b.name === "gerar_pdf_site") { try { const p = JSON.parse(conteudo) as { pdfUrl?: string }; if (p.pdfUrl) pdfUrl = p.pdfUrl; } catch { /* ignore */ } }

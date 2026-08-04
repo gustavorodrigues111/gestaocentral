@@ -14,7 +14,7 @@ import crypto from "node:crypto";
 import { firestoreCriar, firestoreLer, firestoreDisponivel } from "./_firestoreRest.js";
 import { atenderWhatsAgente, atenderWhatsAudio } from "./_roteadorWhats.js";
 
-export const config = { maxDuration: 15 };
+export const config = { maxDuration: 120 };   // o agente pode gerar PDF (Puppeteer, ~40s); retry da Meta é deduplicado
 
 type Req = { method?: string; query?: Record<string, string | string[] | undefined>; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type Res = { status: (c: number) => Res; json: (b: unknown) => void; send: (b: string) => void; end: () => void };

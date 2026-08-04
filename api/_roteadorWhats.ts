@@ -221,7 +221,7 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
 
   let out;
   try {
-    out = await runAgenteCore(agente, { mensagem: texto, historico: hist, pessoaNome: nome || from, pessoaId: `wa_${sid}`, canal: "whatsapp" });
+    out = await runAgenteCore(agente, { mensagem: texto, historico: hist, pessoaNome: nome || from, pessoaId: `wa_${sid}`, canal: "whatsapp", onProgress: async (m) => { await enviarWhats(from, m); } });
   } catch {
     await enviarWhats(from, "Tive um problema pra responder agora. Tenta de novo daqui a pouco 🙏");
     return;
