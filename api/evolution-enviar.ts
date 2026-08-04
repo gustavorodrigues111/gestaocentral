@@ -37,13 +37,15 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const key = process.env.EVOLUTION_API_KEY;
   if (!base || !key) { res.status(503).json({ error: "Evolution ainda não configurada (faltam EVOLUTION_API_URL / EVOLUTION_API_KEY nas env vars).", naoConfigurado: true }); return; }
 
-  const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as { instancia?: string; to?: string; texto?: string; autorNome?: string; mentioned?: string[] } | null;
+  const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as { instancia?: string; to?: string; texto?: string; autorNome?: string; mentioned?: string[]; quoted?: { key?: { id?: string; remoteJid?: string; fromMe?: boolean; participant?: string }; message?: unknown } } | null;
   const instancia = (body?.instancia || "").toString().trim();
   const toRaw = (body?.to || "").toString();
   // Grupo: JID "<id>@g.us" vai VERBATIM (não normaliza — senão perde o @g.us e
   // vira envio pra um número). Individual: normaliza pra E.164 sem "+".
   const to = toRaw.endsWith("@g.us") ? toRaw : normalizarFone(toRaw);
   const mentioned = Array.isArray(body?.mentioned) ? body!.mentioned.filter((x) => typeof x === "string" && x) : [];
+  // Citação (responder mensagem): { key:{id,...}, message:{conversation} }. Só usa se tiver id.
+  const quoted = body?.quoted && body.quoted.key?.id ? body.quoted : null;
   const textoBase = (body?.texto || "").toString();
   const autor = (body?.autorNome || "").toString().trim();
   if (!instancia) { res.status(400).json({ error: "Informe a instância (número)." }); return; }
@@ -63,7 +65,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       method: "POST",
       headers: { apikey: key, "Content-Type": "application/json" },
       // `mentioned`: JIDs (<num>@s.whatsapp.net) marcados no texto (@num) — em grupo.
-      body: JSON.stringify({ number: numero, text: texto, ...(mentioned.length ? { mentioned } : {}) }),
+      body: JSON.stringify({ number: numero, text: texto, ...(mentioned.length ? { mentioned } : {}), ...(quoted ? { quoted } : {}) }),
       signal: ctrl.signal,
     });
     const txt = await resp.text();

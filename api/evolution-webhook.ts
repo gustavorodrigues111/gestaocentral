@@ -97,6 +97,21 @@ function textoDe(m?: EvoMsg["message"], tipo?: string): string {
     || (tipo ? `[${tipo}]` : "");
 }
 
+// Citação (reply): o contextInfo fica dentro de algum nó da mensagem
+// (extendedText/image/video/document…). Extrai id + trecho + autor citados.
+type CtxInfo = { stanzaId?: string; participant?: string; quotedMessage?: EvoMsg["message"] };
+function quotedDe(msg?: EvoMsg["message"]): { quotedId?: string; quotedTexto?: string; quotedAutor?: string } {
+  if (!msg) return {};
+  let ctx: CtxInfo | undefined;
+  for (const v of Object.values(msg as Record<string, unknown>)) {
+    const c = (v as { contextInfo?: CtxInfo } | null)?.contextInfo;
+    if (c && c.stanzaId) { ctx = c; break; }
+  }
+  if (!ctx?.stanzaId) return {};
+  const texto = ctx.quotedMessage ? textoDe(ctx.quotedMessage, undefined) : "";
+  return { quotedId: ctx.stanzaId, quotedTexto: (texto || "").slice(0, 300) || undefined, quotedAutor: soDig((ctx.participant || "").split("@")[0]) || undefined };
+}
+
 // Extensão a partir do mime (pro nome do arquivo no Storage).
 function extDe(mime: string): string {
   const sub = (mime.split("/")[1] || "").split(";")[0].trim().toLowerCase();
@@ -258,6 +273,7 @@ async function processar(body: EvoBody): Promise<void> {
     if (m.message?.stickerMessage || m.message?.imageMessage || m.message?.audioMessage || m.message?.videoMessage || m.message?.documentMessage) {
       midia = await baixarMidia(numeroId, m);
     }
+    const quo = quotedDe(m.message);
     try {
       await firestoreCriar("whatsappMensagens", `${numeroId}_${id}`, {
         // Em grupo, `nome` (nome da conversa) NÃO é o autor — vem do nomeGrupo
@@ -268,6 +284,7 @@ async function processar(body: EvoBody): Promise<void> {
         autorNome: fromMe ? "via aparelho" : (ehGrupo ? (m.pushName || null) : null), viaAparelho: fromMe,
         ...(ehGrupo ? { ehGrupo: true, autor: soDig((m.key?.participant || "").split("@")[0]) || null, autorJid: m.key?.participant || null } : {}),
         ...(midia ? { midiaUrl: midia.url, mime: midia.mime, ...(midia.nome ? { midiaNome: midia.nome } : {}) } : {}),
+        ...(quo.quotedId ? { quotedId: quo.quotedId, quotedTexto: quo.quotedTexto || null, quotedAutor: quo.quotedAutor || null } : {}),
       });
       // Semeia o contato na 1ª mensagem (create-if-not-exists).
       if (ehGrupo) {

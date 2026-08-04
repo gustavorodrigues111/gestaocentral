@@ -23,7 +23,7 @@ import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
 import { PAPEIS_WHATSAPP, type PapelWhatsapp, type WhatsappRoteio } from "../../core/whatsapp/roteios";
 
-type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean; status?: number; origTimestamp?: string };
+type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean; status?: number; origTimestamp?: string; quotedId?: string | null; quotedTexto?: string | null; quotedAutor?: string | null };
 
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const fmtBRcurto = (ymd?: string | null) => { if (!ymd) return ""; const [a, m, d] = String(ymd).split("-"); return d ? `${d}/${m}/${a?.slice(2) || ""}` : String(ymd); };
@@ -156,6 +156,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const enviandoRef = useRef(false);   // trava síncrona contra duplo-envio (state é async)
   const [acaoMsgId, setAcaoMsgId] = useState<string | null>(null);   // popover de ações aberto (id da msg)
   const [editMsg, setEditMsg] = useState<{ id: string; texto: string } | null>(null);   // edição inline
+  const [respondendo, setRespondendo] = useState<Msg | null>(null);   // mensagem sendo citada (reply)
+  useEffect(() => { setRespondendo(null); }, [sel]);   // troca de conversa cancela a citação em andamento
   const [emojiAberto, setEmojiAberto] = useState(false);
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
   // Atribuição: inicio (Sem resp.|Minhas) · outras (De outros|Finalizadas) · spam.
@@ -605,9 +607,18 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       const autorCliente = (numeros.find(n => n.id === numeroSel)?.apelidos?.[me?.id || ""] || "").trim() || me?.nome || "";
       // @-marcações (só grupo): JIDs cujos @número ainda estão no texto.
       const mentioned = grupoSel ? mencionados.filter(mn => txt.includes(`@${mn.numero}`)).map(mn => mn.jid) : [];
+      // Citação (responder): monta o `quoted` pra Evolution (precisa do messageId
+      // da citada) + os campos que ficam no doc pra render local.
+      const cit = respondendo;
+      const citAutor = cit ? (cit.direcao === "out" ? (cit.autorNome || "Você") : (cit.autorNome || nomeSel || "Cliente")) : null;
+      const citTexto = cit ? (cit.texto || textoMostra(cit)) : null;
+      const quoted = cit?.messageId ? {
+        key: { id: cit.messageId, remoteJid: grupoSel ? `${sel.slice(2)}@g.us` : `${paraEnviar}@s.whatsapp.net`, fromMe: cit.direcao === "out", ...(cit.autorJid ? { participant: cit.autorJid } : {}) },
+        message: { conversation: citTexto || "" },
+      } : null;
       const r = await fetch("/api/evolution-enviar", {
         method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ instancia: numeroSel, to: paraEnviar, texto: txt, autorNome: autorCliente, ...(mentioned.length ? { mentioned } : {}) }),
+        body: JSON.stringify({ instancia: numeroSel, to: paraEnviar, texto: txt, autorNome: autorCliente, ...(mentioned.length ? { mentioned } : {}), ...(quoted ? { quoted } : {}) }),
       });
       const j = await r.json().catch(() => ({}));
       if (r.ok && (j as { ok?: boolean }).ok) {
@@ -615,11 +626,11 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         // Grava com id determinístico ${numeroId}_${messageId} pra (1) permitir
         // editar/apagar depois e (2) casar com o eco fromMe do webhook (dedup).
         const mid = (j as { messageId?: string }).messageId || null;
-        const docMsg = sanitizeForFirestore({ waId: sel, nome: nomeSel || null, direcao: "out", tipo: "text", texto: txt, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null, status: 1, ...(mid ? { messageId: mid } : {}) });
+        const docMsg = sanitizeForFirestore({ waId: sel, nome: nomeSel || null, direcao: "out", tipo: "text", texto: txt, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null, status: 1, ...(mid ? { messageId: mid } : {}), ...(cit ? { quotedId: cit.messageId || cit.id, quotedTexto: (citTexto || "").slice(0, 300) || null, quotedAutor: citAutor } : {}) });
         if (mid) await setDoc(doc(db, "whatsappMensagens", `${numeroSel}_${mid}`), docMsg, { merge: true });
         else await addDoc(collection(db, "whatsappMensagens"), docMsg);
         rascunhosRef.current[foneKey(sel)] = "";   // rascunho enviado → limpa
-        setResposta(""); setMencionados([]);
+        setResposta(""); setMencionados([]); setRespondendo(null);
       } else {
         alert((j as { naoConfigurado?: boolean }).naoConfigurado ? "Evolution ainda não configurada (env vars na Vercel)." : ((j as { error?: string }).error || "Falha ao enviar."));
       }
@@ -1476,7 +1487,13 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             ) : (
               <div key={m.id} className={`flex group ${m.direcao === "out" ? "justify-end" : "justify-start"}`}>
                 <div className="relative max-w-[80%]">
-                  <div className={`rounded-2xl px-2.5 py-1.5 text-sm shadow-sm ${m.direcao === "out" ? "bg-[#dcf8c6] dark:bg-emerald-900/40 text-gray-900 dark:text-gray-100 rounded-br-md" : "bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-bl-md"} ${m.reacao && !m.apagada ? "mb-2" : ""}`}>
+                  <div className={`rounded-2xl px-2.5 py-1.5 text-sm shadow-sm ${m.direcao === "out" ? "bg-[#dcf8c6] dark:bg-emerald-900/40 text-gray-900 dark:text-gray-100 rounded-br-md" : "bg-sky-50 dark:bg-sky-900/30 text-gray-900 dark:text-gray-100 rounded-bl-md"} ${m.reacao && !m.apagada ? "mb-2" : ""}`}>
+                    {(m.quotedTexto || m.quotedId) && !m.apagada && (
+                      <div className="mb-1 rounded-md border-l-2 border-emerald-400 bg-black/[0.05] dark:bg-white/[0.07] px-2 py-1">
+                        {m.quotedAutor && !/^\d+$/.test(m.quotedAutor) && <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 leading-tight">{m.quotedAutor}</div>}
+                        <div className="text-[12px] text-gray-600 dark:text-gray-300 truncate">{m.quotedTexto || "mensagem citada"}</div>
+                      </div>
+                    )}
                     {m.direcao === "out" && m.autorNome && <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300 mb-0.5">{m.autorNome}{m.viaAparelho && <> <InfoBadge texto="Enviada direto pelo celular, fora do sistema." /></>}</div>}
                     {m.direcao === "in" && m.ehGrupo && m.autorNome && <div className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-300 mb-0.5">{m.autorNome}</div>}
                     {m.direcao === "in" && m.ehGrupo && !m.autorNome && <div className="text-[11px] font-semibold text-gray-400 mb-0.5 inline-flex items-center gap-1">Participante <InfoBadge texto="Ainda não sabemos quem é. O nome aparece quando essa pessoa fala com você em particular." /></div>}
@@ -1507,7 +1524,15 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                           {isImg && <img src={src} alt={m.texto || "imagem"} className={`rounded-lg ${m.tipo === "stickerMessage" ? "w-32 h-32 object-contain" : "max-w-full max-h-64 object-contain"}`} />}
                           {isVid && <video src={src} controls className="rounded-lg max-w-full max-h-64" />}
                           {isAud && <audio src={src} controls className="max-w-[220px]" />}
-                          {isDoc && <a href={src} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 underline">📄 {nomeDoc}</a>}
+                          {isDoc && (
+                            <a href={src} target="_blank" rel="noreferrer" className="flex items-center gap-2.5 rounded-lg bg-black/[0.06] dark:bg-white/10 px-2.5 py-2 no-underline hover:bg-black/10 dark:hover:bg-white/[0.15] transition-colors max-w-[240px]">
+                              <span className="w-9 h-9 rounded-lg bg-rose-500/15 text-rose-600 dark:text-rose-300 flex items-center justify-center shrink-0 text-lg">📄</span>
+                              <span className="min-w-0 leading-tight">
+                                <span className="block text-[13px] font-medium text-gray-800 dark:text-gray-100 truncate">{nomeDoc}</span>
+                                <span className="block text-[10px] uppercase tracking-wide text-gray-500 dark:text-gray-400">{(nomeDoc.split(".").pop() || "arquivo").slice(0, 5)}</span>
+                              </span>
+                            </a>
+                          )}
                           {!isImg && !isVid && !isAud && !isDoc && <div className="whitespace-pre-wrap break-words">{textoMostra(m)}{ehReacao && <> <InfoBadge texto="Esta pessoa reagiu com um emoji. O WhatsApp protege as reações, então não dá pra mostrar qual foi nem em qual mensagem." /></>}{midiaSemPrevia && <> <InfoBadge texto="Arquivo grande demais para mostrar aqui. Ele foi entregue normalmente — abra no WhatsApp do celular para ver." /></>}</div>}
                           {(isImg || isVid) && m.texto && !rotuloAuto && <div className="whitespace-pre-wrap break-words mt-1">{m.texto}</div>}
                           {isDoc && m.texto && !m.texto.startsWith("📄") && m.texto !== nomeDoc && <div className="whitespace-pre-wrap break-words mt-1">{m.texto}</div>}
@@ -1540,6 +1565,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                             className={`w-8 h-8 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 text-lg flex items-center justify-center ${m.reacao === e ? "bg-gray-100 dark:bg-gray-700" : ""}`}>{e}</button>
                         ))}
                       </div>
+                      <button type="button" onClick={() => { setRespondendo(m); setAcaoMsgId(null); taRef.current?.focus(); }} className="w-full text-left px-3 py-1.5 text-xs rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200">↩️ Responder</button>
                       {m.direcao === "out" && !m.midia && (
                         <button type="button" onClick={() => { setEditMsg({ id: m.id, texto: m.texto || "" }); setAcaoMsgId(null); }} className="w-full text-left px-3 py-1.5 text-xs rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200">✏️ Editar</button>
                       )}
@@ -1603,6 +1629,15 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 </div>
               )}
 
+              {respondendo && !gravando && (
+                <div className="mb-1.5 flex items-start gap-2 rounded-lg border-l-2 border-emerald-500 bg-gray-50 dark:bg-gray-800/60 px-2.5 py-1.5">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-300">↩️ Respondendo {respondendo.direcao === "out" ? (respondendo.autorNome || "você") : (respondendo.autorNome || nomeSel || "cliente")}</div>
+                    <div className="text-[12px] text-gray-600 dark:text-gray-300 truncate">{textoMostra(respondendo)}</div>
+                  </div>
+                  <button type="button" onClick={() => setRespondendo(null)} className="shrink-0 text-gray-400 hover:text-gray-600 text-sm" title="Cancelar resposta">✕</button>
+                </div>
+              )}
               {gravando ? (
                 /* Barra de gravação de áudio */
                 <div className="flex items-center gap-3 px-2 py-1.5">
