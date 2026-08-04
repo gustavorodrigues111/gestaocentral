@@ -43,7 +43,7 @@ const READ_TOOLS: Record<string, { desc: string; cols: string[] }> = {
 // próprio e função de execução. A 1ª skill é o Cardápio do Puba.
 type SkillTool = {
   desc: string; tipo: "read" | "write"; schema: Record<string, unknown>;
-  exec: (args: Doc, ctx: { pessoaId: string; pessoaNome: string }) => Promise<{ resumo: string; conteudo: string }>;
+  exec: (args: Doc, ctx: { pessoaId: string; pessoaNome: string; restaurantId?: string }) => Promise<{ resumo: string; conteudo: string }>;
 };
 
 const CARDAPIO_DOC = "puba";
@@ -223,6 +223,131 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
   },
 };
 
+// ── Cardápio do MÓDULO (cardapioEstruturado — reflete no SITE) ───────────────
+type PratoS = { id?: string; titulo?: string; subtitulo?: string; preco?: string; [k: string]: unknown };
+type SecaoS = { id?: string; nome?: string; pratos?: PratoS[]; [k: string]: unknown };
+type MenuS = { id?: string; nome?: string; secoes?: SecaoS[]; [k: string]: unknown };
+type AltEstrut = { acao?: string; cardapio?: string; secao?: string; item?: string; dados?: Record<string, unknown> };
+const APP_ORIGIN = () => process.env.APP_ORIGIN || "https://admin.planejamento.app";
+const novoIdS = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+
+async function lerEstruturado(rid: string): Promise<{ cardapios: MenuS[]; slug: string } | null> {
+  if (!rid) return null;
+  const d = (await firestoreLer("cardapioEstruturado", rid)) as { cardapios?: MenuS[] } | null;
+  if (!d) return null;
+  const cfg = (await firestoreLer("sitesConfig", rid)) as { slug?: string } | null;
+  return { cardapios: Array.isArray(d.cardapios) ? d.cardapios : [], slug: (cfg?.slug || "").toString() };
+}
+
+function aplicaDiffEstruturado(cardapios: MenuS[], alts: AltEstrut[]): { aplicadas: string[]; erros: string[] } {
+  const aplicadas: string[] = [], erros: string[] = [];
+  const bate = (a: string | undefined, b: string | undefined) => !!b && (nrm(a) === nrm(b) || nrm(a).includes(nrm(b)));
+  const acha = (card: string | undefined, sec: string | undefined, item: string) => {
+    for (const c of cardapios) {
+      if (card && !bate(c.nome, card)) continue;
+      for (const s of c.secoes || []) {
+        if (sec && !bate(s.nome, sec)) continue;
+        const pr = s.pratos || [];
+        const it = pr.find(p => nrm(p.titulo) === nrm(item)) || pr.find(p => nrm(p.titulo).includes(nrm(item)));
+        if (it) return { c, s, it };
+      }
+    }
+    return null;
+  };
+  const achaSecao = (card: string | undefined, sec: string | undefined) => {
+    for (const c of cardapios) {
+      if (card && !bate(c.nome, card)) continue;
+      const arr = c.secoes || [];
+      let i = arr.findIndex(s => nrm(s.nome) === nrm(sec || ""));
+      if (i < 0 && sec) i = arr.findIndex(s => nrm(s.nome).includes(nrm(sec)));
+      if (i >= 0) { c.secoes = arr; return { c, arr, i, s: arr[i] }; }
+    }
+    return null;
+  };
+  for (const a of alts) {
+    try {
+      const acao = nrm(a.acao), d = a.dados || {};
+      if (acao === "alterar_preco") {
+        const f = acha(a.cardapio, a.secao, String(a.item)); if (!f) { erros.push(`não achei "${a.item}"`); continue; }
+        f.it.preco = String(d.preco ?? d.precos ?? d.valor ?? ""); aplicadas.push(`${f.it.titulo}: preço → ${f.it.preco}`);
+      } else if (acao === "editar_descricao") {
+        const f = acha(a.cardapio, a.secao, String(a.item)); if (!f) { erros.push(`não achei "${a.item}"`); continue; }
+        f.it.subtitulo = String(d.descricao ?? d.subtitulo ?? ""); aplicadas.push(`${f.it.titulo}: descrição atualizada`);
+      } else if (acao === "renomear") {
+        const f = acha(a.cardapio, a.secao, String(a.item)); if (!f) { erros.push(`não achei "${a.item}"`); continue; }
+        const novo = String(d.titulo ?? d.nome ?? ""); if (!novo) { erros.push("renomear sem nome"); continue; }
+        aplicadas.push(`${f.it.titulo} → ${novo}`); f.it.titulo = novo;
+      } else if (acao === "remover") {
+        const f = acha(a.cardapio, a.secao, String(a.item)); if (!f) { erros.push(`não achei "${a.item}" pra remover`); continue; }
+        f.s.pratos = (f.s.pratos || []).filter(p => p !== f.it); aplicadas.push(`removido ${f.it.titulo}`);
+      } else if (acao === "adicionar") {
+        const fs = achaSecao(a.cardapio, a.secao); if (!fs) { erros.push(`não achei a seção "${a.secao}"`); continue; }
+        const novo: PratoS = { id: novoIdS("prato"), titulo: String(d.titulo ?? d.nome ?? a.item ?? "NOVO"), subtitulo: String(d.descricao ?? d.subtitulo ?? ""), preco: String(d.preco ?? d.precos ?? ""), tipo: "item" };
+        fs.s.pratos = [...(fs.s.pratos || []), novo]; aplicadas.push(`adicionado ${novo.titulo} em ${fs.s.nome}`);
+      } else if (acao === "renomear_secao") {
+        const fs = achaSecao(a.cardapio, a.secao); if (!fs) { erros.push(`não achei a seção "${a.secao}"`); continue; }
+        const novo = String(d.nome ?? ""); if (!novo) { erros.push("renomear_secao sem nome"); continue; }
+        aplicadas.push(`seção ${fs.s.nome} → ${novo}`); fs.s.nome = novo;
+      } else if (acao === "remover_secao") {
+        const fs = achaSecao(a.cardapio, a.secao); if (!fs) { erros.push(`não achei a seção "${a.secao}"`); continue; }
+        const nome = fs.s.nome; fs.arr.splice(fs.i, 1); aplicadas.push(`seção "${nome}" removida`);
+      } else if (acao === "adicionar_secao") {
+        const c = cardapios.find(x => bate(x.nome, a.cardapio)) || cardapios[0];
+        if (!c) { erros.push("sem cardápio pra adicionar seção"); continue; }
+        const nome = String(d.nome ?? a.secao ?? "NOVA SEÇÃO");
+        c.secoes = [...(c.secoes || []), { id: novoIdS("sec"), nome, pratos: [] }]; aplicadas.push(`seção "${nome}" criada em ${c.nome}`);
+      } else erros.push(`ação desconhecida: ${a.acao}`);
+    } catch (e) { erros.push(`erro em ${a.acao}: ${e instanceof Error ? e.message : "?"}`); }
+  }
+  return { aplicadas, erros };
+}
+
+const SKILL_TOOLS_SITE: Record<string, SkillTool> = {
+  ler_cardapio_site: {
+    desc: "Lê o cardápio ATUAL do restaurante no módulo (o mesmo do site): cardápios (Comidas/Bebidas/Vinhos), seções e pratos (titulo, descricao=subtítulo, preco). Use SEMPRE antes de propor mudança.",
+    tipo: "read",
+    schema: { type: "object", properties: {}, required: [] },
+    exec: async (_args, ctx) => {
+      const est = await lerEstruturado(ctx.restaurantId || "");
+      if (!est) return { resumo: "sem cardápio", conteudo: JSON.stringify({ erro: "cardápio não encontrado para este restaurante" }) };
+      const compact = est.cardapios.map(c => ({ cardapio: c.nome, secoes: (c.secoes || []).map(s => ({ secao: s.nome, pratos: (s.pratos || []).map(p => ({ titulo: p.titulo, descricao: p.subtitulo || "", preco: p.preco || "" })) })) }));
+      const j = JSON.stringify(compact);
+      return { resumo: "cardápio do site", conteudo: j.length > MAX_RESULT_CHARS ? j.slice(0, MAX_RESULT_CHARS) : j };
+    },
+  },
+  aplicar_cardapio_site: {
+    desc: "APLICA alterações no cardápio do módulo (reflete no SITE na hora). Só DEPOIS de confirmação explícita. alteracoes = lista de { acao, cardapio ('Comidas'|'Bebidas'|'Vinhos'), secao, item (titulo atual do prato), dados }. Ações: 'alterar_preco' (dados.preco), 'adicionar' (dados.titulo/descricao/preco), 'remover', 'editar_descricao' (dados.descricao), 'renomear' (dados.titulo), 'adicionar_secao'/'renomear_secao' (dados.nome), 'remover_secao'. Preço é texto livre (ex.: '64', 'consulte').",
+    tipo: "write",
+    schema: { type: "object", properties: {
+      alteracoes: { type: "array", items: { type: "object", properties: {
+        acao: { type: "string" }, cardapio: { type: "string" }, secao: { type: "string" }, item: { type: "string" }, dados: { type: "object" },
+      }, required: ["acao"] } },
+      resumo_humano: { type: "string" },
+    }, required: ["alteracoes"] },
+    exec: async (args, ctx) => {
+      const rid = ctx.restaurantId || "";
+      const est = await lerEstruturado(rid);
+      if (!est) return { resumo: "sem cardápio", conteudo: JSON.stringify({ erro: "cardápio não encontrado" }) };
+      const alts = (Array.isArray(args.alteracoes) ? args.alteracoes : []) as AltEstrut[];
+      if (!alts.length) return { resumo: "nada a aplicar", conteudo: JSON.stringify({ erro: "sem alterações" }) };
+      const { aplicadas, erros } = aplicaDiffEstruturado(est.cardapios, alts);
+      const salvo = await firestoreAtualizar("cardapioEstruturado", rid, { cardapios: est.cardapios as unknown as Doc[], atualizadoEm: new Date().toISOString(), atualizadoPor: ctx.pessoaNome });
+      return { resumo: `${aplicadas.length} alteração(ões) no site`, conteudo: JSON.stringify({ aplicadas, erros, salvo }) };
+    },
+  },
+  gerar_previa_site: {
+    desc: "Devolve o LINK do cardápio no site (prévia AO VIVO — já reflete o que foi alterado; é o que o cliente vê). Use pra o usuário conferir/aprovar.",
+    tipo: "read",
+    schema: { type: "object", properties: {}, required: [] },
+    exec: async (_args, ctx) => {
+      const est = await lerEstruturado(ctx.restaurantId || "");
+      const slug = est?.slug || "";
+      if (!slug) return { resumo: "sem site", conteudo: JSON.stringify({ erro: "restaurante sem slug de site configurado" }) };
+      return { resumo: "link do site", conteudo: JSON.stringify({ previaUrl: `${APP_ORIGIN()}/site/${slug}` }) };
+    },
+  },
+};
+
 function noEscopo(d: Doc, escopo: Escopo): boolean {
   if (escopo === "todas") return true;
   const rid = (d.restaurantId || d.rid) as string | undefined;
@@ -315,8 +440,11 @@ export async function runAgenteCore(
   const toolsLigadas = (agente.tools || {}) as Record<string, boolean>;
   const readDisp = Object.keys(READ_TOOLS).filter(k => toolsLigadas[k]);
   const ehCardapio = agente.tipo === "cardapio";
-  const skillDisp = Object.keys(SKILL_TOOLS).filter(k => ehCardapio || toolsLigadas[k]);
-  const temWrite = skillDisp.some(k => SKILL_TOOLS[k].tipo === "write");
+  const ehCardapioSite = agente.tipo === "cardapio_site";
+  const SKILLS = ehCardapioSite ? SKILL_TOOLS_SITE : SKILL_TOOLS;
+  const agenteRid = Array.isArray(agente.entidades) && agente.entidades.length ? String(agente.entidades[0]) : "";
+  const skillDisp = Object.keys(SKILLS).filter(k => ehCardapio || ehCardapioSite || toolsLigadas[k]);
+  const temWrite = skillDisp.some(k => SKILLS[k].tipo === "write");
   const anthropicTools = [
     ...readDisp.map(k => ({
       name: k,
@@ -327,14 +455,14 @@ export async function runAgenteCore(
         busca: { type: "string", description: "texto livre pra filtrar (nome, fornecedor, descrição)" },
       }, required: [] },
     })),
-    ...skillDisp.map(k => ({ name: k, description: SKILL_TOOLS[k].desc, input_schema: SKILL_TOOLS[k].schema })),
+    ...skillDisp.map(k => ({ name: k, description: SKILLS[k].desc, input_schema: SKILLS[k].schema })),
   ];
 
   const sysBase = (agente.systemPrompt as string) || "Você é um assistente do planejamento.app.";
   const regras = temWrite
     ? " Para QUALQUER alteração: primeiro PROPONHA em texto o que vai mudar e peça confirmação explícita; só chame a ferramenta de escrita DEPOIS que o usuário confirmar ('confirma'/'pode aplicar') na mensagem seguinte. Nunca aplique sem confirmação."
     : " Você NÃO pode alterar nada nesta versão (só consulta); se pedirem uma alteração, explique que por ora você só consulta.";
-  const temCardapio = skillDisp.includes("ler_cardapio");
+  const temCardapio = skillDisp.includes("ler_cardapio") || skillDisp.includes("ler_cardapio_site");
   // No WhatsApp não há prévia HTML na tela — o agente descreve em texto e manda o link do PDF.
   const notaCardapio = temCardapio
     ? (canal === "whatsapp"
@@ -387,14 +515,14 @@ export async function runAgenteCore(
     for (const b of blocks) {
       if (b.type !== "tool_use" || !b.name || !b.id) continue;
       const input = (b.input || {}) as Doc;
-      const skill = SKILL_TOOLS[b.name];
+      const skill = SKILLS[b.name];
       if (b.name === "ler_cardapio" || b.name === "aplicar_cardapio") tocouCardapio = true;
       const { resumo, conteudo } = skill
-        ? await skill.exec(input, { pessoaId: opts.pessoaId, pessoaNome: opts.pessoaNome })
+        ? await skill.exec(input, { pessoaId: opts.pessoaId, pessoaNome: opts.pessoaNome, restaurantId: agenteRid })
         : await execTool(b.name, input as { restaurantId?: string; periodo?: string; busca?: string }, escopo);
       toolCalls.push({ tool: b.name, resumo });
       if (b.name === "gerar_pdf") { try { const p = JSON.parse(conteudo) as { pdfUrl?: string }; if (p.pdfUrl) pdfUrl = p.pdfUrl; } catch { /* ignore */ } }
-      if (b.name === "gerar_previa") { try { const p = JSON.parse(conteudo) as { previaUrl?: string }; if (p.previaUrl) previaUrl = p.previaUrl; } catch { /* ignore */ } }
+      if (b.name === "gerar_previa" || b.name === "gerar_previa_site") { try { const p = JSON.parse(conteudo) as { previaUrl?: string }; if (p.previaUrl) previaUrl = p.previaUrl; } catch { /* ignore */ } }
       results.push({ type: "tool_result", tool_use_id: b.id, content: conteudo });
       try {
         const logId = `alog_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;

@@ -8,7 +8,7 @@
 // `permissao`  → chave de módulo que a pessoa precisa ter (herda da matriz de
 //                Pessoas). Se a pessoa não tem, a ferramenta some pro agente.
 
-export type AgenteDominio = "dp" | "financeiro" | "cardapio";
+export type AgenteDominio = "dp" | "financeiro" | "cardapio" | "cardapio_site";
 
 export type FerramentaDef = {
   key: string;
@@ -46,6 +46,11 @@ export const CATALOGO: Record<AgenteDominio, FerramentaDef[]> = {
     { key: "aplicar_cardapio", label: "Aplicar alterações", tipo: "write", permissao: "sites", desc: "Altera preço, adiciona/remove item, edita descrição (confirmação)." },
     { key: "gerar_pdf",        label: "Gerar PDF final",     tipo: "write", permissao: "sites", desc: "Renderiza a filipeta fiel e devolve o link (só no final)." },
   ],
+  cardapio_site: [
+    { key: "ler_cardapio_site",     label: "Ler cardápio (site)",   tipo: "read",  permissao: "sites", desc: "Lê o cardápio do módulo (Comidas/Bebidas/Vinhos) que está no site" },
+    { key: "aplicar_cardapio_site", label: "Aplicar no site",       tipo: "write", permissao: "sites", desc: "Altera preço/prato/descrição/seção — reflete no site (confirmação)" },
+    { key: "gerar_previa_site",     label: "Link do site (prévia)", tipo: "read",  permissao: "sites", desc: "Manda o link do cardápio no site pra conferir/aprovar" },
+  ],
 };
 
 export const DOMINIO_META: Record<AgenteDominio, { label: string; icon: string; promptPadrao: string }> = {
@@ -66,5 +71,11 @@ export const DOMINIO_META: Record<AgenteDominio, { label: string; icon: string; 
     icon: "🍽️",
     promptPadrao:
       "Você edita o cardápio impresso (filipeta) do Puba Bar Cidade Velha. Fale curto, em português, tom WhatsApp. SEMPRE use ler_cardapio antes de propor. NUNCA aplique sem confirmação: primeiro PROPONHA em texto (ex.: 'Entendi: Tostada 60→64, remover Sarnambi ao Curry Verde. Confirma?') e só chame aplicar_cardapio DEPOIS que o usuário responder 'confirma'. Preços inteiros em reais ('sessenta e quatro' = R$ 64). Se pedirem item que não existe no cardápio ou número estranho, PERGUNTE em vez de assumir. Nomes de item em CAIXA ALTA, descrições em minúsculas. Você NÃO gera o PDF nem inventa layout — só edita os itens; o PDF sai numa etapa seguinte.",
+  },
+  cardapio_site: {
+    label: "Cardápio do site (módulo)",
+    icon: "🍽️",
+    promptPadrao:
+      "Você edita o cardápio do módulo de Cardápios (Comidas, Bebidas, Vinhos) que fica publicado no SITE — o que o cliente vê. Toda alteração reflete no site na hora. Fale curto, em português, tom WhatsApp. SEMPRE use ler_cardapio_site antes de propor. NUNCA aplique sem confirmação: primeiro PROPONHA em texto (ex.: 'Entendi: Caipirinha 36→38, remover Soda da Casa. Confirma?') e só chame aplicar_cardapio_site DEPOIS que o usuário responder 'confirma'. Diga em qual cardápio (Comidas/Bebidas/Vinhos) e seção está mexendo. Preço é texto (ex.: '38', 'consulte'). Se pedirem prato que não existe, PERGUNTE. Pra o usuário conferir/aprovar, chame gerar_previa_site (manda o link do cardápio no site).",
   },
 };
