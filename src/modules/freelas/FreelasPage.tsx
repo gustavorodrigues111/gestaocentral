@@ -6,6 +6,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import type {
+  Cargo,
   Empregado,
   FreelaPagamento,
   FreelaShift,
@@ -89,6 +90,14 @@ export function FreelasPage() {
     return onSnapshot(q, (snap) => {
       setEmpregados(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Empregado)));
     });
+  }, [rid]);
+
+  // Cargos (com pontos) — pra marcar o cargo de gorjeta de cada freela.
+  const [cargos, setCargos] = useState<Cargo[]>([]);
+  useEffect(() => {
+    if (!rid) return;
+    const q = query(collection(db, "cargos"), where("restaurantId", "==", rid));
+    return onSnapshot(q, (snap) => setCargos(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Cargo))), () => { /* silent */ });
   }, [rid]);
 
   useEffect(() => {
@@ -187,6 +196,7 @@ export function FreelasPage() {
           shifts={shifts}
           empregados={empregados}
           pessoas={pessoas}
+          cargos={cargos}
           podeOperar={podeOperar}
           showNovo={showNovoTurno}
           onCloseNovo={() => setShowNovoTurno(false)}
