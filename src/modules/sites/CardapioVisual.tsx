@@ -65,19 +65,30 @@ const PX_TRANSP = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAE
 // Converte uma imagem (mesmo cross-origin/asset) em data-URI. Tenta canvas
 // (precisa CORS) e cai pro fetch (mesma origem = /assets, /cardapio-*.png).
 async function imgParaDataUrl(url: string): Promise<string | null> {
-  try {
-    const im = new Image(); im.crossOrigin = "anonymous"; im.src = url;
-    await im.decode();
-    const c = document.createElement("canvas"); c.width = im.naturalWidth || 1; c.height = im.naturalHeight || 1;
-    c.getContext("2d")!.drawImage(im, 0, 0);
-    return c.toDataURL("image/png");
-  } catch { /* segue pro fetch */ }
-  try {
-    const r = await fetch(url, { mode: "cors", cache: "force-cache" });
-    if (!r.ok) return null;
-    const b = await r.blob();
-    return await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result as string); fr.onerror = () => res(null); fr.readAsDataURL(b); });
-  } catch { return null; }
+  // Timeout por imagem: no headless, im.decode()/fetch podem TRAVAR (nem carrega
+  // nem dá erro) e pendurar o PDF inteiro. Se estourar, segue sem esta arte.
+  const comTimeout = <T,>(p: Promise<T>, ms: number, fb: T) => Promise.race([p, new Promise<T>((res) => setTimeout(() => res(fb), ms))]);
+  const viaImg = (async (): Promise<string | null> => {
+    try {
+      const im = new Image(); im.crossOrigin = "anonymous"; im.src = url;
+      await comTimeout(im.decode(), 6000, undefined as unknown as void);
+      if (!im.complete || !im.naturalWidth) return null;
+      const c = document.createElement("canvas"); c.width = im.naturalWidth || 1; c.height = im.naturalHeight || 1;
+      c.getContext("2d")!.drawImage(im, 0, 0);
+      return c.toDataURL("image/png");
+    } catch { return null; }
+  })();
+  const r1 = await comTimeout(viaImg, 7000, null);
+  if (r1) return r1;
+  const viaFetch = (async (): Promise<string | null> => {
+    try {
+      const r = await fetch(url, { mode: "cors", cache: "force-cache" });
+      if (!r.ok) return null;
+      const b = await r.blob();
+      return await new Promise((res) => { const fr = new FileReader(); fr.onload = () => res(fr.result as string); fr.onerror = () => res(null); fr.readAsDataURL(b); });
+    } catch { return null; }
+  })();
+  return comTimeout(viaFetch, 7000, null);
 }
 // Inlina todas as <img> das páginas como data-URI ANTES do html2canvas, pra
 // ele não precisar buscar nada externo (evita "Failed to fetch" intermitente).
