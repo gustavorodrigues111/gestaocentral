@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { collection, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { TransferirUnidadePuba } from "./TransferirUnidadePuba";   // ⚠️ provisório — remover depois
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfig, canUse, unidadesAcessiveis } from "../../core/auth/permissions";
@@ -231,6 +232,8 @@ export function GorjetasPage() {
 
   return (
     <div className="max-w-6xl">
+      {/* ⚠️ PROVISÓRIO — transferir Porto Futuro → Cidade Velha no Puba Belém. Remover depois. */}
+      {me?.isMaster && rid === "T671zhYNYCeYDWt9vxTQ" && <TransferirUnidadePuba />}
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
         <div>
           {/* Filtro de unidades. Multi-unidades → pills (Todas + cada uma).
