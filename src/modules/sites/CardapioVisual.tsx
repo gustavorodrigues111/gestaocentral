@@ -564,13 +564,30 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
     }
     finally { setBaixando(false); }
   }
-  // Headless: dispara a geração sozinho quando montar (espera o preview pintar).
+  // Headless: dispara a geração sozinho, mas SÓ depois de layout + fontes Google
+  // + imagens (capa/arte) carregarem — senão o PDF sai sem capa/personalização.
   const autoRef = useRef(false);
   useEffect(() => {
     if (!autoPdf || autoRef.current) return;
     autoRef.current = true;
-    const t = setTimeout(() => { void baixar(); }, 700);
-    return () => clearTimeout(t);
+    let cancel = false;
+    const espera = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+    void (async () => {
+      await espera(1200); // deixa o getDoc do layout e a injeção de fontes rodarem
+      try {
+        const fs = (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts;
+        await Promise.race([fs?.ready ?? Promise.resolve(), espera(7000)]); // fontes Google
+      } catch { /* ok */ }
+      // Espera as imagens das páginas (capa/miolo/ilustrações) terminarem de baixar.
+      for (let i = 0; i < 30 && !cancel; i++) {
+        const imgs = Array.from(document.querySelectorAll<HTMLImageElement>(".pagina-pdf img"));
+        if (imgs.length === 0 || imgs.every((im) => im.complete)) break;
+        await espera(400);
+      }
+      await espera(800); // margem final pra pintar
+      if (!cancel) void baixar();
+    })();
+    return () => { cancel = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoPdf]);
 
