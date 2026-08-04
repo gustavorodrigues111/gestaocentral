@@ -521,7 +521,8 @@ export async function runAgenteCore(
 
   const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [];
   for (const h of (opts.historico || []).slice(-10)) {
-    if (h && (h.role === "user" || h.role === "assistant") && typeof h.texto === "string") messages.push({ role: h.role, content: h.texto });
+    // Pula mensagens VAZIAS — o Claude rejeita conteúdo vazio (HTTP 400).
+    if (h && (h.role === "user" || h.role === "assistant") && typeof h.texto === "string" && h.texto.trim()) messages.push({ role: h.role, content: h.texto.trim() });
   }
   if (temAnexo) {
     const bloco = anexoMime === "application/pdf"
