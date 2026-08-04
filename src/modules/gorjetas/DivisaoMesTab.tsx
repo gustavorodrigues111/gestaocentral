@@ -1,6 +1,6 @@
 import { Fragment, useMemo, useState } from "react";
 import { Button } from "../../core/ui/Button";
-import type { Cargo, DivisaoItem, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade } from "../../core/types";
+import type { Area, Cargo, DivisaoItem, Empregado, EscalaMes, FreelaShift, Gorjeta, SplitVersion, Unidade } from "../../core/types";
 import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
 import { getActiveSplitVersion } from "./splitRules";
 import { nomeMes } from "../../core/utils/date";
@@ -33,6 +33,7 @@ type Props = {
   unidades: Unidade[];
   usaMultiUnidades: boolean;
   filtroUnidadeId: string;   // controlado pela GorjetasPage (pills do header)
+  freelaShifts?: FreelaShift[];   // turnos de freela — os com gorjetaCargoId entram na divisão
 };
 
 type DiaEmpregado = {
@@ -53,12 +54,28 @@ type LinhaEmpregado = {
   diasComRecebimento: number;
   dias: DiaEmpregado[];   // detalhamento por dia pro drill-down
   demitidoEm?: string | null;   // YYYY-MM-DD (primeiro dia FORA) — badge no PDF/UI
+  // Linha AGREGADA de freelas: uma só "Freelas" com o total; expande em cada freela.
+  ehGrupoFreela?: boolean;
+  freelasDetalhe?: { nome: string; bruto: number; retencao: number; liquido: number; dias: DiaEmpregado[] }[];
 };
 
 export function DivisaoMesTab({
   ano, mes, gorjetas, empregados, cargos, escala, splitVersions, restaurantNome,
-  unidades, usaMultiUnidades, filtroUnidadeId,
+  unidades, usaMultiUnidades, filtroUnidadeId, freelaShifts,
 }: Props) {
+  // Freelas de UM dia que entram na gorjeta (têm gorjetaCargoId + trabalharam).
+  // Já filtra por unidade quando a gorjeta é de uma unidade específica.
+  const cargoById = useMemo(() => Object.fromEntries(cargos.map(c => [c.id, c])), [cargos]);
+  const freelasDoDia = useMemo(() => (date: string, unidadeId: string | null) =>
+    (freelaShifts || [])
+      .filter(f => f.date === date && f.gorjetaCargoId && f.status !== "cancelado" && f.status !== "nao_compareceu"
+        && (!unidadeId || (f.unidadeId || null) === unidadeId))
+      .map(f => {
+        const c = cargoById[f.gorjetaCargoId as string];
+        return { id: f.id, nome: f.nomeSnapshot, cargoId: f.gorjetaCargoId as string, pontos: c?.pontos || 0, area: (c?.area || f.area || "Salão") as Area };
+      })
+      .filter(f => f.pontos > 0),
+  [freelaShifts, cargoById]);
   // Drill-down: empregadoId atualmente expandido (mostra dia-a-dia)
   const [expandedEmpId, setExpandedEmpId] = useState<string | null>(null);
 
@@ -94,6 +111,8 @@ export function DivisaoMesTab({
   // bruto do empregado = liquido / (1 - taxRate/100); retenção = bruto - liquido.
   const linhas = useMemo<LinhaEmpregado[]>(() => {
     const acc: Record<string, LinhaEmpregado> = {};
+    // Freelas agregados por NOME (um freela pode ter vários dias no mês).
+    const freelaAcc: Record<string, { nome: string; bruto: number; retencao: number; liquido: number; dias: DiaEmpregado[] }> = {};
 
     for (const g of gorjetasFiltradas) {
       const splitVersion = getActiveSplitVersion(splitVersions, g.date);
@@ -114,7 +133,7 @@ export function DivisaoMesTab({
         itens = g.divisaoSnapshot;
       } else {
         const liquido = calcularValorLiquido(g.valorBruto, taxRate);
-        const r = calcularDivisaoDia(g.date, liquido, empregados, cargos, escala, splitVersion, g.unidadeId || null, unidades);
+        const r = calcularDivisaoDia(g.date, liquido, empregados, cargos, escala, splitVersion, g.unidadeId || null, unidades, freelasDoDia(g.date, g.unidadeId || null));
         itens = r.itens;
         // Marca o fator como inverso do arredondamento real — pra na
         // agregação por empregado, brutoEmp / liquidoEmp baterem certinho
@@ -122,6 +141,18 @@ export function DivisaoMesTab({
       }
 
       for (const it of itens) {
+        // Freela: agrega numa "conta de freela" por nome (vira a linha "Freelas").
+        if (it.freela) {
+          const liquidoEmp = it.valor;
+          const brutoEmp = fator > 0 ? liquidoEmp / fator : liquidoEmp;
+          const k = it.empregadoNome;
+          if (!freelaAcc[k]) freelaAcc[k] = { nome: it.empregadoNome, bruto: 0, retencao: 0, liquido: 0, dias: [] };
+          freelaAcc[k].liquido += liquidoEmp;
+          freelaAcc[k].bruto += brutoEmp;
+          freelaAcc[k].retencao += brutoEmp - liquidoEmp;
+          freelaAcc[k].dias.push({ date: g.date, bruto: Math.round(brutoEmp * 100) / 100, retencao: Math.round((brutoEmp - liquidoEmp) * 100) / 100, liquido: Math.round(liquidoEmp * 100) / 100 });
+          continue;
+        }
         if (!acc[it.empregadoId]) {
           acc[it.empregadoId] = {
             empregadoId: it.empregadoId,
@@ -198,11 +229,26 @@ export function DivisaoMesTab({
       const idsDaUnidade = new Set(empsDestaUnidade.map(e => e.id));
       resultado = resultado.filter(l => idsDaUnidade.has(l.empregadoId));
     }
-    return resultado.sort((a, b) =>
+    const ordenado = resultado.sort((a, b) =>
       (a.area || "").localeCompare(b.area || "")
         || a.nome.localeCompare(b.nome)
     );
-  }, [gorjetasFiltradas, empregados, cargos, escala, splitVersions, unidades, filtroUnidadeId, tipoUnidadeFiltro]);
+    // Linha AGREGADA "Freelas" no fim (não aparece no filtro de unidade de produção).
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const freelasDet = Object.values(freelaAcc)
+      .map(f => ({ nome: f.nome, bruto: r2(f.bruto), retencao: r2(f.retencao), liquido: r2(f.liquido), dias: [...f.dias].sort((a, b) => a.date.localeCompare(b.date)) }))
+      .sort((a, b) => a.nome.localeCompare(b.nome));
+    if (freelasDet.length && !(filtroUnidadeId && tipoUnidadeFiltro === "producao")) {
+      const sum = (k: "bruto" | "retencao" | "liquido") => freelasDet.reduce((s, f) => s + f[k], 0);
+      ordenado.push({
+        empregadoId: "__freelas__", nome: "Freelas", cargoNome: `${freelasDet.length} freela(s)`, area: "",
+        bruto: r2(sum("bruto")), retencao: r2(sum("retencao")), liquido: r2(sum("liquido")),
+        diasComRecebimento: freelasDet.reduce((s, f) => s + f.dias.length, 0), dias: [],
+        ehGrupoFreela: true, freelasDetalhe: freelasDet, demitidoEm: null,
+      });
+    }
+    return ordenado;
+  }, [gorjetasFiltradas, empregados, cargos, escala, splitVersions, unidades, filtroUnidadeId, tipoUnidadeFiltro, freelasDoDia]);
 
   // Detalha a discrepância entre líquido do mês e soma distribuída.
   // Duas causas reais (NÃO existe efeito de semGorjeta=true diluindo, esse
@@ -231,7 +277,7 @@ export function DivisaoMesTab({
         // Arredonda em centavos antes de calcular pra ficar consistente
         // com o que `linhas` usa (e evitar fração de centavo perdida).
         valorLiquido = calcularValorLiquido(g.valorBruto, taxRate);
-        const r = calcularDivisaoDia(g.date, valorLiquido, empregados, cargos, escala, splitVersion, g.unidadeId || null, unidades);
+        const r = calcularDivisaoDia(g.date, valorLiquido, empregados, cargos, escala, splitVersion, g.unidadeId || null, unidades, freelasDoDia(g.date, g.unidadeId || null));
         totalDistribuido = r.totalDistribuido;
         itensCount = r.itens.length;
       }
@@ -640,8 +686,37 @@ export function DivisaoMesTab({
                 </div>
               </button>
 
+              {/* Drill-down do grupo FREELAS: cada freela + seus dias */}
+              {isExpanded && l.ehGrupoFreela && l.freelasDetalhe && l.freelasDetalhe.length > 0 && (
+                <div className="bg-indigo-50/30 dark:bg-indigo-900/10 border-t border-indigo-100 dark:border-indigo-900/40 px-3 py-2 space-y-3">
+                  {l.freelasDetalhe.map((f) => (
+                    <div key={f.nome}>
+                      <div className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 mb-1 flex items-center justify-between gap-2">
+                        <span className="truncate">👤 {f.nome} — {f.dias.length} dia(s)</span>
+                        <span className="tabular-nums text-emerald-700 dark:text-emerald-300 shrink-0">{fmtBR(f.liquido)}</span>
+                      </div>
+                      <div className="rounded border border-indigo-100 dark:border-indigo-900/40 bg-white dark:bg-gray-900 overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
+                        {f.dias.map((d) => {
+                          const [, m, dd] = d.date.split("-");
+                          const dow = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"][new Date(d.date + "T12:00:00").getDay()];
+                          return (
+                            <div key={d.date} className="flex items-center justify-between px-3 py-1.5 text-xs">
+                              <div className="text-gray-700 dark:text-gray-300 tabular-nums">{dd}/{m} <span className="text-[10px] text-gray-400">{dow}</span></div>
+                              <div className="text-right">
+                                <span className="font-semibold tabular-nums text-emerald-700 dark:text-emerald-300">{fmtBR(d.liquido)}</span>
+                                <span className="text-[10px] text-gray-500 tabular-nums ml-2">bruto {fmtBR(d.bruto)}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Drill-down: dia-a-dia desse empregado */}
-              {isExpanded && l.dias.length > 0 && (
+              {isExpanded && !l.ehGrupoFreela && l.dias.length > 0 && (
                 <div className="bg-indigo-50/30 dark:bg-indigo-900/10 border-t border-indigo-100 dark:border-indigo-900/40 px-3 py-2">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 mb-1.5">
                     📅 Detalhamento de {l.nome.split(" ")[0]} — {l.dias.length} dia(s)

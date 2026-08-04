@@ -14,7 +14,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import {
   daysInMonth, dowShort, fmtAnoMes, fmtBR as fmtDataBR, pad2, parseYmd, shiftMonth,
 } from "../../core/utils/date";
-import type { Cargo, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade } from "../../core/types";
+import type { Cargo, Empregado, EscalaMes, FreelaShift, Gorjeta, SplitVersion, Unidade } from "../../core/types";
 import { getActiveSplitVersion } from "./splitRules";
 import { RegrasDivisaoConfig } from "./RegrasDivisaoConfig";
 import { DivisaoMesTab } from "./DivisaoMesTab";
@@ -75,6 +75,15 @@ export function GorjetasPage() {
     const unsub = onSnapshot(q, (snap) => {
       setEmpregados(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Empregado));
     });
+    return () => unsub();
+  }, [rid]);
+
+  // Turnos de freela — os com gorjetaCargoId entram na divisão da gorjeta do dia.
+  const [freelaShifts, setFreelaShifts] = useState<FreelaShift[]>([]);
+  useEffect(() => {
+    if (!rid) return;
+    const q = query(collection(db, "freelaShifts"), where("restaurantId", "==", rid));
+    const unsub = onSnapshot(q, (snap) => setFreelaShifts(snap.docs.map(d => ({ id: d.id, ...d.data() }) as FreelaShift)), () => { /* silent */ });
     return () => unsub();
   }, [rid]);
 
@@ -375,6 +384,7 @@ export function GorjetasPage() {
           unidades={unidades}
           usaMultiUnidades={usaMultiUnidades}
           filtroUnidadeId={filtroUnidadeId}
+          freelaShifts={freelaShifts}
         />
       )}
 
