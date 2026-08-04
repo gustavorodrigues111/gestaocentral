@@ -292,8 +292,9 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   const freelasDoDiaLive = useCallback((date: string, unidadeId: string | null) => {
     const cargoById: Record<string, Cargo> = Object.fromEntries(cargos.map((c) => [c.id, c]));
     return shifts
+      // Freela sem unidade entra na unidade que arrecada no dia (vide publicar.ts).
       .filter((f) => f.date === date && f.gorjetaCargoId && f.status !== "cancelado" && f.status !== "nao_compareceu"
-        && (!unidadeId || (f.unidadeId || null) === unidadeId))
+        && (!unidadeId || !f.unidadeId || (f.unidadeId || null) === unidadeId))
       .map((f) => {
         const c = cargoById[f.gorjetaCargoId as string];
         return { id: f.id, nome: f.nomeSnapshot, cargoId: f.gorjetaCargoId as string, pontos: c?.pontos || 0, area: (c?.area || f.area || "Salão") };
@@ -308,8 +309,13 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   //   sem       = sem cargo, ou sem gorjeta lançada no dia
   const gorjetaInfoDoShift = useCallback((s: FreelaShift): { valor: number; estado: "congelada" | "previa" | "fora" | "sem" } => {
     if (!s.gorjetaCargoId) return { valor: 0, estado: "sem" };
-    const g = gorjetasMes.find((x) => x.date === s.date && (x.unidadeId || null) === (s.unidadeId || null));
-    if (!g || g.semGorjeta || !(g.valorBruto > 0)) return { valor: 0, estado: "sem" };
+    // Gorjetas com valor no dia. Freela COM unidade → a dela; SEM unidade →
+    // a que mais arrecada no dia (unidade principal — ex.: Cidade Velha).
+    const doDia = gorjetasMes.filter((x) => x.date === s.date && !x.semGorjeta && x.valorBruto > 0);
+    const g = s.unidadeId
+      ? doDia.find((x) => (x.unidadeId || null) === s.unidadeId)
+      : doDia.slice().sort((a, b) => b.valorBruto - a.valorBruto)[0];
+    if (!g) return { valor: 0, estado: "sem" };
     if (g.publicada && g.divisaoSnapshot) {
       const it = g.divisaoSnapshot.find((i) => i.freelaShiftId === s.id);
       return it ? { valor: Math.round((it.valor || 0) * 100) / 100, estado: "congelada" } : { valor: 0, estado: "fora" };

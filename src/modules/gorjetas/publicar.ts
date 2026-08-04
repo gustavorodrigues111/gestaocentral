@@ -46,8 +46,11 @@ function freelasDoDia(
 ): { id: string; nome: string; cargoId: string; pontos: number; area: Area }[] {
   const cargoById: Record<string, Cargo> = Object.fromEntries(cargos.map((c) => [c.id, c]));
   return (freelaShifts || [])
+    // Freela SEM unidade (f.unidadeId null) entra na gorjeta da unidade que está
+    // sendo calculada — casa com a unidade que arrecada no dia (ex.: só Cidade
+    // Velha, com Porto desativado). Freela COM unidade só entra na dela.
     .filter((f) => f.date === date && f.gorjetaCargoId && f.status !== "cancelado" && f.status !== "nao_compareceu"
-      && (!unidadeId || (f.unidadeId || null) === unidadeId))
+      && (!unidadeId || !f.unidadeId || (f.unidadeId || null) === unidadeId))
     .map((f) => {
       const c = cargoById[f.gorjetaCargoId as string];
       return { id: f.id, nome: f.nomeSnapshot, cargoId: f.gorjetaCargoId as string, pontos: c?.pontos || 0, area: (c?.area || f.area || "Salão") as Area };
