@@ -206,6 +206,8 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
   const conversaId = `${agente.id}__${pessoaId || "anon"}`;
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
   const [texto, setTexto] = useState("");
+  const [anexo, setAnexo] = useState<{ base64: string; mediaType: string; nome: string; isPdf: boolean } | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
   const [gravando, setGravando] = useState(false);
@@ -240,13 +242,16 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
   }
 
   async function enviarMsg(m: string) {
-    if (!m.trim() || enviando) return;
+    if ((!m.trim() && !anexo) || enviando) return;
     setErro(""); setTexto("");
+    const anx = anexo; setAnexo(null);
     const historico = msgs.map(x => ({ role: x.role, texto: x.texto }));
     setEnviando(true);
     try {
-      await persistir("user", m);
-      const r = await fetch("/api/agente", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ agenteId: agente.id, mensagem: m, historico, pessoaNome }) });
+      // No histórico exibido marca o anexo; o base64 vai só no turno atual.
+      const textoUser = anx ? `📎 ${anx.nome}${m.trim() ? "\n" + m.trim() : ""}` : m;
+      await persistir("user", textoUser);
+      const r = await fetch("/api/agente", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ agenteId: agente.id, mensagem: m.trim(), historico, pessoaNome, ...(anx ? { anexo: { base64: anx.base64, mediaType: anx.mediaType } } : {}) }) });
       const j = await r.json();
       if (!r.ok) { setErro(j.error || "Falha na resposta."); await persistir("assistant", "⚠️ " + (j.error || "Erro.")); return; }
       await persistir("assistant", j.resposta || "(sem resposta)", j.toolCalls, j.estadoCardapio, j.pdfUrl);
@@ -292,6 +297,37 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
     } catch { setErro("Não consegui acessar o microfone. Libere o acesso no navegador."); }
   }
 
+  // ── Anexo: imagem (comprimida) ou PDF → base64 pro agente "olhar" ──────────
+  function lerBase64(file: Blob): Promise<string> {
+    return new Promise((resolve, reject) => { const fr = new FileReader(); fr.onload = () => resolve(String(fr.result).split(",")[1] || ""); fr.onerror = reject; fr.readAsDataURL(file); });
+  }
+  async function comprimirImagem(file: File): Promise<{ base64: string; mediaType: string }> {
+    const dataUrl = await new Promise<string>((res, rej) => { const fr = new FileReader(); fr.onload = () => res(String(fr.result)); fr.onerror = rej; fr.readAsDataURL(file); });
+    const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = dataUrl; });
+    const max = 1600; let w = img.width, h = img.height;
+    if (w > max || h > max) { const r = Math.min(max / w, max / h); w = Math.round(w * r); h = Math.round(h * r); }
+    const canvas = document.createElement("canvas"); canvas.width = w; canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return { base64: dataUrl.split(",")[1] || "", mediaType: file.type || "image/jpeg" };
+    ctx.drawImage(img, 0, 0, w, h);
+    return { base64: canvas.toDataURL("image/jpeg", 0.85).split(",")[1] || "", mediaType: "image/jpeg" };
+  }
+  async function escolherAnexo(file: File) {
+    setErro("");
+    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+    const isImg = file.type.startsWith("image/");
+    if (!isPdf && !isImg) { setErro("Só dá pra anexar imagem ou PDF."); return; }
+    try {
+      if (isImg) {
+        const { base64, mediaType } = await comprimirImagem(file);
+        setAnexo({ base64, mediaType, nome: file.name, isPdf: false });
+      } else {
+        if (file.size > 3_000_000) { setErro("PDF grande demais (máx ~3 MB). Comprima, tire páginas ou mande como imagem."); return; }
+        setAnexo({ base64: await lerBase64(file), mediaType: "application/pdf", nome: file.name, isPdf: true });
+      }
+    } catch { setErro("Não consegui ler o arquivo."); }
+  }
+
   return (
     <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 h-[calc(100vh-140px)] min-h-[420px] flex flex-col overflow-hidden">
         <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-gray-800">
@@ -335,16 +371,28 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
           <div ref={fimRef} />
         </div>
 
-        <div className="p-3 border-t border-gray-100 dark:border-gray-800 flex items-end gap-2">
-          <button type="button" onClick={() => void toggleGravar()} disabled={enviando || transcrevendo}
-            title={gravando ? "Parar e transcrever" : "Gravar áudio"}
-            className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border ${gravando ? "bg-rose-600 border-rose-600 text-white animate-pulse" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"} disabled:opacity-50`}>
-            {transcrevendo ? "…" : gravando ? "⏹" : "🎤"}
-          </button>
-          <textarea value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }} rows={1}
-            placeholder={gravando ? "Gravando… fale e clique ⏹" : transcrevendo ? "Transcrevendo o áudio…" : "Escreva ou grave um áudio…"}
-            className="flex-1 resize-none text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 max-h-28" />
-          <Button disabled={enviando || !texto.trim()} onClick={() => void enviar()}>{enviando ? "…" : "Enviar"}</Button>
+        <div className="p-3 border-t border-gray-100 dark:border-gray-800">
+          {anexo && (
+            <div className="mb-2 flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-2.5 py-1.5 w-fit max-w-full">
+              <span className="text-lg shrink-0">{anexo.isPdf ? "📄" : "🖼️"}</span>
+              <span className="text-xs text-gray-700 dark:text-gray-200 truncate max-w-[220px]">{anexo.nome}</span>
+              <button type="button" onClick={() => setAnexo(null)} title="Remover anexo" className="text-gray-400 hover:text-gray-600 text-xs shrink-0">✕</button>
+            </div>
+          )}
+          <div className="flex items-end gap-2">
+            <input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) void escolherAnexo(f); e.target.value = ""; }} />
+            <button type="button" onClick={() => fileRef.current?.click()} disabled={enviando}
+              title="Anexar imagem ou PDF" className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">📎</button>
+            <button type="button" onClick={() => void toggleGravar()} disabled={enviando || transcrevendo}
+              title={gravando ? "Parar e transcrever" : "Gravar áudio"}
+              className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border ${gravando ? "bg-rose-600 border-rose-600 text-white animate-pulse" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"} disabled:opacity-50`}>
+              {transcrevendo ? "…" : gravando ? "⏹" : "🎤"}
+            </button>
+            <textarea value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }} rows={1}
+              placeholder={gravando ? "Gravando… fale e clique ⏹" : transcrevendo ? "Transcrevendo o áudio…" : anexo ? "Descreva o que quer com o anexo…" : "Escreva, anexe ou grave um áudio…"}
+              className="flex-1 resize-none text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 max-h-28" />
+            <Button disabled={enviando || (!texto.trim() && !anexo)} onClick={() => void enviar()}>{enviando ? "…" : "Enviar"}</Button>
+          </div>
         </div>
     </div>
   );

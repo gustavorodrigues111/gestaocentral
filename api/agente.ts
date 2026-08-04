@@ -210,10 +210,15 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 
   const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as {
     agenteId?: string; mensagem?: string; historico?: { role: string; texto: string }[]; pessoaNome?: string;
+    anexo?: { base64?: string; mediaType?: string };
   } | null;
   const agenteId = (body?.agenteId || "").toString();
   const mensagem = (body?.mensagem || "").toString().trim();
-  if (!agenteId || !mensagem) { res.status(400).json({ error: "agenteId e mensagem são obrigatórios." }); return; }
+  // Anexo: imagem (image/*) vira bloco image; PDF vira bloco document. Opus lê os dois.
+  const anexoB64 = (body?.anexo?.base64 || "").toString();
+  const anexoMime = (body?.anexo?.mediaType || "").toString();
+  const temAnexo = !!anexoB64 && (anexoMime.startsWith("image/") || anexoMime === "application/pdf");
+  if (!agenteId || (!mensagem && !temAnexo)) { res.status(400).json({ error: "agenteId e mensagem (ou anexo) são obrigatórios." }); return; }
 
   // Carrega a config do agente.
   const agentes = await firestoreListar("agentesIA");
@@ -257,7 +262,16 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   for (const h of (Array.isArray(body?.historico) ? body!.historico : []).slice(-10)) {
     if (h && (h.role === "user" || h.role === "assistant") && typeof h.texto === "string") messages.push({ role: h.role, content: h.texto });
   }
-  messages.push({ role: "user", content: mensagem });
+  if (temAnexo) {
+    // Bloco do anexo + o texto (default se o usuário só mandou o arquivo).
+    const bloco = anexoMime === "application/pdf"
+      ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: anexoB64 } }
+      : { type: "image", source: { type: "base64", media_type: anexoMime, data: anexoB64 } };
+    const txt = mensagem || "Segue um arquivo. Leia com atenção e me ajude com base nele.";
+    messages.push({ role: "user", content: [bloco, { type: "text", text: txt }] });
+  } else {
+    messages.push({ role: "user", content: mensagem });
+  }
 
   const toolCalls: { tool: string; resumo: string }[] = [];
   let tocouCardapio = false;   // pra devolver a prévia HTML quando o cardápio foi lido/alterado
