@@ -41,22 +41,6 @@ export function CardapioPdfPrintPage() {
     return cards.find(c => c.id === menuQ) || cards.find(c => (c.nome || "").toLowerCase().includes(menuQ.toLowerCase())) || cards[0];
   }, [est, menuQ]);
 
-  function onPdf(b64: string | null, err?: string) {
-    if (b64) {
-      (window as W).__CARDAPIO_PDF__ = b64;
-      setStatus("pronto");
-      if (!headless) {
-        const a = document.createElement("a");
-        a.href = "data:application/pdf;base64," + b64;
-        a.download = `${(nomeRest || "cardapio").toLowerCase()}-${(menu?.nome || "cardapio").toLowerCase()}.pdf`;
-        a.click();
-      }
-    } else {
-      const m = err || "falha ao gerar";
-      setErro(m); setStatus("erro"); (window as W).__CARDAPIO_PDF_ERR__ = m;
-    }
-  }
-
   if (status === "carregando" || (!menu && status !== "erro")) {
     return <div style={{ padding: 20, fontFamily: "system-ui", fontSize: 14 }}>Carregando cardápio…</div>;
   }
@@ -83,7 +67,7 @@ export function CardapioPdfPrintPage() {
         menuLayoutProprio={menu.layoutProprio}
         menuLayout={menu.layout}
         onClose={() => { /* noop */ }}
-        autoPdf={onPdf}
+        print
       />
     </div>
   );

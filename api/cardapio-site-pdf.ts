@@ -42,22 +42,27 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     });
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
-    // Polling manual (em vez de waitForFunction): o SPA re-renderiza durante o
-    // boot e o waitForFunction quebrava com "frame got detached". Aqui a gente
-    // ignora detaches transitórios e continua tentando até o base64 aparecer.
-    let out: { pdf: string | null; err: string | null } = { pdf: null, err: null };
-    const deadline = Date.now() + 70000;
+    // A página (modo print) renderiza só as páginas e sinaliza __CARDAPIO_READY__
+    // quando fontes + arte carregaram. Polling ignora detaches transitórios do SPA.
+    let st: { ready: boolean; err: string | null } = { ready: false, err: null };
+    const deadline = Date.now() + 55000;
     while (Date.now() < deadline) {
       try {
-        out = (await page.evaluate("({ pdf: window.__CARDAPIO_PDF__ || null, err: window.__CARDAPIO_PDF_ERR__ || null })")) as { pdf: string | null; err: string | null };
-        if (out.pdf || out.err) break;
+        st = (await page.evaluate("({ ready: !!window.__CARDAPIO_READY__, err: window.__CARDAPIO_PDF_ERR__ || null })")) as { ready: boolean; err: string | null };
+        if (st.ready || st.err) break;
       } catch { /* frame detached transitório — tenta de novo */ }
-      await new Promise((r) => setTimeout(r, 700));
+      await new Promise((r) => setTimeout(r, 600));
     }
-    if (!out.pdf) { res.status(502).json({ error: "Render do cardápio falhou: " + (out.err || "sem PDF (timeout)") }); return; }
+    if (!st.ready) { res.status(502).json({ error: "Render do cardápio falhou: " + (st.err || "não ficou pronto (timeout)") }); return; }
+
+    // page.pdf NATIVO: texto vetorial, fontes/arte pelo próprio Chromium. Cada
+    // página (460×651px) vira uma página A4 (escala ~1.72 = 460→A4). page-break
+    // por página no CSS.
+    const pdfBuf = await page.pdf({ format: "a4", printBackground: true, scale: 1.72, margin: { top: "0", right: "0", bottom: "0", left: "0" } });
+    const base64 = Buffer.from(pdfBuf).toString("base64");
 
     const path = `cardapios/${rid}/agente_${(menu || "cardapio").toLowerCase().replace(/[^a-z0-9]/g, "")}_${Date.now()}.pdf`;
-    const link = await subirStorage(path, out.pdf, "application/pdf");
+    const link = await subirStorage(path, base64, "application/pdf");
     if (!link) { res.status(502).json({ error: "PDF gerado mas o upload falhou." }); return; }
     res.status(200).json({ pdfUrl: link });
   } catch (e) {

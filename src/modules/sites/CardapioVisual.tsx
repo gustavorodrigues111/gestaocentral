@@ -108,7 +108,7 @@ async function inlinarImagens(root: HTMLElement): Promise<() => void> {
   return () => restore.forEach(([img, src]) => { if (img.isConnected) img.setAttribute("src", src); });
 }
 
-export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onSecoes, sharedLayout, menuLayoutProprio, menuLayout, onClose, autoPdf }: {
+export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onSecoes, sharedLayout, menuLayoutProprio, menuLayout, onClose, autoPdf, print }: {
   rid: string; menuId?: string; secoes: SecaoCardapio[]; mostrarGarrafa?: boolean; nomeRestaurante?: string; nomeMenu?: string;
   tituloCapa?: string; onTituloCapa?: (v: string) => void; lang: "pt" | "en";
   onEditarPrato?: (pratoId: string, campo: CampoPrato, valor: string) => void;
@@ -118,6 +118,9 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
   // Modo headless (rota de impressão): gera o PDF sozinho e devolve o base64
   // (sem baixar/compartilhar). Usado pelo render pro Puppeteer.
   autoPdf?: (b64: string | null, err?: string) => void;
+  // Modo print nativo: renderiza só as páginas (escala 1, empilhadas, com
+  // page-break) e sinaliza window.__CARDAPIO_READY__ — o Puppeteer usa page.pdf().
+  print?: boolean;
 }) {
   const ehSororoca = /soror/i.test(nomeRestaurante || "");
   const [tCapa, setTCapa] = useState(tituloCapa ?? "");
@@ -631,6 +634,41 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
       </div>
     );
   };
+
+  // Modo print nativo (page.pdf do Puppeteer): espera páginas + fontes + imagens
+  // e sinaliza window.__CARDAPIO_READY__ (ou o erro).
+  const printRef = useRef(false);
+  useEffect(() => {
+    if (!print || printRef.current) return;
+    printRef.current = true;
+    let cancel = false;
+    const espera = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+    const W = window as Window & { __CARDAPIO_READY__?: boolean; __CARDAPIO_PDF_ERR__?: string };
+    void (async () => {
+      try {
+        await espera(800);
+        for (let i = 0; i < 40 && !cancel; i++) { if (document.querySelectorAll(".pagina-pdf").length > 0) break; await espera(400); }
+        if (document.querySelectorAll(".pagina-pdf").length === 0) { W.__CARDAPIO_PDF_ERR__ = "sem páginas .pagina-pdf"; return; }
+        try { const fs = (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts; await Promise.race([fs?.ready ?? Promise.resolve(), espera(7000)]); } catch { /* ok */ }
+        for (let i = 0; i < 30 && !cancel; i++) { const imgs = Array.from(document.querySelectorAll<HTMLImageElement>(".pagina-pdf img")); if (imgs.length === 0 || imgs.every((im) => im.complete)) break; await espera(400); }
+        await espera(600);
+        if (!cancel) W.__CARDAPIO_READY__ = true;
+      } catch (e) { W.__CARDAPIO_PDF_ERR__ = "print: " + (e instanceof Error ? e.message : String(e)); }
+    })();
+    return () => { cancel = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [print]);
+
+  if (print) {
+    // Só as páginas, escala 1, empilhadas, com quebra por página. O Chromium
+    // imprime nativo (page.pdf) — texto vetorial, fontes/arte pelo próprio browser.
+    return (
+      <>
+        <style>{"html,body{margin:0;padding:0;background:#fff}.cardapio-print{display:block}.cardapio-print .pagina-pdf{page-break-after:always;break-after:page;box-shadow:none!important;margin:0!important;display:block}"}</style>
+        <div className="cardapio-print" ref={paginasRef}>{paginas}</div>
+      </>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-stretch justify-center p-3" onClick={tentarFechar}>
