@@ -50,6 +50,7 @@ export const CATALOGO: Record<AgenteDominio, FerramentaDef[]> = {
     { key: "ler_cardapio_site",     label: "Ler cardápio (site)",   tipo: "read",  permissao: "sites", desc: "Lê o cardápio do módulo (Comidas/Bebidas/Vinhos) que está no site" },
     { key: "aplicar_cardapio_site", label: "Aplicar no site",       tipo: "write", permissao: "sites", desc: "Altera preço/prato/descrição/seção — reflete no site (confirmação)" },
     { key: "gerar_previa_site",     label: "Link do site (prévia)", tipo: "read",  permissao: "sites", desc: "Manda o link do cardápio no site pra conferir/aprovar" },
+    { key: "gerar_pdf_site",        label: "Gerar PDF (módulo)",    tipo: "read",  permissao: "sites", desc: "PDF desenhado do cardápio (Comidas/Bebidas/Vinhos) via navegador headless" },
   ],
 };
 

@@ -14,11 +14,13 @@
     "deploy:rules": "firebase deploy --only firestore:rules,storage --project gestaocentral"
   },
   "dependencies": {
+    "@sparticuz/chromium": "^149.0.0",
     "@types/qrcode": "^1.5.6",
     "date-fns": "^4.1.0",
     "firebase": "^12.12.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
+    "puppeteer-core": "^25.5.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.5",
     "react-dom": "^19.2.5",

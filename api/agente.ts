@@ -346,6 +346,21 @@ const SKILL_TOOLS_SITE: Record<string, SkillTool> = {
       return { resumo: "link do site", conteudo: JSON.stringify({ previaUrl: `${APP_ORIGIN()}/site/${slug}` }) };
     },
   },
+  gerar_pdf_site: {
+    desc: "Gera o PDF DESENHADO (layout do módulo, igual ao 'Baixar PDF' do módulo) de UM cardápio e devolve o link. Passe `cardapio` = 'Comidas' | 'Bebidas' | 'Vinhos'. Use quando pedirem o PDF/arquivo final. Demora alguns segundos.",
+    tipo: "read",
+    schema: { type: "object", properties: { cardapio: { type: "string", description: "qual cardápio: Comidas, Bebidas ou Vinhos" } }, required: [] },
+    exec: async (args, ctx) => {
+      const rid = ctx.restaurantId || "";
+      if (!rid) return { resumo: "sem restaurante", conteudo: JSON.stringify({ erro: "agente sem restaurante no escopo" }) };
+      try {
+        const r = await fetch(APP_ORIGIN() + "/api/cardapio-site-pdf", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ rid, menu: String(args.cardapio || "") }) });
+        const j = (await r.json()) as { pdfUrl?: string; error?: string };
+        if (!r.ok || !j.pdfUrl) return { resumo: "falha no PDF", conteudo: JSON.stringify({ erro: j.error || `HTTP ${r.status}` }) };
+        return { resumo: "PDF pronto", conteudo: JSON.stringify({ pdfUrl: j.pdfUrl }) };
+      } catch (e) { return { resumo: "falha no PDF", conteudo: JSON.stringify({ erro: e instanceof Error ? e.message : "indisponível" }) }; }
+    },
+  },
 };
 
 function noEscopo(d: Doc, escopo: Escopo): boolean {
@@ -464,11 +479,12 @@ export async function runAgenteCore(
     : " Você NÃO pode alterar nada nesta versão (só consulta); se pedirem uma alteração, explique que por ora você só consulta.";
   const temCardapio = skillDisp.includes("ler_cardapio") || skillDisp.includes("ler_cardapio_site");
   // No WhatsApp não há prévia HTML na tela — o agente descreve em texto e manda o link do PDF.
-  const notaCardapio = temCardapio
-    ? (canal === "whatsapp"
-        ? " Aqui é WhatsApp: não há prévia visual na tela. Pra o usuário CONFERIR/APROVAR o cardápio (inclusive após uma alteração), chame gerar_previa — ela manda um link HTML que ele abre no celular. Quando pedirem o PDF/filipeta FINAL, chame gerar_pdf. Os links/arquivo aparecem sozinhos na conversa, não precisa colar a URL no texto."
-        : " Quando pedirem pra VER/MOSTRAR o cardápio ou a prévia, chame ler_cardapio: a prévia visual (HTML) aparece SOZINHA na tela — não precisa listar item por item, só confirme que está mostrando. Depois de aplicar uma alteração, a prévia atualizada também aparece sozinha. Quando pedirem o PDF / a filipeta / o arquivo final, chame gerar_pdf: o link pra download aparece na conversa.")
-    : "";
+  const notaCardapio = !temCardapio ? ""
+    : ehCardapioSite
+      ? " Pra MOSTRAR/ver o cardápio (ex.: 'como está o cardápio'), chame gerar_previa_site e mande só o LINK — ele já mostra TUDO (todas as seções e pratos com preço). NÃO faça resumo em texto. Só liste em texto se o usuário pedir explicitamente — e aí liste COMPLETO, todas as seções e TODOS os pratos com preço, nunca resumido. Depois de uma alteração, mande o link da prévia de novo pra conferir. Pra o PDF final, chame gerar_pdf_site."
+      : (canal === "whatsapp"
+          ? " Aqui é WhatsApp: não há prévia visual na tela. Pra o usuário CONFERIR/APROVAR o cardápio (inclusive após uma alteração), chame gerar_previa — ela manda um link HTML que ele abre no celular. Quando pedirem o PDF/filipeta FINAL, chame gerar_pdf. Os links/arquivo aparecem sozinhos na conversa, não precisa colar a URL no texto."
+          : " Quando pedirem pra VER/MOSTRAR o cardápio ou a prévia, chame ler_cardapio: a prévia visual (HTML) aparece SOZINHA na tela — não precisa listar item por item, só confirme que está mostrando. Depois de aplicar uma alteração, a prévia atualizada também aparece sozinha. Quando pedirem o PDF / a filipeta / o arquivo final, chame gerar_pdf: o link pra download aparece na conversa.");
   const notaCanal = canal === "whatsapp" ? " Você está respondendo pelo WhatsApp: seja conciso, sem markdown pesado (nada de tabelas), use quebras de linha curtas." : "";
   const system = sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras + notaCardapio + notaCanal;
 
@@ -521,7 +537,7 @@ export async function runAgenteCore(
         ? await skill.exec(input, { pessoaId: opts.pessoaId, pessoaNome: opts.pessoaNome, restaurantId: agenteRid })
         : await execTool(b.name, input as { restaurantId?: string; periodo?: string; busca?: string }, escopo);
       toolCalls.push({ tool: b.name, resumo });
-      if (b.name === "gerar_pdf") { try { const p = JSON.parse(conteudo) as { pdfUrl?: string }; if (p.pdfUrl) pdfUrl = p.pdfUrl; } catch { /* ignore */ } }
+      if (b.name === "gerar_pdf" || b.name === "gerar_pdf_site") { try { const p = JSON.parse(conteudo) as { pdfUrl?: string }; if (p.pdfUrl) pdfUrl = p.pdfUrl; } catch { /* ignore */ } }
       if (b.name === "gerar_previa" || b.name === "gerar_previa_site") { try { const p = JSON.parse(conteudo) as { previaUrl?: string }; if (p.previaUrl) previaUrl = p.previaUrl; } catch { /* ignore */ } }
       results.push({ type: "tool_result", tool_use_id: b.id, content: conteudo });
       try {

@@ -25,17 +25,22 @@ function chaveBR(raw?: string): string {
 const numeroBate = (autorizado: string, from: string) => chaveBR(autorizado) === chaveBR(from);
 const rid = () => `${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
-async function enviarWhats(to: string, texto: string): Promise<void> {
+// Devolve null em caso de sucesso, ou uma string com o motivo da falha (pra
+// registrar/diagnosticar — ex.: número não autorizado na Meta em modo teste).
+async function enviarWhats(to: string, texto: string): Promise<string | null> {
   const token = process.env.WHATSAPP_TOKEN, phoneId = process.env.WHATSAPP_PHONE_ID;
   const versao = process.env.WHATSAPP_API_VERSION || "v21.0";
-  if (!token || !phoneId || !texto.trim()) return;
+  if (!token || !phoneId) return "credenciais do WhatsApp ausentes";
+  if (!texto.trim()) return "texto vazio";
   try {
-    await fetch(`https://graph.facebook.com/${versao}/${phoneId}/messages`, {
+    const r = await fetch(`https://graph.facebook.com/${versao}/${phoneId}/messages`, {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ messaging_product: "whatsapp", to: soDig(to), type: "text", text: { preview_url: true, body: texto.slice(0, 4000) } }),
     });
-  } catch { /* best-effort */ }
+    if (!r.ok) { const t = await r.text().catch(() => ""); return `HTTP ${r.status}: ${t.slice(0, 300)}`; }
+    return null;
+  } catch (e) { return e instanceof Error ? e.message : "erro de rede"; }
 }
 
 // Marca a mensagem recebida como LIDA (✓✓ azul) e liga o indicador "digitando…".
@@ -208,6 +213,16 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
   // Texto (+ link de prévia HTML pra aprovar). O PDF vai como DOCUMENTO de verdade.
   const linhas = [resposta];
   if (out.previaUrl) linhas.push(`🔗 Prévia pra conferir/aprovar:\n${out.previaUrl}`);
-  await enviarWhats(from, linhas.join("\n\n"));
+  const errEnvio = await enviarWhats(from, linhas.join("\n\n"));
+  if (errEnvio) {
+    // A resposta ficou registrada mas NÃO chegou no WhatsApp — deixa o motivo
+    // visível no app pra diagnosticar (comum: número não é destinatário
+    // autorizado na Meta enquanto o app está em modo teste/desenvolvimento).
+    await firestoreCriar("agenteMensagens", `am_${rid()}`, {
+      agenteId: agente.id, conversaId, restaurantId: null, role: "assistant",
+      texto: `⚠️ A resposta acima NÃO foi entregue no WhatsApp. Motivo: ${errEnvio}\n\nSe for "não autorizado"/#131030, adicione o número como destinatário de teste no painel da Meta (ou coloque o app em produção).`,
+      pessoaId: null, canal: "sistema", criadoEm: now(),
+    }).catch(() => {});
+  }
   if (out.pdfUrl) await enviarWhatsDoc(from, out.pdfUrl, "cardapio-puba.pdf");
 }
