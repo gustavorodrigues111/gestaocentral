@@ -1175,9 +1175,11 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 📱 {n.nome}
               </button>
             ))}
-            {typeof Notification !== "undefined" && notifPerm !== "granted" && (
+            {/* Notificações do navegador — SEMPRE visível, refletindo o estado (nunca some). */}
+            {typeof Notification !== "undefined" && (
               <button type="button"
                 onClick={() => {
+                  if (notifPerm === "granted") { alert("As notificações já estão ativas neste navegador. Se não estiver recebendo, verifique se o navegador/computador está com as notificações do site permitidas (cadeado na barra de endereço + Ajustes do sistema → Notificações)."); return; }
                   try {
                     void Notification.requestPermission().then(p => {
                       setNotifPerm(p);
@@ -1187,10 +1189,12 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                   } catch { /* ignore */ }
                 }}
                 title="Receber notificação no computador quando chegar mensagem nova"
-                className={notifPerm === "denied"
+                className={notifPerm === "granted"
+                  ? "text-[11px] px-2 py-1 rounded-lg text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"
+                  : notifPerm === "denied"
                   ? "text-[11px] px-2 py-1 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
                   : "text-xs font-semibold px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"}>
-                🔔 {notifPerm === "denied" ? "Notificações bloqueadas" : "Ativar notificações"}
+                🔔 {notifPerm === "granted" ? "Notificações ativas" : notifPerm === "denied" ? "Notificações bloqueadas" : "Ativar notificações"}
               </button>
             )}
             {podeResponder && numeroSel && <div className="ml-auto flex items-center gap-1.5 shrink-0">
