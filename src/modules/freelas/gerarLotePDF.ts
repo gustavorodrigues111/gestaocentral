@@ -75,7 +75,7 @@ export async function gerarLotePDF({ lote, shifts, restaurant }: LotePDFParams):
 
   autoTable(doc, {
     startY: y,
-    head: [["Nome", "PIX", "Turnos", "Horas", "Total"]],
+    head: [["Nome", "PIX", "Turnos", "Horas", "Diária", "Gorjeta", "Total"]],
     body: [
       ...lote.pessoasResumo.map((p) => [
         p.nome,
@@ -83,12 +83,16 @@ export async function gerarLotePDF({ lote, shifts, restaurant }: LotePDFParams):
         String(p.qtdShifts),
         fmtHoras(p.totalHoras),
         fmtBR(p.totalValor),
+        (p.totalGorjeta || 0) > 0 ? fmtBR(p.totalGorjeta || 0) : "—",
+        fmtBR((p.totalValor || 0) + (p.totalGorjeta || 0)),
       ]),
       // Mensalistas: 1 linha por pessoa com nome + PIX + total (sem turnos/horas).
       ...mensalistas.map((l) => [
         l.nome,
         l.pix || "—",
         "mensal.",
+        "—",
+        "—",
         "—",
         fmtBR(l.total),
       ]),
@@ -97,6 +101,8 @@ export async function gerarLotePDF({ lote, shifts, restaurant }: LotePDFParams):
       { content: `Total ${lote.qtdPessoas} pessoa(s)`, colSpan: 2 },
       String(lote.qtdShifts),
       fmtHoras(lote.pessoasResumo.reduce((a, p) => a + p.totalHoras, 0)),
+      fmtBR(lote.pessoasResumo.reduce((a, p) => a + (p.totalValor || 0), 0)),
+      fmtBR(lote.pessoasResumo.reduce((a, p) => a + (p.totalGorjeta || 0), 0)),
       fmtBR(lote.totalGeral),
     ]],
     styles: { fontSize: 9, cellPadding: 1.5 },
@@ -106,6 +112,8 @@ export async function gerarLotePDF({ lote, shifts, restaurant }: LotePDFParams):
       2: { halign: "center" },
       3: { halign: "right" },
       4: { halign: "right" },
+      5: { halign: "right" },
+      6: { halign: "right" },
     },
     margin: { left: MARGIN, right: MARGIN },
   });
@@ -120,21 +128,27 @@ export async function gerarLotePDF({ lote, shifts, restaurant }: LotePDFParams):
     doc.text("DETALHE DOS TURNOS", MARGIN, y);
     y += 4;
 
-    const detalheBody = shifts
-      .sort((a, b) => a.nomeSnapshot.localeCompare(b.nomeSnapshot) || a.date.localeCompare(b.date))
-      .map((s) => [
-        s.nomeSnapshot,
-        fmtDateBR(s.date),
-        s.area || "—",
-        s.entrada && s.saida ? `${s.entrada}–${s.saida}` : "—",
-        fmtHoras(s.horas || 0),
-        s.valorTipo === "diaria" ? `${fmtBR(s.valorUnit || 0)} (diária)` : `${fmtBR(s.valorUnit || 0)}/h`,
-        fmtBR(s.totalCalc || 0),
-      ]);
+    // Detalhe a partir do SNAPSHOT congelado do lote (tem a gorjeta por turno).
+    const detalheBody = lote.pessoasResumo
+      .flatMap((p) => (p.turnos || []).map((t) => ({ nome: p.nome, t })))
+      .sort((a, b) => a.nome.localeCompare(b.nome) || a.t.date.localeCompare(b.t.date))
+      .map(({ nome, t }) => {
+        const gj = t.gorjeta || 0;
+        return [
+          nome,
+          fmtDateBR(t.date),
+          t.area || "—",
+          t.entrada && t.saida ? `${t.entrada}–${t.saida}` : "—",
+          fmtHoras(t.horas || 0),
+          t.valorTipo === "diaria" ? `${fmtBR(t.valorUnit || 0)} (diária)` : `${fmtBR(t.valorUnit || 0)}/h`,
+          gj > 0 ? fmtBR(gj) : "—",
+          fmtBR((t.totalCalc || 0) + gj),
+        ];
+      });
 
     autoTable(doc, {
       startY: y,
-      head: [["Pessoa", "Data", "Área", "Horário", "Horas", "Tarifa", "Total"]],
+      head: [["Pessoa", "Data", "Área", "Horário", "Horas", "Tarifa", "Gorjeta", "Total"]],
       body: detalheBody,
       styles: { fontSize: 8, cellPadding: 1.2 },
       headStyles: { fillColor: [241, 245, 249], textColor: TEXT, fontStyle: "bold" },
@@ -142,6 +156,7 @@ export async function gerarLotePDF({ lote, shifts, restaurant }: LotePDFParams):
         4: { halign: "right" },
         5: { halign: "right" },
         6: { halign: "right" },
+        7: { halign: "right" },
       },
       margin: { left: MARGIN, right: MARGIN },
     });
