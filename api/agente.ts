@@ -132,6 +132,27 @@ function aplicaDiffCardapio(est: CardapioEstado, alts: AltCardapio[]): { aplicad
   return { aplicadas, erros };
 }
 
+// Prévia do cardápio em HTML leve (abre no navegador do celular pra aprovar).
+function previaCardapioHtml(est: CardapioEstado & { versao?: number }): string {
+  const esc = (s: unknown) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] || c));
+  const precoTxt = (precos: CardapioItem["precos"]) => (precos || []).map((p) => typeof p === "string" ? p : `${p.qual ? esc(p.qual) + " " : ""}${esc(p.val)}`).join("&nbsp;&nbsp;");
+  const pagina = (titulo: string, secs?: CardapioSecao[]) => (secs && secs.length)
+    ? `<h2>${esc(titulo)}</h2>` + secs.map((sec) => `<div class="sec"><h3>${esc(sec.secao)}</h3>` +
+        (sec.itens || []).map((it) => `<div class="item"><div class="l"><b>${esc(it.nome)}</b>${it.descricao ? ` <span class="d">${esc(it.descricao)}</span>` : ""}</div><div class="p">${precoTxt(it.precos)}</div></div>`).join("") +
+        `</div>`).join("")
+    : "";
+  return `<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Prévia do cardápio · Puba</title>`
+    + `<style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:680px;margin:0 auto;padding:16px;color:#1f2937;background:#faf9f7}`
+    + `h1{font-size:20px;margin:0 0 2px}.v{color:#9ca3af;font-size:12px;margin-bottom:16px}`
+    + `h2{font-size:15px;letter-spacing:.08em;text-transform:uppercase;color:#b45309;border-bottom:2px solid #f0e6d2;padding-bottom:4px;margin:22px 0 8px}`
+    + `h3{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#6b7280;margin:14px 0 6px}`
+    + `.item{display:flex;gap:10px;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #ece7dd}`
+    + `.l b{font-size:14px}.d{color:#9ca3af;font-size:12px}.p{white-space:nowrap;font-weight:600;font-size:13px}</style></head><body>`
+    + `<h1>🍽️ Cardápio do Puba — prévia</h1><div class="v">versão ${est.versao || 0} · confira e aprove</div>`
+    + pagina("Comidas", est.comidas) + pagina("Bebidas", est.bebidas) + pagina("Almoço", est.vendinha)
+    + `</body></html>`;
+}
+
 const SKILL_TOOLS: Record<string, SkillTool> = {
   ler_cardapio: {
     desc: "Lê o cardápio atual do Puba Cidade Velha (comidas, bebidas, vendinha) com nomes, descrições e preços. Use SEMPRE antes de propor mudança.",
@@ -184,6 +205,20 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
       const url = await subirStorage(path, j.pdfBase64, "application/pdf");
       if (!url) return { resumo: "falha no upload", conteudo: JSON.stringify({ erro: "PDF gerado mas o upload falhou." }) };
       return { resumo: `PDF v${est.versao || 0} pronto`, conteudo: JSON.stringify({ pdfUrl: url, versao: est.versao || 0 }) };
+    },
+  },
+  gerar_previa: {
+    desc: "Gera uma PRÉVIA em HTML (link) do cardápio atual pra o usuário revisar/APROVAR antes do PDF final. Use quando pedirem 'prévia', 'link pra aprovar', 'como está ficando', 'me mostra antes'. No WhatsApp é assim que se mostra o cardápio.",
+    tipo: "read",
+    schema: { type: "object", properties: {}, required: [] },
+    exec: async () => {
+      const est = await lerCardapioEstado();
+      const html = previaCardapioHtml(est);
+      const b64 = Buffer.from(html, "utf8").toString("base64");
+      const path = `cardapios/puba/previa_v${est.versao || 0}_${Date.now()}.html`;
+      const url = await subirStorage(path, b64, "text/html");
+      if (!url) return { resumo: "falha na prévia", conteudo: JSON.stringify({ erro: "prévia gerada mas o upload falhou." }) };
+      return { resumo: `prévia v${est.versao || 0}`, conteudo: JSON.stringify({ previaUrl: url, versao: est.versao || 0 }) };
     },
   },
 };
@@ -262,7 +297,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 // ── Núcleo reusável do agente ────────────────────────────────────────────────
 // Monta ferramentas/persona, roda o loop de tool-use no Claude e devolve a
 // resposta. Usado pelo handler (chat do app) E pelo webhook do WhatsApp.
-export type AgenteResultado = { resposta: string; toolCalls: { tool: string; resumo: string }[]; estadoCardapio?: unknown; pdfUrl?: string };
+export type AgenteResultado = { resposta: string; toolCalls: { tool: string; resumo: string }[]; estadoCardapio?: unknown; pdfUrl?: string; previaUrl?: string };
 export async function runAgenteCore(
   agente: Doc,
   opts: { mensagem: string; historico?: { role: string; texto: string }[]; pessoaNome: string; pessoaId: string; anexo?: { base64?: string; mediaType?: string }; canal?: string },
@@ -303,7 +338,7 @@ export async function runAgenteCore(
   // No WhatsApp não há prévia HTML na tela — o agente descreve em texto e manda o link do PDF.
   const notaCardapio = temCardapio
     ? (canal === "whatsapp"
-        ? " Aqui é WhatsApp: não há prévia visual na tela. Ao ler o cardápio, resuma em texto; quando pedirem o PDF/filipeta, chame gerar_pdf e mande o link."
+        ? " Aqui é WhatsApp: não há prévia visual na tela. Pra o usuário CONFERIR/APROVAR o cardápio (inclusive após uma alteração), chame gerar_previa — ela manda um link HTML que ele abre no celular. Quando pedirem o PDF/filipeta FINAL, chame gerar_pdf. Os links/arquivo aparecem sozinhos na conversa, não precisa colar a URL no texto."
         : " Quando pedirem pra VER/MOSTRAR o cardápio ou a prévia, chame ler_cardapio: a prévia visual (HTML) aparece SOZINHA na tela — não precisa listar item por item, só confirme que está mostrando. Depois de aplicar uma alteração, a prévia atualizada também aparece sozinha. Quando pedirem o PDF / a filipeta / o arquivo final, chame gerar_pdf: o link pra download aparece na conversa.")
     : "";
   const notaCanal = canal === "whatsapp" ? " Você está respondendo pelo WhatsApp: seja conciso, sem markdown pesado (nada de tabelas), use quebras de linha curtas." : "";
@@ -325,6 +360,7 @@ export async function runAgenteCore(
   const toolCalls: { tool: string; resumo: string }[] = [];
   let tocouCardapio = false;
   let pdfUrl: string | null = null;
+  let previaUrl: string | null = null;
   for (let loop = 0; loop < MAX_LOOPS; loop++) {
     const payload = { model: (agente.model as string) || MODEL_PADRAO, max_tokens: 2000, system, messages, tools: anthropicTools };
     const resp = await fetch(ANTHROPIC_URL, {
@@ -342,6 +378,7 @@ export async function runAgenteCore(
       const out: AgenteResultado = { resposta: texto || "(sem resposta)", toolCalls };
       if (tocouCardapio) out.estadoCardapio = await lerCardapioEstado();
       if (pdfUrl) out.pdfUrl = pdfUrl;
+      if (previaUrl) out.previaUrl = previaUrl;
       return out;
     }
 
@@ -357,6 +394,7 @@ export async function runAgenteCore(
         : await execTool(b.name, input as { restaurantId?: string; periodo?: string; busca?: string }, escopo);
       toolCalls.push({ tool: b.name, resumo });
       if (b.name === "gerar_pdf") { try { const p = JSON.parse(conteudo) as { pdfUrl?: string }; if (p.pdfUrl) pdfUrl = p.pdfUrl; } catch { /* ignore */ } }
+      if (b.name === "gerar_previa") { try { const p = JSON.parse(conteudo) as { previaUrl?: string }; if (p.previaUrl) previaUrl = p.previaUrl; } catch { /* ignore */ } }
       results.push({ type: "tool_result", tool_use_id: b.id, content: conteudo });
       try {
         const logId = `alog_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;

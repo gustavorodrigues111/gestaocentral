@@ -38,6 +38,19 @@ async function enviarWhats(to: string, texto: string): Promise<void> {
   } catch { /* best-effort */ }
 }
 
+async function enviarWhatsDoc(to: string, link: string, filename: string): Promise<void> {
+  const token = process.env.WHATSAPP_TOKEN, phoneId = process.env.WHATSAPP_PHONE_ID;
+  const versao = process.env.WHATSAPP_API_VERSION || "v21.0";
+  if (!token || !phoneId || !link) return;
+  try {
+    await fetch(`https://graph.facebook.com/${versao}/${phoneId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", to: soDig(to), type: "document", document: { link, filename } }),
+    });
+  } catch { /* best-effort */ }
+}
+
 const menuTexto = (agentes: Doc[]) =>
   "Com qual assistente você quer falar? Responde só o número:\n" +
   agentes.map((a, i) => `${i + 1}) ${a.nome as string}`).join("\n");
@@ -108,7 +121,11 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
   }
   const resposta = (out.resposta || "").trim() || "(sem resposta)";
   await firestoreCriar("agenteMensagens", `am_${rid()}`, {
-    agenteId: agente.id, conversaId, restaurantId: null, role: "assistant", texto: resposta, pessoaId: null, canal: "whatsapp", pdfUrl: out.pdfUrl || null, criadoEm: now(),
+    agenteId: agente.id, conversaId, restaurantId: null, role: "assistant", texto: resposta, pessoaId: null, canal: "whatsapp", pdfUrl: out.pdfUrl || null, previaUrl: out.previaUrl || null, criadoEm: now(),
   }).catch(() => {});
-  await enviarWhats(from, out.pdfUrl ? `${resposta}\n\n📄 ${out.pdfUrl}` : resposta);
+  // Texto (+ link de prévia HTML pra aprovar). O PDF vai como DOCUMENTO de verdade.
+  const linhas = [resposta];
+  if (out.previaUrl) linhas.push(`🔗 Prévia pra conferir/aprovar:\n${out.previaUrl}`);
+  await enviarWhats(from, linhas.join("\n\n"));
+  if (out.pdfUrl) await enviarWhatsDoc(from, out.pdfUrl, "cardapio-puba.pdf");
 }
