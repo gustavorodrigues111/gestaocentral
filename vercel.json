@@ -1,7 +1,7 @@
 {
   "functions": {
     "api/cardapio-pdf.py": { "includeFiles": "api/_cardapio_assets/**" },
-    "api/cardapio-site-pdf.ts": { "memory": 1024, "maxDuration": 60 }
+    "api/cardapio-site-pdf.ts": { "memory": 1024, "maxDuration": 90 }
   },
   "rewrites": [
     {

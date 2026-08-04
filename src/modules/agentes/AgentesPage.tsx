@@ -256,7 +256,10 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
       const textoUser = anx ? `📎 ${anx.nome}${m.trim() ? "\n" + m.trim() : ""}` : m;
       await persistir("user", textoUser);
       const r = await fetch("/api/agente", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ agenteId: agente.id, mensagem: m.trim(), historico, pessoaNome, ...(anx ? { anexo: { base64: anx.base64, mediaType: anx.mediaType } } : {}) }) });
-      const j = await r.json();
+      // Resposta pode não ser JSON quando a função estoura o tempo (ex.: PDF pesado) → não quebra.
+      const raw = await r.text();
+      let j: { error?: string; resposta?: string; toolCalls?: { tool: string; resumo: string }[]; estadoCardapio?: CardEstado; pdfUrl?: string; previaUrl?: string } = {};
+      try { j = raw ? JSON.parse(raw) : {}; } catch { j = { error: r.status === 504 || !r.ok ? `O servidor demorou demais pra responder (HTTP ${r.status}). Se pediu PDF, tente de novo — a 1ª geração é mais lenta.` : "Resposta inválida do servidor." }; }
       if (!r.ok) { setErro(j.error || "Falha na resposta."); await persistir("assistant", "⚠️ " + (j.error || "Erro.")); return; }
       await persistir("assistant", j.resposta || "(sem resposta)", j.toolCalls, j.estadoCardapio, j.pdfUrl, j.previaUrl);
     } catch (e) { setErro(e instanceof Error ? e.message : "Erro de rede."); }

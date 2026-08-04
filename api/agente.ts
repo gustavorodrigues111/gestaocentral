@@ -9,7 +9,7 @@ import { requireUser, AuthError } from "./_auth.js";
 import { firestoreListar, firestoreCriar, firestoreLer, firestoreAtualizar, subirStorage } from "./_firestoreRest.js";
 import { CARDAPIO_SEED, type CardapioEstado, type CardapioSecao, type CardapioItem } from "./_cardapioSeed.js";
 
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 120 };   // 120s: o PDF headless (Puppeteer) pode demorar na 1ª vez
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL_PADRAO = "claude-opus-4-8";

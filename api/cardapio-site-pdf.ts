@@ -10,7 +10,7 @@ import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 import { firestoreLer, subirStorage } from "./_firestoreRest.js";
 
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 90 };
 
 type VercelReq = { method?: string; body?: unknown };
 type VercelRes = { status: (c: number) => VercelRes; json: (b: unknown) => void };
