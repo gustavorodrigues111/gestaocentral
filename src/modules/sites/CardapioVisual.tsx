@@ -664,7 +664,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
     // imprime nativo (page.pdf) — texto vetorial, fontes/arte pelo próprio browser.
     return (
       <>
-        <style>{"html,body{margin:0;padding:0;background:#fff}.cardapio-print{display:block}.cardapio-print .pagina-pdf{page-break-after:always;break-after:page;box-shadow:none!important;margin:0!important;display:block}"}</style>
+        <style>{"html,body{margin:0;padding:0;background:#fff}.cardapio-print{display:block}.cardapio-print .pagina-pdf{page-break-after:always;break-after:page;box-shadow:none!important;margin:0!important;display:block}.cardapio-print .guia-margem{display:none!important}"}</style>
         <div className="cardapio-print" ref={paginasRef}>{paginas}</div>
       </>
     );
