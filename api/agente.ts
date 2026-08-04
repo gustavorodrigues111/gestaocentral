@@ -302,6 +302,31 @@ function aplicaDiffEstruturado(cardapios: MenuS[], alts: AltEstrut[]): { aplicad
   return { aplicadas, erros };
 }
 
+// Prévia HTML do cardápio do módulo (igual ao Puba: sobe no Storage, abre no
+// celular). Mostra TODOS os cardápios, seções e pratos com preço.
+function previaEstruturadoHtml(cardapios: MenuS[], nome: string): string {
+  const esc = (s: unknown) => String(s ?? "").replace(/[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c] || c));
+  const precoTxt = (p: PratoS) => {
+    const parts: string[] = [];
+    if (p.preco) parts.push(`${p.garrafaMl ? `(${esc(p.garrafaMl)}ml) ` : ""}${esc(p.preco)}`);
+    if (p.taca && p.precoTaca) parts.push(`taça ${p.tacaMl ? `(${esc(p.tacaMl)}ml) ` : ""}${esc(p.precoTaca)}`);
+    return parts.join("&nbsp;·&nbsp;");
+  };
+  const pag = (c: MenuS) => `<h2>${esc(c.nome)}</h2>` + (c.secoes || []).map((s) => `<div class="sec"><h3>${esc(s.nome)}</h3>` +
+    (s.pratos || []).filter((p) => p.tipo !== "imagem").map((p) => `<div class="item"><div class="l"><b>${esc(p.titulo)}</b>${p.subtitulo ? ` <span class="d">${esc(p.subtitulo)}</span>` : ""}</div><div class="p">${precoTxt(p)}</div></div>`).join("") +
+    `</div>`).join("");
+  return `<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Prévia do cardápio · ${esc(nome)}</title>`
+    + `<style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:680px;margin:0 auto;padding:16px;color:#1f2937;background:#faf9f7}`
+    + `h1{font-size:20px;margin:0 0 2px}.v{color:#9ca3af;font-size:12px;margin-bottom:16px}`
+    + `h2{font-size:16px;letter-spacing:.08em;text-transform:uppercase;color:#b45309;border-bottom:2px solid #f0e6d2;padding-bottom:4px;margin:24px 0 8px}`
+    + `h3{font-size:13px;letter-spacing:.06em;text-transform:uppercase;color:#6b7280;margin:14px 0 6px}`
+    + `.item{display:flex;gap:10px;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #ece7dd}`
+    + `.l b{font-size:14px}.d{color:#9ca3af;font-size:12px}.p{white-space:nowrap;font-weight:600;font-size:13px}</style></head><body>`
+    + `<h1>🍽️ ${esc(nome) || "Cardápio"} — prévia</h1><div class="v">confira e aprove</div>`
+    + cardapios.map(pag).join("")
+    + `</body></html>`;
+}
+
 const SKILL_TOOLS_SITE: Record<string, SkillTool> = {
   ler_cardapio_site: {
     desc: "Lê o cardápio ATUAL do restaurante no módulo (o mesmo do site): cardápios (Comidas/Bebidas/Vinhos), seções e pratos (titulo, descricao=subtítulo, preco). Use SEMPRE antes de propor mudança.",
@@ -336,14 +361,19 @@ const SKILL_TOOLS_SITE: Record<string, SkillTool> = {
     },
   },
   gerar_previa_site: {
-    desc: "Devolve o LINK do cardápio no site (prévia AO VIVO — já reflete o que foi alterado; é o que o cliente vê). Use pra o usuário conferir/aprovar.",
+    desc: "Gera uma PRÉVIA em HTML (link) do cardápio atual — igual à do Puba: mostra todos os cardápios, seções e pratos com preço. Use pra o usuário conferir/APROVAR (inclusive após uma alteração).",
     tipo: "read",
     schema: { type: "object", properties: {}, required: [] },
     exec: async (_args, ctx) => {
-      const est = await lerEstruturado(ctx.restaurantId || "");
-      const slug = est?.slug || "";
-      if (!slug) return { resumo: "sem site", conteudo: JSON.stringify({ erro: "restaurante sem slug de site configurado" }) };
-      return { resumo: "link do site", conteudo: JSON.stringify({ previaUrl: `${APP_ORIGIN()}/site/${slug}` }) };
+      const rid = ctx.restaurantId || "";
+      const est = await lerEstruturado(rid);
+      if (!est) return { resumo: "sem cardápio", conteudo: JSON.stringify({ erro: "cardápio não encontrado" }) };
+      const rest = (await firestoreLer("restaurants", rid)) as { nome?: string } | null;
+      const html = previaEstruturadoHtml(est.cardapios, rest?.nome || "Cardápio");
+      const b64 = Buffer.from(html, "utf8").toString("base64");
+      const url = await subirStorage(`cardapios/${rid}/previa_${Date.now()}.html`, b64, "text/html");
+      if (!url) return { resumo: "falha na prévia", conteudo: JSON.stringify({ erro: "prévia gerada mas o upload falhou." }) };
+      return { resumo: "prévia", conteudo: JSON.stringify({ previaUrl: url }) };
     },
   },
   gerar_pdf_site: {
