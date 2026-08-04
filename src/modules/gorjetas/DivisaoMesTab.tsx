@@ -390,7 +390,7 @@ export function DivisaoMesTab({
       for (const g of publicadas) {
         try {
           await recalcularSnapshotGorjeta({
-            gorjeta: g, empregados, cargos, escala, splitVersions, unidades,
+            gorjeta: g, empregados, cargos, escala, splitVersions, unidades, freelaShifts,
             publicadoPorId: me?.id || "",
             publicadoPorNome: me?.nome || "",
           });

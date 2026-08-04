@@ -366,6 +366,7 @@ export function GorjetasPage() {
               empregados={empregados}
               cargos={cargos}
               escala={escala}
+              freelaShifts={freelaShifts}
             />
           )}
         </>
@@ -430,7 +431,7 @@ function Card({ label, value, highlight }: { label: string; value: string; highl
 function ListaDiasInline({
   ano, mes, rid, gorjetaMap, splitVersions, unidadesAtendimento, unidades, usaMultiUnidades,
   filtroUnidadeId, podeEditar, meId, meNome,
-  empregados, cargos, escala,
+  empregados, cargos, escala, freelaShifts,
 }: {
   ano: number; mes: number; rid: string;
   gorjetaMap: Record<string, Gorjeta>;
@@ -445,6 +446,7 @@ function ListaDiasInline({
   empregados: Empregado[];
   cargos: Cargo[];
   escala: EscalaMes | null;
+  freelaShifts: FreelaShift[];
 }) {
   const dias = daysInMonth(ano, mes);
   const todayYmd = (() => {
@@ -563,7 +565,7 @@ function ListaDiasInline({
     if (!ok) return;
     try {
       await publicarGorjeta({
-        gorjeta: g, empregados, cargos, escala, splitVersions, unidades,
+        gorjeta: g, empregados, cargos, escala, splitVersions, unidades, freelaShifts,
         publicadoPorId: meId, publicadoPorNome: meNome,
       });
     } catch (e) {
@@ -580,7 +582,7 @@ function ListaDiasInline({
       return;
     }
     if (!window.confirm(`Marcar a gorjeta de ${date} como PAGA?\n\n(Publica se ainda não estava. Depois disso o dia trava pra pedido de ajuste de escala.)`)) return;
-    try { await pagarGorjeta({ gorjeta: g, empregados, cargos, escala, splitVersions, unidades, publicadoPorId: meId, publicadoPorNome: meNome }); }
+    try { await pagarGorjeta({ gorjeta: g, empregados, cargos, escala, splitVersions, unidades, freelaShifts, publicadoPorId: meId, publicadoPorNome: meNome }); }
     catch (e) { alert(e instanceof Error ? e.message : "Erro ao pagar"); }
   }
 
@@ -592,14 +594,14 @@ function ListaDiasInline({
     const gs = gsSelecionadas().filter((g) => !g.publicada);
     if (!gs.length) { alert("Selecione dias com gorjeta lançada e ainda não publicada."); return; }
     if (!window.confirm(`Publicar ${gs.length} gorjeta(s)? A divisão é calculada e congelada agora.`)) return;
-    for (const g of gs) { try { await publicarGorjeta({ gorjeta: g, empregados, cargos, escala, splitVersions, unidades, publicadoPorId: meId, publicadoPorNome: meNome }); } catch (e) { alert(`Erro em ${fmtDataBR(g.date)}: ${e instanceof Error ? e.message : ""}`); } }
+    for (const g of gs) { try { await publicarGorjeta({ gorjeta: g, empregados, cargos, escala, splitVersions, unidades, freelaShifts, publicadoPorId: meId, publicadoPorNome: meNome }); } catch (e) { alert(`Erro em ${fmtDataBR(g.date)}: ${e instanceof Error ? e.message : ""}`); } }
     setSel(new Set());
   }
   async function pagarSelecionados() {
     const gs = gsSelecionadas().filter((g) => !g.paga);
     if (!gs.length) { alert("Selecione dias com gorjeta pra pagar."); return; }
     if (!window.confirm(`Marcar ${gs.length} gorjeta(s) como PAGAS? (publica as que ainda não estavam). Depois disso esses dias travam pra pedido de ajuste de escala.`)) return;
-    for (const g of gs) { try { await pagarGorjeta({ gorjeta: g, empregados, cargos, escala, splitVersions, unidades, publicadoPorId: meId, publicadoPorNome: meNome }); } catch (e) { alert(`Erro em ${fmtDataBR(g.date)}: ${e instanceof Error ? e.message : ""}`); } }
+    for (const g of gs) { try { await pagarGorjeta({ gorjeta: g, empregados, cargos, escala, splitVersions, unidades, freelaShifts, publicadoPorId: meId, publicadoPorNome: meNome }); } catch (e) { alert(`Erro em ${fmtDataBR(g.date)}: ${e instanceof Error ? e.message : ""}`); } }
     setSel(new Set());
   }
 

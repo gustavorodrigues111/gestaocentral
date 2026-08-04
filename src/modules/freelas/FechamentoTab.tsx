@@ -14,6 +14,8 @@ import {
   calcHoras, calcTotal, fmtBR, fmtHoras, historicoDaPessoa, proximoNumeroLote,
 } from "./helpers";
 import { diasNoMes, diasRemuneracaoMensalista, gorjetaMensalDe, mensalistasAtivosNoMes } from "./mensalista";
+import { calcularDivisaoDia, calcularValorLiquido } from "../gorjetas/calc";
+import { getActiveSplitVersion } from "../gorjetas/splitRules";
 import { nomeMes } from "../../core/utils/date";
 
 // Desloca a competência "YYYY-MM" em ±N meses.
@@ -286,6 +288,40 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
     return Math.round(tot * 100) / 100;
   }, [gorjetasMes]);
 
+  // Freelas de um dia (marcados com cargo de gorjeta) — pra prévia ao vivo.
+  const freelasDoDiaLive = useCallback((date: string, unidadeId: string | null) => {
+    const cargoById: Record<string, Cargo> = Object.fromEntries(cargos.map((c) => [c.id, c]));
+    return shifts
+      .filter((f) => f.date === date && f.gorjetaCargoId && f.status !== "cancelado" && f.status !== "nao_compareceu"
+        && (!unidadeId || (f.unidadeId || null) === unidadeId))
+      .map((f) => {
+        const c = cargoById[f.gorjetaCargoId as string];
+        return { id: f.id, nome: f.nomeSnapshot, cargoId: f.gorjetaCargoId as string, pontos: c?.pontos || 0, area: (c?.area || f.area || "Salão") };
+      })
+      .filter((f) => f.pontos > 0);
+  }, [shifts, cargos]);
+
+  // Proporcional da gorjeta do dia pra ESTE turno.
+  //   congelada = gorjeta do dia já publicada, valor travado no snapshot
+  //   previa    = gorjeta ainda não publicada → estimativa ao vivo
+  //   fora      = gorjeta já publicada SEM este freela → precisa recalcular
+  //   sem       = sem cargo, ou sem gorjeta lançada no dia
+  const gorjetaInfoDoShift = useCallback((s: FreelaShift): { valor: number; estado: "congelada" | "previa" | "fora" | "sem" } => {
+    if (!s.gorjetaCargoId) return { valor: 0, estado: "sem" };
+    const g = gorjetasMes.find((x) => x.date === s.date && (x.unidadeId || null) === (s.unidadeId || null));
+    if (!g || g.semGorjeta || !(g.valorBruto > 0)) return { valor: 0, estado: "sem" };
+    if (g.publicada && g.divisaoSnapshot) {
+      const it = g.divisaoSnapshot.find((i) => i.freelaShiftId === s.id);
+      return it ? { valor: Math.round((it.valor || 0) * 100) / 100, estado: "congelada" } : { valor: 0, estado: "fora" };
+    }
+    const sv = getActiveSplitVersion(splitVersions, g.date);
+    if (!sv) return { valor: 0, estado: "sem" };
+    const liquido = calcularValorLiquido(g.valorBruto, sv.taxRate);
+    const res = calcularDivisaoDia(g.date, liquido, empregados, cargos, escala, sv, g.unidadeId || null, unidades, freelasDoDiaLive(g.date, g.unidadeId || null));
+    const it = res.itens.find((i) => i.freelaShiftId === s.id);
+    return { valor: Math.round((it?.valor || 0) * 100) / 100, estado: "previa" };
+  }, [gorjetasMes, splitVersions, empregados, cargos, escala, unidades, freelasDoDiaLive]);
+
   // Cancela um turno lançado errado: status "cancelado", zera o valor e
   // registra o motivo. Some da precificação e entra em "Prontos pra lote"
   // zerado, podendo ir num lote só pra registro. Reversível via "Reabrir".
@@ -487,8 +523,8 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
         ) : (
           <AreaGroups
             shifts={aPrecificar}
-            renderRowDesktop={(s) => <PrecificarRowDesktop key={s.id} shift={s} podeEditar={podeEditar} todosShifts={shifts} semPix={!pixDe(s)} onCancelar={() => cancelarShift(s)} />}
-            renderRowMobile={(s)  => <PrecificarRowMobile  key={s.id} shift={s} podeEditar={podeEditar} todosShifts={shifts} semPix={!pixDe(s)} onCancelar={() => cancelarShift(s)} />}
+            renderRowDesktop={(s) => <PrecificarRowDesktop key={s.id} shift={s} podeEditar={podeEditar} todosShifts={shifts} semPix={!pixDe(s)} onCancelar={() => cancelarShift(s)} cargos={cargos} gorjetaInfo={gorjetaInfoDoShift(s)} />}
+            renderRowMobile={(s)  => <PrecificarRowMobile  key={s.id} shift={s} podeEditar={podeEditar} todosShifts={shifts} semPix={!pixDe(s)} onCancelar={() => cancelarShift(s)} cargos={cargos} gorjetaInfo={gorjetaInfoDoShift(s)} />}
             headerDesktop={
               <tr className="text-left text-[10px] uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 bg-gray-50/60 dark:bg-gray-800/30">
                 <th className="px-4 py-2 w-24">Data</th>
@@ -979,7 +1015,66 @@ function TarifaPicker({
   );
 }
 
-function PrecificarRowDesktop({ shift, podeEditar, todosShifts, semPix, onCancelar }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[]; semPix: boolean; onCancelar: () => void }) {
+// Controle "entra na gorjeta do dia": checkbox → seletor de cargo → proporcional.
+// Escreve gorjetaCargoId no turno. O proporcional é prévia ao vivo antes de
+// publicar a gorjeta do dia, e valor congelado depois.
+function GorjetaFreelaControl({
+  shift, cargos, info, podeEditar, block,
+}: {
+  shift: FreelaShift;
+  cargos: Cargo[];
+  info: { valor: number; estado: "congelada" | "previa" | "fora" | "sem" };
+  podeEditar: boolean;
+  block?: boolean;
+}) {
+  const cargosGorjeta = cargos.filter((c) => !c.semGorjeta && (c.pontos || 0) > 0).sort((a, b) => a.nome.localeCompare(b.nome));
+  const marcado = !!shift.gorjetaCargoId;
+  async function setCargo(cargoId: string | null) {
+    try { await updateDoc(doc(db, "freelaShifts", shift.id), { gorjetaCargoId: cargoId, updatedAt: new Date().toISOString() }); }
+    catch (e) { alert(`Não consegui salvar: ${e instanceof Error ? e.message : ""}`); }
+  }
+  const infoLinha = () => {
+    if (!marcado) return null;
+    if (info.estado === "congelada")
+      return <span className="text-emerald-700 dark:text-emerald-400">🎁 Gorjeta do dia: <strong>{fmtBR(info.valor)}</strong> (congelada)</span>;
+    if (info.estado === "previa")
+      return <span className="text-amber-700 dark:text-amber-400">🎁 Prévia da gorjeta: <strong>{fmtBR(info.valor)}</strong> · congela ao publicar o dia</span>;
+    if (info.estado === "fora")
+      return <span className="text-rose-600 dark:text-rose-400">⚠ Gorjeta do dia já publicada sem este freela — recalcule no módulo Gorjetas</span>;
+    return <span className="text-gray-500">Sem gorjeta lançada neste dia ainda</span>;
+  };
+  return (
+    <div className={`mt-2 rounded-lg border px-2 py-1.5 ${marcado ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-900/10" : "border-gray-200 dark:border-gray-700"} ${block ? "" : "text-[11px]"}`}>
+      <label className="flex items-center gap-1.5 cursor-pointer">
+        <input
+          type="checkbox" checked={marcado} disabled={!podeEditar}
+          onChange={(e) => { if (e.target.checked) { if (cargosGorjeta[0]) void setCargo(cargosGorjeta[0].id); } else void setCargo(null); }}
+          className="accent-emerald-600"
+        />
+        <span className={`text-[11px] font-semibold ${marcado ? "text-emerald-700 dark:text-emerald-300" : "text-gray-500"}`}>Entra na gorjeta do dia</span>
+      </label>
+      {marcado && (
+        <div className="mt-1.5 space-y-1">
+          <div className="flex items-center gap-1.5">
+            <span className="text-[10px] text-gray-500 shrink-0">Cargo:</span>
+            <select
+              value={shift.gorjetaCargoId || ""}
+              disabled={!podeEditar}
+              onChange={(e) => void setCargo(e.target.value || null)}
+              className="flex-1 min-w-0 text-[11px] rounded border border-emerald-300 dark:border-emerald-700 px-1.5 py-1 bg-white dark:bg-gray-900 text-emerald-700 dark:text-emerald-300"
+            >
+              {!shift.gorjetaCargoId && <option value="">Selecione…</option>}
+              {cargosGorjeta.map((c) => <option key={c.id} value={c.id}>{c.nome} ({c.pontos} pts)</option>)}
+            </select>
+          </div>
+          <div className="text-[10px]">{infoLinha()}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function PrecificarRowDesktop({ shift, podeEditar, todosShifts, semPix, onCancelar, cargos, gorjetaInfo }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[]; semPix: boolean; onCancelar: () => void; cargos: Cargo[]; gorjetaInfo: { valor: number; estado: "congelada" | "previa" | "fora" | "sem" } }) {
   const s = usePrecificar(shift, todosShifts);
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   const [editar, setEditar] = useState(false);
@@ -1015,8 +1110,14 @@ function PrecificarRowDesktop({ shift, podeEditar, todosShifts, semPix, onCancel
           onAplicar={s.aplicarTarifa} setValorUnit={s.setValorUnit}
           disabled={!podeEditar || s.saving}
         />
+        <GorjetaFreelaControl shift={shift} cargos={cargos} info={gorjetaInfo} podeEditar={podeEditar} />
       </td>
-      <td className="px-2 py-3 text-right font-semibold text-gray-900 dark:text-gray-100 tabular-nums">{fmtBR(s.total)}</td>
+      <td className="px-2 py-3 text-right font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
+        {fmtBR(s.total + gorjetaInfo.valor)}
+        {gorjetaInfo.valor > 0 && (
+          <div className="text-[10px] font-normal text-gray-500">diária {fmtBR(s.total)} + 🎁 {fmtBR(gorjetaInfo.valor)}</div>
+        )}
+      </td>
       <td className="px-4 py-3 text-right">
         {podeEditar && (
           <div className="flex flex-col items-end gap-1.5">
@@ -1031,7 +1132,7 @@ function PrecificarRowDesktop({ shift, podeEditar, todosShifts, semPix, onCancel
   );
 }
 
-function PrecificarRowMobile({ shift, podeEditar, todosShifts, semPix, onCancelar }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[]; semPix: boolean; onCancelar: () => void }) {
+function PrecificarRowMobile({ shift, podeEditar, todosShifts, semPix, onCancelar, cargos, gorjetaInfo }: { shift: FreelaShift; podeEditar: boolean; todosShifts: FreelaShift[]; semPix: boolean; onCancelar: () => void; cargos: Cargo[]; gorjetaInfo: { valor: number; estado: "congelada" | "previa" | "fora" | "sem" } }) {
   const s = usePrecificar(shift, todosShifts);
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   const [editar, setEditar] = useState(false);
@@ -1043,7 +1144,12 @@ function PrecificarRowMobile({ shift, podeEditar, todosShifts, semPix, onCancela
           <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 break-words">{shift.nomeSnapshot}</div>
           {semPix && <div className="text-[10px] text-red-600">⚠ sem PIX</div>}
         </div>
-        <div className="text-base font-bold text-gray-900 dark:text-gray-100 tabular-nums shrink-0">{fmtBR(s.total)}</div>
+        <div className="text-right shrink-0">
+          <div className="text-base font-bold text-gray-900 dark:text-gray-100 tabular-nums">{fmtBR(s.total + gorjetaInfo.valor)}</div>
+          {gorjetaInfo.valor > 0 && (
+            <div className="text-[10px] text-gray-500">diária {fmtBR(s.total)} + 🎁 {fmtBR(gorjetaInfo.valor)}</div>
+          )}
+        </div>
       </div>
       <div className="text-xs text-gray-700 dark:text-gray-300 mb-2 flex items-center gap-2 flex-wrap">
         <span>{shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""} · {fmtHoras(horas)}</span>
@@ -1063,6 +1169,7 @@ function PrecificarRowMobile({ shift, podeEditar, todosShifts, semPix, onCancela
         disabled={!podeEditar || s.saving}
         block
       />
+      <GorjetaFreelaControl shift={shift} cargos={cargos} info={gorjetaInfo} podeEditar={podeEditar} block />
       {podeEditar && (
         <div className="mt-3 space-y-1.5">
           <Button size="sm" className="w-full" onClick={s.confirmar} disabled={s.saving || !s.valorUnit}>✅ Confirmar</Button>

@@ -3,7 +3,7 @@ import { deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
-import { type Cargo, type Empregado, type FreelaShift, type Pessoa } from "../../core/types";
+import { type Empregado, type FreelaShift, type Pessoa } from "../../core/types";
 import { todayYmd } from "../../core/utils/date";
 import { NovoTurnoModal } from "./NovoTurnoModal";
 import { HorarioModal } from "./HorarioModal";
@@ -14,7 +14,6 @@ type Props = {
   shifts: FreelaShift[];
   empregados: Empregado[];
   pessoas: Pessoa[];
-  cargos: Cargo[];
   podeOperar: boolean;
   // "Planejar turnos" e "Abrir turno" vêm do header da página (FreelasPage).
   showNovo?: boolean;
@@ -35,7 +34,7 @@ function zonaDoShift(s: FreelaShift, hoje: string): Zona {
 }
 
 export function LancamentoTab({
-  restaurantId, shifts, empregados, pessoas, cargos, podeOperar,
+  restaurantId, shifts, empregados, pessoas, podeOperar,
   showNovo: showNovoExt, onCloseNovo,
   showAvulso: showAvulsoExt, onCloseAvulso,
 }: Props) {
@@ -78,7 +77,7 @@ export function LancamentoTab({
           </div>
         ) : (
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
-            {turnosDoDia.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} onAlterar={() => setEditShift(s)} cargos={cargos} />)}
+            {turnosDoDia.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} onAlterar={() => setEditShift(s)} />)}
           </div>
         )}
       </section>
@@ -90,7 +89,7 @@ export function LancamentoTab({
             📅 Planejados ({planejados.length})
           </h3>
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-white/60 dark:bg-gray-900/40 divide-y divide-gray-100 dark:divide-gray-800">
-            {planejados.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} onAlterar={() => setEditShift(s)} cargos={cargos} />)}
+            {planejados.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} onAlterar={() => setEditShift(s)} />)}
           </div>
         </section>
       )}
@@ -109,7 +108,7 @@ export function LancamentoTab({
           </button>
           {realizadosOpen && (
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
-              {realizados.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} onAlterar={() => setEditShift(s)} cargos={cargos} />)}
+              {realizados.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} onAlterar={() => setEditShift(s)} />)}
             </div>
           )}
         </section>
@@ -190,14 +189,8 @@ const ZONA_CARD: Record<Zona, string> = {
 };
 
 // ── Linha de turno (display + ações por zona) ───────────────────────────────
-function RowTurno({ shift, hoje, podeOperar, onAlterar, cargos }: { shift: FreelaShift; hoje: string; podeOperar: boolean; onAlterar: () => void; cargos: Cargo[] }) {
+function RowTurno({ shift, hoje, podeOperar, onAlterar }: { shift: FreelaShift; hoje: string; podeOperar: boolean; onAlterar: () => void }) {
   const { pessoa: me } = useAuth();
-  // Cargos elegíveis pra gorjeta (com pontos, não semGorjeta) — ordenados.
-  const cargosGorjeta = cargos.filter(c => !c.semGorjeta && (c.pontos || 0) > 0).sort((a, b) => a.nome.localeCompare(b.nome));
-  async function setGorjetaCargo(cargoId: string) {
-    try { await updateDoc(doc(db, "freelaShifts", shift.id), { gorjetaCargoId: cargoId || null, updatedAt: new Date().toISOString() }); }
-    catch { /* silent */ }
-  }
   const [modalMode, setModalMode] = useState<"abrir" | "fechar" | "editar" | "intervalo" | null>(null);
   const [saving, setSaving] = useState(false);
   const zona = zonaDoShift(shift, hoje);
@@ -239,22 +232,6 @@ function RowTurno({ shift, hoje, podeOperar, onAlterar, cargos }: { shift: Freel
         <span className="tabular-nums">{fmtDataCurta(shift.date)}</span>
         {shift.area && <span> · {shift.area}</span>}
       </div>
-
-      {/* Gorjeta: entra na divisão do dia com os pontos do cargo escolhido. */}
-      {podeOperar && shift.status !== "cancelado" && shift.status !== "nao_compareceu" && (
-        <div className="mt-1.5 flex items-center gap-1.5 text-[11px]">
-          <span className={shift.gorjetaCargoId ? "text-emerald-600 dark:text-emerald-400 font-semibold" : "text-gray-400"}>🎁 Gorjeta:</span>
-          <select
-            value={shift.gorjetaCargoId || ""}
-            onChange={(e) => void setGorjetaCargo(e.target.value)}
-            className={`flex-1 min-w-0 text-[11px] rounded border px-1.5 py-1 bg-white dark:bg-gray-900 ${shift.gorjetaCargoId ? "border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}
-            title="Escolha o cargo pra este freela entrar na gorjeta do dia (com a pontuação do cargo). Vazio = fora."
-          >
-            <option value="">— fora da gorjeta —</option>
-            {cargosGorjeta.map(c => <option key={c.id} value={c.id}>{c.nome} ({c.pontos} pts)</option>)}
-          </select>
-        </div>
-      )}
 
       {/* botões de ação: grid 2 colunas, todos com texto e mesmo tamanho */}
       {temAcoes && (

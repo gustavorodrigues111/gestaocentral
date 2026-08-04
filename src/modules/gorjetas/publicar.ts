@@ -16,7 +16,7 @@ import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type {
-  Cargo, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade,
+  Area, Cargo, Empregado, EscalaMes, FreelaShift, Gorjeta, SplitVersion, Unidade,
 } from "../../core/types";
 import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
 import { getActiveSplitVersion } from "./splitRules";
@@ -28,9 +28,32 @@ export type PublicarParams = {
   escala: EscalaMes | null;
   splitVersions: SplitVersion[];
   unidades: Unidade[];
+  // Turnos de freela — os marcados com gorjetaCargoId que trabalharam nesse
+  // dia entram na divisão (e ficam CONGELADOS no snapshot ao publicar).
+  freelaShifts?: FreelaShift[];
   publicadoPorId: string;
   publicadoPorNome: string;
 };
+
+// Freelas de UM dia que entram na gorjeta (têm gorjetaCargoId + trabalharam).
+// Mesma regra do DivisaoMesTab, centralizada aqui pra publicação/recálculo
+// congelarem o freela no snapshot exatamente como a tela mostra.
+function freelasDoDia(
+  freelaShifts: FreelaShift[] | undefined,
+  cargos: Cargo[],
+  date: string,
+  unidadeId: string | null,
+): { id: string; nome: string; cargoId: string; pontos: number; area: Area }[] {
+  const cargoById: Record<string, Cargo> = Object.fromEntries(cargos.map((c) => [c.id, c]));
+  return (freelaShifts || [])
+    .filter((f) => f.date === date && f.gorjetaCargoId && f.status !== "cancelado" && f.status !== "nao_compareceu"
+      && (!unidadeId || (f.unidadeId || null) === unidadeId))
+    .map((f) => {
+      const c = cargoById[f.gorjetaCargoId as string];
+      return { id: f.id, nome: f.nomeSnapshot, cargoId: f.gorjetaCargoId as string, pontos: c?.pontos || 0, area: (c?.area || f.area || "Salão") as Area };
+    })
+    .filter((f) => f.pontos > 0);
+}
 
 export async function publicarGorjeta(p: PublicarParams): Promise<void> {
   const { gorjeta, empregados, cargos, escala, splitVersions, unidades } = p;
@@ -52,6 +75,7 @@ export async function publicarGorjeta(p: PublicarParams): Promise<void> {
     sv,
     gorjeta.unidadeId || null,
     unidades,
+    freelasDoDia(p.freelaShifts, cargos, gorjeta.date, gorjeta.unidadeId || null),
   );
   const now = new Date().toISOString();
   await updateDoc(doc(db, "gorjetas", gorjeta.id), sanitizeForFirestore({
@@ -93,6 +117,7 @@ export async function recalcularSnapshotGorjeta(p: PublicarParams): Promise<void
     sv,
     gorjeta.unidadeId || null,
     unidades,
+    freelasDoDia(p.freelaShifts, cargos, gorjeta.date, gorjeta.unidadeId || null),
   );
   const now = new Date().toISOString();
   await updateDoc(doc(db, "gorjetas", gorjeta.id), sanitizeForFirestore({

@@ -3,7 +3,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { parseYmd, pad2, dowShort, fmtBR as fmtDataBR } from "../../core/utils/date";
 import type {
-  Cargo, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade,
+  Cargo, Empregado, EscalaMes, FreelaShift, Gorjeta, SplitVersion, Unidade,
 } from "../../core/types";
 import { publicarGorjeta } from "./publicar";
 
@@ -18,6 +18,7 @@ type Props = {
   escala: EscalaMes | null;
   splitVersions: SplitVersion[];
   unidades: Unidade[];
+  freelaShifts?: FreelaShift[];
   usaMultiUnidades: boolean;
   meId: string;
   meNome: string;
@@ -25,7 +26,7 @@ type Props = {
 
 export function PublicarGorjetasModal({
   onClose, gorjetas, empregados, cargos, escala, splitVersions, unidades,
-  usaMultiUnidades, meId, meNome,
+  freelaShifts, usaMultiUnidades, meId, meNome,
 }: Props) {
   // Candidatos: gorjetas com valor > 0 ainda não publicadas (e não semGorjeta)
   const candidatos = useMemo(() => {
@@ -68,7 +69,7 @@ export function PublicarGorjetasModal({
       try {
         await publicarGorjeta({
           gorjeta: g,
-          empregados, cargos, escala, splitVersions, unidades,
+          empregados, cargos, escala, splitVersions, unidades, freelaShifts,
           publicadoPorId: meId,
           publicadoPorNome: meNome,
         });
