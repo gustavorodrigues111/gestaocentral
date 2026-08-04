@@ -168,7 +168,7 @@ type CardPreco = string | { qual?: string; val: string };
 type CardItem = { nome: string; descricao?: string; precos?: CardPreco[] };
 type CardSecao = { secao: string; itens?: CardItem[] };
 type CardEstado = { comidas?: CardSecao[]; bebidas?: CardSecao[]; vendinha?: CardSecao[]; versao?: number };
-type ChatMsg = { id: string; role: "user" | "assistant"; texto: string; tools?: { tool: string; resumo: string }[]; cardapio?: CardEstado; pdfUrl?: string; previaUrl?: string; criadoEm: string };
+type ChatMsg = { id: string; role: "user" | "assistant"; texto: string; tools?: { tool: string; resumo: string }[]; cardapio?: CardEstado; pdfUrl?: string; previaUrl?: string; criadoEm: string; canal?: string; pessoaNome?: string | null; conversaId?: string };
 
 // Prévia leve do cardápio (HTML) — mostrada no chat quando a skill lê/altera.
 function CardapioPreview({ e }: { e: CardEstado }) {
@@ -216,15 +216,17 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
   const recRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
 
-  // Carrega e mantém a conversa ao vivo (ordena no cliente — sem índice composto).
+  // Carrega TODAS as mensagens do agente (app + WhatsApp) pra ver a conversa
+  // completa; ordena no cliente. O que você digita continua indo pra sua
+  // conversa (conversaId do app); as do WhatsApp aparecem marcadas.
   useEffect(() => {
-    const q = query(collection(db, "agenteMensagens"), where("conversaId", "==", conversaId));
+    const q = query(collection(db, "agenteMensagens"), where("agenteId", "==", agente.id));
     const u = onSnapshot(q, s => setMsgs(
       s.docs.map(d => ({ id: d.id, ...(d.data() as Omit<ChatMsg, "id">) }))
         .sort((a, b) => (a.criadoEm || "").localeCompare(b.criadoEm || ""))
     ));
     return () => u();
-  }, [conversaId]);
+  }, [agente.id]);
   useEffect(() => { fimRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs.length, enviando]);
 
   async function persistir(role: "user" | "assistant", texto: string, tools?: { tool: string; resumo: string }[], cardapio?: CardEstado, pdfUrl?: string, previaUrl?: string) {
@@ -235,9 +237,9 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
     });
   }
   async function limparConversa() {
-    if (!confirm("Apagar toda esta conversa? Não dá pra desfazer.")) return;
+    if (!confirm("Apagar a SUA conversa no app? (as mensagens do WhatsApp não são apagadas)")) return;
     const batch = writeBatch(db);
-    for (const m of msgs) batch.delete(doc(db, "agenteMensagens", m.id));
+    for (const m of msgs.filter(x => (x.conversaId || conversaId) === conversaId)) batch.delete(doc(db, "agenteMensagens", m.id));
     await batch.commit();
   }
 
@@ -245,7 +247,8 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
     if ((!m.trim() && !anexo) || enviando) return;
     setErro(""); setTexto("");
     const anx = anexo; setAnexo(null);
-    const historico = msgs.map(x => ({ role: x.role, texto: x.texto }));
+    // Contexto do agente = só a SUA conversa do app (não mistura o WhatsApp de outros).
+    const historico = msgs.filter(x => (x.conversaId || conversaId) === conversaId).map(x => ({ role: x.role, texto: x.texto }));
     setEnviando(true);
     try {
       // No histórico exibido marca o anexo; o base64 vai só no turno atual.
@@ -349,6 +352,11 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
           )}
           {msgs.map(m => (
             <div key={m.id} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
+              {m.canal === "whatsapp" && (
+                <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mb-0.5 px-1 flex items-center gap-1">
+                  <span>📱 WhatsApp</span>{m.pessoaNome && <span className="text-gray-400">· {m.pessoaNome}</span>}
+                </div>
+              )}
               <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${m.role === "user" ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200"}`}>
                 {m.texto}
                 {m.tools && m.tools.length > 0 && (
