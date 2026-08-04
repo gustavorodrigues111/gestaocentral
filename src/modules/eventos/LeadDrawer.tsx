@@ -14,6 +14,7 @@ import { PropostaSection } from "./PropostaSection";
 import { BEOSection } from "./BEOSection";
 import { ESCOPO_PACOTE_LABEL, MODELO_LABEL, OCASIAO_LABEL } from "./validacoes";
 import { FecharEventoModal } from "./FecharEventoModal";
+import { EditarLeadModal } from "./EditarLeadModal";
 import { fecharEvento, precoUltimaProposta } from "./leadHelpers";
 import { registrarTratativa } from "./tratativas";
 
@@ -117,6 +118,9 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], onC
       setSalvando(false);
     }
   }
+
+  // Modal de edição dos dados do lead
+  const [editarModalOpen, setEditarModalOpen] = useState(false);
 
   // Modal de fechamento de evento
   const [fecharModalOpen, setFecharModalOpen] = useState(false);
@@ -296,14 +300,21 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], onC
               {STATUS_LABEL[lead.status]}
             </span>
           </div>
-          {podeEditar && lead.status !== "perdido" && (
-            <div className="flex gap-1">
-              <Button size="sm" variant="secondary" onClick={voltar} disabled={salvando || lead.status === "novo"}>
-                ← voltar
+          {podeEditar && (
+            <div className="flex gap-1 flex-wrap">
+              <Button size="sm" variant="secondary" onClick={() => setEditarModalOpen(true)} disabled={salvando}>
+                ✏️ Editar
               </Button>
-              <Button size="sm" onClick={avancar} disabled={salvando || lead.status === "realizado"}>
-                avançar →
-              </Button>
+              {lead.status !== "perdido" && (
+                <>
+                  <Button size="sm" variant="secondary" onClick={voltar} disabled={salvando || lead.status === "novo"}>
+                    ← voltar
+                  </Button>
+                  <Button size="sm" onClick={avancar} disabled={salvando || lead.status === "realizado"}>
+                    avançar →
+                  </Button>
+                </>
+              )}
             </div>
           )}
         </div>
@@ -640,6 +651,15 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], onC
           </div>
         </div>
       </div>
+
+      {editarModalOpen && me && (
+        <EditarLeadModal
+          lead={lead}
+          meId={me.id}
+          meNome={me.nome}
+          onClose={() => setEditarModalOpen(false)}
+        />
+      )}
 
       {fecharModalOpen && (
         <FecharEventoModal
