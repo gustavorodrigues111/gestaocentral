@@ -97,13 +97,16 @@ async function inlinarImagens(root: HTMLElement): Promise<() => void> {
   return () => restore.forEach(([img, src]) => { if (img.isConnected) img.setAttribute("src", src); });
 }
 
-export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onSecoes, sharedLayout, menuLayoutProprio, menuLayout, onClose }: {
+export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestaurante, nomeMenu, tituloCapa, onTituloCapa, lang, onEditarPrato, onSecoes, sharedLayout, menuLayoutProprio, menuLayout, onClose, autoPdf }: {
   rid: string; menuId?: string; secoes: SecaoCardapio[]; mostrarGarrafa?: boolean; nomeRestaurante?: string; nomeMenu?: string;
   tituloCapa?: string; onTituloCapa?: (v: string) => void; lang: "pt" | "en";
   onEditarPrato?: (pratoId: string, campo: CampoPrato, valor: string) => void;
   onSecoes?: (next: SecaoCardapio[]) => void;
   sharedLayout?: CardapioLayout; menuLayoutProprio?: boolean; menuLayout?: CardapioLayout;
   onClose: () => void;
+  // Modo headless (rota de impressão): gera o PDF sozinho e devolve o base64
+  // (sem baixar/compartilhar). Usado pelo render pro Puppeteer.
+  autoPdf?: (b64: string | null, err?: string) => void;
 }) {
   const ehSororoca = /soror/i.test(nomeRestaurante || "");
   const [tCapa, setTCapa] = useState(tituloCapa ?? "");
@@ -541,6 +544,8 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
         restaurarImgs();
         if (wrap) wrap.style.transform = prevT;
       }
+      // Modo headless: devolve o base64 e para (não baixa/compartilha).
+      if (autoPdf) { autoPdf((pdf.output("datauristring").split(",")[1]) || null); return; }
       const nomeArq = `${(nomeRestaurante || "cardapio").toLowerCase().replace(/\s+/g, "-")}-cardapio${en ? "-en" : ""}.pdf`;
       // No mobile abre a folha de compartilhamento (WhatsApp/Mail/Arquivos); no
       // desktop baixa direto. jsPDF.save() sozinho trava no iOS (só exibe).
@@ -551,6 +556,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
     } catch (e) {
       console.error("cardapio PDF:", e);
       const msg = e instanceof Error ? e.message : String(e);
+      if (autoPdf) { autoPdf(null, msg); return; }
       const taint = /taint|SecurityError|cross-origin|insecure/i.test(msg);
       setErroBaixar(taint
         ? "A imagem de fundo/arte do cardápio bloqueou a geração (CORS). Me avise que eu libero o acesso no servidor de imagens."
@@ -558,6 +564,15 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
     }
     finally { setBaixando(false); }
   }
+  // Headless: dispara a geração sozinho quando montar (espera o preview pintar).
+  const autoRef = useRef(false);
+  useEffect(() => {
+    if (!autoPdf || autoRef.current) return;
+    autoRef.current = true;
+    const t = setTimeout(() => { void baixar(); }, 700);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoPdf]);
 
   const Slider = ({ label, k, min, max }: { label: string; k: keyof Lay; min: number; max: number }) => {
     const v = lay[k] as number;

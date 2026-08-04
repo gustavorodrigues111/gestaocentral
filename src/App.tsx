@@ -16,6 +16,7 @@ import { SitePublicaPage } from "./modules/sites/SitePublicaPage";
 import { CardapioRedirect } from "./modules/sites/CardapioRedirect";
 import { getSlugFromHost } from "./modules/sites/shared/customDomain";
 import { SitePreviewPage } from "./modules/sites/SitePreviewPage";
+import { CardapioPdfPrintPage } from "./modules/sites/CardapioPdfPrintPage";
 
 // ProtectedShell (admin) carregado sob demanda — não vai no bundle do
 // site público. Quando o cliente final acessa lobozo.com.br, esse chunk
@@ -61,6 +62,7 @@ function App() {
           {/* Política de privacidade da plataforma (usada pra publicar o app do WhatsApp na Meta) */}
           <Route path="/privacidade" element={<PrivacidadePlataformaPage />} />
           <Route path="/r/excluir-dados/:rid" element={<ExcluirDadosPage />} />
+          <Route path="/cardapio-pdf/:rid" element={<CardapioPdfPrintPage />} />
           <Route path="/site/:slug" element={<SitePublicaPage />} />
           <Route path="/site-preview/:rid" element={<SitePreviewPage />} />
           <Route path="*" element={<RootOrShell />} />
