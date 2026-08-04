@@ -232,7 +232,8 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
   }).catch(() => {});
   // Texto (+ link de prévia HTML pra aprovar). O PDF vai como DOCUMENTO de verdade.
   const linhas = [resposta];
-  if (out.previaUrl) linhas.push(`🔗 Prévia pra conferir/aprovar:\n${out.previaUrl}`);
+  // Só anexa o link se o agente NÃO já colou ele no texto (evita link duplicado).
+  if (out.previaUrl && !resposta.includes(out.previaUrl)) linhas.push(`🔗 Prévia pra conferir/aprovar:\n${out.previaUrl}`);
   const errEnvio = await enviarWhats(from, linhas.join("\n\n"));
   if (errEnvio) {
     // A resposta ficou registrada mas NÃO chegou no WhatsApp — deixa o motivo
