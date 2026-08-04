@@ -1175,9 +1175,23 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 📱 {n.nome}
               </button>
             ))}
-            {typeof Notification !== "undefined" && notifPerm !== "granted" && notifPerm !== "denied" && (
-              <button type="button" onClick={() => { try { void Notification.requestPermission().then(p => setNotifPerm(p)); } catch { /* ignore */ } }}
-                className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20" title="Receber notificação no computador quando chegar mensagem nova">🔔 Ativar notificações</button>
+            {typeof Notification !== "undefined" && notifPerm !== "granted" && (
+              <button type="button"
+                onClick={() => {
+                  try {
+                    void Notification.requestPermission().then(p => {
+                      setNotifPerm(p);
+                      // Já negado: o navegador não pergunta de novo — orienta a liberar manualmente.
+                      if (p === "denied") alert("As notificações estão bloqueadas para este site no navegador.\n\nPara ativar: clique no cadeado/ajustes do site na barra de endereço → Notificações → Permitir, e recarregue a página.");
+                    });
+                  } catch { /* ignore */ }
+                }}
+                title="Receber notificação no computador quando chegar mensagem nova"
+                className={notifPerm === "denied"
+                  ? "text-[11px] px-2 py-1 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
+                  : "text-xs font-semibold px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"}>
+                🔔 {notifPerm === "denied" ? "Notificações bloqueadas" : "Ativar notificações"}
+              </button>
             )}
             {podeResponder && numeroSel && <div className="ml-auto flex items-center gap-1.5 shrink-0">
               <button type="button" onClick={() => setNovoGrupo(true)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">👥 Novo grupo</button>
@@ -1352,7 +1366,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                       {!fin
                         ? <button type="button" onClick={() => void finalizarConversa(sel!)} className="px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300">✅ Finalizar</button>
                         : <button type="button" onClick={() => void reabrirConversa(sel!)} className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">🔄 Reabrir</button>}
-                      <button type="button" onClick={() => void marcarGrupoSpam(sel!)} className="px-2.5 py-1 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">🚫 Spam</button>
+                      {spamDe(sel || "")
+                        ? <button type="button" onClick={() => void marcarSpam(sel!)} title="Tirar do spam" className="px-2.5 py-1 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300">↩ Não é spam</button>
+                        : <button type="button" onClick={() => void marcarGrupoSpam(sel!)} className="px-2.5 py-1 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">🚫 Spam</button>}
                     </div>
                   )}
                 </div>
