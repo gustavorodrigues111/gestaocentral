@@ -658,7 +658,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
           <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
             💰 Prontos pra lote
             <span className="ml-2 text-[11px] text-gray-500 font-normal">
-              ({prontosLote.length} · {fmtBR(prontosLote.reduce((a, s) => a + (s.totalCalc || 0), 0))})
+              ({prontosLote.length} · {fmtBR(prontosLote.reduce((a, s) => a + (s.status === "cancelado" ? 0 : (s.totalCalc || 0) + gorjetaInfoDoShift(s).valor), 0))})
             </span>
           </h3>
           {prontosLote.length > 0 && podeEditar && (
@@ -701,12 +701,13 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
             grupoMarcado={(rows) => rows.length > 0 && rows.every((s) => selecionados.has(s.id))}
             grupoAlgumMarcado={(rows) => rows.some((s) => selecionados.has(s.id))}
             podeEditar={podeEditar}
+            gorjetaDe={(s) => gorjetaInfoDoShift(s).valor}
             renderRowDesktop={(s) => (
-              <ProntoLoteRowDesktop key={s.id} shift={s} podeEditar={podeEditar}
+              <ProntoLoteRowDesktop key={s.id} shift={s} podeEditar={podeEditar} gorjeta={gorjetaInfoDoShift(s).valor}
                 checked={selecionados.has(s.id)} onToggle={() => toggle(s.id)} onCancelar={() => cancelarShift(s)} />
             )}
             renderRowMobile={(s) => (
-              <ProntoLoteRowMobile key={s.id} shift={s} podeEditar={podeEditar}
+              <ProntoLoteRowMobile key={s.id} shift={s} podeEditar={podeEditar} gorjeta={gorjetaInfoDoShift(s).valor}
                 checked={selecionados.has(s.id)} onToggle={() => toggle(s.id)} onCancelar={() => cancelarShift(s)} />
             )}
             headerDesktop={
@@ -772,11 +773,13 @@ type AreaGroupsProps = {
   grupoMarcado?: (rows: FreelaShift[]) => boolean;
   grupoAlgumMarcado?: (rows: FreelaShift[]) => boolean;
   podeEditar?: boolean;
+  // Gorjeta por turno pra somar ao total do grupo (opcional).
+  gorjetaDe?: (s: FreelaShift) => number;
 };
 
 function AreaGroups({
   shifts, renderRowDesktop, renderRowMobile, headerDesktop,
-  onToggleGrupo, grupoMarcado, grupoAlgumMarcado, podeEditar,
+  onToggleGrupo, grupoMarcado, grupoAlgumMarcado, podeEditar, gorjetaDe,
 }: AreaGroupsProps) {
   const grupos = useMemo(() => {
     const map = new Map<string, FreelaShift[]>();
@@ -806,7 +809,7 @@ function AreaGroups({
   return (
     <div className="space-y-4">
       {grupos.map((g) => {
-        const totalGrupo = g.rows.reduce((a, s) => a + (s.totalCalc || 0), 0);
+        const totalGrupo = g.rows.reduce((a, s) => a + (s.status === "cancelado" ? 0 : (s.totalCalc || 0) + (gorjetaDe ? gorjetaDe(s) : 0)), 0);
         const checked = grupoMarcado ? grupoMarcado(g.rows) : false;
         const indet = grupoAlgumMarcado ? (grupoAlgumMarcado(g.rows) && !checked) : false;
         return (
@@ -1214,9 +1217,10 @@ function CanceladoBadge({ shift }: { shift: FreelaShift }) {
   );
 }
 
-function ProntoLoteRowDesktop({ shift, podeEditar, checked, onToggle, onCancelar }: { shift: FreelaShift; podeEditar: boolean; checked: boolean; onToggle: () => void; onCancelar: () => void }) {
+function ProntoLoteRowDesktop({ shift, podeEditar, checked, onToggle, onCancelar, gorjeta = 0 }: { shift: FreelaShift; podeEditar: boolean; checked: boolean; onToggle: () => void; onCancelar: () => void; gorjeta?: number }) {
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   const cancelado = shift.status === "cancelado";
+  const diaria = shift.totalCalc || 0;
   return (
     <tr className={`border-t border-gray-100 dark:border-gray-800 ${cancelado ? "bg-rose-50/40 dark:bg-rose-950/20" : ""}`}>
       <td className="px-4 py-2">
@@ -1231,8 +1235,12 @@ function ProntoLoteRowDesktop({ shift, podeEditar, checked, onToggle, onCancelar
       </td>
       <td className="px-2 py-2 text-xs text-gray-600 dark:text-gray-400">
         {cancelado ? "—" : `${shift.valorTipo === "diaria" ? "diária" : "R$/h"} ${fmtBR(shift.valorUnit || 0)}`}
+        {!cancelado && gorjeta > 0 && <div className="text-[10px] text-emerald-600 dark:text-emerald-400">🎁 gorjeta {fmtBR(gorjeta)}</div>}
       </td>
-      <td className={`px-2 py-2 text-right font-semibold tabular-nums ${cancelado ? "text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>{fmtBR(shift.totalCalc || 0)}</td>
+      <td className={`px-2 py-2 text-right font-semibold tabular-nums ${cancelado ? "text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>
+        {fmtBR(diaria + (cancelado ? 0 : gorjeta))}
+        {!cancelado && gorjeta > 0 && <div className="text-[10px] font-normal text-gray-500">{fmtBR(diaria)} + 🎁 {fmtBR(gorjeta)}</div>}
+      </td>
       <td className="px-4 py-2 text-right whitespace-nowrap">
         {podeEditar && (
           <span className="inline-flex items-center gap-2">
@@ -1251,9 +1259,10 @@ function ProntoLoteRowDesktop({ shift, podeEditar, checked, onToggle, onCancelar
   );
 }
 
-function ProntoLoteRowMobile({ shift, podeEditar, checked, onToggle, onCancelar }: { shift: FreelaShift; podeEditar: boolean; checked: boolean; onToggle: () => void; onCancelar: () => void }) {
+function ProntoLoteRowMobile({ shift, podeEditar, checked, onToggle, onCancelar, gorjeta = 0 }: { shift: FreelaShift; podeEditar: boolean; checked: boolean; onToggle: () => void; onCancelar: () => void; gorjeta?: number }) {
   const horas = calcHoras(shift.entrada, shift.saida, shift.intervalo);
   const cancelado = shift.status === "cancelado";
+  const diaria = shift.totalCalc || 0;
   return (
     <div className={`px-3 py-3 flex items-start gap-3 ${cancelado ? "bg-rose-50/40 dark:bg-rose-950/20" : ""}`}>
       <input type="checkbox" checked={checked} onChange={onToggle} disabled={!podeEditar} className="mt-1" />
@@ -1263,7 +1272,10 @@ function ProntoLoteRowMobile({ shift, podeEditar, checked, onToggle, onCancelar 
             <div className="text-[11px] text-gray-500 tabular-nums">{fmtDataCurta(shift.date)}</div>
             <div className="font-medium text-gray-900 dark:text-gray-100 truncate flex items-center gap-1.5">{shift.nomeSnapshot} <CanceladoBadge shift={shift} /></div>
           </div>
-          <div className={`text-sm font-bold tabular-nums ${cancelado ? "text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>{fmtBR(shift.totalCalc || 0)}</div>
+          <div className="text-right">
+            <div className={`text-sm font-bold tabular-nums ${cancelado ? "text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>{fmtBR(diaria + (cancelado ? 0 : gorjeta))}</div>
+            {!cancelado && gorjeta > 0 && <div className="text-[10px] text-gray-500">{fmtBR(diaria)} + 🎁 {fmtBR(gorjeta)}</div>}
+          </div>
         </div>
         <div className="text-xs text-gray-700 dark:text-gray-300">
           {shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""} · {fmtHoras(horas)}
