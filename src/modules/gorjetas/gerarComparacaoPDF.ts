@@ -10,9 +10,31 @@ import type { jsPDF as JsPDFType } from "jspdf";
 
 const fmtBR = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+export type ComparacaoPDFAus = { ferias: number; faltaJ: number; faltaI: number };
 export type ComparacaoPDFLinha = {
   nome: string; cargoNome: string; area: string; uni?: string;
   liqBase: number; liqComp: number; delta: number; pct: number | null;
+  ausBase?: ComparacaoPDFAus; ausComp?: ComparacaoPDFAus;
+};
+
+const temAus = (a?: ComparacaoPDFAus) => !!a && a.ferias + a.faltaJ + a.faltaI > 0;
+// Frase completa ("30 dias de férias · 2 faltas injustificadas"); vazia se nada.
+const ausLongo = (a?: ComparacaoPDFAus): string => {
+  if (!a) return "";
+  const p: string[] = [];
+  if (a.ferias) p.push(`${a.ferias} ${a.ferias > 1 ? "dias" : "dia"} de ferias`);
+  if (a.faltaJ) p.push(`${a.faltaJ} falta${a.faltaJ > 1 ? "s" : ""} justificada${a.faltaJ > 1 ? "s" : ""}`);
+  if (a.faltaI) p.push(`${a.faltaI} falta${a.faltaI > 1 ? "s" : ""} injustificada${a.faltaI > 1 ? "s" : ""}`);
+  return p.join(" · ");
+};
+// Versão curta com o mês, pra caber embaixo do nome ("Ferias 30d (jul)").
+const ausCurto = (a: ComparacaoPDFAus | undefined, mes: string): string => {
+  if (!temAus(a)) return "";
+  const p: string[] = [];
+  if (a!.ferias) p.push(`Ferias ${a!.ferias}d`);
+  if (a!.faltaJ) p.push(`Falta just. ${a!.faltaJ}`);
+  if (a!.faltaI) p.push(`Falta injust. ${a!.faltaI}`);
+  return `${p.join(", ")} (${mes})`;
 };
 
 export type ComparacaoPDFParams = {
@@ -46,6 +68,8 @@ export async function gerarComparacaoPDF(p: ComparacaoPDFParams): Promise<JsPDFT
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const MX = 14;
+  const mesCurtoBase = p.labelBase.slice(0, 3).toLowerCase();
+  const mesCurtoComp = p.labelComp.slice(0, 3).toLowerCase();
 
   const PRIM: [number, number, number] = [16, 122, 64];
   const ESCURO: [number, number, number] = [31, 41, 55];
@@ -106,8 +130,10 @@ export async function gerarComparacaoPDF(p: ComparacaoPDFParams): Promise<JsPDFT
     }
     const f = fillDelta(l.delta);
     const sub = [l.cargoNome, l.uni].filter(Boolean).join(" · ");
+    const ausL = [ausCurto(l.ausComp, mesCurtoComp), ausCurto(l.ausBase, mesCurtoBase)].filter(Boolean).join("  |  ");
+    const nomeCell = [l.nome, sub, ausL].filter(Boolean).join("\n");
     body.push([
-      { content: sub ? `${l.nome}\n${sub}` : l.nome, styles: { fillColor: f } },
+      { content: nomeCell, styles: { fillColor: f } },
       { content: fmtBR(l.liqBase), styles: { halign: "right", fillColor: f } },
       { content: fmtBR(l.liqComp), styles: { halign: "right", fontStyle: "bold", fillColor: f } },
       { content: txtVariacao(l.delta, l.pct), styles: { textColor: corDelta(l.delta), fontStyle: "bold", halign: "right", fillColor: f } },
@@ -138,6 +164,27 @@ export async function gerarComparacaoPDF(p: ComparacaoPDFParams): Promise<JsPDFT
     footStyles: { fillColor: [243, 244, 246], textColor: ESCURO, fontStyle: "bold" },
     margin: { left: MX, right: MX },
   });
+
+  // Resumo de ausências — explica as variações (férias e faltas).
+  const comAus = p.linhas.filter((l) => temAus(l.ausBase) || temAus(l.ausComp));
+  if (comAus.length) {
+    const lastY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY || (yC + cardH + 12);
+    const startY = lastY + 10;
+    doc.setFont("helvetica", "bold"); doc.setFontSize(11); doc.setTextColor(...ESCURO);
+    doc.text("Ausências no período", MX, startY);
+    doc.setFont("helvetica", "normal"); doc.setFontSize(8.5); doc.setTextColor(...MEDIO);
+    doc.text("Explicam parte das variações acima (férias e faltas).", MX, startY + 5);
+    autoTable(doc, {
+      startY: startY + 9,
+      head: [["Empregado", p.labelComp, p.labelBase]],
+      body: comAus.map((l) => [l.nome, ausLongo(l.ausComp) || "—", ausLongo(l.ausBase) || "—"]),
+      theme: "grid",
+      styles: { fontSize: 8.5, cellPadding: 2, lineColor: BORDA, lineWidth: 0.1, textColor: ESCURO },
+      headStyles: { fillColor: [180, 83, 9], textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8.5 },
+      columnStyles: { 0: { cellWidth: "auto", fontStyle: "bold" }, 1: { cellWidth: 55 }, 2: { cellWidth: 55 } },
+      margin: { left: MX, right: MX },
+    });
+  }
 
   return doc;
 }

@@ -27,6 +27,33 @@ import type { Cargo, DivisaoItem, Empregado, EscalaMes, Gorjeta, SplitVersion, U
 
 const fmtBR = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+// Ausências de um empregado num mês (explica variação de gorjeta): dias de
+// férias / faltas. Conta pela praticada (real); onde a real não tem célula,
+// cai na prevista (ex: férias já planejadas mas mês ainda não praticado).
+type Ausencias = { ferias: number; faltaJ: number; faltaI: number };
+const temAusencia = (a: Ausencias) => a.ferias + a.faltaJ + a.faltaI > 0;
+function ausenciasDoMes(escala: EscalaMes | null, empId: string): Ausencias {
+  const r = escala?.real?.[empId] || {};
+  const p = escala?.prevista?.[empId] || {};
+  const dates = new Set([...Object.keys(r), ...Object.keys(p)]);
+  let ferias = 0, faltaJ = 0, faltaI = 0;
+  for (const d of dates) {
+    const st = r[d] ?? p[d];
+    if (st === "ferias") ferias++;
+    else if (st === "falta_j") faltaJ++;
+    else if (st === "falta_i") faltaI++;
+  }
+  return { ferias, faltaJ, faltaI };
+}
+// Frase legível de um conjunto de ausências ("30 dias de férias · 2 faltas injustificadas").
+function descreveAusencia(a: Ausencias): string {
+  const parts: string[] = [];
+  if (a.ferias) parts.push(`${a.ferias} ${a.ferias > 1 ? "dias" : "dia"} de férias`);
+  if (a.faltaJ) parts.push(`${a.faltaJ} falta${a.faltaJ > 1 ? "s" : ""} justificada${a.faltaJ > 1 ? "s" : ""}`);
+  if (a.faltaI) parts.push(`${a.faltaI} falta${a.faltaI > 1 ? "s" : ""} injustificada${a.faltaI > 1 ? "s" : ""}`);
+  return parts.join(" · ");
+}
+
 type Props = {
   rid: string;
   restaurantNome: string;
@@ -131,6 +158,8 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
         area: (c || b)?.area || "",
         uni: usaMultiUni ? (uniNomePorEmp[id] || "") : "",
         vBase, vComp, delta, pct,
+        ausBase: ausenciasDoMes(escalaBase, id),
+        ausComp: ausenciasDoMes(escalaComp, id),
       };
     });
     return out.sort((a, b) =>
@@ -163,6 +192,27 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
     : delta < -0.005 ? "bg-rose-50/70 dark:bg-rose-900/15"
     : "bg-blue-50/70 dark:bg-blue-900/15";
 
+  // Mês curto ("jul") pra rotular a badge de ausência (de qual mês é a ausência).
+  const mesCurto = (ym: string) => nomeMes(Number(ym.split("-")[1])).slice(0, 3).toLowerCase();
+
+  // Badges de ausência de UM mês (férias/falta), com o mês curto pra deixar
+  // claro se a ausência explica queda (mês comparado) ou alta (mês base).
+  const AusChips = ({ aus, ym }: { aus: Ausencias; ym: string }) => {
+    if (!temAusencia(aus)) return null;
+    const chip = (txt: string, cls: string) => (
+      <span className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded ${cls}`}>
+        {txt}<span className="font-normal opacity-70">&nbsp;· {mesCurto(ym)}</span>
+      </span>
+    );
+    return (
+      <>
+        {aus.ferias > 0 && chip(`🏖 Férias ${aus.ferias}d`, "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200")}
+        {aus.faltaJ > 0 && chip(`⚠ Falta just. ${aus.faltaJ}`, "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200")}
+        {aus.faltaI > 0 && chip(`⛔ Falta injust. ${aus.faltaI}`, "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200")}
+      </>
+    );
+  };
+
   // Texto da variação (colorido, sem chip).
   const DeltaText = ({ delta, pct }: { delta: number; pct: number | null }) => {
     const up = delta > 0.005, down = delta < -0.005;
@@ -191,7 +241,7 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
         labelBase: labelMes(base),
         labelComp: labelMes(comparado),
         subtitulo: `Divisão bruta${usaMultiUni ? " · todas as unidades" : ""}`,
-        linhas: linhas.map((l) => ({ nome: l.nome, cargoNome: l.cargoNome, area: l.area, uni: l.uni, liqBase: l.vBase, liqComp: l.vComp, delta: l.delta, pct: l.pct })),
+        linhas: linhas.map((l) => ({ nome: l.nome, cargoNome: l.cargoNome, area: l.area, uni: l.uni, liqBase: l.vBase, liqComp: l.vComp, delta: l.delta, pct: l.pct, ausBase: l.ausBase, ausComp: l.ausComp })),
         totBase, totComp, totDelta, totPct,
       });
       pdfDocRef.current = doc;
@@ -300,6 +350,12 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
                             <div className="text-xs text-gray-500">
                               {l.cargoNome}{l.cargoNome && l.uni ? " · " : ""}{l.uni}
                             </div>
+                            {(temAusencia(l.ausComp) || temAusencia(l.ausBase)) && (
+                              <div className="flex flex-wrap gap-1 mt-1">
+                                <AusChips aus={l.ausComp} ym={comparado} />
+                                <AusChips aus={l.ausBase} ym={base} />
+                              </div>
+                            )}
                           </td>
                           <td className="text-right px-3 py-2 tabular-nums text-gray-700 dark:text-gray-300">{fmtBR(l.vBase)}</td>
                           <td className="text-right px-3 py-2 tabular-nums font-semibold text-gray-900 dark:text-gray-100">{fmtBR(l.vComp)}</td>
@@ -326,6 +382,28 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
               </tfoot>
             </table>
           </div>
+        </div>
+      )}
+
+      {/* Resumo de ausências — explica variações de quem teve férias/faltas */}
+      {mesA !== mesB && linhas.length > 0 && linhas.some((l) => temAusencia(l.ausBase) || temAusencia(l.ausComp)) && (
+        <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-900/10 p-4">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-amber-800 dark:text-amber-300 mb-2">
+            Ausências no período{" "}
+            <span className="font-normal normal-case text-amber-700/80 dark:text-amber-300/70">— explicam parte das variações acima</span>
+          </div>
+          <ul className="space-y-1.5 text-[13px]">
+            {linhas.filter((l) => temAusencia(l.ausBase) || temAusencia(l.ausComp)).map((l) => (
+              <li key={l.id} className="flex flex-col sm:flex-row sm:items-baseline sm:gap-2">
+                <span className="font-medium text-gray-900 dark:text-gray-100 sm:min-w-[200px]">{l.nome}</span>
+                <span className="text-gray-600 dark:text-gray-300">
+                  {temAusencia(l.ausComp) && <span><strong>{labelMes(comparado)}:</strong> {descreveAusencia(l.ausComp)}</span>}
+                  {temAusencia(l.ausComp) && temAusencia(l.ausBase) && <span className="text-gray-400"> · </span>}
+                  {temAusencia(l.ausBase) && <span><strong>{labelMes(base)}:</strong> {descreveAusencia(l.ausBase)}</span>}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
       )}
 
