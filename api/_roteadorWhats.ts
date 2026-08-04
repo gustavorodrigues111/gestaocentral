@@ -38,6 +38,21 @@ async function enviarWhats(to: string, texto: string): Promise<void> {
   } catch { /* best-effort */ }
 }
 
+// Marca a mensagem recebida como LIDA (✓✓ azul) e liga o indicador "digitando…".
+// O "digitando" some sozinho em ~25s ou quando a gente responde.
+async function marcarLidoDigitando(messageId: string): Promise<void> {
+  const token = process.env.WHATSAPP_TOKEN, phoneId = process.env.WHATSAPP_PHONE_ID;
+  const versao = process.env.WHATSAPP_API_VERSION || "v21.0";
+  if (!token || !phoneId || !messageId) return;
+  try {
+    await fetch(`https://graph.facebook.com/${versao}/${phoneId}/messages`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ messaging_product: "whatsapp", status: "read", message_id: messageId, typing_indicator: { type: "text" } }),
+    });
+  } catch { /* best-effort */ }
+}
+
 async function enviarWhatsDoc(to: string, link: string, filename: string): Promise<void> {
   const token = process.env.WHATSAPP_TOKEN, phoneId = process.env.WHATSAPP_PHONE_ID;
   const versao = process.env.WHATSAPP_API_VERSION || "v21.0";
@@ -55,7 +70,71 @@ const menuTexto = (agentes: Doc[]) =>
   "Com qual assistente você quer falar? Responde só o número:\n" +
   agentes.map((a, i) => `${i + 1}) ${a.nome as string}`).join("\n");
 
-export async function atenderWhatsAgente(from: string, textoIn: string, nome?: string | null): Promise<void> {
+// ── Áudio (nota de voz): baixa a mídia da Meta e transcreve (Gemini) ─────────
+function mimeAudio(mime: string): string {
+  const m = (mime || "").toLowerCase();
+  if (m.startsWith("audio/")) {
+    if (m.includes("ogg") || m.includes("opus")) return "audio/ogg";
+    if (m.includes("mpeg") || m.includes("mp3")) return "audio/mp3";
+    if (m.includes("wav")) return "audio/wav";
+    if (m.includes("mp4") || m.includes("m4a") || m.includes("aac")) return "audio/mp4";
+    if (m.includes("webm")) return "audio/webm";
+    return m;
+  }
+  return "audio/ogg";
+}
+const GEMINI_MODELS = ["gemini-flash-latest", "gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-2.0-flash", "gemini-1.5-flash"];
+async function baixarMidiaWhats(mediaId: string): Promise<{ base64: string; mime: string } | null> {
+  const token = process.env.WHATSAPP_TOKEN;
+  const versao = process.env.WHATSAPP_API_VERSION || "v21.0";
+  if (!token || !mediaId) return null;
+  try {
+    const r1 = await fetch(`https://graph.facebook.com/${versao}/${mediaId}`, { headers: { Authorization: `Bearer ${token}` } });
+    const j1 = (await r1.json()) as { url?: string; mime_type?: string };
+    if (!j1.url) return null;
+    const r2 = await fetch(j1.url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!r2.ok) return null;
+    const buf = Buffer.from(await r2.arrayBuffer());
+    return { base64: buf.toString("base64"), mime: j1.mime_type || "audio/ogg" };
+  } catch { return null; }
+}
+async function transcreverAudio(base64: string, mime: string): Promise<string> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key || !base64) return "";
+  const payload = { contents: [{ parts: [
+    { text: "Transcreva EXATAMENTE o que é falado neste áudio, em português do Brasil. Responda SOMENTE a transcrição, sem comentários, sem aspas, sem rótulos." },
+    { inline_data: { mime_type: mimeAudio(mime), data: base64 } },
+  ] }], generationConfig: { temperature: 0 } };
+  for (const m of GEMINI_MODELS) {
+    try {
+      const resp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${m}:generateContent?key=${encodeURIComponent(key)}`, {
+        method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload),
+      });
+      const txt = await resp.text();
+      if (resp.ok) {
+        const j = JSON.parse(txt) as { candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }> };
+        return (j.candidates?.[0]?.content?.parts || []).map(p => p.text || "").join(" ").replace(/\s+/g, " ").trim();
+      }
+      if (resp.status !== 404) break; // 429/403/500 → trocar de modelo não ajuda
+    } catch { break; }
+  }
+  return "";
+}
+// Nota de voz recebida: transcreve e trata como se fosse texto.
+export async function atenderWhatsAudio(from: string, mediaId: string, nome?: string | null, messageId?: string): Promise<void> {
+  if (!from || !mediaId) return;
+  const todos = await firestoreListar("agentesIA");
+  const autorizado = todos.some(a => a.ativo !== false && Array.isArray(a.numerosWhatsapp) && (a.numerosWhatsapp as string[]).some(n => numeroBate(n, from)));
+  if (!autorizado) return;
+  if (messageId) await marcarLidoDigitando(messageId);
+  const audio = await baixarMidiaWhats(mediaId);
+  if (!audio) { await enviarWhats(from, "Recebi seu áudio, mas não consegui baixar 🙏 Consegue me mandar por escrito?"); return; }
+  const texto = await transcreverAudio(audio.base64, audio.mime);
+  if (!texto) { await enviarWhats(from, "Recebi seu áudio, mas não consegui transcrever agora 🙏 Consegue me mandar por escrito?"); return; }
+  await atenderWhatsAgente(from, texto, nome, messageId);
+}
+
+export async function atenderWhatsAgente(from: string, textoIn: string, nome?: string | null, messageId?: string): Promise<void> {
   const texto = (textoIn || "").trim();
   if (!from || !texto) return;
 
@@ -99,6 +178,9 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
       return;
     }
   }
+
+  // Sinal de que recebeu e está trabalhando: ✓✓ azul + "digitando…".
+  if (messageId) await marcarLidoDigitando(messageId);
 
   // Roda o agente resolvido com o histórico da conversa.
   const conversaId = `${agente.id}__wa_${sid}`;

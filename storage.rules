@@ -11,6 +11,7 @@ service firebase.storage {
         && (
           request.resource.contentType.matches("application/pdf")
           || request.resource.contentType.matches("image/.*")
+          || request.resource.contentType.matches("text/html")   // prévia HTML do agente
         );
     }
 
