@@ -153,31 +153,49 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
   const sid = chaveBR(from);
   const sessao = (await firestoreLer("whatsappAgenteSessoes", sid)) as Doc | null;
   const low = texto.toLowerCase();
-  const querMenu = ["menu", "trocar", "trocar agente", "voltar", "agentes", "assistentes"].includes(low);
   const now = () => new Date().toISOString();
   const salvarSessao = (agenteId: string | null, aguardando: boolean) =>
     firestoreCriar("whatsappAgenteSessoes", sid, { waId: from, agenteId, aguardandoEscolha: aguardando, atualizadoEm: now() }).catch(() => {});
 
+  // Troca por NOME: acha um agente cujo nome distintivo aparece na mensagem
+  // (ex.: "conecta no Sororoca"). Ignora palavras genéricas do nome.
+  const GENERICOS = ["agente", "cardápio", "cardapio", "assistente", "dos", "das", "com", "site", "novo"];
+  const achaPorNome = (): Doc | null => {
+    for (const a of agentes) {
+      const palavras = ((a.nome as string) || "").toLowerCase().split(/\s+/).filter(w => w.length >= 4 && !GENERICOS.includes(w));
+      if (palavras.some(w => low.includes(w))) return a;
+    }
+    return null;
+  };
+  const nomeAlvo = achaPorNome();
+  // Intenção de trocar de agente (linguagem natural), sem confundir com "trocar o preço".
+  const menuIntent = /(menu|lista de agentes|outro agente|outro assistente|trocar de agente|trocar agente|mud[ae]r? de agente|desconect)/i.test(low)
+    || ["menu", "agentes", "assistentes", "trocar", "voltar"].includes(low);
+  const switchVerbo = /(fala[r]? com|conect|troc|mud[ao]|quero (o |a )?outro|passa (pro|para)|abre a|abrir a|vai (pro|para))/i.test(low);
+  const querTrocar = menuIntent || (!!nomeAlvo && switchVerbo);
+
   // Resolve o agente a usar.
-  let agente: Doc | null = (!querMenu && sessao?.agenteId && !sessao?.aguardandoEscolha)
+  let agente: Doc | null = (!querTrocar && sessao?.agenteId && !sessao?.aguardandoEscolha)
     ? (agentes.find(a => a.id === sessao.agenteId) || null) : null;
 
   if (!agente) {
     if (agentes.length === 1) {
       agente = agentes[0];
       await salvarSessao(agente.id as string, false);
-    } else if (sessao?.aguardandoEscolha && !querMenu) {
-      // Interpreta a escolha do menu (número ou 1ª palavra do nome).
+    } else if (querTrocar || sessao?.aguardandoEscolha) {
+      // Escolha por número, ou por nome ("Sororoca") — troca direto.
       const idx = parseInt(low, 10);
-      const escolhido = (Number.isFinite(idx) && idx >= 1 && idx <= agentes.length)
-        ? agentes[idx - 1]
-        : agentes.find(a => low.includes(((a.nome as string) || "").toLowerCase().split(" ")[0] || "###"));
-      if (!escolhido) { await enviarWhats(from, "Não entendi. " + menuTexto(agentes)); return; }
-      await salvarSessao(escolhido.id as string, false);
-      await enviarWhats(from, `Falando com *${escolhido.nome}*. Manda sua pergunta 👍`);
+      const escolhido = (Number.isFinite(idx) && idx >= 1 && idx <= agentes.length) ? agentes[idx - 1] : nomeAlvo;
+      if (escolhido) {
+        await salvarSessao(escolhido.id as string, false);
+        await enviarWhats(from, `Pronto, falando com *${escolhido.nome}* agora 👍 Manda sua pergunta.`);
+        return;
+      }
+      await salvarSessao((sessao?.agenteId as string) || null, true);
+      await enviarWhats(from, "Qual assistente? " + menuTexto(agentes));
       return;
     } else {
-      // >1 disponível e sem escolha ainda → mostra o menu.
+      // Sem sessão e sem intenção clara → mostra o menu.
       await salvarSessao((sessao?.agenteId as string) || null, true);
       await enviarWhats(from, menuTexto(agentes));
       return;
