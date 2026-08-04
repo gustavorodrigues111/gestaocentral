@@ -64,6 +64,10 @@ export function calcularDivisaoDia(
   splitVersion?: SplitVersion | null,
   gorjetaUnidadeId?: string | null,
   unidades?: Unidade[],
+  // Freelas diaristas incluídos MANUALMENTE na gorjeta deste dia (opt-in por
+  // turno). Já vêm filtrados por data/unidade pelo chamador. Entram na divisão
+  // com os pontos do cargo (diluem os CLT). Motivo "freela".
+  freelasDoDia?: { id: string; nome: string; cargoId: string; pontos: number; area: Area }[],
 ): DivisaoResult {
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
   const itens: DivisaoItem[] = [];
@@ -151,6 +155,23 @@ export function calcularDivisaoDia(
       pontos: cargo.pontos,
       valor: 0,
       motivo,
+    });
+  }
+
+  // 1b) Freelas diaristas incluídos na mão neste dia (já filtrados pelo chamador).
+  for (const f of freelasDoDia || []) {
+    if (!f.cargoId || f.pontos <= 0) continue;
+    const cargo = cargoMap[f.cargoId];
+    itens.push({
+      empregadoId: f.id,
+      empregadoNome: f.nome,
+      cargoNome: cargo?.nome || "Freela",
+      area: (cargo?.area || f.area) as Area,
+      pontos: f.pontos,
+      valor: 0,
+      motivo: "freela",
+      freela: true,
+      freelaShiftId: f.id,
     });
   }
 

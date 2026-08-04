@@ -1338,6 +1338,10 @@ export type DivisaoItem = {
   pontos: number;
   valor: number;
   motivo: "trabalho" | "freela" | "producao";
+  // Freela diarista incluído na gorjeta daquele dia (não é empregado CLT).
+  // `empregadoId` guarda o id do freelaShift; `freelaShiftId` idem (explícito).
+  freela?: boolean;
+  freelaShiftId?: string;
 };
 
 // ─── VT (VALE TRANSPORTE) ───
@@ -2741,6 +2745,10 @@ export type FreelaShift = {
   date: string;                    // YYYY-MM-DD — data efetiva (lançamento)
   scheduledDate?: string;          // YYYY-MM-DD — data originalmente agendada (== date se não trocou)
   area?: Area;                     // área de atuação naquele turno
+  // Gorjeta: cargo (com pontos) que este freela ocupa NAQUELE turno pra entrar
+  // na divisão da gorjeta do dia. Setado = participa; ausente = não entra.
+  // Opt-in por turno (diárias específicas). A fatia vira linha no pagamento.
+  gorjetaCargoId?: string | null;
 
   // ─── PLANEJADO (definido no "Planejar turnos") ───────────────────────────
   // O que se PRETENDE. Nunca é tocado pelo Abrir/Fechar — é só plano. O fluxo
