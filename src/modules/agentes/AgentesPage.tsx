@@ -404,6 +404,13 @@ function AgenteEditor({ agente, restaurants, onClose, onSalvar, onExcluir, inlin
 }) {
   const [a, setA] = useState<AgenteIA>(agente);
   const [busy, setBusy] = useState(false);
+  const [numInput, setNumInput] = useState("");
+  const addNumero = () => {
+    const d = numInput.replace(/\D/g, "");
+    if (d.length < 10) { setNumInput(""); return; }
+    setA(p => ({ ...p, numerosWhatsapp: [...new Set([...(p.numerosWhatsapp || []), d])] }));
+    setNumInput("");
+  };
   async function subirSkill(file: File) {
     const txt = await file.text();
     // Tira o front-matter (--- ... ---) do SKILL.md, se houver; o resto vira persona.
@@ -470,8 +477,21 @@ function AgenteEditor({ agente, restaurants, onClose, onSalvar, onExcluir, inlin
           <span className="text-gray-700 dark:text-gray-300">Agente ativo</span>
         </label>
 
-        <div className="text-xs font-semibold text-gray-500 mb-1.5">👥 Quem acessa</div>
-        <p className="text-[11px] text-gray-400 mb-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-2.5 py-2">Hoje: <b>master</b> (aqui no app). O acesso <b>por pessoa</b> (chat + WhatsApp, herdado de Pessoas) entra quando plugarmos o WhatsApp.</p>
+        <div className="text-xs font-semibold text-gray-500 mb-1.5">📱 WhatsApp — números autorizados</div>
+        <p className="text-[11px] text-gray-400 mb-2">Quem pode falar com este agente pelo número da API oficial. Sem número aqui, o agente atende só no chat do app. Se a pessoa tiver mais de um agente liberado, o WhatsApp mostra um menu pra escolher.</p>
+        <div className="flex flex-wrap gap-1.5 mb-2">
+          {(a.numerosWhatsapp || []).map((n, i) => (
+            <span key={n + i} className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/25 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+              📱 {n}
+              <button type="button" onClick={() => setA(p => ({ ...p, numerosWhatsapp: (p.numerosWhatsapp || []).filter((_, k) => k !== i) }))} className="text-emerald-500 hover:text-emerald-700" title="Remover">✕</button>
+            </span>
+          ))}
+          {(a.numerosWhatsapp || []).length === 0 && <span className="text-[11px] text-gray-400 italic">Nenhum número — não atende no WhatsApp.</span>}
+        </div>
+        <div className="flex gap-1.5 mb-4">
+          <input value={numInput} onChange={e => setNumInput(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addNumero(); } }} placeholder="Ex: 91 98549-9821 (com DDD)" className={inp + " flex-1"} />
+          <button type="button" onClick={addNumero} className="text-xs font-semibold px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 shrink-0">Adicionar</button>
+        </div>
 
         <div className="flex items-center justify-between gap-2">
           <Button variant="danger" size="sm" disabled={busy} onClick={() => void onExcluir(a.id)}>Excluir</Button>

@@ -188,6 +188,7 @@ service cloud.firestore {
     match /whatsappNumeros/{id}        { allow read, write: if authed(); }
     match /whatsappRespostas/{id}      { allow read, write: if authed(); }
     match /whatsappRoteios/{id}        { allow read, write: if authed(); }
+    match /whatsappAgenteSessoes/{id}  { allow read, write: if authed(); }
     match /rotinaNotificacoes/{id}     { allow read, write: if authed(); }
     match /notificacaoConfigs/{id}     { allow read, write: if authed(); }
     match /enderecos/{id}              { allow read, write: if authed(); }

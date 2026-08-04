@@ -247,12 +247,38 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   if (!agente) { res.status(404).json({ error: "Agente não encontrado." }); return; }
   if (agente.ativo === false) { res.status(400).json({ error: "Agente pausado." }); return; }
 
+  const anexo = temAnexo ? { base64: anexoB64, mediaType: anexoMime } : undefined;
+  try {
+    const out = await runAgenteCore(agente, {
+      mensagem, historico: Array.isArray(body?.historico) ? body!.historico : [],
+      pessoaNome: (body?.pessoaNome || user.email || "") as string, pessoaId: user.uid, anexo, canal: "app",
+    });
+    res.status(200).json(out);
+  } catch (e) {
+    res.status(502).json({ error: e instanceof Error ? e.message : "Falha ao processar." });
+  }
+}
+
+// ── Núcleo reusável do agente ────────────────────────────────────────────────
+// Monta ferramentas/persona, roda o loop de tool-use no Claude e devolve a
+// resposta. Usado pelo handler (chat do app) E pelo webhook do WhatsApp.
+export type AgenteResultado = { resposta: string; toolCalls: { tool: string; resumo: string }[]; estadoCardapio?: unknown; pdfUrl?: string };
+export async function runAgenteCore(
+  agente: Doc,
+  opts: { mensagem: string; historico?: { role: string; texto: string }[]; pessoaNome: string; pessoaId: string; anexo?: { base64?: string; mediaType?: string }; canal?: string },
+): Promise<AgenteResultado> {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) throw new Error("ANTHROPIC_API_KEY não configurada.");
+  const agenteId = String(agente.id);
+  const canal = opts.canal || "app";
+  const mensagem = (opts.mensagem || "").toString().trim();
+  const anexoB64 = (opts.anexo?.base64 || "").toString();
+  const anexoMime = (opts.anexo?.mediaType || "").toString();
+  const temAnexo = !!anexoB64 && (anexoMime.startsWith("image/") || anexoMime === "application/pdf");
+
   const escopo: Escopo = agente.entidades === "todas" || !Array.isArray(agente.entidades) ? "todas" : (agente.entidades as string[]);
   const toolsLigadas = (agente.tools || {}) as Record<string, boolean>;
-  // Expõe as ferramentas de leitura (schema genérico) + as skill tools (schema próprio) ligadas.
   const readDisp = Object.keys(READ_TOOLS).filter(k => toolsLigadas[k]);
-  // Agente do tipo "cardapio" expõe as tools da skill mesmo que o mapa `tools`
-  // (criado antes de gerar_pdf existir) não as tenha ligadas.
   const ehCardapio = agente.tipo === "cardapio";
   const skillDisp = Object.keys(SKILL_TOOLS).filter(k => ehCardapio || toolsLigadas[k]);
   const temWrite = skillDisp.some(k => SKILL_TOOLS[k].tipo === "write");
@@ -274,81 +300,75 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     ? " Para QUALQUER alteração: primeiro PROPONHA em texto o que vai mudar e peça confirmação explícita; só chame a ferramenta de escrita DEPOIS que o usuário confirmar ('confirma'/'pode aplicar') na mensagem seguinte. Nunca aplique sem confirmação."
     : " Você NÃO pode alterar nada nesta versão (só consulta); se pedirem uma alteração, explique que por ora você só consulta.";
   const temCardapio = skillDisp.includes("ler_cardapio");
+  // No WhatsApp não há prévia HTML na tela — o agente descreve em texto e manda o link do PDF.
   const notaCardapio = temCardapio
-    ? " Quando pedirem pra VER/MOSTRAR o cardápio ou a prévia, chame ler_cardapio: a prévia visual (HTML) aparece SOZINHA na tela — não precisa listar item por item, só confirme que está mostrando. Depois de aplicar uma alteração, a prévia atualizada também aparece sozinha. Quando pedirem o PDF / a filipeta / o arquivo final, chame gerar_pdf: o link pra download aparece na conversa."
+    ? (canal === "whatsapp"
+        ? " Aqui é WhatsApp: não há prévia visual na tela. Ao ler o cardápio, resuma em texto; quando pedirem o PDF/filipeta, chame gerar_pdf e mande o link."
+        : " Quando pedirem pra VER/MOSTRAR o cardápio ou a prévia, chame ler_cardapio: a prévia visual (HTML) aparece SOZINHA na tela — não precisa listar item por item, só confirme que está mostrando. Depois de aplicar uma alteração, a prévia atualizada também aparece sozinha. Quando pedirem o PDF / a filipeta / o arquivo final, chame gerar_pdf: o link pra download aparece na conversa.")
     : "";
-  const system = sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras + notaCardapio;
+  const notaCanal = canal === "whatsapp" ? " Você está respondendo pelo WhatsApp: seja conciso, sem markdown pesado (nada de tabelas), use quebras de linha curtas." : "";
+  const system = sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras + notaCardapio + notaCanal;
 
   const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [];
-  for (const h of (Array.isArray(body?.historico) ? body!.historico : []).slice(-10)) {
+  for (const h of (opts.historico || []).slice(-10)) {
     if (h && (h.role === "user" || h.role === "assistant") && typeof h.texto === "string") messages.push({ role: h.role, content: h.texto });
   }
   if (temAnexo) {
-    // Bloco do anexo + o texto (default se o usuário só mandou o arquivo).
     const bloco = anexoMime === "application/pdf"
       ? { type: "document", source: { type: "base64", media_type: "application/pdf", data: anexoB64 } }
       : { type: "image", source: { type: "base64", media_type: anexoMime, data: anexoB64 } };
-    const txt = mensagem || "Segue um arquivo. Leia com atenção e me ajude com base nele.";
-    messages.push({ role: "user", content: [bloco, { type: "text", text: txt }] });
+    messages.push({ role: "user", content: [bloco, { type: "text", text: mensagem || "Segue um arquivo. Leia com atenção e me ajude com base nele." }] });
   } else {
     messages.push({ role: "user", content: mensagem });
   }
 
   const toolCalls: { tool: string; resumo: string }[] = [];
-  let tocouCardapio = false;   // pra devolver a prévia HTML quando o cardápio foi lido/alterado
+  let tocouCardapio = false;
   let pdfUrl: string | null = null;
-  try {
-    for (let loop = 0; loop < MAX_LOOPS; loop++) {
-      const payload = { model: (agente.model as string) || MODEL_PADRAO, max_tokens: 2000, system, messages, tools: anthropicTools };
-      const resp = await fetch(ANTHROPIC_URL, {
-        method: "POST",
-        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      const raw = await resp.text();
-      if (!resp.ok) { res.status(502).json({ error: `Claude HTTP ${resp.status}. ${raw.slice(0, 300)}` }); return; }
-      const j = JSON.parse(raw) as { stop_reason?: string; content?: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }> };
-      const blocks = j.content || [];
+  for (let loop = 0; loop < MAX_LOOPS; loop++) {
+    const payload = { model: (agente.model as string) || MODEL_PADRAO, max_tokens: 2000, system, messages, tools: anthropicTools };
+    const resp = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const raw = await resp.text();
+    if (!resp.ok) throw new Error(`Claude HTTP ${resp.status}. ${raw.slice(0, 300)}`);
+    const j = JSON.parse(raw) as { stop_reason?: string; content?: Array<{ type: string; text?: string; id?: string; name?: string; input?: unknown }> };
+    const blocks = j.content || [];
 
-      if (j.stop_reason !== "tool_use") {
-        const texto = blocks.filter(b => b.type === "text").map(b => b.text || "").join("").trim();
-        const extra: Record<string, unknown> = {};
-        if (tocouCardapio) extra.estadoCardapio = await lerCardapioEstado();
-        if (pdfUrl) extra.pdfUrl = pdfUrl;
-        res.status(200).json({ resposta: texto || "(sem resposta)", toolCalls, ...extra });
-        return;
-      }
-
-      // Executa cada tool_use e monta os tool_results.
-      messages.push({ role: "assistant", content: blocks });
-      const results: Array<{ type: "tool_result"; tool_use_id: string; content: string }> = [];
-      for (const b of blocks) {
-        if (b.type !== "tool_use" || !b.name || !b.id) continue;
-        const input = (b.input || {}) as Doc;
-        const skill = SKILL_TOOLS[b.name];
-        if (b.name === "ler_cardapio" || b.name === "aplicar_cardapio") tocouCardapio = true;
-        const pessoaNome = (body?.pessoaNome || user.email || "") as string;
-        const { resumo, conteudo } = skill
-          ? await skill.exec(input, { pessoaId: user.uid, pessoaNome })
-          : await execTool(b.name, input as { restaurantId?: string; periodo?: string; busca?: string }, escopo);
-        toolCalls.push({ tool: b.name, resumo });
-        if (b.name === "gerar_pdf") { try { const p = JSON.parse(conteudo) as { pdfUrl?: string }; if (p.pdfUrl) pdfUrl = p.pdfUrl; } catch { /* ignore */ } }
-        results.push({ type: "tool_result", tool_use_id: b.id, content: conteudo });
-        // Auditoria (append-only). Não bloqueia a resposta se falhar.
-        try {
-          const logId = `alog_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
-          await firestoreCriar("agenteLogs", logId, {
-            id: logId, agenteId, pessoaId: user.uid, pessoaNome,
-            tool: b.name, tipo: skill ? skill.tipo : "read", args: input, resumo, canal: "app", criadoEm: new Date().toISOString(),
-          });
-        } catch { /* log é best-effort */ }
-      }
-      messages.push({ role: "user", content: results });
+    if (j.stop_reason !== "tool_use") {
+      const texto = blocks.filter(b => b.type === "text").map(b => b.text || "").join("").trim();
+      const out: AgenteResultado = { resposta: texto || "(sem resposta)", toolCalls };
+      if (tocouCardapio) out.estadoCardapio = await lerCardapioEstado();
+      if (pdfUrl) out.pdfUrl = pdfUrl;
+      return out;
     }
-    res.status(200).json({ resposta: "Precisei de muitas consultas e parei por segurança. Pode refazer a pergunta de forma mais específica?", toolCalls });
-  } catch (e) {
-    res.status(502).json({ error: e instanceof Error ? e.message : "Falha ao processar." });
+
+    messages.push({ role: "assistant", content: blocks });
+    const results: Array<{ type: "tool_result"; tool_use_id: string; content: string }> = [];
+    for (const b of blocks) {
+      if (b.type !== "tool_use" || !b.name || !b.id) continue;
+      const input = (b.input || {}) as Doc;
+      const skill = SKILL_TOOLS[b.name];
+      if (b.name === "ler_cardapio" || b.name === "aplicar_cardapio") tocouCardapio = true;
+      const { resumo, conteudo } = skill
+        ? await skill.exec(input, { pessoaId: opts.pessoaId, pessoaNome: opts.pessoaNome })
+        : await execTool(b.name, input as { restaurantId?: string; periodo?: string; busca?: string }, escopo);
+      toolCalls.push({ tool: b.name, resumo });
+      if (b.name === "gerar_pdf") { try { const p = JSON.parse(conteudo) as { pdfUrl?: string }; if (p.pdfUrl) pdfUrl = p.pdfUrl; } catch { /* ignore */ } }
+      results.push({ type: "tool_result", tool_use_id: b.id, content: conteudo });
+      try {
+        const logId = `alog_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        await firestoreCriar("agenteLogs", logId, {
+          id: logId, agenteId, pessoaId: opts.pessoaId, pessoaNome: opts.pessoaNome,
+          tool: b.name, tipo: skill ? skill.tipo : "read", args: input, resumo, canal, criadoEm: new Date().toISOString(),
+        });
+      } catch { /* log é best-effort */ }
+    }
+    messages.push({ role: "user", content: results });
   }
+  return { resposta: "Precisei de muitas consultas e parei por segurança. Pode refazer a pergunta de forma mais específica?", toolCalls };
 }
 
 function safeParse(s: string): unknown { try { return JSON.parse(s); } catch { return null; } }

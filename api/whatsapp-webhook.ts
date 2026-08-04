@@ -11,7 +11,8 @@
 //       WHATSAPP_APP_SECRET (opcional, do app), FIREBASE_SERVICE_ACCOUNT (pra gravar).
 // ════════════════════════════════════════════════════════════════════════════
 import crypto from "node:crypto";
-import { firestoreCriar, firestoreDisponivel } from "./_firestoreRest.js";
+import { firestoreCriar, firestoreLer, firestoreDisponivel } from "./_firestoreRest.js";
+import { atenderWhatsAgente } from "./_roteadorWhats.js";
 
 export const config = { maxDuration: 15 };
 
@@ -66,6 +67,9 @@ async function processar(body: WebhookBody | null): Promise<void> {
     if (!m.id || !m.from) continue;
     const texto = m.text?.body || m.image?.caption || m.document?.caption || m.button?.text || m.interactive?.button_reply?.title || m.interactive?.list_reply?.title || (m.type && m.type !== "text" ? `[${m.type}]` : "");
     const ts = m.timestamp ? new Date(Number(m.timestamp) * 1000).toISOString() : new Date().toISOString();
+    // Lê ANTES de gravar: se a Meta reenviar (retry), o doc já existe → não
+    // reprocessa no agente (evita resposta duplicada).
+    const jaTinha = await firestoreLer("whatsappMensagens", m.id).catch(() => null);
     try {
       await firestoreCriar("whatsappMensagens", m.id, {
         waId: m.from, nome, direcao: "in", tipo: m.type || "text", texto,
@@ -73,6 +77,12 @@ async function processar(body: WebhookBody | null): Promise<void> {
         messageId: m.id, phoneNumberId: value.metadata?.phone_number_id || null,
       });
     } catch (e) { console.log("[wpp-webhook] falha ao gravar msg:", (e as Error)?.message); }
+    // Roteia pro Agente de IA só se for mensagem NOVA e com texto de verdade
+    // (mídia sem legenda não é atendida por ora).
+    const ehTexto = !!(m.text?.body || m.image?.caption || m.document?.caption || m.button?.text || m.interactive?.button_reply?.title || m.interactive?.list_reply?.title);
+    if (!jaTinha && ehTexto && texto) {
+      try { await atenderWhatsAgente(m.from, texto, nome); } catch (e) { console.log("[wpp-webhook] roteador:", (e as Error)?.message); }
+    }
   }
   // Status de entrega dos que ENVIAMOS (marca no doc do envio, se existir).
   for (const s of value.statuses || []) {
