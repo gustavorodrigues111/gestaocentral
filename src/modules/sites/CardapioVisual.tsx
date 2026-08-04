@@ -518,7 +518,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
       const pdf = new jsPDF({ unit: "pt", format: "a4" });
       const W = pdf.internal.pageSize.getWidth(), H = pdf.internal.pageSize.getHeight();
       const nodes = Array.from(paginasRef.current?.querySelectorAll<HTMLDivElement>(".pagina-pdf") || []);
-      if (nodes.length === 0) { setErroBaixar("Nenhuma página encontrada pra gerar o PDF. Abra a aba Prévia e tente de novo."); return; }
+      if (nodes.length === 0) { if (autoPdf) { autoPdf(null, "sem páginas .pagina-pdf no DOM"); } else { setErroBaixar("Nenhuma página encontrada pra gerar o PDF. Abra a aba Prévia e tente de novo."); } return; }
       // Página renderiza em ~460px; pra sair nítido no A4 precisamos de ~300 DPI.
       // scale alto + PNG (sem perda) — JPEG borrava as bordas do logo/arte.
       const scale = Math.min(6, Math.max(4, Math.ceil(2480 / (nodes[0]!.offsetWidth || 460))));
@@ -573,19 +573,27 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
     let cancel = false;
     const espera = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
     void (async () => {
-      await espera(1200); // deixa o getDoc do layout e a injeção de fontes rodarem
+      await espera(1000); // deixa o getDoc do layout e a injeção de fontes rodarem
+      // 1) Garante a aba de prévia (no mobile as páginas ficam escondidas até isso).
+      setAba("previa");
+      // 2) Espera as PÁGINAS aparecerem no DOM (até ~16s).
+      for (let i = 0; i < 40 && !cancel; i++) {
+        if (document.querySelectorAll(".pagina-pdf").length > 0) break;
+        await espera(400);
+      }
       try {
         const fs = (document as Document & { fonts?: { ready?: Promise<unknown> } }).fonts;
         await Promise.race([fs?.ready ?? Promise.resolve(), espera(7000)]); // fontes Google
       } catch { /* ok */ }
-      // Espera as imagens das páginas (capa/miolo/ilustrações) terminarem de baixar.
+      // 3) Espera as imagens das páginas (capa/miolo/ilustrações) terminarem de baixar.
       for (let i = 0; i < 30 && !cancel; i++) {
         const imgs = Array.from(document.querySelectorAll<HTMLImageElement>(".pagina-pdf img"));
         if (imgs.length === 0 || imgs.every((im) => im.complete)) break;
         await espera(400);
       }
       await espera(800); // margem final pra pintar
-      if (!cancel) void baixar();
+      if (cancel) return;
+      try { await baixar(); } catch (e) { autoPdf(null, "baixar falhou: " + (e instanceof Error ? e.message : String(e))); }
     })();
     return () => { cancel = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps

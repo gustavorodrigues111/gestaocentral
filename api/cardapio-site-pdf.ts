@@ -38,7 +38,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       args: chromium.args,
       executablePath: await chromium.executablePath(),
       headless: true,
-      defaultViewport: { width: 900, height: 1400, deviceScaleFactor: 1 },
+      defaultViewport: { width: 1280, height: 1800, deviceScaleFactor: 1 },
     });
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
