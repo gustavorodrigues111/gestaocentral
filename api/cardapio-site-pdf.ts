@@ -42,15 +42,19 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     });
     const page = await browser.newPage();
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
-    // Espera o render terminar e expor o base64 (ou o erro).
-    await page.waitForFunction(
-      "!!window.__CARDAPIO_PDF__ || !!window.__CARDAPIO_PDF_ERR__",
-      { timeout: 50000, polling: 500 },
-    );
-    const out = (await page.evaluate(
-      "({ pdf: window.__CARDAPIO_PDF__ || null, err: window.__CARDAPIO_PDF_ERR__ || null })",
-    )) as { pdf: string | null; err: string | null };
-    if (!out.pdf) { res.status(502).json({ error: "Render do cardápio falhou: " + (out.err || "sem PDF") }); return; }
+    // Polling manual (em vez de waitForFunction): o SPA re-renderiza durante o
+    // boot e o waitForFunction quebrava com "frame got detached". Aqui a gente
+    // ignora detaches transitórios e continua tentando até o base64 aparecer.
+    let out: { pdf: string | null; err: string | null } = { pdf: null, err: null };
+    const deadline = Date.now() + 70000;
+    while (Date.now() < deadline) {
+      try {
+        out = (await page.evaluate("({ pdf: window.__CARDAPIO_PDF__ || null, err: window.__CARDAPIO_PDF_ERR__ || null })")) as { pdf: string | null; err: string | null };
+        if (out.pdf || out.err) break;
+      } catch { /* frame detached transitório — tenta de novo */ }
+      await new Promise((r) => setTimeout(r, 700));
+    }
+    if (!out.pdf) { res.status(502).json({ error: "Render do cardápio falhou: " + (out.err || "sem PDF (timeout)") }); return; }
 
     const path = `cardapios/${rid}/agente_${(menu || "cardapio").toLowerCase().replace(/[^a-z0-9]/g, "")}_${Date.now()}.pdf`;
     const link = await subirStorage(path, out.pdf, "application/pdf");
