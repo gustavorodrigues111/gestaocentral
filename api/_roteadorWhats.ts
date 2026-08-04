@@ -11,7 +11,7 @@
 //  Sessão por remetente em `whatsappAgenteSessoes/{numero}`. Contexto entre
 //  turnos em `agenteMensagens` (conversaId = `${agenteId}__wa_${numero}`).
 // ════════════════════════════════════════════════════════════════════════════
-import { firestoreListar, firestoreLer, firestoreCriar } from "./_firestoreRest.js";
+import { firestoreListar, firestoreLer, firestoreCriar, firestoreAtualizar } from "./_firestoreRest.js";
 import { runAgenteCore } from "./agente.js";
 
 type Doc = Record<string, unknown>;
@@ -154,8 +154,10 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
   const sessao = (await firestoreLer("whatsappAgenteSessoes", sid)) as Doc | null;
   const low = texto.toLowerCase();
   const now = () => new Date().toISOString();
+  // PATCH (upsert) — NÃO firestoreCriar, que é create-only e não atualiza um doc
+  // de sessão já existente (deixaria aguardandoEscolha/agenteId travados).
   const salvarSessao = (agenteId: string | null, aguardando: boolean) =>
-    firestoreCriar("whatsappAgenteSessoes", sid, { waId: from, agenteId, aguardandoEscolha: aguardando, atualizadoEm: now() }).catch(() => {});
+    firestoreAtualizar("whatsappAgenteSessoes", sid, { waId: from, agenteId, aguardandoEscolha: aguardando, atualizadoEm: now() }).catch(() => {});
 
   // Troca por NOME: acha um agente cujo nome distintivo aparece na mensagem
   // (ex.: "conecta no Sororoca"). Ignora palavras genéricas do nome.
