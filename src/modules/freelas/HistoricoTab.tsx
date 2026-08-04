@@ -221,6 +221,8 @@ function PessoaLoteRow({
   const [open, setOpen] = useState(false);
   const turnos = useMemo(() => turnosDaPessoa(p, shiftsDoLote), [p, shiftsDoLote]);
   const periodo = periodoDeTurnos(turnos);
+  const gorjeta = p.totalGorjeta || 0;
+  const totalPessoa = p.totalValor + gorjeta;
 
   return (
     <div className="rounded-lg border border-gray-100 dark:border-gray-800">
@@ -231,10 +233,17 @@ function PessoaLoteRow({
           <span className="text-[11px] text-gray-500 shrink-0">· {p.qtdShifts} diária(s) · {fmtHoras(p.totalHoras)}</span>
         </button>
         <span className="hidden sm:block text-[11px] text-gray-500 truncate max-w-[120px]">{p.pix || ""}</span>
-        <span className="text-sm font-semibold tabular-nums text-gray-800 dark:text-gray-100">{fmtBR(p.totalValor)}</span>
+        <span className="text-right shrink-0">
+          <span className="block text-sm font-semibold tabular-nums text-gray-800 dark:text-gray-100">{fmtBR(totalPessoa)}</span>
+          {gorjeta > 0 && (
+            <span className="block text-[10px] text-indigo-600 dark:text-indigo-400 tabular-nums">
+              diária {fmtBR(p.totalValor)} + 🎁 {fmtBR(gorjeta)}
+            </span>
+          )}
+        </span>
         <button
           type="button"
-          onClick={() => onRecibo({ tipo: "diarista", nome: p.nome, periodo, turnos, total: p.totalValor })}
+          onClick={() => onRecibo({ tipo: "diarista", nome: p.nome, periodo, turnos, total: totalPessoa, gorjeta: gorjeta || undefined })}
           className="text-[11px] px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 shrink-0"
         >
           🧾 Recibo
@@ -312,6 +321,7 @@ type ReciboData = {
   nome: string;
   periodo: string;
   total: number;
+  gorjeta?: number;
   turnos?: FreelaTurnoSnapshot[];
   mensalista?: FreelaMensalistaLinha;
 };
@@ -385,9 +395,14 @@ function buildReciboHTML(d: ReciboData): string {
     <td style="${RB.tdR}">${escaparHtml(tarifaTxt(t))}</td>
     <td style="${RB.tdR}">${fmtBR(t.totalCalc || 0)}</td>
   </tr>`).join("");
+  const gj = d.gorjeta || 0;
+  const linhaGorjeta = gj > 0
+    ? `<tr><td style="${RB.tdR}" colspan="4">Diárias</td><td style="${RB.tdR}">${fmtBR(d.total - gj)}</td></tr>
+       <tr><td style="${RB.tdR}" colspan="4">🎁 Gorjeta</td><td style="${RB.tdR}">${fmtBR(gj)}</td></tr>`
+    : "";
   return `${cab}<table style="${RB.table}">
       <thead><tr><th style="${RB.th}">Data</th><th style="${RB.th}">Horário</th><th style="${RB.thR}">Horas</th><th style="${RB.thR}">Tarifa</th><th style="${RB.thR}">Total</th></tr></thead>
-      <tbody>${rows}</tbody>
+      <tbody>${rows}${linhaGorjeta}</tbody>
       <tfoot><tr><td style="${RB.totTd}" colspan="4">Total recebido</td><td style="${RB.totTdR}">${fmtBR(d.total)}</td></tr></tfoot>
     </table>`;
 }

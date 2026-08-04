@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -274,6 +274,18 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
     [shifts],
   );
 
+  // Gorjeta do freela num turno = fatia dele na gorjeta PUBLICADA daquele dia
+  // (só quando o turno foi marcado com um cargo de gorjeta em Lançamentos).
+  const gorjetaDoShift = useCallback((s: FreelaShift): number => {
+    if (!s.gorjetaCargoId) return 0;
+    let tot = 0;
+    for (const g of gorjetasMes) {
+      if (g.date !== s.date || !g.publicada || !g.divisaoSnapshot) continue;
+      for (const it of g.divisaoSnapshot) if (it.freelaShiftId === s.id) tot += it.valor || 0;
+    }
+    return Math.round(tot * 100) / 100;
+  }, [gorjetasMes]);
+
   // Cancela um turno lançado errado: status "cancelado", zera o valor e
   // registra o motivo. Some da precificação e entra em "Prontos pra lote"
   // zerado, podendo ir num lote só pra registro. Reversível via "Reabrir".
@@ -322,10 +334,11 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
 
   const totaisSelec = useMemo(() => {
     const sel = prontosLote.filter((s) => selecionados.has(s.id));
-    const total = sel.reduce((acc, s) => acc + (s.totalCalc || 0), 0);
+    const totalDiaria = sel.reduce((acc, s) => acc + (s.totalCalc || 0), 0);
+    const totalGorjeta = sel.reduce((acc, s) => acc + gorjetaDoShift(s), 0);
     const pessoas = new Set(sel.map((s) => s.pessoaId || s.empregadoId || s.nomeSnapshot));
-    return { qtd: sel.length, total, pessoas: pessoas.size };
-  }, [prontosLote, selecionados]);
+    return { qtd: sel.length, total: totalDiaria + totalGorjeta, totalGorjeta, pessoas: pessoas.size };
+  }, [prontosLote, selecionados, gorjetaDoShift]);
 
   async function gerarLote() {
     if (!me) return;
@@ -351,12 +364,14 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
           pix: pixDe(s) || null,
           cpf: s.cpfSnapshot ?? null,
           whatsapp: s.whatsappSnapshot ?? null,
-          qtdShifts: 0, totalHoras: 0, totalValor: 0,
+          qtdShifts: 0, totalHoras: 0, totalValor: 0, totalGorjeta: 0,
           turnos: [] as FreelaTurnoSnapshot[],
         };
+        const gj = gorjetaDoShift(s);
         r.qtdShifts += 1;
         r.totalHoras += s.horas || 0;
         r.totalValor += s.totalCalc || 0;
+        r.totalGorjeta = (r.totalGorjeta || 0) + gj;
         // Congela o detalhe do turno no lote (histórico + recibo estáveis).
         (r.turnos ||= []).push({
           date: s.date,
@@ -367,6 +382,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
           valorTipo: s.valorTipo ?? null,
           valorUnit: s.valorUnit ?? null,
           totalCalc: s.totalCalc ?? null,
+          gorjeta: gj || null,
           cancelado: s.status === "cancelado",
         });
         resumoMap.set(key, r);
@@ -377,11 +393,14 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
           ...r,
           totalHoras: Math.round(r.totalHoras * 100) / 100,
           totalValor: Math.round(r.totalValor * 100) / 100,
+          totalGorjeta: Math.round((r.totalGorjeta || 0) * 100) / 100,
           turnos: (r.turnos || []).slice().sort((x, y) => x.date.localeCompare(y.date)),
         }));
       const now = new Date().toISOString();
       const numero = proximoNumeroLote(pagamentos);
-      const totalGeral = pessoasResumo.reduce((a, p) => a + p.totalValor, 0) + mensLinhasSel.reduce((a, l) => a + l.total, 0);
+      const totalGeral =
+        pessoasResumo.reduce((a, p) => a + p.totalValor + (p.totalGorjeta || 0), 0) +
+        mensLinhasSel.reduce((a, l) => a + l.total, 0);
 
       const payload: Omit<FreelaPagamento, "id"> = {
         restaurantId,
@@ -667,6 +686,11 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
             <div className="text-sm font-medium text-indigo-900 dark:text-indigo-200 mb-2">
               💰 {totaisSelec.qtd} turno(s){mensLinhasSel.length > 0 ? ` + ${mensLinhasSel.length} mensalista(s)` : ""} ·{" "}
               <strong>{fmtBR(totaisSelec.total + mensLinhasSel.reduce((a, l) => a + l.total, 0))}</strong>
+              {totaisSelec.totalGorjeta > 0 && (
+                <span className="ml-1 font-normal text-indigo-700 dark:text-indigo-300">
+                  (inclui 🎁 {fmtBR(totaisSelec.totalGorjeta)} de gorjeta)
+                </span>
+              )}
             </div>
             <textarea
               value={obs}

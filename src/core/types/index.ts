@@ -2815,6 +2815,7 @@ export type FreelaTurnoSnapshot = {
   valorTipo?: "hora" | "diaria" | null;
   valorUnit?: number | null;       // R$/h ou diária
   totalCalc?: number | null;       // R$ do turno
+  gorjeta?: number | null;         // R$ de gorjeta do dia (se o freela entrou na divisão)
   cancelado?: boolean;             // turno cancelado (entrou zerado só pra registro)
 };
 
@@ -2828,7 +2829,8 @@ export type FreelaPagamentoResumoPessoa = {
   whatsapp?: string | null;
   qtdShifts: number;
   totalHoras: number;
-  totalValor: number;
+  totalValor: number;              // soma das diárias/horas
+  totalGorjeta?: number;           // soma da gorjeta dos dias em que o freela entrou na divisão
   turnos?: FreelaTurnoSnapshot[];  // detalhe congelado (lotes novos); ausente nos antigos
 };
 
