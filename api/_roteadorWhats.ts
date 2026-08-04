@@ -171,8 +171,8 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
   };
   const nomeAlvo = achaPorNome();
   // Intenção de trocar de agente (linguagem natural), sem confundir com "trocar o preço".
-  const menuIntent = /(menu|lista de agentes|outro agente|outro assistente|trocar de agente|trocar agente|mud[ae]r? de agente|desconect)/i.test(low)
-    || ["menu", "agentes", "assistentes", "trocar", "voltar"].includes(low);
+  const menuIntent = /(menu|lista de agentes|outro (agente|assistente)|(troc|mud)[a-z]* (de )?(agente|assistente)|desconect)/i.test(low)
+    || ["menu", "agentes", "assistentes", "trocar", "troca", "voltar"].includes(low);
   const switchVerbo = /(fala[r]? com|conect|troc|mud[ao]|quero (o |a )?outro|passa (pro|para)|abre a|abrir a|vai (pro|para))/i.test(low);
   const querTrocar = menuIntent || (!!nomeAlvo && switchVerbo);
 
