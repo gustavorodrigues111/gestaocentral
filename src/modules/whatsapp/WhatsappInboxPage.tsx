@@ -652,6 +652,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
           timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true,
           numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null, status: 1,
           ...(midMedia ? { messageId: midMedia } : {}),
+          ...(tipo === "document" ? { midiaNome: fileName } : {}),
           ...(guardaMidia ? { midia: dataUrl, mime: mimetype } : {}),
         });
         if (midMedia) await setDoc(doc(db, "whatsappMensagens", `${numeroSel}_${midMedia}`), docMedia, { merge: true });
@@ -1509,6 +1510,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                           {isDoc && <a href={src} target="_blank" rel="noreferrer" className="flex items-center gap-2 text-sm text-blue-600 dark:text-blue-400 underline">📄 {nomeDoc}</a>}
                           {!isImg && !isVid && !isAud && !isDoc && <div className="whitespace-pre-wrap break-words">{textoMostra(m)}{ehReacao && <> <InfoBadge texto="Esta pessoa reagiu com um emoji. O WhatsApp protege as reações, então não dá pra mostrar qual foi nem em qual mensagem." /></>}{midiaSemPrevia && <> <InfoBadge texto="Arquivo grande demais para mostrar aqui. Ele foi entregue normalmente — abra no WhatsApp do celular para ver." /></>}</div>}
                           {(isImg || isVid) && m.texto && !rotuloAuto && <div className="whitespace-pre-wrap break-words mt-1">{m.texto}</div>}
+                          {isDoc && m.texto && !m.texto.startsWith("📄") && m.texto !== nomeDoc && <div className="whitespace-pre-wrap break-words mt-1">{m.texto}</div>}
                         </>
                       );
                     })()}
