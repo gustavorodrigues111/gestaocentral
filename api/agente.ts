@@ -58,6 +58,44 @@ async function lerCardapioEstado(): Promise<CardapioEstado & { versao: number }>
 type AltCardapio = { acao?: string; pagina?: string; secao?: string; item?: string; dados?: Record<string, unknown> };
 const PAGINAS: (keyof CardapioEstado)[] = ["comidas", "bebidas", "vendinha"];
 
+// ── Lixeira do cardápio (pratos removidos, restauráveis) ────────────────────
+// Guarda cada prato removido com os DADOS e a POSIÇÃO original. Vale pros dois
+// agentes: chave = "puba" (cardápio do Puba) ou rid (cardápio do site/Sororoca).
+type ArquivadoEntry = {
+  id: string;
+  engine: "site" | "puba";
+  cardapio: string;   // nome do menu/página (ex.: "Comidas" | "comidas")
+  secao: string;      // nome da seção
+  posicao: number;    // índice na seção no momento da remoção
+  nome: string;       // título/nome do prato (pra listar e casar)
+  raw: Record<string, unknown>;   // objeto do prato como estava
+  arquivadoEm: string;
+  arquivadoPor: string;
+};
+const novoArqId = () => `arq_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+// Round-trip pra nunca gravar undefined no Firestore.
+const limpo = (o: unknown): Record<string, unknown> => JSON.parse(JSON.stringify(o ?? {}));
+
+async function lerArquivados(chave: string): Promise<ArquivadoEntry[]> {
+  const d = (await firestoreLer("cardapioArquivados", chave)) as { pratos?: ArquivadoEntry[] } | null;
+  return Array.isArray(d?.pratos) ? (d!.pratos as ArquivadoEntry[]) : [];
+}
+async function arquivarEntradas(chave: string, novas: ArquivadoEntry[], quem: string): Promise<void> {
+  if (!novas.length) return;
+  const atuais = await lerArquivados(chave);
+  const carimbadas = novas.map((n) => ({ ...n, arquivadoPor: quem }));
+  await firestoreAtualizar("cardapioArquivados", chave, { pratos: [...carimbadas, ...atuais] as unknown as Doc[], atualizadoEm: new Date().toISOString() }).catch(() => {});
+}
+async function tirarArquivado(chave: string, id: string, restantes: ArquivadoEntry[]): Promise<void> {
+  await firestoreAtualizar("cardapioArquivados", chave, { pratos: restantes.filter((p) => p.id !== id) as unknown as Doc[], atualizadoEm: new Date().toISOString() }).catch(() => {});
+}
+// Casa um arquivado por nome (opcionalmente filtrando seção/cardápio).
+function achaArquivado(arqs: ArquivadoEntry[], nome: string, secao?: string, cardapio?: string): ArquivadoEntry | null {
+  const cand = arqs.filter((a) => (!secao || nrm(a.secao) === nrm(secao)) && (!cardapio || nrm(a.cardapio).includes(nrm(cardapio))));
+  const pool = cand.length ? cand : arqs;
+  return pool.find((a) => nrm(a.nome) === nrm(nome)) || pool.find((a) => nrm(a.nome).includes(nrm(nome))) || null;
+}
+
 // Normaliza preços do que o modelo mandar → string | {qual,val} (sem array aninhado).
 function normPrecos(raw: unknown): CardapioItem["precos"] {
   const arr = Array.isArray(raw) ? raw : (raw != null && raw !== "" ? [raw] : []);
@@ -69,8 +107,10 @@ function normPrecos(raw: unknown): CardapioItem["precos"] {
 }
 
 // Aplica um diff no estado. Defensivo: cada alteração é isolada; erros viram msg.
-function aplicaDiffCardapio(est: CardapioEstado, alts: AltCardapio[]): { aplicadas: string[]; erros: string[] } {
+function aplicaDiffCardapio(est: CardapioEstado, alts: AltCardapio[]): { aplicadas: string[]; erros: string[]; arquivar: ArquivadoEntry[] } {
   const aplicadas: string[] = [], erros: string[] = [];
+  const arquivar: ArquivadoEntry[] = [];
+  const ts = new Date().toISOString();
   const acha = (pagina: string | undefined, secaoNome: string | undefined, itemNome: string) => {
     const pgs = (pagina && PAGINAS.includes(pagina as keyof CardapioEstado) ? [pagina] : PAGINAS) as (keyof CardapioEstado)[];
     for (const pg of pgs) for (const sec of est[pg] || []) {
@@ -103,6 +143,8 @@ function aplicaDiffCardapio(est: CardapioEstado, alts: AltCardapio[]): { aplicad
         aplicadas.push(`adicionado ${d.nome || a.item} em ${sec.secao}`);
       } else if (acao === "remover") {
         const f = acha(a.pagina, a.secao, String(a.item)); if (!f) { erros.push(`não achei "${a.item}" pra remover`); continue; }
+        const pos = f.sec.itens.indexOf(f.it);
+        arquivar.push({ id: novoArqId(), engine: "puba", cardapio: f.pg, secao: f.sec.secao || "", posicao: pos < 0 ? f.sec.itens.length : pos, nome: f.it.nome || "", raw: limpo(f.it), arquivadoEm: ts, arquivadoPor: "" });
         f.sec.itens = f.sec.itens.filter((i) => i !== f.it); aplicadas.push(`removido ${f.it.nome}`);
       } else if (acao === "alterar_preco") {
         const f = acha(a.pagina, a.secao, String(a.item)); if (!f) { erros.push(`não achei "${a.item}" pra alterar preço`); continue; }
@@ -119,6 +161,7 @@ function aplicaDiffCardapio(est: CardapioEstado, alts: AltCardapio[]): { aplicad
       } else if (acao === "remover_secao") {
         const f = achaSecao(a.pagina, a.secao); if (!f) { erros.push(`não achei a seção "${a.secao}" pra remover`); continue; }
         const nome = f.sec.secao, qtd = (f.sec.itens || []).length;
+        (f.sec.itens || []).forEach((it, i) => arquivar.push({ id: novoArqId(), engine: "puba", cardapio: f.pg, secao: nome || "", posicao: i, nome: it.nome || "", raw: limpo(it), arquivadoEm: ts, arquivadoPor: "" }));
         f.arr.splice(f.idx, 1);
         aplicadas.push(`seção "${nome}" removida${qtd ? ` (com ${qtd} item(ns))` : " (estava vazia)"}`);
       } else if (acao === "renomear_secao") {
@@ -129,7 +172,7 @@ function aplicaDiffCardapio(est: CardapioEstado, alts: AltCardapio[]): { aplicad
       } else erros.push(`ação desconhecida: ${a.acao}`);
     } catch (e) { erros.push(`erro em ${a.acao}: ${e instanceof Error ? e.message : "?"}`); }
   }
-  return { aplicadas, erros };
+  return { aplicadas, erros, arquivar };
 }
 
 // Prévia do cardápio em HTML leve (abre no navegador do celular pra aprovar).
@@ -177,7 +220,8 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
       const alts = (Array.isArray(args.alteracoes) ? args.alteracoes : []) as AltCardapio[];
       if (!alts.length) return { resumo: "nada a aplicar", conteudo: JSON.stringify({ erro: "Sem alterações." }) };
       const est = await lerCardapioEstado();
-      const { aplicadas, erros } = aplicaDiffCardapio(est, alts);
+      const { aplicadas, erros, arquivar } = aplicaDiffCardapio(est, alts);
+      await arquivarEntradas("puba", arquivar, ctx.pessoaNome);
       const novaVersao = (est.versao || 0) + 1;
       const nowIso = new Date().toISOString();
       const salvo = await firestoreAtualizar("cardapioEstado", CARDAPIO_DOC, { comidas: est.comidas, bebidas: est.bebidas, vendinha: est.vendinha, versao: novaVersao, atualizadoEm: nowIso, atualizadoPor: ctx.pessoaNome });
@@ -221,6 +265,38 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
       return { resumo: `prévia v${est.versao || 0}`, conteudo: JSON.stringify({ previaUrl: url, versao: est.versao || 0 }) };
     },
   },
+  listar_arquivados: {
+    desc: "Lista os pratos que foram REMOVIDOS do cardápio do Puba e podem ser restaurados (nome, seção, página, preço que tinha, quando saiu). Use quando perguntarem 'o que já tiramos', 'quais pratos removidos', ou antes de restaurar.",
+    tipo: "read",
+    schema: { type: "object", properties: {}, required: [] },
+    exec: async () => {
+      const arqs = await lerArquivados("puba");
+      if (!arqs.length) return { resumo: "lixeira vazia", conteudo: JSON.stringify({ arquivados: [] }) };
+      const lista = arqs.map((a) => ({ item: a.nome, pagina: a.cardapio, secao: a.secao, preco: (a.raw as { precos?: unknown }).precos ?? "", removidoEm: (a.arquivadoEm || "").slice(0, 10) }));
+      return { resumo: `${arqs.length} arquivado(s)`, conteudo: JSON.stringify({ arquivados: lista }) };
+    },
+  },
+  restaurar_prato: {
+    desc: "Restaura um prato REMOVIDO do cardápio do Puba de volta na POSIÇÃO original, com o nome, descrição e preço que tinha. Confirme com o usuário antes. Se não souber o nome exato, use listar_arquivados. Args: item (nome do prato), opcional secao/pagina.",
+    tipo: "write",
+    schema: { type: "object", properties: { item: { type: "string" }, secao: { type: "string" }, pagina: { type: "string" } }, required: ["item"] },
+    exec: async (args, ctx) => {
+      const arqs = await lerArquivados("puba");
+      const alvo = achaArquivado(arqs, String(args.item || ""), args.secao as string, args.pagina as string);
+      if (!alvo) return { resumo: "não achei", conteudo: JSON.stringify({ erro: `nenhum prato arquivado batendo com "${args.item}"`, disponiveis: arqs.map((a) => a.nome) }) };
+      const est = await lerCardapioEstado();
+      const pg = (PAGINAS.includes(alvo.cardapio as keyof CardapioEstado) ? alvo.cardapio : "comidas") as keyof CardapioEstado;
+      let sec = (est[pg] || []).find((s) => nrm(s.secao) === nrm(alvo.secao));
+      if (!sec) { sec = { secao: (alvo.secao || "OUTROS").toUpperCase(), itens: [] }; (est[pg] as CardapioSecao[]).push(sec); }
+      const idx = Math.max(0, Math.min(alvo.posicao, sec.itens.length));
+      sec.itens.splice(idx, 0, alvo.raw as unknown as CardapioItem);
+      const novaVersao = (est.versao || 0) + 1;
+      const nowIso = new Date().toISOString();
+      const salvo = await firestoreAtualizar("cardapioEstado", CARDAPIO_DOC, { comidas: est.comidas, bebidas: est.bebidas, vendinha: est.vendinha, versao: novaVersao, atualizadoEm: nowIso, atualizadoPor: ctx.pessoaNome });
+      await tirarArquivado("puba", alvo.id, arqs);
+      return { resumo: `restaurado ${alvo.nome}`, conteudo: JSON.stringify({ restaurado: alvo.nome, secao: sec.secao, pagina: pg, precoAntigo: (alvo.raw as { precos?: unknown }).precos ?? "", versao: novaVersao, salvo }) };
+    },
+  },
 };
 
 // ── Cardápio do MÓDULO (cardapioEstruturado — reflete no SITE) ───────────────
@@ -239,8 +315,10 @@ async function lerEstruturado(rid: string): Promise<{ cardapios: MenuS[]; slug: 
   return { cardapios: Array.isArray(d.cardapios) ? d.cardapios : [], slug: (cfg?.slug || "").toString() };
 }
 
-function aplicaDiffEstruturado(cardapios: MenuS[], alts: AltEstrut[]): { aplicadas: string[]; erros: string[] } {
+function aplicaDiffEstruturado(cardapios: MenuS[], alts: AltEstrut[]): { aplicadas: string[]; erros: string[]; arquivar: ArquivadoEntry[] } {
   const aplicadas: string[] = [], erros: string[] = [];
+  const arquivar: ArquivadoEntry[] = [];
+  const ts = new Date().toISOString();
   const bate = (a: string | undefined, b: string | undefined) => !!b && (nrm(a) === nrm(b) || nrm(a).includes(nrm(b)));
   const acha = (card: string | undefined, sec: string | undefined, item: string) => {
     for (const c of cardapios) {
@@ -279,6 +357,8 @@ function aplicaDiffEstruturado(cardapios: MenuS[], alts: AltEstrut[]): { aplicad
         aplicadas.push(`${f.it.titulo} → ${novo}`); f.it.titulo = novo;
       } else if (acao === "remover") {
         const f = acha(a.cardapio, a.secao, String(a.item)); if (!f) { erros.push(`não achei "${a.item}" pra remover`); continue; }
+        const pos = (f.s.pratos || []).indexOf(f.it);
+        arquivar.push({ id: novoArqId(), engine: "site", cardapio: f.c.nome || "", secao: f.s.nome || "", posicao: pos < 0 ? (f.s.pratos || []).length : pos, nome: f.it.titulo || "", raw: limpo(f.it), arquivadoEm: ts, arquivadoPor: "" });
         f.s.pratos = (f.s.pratos || []).filter(p => p !== f.it); aplicadas.push(`removido ${f.it.titulo}`);
       } else if (acao === "adicionar") {
         const fs = achaSecao(a.cardapio, a.secao); if (!fs) { erros.push(`não achei a seção "${a.secao}"`); continue; }
@@ -290,7 +370,9 @@ function aplicaDiffEstruturado(cardapios: MenuS[], alts: AltEstrut[]): { aplicad
         aplicadas.push(`seção ${fs.s.nome} → ${novo}`); fs.s.nome = novo;
       } else if (acao === "remover_secao") {
         const fs = achaSecao(a.cardapio, a.secao); if (!fs) { erros.push(`não achei a seção "${a.secao}"`); continue; }
-        const nome = fs.s.nome; fs.arr.splice(fs.i, 1); aplicadas.push(`seção "${nome}" removida`);
+        const nome = fs.s.nome;
+        (fs.s.pratos || []).forEach((p, i) => arquivar.push({ id: novoArqId(), engine: "site", cardapio: fs.c.nome || "", secao: nome || "", posicao: i, nome: p.titulo || "", raw: limpo(p), arquivadoEm: ts, arquivadoPor: "" }));
+        fs.arr.splice(fs.i, 1); aplicadas.push(`seção "${nome}" removida`);
       } else if (acao === "adicionar_secao") {
         const c = cardapios.find(x => bate(x.nome, a.cardapio)) || cardapios[0];
         if (!c) { erros.push("sem cardápio pra adicionar seção"); continue; }
@@ -299,7 +381,7 @@ function aplicaDiffEstruturado(cardapios: MenuS[], alts: AltEstrut[]): { aplicad
       } else erros.push(`ação desconhecida: ${a.acao}`);
     } catch (e) { erros.push(`erro em ${a.acao}: ${e instanceof Error ? e.message : "?"}`); }
   }
-  return { aplicadas, erros };
+  return { aplicadas, erros, arquivar };
 }
 
 // Prévia HTML do cardápio do módulo (igual ao Puba: sobe no Storage, abre no
@@ -355,8 +437,9 @@ const SKILL_TOOLS_SITE: Record<string, SkillTool> = {
       if (!est) return { resumo: "sem cardápio", conteudo: JSON.stringify({ erro: "cardápio não encontrado" }) };
       const alts = (Array.isArray(args.alteracoes) ? args.alteracoes : []) as AltEstrut[];
       if (!alts.length) return { resumo: "nada a aplicar", conteudo: JSON.stringify({ erro: "sem alterações" }) };
-      const { aplicadas, erros } = aplicaDiffEstruturado(est.cardapios, alts);
+      const { aplicadas, erros, arquivar } = aplicaDiffEstruturado(est.cardapios, alts);
       const salvo = await firestoreAtualizar("cardapioEstruturado", rid, { cardapios: est.cardapios as unknown as Doc[], atualizadoEm: new Date().toISOString(), atualizadoPor: ctx.pessoaNome });
+      await arquivarEntradas(rid, arquivar, ctx.pessoaNome);
       return { resumo: `${aplicadas.length} alteração(ões) no site`, conteudo: JSON.stringify({ aplicadas, erros, salvo }) };
     },
   },
@@ -390,6 +473,40 @@ const SKILL_TOOLS_SITE: Record<string, SkillTool> = {
         if (!r.ok || !j.pdfUrl) return { resumo: "falha no PDF", conteudo: JSON.stringify({ erro: j.error || `HTTP ${r.status}` }) };
         return { resumo: "PDF pronto", conteudo: JSON.stringify({ pdfUrl: j.pdfUrl }) };
       } catch (e) { return { resumo: "falha no PDF", conteudo: JSON.stringify({ erro: e instanceof Error ? e.message : "indisponível" }) }; }
+    },
+  },
+  listar_arquivados_site: {
+    desc: "Lista os pratos REMOVIDOS do cardápio do site que podem ser restaurados (título, cardápio, seção, preço que tinha, quando saiu). Use quando perguntarem 'o que já tiramos', 'quais pratos removidos', ou antes de restaurar.",
+    tipo: "read",
+    schema: { type: "object", properties: {}, required: [] },
+    exec: async (_args, ctx) => {
+      const arqs = await lerArquivados(ctx.restaurantId || "");
+      if (!arqs.length) return { resumo: "lixeira vazia", conteudo: JSON.stringify({ arquivados: [] }) };
+      const lista = arqs.map((a) => ({ item: a.nome, cardapio: a.cardapio, secao: a.secao, preco: (a.raw as { preco?: unknown }).preco ?? "", removidoEm: (a.arquivadoEm || "").slice(0, 10) }));
+      return { resumo: `${arqs.length} arquivado(s)`, conteudo: JSON.stringify({ arquivados: lista }) };
+    },
+  },
+  restaurar_prato_site: {
+    desc: "Restaura um prato REMOVIDO do cardápio do site de volta na POSIÇÃO original, com o título, descrição e preço que tinha (reflete no site na hora). Confirme com o usuário antes. Se não souber o nome exato, use listar_arquivados_site. Args: item (título do prato), opcional cardapio/secao.",
+    tipo: "write",
+    schema: { type: "object", properties: { item: { type: "string" }, cardapio: { type: "string" }, secao: { type: "string" } }, required: ["item"] },
+    exec: async (args, ctx) => {
+      const rid = ctx.restaurantId || "";
+      const arqs = await lerArquivados(rid);
+      const alvo = achaArquivado(arqs, String(args.item || ""), args.secao as string, args.cardapio as string);
+      if (!alvo) return { resumo: "não achei", conteudo: JSON.stringify({ erro: `nenhum prato arquivado batendo com "${args.item}"`, disponiveis: arqs.map((a) => a.nome) }) };
+      const est = await lerEstruturado(rid);
+      if (!est) return { resumo: "sem cardápio", conteudo: JSON.stringify({ erro: "cardápio não encontrado" }) };
+      let c = est.cardapios.find((x) => nrm(x.nome) === nrm(alvo.cardapio)) || est.cardapios[0];
+      if (!c) return { resumo: "sem cardápio", conteudo: JSON.stringify({ erro: "cardápio vazio" }) };
+      let s = (c.secoes || []).find((x) => nrm(x.nome) === nrm(alvo.secao));
+      if (!s) { s = { id: novoIdS("sec"), nome: alvo.secao, pratos: [] }; c.secoes = [...(c.secoes || []), s]; }
+      s.pratos = s.pratos || [];
+      const idx = Math.max(0, Math.min(alvo.posicao, s.pratos.length));
+      s.pratos.splice(idx, 0, alvo.raw as unknown as PratoS);
+      const salvo = await firestoreAtualizar("cardapioEstruturado", rid, { cardapios: est.cardapios as unknown as Doc[], atualizadoEm: new Date().toISOString(), atualizadoPor: ctx.pessoaNome });
+      await tirarArquivado(rid, alvo.id, arqs);
+      return { resumo: `restaurado ${alvo.nome}`, conteudo: JSON.stringify({ restaurado: alvo.nome, cardapio: c.nome, secao: s.nome, precoAntigo: (alvo.raw as { preco?: unknown }).preco ?? "", salvo }) };
     },
   },
 };
@@ -516,8 +633,12 @@ export async function runAgenteCore(
       : (canal === "whatsapp"
           ? " Aqui é WhatsApp: não há prévia visual na tela. Pra o usuário CONFERIR/APROVAR o cardápio (inclusive após uma alteração), chame gerar_previa — ela manda um link HTML que ele abre no celular. Quando pedirem o PDF/filipeta FINAL, chame gerar_pdf. Os links/arquivo aparecem sozinhos na conversa, não precisa colar a URL no texto."
           : " Quando pedirem pra VER/MOSTRAR o cardápio ou a prévia, chame ler_cardapio: a prévia visual (HTML) aparece SOZINHA na tela — não precisa listar item por item, só confirme que está mostrando. Depois de aplicar uma alteração, a prévia atualizada também aparece sozinha. Quando pedirem o PDF / a filipeta / o arquivo final, chame gerar_pdf: o link pra download aparece na conversa.");
+  const notaRestaurar = !temCardapio ? ""
+    : ehCardapioSite
+      ? " Pratos removidos NÃO se perdem — vão pra uma lixeira. Se perguntarem 'o que já tiramos'/'quais pratos removidos', use listar_arquivados_site. Pra trazer um prato de volta (com título, descrição, preço e posição originais), use restaurar_prato_site (confirme antes)."
+      : " Pratos removidos NÃO se perdem — vão pra uma lixeira. Se perguntarem 'o que já tiramos'/'quais pratos removidos', use listar_arquivados. Pra trazer um prato de volta (com nome, descrição, preço e posição originais), use restaurar_prato (confirme antes).";
   const notaCanal = canal === "whatsapp" ? " Você está respondendo pelo WhatsApp: seja conciso, sem markdown pesado (nada de tabelas), use quebras de linha curtas." : "";
-  const system = sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras + notaCardapio + notaCanal;
+  const system = sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras + notaCardapio + notaRestaurar + notaCanal;
 
   const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [];
   for (const h of (opts.historico || []).slice(-10)) {
