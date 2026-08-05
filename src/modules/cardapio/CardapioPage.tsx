@@ -15,6 +15,7 @@ import { CardapioEditor } from "../sites/CardapioEditor";
 import { CardapioPdfPanel } from "../sites/CardapioTab";
 import { useSiteConfig } from "../sites/useSiteConfig";
 import { CardapioConfig } from "./CardapioConfig";
+import { CardapioArquivados } from "./CardapioArquivados";
 import { carregarFontesCardapio } from "../sites/shared/FontePicker";
 import { normalizarNome } from "../fichas/dedup";
 import { authHeader } from "../../core/firebase/idToken";
@@ -22,6 +23,7 @@ import { fmtBRDateTime } from "../../core/utils/date";
 import type { CardapioEstruturado, CardapioLayout, CardapioMenu } from "../../core/types";
 
 const CONFIG = "__config__";
+const ARQUIVADOS = "__arquivados__";
 
 type PdfItem = { id: string; titulo: string; preco: string; secao?: string };
 const SEM_SECAO = "Sem seção";
@@ -245,13 +247,19 @@ export function CardapioPage() {
         ))}
         {podeEditar && <button type="button" onClick={addMenu} className="px-3 py-2 text-sm font-medium text-indigo-600">+ Novo cardápio</button>}
         <span className="flex-1" />
+        <button type="button" onClick={() => setSel(ARQUIVADOS)}
+          className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${sel === ARQUIVADOS ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
+          🗑️ Arquivados
+        </button>
         <button type="button" onClick={() => setSel(CONFIG)}
           className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${sel === CONFIG ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
           ⚙️ Configurações
         </button>
       </div>
 
-      {sel === CONFIG ? (
+      {sel === ARQUIVADOS ? (
+        <CardapioArquivados rid={rid} podeEditar={podeEditar} meId={me?.id} cardapios={cardapios} />
+      ) : sel === CONFIG ? (
         <CardapioConfig rid={rid} podeEditar={podeEditar} atualizadoPor={me?.id} />
       ) : cardapios.length === 0 ? (
         <div className="text-center py-12 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl space-y-2">
