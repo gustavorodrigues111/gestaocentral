@@ -10,6 +10,7 @@ import { linhaPropostaTotal, pacotePrecoLabel, pacoteValorTotal } from "../../co
 import { criarProposta, montarMensagemProposta, parcelasDefaultPF, parcelasDefaultPJ } from "./propostaHelpers";
 import { registrarTratativa } from "./tratativas";
 import { pickDriveFile } from "../../core/google/drivePicker";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 
 type Props = {
   lead: LeadEvento;
@@ -39,6 +40,9 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
   const [parcelasEdit, setParcelasEdit] = useState<ParcelaProposta[]>([]); // vazio = 50/50 padrão
   const [montando, setMontando] = useState(false); // editor aberto pra nova versão
   const [pagando, setPagando] = useState<{ p: PropostaEvento; idx: number } | null>(null);
+  const [gerandoPdf, setGerandoPdf] = useState<string>(""); // id da proposta gerando
+  const { restaurants } = useRestaurant();
+  const restauranteNome = restaurants.find((r) => r.id === lead.restaurantId)?.nome || "";
 
   useEffect(() => {
     const q = query(collection(db, "propostasEvento"), where("leadId", "==", lead.id));
@@ -159,6 +163,64 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
     window.open(url, "_blank");
   }
 
+  // Gera o PDF do orçamento (visual do Lobozó) a partir da proposta e salva a URL.
+  async function gerarPdf(p: PropostaEvento) {
+    if (gerandoPdf) return;
+    setGerandoPdf(p.id);
+    try {
+      const fmt = (n: number) => `R$ ${Math.round(n).toLocaleString("pt-BR")}`;
+      const somaLinhas = (p.linhas || []).reduce((s, l) => s + linhaPropostaTotal(l), 0);
+      const base = Math.round((p.precoTotal - somaLinhas - (p.arredondamento || 0)) * 100) / 100;
+      const itens: { descricao: string; valor: string }[] = [];
+      if (base > 0.005) itens.push({ descricao: "Pacote base", valor: fmt(base) });
+      for (const l of p.linhas || []) {
+        const desc = l.tipo === "por_pessoa"
+          ? `${l.descricao} (${fmt(l.valor)}/pessoa × ${l.numPessoas || p.numConvidados})`
+          : l.descricao;
+        itens.push({ descricao: desc, valor: fmt(linhaPropostaTotal(l)) });
+      }
+      const arr = p.arredondamento || 0;
+      if (arr !== 0) {
+        itens.push({ descricao: arr < 0 ? "Desconto" : "Ajuste", valor: `${arr < 0 ? "− " : "+ "}${fmt(Math.abs(arr))}` });
+      }
+      const condicoes: string[] = [];
+      if (p.parcelas?.length) condicoes.push("Pagamento: " + p.parcelas.map((pc) => `${pc.descricao} ${fmt(pc.valor)}`).join(" · "));
+      if (p.politicaCancelamentoTexto) condicoes.push(p.politicaCancelamentoTexto);
+      condicoes.push("Orçamento sujeito à confirmação de disponibilidade.");
+
+      const dataEv = new Date(p.dataEvento + "T12:00:00");
+      const dataBR = `${String(dataEv.getDate()).padStart(2, "0")}/${String(dataEv.getMonth() + 1).padStart(2, "0")}/${dataEv.getFullYear()}`;
+      const dados = {
+        restauranteNome,
+        clienteNome: lead.cliente.nome,
+        dataEvento: `${dataBR} · ${p.slot === "almoco" ? "almoço" : "jantar"}`,
+        horario: p.horaInicio ? `${p.horaInicio} · ${p.duracaoHoras}h` : `${p.duracaoHoras}h`,
+        numConvidados: p.numConvidados,
+        espaco: espaco?.nome || undefined,
+        formato: lead.modeloEvento === "locacao_consumo_livre" ? "Locação (consumo em comanda)" : "Pacote por pessoa",
+        linhas: itens,
+        total: fmt(p.precoTotal),
+        precoPorPessoa: p.precoPorPessoa > 0 ? `${fmt(p.precoPorPessoa)} por pessoa` : undefined,
+        condicoes,
+        inclusos: p.inclusos && p.inclusos.length ? p.inclusos : undefined,
+        observacoes: p.observacoes || undefined,
+        geradoEm: new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }),
+      };
+      const resp = await fetch("/api/orcamento-pdf", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ rid: lead.restaurantId, dados }),
+      });
+      const j = (await resp.json()) as { pdfUrl?: string; error?: string };
+      if (!resp.ok || !j.pdfUrl) throw new Error(j.error || `HTTP ${resp.status}`);
+      await updateDoc(doc(db, "propostasEvento", p.id), sanitizeForFirestore({ pdfUrl: j.pdfUrl })).catch(() => {});
+      window.open(j.pdfUrl, "_blank");
+    } catch (e) {
+      alert("Não consegui gerar o PDF: " + (e instanceof Error ? e.message : ""));
+    } finally {
+      setGerandoPdf("");
+    }
+  }
+
   function registrarPagamento(p: PropostaEvento, parcelaIdx: number) {
     if (!podeEditar) return;
     const parcela = p.parcelas[parcelaIdx];
@@ -206,6 +268,8 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
             <PropostaCard
               proposta={propostaAtual} destaque podeEditar={podeEditar}
               onEnviar={() => enviarWhatsApp(propostaAtual)}
+              onGerarPdf={() => gerarPdf(propostaAtual)}
+              gerandoPdf={gerandoPdf === propostaAtual.id}
               onRegistrarPagamento={(i) => registrarPagamento(propostaAtual, i)}
               onDesmarcarPagamento={(i) => desmarcarPagamento(propostaAtual, i)}
             />
@@ -220,6 +284,8 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
                   <PropostaCard
                     key={p.id} proposta={p} destaque={false} podeEditar={false}
                     onEnviar={() => enviarWhatsApp(p)}
+                    onGerarPdf={() => gerarPdf(p)}
+                    gerandoPdf={gerandoPdf === p.id}
                     onRegistrarPagamento={() => { /* só na atual */ }}
                     onDesmarcarPagamento={() => { /* só na atual */ }}
                   />
@@ -475,12 +541,14 @@ function RegistrarPagamentoModal({ parcela, onClose, onConfirmar }: {
 }
 
 function PropostaCard({
-  proposta, destaque, podeEditar, onEnviar, onRegistrarPagamento, onDesmarcarPagamento,
+  proposta, destaque, podeEditar, onEnviar, onGerarPdf, gerandoPdf, onRegistrarPagamento, onDesmarcarPagamento,
 }: {
   proposta: PropostaEvento;
   destaque: boolean;
   podeEditar: boolean;
   onEnviar: () => void;
+  onGerarPdf: () => void;
+  gerandoPdf: boolean;
   onRegistrarPagamento: (idx: number) => void;
   onDesmarcarPagamento: (idx: number) => void;
 }) {
@@ -580,10 +648,19 @@ function PropostaCard({
       </div>
 
       {destaque && (
-        <div className="mt-3 flex gap-2 flex-wrap">
+        <div className="mt-3 flex gap-2 flex-wrap items-center">
           <Button size="sm" onClick={onEnviar}>
             💬 {proposta.enviadaEm ? "Reenviar" : "Enviar"} via WhatsApp
           </Button>
+          {podeEditar && (
+            <Button size="sm" variant="secondary" onClick={onGerarPdf} disabled={gerandoPdf}>
+              {gerandoPdf ? "Gerando PDF…" : proposta.pdfUrl ? "🧾 Regerar orçamento (PDF)" : "🧾 Gerar orçamento (PDF)"}
+            </Button>
+          )}
+          {proposta.pdfUrl && (
+            <a href={proposta.pdfUrl} target="_blank" rel="noopener noreferrer"
+              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">📄 abrir PDF</a>
+          )}
         </div>
       )}
     </div>

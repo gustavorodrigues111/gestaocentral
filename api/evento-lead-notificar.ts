@@ -19,7 +19,7 @@ function normFone(raw: string): string { let d = (raw || "").replace(/\D/g, "");
 function dBR(iso?: string): string { const m = (iso || "").match(/^(\d{4})-(\d{2})-(\d{2})/); return m ? `${m[3]}/${m[2]}/${m[1]}` : (iso || "—"); }
 
 const OCASIAO: Record<string, string> = { aniversario: "Aniversário", corporativo: "Corporativo", casamento: "Casamento", confraternizacao: "Confraternização", formatura: "Formatura", outros: "Outros" };
-const MODELO: Record<string, string> = { locacao: "Locação (consumo em comanda)", pacote_por_pessoa: "Pacote por pessoa" };
+const MODELO: Record<string, string> = { locacao_consumo_livre: "Locação (consumo em comanda)", pacote_por_pessoa: "Pacote por pessoa" };
 
 // Envio via TEMPLATE aprovado (resumo_avisos: {{1}}=nome, {{2}}=lista, {{3}}=link).
 // Template funciona FORA da janela de 24h (proativo). Params não podem ter
