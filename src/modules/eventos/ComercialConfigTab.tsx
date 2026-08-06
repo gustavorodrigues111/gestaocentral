@@ -152,6 +152,27 @@ export function ComercialConfigTab({ rid }: Props) {
         )}
       </div>
 
+      {/* WhatsApp de avisos de novo lead */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">WhatsApp de avisos</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
+          Número que recebe uma mensagem no WhatsApp toda vez que entra um lead
+          de evento pelo site. Deixe vazio pra não avisar (o lead continua
+          aparecendo no Kanban). Ex.: (11) 91234-5678.
+        </p>
+        <input
+          type="tel"
+          defaultValue={restaurant?.eventosConfig?.whatsappAvisos || ""}
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            if (v === (restaurant?.eventosConfig?.whatsappAvisos || "")) return;
+            void updateDoc(doc(db, "restaurants", rid), { "eventosConfig.whatsappAvisos": v || null });
+          }}
+          placeholder="(11) 91234-5678"
+          className="w-full max-w-sm px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
+        />
+      </div>
+
       <div>
         <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Pessoas comerciais</h2>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">

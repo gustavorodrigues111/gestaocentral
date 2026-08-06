@@ -228,6 +228,11 @@ export function EventosPublicaPage() {
         updatedAt: now,
       };
       await setDoc(doc(db, "leadsEvento", id), sanitizeForFirestore(lead));
+      // Avisa a casa no WhatsApp (fire-and-forget — não bloqueia o sucesso).
+      fetch("/api/evento-lead-notificar", {
+        method: "POST", headers: { "content-type": "application/json" },
+        body: JSON.stringify({ leadId: id, rid }),
+      }).catch(() => { /* aviso é best-effort */ });
       setSubmitted(true);
     } catch (e) {
       console.error(e);

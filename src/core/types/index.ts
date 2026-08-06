@@ -1144,6 +1144,9 @@ export type Restaurant = {
     // Aplicado automaticamente a leads públicos e manuais; alterável por evento.
     responsavelPadraoId?: string;
     responsavelPadraoNome?: string;
+    // WhatsApp que recebe o aviso automático quando entra um lead novo pelo
+    // site (Cloud API). Vazio = sem aviso (só badge no kanban).
+    whatsappAvisos?: string;
     // Percentuais de comissão (configuráveis) por classificação e atividade.
     // Aplicados sobre fechamento.faturamentoBrutoSemGorjeta.
     comissao?: {
@@ -3771,6 +3774,9 @@ export type LeadEvento = {
     fechadoPor: string;                    // pessoaId que fechou
     fechadoPorNome?: string;
   };
+  // Aviso automático no WhatsApp da casa quando o lead entrou pelo site.
+  avisoWhatsEnviadoEm?: string;            // ISO — trava anti-duplicata
+  avisoWhatsOk?: boolean;
 };
 
 // Linha customizável da proposta. Substitui/estende os ajustes: cada linha é
