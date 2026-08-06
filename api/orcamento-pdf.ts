@@ -35,6 +35,9 @@ type OrcamentoDados = {
   inclusos?: string[];
   observacoes?: string;
   geradoEm?: string;            // "21 de agosto de 2026, 14:03"
+  // Detalhamento (pacote do site): cardápio do menu + bebidas inclusas.
+  cardapio?: { titulo: string; tagline?: string; blocos: { label: string; itens: string[] }[] };
+  bebidas?: { soft: { title: string; items: string[] }; alcohol?: { title: string; tagline?: string; items: string[] }; note?: string };
 };
 
 const esc = (s: unknown) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c] || c));
@@ -54,6 +57,15 @@ function buildOrcamentoHtml(d: OrcamentoDados): string {
   const header = d.logoUrl
     ? `<img src="${esc(d.logoUrl)}" alt="${esc(d.restauranteNome)}" />`
     : `<div style="font-family:'Fraunces',serif;font-weight:600;font-size:24px">${esc(d.restauranteNome || "")}</div>`;
+
+  const bloco = (label: string, itens: string[], tagline?: string) =>
+    `<div class="pdf-bloco"><div class="pdf-bloco-label">${esc(label)}</div>${tagline ? `<div class="pdf-bloco-tag">${esc(tagline)}</div>` : ""}<ul>${itens.map((i) => `<li>${esc(i)}</li>`).join("")}</ul></div>`;
+  const cardapioSec = d.cardapio
+    ? `<div class="pdf-section"><h2>${esc(d.cardapio.titulo)}</h2>${d.cardapio.tagline ? `<p class="pdf-tagline">${esc(d.cardapio.tagline)}</p>` : ""}${d.cardapio.blocos.map((b) => bloco(b.label, b.itens)).join("")}</div>`
+    : "";
+  const bebidasSec = d.bebidas
+    ? `<div class="pdf-section"><h2>Bebidas incluídas</h2>${bloco(d.bebidas.soft.title, d.bebidas.soft.items)}${d.bebidas.alcohol ? bloco(d.bebidas.alcohol.title, d.bebidas.alcohol.items, d.bebidas.alcohol.tagline) : ""}${d.bebidas.note ? `<div class="pdf-conditions" style="margin-top:8px"><div class="pdf-conditions-title">Fora do pacote</div><div style="font-family:'Fraunces',serif;font-size:13px">${esc(d.bebidas.note)}</div></div>` : ""}</div>`
+    : "";
 
   return `<!DOCTYPE html><html lang="pt-BR"><head><meta charset="UTF-8">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,400&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -83,6 +95,12 @@ function buildOrcamentoHtml(d: OrcamentoDados): string {
   .pdf-pp { text-align: right; font-family: 'Inter', sans-serif; font-size: 11px; color: #4A4A4A; letter-spacing: .04em; }
   .pdf-list { margin: 0; padding-left: 18px; font-family: 'Fraunces', serif; font-size: 13px; }
   .pdf-list li { padding: 2px 0; }
+  .pdf-tagline { font-family: 'Fraunces', serif; font-style: italic; font-size: 14px; color: #4A4A4A; margin: -4px 0 12px 0; }
+  .pdf-bloco { margin-bottom: 12px; }
+  .pdf-bloco-label { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 10px; letter-spacing: 0.22em; text-transform: uppercase; color: #782827; margin-bottom: 6px; }
+  .pdf-bloco-tag { font-family: 'Fraunces', serif; font-style: italic; font-size: 12px; color: #4A4A4A; margin-bottom: 6px; }
+  .pdf-bloco ul { margin: 0; padding-left: 16px; }
+  .pdf-bloco li { font-family: 'Fraunces', serif; font-size: 13px; line-height: 1.5; padding: 1px 0; }
   .pdf-conditions { background: rgba(120,40,39,.05); border-left: 2px solid #782827; padding: 12px 14px; margin-top: 8px; }
   .pdf-conditions-title { font-family: 'Inter', sans-serif; font-weight: 600; font-size: 10px; letter-spacing: 0.18em; text-transform: uppercase; color: #782827; margin-bottom: 6px; }
   .pdf-conditions ul { margin: 0; padding-left: 18px; font-family: 'Fraunces', serif; font-size: 13px; }
@@ -96,6 +114,8 @@ function buildOrcamentoHtml(d: OrcamentoDados): string {
   <h1>Orçamento · <em>Evento</em></h1>
   <div class="pdf-cliente-header">Para <strong>${esc(d.clienteNome || "—")}</strong>${d.geradoEm ? ` · ${esc(d.geradoEm)}` : ""}</div>
   <div class="pdf-section"><h2>O evento</h2><div class="pdf-dados">${dados}</div></div>
+  ${cardapioSec}
+  ${bebidasSec}
   <div class="pdf-section">
     <h2>Valores</h2>
     <table class="pdf-values"><tbody>

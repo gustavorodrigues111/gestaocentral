@@ -11,7 +11,7 @@ import { criarProposta, montarMensagemProposta, parcelasDefaultPF, parcelasDefau
 import { registrarTratativa } from "./tratativas";
 import { pickDriveFile } from "../../core/google/drivePicker";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { PACOTES_LOBOZO_PP, LOCACAO_LOBOZO, janelaLobozo } from "./VitrineLobozo";
+import { PACOTES_LOBOZO_PP, LOCACAO_LOBOZO, janelaLobozo, menuLobozoPorChave, BEBIDAS_LOBOZO } from "./VitrineLobozo";
 
 type Props = {
   lead: LeadEvento;
@@ -227,7 +227,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
     if (gerandoPdf) return;
     setGerandoPdf(p.id);
     try {
-      const fmt = (n: number) => `R$ ${Math.round(n).toLocaleString("pt-BR")}`;
+      const fmt = (n: number) => fmtBRL(n);
       const somaLinhas = (p.linhas || []).reduce((s, l) => s + linhaPropostaTotal(l), 0);
       const base = Math.round((p.precoTotal - somaLinhas - (p.arredondamento || 0)) * 100) / 100;
       const itens: { descricao: string; valor: string }[] = [];
@@ -249,6 +249,14 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
 
       const dataEv = new Date(p.dataEvento + "T12:00:00");
       const dataBR = `${String(dataEv.getDate()).padStart(2, "0")}/${String(dataEv.getMonth() + 1).padStart(2, "0")}/${dataEv.getFullYear()}`;
+      // Detalhamento do pacote do site (Lobozó): cardápio do menu + bebidas.
+      const menu = ehLobozoProp && lead.lobozo?.menu ? menuLobozoPorChave(lead.lobozo.menu) : null;
+      const cardapio = menu ? { titulo: menu.nome, tagline: menu.tagline, blocos: menu.blocos.map((b) => ({ label: b.label, itens: b.itens })) } : undefined;
+      const bebidas = ehLobozoProp && lead.lobozo?.bebidas ? {
+        soft: { title: BEBIDAS_LOBOZO.soft.title, items: BEBIDAS_LOBOZO.soft.items },
+        ...(lead.lobozo.bebidas === "alcohol" ? { alcohol: BEBIDAS_LOBOZO.alcohol } : {}),
+        note: BEBIDAS_LOBOZO.note,
+      } : undefined;
       const dados = {
         restauranteNome,
         clienteNome: lead.cliente.nome,
@@ -261,6 +269,8 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
         total: fmt(p.precoTotal),
         precoPorPessoa: p.precoPorPessoa > 0 ? `${fmt(p.precoPorPessoa)} por pessoa` : undefined,
         condicoes,
+        cardapio,
+        bebidas,
         inclusos: p.inclusos && p.inclusos.length ? p.inclusos : undefined,
         observacoes: p.observacoes || undefined,
         geradoEm: new Date().toLocaleDateString("pt-BR", { day: "2-digit", month: "long", year: "numeric" }),

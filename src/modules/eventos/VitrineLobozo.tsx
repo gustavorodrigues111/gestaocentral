@@ -10,7 +10,7 @@ const INK_SOFT = "#4A4A4A";
 const serif = "'Fraunces', Georgia, serif";
 const sans = "'Inter', system-ui, sans-serif";
 
-const MENUS: { nome: string; tagline: string; blocos: { label: string; itens: string[]; nota?: string }[] }[] = [
+export const MENUS: { nome: string; tagline: string; blocos: { label: string; itens: string[]; nota?: string }[] }[] = [
   {
     nome: "Menu Aberto",
     tagline: "Seleção do balcão de frios e dos petiscos à vontade, servidos para compartilhar. Sem prato principal.",
@@ -41,6 +41,34 @@ const PACOTES = [
   { janela: "Domingo a Quinta", linhas: [["Menu Sequência", "R$ 240", "R$ 370"], ["Menu Aberto", "R$ 270", "R$ 400"]] },
   { janela: "Sexta e Sábado", linhas: [["Menu Sequência", "R$ 260", "R$ 390"], ["Menu Aberto", "R$ 290", "R$ 420"]] },
 ];
+
+// Bebidas inclusas nos pacotes (pro PDF do orçamento).
+export const BEBIDAS_LOBOZO = {
+  soft: {
+    title: "Sem álcool",
+    items: [
+      "Água Mamba sem gás e com gás",
+      "Sucos da Mata Atlântica (uvaia, cambuci, pitanga, goiaba ou amora)",
+      "Mate gelado da casa (natural, com pitanga ou com cambuci)",
+      "Baer-Mate",
+      "Água tônica FYS e FYS Zero",
+    ],
+  },
+  alcohol: {
+    title: "Com álcool",
+    tagline: "Inclui tudo do pacote sem álcool, mais:",
+    items: [
+      "Cervejas Praya Lager sem glúten, Praya Clássica e Heineken",
+      "Caipirinhas do Lobozó (caju com limão, um-dois-três limões, fruta do dia)",
+      "Drinks: Rabo de Galo, Jabuticaba Amiga, Jurubeba Sour, Batidinha de Frutas e Tônico de Uvaia",
+    ],
+  },
+  note: "Vinhos e outras bebidas podem ser incluídos no pacote, mediante ajuste no valor final. Condições negociadas diretamente com o cliente.",
+};
+// Menu por chave (sequencia/aberto) — pro cardápio do PDF.
+export function menuLobozoPorChave(k: "sequencia" | "aberto") {
+  return MENUS.find((m) => (k === "sequencia" ? /sequ/i : /aberto/i).test(m.nome)) || null;
+}
 
 // ── Preços do Lobozó pra puxar no editor de orçamento (mesma fonte da vitrine) ──
 export const PACOTES_LOBOZO_PP: Record<"dom-qui" | "sex-sab", Record<"sequencia" | "aberto", { soft: number; alcohol: number }>> = {
