@@ -41,7 +41,6 @@ import {
   estenderPrazoAdmissao,
   desfazerUltimaExtensaoPrazo,
   iniciarAdmissao,
-  linkWhatsAppCandidato,
   marcarLinkEnviado,
   montarMensagemEnvioLink,
   moverStatusKanban,
@@ -68,6 +67,7 @@ import { PreencherFormManualModal } from "./PreencherFormManualModal";
 import { VerPreenchimentoModal } from "./VerPreenchimentoModal";
 import { IniciarAdmissaoModal } from "./IniciarAdmissaoModal";
 import { enviarWhatsapp } from "../../core/whatsapp/enviar";
+import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 
 function fmtDataHora(iso: string): string {
   return new Date(iso).toLocaleString("pt-BR", {
@@ -119,6 +119,7 @@ function statusDaColuna(col: KanbanColuna): AdmissaoStatus | null {
 
 export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
   const { pessoa: me } = useAuth();
+  const abrirWhatsapp = useAbrirWhatsapp();
   const [admissoes, setAdmissoes] = useState<Admissao[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [admAbertaId, setAdmAbertaId] = useState<string | null>(null);
@@ -387,10 +388,9 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
       if (r.ok) { alert(`✅ Link enviado pra ${nome1} pelo WhatsApp da plataforma.`); return; }
       // 2) Fallback: abre o SEU WhatsApp com a mensagem pronta (envio manual).
       const msg = montarMensagemEnvioLink(adm.candidato.nome, activeRestaurant.nome, url, prazoDias, activeRestaurant);
-      const link = linkWhatsAppCandidato(adm.candidato.whatsapp, msg);
-      if (!link) { alert(r.erro ? `Falha no envio automático (${r.erro}) e WhatsApp do candidato inválido.` : "WhatsApp do candidato inválido — confira o cadastro."); return; }
-      alert((r.naoConfigurado ? "WhatsApp da plataforma não configurado." : `Envio automático falhou (${r.erro || "erro"}).`) + "\n\nAbrindo o seu WhatsApp pra enviar manualmente…");
-      window.open(link, "_blank");
+      if (!(adm.candidato.whatsapp || "").replace(/\D/g, "")) { alert(r.erro ? `Falha no envio automático (${r.erro}) e WhatsApp do candidato inválido.` : "WhatsApp do candidato inválido — confira o cadastro."); return; }
+      alert((r.naoConfigurado ? "WhatsApp da plataforma não configurado." : `Envio automático falhou (${r.erro || "erro"}).`) + "\n\nAbrindo no WhatsApp interno pra enviar…");
+      await abrirWhatsapp(rid, "empregados", adm.candidato.whatsapp, nome1, msg);
     } catch (e) {
       alert("Erro ao enviar link: " + (e instanceof Error ? e.message : "?"));
     }
@@ -432,8 +432,7 @@ export function AdmissaoKanban({ rid, activeRestaurant }: Props) {
       const { token } = await reenviarAdmissao(adm, prazoDias, me);
       const url = urlPublicaAdmissao(token, activeRestaurant.subdomain);
       const msg = montarMensagemEnvioLink(adm.candidato.nome, activeRestaurant.nome, url, prazoDias, activeRestaurant);
-      const link = linkWhatsAppCandidato(adm.candidato.whatsapp, msg);
-      if (link) window.open(link, "_blank");
+      await abrirWhatsapp(rid, "empregados", adm.candidato.whatsapp, adm.candidato.nome, msg);
     } catch (e) {
       alert("Erro ao gerar novo link: " + (e instanceof Error ? e.message : "?"));
     }

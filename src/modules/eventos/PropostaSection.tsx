@@ -11,6 +11,7 @@ import { criarProposta, montarMensagemProposta, parcelasDefaultPF, parcelasDefau
 import { registrarTratativa } from "./tratativas";
 import { pickDriveFile } from "../../core/google/drivePicker";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import { PACOTES_LOBOZO_PP, LOCACAO_LOBOZO, janelaLobozo, menuLobozoPorChave, BEBIDAS_LOBOZO } from "./VitrineLobozo";
 
 type Props = {
@@ -71,6 +72,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
   const [pagando, setPagando] = useState<{ p: PropostaEvento; idx: number } | null>(null);
   const [gerandoPdf, setGerandoPdf] = useState<string>(""); // id da proposta gerando
   const { restaurants } = useRestaurant();
+  const abrirWhatsapp = useAbrirWhatsapp();
   const restauranteNome = restaurants.find((r) => r.id === lead.restaurantId)?.nome || "";
   const ehLobozoProp = restauranteNome.toLowerCase().includes("lobo");
   const janelaLob = janelaLobozo(lead.dataDesejada);
@@ -197,10 +199,11 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
   }
 
   async function enviarWhatsApp(p: PropostaEvento) {
-    const numero = lead.cliente.whatsapp.replace(/\D/g, "");
     const restaurantNome = espaco?.nome || "nosso espaço";
     const texto = montarMensagemProposta(p, lead.cliente.nome, restaurantNome);
-    const url = `https://api.whatsapp.com/send?phone=${encodeURIComponent(numero)}&text=${encodeURIComponent(texto)}`;
+    // Abre o WhatsApp INTERNO no número de "Eventos" com a proposta pronta.
+    const ok = await abrirWhatsapp(lead.restaurantId, "eventos", lead.cliente.whatsapp, lead.cliente.nome, texto);
+    if (!ok) return;
     await updateDoc(doc(db, "propostasEvento", p.id), sanitizeForFirestore({
       enviadaEm: new Date().toISOString(),
       enviadaPor: meId,
@@ -219,7 +222,6 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
         updatedAt: new Date().toISOString(),
       }));
     }
-    window.open(url, "_blank");
   }
 
   // Gera o PDF do orçamento (visual do Lobozó) a partir da proposta e salva a URL.

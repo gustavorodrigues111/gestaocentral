@@ -11,6 +11,7 @@ import { createPortal } from "react-dom";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import type { Admissao, Cargo, KanbanColuna, Pessoa, Restaurant, SubtarefaAdmissao } from "../../core/types";
 import {
   atualizarSubtarefa,
@@ -24,7 +25,6 @@ import {
   getKanbanColunas,
   getSubtarefasTemplate,
   getPrazoDias,
-  linkWhatsAppCandidato,
   montarCorpoEmailClinica,
   montarMensagemInstrucoesCandidato,
   montarMensagemBancoFinanceiro,
@@ -100,6 +100,7 @@ export function SubtarefasDrawer({
   admissao, cargos, activeRestaurant, pessoa, onClose,
   intencao = "ver", onConfirmarAvanco,
 }: Props) {
+  const abrirWhatsapp = useAbrirWhatsapp();
   const colunas = useMemo(
     () => [...getKanbanColunas(activeRestaurant)].sort((a, b) => a.ordem - b.ordem),
     [activeRestaurant],
@@ -367,12 +368,7 @@ export function SubtarefasDrawer({
       prazoDocs,
       activeRestaurant,
     );
-    const link = linkWhatsAppCandidato(admissao.candidato.whatsapp, msg);
-    if (!link) {
-      alert("WhatsApp do candidato inválido — confira o cadastro.");
-      return;
-    }
-    window.open(link, "_blank");
+    void abrirWhatsapp(activeRestaurant.id, "empregados", admissao.candidato.whatsapp, admissao.candidato.nome, msg);
     if (!s.feita) void toggle(s);
   }
 
@@ -406,12 +402,7 @@ export function SubtarefasDrawer({
         prazoDias,
         activeRestaurant,
       );
-      const link = linkWhatsAppCandidato(admissao.candidato.whatsapp, msg);
-      if (!link) {
-        alert("WhatsApp do candidato inválido — confira o cadastro.");
-        return;
-      }
-      window.open(link, "_blank");
+      await abrirWhatsapp(activeRestaurant.id, "empregados", admissao.candidato.whatsapp, admissao.candidato.nome, msg);
     } catch (e) {
       alert("Erro ao enviar link: " + (e instanceof Error ? e.message : "?"));
     }
@@ -438,12 +429,7 @@ export function SubtarefasDrawer({
       admissao.candidato.nome,
       activeRestaurant.nome,
     );
-    const link = linkWhatsAppCandidato(admissao.candidato.whatsapp, msg);
-    if (!link) {
-      alert("WhatsApp do candidato inválido — confira o cadastro.");
-      return;
-    }
-    window.open(link, "_blank");
+    void abrirWhatsapp(activeRestaurant.id, "empregados", admissao.candidato.whatsapp, admissao.candidato.nome, msg);
   }
 
   // 📥 Baixar planilha — XLSX da ficha de admissão. NÃO marca a subtarefa

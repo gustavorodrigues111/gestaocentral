@@ -43,7 +43,8 @@ import {
   removerNotaInterna,
   salvarRelatorioCache,
 } from "../../core/excecoes/statusSemana";
-import { montarMensagemLoteAjuste, montarLinkWhats } from "../../core/excecoes/loteAjusteWhats";
+import { montarMensagemLoteAjuste } from "../../core/excecoes/loteAjusteWhats";
+import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import type { ExcecaoStatusSemana } from "../../core/types";
 import {
   generateExceptionsReport,
@@ -195,6 +196,7 @@ type Props = {
 
 export function InconformidadesTab({ rid, activeRestaurant }: Props) {
   const { pessoa: me } = useAuth();
+  const abrirWhatsapp = useAbrirWhatsapp();
 
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
 
@@ -1077,8 +1079,9 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
         batidas: a.batidas,
       })),
     });
-    const link = montarLinkWhats(whatsapp, msg);
-    window.open(link, "_blank");
+    // Abre o WhatsApp INTERNO no número de "Empregados / DP" com o lote pronto.
+    const okEnvio = await abrirWhatsapp(rid, "empregados", whatsapp, empregadoNome, msg);
+    if (!okEnvio) return;
     const ok = await marcarLoteAguardandoAjuste(empregadoId, paraEmpregado);
     if (ok) await registrarEnvioLocal(empregadoId, "whatsapp");
   }
