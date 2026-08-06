@@ -4141,6 +4141,11 @@ export type CardapioLayout = {
   // Colunas: padrão pra todas as páginas + override por página (1..3).
   colsPadrao?: number;
   colsPorPagina?: { [pagina: number]: number };
+  // Alinhamento do texto (seções + pratos + preço). Padrão do cardápio +
+  // override por página. Como o layout pode ser próprio de cada cardápio
+  // ("Formatar diferente"), isso já permite alinhar por tipo de cardápio.
+  alinhamento?: "left" | "center" | "right";
+  alinhamentoPorPagina?: { [pagina: number]: "left" | "center" | "right" };
 };
 export type CardapioEstruturado = {
   id: string;                        // = restaurantId

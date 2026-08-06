@@ -50,7 +50,8 @@ export function GarrafaIcon({ size = 12, color = "currentColor", style }: { size
 }
 
 type CampoPrato = "titulo" | "subtitulo" | "tituloEn" | "subtituloEn";
-type Lay = Required<Omit<CardapioLayout, "fontesCustom" | "secaoPos" | "colsPorPagina">> & { fontesCustom: string[]; secaoPos: { [k: string]: number }; colsPorPagina: { [p: number]: number } };
+type Alinhamento = "left" | "center" | "right";
+type Lay = Required<Omit<CardapioLayout, "fontesCustom" | "secaoPos" | "colsPorPagina" | "alinhamentoPorPagina">> & { fontesCustom: string[]; secaoPos: { [k: string]: number }; colsPorPagina: { [p: number]: number }; alinhamentoPorPagina: { [p: number]: Alinhamento } };
 const PADROES: Lay = {
   fonteTitulos: "dm-serif-display", fonteCorpo: "inter", fontesCustom: [],
   espacoPratos: 8, espacoDescricao: 1, espacoSecoes: 24, tamTitulo: 13, tamDescricao: 10, tamSecao: 17,
@@ -58,8 +59,9 @@ const PADROES: Lay = {
   tituloCapa: "COMIDAS", tamTituloCapa: 13, offsetTituloCapa: 0, secaoPos: {}, mostrarCifrao: true,
   margemTopo: 34, margemBaixo: 40, colGap: 22,
   capaUrl: "", mioloUrl: "", capaTitLeftPct: 54, capaTitTopPct: 20, colsPadrao: 2, colsPorPagina: {},
+  alinhamento: "left", alinhamentoPorPagina: {},
 };
-const montarLay = (l?: CardapioLayout): Lay => l ? { ...PADROES, ...l, fontesCustom: l.fontesCustom || [], secaoPos: l.secaoPos || {}, colsPorPagina: l.colsPorPagina || {} } : PADROES;
+const montarLay = (l?: CardapioLayout): Lay => l ? { ...PADROES, ...l, fontesCustom: l.fontesCustom || [], secaoPos: l.secaoPos || {}, colsPorPagina: l.colsPorPagina || {}, alinhamentoPorPagina: l.alinhamentoPorPagina || {} } : PADROES;
 
 const PX_TRANSP = "data:image/gif;base64,R0lGODlhAQABAAAAACH5BAEKAAEALAAAAAABAAEAAAICTAEAOw==";
 // Converte uma imagem (mesmo cross-origin/asset) em data-URI. Tenta canvas
@@ -254,18 +256,19 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
 
   // `fatia` renderiza só um intervalo dos pratos; `semCabecalho` oculta o título/obs
   // (usado na continuação de uma seção quebrada pra outra coluna).
-  const Secao = ({ s, fatia, semCabecalho }: { s: SecaoCardapio; fatia?: [number, number]; semCabecalho?: boolean }) => {
+  const Secao = ({ s, fatia, semCabecalho, align = "left" }: { s: SecaoCardapio; fatia?: [number, number]; semCabecalho?: boolean; align?: Alinhamento }) => {
     const nome = (en && s.nomeEn) || s.nome;
     const obs = (en && s.obsEn) || s.obs;
     const pratos = fatia ? s.pratos.slice(fatia[0], fatia[1]) : s.pratos;
+    const justPrato = align === "center" ? "center" : align === "right" ? "flex-end" : "space-between";
     return (
-      <div>
+      <div style={{ textAlign: align }}>
         {!semCabecalho && (
-          <div style={{ textAlign: "center", marginBottom: 9 }}>
+          <div style={{ textAlign: align, marginBottom: 9 }}>
             <span style={{ fontFamily: fTit, fontSize: lay.tamSecao, color: lay.corSecoes, fontWeight: 600 }}>{nome}</span>
           </div>
         )}
-        {!semCabecalho && obs && <div style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, fontStyle: "italic", color: lay.corDescricao, textAlign: "center", marginBottom: 8 }}>{obs}</div>}
+        {!semCabecalho && obs && <div style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, fontStyle: "italic", color: lay.corDescricao, textAlign: align, marginBottom: 8 }}>{obs}</div>}
         {pratos.map((p) => {
           const titulo = (en && p.tituloEn) || p.titulo; if (!titulo) return null;
           const subt = (en && p.subtituloEn) || p.subtitulo;
@@ -276,7 +279,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
           const campoSub: CampoPrato = en ? "subtituloEn" : "subtitulo";
           return (
             <div key={p.id} style={{ marginBottom: lay.espacoPratos }}>
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: justPrato, alignItems: "baseline", gap: 8 }}>
                 <span contentEditable={!!onEditarPrato} suppressContentEditableWarning
                   onBlur={(e) => onEditarPrato?.(p.id, campoTit, e.currentTarget.innerText)}
                   style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: lay.corPratos, whiteSpace: "pre-line", outline: "none" }}>{titulo}</span>
@@ -322,6 +325,8 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
 
   // Nº de colunas de uma página (1..3): override por página > padrão > 2.
   const colsDe = (p: number) => Math.min(3, Math.max(1, lay.colsPorPagina[p] ?? lay.colsPadrao ?? 2));
+  // Alinhamento efetivo de uma página: override da página, senão o padrão do cardápio.
+  const alinhaDe = (p: number): Alinhamento => lay.alinhamentoPorPagina[p] || lay.alinhamento || "left";
   // Geometria de uma coluna c (0-based) numa página de n colunas.
   const colGeo = (p: number, c: number) => {
     const n = colsDe(p);
@@ -433,7 +438,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
           const g = colGeo(p, b.c);
           return (
             <div key={b.id} style={{ position: "absolute", top: b.top, left: g.x, width: g.w }}>
-              <div ref={medir(b.id)}><Secao s={b.s} fatia={b.fatia} semCabecalho={b.semCabecalho} /></div>
+              <div ref={medir(b.id)}><Secao s={b.s} fatia={b.fatia} semCabecalho={b.semCabecalho} align={alinhaDe(p)} /></div>
             </div>
           );
         })}
@@ -713,6 +718,43 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
               <input type="checkbox" checked={lay.mostrarCifrao} onChange={(e) => setCampo("mostrarCifrao", e.target.checked)} className="w-4 h-4 accent-indigo-600" />
               Mostrar cifrão <span className="font-semibold">$</span> antes do preço
             </label>
+          </PainelGrupo>
+
+          <PainelGrupo titulo="Alinhamento do texto" icone="↔️">
+            <p className="text-[11px] text-gray-500 dark:text-gray-400">
+              Alinha seções, pratos, descrição e preço.{" "}
+              {layoutProprio ? "Vale só para este cardápio." : "Marque \"Formatar este cardápio diferente\" acima pra alinhar só este cardápio."}
+            </p>
+            <div className="flex items-center justify-between gap-2 py-1">
+              <span className="text-[13px] text-gray-600 dark:text-gray-300">Padrão do cardápio</span>
+              <div className="flex rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
+                {([["left", "⬅ Esq."], ["center", "≡ Centro"], ["right", "Dir. ➡"]] as const).map(([v, lbl]) => (
+                  <button key={v} type="button" onClick={() => setCampo("alinhamento", v)}
+                    className={`px-2.5 py-1 text-[12px] ${(lay.alinhamento || "left") === v ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>{lbl}</button>
+                ))}
+              </div>
+            </div>
+            {numPag > 1 && (
+              <div className="space-y-1.5 pt-1 border-t border-gray-100 dark:border-gray-800">
+                <div className="text-[11px] text-gray-400 pt-1.5">Por página (sobrescreve o padrão):</div>
+                {Array.from({ length: numPag }, (_, k) => k + 1).map((p) => {
+                  const cur = lay.alinhamentoPorPagina[p];
+                  return (
+                    <div key={p} className="flex items-center justify-between gap-2">
+                      <span className="text-[12px] text-gray-500 shrink-0">Página {p}</span>
+                      <div className="flex rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
+                        <button type="button" onClick={() => { const n = { ...lay.alinhamentoPorPagina }; delete n[p]; setCampo("alinhamentoPorPagina", n); }}
+                          className={`px-2 py-0.5 text-[11px] ${!cur ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>Padrão</button>
+                        {([["left", "⬅"], ["center", "≡"], ["right", "➡"]] as const).map(([v, lbl]) => (
+                          <button key={v} type="button" onClick={() => setCampo("alinhamentoPorPagina", { ...lay.alinhamentoPorPagina, [p]: v })}
+                            className={`px-2.5 py-0.5 text-[12px] ${cur === v ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>{lbl}</button>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </PainelGrupo>
 
           <PainelGrupo titulo="Cores dos textos" icone="🎨">
