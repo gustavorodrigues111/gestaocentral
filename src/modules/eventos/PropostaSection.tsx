@@ -22,6 +22,34 @@ type Props = {
   onAvancarStatus?: () => Promise<void>;
 };
 
+// ── Dinheiro: formatação BR (R$ 1.234,56) + máscara "centavos da direita" ──
+const fmtBRL = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+function maskMoney(raw: string): string {
+  const neg = /^\s*-/.test(raw);
+  const d = raw.replace(/\D/g, "");
+  if (!d) return neg ? "-" : "";
+  return (neg ? "-" : "") + (parseInt(d, 10) / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+function parseMoney(masked: string): number {
+  const neg = /^\s*-/.test(masked);
+  const d = (masked || "").replace(/\D/g, "");
+  const v = d ? parseInt(d, 10) / 100 : 0;
+  return neg ? -v : v;
+}
+// Input de dinheiro: texto (sem setinha), máscara, R$ à esquerda opcional.
+function MoneyInput({ value, onChange, className, permiteNegativo, autoFocus }: {
+  value: number; onChange: (n: number) => void; className?: string; permiteNegativo?: boolean; autoFocus?: boolean;
+}) {
+  const fmt = (n: number) => n ? (permiteNegativo && n < 0 ? "-" : "") + Math.abs(n).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "";
+  const [txt, setTxt] = useState(fmt(value));
+  useEffect(() => { setTxt((prev) => (parseMoney(prev) === value ? prev : fmt(value))); /* eslint-disable-next-line */ }, [value]);
+  return (
+    <input type="text" inputMode="numeric" value={txt} autoFocus={autoFocus}
+      onChange={(e) => { let raw = e.target.value; if (!permiteNegativo) raw = raw.replace(/-/g, ""); const m = maskMoney(raw); setTxt(m); onChange(parseMoney(m)); }}
+      placeholder="0,00" className={className} />
+  );
+}
+
 const novaLinha = (parcial?: Partial<LinhaProposta>): LinhaProposta => ({
   id: `ln_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
   descricao: parcial?.descricao ?? "",
@@ -181,7 +209,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
     // Registra no log de tratativas (auto).
     await registrarTratativa({
       restaurantId: lead.restaurantId, leadId: lead.id,
-      texto: `Proposta v${p.versao} enviada — R$ ${p.precoTotal.toFixed(2)}`,
+      texto: `Proposta v${p.versao} enviada — ${fmtBRL(p.precoTotal)}`,
       canal: "whatsapp", porId: meId, porNome: meNome,
       manual: false, templateKey: "envio_proposta",
     }).catch(() => { /* log não bloqueia o envio */ });
@@ -369,8 +397,8 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
             <div>
               <label className="text-[11px] uppercase font-bold text-gray-500">Nº convidados</label>
               <input
-                type="number" min={1} value={pax}
-                onChange={(e) => setPax(parseInt(e.target.value, 10) || 0)}
+                type="text" inputMode="numeric" value={pax || ""}
+                onChange={(e) => setPax(parseInt(e.target.value.replace(/\D/g, ""), 10) || 0)}
                 className="mt-1 w-full px-3 py-2 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
               />
             </div>
@@ -378,7 +406,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
 
           {baseDoPacote > 0 && (
             <div className="text-xs text-gray-600 dark:text-gray-400">
-              Base do pacote: <strong className="tabular-nums">R$ {baseDoPacote.toFixed(2)}</strong>
+              Base do pacote: <strong className="tabular-nums">{fmtBRL(baseDoPacote)}</strong>
               <span className="text-gray-400"> (as linhas abaixo somam a isto)</span>
             </div>
           )}
@@ -413,26 +441,22 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
                     </select>
                     <span className="inline-flex items-center gap-1">
                       <span className="text-xs text-gray-400">R$</span>
-                      <input
-                        type="number" step="0.01" min={0} value={l.valor || ""}
-                        onChange={(e) => setLinha(l.id, { valor: parseFloat(e.target.value) || 0 })}
-                        placeholder="0,00"
-                        className="w-24 px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right"
-                      />
+                      <MoneyInput value={l.valor} onChange={(v) => setLinha(l.id, { valor: v })}
+                        className="w-28 px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right tabular-nums" />
                     </span>
                     {l.tipo === "por_pessoa" && (
                       <span className="inline-flex items-center gap-1">
                         <span className="text-xs text-gray-400">×</span>
                         <input
-                          type="number" min={0} value={l.numPessoas ?? pax}
-                          onChange={(e) => setLinha(l.id, { numPessoas: parseInt(e.target.value, 10) || 0 })}
+                          type="text" inputMode="numeric" value={l.numPessoas ?? pax}
+                          onChange={(e) => setLinha(l.id, { numPessoas: parseInt(e.target.value.replace(/\D/g, ""), 10) || 0 })}
                           className="w-16 px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right"
                         />
                         <span className="text-xs text-gray-400">pessoas</span>
                       </span>
                     )}
                     <span className="ml-auto text-sm font-semibold text-emerald-700 dark:text-emerald-400 tabular-nums">
-                      = R$ {tot.toFixed(2)}
+                      = {fmtBRL(tot)}
                     </span>
                   </div>
                 </div>
@@ -458,7 +482,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
                     return (
                       <button key={menu + dr} onClick={() => addLinha({ descricao: `Pacote ${label}`, tipo: "por_pessoa", valor: preco, numPessoas: pax })}
                         className="text-xs px-2 py-1 rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-900 hover:bg-amber-50 dark:hover:bg-amber-900/20">
-                        + {label} <span className="text-amber-700 dark:text-amber-400 font-semibold">R$ {preco}/p</span>
+                        + {label} <span className="text-amber-700 dark:text-amber-400 font-semibold">R$ {preco.toLocaleString("pt-BR")}/p</span>
                       </button>
                     );
                   }))}
@@ -467,7 +491,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
                   {LOCACAO_LOBOZO.map((l) => (
                     <button key={l.nome} onClick={() => addLinha({ descricao: l.nome, tipo: "fixo", valor: l.valor })}
                       className="text-xs px-2 py-1 rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-900 hover:bg-amber-50 dark:hover:bg-amber-900/20">
-                      + {l.nome} <span className="text-amber-700 dark:text-amber-400 font-semibold">R$ {l.valor}</span>
+                      + {l.nome} <span className="text-amber-700 dark:text-amber-400 font-semibold">R$ {l.valor.toLocaleString("pt-BR")}</span>
                     </button>
                   ))}
                 </div>
@@ -479,13 +503,13 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
           <div className="rounded-lg bg-gray-50 dark:bg-gray-800/40 p-2.5 space-y-1.5">
             <div className="flex items-center gap-2 flex-wrap text-sm">
               <span className="text-gray-500">Subtotal:</span>
-              <span className="tabular-nums">R$ {totalPreview.toFixed(2)}</span>
+              <span className="tabular-nums">{fmtBRL(totalPreview)}</span>
               <span className="text-gray-400 mx-1">·</span>
-              <span className="text-gray-500">Arredondar:</span>
+              <span className="text-gray-500">Ajuste/desconto:</span>
               <span className="inline-flex items-center gap-1">
                 <span className="text-xs text-gray-400">R$</span>
-                <input type="number" step="0.01" value={arredondamento || ""} onChange={(e) => setArredondamento(parseFloat(e.target.value) || 0)}
-                  placeholder="0,00" className="w-24 px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right" />
+                <MoneyInput value={arredondamento} onChange={(v) => setArredondamento(v)} permiteNegativo
+                  className="w-28 px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right tabular-nums" />
               </span>
               <button type="button" onClick={() => setArredondamento(Math.round((Math.ceil(totalPreview / 10) * 10 - totalPreview) * 100) / 100)}
                 className="text-[11px] px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800">↑ dezena</button>
@@ -495,7 +519,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
             </div>
             <div className="text-sm">
               <span className="text-gray-500">Total final: </span>
-              <strong className="text-emerald-700 dark:text-emerald-400 tabular-nums">R$ {totalFinal.toFixed(2)}</strong>
+              <strong className="text-emerald-700 dark:text-emerald-400 tabular-nums">{fmtBRL(totalFinal)}</strong>
             </div>
           </div>
 
@@ -523,8 +547,8 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
                     <input value={pc.descricao} onChange={(e) => setParcelasEdit(prev => prev.map((x, j) => j === i ? { ...x, descricao: e.target.value } : x))}
                       placeholder="Descrição (ex: Sinal 40%)" className="flex-1 min-w-[140px] px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
                     <span className="inline-flex items-center gap-1"><span className="text-xs text-gray-400">R$</span>
-                      <input type="number" step="0.01" value={pc.valor || ""} onChange={(e) => setParcelasEdit(prev => prev.map((x, j) => j === i ? { ...x, valor: parseFloat(e.target.value) || 0 } : x))}
-                        className="w-24 px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right" /></span>
+                      <MoneyInput value={pc.valor} onChange={(v) => setParcelasEdit(prev => prev.map((x, j) => j === i ? { ...x, valor: v } : x))}
+                        className="w-28 px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-right tabular-nums" /></span>
                     <input type="date" value={pc.vencimentoEm || ""} onChange={(e) => setParcelasEdit(prev => prev.map((x, j) => j === i ? { ...x, vencimentoEm: e.target.value || undefined } : x))}
                       className="px-2 py-1 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
                     <button type="button" onClick={() => setParcelasEdit(prev => prev.filter((_, j) => j !== i))} className="text-rose-500 hover:text-rose-700 text-sm">✕</button>
@@ -533,7 +557,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
                 {(() => {
                   const soma = Math.round(parcelasEdit.reduce((s, p) => s + (p.valor || 0), 0) * 100) / 100;
                   return Math.abs(soma - totalFinal) > 0.01 ? (
-                    <div className="text-[11px] text-amber-600 dark:text-amber-400">⚠ Soma das parcelas R$ {soma.toFixed(2)} ≠ total R$ {totalFinal.toFixed(2)}</div>
+                    <div className="text-[11px] text-amber-600 dark:text-amber-400">⚠ Soma das parcelas {fmtBRL(soma)} ≠ total {fmtBRL(totalFinal)}</div>
                   ) : <div className="text-[11px] text-emerald-600 dark:text-emerald-400">✓ soma bate com o total</div>;
                 })()}
               </div>
@@ -543,7 +567,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
           <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-800">
             <div className="text-sm">
               <span className="text-gray-500">Total: </span>
-              <strong className="text-emerald-700 dark:text-emerald-400 tabular-nums">R$ {totalFinal.toFixed(2)}</strong>
+              <strong className="text-emerald-700 dark:text-emerald-400 tabular-nums">{fmtBRL(totalFinal)}</strong>
             </div>
             <div className="flex gap-2">
               {montando && (
@@ -587,7 +611,7 @@ function RegistrarPagamentoModal({ parcela, onClose, onConfirmar }: {
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
         <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">Registrar pagamento</h3>
-        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{parcela.descricao} — <strong>R$ {parcela.valor.toFixed(2)}</strong></p>
+        <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">{parcela.descricao} — <strong>{fmtBRL(parcela.valor)}</strong></p>
         <div className="mt-3">
           <div className="text-xs text-gray-500 mb-1">Comprovante (opcional)</div>
           <div className="flex items-center gap-2 flex-wrap">
@@ -637,11 +661,11 @@ function PropostaCard({
         </div>
         <div className="text-right">
           <div className="text-lg font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">
-            R$ {proposta.precoTotal.toFixed(2)}
+            {fmtBRL(proposta.precoTotal)}
           </div>
           <div className="text-[11px] text-gray-500">
             {proposta.precoPorPessoa > 0
-              ? `R$ ${proposta.precoPorPessoa.toFixed(2)} × ${proposta.numConvidados} pax`
+              ? `${fmtBRL(proposta.precoPorPessoa)} × ${proposta.numConvidados} pax`
               : `${proposta.numConvidados} pax`}
           </div>
         </div>
@@ -657,9 +681,9 @@ function PropostaCard({
             <div key={l.id} className="flex items-center justify-between gap-2">
               <span>
                 {l.descricao}
-                {l.tipo === "por_pessoa" && <span className="text-gray-400"> · R$ {l.valor.toFixed(2)}/p × {l.numPessoas || 0}</span>}
+                {l.tipo === "por_pessoa" && <span className="text-gray-400"> · {fmtBRL(l.valor)}/p × {l.numPessoas || 0}</span>}
               </span>
-              <span className="tabular-nums">R$ {linhaPropostaTotal(l).toFixed(2)}</span>
+              <span className="tabular-nums">{fmtBRL(linhaPropostaTotal(l))}</span>
             </div>
           ))}
         </div>
@@ -700,7 +724,7 @@ function PropostaCard({
                   </div>
                 )}
               </div>
-              <div className="font-bold tabular-nums shrink-0">R$ {p.valor.toFixed(2)}</div>
+              <div className="font-bold tabular-nums shrink-0">{fmtBRL(p.valor)}</div>
               {podeEditar && (
                 paga ? (
                   <button onClick={() => onDesmarcarPagamento(i)} className="text-xs text-rose-600 hover:underline shrink-0">desmarcar</button>
