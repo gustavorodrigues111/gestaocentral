@@ -14,7 +14,7 @@ import type { LeadEvento, OcasiaoEvento, ModeloEvento, SlotEvento } from "../../
 type Props = {
   rid: string;
   onClose: () => void;
-  onCreated?: (leadId: string) => void;
+  onCreated?: (leadId: string, opts?: { montarOrcamento?: boolean }) => void;
 };
 
 function slotDoHorario(horaInicio: string, horaFim: string): SlotEvento {
@@ -43,7 +43,7 @@ export function NovoLeadManualModal({ rid, onClose, onCreated }: Props) {
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
-  async function salvar() {
+  async function salvar(montarOrcamento = false) {
     setErro("");
     if (!nome.trim()) return setErro("Nome obrigatório");
     if (!whatsapp.trim()) return setErro("WhatsApp obrigatório");
@@ -87,7 +87,7 @@ export function NovoLeadManualModal({ rid, onClose, onCreated }: Props) {
         updatedAt: now,
       };
       await setDoc(doc(db, "leadsEvento", id), sanitizeForFirestore(lead));
-      onCreated?.(id);
+      onCreated?.(id, { montarOrcamento });
       onClose();
     } catch (e) {
       console.error(e);
@@ -188,10 +188,13 @@ export function NovoLeadManualModal({ rid, onClose, onCreated }: Props) {
 
         {erro && <div className="text-sm text-rose-600 dark:text-rose-400">{erro}</div>}
 
-        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+        <div className="flex flex-wrap justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
           <Button variant="ghost" onClick={onClose}>Cancelar</Button>
-          <Button variant="primary" onClick={salvar} disabled={salvando}>
+          <Button variant="secondary" onClick={() => void salvar(false)} disabled={salvando}>
             {salvando ? "Criando..." : "Criar lead"}
+          </Button>
+          <Button variant="primary" onClick={() => void salvar(true)} disabled={salvando}>
+            {salvando ? "Criando..." : "💼 Criar e montar orçamento"}
           </Button>
         </div>
       </div>

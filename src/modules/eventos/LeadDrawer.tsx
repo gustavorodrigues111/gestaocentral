@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { collection, deleteField, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -75,11 +75,18 @@ type Props = {
   pacotes: PacoteEvento[];
   podeEditar: boolean;
   conflitosDoDia?: LeadEvento[];   // outros leads ativos no mesmo dia
+  focoProposta?: boolean;          // abre já rolando pra seção Proposta/orçamento
   onClose: () => void;
 };
 
-export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], onClose }: Props) {
+export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], focoProposta = false, onClose }: Props) {
   const { pessoa: me } = useAuth();
+  const propostaRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!focoProposta) return;
+    const t = setTimeout(() => propostaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 250);
+    return () => clearTimeout(t);
+  }, [focoProposta]);
   const { restaurants } = useRestaurant();
   const abrirWhatsapp = useAbrirWhatsapp();
   const restaurant = restaurants.find(r => r.id === lead.restaurantId) || null;
@@ -545,13 +552,15 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], onC
 
         {/* Proposta + pagamento (PR6 + PR7) */}
         {me && (
-          <PropostaSection
-            lead={lead}
-            pacotes={pacotes}
-            podeEditar={podeEditar}
-            meId={me.id}
-            meNome={me.nome}
-          />
+          <div ref={propostaRef} style={{ scrollMarginTop: 12 }}>
+            <PropostaSection
+              lead={lead}
+              pacotes={pacotes}
+              podeEditar={podeEditar}
+              meId={me.id}
+              meNome={me.nome}
+            />
+          </div>
         )}
 
         {/* BEO (PR8) — só faz sentido a partir de "sinal_recebido" */}

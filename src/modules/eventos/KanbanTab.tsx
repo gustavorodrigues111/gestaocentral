@@ -55,6 +55,7 @@ export function KanbanTab({ rid, podeEditar }: Props) {
   const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState<string>("");
   const [leadAbertoId, setLeadAbertoId] = useState<string | null>(null);
+  const [focoProposta, setFocoProposta] = useState(false); // abrir o drawer já na Proposta
   const [mostrarPerdidos, setMostrarPerdidos] = useState(false);
   const [criandoManual, setCriandoManual] = useState(false);
 
@@ -330,13 +331,15 @@ export function KanbanTab({ rid, podeEditar }: Props) {
           pacotes={pacotes}
           podeEditar={podeEditar}
           conflitosDoDia={conflitosDoLeadAberto}
-          onClose={() => setLeadAbertoId(null)}
+          focoProposta={focoProposta}
+          onClose={() => { setLeadAbertoId(null); setFocoProposta(false); }}
         />
       )}
 
       {/* Criação manual */}
       {criandoManual && (
-        <NovoLeadManualModal rid={rid} onClose={() => setCriandoManual(false)} onCreated={(id) => setLeadAbertoId(id)} />
+        <NovoLeadManualModal rid={rid} onClose={() => setCriandoManual(false)}
+          onCreated={(id, opts) => { setLeadAbertoId(id); setFocoProposta(!!opts?.montarOrcamento); }} />
       )}
 
       {/* Relatório mensal */}
