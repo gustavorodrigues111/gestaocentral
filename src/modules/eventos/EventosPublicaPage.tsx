@@ -20,6 +20,7 @@ import {
 import { useSiteConfigPublic } from "../sites/shared/useSiteConfigPublic";
 import { SiteFormShell, SiteFormScreen, botaoPrimarioStyle } from "../sites/shared/SiteFormShell";
 import { FormField, fieldInputCls } from "../sites/shared/FormField";
+import { VitrineLobozo } from "./VitrineLobozo";
 
 // Página pública: cliente registra interesse num evento.
 // Rota: /eventos/:rid (sem auth). Visual segue o tema do site do
@@ -100,6 +101,7 @@ export function EventosPublicaPage() {
 
   const espaco = useMemo(() => espacos[0] || null, [espacos]);
   const corPrimaria = siteConfig?.tema?.corPrimaria || "#1a5c2a";
+  const ehLobozo = (siteConfig?.slug || "").toLowerCase().includes("lobo");
 
   function update<K extends keyof typeof form>(k: K, v: (typeof form)[K]) {
     setForm(f => ({ ...f, [k]: v }));
@@ -277,7 +279,7 @@ export function EventosPublicaPage() {
     <SiteFormShell
       siteConfig={siteConfig}
       titulo={espaco.nome}
-      maxWidth={640}
+      maxWidth={ehLobozo ? 780 : 640}
       subtitulo={
         <>
           Eventos privados {espaco.capacidadeMax ? `· até ${espaco.capacidadeMax} pessoas` : ""}
@@ -292,6 +294,11 @@ export function EventosPublicaPage() {
         </>
       }
     >
+      {ehLobozo && (
+        <div className="mb-8 pb-8" style={{ borderBottom: "1px solid rgba(10,10,10,.1)" }}>
+          <VitrineLobozo />
+        </div>
+      )}
       <div className="space-y-4">
         {/* Contato */}
         <FormField label="Seu nome *">
