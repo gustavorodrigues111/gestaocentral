@@ -42,6 +42,23 @@ const PACOTES = [
   { janela: "Sexta e Sábado", linhas: [["Menu Sequência", "R$ 260", "R$ 390"], ["Menu Aberto", "R$ 290", "R$ 420"]] },
 ];
 
+// ── Preços do Lobozó pra puxar no editor de orçamento (mesma fonte da vitrine) ──
+export const PACOTES_LOBOZO_PP: Record<"dom-qui" | "sex-sab", Record<"sequencia" | "aberto", { soft: number; alcohol: number }>> = {
+  "dom-qui": { sequencia: { soft: 240, alcohol: 370 }, aberto: { soft: 270, alcohol: 400 } },
+  "sex-sab": { sequencia: { soft: 260, alcohol: 390 }, aberto: { soft: 290, alcohol: 420 } },
+};
+export const LOCACAO_LOBOZO: { nome: string; valor: number }[] = [
+  { nome: "Locação Laje", valor: 1500 },
+  { nome: "Locação Salão (Dom–Qui)", valor: 1500 },
+  { nome: "Locação Salão (Sex/Sáb ou almoço)", valor: 3500 },
+];
+// Janela de preço a partir da data: Sex/Sáb = alta; resto = Dom–Qui.
+export function janelaLobozo(dataYmd: string): "dom-qui" | "sex-sab" {
+  if (!dataYmd) return "dom-qui";
+  const dow = new Date(dataYmd + "T12:00:00").getDay(); // 0 dom … 6 sáb
+  return dow === 5 || dow === 6 ? "sex-sab" : "dom-qui";
+}
+
 export function VitrineLobozo() {
   // Injeta Fraunces/Inter uma vez.
   useEffect(() => {

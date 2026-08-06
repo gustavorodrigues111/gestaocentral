@@ -11,6 +11,7 @@ import { criarProposta, montarMensagemProposta, parcelasDefaultPF, parcelasDefau
 import { registrarTratativa } from "./tratativas";
 import { pickDriveFile } from "../../core/google/drivePicker";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { PACOTES_LOBOZO_PP, LOCACAO_LOBOZO, janelaLobozo } from "./VitrineLobozo";
 
 type Props = {
   lead: LeadEvento;
@@ -43,6 +44,8 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
   const [gerandoPdf, setGerandoPdf] = useState<string>(""); // id da proposta gerando
   const { restaurants } = useRestaurant();
   const restauranteNome = restaurants.find((r) => r.id === lead.restaurantId)?.nome || "";
+  const ehLobozoProp = restauranteNome.toLowerCase().includes("lobo");
+  const janelaLob = janelaLobozo(lead.dataDesejada);
 
   useEffect(() => {
     const q = query(collection(db, "propostasEvento"), where("leadId", "==", lead.id));
@@ -407,6 +410,35 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
               <button onClick={() => addLinha({ descricao: "Bebidas", tipo: "por_pessoa", numPessoas: pax })} className="text-xs px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">+ Bebidas (por pessoa)</button>
               <button onClick={() => addLinha()} className="text-xs px-2 py-1 rounded-md border border-dashed border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">+ Linha livre</button>
             </div>
+
+            {/* Presets do cardápio de eventos do site (Lobozó) — mesma fonte da vitrine */}
+            {ehLobozoProp && (
+              <div className="mt-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-900/10 p-2">
+                <div className="text-[11px] font-bold text-amber-700 dark:text-amber-300 mb-1.5">
+                  🍽️ Puxar do cardápio de eventos do site · {janelaLob === "sex-sab" ? "Sexta/Sábado" : "Domingo a Quinta"}
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(["sequencia", "aberto"] as const).flatMap((menu) => (["soft", "alcohol"] as const).map((dr) => {
+                    const preco = PACOTES_LOBOZO_PP[janelaLob][menu][dr];
+                    const label = `${menu === "sequencia" ? "Sequência" : "Aberto"} · ${dr === "alcohol" ? "c/ álcool" : "s/ álcool"}`;
+                    return (
+                      <button key={menu + dr} onClick={() => addLinha({ descricao: `Pacote ${label}`, tipo: "por_pessoa", valor: preco, numPessoas: pax })}
+                        className="text-xs px-2 py-1 rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-900 hover:bg-amber-50 dark:hover:bg-amber-900/20">
+                        + {label} <span className="text-amber-700 dark:text-amber-400 font-semibold">R$ {preco}/p</span>
+                      </button>
+                    );
+                  }))}
+                </div>
+                <div className="flex flex-wrap gap-1.5 mt-1.5">
+                  {LOCACAO_LOBOZO.map((l) => (
+                    <button key={l.nome} onClick={() => addLinha({ descricao: l.nome, tipo: "fixo", valor: l.valor })}
+                      className="text-xs px-2 py-1 rounded-md border border-amber-300 dark:border-amber-700 bg-white dark:bg-gray-900 hover:bg-amber-50 dark:hover:bg-amber-900/20">
+                      + {l.nome} <span className="text-amber-700 dark:text-amber-400 font-semibold">R$ {l.valor}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Arredondamento */}
