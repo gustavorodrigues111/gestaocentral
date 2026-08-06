@@ -3777,6 +3777,8 @@ export type LeadEvento = {
   // Aviso automático no WhatsApp da casa quando o lead entrou pelo site.
   avisoWhatsEnviadoEm?: string;            // ISO — trava anti-duplicata
   avisoWhatsOk?: boolean;
+  // Escolhas do form enxuto do Lobozó (pra pré-montar o orçamento no card).
+  lobozo?: { espaco?: "laje" | "salao"; menu?: "sequencia" | "aberto"; bebidas?: "soft" | "alcohol" };
 };
 
 // Linha customizável da proposta. Substitui/estende os ajustes: cada linha é

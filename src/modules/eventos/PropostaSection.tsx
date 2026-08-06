@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { collection, doc, onSnapshot, query, updateDoc, where, getDocs } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -86,6 +86,34 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
 
   const parcelasDefault = (total: number): ParcelaProposta[] =>
     lead.cliente.tipoPessoa === "PJ" ? parcelasDefaultPJ(total) : parcelasDefaultPF(total, lead.dataDesejada);
+
+  // Orçamento PRÉ-MONTADO a partir do que o cliente pediu no site (Lobozó):
+  // pacote por pessoa (menu+bebidas no preço da data) + locação do espaço.
+  function linhasDoLobozo(): LinhaProposta[] {
+    const lob = lead.lobozo;
+    if (!lob) return [];
+    const out: LinhaProposta[] = [];
+    if (lead.modeloEvento === "pacote_por_pessoa" && lob.menu && lob.bebidas) {
+      const preco = PACOTES_LOBOZO_PP[janelaLob][lob.menu][lob.bebidas];
+      out.push(novaLinha({ descricao: `Pacote ${lob.menu === "sequencia" ? "Sequência" : "Aberto"} · ${lob.bebidas === "alcohol" ? "c/ álcool" : "s/ álcool"}`, tipo: "por_pessoa", valor: preco, numPessoas: lead.numConvidados }));
+    }
+    if (lob.espaco) {
+      const valorLoc = lob.espaco === "laje" ? 1500 : (lead.slot === "almoco" || janelaLob === "sex-sab" ? 3500 : 1500);
+      out.push(novaLinha({ descricao: `Locação ${lob.espaco === "laje" ? "Laje" : "Salão"}`, tipo: "fixo", valor: valorLoc }));
+    }
+    return out;
+  }
+  // Aplica o pré-montado uma vez, quando o lead ainda não tem proposta.
+  const preMontadoRef = useRef(false);
+  const temPreMontagem = ehLobozoProp && !!lead.lobozo && (!!lead.lobozo.espaco || (!!lead.lobozo.menu && !!lead.lobozo.bebidas));
+  useEffect(() => {
+    if (preMontadoRef.current) return;
+    if (propostas.length > 0) return;
+    if (!temPreMontagem) return;
+    const ls = linhasDoLobozo();
+    if (ls.length) { setLinhas(ls); preMontadoRef.current = true; }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [propostas.length, temPreMontagem]);
 
   // Abre o editor pré-preenchido a partir da proposta atual (pra fazer a v2).
   function iniciarNovaVersao() {
@@ -263,6 +291,12 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
   return (
     <div>
       <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">💼 Proposta</div>
+
+      {temPreMontagem && propostas.length === 0 && (
+        <div className="mb-2 rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-900/15 px-2.5 py-1.5 text-[12px] text-emerald-800 dark:text-emerald-300">
+          ✨ Orçamento <strong>pré-montado</strong> com o que o cliente pediu no site. Revise (desconto, taxa, valores) e clique em <strong>Gerar proposta</strong>.
+        </div>
+      )}
 
       {/* Propostas existentes */}
       {propostas.length > 0 && (

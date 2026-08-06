@@ -247,6 +247,11 @@ export function EventosPublicaPage() {
         pacoteSugeridoId: form.pacoteSugeridoId || undefined,
         observacoesCliente: obsFinal,
         origem: "publico",
+        ...(ehLobozo ? { lobozo: {
+          ...(form.espacoLobozo ? { espaco: form.espacoLobozo } : {}),
+          ...(form.menuLobozo ? { menu: form.menuLobozo } : {}),
+          ...(form.bebidasLobozo ? { bebidas: form.bebidasLobozo } : {}),
+        } } : {}),
         classificacaoPrevia: "inbound", // cliente procurou = inbound (passiva)
         createdAt: now,
         updatedAt: now,
