@@ -69,6 +69,11 @@ export function EventosPublicaPage() {
     decoracao: false,
     pacoteSugeridoId: "",
     observacoesCliente: "",
+    // Lobozó (form enxuto)
+    espacoLobozo: "" as "laje" | "salao" | "",
+    periodoLobozo: "" as "almoco" | "jantar" | "",
+    menuLobozo: "" as "sequencia" | "aberto" | "",
+    bebidasLobozo: "" as "soft" | "alcohol" | "",
   });
 
   useEffect(() => {
@@ -161,14 +166,14 @@ export function EventosPublicaPage() {
     if (!validarEmail(form.email)) {
       return setErroGeral("Email inválido.");
     }
-    if (form.tipoPessoa === "PJ") {
+    if (!ehLobozo && form.tipoPessoa === "PJ") {
       if (!validarCNPJ(form.cnpj)) return setErroGeral("CNPJ inválido.");
       if (!form.razaoSocial.trim()) return setErroGeral("Preencha a razão social.");
     }
     if (!form.dataDesejada) return setErroGeral("Escolhe a data desejada.");
-    if (!form.horaInicio || !form.horaFim) return setErroGeral("Preenche horário de início e fim.");
-    const dur = duracaoHoras(form.horaInicio, form.horaFim);
-    if (dur <= 0) return setErroGeral("Horário de fim precisa ser depois do início.");
+    if (!ehLobozo && (!form.horaInicio || !form.horaFim)) return setErroGeral("Preenche horário de início e fim.");
+    const dur = ehLobozo ? 0 : duracaoHoras(form.horaInicio, form.horaFim);
+    if (!ehLobozo && dur <= 0) return setErroGeral("Horário de fim precisa ser depois do início.");
     if (!form.numConvidados) return setErroGeral("Quantos convidados?");
     const num = parseInt(form.numConvidados, 10);
     if (!num || num < 1) return setErroGeral("Número de convidados inválido.");
@@ -176,11 +181,20 @@ export function EventosPublicaPage() {
     if (form.ocasiao === "outros" && !form.ocasiaoOutros.trim()) {
       return setErroGeral("Descreve a ocasião (campo \"outros\").");
     }
-    if (!form.modeloEvento) return setErroGeral("Escolhe o modelo do evento.");
+    if (ehLobozo) {
+      if (!form.espacoLobozo) return setErroGeral("Escolhe o espaço (Laje ou Salão).");
+      if (!form.periodoLobozo) return setErroGeral("Escolhe o período (almoço ou jantar).");
+    }
+    if (!form.modeloEvento) return setErroGeral("Escolhe o formato do evento.");
     if (form.modeloEvento === "pacote_por_pessoa") {
-      if (!form.escopoPacote) return setErroGeral("Escolhe o escopo do pacote.");
-      if (form.escopoPacote === "outro" && !form.escopoPacoteOutro.trim()) {
-        return setErroGeral("Descreve o escopo (campo \"outro\").");
+      if (ehLobozo) {
+        if (!form.menuLobozo) return setErroGeral("Escolhe o menu (Sequência ou Aberto).");
+        if (!form.bebidasLobozo) return setErroGeral("Escolhe as bebidas (com ou sem álcool).");
+      } else {
+        if (!form.escopoPacote) return setErroGeral("Escolhe o escopo do pacote.");
+        if (form.escopoPacote === "outro" && !form.escopoPacoteOutro.trim()) {
+          return setErroGeral("Descreve o escopo (campo \"outro\").");
+        }
       }
     }
 
@@ -189,6 +203,14 @@ export function EventosPublicaPage() {
       if (!rid) throw new Error("URL inválida");
       const id = `lead_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
       const now = new Date().toISOString();
+      // Resumo dos interesses do Lobozó (form enxuto) → vai nas observações.
+      const resumoLobozo = ehLobozo ? [
+        form.espacoLobozo ? `Espaço: ${form.espacoLobozo === "laje" ? "Laje" : "Salão"}` : "",
+        form.periodoLobozo ? `Período: ${form.periodoLobozo === "almoco" ? "Almoço" : "Jantar"}` : "",
+        form.modeloEvento === "pacote_por_pessoa" && form.menuLobozo ? `Menu: ${form.menuLobozo === "sequencia" ? "Sequência" : "Aberto"}` : "",
+        form.modeloEvento === "pacote_por_pessoa" && form.bebidasLobozo ? `Bebidas: ${form.bebidasLobozo === "alcohol" ? "com álcool" : "sem álcool"}` : "",
+      ].filter(Boolean).join(" · ") : "";
+      const obsFinal = [resumoLobozo, form.observacoesCliente.trim()].filter(Boolean).join("\n") || undefined;
       const lead: LeadEvento = {
         id,
         restaurantId: rid,
@@ -207,7 +229,7 @@ export function EventosPublicaPage() {
         },
         dataDesejada: form.dataDesejada,
         dataAlternativa: form.dataAlternativa || undefined,
-        slot: slotDoHorario(form.horaInicio, form.horaFim),
+        slot: ehLobozo ? (form.periodoLobozo as ReturnType<typeof slotDoHorario>) : slotDoHorario(form.horaInicio, form.horaFim),
         horaInicio: form.horaInicio,
         horaFim: form.horaFim,
         duracaoEstimadaHoras: dur,
@@ -215,7 +237,7 @@ export function EventosPublicaPage() {
         ocasiao: form.ocasiao as OcasiaoEvento,
         ocasiaoOutros: form.ocasiao === "outros" ? form.ocasiaoOutros.trim() : undefined,
         modeloEvento: form.modeloEvento as ModeloEvento,
-        escopoPacote: form.modeloEvento === "pacote_por_pessoa" ? (form.escopoPacote as EscopoPacote) : undefined,
+        escopoPacote: !ehLobozo && form.modeloEvento === "pacote_por_pessoa" ? (form.escopoPacote as EscopoPacote) : undefined,
         escopoPacoteOutro:
           form.modeloEvento === "pacote_por_pessoa" && form.escopoPacote === "outro"
             ? form.escopoPacoteOutro.trim()
@@ -223,7 +245,7 @@ export function EventosPublicaPage() {
         musicaAoVivo: form.musicaAoVivo,
         decoracao: form.decoracao,
         pacoteSugeridoId: form.pacoteSugeridoId || undefined,
-        observacoesCliente: form.observacoesCliente.trim() || undefined,
+        observacoesCliente: obsFinal,
         origem: "publico",
         classificacaoPrevia: "inbound", // cliente procurou = inbound (passiva)
         createdAt: now,
@@ -377,6 +399,7 @@ export function EventosPublicaPage() {
         </FormField>
 
         {/* PF / PJ */}
+        {!ehLobozo && (
         <div>
           <FormField label="Tipo">
             <div className="grid grid-cols-2 gap-2">
@@ -428,8 +451,9 @@ export function EventosPublicaPage() {
             </div>
           )}
         </div>
+        )}
 
-        {/* Data + alternativa */}
+        {/* Data (+ alternativa só no form completo) */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField label="Data desejada *">
             <input
@@ -439,6 +463,7 @@ export function EventosPublicaPage() {
               className={fieldInputCls}
             />
           </FormField>
+          {!ehLobozo && (
           <FormField label="Alternativa (opcional)">
             <input
               type="date"
@@ -447,9 +472,11 @@ export function EventosPublicaPage() {
               className={fieldInputCls}
             />
           </FormField>
+          )}
         </div>
 
-        {/* Horários início + fim */}
+        {/* Horários início + fim (só no form completo) */}
+        {!ehLobozo && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <FormField label="Início *">
             <input
@@ -468,6 +495,7 @@ export function EventosPublicaPage() {
             />
           </FormField>
         </div>
+        )}
 
         <FormField label="Quantos convidados? *">
           <input
@@ -478,6 +506,23 @@ export function EventosPublicaPage() {
             className={fieldInputCls}
           />
         </FormField>
+
+        {ehLobozo && (
+          <>
+            <FormField label="Espaço *">
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => update("espacoLobozo", "laje")} style={optionStyle(form.espacoLobozo === "laje", corPrimaria)}>Laje</button>
+                <button type="button" onClick={() => update("espacoLobozo", "salao")} style={optionStyle(form.espacoLobozo === "salao", corPrimaria)}>Salão</button>
+              </div>
+            </FormField>
+            <FormField label="Período *">
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => update("periodoLobozo", "almoco")} style={optionStyle(form.periodoLobozo === "almoco", corPrimaria)}>Almoço</button>
+                <button type="button" onClick={() => update("periodoLobozo", "jantar")} style={optionStyle(form.periodoLobozo === "jantar", corPrimaria)}>Jantar</button>
+              </div>
+            </FormField>
+          </>
+        )}
 
         <FormField label="Ocasião *">
           <select
@@ -527,7 +572,24 @@ export function EventosPublicaPage() {
           </div>
         </FormField>
 
-        {form.modeloEvento === "pacote_por_pessoa" && (
+        {ehLobozo && form.modeloEvento === "pacote_por_pessoa" && (
+          <>
+            <FormField label="Menu *">
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => update("menuLobozo", "sequencia")} style={optionStyle(form.menuLobozo === "sequencia", corPrimaria)}>Sequência</button>
+                <button type="button" onClick={() => update("menuLobozo", "aberto")} style={optionStyle(form.menuLobozo === "aberto", corPrimaria)}>Aberto</button>
+              </div>
+            </FormField>
+            <FormField label="Bebidas *">
+              <div className="grid grid-cols-2 gap-2">
+                <button type="button" onClick={() => update("bebidasLobozo", "soft")} style={optionStyle(form.bebidasLobozo === "soft", corPrimaria)}>Sem álcool</button>
+                <button type="button" onClick={() => update("bebidasLobozo", "alcohol")} style={optionStyle(form.bebidasLobozo === "alcohol", corPrimaria)}>Com álcool</button>
+              </div>
+            </FormField>
+          </>
+        )}
+
+        {!ehLobozo && form.modeloEvento === "pacote_por_pessoa" && (
           <FormField label="O pacote inclui *">
             <div className="grid grid-cols-1 gap-1.5">
               {(["somente_comidas", "comidas_bebidas_nao_alcoolicas", "comidas_bebidas_alcoolicas", "outro"] as EscopoPacote[]).map(opt => (
@@ -552,7 +614,8 @@ export function EventosPublicaPage() {
           </FormField>
         )}
 
-        {/* Música / decoração */}
+        {/* Música / decoração (só no form completo) */}
+        {!ehLobozo && (
         <div className="grid grid-cols-1 gap-2">
           <CheckboxRow
             checked={form.musicaAoVivo}
@@ -567,9 +630,10 @@ export function EventosPublicaPage() {
             corPrimaria={corPrimaria}
           />
         </div>
+        )}
 
         {/* Pacote sugerido (do restaurante) */}
-        {pacotes.length > 0 && (
+        {!ehLobozo && pacotes.length > 0 && (
           <FormField label="Tem algum pacote nosso em mente? (opcional)">
             <div className="grid grid-cols-1 gap-1.5">
               <button
