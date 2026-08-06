@@ -283,5 +283,14 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
       pessoaId: null, canal: "sistema", criadoEm: now(),
     }).catch(() => {});
   }
-  if (out.pdfUrl) await enviarWhatsDoc(from, out.pdfUrl, "cardapio-puba.pdf");
+  if (out.pdfUrl) {
+    // Nome do arquivo derivado do AGENTE (não fixo "puba", que confundia quem
+    // usa o agente de outro restaurante, ex.: Sororoca).
+    const slug = String(agente.nome || "")
+      .toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .split(/\s+/)
+      .filter((w) => w.length >= 3 && !["agente", "cardapio", "assistente", "dos", "das", "com", "site", "novo"].includes(w))
+      .join("-").replace(/[^a-z0-9-]/g, "") || "cardapio";
+    await enviarWhatsDoc(from, out.pdfUrl, `cardapio-${slug}.pdf`);
+  }
 }
