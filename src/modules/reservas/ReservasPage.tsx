@@ -693,9 +693,12 @@ export function ReservasPage() {
     //  - confirmada → Chegou primário
     //  - resto      → sem botões, só kebab
     const showWhatsAsPrimary    = st === "pendente"   && acoes.podeWhatsapp && !!reserva.clienteTelefoneSnapshot;
+    // Reserva pendente SEM telefone: oferece adicionar (abre o editar) pra
+    // liberar o "Confirmar WhatsApp".
+    const faltaTelefone         = st === "pendente"   && acoes.podeWhatsapp && acoes.podeEditar && !reserva.clienteTelefoneSnapshot;
     const showConfirmouSecondary = st === "pendente"   && acoes.podeEditar;
     const showChegouAsPrimary   = st === "confirmada" && acoes.podeChegou;
-    const temPrimarios = showWhatsAsPrimary || showConfirmouSecondary || showChegouAsPrimary;
+    const temPrimarios = showWhatsAsPrimary || faltaTelefone || showConfirmouSecondary || showChegouAsPrimary;
 
     // Acumula o que vai no kebab pra saber se renderiza o botão ⋯
     const temHistorico   = temCliente && acoes.podeVerCRM;
@@ -791,8 +794,13 @@ export function ReservasPage() {
         {temPrimarios && (
           <div className="flex items-center gap-1.5 mt-2 flex-wrap">
             {showWhatsAsPrimary && (
-              <Button variant="primary" size="sm" onClick={onWhatsapp} title="Abre WhatsApp com mensagem de confirmação">
+              <Button variant="primary" size="sm" onClick={onWhatsapp} title="Abre o WhatsApp interno com a mensagem de confirmação">
                 📱 Confirmar WhatsApp
+              </Button>
+            )}
+            {faltaTelefone && (
+              <Button variant="secondary" size="sm" onClick={onEditar} title="Esta reserva não tem telefone — adicione pra poder confirmar por WhatsApp">
+                ➕ Telefone p/ confirmar
               </Button>
             )}
             {showConfirmouSecondary && (
