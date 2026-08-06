@@ -250,11 +250,22 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
       const dataEv = new Date(p.dataEvento + "T12:00:00");
       const dataBR = `${String(dataEv.getDate()).padStart(2, "0")}/${String(dataEv.getMonth() + 1).padStart(2, "0")}/${dataEv.getFullYear()}`;
       // Detalhamento do pacote do site (Lobozó): cardápio do menu + bebidas.
-      const menu = ehLobozoProp && lead.lobozo?.menu ? menuLobozoPorChave(lead.lobozo.menu) : null;
+      // Menu/bebidas vêm do lead.lobozo; se faltar (lead antigo/manual), detecta
+      // pela linha "Pacote Sequência/Aberto · c/ álcool" da própria proposta.
+      let menuKey: "sequencia" | "aberto" | undefined = ehLobozoProp ? lead.lobozo?.menu : undefined;
+      let bebKey: "soft" | "alcohol" | undefined = ehLobozoProp ? lead.lobozo?.bebidas : undefined;
+      if (ehLobozoProp && !menuKey) {
+        const lp = (p.linhas || []).find((l) => /pacote/i.test(l.descricao) && /(sequ|aberto)/i.test(l.descricao));
+        if (lp) {
+          menuKey = /sequ/i.test(lp.descricao) ? "sequencia" : "aberto";
+          bebKey = /(c\/\s*álcool|com\s*álcool|alco)/i.test(lp.descricao) ? "alcohol" : "soft";
+        }
+      }
+      const menu = menuKey ? menuLobozoPorChave(menuKey) : null;
       const cardapio = menu ? { titulo: menu.nome, tagline: menu.tagline, blocos: menu.blocos.map((b) => ({ label: b.label, itens: b.itens })) } : undefined;
-      const bebidas = ehLobozoProp && lead.lobozo?.bebidas ? {
+      const bebidas = menu && bebKey ? {
         soft: { title: BEBIDAS_LOBOZO.soft.title, items: BEBIDAS_LOBOZO.soft.items },
-        ...(lead.lobozo.bebidas === "alcohol" ? { alcohol: BEBIDAS_LOBOZO.alcohol } : {}),
+        ...(bebKey === "alcohol" ? { alcohol: BEBIDAS_LOBOZO.alcohol } : {}),
         note: BEBIDAS_LOBOZO.note,
       } : undefined;
       const dados = {
