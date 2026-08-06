@@ -171,6 +171,9 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
   const reservasUrlExt = cfg.reservasModo === "externo" ? (cfg.reservasUrlExterna || "").trim() : "";
   const reservasExterno = !!reservasUrlExt;
   const reservasHref = reservasUrlExt || `/reservas/${cfg.restaurantId}`;
+  // Link do menu "Laje/Eventos" → vai direto pra página de eventos (vitrine +
+  // formulário), não pra uma âncora na home.
+  const eventosHref = `/eventos/${cfg.restaurantId}`;
 
   const grupos = agruparHorarios(cfg.horarios);
   const excecoes = proximasExcecoes(cfg.excecoes, 3);
@@ -339,7 +342,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                 <NavLink href="#historia" cor={corTexto}>Sobre</NavLink>
                 <NavLink href="#cardapio" cor={corTexto}>Cardápio</NavLink>
                 <NavLink href="#horario" cor={corTexto}>Horário</NavLink>
-                {cfg.features.hasLaje && <NavLink href="#laje" cor={corTexto}>Laje</NavLink>}
+                {cfg.features.hasLaje && <NavLink href={eventosHref} cor={corTexto}>Laje</NavLink>}
                 {cfg.features.hasReservas && <NavLink href={reservasHref} externo={reservasExterno} cor={corTexto}>Reservas</NavLink>}
                 {cfg.features.hasDelivery && cfg.delivery && cfg.delivery.length > 0 && <NavLink href="#delivery" cor={corTexto}>Delivery</NavLink>}
                 <NavLink href="#contato" cor={corTexto}>Contato</NavLink>
@@ -369,7 +372,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
                 Horário
               </MobileMenuLink>
               {cfg.features.hasLaje && (
-                <MobileMenuLink href="#laje" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
+                <MobileMenuLink href={eventosHref} onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
                   Laje
                 </MobileMenuLink>
               )}

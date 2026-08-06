@@ -177,8 +177,8 @@ export function EventosPublicaPage() {
     if (!form.numConvidados) return setErroGeral("Quantos convidados?");
     const num = parseInt(form.numConvidados, 10);
     if (!num || num < 1) return setErroGeral("Número de convidados inválido.");
-    if (!form.ocasiao) return setErroGeral("Escolhe a ocasião.");
-    if (form.ocasiao === "outros" && !form.ocasiaoOutros.trim()) {
+    if (!ehLobozo && !form.ocasiao) return setErroGeral("Escolhe a ocasião.");
+    if (!ehLobozo && form.ocasiao === "outros" && !form.ocasiaoOutros.trim()) {
       return setErroGeral("Descreve a ocasião (campo \"outros\").");
     }
     if (ehLobozo) {
