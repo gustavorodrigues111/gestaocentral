@@ -21,10 +21,18 @@ function dBR(iso?: string): string { const m = (iso || "").match(/^(\d{4})-(\d{2
 const OCASIAO: Record<string, string> = { aniversario: "Aniversário", corporativo: "Corporativo", casamento: "Casamento", confraternizacao: "Confraternização", formatura: "Formatura", outros: "Outros" };
 const MODELO: Record<string, string> = { locacao: "Locação (consumo em comanda)", pacote_por_pessoa: "Pacote por pessoa" };
 
-async function enviarTexto(to: string, texto: string): Promise<{ ok: boolean; erro?: string }> {
+// Envio via TEMPLATE aprovado (resumo_avisos: {{1}}=nome, {{2}}=lista, {{3}}=link).
+// Template funciona FORA da janela de 24h (proativo). Params não podem ter
+// quebra de linha nem >4 espaços seguidos → lista é uma linha só com " · ".
+const TEMPLATE = "resumo_avisos";
+function limpaParam(s: string): string { return String(s || "").replace(/\s+/g, " ").trim(); }
+async function enviarTemplate(to: string, nome: string, lista: string, link: string): Promise<{ ok: boolean; erro?: string }> {
   const token = process.env.WHATSAPP_TOKEN, phone = process.env.WHATSAPP_PHONE_ID, ver = process.env.WHATSAPP_API_VERSION || "v21.0";
   if (!token || !phone) return { ok: false, erro: "WHATSAPP_TOKEN/PHONE_ID ausentes" };
-  const body = { messaging_product: "whatsapp", to: normFone(to), type: "text", text: { body: texto } };
+  const body = {
+    messaging_product: "whatsapp", to: normFone(to), type: "template",
+    template: { name: TEMPLATE, language: { code: "pt_BR" }, components: [{ type: "body", parameters: [{ type: "text", text: limpaParam(nome) }, { type: "text", text: limpaParam(lista) }, { type: "text", text: limpaParam(link) }] }] },
+  };
   const resp = await fetch(`https://graph.facebook.com/${ver}/${phone}/messages`, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
   const j = (await resp.json()) as { messages?: Array<{ id?: string }>; error?: { message?: string } };
   if (resp.ok && j.messages?.[0]?.id) return { ok: true };
@@ -54,24 +62,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const cliente = (lead.cliente || {}) as { nome?: string; whatsapp?: string };
     const ocas = OCASIAO[String(lead.ocasiao || "")] || (lead.ocasiaoOutros ? String(lead.ocasiaoOutros) : String(lead.ocasiao || "—"));
     const modelo = MODELO[String(lead.modeloEvento || "")] || String(lead.modeloEvento || "—");
-    const linhas = [
-      "🎉 *Novo lead de evento* (pelo site)",
-      "",
-      `Cliente: ${cliente.nome || "—"}`,
-      cliente.whatsapp ? `WhatsApp: ${cliente.whatsapp}` : "",
-      `Data desejada: ${dBR(String(lead.dataDesejada || ""))}${lead.dataAlternativa ? ` (alt: ${dBR(String(lead.dataAlternativa))})` : ""}`,
-      lead.horaInicio ? `Horário: ${lead.horaInicio}${lead.horaFim ? `–${lead.horaFim}` : ""}` : "",
-      `Convidados: ${lead.numConvidados ?? "—"}`,
-      `Ocasião: ${ocas}`,
-      `Modelo: ${modelo}`,
-      lead.musicaAoVivo ? "Música ao vivo: sim" : "",
-      lead.decoracao ? "Decoração: sim" : "",
-      lead.observacoesCliente ? `Obs: ${lead.observacoesCliente}` : "",
-      "",
-      `Abrir no painel: ${APP_URL}/r/${rid}/eventos`,
-    ].filter(Boolean);
-
-    const r = await enviarTexto(to, linhas.join("\n"));
+    // lista = resumo em UMA linha (restrição de template): campos separados por " · ".
+    const lista = [
+      `Novo lead de evento — ${cliente.nome || "cliente"}`,
+      cliente.whatsapp ? `wpp ${cliente.whatsapp}` : "",
+      `${dBR(String(lead.dataDesejada || ""))}`,
+      lead.horaInicio ? `${lead.horaInicio}${lead.horaFim ? `-${lead.horaFim}` : ""}` : "",
+      `${lead.numConvidados ?? "—"} pessoas`,
+      ocas,
+      modelo,
+    ].filter(Boolean).join(" · ");
+    const link = `${APP_URL}/r/${rid}/eventos`;
+    const r = await enviarTemplate(to, "Equipe", lista, link);
     await firestoreAtualizar("leadsEvento", leadId, { avisoWhatsEnviadoEm: new Date().toISOString(), avisoWhatsOk: r.ok }).catch(() => {});
     return res.status(200).json({ ok: r.ok, erro: r.erro || null });
   } catch (e) {
