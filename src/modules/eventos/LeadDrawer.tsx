@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode, Ref } from "react";
 import { collection, deleteField, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -79,11 +80,36 @@ type Props = {
   onClose: () => void;
 };
 
+// Seção colapsável do card integrado — cabeçalho clicável + badge de status.
+function SecaoColapsavel({ titulo, badge, aberta, onToggle, refWrap, children }: {
+  titulo: ReactNode;
+  badge?: ReactNode;
+  aberta: boolean;
+  onToggle: () => void;
+  refWrap?: Ref<HTMLDivElement>;
+  children: ReactNode;
+}) {
+  return (
+    <div ref={refWrap} style={{ scrollMarginTop: 12 }} className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <button type="button" onClick={onToggle}
+        className="w-full flex items-center justify-between gap-2 px-3 py-2.5 bg-gray-50 dark:bg-gray-800/40 hover:bg-gray-100 dark:hover:bg-gray-800/60 text-left">
+        <span className="text-sm font-bold text-gray-800 dark:text-gray-100">{titulo}</span>
+        <span className="flex items-center gap-2 shrink-0">{badge}<span className="text-gray-400 text-xs">{aberta ? "▾" : "▸"}</span></span>
+      </button>
+      {aberta && <div className="p-3 border-t border-gray-100 dark:border-gray-800">{children}</div>}
+    </div>
+  );
+}
+
 export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], focoProposta = false, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const propostaRef = useRef<HTMLDivElement | null>(null);
+  // Seções colapsáveis do card (vertical integrado). Proposta aberta por padrão.
+  const [abertas, setAbertas] = useState<Set<string>>(() => new Set(["proposta"]));
+  const toggleSec = (k: string) => setAbertas((s) => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
   useEffect(() => {
     if (!focoProposta) return;
+    setAbertas((s) => new Set(s).add("proposta"));
     const t = setTimeout(() => propostaRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 250);
     return () => clearTimeout(t);
   }, [focoProposta]);
@@ -495,11 +521,24 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], foc
           )}
         </div>
 
-        {/* Log de tratativas com o cliente */}
+        {/* Proposta + pagamento — seção colapsável (aberta por padrão) */}
+        {me && (
+          <SecaoColapsavel
+            titulo="💼 Proposta e pagamento"
+            badge={<span className="text-[11px] text-gray-500">{lead.status === "novo" || lead.status === "qualificado" ? "a montar" : "em andamento"}</span>}
+            aberta={abertas.has("proposta")} onToggle={() => toggleSec("proposta")} refWrap={propostaRef}
+          >
+            <PropostaSection lead={lead} pacotes={pacotes} podeEditar={podeEditar} meId={me.id} meNome={me.nome} />
+          </SecaoColapsavel>
+        )}
+
+        {/* Log de tratativas com o cliente — colapsável */}
+        <SecaoColapsavel
+          titulo="📇 Tratativas com o cliente"
+          badge={tratativasOrd.length > 0 ? <span className="text-[11px] text-gray-500">{tratativasOrd.length}</span> : undefined}
+          aberta={abertas.has("tratativas")} onToggle={() => toggleSec("tratativas")}
+        >
         <div>
-          <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
-            📇 Tratativas com o cliente
-          </div>
           {podeEditar && (
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 p-2 mb-2 space-y-2">
               <textarea
@@ -549,28 +588,13 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], foc
             </ol>
           )}
         </div>
+        </SecaoColapsavel>
 
-        {/* Proposta + pagamento (PR6 + PR7) */}
-        {me && (
-          <div ref={propostaRef} style={{ scrollMarginTop: 12 }}>
-            <PropostaSection
-              lead={lead}
-              pacotes={pacotes}
-              podeEditar={podeEditar}
-              meId={me.id}
-              meNome={me.nome}
-            />
-          </div>
-        )}
-
-        {/* BEO (PR8) — só faz sentido a partir de "sinal_recebido" */}
+        {/* BEO (PR8) — só faz sentido a partir de "sinal_recebido" — colapsável */}
         {me && (lead.status === "sinal_recebido" || lead.status === "confirmado" || lead.status === "realizado") && (
-          <BEOSection
-            lead={lead}
-            podeEditar={podeEditar}
-            meId={me.id}
-            meNome={me.nome}
-          />
+          <SecaoColapsavel titulo="📋 BEO — ordem do evento" aberta={abertas.has("beo")} onToggle={() => toggleSec("beo")}>
+            <BEOSection lead={lead} podeEditar={podeEditar} meId={me.id} meNome={me.nome} />
+          </SecaoColapsavel>
         )}
 
         {/* Fechamento do evento — bloco read-only + edit. Aparece a partir de

@@ -360,8 +360,6 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
 
   return (
     <div>
-      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">💼 Proposta</div>
-
       {temPreMontagem && propostas.length === 0 && (
         <div className="mb-2 rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-900/15 px-2.5 py-1.5 text-[12px] text-emerald-800 dark:text-emerald-300">
           ✨ Orçamento <strong>pré-montado</strong> com o que o cliente pediu no site. Revise (desconto, taxa, valores) e clique em <strong>Gerar proposta</strong>.

@@ -158,10 +158,6 @@ export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
 
   return (
     <div>
-      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
-        📋 BEO (ordem do evento pra cozinha)
-      </div>
-
       {beoAtual && (
         <div className="rounded-lg border-2 border-purple-300 dark:border-purple-700 bg-purple-50/40 dark:bg-purple-900/10 p-3 space-y-2">
           <div className="flex items-center justify-between">
