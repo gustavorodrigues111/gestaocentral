@@ -54,7 +54,7 @@ type Alinhamento = "left" | "center" | "right";
 type Lay = Required<Omit<CardapioLayout, "fontesCustom" | "secaoPos" | "colsPorPagina" | "alinhamentoPorPagina">> & { fontesCustom: string[]; secaoPos: { [k: string]: number }; colsPorPagina: { [p: number]: number }; alinhamentoPorPagina: { [p: number]: Alinhamento } };
 const PADROES: Lay = {
   fonteTitulos: "dm-serif-display", fonteCorpo: "inter", fontesCustom: [],
-  espacoPratos: 8, espacoDescricao: 1, espacoSecoes: 24, tamTitulo: 13, tamDescricao: 10, tamSecao: 17,
+  espacoPratos: 8, espacoDescricao: 1, espacoTitulo: 9, espacoSecoes: 24, tamTitulo: 13, tamDescricao: 10, tamSecao: 17,
   corSecoes: "#111111", corPratos: "#111111", corDescricao: "#111111", corPreco: "#111111",
   tituloCapa: "COMIDAS", tamTituloCapa: 13, offsetTituloCapa: 0, secaoPos: {}, mostrarCifrao: true,
   margemTopo: 34, margemBaixo: 40, colGap: 22,
@@ -264,7 +264,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
     return (
       <div style={{ textAlign: align }}>
         {!semCabecalho && (
-          <div style={{ textAlign: align, marginBottom: 9 }}>
+          <div style={{ textAlign: align, marginBottom: lay.espacoTitulo }}>
             <span style={{ fontFamily: fTit, fontSize: lay.tamSecao, color: lay.corSecoes, fontWeight: 600 }}>{nome}</span>
           </div>
         )}
@@ -713,6 +713,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
             <Slider label="Tamanho do nome do prato" k="tamTitulo" min={9} max={20} />
             <Slider label="Tamanho da descrição" k="tamDescricao" min={6} max={16} />
             <Slider label="Espaço entre pratos" k="espacoPratos" min={0} max={28} />
+            <Slider label="Espaço entre o título da seção e o 1º item" k="espacoTitulo" min={0} max={24} />
             <Slider label="Espaço entre o nome do prato e descrição" k="espacoDescricao" min={-4} max={16} />
             <label className="flex items-center gap-2 text-[13px] text-gray-600 dark:text-gray-300 cursor-pointer pt-1">
               <input type="checkbox" checked={lay.mostrarCifrao} onChange={(e) => setCampo("mostrarCifrao", e.target.checked)} className="w-4 h-4 accent-indigo-600" />

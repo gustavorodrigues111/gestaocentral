@@ -4136,6 +4136,7 @@ export type CardapioLayout = {
   fontesCustom?: string[]; // famílias Google adicionadas pelo usuário
   espacoPratos?: number;   // px entre um prato e o próximo
   espacoDescricao?: number; // px entre o título do prato e a descrição
+  espacoTitulo?: number;   // px entre o título da seção e o 1º item (default 9)
   espacoSecoes?: number;   // px entre seções (legado — seções agora têm posição absoluta)
   tamTitulo?: number;      // px do nome do prato
   tamDescricao?: number;   // px da descrição do prato
