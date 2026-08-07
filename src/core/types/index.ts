@@ -3785,6 +3785,16 @@ export type LeadEvento = {
   avisoWhatsOk?: boolean;
   // Escolhas do form enxuto do Lobozó (pra pré-montar o orçamento no card).
   lobozo?: { espaco?: "laje" | "salao"; menu?: "sequencia" | "aberto"; bebidas?: "soft" | "alcohol" };
+  // Contrato do evento (texto editável + PDF + assinatura ClickSign).
+  contrato?: {
+    texto?: string;
+    pdfUrl?: string;
+    geradoEm?: string;
+    // ClickSign (Fase 4): id do envelope + status da assinatura.
+    clicksignEnvelopeId?: string;
+    clicksignStatus?: string;
+    clicksignEnviadoEm?: string;
+  };
 };
 
 // Linha customizável da proposta. Substitui/estende os ajustes: cada linha é

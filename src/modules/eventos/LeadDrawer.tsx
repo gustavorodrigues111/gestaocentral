@@ -12,6 +12,7 @@ import { parseYmd, pad2 } from "../../core/utils/date";
 import type { CanalTratativa, LeadEvento, LeadEventoStatus, LogMensagemEvento, PacoteEvento, Pessoa } from "../../core/types";
 import { CANAL_TRATATIVA_ICONE, CANAL_TRATATIVA_LABEL } from "../../core/types";
 import { PropostaSection } from "./PropostaSection";
+import { ContratoSection } from "./ContratoSection";
 import { BEOSection } from "./BEOSection";
 import { ESCOPO_PACOTE_LABEL, MODELO_LABEL, OCASIAO_LABEL } from "./validacoes";
 import { FecharEventoModal } from "./FecharEventoModal";
@@ -531,6 +532,15 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], foc
             <PropostaSection lead={lead} pacotes={pacotes} podeEditar={podeEditar} meId={me.id} meNome={me.nome} />
           </SecaoColapsavel>
         )}
+
+        {/* Contrato — colapsável */}
+        <SecaoColapsavel
+          titulo="📄 Contrato"
+          badge={lead.contrato?.pdfUrl ? <span className="text-[11px] text-emerald-600 dark:text-emerald-400">gerado</span> : undefined}
+          aberta={abertas.has("contrato")} onToggle={() => toggleSec("contrato")}
+        >
+          <ContratoSection lead={lead} podeEditar={podeEditar} />
+        </SecaoColapsavel>
 
         {/* Log de tratativas com o cliente — colapsável */}
         <SecaoColapsavel
