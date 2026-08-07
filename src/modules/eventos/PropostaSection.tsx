@@ -76,6 +76,17 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
   const restauranteNome = restaurants.find((r) => r.id === lead.restaurantId)?.nome || "";
   const ehLobozoProp = restauranteNome.toLowerCase().includes("lobo");
   const janelaLob = janelaLobozo(lead.dataDesejada);
+  // Data/período/horário do evento SEMPRE do lead atual (fatos do evento) —
+  // pra card e PDF refletirem edições feitas depois da proposta.
+  const eventoLinha = (() => {
+    if (!lead.dataDesejada) return "";
+    const d = new Date(lead.dataDesejada + "T12:00:00");
+    const dataBR = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+    const dur = lead.duracaoEstimadaHoras || 0;
+    const durTxt = dur ? (Number.isInteger(dur) ? `${dur}h` : `${Math.floor(dur)}h${String(Math.round((dur % 1) * 60)).padStart(2, "0")}`) : "";
+    const hora = lead.horaInicio ? `${lead.horaInicio}${lead.horaFim ? `–${lead.horaFim}` : ""}` : "";
+    return [dataBR, lead.slot === "almoco" ? "almoço" : "jantar", hora, durTxt].filter(Boolean).join(" · ");
+  })();
 
   useEffect(() => {
     const q = query(collection(db, "propostasEvento"), where("leadId", "==", lead.id));
@@ -249,8 +260,16 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
       if (p.politicaCancelamentoTexto) condicoes.push(p.politicaCancelamentoTexto);
       condicoes.push("Orçamento sujeito à confirmação de disponibilidade.");
 
-      const dataEv = new Date(p.dataEvento + "T12:00:00");
+      // Data/período/horário são FATOS do evento → vêm do LEAD atual (não do
+      // snapshot congelado da proposta), pra refletir edições feitas depois.
+      const dataYmd = lead.dataDesejada || p.dataEvento;
+      const dataEv = new Date(dataYmd + "T12:00:00");
       const dataBR = `${String(dataEv.getDate()).padStart(2, "0")}/${String(dataEv.getMonth() + 1).padStart(2, "0")}/${dataEv.getFullYear()}`;
+      const slotEv = lead.slot || p.slot;
+      const horaIni = lead.horaInicio || p.horaInicio;
+      const horaFimEv = lead.horaFim || "";
+      const duracaoEv = lead.duracaoEstimadaHoras || p.duracaoHoras;
+      const duracaoTxt = duracaoEv ? (Number.isInteger(duracaoEv) ? `${duracaoEv}h` : `${Math.floor(duracaoEv)}h${String(Math.round((duracaoEv % 1) * 60)).padStart(2, "0")}`) : "";
       // Detalhamento do pacote do site (Lobozó): cardápio do menu + bebidas.
       // Menu/bebidas vêm do lead.lobozo; se faltar (lead antigo/manual), detecta
       // pela linha "Pacote Sequência/Aberto · c/ álcool" da própria proposta.
@@ -273,8 +292,8 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
       const dados = {
         restauranteNome,
         clienteNome: lead.cliente.nome,
-        dataEvento: `${dataBR} · ${p.slot === "almoco" ? "almoço" : "jantar"}`,
-        horario: p.horaInicio ? `${p.horaInicio} · ${p.duracaoHoras}h` : `${p.duracaoHoras}h`,
+        dataEvento: `${dataBR} · ${slotEv === "almoco" ? "almoço" : "jantar"}`,
+        horario: horaIni ? `${horaIni}${horaFimEv ? `–${horaFimEv}` : ""}${duracaoTxt ? ` · ${duracaoTxt}` : ""}` : duracaoTxt,
         numConvidados: p.numConvidados,
         espaco: espaco?.nome || undefined,
         formato: lead.modeloEvento === "locacao_consumo_livre" ? "Locação (consumo em comanda)" : "Pacote por pessoa",
@@ -358,6 +377,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
               onEnviar={() => enviarWhatsApp(propostaAtual)}
               onGerarPdf={() => gerarPdf(propostaAtual)}
               gerandoPdf={gerandoPdf === propostaAtual.id}
+              eventoLinha={eventoLinha}
               onRegistrarPagamento={(i) => registrarPagamento(propostaAtual, i)}
               onDesmarcarPagamento={(i) => desmarcarPagamento(propostaAtual, i)}
             />
@@ -374,6 +394,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
                     onEnviar={() => enviarWhatsApp(p)}
                     onGerarPdf={() => gerarPdf(p)}
                     gerandoPdf={gerandoPdf === p.id}
+                    eventoLinha={eventoLinha}
                     onRegistrarPagamento={() => { /* só na atual */ }}
                     onDesmarcarPagamento={() => { /* só na atual */ }}
                   />
@@ -654,7 +675,7 @@ function RegistrarPagamentoModal({ parcela, onClose, onConfirmar }: {
 }
 
 function PropostaCard({
-  proposta, destaque, podeEditar, onEnviar, onGerarPdf, gerandoPdf, onRegistrarPagamento, onDesmarcarPagamento,
+  proposta, destaque, podeEditar, onEnviar, onGerarPdf, gerandoPdf, eventoLinha, onRegistrarPagamento, onDesmarcarPagamento,
 }: {
   proposta: PropostaEvento;
   destaque: boolean;
@@ -662,6 +683,7 @@ function PropostaCard({
   onEnviar: () => void;
   onGerarPdf: () => void;
   gerandoPdf: boolean;
+  eventoLinha?: string;
   onRegistrarPagamento: (idx: number) => void;
   onDesmarcarPagamento: (idx: number) => void;
 }) {
@@ -694,7 +716,7 @@ function PropostaCard({
         </div>
       </div>
       <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-        {dataBR} · {proposta.slot === "almoco" ? "almoço" : "jantar"} · {proposta.duracaoHoras}h
+        {eventoLinha || `${dataBR} · ${proposta.slot === "almoco" ? "almoço" : "jantar"} · ${proposta.duracaoHoras}h`}
       </div>
 
       {/* Composição em linhas */}
