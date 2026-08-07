@@ -2426,8 +2426,12 @@ export type Reserva = {
   observacoes?: string;
   ocasiao?: string;
   status: ReservaStatus;
-  // Origem: "interno" = criada no admin; "publico" = veio do form /reservas/:rid
-  origem?: "interno" | "publico";
+  // Origem: "interno" = criada no admin; "publico" = veio do form /reservas/:rid;
+  // "getin" = sincronizada do GetIn (iFood) pelo conector api/getin-sync.
+  origem?: "interno" | "publico" | "getin";
+  externoId?: string;                 // id da reserva no sistema de origem (ex.: GetIn)
+  getinStatus?: string;               // status cru do GetIn (auditoria/debug)
+  getinAtualizadoEm?: string;         // updated_at do GetIn (pra saber se mudou lá)
   // Auditoria de status
   confirmadaEm?: string | null;
   chegouEm?: string | null;
