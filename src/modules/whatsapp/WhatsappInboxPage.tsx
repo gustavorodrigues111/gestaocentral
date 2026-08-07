@@ -23,7 +23,7 @@ import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
 import { PAPEIS_WHATSAPP, type PapelWhatsapp, type WhatsappRoteio } from "../../core/whatsapp/roteios";
 
-type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean; status?: number; origTimestamp?: string; quotedId?: string | null; quotedTexto?: string | null; quotedAutor?: string | null };
+type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; apagadaParaCliente?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean; status?: number; origTimestamp?: string; quotedId?: string | null; quotedTexto?: string | null; quotedAutor?: string | null };
 
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const fmtBRcurto = (ymd?: string | null) => { if (!ymd) return ""; const [a, m, d] = String(ymd).split("-"); return d ? `${d}/${m}/${a?.slice(2) || ""}` : String(ymd); };
@@ -940,8 +940,17 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     setEditMsg(null);
   }
   async function apagarMsg(m: Msg) {
-    if (!confirm("Apagar esta mensagem para todos? Some pra você e pro cliente — não tem 'apagar só pra mim'.")) return;
-    if (await acaoMsg(m, "apagar")) await updateDoc(doc(db, "whatsappMensagens", m.id), { apagada: true, texto: "", midia: null, mime: null }).catch(() => {});
+    const ehMinha = m.direcao === "out";
+    const msg = ehMinha
+      ? "Apagar esta mensagem para o contato?\n\nEla some no WhatsApp dele, mas continua aqui na sua tela (riscada) pro seu controle."
+      : "Apagar esta mensagem para todos? Some pra você e pro cliente — não tem 'apagar só pra mim'.";
+    if (!confirm(msg)) return;
+    if (await acaoMsg(m, "apagar")) {
+      // Minha mensagem: revoga pro contato mas MANTÉM o texto/mídia aqui (riscado).
+      // Mensagem do cliente: some dos dois lados (comportamento antigo).
+      const patch = ehMinha ? { apagada: true, apagadaParaCliente: true } : { apagada: true, texto: "", midia: null, mime: null };
+      await updateDoc(doc(db, "whatsappMensagens", m.id), patch).catch(() => {});
+    }
   }
 
   // ── Resumo do atendimento (IA) — compartilhado entre "Passar contexto" e "Encaminhar" ──
@@ -1547,7 +1556,15 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                     {m.direcao === "in" && m.ehGrupo && m.autorNome && <div className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-300 mb-0.5">{m.autorNome}</div>}
                     {m.direcao === "in" && m.ehGrupo && !m.autorNome && <div className="text-[11px] font-semibold text-gray-400 mb-0.5 inline-flex items-center gap-1">Participante <InfoBadge texto="Ainda não sabemos quem é. O nome aparece quando essa pessoa fala com você em particular." /></div>}
                     {m.apagada ? (
-                      <div className="italic text-gray-400 dark:text-gray-500">🚫 Mensagem apagada</div>
+                      m.apagadaParaCliente && (m.texto || "").trim() ? (
+                        // Você apagou pro contato, mas fica aqui riscado pro seu controle.
+                        <div>
+                          <div className="whitespace-pre-wrap break-words line-through text-gray-500 dark:text-gray-400">{m.texto}</div>
+                          <div className="text-[10px] italic text-rose-500 dark:text-rose-400 mt-0.5">🚫 apagada pro contato (só você vê)</div>
+                        </div>
+                      ) : (
+                        <div className="italic text-gray-400 dark:text-gray-500">🚫 Mensagem apagada</div>
+                      )
                     ) : editMsg?.id === m.id ? (
                       <div className="space-y-1.5 min-w-[200px]">
                         <textarea autoFocus value={editMsg.texto} onChange={e => setEditMsg({ id: m.id, texto: e.target.value })} rows={2}
