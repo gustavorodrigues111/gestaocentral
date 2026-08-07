@@ -6493,6 +6493,7 @@ export type WhatsappContato = {
   atribuidoNome?: string | null;
   nomeManual?: string | null;     // nome sobrescrito manualmente
   nomePush?: string | null;       // nome que a pessoa usa no WhatsApp (semeado pelo webhook)
+  telefoneManual?: string | null; // número corrigido à mão (E.164 sem +) — usado no envio quando o capturado veio errado/estrangeiro
   naoLidaManual?: boolean;        // marcada como não-lida manualmente (força o destaque)
   atendentePadrao?: string | null;    // pessoaId que assume automaticamente as pendentes deste contato
   atendentePadraoNome?: string | null;

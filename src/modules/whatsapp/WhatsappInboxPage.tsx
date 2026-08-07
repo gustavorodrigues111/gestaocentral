@@ -28,15 +28,28 @@ type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "ou
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const fmtBRcurto = (ymd?: string | null) => { if (!ymd) return ""; const [a, m, d] = String(ymd).split("-"); return d ? `${d}/${m}/${a?.slice(2) || ""}` : String(ymd); };
 const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
+// DDIs internacionais comuns — pra detectar/formatar número estrangeiro (casa o
+// mais específico primeiro: 3 díg → 2 → 1). NÃO inclui 55 (BR tem tratamento próprio).
+const DDI_SET = new Set(["1","7","20","27","30","31","32","33","34","36","39","40","41","43","44","45","46","47","48","49","51","52","53","54","56","57","58","60","61","62","63","64","65","66","81","82","84","86","90","91","92","93","94","95","98","212","213","216","218","220","221","233","234","240","244","249","250","251","254","255","256","258","260","263","264","265","267","268","291","297","298","299","350","351","352","353","354","355","356","357","358","359","370","371","372","373","374","375","376","377","378","380","381","382","383","385","386","387","389","420","421","423","500","501","502","503","504","505","506","507","509","590","591","592","593","594","595","596","597","598","599","670","672","673","674","675","676","677","678","679","680","685","687","689","852","853","855","856","880","886","960","961","962","963","964","965","966","967","968","970","971","972","973","974","975","976","977","992","993","994","995","996","998"]);
+const achaDDI = (d: string): string => { for (const k of [3, 2, 1]) { const p = d.slice(0, k); if (DDI_SET.has(p)) return p; } return ""; };
+// Telefone BR válido (sem DDI): DDD(2)+8 (fixo) ou DDD(2)+9XXXXXXXX (celular).
+const ehBRValido = (semDDI: string): boolean => semDDI.length === 10 || (semDDI.length === 11 && semDDI[2] === "9");
 const foneBonito = (wa: string) => {
   const d = soDig(wa);
-  // Tira o DDI 55 só quando o tamanho bate com telefone BR (12/13 dígitos).
-  const n = (d.length === 12 || d.length === 13) && d.startsWith("55") ? d.slice(2) : d;
-  // Telefone BR = DDD(2) + 8 ou 9 dígitos. Fora disso (ex.: LID do WhatsApp,
-  // um número gigante de privacidade) não é discável → rótulo neutro em vez de
-  // um "+55 …" falso e malformado.
-  if (n.length === 10 || n.length === 11) return `+55 ${n.slice(0, 2)} ${n.slice(2, n.length - 4)}-${n.slice(-4)}`;
-  return d ? `Contato ···${d.slice(-4)}` : wa;
+  if (!d) return wa;
+  const semDDI = (d.length === 12 || d.length === 13) && d.startsWith("55") ? d.slice(2) : d;
+  // BR: com DDI 55 (12/13 díg) OU local puro (10/11 díg), desde que o padrão bata.
+  if (ehBRValido(semDDI) && (d === semDDI || d.startsWith("55"))) {
+    return `+55 ${semDDI.slice(0, 2)} ${semDDI.slice(2, semDDI.length - 4)}-${semDDI.slice(-4)}`;
+  }
+  // Internacional: 8–14 díg começando por DDI conhecido (não-55) → "+DDI ddd ddd…".
+  if (d.length >= 8 && d.length <= 14 && !d.startsWith("55")) {
+    const ddi = achaDDI(d);
+    if (ddi) return `+${ddi} ${d.slice(ddi.length).replace(/(\d{3})(?=\d)/g, "$1 ").trim()}`;
+  }
+  // Sem padrão discável (ex.: LID do WhatsApp, número gigante de privacidade) →
+  // rótulo neutro em vez de um "+55 …" falso e malformado.
+  return `Contato ···${d.slice(-4)}`;
 };
 // Chave de comparação que ignora DDI 55 e o 9º dígito de celular (DDD + 8 últimos).
 function foneKey(raw?: string | null): string {
@@ -47,6 +60,15 @@ function foneKey(raw?: string | null): string {
   return d.length >= 10 ? d.slice(0, 2) + d.slice(-8) : d;
 }
 const ehGrupoWaId = (waId?: string | null): boolean => (waId || "").startsWith("g:");
+// Número digitado à mão → dígitos E.164 (sem +). Com "+" na frente = DDI explícito
+// (usa verbatim). Sem "+": 10/11 díg = BR local → prefixa 55; senão já tem DDI.
+const digitosEnviaveis = (raw: string): string => {
+  const tevePlus = (raw || "").trim().startsWith("+");
+  let d = soDig(raw);
+  if (!d) return "";
+  if (!tevePlus && d.length <= 11) d = "55" + d;
+  return d;
+};
 const MSG_CLIENTE_ENCAMINHO = "Obrigado! Estou encaminhando seu atendimento para o setor responsável, que em breve entra em contato com você. Qualquer coisa só chamar de novo aqui! 🙏";
 
 // Texto a exibir de uma mensagem. Reação criptografada (encReactionMessage) vem
@@ -57,11 +79,13 @@ const textoMostra = (m: { texto?: string | null; tipo?: string | null }): string
   return `[${m.tipo || "msg"}]`;
 };
 
-// É um telefone BR discável (10/11 díg. sem DDI, ou 12/13 com 55)? Se não, é LID.
+// É um telefone discável de verdade (BR ou internacional conhecido)? Se não, é
+// um LID/número de privacidade do WhatsApp (não dá pra saber o número real).
 const ehTelefoneBR = (wa: string) => {
   const d = soDig(wa);
-  const n = (d.length === 12 || d.length === 13) && d.startsWith("55") ? d.slice(2) : d;
-  return n.length === 10 || n.length === 11;
+  const semDDI = (d.length === 12 || d.length === 13) && d.startsWith("55") ? d.slice(2) : d;
+  if (ehBRValido(semDDI)) return true;
+  return d.length >= 8 && d.length <= 14 && !d.startsWith("55") && !!achaDDI(d);
 };
 
 // Selo informativo: um "i" que, ao tocar, abre uma explicação curta (linguagem do
@@ -143,6 +167,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [tags, setTags] = useState<WhatsappTag[]>([]);
   const [respostas, setRespostas] = useState<WhatsappResposta[]>([]);
   const [sel, setSel] = useState<string | null>(null);
+  const [editarNum, setEditarNum] = useState(false);   // modal "editar contato" (nome/número)
   const [resposta, setResposta] = useState("");
   // Rascunho por conversa: o texto digitado fica preso à conversa em que foi
   // escrito. Ao trocar de conversa, salva o rascunho da anterior e carrega o da
@@ -620,7 +645,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
         // Individual: manda o JID completo (<num>@s.whatsapp.net) — o waId já é
         // E.164 internacional; assim o backend não prefixa 55 num nº estrangeiro.
-        body: JSON.stringify({ instancia: numeroSel, to: grupoSel ? paraEnviar : `${soDig(paraEnviar)}@s.whatsapp.net`, texto: txt, autorNome: autorCliente, ...(mentioned.length ? { mentioned } : {}), ...(quoted ? { quoted } : {}) }),
+        // telefoneManual (número corrigido à mão) tem prioridade sobre o waId.
+        body: JSON.stringify({ instancia: numeroSel, to: grupoSel ? paraEnviar : `${contatos[foneKey(sel)]?.telefoneManual || soDig(paraEnviar)}@s.whatsapp.net`, texto: txt, autorNome: autorCliente, ...(mentioned.length ? { mentioned } : {}), ...(quoted ? { quoted } : {}) }),
       });
       const j = await r.json().catch(() => ({}));
       if (r.ok && (j as { ok?: boolean }).ok) {
@@ -652,7 +678,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       const autorCliente = (numeros.find(n => n.id === numeroSel)?.apelidos?.[me?.id || ""] || "").trim() || me?.nome || "";
       const r = await fetch("/api/evolution-enviar-midia", {
         method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ instancia: numeroSel, to: grupoSel ? paraEnviar : `${soDig(paraEnviar)}@s.whatsapp.net`, tipo, base64: dataUrl, mimetype, fileName, caption, autorNome: autorCliente }),
+        body: JSON.stringify({ instancia: numeroSel, to: grupoSel ? paraEnviar : `${contatos[foneKey(sel)]?.telefoneManual || soDig(paraEnviar)}@s.whatsapp.net`, tipo, base64: dataUrl, mimetype, fileName, caption, autorNome: autorCliente }),
       });
       const j = await r.json().catch(() => ({}));
       if (r.ok && (j as { ok?: boolean }).ok) {
@@ -1338,13 +1364,14 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 {ehGrupoWaId(sel || "") ? (
                   <>👥 Grupo{(contatoSel?.participantes?.length || 0) > 0 ? ` · ${contatoSel!.participantes!.length} participantes` : ""} <InfoBadge texto="Só conseguimos ver quem participa do grupo depois que a pessoa envia uma mensagem. A lista pode estar incompleta." /></>
                 ) : (
-                  <>{foneBonito(sel)}{!ehTelefoneBR(sel || "") && !clienteSel && !pessoaSel && !contatoSel?.nomeManual && <> <InfoBadge texto="Por privacidade do WhatsApp, ainda não temos o número nem o nome desta pessoa. Isso aparece assim que ela te enviar uma mensagem." /></>}</>
+                  <>{foneBonito(contatoSel?.telefoneManual || sel)}{contatoSel?.telefoneManual && <span className="text-gray-400"> ✎</span>}{!ehTelefoneBR(contatoSel?.telefoneManual || sel || "") && !clienteSel && !pessoaSel && !contatoSel?.nomeManual && <> <InfoBadge texto="Por privacidade do WhatsApp, ainda não temos o número nem o nome desta pessoa. Isso aparece assim que ela te enviar uma mensagem." /></>}</>
                 )}
                 {clienteSel && <span className="text-emerald-600 dark:text-emerald-300"> · 🧑 {clienteSel.nome}</span>}
                 {pessoaSel && <span className="text-indigo-600 dark:text-indigo-300"> · 👤 {pessoaSel.nome}</span>}
                 {contatoSel?.atribuidoNome && <span> · 🙋 {contatoSel.atribuidoNome}</span>}
               </div>
             </div>
+            {podeResponder && !ehGrupoWaId(sel || "") && <button type="button" onClick={() => setEditarNum(true)} title="Editar contato (nome/número)" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">✏️</button>}
             {podeResponder && !numeroLivre && <button type="button" onClick={() => { setTransferWaId(null); setTransferir(true); }} title={contatoSel?.atribuidoA ? "Transferir" : "Atribuir"} className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">↪</button>}
             {podeResponder && !ehGrupoWaId(sel || "") && <button type="button" onClick={() => setPassarCtx(true)} title="Passar contexto pra alguém externo" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">📤</button>}
             {podeResponder && !ehGrupoWaId(sel || "") && numerosDestino.length > 0 && <button type="button" onClick={() => setEncaminhar(true)} title="Encaminhar para outro número/setor" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">🔀</button>}
@@ -1861,6 +1888,11 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         pessoas={pessoas.filter(p => { const n = numeros.find(x => x.id === numeroSel); const uids = n?.usuariosIds || []; return uids.length === 0 || uids.includes(p.id); })}
         modo={donoDe(transferWaId || sel || "") ? "transferir" : "atribuir"}
         meId={me?.id || null} onClose={() => { setTransferir(false); setTransferWaId(null); }} onTransferir={transferirPara} />}
+      {editarNum && sel && !ehGrupoWaId(sel) && <EditarContatoModal
+        nomeAtual={contatoSel?.nomeManual || contatoSel?.nomePush || ""}
+        numeroAtual={contatoSel?.telefoneManual ? foneBonito(contatoSel.telefoneManual) : (ehTelefoneBR(sel) ? foneBonito(sel) : "")}
+        onFechar={() => setEditarNum(false)}
+        onSalvar={async (nome, telDigits) => { await salvarContato(sel, { nomeManual: nome || null, telefoneManual: telDigits || null }); }} />}
       {qrRecon && <QrModal instancia={qrRecon.instancia} nome={qrRecon.nome} qrInicial={null}
         onClose={() => { setQrRecon(null); if (numeroSel) void chamarInstancia("status", numeroSel).then(r => setStatusConexao(r.estado || "unknown")).catch(() => {}); }} />}
 
@@ -2010,6 +2042,44 @@ function NovoGrupoModal({ pessoas, onCriar, onClose }: { pessoas: Pessoa[]; onCr
         </div>
       </div>
     </Modal>
+  );
+}
+
+// Editar contato: corrige nome e/ou número (ex.: número capturado errado, ou
+// estrangeiro que caiu como BR). O número corrigido passa a ser o alvo do envio.
+function EditarContatoModal({ nomeAtual, numeroAtual, onSalvar, onFechar }: {
+  nomeAtual: string; numeroAtual: string;
+  onSalvar: (nome: string, telefoneDigits: string) => Promise<void>; onFechar: () => void;
+}) {
+  const [nome, setNome] = useState(nomeAtual);
+  const [num, setNum] = useState(numeroAtual);
+  const [salvando, setSalvando] = useState(false);
+  const digits = digitosEnviaveis(num);
+  const previa = digits ? foneBonito(digits) : "";
+  return (
+    <div className="fixed inset-0 z-[220] bg-black/40 flex items-center justify-center p-4" onClick={onFechar}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-sm p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
+        <div className="text-base font-semibold text-gray-900 dark:text-gray-100">Editar contato</div>
+        <label className="block">
+          <span className="text-[12px] text-gray-500 dark:text-gray-400">Nome</span>
+          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do contato"
+            className="mt-0.5 w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-sm dark:text-gray-100" />
+        </label>
+        <label className="block">
+          <span className="text-[12px] text-gray-500 dark:text-gray-400">Número</span>
+          <input value={num} onChange={(e) => setNum(e.target.value)} inputMode="tel" placeholder="+61 475 505 537  ·  91 98888-7777"
+            className="mt-0.5 w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-950 text-sm dark:text-gray-100" />
+          {previa ? <span className="text-[11px] text-emerald-600 dark:text-emerald-400">Vai enviar para: {previa}</span>
+            : num.trim() ? <span className="text-[11px] text-amber-600 dark:text-amber-400">Número incompleto.</span> : null}
+        </label>
+        <p className="text-[11px] text-gray-400">Use quando o número veio errado. Para número <b>de fora do Brasil</b>, comece com <b>+DDI</b> (ex.: <b>+61</b> Austrália, <b>+351</b> Portugal). Sem o "+", assumimos Brasil.</p>
+        <div className="flex justify-end gap-2 pt-1">
+          <button type="button" onClick={onFechar} className="px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">Cancelar</button>
+          <button type="button" disabled={salvando} onClick={async () => { setSalvando(true); try { await onSalvar(nome.trim(), digits); onFechar(); } catch { setSalvando(false); } }}
+            className="px-3 py-2 rounded-lg text-sm bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">{salvando ? "Salvando…" : "Salvar"}</button>
+        </div>
+      </div>
+    </div>
   );
 }
 
