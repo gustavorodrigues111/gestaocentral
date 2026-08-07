@@ -186,6 +186,7 @@ export function ComercialConfigTab({ rid }: Props) {
             ["endereco", "Endereço"],
             ["representanteNome", "Representante (quem assina)"],
             ["representanteCpf", "CPF do representante"],
+            ["representanteEmail", "E-mail do representante (assinatura)"],
           ] as const).map(([campo, label]) => (
             <label key={campo} className={`flex flex-col gap-1 ${campo === "endereco" ? "sm:col-span-2" : ""}`}>
               <span className="text-[11px] uppercase font-bold text-gray-500">{label}</span>
