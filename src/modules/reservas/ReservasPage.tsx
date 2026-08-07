@@ -19,6 +19,20 @@ import { ChegouModal } from "./ChegouModal";
 import { ClienteHistoricoModal } from "./ClienteHistoricoModal";
 import { montarMensagemConfirmacao } from "./whatsappConfirmacao";
 import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
+import { authHeader } from "../../core/firebase/idToken";
+
+// "há 3 min" / "há 2 h" / "agora" — pro badge de sincronização do GetIn.
+function haQuantoTempo(iso?: string): string {
+  if (!iso) return "";
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!isFinite(ms) || ms < 0) return "agora";
+  const min = Math.floor(ms / 60000);
+  if (min < 1) return "agora";
+  if (min < 60) return `há ${min} min`;
+  const h = Math.floor(min / 60);
+  if (h < 24) return `há ${h} h`;
+  return `há ${Math.floor(h / 24)} d`;
+}
 
 type Tab = "reservas" | "agenda" | "clientes" | "config";
 
@@ -74,6 +88,9 @@ export function ReservasPage() {
   const podeExcluirCliente = can("reservas", "excluirCliente");
 
   const [tab, setTab] = useState<Tab>("reservas");
+  // GetIn: status da última sincronização (badge) + estado do botão "forçar".
+  const [getinStatus, setGetinStatus] = useState<{ atualizadoEm?: string; total?: number; ok?: boolean; erro?: string } | null>(null);
+  const [forcandoSync, setForcandoSync] = useState(false);
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [mesas, setMesas] = useState<Mesa[]>([]);
   const [saloes, setSaloes] = useState<Salao[]>([]);
@@ -170,6 +187,28 @@ export function ReservasPage() {
     });
     return () => unsub();
   }, [rid]);
+
+  // GetIn: status da última sincronização deste restaurante (pro badge).
+  useEffect(() => {
+    if (!rid) return;
+    const unsub = onSnapshot(doc(db, "getinSyncStatus", rid), (snap) => {
+      setGetinStatus(snap.exists() ? (snap.data() as typeof getinStatus) : null);
+    });
+    return () => unsub();
+  }, [rid]);
+
+  async function forcarSyncGetin() {
+    if (forcandoSync || !rid) return;
+    setForcandoSync(true);
+    try {
+      const r = await fetch(`/api/getin-sync?rid=${encodeURIComponent(rid)}`, { method: "POST", headers: { ...(await authHeader()) } });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) alert("Falha ao sincronizar: " + ((j as { error?: string }).error || `HTTP ${r.status}`));
+      // O badge atualiza sozinho via o listener de getinSyncStatus.
+    } catch (e) {
+      alert("Falha ao sincronizar: " + (e instanceof Error ? e.message : "?"));
+    } finally { setForcandoSync(false); }
+  }
 
   // Merge: reserva base + PII se disponível (reservas antigas têm PII inline)
   useEffect(() => {
@@ -342,7 +381,22 @@ export function ReservasPage() {
   return (
     <div className="max-w-5xl">
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
-        <div />
+        {getinStatus ? (
+          <div className="flex items-center gap-2 text-xs flex-wrap">
+            <span title={getinStatus.erro || undefined}
+              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${getinStatus.erro
+                ? "border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300"
+                : "border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300"}`}>
+              🔗 GetIn · {getinStatus.erro ? "erro na sincronização" : `sincronizado ${haQuantoTempo(getinStatus.atualizadoEm)}`}
+            </span>
+            {podeConfig && (
+              <button type="button" onClick={() => void forcarSyncGetin()} disabled={forcandoSync}
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">
+                {forcandoSync ? "Sincronizando…" : "↻ Sincronizar agora"}
+              </button>
+            )}
+          </div>
+        ) : <div />}
         {podeCriar && tab === "reservas" && (
           <Button onClick={() => setEditing("new")}>+ Nova reserva</Button>
         )}
