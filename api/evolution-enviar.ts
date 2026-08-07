@@ -80,7 +80,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       if (alt && alt !== to) { const r2 = await enviar(alt); if (r2.ok || !existsFalse(r2.j)) r = r2; else r = r2; }
     }
     if (!r.ok) {
-      if (existsFalse(r.j)) { res.status(400).json({ error: "Este número não tem WhatsApp — não há uma conta ativa nele, então não é possível enviar a mensagem.", numeroInexistente: true }); return; }
+      if (existsFalse(r.j)) { res.status(400).json({ error: "Este número não tem WhatsApp — a Evolution não achou uma conta ativa nele. Confira se o número está correto (celular BR = DDD + 9 + 8 dígitos); se o contato te mandou mensagem, pode ser o 9º dígito registrado de forma diferente.", numeroInexistente: true }); return; }
       res.status(502).json({ error: `Evolution retornou HTTP ${r.status}. ${r.txt.slice(0, 300)}` });
       return;
     }
@@ -91,12 +91,14 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   } finally { clearTimeout(timer); }
 }
 
-// Alterna o 9º dígito de um número BR (55 + DDD + número): 11 díg → remove o 3º
-// (o "9"); 10 díg → adiciona o 9. Pra casar contas antigas/novas no WhatsApp.
+// Alterna o 9º dígito de um número BR (55 + DDD + número): 11 díg com o 9 na
+// posição certa → remove o 9; 10 díg → adiciona o 9. Pra casar contas
+// antigas/novas no WhatsApp. IMPORTANTE: só remove quando o dígito É mesmo um
+// "9" (senão apagava um dígito real de um número torto e gerava outro inválido).
 function altFone9(n: string): string | null {
   if (!n.startsWith("55")) return null;
   const rest = n.slice(2);
-  if (rest.length === 11) return "55" + rest.slice(0, 2) + rest.slice(3);
+  if (rest.length === 11 && rest[2] === "9") return "55" + rest.slice(0, 2) + rest.slice(3);
   if (rest.length === 10) return "55" + rest.slice(0, 2) + "9" + rest.slice(2);
   return null;
 }
