@@ -21,8 +21,9 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import chromium from "@sparticuz/chromium";
 import puppeteer from "puppeteer-core";
 import { firestoreDisponivel, firestoreListar, firestoreLer, firestoreAtualizar } from "./_firestoreRest.js";
+import { requireUser } from "./_auth.js";
 
-export const config = { maxDuration: 120 };
+export const config = { maxDuration: 300 };
 
 // Fallback enquanto restaurants/{id}.getin não é semeado. credKey → secrets.
 // unitId opcional: se não informado, é derivado do claim `units` do JWT no login.
@@ -181,12 +182,16 @@ async function sincronizarUm(a: { rid: string; nome: string; unitId?: string; cr
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
-  // Proteção: cron do Vercel manda o header x-vercel-cron; manual via ?key=CRON_SECRET.
+  // Proteção: cron do Vercel (header x-vercel-cron) | secret (?key) | usuário
+  // logado (botão "forçar sync" no app manda o ID token do Firebase).
   const secret = process.env.CRON_SECRET;
   const ehCron = !!req.headers["x-vercel-cron"];
-  const autorizado = ehCron || !secret || req.headers.authorization === `Bearer ${secret}` || req.query.key === secret;
+  let autorizado = ehCron || !secret || req.headers.authorization === `Bearer ${secret}` || req.query.key === secret;
+  if (!autorizado) { try { await requireUser(req); autorizado = true; } catch { /* não é usuário logado */ } }
   if (!autorizado) { res.status(401).json({ error: "não autorizado" }); return; }
   if (!firestoreDisponivel()) { res.status(503).json({ error: "Firestore indisponível (faltam credenciais de service account no ambiente)." }); return; }
+  // Filtro opcional por restaurante (o botão "forçar" manda só o rid da tela).
+  const soRid = typeof req.query.rid === "string" ? req.query.rid : "";
 
   try {
     const restaurantes = await firestoreListar("restaurants");
@@ -199,12 +204,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       const b = BUILTIN.find((x) => x.match.test(nome));
       if (b) alvos.push({ rid, nome, unitId: b.unitId, credKey: b.credKey });
     }
-    if (!alvos.length) { res.status(200).json({ ok: true, aviso: "nenhum restaurante com GetIn configurado", resultado: [] }); return; }
+    const alvosFiltrados = soRid ? alvos.filter((a) => a.rid === soRid) : alvos;
+    if (!alvosFiltrados.length) { res.status(200).json({ ok: true, aviso: "nenhum restaurante com GetIn configurado", resultado: [] }); return; }
 
     const resultado: Array<Record<string, unknown>> = [];
-    for (const a of alvos) {
-      try { resultado.push(await sincronizarUm(a)); }
-      catch (e) { resultado.push({ rid: a.rid, nome: a.nome, erro: e instanceof Error ? e.message : String(e) }); }
+    for (const a of alvosFiltrados) {
+      let r: Record<string, unknown>;
+      try { r = await sincronizarUm(a); }
+      catch (e) { r = { rid: a.rid, nome: a.nome, erro: e instanceof Error ? e.message : String(e) }; }
+      // Status por restaurante (pro badge + botão de forçar na tela de Reservas).
+      await firestoreAtualizar("getinSyncStatus", a.rid, {
+        id: a.rid, restaurantId: a.rid, nome: a.nome, atualizadoEm: new Date().toISOString(),
+        total: Number(r.total || 0), novas: Number(r.novas || 0), atualizadas: Number(r.atualizadas || 0),
+        ok: !r.erro, erro: r.erro ? String(r.erro) : "",
+      }).catch(() => {});
+      resultado.push(r);
     }
     res.status(200).json({ ok: true, resultado });
   } catch (e) {
