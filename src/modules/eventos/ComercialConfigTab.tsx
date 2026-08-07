@@ -173,6 +173,36 @@ export function ComercialConfigTab({ rid }: Props) {
         />
       </div>
 
+      {/* Dados da empresa (CONTRATADA) pro contrato de evento */}
+      <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Dados da empresa (contrato)</h2>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 mb-3">
+          Dados da casa que entram no <strong>contrato de evento</strong> como CONTRATADA. Preenche uma vez.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 max-w-2xl">
+          {([
+            ["razaoSocial", "Razão social"],
+            ["cnpj", "CNPJ"],
+            ["endereco", "Endereço"],
+            ["representanteNome", "Representante (quem assina)"],
+            ["representanteCpf", "CPF do representante"],
+          ] as const).map(([campo, label]) => (
+            <label key={campo} className={`flex flex-col gap-1 ${campo === "endereco" ? "sm:col-span-2" : ""}`}>
+              <span className="text-[11px] uppercase font-bold text-gray-500">{label}</span>
+              <input
+                defaultValue={(restaurant?.eventosConfig?.dadosContratada?.[campo] as string) || ""}
+                onBlur={(e) => {
+                  const v = e.target.value.trim();
+                  if (v === ((restaurant?.eventosConfig?.dadosContratada?.[campo] as string) || "")) return;
+                  void updateDoc(doc(db, "restaurants", rid), { [`eventosConfig.dadosContratada.${campo}`]: v || null });
+                }}
+                className="h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100"
+              />
+            </label>
+          ))}
+        </div>
+      </div>
+
       <div>
         <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Pessoas comerciais</h2>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">

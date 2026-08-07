@@ -1147,6 +1147,8 @@ export type Restaurant = {
     // WhatsApp que recebe o aviso automático quando entra um lead novo pelo
     // site (Cloud API). Vazio = sem aviso (só badge no kanban).
     whatsappAvisos?: string;
+    // Dados da CONTRATADA (a casa) pra preencher o contrato de evento.
+    dadosContratada?: { razaoSocial?: string; cnpj?: string; endereco?: string; representanteNome?: string; representanteCpf?: string };
     // Percentuais de comissão (configuráveis) por classificação e atividade.
     // Aplicados sobre fechamento.faturamentoBrutoSemGorjeta.
     comissao?: {
@@ -3717,6 +3719,10 @@ export type LeadEvento = {
     tipoPessoa: "PF" | "PJ";
     cnpj?: string;                   // obrigatório se PJ
     razaoSocial?: string;            // buscada via CNPJ ou digitada
+    // Dados pra contrato (preenchidos quando vai gerar contrato):
+    cpf?: string;                    // PF
+    endereco?: string;               // endereço completo (PF ou PJ)
+    representanteLegal?: { nome?: string; cpf?: string };  // PJ — quem assina
   };
   // Evento desejado
   dataDesejada: string;              // "YYYY-MM-DD"

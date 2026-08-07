@@ -40,6 +40,11 @@ export function EditarLeadModal({ lead, meId, meNome, onClose }: Props) {
   const [tipoPessoa, setTipoPessoa] = useState<"PF" | "PJ">(lead.cliente.tipoPessoa || "PF");
   const [cnpj, setCnpj] = useState(lead.cliente.cnpj || "");
   const [razaoSocial, setRazaoSocial] = useState(lead.cliente.razaoSocial || "");
+  // Dados pra contrato
+  const [cpf, setCpf] = useState(lead.cliente.cpf || "");
+  const [endereco, setEndereco] = useState(lead.cliente.endereco || "");
+  const [repNome, setRepNome] = useState(lead.cliente.representanteLegal?.nome || "");
+  const [repCpf, setRepCpf] = useState(lead.cliente.representanteLegal?.cpf || "");
 
   const [dataDesejada, setDataDesejada] = useState(lead.dataDesejada || "");
   const [dataAlternativa, setDataAlternativa] = useState(lead.dataAlternativa || "");
@@ -78,6 +83,12 @@ export function EditarLeadModal({ lead, meId, meNome, onClose }: Props) {
       if (lead.cliente.cnpj) { up["cliente.cnpj"] = ""; }
       if (lead.cliente.razaoSocial) { up["cliente.razaoSocial"] = ""; }
     }
+    // Dados pra contrato
+    const cpfT = cpf.trim(), endT = endereco.trim(), repNT = repNome.trim(), repCT = repCpf.trim();
+    if (cpfT !== (lead.cliente.cpf || "")) { up["cliente.cpf"] = cpfT; diff.push(`CPF: ${lead.cliente.cpf || "—"} → ${cpfT || "—"}`); }
+    if (endT !== (lead.cliente.endereco || "")) { up["cliente.endereco"] = endT; diff.push(`Endereço: ${lead.cliente.endereco || "—"} → ${endT || "—"}`); }
+    if (repNT !== (lead.cliente.representanteLegal?.nome || "")) { up["cliente.representanteLegal.nome"] = repNT; diff.push(`Representante: ${lead.cliente.representanteLegal?.nome || "—"} → ${repNT || "—"}`); }
+    if (repCT !== (lead.cliente.representanteLegal?.cpf || "")) { up["cliente.representanteLegal.cpf"] = repCT; diff.push(`CPF do representante: ${lead.cliente.representanteLegal?.cpf || "—"} → ${repCT || "—"}`); }
 
     if (dataDesejada && dataDesejada !== (lead.dataDesejada || "")) { up.dataDesejada = dataDesejada; diff.push(`Data: ${fmtData(lead.dataDesejada)} → ${fmtData(dataDesejada)}`); }
     if (dataAlternativa !== (lead.dataAlternativa || "")) { up.dataAlternativa = dataAlternativa; diff.push(`Data alternativa: ${lead.dataAlternativa ? fmtData(lead.dataAlternativa) : "—"} → ${dataAlternativa ? fmtData(dataAlternativa) : "—"}`); }
@@ -101,7 +112,7 @@ export function EditarLeadModal({ lead, meId, meNome, onClose }: Props) {
     if (observacoesCliente.trim() !== (lead.observacoesCliente || "")) { up.observacoesCliente = observacoesCliente.trim(); diff.push("Observações do cliente atualizadas"); }
 
     return { updates: up, diffLinhas: diff };
-  }, [nome, whatsapp, email, tipoPessoa, cnpj, razaoSocial, dataDesejada, dataAlternativa, horaInicio, horaFim, numConvidados, ocasiao, ocasiaoOutros, modeloEvento, escopoPacote, escopoPacoteOutro, musicaAoVivo, decoracao, observacoesCliente, lead]);
+  }, [nome, whatsapp, email, tipoPessoa, cnpj, razaoSocial, cpf, endereco, repNome, repCpf, dataDesejada, dataAlternativa, horaInicio, horaFim, numConvidados, ocasiao, ocasiaoOutros, modeloEvento, escopoPacote, escopoPacoteOutro, musicaAoVivo, decoracao, observacoesCliente, lead]);
 
   const nMudancas = diffLinhas.length;
 
@@ -155,6 +166,20 @@ export function EditarLeadModal({ lead, meId, meNome, onClose }: Props) {
                   <input value={cnpj} onChange={e => setCnpj(e.target.value)} className={inCls} /></label>
                 <label className="flex flex-col gap-1 sm:col-span-2"><span className={lblCls}>Razão social</span>
                   <input value={razaoSocial} onChange={e => setRazaoSocial(e.target.value)} className={inCls} /></label>
+              </>
+            )}
+            {tipoPessoa === "PF" && (
+              <label className="flex flex-col gap-1"><span className={lblCls}>CPF <span className="text-gray-400 normal-case">(contrato)</span></span>
+                <input value={cpf} onChange={e => setCpf(e.target.value)} placeholder="000.000.000-00" className={inCls} /></label>
+            )}
+            <label className="flex flex-col gap-1 sm:col-span-2"><span className={lblCls}>Endereço <span className="text-gray-400 normal-case">(contrato)</span></span>
+              <input value={endereco} onChange={e => setEndereco(e.target.value)} placeholder="Rua, nº, bairro, cidade/UF, CEP" className={inCls} /></label>
+            {tipoPessoa === "PJ" && (
+              <>
+                <label className="flex flex-col gap-1"><span className={lblCls}>Representante legal <span className="text-gray-400 normal-case">(quem assina)</span></span>
+                  <input value={repNome} onChange={e => setRepNome(e.target.value)} className={inCls} /></label>
+                <label className="flex flex-col gap-1"><span className={lblCls}>CPF do representante</span>
+                  <input value={repCpf} onChange={e => setRepCpf(e.target.value)} placeholder="000.000.000-00" className={inCls} /></label>
               </>
             )}
           </div>
