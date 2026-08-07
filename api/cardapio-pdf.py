@@ -69,7 +69,8 @@ def item_height(c, it):
     desc_w = it[3] if len(it) > 3 else 148
     nl = len(wrap(c, name, 'I700', FS, 148))
     dl = len(wrap(c, desc, 'I400', FS, desc_w)) if desc else 0
-    return (nl + dl) * NAME_LH
+    np = len(it[2]) if len(it) > 2 and it[2] else 0  # preços empilham à direita a partir da 1ª linha do nome
+    return max(nl + dl, np) * NAME_LH
 
 def label_w(c, txt, size, cs):
     return c.stringWidth(txt, 'Bebas', size) + cs * (len(txt) - 1)
