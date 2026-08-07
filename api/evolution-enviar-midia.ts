@@ -38,7 +38,13 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as
     { instancia?: string; to?: string; tipo?: string; base64?: string; mimetype?: string; fileName?: string; caption?: string; autorNome?: string } | null;
   const instancia = (body?.instancia || "").toString().trim();
-  const to = normalizarFone((body?.to || "").toString());
+  // Grupo "<id>@g.us" e JID individual completo "<num>@s.whatsapp.net" vão
+  // verbatim (número já é E.164 internacional — não prefixa 55). Só número cru
+  // passa pelo normalizarFone. Ver nota em api/evolution-enviar.ts.
+  const toRawM = (body?.to || "").toString();
+  const to = toRawM.endsWith("@g.us") ? toRawM
+    : toRawM.endsWith("@s.whatsapp.net") ? toRawM.replace(/\D/g, "")
+    : normalizarFone(toRawM);
   const tipo = (body?.tipo || "").toString();
   const b64 = soBase64((body?.base64 || "").toString());
   const mimetype = (body?.mimetype || "").toString();

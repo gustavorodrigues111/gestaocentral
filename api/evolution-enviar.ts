@@ -41,8 +41,13 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const instancia = (body?.instancia || "").toString().trim();
   const toRaw = (body?.to || "").toString();
   // Grupo: JID "<id>@g.us" vai VERBATIM (não normaliza — senão perde o @g.us e
-  // vira envio pra um número). Individual: normaliza pra E.164 sem "+".
-  const to = toRaw.endsWith("@g.us") ? toRaw : normalizarFone(toRaw);
+  // vira envio pra um número). JID individual completo "<num>@s.whatsapp.net":
+  // o número JÁ é E.164 internacional (veio do WhatsApp) → usa os dígitos
+  // verbatim, NUNCA prefixa 55 (senão abrasileira nº estrangeiro, ex.: +61 AU).
+  // Só número cru (digitado à mão em outro módulo) passa pelo normalizarFone.
+  const to = toRaw.endsWith("@g.us") ? toRaw
+    : toRaw.endsWith("@s.whatsapp.net") ? toRaw.replace(/\D/g, "")
+    : normalizarFone(toRaw);
   const mentioned = Array.isArray(body?.mentioned) ? body!.mentioned.filter((x) => typeof x === "string" && x) : [];
   // Citação (responder mensagem): { key:{id,...}, message:{conversation} }. Só usa se tiver id.
   const quoted = body?.quoted && body.quoted.key?.id ? body.quoted : null;

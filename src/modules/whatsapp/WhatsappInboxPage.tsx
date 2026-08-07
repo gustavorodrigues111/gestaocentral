@@ -618,7 +618,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       } : null;
       const r = await fetch("/api/evolution-enviar", {
         method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ instancia: numeroSel, to: paraEnviar, texto: txt, autorNome: autorCliente, ...(mentioned.length ? { mentioned } : {}), ...(quoted ? { quoted } : {}) }),
+        // Individual: manda o JID completo (<num>@s.whatsapp.net) — o waId já é
+        // E.164 internacional; assim o backend não prefixa 55 num nº estrangeiro.
+        body: JSON.stringify({ instancia: numeroSel, to: grupoSel ? paraEnviar : `${soDig(paraEnviar)}@s.whatsapp.net`, texto: txt, autorNome: autorCliente, ...(mentioned.length ? { mentioned } : {}), ...(quoted ? { quoted } : {}) }),
       });
       const j = await r.json().catch(() => ({}));
       if (r.ok && (j as { ok?: boolean }).ok) {
@@ -650,7 +652,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       const autorCliente = (numeros.find(n => n.id === numeroSel)?.apelidos?.[me?.id || ""] || "").trim() || me?.nome || "";
       const r = await fetch("/api/evolution-enviar-midia", {
         method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ instancia: numeroSel, to: paraEnviar, tipo, base64: dataUrl, mimetype, fileName, caption, autorNome: autorCliente }),
+        body: JSON.stringify({ instancia: numeroSel, to: grupoSel ? paraEnviar : `${soDig(paraEnviar)}@s.whatsapp.net`, tipo, base64: dataUrl, mimetype, fileName, caption, autorNome: autorCliente }),
       });
       const j = await r.json().catch(() => ({}));
       if (r.ok && (j as { ok?: boolean }).ok) {
