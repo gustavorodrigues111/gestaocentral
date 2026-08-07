@@ -10,6 +10,7 @@ import { todayYmd } from "../../core/utils/date";
 import { RESERVA_STATUS_ICON, RESERVA_STATUS_LABEL } from "../../core/types";
 import type { Cliente, ConfiguracaoReservas, Mesa, Reserva, ReservaPII, ReservaStatus, Salao } from "../../core/types";
 import { ReservaModal } from "./ReservaModal";
+import { CancelarReservaModal } from "./CancelarReservaModal";
 import { ClientesTab } from "./ClientesTab";
 import { ConfigTab } from "./ConfigTab";
 import { AgendaTab } from "./AgendaTab";
@@ -81,6 +82,7 @@ export function ReservasPage() {
   const [editing, setEditing] = useState<Reserva | "new" | null>(null);
   // Modal "Cliente chegou" — escolhe mesa + nota
   const [chegouReserva, setChegouReserva] = useState<Reserva | null>(null);
+  const [cancelando, setCancelando] = useState<Reserva | null>(null);
   // Modal "Histórico do cliente" no fluxo da reserva (mode=recente)
   const [historicoReserva, setHistoricoReserva] = useState<Reserva | null>(null);
 
@@ -275,7 +277,7 @@ export function ReservasPage() {
     return result;
   }, [chipOffset, today, podeVerPassadas]);
 
-  async function setStatus(r: Reserva, status: ReservaStatus) {
+  async function setStatus(r: Reserva, status: ReservaStatus, motivo?: string) {
     if (!me) return;
     // "chegou" não muda status direto — abre modal pra escolher mesa +
     // nota. O modal cuida do updateDoc.
@@ -286,7 +288,7 @@ export function ReservasPage() {
     const now = new Date().toISOString();
     const patch: Partial<Reserva> = { status, atualizadoEm: now };
     if (status === "confirmada") patch.confirmadaEm = now;
-    if (status === "cancelada") patch.canceladaEm = now;
+    if (status === "cancelada") { patch.canceladaEm = now; if (motivo) patch.motivoCancelamento = motivo; }
     await updateDoc(doc(db, "reservas", r.id), patch);
   }
 
@@ -416,7 +418,7 @@ export function ReservasPage() {
                         <div className="flex gap-1 flex-wrap">
                           {podeChegou && <Button variant="secondary" size="sm" onClick={() => setChegouReserva(r)}>🪑 Veio</Button>}
                           {podeEditar  && <Button variant="secondary" size="sm" onClick={() => setStatus(r, "no_show")}>😶 Não veio</Button>}
-                          {podeCancelar && <Button variant="secondary" size="sm" onClick={() => setStatus(r, "cancelada")}>✕ Cancelar</Button>}
+                          {podeCancelar && <Button variant="secondary" size="sm" onClick={() => setCancelando(r)}>✕ Cancelar</Button>}
                         </div>
                       )}
                     </div>
@@ -544,6 +546,7 @@ export function ReservasPage() {
                         acoes={{ podeEditar, podeCancelar, podeChegou, podeWhatsapp, podeVerCRM, podeNota }}
                         onEditar={() => setEditing(r)}
                         onStatus={(s) => setStatus(r, s)}
+                        onCancelar={() => setCancelando(r)}
                         onWhatsapp={() => abrirWhatsappConfirmacao(r)}
                       />
                     ))}
@@ -570,6 +573,7 @@ export function ReservasPage() {
                     acoes={{ podeEditar, podeCancelar, podeChegou, podeWhatsapp, podeVerCRM, podeNota }}
                     onEditar={() => setEditing(r)}
                     onStatus={(s) => setStatus(r, s)}
+                    onCancelar={() => setCancelando(r)}
                     onWhatsapp={() => abrirWhatsappConfirmacao(r)}
                   />
                 ))}
@@ -628,6 +632,14 @@ export function ReservasPage() {
         />
       )}
 
+      {cancelando && (
+        <CancelarReservaModal
+          reserva={cancelando}
+          onClose={() => setCancelando(null)}
+          onConfirmar={async (motivo) => { await setStatus(cancelando, "cancelada", motivo); setCancelando(null); }}
+        />
+      )}
+
       {historicoReserva && historicoReserva.clienteId && (() => {
         const cliente = clientes.find(c => c.id === historicoReserva.clienteId);
         if (!cliente) {
@@ -654,7 +666,7 @@ export function ReservasPage() {
   // acesso ao CRM completo (verCRM). Mantém nome+telefone+horário/pessoas/
   // salão/mesa — info operacional mínima.
   function ReservaCard({
-    reserva, clientes, acoes, onEditar, onStatus, onWhatsapp,
+    reserva, clientes, acoes, onEditar, onStatus, onWhatsapp, onCancelar,
   }: {
     reserva: Reserva;
     clientes: Cliente[];
@@ -669,6 +681,7 @@ export function ReservasPage() {
     onEditar: () => void;
     onStatus: (s: ReservaStatus) => void;
     onWhatsapp: () => void;
+    onCancelar: () => void;
   }) {
     const temCliente = !!reserva.clienteId && !!clientes.find(c => c.id === reserva.clienteId);
     const cliente = reserva.clienteId ? clientes.find(c => c.id === reserva.clienteId) : null;
@@ -775,7 +788,7 @@ export function ReservasPage() {
                     </KebabItem>
                   )}
                   {temCancelar && (
-                    <KebabItem danger onClick={() => { onStatus("cancelada"); close(); }}>
+                    <KebabItem danger onClick={() => { onCancelar(); close(); }}>
                       ✕ Cancelar
                     </KebabItem>
                   )}
