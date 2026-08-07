@@ -56,7 +56,7 @@ async function lerCardapioEstado(): Promise<CardapioEstado & { versao: number }>
 }
 
 type AltCardapio = { acao?: string; pagina?: string; secao?: string; item?: string; dados?: Record<string, unknown> };
-const PAGINAS: (keyof CardapioEstado)[] = ["comidas", "bebidas", "vendinha"];
+const PAGINAS: (keyof CardapioEstado)[] = ["comidas", "bebidas", "vendinha", "especiais"];
 
 // ── Lixeira do cardápio (pratos removidos, restauráveis) ────────────────────
 // Guarda cada prato removido com os DADOS e a POSIÇÃO original. Vale pros dois
@@ -192,13 +192,13 @@ function previaCardapioHtml(est: CardapioEstado & { versao?: number }): string {
     + `.item{display:flex;gap:10px;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #ece7dd}`
     + `.l b{font-size:14px}.d{color:#9ca3af;font-size:12px}.p{white-space:nowrap;font-weight:600;font-size:13px}</style></head><body>`
     + `<h1>🍽️ Cardápio do Puba — prévia</h1><div class="v">versão ${est.versao || 0} · confira e aprove</div>`
-    + pagina("Comidas", est.comidas) + pagina("Bebidas", est.bebidas) + pagina("Almoço", est.vendinha)
+    + pagina("Comidas", est.comidas) + pagina("Bebidas", est.bebidas) + pagina("Almoço", est.vendinha) + pagina("Especiais do dia", est.especiais)
     + `</body></html>`;
 }
 
 const SKILL_TOOLS: Record<string, SkillTool> = {
   ler_cardapio: {
-    desc: "Lê o cardápio atual do Puba Cidade Velha (comidas, bebidas, vendinha) com nomes, descrições e preços. Use SEMPRE antes de propor mudança.",
+    desc: "Lê o cardápio atual do Puba Cidade Velha (comidas, bebidas, vendinha=Almoço, especiais=Especiais do dia) com nomes, descrições e preços. Use SEMPRE antes de propor mudança.",
     tipo: "read",
     schema: { type: "object", properties: {}, required: [] },
     exec: async () => {
@@ -208,7 +208,7 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
     },
   },
   aplicar_cardapio: {
-    desc: "APLICA alterações no cardápio. Só chame DEPOIS do usuário confirmar explicitamente ('confirma'/'pode aplicar'). alteracoes = lista de { acao, pagina: 'comidas'|'bebidas'|'vendinha', secao, item (nome atual do item), dados }. Ações de ITEM: 'alterar_preco'|'adicionar'|'remover'|'editar_descricao'|'renomear'. Ações de SEÇÃO/categoria inteira (o título, ex.: 'SANDUBAS'): 'remover_secao' (remove a seção e o que tiver dentro — use pra sumir com título órfão/vazio) e 'renomear_secao' (novo nome em dados.nome). Em dados: preço novo em `precos` (ex.: [\"R$ 64\"]) ou `preco`; item novo em `nome`/`descricao`/`precos`. Bump de versão automático. (O PDF final é gerado numa etapa seguinte.)",
+    desc: "APLICA alterações no cardápio. Só chame DEPOIS do usuário confirmar explicitamente ('confirma'/'pode aplicar'). alteracoes = lista de { acao, pagina: 'comidas'|'bebidas'|'vendinha' (=Almoço)|'especiais' (=Especiais do dia, folha após o Almoço), secao, item (nome atual do item), dados }. Pra criar uma folha nova basta adicionar itens com a pagina certa (ex.: pagina 'especiais', secao 'ESPECIAIS DO DIA') — a folha/seção é criada automaticamente. Ações de ITEM: 'alterar_preco'|'adicionar'|'remover'|'editar_descricao'|'renomear'. Ações de SEÇÃO/categoria inteira (o título, ex.: 'SANDUBAS'): 'remover_secao' (remove a seção e o que tiver dentro — use pra sumir com título órfão/vazio) e 'renomear_secao' (novo nome em dados.nome). Em dados: preço novo em `precos` (ex.: [\"R$ 64\"]) ou `preco`; item novo em `nome`/`descricao`/`precos`. Bump de versão automático. (O PDF final é gerado numa etapa seguinte.)",
     tipo: "write",
     schema: { type: "object", properties: {
       alteracoes: { type: "array", description: "lista de alterações", items: { type: "object", properties: {
@@ -224,7 +224,7 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
       await arquivarEntradas("puba", arquivar, ctx.pessoaNome);
       const novaVersao = (est.versao || 0) + 1;
       const nowIso = new Date().toISOString();
-      const salvo = await firestoreAtualizar("cardapioEstado", CARDAPIO_DOC, { comidas: est.comidas, bebidas: est.bebidas, vendinha: est.vendinha, versao: novaVersao, atualizadoEm: nowIso, atualizadoPor: ctx.pessoaNome });
+      const salvo = await firestoreAtualizar("cardapioEstado", CARDAPIO_DOC, { comidas: est.comidas, bebidas: est.bebidas, vendinha: est.vendinha, especiais: est.especiais || [], versao: novaVersao, atualizadoEm: nowIso, atualizadoPor: ctx.pessoaNome });
       if (salvo) {
         const vid = `cardv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         await firestoreCriar("cardapioVersoes", vid, { id: vid, doc: CARDAPIO_DOC, versao: novaVersao, resumo: String(args.resumo_humano || aplicadas.join("; ")), alteracoes: alts as unknown as Doc[], autorId: ctx.pessoaId, autorNome: ctx.pessoaNome, criadoEm: nowIso } as Doc).catch(() => {});
@@ -292,7 +292,7 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
       sec.itens.splice(idx, 0, alvo.raw as unknown as CardapioItem);
       const novaVersao = (est.versao || 0) + 1;
       const nowIso = new Date().toISOString();
-      const salvo = await firestoreAtualizar("cardapioEstado", CARDAPIO_DOC, { comidas: est.comidas, bebidas: est.bebidas, vendinha: est.vendinha, versao: novaVersao, atualizadoEm: nowIso, atualizadoPor: ctx.pessoaNome });
+      const salvo = await firestoreAtualizar("cardapioEstado", CARDAPIO_DOC, { comidas: est.comidas, bebidas: est.bebidas, vendinha: est.vendinha, especiais: est.especiais || [], versao: novaVersao, atualizadoEm: nowIso, atualizadoPor: ctx.pessoaNome });
       await tirarArquivado("puba", alvo.id, arqs);
       return { resumo: `restaurado ${alvo.nome}`, conteudo: JSON.stringify({ restaurado: alvo.nome, secao: sec.secao, pagina: pg, precoAntigo: (alvo.raw as { precos?: unknown }).precos ?? "", versao: novaVersao, salvo }) };
     },

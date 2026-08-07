@@ -5,7 +5,7 @@
 export type CardapioPreco = string | { qual: string; val: string };
 export type CardapioItem = { nome: string; descricao: string; precos: CardapioPreco[]; descW?: number };
 export type CardapioSecao = { secao: string; itens: CardapioItem[] };
-export type CardapioEstado = { comidas: CardapioSecao[]; bebidas: CardapioSecao[]; vendinha: CardapioSecao[] };
+export type CardapioEstado = { comidas: CardapioSecao[]; bebidas: CardapioSecao[]; vendinha: CardapioSecao[]; especiais?: CardapioSecao[] };
 
 export const CARDAPIO_SEED: CardapioEstado = {
   "comidas": [

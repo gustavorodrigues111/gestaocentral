@@ -184,6 +184,7 @@ def render(estado):
     comidas = _to_sections(estado.get('comidas'))
     bebidas = _to_sections(estado.get('bebidas'))
     vendinha = _to_sections(estado.get('vendinha'))
+    especiais = _to_sections(estado.get('especiais'))
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=(PW, PH))
     Hd = lambda n: os.path.join(ASSET_DIR, 'headers', n)
@@ -192,13 +193,16 @@ def render(estado):
             for dx in (0.0, 297.8): draw_copy(c, dx, 0.0, header, secs, title, 822.3)
         cut_line(c, PW/2, 8, PW/2, PH-8); c.showPage()
     H2 = PH / 2
-    if vendinha:
+    def half_page(secs, title):
         for dx in (0.0, 297.8):
             for row in range(2):
-                draw_copy(c, dx, row * H2, Hd('header_comidas_sem_titulo.png'), vendinha, ["ALMOÇO"], H2 - 14.0)
-    cut_line(c, PW/2, 8, PW/2, PH-8)
-    cut_line(c, 8, PH - H2, PW-8, PH - H2)
-    c.showPage(); c.save()
+                draw_copy(c, dx, row * H2, Hd('header_comidas_sem_titulo.png'), secs, title, H2 - 14.0)
+        cut_line(c, PW/2, 8, PW/2, PH-8)
+        cut_line(c, 8, PH - H2, PW-8, PH - H2)
+        c.showPage()
+    if vendinha: half_page(vendinha, ["ALMOÇO"])
+    if especiais: half_page(especiais, ["ESPECIAIS", "DO DIA"])
+    c.save()
     return buf.getvalue()
 
 class handler(BaseHTTPRequestHandler):
