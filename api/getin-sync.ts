@@ -25,8 +25,10 @@ import { firestoreDisponivel, firestoreListar, firestoreLer, firestoreAtualizar 
 export const config = { maxDuration: 120 };
 
 // Fallback enquanto restaurants/{id}.getin não é semeado. credKey → secrets.
-const BUILTIN: Array<{ match: RegExp; unitId: string; credKey: string }> = [
+// unitId opcional: se não informado, é derivado do claim `units` do JWT no login.
+const BUILTIN: Array<{ match: RegExp; unitId?: string; credKey: string }> = [
   { match: /sororoca/i, unitId: "VPBoya1m", credKey: "SOROROCA" },
+  { match: /lobo/i, credKey: "LOBOZO" },   // unitId derivado do token
 ];
 
 const API_BASE = "https://agent.getinapis.com";
@@ -48,6 +50,17 @@ function mapStatus(s?: string): string {
 }
 
 const ymd = (d: Date): string => d.toISOString().slice(0, 10);
+
+// unitId a partir do claim `units` do JWT (quando não veio na config). Assim,
+// pra ligar um restaurante novo basta os secrets — não precisa saber o unitId.
+function unitIdDoToken(token: string): string {
+  try {
+    const payload = token.split(".")[1].replace(/-/g, "+").replace(/_/g, "/");
+    const p = JSON.parse(Buffer.from(payload, "base64").toString("utf8")) as { units?: unknown };
+    const u = Array.isArray(p.units) ? p.units[0] : null;
+    return typeof u === "string" ? u : "";
+  } catch { return ""; }
+}
 
 // Lê o token de sessão da página (sessionStorage ou persist:root). null se não achou.
 async function lerToken(page: import("puppeteer-core").Page): Promise<string | null> {
@@ -104,19 +117,28 @@ async function loginGetin(email: string, senha: string): Promise<string> {
 }
 
 // Sincroniza um restaurante: login → busca reservas → upsert.
-async function sincronizarUm(a: { rid: string; nome: string; unitId: string; credKey: string }): Promise<Record<string, unknown>> {
+async function sincronizarUm(a: { rid: string; nome: string; unitId?: string; credKey: string }): Promise<Record<string, unknown>> {
   const email = process.env[`GETIN_${a.credKey}_EMAIL`];
   const senha = process.env[`GETIN_${a.credKey}_PASSWORD`];
   if (!email || !senha) return { rid: a.rid, nome: a.nome, erro: `faltam secrets GETIN_${a.credKey}_EMAIL / _PASSWORD` };
 
   const token = await loginGetin(email, senha);
+  const unitId = a.unitId || unitIdDoToken(token);
+  if (!unitId) return { rid: a.rid, nome: a.nome, erro: "não encontrei o unitId (nem na config nem no token do GetIn)" };
   const hoje = new Date();
-  const fim = new Date(hoje.getTime() + 13 * 86400000);   // hoje + 14 dias
-  const url = `${API_BASE}/reservation/v1/units/${a.unitId}/reservations?start_date=${ymd(hoje)}&end_date=${ymd(fim)}`;
-  const rr = await fetch(url, { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } });
-  if (!rr.ok) return { rid: a.rid, nome: a.nome, erro: `GetIn API ${rr.status}: ${(await rr.text()).slice(0, 120)}` };
-  const body = (await rr.json()) as { data?: GetinReserva[] };
-  const lista = body.data || [];
+  const fim = new Date(hoje.getTime() + 180 * 86400000);   // hoje + ~6 meses
+  // O GetIn pagina em 15 por padrão → busca TODAS as páginas (per_page 200).
+  const lista: GetinReserva[] = [];
+  for (let page = 1; page <= 60; page++) {
+    const url = `${API_BASE}/reservation/v1/units/${unitId}/reservations?start_date=${ymd(hoje)}&end_date=${ymd(fim)}&per_page=200&page=${page}`;
+    const rr = await fetch(url, { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } });
+    if (!rr.ok) { if (page === 1) return { rid: a.rid, nome: a.nome, erro: `GetIn API ${rr.status}: ${(await rr.text()).slice(0, 120)}` }; break; }
+    const body = (await rr.json()) as { data?: GetinReserva[]; pagination?: { is_last_page?: boolean; last_page?: number } };
+    const data = body.data || [];
+    lista.push(...data);
+    const pg = body.pagination || {};
+    if (pg.is_last_page || !data.length || page >= (pg.last_page || 1)) break;
+  }
 
   let novas = 0, atualizadas = 0;
   for (const gr of lista) {
@@ -168,12 +190,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
 
   try {
     const restaurantes = await firestoreListar("restaurants");
-    const alvos: Array<{ rid: string; nome: string; unitId: string; credKey: string }> = [];
+    const alvos: Array<{ rid: string; nome: string; unitId?: string; credKey: string }> = [];
     for (const r of restaurantes) {
       const rid = String(r.id || "");
       const nome = String((r as { nome?: unknown }).nome || "");
       const g = (r as { getin?: { ativo?: boolean; unitId?: string; credKey?: string } }).getin;
-      if (g && g.ativo && g.unitId && g.credKey) { alvos.push({ rid, nome, unitId: String(g.unitId), credKey: String(g.credKey) }); continue; }
+      if (g && g.ativo && g.credKey) { alvos.push({ rid, nome, unitId: g.unitId ? String(g.unitId) : undefined, credKey: String(g.credKey) }); continue; }
       const b = BUILTIN.find((x) => x.match.test(nome));
       if (b) alvos.push({ rid, nome, unitId: b.unitId, credKey: b.credKey });
     }
