@@ -5,7 +5,7 @@
 export type CardapioPreco = string | { qual: string; val: string };
 export type CardapioItem = { nome: string; descricao: string; precos: CardapioPreco[]; descW?: number };
 export type CardapioSecao = { secao: string; itens: CardapioItem[] };
-export type CardapioEstado = { comidas: CardapioSecao[]; bebidas: CardapioSecao[]; vendinha: CardapioSecao[]; especiais?: CardapioSecao[] };
+export type CardapioEstado = { comidas: CardapioSecao[]; bebidas: CardapioSecao[]; vendinha: CardapioSecao[]; especiais?: CardapioSecao[]; vinhos?: CardapioSecao[] };
 
 export const CARDAPIO_SEED: CardapioEstado = {
   "comidas": [
@@ -340,6 +340,43 @@ export const CARDAPIO_SEED: CardapioEstado = {
             "R$ 32"
           ]
         }
+      ]
+    }
+  ],
+  "vinhos": [
+    {
+      "secao": "ESPUMANTES",
+      "itens": [
+        { "nome": "NERO BRUTT", "descricao": "uva: corte de uvas brancas | brasil\n\nAromas de frutas frescas e notas florais delicadas. Em boca é leve, refrescante e cremoso, com borbulhas finas e final agradável.", "precos": ["R$ 180"] },
+        { "nome": "KUNG FU PÉT-NAT", "descricao": "uva: malbec e pinot noir | mendoza, argentina\n\nEspumante natural (pét-nat), leve e descontraído. Aromas de frutas vermelhas frescas e leve toque floral, com borbulhas delicadas e final seco.", "precos": ["R$ 280"] }
+      ]
+    },
+    {
+      "secao": "VINHOS BRANCOS",
+      "itens": [
+        { "nome": "BEYRA BRANCO", "descricao": "uva: síria, fonte cal, roupeiro | beira interior, portugal\n\nAromas de frutas brancas, notas cítricas e leve toque mineral. Em boca é fresco e equilibrado.", "precos": ["R$ 215"] },
+        { "nome": "KRYA BRANCO", "descricao": "uva: pecorino | abruzzo, itália\n\nFrutas brancas maduras, pêra e leve toque cítrico, com caráter mineral. Em boca é fresco, com boa acidez.", "precos": ["R$ 220"] },
+        { "nome": "ALENTO BRANCO", "descricao": "uva: arinto, antão vaz, roupeiro | alentejo, portugal\n\nCor citrina e aromas cítricos com notas minerais. Em boca é equilibrado, com boa acidez e final fresco.", "precos": ["R$ 200"] },
+        { "nome": "HEIDERER-MAYER", "descricao": "uva: grüner veltliner | wagram, áustria\n\nCor amarelo-palha, aromas de maçã verde, pera e leve toque de ervas frescas. Em boca é seco, direto e refrescante, com final limpo.", "precos": ["R$ 230"] },
+        { "nome": "AJNA CHARDONNAY", "descricao": "uva: chardonnay | san patricio del chañar, argentina\n\nChardonnay sem passagem por madeira, da Patagônia. Cor amarelo-palha brilhante, com aromas de pêra e maçã verde. Em boca é fresco, leve e saboroso, com boa acidez e final cítrico.", "precos": ["R$ 230"] },
+        { "nome": "KLET BRDA, AVIA", "descricao": "uva: pinot grigio | goriška brda, eslovênia\n\nLeve, com notas cítricas, de abacaxi e pêssego.", "precos": ["R$ 185"] },
+        { "nome": "OBALO BRANCO", "descricao": "uva: viura | rioja, espanha\n\nCor amarelo-palha esverdeado, aroma intenso, elegante e frutado. Em boca é saboroso e encorpado, com acidez equilibrada e leve toque de madeira. Final fresco e elegante.", "precos": ["R$ 220"] },
+        { "nome": "PUBA RIESLING", "descricao": "uva: riesling | serra gaúcha, brasil\n\nEdição especial elaborada em parceria com a Don Guerino. Aromas cítricos e florais, com notas de frutas brancas. Em boca é fresco, com boa acidez e final vibrante.", "precos": ["R$ 175"] }
+      ]
+    },
+    {
+      "secao": "VINHO ROSÉ",
+      "itens": [
+        { "nome": "VAMOS DE PARRANDA ROSÉ", "descricao": "uva: criolla | mendoza, argentina\n\nCor rosada delicada, com aromas de frutas vermelhas frescas e leve toque floral. Leve, refrescante e descontraído, com final seco e muito agradável.", "precos": ["R$ 230"] }
+      ]
+    },
+    {
+      "secao": "VINHOS TINTOS",
+      "itens": [
+        { "nome": "BEYRA TINTO", "descricao": "uva: tinta roriz, jaen, touriga nacional | beira interior, portugal\n\nFrutado e mineral, com frutos silvestres e especiarias. Fresco, com boa fruta e final persistente.", "precos": ["R$ 200"] },
+        { "nome": "ELS NANOS TINTO", "descricao": "uva: tempranillo, trepat, cabernet | conca de barberá, espanha\n\nTinto jovem, fresco e frutado, fácil de beber, com frutos do bosque e leve toque floral.", "precos": ["R$ 235"] },
+        { "nome": "ALENTO TINTO", "descricao": "uva: aragonez, trincadeira, touriga nacional | alentejo, portugal\n\nCor granada e aroma intenso de frutos vermelhos. Equilibrado, com boa frescura.", "precos": ["R$ 200"] },
+        { "nome": "KRYA TINTO", "descricao": "uva: montepulciano | abruzzo, itália\n\nTinto macio e frutado, com notas de frutas vermelhas maduras e leve toque de especiarias. Equilibrado e fácil de beber.", "precos": ["R$ 230"] }
       ]
     }
   ]

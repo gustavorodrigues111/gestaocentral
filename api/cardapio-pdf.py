@@ -68,7 +68,10 @@ def item_height(c, it):
     name, desc = it[0], it[1]
     desc_w = it[3] if len(it) > 3 else 148
     nl = len(wrap(c, name, 'I700', FS, 148))
-    dl = len(wrap(c, desc, 'I400', FS, desc_w)) if desc else 0
+    dl = 0.0
+    if desc:
+        for para in str(desc).split('\n'):   # respeita quebras de parágrafo (linha em branco = meia altura)
+            dl += 0.5 if para.strip() == '' else len(wrap(c, para, 'I400', FS, desc_w))
     np = len(it[2]) if len(it) > 2 and it[2] else 0  # preços empilham à direita a partir da 1ª linha do nome
     return max(nl + dl, np) * NAME_LH
 
@@ -167,8 +170,11 @@ def draw_copy(c, dx, dy, header_png, sections, title_lines, box_bot):
                 yy += NAME_LH
             if desc:
                 c.setFont('I400', FS)
-                for ln in wrap(c, desc, 'I400', FS, desc_w):
-                    c.drawString(TEXT_X + dx, PH - (yy + BASE_OFF), ln); yy += NAME_LH
+                for para in str(desc).split('\n'):
+                    if para.strip() == '':
+                        yy += NAME_LH * 0.5; continue
+                    for ln in wrap(c, para, 'I400', FS, desc_w):
+                        c.drawString(TEXT_X + dx, PH - (yy + BASE_OFF), ln); yy += NAME_LH
             yy += gap
         y = sec_top + sec_h
         if si < len(sections) - 1:
@@ -180,10 +186,29 @@ def cut_line(c, x0, y0, x1, y1):
     c.setStrokeColorRGB(0.65, 0.65, 0.65); c.setLineWidth(0.4); c.setDash(3, 3)
     c.line(x0, y0, x1, y1); c.setDash()
 
+def draw_cover(c):
+    # Capa simples: só "CARTA DE VINHOS" em Bebas (laranja), centralizado na
+    # COLUNA DA DIREITA (a folha dobra ao meio). Linha de dobra no meio.
+    cx = PW * 0.75                                  # centro da coluna da direita
+    tsize = 40.0; tcs = 3.0; lines = ["CARTA DE", "VINHOS"]
+    caph = tsize * 0.72; pitch = caph + 12.0
+    title_h = caph + (len(lines) - 1) * pitch
+    top = (PH - title_h) / 2.0
+    c.setFillColorRGB(*ORANGE)
+    for i, ln in enumerate(lines):
+        base = top + caph + i * pitch
+        w = c.stringWidth(ln, 'Bebas', tsize) + tcs * (len(ln) - 1)
+        t = c.beginText(); t.setFont('Bebas', tsize); t.setCharSpace(tcs)
+        t.setTextOrigin(cx - w / 2.0, PH - base); t.textLine(ln)
+        c.drawText(t)
+    cut_line(c, PW / 2, 8, PW / 2, PH - 8)          # guia de dobra ao meio
+    c.showPage()
+
 def render(estado):
     _ensure_fonts()
     comidas = _to_sections(estado.get('comidas'))
     bebidas = _to_sections(estado.get('bebidas'))
+    vinhos = _to_sections(estado.get('vinhos'))
     vendinha = _to_sections(estado.get('vendinha'))
     especiais = _to_sections(estado.get('especiais'))
     buf = io.BytesIO()
@@ -193,6 +218,29 @@ def render(estado):
         if secs:
             for dx in (0.0, 297.8): draw_copy(c, dx, 0.0, header, secs, title, 822.3)
         cut_line(c, PW/2, 8, PW/2, PH-8); c.showPage()
+    # Carta de Vinhos: 1 FOLHA com 2 COLUNAS. Distribui os VINHOS ~50/50 por
+    # altura, podendo QUEBRAR uma seção — a label repete na 2ª coluna (ex.: os
+    # Brancos continuam na direita). NÃO replica e não tem linha de corte.
+    if vinhos:
+        draw_cover(c)   # página 1 da carta: capa
+        flat = [(sec, it, item_height(c, it)) for sec, items in vinhos for it in items]
+        total = sum(h for _, _, h in flat) or 1
+        left_pairs, right_pairs, acc = [], [], 0.0
+        for sec, it, h in flat:
+            if acc + h / 2 <= total / 2:
+                left_pairs.append((sec, it)); acc += h
+            else:
+                right_pairs.append((sec, it))
+        def regroup(pairs):
+            out = []
+            for sec, it in pairs:
+                if out and out[-1][0] == sec: out[-1][1].append(it)
+                else: out.append((sec, [it]))
+            return out
+        hdrv = Hd('header_bebidas_sem_titulo.png')
+        draw_copy(c, 0.0, 0.0, hdrv, regroup(left_pairs), ["CARTA DE", "VINHOS"], 822.3)
+        if right_pairs: draw_copy(c, 297.8, 0.0, hdrv, regroup(right_pairs), ["CARTA DE", "VINHOS"], 822.3)
+        c.showPage()
     H2 = PH / 2
     def half_page(secs, title):
         for dx in (0.0, 297.8):
