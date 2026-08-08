@@ -4,7 +4,8 @@
     "api/cardapio-site-pdf.ts": { "memory": 1024, "maxDuration": 90 },
     "api/orcamento-pdf.ts": { "memory": 1024, "maxDuration": 90 },
     "api/contrato-pdf.ts": { "memory": 1024, "maxDuration": 90 },
-    "api/getin-sync.ts": { "memory": 1024, "maxDuration": 300 }
+    "api/getin-sync.ts": { "memory": 1024, "maxDuration": 300 },
+    "api/altec-sync.ts": { "memory": 1024, "maxDuration": 300 }
   },
   "rewrites": [
     {
@@ -59,6 +60,10 @@
     },
     {
       "path": "/api/reservas-confirmacao",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/altec-sync",
       "schedule": "*/15 * * * *"
     }
   ]
