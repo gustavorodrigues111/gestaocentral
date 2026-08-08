@@ -30,6 +30,7 @@ const READ_TOOLS: Record<string, { desc: string; cols: string[] }> = {
   ler_gorjetas:         { desc: "Consulta gorjetas registradas (valores por dia/período).", cols: ["gorjetas"] },
   ler_fechamento_caixa: { desc: "Consulta fechamentos de caixa por dia/turno.", cols: ["fechamentosCaixa"] },
   ler_vendas:           { desc: "Consulta vendas registradas (fora do fiscal) e permutas.", cols: ["vendas"] },
+  ler_vendas_altec:     { desc: "Consulta VENDAS do PDV (Altec) por dia — o faturamento AO VIVO (atualiza a cada ~15 min). Cada doc é um dia (campo `data` YYYY-MM-DD) e tem: faturamento, faturamentoLiquido, vendasAberto, itensVendidos, ticketMedio, numCupons, numPessoas, pagCredito/pagDebito/pagDinheiro/pagOutros, formasPagamento[{nome,qtd}], rankProdutos[{nome,qtd,valor}] (ranking de itens vendidos), categorias[{nome,valor}], vendasPorHora[] (posição = hora 0-24). Filtre por restaurantId e periodo (YYYY-MM-DD pra 1 dia, YYYY-MM pro mês). Pra 'hoje'/'ontem' calcule a data. Valores em reais.", cols: ["vendasAltec"] },
   ler_recebimentos:     { desc: "Consulta recebimentos de produtos / notas fiscais conferidas.", cols: ["recebimentos"] },
   ler_faturas:          { desc: "Consulta faturas de cartão e seus lançamentos (valor, destino, reembolso).", cols: ["cartaoFaturas", "cartaoLancamentos"] },
   ler_escala:           { desc: "Consulta escalas planejadas (por mês/entidade).", cols: ["escalas"] },
