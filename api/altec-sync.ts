@@ -25,9 +25,11 @@ import { requireUser } from "./_auth.js";
 
 export const config = { maxDuration: 300 };
 
-// Fallback enquanto restaurants/{id}.altec não é semeado.
+// Fallback enquanto restaurants/{id}.altec não é semeado. Restrito ao Puba
+// BELÉM (pubabar = Belém). SP/outras casas usam restaurants/{id}.altec próprio
+// (host + credKey), pra não puxar do Riser errado.
 const BUILTIN: Array<{ match: RegExp; host: string; credKey: string }> = [
-  { match: /puba/i, host: "pubabar.r3.riser.com.br", credKey: "PUBA" },
+  { match: /puba.*bel|bel.*puba/i, host: "pubabar.r3.riser.com.br", credKey: "PUBA" },
 ];
 
 const DIAS_SYNC = 3;   // hoje + 2 dias atrás por execução (ao vivo + recentes)
