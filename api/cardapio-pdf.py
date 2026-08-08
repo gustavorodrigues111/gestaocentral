@@ -17,9 +17,9 @@ LBL_LINE_X0, LBL_LINE_X1 = 35.5, 37.0
 TEXT_X = 48.3
 PRICE_X = 268.0
 DIV_X0, DIV_X1 = 12.8, 285.1
-NAME_LH = 12.0
-FS = 9.0
-BASE_OFF = 6.85
+NAME_LH = 12.6
+FS = 9.5
+BASE_OFF = 7.2
 GAP_CAP = 30.0
 HDR_BOT = 126.9
 LOGO_BOT = 91.2
@@ -222,6 +222,11 @@ def render(estado):
     # altura, podendo QUEBRAR uma seção — a label repete na 2ª coluna (ex.: os
     # Brancos continuam na direita). NÃO replica e não tem linha de corte.
     if vinhos:
+        # Vinhos são DENSOS (15 rótulos, descrições longas) → fonte um tico menor
+        # que comidas/bebidas pra caber com folga. Restaura depois.
+        global FS, NAME_LH, BASE_OFF
+        _sv = (FS, NAME_LH, BASE_OFF)
+        FS, NAME_LH, BASE_OFF = 9.0, 12.0, 6.85
         draw_cover(c)   # página 1 da carta: capa
         flat = [(sec, it, item_height(c, it)) for sec, items in vinhos for it in items]
         total = sum(h for _, _, h in flat) or 1
@@ -241,6 +246,7 @@ def render(estado):
         draw_copy(c, 0.0, 0.0, hdrv, regroup(left_pairs), ["CARTA DE", "VINHOS"], 822.3)
         if right_pairs: draw_copy(c, 297.8, 0.0, hdrv, regroup(right_pairs), ["CARTA DE", "VINHOS"], 822.3)
         c.showPage()
+        FS, NAME_LH, BASE_OFF = _sv   # restaura a fonte das outras folhas
     H2 = PH / 2
     def half_page(secs, title):
         for dx in (0.0, 297.8):
