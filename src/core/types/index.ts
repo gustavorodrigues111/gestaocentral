@@ -2323,8 +2323,28 @@ export type ConfiguracaoReservas = {
   //   {primeiro_nome} {nome} {restaurante} {data} {hora} {pax} {salao}
   // Se vazio/undefined, usa DEFAULT_TEMPLATE_CONFIRMACAO.
   templateConfirmacao?: string;
+  // Confirmação AUTOMÁTICA (cron manda o template sozinho + IA lê a resposta).
+  confirmacaoAuto?: ConfirmacaoAutoConfig;
   atualizadoEm: string;
   atualizadoPor: string;
+};
+
+// Config da confirmação automática de reservas (por restaurante).
+export type ConfirmacaoAutoConfig = {
+  ativo: boolean;
+  // Gatilho: "horas_antes" = X horas antes do horário da reserva;
+  //          "horario_fixo" = todo dia num horário, pras reservas daquele dia.
+  gatilho: "horas_antes" | "horario_fixo";
+  horasAntes?: number;                // default 2 (usado em "horas_antes")
+  horarioFixo?: string;               // "HH:MM" (usado em "horario_fixo")
+  // Janela diurna — não dispara fora dela (segura pra dentro dela). "HH:MM".
+  janelaInicio?: string;              // default "09:00"
+  janelaFim?: string;                 // default "21:00"
+  // Origens que recebem (vazio/ausente = todas). "getin" | "interno" | "publico".
+  origens?: Array<"getin" | "interno" | "publico">;
+  // Fase 2 (IA lê a resposta): textos das respostas automáticas.
+  textoAgradece?: string;             // resposta positiva (confirma)
+  textoNegativo?: string;             // resposta negativa (avisa que não vem)
 };
 
 // Default da janela de antecedência (em dias) quando o restaurante
@@ -2432,6 +2452,11 @@ export type Reserva = {
   externoId?: string;                 // id da reserva no sistema de origem (ex.: GetIn)
   getinStatus?: string;               // status cru do GetIn (auditoria/debug)
   getinAtualizadoEm?: string;         // updated_at do GetIn (pra saber se mudou lá)
+  // Confirmação automática (WhatsApp): controle do disparo + leitura pela IA.
+  confirmacaoEnviadaEm?: string | null;   // quando o pedido de confirmação foi enviado
+  confirmacaoRespostaEm?: string | null;  // quando o cliente respondeu (IA processou)
+  confirmacaoIntent?: "positivo" | "negativo" | "duvida" | null;  // classificação da IA
+  precisaAtencao?: boolean;           // flag: resposta negativa/dúvida → um humano revisa
   // Auditoria de status
   confirmadaEm?: string | null;
   chegouEm?: string | null;

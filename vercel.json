@@ -56,6 +56,10 @@
     {
       "path": "/api/getin-sync",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/reservas-confirmacao",
+      "schedule": "*/15 * * * *"
     }
   ]
 }
