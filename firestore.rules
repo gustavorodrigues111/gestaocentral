@@ -56,6 +56,16 @@ service cloud.firestore {
       allow read, write: if authed();
     }
 
+    // ── Altec/Riser (PDV/vendas) ── vendasAltec (feed diário do PDV) + status
+    //   do sync. Gravado pelo conector api/altec-sync; lido pelo agente de
+    //   vendas e módulos (fechamento, gorjetas). ────────────────────────────
+    match /vendasAltec/{id} {
+      allow read, write: if authed();
+    }
+    match /altecSyncStatus/{id} {
+      allow read, write: if authed();
+    }
+
     // ── Conferência de folhas de pagamento (dados sensíveis: financeiro +
     //   PII de empregado). Qualquer authed lê/grava; UI gateia por permissão.
     match /folhasConferencia/{id} {
