@@ -8,7 +8,7 @@
 // `permissao`  → chave de módulo que a pessoa precisa ter (herda da matriz de
 //                Pessoas). Se a pessoa não tem, a ferramenta some pro agente.
 
-export type AgenteDominio = "dp" | "financeiro" | "cardapio" | "cardapio_site" | "vendas";
+export type AgenteDominio = "dp" | "financeiro" | "cardapio" | "cardapio_site" | "cardapio_lobozo" | "vendas";
 
 export type FerramentaDef = {
   key: string;
@@ -57,6 +57,11 @@ export const CATALOGO: Record<AgenteDominio, FerramentaDef[]> = {
     { key: "gerar_previa_site",     label: "Link do site (prévia)", tipo: "read",  permissao: "sites", desc: "Manda o link do cardápio no site pra conferir/aprovar" },
     { key: "gerar_pdf_site",        label: "Gerar PDF (módulo)",    tipo: "read",  permissao: "sites", desc: "PDF desenhado do cardápio (Comidas/Bebidas/Vinhos) via navegador headless" },
   ],
+  cardapio_lobozo: [
+    { key: "ler_cardapio_lobozo",     label: "Ler cardápio (Lobozó)",  tipo: "read",  permissao: "sites", desc: "Lê o cardápio do Lobozó (folha Almoço Executivo): combos, colunas e itens" },
+    { key: "aplicar_cardapio_lobozo", label: "Aplicar (Lobozó)",       tipo: "write", permissao: "sites", desc: "Salva o executivo do Lobozó (estado completo: combos/colunas/itens/preços)" },
+    { key: "gerar_pdf_lobozo",        label: "Gerar PDF (Lobozó)",     tipo: "write", permissao: "sites", desc: "Renderiza a filipeta do executivo (2 por A4) e devolve o link" },
+  ],
 };
 
 export const DOMINIO_META: Record<AgenteDominio, { label: string; icon: string; promptPadrao: string }> = {
@@ -89,5 +94,11 @@ export const DOMINIO_META: Record<AgenteDominio, { label: string; icon: string; 
     icon: "🍽️",
     promptPadrao:
       "Você edita o cardápio do módulo de Cardápios (Comidas, Bebidas, Vinhos) que fica publicado no SITE — o que o cliente vê. Toda alteração reflete no site na hora. Fale curto, em português, tom WhatsApp. SEMPRE use ler_cardapio_site antes de propor. NUNCA aplique sem confirmação: primeiro PROPONHA em texto (ex.: 'Entendi: Caipirinha 36→38, remover Soda da Casa. Confirma?') e só chame aplicar_cardapio_site DEPOIS que o usuário responder 'confirma'. Diga em qual cardápio (Comidas/Bebidas/Vinhos) e seção está mexendo. Preço é texto (ex.: '38', 'consulte'). Se pedirem prato que não existe, PERGUNTE. Pra o usuário conferir/aprovar, chame gerar_previa_site (manda o link do cardápio no site).",
+  },
+  cardapio_lobozo: {
+    label: "Cardápio do Lobozó",
+    icon: "🍽️",
+    promptPadrao:
+      "Você edita o cardápio do Lobozó — por enquanto a folha 'Almoço Executivo' (a filipeta impressa). Fale curto, em português, tom WhatsApp. SEMPRE use ler_cardapio_lobozo antes de mexer. O executivo tem 2 combos: 'ENTRADA & PRINCIPAL' (colunas ENTRADAS e PRINCIPAIS) e 'SOBREMESA & CAFÉ OU LICOR' (duas colunas de itens). Os itens alinham LINHA A LINHA entre as colunas. Aplique DIRETO (não fique pré-confirmando): chame aplicar_cardapio_lobozo com o estado COMPLETO já modificado. Quando trocarem o executivo da semana, monte os combos com os pratos passados mantendo o formato. Preço é texto ('$ 79', '+ $ 22'). Marque prato vegetariano com veg:true. Só gere o PDF (gerar_pdf_lobozo) quando o usuário quiser ver/aprovar como ficou — é a filipeta final.",
   },
 };

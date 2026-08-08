@@ -318,6 +318,106 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
   },
 };
 
+// ── Cardápio do LOBOZÓ (cardapioEstado/lobozo) ──────────────────────────────
+// Estrutura própria (combos com colunas alinhadas linha a linha), começando pela
+// folha "Almoço Executivo". PDF via api/cardapio-lobozo-pdf.py. O agente edita o
+// estado INTEIRO (lê → modifica → devolve): o executivo troca por semana, então
+// mandar o estado completo é mais robusto que diff item a item.
+const LOBOZO_DOC = "lobozo";
+const docLobozo = () => LOBOZO_DOC + _testeSuffix;
+
+type LobozoItem = { nome: string; veg?: boolean } | string;
+type LobozoColuna = { titulo?: string; itens: LobozoItem[] };
+type LobozoCombo = { titulo: string; preco?: string; colunas: LobozoColuna[] };
+type LobozoEstado = { titulo: string; combos: LobozoCombo[]; rodape?: string; versao: number };
+
+const LOBOZO_RODAPE = "OS PRATOS SINALIZADOS COM ESTE SÍMBOLO SÃO OU PODEM SER FEITOS EM VERSÃO VEGETARIANA, CONSULTE O GARÇOM";
+const LOBOZO_SEED: LobozoEstado = {
+  titulo: "ALMOÇO EXECUTIVO",
+  combos: [
+    { titulo: "ENTRADA & PRINCIPAL", preco: "$ 79", colunas: [
+      { titulo: "ENTRADAS", itens: ["Bolinho de Feijão com Linguiça e Bacon", "Caldinho de Mocotó com Mandioca e Cebolinha"] },
+      { titulo: "PRINCIPAIS", itens: ["Bobó Caiçara de Lula e Banana com Arroz Branco e Farofa de Mandioca", "Espetinho de Cogumelos, Arroz, Farofa de Milho e Salada de Favas"] },
+    ] },
+    { titulo: "SOBREMESA & CAFÉ OU LICOR", preco: "+ $ 22", colunas: [
+      { titulo: "", itens: ["Pudim de Doce de Leite com Praliné de Farinha de Milho", "Sorvete de Cachaça Lobozó com Doce de Abóbora"] },
+      { titulo: "", itens: ["Café Coado Tocaya", "Licor de Pequi"] },
+    ] },
+  ],
+  rodape: LOBOZO_RODAPE,
+  versao: 0,
+};
+
+async function lerLobozoEstado(): Promise<LobozoEstado> {
+  let est = await firestoreLer("cardapioEstado", docLobozo());
+  if (_testeSuffix && (!est || !Array.isArray((est as { combos?: unknown }).combos))) est = await firestoreLer("cardapioEstado", LOBOZO_DOC);
+  if (est && Array.isArray((est as { combos?: unknown }).combos)) {
+    const e = est as LobozoEstado;
+    if (!e.rodape) e.rodape = LOBOZO_RODAPE;
+    return e;
+  }
+  return { ...LOBOZO_SEED, versao: 0 };
+}
+
+const SKILL_TOOLS_LOBOZO: Record<string, SkillTool> = {
+  ler_cardapio_lobozo: {
+    desc: "Lê o cardápio atual do Lobozó (por ora a folha 'Almoço Executivo'): título, combos (ex.: 'ENTRADA & PRINCIPAL', 'SOBREMESA & CAFÉ OU LICOR') com preço e as colunas (ENTRADAS/PRINCIPAIS e a dupla de sobremesa) com seus itens. Use SEMPRE antes de propor/alterar.",
+    tipo: "read",
+    schema: { type: "object", properties: {}, required: [] },
+    exec: async () => {
+      const est = await lerLobozoEstado();
+      const c = JSON.stringify(est);
+      return { resumo: `executivo v${est.versao || 0}`, conteudo: c.length > MAX_RESULT_CHARS ? c.slice(0, MAX_RESULT_CHARS) : c };
+    },
+  },
+  aplicar_cardapio_lobozo: {
+    desc: "SALVA o cardápio do Lobozó com o estado COMPLETO novo. Leia ler_cardapio_lobozo antes, modifique o que o usuário pediu e devolva o objeto `estado` INTEIRO: { titulo, combos: [{ titulo, preco, colunas: [{ titulo, itens: [<texto>|{nome, veg:true}] }] }], rodape }. Regras: cada combo tem 2 colunas; no 1º combo elas têm título (ENTRADAS/PRINCIPAIS), no de sobremesa os títulos ficam vazios ('') e é só a lista. Os itens alinham LINHA A LINHA entre as colunas (item 1 da esquerda ao lado do item 1 da direita) — mantenha a ordem coerente. Preço é texto curto (ex.: '$ 79', '+ $ 22'). Marque um prato vegetariano com {nome, veg:true}. Aplique DIRETO quando o usuário pedir (a conferência é o PDF que você gera logo depois). Bump de versão automático.",
+    tipo: "write",
+    schema: { type: "object", properties: {
+      estado: { type: "object", description: "estado COMPLETO novo: { titulo, combos:[{titulo,preco,colunas:[{titulo,itens:[]}]}], rodape }" },
+      resumo_humano: { type: "string", description: "resumo curto do que mudou" },
+    }, required: ["estado"] },
+    exec: async (args, ctx) => {
+      const novo = (args.estado || {}) as Partial<LobozoEstado>;
+      if (!Array.isArray(novo.combos)) return { resumo: "estado inválido", conteudo: JSON.stringify({ erro: "Faltou o objeto `estado` com `combos`." }) };
+      const atual = await lerLobozoEstado();
+      const novaVersao = (atual.versao || 0) + 1;
+      const nowIso = new Date().toISOString();
+      const estado: LobozoEstado = {
+        titulo: String(novo.titulo || atual.titulo || "ALMOÇO EXECUTIVO"),
+        combos: limpo(novo.combos) as unknown as LobozoCombo[],
+        rodape: novo.rodape != null ? String(novo.rodape) : (atual.rodape || LOBOZO_RODAPE),
+        versao: novaVersao,
+      };
+      const salvo = await firestoreAtualizar("cardapioEstado", docLobozo(), { ...estado, atualizadoEm: nowIso, atualizadoPor: ctx.pessoaNome } as unknown as Doc);
+      if (salvo) {
+        const vid = `cardv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+        await firestoreCriar("cardapioVersoes", vid, { id: vid, doc: LOBOZO_DOC, versao: novaVersao, resumo: String(args.resumo_humano || "atualização do executivo"), autorId: ctx.pessoaId, autorNome: ctx.pessoaNome, criadoEm: nowIso } as Doc).catch(() => {});
+      }
+      return { resumo: `executivo → v${novaVersao}`, conteudo: JSON.stringify({ versao: novaVersao, salvo }) };
+    },
+  },
+  gerar_pdf_lobozo: {
+    desc: "Gera o PDF FINAL do cardápio do Lobozó (filipeta A5, 2 por A4 pra corte) e devolve o link. Chame quando o usuário quiser ver/aprovar como ficou ou pedir o arquivo/PDF final. Gere DEPOIS de aplicar as alterações.",
+    tipo: "write",
+    schema: { type: "object", properties: {}, required: [] },
+    exec: async () => {
+      const est = await lerLobozoEstado();
+      const origin = process.env.APP_ORIGIN || "https://admin.planejamento.app";
+      let j: { pdfBase64?: string; error?: string };
+      try {
+        const resp = await fetch(origin + "/api/cardapio-lobozo-pdf", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(est) });
+        j = (await resp.json()) as { pdfBase64?: string; error?: string };
+        if (!resp.ok || !j.pdfBase64) return { resumo: "falha no PDF", conteudo: JSON.stringify({ erro: j.error || `render HTTP ${resp.status}` }) };
+      } catch (e) { return { resumo: "falha no PDF", conteudo: JSON.stringify({ erro: e instanceof Error ? e.message : "render indisponível" }) }; }
+      const path = `cardapios/lobozo/executivo_v${est.versao || 0}_${Date.now()}.pdf`;
+      const url = await subirStorage(path, j.pdfBase64, "application/pdf");
+      if (!url) return { resumo: "falha no upload", conteudo: JSON.stringify({ erro: "PDF gerado mas o upload falhou." }) };
+      return { resumo: `PDF do executivo v${est.versao || 0} pronto`, conteudo: JSON.stringify({ pdfUrl: url, versao: est.versao || 0 }) };
+    },
+  },
+};
+
 // ── Cardápio do MÓDULO (cardapioEstruturado — reflete no SITE) ───────────────
 type PratoS = { id?: string; titulo?: string; subtitulo?: string; preco?: string; [k: string]: unknown };
 type SecaoS = { id?: string; nome?: string; pratos?: PratoS[]; [k: string]: unknown };
@@ -627,9 +727,10 @@ export async function runAgenteCore(
   const readDisp = Object.keys(READ_TOOLS).filter(k => toolsLigadas[k]);
   const ehCardapio = agente.tipo === "cardapio";
   const ehCardapioSite = agente.tipo === "cardapio_site";
-  const SKILLS = ehCardapioSite ? SKILL_TOOLS_SITE : SKILL_TOOLS;
+  const ehCardapioLobozo = agente.tipo === "cardapio_lobozo";
+  const SKILLS = ehCardapioSite ? SKILL_TOOLS_SITE : ehCardapioLobozo ? SKILL_TOOLS_LOBOZO : SKILL_TOOLS;
   const agenteRid = Array.isArray(agente.entidades) && agente.entidades.length ? String(agente.entidades[0]) : "";
-  const skillDisp = Object.keys(SKILLS).filter(k => ehCardapio || ehCardapioSite || toolsLigadas[k]);
+  const skillDisp = Object.keys(SKILLS).filter(k => ehCardapio || ehCardapioSite || ehCardapioLobozo || toolsLigadas[k]);
   const temWrite = skillDisp.some(k => SKILLS[k].tipo === "write");
   const anthropicTools = [
     ...readDisp.map(k => ({
@@ -645,37 +746,45 @@ export async function runAgenteCore(
   ];
 
   const sysBase = (agente.systemPrompt as string) || "Você é um assistente do planejamento.app.";
-  const temCardapio = skillDisp.includes("ler_cardapio") || skillDisp.includes("ler_cardapio_site");
+  // "clássico" = filipeta do Puba ou cardápio do site (têm prévia HTML + folhas +
+  // lixeira + vinhos). O Lobozó é um motor à parte (combos, sem prévia HTML).
+  const temCardapioClassico = skillDisp.includes("ler_cardapio") || skillDisp.includes("ler_cardapio_site");
+  const temCardapio = temCardapioClassico || ehCardapioLobozo;
   const regras = !temWrite
     ? " Você NÃO pode alterar nada nesta versão (só consulta); se pedirem uma alteração, explique que por ora você só consulta."
-    : temCardapio
+    : ehCardapioLobozo
+      ? " FLUXO DO CARDÁPIO DO LOBOZÓ (simples e guiado): SEMPRE use ler_cardapio_lobozo antes. Quando o usuário pedir uma alteração, APLIQUE direto com aplicar_cardapio_lobozo (mandando o estado COMPLETO já modificado) — não fique pedindo 'confirma?' antes de cada uma. Responda 'Feito ✅' com 1 linha do que mudou e pergunte se quer mexer em mais algo. Só gere o PDF (gerar_pdf_lobozo) quando o usuário quiser VER como ficou ou APROVAR — é a filipeta final; não gere a cada alteração."
+    : temCardapioClassico
       // Fluxo pensado pra OPERAÇÃO usar no dia a dia: simples, guiado, sem
       // ficar pedindo confirmação a cada passo. A prévia é a checagem.
       ? " FLUXO DO CARDÁPIO (mantenha SIMPLES e GUIADO — quem usa é a operação): quando o usuário pedir uma alteração, APLIQUE direto (NÃO fique pedindo 'confirma?' antes de cada uma) e LOGO EM SEGUIDA gere a PRÉVIA. Responda 'Alteração feita ✅', descreva em 1 linha o que mudou, e peça pra ele conferir na prévia. Conduza a conversa passo a passo, oferecendo as opções (ex.: 'quer mudar mais alguma coisa ou já está bom?'). NUNCA gere o PDF a cada alteração — a prévia existe justamente pra não ficar emitindo PDF. Só gere o PDF quando o usuário APROVAR a prévia de forma explícita (ex.: 'prévia 100%', 'tá aprovado', 'pode gerar o PDF')."
       : " Para QUALQUER alteração: primeiro PROPONHA em texto o que vai mudar e peça confirmação explícita; só chame a ferramenta de escrita DEPOIS que o usuário confirmar ('confirma'/'pode aplicar') na mensagem seguinte. Nunca aplique sem confirmação.";
   // No WhatsApp não há prévia HTML na tela — o agente descreve em texto e manda o link do PDF.
-  const notaCardapio = !temCardapio ? ""
+  const notaCardapio = !temCardapioClassico ? ""
     : ehCardapioSite
       ? " Pra MOSTRAR/ver o cardápio (ex.: 'como está o cardápio'), chame gerar_previa_site — o link é ANEXADO AUTOMÁTICO na conversa, então NÃO cole a URL no seu texto (diga só 'segue a prévia 👇'). A prévia já mostra TUDO. NÃO faça resumo em texto. Só liste em texto se o usuário pedir explicitamente — e aí liste COMPLETO, todas as seções e TODOS os pratos com preço, nunca resumido. Depois de uma alteração, gere a prévia de novo pra conferir. Pra o PDF: são 3 cardápios (Comidas, Bebidas, Vinhos) — se o usuário não disser qual, PERGUNTE antes e gere só UM (o que ele pedir) com gerar_pdf_site. NUNCA gere os três de uma vez, e NÃO cole a URL do PDF (ele vai como arquivo)."
       : (canal === "whatsapp"
           ? " Aqui é WhatsApp: não há prévia visual na tela. Pra o usuário CONFERIR/APROVAR o cardápio (inclusive após uma alteração), chame gerar_previa — ela manda um link HTML que ele abre no celular. Quando pedirem o PDF/filipeta FINAL, chame gerar_pdf com o `cardapio` que ele pediu (comidas/bebidas/vinhos/especiais_almoco/especiais) — se não disser qual, PERGUNTE antes e gere só ESSE. Pra mais de um, gere um por vez (arquivos separados). Os links/arquivo aparecem sozinhos na conversa, não precisa colar a URL no texto."
           : " Quando pedirem pra VER/MOSTRAR o cardápio ou a prévia, chame ler_cardapio: a prévia visual (HTML) aparece SOZINHA na tela — não precisa listar item por item, só confirme que está mostrando. Depois de aplicar uma alteração, a prévia atualizada também aparece sozinha. Quando pedirem o PDF / a filipeta / o arquivo final, chame gerar_pdf com o `cardapio` pedido (comidas/bebidas/vinhos/especiais_almoco/especiais) — se não disser qual, PERGUNTE antes e gere só ESSE; pra mais de um, gere um por vez (arquivos separados). O link pra download aparece na conversa.");
-  const notaRestaurar = !temCardapio ? ""
+  const notaRestaurar = !temCardapioClassico ? ""
     : ehCardapioSite
       ? " Pratos removidos NÃO se perdem — vão pra uma lixeira. Se perguntarem 'o que já tiramos'/'quais pratos removidos', use listar_arquivados_site. Pra trazer um prato de volta (com título, descrição, preço e posição originais), use restaurar_prato_site (confirme antes)."
       : " Pratos removidos NÃO se perdem — vão pra uma lixeira. Se perguntarem 'o que já tiramos'/'quais pratos removidos', use listar_arquivados. Pra trazer um prato de volta (com nome, descrição, preço e posição originais), use restaurar_prato (confirme antes).";
   const notaCanal = canal === "whatsapp" ? " Você está respondendo pelo WhatsApp: seja conciso, sem markdown pesado (nada de tabelas), use quebras de linha curtas." : "";
   // Abertura: quando o usuário chega sem dizer o que quer, foca a conversa
   // perguntando QUAL cardápio editar — aí já vai direto no que importa.
-  const notaAbertura = !temCardapio ? ""
+  const notaAbertura = !temCardapioClassico ? ""
     : ` No COMEÇO da conversa, se o usuário não disser o que quer, pergunte QUAL cardápio ele quer editar — ${ehCardapioSite ? "Comidas, Bebidas ou Vinhos" : "Comidas, Bebidas, Especiais de Almoço, Especiais do dia ou Carta de Vinhos"} (ou "todos") — e então vá DIRETO nas edições dessa folha. Se ele já chegar dizendo o que quer, pule a pergunta.`;
+  // Nota do Lobozó: por ora só a folha "Almoço Executivo".
+  const notaLobozo = !ehCardapioLobozo ? ""
+    : " Você cuida do cardápio do LOBOZÓ (por enquanto a folha 'Almoço Executivo'). Fale curto, tom WhatsApp. O executivo tem 2 combos: 'ENTRADA & PRINCIPAL' (colunas ENTRADAS e PRINCIPAIS) e 'SOBREMESA & CAFÉ OU LICOR' (duas colunas de itens). Os itens alinham LINHA A LINHA entre as colunas. Preço é texto ('$ 79', '+ $ 22'). Quando trocarem o executivo da semana, monte os combos com os pratos que o usuário passar (mantendo esse formato) e salve o estado inteiro. Se pedirem 'gera o PDF'/'como ficou', chame gerar_pdf_lobozo — o arquivo aparece sozinho na conversa, não cole a URL no texto.";
   // Foto de rótulo → descrição de vinho no padrão da carta.
-  const notaVinhoFoto = !temCardapio ? ""
+  const notaVinhoFoto = !temCardapioClassico ? ""
     : " FOTO DE RÓTULO DE VINHO: se o usuário mandar uma foto de rótulo pedindo pra incluir o vinho na carta, LEIA o rótulo (produtor, nome, região, safra, uva quando aparece) e monte a descrição no PADRÃO dos vinhos — 1ª linha 'uva: <uvas> | <região>, <país>', depois uma LINHA EM BRANCO, e então as características organolépticas (aromas/boca/final) — usando o rótulo + seu conhecimento. NÃO invente: marque com '(confirmar)' o que não tiver certeza. Se faltar o preço ou a seção (Espumante/Branco/Rosé/Tinto), pergunte. Mostre a sugestão; com o ok, adicione na Carta de Vinhos na seção certa e gere a prévia.";
   // Data de HOJE (horário de Brasília, UTC-3) — sem isso o modelo inventa a data
   // e consulta o dia errado (ex.: "hoje" virava 2025 no WhatsApp).
   const hojeBR = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10).split("-").reverse().join("/");
-  const system = `Hoje é ${hojeBR} (horário de Brasília). Use SEMPRE esta data como referência de "hoje"/"ontem"/"agora" — nunca invente a data atual.\n\n` + sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras + notaAbertura + notaCardapio + notaRestaurar + notaVinhoFoto + notaCanal;
+  const system = `Hoje é ${hojeBR} (horário de Brasília). Use SEMPRE esta data como referência de "hoje"/"ontem"/"agora" — nunca invente a data atual.\n\n` + sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras + notaAbertura + notaCardapio + notaRestaurar + notaVinhoFoto + notaLobozo + notaCanal;
 
   const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [];
   for (const h of (opts.historico || []).slice(-10)) {
@@ -727,7 +836,7 @@ export async function runAgenteCore(
         ? await skill.exec(input, { pessoaId: opts.pessoaId, pessoaNome: opts.pessoaNome, restaurantId: agenteRid, onProgress: opts.onProgress })
         : await execTool(b.name, input as { restaurantId?: string; periodo?: string; busca?: string }, escopo);
       toolCalls.push({ tool: b.name, resumo });
-      if (b.name === "gerar_pdf" || b.name === "gerar_pdf_site") { try { const p = JSON.parse(conteudo) as { pdfUrl?: string }; if (p.pdfUrl) pdfUrl = p.pdfUrl; } catch { /* ignore */ } }
+      if (b.name === "gerar_pdf" || b.name === "gerar_pdf_site" || b.name === "gerar_pdf_lobozo") { try { const p = JSON.parse(conteudo) as { pdfUrl?: string }; if (p.pdfUrl) pdfUrl = p.pdfUrl; } catch { /* ignore */ } }
       if (b.name === "gerar_previa" || b.name === "gerar_previa_site") { try { const p = JSON.parse(conteudo) as { previaUrl?: string }; if (p.previaUrl) previaUrl = p.previaUrl; } catch { /* ignore */ } }
       results.push({ type: "tool_result", tool_use_id: b.id, content: conteudo });
       try {

@@ -6309,7 +6309,7 @@ export type CartaoLancamento = {
 export type AgenteIA = {
   id: string;
   nome: string;
-  tipo: "dp" | "financeiro" | "cardapio" | "cardapio_site" | "vendas";
+  tipo: "dp" | "financeiro" | "cardapio" | "cardapio_site" | "cardapio_lobozo" | "vendas";
   descricao?: string;
   systemPrompt?: string;                     // editável; default vem do catálogo
   tools: Record<string, boolean>;            // key da ferramenta → habilitada
