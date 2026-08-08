@@ -215,9 +215,9 @@ def render(estado):
     c = canvas.Canvas(buf, pagesize=(PW, PH))
     Hd = lambda n: os.path.join(ASSET_DIR, 'headers', n)
     for header, secs, title in [(Hd('header_comidas_sem_titulo.png'), comidas, ["COMIDAS"]), (Hd('header_bebidas_sem_titulo.png'), bebidas, ["BEBIDAS"])]:
-        if secs:
+        if secs:   # sem a folha → não gera página em branco (permite PDF de 1 cardápio só)
             for dx in (0.0, 297.8): draw_copy(c, dx, 0.0, header, secs, title, 822.3)
-        cut_line(c, PW/2, 8, PW/2, PH-8); c.showPage()
+            cut_line(c, PW/2, 8, PW/2, PH-8); c.showPage()
     # Carta de Vinhos: 1 FOLHA com 2 COLUNAS. Distribui os VINHOS ~50/50 por
     # altura, podendo QUEBRAR uma seção — a label repete na 2ª coluna (ex.: os
     # Brancos continuam na direita). NÃO replica e não tem linha de corte.

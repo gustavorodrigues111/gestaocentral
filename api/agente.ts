@@ -239,22 +239,28 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
     },
   },
   gerar_pdf: {
-    desc: "Gera o PDF FINAL da filipeta do Puba com o cardápio atual e devolve o link pra download. Use quando o usuário pedir o PDF / a filipeta / o arquivo final.",
+    desc: "Gera o PDF FINAL da filipeta do Puba e devolve o link. `cardapio` diz QUAL folha: 'comidas' | 'bebidas' | 'vinhos' (Carta de Vinhos) | 'almoco' | 'especiais' | 'todos'. Se o usuário não disser, PERGUNTE antes e gere só a que ele pedir. Pra mais de uma, chame uma vez por folha (arquivos separados).",
     tipo: "write",
-    schema: { type: "object", properties: {}, required: [] },
-    exec: async () => {
+    schema: { type: "object", properties: { cardapio: { type: "string", description: "comidas | bebidas | vinhos | almoco | especiais | todos" } }, required: [] },
+    exec: async (a: { cardapio?: string } = {}) => {
       const est = await lerCardapioEstado();
+      const alvo = String(a?.cardapio || "todos").toLowerCase().trim();
+      const MAPA: Record<string, keyof CardapioEstado> = { comidas: "comidas", bebidas: "bebidas", vinhos: "vinhos", "carta de vinhos": "vinhos", almoco: "vendinha", "almoço": "vendinha", vendinha: "vendinha", especiais: "especiais", "especiais do dia": "especiais" };
+      const key = MAPA[alvo];
+      // Folha específica → manda só ela (o render pula as vazias). "todos" → tudo.
+      const payload: Record<string, unknown> = (alvo !== "todos" && key) ? { [key]: (est as Record<string, unknown>)[key] || [], versao: est.versao } : est;
+      const sufixo = (alvo !== "todos" && key) ? String(key) : "completo";
       const origin = process.env.APP_ORIGIN || "https://admin.planejamento.app";
       let j: { pdfBase64?: string; error?: string };
       try {
-        const resp = await fetch(origin + "/api/cardapio-pdf", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(est) });
+        const resp = await fetch(origin + "/api/cardapio-pdf", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) });
         j = (await resp.json()) as { pdfBase64?: string; error?: string };
         if (!resp.ok || !j.pdfBase64) return { resumo: "falha no PDF", conteudo: JSON.stringify({ erro: j.error || `render HTTP ${resp.status}` }) };
       } catch (e) { return { resumo: "falha no PDF", conteudo: JSON.stringify({ erro: e instanceof Error ? e.message : "render indisponível" }) }; }
-      const path = `cardapios/puba/v${est.versao || 0}_${Date.now()}.pdf`;
+      const path = `cardapios/puba/${sufixo}_v${est.versao || 0}_${Date.now()}.pdf`;
       const url = await subirStorage(path, j.pdfBase64, "application/pdf");
       if (!url) return { resumo: "falha no upload", conteudo: JSON.stringify({ erro: "PDF gerado mas o upload falhou." }) };
-      return { resumo: `PDF v${est.versao || 0} pronto`, conteudo: JSON.stringify({ pdfUrl: url, versao: est.versao || 0 }) };
+      return { resumo: `PDF (${sufixo}) v${est.versao || 0} pronto`, conteudo: JSON.stringify({ pdfUrl: url, cardapio: sufixo, versao: est.versao || 0 }) };
     },
   },
   gerar_previa: {
@@ -637,14 +643,18 @@ export async function runAgenteCore(
     : ehCardapioSite
       ? " Pra MOSTRAR/ver o cardápio (ex.: 'como está o cardápio'), chame gerar_previa_site — o link é ANEXADO AUTOMÁTICO na conversa, então NÃO cole a URL no seu texto (diga só 'segue a prévia 👇'). A prévia já mostra TUDO. NÃO faça resumo em texto. Só liste em texto se o usuário pedir explicitamente — e aí liste COMPLETO, todas as seções e TODOS os pratos com preço, nunca resumido. Depois de uma alteração, gere a prévia de novo pra conferir. Pra o PDF: são 3 cardápios (Comidas, Bebidas, Vinhos) — se o usuário não disser qual, PERGUNTE antes e gere só UM (o que ele pedir) com gerar_pdf_site. NUNCA gere os três de uma vez, e NÃO cole a URL do PDF (ele vai como arquivo)."
       : (canal === "whatsapp"
-          ? " Aqui é WhatsApp: não há prévia visual na tela. Pra o usuário CONFERIR/APROVAR o cardápio (inclusive após uma alteração), chame gerar_previa — ela manda um link HTML que ele abre no celular. Quando pedirem o PDF/filipeta FINAL, chame gerar_pdf. Os links/arquivo aparecem sozinhos na conversa, não precisa colar a URL no texto."
-          : " Quando pedirem pra VER/MOSTRAR o cardápio ou a prévia, chame ler_cardapio: a prévia visual (HTML) aparece SOZINHA na tela — não precisa listar item por item, só confirme que está mostrando. Depois de aplicar uma alteração, a prévia atualizada também aparece sozinha. Quando pedirem o PDF / a filipeta / o arquivo final, chame gerar_pdf: o link pra download aparece na conversa.");
+          ? " Aqui é WhatsApp: não há prévia visual na tela. Pra o usuário CONFERIR/APROVAR o cardápio (inclusive após uma alteração), chame gerar_previa — ela manda um link HTML que ele abre no celular. Quando pedirem o PDF/filipeta FINAL, chame gerar_pdf com o `cardapio` que ele pediu (comidas/bebidas/vinhos/almoco/especiais) — se não disser qual, PERGUNTE antes e gere só ESSE. Pra mais de um, gere um por vez (arquivos separados). Os links/arquivo aparecem sozinhos na conversa, não precisa colar a URL no texto."
+          : " Quando pedirem pra VER/MOSTRAR o cardápio ou a prévia, chame ler_cardapio: a prévia visual (HTML) aparece SOZINHA na tela — não precisa listar item por item, só confirme que está mostrando. Depois de aplicar uma alteração, a prévia atualizada também aparece sozinha. Quando pedirem o PDF / a filipeta / o arquivo final, chame gerar_pdf com o `cardapio` pedido (comidas/bebidas/vinhos/almoco/especiais) — se não disser qual, PERGUNTE antes e gere só ESSE; pra mais de um, gere um por vez (arquivos separados). O link pra download aparece na conversa.");
   const notaRestaurar = !temCardapio ? ""
     : ehCardapioSite
       ? " Pratos removidos NÃO se perdem — vão pra uma lixeira. Se perguntarem 'o que já tiramos'/'quais pratos removidos', use listar_arquivados_site. Pra trazer um prato de volta (com título, descrição, preço e posição originais), use restaurar_prato_site (confirme antes)."
       : " Pratos removidos NÃO se perdem — vão pra uma lixeira. Se perguntarem 'o que já tiramos'/'quais pratos removidos', use listar_arquivados. Pra trazer um prato de volta (com nome, descrição, preço e posição originais), use restaurar_prato (confirme antes).";
   const notaCanal = canal === "whatsapp" ? " Você está respondendo pelo WhatsApp: seja conciso, sem markdown pesado (nada de tabelas), use quebras de linha curtas." : "";
-  const system = sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras + notaCardapio + notaRestaurar + notaCanal;
+  // Abertura: quando o usuário chega sem dizer o que quer, foca a conversa
+  // perguntando QUAL cardápio editar — aí já vai direto no que importa.
+  const notaAbertura = !temCardapio ? ""
+    : ` No COMEÇO da conversa, se o usuário não disser o que quer, pergunte QUAL cardápio ele quer editar — ${ehCardapioSite ? "Comidas, Bebidas ou Vinhos" : "Comidas, Bebidas ou Carta de Vinhos"} (ou "todos") — e então vá DIRETO nas edições dessa folha. Se ele já chegar dizendo o que quer, pule a pergunta.`;
+  const system = sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras + notaAbertura + notaCardapio + notaRestaurar + notaCanal;
 
   const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [];
   for (const h of (opts.historico || []).slice(-10)) {
