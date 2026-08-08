@@ -33,6 +33,7 @@ const BUILTIN: Array<{ match: RegExp; host: string; credKey: string }> = [
 ];
 
 const DIAS_SYNC = 3;   // hoje + 2 dias atrás por execução (ao vivo + recentes)
+const BACKFILL_MAX = 90; // dias por execução no backfill (cabe em 300s c/ folga)
 
 // "23.229,00" → 23229.00 ; "0,00" → 0 ; número → número.
 function moneyBR(v: unknown): number {
@@ -61,7 +62,7 @@ type Gerencial = {
 
 // Login headless no Riser + busca o dashboard gerencial de N dias. Reusa a
 // sessão (cookie PHP) via fetch dentro da própria página.
-async function puxarAltec(host: string, user: string, pass: string, dias: string[]): Promise<{ ok: boolean; erro?: string; dados: Record<string, Gerencial> }> {
+async function puxarAltec(host: string, user: string, pass: string, dias: string[], tolerante = false): Promise<{ ok: boolean; erro?: string; dados: Record<string, Gerencial> }> {
   let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
   try {
     browser = await puppeteer.launch({
@@ -99,7 +100,13 @@ async function puxarAltec(host: string, user: string, pass: string, dias: string
           try { return JSON.parse(txt); } catch { return { __erro: "não-JSON (login falhou?): " + txt.slice(0, 80) }; }
         } catch (e) { return { __erro: String(e) }; }
       }, dataParam) as Gerencial & { __erro?: string };
-      if (j && j.__erro) return { ok: false, erro: j.__erro, dados };
+      if (j && j.__erro) {
+        // "não-JSON (login falhou?)" = sessão caiu → aborta sempre. Outros erros
+        // (HTTP, dia sem dado) só abortam no modo estrito; no backfill, pula o dia.
+        const ehLogin = /login falhou|não-JSON/i.test(j.__erro);
+        if (ehLogin || !tolerante) return { ok: false, erro: j.__erro, dados };
+        continue;
+      }
       dados[iso] = j;
     }
     return { ok: true, dados };
@@ -128,23 +135,32 @@ function mapDia(rid: string, iso: string, g: Gerencial, nowIso: string): Record<
   };
 }
 
-async function sincronizarUm(a: { rid: string; nome: string; host: string; credKey: string }): Promise<Record<string, unknown>> {
+async function sincronizarUm(a: { rid: string; nome: string; host: string; credKey: string }, diasOverride?: string[]): Promise<Record<string, unknown>> {
   const user = process.env[`ALTEC_${a.credKey}_USER`];
   const pass = process.env[`ALTEC_${a.credKey}_PASS`];
   if (!user || !pass) return { rid: a.rid, nome: a.nome, erro: `faltam secrets ALTEC_${a.credKey}_USER / _PASS` };
 
+  const backfill = !!diasOverride;
   const hoje = new Date();
-  const dias: string[] = [];
-  for (let i = 0; i < DIAS_SYNC; i++) dias.push(ymd(new Date(hoje.getTime() - i * 86400000)));
+  let dias: string[];
+  if (diasOverride) {
+    dias = diasOverride;
+  } else {
+    dias = [];
+    for (let i = 0; i < DIAS_SYNC; i++) dias.push(ymd(new Date(hoje.getTime() - i * 86400000)));
+  }
 
-  const r = await puxarAltec(a.host, user, pass, dias);
+  const r = await puxarAltec(a.host, user, pass, dias, backfill);
   if (!r.ok) return { rid: a.rid, nome: a.nome, erro: r.erro || "falha no login/consulta" };
 
   const nowIso = new Date().toISOString();
-  let gravados = 0;
+  let gravados = 0, pulados = 0;
   for (const iso of dias) {
     const g = r.dados[iso];
-    if (!g) continue;
+    if (!g) { pulados++; continue; }
+    // No backfill, pula dia sem movimento (casa fechada/inexistente) pra não
+    // encher a coleção de zeros. No sync normal grava sempre (dia em andamento).
+    if (backfill && moneyBR(g.vend_fat) === 0 && intBR(g.num_cupons) === 0) { pulados++; continue; }
     await firestoreAtualizar("vendasAltec", `${a.rid}_${iso}`, mapDia(a.rid, iso, g, nowIso)).catch(() => {});
     gravados++;
   }
@@ -152,7 +168,7 @@ async function sincronizarUm(a: { rid: string; nome: string; host: string; credK
   const ontemIso = ymd(new Date(hoje.getTime() - 86400000));
   const fatHoje = moneyBR(r.dados[hojeIso]?.vend_fat);
   const fatOntem = moneyBR(r.dados[ontemIso]?.vend_fat);
-  return { rid: a.rid, nome: a.nome, dias: gravados, faturamentoHoje: fatHoje, faturamentoOntem: fatOntem };
+  return { rid: a.rid, nome: a.nome, dias: gravados, pulados, faturamentoHoje: fatHoje, faturamentoOntem: fatOntem };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -164,6 +180,21 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   if (!autorizado) { res.status(401).json({ error: "não autorizado" }); return; }
   if (!firestoreDisponivel()) { res.status(503).json({ error: "Firestore indisponível (faltam credenciais de service account)." }); return; }
   const soRid = typeof req.query.rid === "string" ? req.query.rid : "";
+
+  // ── Modo BACKFILL: ?desde=YYYY-MM-DD (&ate=YYYY-MM-DD, default hoje). Varre o
+  // intervalo em pedaços de BACKFILL_MAX dias e devolve `proximo` pra continuar.
+  const desde = typeof req.query.desde === "string" ? req.query.desde : "";
+  let backfillDias: string[] | null = null;
+  let proximo: { desde: string; ate: string } | null = null;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(desde)) {
+    const ateStr = (typeof req.query.ate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(req.query.ate))
+      ? req.query.ate : ymd(new Date(Date.now() - 3 * 3600 * 1000));
+    backfillDias = [];
+    let cur = new Date(`${ateStr}T12:00:00Z`);
+    const stop = new Date(`${desde}T12:00:00Z`);
+    while (cur >= stop && backfillDias.length < BACKFILL_MAX) { backfillDias.push(ymd(cur)); cur = new Date(cur.getTime() - 86400000); }
+    if (cur >= stop) proximo = { desde, ate: ymd(cur) }; // ainda tem histórico anterior
+  }
 
   try {
     const restaurantes = await firestoreListar("restaurants");
@@ -182,15 +213,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     const resultado: Array<Record<string, unknown>> = [];
     for (const a of alvosFiltrados) {
       let r: Record<string, unknown>;
-      try { r = await sincronizarUm(a); }
+      try { r = await sincronizarUm(a, backfillDias || undefined); }
       catch (e) { r = { rid: a.rid, nome: a.nome, erro: e instanceof Error ? e.message : String(e) }; }
-      await firestoreAtualizar("altecSyncStatus", a.rid, {
-        id: a.rid, restaurantId: a.rid, nome: a.nome, atualizadoEm: new Date().toISOString(),
-        dias: Number(r.dias || 0), faturamentoHoje: Number(r.faturamentoHoje || 0), ok: !r.erro, erro: r.erro ? String(r.erro) : "",
-      }).catch(() => {});
+      // No backfill não sobrescreve o status "ao vivo" (faturamentoHoje etc.).
+      if (!backfillDias) {
+        await firestoreAtualizar("altecSyncStatus", a.rid, {
+          id: a.rid, restaurantId: a.rid, nome: a.nome, atualizadoEm: new Date().toISOString(),
+          dias: Number(r.dias || 0), faturamentoHoje: Number(r.faturamentoHoje || 0), ok: !r.erro, erro: r.erro ? String(r.erro) : "",
+        }).catch(() => {});
+      }
       resultado.push(r);
     }
-    res.status(200).json({ ok: true, resultado });
+    res.status(200).json({ ok: true, resultado, ...(backfillDias ? { backfill: true, proximo } : {}) });
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : "falha no sync" });
   }

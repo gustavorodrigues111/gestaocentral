@@ -35,6 +35,7 @@ export function ConectoresPage() {
   const { restaurants } = useRestaurant();
   const [statusPorCol, setStatusPorCol] = useState<Record<string, Record<string, Status>>>({});
   const [forcando, setForcando] = useState<string>("");   // `${tipo}_${rid}`
+  const [backfill, setBackfill] = useState<{ rid: string; msg: string; rodando: boolean } | null>(null);
 
   useEffect(() => {
     const unsubs = CONECTORES.map((c) =>
@@ -66,6 +67,37 @@ export function ConectoresPage() {
     } catch (e) {
       alert("Falha ao sincronizar: " + (e instanceof Error ? e.message : "?"));
     } finally { setForcando(""); }
+  }
+
+  // Backfill do histórico (Altec): roda em blocos de ~90 dias seguindo o cursor
+  // `proximo` que o backend devolve, até varrer tudo desde 01/01/2025.
+  async function puxarHistorico(rid: string) {
+    if (backfill?.rodando) return;
+    const desde = "2025-01-01";
+    if (!confirm("Puxar TODO o histórico de vendas desde jan/2025?\n\nRoda em blocos e pode levar alguns minutos — deixe esta tela aberta.")) return;
+    let ate: string | undefined;
+    let totalDias = 0, blocos = 0;
+    setBackfill({ rid, msg: "iniciando…", rodando: true });
+    try {
+      for (let i = 0; i < 40; i++) {   // teto de segurança (40 × 90 = 3600 dias)
+        const qs = new URLSearchParams({ rid, desde });
+        if (ate) qs.set("ate", ate);
+        const r = await fetch(`/api/altec-sync?${qs.toString()}`, { method: "POST", headers: { ...(await authHeader()) } });
+        const j = (await r.json().catch(() => ({}))) as { error?: string; resultado?: Array<{ dias?: number; erro?: string }>; proximo?: { ate?: string } | null };
+        if (!r.ok) { alert("Falha no backfill: " + (j.error || `HTTP ${r.status}`)); break; }
+        const res0 = (j.resultado || [])[0] || {};
+        if (res0.erro) { alert("Falha no backfill: " + res0.erro); break; }
+        totalDias += Number(res0.dias || 0);
+        blocos++;
+        const prox = j.proximo;
+        if (!prox || !prox.ate) { setBackfill({ rid, msg: `✓ histórico completo — ${totalDias} dias gravados`, rodando: false }); break; }
+        ate = prox.ate;
+        setBackfill({ rid, msg: `${totalDias} dias gravados (${blocos} blocos) · buscando até ${prox.ate.split("-").reverse().join("/")}…`, rodando: true });
+      }
+    } catch (e) {
+      alert("Falha no backfill: " + (e instanceof Error ? e.message : "?"));
+      setBackfill({ rid, msg: "erro — pode tentar de novo (já gravou o que puxou)", rodando: false });
+    }
   }
 
   return (
@@ -107,6 +139,21 @@ export function ConectoresPage() {
                         )}
                         <span className="text-gray-500 dark:text-gray-400"> · {c.resumo(s)}</span>
                       </div>
+                      {c.tipo === "altec" && (
+                        <div className="mt-2 pt-2 border-t border-gray-200/70 dark:border-gray-700/70">
+                          <button
+                            type="button"
+                            disabled={backfill?.rodando}
+                            onClick={() => void puxarHistorico(r.id)}
+                            className="text-[12px] font-medium text-sky-700 dark:text-sky-300 hover:underline disabled:opacity-50 disabled:no-underline"
+                          >
+                            {backfill?.rid === r.id && backfill.rodando ? "⏳ puxando histórico…" : "⤓ Puxar histórico completo"}
+                          </button>
+                          {backfill?.rid === r.id && (
+                            <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{backfill.msg}</div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   );
                 })}
