@@ -70,19 +70,17 @@ async function puxarAltec(host: string, user: string, pass: string, dias: string
     });
     const page = await browser.newPage();
     await page.goto(`https://${host}/`, { waitUntil: "networkidle2", timeout: 45000 });
-    // Form de login Altec: 3 campos → [Container (pré-preenchido, ex.: PUBABAR),
-    // Usuário, Senha]. Garante o Container (= prefixo do host em maiúsculas) e
-    // preenche o Usuário (2º input de texto). Senha = input password.
+    // Form de login Altec: [Container (JÁ pré-preenchido, ex.: PUBABAR), Usuário,
+    // Senha]. NÃO mexemos no Container (mexer nele quebra o login). Preenchemos o
+    // campo de texto VAZIO (= Usuário) e a senha.
     await page.waitForSelector('input[type="password"]', { timeout: 25000 });
-    const container = host.split(".")[0].toUpperCase();
     const texts = await page.$$('input[type="text"], input[type="email"]');
-    const limpa = (el: import("puppeteer-core").ElementHandle<Element>) => el.evaluate((n) => { (n as HTMLInputElement).value = ""; }).catch(() => {});
-    if (texts.length >= 2) {
-      await limpa(texts[0]); await texts[0].type(container, { delay: 15 }).catch(() => {});
-      await limpa(texts[1]); await texts[1].type(user, { delay: 25 });
-    } else if (texts.length === 1) {
-      await texts[0].type(user, { delay: 25 });
+    let userFilled = false;
+    for (const el of texts) {
+      const v = (await el.evaluate((n) => (n as HTMLInputElement).value || "").catch(() => "")) as string;
+      if (!v.trim()) { await el.type(user, { delay: 25 }); userFilled = true; break; }
     }
+    if (!userFilled && texts.length) await texts[texts.length - 1].type(user, { delay: 25 });
     await page.type('input[type="password"]', pass, { delay: 25 });
     await Promise.all([
       page.click('button[type="submit"], input[type="submit"], .btn-primary, button.btn').catch(() => {}),
