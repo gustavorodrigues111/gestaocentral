@@ -255,6 +255,45 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
     }
   }
 
+  // ── MODO TESTE (só master, só agente do Puba por ora) ──────────────────────
+  // Sandbox: cardápio vai pra doc "puba__teste"; o real fica intocado. Toda
+  // resposta vem com 🧪 no topo enquanto durar. Sair = volta ao normal;
+  // "aplicar de verdade" = copia o sandbox pro cardápio real.
+  const MASTER = process.env.MASTER_WHATSAPP || "5511985499821";
+  const ehMaster = chaveBR(from) === chaveBR(MASTER);
+  const ehPuba = String(agente.tipo) === "cardapio";
+  const setModoTeste = (v: boolean) => firestoreAtualizar("whatsappAgenteSessoes", sid, { waId: from, modoTeste: v, atualizadoEm: now() }).catch(() => {});
+  if (ehMaster) {
+    const querEntrar = /\bmodo (de )?teste\b/.test(low) && !/\bsair\b|\baplicar\b|\bgravar\b|\bpublicar\b/.test(low);
+    const querSair = /(sair|encerrar|desligar|fechar|parar)\b[^]*teste|sair do teste/.test(low);
+    const querAplicar = /(aplicar|gravar|publicar|salvar)\b[^]*(de verdade|no real|pra valer|real)/.test(low);
+    if (querSair && sessao?.modoTeste) {
+      await setModoTeste(false);
+      await enviarWhats(from, "Saí do *modo teste* 👍 As alterações agora valem de verdade de novo.");
+      return;
+    }
+    if (querAplicar && sessao?.modoTeste && ehPuba) {
+      const t = (await firestoreLer("cardapioEstado", "puba__teste")) as Doc | null;
+      if (t && (t as { comidas?: unknown }).comidas) {
+        await firestoreAtualizar("cardapioEstado", "puba", { comidas: t.comidas, bebidas: t.bebidas, vendinha: t.vendinha, especiais: (t.especiais as unknown[]) || [], vinhos: (t.vinhos as unknown[]) || [], versao: (t.versao as number) || 0, atualizadoEm: now(), atualizadoPor: nome || "master" }).catch(() => {});
+      }
+      await setModoTeste(false);
+      await enviarWhats(from, "✅ Apliquei o que você testou no cardápio *real* e saí do modo teste.");
+      return;
+    }
+    if (querEntrar && !sessao?.modoTeste) {
+      if (!ehPuba) { await enviarWhats(from, "Por ora o *modo teste* está só no agente do Puba — no Sororoca eu ligo em breve 🙏"); return; }
+      const real = (await firestoreLer("cardapioEstado", "puba")) as Doc | null;   // semeia o sandbox do real (fresco)
+      if (real && (real as { comidas?: unknown }).comidas) {
+        await firestoreAtualizar("cardapioEstado", "puba__teste", { comidas: real.comidas, bebidas: real.bebidas, vendinha: real.vendinha, especiais: (real.especiais as unknown[]) || [], vinhos: (real.vinhos as unknown[]) || [], versao: (real.versao as number) || 0, atualizadoEm: now(), atualizadoPor: "teste" }).catch(() => {});
+      }
+      await setModoTeste(true);
+      await enviarWhats(from, "🧪 *MODO TESTE ligado.* Pode alterar à vontade — nada aqui muda o cardápio real. Minhas respostas vêm com 🧪 no topo enquanto durar.\n\nPra sair: *sair do teste*. Pra valer de verdade: *aplicar de verdade*.");
+      return;
+    }
+  }
+  const modoTeste = !!sessao?.modoTeste && ehPuba;
+
   // Sinal de que recebeu e está trabalhando: ✓✓ azul + "digitando…".
   if (messageId) await marcarLidoDigitando(messageId);
 
@@ -272,12 +311,12 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
 
   let out;
   try {
-    out = await runAgenteCore(agente, { mensagem: texto, historico: hist, pessoaNome: nome || from, pessoaId: `wa_${sid}`, canal: "whatsapp", anexo, onProgress: async (m) => { await enviarWhats(from, m); } });
+    out = await runAgenteCore(agente, { mensagem: texto, historico: hist, pessoaNome: nome || from, pessoaId: `wa_${sid}`, canal: "whatsapp", anexo, modoTeste, onProgress: async (m) => { await enviarWhats(from, modoTeste ? `🧪 ${m}` : m); } });
   } catch {
     await enviarWhats(from, "Tive um problema pra responder agora. Tenta de novo daqui a pouco 🙏");
     return;
   }
-  const resposta = (out.resposta || "").trim() || "(sem resposta)";
+  const resposta = ((modoTeste ? "🧪 *MODO TESTE*\n\n" : "") + ((out.resposta || "").trim() || "(sem resposta)"));
   await firestoreCriar("agenteMensagens", `am_${rid()}`, {
     agenteId: agente.id, conversaId, restaurantId: null, role: "assistant", texto: resposta, pessoaId: null, canal: "whatsapp", pdfUrl: out.pdfUrl || null, previaUrl: out.previaUrl || null, criadoEm: now(),
   }).catch(() => {});
