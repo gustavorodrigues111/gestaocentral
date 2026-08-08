@@ -249,7 +249,7 @@ def render(estado):
         cut_line(c, PW/2, 8, PW/2, PH-8)
         cut_line(c, 8, PH - H2, PW-8, PH - H2)
         c.showPage()
-    if vendinha: half_page(vendinha, ["ALMOÇO"])
+    if vendinha: half_page(vendinha, ["ESPECIAIS", "DE ALMOÇO"])
     if especiais: half_page(especiais, ["ESPECIAIS", "DO DIA"])
     c.save()
     return buf.getvalue()

@@ -47,10 +47,16 @@ type SkillTool = {
 };
 
 const CARDAPIO_DOC = "puba";
+// MODO TESTE (sandbox): quando ligado, o cardápio é lido/gravado num doc
+// "<doc>__teste" — o real fica intocado. Setado por invocação em runAgenteCore.
+let _testeSuffix = "";
+const docPuba = () => CARDAPIO_DOC + _testeSuffix;
 const nrm = (s: unknown) => String(s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
 
 async function lerCardapioEstado(): Promise<CardapioEstado & { versao: number }> {
-  const est = await firestoreLer("cardapioEstado", CARDAPIO_DOC);
+  let est = await firestoreLer("cardapioEstado", docPuba());
+  // Modo teste e sandbox ainda vazio → semeia do cardápio REAL.
+  if (_testeSuffix && (!est || !(est as { comidas?: unknown }).comidas)) est = await firestoreLer("cardapioEstado", CARDAPIO_DOC);
   if (est && (est as { comidas?: unknown }).comidas) {
     const e = est as CardapioEstado & { versao: number };
     // Backfill de folhas novas ainda ausentes no doc salvo (ex.: Carta de
@@ -198,13 +204,13 @@ function previaCardapioHtml(est: CardapioEstado & { versao?: number }): string {
     + `.item{display:flex;gap:10px;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #ece7dd}`
     + `.l b{font-size:14px}.d{color:#9ca3af;font-size:12px}.p{white-space:nowrap;font-weight:600;font-size:13px}</style></head><body>`
     + `<h1>🍽️ Cardápio do Puba — prévia</h1><div class="v">versão ${est.versao || 0} · confira e aprove</div>`
-    + pagina("Comidas", est.comidas) + pagina("Bebidas", est.bebidas) + pagina("Almoço", est.vendinha) + pagina("Especiais do dia", est.especiais) + pagina("Carta de Vinhos", est.vinhos)
+    + pagina("Comidas", est.comidas) + pagina("Bebidas", est.bebidas) + pagina("Especiais de Almoço", est.vendinha) + pagina("Especiais do dia", est.especiais) + pagina("Carta de Vinhos", est.vinhos)
     + `</body></html>`;
 }
 
 const SKILL_TOOLS: Record<string, SkillTool> = {
   ler_cardapio: {
-    desc: "Lê o cardápio atual do Puba Cidade Velha (comidas, bebidas, vendinha=Almoço, especiais=Especiais do dia, vinhos=Carta de Vinhos) com nomes, descrições e preços. Use SEMPRE antes de propor mudança.",
+    desc: "Lê o cardápio atual do Puba Cidade Velha (comidas, bebidas, vendinha=Especiais de Almoço, especiais=Especiais do dia, vinhos=Carta de Vinhos) com nomes, descrições e preços. Use SEMPRE antes de propor mudança.",
     tipo: "read",
     schema: { type: "object", properties: {}, required: [] },
     exec: async () => {
@@ -214,7 +220,7 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
     },
   },
   aplicar_cardapio: {
-    desc: "APLICA alterações no cardápio. Aplique DIRETO quando o usuário pedir a alteração (não precisa pré-confirmar — a checagem é a prévia, que você gera logo depois). alteracoes = lista de { acao, pagina: 'comidas'|'bebidas'|'vendinha' (=Almoço)|'especiais' (=Especiais do dia, folha após o Almoço)|'vinhos' (=Carta de Vinhos), secao, item (nome atual do item), dados }. Nos VINHOS a descrição segue o padrão: 1ª linha 'uva: <uvas> | <região>, <país>', depois uma LINHA EM BRANCO (\\n\\n) e as características (aromas/boca/final). Pra criar uma folha nova basta adicionar itens com a pagina certa (ex.: pagina 'especiais', secao 'ESPECIAIS DO DIA') — a folha/seção é criada automaticamente. Ações de ITEM: 'alterar_preco'|'adicionar'|'remover'|'editar_descricao'|'renomear'. Ações de SEÇÃO/categoria inteira (o título, ex.: 'SANDUBAS'): 'remover_secao' (remove a seção e o que tiver dentro — use pra sumir com título órfão/vazio) e 'renomear_secao' (novo nome em dados.nome). Em dados: preço novo em `precos` (ex.: [\"R$ 64\"]) ou `preco`; item novo em `nome`/`descricao`/`precos`. QUANDO um prato tem VÁRIOS preços com qualificador (ex.: dupla / meia dúzia / dupla com uni), passe `precos` como LISTA DE OBJETOS {qual, val} — cada um sai numa LINHA própria no PDF. Ex.: `precos: [{\"qual\":\"dupla\",\"val\":\"R$ 32\"},{\"qual\":\"meia dúzia\",\"val\":\"R$ 86\"},{\"qual\":\"dupla com uni\",\"val\":\"R$ 60\"}]`. NUNCA coloque preços dentro da `descricao` — sempre em `precos`. Bump de versão automático. (O PDF final é gerado numa etapa seguinte.)",
+    desc: "APLICA alterações no cardápio. Aplique DIRETO quando o usuário pedir a alteração (não precisa pré-confirmar — a checagem é a prévia, que você gera logo depois). alteracoes = lista de { acao, pagina: 'comidas'|'bebidas'|'vendinha' (=Especiais de Almoço)|'especiais' (=Especiais do dia)|'vinhos' (=Carta de Vinhos), secao, item (nome atual do item), dados }. Nos VINHOS a descrição segue o padrão: 1ª linha 'uva: <uvas> | <região>, <país>', depois uma LINHA EM BRANCO (\\n\\n) e as características (aromas/boca/final). Pra criar uma folha nova basta adicionar itens com a pagina certa (ex.: pagina 'especiais', secao 'ESPECIAIS DO DIA') — a folha/seção é criada automaticamente. Ações de ITEM: 'alterar_preco'|'adicionar'|'remover'|'editar_descricao'|'renomear'. Ações de SEÇÃO/categoria inteira (o título, ex.: 'SANDUBAS'): 'remover_secao' (remove a seção e o que tiver dentro — use pra sumir com título órfão/vazio) e 'renomear_secao' (novo nome em dados.nome). Em dados: preço novo em `precos` (ex.: [\"R$ 64\"]) ou `preco`; item novo em `nome`/`descricao`/`precos`. QUANDO um prato tem VÁRIOS preços com qualificador (ex.: dupla / meia dúzia / dupla com uni), passe `precos` como LISTA DE OBJETOS {qual, val} — cada um sai numa LINHA própria no PDF. Ex.: `precos: [{\"qual\":\"dupla\",\"val\":\"R$ 32\"},{\"qual\":\"meia dúzia\",\"val\":\"R$ 86\"},{\"qual\":\"dupla com uni\",\"val\":\"R$ 60\"}]`. NUNCA coloque preços dentro da `descricao` — sempre em `precos`. Bump de versão automático. (O PDF final é gerado numa etapa seguinte.)",
     tipo: "write",
     schema: { type: "object", properties: {
       alteracoes: { type: "array", description: "lista de alterações", items: { type: "object", properties: {
@@ -230,7 +236,7 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
       await arquivarEntradas("puba", arquivar, ctx.pessoaNome);
       const novaVersao = (est.versao || 0) + 1;
       const nowIso = new Date().toISOString();
-      const salvo = await firestoreAtualizar("cardapioEstado", CARDAPIO_DOC, { comidas: est.comidas, bebidas: est.bebidas, vendinha: est.vendinha, especiais: est.especiais || [], vinhos: est.vinhos || [], versao: novaVersao, atualizadoEm: nowIso, atualizadoPor: ctx.pessoaNome });
+      const salvo = await firestoreAtualizar("cardapioEstado", docPuba(), { comidas: est.comidas, bebidas: est.bebidas, vendinha: est.vendinha, especiais: est.especiais || [], vinhos: est.vinhos || [], versao: novaVersao, atualizadoEm: nowIso, atualizadoPor: ctx.pessoaNome });
       if (salvo) {
         const vid = `cardv_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
         await firestoreCriar("cardapioVersoes", vid, { id: vid, doc: CARDAPIO_DOC, versao: novaVersao, resumo: String(args.resumo_humano || aplicadas.join("; ")), alteracoes: alts as unknown as Doc[], autorId: ctx.pessoaId, autorNome: ctx.pessoaNome, criadoEm: nowIso } as Doc).catch(() => {});
@@ -239,13 +245,13 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
     },
   },
   gerar_pdf: {
-    desc: "Gera o PDF FINAL da filipeta do Puba e devolve o link. `cardapio` diz QUAL folha: 'comidas' | 'bebidas' | 'vinhos' (Carta de Vinhos) | 'almoco' | 'especiais' | 'todos'. Se o usuário não disser, PERGUNTE antes e gere só a que ele pedir. Pra mais de uma, chame uma vez por folha (arquivos separados).",
+    desc: "Gera o PDF FINAL da filipeta do Puba e devolve o link. `cardapio` diz QUAL folha: 'comidas' | 'bebidas' | 'vinhos' (Carta de Vinhos) | 'especiais_almoco' (Especiais de Almoço) | 'especiais' (Especiais do dia) | 'todos'. Se o usuário não disser, PERGUNTE antes e gere só a que ele pedir. Pra mais de uma, chame uma vez por folha (arquivos separados).",
     tipo: "write",
-    schema: { type: "object", properties: { cardapio: { type: "string", description: "comidas | bebidas | vinhos | almoco | especiais | todos" } }, required: [] },
+    schema: { type: "object", properties: { cardapio: { type: "string", description: "comidas | bebidas | vinhos | especiais_almoco | especiais | todos" } }, required: [] },
     exec: async (a: { cardapio?: string } = {}) => {
       const est = await lerCardapioEstado();
       const alvo = String(a?.cardapio || "todos").toLowerCase().trim();
-      const MAPA: Record<string, keyof CardapioEstado> = { comidas: "comidas", bebidas: "bebidas", vinhos: "vinhos", "carta de vinhos": "vinhos", almoco: "vendinha", "almoço": "vendinha", vendinha: "vendinha", especiais: "especiais", "especiais do dia": "especiais" };
+      const MAPA: Record<string, keyof CardapioEstado> = { comidas: "comidas", bebidas: "bebidas", vinhos: "vinhos", "carta de vinhos": "vinhos", "especiais de almoco": "vendinha", "especiais de almoço": "vendinha", especiais_almoco: "vendinha", almoco: "vendinha", "almoço": "vendinha", vendinha: "vendinha", especiais: "especiais", "especiais do dia": "especiais" };
       const key = MAPA[alvo];
       // Folha específica → manda só ela (o render pula as vazias). "todos" → tudo.
       const payload: Record<string, unknown> = (alvo !== "todos" && key) ? { [key]: (est as Record<string, unknown>)[key] || [], versao: est.versao } : est;
@@ -304,7 +310,7 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
       sec.itens.splice(idx, 0, alvo.raw as unknown as CardapioItem);
       const novaVersao = (est.versao || 0) + 1;
       const nowIso = new Date().toISOString();
-      const salvo = await firestoreAtualizar("cardapioEstado", CARDAPIO_DOC, { comidas: est.comidas, bebidas: est.bebidas, vendinha: est.vendinha, especiais: est.especiais || [], vinhos: est.vinhos || [], versao: novaVersao, atualizadoEm: nowIso, atualizadoPor: ctx.pessoaNome });
+      const salvo = await firestoreAtualizar("cardapioEstado", docPuba(), { comidas: est.comidas, bebidas: est.bebidas, vendinha: est.vendinha, especiais: est.especiais || [], vinhos: est.vinhos || [], versao: novaVersao, atualizadoEm: nowIso, atualizadoPor: ctx.pessoaNome });
       await tirarArquivado("puba", alvo.id, arqs);
       return { resumo: `restaurado ${alvo.nome}`, conteudo: JSON.stringify({ restaurado: alvo.nome, secao: sec.secao, pagina: pg, precoAntigo: (alvo.raw as { precos?: unknown }).precos ?? "", versao: novaVersao, salvo }) };
     },
@@ -321,7 +327,8 @@ const novoIdS = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).
 
 async function lerEstruturado(rid: string): Promise<{ cardapios: MenuS[]; slug: string } | null> {
   if (!rid) return null;
-  const d = (await firestoreLer("cardapioEstruturado", rid)) as { cardapios?: MenuS[] } | null;
+  let d = (await firestoreLer("cardapioEstruturado", rid + _testeSuffix)) as { cardapios?: MenuS[] } | null;
+  if (_testeSuffix && (!d || !Array.isArray(d.cardapios))) d = (await firestoreLer("cardapioEstruturado", rid)) as { cardapios?: MenuS[] } | null;   // seed do real
   if (!d) return null;
   const cfg = (await firestoreLer("sitesConfig", rid)) as { slug?: string } | null;
   return { cardapios: Array.isArray(d.cardapios) ? d.cardapios : [], slug: (cfg?.slug || "").toString() };
@@ -450,7 +457,7 @@ const SKILL_TOOLS_SITE: Record<string, SkillTool> = {
       const alts = (Array.isArray(args.alteracoes) ? args.alteracoes : []) as AltEstrut[];
       if (!alts.length) return { resumo: "nada a aplicar", conteudo: JSON.stringify({ erro: "sem alterações" }) };
       const { aplicadas, erros, arquivar } = aplicaDiffEstruturado(est.cardapios, alts);
-      const salvo = await firestoreAtualizar("cardapioEstruturado", rid, { cardapios: est.cardapios as unknown as Doc[], atualizadoEm: new Date().toISOString(), atualizadoPor: ctx.pessoaNome });
+      const salvo = await firestoreAtualizar("cardapioEstruturado", rid + _testeSuffix, { cardapios: est.cardapios as unknown as Doc[], atualizadoEm: new Date().toISOString(), atualizadoPor: ctx.pessoaNome });
       await arquivarEntradas(rid, arquivar, ctx.pessoaNome);
       return { resumo: `${aplicadas.length} alteração(ões) no site`, conteudo: JSON.stringify({ aplicadas, erros, salvo }) };
     },
@@ -516,7 +523,7 @@ const SKILL_TOOLS_SITE: Record<string, SkillTool> = {
       s.pratos = s.pratos || [];
       const idx = Math.max(0, Math.min(alvo.posicao, s.pratos.length));
       s.pratos.splice(idx, 0, alvo.raw as unknown as PratoS);
-      const salvo = await firestoreAtualizar("cardapioEstruturado", rid, { cardapios: est.cardapios as unknown as Doc[], atualizadoEm: new Date().toISOString(), atualizadoPor: ctx.pessoaNome });
+      const salvo = await firestoreAtualizar("cardapioEstruturado", rid + _testeSuffix, { cardapios: est.cardapios as unknown as Doc[], atualizadoEm: new Date().toISOString(), atualizadoPor: ctx.pessoaNome });
       await tirarArquivado(rid, alvo.id, arqs);
       return { resumo: `restaurado ${alvo.nome}`, conteudo: JSON.stringify({ restaurado: alvo.nome, cardapio: c.nome, secao: s.nome, precoAntigo: (alvo.raw as { preco?: unknown }).preco ?? "", salvo }) };
     },
@@ -600,8 +607,11 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 export type AgenteResultado = { resposta: string; toolCalls: { tool: string; resumo: string }[]; estadoCardapio?: unknown; pdfUrl?: string; previaUrl?: string };
 export async function runAgenteCore(
   agente: Doc,
-  opts: { mensagem: string; historico?: { role: string; texto: string }[]; pessoaNome: string; pessoaId: string; anexo?: { base64?: string; mediaType?: string }; canal?: string; onProgress?: (msg: string) => Promise<void> },
+  opts: { mensagem: string; historico?: { role: string; texto: string }[]; pessoaNome: string; pessoaId: string; anexo?: { base64?: string; mediaType?: string }; canal?: string; modoTeste?: boolean; onProgress?: (msg: string) => Promise<void> },
 ): Promise<AgenteResultado> {
+  // MODO TESTE: cardápio lido/gravado em doc "__teste" (real intocado). Setado
+  // por invocação (serverless roda 1 req por vez, sem corrida no módulo).
+  _testeSuffix = opts.modoTeste ? "__teste" : "";
   const key = process.env.ANTHROPIC_API_KEY;
   if (!key) throw new Error("ANTHROPIC_API_KEY não configurada.");
   const agenteId = String(agente.id);
@@ -647,8 +657,8 @@ export async function runAgenteCore(
     : ehCardapioSite
       ? " Pra MOSTRAR/ver o cardápio (ex.: 'como está o cardápio'), chame gerar_previa_site — o link é ANEXADO AUTOMÁTICO na conversa, então NÃO cole a URL no seu texto (diga só 'segue a prévia 👇'). A prévia já mostra TUDO. NÃO faça resumo em texto. Só liste em texto se o usuário pedir explicitamente — e aí liste COMPLETO, todas as seções e TODOS os pratos com preço, nunca resumido. Depois de uma alteração, gere a prévia de novo pra conferir. Pra o PDF: são 3 cardápios (Comidas, Bebidas, Vinhos) — se o usuário não disser qual, PERGUNTE antes e gere só UM (o que ele pedir) com gerar_pdf_site. NUNCA gere os três de uma vez, e NÃO cole a URL do PDF (ele vai como arquivo)."
       : (canal === "whatsapp"
-          ? " Aqui é WhatsApp: não há prévia visual na tela. Pra o usuário CONFERIR/APROVAR o cardápio (inclusive após uma alteração), chame gerar_previa — ela manda um link HTML que ele abre no celular. Quando pedirem o PDF/filipeta FINAL, chame gerar_pdf com o `cardapio` que ele pediu (comidas/bebidas/vinhos/almoco/especiais) — se não disser qual, PERGUNTE antes e gere só ESSE. Pra mais de um, gere um por vez (arquivos separados). Os links/arquivo aparecem sozinhos na conversa, não precisa colar a URL no texto."
-          : " Quando pedirem pra VER/MOSTRAR o cardápio ou a prévia, chame ler_cardapio: a prévia visual (HTML) aparece SOZINHA na tela — não precisa listar item por item, só confirme que está mostrando. Depois de aplicar uma alteração, a prévia atualizada também aparece sozinha. Quando pedirem o PDF / a filipeta / o arquivo final, chame gerar_pdf com o `cardapio` pedido (comidas/bebidas/vinhos/almoco/especiais) — se não disser qual, PERGUNTE antes e gere só ESSE; pra mais de um, gere um por vez (arquivos separados). O link pra download aparece na conversa.");
+          ? " Aqui é WhatsApp: não há prévia visual na tela. Pra o usuário CONFERIR/APROVAR o cardápio (inclusive após uma alteração), chame gerar_previa — ela manda um link HTML que ele abre no celular. Quando pedirem o PDF/filipeta FINAL, chame gerar_pdf com o `cardapio` que ele pediu (comidas/bebidas/vinhos/especiais_almoco/especiais) — se não disser qual, PERGUNTE antes e gere só ESSE. Pra mais de um, gere um por vez (arquivos separados). Os links/arquivo aparecem sozinhos na conversa, não precisa colar a URL no texto."
+          : " Quando pedirem pra VER/MOSTRAR o cardápio ou a prévia, chame ler_cardapio: a prévia visual (HTML) aparece SOZINHA na tela — não precisa listar item por item, só confirme que está mostrando. Depois de aplicar uma alteração, a prévia atualizada também aparece sozinha. Quando pedirem o PDF / a filipeta / o arquivo final, chame gerar_pdf com o `cardapio` pedido (comidas/bebidas/vinhos/especiais_almoco/especiais) — se não disser qual, PERGUNTE antes e gere só ESSE; pra mais de um, gere um por vez (arquivos separados). O link pra download aparece na conversa.");
   const notaRestaurar = !temCardapio ? ""
     : ehCardapioSite
       ? " Pratos removidos NÃO se perdem — vão pra uma lixeira. Se perguntarem 'o que já tiramos'/'quais pratos removidos', use listar_arquivados_site. Pra trazer um prato de volta (com título, descrição, preço e posição originais), use restaurar_prato_site (confirme antes)."
@@ -657,7 +667,7 @@ export async function runAgenteCore(
   // Abertura: quando o usuário chega sem dizer o que quer, foca a conversa
   // perguntando QUAL cardápio editar — aí já vai direto no que importa.
   const notaAbertura = !temCardapio ? ""
-    : ` No COMEÇO da conversa, se o usuário não disser o que quer, pergunte QUAL cardápio ele quer editar — ${ehCardapioSite ? "Comidas, Bebidas ou Vinhos" : "Comidas, Bebidas ou Carta de Vinhos"} (ou "todos") — e então vá DIRETO nas edições dessa folha. Se ele já chegar dizendo o que quer, pule a pergunta.`;
+    : ` No COMEÇO da conversa, se o usuário não disser o que quer, pergunte QUAL cardápio ele quer editar — ${ehCardapioSite ? "Comidas, Bebidas ou Vinhos" : "Comidas, Bebidas, Especiais de Almoço, Especiais do dia ou Carta de Vinhos"} (ou "todos") — e então vá DIRETO nas edições dessa folha. Se ele já chegar dizendo o que quer, pule a pergunta.`;
   // Foto de rótulo → descrição de vinho no padrão da carta.
   const notaVinhoFoto = !temCardapio ? ""
     : " FOTO DE RÓTULO DE VINHO: se o usuário mandar uma foto de rótulo pedindo pra incluir o vinho na carta, LEIA o rótulo (produtor, nome, região, safra, uva quando aparece) e monte a descrição no PADRÃO dos vinhos — 1ª linha 'uva: <uvas> | <região>, <país>', depois uma LINHA EM BRANCO, e então as características organolépticas (aromas/boca/final) — usando o rótulo + seu conhecimento. NÃO invente: marque com '(confirmar)' o que não tiver certeza. Se faltar o preço ou a seção (Espumante/Branco/Rosé/Tinto), pergunte. Mostre a sugestão; com o ok, adicione na Carta de Vinhos na seção certa e gere a prévia.";
