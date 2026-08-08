@@ -139,9 +139,22 @@ export async function atenderWhatsAudio(from: string, mediaId: string, nome?: st
   await atenderWhatsAgente(from, texto, nome, messageId);
 }
 
-export async function atenderWhatsAgente(from: string, textoIn: string, nome?: string | null, messageId?: string): Promise<void> {
+// Foto (ex.: rótulo de vinho): baixa e manda pro agente como ANEXO (o agente lê
+// a imagem). A legenda vira o texto. Sem legenda, o agente age só pela imagem.
+export async function atenderWhatsImagem(from: string, mediaId: string, caption?: string, nome?: string | null, messageId?: string): Promise<void> {
+  if (!from || !mediaId) return;
+  const todos = await firestoreListar("agentesIA");
+  const autorizado = todos.some(a => a.ativo !== false && Array.isArray(a.numerosWhatsapp) && (a.numerosWhatsapp as string[]).some(n => numeroBate(n, from)));
+  if (!autorizado) return;
+  if (messageId) await marcarLidoDigitando(messageId);
+  const img = await baixarMidiaWhats(mediaId);
+  if (!img) { await enviarWhats(from, "Recebi sua foto, mas não consegui baixar 🙏 Tenta mandar de novo?"); return; }
+  await atenderWhatsAgente(from, caption || "", nome, messageId, { base64: img.base64, mediaType: img.mime });
+}
+
+export async function atenderWhatsAgente(from: string, textoIn: string, nome?: string | null, messageId?: string, anexo?: { base64: string; mediaType: string }): Promise<void> {
   const texto = (textoIn || "").trim();
-  if (!from || !texto) return;
+  if (!from || (!texto && !anexo)) return;
 
   const todos = await firestoreListar("agentesIA");
   const agentes = todos.filter(a =>
@@ -254,12 +267,12 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
     .map(m => ({ role: m.role as string, texto: m.texto as string }));
 
   await firestoreCriar("agenteMensagens", `am_${rid()}`, {
-    agenteId: agente.id, conversaId, restaurantId: null, role: "user", texto, pessoaId: null, pessoaNome: nome || null, canal: "whatsapp", criadoEm: now(),
+    agenteId: agente.id, conversaId, restaurantId: null, role: "user", texto: texto || "[foto]", pessoaId: null, pessoaNome: nome || null, canal: "whatsapp", criadoEm: now(),
   }).catch(() => {});
 
   let out;
   try {
-    out = await runAgenteCore(agente, { mensagem: texto, historico: hist, pessoaNome: nome || from, pessoaId: `wa_${sid}`, canal: "whatsapp", onProgress: async (m) => { await enviarWhats(from, m); } });
+    out = await runAgenteCore(agente, { mensagem: texto, historico: hist, pessoaNome: nome || from, pessoaId: `wa_${sid}`, canal: "whatsapp", anexo, onProgress: async (m) => { await enviarWhats(from, m); } });
   } catch {
     await enviarWhats(from, "Tive um problema pra responder agora. Tenta de novo daqui a pouco 🙏");
     return;

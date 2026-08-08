@@ -658,7 +658,10 @@ export async function runAgenteCore(
   // perguntando QUAL cardápio editar — aí já vai direto no que importa.
   const notaAbertura = !temCardapio ? ""
     : ` No COMEÇO da conversa, se o usuário não disser o que quer, pergunte QUAL cardápio ele quer editar — ${ehCardapioSite ? "Comidas, Bebidas ou Vinhos" : "Comidas, Bebidas ou Carta de Vinhos"} (ou "todos") — e então vá DIRETO nas edições dessa folha. Se ele já chegar dizendo o que quer, pule a pergunta.`;
-  const system = sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras + notaAbertura + notaCardapio + notaRestaurar + notaCanal;
+  // Foto de rótulo → descrição de vinho no padrão da carta.
+  const notaVinhoFoto = !temCardapio ? ""
+    : " FOTO DE RÓTULO DE VINHO: se o usuário mandar uma foto de rótulo pedindo pra incluir o vinho na carta, LEIA o rótulo (produtor, nome, região, safra, uva quando aparece) e monte a descrição no PADRÃO dos vinhos — 1ª linha 'uva: <uvas> | <região>, <país>', depois uma LINHA EM BRANCO, e então as características organolépticas (aromas/boca/final) — usando o rótulo + seu conhecimento. NÃO invente: marque com '(confirmar)' o que não tiver certeza. Se faltar o preço ou a seção (Espumante/Branco/Rosé/Tinto), pergunte. Mostre a sugestão; com o ok, adicione na Carta de Vinhos na seção certa e gere a prévia.";
+  const system = sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras + notaAbertura + notaCardapio + notaRestaurar + notaVinhoFoto + notaCanal;
 
   const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [];
   for (const h of (opts.historico || []).slice(-10)) {

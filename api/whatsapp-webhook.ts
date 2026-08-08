@@ -12,7 +12,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import crypto from "node:crypto";
 import { firestoreCriar, firestoreLer, firestoreDisponivel } from "./_firestoreRest.js";
-import { atenderWhatsAgente, atenderWhatsAudio } from "./_roteadorWhats.js";
+import { atenderWhatsAgente, atenderWhatsAudio, atenderWhatsImagem } from "./_roteadorWhats.js";
 
 export const config = { maxDuration: 120 };   // o agente pode gerar PDF (Puppeteer, ~40s); retry da Meta é deduplicado
 
@@ -54,7 +54,7 @@ type WebhookBody = { entry?: Array<{ changes?: Array<{ value?: WValue }> }> };
 type WValue = {
   metadata?: { phone_number_id?: string; display_phone_number?: string };
   contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>;
-  messages?: Array<{ from?: string; id?: string; timestamp?: string; type?: string; text?: { body?: string }; image?: { caption?: string }; document?: { caption?: string; filename?: string }; audio?: { id?: string; mime_type?: string }; button?: { text?: string }; interactive?: { button_reply?: { title?: string }; list_reply?: { title?: string } } }>;
+  messages?: Array<{ from?: string; id?: string; timestamp?: string; type?: string; text?: { body?: string }; image?: { id?: string; mime_type?: string; caption?: string }; document?: { caption?: string; filename?: string }; audio?: { id?: string; mime_type?: string }; button?: { text?: string }; interactive?: { button_reply?: { title?: string }; list_reply?: { title?: string } } }>;
   statuses?: Array<{ id?: string; status?: string; timestamp?: string; recipient_id?: string }>;
 };
 
@@ -82,7 +82,8 @@ async function processar(body: WebhookBody | null): Promise<void> {
     const ehTexto = !!(m.text?.body || m.image?.caption || m.document?.caption || m.button?.text || m.interactive?.button_reply?.title || m.interactive?.list_reply?.title);
     if (!jaTinha) {
       try {
-        if (ehTexto && texto) await atenderWhatsAgente(m.from, texto, nome, m.id);
+        if (m.type === "image" && m.image?.id) await atenderWhatsImagem(m.from, m.image.id, m.image.caption, nome, m.id);
+        else if (ehTexto && texto) await atenderWhatsAgente(m.from, texto, nome, m.id);
         else if (m.type === "audio" && m.audio?.id) await atenderWhatsAudio(m.from, m.audio.id, nome, m.id);
       } catch (e) { console.log("[wpp-webhook] roteador:", (e as Error)?.message); }
     }
