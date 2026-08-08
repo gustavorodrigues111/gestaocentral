@@ -70,10 +70,19 @@ async function puxarAltec(host: string, user: string, pass: string, dias: string
     });
     const page = await browser.newPage();
     await page.goto(`https://${host}/`, { waitUntil: "networkidle2", timeout: 45000 });
-    // Form de login (SmartAdmin/Riser): 1º input de texto = usuário, input password = senha.
+    // Form de login Altec: 3 campos → [Container (pré-preenchido, ex.: PUBABAR),
+    // Usuário, Senha]. Garante o Container (= prefixo do host em maiúsculas) e
+    // preenche o Usuário (2º input de texto). Senha = input password.
     await page.waitForSelector('input[type="password"]', { timeout: 25000 });
-    const userSel = 'input[type="text"], input[type="email"], input[name*="login" i], input[name*="usuario" i], input[name*="user" i]';
-    await page.type(userSel, user, { delay: 25 });
+    const container = host.split(".")[0].toUpperCase();
+    const texts = await page.$$('input[type="text"], input[type="email"]');
+    const limpa = (el: import("puppeteer-core").ElementHandle<Element>) => el.evaluate((n) => { (n as HTMLInputElement).value = ""; }).catch(() => {});
+    if (texts.length >= 2) {
+      await limpa(texts[0]); await texts[0].type(container, { delay: 15 }).catch(() => {});
+      await limpa(texts[1]); await texts[1].type(user, { delay: 25 });
+    } else if (texts.length === 1) {
+      await texts[0].type(user, { delay: 25 });
+    }
     await page.type('input[type="password"]', pass, { delay: 25 });
     await Promise.all([
       page.click('button[type="submit"], input[type="submit"], .btn-primary, button.btn').catch(() => {}),
@@ -142,8 +151,10 @@ async function sincronizarUm(a: { rid: string; nome: string; host: string; credK
     gravados++;
   }
   const hojeIso = ymd(hoje);
+  const ontemIso = ymd(new Date(hoje.getTime() - 86400000));
   const fatHoje = moneyBR(r.dados[hojeIso]?.vend_fat);
-  return { rid: a.rid, nome: a.nome, dias: gravados, faturamentoHoje: fatHoje };
+  const fatOntem = moneyBR(r.dados[ontemIso]?.vend_fat);
+  return { rid: a.rid, nome: a.nome, dias: gravados, faturamentoHoje: fatHoje, faturamentoOntem: fatOntem };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
