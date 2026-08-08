@@ -158,14 +158,14 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
   // de sessão já existente (deixaria aguardandoEscolha/agenteId travados).
   const salvarSessao = (agenteId: string | null, aguardando: boolean) =>
     firestoreAtualizar("whatsappAgenteSessoes", sid, { waId: from, agenteId, aguardandoEscolha: aguardando, aguardandoRetomada: false, atualizadoEm: now() }).catch(() => {});
-  // Marca "aguardando decisão continuar-vs-nova" (só multi-agente, após 4h ocioso).
+  // Marca "aguardando decisão continuar-vs-nova" (só multi-agente, após 2h ocioso).
   const pedirRetomada = () =>
     firestoreAtualizar("whatsappAgenteSessoes", sid, { waId: from, agenteId: sessao?.agenteId || null, aguardandoEscolha: false, aguardandoRetomada: true, atualizadoEm: now() }).catch(() => {});
 
-  // Ociosidade: > 4h desde a última mensagem da sessão.
-  const MS_4H = 4 * 60 * 60 * 1000;
+  // Ociosidade: > 2h desde a última mensagem da sessão.
+  const MS_INATIVO = 2 * 60 * 60 * 1000;
   const ultimaAtiv = sessao?.atualizadoEm ? Date.parse(sessao.atualizadoEm as string) : 0;
-  const inativo4h = ultimaAtiv > 0 && (Date.now() - ultimaAtiv) > MS_4H;
+  const inativoOcioso = ultimaAtiv > 0 && (Date.now() - ultimaAtiv) > MS_INATIVO;
 
   // Troca por NOME: acha um agente cujo nome distintivo aparece na mensagem
   // (ex.: "conecta no Sororoca"). Ignora palavras genéricas do nome.
@@ -184,8 +184,8 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
   const switchVerbo = /(fala[r]? com|conect|troc|mud[ao]|quero (o |a )?outro|passa (pro|para)|abre a|abrir a|vai (pro|para))/i.test(low);
   const querTrocar = menuIntent || (!!nomeAlvo && switchVerbo);
 
-  // ── Retomada após 4h (SÓ multi-agente) ────────────────────────────────────
-  // Quem tem acesso a >1 agente, depois de 4h sem conversa, é perguntado se
+  // ── Retomada após 2h (SÓ multi-agente) ────────────────────────────────────
+  // Quem tem acesso a >1 agente, depois de 2h sem conversa, é perguntado se
   // quer continuar a última conversa ou iniciar uma nova. "Nova" → menu de
   // agentes. Não interrompe se a pessoa já mandou uma troca explícita.
   const agentePrevio = agentes.find(a => a.id === sessao?.agenteId) || null;
@@ -207,7 +207,7 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
       await enviarWhats(from, `Só confirmando: responda *continuar* pra seguir com *${agentePrevio.nome}*, ou *nova* pra começar outra conversa.`);
       return;
     }
-    if (inativo4h && !sessao?.aguardandoEscolha && !querTrocar) {
+    if (inativoOcioso && !sessao?.aguardandoEscolha && !querTrocar) {
       await pedirRetomada();
       await enviarWhats(from, `Faz um tempo desde nossa última conversa. Quer *continuar* com *${agentePrevio.nome}* ou iniciar uma *nova*?`);
       return;
