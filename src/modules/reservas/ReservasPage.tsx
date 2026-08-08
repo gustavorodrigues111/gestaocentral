@@ -282,6 +282,15 @@ export function ReservasPage() {
   // Banner expandido pra mostrar a lista; recolhe por padrão
   const [banneOpen, setBannerOpen] = useState(false);
 
+  // Reservas que a IA marcou como "precisa de atenção" (cliente respondeu que
+  // não vem, ou resposta ambígua) e ainda não foram tratadas por um humano.
+  const precisaAtencaoList = useMemo(() => {
+    return reservas
+      .filter(r => r.precisaAtencao && r.status !== "cancelada" && r.status !== "chegou" && r.status !== "no_show")
+      .sort((a, b) => `${a.data} ${a.horario}`.localeCompare(`${b.data} ${b.horario}`));
+  }, [reservas]);
+  const [atencaoOpen, setAtencaoOpen] = useState(true);
+
   // Stats do dia (mostradas no header da agenda)
   const statsDia = useMemo(() => {
     const pendentes = reservasDoDia.filter(r => r.status === "pendente" || r.status === "confirmada").length;
@@ -325,7 +334,8 @@ export function ReservasPage() {
       return;
     }
     const now = new Date().toISOString();
-    const patch: Partial<Reserva> = { status, atualizadoEm: now };
+    // Humano tratou → limpa a flag "precisa de atenção" (setada pela IA).
+    const patch: Partial<Reserva> = { status, atualizadoEm: now, precisaAtencao: false };
     if (status === "confirmada") patch.confirmadaEm = now;
     if (status === "cancelada") { patch.canceladaEm = now; if (motivo) patch.motivoCancelamento = motivo; }
     await updateDoc(doc(db, "reservas", r.id), patch);
@@ -435,6 +445,46 @@ export function ReservasPage() {
       {/* ───────────────── TAB RESERVAS ───────────────── */}
       {tab === "reservas" && (
         <div className="space-y-3">
+          {/* Banner: reservas que a IA marcou como "precisa de resposta" */}
+          {precisaAtencaoList.length > 0 && (
+            <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-900 rounded-xl overflow-hidden">
+              <button type="button" onClick={() => setAtencaoOpen(o => !o)}
+                className="w-full px-4 py-3 flex items-center justify-between gap-2 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition-colors">
+                <span className="text-sm font-semibold text-rose-900 dark:text-rose-200 text-left">
+                  ⚠ {precisaAtencaoList.length} reserva(s) precisam de resposta
+                </span>
+                <span className="text-xs text-rose-700 dark:text-rose-400">{atencaoOpen ? "▲ recolher" : "▼ ver"}</span>
+              </button>
+              {atencaoOpen && (
+                <div className="px-3 pb-3 pt-1 space-y-1.5 border-t border-rose-200 dark:border-rose-900">
+                  <p className="text-xs text-rose-800 dark:text-rose-300 pt-2">
+                    O cliente respondeu que <strong>não vem</strong> ou algo que a IA não entendeu. Abra a conversa e decida.
+                  </p>
+                  {precisaAtencaoList.map(r => (
+                    <div key={r.id} className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-900 border border-rose-200 dark:border-rose-900 text-sm flex-wrap">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-gray-900 dark:text-gray-100">
+                          {r.clienteNomeSnapshot || "Cliente"}
+                          <span className="text-xs text-gray-500 font-normal ml-2">
+                            📅 {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")} · ⏰ {r.horario} · 👥 {r.pessoas}
+                            {r.confirmacaoIntent === "negativo" ? " · 🚫 disse que não vem" : r.confirmacaoIntent === "duvida" ? " · ❓ resposta ambígua" : ""}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex gap-1 flex-wrap">
+                        {podeWhatsapp && r.clienteTelefoneSnapshot && (
+                          <Button variant="secondary" size="sm" onClick={() => void abrirWhatsapp(rid, "reservas", r.clienteTelefoneSnapshot || "", r.clienteNomeSnapshot)}>💬 Abrir conversa</Button>
+                        )}
+                        {podeEditar && <Button variant="secondary" size="sm" onClick={() => setStatus(r, "confirmada")}>✓ Confirmar</Button>}
+                        {podeCancelar && <Button variant="secondary" size="sm" onClick={() => setCancelando(r)}>✕ Cancelar</Button>}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Banner pendências — reservas antes de hoje sem fechamento */}
           {semFechamento.length > 0 && (
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl overflow-hidden">
@@ -785,6 +835,12 @@ export function ReservasPage() {
               <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${STATUS_BADGE_CLS[reserva.status]}`}>
                 {RESERVA_STATUS_ICON[reserva.status]} {RESERVA_STATUS_LABEL[reserva.status]}
               </span>
+              {reserva.precisaAtencao && reserva.status !== "cancelada" && reserva.status !== "chegou" && reserva.status !== "no_show" && (
+                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"
+                  title={reserva.confirmacaoIntent === "negativo" ? "Cliente disse que não vem" : "Resposta ambígua — precisa de um humano"}>
+                  ⚠ precisa responder
+                </span>
+              )}
             </div>
             {/* Tags + ocasião numa linha própria, só se houver — evita poluir o header */}
             {!piiLight && ((cliente?.tags && cliente.tags.length > 0) || reserva.ocasiao) && (
