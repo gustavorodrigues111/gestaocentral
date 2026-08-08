@@ -27,6 +27,9 @@ type ConfAuto = {
 
 // Telefone → dígitos E.164. Só prefixa 55 quando parece número BR local (<=11).
 function normFone(raw: string): string { let d = (raw || "").replace(/\D/g, ""); if (!d) return d; if (d.length <= 11) d = "55" + d; return d; }
+// Chave de casamento (= chaveBR/foneKey do webhook): DDD+8 últimos, ignora DDI 55
+// e o 9º dígito. É por ela que o webhook acha a reserva ao receber a resposta.
+function chaveBR(raw: string): string { let d = (raw || "").replace(/\D/g, ""); if ((d.length === 12 || d.length === 13) && d.startsWith("55")) d = d.slice(2); return d.length >= 10 ? d.slice(0, 2) + d.slice(-8) : d; }
 
 function render(tpl: string, v: { nome: string; restaurante: string; data: string; hora: string; pax: string; salao: string }): string {
   const [, mo, d] = (v.data || "").split("-");
@@ -135,6 +138,13 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           messageId: env.id || null, confirmacaoReservaId: String(r.id),
         }).catch(() => {});
         await firestoreAtualizar("reservas", String(r.id), { confirmacaoEnviadaEm: nowIso }).catch(() => {});
+        // Índice telefone→reserva (o webhook usa pra casar a resposta do cliente).
+        // PATCH (não create) pra reaproveitar a mesma chave numa reserva nova
+        // do mesmo telefone, zerando `resolvido`.
+        await firestoreAtualizar("reservaAguardandoConfirmacao", chaveBR(fone), {
+          id: chaveBR(fone), reservaId: String(r.id), restaurantId: rid, numeroId: instancia,
+          enviadoEm: nowIso, resolvido: false,
+        }).catch(() => {});
         enviadas++;
       }
       resultado.push({ rid, nome: restNome[rid], enviadas, erros });

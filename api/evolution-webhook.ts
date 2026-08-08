@@ -343,6 +343,9 @@ async function reabrirSeFinalizada(numeroId: string, waIdCru: string): Promise<v
 
 // ── Automação: atendente padrão do contato + menu de triagem por área ──────────
 async function automacao(numeroId: string, waIdCru: string, textoMsg: string): Promise<void> {
+  // Resposta a um pedido de confirmação de reserva tem prioridade sobre o menu.
+  try { if (await confirmacaoReserva(numeroId, waIdCru, textoMsg)) return; } catch (e) { console.log("[evo-webhook] confirmacaoReserva:", (e as Error)?.message); }
+
   const ck = chaveBR(waIdCru);
   const contato = await firestoreLer("whatsappContatos", ck);
   if (contato?.atribuidoA) return;   // já tem responsável → bot não age
@@ -422,4 +425,79 @@ async function msgSistema(numeroId: string, to: string, texto: string): Promise<
     waId: to, numeroId, direcao: "out", tipo: "sistema", sistema: true, lido: true,
     texto, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(),
   }).catch(() => {});
+}
+
+// ── CONFIRMAÇÃO DE RESERVA (Fase 2) — IA lê a resposta e confirma/escala ──────
+function renderTpl(tpl: string, v: { nome: string; restaurante: string; data: string; hora: string; pax: string; salao: string }): string {
+  const [, mo, d] = (v.data || "").split("-");
+  const dataFmt = d && mo ? `${d}/${mo}` : v.data;
+  const primeiro = (v.nome || "").split(" ")[0] || v.nome;
+  return tpl.replaceAll("{primeiro_nome}", primeiro).replaceAll("{nome}", v.nome).replaceAll("{restaurante}", v.restaurante)
+    .replaceAll("{data}", dataFmt).replaceAll("{hora}", v.hora).replaceAll("{pax}", v.pax).replaceAll("{salao}", v.salao);
+}
+
+// Classifica a resposta do cliente (Claude). Falha/sem chave → "duvida" (escala humano).
+async function classificarConfirmacao(texto: string): Promise<"positivo" | "negativo" | "duvida"> {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return "duvida";
+  const prompt =
+    `Classifique a resposta de um cliente ao pedido de confirmação de uma reserva de restaurante ("Você confirma que vem?").\n` +
+    `Responda com UMA palavra: positivo, negativo ou duvida.\n` +
+    `- positivo: confirma que vai (ex.: "sim", "confirmado", "vou sim", "pode manter", "confirmo", 👍).\n` +
+    `- negativo: não vai / quer cancelar (ex.: "não vou", "cancela", "não consigo", "desmarca").\n` +
+    `- duvida: qualquer outra coisa — pergunta, quer mudar horário/nº de pessoas, incerto ou fora do assunto.\n\n` +
+    `Mensagem do cliente: "${(texto || "").slice(0, 500)}"\n\nResponda só a palavra.`;
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+      body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 512, thinking: { type: "adaptive" }, messages: [{ role: "user", content: [{ type: "text", text: prompt }] }] }),
+    });
+    const j = (await resp.json()) as { content?: Array<{ type?: string; text?: string }> };
+    const out = ((j.content || []).find((b) => b.type === "text")?.text || "").toLowerCase();
+    if (out.includes("positivo")) return "positivo";
+    if (out.includes("negativo")) return "negativo";
+    return "duvida";
+  } catch { return "duvida"; }
+}
+
+// Se o remetente tem uma reserva aguardando confirmação, processa a resposta.
+// Retorna true se tratou (aí a automação de menu não roda).
+async function confirmacaoReserva(numeroId: string, waIdCru: string, texto: string): Promise<boolean> {
+  const ck = chaveBR(waIdCru);
+  const idx = await firestoreLer("reservaAguardandoConfirmacao", ck);
+  if (!idx || idx.resolvido) return false;
+  const reservaId = String(idx.reservaId || "");
+  const marcarResolvido = () => firestoreAtualizar("reservaAguardandoConfirmacao", ck, { resolvido: true, resolvidoEm: new Date().toISOString() }).catch(() => {});
+  const enviadoMs = new Date(String(idx.enviadoEm || 0)).getTime();
+  if (!reservaId || (isFinite(enviadoMs) && Date.now() - enviadoMs > 48 * 3600 * 1000)) { await marcarResolvido(); return false; }
+  const reserva = await firestoreLer("reservas", reservaId);
+  if (!reserva || String(reserva.status || "") !== "pendente") { await marcarResolvido(); return true; }
+
+  const rid = String(reserva.restaurantId || idx.restaurantId || "");
+  const cfg = (await firestoreLer("configReservas", rid)) as { confirmacaoAuto?: { textoAgradece?: string; textoNegativo?: string } } | null;
+  const ca = cfg?.confirmacaoAuto || {};
+  const pii = await firestoreLer("reservasPII", reservaId);
+  const restaurante = String((await firestoreLer("restaurants", rid))?.nome || "");
+  const vars = {
+    nome: String(pii?.clienteNomeSnapshot || reserva.clienteNomeSnapshot || ""), restaurante,
+    data: String(reserva.data || ""), hora: String(reserva.horario || ""),
+    pax: String(reserva.pessoas || ""), salao: String(reserva.salaoNomeSnapshot || ""),
+  };
+  const intent = await classificarConfirmacao(texto);
+  const nowIso = new Date().toISOString();
+  if (intent === "positivo") {
+    await firestoreAtualizar("reservas", reservaId, { status: "confirmada", confirmadaEm: nowIso, confirmacaoRespostaEm: nowIso, confirmacaoIntent: "positivo", precisaAtencao: false });
+    await enviarTexto(numeroId, waIdCru, renderTpl(ca.textoAgradece || "Perfeito, {primeiro_nome}! Sua reserva está confirmada. Te esperamos {data} às {hora} 🙌", vars));
+    await msgSistema(numeroId, waIdCru, "🤖 IA confirmou a reserva (cliente respondeu que vem).");
+  } else if (intent === "negativo") {
+    await firestoreAtualizar("reservas", reservaId, { confirmacaoRespostaEm: nowIso, confirmacaoIntent: "negativo", precisaAtencao: true });
+    await enviarTexto(numeroId, waIdCru, renderTpl(ca.textoNegativo || "Tudo bem, {primeiro_nome}, obrigado por avisar! 🙏", vars));
+    await msgSistema(numeroId, waIdCru, "🤖 Cliente disse que NÃO vem — reserva marcada pra revisão (NÃO cancelada automaticamente).");
+  } else {
+    await firestoreAtualizar("reservas", reservaId, { confirmacaoIntent: "duvida", precisaAtencao: true });
+    await msgSistema(numeroId, waIdCru, "🤖 Resposta não foi um sim/não claro — precisa de um humano responder.");
+  }
+  await marcarResolvido();
+  return true;
 }
