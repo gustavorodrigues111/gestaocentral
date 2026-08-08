@@ -672,7 +672,10 @@ export async function runAgenteCore(
   // Foto de rótulo → descrição de vinho no padrão da carta.
   const notaVinhoFoto = !temCardapio ? ""
     : " FOTO DE RÓTULO DE VINHO: se o usuário mandar uma foto de rótulo pedindo pra incluir o vinho na carta, LEIA o rótulo (produtor, nome, região, safra, uva quando aparece) e monte a descrição no PADRÃO dos vinhos — 1ª linha 'uva: <uvas> | <região>, <país>', depois uma LINHA EM BRANCO, e então as características organolépticas (aromas/boca/final) — usando o rótulo + seu conhecimento. NÃO invente: marque com '(confirmar)' o que não tiver certeza. Se faltar o preço ou a seção (Espumante/Branco/Rosé/Tinto), pergunte. Mostre a sugestão; com o ok, adicione na Carta de Vinhos na seção certa e gere a prévia.";
-  const system = sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras + notaAbertura + notaCardapio + notaRestaurar + notaVinhoFoto + notaCanal;
+  // Data de HOJE (horário de Brasília, UTC-3) — sem isso o modelo inventa a data
+  // e consulta o dia errado (ex.: "hoje" virava 2025 no WhatsApp).
+  const hojeBR = new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10).split("-").reverse().join("/");
+  const system = `Hoje é ${hojeBR} (horário de Brasília). Use SEMPRE esta data como referência de "hoje"/"ontem"/"agora" — nunca invente a data atual.\n\n` + sysBase + "\n\nVocê só sabe o que suas ferramentas retornam — nunca invente dados; se não achar, diga que não encontrou. Responda em português, direto, com valores em R$ e datas em dd/mm/aaaa." + regras + notaAbertura + notaCardapio + notaRestaurar + notaVinhoFoto + notaCanal;
 
   const messages: Array<{ role: "user" | "assistant"; content: unknown }> = [];
   for (const h of (opts.historico || []).slice(-10)) {
