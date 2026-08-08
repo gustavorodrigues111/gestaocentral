@@ -214,7 +214,7 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
     },
   },
   aplicar_cardapio: {
-    desc: "APLICA alterações no cardápio. Só chame DEPOIS do usuário confirmar explicitamente ('confirma'/'pode aplicar'). alteracoes = lista de { acao, pagina: 'comidas'|'bebidas'|'vendinha' (=Almoço)|'especiais' (=Especiais do dia, folha após o Almoço)|'vinhos' (=Carta de Vinhos), secao, item (nome atual do item), dados }. Nos VINHOS a descrição segue o padrão: 1ª linha 'uva: <uvas> | <região>, <país>', depois uma LINHA EM BRANCO (\\n\\n) e as características (aromas/boca/final). Pra criar uma folha nova basta adicionar itens com a pagina certa (ex.: pagina 'especiais', secao 'ESPECIAIS DO DIA') — a folha/seção é criada automaticamente. Ações de ITEM: 'alterar_preco'|'adicionar'|'remover'|'editar_descricao'|'renomear'. Ações de SEÇÃO/categoria inteira (o título, ex.: 'SANDUBAS'): 'remover_secao' (remove a seção e o que tiver dentro — use pra sumir com título órfão/vazio) e 'renomear_secao' (novo nome em dados.nome). Em dados: preço novo em `precos` (ex.: [\"R$ 64\"]) ou `preco`; item novo em `nome`/`descricao`/`precos`. QUANDO um prato tem VÁRIOS preços com qualificador (ex.: dupla / meia dúzia / dupla com uni), passe `precos` como LISTA DE OBJETOS {qual, val} — cada um sai numa LINHA própria no PDF. Ex.: `precos: [{\"qual\":\"dupla\",\"val\":\"R$ 32\"},{\"qual\":\"meia dúzia\",\"val\":\"R$ 86\"},{\"qual\":\"dupla com uni\",\"val\":\"R$ 60\"}]`. NUNCA coloque preços dentro da `descricao` — sempre em `precos`. Bump de versão automático. (O PDF final é gerado numa etapa seguinte.)",
+    desc: "APLICA alterações no cardápio. Aplique DIRETO quando o usuário pedir a alteração (não precisa pré-confirmar — a checagem é a prévia, que você gera logo depois). alteracoes = lista de { acao, pagina: 'comidas'|'bebidas'|'vendinha' (=Almoço)|'especiais' (=Especiais do dia, folha após o Almoço)|'vinhos' (=Carta de Vinhos), secao, item (nome atual do item), dados }. Nos VINHOS a descrição segue o padrão: 1ª linha 'uva: <uvas> | <região>, <país>', depois uma LINHA EM BRANCO (\\n\\n) e as características (aromas/boca/final). Pra criar uma folha nova basta adicionar itens com a pagina certa (ex.: pagina 'especiais', secao 'ESPECIAIS DO DIA') — a folha/seção é criada automaticamente. Ações de ITEM: 'alterar_preco'|'adicionar'|'remover'|'editar_descricao'|'renomear'. Ações de SEÇÃO/categoria inteira (o título, ex.: 'SANDUBAS'): 'remover_secao' (remove a seção e o que tiver dentro — use pra sumir com título órfão/vazio) e 'renomear_secao' (novo nome em dados.nome). Em dados: preço novo em `precos` (ex.: [\"R$ 64\"]) ou `preco`; item novo em `nome`/`descricao`/`precos`. QUANDO um prato tem VÁRIOS preços com qualificador (ex.: dupla / meia dúzia / dupla com uni), passe `precos` como LISTA DE OBJETOS {qual, val} — cada um sai numa LINHA própria no PDF. Ex.: `precos: [{\"qual\":\"dupla\",\"val\":\"R$ 32\"},{\"qual\":\"meia dúzia\",\"val\":\"R$ 86\"},{\"qual\":\"dupla com uni\",\"val\":\"R$ 60\"}]`. NUNCA coloque preços dentro da `descricao` — sempre em `precos`. Bump de versão automático. (O PDF final é gerado numa etapa seguinte.)",
     tipo: "write",
     schema: { type: "object", properties: {
       alteracoes: { type: "array", description: "lista de alterações", items: { type: "object", properties: {
@@ -435,7 +435,7 @@ const SKILL_TOOLS_SITE: Record<string, SkillTool> = {
     },
   },
   aplicar_cardapio_site: {
-    desc: "APLICA alterações no cardápio do módulo (reflete no SITE na hora). Só DEPOIS de confirmação explícita. alteracoes = lista de { acao, cardapio ('Comidas'|'Bebidas'|'Vinhos'), secao, item (titulo atual do prato), dados }. Ações: 'alterar_preco' (dados.preco), 'adicionar' (dados.titulo/descricao/preco), 'remover', 'editar_descricao' (dados.descricao), 'renomear' (dados.titulo), 'adicionar_secao'/'renomear_secao' (dados.nome), 'remover_secao'. Preço é texto livre (ex.: '64', 'consulte').",
+    desc: "APLICA alterações no cardápio do módulo (reflete no SITE na hora). Aplique DIRETO quando o usuário pedir (não precisa pré-confirmar — a checagem é a prévia, que você gera logo depois). alteracoes = lista de { acao, cardapio ('Comidas'|'Bebidas'|'Vinhos'), secao, item (titulo atual do prato), dados }. Ações: 'alterar_preco' (dados.preco), 'adicionar' (dados.titulo/descricao/preco), 'remover', 'editar_descricao' (dados.descricao), 'renomear' (dados.titulo), 'adicionar_secao'/'renomear_secao' (dados.nome), 'remover_secao'. Preço é texto livre (ex.: '64', 'consulte').",
     tipo: "write",
     schema: { type: "object", properties: {
       alteracoes: { type: "array", items: { type: "object", properties: {
@@ -634,10 +634,14 @@ export async function runAgenteCore(
   ];
 
   const sysBase = (agente.systemPrompt as string) || "Você é um assistente do planejamento.app.";
-  const regras = temWrite
-    ? " Para QUALQUER alteração: primeiro PROPONHA em texto o que vai mudar e peça confirmação explícita; só chame a ferramenta de escrita DEPOIS que o usuário confirmar ('confirma'/'pode aplicar') na mensagem seguinte. Nunca aplique sem confirmação."
-    : " Você NÃO pode alterar nada nesta versão (só consulta); se pedirem uma alteração, explique que por ora você só consulta.";
   const temCardapio = skillDisp.includes("ler_cardapio") || skillDisp.includes("ler_cardapio_site");
+  const regras = !temWrite
+    ? " Você NÃO pode alterar nada nesta versão (só consulta); se pedirem uma alteração, explique que por ora você só consulta."
+    : temCardapio
+      // Fluxo pensado pra OPERAÇÃO usar no dia a dia: simples, guiado, sem
+      // ficar pedindo confirmação a cada passo. A prévia é a checagem.
+      ? " FLUXO DO CARDÁPIO (mantenha SIMPLES e GUIADO — quem usa é a operação): quando o usuário pedir uma alteração, APLIQUE direto (NÃO fique pedindo 'confirma?' antes de cada uma) e LOGO EM SEGUIDA gere a PRÉVIA. Responda 'Alteração feita ✅', descreva em 1 linha o que mudou, e peça pra ele conferir na prévia. Conduza a conversa passo a passo, oferecendo as opções (ex.: 'quer mudar mais alguma coisa ou já está bom?'). NUNCA gere o PDF a cada alteração — a prévia existe justamente pra não ficar emitindo PDF. Só gere o PDF quando o usuário APROVAR a prévia de forma explícita (ex.: 'prévia 100%', 'tá aprovado', 'pode gerar o PDF')."
+      : " Para QUALQUER alteração: primeiro PROPONHA em texto o que vai mudar e peça confirmação explícita; só chame a ferramenta de escrita DEPOIS que o usuário confirmar ('confirma'/'pode aplicar') na mensagem seguinte. Nunca aplique sem confirmação.";
   // No WhatsApp não há prévia HTML na tela — o agente descreve em texto e manda o link do PDF.
   const notaCardapio = !temCardapio ? ""
     : ehCardapioSite
