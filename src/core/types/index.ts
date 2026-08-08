@@ -80,6 +80,8 @@ export type ModuleId =
   | "prazos"
   // Agentes de IA
   | "agentes"
+  // Hub de conectores com plataformas externas (GetIn, Altec/Riser, iFood…)
+  | "conectores"
   // Conferência de folhas de pagamento (auditor)
   | "folhas"
   // Vendas — registro de vendas fora do sistema fiscal (entre empresas, permutas)

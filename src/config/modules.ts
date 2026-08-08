@@ -44,6 +44,7 @@ export const MODULES: ModuleDef[] = [
   // ── Tarefas (item-pivô global) — colocada no topo do Sidebar separadamente
   { id: "tarefas",     area: "planejamento", subarea: "Tarefas",       label: "Gestor de Tarefas", icon: "🗂️", status: "ativo", etapa: "beta",             desc: "Gestor de Tarefas: rotinas e demandas, caixa por usuário, cascatas dos cadastros mestres" },
   { id: "agentes",     area: "master", subarea: "Master",              label: "Agentes de IA",     icon: "🤖", status: "ativo", etapa: "em_desenvolvimento", desc: "Agentes de IA (DP e Financeiro) que consultam e — com confirmação — alteram dados dentro da plataforma. Acesso controlado herdado de Pessoas; futuramente respondem no WhatsApp em números autorizados." },
+  { id: "conectores",  area: "master", subarea: "Master",              label: "Conectores",        icon: "🔌", status: "ativo", etapa: "em_desenvolvimento", desc: "Hub de plataformas externas (GetIn, Altec/Riser, iFood…) que abastecem o app: reservas, vendas/faturamento. Status do último sync por restaurante + forçar sync." },
 
   // ── Pessoas Externas & Infra ─────────────────────────────────────
   { id: "freelas",     area: "ops", subarea: "Pessoas Externas & Infra", label: "Freelas",        icon: "🎒", status: "ativo", etapa: "beta",               desc: "Cadastro, agendamento, lançamento e pagamento de freelas", dependsOn: ["pessoas", "escala"] },

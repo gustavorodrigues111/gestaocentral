@@ -61,6 +61,7 @@ import { FolhasPage } from "../../modules/folhas/FolhasPage";
 import { PrazosPage } from "../../modules/prazos/PrazosPage";
 import { SegurancaPage } from "../../modules/seguranca/SegurancaPage";
 import { AgentesPage } from "../../modules/agentes/AgentesPage";
+import { ConectoresPage } from "../../modules/conectores/ConectoresPage";
 import { FichasPage } from "../../modules/fichas/FichasPage";
 import { ExamesPage } from "../../modules/exames/ExamesPage";
 import { DemissaoPage } from "../../modules/demissao/DemissaoPage";
@@ -124,6 +125,7 @@ function ModuleRouter() {
     case "prazos":        return <PrazosPage key={k} />;
     case "seguranca":     return <SegurancaPage key={k} />;
     case "agentes":       return <AgentesPage key={k} />;
+    case "conectores":    return <ConectoresPage key={k} />;
     case "fichas":        return <FichasPage key={k} />;
     case "exames":        return <ExamesPage key={k} />;
     case "demissao":      return <DemissaoPage key={k} />;
