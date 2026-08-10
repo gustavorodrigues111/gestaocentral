@@ -88,17 +88,17 @@ def draw_combo(c, combo, y_top, dy):
             itens = col.get("itens", [])
             if i >= len(itens): wrapped.append((cx, False, [])); continue
             nome, veg = _item_nome_veg(itens[i])
-            ln = wrap(c, nome, "Ruda", ITEM_FS, COLW - (14 if veg else 0))
+            ln = wrap(c, nome, "Ruda", ITEM_FS, COLW)
             wrapped.append((cx, veg, ln))
         rows_lines = max((len(ln) for _, _, ln in wrapped), default=1)
         c.setFillColorRGB(*BLACK)
         for cx, veg, ln in wrapped:
             yy = y
             for k, s in enumerate(ln):
-                tx = cx
-                if k == 0 and veg:
-                    draw_veg(c, cx, Td(yy)); tx = cx + 15
-                c.setFont("Ruda", ITEM_FS); c.drawString(tx, Td(yy), s)
+                c.setFont("Ruda", ITEM_FS); c.drawString(cx, Td(yy), s)
+                if veg and k == len(ln) - 1:        # símbolo logo APÓS o nome (como uma palavra ao fim)
+                    w = c.stringWidth(s, "Ruda", ITEM_FS)
+                    draw_veg(c, cx + w + 5, Td(yy))
                 yy += LH
         y += rows_lines * LH + 12.0
     return y
