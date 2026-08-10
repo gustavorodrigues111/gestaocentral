@@ -21,7 +21,8 @@ BOX_T, BOX_B = 82.0, 392.0
 LX, RX = 76.0, 328.0     # x de texto das colunas esquerda/direita
 PRICE_X = 519.0
 COLW = 232.0             # largura p/ wrap dos itens
-LH = 16.5                # entrelinha do item
+ITEM_FS = 12.5           # fonte do texto dos itens
+LH = 15.5                # entrelinha do item
 
 _fonts_done = False
 def _ensure_fonts():
@@ -87,7 +88,7 @@ def draw_combo(c, combo, y_top, dy):
             itens = col.get("itens", [])
             if i >= len(itens): wrapped.append((cx, False, [])); continue
             nome, veg = _item_nome_veg(itens[i])
-            ln = wrap(c, nome, "Ruda", 13.5, COLW - (14 if veg else 0))
+            ln = wrap(c, nome, "Ruda", ITEM_FS, COLW - (14 if veg else 0))
             wrapped.append((cx, veg, ln))
         rows_lines = max((len(ln) for _, _, ln in wrapped), default=1)
         c.setFillColorRGB(*BLACK)
@@ -97,7 +98,7 @@ def draw_combo(c, combo, y_top, dy):
                 tx = cx
                 if k == 0 and veg:
                     draw_veg(c, cx, Td(yy)); tx = cx + 15
-                c.setFont("Ruda", 13.5); c.drawString(tx, Td(yy), s)
+                c.setFont("Ruda", ITEM_FS); c.drawString(tx, Td(yy), s)
                 yy += LH
         y += rows_lines * LH + 12.0
     return y
