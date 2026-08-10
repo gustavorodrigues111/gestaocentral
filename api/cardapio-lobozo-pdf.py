@@ -21,8 +21,8 @@ BOX_T, BOX_B = 82.0, 392.0
 LX, RX = 76.0, 328.0     # x de texto das colunas esquerda/direita
 PRICE_X = 519.0
 COLW = 232.0             # largura p/ wrap dos itens
-ITEM_FS = 12.5           # fonte do texto dos itens
-LH = 15.5                # entrelinha do item
+ITEM_FS = 12.0           # fonte do texto dos itens
+LH = 15.0                # entrelinha do item
 
 _fonts_done = False
 def _ensure_fonts():
@@ -46,11 +46,28 @@ def wrap(c, text, font, size, maxw):
     return out or [""]
 
 def draw_veg(c, x, y_base):
-    # símbolo do prato vegetariano: circulinho + folha (aproximação da marca)
-    r, cy = 5.2, y_base + 3.2
-    c.saveState(); c.setStrokeColorRGB(*BLACK)
-    c.setLineWidth(1.0); c.circle(x + r, cy, r, stroke=1, fill=0)
-    c.setLineWidth(1.2); c.line(x + r, cy + r*0.55, x + r + r*0.55, cy - r*0.2)
+    # símbolo do prato vegetariano: uma FOLHA (contorno + nervuras), levemente
+    # inclinada, com um cabinho. `x` = canto esq.; assenta na baseline do texto.
+    h, w = 11.0, 6.4
+    c.saveState()
+    c.translate(x + w * 0.5, y_base - 0.5)
+    c.rotate(20)                                  # leve inclinação de folha
+    # cabinho
+    c.setLineWidth(1.0); c.setStrokeColorRGB(*BLACK)
+    c.line(0, -2.4, 0, 0)
+    # contorno da folha (dois arcos = formato de folha, pontuda em cima/baixo)
+    p = c.beginPath()
+    p.moveTo(0, 0)
+    p.curveTo(-w * 0.95, h * 0.30, -w * 0.42, h * 0.86, 0, h)
+    p.curveTo(w * 0.42, h * 0.86, w * 0.95, h * 0.30, 0, 0)
+    c.setFillColorRGB(*BLACK); c.setLineWidth(0.5)
+    c.drawPath(p, fill=1, stroke=1)
+    # nervuras em branco (central + laterais) pra "ler" como folha
+    c.setStrokeColorRGB(1, 1, 1); c.setLineWidth(0.7)
+    c.line(0, h * 0.12, 0, h * 0.92)              # nervura central
+    for t in (0.34, 0.54, 0.72):                  # nervuras laterais
+        c.line(0, h * t, -w * 0.55 * (1 - t), h * (t + 0.13))
+        c.line(0, h * t,  w * 0.55 * (1 - t), h * (t + 0.13))
     c.restoreState()
 
 def _item_nome_veg(it):
