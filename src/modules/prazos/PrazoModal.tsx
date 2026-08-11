@@ -1,7 +1,7 @@
 // Modal único de criar/editar prazo. O tipo é o segmented do topo; muda só o
 // bloco de extras. Recorrência recolhida numa linha que expande. Editar afeta
 // só as próximas ocorrências (o histórico é congelado).
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ReactNode } from "react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import type { Prazo, PrazoTipo, PrazoRecorrencia, PrazoSubtipoTrab, Empregado, Pessoa, Imovel } from "../../core/types";
@@ -19,11 +19,16 @@ const chip = (on: boolean) => `px-3 py-1.5 text-xs font-medium rounded-full bord
 
 const TIPOS: Array<{ v: PrazoTipo; icon: string }> = [{ v: "conta", icon: "💰" }, { v: "tecnico", icon: "🛠️" }, { v: "trabalhista", icon: "🧑‍⚖️" }, { v: "avulso", icon: "🚩" }];
 
-export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsaveisPorCat, imoveis, onGerenciarImoveis, onClose, onSalvar }: {
+export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsaveisPorCat, imoveis, onGerenciarImoveis, onClose, onSalvar, modoInicial }: {
   rid: string; prazo: Prazo | null; tiposPermitidos: PrazoTipo[]; empregados: Empregado[]; responsaveisPorCat: Record<PrazoTipo, Pessoa[]>; imoveis: Imovel[];
   onGerenciarImoveis: () => void; onClose: () => void; onSalvar: (p: Prazo) => Promise<void>;
+  modoInicial?: "ver" | "editar";
 }) {
   const editando = !!prazo;
+  // Prazo existente abre em modo LEITURA (detalhes) — edita só ao clicar Editar.
+  // Prazo novo já abre no formulário.
+  const [modo, setModo] = useState<"ver" | "editar">(prazo ? (modoInicial ?? "ver") : "editar");
+  const [copiado, setCopiado] = useState(false);
   // Ao editar, o tipo é fixo (a categoria não muda). Ao criar, só as permitidas.
   const tiposDisponiveis = editando && prazo ? [prazo.tipo] : (tiposPermitidos.length ? tiposPermitidos : ["avulso" as PrazoTipo]);
   const [tipo, setTipo] = useState<PrazoTipo>(prazo?.tipo || tiposDisponiveis[0]);
@@ -82,6 +87,56 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
       };
       await onSalvar(p);
     } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao salvar."); setSalvando(false); }
+  }
+
+  // ── Modo LEITURA: detalhes do prazo, com campos clicáveis (PIX, laudo) ──
+  if (modo === "ver" && prazo) {
+    const imovelSel = imoveis.find((im) => im.id === prazo.imovelId);
+    const d = prazo.dados || {};
+    return (
+      <Modal title="Detalhes do prazo" onClose={onClose} maxWidth="max-w-xl">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">{PRAZO_TIPO_LABEL[prazo.tipo]}</span>
+            <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">{prazo.titulo}</h3>
+          </div>
+          <DetRow label="Vencimento"><span className="font-medium">{ymdToBr(prazo.vencimento)}</span></DetRow>
+          <DetRow label="Responsável">{prazo.responsavelNome || "—"}</DetRow>
+          <DetRow label="Avisar">{prazo.antecedenciaDias ?? 0} dia(s) antes</DetRow>
+          <DetRow label="Repetição">{prazo.recorrencia ? resumoRecorrencia(prazo.recorrencia) : "Não repete"}</DetRow>
+          {prazo.tipo === "conta" && (<>
+            {d.valor != null && <DetRow label="Valor">{Number(d.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</DetRow>}
+            {d.categoria && <DetRow label="Categoria">{d.categoria}</DetRow>}
+            {d.pix && <DetRow label="PIX">
+              <span className="flex items-center gap-2">
+                <span className="truncate">{d.pix}</span>
+                <button type="button" onClick={() => { void navigator.clipboard?.writeText(d.pix || ""); setCopiado(true); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline shrink-0">{copiado ? "copiado ✓" : "copiar"}</button>
+              </span>
+            </DetRow>}
+          </>)}
+          {prazo.tipo === "tecnico" && (<>
+            {d.fornecedor && <DetRow label="Fornecedor">{d.fornecedor}</DetRow>}
+            {d.numeroLaudo && <DetRow label="Nº do laudo">{d.numeroLaudo}</DetRow>}
+          </>)}
+          {prazo.tipo === "trabalhista" && (<>
+            {d.empregadoNome && <DetRow label="Empregado">{d.empregadoNome}</DetRow>}
+            {d.subtipoTrab && <DetRow label="Tipo">{PRAZO_SUBTIPO_TRAB_LABEL[d.subtipoTrab]}</DetRow>}
+          </>)}
+          {imovelSel && <DetRow label="Imóvel">🏠 {imovelSel.apelido}</DetRow>}
+          {prazo.laudo?.driveUrl ? (
+            <DetRow label="Laudo"><a href={prazo.laudo.driveUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">📄 {prazo.laudo.nome || "abrir laudo"} ↗</a></DetRow>
+          ) : prazo.exigeLaudo ? (
+            <DetRow label="Laudo"><span className="text-amber-600 dark:text-amber-400">exige laudo — pendente</span></DetRow>
+          ) : null}
+          {prazo.agendamento?.data && <DetRow label="Agendado">📅 {ymdToBr(prazo.agendamento.data)}</DetRow>}
+          <DetRow label="Status">{prazo.status === "resolvido" ? "✓ Resolvido" : prazo.status === "agendado" ? "📅 Agendado" : "Aberto"}</DetRow>
+        </div>
+        <div className="flex justify-end gap-2 pt-3 mt-2 border-t border-gray-200 dark:border-gray-800">
+          <Button variant="secondary" onClick={onClose}>Fechar</Button>
+          <Button onClick={() => setModo("editar")}>✎ Editar</Button>
+        </div>
+      </Modal>
+    );
   }
 
   return (
@@ -180,6 +235,16 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
         </div>
       </div>
     </Modal>
+  );
+}
+
+// Linha label/valor do modo leitura.
+function DetRow({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div className="flex items-start gap-3 py-1.5 border-b border-gray-50 dark:border-gray-800/50 last:border-0">
+      <div className="w-32 shrink-0 text-xs text-gray-500 dark:text-gray-400 pt-0.5">{label}</div>
+      <div className="flex-1 min-w-0 text-sm text-gray-800 dark:text-gray-100">{children}</div>
+    </div>
   );
 }
 

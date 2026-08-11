@@ -68,7 +68,7 @@ export function PrazosPage() {
   // Confirmar data de realização/pagamento ao concluir um prazo.
   const [resolvendo, setResolvendo] = useState<Prazo | null>(null);
   const [dataResol, setDataResol] = useState("");
-  const [modal, setModal] = useState<{ prazo: Prazo | null } | null>(null);
+  const [modal, setModal] = useState<{ prazo: Prazo | null; modo?: "ver" | "editar" } | null>(null);
   const [agendando, setAgendando] = useState<string | null>(null);
   const [dataAg, setDataAg] = useState("");
   const [erro, setErro] = useState("");
@@ -220,7 +220,7 @@ export function PrazosPage() {
 
   const renderCard = (p: Prazo) => (
     <PrazoCard key={p.id} p={p} hoje={hoje} podeGerir={podeGerirCat(p.tipo)} mostrarEmpresa={todosRest} restNome={restNome} imovelNome={imovelNome(p.imovelId)}
-      onEditar={() => setModal({ prazo: p })} onRealizar={() => abrirResolver(p)} onExcluir={() => void excluir(p)}
+      onAbrir={() => setModal({ prazo: p, modo: "ver" })} onEditar={() => setModal({ prazo: p, modo: "editar" })} onRealizar={() => abrirResolver(p)} onExcluir={() => void excluir(p)}
       onLaudo={() => pedirLaudo(p)} onRemoverAg={() => void removerAgendamento(p)}
       agendando={agendando === p.id} dataAg={dataAg} setDataAg={setDataAg}
       onAbrirAg={() => { setAgendando(p.id); setDataAg(ymdToBr(p.vencimento)); }} onCancelarAg={() => setAgendando(null)} onConfirmarAg={() => void agendar(p)} />
@@ -282,7 +282,7 @@ export function PrazosPage() {
               ⚠ {atrasados.length} {atrasados.length === 1 ? "prazo atrasado" : "prazos atrasados"} — clique pra ver
             </button>
           )}
-          <PrazoCalendario prazos={visiveis} hoje={hoje} diaSel={diaSel} onSelDia={setDiaSel} onAbrirPrazo={(p) => { if (podeGerirCat(p.tipo)) setModal({ prazo: p }); }} />
+          <PrazoCalendario prazos={visiveis} hoje={hoje} diaSel={diaSel} onSelDia={setDiaSel} onAbrirPrazo={(p) => { if (podeGerirCat(p.tipo)) setModal({ prazo: p, modo: "ver" }); }} />
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide mb-2 text-gray-500">{detalheLabel} {doDia.length > 0 && <span className="text-gray-400">· {doDia.length}</span>}</div>
             <div className="space-y-2">
@@ -328,7 +328,7 @@ export function PrazosPage() {
       )}
 
       {modal && (
-        <PrazoModal rid={rid || ""} prazo={modal.prazo} tiposPermitidos={catsGeriveis} empregados={empregados} responsaveisPorCat={responsaveisPorCat} imoveis={imoveis} onGerenciarImoveis={() => setShowImoveis(true)} onClose={() => setModal(null)} onSalvar={salvarPrazo} />
+        <PrazoModal rid={rid || ""} prazo={modal.prazo} modoInicial={modal.modo} tiposPermitidos={catsGeriveis} empregados={empregados} responsaveisPorCat={responsaveisPorCat} imoveis={imoveis} onGerenciarImoveis={() => setShowImoveis(true)} onClose={() => setModal(null)} onSalvar={salvarPrazo} />
       )}
       {showImoveis && <ImoveisModal rid={rid || ""} restauranteNome={activeRestaurant?.nome || ""} imoveis={imoveis} meId={me?.id || ""} onClose={() => setShowImoveis(false)} />}
 
@@ -351,9 +351,9 @@ export function PrazosPage() {
 }
 
 // ── Card do prazo na agenda ──
-function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, imovelNome, onEditar, onRealizar, onExcluir, onLaudo, onRemoverAg, agendando, dataAg, setDataAg, onAbrirAg, onCancelarAg, onConfirmarAg }: {
+function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, imovelNome, onAbrir, onEditar, onRealizar, onExcluir, onLaudo, onRemoverAg, agendando, dataAg, setDataAg, onAbrirAg, onCancelarAg, onConfirmarAg }: {
   p: Prazo; hoje: string; podeGerir: boolean; mostrarEmpresa: boolean; restNome: (ids: string[]) => string; imovelNome: string;
-  onEditar: () => void; onRealizar: () => void; onExcluir: () => void; onLaudo: () => void; onRemoverAg: () => void;
+  onAbrir: () => void; onEditar: () => void; onRealizar: () => void; onExcluir: () => void; onLaudo: () => void; onRemoverAg: () => void;
   agendando: boolean; dataAg: string; setDataAg: (v: string) => void; onAbrirAg: () => void; onCancelarAg: () => void; onConfirmarAg: () => void;
 }) {
   const dias = diasAte(hoje, p.vencimento);
@@ -364,7 +364,7 @@ function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, imovelNome, o
     <div className={`rounded-xl border border-gray-200 dark:border-gray-800 border-l-[3px] ${borda} bg-white dark:bg-gray-900 p-3 space-y-2`}>
       <div className="flex items-start gap-2">
         {podeGerir ? (
-          <button type="button" onClick={onEditar} title="Ver/editar detalhes"
+          <button type="button" onClick={onAbrir} title="Ver detalhes"
             className="text-sm font-semibold text-left text-gray-900 dark:text-gray-100 hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">{p.titulo}</button>
         ) : (
           <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{p.titulo}</span>
