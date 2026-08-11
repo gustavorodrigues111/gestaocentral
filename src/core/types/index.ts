@@ -4851,6 +4851,7 @@ export type Tarefa = {
   subprojetoId: string;
   titulo: string;
   descricao?: string;
+  link?: string;                // URL opcional (Drive, Docs, planilha, etc.)
   responsavelId: string;
   responsavelNome?: string;
   coResponsaveis?: string[];

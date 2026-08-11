@@ -13,7 +13,7 @@ import { parseCSV, mapearLinhas, executarImport, detectarOrfas, type LinhaImport
 import { pickDriveFolder, pickDriveFile } from "../../core/google/drivePicker";
 import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal";
 import { DatePickerBR } from "../prazos/campos";
-import { CoRespPicker, Field, FieldRow, PessoasMultiPicker, UsuariosAutorizadosPicker, brParaYmd, mudarStatusComErro, ymdParaBr } from "./helpers";
+import { CoRespPicker, FieldRow, PessoasMultiPicker, UsuariosAutorizadosPicker, brParaYmd, mudarStatusComErro, ymdParaBr } from "./helpers";
 
 // Modal: lista os restaurantes do user e ao escolher, navega pra
 // /r/{escolhido}/{rota}. Usado pelo banner quando o sub não tem rest
@@ -76,6 +76,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
 }) {
   const [titulo, setTitulo] = useState(tituloInicial || "");
   const [descricao, setDescricao] = useState(descricaoInicial || "");
+  const [link, setLink] = useState("");
   // Sem default — vazio força o usuário a escolher conscientemente.
   // Pré-preenche só quando vem do contexto (calendário, click num dia).
   const [projetoId, setProjetoId] = useState(projetoIdInicial || "");
@@ -182,6 +183,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
     const payload = {
       projetoId, subprojetoId, titulo,
       descricao: descricao || undefined,
+      link: link.trim() || undefined,
       responsavelId, responsavelNome,
       coResponsaveis: coResponsaveisIds.length ? coResponsaveisIds : undefined,
       coResponsaveisNomes: coResponsaveisIds.length
@@ -234,172 +236,165 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-lg p-5 max-h-[90vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-4 gap-2">
+    <div className="fixed inset-0 z-50 bg-black/40 flex justify-end" onClick={onClose}>
+      <div
+        className="bg-white dark:bg-gray-900 w-full md:max-w-[760px] h-full overflow-hidden flex flex-col shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+        style={{ borderLeftWidth: 4, borderLeftColor: cor || "transparent" }}
+      >
+        {/* ─── Top bar ─────────────────────────────────────────────────── */}
+        <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between gap-3 shrink-0">
           <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Nova Tarefa</h2>
-          {!puxando && (
-            <button
-              type="button"
-              onClick={() => setPuxarAberto(true)}
-              className="text-xs px-2 py-1 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
-            >
-              📋 Puxar de Ideia/Ocorrência
-            </button>
-          )}
+          <div className="flex items-center gap-1">
+            {!puxando && (
+              <button
+                type="button"
+                onClick={() => setPuxarAberto(true)}
+                className="text-xs px-2 py-1 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+              >
+                📋 Puxar de Ideia/Ocorrência
+              </button>
+            )}
+            <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-xl leading-none px-2" title="Fechar">×</button>
+          </div>
         </div>
+
         {puxando && (
-          <div className="mb-3 flex items-center gap-2 px-2 py-1.5 rounded-md bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800">
-            <span className="text-xs">
-              {puxando.tipo === "ideia" ? "💡" : "🚨"} Puxado de: <strong>{puxando.titulo}</strong>
-            </span>
-            <button
-              type="button"
-              onClick={() => setPuxando(null)}
-              className="ml-auto text-[11px] text-emerald-700 dark:text-emerald-300 hover:underline"
-            >
-              desfazer
-            </button>
+          <div className="px-5 py-2 bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2 shrink-0">
+            {puxando.tipo === "ideia" ? "💡" : "🚨"} Puxado de: <strong>{puxando.titulo}</strong>
+            <button type="button" onClick={() => setPuxando(null)} className="ml-auto text-[11px] text-emerald-700 dark:text-emerald-300 hover:underline">desfazer</button>
           </div>
         )}
-        <div className="space-y-3">
-          {/* ── Área (chips no topo) ── */}
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5">Área *</label>
-            <div className="flex flex-wrap gap-1.5">
-              {projetos.map(p => {
-                const on = projetoId === p.id;
-                return (
-                  <button key={p.id} type="button" onClick={() => setProjetoId(p.id)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
-                    {p.emoji} {p.nome}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {/* ── Essenciais ── */}
-          <Field label="O que precisa ser feito *">
-            <input value={titulo} onChange={(e) => setTitulo(e.target.value)} className="input" placeholder="Conferir estoque do bar" autoFocus />
-          </Field>
-          {subsDoProjeto.length > 0 && (
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5">Projeto *</label>
-              <div className="flex flex-wrap gap-1.5">
-                {subsDoProjeto.map(s => {
-                  const on = subprojetoId === s.id;
-                  return (
-                    <button key={s.id} type="button" onClick={() => setSubprojetoId(s.id)}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
-                      {s.nome}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5">Responsável *</label>
-            {!projetoId ? (
-              <p className="text-xs text-gray-400 italic py-1">Escolha uma área primeiro</p>
-            ) : responsaveisElegiveis.length === 0 ? (
-              <p className="text-xs text-gray-400 italic py-1">Ninguém elegível nesta área.</p>
-            ) : (
-              <div className="flex flex-wrap gap-1.5">
-                {responsaveisElegiveis.map(p => {
-                  const on = responsavelId === p.id;
-                  return (
-                    <button key={p.id} type="button" onClick={() => setResponsavelId(p.id)}
-                      className={`px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
-                      {p.id === pessoaId ? `${p.nome} (você)` : p.nome}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-            {projetoAtual && projetoAtual.visibilidade === "privado" && (
-              <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
-                🔒 Área privada — só pessoas autorizadas podem ser responsáveis.
-              </p>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Prazo *">
-              <DatePickerBR value={ymdParaBr(prazo)} onChange={(br) => setPrazo(brParaYmd(br))} />
-            </Field>
-            <Field label="Prioridade">
-              <select value={prioridade} onChange={(e) => setPrioridade(e.target.value as TarefaPrioridade)} className="input">
-                <option value="baixa">Baixa</option>
-                <option value="normal">Normal</option>
-                <option value="alta">Alta</option>
-                <option value="urgente">Urgente</option>
-              </select>
-            </Field>
-          </div>
-          {temTemplate && (
-            <label className="flex items-center gap-2 text-sm bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-md p-2">
-              <input type="checkbox" checked={usarTemplate} onChange={(e) => setUsarTemplate(e.target.checked)} />
-              <span className="flex-1">
-                Usar checklist do template
-                <span className="ml-1 text-xs text-emerald-700 dark:text-emerald-300">
-                  ({subAtual?.tarefasTemplate?.length} subtarefa{(subAtual?.tarefasTemplate?.length ?? 0) > 1 ? "s" : ""})
-                </span>
-              </span>
-            </label>
-          )}
 
-          {/* ── Mais opções (recolhido) ── */}
-          <button type="button" onClick={() => setMaisOpcoes(v => !v)} className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
-            <span className={`transition-transform ${maisOpcoes ? "rotate-90" : ""}`}>▸</span> Mais opções <span className="text-xs text-gray-400">— descrição, co-responsáveis, observadores{restaurantes.length > 0 ? ", empresas" : ""}</span>
-          </button>
-          {maisOpcoes && (
-            <div className="space-y-3 pl-1 border-l-2 border-gray-100 dark:border-gray-800 ml-1">
-              <div className="pl-3 space-y-3">
-                <Field label="Descrição">
-                  <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={2} className="input resize-y" placeholder="Detalhes, contexto, links..." />
-                </Field>
-                <Field label="Co-responsáveis (podem editar)">
-                  <PessoasMultiPicker value={coResponsaveisIds} onChange={setCoResponsaveisIds} pessoas={responsaveisElegiveis} excluir={[responsavelId, ...observadoresIds]} placeholder={!projetoId ? "Escolha uma área primeiro" : "+ adicionar"} />
-                </Field>
-                <Field label="Observadores (só acompanham)">
-                  <PessoasMultiPicker value={observadoresIds} onChange={setObservadoresIds} pessoas={responsaveisElegiveis} excluir={[responsavelId, ...coResponsaveisIds]} placeholder={!projetoId ? "Escolha uma área primeiro" : "+ adicionar"} />
-                </Field>
-                {restaurantes.length > 0 && (
-                  <Field label="Empresa(s)">
-                    <div className="flex flex-wrap gap-2">
-                      {restaurantes.map(r => (
-                        <label key={r.id} className="flex items-center gap-1 text-xs">
-                          <input type="checkbox" checked={restaurantIds.includes(r.id)} onChange={(e) => { if (e.target.checked) setRestaurantIds([...restaurantIds, r.id]); else setRestaurantIds(restaurantIds.filter(id => id !== r.id)); }} />
-                          {r.nome}
-                        </label>
-                      ))}
-                    </div>
-                  </Field>
-                )}
+        {/* ─── Corpo scrollável ────────────────────────────────────────── */}
+        <div className="flex-1 overflow-y-auto">
+          {/* Título + Área/Projeto (chips) — espelha o detalhe */}
+          <div className="px-5 pt-4 pb-3">
+            <input
+              value={titulo}
+              onChange={(e) => setTitulo(e.target.value)}
+              autoFocus
+              placeholder="O que precisa ser feito?"
+              className="w-full text-2xl font-bold bg-transparent border-b-2 border-transparent focus:border-indigo-500 text-gray-900 dark:text-gray-100 outline-none placeholder:text-gray-300 dark:placeholder:text-gray-600 px-1 -mx-1"
+            />
+            {/* Área (chips) */}
+            <div className="mt-3">
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5">Área *</label>
+              <div className="flex flex-wrap gap-1.5">
+                {projetos.map(p => {
+                  const on = projetoId === p.id;
+                  return (
+                    <button key={p.id} type="button" onClick={() => setProjetoId(p.id)}
+                      className={`px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                      {p.emoji} {p.nome}
+                    </button>
+                  );
+                })}
               </div>
             </div>
-          )}
+            {/* Projeto (chips) */}
+            {subsDoProjeto.length > 0 && (
+              <div className="mt-3">
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5">Projeto *</label>
+                <div className="flex flex-wrap gap-1.5">
+                  {subsDoProjeto.map(s => {
+                    const on = subprojetoId === s.id;
+                    return (
+                      <button key={s.id} type="button" onClick={() => setSubprojetoId(s.id)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                        {s.nome}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* ─── Bloco de campos (linhas label/valor) — espelha o detalhe ─── */}
+          <div className="px-5 pb-4 space-y-2">
+            <FieldRow label="Responsável *">
+              {!projetoId ? (
+                <span className="text-xs text-gray-400 italic py-1">Escolha uma área primeiro</span>
+              ) : responsaveisElegiveis.length === 0 ? (
+                <span className="text-xs text-gray-400 italic py-1">Ninguém elegível nesta área.</span>
+              ) : (
+                <div className="flex flex-wrap gap-1.5 py-0.5">
+                  {responsaveisElegiveis.map(p => {
+                    const on = responsavelId === p.id;
+                    return (
+                      <button key={p.id} type="button" onClick={() => setResponsavelId(p.id)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                        {p.id === pessoaId ? `${p.nome} (você)` : p.nome}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </FieldRow>
+            {projetoAtual && projetoAtual.visibilidade === "privado" && (
+              <p className="text-[11px] text-amber-700 dark:text-amber-400 pl-[172px]">🔒 Área privada — só pessoas autorizadas podem ser responsáveis.</p>
+            )}
+            <FieldRow label="Prazo *">
+              <DatePickerBR value={ymdParaBr(prazo)} onChange={(br) => setPrazo(brParaYmd(br))} />
+            </FieldRow>
+            <FieldRow label="Prioridade">
+              <select value={prioridade} onChange={(e) => setPrioridade(e.target.value as TarefaPrioridade)}
+                className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-2 py-1 text-sm cursor-pointer w-full">
+                {(Object.keys(TAREFA_PRIORIDADE_LABEL) as TarefaPrioridade[]).map(p =>
+                  <option key={p} value={p}>{TAREFA_PRIORIDADE_LABEL[p]}</option>
+                )}
+              </select>
+            </FieldRow>
+
+            {temTemplate && (
+              <label className="flex items-center gap-2 text-sm bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-md p-2">
+                <input type="checkbox" checked={usarTemplate} onChange={(e) => setUsarTemplate(e.target.checked)} />
+                <span className="flex-1">
+                  Usar checklist do template
+                  <span className="ml-1 text-xs text-emerald-700 dark:text-emerald-300">
+                    ({subAtual?.tarefasTemplate?.length} subtarefa{(subAtual?.tarefasTemplate?.length ?? 0) > 1 ? "s" : ""})
+                  </span>
+                </span>
+              </label>
+            )}
+
+            {/* ── Mais opções (recolhido) ── */}
+            <button type="button" onClick={() => setMaisOpcoes(v => !v)} className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 pt-1">
+              <span className={`transition-transform ${maisOpcoes ? "rotate-90" : ""}`}>▸</span> Mais opções
+              <span className="text-gray-400">— descrição, co-responsáveis, observadores{restaurantes.length > 0 ? ", empresas" : ""}</span>
+            </button>
+            {maisOpcoes && (<>
+              <FieldRow label="Descrição">
+                <textarea value={descricao} onChange={(e) => setDescricao(e.target.value)} rows={2} className="input resize-y" placeholder="Detalhes, contexto, links..." />
+              </FieldRow>
+              <FieldRow label="Link">
+                <input value={link} onChange={(e) => setLink(e.target.value)} className="input" style={{ minHeight: 38 }} placeholder="https://… (Drive, Docs, planilha)" />
+              </FieldRow>
+              <FieldRow label="Co-responsáveis">
+                <PessoasMultiPicker value={coResponsaveisIds} onChange={setCoResponsaveisIds} pessoas={responsaveisElegiveis} excluir={[responsavelId, ...observadoresIds]} placeholder={!projetoId ? "Escolha uma área primeiro" : "+ adicionar"} />
+              </FieldRow>
+              <FieldRow label="Observadores">
+                <PessoasMultiPicker value={observadoresIds} onChange={setObservadoresIds} pessoas={responsaveisElegiveis} excluir={[responsavelId, ...coResponsaveisIds]} placeholder={!projetoId ? "Escolha uma área primeiro" : "+ adicionar"} />
+              </FieldRow>
+              {restaurantes.length > 0 && (
+                <FieldRow label="Empresa(s)">
+                  <div className="flex flex-wrap gap-2 py-1">
+                    {restaurantes.map(r => (
+                      <label key={r.id} className="flex items-center gap-1 text-xs cursor-pointer">
+                        <input type="checkbox" checked={restaurantIds.includes(r.id)} onChange={(e) => { if (e.target.checked) setRestaurantIds([...restaurantIds, r.id]); else setRestaurantIds(restaurantIds.filter(id => id !== r.id)); }} />
+                        {r.nome}
+                      </label>
+                    ))}
+                  </div>
+                </FieldRow>
+              )}
+            </>)}
+          </div>
         </div>
-        {/* Altura fixa em todos os campos (input/select/textarea pequeno)
-            pra evitar selects mais altos que inputs nativos. textarea com
-            min-height próprio sobrescreve. */}
-        <style>{`
-          .input {
-            width: 100%;
-            height: 38px;
-            padding: 6px 10px;
-            border: 1px solid rgb(209 213 219);
-            border-radius: 8px;
-            background: white;
-            font-size: 14px;
-            box-sizing: border-box;
-            line-height: 1.4;
-          }
-          .input:disabled { opacity: 0.6; cursor: not-allowed; }
-          textarea.input { height: auto; min-height: 60px; padding-top: 8px; padding-bottom: 8px; }
-          .dark .input { background: rgb(17 24 39); border-color: rgb(55 65 81); color: white; }
-        `}</style>
-        <div className="flex gap-2 justify-end mt-5">
+
+        {/* ─── Rodapé ──────────────────────────────────────────────────── */}
+        <div className="px-5 py-3 border-t border-gray-200 dark:border-gray-800 flex gap-2 justify-end shrink-0">
           <Button onClick={onClose} variant="ghost">Cancelar</Button>
           <Button
             onClick={salvar}
@@ -409,6 +404,22 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
             Criar Tarefa
           </Button>
         </div>
+
+        <style>{`
+          .input {
+            width: 100%;
+            min-height: 60px;
+            padding: 8px 10px;
+            border: 1px solid rgb(209 213 219);
+            border-radius: 8px;
+            background: white;
+            font-size: 14px;
+            box-sizing: border-box;
+            line-height: 1.4;
+          }
+          .dark .input { background: rgb(17 24 39); border-color: rgb(55 65 81); color: white; }
+        `}</style>
+
         {puxarAberto && (
           <PuxarIdeiaOcorrenciaModal
             pessoaIdAtual={pessoaId}
@@ -790,6 +801,20 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
                   <option key={p} value={p}>{TAREFA_PRIORIDADE_LABEL[p]}</option>
                 )}
               </select>
+            </FieldRow>
+            <FieldRow label="Link">
+              <div className="flex items-center gap-2 py-0.5 w-full">
+                <input
+                  key={tarefa.id}
+                  defaultValue={tarefa.link || ""}
+                  onBlur={(e) => { const v = e.target.value.trim(); if (v !== (tarefa.link || "")) salvarCampo("link", v || undefined, "link"); }}
+                  placeholder="https://… (Drive, Docs, planilha)"
+                  className="flex-1 min-w-0 bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 focus:border-indigo-500 rounded px-2 py-1 text-sm outline-none"
+                />
+                {tarefa.link && (
+                  <a href={tarefa.link} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline shrink-0">abrir ↗</a>
+                )}
+              </div>
             </FieldRow>
             <button
               type="button"
