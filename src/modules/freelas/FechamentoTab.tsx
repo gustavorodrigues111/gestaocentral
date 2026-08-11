@@ -276,18 +276,6 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
     [shifts],
   );
 
-  // Gorjeta do freela num turno = fatia dele na gorjeta PUBLICADA daquele dia
-  // (só quando o turno foi marcado com um cargo de gorjeta em Lançamentos).
-  const gorjetaDoShift = useCallback((s: FreelaShift): number => {
-    if (!s.gorjetaCargoId) return 0;
-    let tot = 0;
-    for (const g of gorjetasMes) {
-      if (g.date !== s.date || !g.publicada || !g.divisaoSnapshot) continue;
-      for (const it of g.divisaoSnapshot) if (it.freelaShiftId === s.id) tot += it.valor || 0;
-    }
-    return Math.round(tot * 100) / 100;
-  }, [gorjetasMes]);
-
   // Freelas de um dia (marcados com cargo de gorjeta) — pra prévia ao vivo.
   const freelasDoDiaLive = useCallback((date: string, unidadeId: string | null) => {
     const cargoById: Record<string, Cargo> = Object.fromEntries(cargos.map((c) => [c.id, c]));
@@ -377,10 +365,12 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   const totaisSelec = useMemo(() => {
     const sel = prontosLote.filter((s) => selecionados.has(s.id));
     const totalDiaria = sel.reduce((acc, s) => acc + (s.totalCalc || 0), 0);
-    const totalGorjeta = sel.reduce((acc, s) => acc + gorjetaDoShift(s), 0);
+    // Usa a MESMA gorjeta que a tela mostra (inclui a prévia quando o dia ainda
+    // não foi publicado) — senão o lote saía só com a diária (freela subpago).
+    const totalGorjeta = sel.reduce((acc, s) => acc + gorjetaInfoDoShift(s).valor, 0);
     const pessoas = new Set(sel.map((s) => s.pessoaId || s.empregadoId || s.nomeSnapshot));
     return { qtd: sel.length, total: totalDiaria + totalGorjeta, totalGorjeta, pessoas: pessoas.size };
-  }, [prontosLote, selecionados, gorjetaDoShift]);
+  }, [prontosLote, selecionados, gorjetaInfoDoShift]);
 
   async function gerarLote() {
     if (!me) return;
@@ -409,7 +399,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
           qtdShifts: 0, totalHoras: 0, totalValor: 0, totalGorjeta: 0,
           turnos: [] as FreelaTurnoSnapshot[],
         };
-        const gj = gorjetaDoShift(s);
+        const gj = gorjetaInfoDoShift(s).valor;   // mesma gorjeta da tela (inclui prévia)
         r.qtdShifts += 1;
         r.totalHoras += s.horas || 0;
         r.totalValor += s.totalCalc || 0;
