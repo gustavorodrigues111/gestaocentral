@@ -6446,6 +6446,7 @@ export type Prazo = {
   restaurantIds: string[];              // 1+ (compartilhado entre empresas quando >1)
   titulo: string;
   tipo: PrazoTipo;
+  link?: string | null;                 // URL opcional (contrato, boleto, Drive…) — todos os tipos
   vencimento: string;                   // YYYY-MM-DD — a ocorrência da vez
   imovelId?: string | null;             // imóvel a que o prazo se refere (técnicos/aluguel)
   responsavelId?: string | null;

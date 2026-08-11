@@ -41,6 +41,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
   const [permiteAg, setPermiteAg] = useState<boolean>(prazo?.permiteAgendamento ?? (prazo?.tipo === "tecnico"));
   const [dados, setDados] = useState<NonNullable<Prazo["dados"]>>(prazo?.dados || {});
   const [imovelId, setImovelId] = useState<string>(prazo?.imovelId || "");
+  const [link, setLink] = useState(prazo?.link || "");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
 
@@ -70,6 +71,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
         id: prazo?.id || uid(),
         restaurantIds: [rid],
         titulo: titulo.trim(), tipo, vencimento: vy,
+        link: link.trim() || null,
         imovelId: imovelId || null,
         responsavelId: respId || null, responsavelNome: resp?.nome || null,
         antecedenciaDias: antec,
@@ -104,6 +106,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
           <DetRow label="Responsável">{prazo.responsavelNome || "—"}</DetRow>
           <DetRow label="Avisar">{prazo.antecedenciaDias ?? 0} dia(s) antes</DetRow>
           <DetRow label="Repetição">{prazo.recorrencia ? resumoRecorrencia(prazo.recorrencia) : "Não repete"}</DetRow>
+          {prazo.link && <DetRow label="Link"><a href={prazo.link} target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline break-all">{prazo.link} ↗</a></DetRow>}
           {prazo.tipo === "conta" && (<>
             {d.valor != null && <DetRow label="Valor">{Number(d.valor).toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</DetRow>}
             {d.categoria && <DetRow label="Categoria">{d.categoria}</DetRow>}
@@ -153,6 +156,8 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
         </div>
 
         <div><label className="text-xs text-gray-500 block mb-1">Título</label><input value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="Ex.: Aluguel do salão" className={inp} /></div>
+
+        <div><label className="text-xs text-gray-500 block mb-1">Link <span className="text-gray-400">(opcional)</span></label><input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://… (contrato, boleto, Drive)" className={inp} /></div>
 
         <div className="grid grid-cols-2 gap-2">
           <div><label className="text-xs text-gray-500 block mb-1">Vencimento</label><DatePickerBR value={venc} onChange={setVenc} /></div>
