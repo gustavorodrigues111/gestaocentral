@@ -9,34 +9,34 @@
   },
   "rewrites": [
     {
-      "source": "/",
+      "source": "/((?!api/|site/|copa).*)",
       "has": [{ "type": "host", "value": "lobozo.com.br" }],
-      "destination": "/site/lobozo/"
+      "destination": "/site/lobozo/index.html"
     },
     {
-      "source": "/",
+      "source": "/((?!api/|site/|copa).*)",
       "has": [{ "type": "host", "value": "www.lobozo.com.br" }],
-      "destination": "/site/lobozo/"
+      "destination": "/site/lobozo/index.html"
     },
     {
-      "source": "/",
+      "source": "/((?!api/|site/|copa).*)",
       "has": [{ "type": "host", "value": "sororoca.com.br" }],
-      "destination": "/site/sororoca/"
+      "destination": "/site/sororoca/index.html"
     },
     {
-      "source": "/",
+      "source": "/((?!api/|site/|copa).*)",
       "has": [{ "type": "host", "value": "www.sororoca.com.br" }],
-      "destination": "/site/sororoca/"
+      "destination": "/site/sororoca/index.html"
     },
     {
-      "source": "/",
+      "source": "/((?!api/|site/|copa).*)",
       "has": [{ "type": "host", "value": "sororocabar.com.br" }],
-      "destination": "/site/sororoca/"
+      "destination": "/site/sororoca/index.html"
     },
     {
-      "source": "/",
+      "source": "/((?!api/|site/|copa).*)",
       "has": [{ "type": "host", "value": "www.sororocabar.com.br" }],
-      "destination": "/site/sororoca/"
+      "destination": "/site/sororoca/index.html"
     },
     { "source": "/copa", "destination": "/copa.html" },
     { "source": "/((?!api/|site/|copa).*)", "destination": "/index.html" }

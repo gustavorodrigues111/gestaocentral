@@ -91,8 +91,14 @@ async function main() {
     const fullData = { id: docId, ...data };
     const dataJson = JSON.stringify(fullData).replace(/</g, "\\u003c");
 
-    // Constrói meta tags pra SEO + social preview
-    const restNome = data.metaTitulo || slug;
+    // Constrói meta tags pra SEO + social preview. O título (og:title) é o que
+    // aparece no preview do WhatsApp/redes — precisa ser o NOME do restaurante,
+    // nunca "Gestão Central". `restaurants` não é lido aqui (rules exigem auth),
+    // então: metaTitulo (se setado) → nome conhecido (com acento) → Title-case.
+    const DISPLAY_NAMES = { lobozo: "Lobozó", sororoca: "Sororoca" };
+    const restNome = data.metaTitulo
+      || DISPLAY_NAMES[slug]
+      || (slug.charAt(0).toUpperCase() + slug.slice(1));
     const descricao = data.metaDescricao
       || data.heroSubtitulo
       || data.slogan
