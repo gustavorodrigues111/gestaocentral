@@ -282,7 +282,7 @@ export function PrazosPage() {
               ⚠ {atrasados.length} {atrasados.length === 1 ? "prazo atrasado" : "prazos atrasados"} — clique pra ver
             </button>
           )}
-          <PrazoCalendario prazos={visiveis} hoje={hoje} diaSel={diaSel} onSelDia={setDiaSel} />
+          <PrazoCalendario prazos={visiveis} hoje={hoje} diaSel={diaSel} onSelDia={setDiaSel} onAbrirPrazo={(p) => { if (podeGerirCat(p.tipo)) setModal({ prazo: p }); }} />
           <div>
             <div className="text-xs font-semibold uppercase tracking-wide mb-2 text-gray-500">{detalheLabel} {doDia.length > 0 && <span className="text-gray-400">· {doDia.length}</span>}</div>
             <div className="space-y-2">
@@ -363,7 +363,12 @@ function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, imovelNome, o
   return (
     <div className={`rounded-xl border border-gray-200 dark:border-gray-800 border-l-[3px] ${borda} bg-white dark:bg-gray-900 p-3 space-y-2`}>
       <div className="flex items-start gap-2">
-        <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{p.titulo}</span>
+        {podeGerir ? (
+          <button type="button" onClick={onEditar} title="Ver/editar detalhes"
+            className="text-sm font-semibold text-left text-gray-900 dark:text-gray-100 hover:text-indigo-600 dark:hover:text-indigo-400 hover:underline">{p.titulo}</button>
+        ) : (
+          <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{p.titulo}</span>
+        )}
         <span className={`text-xs ml-auto whitespace-nowrap ${vencido ? "text-rose-600" : "text-gray-500"}`}>🕐 {vencido ? "venceu" : "vence"} {ymdToBr(p.vencimento)}{ehFimDeSemana(p.vencimento) ? <span className="text-amber-600 dark:text-amber-400"> ({diaSemanaCurto(p.vencimento)})</span> : null}</span>
       </div>
       <div className="flex items-center gap-1.5 flex-wrap text-xs">
@@ -412,8 +417,8 @@ function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, imovelNome, o
 const WEEKDAYS = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
 const toYmdLocal = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 
-function PrazoCalendario({ prazos, hoje, diaSel, onSelDia }: {
-  prazos: Prazo[]; hoje: string; diaSel: string; onSelDia: (ymd: string) => void;
+function PrazoCalendario({ prazos, hoje, diaSel, onSelDia, onAbrirPrazo }: {
+  prazos: Prazo[]; hoje: string; diaSel: string; onSelDia: (ymd: string) => void; onAbrirPrazo: (p: Prazo) => void;
 }) {
   const [ym, setYm] = useState(() => { const d = new Date(hoje + "T12:00:00"); return { y: d.getFullYear(), m: d.getMonth() }; });
 
@@ -464,16 +469,19 @@ function PrazoCalendario({ prazos, hoje, diaSel, onSelDia }: {
           const sel = c.ymd === diaSel;
           const fds = c.dow === 0 || c.dow === 6;
           return (
-            <button key={c.ymd} type="button" onClick={() => onSelDia(c.ymd)}
-              className={`min-h-[64px] rounded-lg border p-1 text-left flex flex-col gap-0.5 transition-colors ${sel ? "border-indigo-500 ring-1 ring-indigo-400" : "border-gray-100 dark:border-gray-800"} ${fds ? "bg-gray-50/60 dark:bg-gray-800/20" : "bg-white dark:bg-gray-900"} ${!c.inMonth ? "opacity-40" : ""} hover:border-indigo-300`}>
+            <div key={c.ymd} role="button" tabIndex={0} onClick={() => onSelDia(c.ymd)}
+              onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); onSelDia(c.ymd); } }}
+              className={`min-h-[64px] rounded-lg border p-1 text-left flex flex-col gap-0.5 transition-colors cursor-pointer ${sel ? "border-indigo-500 ring-1 ring-indigo-400" : "border-gray-100 dark:border-gray-800"} ${fds ? "bg-gray-50/60 dark:bg-gray-800/20" : "bg-white dark:bg-gray-900"} ${!c.inMonth ? "opacity-40" : ""} hover:border-indigo-300`}>
               <span className={`text-[11px] font-medium self-end leading-none w-5 h-5 flex items-center justify-center rounded-full ${ehHoje ? "bg-indigo-600 text-white" : fds ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}`}>{Number(c.ymd.slice(-2))}</span>
               {lista.slice(0, 3).map((p) => (
-                <span key={p.id} className={`block truncate text-[9px] leading-tight px-1 py-0.5 rounded ${TIPO_META[p.tipo].cls}`} title={p.titulo}>
+                <button key={p.id} type="button" title={p.titulo}
+                  onClick={(e) => { e.stopPropagation(); onAbrirPrazo(p); }}
+                  className={`block w-full text-left truncate text-[9px] leading-tight px-1 py-0.5 rounded hover:ring-1 hover:ring-indigo-400 ${TIPO_META[p.tipo].cls}`}>
                   {ehFimDeSemana(p.vencimento) ? "↩ " : ""}{p.titulo}
-                </span>
+                </button>
               ))}
               {lista.length > 3 && <span className="text-[9px] text-gray-400 px-1">+{lista.length - 3}</span>}
-            </button>
+            </div>
           );
         })}
       </div>
