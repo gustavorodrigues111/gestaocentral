@@ -80,8 +80,8 @@ function App() {
 function RootOrShell() {
   const slugDoHost = getSlugFromHost();
   if (slugDoHost) {
-    // Domínio próprio. Raiz → site; sub-path (ex: /cardapio, /menu) → tenta
-    // atalho de cardápio (redireciona pro PDF) ou cai no site.
+    // Domínio próprio. Raiz → site; sub-path (ex: /cardapio, /eventos, /reservas)
+    // → resolve o atalho (PDF do cardápio, página de eventos/reservas) ou cai no site.
     const sub = window.location.pathname.replace(/^\/+|\/+$/g, "");
     if (sub === "vagas") return <VagasPublicaPage slugFromHost={slugDoHost} />;
     if (sub) return <CardapioRedirect slug={slugDoHost} sub={sub} />;
