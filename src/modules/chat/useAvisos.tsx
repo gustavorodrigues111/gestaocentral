@@ -76,6 +76,22 @@ function addDiasYmd(ymd: string, dias: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+// ── Fechamento Financeiro: item do template + resolução do prazo por competência ──
+type FechFinItem = { id: string; titulo: string; responsavelId?: string | null; prazoRef?: { tipo: string; n: number } | null; aplica?: string[]; geral?: boolean };
+const ultimoDiaMes = (y: number, m0: number) => new Date(y, m0 + 1, 0).getDate();
+function resolverPrazoFech(ref: { tipo: string; n: number } | null | undefined, comp: string): string {
+  if (!ref) return "";
+  const [y, m] = comp.split("-").map(Number); const m0 = m - 1;
+  let d: Date;
+  if (ref.tipo === "diaMes") d = new Date(y, m0, Math.min(ref.n, ultimoDiaMes(y, m0)));
+  else if (ref.tipo === "diaSeguinte") { const ny = m0 === 11 ? y + 1 : y, nm0 = (m0 + 1) % 12; d = new Date(ny, nm0, Math.min(ref.n, ultimoDiaMes(ny, nm0))); }
+  else { d = new Date(y, m0, ultimoDiaMes(y, m0)); d.setDate(d.getDate() + ref.n); }
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+const compDelta = (delta: number) => { const d = new Date(); d.setDate(1); d.setMonth(d.getMonth() + delta); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
+const MES_LB = ["Jan", "Fev", "Mar", "Abr", "Mai", "Jun", "Jul", "Ago", "Set", "Out", "Nov", "Dez"];
+const compLb = (c: string) => { const [y, m] = c.split("-"); return `${MES_LB[Number(m) - 1] || "?"}/${y.slice(2)}`; };
+
 const AvisosCtx = createContext<AvisosApi>({
   todos: [], inbox: [], historico: [],
   marcarLido: () => {}, marcarNaoLido: () => {}, marcarTodosLidos: () => {},
@@ -297,6 +313,23 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const u1 = onSnapshot(collection(db, "wikiProcessos"), (s) => setWikiProcs(s.docs.map(d => ({ id: d.id, ...d.data() }) as WikiProcesso).filter(p => !p.deletadoEm && p.ativo !== false)), () => setWikiProcs([]));
     const u2 = onSnapshot(collection(db, "wikiConfig"), (s) => { const m: Record<string, Record<string, string[]>> = {}; s.docs.forEach(d => { const c = d.data() as { setoresResponsaveis?: Record<string, string[]> }; m[d.id] = c.setoresResponsaveis || {}; }); setWikiCfgs(m); }, () => setWikiCfgs({}));
+    return () => { u1(); u2(); };
+  }, []);
+
+  // ── Fechamento Financeiro: template de itens + estado dos meses (todos) ──
+  const [fechFinItens, setFechFinItens] = useState<FechFinItem[]>([]);
+  const [fechFinAtivas, setFechFinAtivas] = useState<string[]>([]);
+  const [fechFinMeses, setFechFinMeses] = useState<Record<string, Record<string, { status?: string }>>>({});
+  useEffect(() => {
+    const u1 = onSnapshot(doc(db, "fechamentoConfig", "config"), (s) => {
+      const d = s.exists() ? (s.data() as { itens?: FechFinItem[]; empresasAtivas?: string[] }) : null;
+      setFechFinItens(d?.itens || []); setFechFinAtivas(d?.empresasAtivas || []);
+    }, () => { setFechFinItens([]); setFechFinAtivas([]); });
+    const u2 = onSnapshot(collection(db, "fechamentoMes"), (s) => {
+      const m: Record<string, Record<string, { status?: string }>> = {};
+      s.docs.forEach((d) => { const v = d.data() as { competencia?: string; celulas?: Record<string, { status?: string }> }; if (v.competencia) m[v.competencia] = v.celulas || {}; });
+      setFechFinMeses(m);
+    }, () => setFechFinMeses({}));
     return () => { u1(); u2(); };
   }, []);
 
@@ -762,16 +795,51 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       }
     }
 
+    // ── Fechamento Financeiro: 1 card por item onde EU sou o responsável, na
+    //    competência anterior/corrente, com pendência e data resolvida. ──
+    if (pid && fechFinItens.length) {
+      const meusRidsSet = new Set(restaurants.map((r) => r.id));
+      for (const comp of [compDelta(-1), compDelta(0)]) {
+        const cels = fechFinMeses[comp] || {};
+        for (const it of fechFinItens) {
+          if (it.responsavelId !== pid) continue;
+          let pend = 0, total = 0;
+          if (it.geral) { total = 1; if ((cels[`${it.id}__geral`]?.status) !== "recebido") pend = 1; }
+          else {
+            for (const e of fechFinAtivas) {
+              if (it.aplica && it.aplica.length && !it.aplica.includes(e)) continue;
+              total++; if ((cels[`${it.id}__${e}`]?.status) !== "recebido") pend++;
+            }
+          }
+          if (total === 0 || pend === 0) continue;
+          const em = resolverPrazoFech(it.prazoRef, comp);
+          const restId = restaurants.find((r) => fechFinAtivas.includes(r.id) && (!it.aplica?.length || it.aplica.includes(r.id)))?.id
+            || restaurants.find((r) => meusRidsSet.has(r.id))?.id || restaurants[0]?.id || "";
+          if (!restId) continue;
+          out.push({
+            id: `fechfin_${comp}_${it.id}`,
+            tipo: "fechamentoFin", icone: "🧮",
+            titulo: `Fechamento · ${it.titulo}`,
+            descricao: `${compLb(comp)} — ${it.geral ? "pendente" : `${pend} de ${total} empresa(s) pendente(s)`}`,
+            em: em || "9999-99-99",
+            restauranteId: restId, restauranteNome: nomePorRid[restId] || "—",
+            cta: "Abrir Fechamento", href: `/r/${restId}/fechamentoFin`,
+            categoria: "Fechamento Financeiro", categoriaIcone: "🧮",
+          });
+        }
+      }
+    }
+
     out.sort((a, b) => (b.em || "").localeCompare(a.em || ""));
     return out;
   }, [
-    nomePorRid, rotinas, conclusoesIds, pid, pessoa, perfis, wikiProcs, wikiCfgs,
+    nomePorRid, restaurants, rotinas, conclusoesIds, pid, pessoa, perfis, wikiProcs, wikiCfgs,
     escala, faleDp, fechamento, gorjetas, vt, vr, beneficios,
     ocorrencias, eventos, recebimento, compras, ideias, admissoes, candidaturasNovas, demissoes, exames, uniformes,
     minhaAcao, minhaProducao, checklistTpl, checklistRun, cobrancasInt,
     reembReceber, reembPagos,
     iaAlertas, avisosDir, candidaturasAdmissao,
-    falhas, prazosAv,
+    falhas, prazosAv, fechFinItens, fechFinAtivas, fechFinMeses,
   ]);
 
   // ── Estado de leitura (overlay persistido por pessoa) ──
