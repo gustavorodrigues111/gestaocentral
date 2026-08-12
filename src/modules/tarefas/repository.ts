@@ -233,9 +233,9 @@ export async function getTarefa(id: string): Promise<Tarefa | null> {
 
 export async function criarTarefa(t: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm">): Promise<string> {
   const now = new Date().toISOString();
-  // Denormaliza visibilidadeEfetiva pra rules: se há override, usa ele;
-  // senão, busca a do projeto.
-  const visEfetiva = t.visibilidadeOverride || await resolverVisibilidadeProjeto(t.projetoId);
+  // Denormaliza visibilidadeEfetiva pra rules: override > a que o chamador já
+  // resolveu (evita leitura de rede no caminho da criação) > busca do projeto.
+  const visEfetiva = t.visibilidadeOverride || t.visibilidadeEfetiva || await resolverVisibilidadeProjeto(t.projetoId);
   const ref = await addDoc(collection(db, COL_TAREFAS), sanitizeForFirestore({
     ...t,
     visibilidadeEfetiva: visEfetiva,

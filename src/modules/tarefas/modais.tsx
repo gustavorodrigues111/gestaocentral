@@ -199,6 +199,9 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
       prioridade,
       origem: puxando ? ("manual" as const) : ("manual" as const),
       corHerdada: cor,
+      // Visibilidade que a modal já conhece — evita leitura de rede na criação
+      // (era a causa do atraso de segundos pra a tarefa aparecer).
+      visibilidadeEfetiva: projetoAtual?.visibilidade,
       subtarefas: subtarefasFromTemplate,
       criadoPor: pessoaId,
       criadoPorNome: pessoaNome,
