@@ -151,7 +151,7 @@ export function EstoqueValidadePage() {
   const ABAS: Array<[typeof aba, string]> = [["painel", "📊 Painel"], ["baixa", "📤 Baixa"], ["entrada", "📥 Entrada"], ["cadastro", "🗂️ Cadastro"]];
 
   return (
-    <div className="max-w-4xl">
+    <div className="max-w-6xl">
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {ABAS.map(([k, l]) => (
           <button key={k} type="button" onClick={() => setAba(k)}
@@ -220,7 +220,7 @@ function PainelTab({ produtos, lotes, localNome }: { produtos: ProdutoEtiqueta[]
       {[["🔴 Vencidos", grupos.vencido], ["🟡 Vence hoje / amanhã", [...grupos.hoje, ...grupos.amanha]], ["🟢 Nesta semana", grupos.semana]].map(([titulo, arr]) => (arr as LoteEstoque[]).length > 0 && (
         <div key={titulo as string}>
           <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">{titulo as string}</div>
-          <div className="space-y-1.5">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
             {(arr as LoteEstoque[]).map((l) => {
               const d = diasAte(l.validade);
               return (
@@ -244,7 +244,7 @@ function PainelTab({ produtos, lotes, localNome }: { produtos: ProdutoEtiqueta[]
       {produtos.length > 0 && (
         <div>
           <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 mt-4">📦 Saldo por produto</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
             {produtos.filter((p) => p.ativo).map((p) => {
               const saldo = ativos.filter((l) => l.produtoId === p.id).reduce((a, l) => a + l.qtdRestante, 0);
               const baixo = p.estoqueMinimo != null && saldo <= (p.estoqueMinimo || 0);
@@ -298,30 +298,29 @@ function BaixaTab({ produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
   }
 
   return (
-    <div className="space-y-3 max-w-lg">
+    <div className="space-y-3">
       <p className="text-xs text-gray-500">Leia o QR do produto (ou busque). O sistema aponta de qual lote pegar pela regra de giro.</p>
       {!sel ? (
         <div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 max-w-xl">
             <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔍 Buscar produto…" className={inp} autoFocus />
             <Button variant="secondary" onClick={() => setScan(true)}>📷 QR</Button>
           </div>
-          {achados.length > 0 && (
-            <div className="mt-1.5 space-y-1">
-              {achados.map((p) => {
-                const s = lotesAtivos(p.id).reduce((a, l) => a + l.qtdRestante, 0);
-                return (
-                  <button key={p.id} type="button" onClick={() => { setSel(p); setMsg(""); }} className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2.5 hover:border-indigo-300 flex items-center justify-between gap-2">
-                    <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{p.nome}</span>
-                    <span className="text-xs text-gray-400">{s} {p.unidade} em estoque</span>
-                  </button>
-                );
-              })}
-            </div>
-          )}
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {(busca.trim() ? achados : produtos.filter((p) => p.ativo).slice().sort((a, b) => a.nome.localeCompare(b.nome))).map((p) => {
+              const s = lotesAtivos(p.id).reduce((a, l) => a + l.qtdRestante, 0);
+              return (
+                <button key={p.id} type="button" onClick={() => { setSel(p); setMsg(""); }} className="text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 hover:border-indigo-300 flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{p.nome}</span>
+                  <span className={`text-xs whitespace-nowrap ${s > 0 ? "text-gray-400" : "text-rose-400"}`}>{s} {p.unidade}</span>
+                </button>
+              );
+            })}
+          </div>
+          {produtos.length === 0 && <p className="text-xs text-gray-400 mt-3">Nenhum produto ativo. Cadastre em <b>Cadastro › Produtos</b>.</p>}
         </div>
       ) : (
-        <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
+        <div className="max-w-xl rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-base font-semibold text-gray-900 dark:text-gray-100">{sel.nome}</span>
             <button type="button" onClick={() => { setSel(null); setMsg(""); }} className="text-xs text-gray-400 hover:underline">trocar</button>
@@ -418,14 +417,14 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pend
   }
 
   return (
-    <div className="space-y-3 max-w-lg">
+    <div className="space-y-3">
       <p className="text-xs text-gray-500">Confirme os <b>pendentes do recebimento</b> (a NF vira rascunho aqui) ou dê entrada manual. Informe a validade — o sistema diz onde arrumar (PVPS/PEPS).</p>
       {!sel ? (
         <div>
           {pendentes.length > 0 && (
             <div className="mb-3">
               <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1.5">📥 Pendentes do recebimento ({pendentes.length})</div>
-              <div className="space-y-1.5">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
                 {pendentes.map((p) => (
                   <div key={p.id} className="rounded-lg border border-indigo-200 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/20 p-2.5 flex items-center justify-between gap-2">
                     <div className="min-w-0 text-sm">
@@ -441,18 +440,16 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pend
               </div>
             </div>
           )}
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔍 Buscar produto…" className={inp} autoFocus />
-          {achados.length > 0 && (
-            <div className="mt-1.5 space-y-1">
-              {achados.map((p) => (
-                <button key={p.id} type="button" onClick={() => escolher(p)} className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2.5 hover:border-indigo-300 text-sm font-medium text-gray-800 dark:text-gray-100">{p.nome}</button>
-              ))}
-            </div>
-          )}
-          {busca.trim() && achados.length === 0 && <p className="text-xs text-gray-400 mt-2">Nenhum produto. Cadastre em <b>Cadastro › Produtos</b>.</p>}
+          <div className="max-w-xl"><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔍 Buscar produto…" className={inp} /></div>
+          <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {(busca.trim() ? achados : produtos.filter((p) => p.ativo).slice().sort((a, b) => a.nome.localeCompare(b.nome))).map((p) => (
+              <button key={p.id} type="button" onClick={() => escolher(p)} className="text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 hover:border-indigo-300 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{p.nome}</button>
+            ))}
+          </div>
+          {produtos.length === 0 && <p className="text-xs text-gray-400 mt-2">Nenhum produto. Cadastre em <b>Cadastro › Produtos</b>.</p>}
         </div>
       ) : (
-        <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
+        <div className="max-w-2xl rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <span className="text-base font-semibold text-gray-900 dark:text-gray-100">{sel.nome}</span>
             <button type="button" onClick={() => { setSel(null); setMsg(""); }} className="text-xs text-gray-400 hover:underline">trocar</button>
@@ -507,7 +504,7 @@ function LocaisTab({ locais, restauranteNome, podeEditar, onNovo, onEditar, onEx
           {TIPOS.filter((t) => (porTipo.get(t) || []).length > 0).map((t) => (
             <div key={t}>
               <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 flex items-center gap-1.5"><span>{LOCAL_ESTOQUE_TIPO_LABEL[t].icon}</span> {LOCAL_ESTOQUE_TIPO_LABEL[t].label}</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
                 {(porTipo.get(t) || []).map((l) => (
                   <div key={l.id} className={`rounded-lg border p-3 flex items-center justify-between gap-2 ${l.ativo ? "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900" : "border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/20 opacity-70"}`}>
                     <div className="min-w-0">
@@ -539,11 +536,11 @@ function ProdutosTab({ produtos, podeEditar, onNovo, onEditar, onExcluir, onEtiq
         <p className="text-xs text-gray-500 max-w-lg">Um produto com <b>matriz de conservação</b> (método → dias). Cada um tem sua etiqueta fixa de estoque (QR). Nada de duplicar por método.</p>
         {podeEditar && <Button size="sm" onClick={onNovo}>+ Novo produto</Button>}
       </div>
-      <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔍 Buscar produto…" className={`${inp} mb-3`} />
+      <div className="max-w-xl mb-3"><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔍 Buscar produto…" className={inp} /></div>
       {lista.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nenhum produto. {podeEditar ? "Cadastre o primeiro." : ""}</div>
       ) : (
-        <div className="space-y-1.5">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
           {lista.map((p) => (
             <div key={p.id} className={`rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 flex items-center justify-between gap-2 ${p.ativo ? "" : "opacity-60"}`}>
               <div className="min-w-0">
