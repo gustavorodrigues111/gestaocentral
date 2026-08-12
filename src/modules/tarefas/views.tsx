@@ -3,8 +3,8 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { collection, doc, onSnapshot, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import { softDeleteTarefa, restaurarTarefa, atualizarTarefa } from "./repository";
-import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type TarefaStatus, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL } from "../../core/types";
+import { softDeleteTarefa, restaurarTarefa, atualizarTarefa, marcarSubtarefa } from "./repository";
+import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type Subtarefa, type TarefaStatus, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL } from "../../core/types";
 import { fmtBR } from "../../core/utils/date";
 import { isConfidencial } from "./visibilidade";
 import { AvatarIniciais, EmpresaBadge, FiltroChip, type ViewMode, ViewSwitcher, catDaTarefa, ehAreaPrazos, inicioSemanaSeg, mudarStatusComErro } from "./helpers";
@@ -135,6 +135,39 @@ export function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pes
     });
   }, [tarefas, filtroStatus, busca, filtroProjeto, filtroEmpresa, hoje, daquiSeteDias]);
 
+  // Subtarefas datadas do RESPONSÁVEL (viewer) — aparecem como itens do dia a dia
+  // na lista, interleaved por data com as tarefas. Abrem a tarefa-mãe.
+  const subLista = useMemo(() => {
+    if (!pessoaId) return [] as Array<{ t: Tarefa; sub: Subtarefa }>;
+    const b = busca.trim().toLowerCase();
+    const out: Array<{ t: Tarefa; sub: Subtarefa }> = [];
+    for (const t of tarefas) {
+      if (filtroProjeto && t.projetoId !== filtroProjeto) continue;
+      if (filtroEmpresa && !(t.restaurantIds || []).includes(filtroEmpresa)) continue;
+      for (const sub of (t.subtarefas || [])) {
+        if (sub.responsavelId !== pessoaId || !sub.prazo) continue;
+        if (filtroStatus === "ativas" && sub.feito) continue;
+        else if (filtroStatus === "atrasadas" && !(sub.prazo < hoje && !sub.feito)) continue;
+        else if (filtroStatus === "hoje" && !(sub.prazo === hoje && !sub.feito)) continue;
+        else if (filtroStatus === "semana" && !(sub.prazo >= hoje && sub.prazo <= daquiSeteDias && !sub.feito)) continue;
+        else if (filtroStatus === "a_fazer" && sub.feito) continue;
+        else if (filtroStatus === "concluida" && !sub.feito) continue;
+        else if (filtroStatus === "em_andamento" || filtroStatus === "cancelada") continue;
+        if (b && !sub.texto.toLowerCase().includes(b) && !t.titulo.toLowerCase().includes(b)) continue;
+        out.push({ t, sub });
+      }
+    }
+    return out;
+  }, [tarefas, pessoaId, filtroStatus, busca, filtroProjeto, filtroEmpresa, hoje, daquiSeteDias]);
+
+  const itensLista = useMemo(() => {
+    const arr: Array<{ kind: "tarefa"; t: Tarefa; d: string } | { kind: "sub"; t: Tarefa; sub: Subtarefa; d: string }> = [
+      ...filtradas.map(t => ({ kind: "tarefa" as const, t, d: t.prazo || "9999-99-99" })),
+      ...subLista.map(({ t, sub }) => ({ kind: "sub" as const, t, sub, d: sub.prazo || "9999-99-99" })),
+    ];
+    return arr.sort((a, b) => a.d.localeCompare(b.d));
+  }, [filtradas, subLista]);
+
   const atrasadasCount = useMemo(
     () => tarefas.filter(t => t.prazo && t.prazo < hoje && t.status !== "concluida" && t.status !== "cancelada").length,
     [tarefas, hoje]
@@ -219,13 +252,27 @@ export function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pes
         </button>
       </div>
 
-      {filtradas.length === 0 ? (
+      {itensLista.length === 0 ? (
         <div className="text-center py-8 text-sm text-gray-500 dark:text-gray-400">
           Nenhuma tarefa com esses filtros.
         </div>
       ) : (
         <div className="space-y-2 pb-20">
-          {filtradas.map(t => (
+          {itensLista.map(item => {
+            if (item.kind === "sub") {
+              const { t, sub } = item;
+              return (
+                <div key={`${t.id}::${sub.id}`} onClick={() => onAbrir(t.id)} className="flex items-center gap-2 rounded-lg border border-indigo-200 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/20 px-3 py-2 cursor-pointer hover:shadow-sm">
+                  <input type="checkbox" checked={!!sub.feito} onClick={(e) => e.stopPropagation()} onChange={(e) => { e.stopPropagation(); void marcarSubtarefa(t.id, sub.id, e.target.checked, { id: pessoaId, nome: pessoaNome }); }} className="shrink-0" />
+                  <div className="min-w-0 flex-1">
+                    <div className={`text-sm font-medium text-gray-900 dark:text-gray-100 truncate ${sub.feito ? "line-through opacity-60" : ""}`}>{sub.texto}</div>
+                    <div className="text-[11px] text-indigo-500 dark:text-indigo-300 truncate">↳ {t.titulo}{sub.prazo ? ` · ${fmtBR(sub.prazo)}` : ""}</div>
+                  </div>
+                </div>
+              );
+            }
+            const t = item.t;
+            return (
             <div key={t.id} className="flex items-start gap-2">
               {modoSelecao && (
                 <input
@@ -255,7 +302,8 @@ export function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pes
                 />
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -853,6 +901,21 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
     (a.ordemDia ?? 1e9) - (b.ordemDia ?? 1e9) || (a.titulo || "").localeCompare(b.titulo || "")
   ));
 
+  // Subtarefas datadas do RESPONSÁVEL (o viewer) viram itens no dia delas — cada
+  // uma abre a tarefa-mãe. Só as do próprio usuário (as dos outros ficam na mãe).
+  const subsPorDia = new Map<string, Array<{ tarefa: Tarefa; sub: Subtarefa }>>();
+  if (autor?.id) {
+    tarefas.forEach(t => {
+      (t.subtarefas || []).forEach(sub => {
+        if (!sub.prazo || !dias.includes(sub.prazo) || sub.responsavelId !== autor.id) return;
+        const arr = subsPorDia.get(sub.prazo) || [];
+        arr.push({ tarefa: t, sub });
+        subsPorDia.set(sub.prazo, arr);
+      });
+    });
+    subsPorDia.forEach(arr => arr.sort((a, b) => Number(a.sub.feito) - Number(b.sub.feito) || (a.tarefa.titulo || "").localeCompare(b.tarefa.titulo || "")));
+  }
+
   const semProprio = tarefas.filter(t => !t.prazo);
   const atrasadas = tarefas.filter(t =>
     t.prazo && t.prazo < hoje && t.status !== "concluida" && t.status !== "cancelada"
@@ -972,6 +1035,26 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
               </button>
             );
           })}
+          {(subsPorDia.get(data) || []).map(({ tarefa, sub }) => (
+            <div
+              key={`${tarefa.id}::${sub.id}`}
+              onClick={() => onAbrir(tarefa.id)}
+              className={`relative w-full text-left text-[11px] px-2 py-1.5 rounded-md bg-indigo-50/60 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900 text-gray-800 dark:text-gray-100 hover:shadow-sm transition-shadow cursor-pointer ${sub.feito ? "line-through opacity-60" : ""}`}
+              style={{ borderLeftWidth: 4, borderLeftColor: "#6366f1" }}
+              title={`${sub.texto} — de: ${tarefa.titulo}`}
+            >
+              <div className="flex items-start gap-1.5">
+                {autor && (
+                  <input type="checkbox" checked={!!sub.feito} onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => { e.stopPropagation(); void marcarSubtarefa(tarefa.id, sub.id, e.target.checked, autor); }} className="mt-0.5 shrink-0" />
+                )}
+                <div className="min-w-0">
+                  <div className="font-medium leading-snug line-clamp-2">{sub.texto}</div>
+                  <div className="text-[8px] uppercase tracking-wide text-indigo-500 dark:text-indigo-300 truncate">↳ {tarefa.titulo}</div>
+                </div>
+              </div>
+            </div>
+          ))}
           {onNovaTarefaNoDia && (
             <button
               onClick={() => onNovaTarefaNoDia(data)}
