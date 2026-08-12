@@ -11,7 +11,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import QRCode from "qrcode";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -22,14 +22,17 @@ import { type LocalEstoque, type LocalEstoqueTipo, LOCAL_ESTOQUE_TIPO_LABEL } fr
 import { type EntradaPendente } from "./entradasPendentes";
 
 // ── Tipos locais do módulo (promover pra types/index.ts quando estabilizar) ──
-type MetodoKey = "refrigerado" | "congelado" | "ambiente" | "seco" | "quente";
-type Conservacao = Partial<Record<MetodoKey, number>>;    // método → dias
+// Conservação = validade APÓS ABERTO por método (dias). NÃO é a validade do
+// estoque fechado (essa vem da NF/fabricante, informada na entrada).
+type Conservacao = Record<string, number>;                // metodoId → dias após aberto
+type MetodoConservacao = { id: string; label: string };
 export type ProdutoEtiqueta = {
-  id: string; restaurantId: string; nome: string; categoria?: string;
+  id: string; restaurantId: string; nome: string; categorias?: string[];
   conservacao: Conservacao; unidade: string;
   estoqueMinimo?: number | null; marcaFornecedor?: string | null; sif?: string | null;
   precoCusto?: number | null; qrTokenEstoque: string; ativo: boolean; criadoEm: string;
 };
+export type EstoqueConfig = { unidades: string[]; categorias: string[]; metodos: MetodoConservacao[] };
 export type LoteEstoque = {
   id: string; restaurantId: string; produtoId: string; produtoNome: string;
   localId?: string | null; qtdInicial: number; qtdRestante: number; unidade: string;
@@ -37,19 +40,18 @@ export type LoteEstoque = {
   status: "ativo" | "esgotado" | "descartado"; criadoEm: string; criadoPor?: string | null;
 };
 
-const METODOS: Array<{ k: MetodoKey; label: string; icon: string }> = [
-  { k: "refrigerado", label: "Refrigerado", icon: "🧊" },
-  { k: "congelado", label: "Congelado", icon: "❄️" },
-  { k: "ambiente", label: "Ambiente", icon: "🌡️" },
-  { k: "seco", label: "Seco", icon: "📦" },
-  { k: "quente", label: "Quente", icon: "🔥" },
+const UNIDADES_PADRAO = ["KG", "LT", "UND"];
+const METODOS_PADRAO: MetodoConservacao[] = [
+  { id: "refrigerado", label: "Refrigerado" }, { id: "congelado", label: "Congelado" },
+  { id: "ambiente", label: "Ambiente" }, { id: "seco", label: "Seco" }, { id: "quente", label: "Quente" },
 ];
+const CONFIG_PADRAO: EstoqueConfig = { unidades: UNIDADES_PADRAO, categorias: [], metodos: METODOS_PADRAO };
+const slug = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "_").replace(/^_|_$/g, "") || `m_${Date.now().toString(36)}`;
 const TIPOS = Object.keys(LOCAL_ESTOQUE_TIPO_LABEL) as LocalEstoqueTipo[];
 const inp = "w-full h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
 
 // ── Datas (Brasília) ──
 const hojeYmd = () => new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
-const addDias = (ymd: string, n: number) => { const d = new Date(ymd + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 const fmtBR = (ymd?: string) => (ymd ? ymd.split("-").reverse().join("/") : "—");
 const brToYmd = (br: string) => { const [d, m, a] = (br || "").split("/"); return d && m && a ? `${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}` : ""; };
 const diasAte = (ymd: string) => Math.round((new Date(ymd + "T12:00:00Z").getTime() - new Date(hojeYmd() + "T12:00:00Z").getTime()) / 86400000);
@@ -85,11 +87,12 @@ export function EstoqueValidadePage() {
   const podeEditar = can("estoqueValidade", "editar");
 
   const [aba, setAba] = useState<"painel" | "baixa" | "entrada" | "cadastro">("painel");
-  const [subCad, setSubCad] = useState<"locais" | "produtos">("locais");
+  const [subCad, setSubCad] = useState<"locais" | "produtos" | "bases">("locais");
   const [locais, setLocais] = useState<LocalEstoque[]>([]);
   const [produtos, setProdutos] = useState<ProdutoEtiqueta[]>([]);
   const [lotes, setLotes] = useState<LoteEstoque[]>([]);
   const [pendentes, setPendentes] = useState<EntradaPendente[]>([]);
+  const [config, setConfig] = useState<EstoqueConfig>(CONFIG_PADRAO);
   const [localModal, setLocalModal] = useState<{ local: LocalEstoque | null } | null>(null);
   const [prodModal, setProdModal] = useState<{ produto: ProdutoEtiqueta | null } | null>(null);
   const [etiqModal, setEtiqModal] = useState<ProdutoEtiqueta | null>(null);
@@ -101,6 +104,10 @@ export function EstoqueValidadePage() {
       onSnapshot(query(collection(db, "produtosEtiqueta"), where("restaurantId", "==", rid)), (s) => setProdutos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as ProdutoEtiqueta)), () => setProdutos([])),
       onSnapshot(query(collection(db, "lotesEstoque"), where("restaurantId", "==", rid)), (s) => setLotes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as LoteEstoque)), () => setLotes([])),
       onSnapshot(query(collection(db, "entradasPendentes"), where("restaurantId", "==", rid)), (s) => setPendentes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as EntradaPendente).filter((p) => p.status === "pendente")), () => setPendentes([])),
+      onSnapshot(doc(db, "estoqueConfig", rid), (s) => {
+        const d = (s.data() || {}) as Partial<EstoqueConfig>;
+        setConfig({ unidades: d.unidades?.length ? d.unidades : UNIDADES_PADRAO, categorias: d.categorias || [], metodos: d.metodos?.length ? d.metodos : METODOS_PADRAO });
+      }, () => setConfig(CONFIG_PADRAO)),
     ];
     return () => subs.forEach((u) => u());
   }, [rid]);
@@ -117,9 +124,12 @@ export function EstoqueValidadePage() {
   async function excluirLocal(l: LocalEstoque) { if (confirm(`Excluir o local "${l.nome}"?`)) await deleteDoc(doc(db, "locaisEstoque", l.id)); }
 
   // ── Produtos ──
+  async function salvarConfig(patch: Partial<EstoqueConfig>) {
+    await setDoc(doc(db, "estoqueConfig", rid), { ...config, ...patch, atualizadoEm: new Date().toISOString() }, { merge: true });
+  }
   async function salvarProduto(p: Partial<ProdutoEtiqueta> & { id?: string }) {
     const dados = {
-      nome: p.nome, categoria: p.categoria || null, conservacao: p.conservacao || {}, unidade: p.unidade || "unid",
+      nome: p.nome, categorias: p.categorias || [], conservacao: p.conservacao || {}, unidade: p.unidade || (config.unidades[0] || "UND"),
       estoqueMinimo: p.estoqueMinimo ?? null, marcaFornecedor: p.marcaFornecedor || null,
       sif: p.sif || null, precoCusto: p.precoCusto ?? null, ativo: p.ativo ?? true,
     };
@@ -181,19 +191,21 @@ export function EstoqueValidadePage() {
       {aba === "cadastro" && (
         <div>
           <div className="flex gap-1.5 mb-4 border-b border-gray-200 dark:border-gray-800 pb-2">
-            {([["locais", "📍 Locais"], ["produtos", "🏷️ Produtos"]] as const).map(([k, l]) => (
+            {([["locais", "📍 Locais"], ["produtos", "🏷️ Produtos"], ["bases", "⚙️ Bases"]] as const).map(([k, l]) => (
               <button key={k} type="button" onClick={() => setSubCad(k)}
                 className={`px-3 py-1.5 text-sm font-medium rounded-lg ${subCad === k ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{l}</button>
             ))}
           </div>
           {subCad === "locais"
             ? <LocaisTab locais={locais} restauranteNome={restaurante?.nome} podeEditar={podeEditar} onNovo={() => setLocalModal({ local: null })} onEditar={(l) => setLocalModal({ local: l })} onExcluir={excluirLocal} />
-            : <ProdutosTab produtos={produtos} podeEditar={podeEditar} onNovo={() => setProdModal({ produto: null })} onEditar={(p) => setProdModal({ produto: p })} onExcluir={excluirProduto} onEtiqueta={(p) => setEtiqModal(p)} />}
+            : subCad === "bases"
+            ? <BasesTab config={config} podeEditar={podeEditar} onSalvar={salvarConfig} />
+            : <ProdutosTab produtos={produtos} config={config} podeEditar={podeEditar} onNovo={() => setProdModal({ produto: null })} onEditar={(p) => setProdModal({ produto: p })} onExcluir={excluirProduto} onEtiqueta={(p) => setEtiqModal(p)} />}
         </div>
       )}
 
       {localModal && <LocalModal local={localModal.local} locais={locais} onClose={() => setLocalModal(null)} onSalvar={salvarLocal} />}
-      {prodModal && <ProdutoModal produto={prodModal.produto} onClose={() => setProdModal(null)} onSalvar={salvarProduto} />}
+      {prodModal && <ProdutoModal produto={prodModal.produto} config={config} onClose={() => setProdModal(null)} onSalvar={salvarProduto} />}
       {etiqModal && <EtiquetaFixaModal produto={etiqModal} onClose={() => setEtiqModal(null)} />}
     </div>
   );
@@ -371,7 +383,6 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pend
 }) {
   const [busca, setBusca] = useState("");
   const [sel, setSel] = useState<ProdutoEtiqueta | null>(null);
-  const [metodo, setMetodo] = useState<MetodoKey | "">("");
   const [qtd, setQtd] = useState("");
   const [validadeBr, setValidadeBr] = useState("");
   const [localId, setLocalId] = useState("");
@@ -381,7 +392,6 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pend
   const [pendenteAtivo, setPendenteAtivo] = useState<EntradaPendente | null>(null);
 
   const achados = busca.trim() ? produtos.filter((p) => p.ativo && p.nome.toLowerCase().includes(busca.toLowerCase())).slice(0, 8) : [];
-  const metodosDoProduto = sel ? METODOS.filter((m) => sel.conservacao[m.k] != null) : [];
 
   // "Lançar" um pendente do recebimento → pré-preenche pra o usuário casar o produto.
   function lancarPendente(p: EntradaPendente) {
@@ -390,14 +400,9 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pend
     if (p.fornecedor) setFornecedor(p.fornecedor);
   }
 
-  function escolher(p: ProdutoEtiqueta) {
-    setSel(p); setMsg("");
-    const mets = METODOS.filter((m) => p.conservacao[m.k] != null);
-    const m0 = mets[0]?.k || "";
-    setMetodo(m0);
-    if (m0 && p.conservacao[m0] != null) setValidadeBr(fmtBR(addDias(hojeYmd(), p.conservacao[m0] as number)));
-  }
-  function trocarMetodo(k: MetodoKey) { setMetodo(k); if (sel && sel.conservacao[k] != null) setValidadeBr(fmtBR(addDias(hojeYmd(), sel.conservacao[k] as number))); }
+  // Validade do lote = da EMBALAGEM/NF (produto fechado). A conservação é só
+  // pós-aberto — não entra aqui. Só selecionamos o produto.
+  function escolher(p: ProdutoEtiqueta) { setSel(p); setMsg(""); }
 
   // Instrução PVPS/PEPS: onde colocar o lote novo em relação aos existentes.
   function instrucaoArrumacao(p: ProdutoEtiqueta, validadeYmd: string): string {
@@ -426,7 +431,7 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pend
       const loteId = await onEntrada({ produto: sel, qtd: n, validade, localId, fornecedor: fornecedor || undefined });
       if (pendenteAtivo) { await onResolver(pendenteAtivo.id, loteId, "confirmada"); setPendenteAtivo(null); }
       setMsg(`✓ Entrada de ${n} ${sel.unidade} de ${sel.nome} (vence ${fmtBR(validade)}). ${instr}`);
-      setSel(null); setQtd(""); setValidadeBr(""); setLocalId(""); setFornecedor(""); setBusca(""); setMetodo("");
+      setSel(null); setQtd(""); setValidadeBr(""); setLocalId(""); setFornecedor(""); setBusca("");
     } finally { setSalvando(false); }
   }
 
@@ -468,19 +473,9 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pend
             <span className="text-base font-semibold text-gray-900 dark:text-gray-100">{sel.nome}</span>
             <button type="button" onClick={() => { setSel(null); setMsg(""); }} className="text-xs text-gray-400 hover:underline">trocar</button>
           </div>
-          {metodosDoProduto.length > 0 && (
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">Conservação (sugere a validade)</label>
-              <div className="flex flex-wrap gap-1.5">
-                {metodosDoProduto.map((m) => (
-                  <button key={m.k} type="button" onClick={() => trocarMetodo(m.k)} className={`px-3 py-1.5 text-xs font-medium rounded-full border ${metodo === m.k ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>{m.icon} {m.label} · {sel.conservacao[m.k]}d</button>
-                ))}
-              </div>
-            </div>
-          )}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div><label className="text-xs text-gray-500 block mb-1">Quantidade ({sel.unidade})</label><input value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="0" inputMode="decimal" className={inp} /></div>
-            <div><label className="text-xs text-gray-500 block mb-1">Validade</label><input value={validadeBr} onChange={(e) => setValidadeBr(e.target.value)} placeholder="dd/mm/aaaa" className={inp} /></div>
+            <div><label className="text-xs text-gray-500 block mb-1">Validade <span className="text-gray-400">(da embalagem/NF)</span></label><input value={validadeBr} onChange={(e) => setValidadeBr(e.target.value)} placeholder="dd/mm/aaaa" className={inp} /></div>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div><label className="text-xs text-gray-500 block mb-1">Local <span className="text-gray-400">(opcional)</span></label>
@@ -539,8 +534,8 @@ function LocaisTab({ locais, restauranteNome, podeEditar, onNovo, onEditar, onEx
 }
 
 // ═══ CADASTRO › PRODUTOS ═════════════════════════════════════════════════════
-function ProdutosTab({ produtos, podeEditar, onNovo, onEditar, onExcluir, onEtiqueta }: {
-  produtos: ProdutoEtiqueta[]; podeEditar: boolean; onNovo: () => void; onEditar: (p: ProdutoEtiqueta) => void; onExcluir: (p: ProdutoEtiqueta) => void; onEtiqueta: (p: ProdutoEtiqueta) => void;
+function ProdutosTab({ produtos, config, podeEditar, onNovo, onEditar, onExcluir, onEtiqueta }: {
+  produtos: ProdutoEtiqueta[]; config: EstoqueConfig; podeEditar: boolean; onNovo: () => void; onEditar: (p: ProdutoEtiqueta) => void; onExcluir: (p: ProdutoEtiqueta) => void; onEtiqueta: (p: ProdutoEtiqueta) => void;
 }) {
   const [busca, setBusca] = useState("");
   const lista = produtos.filter((p) => !busca.trim() || p.nome.toLowerCase().includes(busca.toLowerCase())).sort((a, b) => a.nome.localeCompare(b.nome));
@@ -560,8 +555,8 @@ function ProdutosTab({ produtos, podeEditar, onNovo, onEditar, onExcluir, onEtiq
               <div className="min-w-0">
                 <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{p.nome} <span className="text-xs font-normal text-gray-400">· {p.unidade}</span></div>
                 <div className="text-[11px] text-gray-400 flex flex-wrap gap-1.5 mt-0.5">
-                  {METODOS.filter((m) => p.conservacao[m.k] != null).map((m) => <span key={m.k}>{m.icon} {p.conservacao[m.k]}d</span>)}
-                  {p.categoria && <span>· {p.categoria}</span>}
+                  {config.metodos.filter((m) => p.conservacao[m.id] != null).map((m) => <span key={m.id}>{m.label} {p.conservacao[m.id]}d</span>)}
+                  {(p.categorias?.length ?? 0) > 0 && <span>· {p.categorias!.join(", ")}</span>}
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
@@ -570,6 +565,48 @@ function ProdutosTab({ produtos, podeEditar, onNovo, onEditar, onExcluir, onEtiq
               </div>
             </div>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══ CADASTRO › BASES (unidades, categorias, métodos) ═══════════════════════
+function BasesTab({ config, podeEditar, onSalvar }: { config: EstoqueConfig; podeEditar: boolean; onSalvar: (patch: Partial<EstoqueConfig>) => Promise<void> }) {
+  return (
+    <div className="space-y-6 max-w-2xl">
+      <p className="text-xs text-gray-500">Listas base usadas no cadastro de produtos — nada de campo livre. Adicione o que precisar.</p>
+      <ListaBase titulo="📏 Unidades" itens={config.unidades} podeEditar={podeEditar}
+        onAdd={(v) => onSalvar({ unidades: [...config.unidades, v.toUpperCase()] })}
+        onRemove={(v) => onSalvar({ unidades: config.unidades.filter((x) => x !== v) })} />
+      <ListaBase titulo="🏷️ Categorias" itens={config.categorias} podeEditar={podeEditar} vazio="Nenhuma categoria ainda."
+        onAdd={(v) => onSalvar({ categorias: [...config.categorias, v] })}
+        onRemove={(v) => onSalvar({ categorias: config.categorias.filter((x) => x !== v) })} />
+      <ListaBase titulo="❄️ Métodos de conservação (após aberto)" itens={config.metodos.map((m) => m.label)} podeEditar={podeEditar}
+        onAdd={(v) => onSalvar({ metodos: [...config.metodos, { id: slug(v), label: v }] })}
+        onRemove={(v) => onSalvar({ metodos: config.metodos.filter((m) => m.label !== v) })} />
+    </div>
+  );
+}
+function ListaBase({ titulo, itens, podeEditar, vazio, onAdd, onRemove }: { titulo: string; itens: string[]; podeEditar: boolean; vazio?: string; onAdd: (v: string) => void; onRemove: (v: string) => void }) {
+  const [novo, setNovo] = useState("");
+  function add() { const v = novo.trim(); if (!v || itens.some((x) => x.toLowerCase() === v.toLowerCase())) { setNovo(""); return; } onAdd(v); setNovo(""); }
+  return (
+    <div>
+      <div className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">{titulo}</div>
+      <div className="flex flex-wrap gap-1.5 mb-2">
+        {itens.length === 0 && <span className="text-xs text-gray-400">{vazio || "Vazio."}</span>}
+        {itens.map((it) => (
+          <span key={it} className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded-full border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200">
+            {it}
+            {podeEditar && <button type="button" onClick={() => onRemove(it)} className="text-gray-300 hover:text-rose-600 text-xs" title="Remover">✕</button>}
+          </span>
+        ))}
+      </div>
+      {podeEditar && (
+        <div className="flex gap-2 max-w-sm">
+          <input value={novo} onChange={(e) => setNovo(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") add(); }} placeholder="Adicionar…" className={inp} />
+          <Button size="sm" variant="secondary" onClick={add} disabled={!novo.trim()}>+ Add</Button>
         </div>
       )}
     </div>
@@ -602,12 +639,12 @@ function LocalModal({ local, locais, onClose, onSalvar }: {
   );
 }
 
-function ProdutoModal({ produto, onClose, onSalvar }: {
-  produto: ProdutoEtiqueta | null; onClose: () => void; onSalvar: (p: Partial<ProdutoEtiqueta> & { id?: string }) => Promise<void>;
+function ProdutoModal({ produto, config, onClose, onSalvar }: {
+  produto: ProdutoEtiqueta | null; config: EstoqueConfig; onClose: () => void; onSalvar: (p: Partial<ProdutoEtiqueta> & { id?: string }) => Promise<void>;
 }) {
   const [nome, setNome] = useState(produto?.nome || "");
-  const [categoria, setCategoria] = useState(produto?.categoria || "");
-  const [unidade, setUnidade] = useState(produto?.unidade || "unid");
+  const [cats, setCats] = useState<string[]>(produto?.categorias || []);
+  const [unidade, setUnidade] = useState(produto?.unidade || config.unidades[0] || "UND");
   const [cons, setCons] = useState<Conservacao>(produto?.conservacao || {});
   const [estoqueMinimo, setEstoqueMinimo] = useState(produto?.estoqueMinimo != null ? String(produto.estoqueMinimo) : "");
   const [marca, setMarca] = useState(produto?.marcaFornecedor || "");
@@ -616,38 +653,53 @@ function ProdutoModal({ produto, onClose, onSalvar }: {
   const [ativo, setAtivo] = useState<boolean>(produto?.ativo ?? true);
   const [salvando, setSalvando] = useState(false);
 
-  const temMetodo = METODOS.some((m) => cons[m.k] != null);
-  function setDias(k: MetodoKey, v: string) {
+  const temMetodo = config.metodos.some((m) => cons[m.id] != null);
+  function setDias(id: string, v: string) {
     const n = parseInt(v.replace(/\D/g, ""), 10);
-    setCons((prev) => { const c = { ...prev }; if (v === "" || isNaN(n)) delete c[k]; else c[k] = n; return c; });
+    setCons((prev) => { const c = { ...prev }; if (v === "" || isNaN(n)) delete c[id]; else c[id] = n; return c; });
   }
+  function toggleCat(c: string) { setCats((prev) => prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]); }
   async function salvar() {
     if (!nome.trim() || !temMetodo) return;
     setSalvando(true);
     try {
-      await onSalvar({ id: produto?.id, nome: nome.trim(), categoria: categoria.trim() || undefined, unidade: unidade.trim() || "unid", conservacao: cons, estoqueMinimo: estoqueMinimo ? parseFloat(estoqueMinimo.replace(",", ".")) : null, marcaFornecedor: marca.trim() || null, sif: sif.trim() || null, precoCusto: precoCusto ? parseFloat(precoCusto.replace(",", ".")) : null, ativo });
+      await onSalvar({ id: produto?.id, nome: nome.trim(), categorias: cats, unidade, conservacao: cons, estoqueMinimo: estoqueMinimo ? parseFloat(estoqueMinimo.replace(",", ".")) : null, marcaFornecedor: marca.trim() || null, sif: sif.trim() || null, precoCusto: precoCusto ? parseFloat(precoCusto.replace(",", ".")) : null, ativo });
     } finally { setSalvando(false); }
   }
   return (
     <Modal title={produto ? "Editar produto" : "Novo produto"} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
         <div><label className="text-xs text-gray-500 block mb-1">Nome</label><input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Farinha de trigo" className={inp} autoFocus /></div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div><label className="text-xs text-gray-500 block mb-1">Unidade</label><input value={unidade} onChange={(e) => setUnidade(e.target.value)} placeholder="kg, unid, L…" className={inp} /></div>
-          <div><label className="text-xs text-gray-500 block mb-1">Categoria <span className="text-gray-400">(opc.)</span></label><input value={categoria} onChange={(e) => setCategoria(e.target.value)} className={inp} /></div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Unidade</label>
+            <select value={unidade} onChange={(e) => setUnidade(e.target.value)} className={inp}>{config.unidades.map((u) => <option key={u} value={u}>{u}</option>)}</select>
+          </div>
+          <div>
+            <label className="text-xs text-gray-500 block mb-1">Categoria(s) <span className="text-gray-400">(uma ou mais)</span></label>
+            {config.categorias.length === 0 ? (
+              <p className="text-[11px] text-gray-400 pt-2">Nenhuma. Cadastre em <b>Bases</b>.</p>
+            ) : (
+              <div className="flex flex-wrap gap-1.5">
+                {config.categorias.map((c) => (
+                  <button key={c} type="button" onClick={() => toggleCat(c)} className={`px-3 py-1.5 text-xs font-medium rounded-full border ${cats.includes(c) ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>{c}</button>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
         <div>
-          <label className="text-xs text-gray-500 block mb-1">Conservação — validade por método (dias) <span className="text-rose-500">*</span></label>
+          <label className="text-xs text-gray-500 block mb-1">Conservação — validade <b>após aberto</b>, por método (dias) <span className="text-rose-500">*</span></label>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
-            {METODOS.map((m) => (
-              <div key={m.k} className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 px-2.5 py-1.5">
-                <span className="text-sm text-gray-700 dark:text-gray-200 flex-1">{m.icon} {m.label}</span>
-                <input value={cons[m.k] != null ? String(cons[m.k]) : ""} onChange={(e) => setDias(m.k, e.target.value)} placeholder="—" inputMode="numeric" className="w-16 h-8 px-2 text-sm text-right rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+            {config.metodos.map((m) => (
+              <div key={m.id} className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 px-2.5 py-1.5">
+                <span className="text-sm text-gray-700 dark:text-gray-200 flex-1">{m.label}</span>
+                <input value={cons[m.id] != null ? String(cons[m.id]) : ""} onChange={(e) => setDias(m.id, e.target.value)} placeholder="—" inputMode="numeric" className="w-16 h-8 px-2 text-sm text-right rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
                 <span className="text-xs text-gray-400">dias</span>
               </div>
             ))}
           </div>
-          {!temMetodo && <p className="text-[11px] text-gray-400 mt-1">Preencha ao menos um método.</p>}
+          {!temMetodo && <p className="text-[11px] text-gray-400 mt-1">Preencha ao menos um método (validade após aberto).</p>}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
           <div><label className="text-xs text-gray-500 block mb-1">Estoque mínimo</label><input value={estoqueMinimo} onChange={(e) => setEstoqueMinimo(e.target.value)} placeholder="—" inputMode="decimal" className={inp} /></div>
