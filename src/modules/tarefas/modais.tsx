@@ -94,6 +94,16 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
   const [coResponsaveisIds, setCoResponsaveisIds] = useState<string[]>([]);
   const [observadoresIds, setObservadoresIds] = useState<string[]>([]);
   const [maisOpcoes, setMaisOpcoes] = useState(false);
+  // Checklist de subtarefas (cada uma com prazo + responsável). A mãe herda o
+  // prazo da última subtarefa (editável pra depois). A mãe NÃO conclui sozinha.
+  const [temSubtarefas, setTemSubtarefas] = useState(false);
+  const [checklist, setChecklist] = useState<Array<{ id: string; texto: string; prazo: string; responsavelId: string }>>([]);
+  const maxPrazoChecklist = temSubtarefas ? (checklist.map(c => c.prazo).filter(Boolean).sort().pop() || "") : "";
+  useEffect(() => {
+    // Mãe recebe o prazo da última subtarefa; se o user já pôs um posterior, mantém.
+    if (maxPrazoChecklist && (!prazo || prazo < maxPrazoChecklist)) setPrazo(maxPrazoChecklist);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [maxPrazoChecklist]);
 
   // Lista de pessoas — pra select de responsável. Snapshot direto da coleção.
   const [pessoasLista, setPessoasLista] = useState<Array<{ id: string; nome: string }>>([]);
@@ -180,6 +190,18 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
           ordem: i + 1,
         }))
       : undefined;
+    // Checklist manual: cada subtarefa com prazo (ymd) + responsável. Aparece no
+    // dia a dia do responsável via a denormalização subtarefaResponsaveisIds.
+    const subtarefasManuais = temSubtarefas
+      ? checklist.filter(c => c.texto.trim()).map((c, i) => ({
+          id: c.id, texto: c.texto.trim(), feito: false, ordem: i + 1,
+          prazo: c.prazo || null,
+          responsavelId: c.responsavelId || undefined,
+          responsavelNome: c.responsavelId ? (pessoasLista.find(p => p.id === c.responsavelId)?.nome || undefined) : undefined,
+        }))
+      : undefined;
+    const subtarefasFinal = temSubtarefas ? subtarefasManuais : subtarefasFromTemplate;
+    const subRespIds = Array.from(new Set((subtarefasFinal || []).map(s => (s as { responsavelId?: string }).responsavelId).filter((x): x is string => !!x)));
     const payload = {
       projetoId, subprojetoId, titulo,
       descricao: descricao || undefined,
@@ -194,7 +216,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
         ? observadoresIds.map(id => pessoasLista.find(p => p.id === id)?.nome || "").filter(Boolean)
         : undefined,
       restaurantIds: restaurantIds.length ? restaurantIds : undefined,
-      prazo: prazo || null,
+      prazo: (prazo || maxPrazoChecklist) || null,
       status: "a_fazer" as const,
       prioridade,
       origem: puxando ? ("manual" as const) : ("manual" as const),
@@ -202,7 +224,8 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
       // Visibilidade que a modal já conhece — evita leitura de rede na criação
       // (era a causa do atraso de segundos pra a tarefa aparecer).
       visibilidadeEfetiva: projetoAtual?.visibilidade,
-      subtarefas: subtarefasFromTemplate,
+      subtarefas: subtarefasFinal,
+      subtarefaResponsaveisIds: subRespIds.length ? subRespIds : undefined,
       criadoPor: pessoaId,
       criadoPorNome: pessoaNome,
     };
@@ -361,6 +384,32 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
                 </span>
               </label>
             )}
+
+            {/* ── Subtarefas (checklist com prazo + responsável) ── */}
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-2.5">
+              <label className="flex items-center gap-2 text-sm cursor-pointer">
+                <input type="checkbox" checked={temSubtarefas} onChange={(e) => { setTemSubtarefas(e.target.checked); if (e.target.checked && checklist.length === 0) setChecklist([{ id: Math.random().toString(36).slice(2, 11), texto: "", prazo: "", responsavelId: "" }]); }} />
+                <span className="font-medium">Tem subtarefas (checklist)</span>
+              </label>
+              {temSubtarefas && (
+                <div className="mt-2 space-y-2">
+                  <p className="text-[11px] text-gray-400">Cada subtarefa tem prazo e responsável e aparece no dia a dia de quem for responsável. A mãe não conclui sozinha.</p>
+                  {checklist.map((c, i) => (
+                    <div key={c.id} className="grid grid-cols-1 sm:grid-cols-[1fr_130px_150px_auto] gap-1.5 sm:items-center">
+                      <input value={c.texto} onChange={(e) => setChecklist(cs => cs.map(x => x.id === c.id ? { ...x, texto: e.target.value } : x))} placeholder={`Passo ${i + 1}…`} className="w-full h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                      <DatePickerBR value={ymdParaBr(c.prazo)} onChange={(br) => setChecklist(cs => cs.map(x => x.id === c.id ? { ...x, prazo: brParaYmd(br) } : x))} />
+                      <select value={c.responsavelId} onChange={(e) => setChecklist(cs => cs.map(x => x.id === c.id ? { ...x, responsavelId: e.target.value } : x))} className="w-full h-9 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+                        <option value="">Responsável…</option>
+                        {responsaveisElegiveis.map(p => <option key={p.id} value={p.id}>{p.id === pessoaId ? `${p.nome} (você)` : p.nome}</option>)}
+                      </select>
+                      <button type="button" onClick={() => setChecklist(cs => cs.filter(x => x.id !== c.id))} className="text-gray-300 hover:text-rose-600 text-sm px-1 justify-self-start" title="Remover">✕</button>
+                    </div>
+                  ))}
+                  <button type="button" onClick={() => setChecklist(cs => [...cs, { id: Math.random().toString(36).slice(2, 11), texto: "", prazo: "", responsavelId: "" }])} className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">+ Adicionar subtarefa</button>
+                  {maxPrazoChecklist && <p className="text-[11px] text-gray-400">Prazo da mãe = <b>{ymdParaBr(maxPrazoChecklist)}</b> (última subtarefa) — pode editar pra depois no campo Prazo acima.</p>}
+                </div>
+              )}
+            </div>
 
             {/* ── Mais opções (recolhido) ── */}
             <button type="button" onClick={() => setMaisOpcoes(v => !v)} className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 pt-1">
