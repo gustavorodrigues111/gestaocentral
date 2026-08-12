@@ -25,13 +25,20 @@ import type { Pessoa, ModuleId } from "../../core/types";
 
 // ───────────────────────── Tipos locais do módulo ──────────────────────────
 type LinkTipo = "nenhum" | "externo" | "modulo";
+// Prazo é um OFFSET relativo à competência → vira data real a cada mês:
+//   diaSeguinte = dia N do mês SEGUINTE (o fechamento roda no mês seguinte)
+//   diaMes      = dia N da própria competência
+//   dplus       = N dias corridos após o fim do mês da competência (D+N)
+type PrazoTipo = "diaSeguinte" | "diaMes" | "dplus";
+type PrazoRef = { tipo: PrazoTipo; n: number };
 type FechamentoItem = {
   id: string;
   secao: string;
   titulo: string;
   responsavelId?: string | null;
   responsavelNome?: string | null;
-  prazo?: string | null;              // texto relativo à competência ("dia 1", "D+3", "31/03")
+  prazoRef?: PrazoRef | null;         // offset estruturado → resolve pra data real
+  prazo?: string | null;              // legado: texto livre (fallback quando não há prazoRef)
   aplica?: string[];                  // restaurantIds a que se aplica; vazio = todas as ativas
   geral?: boolean;                    // check único (não quebra por empresa)
   linkTipo?: LinkTipo;
@@ -56,18 +63,18 @@ const moduloLabel = (m?: ModuleId | null) => MODULOS_LINKAVEIS.find(x => x.id ==
 // Modelo sugerido (do checklist de fechamento aprovado). Nasce sem responsável
 // vinculado (nome livre) e aplicando a todas as empresas ativas — edite depois.
 const SEED: Omit<FechamentoItem, "id" | "ordem">[] = [
-  { secao: "Bancos", titulo: "Extrato Itaú", responsavelNome: "Daniel", prazo: "dia 1" },
-  { secao: "Bancos", titulo: "Extrato C6", responsavelNome: "Gustavo", prazo: "dia 1", linkTipo: "externo" },
-  { secao: "Inventários", titulo: "Inventário de bebidas (fim de mês)", responsavelNome: "Gustavo", prazo: "dia 1", linkTipo: "externo" },
-  { secao: "DDA · até 90 dias", titulo: "Relatório de DDA mensal", responsavelNome: "Janaynna", prazo: "31", linkTipo: "externo" },
-  { secao: "Gorjetas", titulo: "Gorjeta final mês a mês", responsavelNome: "Gustavo", prazo: "dia 1", linkTipo: "modulo", modulo: "gorjetas" },
-  { secao: "Sócios & espécie", titulo: "Controle de mesas de sócios", responsavelNome: "Janaynna", prazo: "D+3", linkTipo: "modulo", modulo: "vendas" },
-  { secao: "Sócios & espécie", titulo: "Relatório de dinheiro em espécie", responsavelNome: "Janaynna", prazo: "D+3", linkTipo: "externo" },
-  { secao: "Produção & freelas", titulo: "Vendas de produção Quibebe → Lobozó", responsavelNome: "Janaynna", prazo: "D+3", linkTipo: "modulo", modulo: "vendas" },
-  { secao: "Produção & freelas", titulo: "Extras de freelas", responsavelNome: "Gustavo", prazo: "D+3", linkTipo: "modulo", modulo: "freelas" },
-  { secao: "Análise do assessor", titulo: "Analisar indicadores fora da média", responsavelNome: "Daniel", prazo: "D+5", geral: true },
-  { secao: "Análise do assessor", titulo: "Identificar o que impacta esses indicadores", responsavelNome: "Daniel", prazo: "D+5", geral: true },
-  { secao: "Análise do assessor", titulo: "Enviar lista de dúvidas para o Gustavo", responsavelNome: "Daniel", prazo: "D+6", geral: true },
+  { secao: "Bancos", titulo: "Extrato Itaú", responsavelNome: "Daniel", prazoRef: { tipo: "diaSeguinte", n: 1 } },
+  { secao: "Bancos", titulo: "Extrato C6", responsavelNome: "Gustavo", prazoRef: { tipo: "diaSeguinte", n: 1 }, linkTipo: "externo" },
+  { secao: "Inventários", titulo: "Inventário de bebidas (fim de mês)", responsavelNome: "Gustavo", prazoRef: { tipo: "diaSeguinte", n: 1 }, linkTipo: "externo" },
+  { secao: "DDA · até 90 dias", titulo: "Relatório de DDA mensal", responsavelNome: "Janaynna", prazoRef: { tipo: "diaMes", n: 31 }, linkTipo: "externo" },
+  { secao: "Gorjetas", titulo: "Gorjeta final mês a mês", responsavelNome: "Gustavo", prazoRef: { tipo: "diaSeguinte", n: 1 }, linkTipo: "modulo", modulo: "gorjetas" },
+  { secao: "Sócios & espécie", titulo: "Controle de mesas de sócios", responsavelNome: "Janaynna", prazoRef: { tipo: "dplus", n: 3 }, linkTipo: "modulo", modulo: "vendas" },
+  { secao: "Sócios & espécie", titulo: "Relatório de dinheiro em espécie", responsavelNome: "Janaynna", prazoRef: { tipo: "dplus", n: 3 }, linkTipo: "externo" },
+  { secao: "Produção & freelas", titulo: "Vendas de produção Quibebe → Lobozó", responsavelNome: "Janaynna", prazoRef: { tipo: "dplus", n: 3 }, linkTipo: "modulo", modulo: "vendas" },
+  { secao: "Produção & freelas", titulo: "Extras de freelas", responsavelNome: "Gustavo", prazoRef: { tipo: "dplus", n: 3 }, linkTipo: "modulo", modulo: "freelas" },
+  { secao: "Análise do assessor", titulo: "Analisar indicadores fora da média", responsavelNome: "Daniel", prazoRef: { tipo: "dplus", n: 5 }, geral: true },
+  { secao: "Análise do assessor", titulo: "Identificar o que impacta esses indicadores", responsavelNome: "Daniel", prazoRef: { tipo: "dplus", n: 5 }, geral: true },
+  { secao: "Análise do assessor", titulo: "Enviar lista de dúvidas para o Gustavo", responsavelNome: "Daniel", prazoRef: { tipo: "dplus", n: 6 }, geral: true },
 ];
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
@@ -76,6 +83,31 @@ const compAtual = () => { const d = new Date(); return `${d.getFullYear()}-${Str
 const compLabel = (c: string) => { const [y, m] = c.split("-"); return `${MESES[Number(m) - 1] || "?"}/${y}`; };
 const compShift = (c: string, delta: number) => { const [y, m] = c.split("-").map(Number); const d = new Date(y, m - 1 + delta, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
 const cor = (i: number) => ["#b91c1c", "#0e7490", "#a16207", "#7c3aed", "#15803d", "#be185d", "#0f766e", "#c2410c"][i % 8];
+
+// ── Resolução de prazo (offset → data real da competência) ──
+const ultimoDia = (y: number, m0: number) => new Date(y, m0 + 1, 0).getDate();  // m0 = mês 0-based
+function resolverPrazo(ref: PrazoRef | null | undefined, comp: string): Date | null {
+  if (!ref) return null;
+  const [y, m] = comp.split("-").map(Number); const m0 = m - 1;
+  if (ref.tipo === "diaMes") return new Date(y, m0, Math.min(ref.n, ultimoDia(y, m0)));
+  if (ref.tipo === "diaSeguinte") {
+    const ny = m0 === 11 ? y + 1 : y, nm0 = (m0 + 1) % 12;
+    return new Date(ny, nm0, Math.min(ref.n, ultimoDia(ny, nm0)));
+  }
+  const d = new Date(y, m0, ultimoDia(y, m0)); d.setDate(d.getDate() + ref.n); return d;  // dplus
+}
+const fmtBR = (d: Date) => `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+const hojeMeiaNoite = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
+const PRAZO_TIPO_LABEL: Record<PrazoTipo, string> = {
+  diaSeguinte: "Dia do mês seguinte", diaMes: "Dia da competência", dplus: "Dias após o fim do mês (D+N)",
+};
+// Texto curto pra config: "Dia 1 do mês seguinte" / "Dia 31 da competência" / "D+3"
+function resumoPrazo(ref?: PrazoRef | null): string {
+  if (!ref) return "";
+  if (ref.tipo === "diaSeguinte") return `Dia ${ref.n} do mês seguinte`;
+  if (ref.tipo === "diaMes") return `Dia ${ref.n} da competência`;
+  return `D+${ref.n}`;
+}
 
 export function FechamentoFinPage() {
   const { pessoa } = useAuth();
@@ -255,7 +287,7 @@ export function FechamentoFinPage() {
                 {secoes.map(s => (
                   <SecaoRows key={s.nome} secao={s} empresas={empresas} cel={cel} aplicaNa={aplicaNa}
                     podeOperar={podeOperar} toggleCheck={toggleCheck} setObs={setObs} setUrl={setUrl}
-                    pessoaNome={pessoaNome} nav={nav} />
+                    pessoaNome={pessoaNome} nav={nav} comp={comp} />
                 ))}
               </tbody>
             </table>
@@ -314,8 +346,8 @@ export function FechamentoFinPage() {
                             {it.linkTipo === "modulo" && <span className="ml-2 text-[10px] text-indigo-600 dark:text-indigo-400">↗ {moduloLabel(it.modulo)}</span>}
                             {it.linkTipo === "externo" && <span className="ml-2 text-[10px] text-gray-500">🔗 arquivo</span>}
                           </button>
-                          <span className="text-xs text-gray-500 tabular-nums whitespace-nowrap">{it.prazo || "—"}</span>
-                          <span className="text-xs text-gray-500 whitespace-nowrap">{it.responsavelId ? (pessoaNome[it.responsavelId] || "?") : (it.responsavelNome || "—")}</span>
+                          <span className="text-xs text-gray-500 whitespace-nowrap">{resumoPrazo(it.prazoRef) || it.prazo || "—"}</span>
+                          <span className="text-xs whitespace-nowrap"><RespLabel it={it} pessoaNome={pessoaNome} /></span>
                           <button className="opacity-0 group-hover:opacity-100 text-gray-400 hover:text-red-600 px-1" title="Excluir item"
                             onClick={() => { if (!config) return; void salvarConfig({ ...config, itens: config.itens.filter(x => x.id !== it.id) }); }}>✕</button>
                         </div>
@@ -330,7 +362,7 @@ export function FechamentoFinPage() {
       )}
 
       {editando && config && (
-        <ItemModal item={editando === "novo" ? null : editando} pessoas={pessoas} secoesExistentes={secoes.map(s => s.nome)}
+        <ItemModal item={editando === "novo" ? null : editando} pessoas={pessoas} secoesExistentes={secoes.map(s => s.nome)} comp={comp}
           onClose={() => setEditando(null)}
           onSave={(it) => {
             const base = config;
@@ -345,7 +377,7 @@ export function FechamentoFinPage() {
 }
 
 // ───────────────────────── Linhas de uma seção ─────────────────────────────
-function SecaoRows({ secao, empresas, cel, aplicaNa, podeOperar, toggleCheck, setObs, setUrl, pessoaNome, nav }: {
+function SecaoRows({ secao, empresas, cel, aplicaNa, podeOperar, toggleCheck, setObs, setUrl, pessoaNome, nav, comp }: {
   secao: { nome: string; itens: FechamentoItem[] };
   empresas: { id: string; nome: string }[];
   cel: (itemId: string, empId: string) => Celula;
@@ -356,6 +388,7 @@ function SecaoRows({ secao, empresas, cel, aplicaNa, podeOperar, toggleCheck, se
   setUrl: (itemId: string, empId: string, v: string) => void;
   pessoaNome: Record<string, string>;
   nav: (to: string) => void;
+  comp: string;
 }) {
   const nCols = 3 + empresas.length;
   return (
@@ -365,7 +398,14 @@ function SecaoRows({ secao, empresas, cel, aplicaNa, podeOperar, toggleCheck, se
           {secao.nome}
         </td>
       </tr>
-      {secao.itens.map(it => (
+      {secao.itens.map(it => {
+        const prazoDate = resolverPrazo(it.prazoRef, comp);
+        const algumPendente = it.geral
+          ? cel(it.id, "geral").status !== "recebido"
+          : empresas.some(e => aplicaNa(it, e.id) && cel(it.id, e.id).status !== "recebido");
+        const vencido = !!prazoDate && prazoDate < hojeMeiaNoite() && algumPendente;
+        const prazoTxt = prazoDate ? fmtBR(prazoDate) : (it.prazo || "—");
+        return (
         <tr key={it.id} className="border-t border-gray-100 dark:border-gray-800/70 hover:bg-gray-50/60 dark:hover:bg-gray-900/40">
           <td className="sticky left-0 z-[1] bg-white dark:bg-gray-950 px-3 py-2 text-gray-900 dark:text-gray-100 align-top">
             <div className="flex items-start gap-1.5">
@@ -373,8 +413,9 @@ function SecaoRows({ secao, empresas, cel, aplicaNa, podeOperar, toggleCheck, se
               {it.geral && <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 shrink-0">geral</span>}
             </div>
           </td>
-          <td className="px-2 py-2 text-gray-500 tabular-nums whitespace-nowrap align-top">{it.prazo || "—"}</td>
-          <td className="px-2 py-2 text-gray-500 whitespace-nowrap align-top">{it.responsavelId ? (pessoaNome[it.responsavelId] || "?") : (it.responsavelNome || "—")}</td>
+          <td className={`px-2 py-2 tabular-nums whitespace-nowrap align-top ${vencido ? "text-red-600 dark:text-red-400 font-semibold" : "text-gray-500"}`}
+            title={vencido ? "Prazo vencido com pendência" : resumoPrazo(it.prazoRef)}>{prazoTxt}</td>
+          <td className="px-2 py-2 whitespace-nowrap align-top"><RespLabel it={it} pessoaNome={pessoaNome} /></td>
           {it.geral ? (
             <td colSpan={empresas.length} className="px-2 py-2 text-center align-top">
               <Check on={cel(it.id, "geral").status === "recebido"} podeOperar={podeOperar} onClick={() => toggleCheck(it.id, "geral")} />
@@ -413,9 +454,18 @@ function SecaoRows({ secao, empresas, cel, aplicaNa, podeOperar, toggleCheck, se
             })
           )}
         </tr>
-      ))}
+        );
+      })}
     </>
   );
+}
+
+// Responsável = usuário do sistema. Sem usuário → mostra a sugestão do checklist
+// em âmbar com "definir", deixando claro que ainda precisa atribuir uma pessoa.
+function RespLabel({ it, pessoaNome }: { it: FechamentoItem; pessoaNome: Record<string, string> }) {
+  if (it.responsavelId) return <span className="text-gray-600 dark:text-gray-300">{pessoaNome[it.responsavelId] || "?"}</span>;
+  if (it.responsavelNome) return <span className="text-amber-600 dark:text-amber-500 italic" title="Sugestão do checklist — defina um usuário do sistema">{it.responsavelNome} · definir</span>;
+  return <span className="text-gray-300 dark:text-gray-600">—</span>;
 }
 
 function Check({ on, podeOperar, onClick }: { on: boolean; podeOperar: boolean; onClick: () => void }) {
@@ -451,22 +501,23 @@ function EmptyState({ podeConfig, onSeed, onZero }: { podeConfig: boolean; onSee
 }
 
 // ───────────────────────── Modal de item (add/editar) ──────────────────────
-function ItemModal({ item, pessoas, secoesExistentes, onClose, onSave }: {
+function ItemModal({ item, pessoas, secoesExistentes, comp, onClose, onSave }: {
   item: FechamentoItem | null;
   pessoas: Pessoa[];
   secoesExistentes: string[];
+  comp: string;
   onClose: () => void;
   onSave: (it: FechamentoItem) => void;
 }) {
   const [secao, setSecao] = useState(item?.secao || "");
   const [titulo, setTitulo] = useState(item?.titulo || "");
-  const [prazo, setPrazo] = useState(item?.prazo || "");
+  const [prazoTipo, setPrazoTipo] = useState<PrazoTipo>(item?.prazoRef?.tipo || "diaSeguinte");
+  const [prazoN, setPrazoN] = useState<number>(item?.prazoRef?.n ?? 1);
   const [geral, setGeral] = useState(!!item?.geral);
   const [linkTipo, setLinkTipo] = useState<LinkTipo>(item?.linkTipo || "nenhum");
   const [modulo, setModulo] = useState<ModuleId | "">(item?.modulo || "");
   const [respId, setRespId] = useState<string | null>(item?.responsavelId || null);
-  const [respNome, setRespNome] = useState(item?.responsavelNome || "");
-  const [busca, setBusca] = useState(item?.responsavelId ? (pessoas.find(p => p.id === item.responsavelId)?.nome || "") : (item?.responsavelNome || ""));
+  const [busca, setBusca] = useState(item?.responsavelId ? (pessoas.find(p => p.id === item.responsavelId)?.nome || "") : "");
   const [aberto, setAberto] = useState(false);
   const boxRef = useRef<HTMLDivElement>(null);
 
@@ -481,16 +532,19 @@ function ItemModal({ item, pessoas, secoesExistentes, onClose, onSave }: {
     return pessoas.filter(p => p.nome.toLowerCase().includes(q)).slice(0, 8);
   }, [busca, pessoas]);
 
+  const prazoPreview = Number.isFinite(prazoN) ? resolverPrazo({ tipo: prazoTipo, n: prazoN }, comp) : null;
+
   function salvar() {
     if (!secao.trim() || !titulo.trim()) return;
     onSave({
       id: item?.id || uid(),
       secao: secao.trim(),
       titulo: titulo.trim(),
-      prazo: prazo.trim() || null,
+      prazoRef: { tipo: prazoTipo, n: Math.max(0, Math.min(prazoN || 0, 60)) },
+      prazo: null,
       geral,
       responsavelId: respId,
-      responsavelNome: respId ? null : (respNome.trim() || null),
+      responsavelNome: respId ? null : (item?.responsavelNome || null),  // preserva só sugestão do checklist
       linkTipo,
       modulo: linkTipo === "modulo" ? (modulo || null) : null,
       aplica: item?.aplica,
@@ -512,27 +566,44 @@ function ItemModal({ item, pessoas, secoesExistentes, onClose, onSave }: {
           <label className="block text-xs font-medium text-gray-500 mb-1">Tarefa *</label>
           <input className={inputCls} value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="Ex.: Extrato Itaú" />
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div>
-            <label className="block text-xs font-medium text-gray-500 mb-1">Prazo</label>
-            <input className={inputCls} value={prazo} onChange={e => setPrazo(e.target.value)} placeholder="dia 1 · D+3 · 31" />
+        {/* Prazo estruturado — vira data real a cada competência */}
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Prazo (relativo à competência)</label>
+          <div className="grid grid-cols-1 sm:grid-cols-[1fr_auto] gap-2">
+            <select className={inputCls} value={prazoTipo} onChange={e => setPrazoTipo(e.target.value as PrazoTipo)}>
+              {(Object.keys(PRAZO_TIPO_LABEL) as PrazoTipo[]).map(t => <option key={t} value={t}>{PRAZO_TIPO_LABEL[t]}</option>)}
+            </select>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-gray-500">{prazoTipo === "dplus" ? "N =" : "dia"}</span>
+              <input type="number" min={0} max={60} className={`${inputCls} w-20`} value={prazoN}
+                onChange={e => setPrazoN(Number(e.target.value))} />
+            </div>
           </div>
-          <div ref={boxRef} className="relative">
-            <label className="block text-xs font-medium text-gray-500 mb-1">Responsável</label>
-            <input className={inputCls} value={busca} onFocus={() => setAberto(true)}
-              onChange={e => { setBusca(e.target.value); setRespId(null); setRespNome(e.target.value); setAberto(true); }}
-              placeholder="Buscar pessoa…" />
-            {aberto && sugestoes.length > 0 && (
-              <div className="absolute z-10 mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg max-h-52 overflow-y-auto">
-                {sugestoes.map(p => (
-                  <button key={p.id} className="block w-full text-left px-3 py-1.5 text-sm text-gray-900 dark:text-gray-100 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
-                    onClick={() => { setRespId(p.id); setRespNome(""); setBusca(p.nome); setAberto(false); }}>
-                    {p.nome}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          <p className="text-xs text-gray-500 mt-1">
+            Para <b>{compLabel(comp)}</b>, vence em <b className="text-gray-700 dark:text-gray-200 tabular-nums">{prazoPreview ? fmtBR(prazoPreview) : "—"}</b>.
+          </p>
+        </div>
+        {/* Responsável — obrigatoriamente um usuário do sistema */}
+        <div ref={boxRef} className="relative">
+          <label className="block text-xs font-medium text-gray-500 mb-1">Responsável (usuário do sistema)</label>
+          <input className={inputCls} value={busca} onFocus={() => setAberto(true)}
+            onChange={e => { setBusca(e.target.value); setRespId(null); setAberto(true); }}
+            placeholder="Buscar pessoa…" />
+          {respId && <button className="absolute right-2 top-[30px] text-xs text-gray-400 hover:text-gray-700" title="Limpar"
+            onClick={() => { setRespId(null); setBusca(""); }}>✕</button>}
+          {aberto && sugestoes.length > 0 && (
+            <div className="absolute z-10 mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg max-h-52 overflow-y-auto">
+              {sugestoes.map(p => (
+                <button key={p.id} className="block w-full text-left px-3 py-1.5 text-sm text-gray-900 dark:text-gray-100 hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
+                  onClick={() => { setRespId(p.id); setBusca(p.nome); setAberto(false); }}>
+                  {p.nome}
+                </button>
+              ))}
+            </div>
+          )}
+          {!respId && item?.responsavelNome && (
+            <p className="text-xs text-amber-600 dark:text-amber-500 mt-1">Sugestão do checklist: <b>{item.responsavelNome}</b> — escolha o usuário correspondente.</p>
+          )}
         </div>
         <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
           <input type="checkbox" checked={geral} onChange={e => setGeral(e.target.checked)} />
