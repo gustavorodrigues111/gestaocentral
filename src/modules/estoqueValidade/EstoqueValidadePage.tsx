@@ -8,8 +8,9 @@
 //   • Painel  → saldo + o que vence (FEFO)
 //  Fluxos manuais primeiro; QR (baixa por scan) e OCR da NF entram como evolução.
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
+import QRCode from "qrcode";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -74,6 +75,7 @@ export function EstoqueValidadePage() {
   const [lotes, setLotes] = useState<LoteEstoque[]>([]);
   const [localModal, setLocalModal] = useState<{ local: LocalEstoque | null } | null>(null);
   const [prodModal, setProdModal] = useState<{ produto: ProdutoEtiqueta | null } | null>(null);
+  const [etiqModal, setEtiqModal] = useState<ProdutoEtiqueta | null>(null);
 
   useEffect(() => {
     if (!rid) return;
@@ -164,12 +166,13 @@ export function EstoqueValidadePage() {
           </div>
           {subCad === "locais"
             ? <LocaisTab locais={locais} restauranteNome={restaurante?.nome} podeEditar={podeEditar} onNovo={() => setLocalModal({ local: null })} onEditar={(l) => setLocalModal({ local: l })} onExcluir={excluirLocal} />
-            : <ProdutosTab produtos={produtos} podeEditar={podeEditar} onNovo={() => setProdModal({ produto: null })} onEditar={(p) => setProdModal({ produto: p })} onExcluir={excluirProduto} />}
+            : <ProdutosTab produtos={produtos} podeEditar={podeEditar} onNovo={() => setProdModal({ produto: null })} onEditar={(p) => setProdModal({ produto: p })} onExcluir={excluirProduto} onEtiqueta={(p) => setEtiqModal(p)} />}
         </div>
       )}
 
       {localModal && <LocalModal local={localModal.local} locais={locais} onClose={() => setLocalModal(null)} onSalvar={salvarLocal} />}
       {prodModal && <ProdutoModal produto={prodModal.produto} onClose={() => setProdModal(null)} onSalvar={salvarProduto} />}
+      {etiqModal && <EtiquetaFixaModal produto={etiqModal} onClose={() => setEtiqModal(null)} />}
     </div>
   );
 }
@@ -261,6 +264,13 @@ function BaixaTab({ produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
   const [qtd, setQtd] = useState("");
   const [msg, setMsg] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [scan, setScan] = useState(false);
+
+  function aoLerQr(code: string) {
+    setScan(false);
+    const p = produtos.find((x) => x.qrTokenEstoque === code && x.ativo);
+    if (p) { setSel(p); setMsg(""); } else { setMsg("QR não reconhecido neste restaurante."); }
+  }
 
   const achados = busca.trim() ? produtos.filter((p) => p.ativo && p.nome.toLowerCase().includes(busca.toLowerCase())).slice(0, 8) : [];
   const fila = sel ? lotesAtivos(sel.id).slice().sort(giroCmp(sel.regraGiro)) : [];
@@ -281,10 +291,13 @@ function BaixaTab({ produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
 
   return (
     <div className="space-y-3 max-w-lg">
-      <p className="text-xs text-gray-500">Escolha o produto (em breve: ler o QR já cai aqui). O sistema aponta de qual lote pegar pela regra de giro.</p>
+      <p className="text-xs text-gray-500">Leia o QR do produto (ou busque). O sistema aponta de qual lote pegar pela regra de giro.</p>
       {!sel ? (
         <div>
-          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔍 Buscar produto…" className={inp} autoFocus />
+          <div className="flex gap-2">
+            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔍 Buscar produto…" className={inp} autoFocus />
+            <Button variant="secondary" onClick={() => setScan(true)}>📷 QR</Button>
+          </div>
           {achados.length > 0 && (
             <div className="mt-1.5 space-y-1">
               {achados.map((p) => {
@@ -324,6 +337,7 @@ function BaixaTab({ produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
         </div>
       )}
       {msg && <div className={`text-sm rounded-lg px-3 py-2 ${msg.startsWith("✓") ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300" : "bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"}`}>{msg}</div>}
+      {scan && <ScannerModal onDetect={aoLerQr} onClose={() => setScan(false)} />}
     </div>
   );
 }
@@ -476,8 +490,8 @@ function LocaisTab({ locais, restauranteNome, podeEditar, onNovo, onEditar, onEx
 }
 
 // ═══ CADASTRO › PRODUTOS ═════════════════════════════════════════════════════
-function ProdutosTab({ produtos, podeEditar, onNovo, onEditar, onExcluir }: {
-  produtos: ProdutoEtiqueta[]; podeEditar: boolean; onNovo: () => void; onEditar: (p: ProdutoEtiqueta) => void; onExcluir: (p: ProdutoEtiqueta) => void;
+function ProdutosTab({ produtos, podeEditar, onNovo, onEditar, onExcluir, onEtiqueta }: {
+  produtos: ProdutoEtiqueta[]; podeEditar: boolean; onNovo: () => void; onEditar: (p: ProdutoEtiqueta) => void; onExcluir: (p: ProdutoEtiqueta) => void; onEtiqueta: (p: ProdutoEtiqueta) => void;
 }) {
   const [busca, setBusca] = useState("");
   const lista = produtos.filter((p) => !busca.trim() || p.nome.toLowerCase().includes(busca.toLowerCase())).sort((a, b) => a.nome.localeCompare(b.nome));
@@ -501,7 +515,10 @@ function ProdutosTab({ produtos, podeEditar, onNovo, onEditar, onExcluir }: {
                   {p.categoria && <span>· {p.categoria}</span>}
                 </div>
               </div>
-              {podeEditar && <div className="flex items-center gap-1 shrink-0"><button type="button" onClick={() => onEditar(p)} className="text-xs px-2 py-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Editar">✎</button><button type="button" onClick={() => onExcluir(p)} className="text-xs px-2 py-1 rounded text-gray-300 hover:text-rose-600" title="Excluir">🗑</button></div>}
+              <div className="flex items-center gap-1 shrink-0">
+                <button type="button" onClick={() => onEtiqueta(p)} className="text-xs px-2 py-1 rounded text-gray-400 hover:text-indigo-600" title="Etiqueta fixa (QR)">🏷️</button>
+                {podeEditar && <><button type="button" onClick={() => onEditar(p)} className="text-xs px-2 py-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Editar">✎</button><button type="button" onClick={() => onExcluir(p)} className="text-xs px-2 py-1 rounded text-gray-300 hover:text-rose-600" title="Excluir">🗑</button></>}
+              </div>
             </div>
           ))}
         </div>
@@ -593,6 +610,75 @@ function ProdutoModal({ produto, onClose, onSalvar }: {
         <div><label className="text-xs text-gray-500 block mb-1">Marca / Fornecedor <span className="text-gray-400">(opc.)</span></label><input value={marca} onChange={(e) => setMarca(e.target.value)} className={inp} /></div>
         <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer"><input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} /> Ativo</label>
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => void salvar()} disabled={salvando || !nome.trim() || !temMetodo}>{salvando ? "Salvando…" : produto ? "Salvar" : "Criar"}</Button></div>
+      </div>
+    </Modal>
+  );
+}
+
+// Etiqueta FIXA de estoque (1 por produto) com QR — imprime e cola no local.
+function EtiquetaFixaModal({ produto, onClose }: { produto: ProdutoEtiqueta; onClose: () => void }) {
+  const [qr, setQr] = useState("");
+  useEffect(() => { QRCode.toDataURL(produto.qrTokenEstoque, { width: 320, margin: 1 }).then(setQr).catch(() => setQr("")); }, [produto.qrTokenEstoque]);
+  function imprimir() {
+    const w = window.open("", "_blank", "width=420,height=560");
+    if (!w) return;
+    const nomeSafe = produto.nome.replace(/[<>&]/g, "");
+    w.document.write(`<!doctype html><html><head><title>Etiqueta ${nomeSafe}</title><style>*{font-family:system-ui,Arial,sans-serif}body{margin:0;padding:16px;text-align:center}.box{border:2px solid #111;border-radius:10px;padding:16px;display:inline-block;width:280px}.nome{font-size:20px;font-weight:800;margin:4px 0 2px}.tag{font-size:11px;letter-spacing:2px;color:#555}img{width:200px;height:200px}.hint{font-size:11px;color:#555;margin-top:6px}</style></head><body onload="window.print()"><div class="box"><div class="tag">ESTOQUE &middot; ${produto.regraGiro.toUpperCase()}</div><div class="nome">${nomeSafe}</div><img src="${qr}"/><div class="hint">Leia este QR no app pra dar baixa</div></div></body></html>`);
+    w.document.close();
+  }
+  return (
+    <Modal title="Etiqueta fixa de estoque" onClose={onClose} maxWidth="max-w-sm">
+      <div className="text-center space-y-3">
+        <div className="inline-block border-2 border-gray-900 dark:border-gray-100 rounded-xl p-4">
+          <div className="text-[10px] tracking-widest text-gray-500">ESTOQUE · {produto.regraGiro.toUpperCase()}</div>
+          <div className="text-lg font-extrabold text-gray-900 dark:text-gray-100">{produto.nome}</div>
+          {qr ? <img src={qr} alt="QR" className="w-40 h-40 mx-auto" /> : <div className="w-40 h-40 mx-auto flex items-center justify-center text-xs text-gray-400">gerando…</div>}
+          <div className="text-[11px] text-gray-500">Leia este QR no app pra dar baixa</div>
+        </div>
+        <p className="text-xs text-gray-500">Cole no local do estoque. Uma etiqueta fixa por produto — os lotes ficam no sistema.</p>
+        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={onClose}>Fechar</Button><Button onClick={imprimir} disabled={!qr}>🖨️ Imprimir</Button></div>
+      </div>
+    </Modal>
+  );
+}
+
+// Leitor de QR (câmera via BarcodeDetector nativo) — fallback: digitar o código.
+type BarcodeDetectorLike = { detect: (s: CanvasImageSource) => Promise<Array<{ rawValue: string }>> };
+function ScannerModal({ onDetect, onClose }: { onDetect: (code: string) => void; onClose: () => void }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [erro, setErro] = useState("");
+  const [manual, setManual] = useState("");
+  useEffect(() => {
+    let stream: MediaStream | null = null; let raf = 0; let parar = false;
+    const Ctor = (window as unknown as { BarcodeDetector?: new (o: { formats: string[] }) => BarcodeDetectorLike }).BarcodeDetector;
+    (async () => {
+      if (!Ctor) { setErro("Leitura por câmera não suportada aqui — digite o código do QR."); return; }
+      try {
+        const det = new Ctor({ formats: ["qr_code"] });
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+        if (videoRef.current) { videoRef.current.srcObject = stream; await videoRef.current.play(); }
+        const tick = async () => {
+          if (parar || !videoRef.current) return;
+          try { const codes = await det.detect(videoRef.current); const v = codes[0]?.rawValue; if (v) { onDetect(v); return; } } catch { /* frame ruim */ }
+          raf = requestAnimationFrame(tick);
+        };
+        void tick();
+      } catch { setErro("Não consegui abrir a câmera — digite o código do QR."); }
+    })();
+    return () => { parar = true; if (raf) cancelAnimationFrame(raf); if (stream) stream.getTracks().forEach((t) => t.stop()); };
+  }, [onDetect]);
+  return (
+    <Modal title="Ler QR do produto" onClose={onClose} maxWidth="max-w-sm">
+      <div className="space-y-3">
+        {!erro ? (
+          <div className="rounded-xl overflow-hidden bg-black aspect-square"><video ref={videoRef} className="w-full h-full object-cover" muted playsInline /></div>
+        ) : (
+          <p className="text-sm text-amber-600 dark:text-amber-400">{erro}</p>
+        )}
+        <div className="flex items-end gap-2">
+          <div className="flex-1"><label className="text-xs text-gray-500 block mb-1">Ou digite o código</label><input value={manual} onChange={(e) => setManual(e.target.value)} placeholder="qr_…" className={inp} /></div>
+          <Button onClick={() => manual.trim() && onDetect(manual.trim())} disabled={!manual.trim()}>OK</Button>
+        </div>
       </div>
     </Modal>
   );
