@@ -28,13 +28,29 @@ import { CentralConfig } from "./CentralConfig";
 import type { FaleDpMensagem, Pessoa } from "../../core/types";
 import { FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE } from "../../core/types";
 
-type AbaCentral = "avisos" | "whatsapp" | "historico" | "config";
+type AbaCentral = "semana" | "avisos" | "whatsapp" | "historico" | "config";
+
+// ── Helpers de semana (datas locais, sem UTC drift) ──
+const fmtYmd = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+const ymdHoje = () => fmtYmd(new Date());
+const addYmd = (ymd: string, n: number) => { const d = new Date(ymd + "T00:00:00"); d.setDate(d.getDate() + n); return fmtYmd(d); };
+const segundaDaSemana = (ymd: string) => { const d = new Date(ymd + "T00:00:00"); const dow = (d.getDay() + 6) % 7; d.setDate(d.getDate() - dow); return fmtYmd(d); };
+const WD = ["seg", "ter", "qua", "qui", "sex", "sáb", "dom"];
+const MES_CURTO = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
+// Cor por categoria (rótulo do módulo de origem do aviso).
+const CAT_COR: Record<string, string> = {
+  "Prazos": "#0369a1", "Rotinas": "#7c3aed", "Vendas": "#0f766e", "Faturas": "#7c3aed",
+  "Monitor de falhas": "#dc2626", "Enviados a você": "#b45309", "Fechamento Financeiro": "#0f766e",
+  "Reuniões": "#be185d", "Tarefas": "#4f46e5", "Checklists": "#15803d", "Wiki de Processos": "#0891b2",
+  "Fale com DP": "#b45309",
+};
+const catCor = (c: string) => CAT_COR[c] || "#64748b";
 
 export function ChatPage() {
   const { pessoa } = useAuth();
   const { restaurants, activeRestaurant, setActiveId } = useRestaurant();
   const navigate = useNavigate();
-  const { inbox, historico, marcarLido, marcarNaoLido, marcarTodosLidos } = useAvisosCentral();
+  const { inbox, historico, todos, marcarLido, marcarNaoLido, marcarTodosLidos } = useAvisosCentral();
 
   const isMaster = !!pessoa?.isMaster;
   const { can } = useCanAcao(activeRestaurant?.id || "");
@@ -43,7 +59,8 @@ export function ChatPage() {
   const podeConfig = isMaster || can("whatsapp", "configurar");
 
   const multiRest = restaurants.length > 1;
-  const [aba, setAba] = useState<AbaCentral>("avisos");
+  const [aba, setAba] = useState<AbaCentral>("semana");
+  const lidosIds = useMemo(() => new Set(historico.map(a => a.id)), [historico]);
   const [filtroRestAvisos, setFiltroRestAvisos] = useState<string>("all");
   const [msgAberta, setMsgAberta] = useState<{ msg: FaleDpMensagem; nome: string } | null>(null);
 
@@ -87,15 +104,15 @@ export function ChatPage() {
   }
 
   return (
-    <div className="p-4 sm:p-6 max-w-3xl mx-auto">
+    <div className={`p-4 sm:p-6 mx-auto ${aba === "semana" ? "max-w-6xl" : "max-w-3xl"}`}>
       <header className="mb-4">
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-          💬 Central de Avisos
+          🎛️ Minha Central
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-          O que precisa da sua atenção{multiRest ? " em todos os seus restaurantes" : ""}.
+          Tudo que é seu, no dia certo{multiRest ? " — em todos os seus restaurantes" : ""}.
           {inbox.length > 0 && (
-            <span className="ml-1">{inbox.length} {inbox.length === 1 ? "aviso" : "avisos"} na caixa de entrada.</span>
+            <span className="ml-1">{inbox.length} {inbox.length === 1 ? "pendência" : "pendências"} na caixa.</span>
           )}
         </p>
       </header>
@@ -103,6 +120,7 @@ export function ChatPage() {
       {/* Abas */}
       <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {([
+          { k: "semana" as const, label: "🗓️ Minha Semana", n: 0, alerta: false },
           { k: "avisos" as const, label: "📥 Avisos do sistema", n: inbox.length, alerta: true },
           ...(podeSistema ? [{ k: "whatsapp" as const, label: "📣 WhatsApp do sistema", n: 0, alerta: false }] : []),
           { k: "historico" as const, label: "🗂️ Histórico", n: historico.length, alerta: false },
@@ -126,6 +144,13 @@ export function ChatPage() {
           </button>
         ))}
       </div>
+
+      {aba === "semana" && (
+        <SemanaView
+          todos={todos} lidosIds={lidosIds} multiRest={multiRest}
+          onAbrir={abrirAviso} marcarLido={marcarLido} concluirRotina={concluirRotinaAviso}
+        />
+      )}
 
       {aba === "avisos" && (
         inbox.length === 0 ? (
@@ -232,6 +257,142 @@ export function ChatPage() {
           onClose={() => setMsgAberta(null)}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Minha Semana — calendário que agrega tudo do usuário por dia ───────────
+function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirRotina }: {
+  todos: Aviso[];
+  lidosIds: Set<string>;
+  multiRest: boolean;
+  onAbrir: (a: Aviso) => void;
+  marcarLido: (a: Aviso) => void;
+  concluirRotina: (a: Aviso) => void;
+}) {
+  const navigate = useNavigate();
+  const { activeRestaurant } = useRestaurant();
+  const { can } = useCanAcao(activeRestaurant?.id || "");
+  const [ref, setRef] = useState(ymdHoje());
+  const hoje = ymdHoje();
+  const seg = useMemo(() => segundaDaSemana(ref), [ref]);
+  const dias = useMemo(() => Array.from({ length: 7 }, (_, i) => addYmd(seg, i)), [seg]);
+  const fim = dias[6];
+
+  // Bucketiza os avisos por dia; fora da semana e vencidos/sem-data caem no topo.
+  const { porDia, atrasados } = useMemo(() => {
+    const pd: Record<string, Aviso[]> = {}; dias.forEach(d => (pd[d] = []));
+    const atr: Aviso[] = [];
+    for (const a of todos) {
+      const em = (a.em || "").slice(0, 10);
+      const semData = !a.em || a.em >= "9999";
+      if (semData) { if (!lidosIds.has(a.id)) atr.push(a); continue; }
+      if (em >= seg && em <= fim) pd[em].push(a);
+      else if (em < hoje && !lidosIds.has(a.id)) atr.push(a);
+    }
+    Object.values(pd).forEach(arr => arr.sort((x, y) => (x.em || "").localeCompare(y.em || "")));
+    atr.sort((x, y) => (x.em || "").localeCompare(y.em || ""));
+    return { porDia: pd, atrasados: atr };
+  }, [todos, dias, seg, fim, hoje, lidosIds]);
+
+  const rangeLabel = `${Number(seg.slice(8))} – ${Number(fim.slice(8))} de ${MES_CURTO[Number(fim.slice(5, 7)) - 1]}`;
+  const onCheck = (a: Aviso) => (a.rotina ? concluirRotina(a) : marcarLido(a));
+
+  // Botões de ação — só dos módulos que a pessoa pode acessar.
+  const podeVer = (mod: string, ...acts: string[]) => acts.some(x => can(mod, x));
+  const acoes = [
+    { mod: "tarefas", label: "+ Tarefa", cor: "#4f46e5", ok: podeVer("tarefas", "verProprias", "criar", "editarTodas") },
+    { mod: "prazos", label: "+ Prazo", cor: "#0369a1", ok: podeVer("prazos", "ver", "criar", "operar") },
+    { mod: "fechamentoFin", label: "Fechamento", cor: "#0f766e", ok: podeVer("fechamentoFin", "ver", "operar") },
+    { mod: "checklists", label: "Checklists", cor: "#15803d", ok: podeVer("checklists", "ver", "operar") },
+  ].filter(a => a.ok);
+
+  return (
+    <div>
+      {/* Barra: navegação de semana + ações */}
+      <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+        <div className="flex items-center gap-1.5">
+          <div className="flex items-center rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+            <button className="px-3 py-1.5 text-gray-500 hover:text-gray-900 dark:hover:text-gray-100" onClick={() => setRef(addYmd(seg, -7))} title="Semana anterior">‹</button>
+            <span className="px-2 text-sm font-semibold text-gray-800 dark:text-gray-100 min-w-[130px] text-center">{rangeLabel}</span>
+            <button className="px-3 py-1.5 text-gray-500 hover:text-gray-900 dark:hover:text-gray-100" onClick={() => setRef(addYmd(seg, 7))} title="Próxima semana">›</button>
+          </div>
+          <button className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-sm font-medium text-gray-700 dark:text-gray-200" onClick={() => setRef(ymdHoje())}>Hoje</button>
+        </div>
+        {acoes.length > 0 && activeRestaurant && (
+          <div className="flex flex-wrap gap-1.5">
+            {acoes.map(a => (
+              <button key={a.mod} onClick={() => navigate(`/r/${activeRestaurant.id}/${a.mod}`)}
+                className="inline-flex items-center gap-1.5 rounded-full border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-1.5 text-xs font-semibold text-gray-700 dark:text-gray-200 hover:border-indigo-400">
+                <span className="w-1.5 h-1.5 rounded-full" style={{ background: a.cor }} />{a.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Atrasados & sem data */}
+      {atrasados.length > 0 && (
+        <div className="mb-3 rounded-xl border border-amber-300 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/20 p-2.5">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-500 mb-1.5 px-1">⚠️ Atrasados & sem data ({atrasados.length})</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+            {atrasados.slice(0, 12).map(a => (
+              <MiniCard key={a.id} a={a} lido={lidosIds.has(a.id)} multiRest={multiRest} onAbrir={() => onAbrir(a)} onCheck={() => onCheck(a)} />
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Grade da semana */}
+      <div className="grid grid-cols-1 md:grid-cols-7 gap-2">
+        {dias.map(d => {
+          const ehHoje = d === hoje;
+          const itens = porDia[d];
+          return (
+            <div key={d} className={`rounded-xl border min-h-[120px] md:min-h-[300px] flex flex-col overflow-hidden ${ehHoje ? "border-amber-400 dark:border-amber-600 bg-amber-50/40 dark:bg-amber-950/10" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
+              <div className="px-2.5 py-2 border-b border-gray-100 dark:border-gray-800/70 flex items-baseline justify-between">
+                <span className="text-[10px] uppercase tracking-wide font-bold text-gray-400">{WD[dias.indexOf(d)]}</span>
+                <span className={`text-sm font-extrabold ${ehHoje ? "text-amber-600 dark:text-amber-500" : "text-gray-800 dark:text-gray-100"}`}>
+                  {Number(d.slice(8))}{ehHoje && <span className="ml-1 text-[8px] align-middle font-black text-white bg-amber-500 rounded-full px-1.5 py-0.5">HOJE</span>}
+                </span>
+              </div>
+              <div className="p-1.5 flex flex-col gap-1.5 flex-1">
+                {itens.length === 0
+                  ? <span className="text-[11px] text-gray-300 dark:text-gray-700 m-auto">—</span>
+                  : itens.map(a => <MiniCard key={a.id} a={a} lido={lidosIds.has(a.id)} multiRest={multiRest} onAbrir={() => onAbrir(a)} onCheck={() => onCheck(a)} />)}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-3 px-1">
+        Cada card vem de um módulo (Prazos, Fechamento, Rotinas, Tarefas, Avisos…) filtrado por você. Marcar ✓ dá baixa no módulo de origem.
+      </p>
+    </div>
+  );
+}
+
+function MiniCard({ a, lido, multiRest, onAbrir, onCheck }: {
+  a: Aviso; lido: boolean; multiRest: boolean; onAbrir: () => void; onCheck: () => void;
+}) {
+  const cor = catCor(a.categoria);
+  const vencido = !lido && a.em && a.em < ymdHoje() && a.em < "9999";
+  return (
+    <div onClick={onAbrir} style={{ borderLeftColor: vencido ? "#dc2626" : cor }}
+      className={`group border border-gray-100 dark:border-gray-800 border-l-[3px] rounded-lg px-2 py-1.5 cursor-pointer bg-gray-50/60 dark:bg-gray-800/40 hover:bg-gray-100 dark:hover:bg-gray-800 ${lido ? "opacity-60" : ""}`}>
+      <div className="flex items-start gap-1.5">
+        <button onClick={(e) => { e.stopPropagation(); onCheck(); }} title={lido ? "Concluído" : "Marcar como feito"}
+          style={{ borderColor: cor, background: lido ? cor : "transparent" }}
+          className="shrink-0 mt-0.5 w-4 h-4 rounded-[5px] border-[1.5px] flex items-center justify-center text-[10px] text-white leading-none">{lido ? "✓" : ""}</button>
+        <div className="min-w-0 flex-1">
+          <div className={`text-[12px] font-medium leading-tight ${lido ? "line-through text-gray-400 dark:text-gray-500" : "text-gray-900 dark:text-gray-100"}`}>{a.titulo}</div>
+          <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+            <span className="text-[9px] font-bold uppercase tracking-wide" style={{ color: vencido ? "#dc2626" : cor }}>{a.categoria}</span>
+            {multiRest && <span className="text-[9px] text-gray-400 truncate max-w-[90px]">{a.restauranteNome}</span>}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
