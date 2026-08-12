@@ -231,6 +231,7 @@ service cloud.firestore {
     match /produtosEtiqueta/{id}    { allow read, write: if authed(); }
     match /lotesEstoque/{id}        { allow read, write: if authed(); }
     match /movimentosEstoque/{id}   { allow read, write: if authed(); }
+    match /entradasPendentes/{id}   { allow read, write: if authed(); }
     match /etiquetas/{id}           { allow read, write: if authed(); }
     match /etiquetaConfig/{id}      { allow read, write: if authed(); }
     match /fechamentosCaixa/{id}    { allow read, write: if authed(); }

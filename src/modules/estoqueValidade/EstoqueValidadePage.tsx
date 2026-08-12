@@ -19,6 +19,7 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import { type LocalEstoque, type LocalEstoqueTipo, LOCAL_ESTOQUE_TIPO_LABEL } from "../../core/types";
+import { type EntradaPendente } from "./entradasPendentes";
 
 // ── Tipos locais do módulo (promover pra types/index.ts quando estabilizar) ──
 type MetodoKey = "refrigerado" | "congelado" | "ambiente" | "seco" | "quente";
@@ -73,6 +74,7 @@ export function EstoqueValidadePage() {
   const [locais, setLocais] = useState<LocalEstoque[]>([]);
   const [produtos, setProdutos] = useState<ProdutoEtiqueta[]>([]);
   const [lotes, setLotes] = useState<LoteEstoque[]>([]);
+  const [pendentes, setPendentes] = useState<EntradaPendente[]>([]);
   const [localModal, setLocalModal] = useState<{ local: LocalEstoque | null } | null>(null);
   const [prodModal, setProdModal] = useState<{ produto: ProdutoEtiqueta | null } | null>(null);
   const [etiqModal, setEtiqModal] = useState<ProdutoEtiqueta | null>(null);
@@ -83,6 +85,7 @@ export function EstoqueValidadePage() {
       onSnapshot(query(collection(db, "locaisEstoque"), where("restaurantId", "==", rid)), (s) => setLocais(s.docs.map((d) => ({ id: d.id, ...d.data() }) as LocalEstoque)), () => setLocais([])),
       onSnapshot(query(collection(db, "produtosEtiqueta"), where("restaurantId", "==", rid)), (s) => setProdutos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as ProdutoEtiqueta)), () => setProdutos([])),
       onSnapshot(query(collection(db, "lotesEstoque"), where("restaurantId", "==", rid)), (s) => setLotes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as LoteEstoque)), () => setLotes([])),
+      onSnapshot(query(collection(db, "entradasPendentes"), where("restaurantId", "==", rid)), (s) => setPendentes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as EntradaPendente).filter((p) => p.status === "pendente")), () => setPendentes([])),
     ];
     return () => subs.forEach((u) => u());
   }, [rid]);
@@ -120,6 +123,10 @@ export function EstoqueValidadePage() {
       fornecedor: v.fornecedor || null, precoUnit: v.produto.precoCusto ?? null, status: "ativo", criadoEm: nowIso, criadoPor: me?.id || null,
     });
     await addDoc(collection(db, "movimentosEstoque"), { restaurantId: rid, loteId: ref.id, produtoId: v.produto.id, tipo: "entrada", qtd: v.qtd, saldoDepois: v.qtd, usuarioUid: me?.id || null, usuarioNome: me?.nome || null, ts: nowIso });
+    return ref.id;
+  }
+  async function resolverPendente(id: string, loteId: string | null, status: "confirmada" | "descartada") {
+    await updateDoc(doc(db, "entradasPendentes", id), { status, loteId: loteId ?? null, resolvidoEm: new Date().toISOString(), resolvidoPor: me?.id || null });
   }
 
   // ── Baixa (consome dos lotes na ordem do giro) ──
@@ -155,7 +162,7 @@ export function EstoqueValidadePage() {
 
       {aba === "painel" && <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} />}
       {aba === "baixa" && <BaixaTab produtos={produtos} lotesAtivos={lotesAtivosDoProduto} localNome={localNome} podeOperar={podeOperar} onBaixa={darBaixa} />}
-      {aba === "entrada" && <EntradaTab produtos={produtos} locais={locais} lotesAtivos={lotesAtivosDoProduto} podeOperar={podeOperar} onEntrada={darEntrada} />}
+      {aba === "entrada" && <EntradaTab produtos={produtos} locais={locais} lotesAtivos={lotesAtivosDoProduto} podeOperar={podeOperar} onEntrada={darEntrada} pendentes={pendentes} onResolver={resolverPendente} />}
       {aba === "cadastro" && (
         <div>
           <div className="flex gap-1.5 mb-4 border-b border-gray-200 dark:border-gray-800 pb-2">
@@ -343,9 +350,10 @@ function BaixaTab({ produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
 }
 
 // ═══ ENTRADA ═════════════════════════════════════════════════════════════════
-function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada }: {
+function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pendentes, onResolver }: {
   produtos: ProdutoEtiqueta[]; locais: LocalEstoque[]; lotesAtivos: (id: string) => LoteEstoque[];
-  podeOperar: boolean; onEntrada: (v: { produto: ProdutoEtiqueta; qtd: number; validade: string; localId: string; fornecedor?: string }) => Promise<void>;
+  podeOperar: boolean; onEntrada: (v: { produto: ProdutoEtiqueta; qtd: number; validade: string; localId: string; fornecedor?: string }) => Promise<string>;
+  pendentes: EntradaPendente[]; onResolver: (id: string, loteId: string | null, status: "confirmada" | "descartada") => Promise<void>;
 }) {
   const [busca, setBusca] = useState("");
   const [sel, setSel] = useState<ProdutoEtiqueta | null>(null);
@@ -356,9 +364,17 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada }: {
   const [fornecedor, setFornecedor] = useState("");
   const [msg, setMsg] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [pendenteAtivo, setPendenteAtivo] = useState<EntradaPendente | null>(null);
 
   const achados = busca.trim() ? produtos.filter((p) => p.ativo && p.nome.toLowerCase().includes(busca.toLowerCase())).slice(0, 8) : [];
   const metodosDoProduto = sel ? METODOS.filter((m) => sel.conservacao[m.k] != null) : [];
+
+  // "Lançar" um pendente do recebimento → pré-preenche pra o usuário casar o produto.
+  function lancarPendente(p: EntradaPendente) {
+    setPendenteAtivo(p); setBusca(p.descricaoNota); setMsg("");
+    if (p.quantidade != null) setQtd(String(p.quantidade));
+    if (p.fornecedor) setFornecedor(p.fornecedor);
+  }
 
   function escolher(p: ProdutoEtiqueta) {
     setSel(p); setMsg("");
@@ -392,7 +408,8 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada }: {
     setSalvando(true);
     try {
       const instr = instrucaoArrumacao(sel, validade);
-      await onEntrada({ produto: sel, qtd: n, validade, localId, fornecedor: fornecedor || undefined });
+      const loteId = await onEntrada({ produto: sel, qtd: n, validade, localId, fornecedor: fornecedor || undefined });
+      if (pendenteAtivo) { await onResolver(pendenteAtivo.id, loteId, "confirmada"); setPendenteAtivo(null); }
       setMsg(`✓ Entrada de ${n} ${sel.unidade} de ${sel.nome} (vence ${fmtBR(validade)}). ${instr}`);
       setSel(null); setQtd(""); setValidadeBr(""); setLocalId(""); setFornecedor(""); setBusca(""); setMetodo("");
     } finally { setSalvando(false); }
@@ -400,9 +417,28 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada }: {
 
   return (
     <div className="space-y-3 max-w-lg">
-      <p className="text-xs text-gray-500">Entrada manual (em breve: foto da NF pré-preenche). Informe a validade do lote — o sistema diz onde arrumar (PVPS/PEPS).</p>
+      <p className="text-xs text-gray-500">Confirme os <b>pendentes do recebimento</b> (a NF vira rascunho aqui) ou dê entrada manual. Informe a validade — o sistema diz onde arrumar (PVPS/PEPS).</p>
       {!sel ? (
         <div>
+          {pendentes.length > 0 && (
+            <div className="mb-3">
+              <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1.5">📥 Pendentes do recebimento ({pendentes.length})</div>
+              <div className="space-y-1.5">
+                {pendentes.map((p) => (
+                  <div key={p.id} className="rounded-lg border border-indigo-200 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/20 p-2.5 flex items-center justify-between gap-2">
+                    <div className="min-w-0 text-sm">
+                      <div className="font-medium text-gray-800 dark:text-gray-100 truncate">{p.descricaoNota}</div>
+                      <div className="text-[11px] text-gray-500">{p.quantidade != null ? `${p.quantidade} ${p.unidade || ""}` : "qtd —"}{p.fornecedor ? ` · ${p.fornecedor}` : ""}</div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <Button size="sm" onClick={() => lancarPendente(p)}>Lançar</Button>
+                      <button type="button" onClick={() => void onResolver(p.id, null, "descartada")} className="text-xs px-2 py-1 text-gray-400 hover:text-rose-600" title="Descartar">✕</button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔍 Buscar produto…" className={inp} autoFocus />
           {achados.length > 0 && (
             <div className="mt-1.5 space-y-1">

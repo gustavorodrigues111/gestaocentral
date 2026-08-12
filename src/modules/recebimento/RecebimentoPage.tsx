@@ -36,6 +36,7 @@ async function subirArquivo(parentId: string, file: File): Promise<{ id: string;
   return { id: s.id, name: s.name, ...(s.webViewLink ? { webViewLink: s.webViewLink } : {}) };
 }
 import { exportarRecebimentosPDF, exportarRecebimentosXLSX } from "./exportRecebimentos";
+import { criarPendentesEntrada } from "../estoqueValidade/entradasPendentes";
 
 // Arquivo → base64 (sem o prefixo data:...;base64,).
 function fileToBase64(file: File): Promise<string> {
@@ -1693,8 +1694,10 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
         ...(comprovantes.length ? { comprovantes } : {}),
         ...(fotoDiv ? { fotoDivergenciaDriveFileId: fotoDiv.id, ...(fotoDiv.url ? { fotoDivergenciaUrl: fotoDiv.url } : {}) } : {}),
       };
-      await addDoc(collection(db, "recebimentos"), nota);
+      const ref = await addDoc(collection(db, "recebimentos"), nota);
       setSalvo(true);
+      // Alimenta o Estoques e Validades com rascunhos de entrada (idempotente).
+      void criarPendentesEntrada(rid, ref.id, emissor.trim(), itens).catch(() => {});
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao salvar o recebimento.");
     } finally { setSalvando(false); }
