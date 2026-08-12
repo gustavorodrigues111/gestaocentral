@@ -1175,6 +1175,9 @@ export type Pessoa = {
   cpf?: string;                // obrigatório na UI nova; opcional só pra docs migrados sem CPF
   whatsapp?: string;
   whatsappOptIn?: boolean;     // aceita receber avisos/lembretes pelo WhatsApp
+  // Modo do módulo Tarefas: "simplificado" = lente enxuta da operação (mobile,
+  // conclui num toque); "avancado" = Gestor de Tarefas completo. Default avançado.
+  modoTarefa?: "simplificado" | "avancado";
   pix?: string;                // chave PIX (CPF, email, telefone ou chave aleatória) — obrigatório pra freelas
   // ── Acesso provisionado por WhatsApp (onboarding) ───────────────────────
   // Setado pelo botão "Convidar pra acessar": o sistema criou a conta no

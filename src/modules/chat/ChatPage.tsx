@@ -271,6 +271,7 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
   concluirRotina: (a: Aviso) => void;
 }) {
   const navigate = useNavigate();
+  const { pessoa } = useAuth();
   const { activeRestaurant } = useRestaurant();
   const { can } = useCanAcao(activeRestaurant?.id || "");
   const [ref, setRef] = useState(ymdHoje());
@@ -300,8 +301,10 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
 
   // Botões de ação — só dos módulos que a pessoa pode acessar.
   const podeVer = (mod: string, ...acts: string[]) => acts.some(x => can(mod, x));
+  // Modo de tarefa por usuário: simplificado abre a lente da operação; avançado o Gestor.
+  const tarefaMod = pessoa?.modoTarefa === "simplificado" ? "planoDeAcao" : "tarefas";
   const acoes = [
-    { mod: "tarefas", label: "+ Tarefa", cor: "#4f46e5", ok: podeVer("tarefas", "verProprias", "criar", "editarTodas") },
+    { mod: tarefaMod, label: "+ Tarefa", cor: "#4f46e5", ok: podeVer("tarefas", "verProprias", "criar", "editarTodas") || podeVer("planoDeAcao", "ver", "operar", "concluir") },
     { mod: "prazos", label: "+ Prazo", cor: "#0369a1", ok: podeVer("prazos", "ver", "criar", "operar") },
     { mod: "fechamentoFin", label: "Fechamento", cor: "#0f766e", ok: podeVer("fechamentoFin", "ver", "operar") },
     { mod: "checklists", label: "Checklists", cor: "#15803d", ok: podeVer("checklists", "ver", "operar") },

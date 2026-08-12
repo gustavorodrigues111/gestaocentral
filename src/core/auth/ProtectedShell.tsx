@@ -75,6 +75,7 @@ import { PrimeiroAcesso } from "./PrimeiroAcesso";
 function ModuleRouter() {
   const { moduleId, rid } = useParams<{ moduleId: string; rid: string }>();
   const { activeId, setActiveId } = useRestaurant();
+  const { pessoa } = useAuth();
 
   // Sincroniza activeId no contexto com o :rid da URL (URL é source of truth).
   // Usa useEffect pra não disparar setState durante render.
@@ -119,7 +120,7 @@ function ModuleRouter() {
     case "sites":         return <SitesPage key={k} />;
     case "cardapio":      return <CardapioPage key={k} />;
     case "uniformes":     return <UniformesPage key={k} />;
-    case "tarefas":       return <TarefasPage key={k} />;
+    case "tarefas":       return pessoa?.modoTarefa === "simplificado" ? <LenteEnxutaPage key={k} /> : <TarefasPage key={k} />;
     case "wikiProcessos": return <WikiProcessosPage key={k} />;
     case "iaGovernanca": return <IaGovernancaPage key={k} />;
     case "whatsapp": return <WhatsappPage key={k} />;
