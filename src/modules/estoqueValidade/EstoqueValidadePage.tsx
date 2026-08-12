@@ -1,11 +1,12 @@
 // ════════════════════════════════════════════════════════════════════════════
 //  Gestão de Estoques e Validades
 //
-//  Dois tipos de etiqueta: (A) Produção/Validade na cozinha; (B) Estoque/Lote —
-//  1 etiqueta FIXA por produto + lotes virtuais, baixa por QR com giro PVPS/PEPS.
-//  Este é o 1º corte: cadastro dos LOCAIS de estoque (geladeiras, câmaras,
-//  prateleiras, seco…) por loja — onde a etiqueta fixa mora e de onde sai a
-//  instrução de arrumação. Produtos/Entrada/Baixa/Validades entram nas próximas.
+//  Loop de estoque por LOTE com giro PVPS/PEPS:
+//   • Cadastro → Locais (geladeiras/câmaras/…) + Produtos (matriz de conservação)
+//   • Entrada → cria lote (qtd + validade + local) e diz onde arrumar (PVPS/PEPS)
+//   • Baixa   → escolhe produto, o sistema aponta o lote certo (giro) e baixa a qtd
+//   • Painel  → saldo + o que vence (FEFO)
+//  Fluxos manuais primeiro; QR (baixa por scan) e OCR da NF entram como evolução.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
@@ -18,8 +19,42 @@ import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import { type LocalEstoque, type LocalEstoqueTipo, LOCAL_ESTOQUE_TIPO_LABEL } from "../../core/types";
 
+// ── Tipos locais do módulo (promover pra types/index.ts quando estabilizar) ──
+type MetodoKey = "refrigerado" | "congelado" | "ambiente" | "seco" | "quente";
+type Conservacao = Partial<Record<MetodoKey, number>>;    // método → dias
+export type ProdutoEtiqueta = {
+  id: string; restaurantId: string; nome: string; categoria?: string;
+  conservacao: Conservacao; unidade: string; regraGiro: "fefo" | "fifo";
+  estoqueMinimo?: number | null; marcaFornecedor?: string | null; sif?: string | null;
+  precoCusto?: number | null; qrTokenEstoque: string; ativo: boolean; criadoEm: string;
+};
+export type LoteEstoque = {
+  id: string; restaurantId: string; produtoId: string; produtoNome: string;
+  localId?: string | null; qtdInicial: number; qtdRestante: number; unidade: string;
+  entradaData: string; validade: string; fornecedor?: string | null; precoUnit?: number | null;
+  status: "ativo" | "esgotado" | "descartado"; criadoEm: string; criadoPor?: string | null;
+};
+
+const METODOS: Array<{ k: MetodoKey; label: string; icon: string }> = [
+  { k: "refrigerado", label: "Refrigerado", icon: "🧊" },
+  { k: "congelado", label: "Congelado", icon: "❄️" },
+  { k: "ambiente", label: "Ambiente", icon: "🌡️" },
+  { k: "seco", label: "Seco", icon: "📦" },
+  { k: "quente", label: "Quente", icon: "🔥" },
+];
 const TIPOS = Object.keys(LOCAL_ESTOQUE_TIPO_LABEL) as LocalEstoqueTipo[];
 const inp = "w-full h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+
+// ── Datas (Brasília) ──
+const hojeYmd = () => new Date(Date.now() - 3 * 3600 * 1000).toISOString().slice(0, 10);
+const addDias = (ymd: string, n: number) => { const d = new Date(ymd + "T12:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
+const fmtBR = (ymd?: string) => (ymd ? ymd.split("-").reverse().join("/") : "—");
+const brToYmd = (br: string) => { const [d, m, a] = (br || "").split("/"); return d && m && a ? `${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}` : ""; };
+const diasAte = (ymd: string) => Math.round((new Date(ymd + "T12:00:00Z").getTime() - new Date(hojeYmd() + "T12:00:00Z").getTime()) / 86400000);
+const novoToken = () => "qr_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
+// Ordem de saída pela regra de giro: FEFO = validade + antiga; FIFO = entrada + antiga.
+const giroCmp = (regra: "fefo" | "fifo") => (a: LoteEstoque, b: LoteEstoque) =>
+  regra === "fifo" ? a.entradaData.localeCompare(b.entradaData) : a.validade.localeCompare(b.validade);
 
 export function EstoqueValidadePage() {
   const { pessoa: me } = useAuth();
@@ -29,57 +64,84 @@ export function EstoqueValidadePage() {
   const restaurante = restaurants.find((r) => r.id === rid) || null;
   const { can, loading: permLoading } = useCanAcao(rid);
   const podeVer = can("estoqueValidade", "ver");
+  const podeOperar = can("estoqueValidade", "operar") || can("estoqueValidade", "editar");
   const podeEditar = can("estoqueValidade", "editar");
 
-  const [aba, setAba] = useState<"locais" | "produtos" | "entrada" | "baixa" | "validades">("locais");
+  const [aba, setAba] = useState<"painel" | "baixa" | "entrada" | "cadastro">("painel");
+  const [subCad, setSubCad] = useState<"locais" | "produtos">("locais");
   const [locais, setLocais] = useState<LocalEstoque[]>([]);
-  const [modal, setModal] = useState<{ local: LocalEstoque | null } | null>(null);
+  const [produtos, setProdutos] = useState<ProdutoEtiqueta[]>([]);
+  const [lotes, setLotes] = useState<LoteEstoque[]>([]);
+  const [localModal, setLocalModal] = useState<{ local: LocalEstoque | null } | null>(null);
+  const [prodModal, setProdModal] = useState<{ produto: ProdutoEtiqueta | null } | null>(null);
 
   useEffect(() => {
     if (!rid) return;
-    const un = onSnapshot(
-      query(collection(db, "locaisEstoque"), where("restaurantId", "==", rid)),
-      (s) => setLocais(s.docs.map((d) => ({ id: d.id, ...d.data() }) as LocalEstoque)),
-      () => setLocais([]),
-    );
-    return () => un();
+    const subs = [
+      onSnapshot(query(collection(db, "locaisEstoque"), where("restaurantId", "==", rid)), (s) => setLocais(s.docs.map((d) => ({ id: d.id, ...d.data() }) as LocalEstoque)), () => setLocais([])),
+      onSnapshot(query(collection(db, "produtosEtiqueta"), where("restaurantId", "==", rid)), (s) => setProdutos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as ProdutoEtiqueta)), () => setProdutos([])),
+      onSnapshot(query(collection(db, "lotesEstoque"), where("restaurantId", "==", rid)), (s) => setLotes(s.docs.map((d) => ({ id: d.id, ...d.data() }) as LoteEstoque)), () => setLotes([])),
+    ];
+    return () => subs.forEach((u) => u());
   }, [rid]);
 
-  // Agrupa por tipo, ordenado.
-  const porTipo = useMemo(() => {
-    const m = new Map<LocalEstoqueTipo, LocalEstoque[]>();
-    for (const l of locais.slice().sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0) || a.nome.localeCompare(b.nome))) {
-      const arr = m.get(l.tipo) || []; arr.push(l); m.set(l.tipo, arr);
-    }
-    return m;
-  }, [locais]);
+  const localNome = (id?: string | null) => locais.find((l) => l.id === id)?.nome || "";
+  const lotesAtivosDoProduto = (produtoId: string) => lotes.filter((l) => l.produtoId === produtoId && l.status === "ativo" && l.qtdRestante > 0);
 
+  // ── Locais ──
   async function salvarLocal(l: Omit<LocalEstoque, "id" | "criadoEm"> & { id?: string }) {
-    if (l.id) {
-      await updateDoc(doc(db, "locaisEstoque", l.id), { nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, ativo: l.ativo });
-    } else {
-      await addDoc(collection(db, "locaisEstoque"), {
-        restaurantId: rid, nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, ativo: l.ativo,
-        ordem: locais.length, criadoEm: new Date().toISOString(), criadoPor: me?.id || null,
-      });
-    }
-    setModal(null);
+    if (l.id) await updateDoc(doc(db, "locaisEstoque", l.id), { nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, ativo: l.ativo });
+    else await addDoc(collection(db, "locaisEstoque"), { restaurantId: rid, nome: l.nome, tipo: l.tipo, paiId: l.paiId ?? null, ativo: l.ativo, ordem: locais.length, criadoEm: new Date().toISOString(), criadoPor: me?.id || null });
+    setLocalModal(null);
   }
-  async function excluirLocal(l: LocalEstoque) {
-    if (!confirm(`Excluir o local "${l.nome}"?`)) return;
-    await deleteDoc(doc(db, "locaisEstoque", l.id));
+  async function excluirLocal(l: LocalEstoque) { if (confirm(`Excluir o local "${l.nome}"?`)) await deleteDoc(doc(db, "locaisEstoque", l.id)); }
+
+  // ── Produtos ──
+  async function salvarProduto(p: Partial<ProdutoEtiqueta> & { id?: string }) {
+    const dados = {
+      nome: p.nome, categoria: p.categoria || null, conservacao: p.conservacao || {}, unidade: p.unidade || "unid",
+      regraGiro: p.regraGiro || "fefo", estoqueMinimo: p.estoqueMinimo ?? null, marcaFornecedor: p.marcaFornecedor || null,
+      sif: p.sif || null, precoCusto: p.precoCusto ?? null, ativo: p.ativo ?? true,
+    };
+    if (p.id) await updateDoc(doc(db, "produtosEtiqueta", p.id), dados);
+    else await addDoc(collection(db, "produtosEtiqueta"), { restaurantId: rid, ...dados, qrTokenEstoque: novoToken(), criadoEm: new Date().toISOString() });
+    setProdModal(null);
+  }
+  async function excluirProduto(p: ProdutoEtiqueta) { if (confirm(`Excluir o produto "${p.nome}"?`)) await deleteDoc(doc(db, "produtosEtiqueta", p.id)); }
+
+  // ── Entrada (cria lote) ──
+  async function darEntrada(v: { produto: ProdutoEtiqueta; qtd: number; validade: string; localId: string; fornecedor?: string }) {
+    const nowIso = new Date().toISOString();
+    const ref = await addDoc(collection(db, "lotesEstoque"), {
+      restaurantId: rid, produtoId: v.produto.id, produtoNome: v.produto.nome, localId: v.localId || null,
+      qtdInicial: v.qtd, qtdRestante: v.qtd, unidade: v.produto.unidade, entradaData: hojeYmd(), validade: v.validade,
+      fornecedor: v.fornecedor || null, precoUnit: v.produto.precoCusto ?? null, status: "ativo", criadoEm: nowIso, criadoPor: me?.id || null,
+    });
+    await addDoc(collection(db, "movimentosEstoque"), { restaurantId: rid, loteId: ref.id, produtoId: v.produto.id, tipo: "entrada", qtd: v.qtd, saldoDepois: v.qtd, usuarioUid: me?.id || null, usuarioNome: me?.nome || null, ts: nowIso });
+  }
+
+  // ── Baixa (consome dos lotes na ordem do giro) ──
+  async function darBaixa(produto: ProdutoEtiqueta, qtd: number): Promise<number> {
+    const ordered = lotesAtivosDoProduto(produto.id).sort(giroCmp(produto.regraGiro));
+    let rest = qtd; const nowIso = new Date().toISOString();
+    for (const lote of ordered) {
+      if (rest <= 0) break;
+      const tira = Math.min(rest, lote.qtdRestante);
+      const novoSaldo = Math.round((lote.qtdRestante - tira) * 1000) / 1000;
+      await updateDoc(doc(db, "lotesEstoque", lote.id), { qtdRestante: novoSaldo, status: novoSaldo <= 0 ? "esgotado" : "ativo" });
+      await addDoc(collection(db, "movimentosEstoque"), { restaurantId: rid, loteId: lote.id, produtoId: produto.id, tipo: "baixa", qtd: tira, saldoDepois: novoSaldo, usuarioUid: me?.id || null, usuarioNome: me?.nome || null, ts: nowIso });
+      rest = Math.round((rest - tira) * 1000) / 1000;
+    }
+    return rest; // > 0 = faltou estoque
   }
 
   if (permLoading) return null;
   if (!podeVer) return <div className="p-6 text-sm text-gray-500">Você não tem acesso à Gestão de Estoques e Validades.</div>;
 
-  const ABAS: Array<[typeof aba, string]> = [
-    ["locais", "📍 Locais"], ["produtos", "🏷️ Produtos"], ["entrada", "📥 Entrada"], ["baixa", "📤 Baixa"], ["validades", "⏰ Validades"],
-  ];
+  const ABAS: Array<[typeof aba, string]> = [["painel", "📊 Painel"], ["baixa", "📤 Baixa"], ["entrada", "📥 Entrada"], ["cadastro", "🗂️ Cadastro"]];
 
   return (
     <div className="max-w-4xl">
-      {/* Abas */}
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {ABAS.map(([k, l]) => (
           <button key={k} type="button" onClick={() => setAba(k)}
@@ -89,134 +151,448 @@ export function EstoqueValidadePage() {
         ))}
       </div>
 
-      {aba === "locais" ? (
+      {aba === "painel" && <PainelTab produtos={produtos} lotes={lotes} localNome={localNome} />}
+      {aba === "baixa" && <BaixaTab produtos={produtos} lotesAtivos={lotesAtivosDoProduto} localNome={localNome} podeOperar={podeOperar} onBaixa={darBaixa} />}
+      {aba === "entrada" && <EntradaTab produtos={produtos} locais={locais} lotesAtivos={lotesAtivosDoProduto} podeOperar={podeOperar} onEntrada={darEntrada} />}
+      {aba === "cadastro" && (
         <div>
-          <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-            <p className="text-xs text-gray-500 max-w-lg">
-              Onde os produtos ficam estocados{restaurante ? ` no ${restaurante.nome}` : ""} — geladeiras, câmaras, prateleiras, seco… É aqui que a etiqueta fixa mora e de onde sai a instrução de arrumação PVPS/PEPS.
-            </p>
-            {podeEditar && <Button size="sm" onClick={() => setModal({ local: null })}>+ Novo local</Button>}
+          <div className="flex gap-1.5 mb-4 border-b border-gray-200 dark:border-gray-800 pb-2">
+            {([["locais", "📍 Locais"], ["produtos", "🏷️ Produtos"]] as const).map(([k, l]) => (
+              <button key={k} type="button" onClick={() => setSubCad(k)}
+                className={`px-3 py-1.5 text-sm font-medium rounded-lg ${subCad === k ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{l}</button>
+            ))}
           </div>
+          {subCad === "locais"
+            ? <LocaisTab locais={locais} restauranteNome={restaurante?.nome} podeEditar={podeEditar} onNovo={() => setLocalModal({ local: null })} onEditar={(l) => setLocalModal({ local: l })} onExcluir={excluirLocal} />
+            : <ProdutosTab produtos={produtos} podeEditar={podeEditar} onNovo={() => setProdModal({ produto: null })} onEditar={(p) => setProdModal({ produto: p })} onExcluir={excluirProduto} />}
+        </div>
+      )}
 
-          {locais.length === 0 ? (
-            <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">
-              Nenhum local cadastrado ainda. {podeEditar ? "Comece cadastrando as geladeiras, câmaras e prateleiras." : ""}
-            </div>
-          ) : (
-            <div className="space-y-4">
-              {TIPOS.filter((t) => (porTipo.get(t) || []).length > 0).map((t) => (
-                <div key={t}>
-                  <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 flex items-center gap-1.5">
-                    <span>{LOCAL_ESTOQUE_TIPO_LABEL[t].icon}</span> {LOCAL_ESTOQUE_TIPO_LABEL[t].label}
+      {localModal && <LocalModal local={localModal.local} locais={locais} onClose={() => setLocalModal(null)} onSalvar={salvarLocal} />}
+      {prodModal && <ProdutoModal produto={prodModal.produto} onClose={() => setProdModal(null)} onSalvar={salvarProduto} />}
+    </div>
+  );
+}
+
+// ═══ PAINEL (saldo + FEFO) ═══════════════════════════════════════════════════
+function PainelTab({ produtos, lotes, localNome }: { produtos: ProdutoEtiqueta[]; lotes: LoteEstoque[]; localNome: (id?: string | null) => string }) {
+  const ativos = lotes.filter((l) => l.status === "ativo" && l.qtdRestante > 0);
+  const grupos = useMemo(() => {
+    const g = { vencido: [] as LoteEstoque[], hoje: [] as LoteEstoque[], amanha: [] as LoteEstoque[], semana: [] as LoteEstoque[] };
+    for (const l of ativos) {
+      const d = diasAte(l.validade);
+      if (d < 0) g.vencido.push(l); else if (d === 0) g.hoje.push(l); else if (d === 1) g.amanha.push(l); else if (d <= 7) g.semana.push(l);
+    }
+    for (const k of Object.keys(g) as (keyof typeof g)[]) g[k].sort((a, b) => a.validade.localeCompare(b.validade));
+    return g;
+  }, [ativos]);
+  const nomeProd = (id: string) => produtos.find((p) => p.id === id)?.nome || "—";
+
+  const cards: Array<[string, LoteEstoque[], string]> = [
+    ["Vencidos", grupos.vencido, "bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300"],
+    ["Vence hoje", grupos.hoje, "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-300"],
+    ["Amanhã", grupos.amanha, "bg-orange-50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-900 text-orange-700 dark:text-orange-300"],
+    ["Nesta semana", grupos.semana, "bg-emerald-50 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900 text-emerald-700 dark:text-emerald-300"],
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+        {cards.map(([label, arr, cls]) => (
+          <div key={label} className={`rounded-xl border p-3 ${cls}`}>
+            <div className="text-2xl font-bold">{arr.length}</div>
+            <div className="text-xs font-medium">{label}</div>
+          </div>
+        ))}
+      </div>
+
+      {[["🔴 Vencidos", grupos.vencido], ["🟡 Vence hoje / amanhã", [...grupos.hoje, ...grupos.amanha]], ["🟢 Nesta semana", grupos.semana]].map(([titulo, arr]) => (arr as LoteEstoque[]).length > 0 && (
+        <div key={titulo as string}>
+          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">{titulo as string}</div>
+          <div className="space-y-1.5">
+            {(arr as LoteEstoque[]).map((l) => {
+              const d = diasAte(l.validade);
+              return (
+                <div key={l.id} className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2.5 flex items-center justify-between gap-2 text-sm">
+                  <div className="min-w-0">
+                    <span className="font-medium text-gray-900 dark:text-gray-100">{nomeProd(l.produtoId)}</span>
+                    <span className="text-gray-400"> · {l.qtdRestante} {l.unidade}</span>
+                    {l.localId && <span className="text-gray-400"> · {localNome(l.localId)}</span>}
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {(porTipo.get(t) || []).map((l) => (
-                      <div key={l.id} className={`rounded-lg border p-3 flex items-center justify-between gap-2 ${l.ativo ? "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900" : "border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/20 opacity-70"}`}>
-                        <div className="min-w-0">
-                          <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{l.nome}</div>
-                          {l.paiId && <div className="text-[11px] text-gray-400 truncate">dentro de {locais.find((x) => x.id === l.paiId)?.nome || "—"}</div>}
-                          {!l.ativo && <div className="text-[11px] text-gray-400">inativo</div>}
-                        </div>
-                        {podeEditar && (
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button type="button" onClick={() => setModal({ local: l })} className="text-xs px-2 py-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Editar">✎</button>
-                            <button type="button" onClick={() => void excluirLocal(l)} className="text-xs px-2 py-1 rounded text-gray-300 hover:text-rose-600" title="Excluir">🗑</button>
-                          </div>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <span className={`text-xs whitespace-nowrap ${d < 0 ? "text-rose-600" : d <= 1 ? "text-amber-600" : "text-gray-500"}`}>{d < 0 ? `venceu ${fmtBR(l.validade)}` : `vence ${fmtBR(l.validade)}`}</span>
                 </div>
-              ))}
+              );
+            })}
+          </div>
+        </div>
+      ))}
+
+      {ativos.length === 0 && <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Sem estoque ativo. Dê entrada em produtos na aba <b>Entrada</b>.</div>}
+
+      {/* Saldo por produto */}
+      {produtos.length > 0 && (
+        <div>
+          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 mt-4">📦 Saldo por produto</div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {produtos.filter((p) => p.ativo).map((p) => {
+              const saldo = ativos.filter((l) => l.produtoId === p.id).reduce((a, l) => a + l.qtdRestante, 0);
+              const baixo = p.estoqueMinimo != null && saldo <= (p.estoqueMinimo || 0);
+              return (
+                <div key={p.id} className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2.5 flex items-center justify-between gap-2 text-sm">
+                  <span className="font-medium text-gray-800 dark:text-gray-100 truncate">{p.nome}</span>
+                  <span className={`tabular-nums whitespace-nowrap ${baixo ? "text-rose-600 font-semibold" : "text-gray-500"}`}>{saldo} {p.unidade}{baixo ? " ⚠" : ""}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══ BAIXA ═══════════════════════════════════════════════════════════════════
+function BaixaTab({ produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
+  produtos: ProdutoEtiqueta[]; lotesAtivos: (id: string) => LoteEstoque[]; localNome: (id?: string | null) => string;
+  podeOperar: boolean; onBaixa: (p: ProdutoEtiqueta, qtd: number) => Promise<number>;
+}) {
+  const [busca, setBusca] = useState("");
+  const [sel, setSel] = useState<ProdutoEtiqueta | null>(null);
+  const [qtd, setQtd] = useState("");
+  const [msg, setMsg] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  const achados = busca.trim() ? produtos.filter((p) => p.ativo && p.nome.toLowerCase().includes(busca.toLowerCase())).slice(0, 8) : [];
+  const fila = sel ? lotesAtivos(sel.id).slice().sort(giroCmp(sel.regraGiro)) : [];
+  const proximo = fila[0] || null;
+  const saldo = fila.reduce((a, l) => a + l.qtdRestante, 0);
+
+  if (!podeOperar) return <div className="p-6 text-sm text-gray-500">Você não tem permissão pra dar baixa.</div>;
+
+  async function confirmar() {
+    if (!sel) return;
+    const n = parseFloat((qtd || "").replace(",", "."));
+    if (!n || n <= 0) { setMsg("Informe a quantidade."); return; }
+    if (n > saldo) { setMsg(`Só há ${saldo} ${sel.unidade} em estoque.`); return; }
+    setSalvando(true);
+    try { await onBaixa(sel, n); setMsg(`✓ Baixa de ${n} ${sel.unidade} de ${sel.nome}.`); setSel(null); setQtd(""); setBusca(""); }
+    finally { setSalvando(false); }
+  }
+
+  return (
+    <div className="space-y-3 max-w-lg">
+      <p className="text-xs text-gray-500">Escolha o produto (em breve: ler o QR já cai aqui). O sistema aponta de qual lote pegar pela regra de giro.</p>
+      {!sel ? (
+        <div>
+          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔍 Buscar produto…" className={inp} autoFocus />
+          {achados.length > 0 && (
+            <div className="mt-1.5 space-y-1">
+              {achados.map((p) => {
+                const s = lotesAtivos(p.id).reduce((a, l) => a + l.qtdRestante, 0);
+                return (
+                  <button key={p.id} type="button" onClick={() => { setSel(p); setMsg(""); }} className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2.5 hover:border-indigo-300 flex items-center justify-between gap-2">
+                    <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{p.nome}</span>
+                    <span className="text-xs text-gray-400">{s} {p.unidade} em estoque</span>
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
       ) : (
-        <EmBreve aba={aba} />
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-base font-semibold text-gray-900 dark:text-gray-100">{sel.nome}</span>
+            <button type="button" onClick={() => { setSel(null); setMsg(""); }} className="text-xs text-gray-400 hover:underline">trocar</button>
+          </div>
+          {!proximo ? (
+            <div className="text-sm text-rose-600">Sem estoque ativo deste produto.</div>
+          ) : (
+            <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-900 p-3 text-sm">
+              <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1">👉 Pegue deste lote ({sel.regraGiro === "fefo" ? "vence antes" : "entrou antes"}):</div>
+              <div className="text-gray-800 dark:text-gray-100">Validade <b>{fmtBR(proximo.validade)}</b> · {proximo.qtdRestante} {sel.unidade}{proximo.localId ? <> · em <b>{localNome(proximo.localId)}</b></> : null}</div>
+              {fila.length > 1 && <div className="text-[11px] text-gray-500 mt-1">+{fila.length - 1} lote(s) depois deste. Saldo total: {saldo} {sel.unidade}.</div>}
+            </div>
+          )}
+          <div className="flex items-end gap-2">
+            <div className="flex-1">
+              <label className="text-xs text-gray-500 block mb-1">Quantas unidades saíram?</label>
+              <input value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder={`0 (${sel.unidade})`} inputMode="decimal" className={inp} autoFocus />
+            </div>
+            <Button onClick={() => void confirmar()} disabled={salvando || !proximo}>{salvando ? "…" : "Confirmar baixa"}</Button>
+          </div>
+        </div>
       )}
-
-      {modal && (
-        <LocalModal
-          local={modal.local}
-          locais={locais}
-          onClose={() => setModal(null)}
-          onSalvar={salvarLocal}
-        />
-      )}
+      {msg && <div className={`text-sm rounded-lg px-3 py-2 ${msg.startsWith("✓") ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300" : "bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"}`}>{msg}</div>}
     </div>
   );
 }
 
-// Placeholder das abas ainda não construídas — mostra o roadmap pra orientar.
-function EmBreve({ aba }: { aba: string }) {
-  const MAP: Record<string, { t: string; d: string }> = {
-    produtos: { t: "🏷️ Produtos", d: "Cadastro de produto com matriz de conservação (refrigerado/congelado/…→dias) e a etiqueta fixa de estoque (QR). Um produto, vários métodos — sem duplicar." },
-    entrada: { t: "📥 Entrada & Organização", d: "Dar entrada por foto da nota (OCR) ou manual, informar a validade do lote e receber a instrução de arrumação PVPS/PEPS. Sem imprimir a cada compra." },
-    baixa: { t: "📤 Baixa por QR", d: "Ler o QR fixo do produto = baixa: o sistema mostra de qual lote pegar (giro), você confirma e informa a quantidade." },
-    validades: { t: "⏰ Validades (FEFO)", d: "Painel do que vence hoje/amanhã/semana por loja, com alerta no WhatsApp. Relatório de desperdício." },
-  };
-  const m = MAP[aba] || { t: "Em breve", d: "" };
+// ═══ ENTRADA ═════════════════════════════════════════════════════════════════
+function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada }: {
+  produtos: ProdutoEtiqueta[]; locais: LocalEstoque[]; lotesAtivos: (id: string) => LoteEstoque[];
+  podeOperar: boolean; onEntrada: (v: { produto: ProdutoEtiqueta; qtd: number; validade: string; localId: string; fornecedor?: string }) => Promise<void>;
+}) {
+  const [busca, setBusca] = useState("");
+  const [sel, setSel] = useState<ProdutoEtiqueta | null>(null);
+  const [metodo, setMetodo] = useState<MetodoKey | "">("");
+  const [qtd, setQtd] = useState("");
+  const [validadeBr, setValidadeBr] = useState("");
+  const [localId, setLocalId] = useState("");
+  const [fornecedor, setFornecedor] = useState("");
+  const [msg, setMsg] = useState("");
+  const [salvando, setSalvando] = useState(false);
+
+  const achados = busca.trim() ? produtos.filter((p) => p.ativo && p.nome.toLowerCase().includes(busca.toLowerCase())).slice(0, 8) : [];
+  const metodosDoProduto = sel ? METODOS.filter((m) => sel.conservacao[m.k] != null) : [];
+
+  function escolher(p: ProdutoEtiqueta) {
+    setSel(p); setMsg("");
+    const mets = METODOS.filter((m) => p.conservacao[m.k] != null);
+    const m0 = mets[0]?.k || "";
+    setMetodo(m0);
+    if (m0 && p.conservacao[m0] != null) setValidadeBr(fmtBR(addDias(hojeYmd(), p.conservacao[m0] as number)));
+  }
+  function trocarMetodo(k: MetodoKey) { setMetodo(k); if (sel && sel.conservacao[k] != null) setValidadeBr(fmtBR(addDias(hojeYmd(), sel.conservacao[k] as number))); }
+
+  // Instrução PVPS/PEPS: onde colocar o lote novo em relação aos existentes.
+  function instrucaoArrumacao(p: ProdutoEtiqueta, validadeYmd: string): string {
+    const existentes = lotesAtivos(p.id);
+    if (existentes.length === 0) return "Primeiro lote — pode guardar à frente.";
+    if (p.regraGiro === "fifo") return "Regra PEPS: coloque ATRÁS de tudo (é o mais novo).";
+    const antes = existentes.filter((l) => l.validade < validadeYmd).length;
+    const depois = existentes.filter((l) => l.validade > validadeYmd).length;
+    if (depois === 0) return `Regra PVPS: é o que vence por último — coloque ATRÁS dos ${antes} lote(s) existente(s).`;
+    if (antes === 0) return `Regra PVPS: é o que vence primeiro — coloque À FRENTE de tudo.`;
+    return `Regra PVPS: coloque ATRÁS dos ${antes} que vencem antes e À FRENTE dos ${depois} que vencem depois.`;
+  }
+
+  if (!podeOperar) return <div className="p-6 text-sm text-gray-500">Você não tem permissão pra dar entrada.</div>;
+
+  async function salvar() {
+    if (!sel) return;
+    const n = parseFloat((qtd || "").replace(",", "."));
+    const validade = brToYmd(validadeBr);
+    if (!n || n <= 0) { setMsg("Informe a quantidade."); return; }
+    if (!validade) { setMsg("Informe a validade (dd/mm/aaaa)."); return; }
+    setSalvando(true);
+    try {
+      const instr = instrucaoArrumacao(sel, validade);
+      await onEntrada({ produto: sel, qtd: n, validade, localId, fornecedor: fornecedor || undefined });
+      setMsg(`✓ Entrada de ${n} ${sel.unidade} de ${sel.nome} (vence ${fmtBR(validade)}). ${instr}`);
+      setSel(null); setQtd(""); setValidadeBr(""); setLocalId(""); setFornecedor(""); setBusca(""); setMetodo("");
+    } finally { setSalvando(false); }
+  }
+
   return (
-    <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center">
-      <div className="text-base font-semibold text-gray-700 dark:text-gray-200 mb-1">{m.t}</div>
-      <div className="text-sm text-gray-500 max-w-md mx-auto">{m.d}</div>
-      <div className="text-[11px] text-gray-400 mt-3">Em construção — próxima fase do módulo.</div>
+    <div className="space-y-3 max-w-lg">
+      <p className="text-xs text-gray-500">Entrada manual (em breve: foto da NF pré-preenche). Informe a validade do lote — o sistema diz onde arrumar (PVPS/PEPS).</p>
+      {!sel ? (
+        <div>
+          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔍 Buscar produto…" className={inp} autoFocus />
+          {achados.length > 0 && (
+            <div className="mt-1.5 space-y-1">
+              {achados.map((p) => (
+                <button key={p.id} type="button" onClick={() => escolher(p)} className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2.5 hover:border-indigo-300 text-sm font-medium text-gray-800 dark:text-gray-100">{p.nome}</button>
+              ))}
+            </div>
+          )}
+          {busca.trim() && achados.length === 0 && <p className="text-xs text-gray-400 mt-2">Nenhum produto. Cadastre em <b>Cadastro › Produtos</b>.</p>}
+        </div>
+      ) : (
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-base font-semibold text-gray-900 dark:text-gray-100">{sel.nome}</span>
+            <button type="button" onClick={() => { setSel(null); setMsg(""); }} className="text-xs text-gray-400 hover:underline">trocar</button>
+          </div>
+          {metodosDoProduto.length > 0 && (
+            <div>
+              <label className="text-xs text-gray-500 block mb-1">Conservação (sugere a validade)</label>
+              <div className="flex flex-wrap gap-1.5">
+                {metodosDoProduto.map((m) => (
+                  <button key={m.k} type="button" onClick={() => trocarMetodo(m.k)} className={`px-3 py-1.5 text-xs font-medium rounded-full border ${metodo === m.k ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>{m.icon} {m.label} · {sel.conservacao[m.k]}d</button>
+                ))}
+              </div>
+            </div>
+          )}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div><label className="text-xs text-gray-500 block mb-1">Quantidade ({sel.unidade})</label><input value={qtd} onChange={(e) => setQtd(e.target.value)} placeholder="0" inputMode="decimal" className={inp} /></div>
+            <div><label className="text-xs text-gray-500 block mb-1">Validade</label><input value={validadeBr} onChange={(e) => setValidadeBr(e.target.value)} placeholder="dd/mm/aaaa" className={inp} /></div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div><label className="text-xs text-gray-500 block mb-1">Local <span className="text-gray-400">(opcional)</span></label>
+              <select value={localId} onChange={(e) => setLocalId(e.target.value)} className={inp}><option value="">—</option>{locais.filter((l) => l.ativo).map((l) => <option key={l.id} value={l.id}>{LOCAL_ESTOQUE_TIPO_LABEL[l.tipo].icon} {l.nome}</option>)}</select>
+            </div>
+            <div><label className="text-xs text-gray-500 block mb-1">Fornecedor <span className="text-gray-400">(opcional)</span></label><input value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} className={inp} /></div>
+          </div>
+          <Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "…" : "Dar entrada"}</Button>
+        </div>
+      )}
+      {msg && <div className={`text-sm rounded-lg px-3 py-2 ${msg.startsWith("✓") ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300" : "bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300"}`}>{msg}</div>}
     </div>
   );
 }
 
+// ═══ CADASTRO › LOCAIS ═══════════════════════════════════════════════════════
+function LocaisTab({ locais, restauranteNome, podeEditar, onNovo, onEditar, onExcluir }: {
+  locais: LocalEstoque[]; restauranteNome?: string; podeEditar: boolean; onNovo: () => void; onEditar: (l: LocalEstoque) => void; onExcluir: (l: LocalEstoque) => void;
+}) {
+  const porTipo = useMemo(() => {
+    const m = new Map<LocalEstoqueTipo, LocalEstoque[]>();
+    for (const l of locais.slice().sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0) || a.nome.localeCompare(b.nome))) { const arr = m.get(l.tipo) || []; arr.push(l); m.set(l.tipo, arr); }
+    return m;
+  }, [locais]);
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <p className="text-xs text-gray-500 max-w-lg">Onde os produtos ficam estocados{restauranteNome ? ` no ${restauranteNome}` : ""} — geladeiras, câmaras, prateleiras, seco…</p>
+        {podeEditar && <Button size="sm" onClick={onNovo}>+ Novo local</Button>}
+      </div>
+      {locais.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nenhum local ainda. {podeEditar ? "Cadastre geladeiras, câmaras e prateleiras." : ""}</div>
+      ) : (
+        <div className="space-y-4">
+          {TIPOS.filter((t) => (porTipo.get(t) || []).length > 0).map((t) => (
+            <div key={t}>
+              <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 flex items-center gap-1.5"><span>{LOCAL_ESTOQUE_TIPO_LABEL[t].icon}</span> {LOCAL_ESTOQUE_TIPO_LABEL[t].label}</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {(porTipo.get(t) || []).map((l) => (
+                  <div key={l.id} className={`rounded-lg border p-3 flex items-center justify-between gap-2 ${l.ativo ? "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900" : "border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/20 opacity-70"}`}>
+                    <div className="min-w-0">
+                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{l.nome}</div>
+                      {l.paiId && <div className="text-[11px] text-gray-400 truncate">dentro de {locais.find((x) => x.id === l.paiId)?.nome || "—"}</div>}
+                      {!l.ativo && <div className="text-[11px] text-gray-400">inativo</div>}
+                    </div>
+                    {podeEditar && <div className="flex items-center gap-1 shrink-0"><button type="button" onClick={() => onEditar(l)} className="text-xs px-2 py-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Editar">✎</button><button type="button" onClick={() => onExcluir(l)} className="text-xs px-2 py-1 rounded text-gray-300 hover:text-rose-600" title="Excluir">🗑</button></div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══ CADASTRO › PRODUTOS ═════════════════════════════════════════════════════
+function ProdutosTab({ produtos, podeEditar, onNovo, onEditar, onExcluir }: {
+  produtos: ProdutoEtiqueta[]; podeEditar: boolean; onNovo: () => void; onEditar: (p: ProdutoEtiqueta) => void; onExcluir: (p: ProdutoEtiqueta) => void;
+}) {
+  const [busca, setBusca] = useState("");
+  const lista = produtos.filter((p) => !busca.trim() || p.nome.toLowerCase().includes(busca.toLowerCase())).sort((a, b) => a.nome.localeCompare(b.nome));
+  return (
+    <div>
+      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
+        <p className="text-xs text-gray-500 max-w-lg">Um produto com <b>matriz de conservação</b> (método → dias). Cada um tem sua etiqueta fixa de estoque (QR). Nada de duplicar por método.</p>
+        {podeEditar && <Button size="sm" onClick={onNovo}>+ Novo produto</Button>}
+      </div>
+      <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔍 Buscar produto…" className={`${inp} mb-3`} />
+      {lista.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nenhum produto. {podeEditar ? "Cadastre o primeiro." : ""}</div>
+      ) : (
+        <div className="space-y-1.5">
+          {lista.map((p) => (
+            <div key={p.id} className={`rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 flex items-center justify-between gap-2 ${p.ativo ? "" : "opacity-60"}`}>
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{p.nome} <span className="text-xs font-normal text-gray-400">· {p.unidade} · {p.regraGiro.toUpperCase()}</span></div>
+                <div className="text-[11px] text-gray-400 flex flex-wrap gap-1.5 mt-0.5">
+                  {METODOS.filter((m) => p.conservacao[m.k] != null).map((m) => <span key={m.k}>{m.icon} {p.conservacao[m.k]}d</span>)}
+                  {p.categoria && <span>· {p.categoria}</span>}
+                </div>
+              </div>
+              {podeEditar && <div className="flex items-center gap-1 shrink-0"><button type="button" onClick={() => onEditar(p)} className="text-xs px-2 py-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Editar">✎</button><button type="button" onClick={() => onExcluir(p)} className="text-xs px-2 py-1 rounded text-gray-300 hover:text-rose-600" title="Excluir">🗑</button></div>}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ═══ MODAIS ══════════════════════════════════════════════════════════════════
 function LocalModal({ local, locais, onClose, onSalvar }: {
-  local: LocalEstoque | null;
-  locais: LocalEstoque[];
-  onClose: () => void;
-  onSalvar: (l: Omit<LocalEstoque, "id" | "criadoEm"> & { id?: string }) => Promise<void>;
+  local: LocalEstoque | null; locais: LocalEstoque[]; onClose: () => void; onSalvar: (l: Omit<LocalEstoque, "id" | "criadoEm"> & { id?: string }) => Promise<void>;
 }) {
   const [nome, setNome] = useState(local?.nome || "");
   const [tipo, setTipo] = useState<LocalEstoqueTipo>(local?.tipo || "geladeira");
   const [paiId, setPaiId] = useState<string>(local?.paiId || "");
   const [ativo, setAtivo] = useState<boolean>(local?.ativo ?? true);
   const [salvando, setSalvando] = useState(false);
-
-  // Possíveis "pais": outros locais do restaurante (menos ele mesmo).
   const pais = locais.filter((l) => l.id !== local?.id);
-
-  async function salvar() {
-    if (!nome.trim()) return;
-    setSalvando(true);
-    try {
-      await onSalvar({ id: local?.id, restaurantId: local?.restaurantId || "", nome: nome.trim(), tipo, paiId: paiId || null, ativo });
-    } finally { setSalvando(false); }
-  }
-
+  async function salvar() { if (!nome.trim()) return; setSalvando(true); try { await onSalvar({ id: local?.id, restaurantId: local?.restaurantId || "", nome: nome.trim(), tipo, paiId: paiId || null, ativo }); } finally { setSalvando(false); } }
   return (
     <Modal title={local ? "Editar local" : "Novo local de estoque"} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
-        <div>
-          <label className="text-xs text-gray-500 block mb-1">Nome</label>
-          <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Geladeira 1, Câmara de congelados…" className={inp} autoFocus />
-        </div>
+        <div><label className="text-xs text-gray-500 block mb-1">Nome</label><input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Geladeira 1, Câmara de congelados…" className={inp} autoFocus /></div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Tipo</label>
-            <select value={tipo} onChange={(e) => setTipo(e.target.value as LocalEstoqueTipo)} className={inp}>
-              {TIPOS.map((t) => <option key={t} value={t}>{LOCAL_ESTOQUE_TIPO_LABEL[t].icon} {LOCAL_ESTOQUE_TIPO_LABEL[t].label}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs text-gray-500 block mb-1">Dentro de <span className="text-gray-400">(opcional)</span></label>
-            <select value={paiId} onChange={(e) => setPaiId(e.target.value)} className={inp}>
-              <option value="">— nenhum —</option>
-              {pais.map((l) => <option key={l.id} value={l.id}>{LOCAL_ESTOQUE_TIPO_LABEL[l.tipo].icon} {l.nome}</option>)}
-            </select>
-          </div>
+          <div><label className="text-xs text-gray-500 block mb-1">Tipo</label><select value={tipo} onChange={(e) => setTipo(e.target.value as LocalEstoqueTipo)} className={inp}>{TIPOS.map((t) => <option key={t} value={t}>{LOCAL_ESTOQUE_TIPO_LABEL[t].icon} {LOCAL_ESTOQUE_TIPO_LABEL[t].label}</option>)}</select></div>
+          <div><label className="text-xs text-gray-500 block mb-1">Dentro de <span className="text-gray-400">(opcional)</span></label><select value={paiId} onChange={(e) => setPaiId(e.target.value)} className={inp}><option value="">— nenhum —</option>{pais.map((l) => <option key={l.id} value={l.id}>{LOCAL_ESTOQUE_TIPO_LABEL[l.tipo].icon} {l.nome}</option>)}</select></div>
         </div>
-        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer">
-          <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} /> Ativo
-        </label>
-        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => void salvar()} disabled={salvando || !nome.trim()}>{salvando ? "Salvando…" : local ? "Salvar" : "Criar"}</Button>
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer"><input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} /> Ativo</label>
+        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => void salvar()} disabled={salvando || !nome.trim()}>{salvando ? "Salvando…" : local ? "Salvar" : "Criar"}</Button></div>
+      </div>
+    </Modal>
+  );
+}
+
+function ProdutoModal({ produto, onClose, onSalvar }: {
+  produto: ProdutoEtiqueta | null; onClose: () => void; onSalvar: (p: Partial<ProdutoEtiqueta> & { id?: string }) => Promise<void>;
+}) {
+  const [nome, setNome] = useState(produto?.nome || "");
+  const [categoria, setCategoria] = useState(produto?.categoria || "");
+  const [unidade, setUnidade] = useState(produto?.unidade || "unid");
+  const [regraGiro, setRegraGiro] = useState<"fefo" | "fifo">(produto?.regraGiro || "fefo");
+  const [cons, setCons] = useState<Conservacao>(produto?.conservacao || {});
+  const [estoqueMinimo, setEstoqueMinimo] = useState(produto?.estoqueMinimo != null ? String(produto.estoqueMinimo) : "");
+  const [marca, setMarca] = useState(produto?.marcaFornecedor || "");
+  const [sif, setSif] = useState(produto?.sif || "");
+  const [precoCusto, setPrecoCusto] = useState(produto?.precoCusto != null ? String(produto.precoCusto) : "");
+  const [ativo, setAtivo] = useState<boolean>(produto?.ativo ?? true);
+  const [salvando, setSalvando] = useState(false);
+
+  const temMetodo = METODOS.some((m) => cons[m.k] != null);
+  function setDias(k: MetodoKey, v: string) {
+    const n = parseInt(v.replace(/\D/g, ""), 10);
+    setCons((prev) => { const c = { ...prev }; if (v === "" || isNaN(n)) delete c[k]; else c[k] = n; return c; });
+  }
+  async function salvar() {
+    if (!nome.trim() || !temMetodo) return;
+    setSalvando(true);
+    try {
+      await onSalvar({ id: produto?.id, nome: nome.trim(), categoria: categoria.trim() || undefined, unidade: unidade.trim() || "unid", regraGiro, conservacao: cons, estoqueMinimo: estoqueMinimo ? parseFloat(estoqueMinimo.replace(",", ".")) : null, marcaFornecedor: marca.trim() || null, sif: sif.trim() || null, precoCusto: precoCusto ? parseFloat(precoCusto.replace(",", ".")) : null, ativo });
+    } finally { setSalvando(false); }
+  }
+  return (
+    <Modal title={produto ? "Editar produto" : "Novo produto"} onClose={onClose} maxWidth="max-w-lg">
+      <div className="space-y-3">
+        <div><label className="text-xs text-gray-500 block mb-1">Nome</label><input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Farinha de trigo" className={inp} autoFocus /></div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div><label className="text-xs text-gray-500 block mb-1">Unidade</label><input value={unidade} onChange={(e) => setUnidade(e.target.value)} placeholder="kg, unid, L…" className={inp} /></div>
+          <div><label className="text-xs text-gray-500 block mb-1">Categoria <span className="text-gray-400">(opc.)</span></label><input value={categoria} onChange={(e) => setCategoria(e.target.value)} className={inp} /></div>
+          <div><label className="text-xs text-gray-500 block mb-1">Giro</label><select value={regraGiro} onChange={(e) => setRegraGiro(e.target.value as "fefo" | "fifo")} className={inp}><option value="fefo">PVPS (vence antes)</option><option value="fifo">PEPS (entra antes)</option></select></div>
         </div>
+        <div>
+          <label className="text-xs text-gray-500 block mb-1">Conservação — validade por método (dias) <span className="text-rose-500">*</span></label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+            {METODOS.map((m) => (
+              <div key={m.k} className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 px-2.5 py-1.5">
+                <span className="text-sm text-gray-700 dark:text-gray-200 flex-1">{m.icon} {m.label}</span>
+                <input value={cons[m.k] != null ? String(cons[m.k]) : ""} onChange={(e) => setDias(m.k, e.target.value)} placeholder="—" inputMode="numeric" className="w-16 h-8 px-2 text-sm text-right rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                <span className="text-xs text-gray-400">dias</span>
+              </div>
+            ))}
+          </div>
+          {!temMetodo && <p className="text-[11px] text-gray-400 mt-1">Preencha ao menos um método.</p>}
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+          <div><label className="text-xs text-gray-500 block mb-1">Estoque mínimo</label><input value={estoqueMinimo} onChange={(e) => setEstoqueMinimo(e.target.value)} placeholder="—" inputMode="decimal" className={inp} /></div>
+          <div><label className="text-xs text-gray-500 block mb-1">Preço custo (R$/{unidade})</label><input value={precoCusto} onChange={(e) => setPrecoCusto(e.target.value)} placeholder="—" inputMode="decimal" className={inp} /></div>
+          <div><label className="text-xs text-gray-500 block mb-1">SIF/Registro</label><input value={sif} onChange={(e) => setSif(e.target.value)} className={inp} /></div>
+        </div>
+        <div><label className="text-xs text-gray-500 block mb-1">Marca / Fornecedor <span className="text-gray-400">(opc.)</span></label><input value={marca} onChange={(e) => setMarca(e.target.value)} className={inp} /></div>
+        <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer"><input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} /> Ativo</label>
+        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => void salvar()} disabled={salvando || !nome.trim() || !temMetodo}>{salvando ? "Salvando…" : produto ? "Salvar" : "Criar"}</Button></div>
       </div>
     </Modal>
   );
