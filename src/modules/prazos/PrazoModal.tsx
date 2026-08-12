@@ -254,7 +254,7 @@ function DetRow({ label, children }: { label: string; children: ReactNode }) {
 }
 
 // ── Editor de recorrência ──
-function RecorrenciaEditor({ rec, onChange }: { rec: PrazoRecorrencia | null; onChange: (r: PrazoRecorrencia | null) => void }) {
+export function RecorrenciaEditor({ rec, onChange }: { rec: PrazoRecorrencia | null; onChange: (r: PrazoRecorrencia | null) => void }) {
   const on = !!rec;
   const r = rec || { unidade: "mes" as const, intervalo: 1, modo: "dia_absoluto" as const, diaDoMes: 1 };
   const patch = (p: Partial<PrazoRecorrencia>) => onChange({ ...r, ...p });

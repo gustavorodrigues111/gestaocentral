@@ -25,6 +25,57 @@ export async function tentarAgendarProximaRecorrencia(
   tarefaConcluida: Tarefa,
   autor: { id: string; nome: string },
 ): Promise<boolean> {
+  // ── Recorrência PRÓPRIA da tarefa (avulsa) — tem prioridade sobre a do subprojeto.
+  if (tarefaConcluida.recorrencia && tarefaConcluida.prazo) {
+    const { proximoVencimento } = await import("../prazos/recorrencia");
+    const prox = proximoVencimento(tarefaConcluida.recorrencia, tarefaConcluida.prazo);
+    if (!prox) return false;
+    const maeId = tarefaConcluida.recorrenciaMaeId || tarefaConcluida.id;
+    const chave = `rect-${maeId}-${prox}`;
+    const jaTem = await getDocs(query(collection(db, "tarefas"), where("recorrenciaKey", "==", chave)));
+    if (!jaTem.empty) return false;   // próxima ocorrência já criada
+    // Reidrata o checklist: desloca cada prazo pela mesma diferença (mãe → próxima)
+    // e reseta o "feito". Responsáveis das subtarefas são preservados.
+    const delta = Math.round((new Date(prox + "T00:00:00").getTime() - new Date(tarefaConcluida.prazo + "T00:00:00").getTime()) / 86400000);
+    const subtarefas: Subtarefa[] | undefined = (tarefaConcluida.subtarefas || []).length
+      ? (tarefaConcluida.subtarefas || []).map((s, i) => ({
+          id: Math.random().toString(36).slice(2, 11),
+          texto: s.texto, feito: false, ordem: i + 1,
+          prazo: s.prazo ? addDias(s.prazo, delta) : null,
+          responsavelId: s.responsavelId, responsavelNome: s.responsavelNome,
+        }))
+      : undefined;
+    const subRespIds = Array.from(new Set((subtarefas || []).map(s => s.responsavelId).filter((x): x is string => !!x)));
+    await criarTarefa({
+      projetoId: tarefaConcluida.projetoId,
+      subprojetoId: tarefaConcluida.subprojetoId,
+      titulo: tarefaConcluida.titulo,
+      descricao: tarefaConcluida.descricao,
+      link: tarefaConcluida.link,
+      responsavelId: tarefaConcluida.responsavelId,
+      responsavelNome: tarefaConcluida.responsavelNome,
+      coResponsaveis: tarefaConcluida.coResponsaveis,
+      coResponsaveisNomes: tarefaConcluida.coResponsaveisNomes,
+      observadoresIds: tarefaConcluida.observadoresIds,
+      observadoresNomes: tarefaConcluida.observadoresNomes,
+      subtarefaResponsaveisIds: subRespIds.length ? subRespIds : undefined,
+      restaurantIds: tarefaConcluida.restaurantIds,
+      prazo: prox,
+      status: "a_fazer",
+      prioridade: tarefaConcluida.prioridade || "normal",
+      subtarefas,
+      recorrencia: tarefaConcluida.recorrencia,
+      recorrenciaMaeId: maeId,
+      recorrenciaKey: chave,
+      origem: "recorrencia",
+      corHerdada: tarefaConcluida.corHerdada,
+      visibilidadeEfetiva: tarefaConcluida.visibilidadeEfetiva,
+      criadoPor: autor.id,
+      criadoPorNome: autor.nome,
+    });
+    return true;
+  }
+
   // Carrega subprojeto e checa se tem recorrência
   const subSnap = await getDoc(doc(db, "tarefaSubprojetos", tarefaConcluida.subprojetoId));
   if (!subSnap.exists()) return false;

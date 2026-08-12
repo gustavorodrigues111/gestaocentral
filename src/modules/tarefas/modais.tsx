@@ -4,7 +4,8 @@ import { Button } from "../../core/ui/Button";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { criarTarefa, softDeleteTarefa, marcarSubtarefa, adicionarComentario, atualizarTarefa } from "./repository";
-import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type TarefaStatus, type TarefaPrioridade, type TarefaVisibilidade, type TarefaAnexo, type Subtarefa, type Pessoa, type Restaurant, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL, TAREFA_VISIBILIDADE_LABEL } from "../../core/types";
+import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type TarefaStatus, type TarefaPrioridade, type TarefaVisibilidade, type TarefaAnexo, type Subtarefa, type Pessoa, type Restaurant, type PrazoRecorrencia, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL, TAREFA_VISIBILIDADE_LABEL } from "../../core/types";
+import { RecorrenciaEditor } from "../prazos/PrazoModal";
 import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
 import { ProrrogarContratoModal } from "../admissao/ProrrogarContratoModal";
@@ -98,6 +99,8 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
   // prazo da última subtarefa (editável pra depois). A mãe NÃO conclui sozinha.
   const [temSubtarefas, setTemSubtarefas] = useState(false);
   const [checklist, setChecklist] = useState<Array<{ id: string; texto: string; prazo: string; responsavelId: string }>>([]);
+  // Recorrência própria da tarefa (reusa o motor dos Prazos). null = não repete.
+  const [rec, setRec] = useState<PrazoRecorrencia | null>(null);
   const maxPrazoChecklist = temSubtarefas ? (checklist.map(c => c.prazo).filter(Boolean).sort().pop() || "") : "";
   useEffect(() => {
     // Mãe recebe o prazo da última subtarefa; se o user já pôs um posterior, mantém.
@@ -226,6 +229,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
       visibilidadeEfetiva: projetoAtual?.visibilidade,
       subtarefas: subtarefasFinal,
       subtarefaResponsaveisIds: subRespIds.length ? subRespIds : undefined,
+      recorrencia: rec || undefined,
       criadoPor: pessoaId,
       criadoPorNome: pessoaNome,
     };
@@ -384,6 +388,10 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
                 </span>
               </label>
             )}
+
+            {/* ── Recorrência (reusa o motor dos Prazos) ── */}
+            <RecorrenciaEditor rec={rec} onChange={setRec} />
+            {rec && <p className="text-[11px] text-gray-400 -mt-1">Ao <b>concluir</b> esta tarefa, o sistema cria a próxima ocorrência (com o checklist reidratado).</p>}
 
             {/* ── Subtarefas (checklist com prazo + responsável) ── */}
             <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-2.5">

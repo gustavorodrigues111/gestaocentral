@@ -4881,6 +4881,10 @@ export type Tarefa = {
   origemRefId?: string;
   origemRefLabel?: string;
   recorrenciaKey?: string;      // pra idempotência do gerador
+  // Recorrência PRÓPRIA da tarefa (avulsa) — reusa o motor dos Prazos. Ao concluir,
+  // o gerador cria a próxima ocorrência (prazo recalculado + subtarefas reidratadas).
+  recorrencia?: PrazoRecorrencia | null;
+  recorrenciaMaeId?: string | null;   // id da 1ª tarefa da série (rastreio)
   // Valores dos campos custom definidos pelo subprojeto (customFieldsDef).
   // Chave = field.id, valor = string/number/boolean/Date conforme o tipo.
   // Mantém union flexível pra evolução do schema.
