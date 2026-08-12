@@ -606,6 +606,18 @@ export const CATALOGO: CatalogoModulo[] = [
       { id: "configSeguranca", label: "Configurar segurança (2FA, sessão)", sensivel: true },
     ],
   },
+  {
+    id: "fechamentoFin",
+    icon: "🧮",
+    label: "Fechamento Financeiro",
+    desc: "Fechamento financeiro mensal — matriz item × empresa (tarefa, prazo, responsável e check por empresa)",
+    area: "gestao",
+    acoes: [
+      { id: "ver",        label: "Ver o fechamento do mês (matriz e progresso)" },
+      { id: "operar",     label: "Marcar/desmarcar checks e observações" },
+      { id: "configurar", label: "Configurar itens, seções e empresas do fechamento", sensivel: true },
+    ],
+  },
   // ─── GESTOR DE TAREFAS + CADASTROS MESTRES ───────────────────────────────
   {
     id: "tarefas",

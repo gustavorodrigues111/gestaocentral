@@ -84,6 +84,8 @@ export type ModuleId =
   | "conectores"
   // Gestão de Estoques e Validades (etiquetas + lotes + giro PVPS/PEPS)
   | "estoqueValidade"
+  // Fechamento Financeiro Mensal (matriz item × empresa)
+  | "fechamentoFin"
   // Conferência de folhas de pagamento (auditor)
   | "folhas"
   // Vendas — registro de vendas fora do sistema fiscal (entre empresas, permutas)
