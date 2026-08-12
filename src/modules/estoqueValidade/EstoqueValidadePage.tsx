@@ -26,7 +26,7 @@ type MetodoKey = "refrigerado" | "congelado" | "ambiente" | "seco" | "quente";
 type Conservacao = Partial<Record<MetodoKey, number>>;    // método → dias
 export type ProdutoEtiqueta = {
   id: string; restaurantId: string; nome: string; categoria?: string;
-  conservacao: Conservacao; unidade: string; regraGiro: "fefo" | "fifo";
+  conservacao: Conservacao; unidade: string;
   estoqueMinimo?: number | null; marcaFornecedor?: string | null; sif?: string | null;
   precoCusto?: number | null; qrTokenEstoque: string; ativo: boolean; criadoEm: string;
 };
@@ -54,9 +54,10 @@ const fmtBR = (ymd?: string) => (ymd ? ymd.split("-").reverse().join("/") : "—
 const brToYmd = (br: string) => { const [d, m, a] = (br || "").split("/"); return d && m && a ? `${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}` : ""; };
 const diasAte = (ymd: string) => Math.round((new Date(ymd + "T12:00:00Z").getTime() - new Date(hojeYmd() + "T12:00:00Z").getTime()) / 86400000);
 const novoToken = () => "qr_" + Math.random().toString(36).slice(2, 10) + Date.now().toString(36);
-// Ordem de saída pela regra de giro: FEFO = validade + antiga; FIFO = entrada + antiga.
-const giroCmp = (regra: "fefo" | "fifo") => (a: LoteEstoque, b: LoteEstoque) =>
-  regra === "fifo" ? a.entradaData.localeCompare(b.entradaData) : a.validade.localeCompare(b.validade);
+// Giro FIXO (PVPS+PEPS complementares): prioridade quem VENCE antes; se empatar a
+// validade, desempata por quem ENTROU antes. Não é configurável.
+const giroCmp = (a: LoteEstoque, b: LoteEstoque) =>
+  a.validade.localeCompare(b.validade) || a.entradaData.localeCompare(b.entradaData);
 
 export function EstoqueValidadePage() {
   const { pessoa: me } = useAuth();
@@ -105,7 +106,7 @@ export function EstoqueValidadePage() {
   async function salvarProduto(p: Partial<ProdutoEtiqueta> & { id?: string }) {
     const dados = {
       nome: p.nome, categoria: p.categoria || null, conservacao: p.conservacao || {}, unidade: p.unidade || "unid",
-      regraGiro: p.regraGiro || "fefo", estoqueMinimo: p.estoqueMinimo ?? null, marcaFornecedor: p.marcaFornecedor || null,
+      estoqueMinimo: p.estoqueMinimo ?? null, marcaFornecedor: p.marcaFornecedor || null,
       sif: p.sif || null, precoCusto: p.precoCusto ?? null, ativo: p.ativo ?? true,
     };
     if (p.id) await updateDoc(doc(db, "produtosEtiqueta", p.id), dados);
@@ -131,7 +132,7 @@ export function EstoqueValidadePage() {
 
   // ── Baixa (consome dos lotes na ordem do giro) ──
   async function darBaixa(produto: ProdutoEtiqueta, qtd: number): Promise<number> {
-    const ordered = lotesAtivosDoProduto(produto.id).sort(giroCmp(produto.regraGiro));
+    const ordered = lotesAtivosDoProduto(produto.id).sort(giroCmp);
     let rest = qtd; const nowIso = new Date().toISOString();
     for (const lote of ordered) {
       if (rest <= 0) break;
@@ -280,7 +281,7 @@ function BaixaTab({ produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
   }
 
   const achados = busca.trim() ? produtos.filter((p) => p.ativo && p.nome.toLowerCase().includes(busca.toLowerCase())).slice(0, 8) : [];
-  const fila = sel ? lotesAtivos(sel.id).slice().sort(giroCmp(sel.regraGiro)) : [];
+  const fila = sel ? lotesAtivos(sel.id).slice().sort(giroCmp) : [];
   const proximo = fila[0] || null;
   const saldo = fila.reduce((a, l) => a + l.qtdRestante, 0);
 
@@ -329,7 +330,7 @@ function BaixaTab({ produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
             <div className="text-sm text-rose-600">Sem estoque ativo deste produto.</div>
           ) : (
             <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-900 p-3 text-sm">
-              <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1">👉 Pegue deste lote ({sel.regraGiro === "fefo" ? "vence antes" : "entrou antes"}):</div>
+              <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1">👉 Pegue deste lote (vence antes):</div>
               <div className="text-gray-800 dark:text-gray-100">Validade <b>{fmtBR(proximo.validade)}</b> · {proximo.qtdRestante} {sel.unidade}{proximo.localId ? <> · em <b>{localNome(proximo.localId)}</b></> : null}</div>
               {fila.length > 1 && <div className="text-[11px] text-gray-500 mt-1">+{fila.length - 1} lote(s) depois deste. Saldo total: {saldo} {sel.unidade}.</div>}
             </div>
@@ -389,12 +390,13 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pend
   function instrucaoArrumacao(p: ProdutoEtiqueta, validadeYmd: string): string {
     const existentes = lotesAtivos(p.id);
     if (existentes.length === 0) return "Primeiro lote — pode guardar à frente.";
-    if (p.regraGiro === "fifo") return "Regra PEPS: coloque ATRÁS de tudo (é o mais novo).";
-    const antes = existentes.filter((l) => l.validade < validadeYmd).length;
+    // Regra fixa: sai antes quem vence antes; empate de validade → quem entrou antes.
+    // Os lotes existentes entraram antes deste, então mesma validade conta como "antes".
+    const antes = existentes.filter((l) => l.validade <= validadeYmd).length;
     const depois = existentes.filter((l) => l.validade > validadeYmd).length;
-    if (depois === 0) return `Regra PVPS: é o que vence por último — coloque ATRÁS dos ${antes} lote(s) existente(s).`;
-    if (antes === 0) return `Regra PVPS: é o que vence primeiro — coloque À FRENTE de tudo.`;
-    return `Regra PVPS: coloque ATRÁS dos ${antes} que vencem antes e À FRENTE dos ${depois} que vencem depois.`;
+    if (depois === 0) return `Coloque ATRÁS dos ${antes} lote(s) que já estão aí (saem antes).`;
+    if (antes === 0) return `Este vence primeiro — coloque À FRENTE de tudo.`;
+    return `Coloque ATRÁS dos ${antes} que saem antes e À FRENTE dos ${depois} que saem depois.`;
   }
 
   if (!podeOperar) return <div className="p-6 text-sm text-gray-500">Você não tem permissão pra dar entrada.</div>;
@@ -545,7 +547,7 @@ function ProdutosTab({ produtos, podeEditar, onNovo, onEditar, onExcluir, onEtiq
           {lista.map((p) => (
             <div key={p.id} className={`rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 flex items-center justify-between gap-2 ${p.ativo ? "" : "opacity-60"}`}>
               <div className="min-w-0">
-                <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{p.nome} <span className="text-xs font-normal text-gray-400">· {p.unidade} · {p.regraGiro.toUpperCase()}</span></div>
+                <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{p.nome} <span className="text-xs font-normal text-gray-400">· {p.unidade}</span></div>
                 <div className="text-[11px] text-gray-400 flex flex-wrap gap-1.5 mt-0.5">
                   {METODOS.filter((m) => p.conservacao[m.k] != null).map((m) => <span key={m.k}>{m.icon} {p.conservacao[m.k]}d</span>)}
                   {p.categoria && <span>· {p.categoria}</span>}
@@ -595,7 +597,6 @@ function ProdutoModal({ produto, onClose, onSalvar }: {
   const [nome, setNome] = useState(produto?.nome || "");
   const [categoria, setCategoria] = useState(produto?.categoria || "");
   const [unidade, setUnidade] = useState(produto?.unidade || "unid");
-  const [regraGiro, setRegraGiro] = useState<"fefo" | "fifo">(produto?.regraGiro || "fefo");
   const [cons, setCons] = useState<Conservacao>(produto?.conservacao || {});
   const [estoqueMinimo, setEstoqueMinimo] = useState(produto?.estoqueMinimo != null ? String(produto.estoqueMinimo) : "");
   const [marca, setMarca] = useState(produto?.marcaFornecedor || "");
@@ -613,17 +614,16 @@ function ProdutoModal({ produto, onClose, onSalvar }: {
     if (!nome.trim() || !temMetodo) return;
     setSalvando(true);
     try {
-      await onSalvar({ id: produto?.id, nome: nome.trim(), categoria: categoria.trim() || undefined, unidade: unidade.trim() || "unid", regraGiro, conservacao: cons, estoqueMinimo: estoqueMinimo ? parseFloat(estoqueMinimo.replace(",", ".")) : null, marcaFornecedor: marca.trim() || null, sif: sif.trim() || null, precoCusto: precoCusto ? parseFloat(precoCusto.replace(",", ".")) : null, ativo });
+      await onSalvar({ id: produto?.id, nome: nome.trim(), categoria: categoria.trim() || undefined, unidade: unidade.trim() || "unid", conservacao: cons, estoqueMinimo: estoqueMinimo ? parseFloat(estoqueMinimo.replace(",", ".")) : null, marcaFornecedor: marca.trim() || null, sif: sif.trim() || null, precoCusto: precoCusto ? parseFloat(precoCusto.replace(",", ".")) : null, ativo });
     } finally { setSalvando(false); }
   }
   return (
     <Modal title={produto ? "Editar produto" : "Novo produto"} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
         <div><label className="text-xs text-gray-500 block mb-1">Nome</label><input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Farinha de trigo" className={inp} autoFocus /></div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           <div><label className="text-xs text-gray-500 block mb-1">Unidade</label><input value={unidade} onChange={(e) => setUnidade(e.target.value)} placeholder="kg, unid, L…" className={inp} /></div>
           <div><label className="text-xs text-gray-500 block mb-1">Categoria <span className="text-gray-400">(opc.)</span></label><input value={categoria} onChange={(e) => setCategoria(e.target.value)} className={inp} /></div>
-          <div><label className="text-xs text-gray-500 block mb-1">Giro</label><select value={regraGiro} onChange={(e) => setRegraGiro(e.target.value as "fefo" | "fifo")} className={inp}><option value="fefo">PVPS (vence antes)</option><option value="fifo">PEPS (entra antes)</option></select></div>
         </div>
         <div>
           <label className="text-xs text-gray-500 block mb-1">Conservação — validade por método (dias) <span className="text-rose-500">*</span></label>
@@ -659,14 +659,14 @@ function EtiquetaFixaModal({ produto, onClose }: { produto: ProdutoEtiqueta; onC
     const w = window.open("", "_blank", "width=420,height=560");
     if (!w) return;
     const nomeSafe = produto.nome.replace(/[<>&]/g, "");
-    w.document.write(`<!doctype html><html><head><title>Etiqueta ${nomeSafe}</title><style>*{font-family:system-ui,Arial,sans-serif}body{margin:0;padding:16px;text-align:center}.box{border:2px solid #111;border-radius:10px;padding:16px;display:inline-block;width:280px}.nome{font-size:20px;font-weight:800;margin:4px 0 2px}.tag{font-size:11px;letter-spacing:2px;color:#555}img{width:200px;height:200px}.hint{font-size:11px;color:#555;margin-top:6px}</style></head><body onload="window.print()"><div class="box"><div class="tag">ESTOQUE &middot; ${produto.regraGiro.toUpperCase()}</div><div class="nome">${nomeSafe}</div><img src="${qr}"/><div class="hint">Leia este QR no app pra dar baixa</div></div></body></html>`);
+    w.document.write(`<!doctype html><html><head><title>Etiqueta ${nomeSafe}</title><style>*{font-family:system-ui,Arial,sans-serif}body{margin:0;padding:16px;text-align:center}.box{border:2px solid #111;border-radius:10px;padding:16px;display:inline-block;width:280px}.nome{font-size:20px;font-weight:800;margin:4px 0 2px}.tag{font-size:11px;letter-spacing:2px;color:#555}img{width:200px;height:200px}.hint{font-size:11px;color:#555;margin-top:6px}</style></head><body onload="window.print()"><div class="box"><div class="tag">ESTOQUE</div><div class="nome">${nomeSafe}</div><img src="${qr}"/><div class="hint">Leia este QR no app pra dar baixa</div></div></body></html>`);
     w.document.close();
   }
   return (
     <Modal title="Etiqueta fixa de estoque" onClose={onClose} maxWidth="max-w-sm">
       <div className="text-center space-y-3">
         <div className="inline-block border-2 border-gray-900 dark:border-gray-100 rounded-xl p-4">
-          <div className="text-[10px] tracking-widest text-gray-500">ESTOQUE · {produto.regraGiro.toUpperCase()}</div>
+          <div className="text-[10px] tracking-widest text-gray-500">ESTOQUE</div>
           <div className="text-lg font-extrabold text-gray-900 dark:text-gray-100">{produto.nome}</div>
           {qr ? <img src={qr} alt="QR" className="w-40 h-40 mx-auto" /> : <div className="w-40 h-40 mx-auto flex items-center justify-center text-xs text-gray-400">gerando…</div>}
           <div className="text-[11px] text-gray-500">Leia este QR no app pra dar baixa</div>
