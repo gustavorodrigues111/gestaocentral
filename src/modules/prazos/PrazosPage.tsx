@@ -12,7 +12,9 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { canAcao } from "../../core/auth/permissions";
-import { uploadFileToFolder } from "../../core/google/driveClient";
+import { requestAccessToken } from "../../core/google/driveClient";
+import { uploadFileToFolder } from "../../core/google/driveShared";
+import { centralConfigured } from "../../core/google/driveCentral";
 import { ensureModuloFolder } from "../../core/google/driveModulo";
 import type { Prazo, PrazoTipo, Empregado, Pessoa, Imovel } from "../../core/types";
 import { PRAZO_TIPO_LABEL, PRAZO_SUBTIPO_TRAB_LABEL } from "../../core/types";
@@ -208,6 +210,9 @@ export function PrazosPage() {
       const ext = file.name.split(".").pop() || "pdf";
       const nome = `laudo-${p.titulo.toLowerCase().replace(/[^\w]+/g, "-").slice(0, 40)}-${p.vencimento.replace(/-/g, "")}.${ext}`;
       const renomeado = new File([file], nome, { type: file.type });
+      // Central-aware: com conta central, a pasta e o upload são pela central (o
+      // operador não precisa ter acesso Google à pasta). Sem central, pede token.
+      if (!(await centralConfigured())) await requestAccessToken();
       const folderId = await ensureModuloFolder(rootId, "Prazos");
       const up = await uploadFileToFolder(folderId, renomeado);
       await updateDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ laudo: { driveFileId: up.id, driveUrl: (up as { webViewLink?: string }).webViewLink || null, nome, anexadoEm: new Date().toISOString(), anexadoPor: me?.id || null, anexadoPorNome: me?.nome || null }, atualizadoEm: new Date().toISOString() }));
