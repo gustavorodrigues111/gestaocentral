@@ -59,6 +59,20 @@ const novoToken = () => "qr_" + Math.random().toString(36).slice(2, 10) + Date.n
 const giroCmp = (a: LoteEstoque, b: LoteEstoque) =>
   a.validade.localeCompare(b.validade) || a.entradaData.localeCompare(b.entradaData);
 
+// Campo de busca padrão do módulo — alto, com lupa e botão de limpar.
+function SearchInput({ value, onChange, placeholder, autoFocus }: { value: string; onChange: (v: string) => void; placeholder: string; autoFocus?: boolean }) {
+  return (
+    <div className="relative w-full">
+      <svg viewBox="0 0 24 24" className="absolute left-3.5 top-1/2 -translate-y-1/2 w-[18px] h-[18px] text-gray-400 pointer-events-none">
+        <path d="M21 21l-4.35-4.35M11 19a8 8 0 100-16 8 8 0 000 16z" stroke="currentColor" strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      </svg>
+      <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} autoFocus={autoFocus}
+        className="w-full h-11 pl-11 pr-9 text-[15px] rounded-xl border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 text-gray-900 dark:text-gray-100 outline-none focus:bg-white dark:focus:bg-gray-900 focus:border-indigo-400 focus:ring-2 focus:ring-indigo-100 dark:focus:ring-indigo-900/40 transition-colors" />
+      {value && <button type="button" onClick={() => onChange("")} className="absolute right-2.5 top-1/2 -translate-y-1/2 w-6 h-6 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-200/60 dark:hover:bg-gray-700 flex items-center justify-center text-sm">✕</button>}
+    </div>
+  );
+}
+
 export function EstoqueValidadePage() {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
@@ -302,9 +316,9 @@ function BaixaTab({ produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
       <p className="text-xs text-gray-500">Leia o QR do produto (ou busque). O sistema aponta de qual lote pegar pela regra de giro.</p>
       {!sel ? (
         <div>
-          <div className="flex gap-2 max-w-xl">
-            <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔍 Buscar produto…" className={inp} autoFocus />
-            <Button variant="secondary" onClick={() => setScan(true)}>📷 QR</Button>
+          <div className="flex gap-2 max-w-2xl">
+            <SearchInput value={busca} onChange={setBusca} placeholder="Buscar produto pra dar baixa…" autoFocus />
+            <button type="button" onClick={() => setScan(true)} className="shrink-0 h-11 px-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium text-gray-700 dark:text-gray-200 hover:border-indigo-400 flex items-center gap-1.5">📷 <span className="hidden sm:inline">Ler QR</span></button>
           </div>
           <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {(busca.trim() ? achados : produtos.filter((p) => p.ativo).slice().sort((a, b) => a.nome.localeCompare(b.nome))).map((p) => {
@@ -440,7 +454,7 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pend
               </div>
             </div>
           )}
-          <div className="max-w-xl"><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔍 Buscar produto…" className={inp} /></div>
+          <div className="max-w-2xl"><SearchInput value={busca} onChange={setBusca} placeholder="Buscar produto pra dar entrada…" /></div>
           <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {(busca.trim() ? achados : produtos.filter((p) => p.ativo).slice().sort((a, b) => a.nome.localeCompare(b.nome))).map((p) => (
               <button key={p.id} type="button" onClick={() => escolher(p)} className="text-left rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 hover:border-indigo-300 text-sm font-medium text-gray-800 dark:text-gray-100 truncate">{p.nome}</button>
@@ -536,7 +550,7 @@ function ProdutosTab({ produtos, podeEditar, onNovo, onEditar, onExcluir, onEtiq
         <p className="text-xs text-gray-500 max-w-lg">Um produto com <b>matriz de conservação</b> (método → dias). Cada um tem sua etiqueta fixa de estoque (QR). Nada de duplicar por método.</p>
         {podeEditar && <Button size="sm" onClick={onNovo}>+ Novo produto</Button>}
       </div>
-      <div className="max-w-xl mb-3"><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="🔍 Buscar produto…" className={inp} /></div>
+      <div className="max-w-2xl mb-3"><SearchInput value={busca} onChange={setBusca} placeholder="Buscar produto…" /></div>
       {lista.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nenhum produto. {podeEditar ? "Cadastre o primeiro." : ""}</div>
       ) : (
