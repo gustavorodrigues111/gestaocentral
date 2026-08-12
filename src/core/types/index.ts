@@ -82,6 +82,8 @@ export type ModuleId =
   | "agentes"
   // Hub de conectores com plataformas externas (GetIn, Altec/Riser, iFood…)
   | "conectores"
+  // Gestão de Estoques e Validades (etiquetas + lotes + giro PVPS/PEPS)
+  | "estoqueValidade"
   // Conferência de folhas de pagamento (auditor)
   | "folhas"
   // Vendas — registro de vendas fora do sistema fiscal (entre empresas, permutas)
@@ -6439,6 +6441,32 @@ export type PrazoOcorrenciaHist = {
   agendamento?: PrazoAgendamento | null;
   laudo?: PrazoLaudo | null;
   valor?: number | null;                // conta: valor pago
+};
+
+// ── Gestão de Estoques e Validades ──────────────────────────────────────────
+// Local físico onde os produtos ficam estocados (a etiqueta fixa de estoque mora
+// aqui). Hierarquia leve: um local pode ter um "pai" (ex.: prateleira dentro de
+// uma câmara). Por loja.
+export type LocalEstoqueTipo = "geladeira" | "freezer" | "camara" | "prateleira" | "seco" | "bancada" | "outro";
+export type LocalEstoque = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  tipo: LocalEstoqueTipo;
+  paiId?: string | null;                // local pai (ex.: prateleira dentro da câmara)
+  ordem?: number;
+  ativo: boolean;
+  criadoEm: string;
+  criadoPor?: string | null;
+};
+export const LOCAL_ESTOQUE_TIPO_LABEL: Record<LocalEstoqueTipo, { label: string; icon: string }> = {
+  geladeira:  { label: "Geladeira",  icon: "🧊" },
+  freezer:    { label: "Freezer",    icon: "❄️" },
+  camara:     { label: "Câmara fria",icon: "🚪" },
+  prateleira: { label: "Prateleira", icon: "🗄️" },
+  seco:       { label: "Estoque seco",icon: "📦" },
+  bancada:    { label: "Bancada",    icon: "🍽️" },
+  outro:      { label: "Outro",      icon: "📍" },
 };
 
 export type Prazo = {

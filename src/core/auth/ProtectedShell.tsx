@@ -62,6 +62,7 @@ import { PrazosPage } from "../../modules/prazos/PrazosPage";
 import { SegurancaPage } from "../../modules/seguranca/SegurancaPage";
 import { AgentesPage } from "../../modules/agentes/AgentesPage";
 import { ConectoresPage } from "../../modules/conectores/ConectoresPage";
+import { EstoqueValidadePage } from "../../modules/estoqueValidade/EstoqueValidadePage";
 import { FichasPage } from "../../modules/fichas/FichasPage";
 import { ExamesPage } from "../../modules/exames/ExamesPage";
 import { DemissaoPage } from "../../modules/demissao/DemissaoPage";
@@ -106,6 +107,7 @@ function ModuleRouter() {
     case "contagens":     return <ContagensPage key={k} />;
     case "compras":       return <ComprasPage key={k} />;
     case "recebimento":   return <RecebimentoPage key={k} />;
+    case "estoqueValidade": return <EstoqueValidadePage key={k} />;
     case "fechamentoCaixa": return <FechamentoCaixaPage key={k} />;
     case "excecoes":      return <RegistrosPontoPage key={k} />;
     case "analise-ponto": return <AnalisePontoPage key={k} />;

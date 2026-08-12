@@ -215,6 +215,20 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "estoqueValidade",
+    icon: "🏷️",
+    label: "Estoques e Validades",
+    desc: "Etiquetas de validade e gestão de estoque por lote (entrada por NF, baixa por QR, giro PVPS/PEPS)",
+    area: "appmise",
+    acoes: [
+      { id: "receberAvisos", label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
+      { id: "ver",        label: "Ver estoque, validades e locais" },
+      { id: "operar",     label: "Dar entrada e baixa (operação diária)" },
+      { id: "editar",     label: "Cadastrar produtos e locais de estoque" },
+      { id: "configurar", label: "Configurações (layout da etiqueta, regras de giro)" },
+    ],
+  },
+  {
     id: "fechamentoCaixa",
     icon: "💵",
     label: "Fechamento de Caixa",

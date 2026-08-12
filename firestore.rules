@@ -226,6 +226,13 @@ service cloud.firestore {
     match /beneficioPagamentos/{id} { allow read, write: if authed(); }
     match /beneficioAjustes/{id}    { allow read, write: if authed(); }
     match /recebimentos/{id}        { allow read, write: if authed(); }
+    // Gestão de Estoques e Validades
+    match /locaisEstoque/{id}       { allow read, write: if authed(); }
+    match /produtosEtiqueta/{id}    { allow read, write: if authed(); }
+    match /lotesEstoque/{id}        { allow read, write: if authed(); }
+    match /movimentosEstoque/{id}   { allow read, write: if authed(); }
+    match /etiquetas/{id}           { allow read, write: if authed(); }
+    match /etiquetaConfig/{id}      { allow read, write: if authed(); }
     match /fechamentosCaixa/{id}    { allow read, write: if authed(); }
     match /conciliacoesCaixa/{id}   { allow read, write: if authed(); }
     match /comunicados/{id}         { allow read, write: if authed(); }
