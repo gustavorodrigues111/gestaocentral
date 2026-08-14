@@ -182,8 +182,8 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                   : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"}
               `}
             >
-              <span>💬</span>
-              <span className="flex-1">Central de Avisos</span>
+              <span>🎛️</span>
+              <span className="flex-1">Minha Central</span>
               {avisosPendentes > 0 && (
                 <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold">
                   {avisosPendentes > 99 ? "99+" : avisosPendentes}
