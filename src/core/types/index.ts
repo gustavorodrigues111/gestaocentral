@@ -627,9 +627,14 @@ export type SundaySwap = {
   date1: string;           // YYYY-MM-DD — reciproca: A trabalha, B folga · pontual: pessoa TRABALHA
   date2: string;           // YYYY-MM-DD — reciproca: recíproca · pontual: pessoa FOLGA
   motivo?: string;         // texto livre opcional
-  // ── Pontual: aplicada na escala praticada (real) + status anterior p/ desfazer ──
-  aplicadoNaEscala?: boolean;
-  prevReal1?: ScheduleStatus | null;   // status real anterior em date1 (null = sem override)
+  // ── Pontual: grava na PREVISTA (plano). A gorjeta segue por cascata (real ?? prevista)
+  //    e a análise de ponto vê a pessoa como escalada. Toca na praticada (real) só se a
+  //    prevista já estava fechada. Guarda status anteriores p/ desfazer. ──
+  aplicadoNaEscala?: boolean;          // gravou na prevista
+  tocouReal?: boolean;                 // também gravou na praticada (prevista fechada)
+  prevPrevista1?: ScheduleStatus | null;   // status anterior na prevista em date1
+  prevPrevista2?: ScheduleStatus | null;
+  prevReal1?: ScheduleStatus | null;       // status anterior na praticada em date1 (se tocouReal)
   prevReal2?: ScheduleStatus | null;
   criadoEm: string;
   criadoPor: string;       // pessoaId

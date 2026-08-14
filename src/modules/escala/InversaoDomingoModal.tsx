@@ -64,13 +64,17 @@ export function InversaoDomingoModal({
       ? `Desfazer a troca pontual de ${swap.empANome}? Os dois domingos voltam ao estado anterior na praticada.`
       : `Excluir registro de inversão entre ${quem}?`)) return;
 
-    // Pontual aplicada: reverte os overrides na praticada.
+    // Pontual: reverte os overrides (prevista sempre; praticada se tiver tocado).
     if (ehPontual && swap.aplicadoNaEscala) {
       const escId = `${swap.restaurantId}_${swap.date1.slice(0, 7)}`;
       const ref = doc(db, "escalas", escId);
       const updates: Record<string, unknown> = { updatedAt: new Date().toISOString() };
-      updates[`real.${swap.empAId}.${swap.date1}`] = swap.prevReal1 ?? deleteField();
-      updates[`real.${swap.empAId}.${swap.date2}`] = swap.prevReal2 ?? deleteField();
+      updates[`prevista.${swap.empAId}.${swap.date1}`] = swap.prevPrevista1 ?? deleteField();
+      updates[`prevista.${swap.empAId}.${swap.date2}`] = swap.prevPrevista2 ?? deleteField();
+      if (swap.tocouReal) {
+        updates[`real.${swap.empAId}.${swap.date1}`] = swap.prevReal1 ?? deleteField();
+        updates[`real.${swap.empAId}.${swap.date2}`] = swap.prevReal2 ?? deleteField();
+      }
       await updateDoc(ref, updates).catch(() => { /* doc pode não existir mais */ });
     }
     await deleteDoc(doc(db, "sundaySwaps", swap.id));
@@ -184,20 +188,33 @@ export function InversaoDomingoModal({
     if (!snap.exists()) {
       await setDoc(ref, { id: escId, restaurantId, ano, mes, prevista: {}, real: {}, updatedAt: new Date().toISOString() });
     }
-    const prevReal1 = prev?.real?.[pid]?.[date1] ?? null;
-    const prevReal2 = prev?.real?.[pid]?.[date2] ?? null;
-    // Grava a praticada: trabalha em date1, folga em date2 → gorjeta segue.
-    await updateDoc(ref, {
-      [`real.${pid}.${date1}`]: "trabalho",
-      [`real.${pid}.${date2}`]: "folga",
+    // A troca é um PLANO → grava na PREVISTA (trabalha em date1, folga em date2).
+    // A gorjeta segue por cascata (real ?? prevista) e a análise de ponto vê a
+    // pessoa como escalada — se faltar, a falta lançada na praticada anula o dia.
+    const prevPrevista1 = prev?.prevista?.[pid]?.[date1] ?? null;
+    const prevPrevista2 = prev?.prevista?.[pid]?.[date2] ?? null;
+    const updates: Record<string, unknown> = {
+      [`prevista.${pid}.${date1}`]: "trabalho",
+      [`prevista.${pid}.${date2}`]: "folga",
       updatedAt: new Date().toISOString(),
-    });
+    };
+    // Se a prevista JÁ estava fechada, a praticada é a camada viva → espelha nela
+    // também (senão o override antigo do real venceria a prevista na gorjeta).
+    const tocouReal = !!prev?.previstaFechadaEm;
+    const prevReal1 = tocouReal ? (prev?.real?.[pid]?.[date1] ?? null) : null;
+    const prevReal2 = tocouReal ? (prev?.real?.[pid]?.[date2] ?? null) : null;
+    if (tocouReal) {
+      updates[`real.${pid}.${date1}`] = "trabalho";
+      updates[`real.${pid}.${date2}`] = "folga";
+    }
+    await updateDoc(ref, updates);
     const motivoTrim = motivo.trim();
     const payload: Omit<SundaySwap, "id"> = {
       restaurantId, tipo: "pontual",
       empAId: pid, empANome: emp?.nome || "",
       date1, date2,
-      aplicadoNaEscala: true, prevReal1, prevReal2,
+      aplicadoNaEscala: true, tocouReal,
+      prevPrevista1, prevPrevista2, prevReal1, prevReal2,
       criadoEm: new Date().toISOString(), criadoPor: meId, criadoPorNome: meNome,
       ...(motivoTrim ? { motivo: motivoTrim } : {}),
     };
@@ -452,9 +469,10 @@ export function InversaoDomingoModal({
                 <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-3 text-sm">
                   <div className="font-bold text-emerald-900 dark:text-emerald-100 mb-2">🔄 Troca pontual — {nome(empBId)}</div>
                   <div className="space-y-1 text-xs text-emerald-800 dark:text-emerald-200">
-                    <div>🟢 <strong>{fmtData(date1)}</strong>: trabalha → <strong>recebe gorjeta</strong> (era folga)</div>
-                    <div>⚪ <strong>{fmtData(date2)}</strong>: folga → não recebe (era trabalho)</div>
-                    <div>🔒 Ciclo de domingos: intacto · 🕐 Ponto no dia real trabalhado</div>
+                    <div>🟢 <strong>{fmtData(date1)}</strong>: passa a trabalhar → <strong>recebe gorjeta</strong> (era folga)</div>
+                    <div>⚪ <strong>{fmtData(date2)}</strong>: passa a folgar → não recebe (era trabalho)</div>
+                    <div>📋 Grava na escala <strong>prevista</strong> (plano); a gorjeta segue e o ciclo não muda</div>
+                    <div>🕐 Se ela faltar, a Análise de Ponto acusa normal e a falta anula a gorjeta do dia</div>
                     <div>↩︎ Reversível: desfazer no Histórico restaura os 2 dias</div>
                   </div>
                 </div>
