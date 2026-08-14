@@ -521,8 +521,8 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       out.push({
         id: `prazo_${p.id}`,
         tipo: "prazo", icone: vencido ? "⚠️" : "📅",
-        titulo: `Prazo ${vencido ? "vencido" : "a vencer"} · ${PRAZO_TIPO_LABEL[p.tipo]}`,
-        descricao: `${p.titulo} — ${vencido ? `venceu há ${-dias} dia(s)` : dias === 0 ? "vence hoje" : `vence em ${dias} dia(s)`}${p.exigeLaudo && !p.laudo ? " · exige laudo" : ""}`,
+        titulo: p.titulo || `Prazo ${PRAZO_TIPO_LABEL[p.tipo]}`,
+        descricao: `${vencido ? `Vencido há ${-dias} dia(s)` : dias === 0 ? "Vence hoje" : `Vence em ${dias} dia(s)`} · ${PRAZO_TIPO_LABEL[p.tipo]}${p.exigeLaudo && !p.laudo ? " · exige laudo" : ""}`,
         em: p.vencimento,
         restauranteId: r, restauranteNome: nomePorRid[r] || "Restaurante",
         cta: "Abrir Prazos", href: `/r/${r}/prazos`,
