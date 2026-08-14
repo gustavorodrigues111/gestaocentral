@@ -617,13 +617,20 @@ export type ScheduleStatus =
 export type SundaySwap = {
   id: string;
   restaurantId: string;
+  // "reciproca" (informal entre 2 pessoas — só auditoria; default p/ docs antigos)
+  // "pontual"   (1 pessoa move a folga; grava override na praticada → gorjeta segue)
+  tipo?: "reciproca" | "pontual";
   empAId: string;
-  empANome: string;        // snapshot
-  empBId: string;
-  empBNome: string;        // snapshot
-  date1: string;           // YYYY-MM-DD — domingo da troca (A trabalha, B folga)
-  date2: string;           // YYYY-MM-DD — domingo da recíproca (A folga, B trabalha)
+  empANome: string;        // snapshot — na pontual é a única pessoa (trabalha em date1)
+  empBId?: string;         // ausente na pontual
+  empBNome?: string;       // snapshot
+  date1: string;           // YYYY-MM-DD — reciproca: A trabalha, B folga · pontual: pessoa TRABALHA
+  date2: string;           // YYYY-MM-DD — reciproca: recíproca · pontual: pessoa FOLGA
   motivo?: string;         // texto livre opcional
+  // ── Pontual: aplicada na escala praticada (real) + status anterior p/ desfazer ──
+  aplicadoNaEscala?: boolean;
+  prevReal1?: ScheduleStatus | null;   // status real anterior em date1 (null = sem override)
+  prevReal2?: ScheduleStatus | null;
   criadoEm: string;
   criadoPor: string;       // pessoaId
   criadoPorNome?: string;  // snapshot
