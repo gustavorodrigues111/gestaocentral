@@ -275,6 +275,8 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
   const { activeRestaurant } = useRestaurant();
   const { can } = useCanAcao(activeRestaurant?.id || "");
   const [ref, setRef] = useState(ymdHoje());
+  const [atrOpen, setAtrOpen] = useState(true);   // faixa de atrasados aberta?
+  const [atrTudo, setAtrTudo] = useState(false);  // mostrar todos ou só 2 linhas?
   const hoje = ymdHoje();
   const seg = useMemo(() => segundaDaSemana(ref), [ref]);
   const dias = useMemo(() => Array.from({ length: 7 }, (_, i) => addYmd(seg, i)), [seg]);
@@ -334,15 +336,28 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
         )}
       </div>
 
-      {/* Atrasados & sem data */}
+      {/* Atrasados & sem data — colapsável, 2 linhas por padrão */}
       {atrasados.length > 0 && (
-        <div className="mb-3 rounded-xl border border-amber-300 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/20 p-2.5">
-          <div className="text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-500 mb-1.5 px-1">⚠️ Atrasados & sem data ({atrasados.length})</div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-            {atrasados.slice(0, 12).map(a => (
-              <MiniCard key={a.id} a={a} lido={lidosIds.has(a.id)} multiRest={multiRest} onAbrir={() => onAbrir(a)} onCheck={() => onCheck(a)} />
-            ))}
-          </div>
+        <div className="mb-3 rounded-xl border border-amber-300 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/20">
+          <button onClick={() => setAtrOpen(o => !o)} className="w-full flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-500">
+            <span className="inline-block transition-transform text-[9px]" style={{ transform: atrOpen ? "rotate(90deg)" : "none" }}>▶</span>
+            ⚠️ Atrasados &amp; sem data
+            <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px]">{atrasados.length}</span>
+          </button>
+          {atrOpen && (
+            <div className="px-2.5 pb-2.5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                {(atrTudo ? atrasados : atrasados.slice(0, 6)).map(a => (
+                  <MiniCard key={a.id} a={a} lido={lidosIds.has(a.id)} multiRest={multiRest} onAbrir={() => onAbrir(a)} onCheck={() => onCheck(a)} />
+                ))}
+              </div>
+              {atrasados.length > 6 && (
+                <button onClick={() => setAtrTudo(t => !t)} className="mt-2 text-[11px] font-semibold text-amber-700 dark:text-amber-500 hover:underline">
+                  {atrTudo ? "▲ mostrar menos" : `▼ mostrar mais (${atrasados.length - 6})`}
+                </button>
+              )}
+            </div>
+          )}
         </div>
       )}
 
