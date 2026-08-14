@@ -4,13 +4,13 @@ import { collection, deleteDoc, doc, onSnapshot, query, where } from "firebase/f
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import { canConfigurar, canVer } from "../../core/auth/permissions";
+import { canVer } from "../../core/auth/permissions";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { todayYmd, fmtBR } from "../../core/utils/date";
 import { CHECKLIST_FREQ_LABEL, CHECKLIST_TURNO_LABEL, AREAS } from "../../core/types";
-import type { Area, ChecklistFrequencia, ChecklistRun, ChecklistTemplate, Empregado } from "../../core/types";
+import type { Area, Cargo, ChecklistFrequencia, ChecklistRun, ChecklistTemplate, Empregado } from "../../core/types";
 import { ChecklistTemplateModal } from "./ChecklistTemplateModal";
 import { ImportarChecklistModal } from "./ImportarChecklistModal";
 import { ChecklistRunModal } from "./ChecklistRunModal";
@@ -31,16 +31,21 @@ export function ChecklistsPage() {
   const isMaster = !!me?.isMaster;
   const { can } = useCanAcao(rid);
   const verLegado = canVer(me, rid, "checklists");
-  const configLegado = canConfigurar(me, rid, "checklists");
   const podeExecutar = isMaster || can("checklists", "executar") || verLegado;
-  const podeConfig = isMaster || can("checklists", "configurar") || configLegado;
+  // Editar templates é permissão PRÓPRIA (configurar). NÃO herda de "executar"
+  // — antes o bridge legado marcava configurar=true pra quem só executava.
+  const podeConfig = isMaster || can("checklists", "configurar");
   const podeHistorico = isMaster || can("checklists", "verTime") || podeConfig || verLegado;
   const podeVer = podeExecutar || podeConfig || podeHistorico;
+  // Gestor (edita templates ou vê execuções de todos) enxerga TODOS os checklists
+  // do dia. Operador só vê os atribuídos a ele (pessoa ou função) — ou sem atribuição.
+  const souGestor = isMaster || podeConfig || can("checklists", "verTime");
 
   const [tab, setTab] = useState<Tab>("hoje");
   const [templates, setTemplates] = useState<ChecklistTemplate[]>([]);
   const [runs, setRuns] = useState<ChecklistRun[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
+  const [cargos, setCargos] = useState<Cargo[]>([]);
   const [loading, setLoading] = useState(true);
 
   const [editTemplate, setEditTemplate] = useState<ChecklistTemplate | "new" | null>(null);
@@ -84,6 +89,26 @@ export function ChecklistsPage() {
     return () => unsub();
   }, [rid]);
 
+  useEffect(() => {
+    if (!rid) return;
+    const q = query(collection(db, "cargos"), where("restaurantId", "==", rid));
+    const unsub = onSnapshot(q, (snap) => {
+      setCargos(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Cargo));
+    });
+    return () => unsub();
+  }, [rid]);
+
+  // Áreas/funções do usuário logado neste restaurante (via empregado → cargo).
+  const minhasAreas = useMemo(() => {
+    const areaPorCargo: Record<string, Area> = {};
+    for (const c of cargos) areaPorCargo[c.id] = c.area;
+    const set = new Set<Area>();
+    for (const e of empregados) {
+      if (e.pessoaId && me?.id && e.pessoaId === me.id && e.cargoId && areaPorCargo[e.cargoId]) set.add(areaPorCargo[e.cargoId]);
+    }
+    return set;
+  }, [empregados, cargos, me?.id]);
+
   const today = todayYmd();
   const dow = new Date(today + "T12:00:00").getDay(); // 0=Dom..6=Sáb
 
@@ -91,6 +116,18 @@ export function ChecklistsPage() {
   const templatesHoje = useMemo(() => {
     return templates.filter(t => {
       if (!t.ativo) return false;
+      // Atribuição: operador só vê o checklist se estiver entre os responsáveis
+      // (pessoa) OU se a área dele bater com as funções do template. Sem nenhuma
+      // atribuição = visível pra todos. Gestor vê tudo.
+      if (!souGestor) {
+        const resp = t.responsaveisIds || [];
+        const func = t.funcoes || [];
+        if (resp.length || func.length) {
+          const matchResp = !!me?.id && resp.includes(me.id);
+          const matchFunc = func.some(f => minhasAreas.has(f));
+          if (!matchResp && !matchFunc) return false;
+        }
+      }
       // Frequência POR ITEM: aparece se tiver pelo menos 1 item do dia.
       if (temFreqPorItem(t.itens || [])) return (t.itens || []).some(i => itemDoDia(i, today));
       if (t.frequencia === "diaria") {
@@ -112,7 +149,7 @@ export function ChecklistsPage() {
       // "avulsa" — sempre aparece manualmente
       return false;
     });
-  }, [templates, runs, today, dow]);
+  }, [templates, runs, today, dow, souGestor, minhasAreas, me?.id]);
 
   // Run de hoje pra cada template (se houver)
   const runHojeMap = useMemo(() => {
