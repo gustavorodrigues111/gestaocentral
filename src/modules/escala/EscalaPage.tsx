@@ -551,6 +551,16 @@ export function EscalaPage() {
       previstaFechadaMotivo: motivo || "",
       updatedAt: now,
     }, { merge: true });
+    // Fase 2 — registra o LOTE DE PREVISÃO (objeto de 1a classe) dos empregados
+    // recém-travados neste fechamento. Id = loteId (idempotente).
+    const novosDoLote = empregadosDoMes.filter((e) => !(escala?.previstaFechadaPorEmp || {})[e.id]).map((e) => e.id);
+    if (novosDoLote.length) {
+      await setDoc(doc(db, "lotesPrevisao", loteId), {
+        id: loteId, restaurantId: rid, ano, mes, empregadoIds: novosDoLote,
+        ordem: lotesExistentes.size + 1, criadoEm: now, criadoPor: me.id, criadoPorNome: me.nome,
+        ...(motivo ? { motivo } : {}),
+      }).catch(() => { /* registro auxiliar — não bloqueia o fechamento */ });
+    }
     setVersao("real");
   }
 
