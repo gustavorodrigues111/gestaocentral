@@ -3,7 +3,7 @@
 // Portado do AppTip mantendo as regras CLT idênticas.
 // ════════════════════════════════════════════════════════════════════════════
 
-import type { Empregado, HorarioDia, ScheduleStatus, SundayCycle, WorkSchedule } from "../types";
+import type { Empregado, HorarioDia, Modalidade, ScheduleStatus, SundayCycle, WorkSchedule } from "../types";
 import { empregadoAtivoEm } from "../utils/empregado";
 
 export const WEEKDAYS: { idx: number; short: string; long: string }[] = [
@@ -366,6 +366,16 @@ export type DerivedDay = {
   fonte: "schedule" | "implicito";  // schedule = veio do workSchedule; implicito = sem cadastro
   unidadeId?: string;         // Multi-unidades: override do dia (do HorarioDia.unidadeId)
 };
+
+// Modalidade DERIVADA do cadastro pra uma data (padrão do horário vigente).
+// Home office só onde o HorarioDia.homeOffice do dia-da-semana estiver marcado.
+export function modalidadeDerivadaDia(emp: Empregado, date: string): Modalidade {
+  const ws = getActiveWorkSchedule(emp.workSchedules, date);
+  if (!ws) return "presencial";
+  const days = getEffectiveDays(ws, date);
+  const dow = new Date(date + "T12:00:00").getDay();
+  return days?.[dow]?.homeOffice ? "home_office" : "presencial";
+}
 
 export function derivedScheduleForEmpregado(
   emp: Empregado,

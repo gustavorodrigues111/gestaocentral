@@ -9,7 +9,8 @@
 import type { Empregado, Cargo, EscalaMes, BeneficioPagLinha, ScheduleStatus } from "../../core/types";
 import { contarDiasTrabalhados, round2 } from "../vt/calc";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
-import { statusEfetivoEmpMes } from "../../core/escala/statusEfetivo";
+import { statusEfetivoEmpMes, modalidadeEfetivaEmpDia } from "../../core/escala/statusEfetivo";
+import { empregadoAtivoEm } from "../../core/utils/empregado";
 import { daysInMonth, pad2 } from "../../core/utils/date";
 
 // Empregado ativo em ALGUM dia do mês (mesma regra de /escala e do VT).
@@ -62,6 +63,44 @@ export function contarDiasVR(emp: Empregado, escala: EscalaMes | null, ano: numb
   return n;
 }
 
+// VT diário conta trabalho/comp_trab (o mesmo que dias trabalhados).
+const EH_TRABALHO_VT: Record<ScheduleStatus, boolean> = {
+  trabalho: true, comp_trab: true,
+  comp: false, freela: false, folga: false, ferias: false, falta_j: false, falta_i: false,
+};
+// VT diário: só dias trabalhados E PRESENCIAIS (home office não paga VT).
+export function contarDiasVtPresencial(emp: Empregado, escala: EscalaMes | null, ano: number, mes: number, versao: "prevista" | "real"): number {
+  const dias = statusEfetivoEmpMes(emp, escala, ano, mes, versao);
+  let n = 0;
+  for (const d of Object.keys(dias)) {
+    if (EH_TRABALHO_VT[dias[d]] && modalidadeEfetivaEmpDia(emp, escala, d, versao) === "presencial") n++;
+  }
+  return n;
+}
+
+// Contadores por JANELA [de, ate] (usados no ajuste). respeitarDemissao = dia
+// pós-demissão não conta (a praticada nasce cópia da prevista).
+export function contarDiasVtPresencialRange(emp: Empregado, escala: EscalaMes | null, ano: number, mes: number, de: string, ate: string, versao: "prevista" | "real", respeitarDemissao: boolean): number {
+  const dias = statusEfetivoEmpMes(emp, escala, ano, mes, versao);
+  let n = 0;
+  for (const d of Object.keys(dias)) {
+    if (d < de || d > ate) continue;
+    if (respeitarDemissao && !empregadoAtivoEm(emp, d)) continue;
+    if (EH_TRABALHO_VT[dias[d]] && modalidadeEfetivaEmpDia(emp, escala, d, versao) === "presencial") n++;
+  }
+  return n;
+}
+export function contarDiasVrRange(emp: Empregado, escala: EscalaMes | null, ano: number, mes: number, de: string, ate: string, versao: "prevista" | "real", respeitarDemissao: boolean): number {
+  const dias = statusEfetivoEmpMes(emp, escala, ano, mes, versao);
+  let n = 0;
+  for (const d of Object.keys(dias)) {
+    if (d < de || d > ate) continue;
+    if (respeitarDemissao && !empregadoAtivoEm(emp, d)) continue;
+    if (STATUS_CONTA_VR[dias[d]]) n++;
+  }
+  return n;
+}
+
 // Monta as linhas do lote de pagamento a partir da escala PREVISTA do mês.
 // `usaVR` = Restaurant.usaVR (algumas empresas não têm VR).
 export function montarLinhasPagamento(
@@ -84,15 +123,16 @@ export function montarLinhasPagamento(
     // Sem nenhum benefício configurado → nem entra na lista.
     if (!vtAtivo && !vrAtivo && auxVt <= 0 && auxVr <= 0) continue;
 
-    const dias = contarDiasTrabalhados(e, escala, ano, mes, "prevista");
-    const diasVR = contarDiasVR(e, escala, ano, mes, "prevista");   // VR conta atestado
+    const dias = contarDiasTrabalhados(e, escala, ano, mes, "prevista");        // trabalhados (base do auxílio)
+    const diasVT = contarDiasVtPresencial(e, escala, ano, mes, "prevista");     // presenciais (base do VT diário)
+    const diasVR = contarDiasVR(e, escala, ano, mes, "prevista");               // VR conta atestado
     const vtValorDiario = vtDiarioDe(e);
     const vrValorDiario = e.vrValorDiario ?? 0;
     // Auxílio fixo PROPORCIONAL ao mês cheio (admissão/demissão/faltas).
     const prop = proporcaoAuxilio(e, dias, ano, mes);
     const auxVtProp = round2(auxVt * prop);
     const auxVrProp = round2(auxVr * prop);
-    const vtTotal = round2((vtAtivo ? dias * vtValorDiario : 0) + auxVtProp);
+    const vtTotal = round2((vtAtivo ? diasVT * vtValorDiario : 0) + auxVtProp);  // VT só nos presenciais
     const vrTotal = round2((vrAtivo ? diasVR * vrValorDiario : 0) + auxVrProp);
     const ajuste = round2(ajustePorEmp[e.id] || 0);
 
@@ -105,6 +145,8 @@ export function montarLinhasPagamento(
       forma: e.formaBeneficio || "caju",
       chavePix: e.chavePix || null,
       diasTrabalhados: dias,
+      diasVtPresencial: diasVT,
+      diasVr: diasVR,
       vtAtivo,
       vtValorDiario,
       vtAuxFixo: auxVtProp,

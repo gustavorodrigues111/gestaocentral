@@ -158,6 +158,24 @@ describe("proximaJanela (cursor)", () => {
   });
 });
 
+describe("home office no ajuste (eixo do VT)", () => {
+  it("home office na praticada → desconta só o VT do dia; dias trabalhados e VR ficam", () => {
+    const esc = {
+      id: "r1_2026-07", restaurantId: "r1", ano: 2026, mes: 7,
+      prevista: { e1: trabalho(1, 10) }, real: { e1: trabalho(1, 10) }, realAjustes: { e1: apurado(1, 10) },
+      modalidadeReais: { e1: { "2026-07-05": "home_office" } }, previstaFechadaEm: "2026-06-30",
+    } as unknown as EscalaMes;
+    const pg = { id: "pg1", ano: 2026, mes: 7, linhas: [
+      { empregadoId: "e1", empregadoNome: "Ana", vtAtivo: true, vtValorDiario: 10, vrAtivo: true, vrValorDiario: 20, diasTrabalhados: 10, diasVtPresencial: 10, diasVr: 10 } as never,
+    ] } as unknown as BeneficioPagLote;
+    const linhas = montarLinhasAjuste({ pagamento: pg, empregados: [emp("e1", "Ana")], escala: esc, ano: 2026, mes: 7, de: "2026-07-01", ate: "2026-07-10", usaVR: true });
+    expect(linhas).toHaveLength(1);
+    expect(linhas[0].ajusteDias).toBe(0);    // trabalhou os mesmos 10 dias
+    expect(linhas[0].ajusteVt).toBe(-10);    // −1 dia presencial × 10
+    expect(linhas[0].ajusteVr).toBe(0);      // VR não muda (home office paga VR)
+  });
+});
+
 describe("ajustePorEmpregadoPendente", () => {
   it("soma os ajustes pendentes por empregado (aplicado/cancelado ignorados)", () => {
     const ajustes = [

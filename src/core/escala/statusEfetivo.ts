@@ -25,8 +25,22 @@
 // Empregados inativos em determinado dia (admitido depois / demitido antes)
 // não entram nem no derivado nem no override — ficam fora.
 
-import type { Empregado, EscalaMes, ScheduleStatus } from "../types";
-import { derivedScheduleForEmpregado } from "./horarios";
+import type { Empregado, EscalaMes, Modalidade, ScheduleStatus } from "../types";
+import { derivedScheduleForEmpregado, modalidadeDerivadaDia } from "./horarios";
+
+// Modalidade EFETIVA de um dia: override real (praticada) → override prevista →
+// derivado do cadastro → presencial. Afeta só o VT.
+export function modalidadeEfetivaEmpDia(
+  emp: Empregado, escala: EscalaMes | null, date: string, versao: "prevista" | "real",
+): Modalidade {
+  if (versao === "real") {
+    const r = escala?.modalidadeReais?.[emp.id]?.[date];
+    if (r) return r;
+  }
+  const p = escala?.modalidadePrevistas?.[emp.id]?.[date];
+  if (p) return p;
+  return modalidadeDerivadaDia(emp, date);
+}
 
 /**
  * Status efetivo de UM empregado em TODOS os dias do mês.

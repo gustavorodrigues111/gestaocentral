@@ -164,6 +164,25 @@ describe("VR conta atestado (falta_j)", () => {
   });
 });
 
+describe("VT presencial × home office", () => {
+  it("dia home office na prevista → não paga VT diário, mas paga VR e conta como trabalhado", () => {
+    const dias: Record<string, ScheduleStatus> = {};
+    for (let i = 1; i <= 22; i++) dias[`2026-07-${String(i).padStart(2, "0")}`] = "trabalho";
+    for (let i = 23; i <= 31; i++) dias[`2026-07-${i}`] = "folga";
+    const esc = {
+      id: "r1_2026-07", restaurantId: "r1", ano: 2026, mes: 7, prevista: { e1: dias }, real: {},
+      modalidadePrevistas: { e1: { "2026-07-01": "home_office", "2026-07-02": "home_office" } },
+    } as unknown as EscalaMes;
+    const e = emp({ vtAtivo: true, vtValorDiario: 10, vrAtivo: true, vrValorDiario: 20 });
+    const l = montarLinhasPagamento([e], cargos, esc, 2026, 7, true)[0];
+    expect(l.diasTrabalhados).toBe(22);      // home office continua trabalhado
+    expect(l.diasVtPresencial).toBe(20);     // 2 dias home office fora do VT
+    expect(l.diasVr).toBe(22);               // VR paga home office
+    expect(l.vtTotal).toBe(200);             // 20 × 10 (presenciais)
+    expect(l.vrTotal).toBe(440);             // 22 × 20
+  });
+});
+
 describe("totaisDoLote", () => {
   it("soma VT, VR e geral", () => {
     const linhas = [

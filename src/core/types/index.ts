@@ -549,7 +549,13 @@ export type HorarioDia = {
   // empregado.unidadePadraoId. Útil pra alternância semanal recorrente
   // (ex: toda quinta atua na Filial em vez da Matriz).
   unidadeId?: string;
+  // Modalidade padrão do dia: home office = sem VT (mantém VR/gorjeta). Ausente
+  // ou false = presencial. Deriva pra prevista; ajustável por data na escala.
+  homeOffice?: boolean;
 };
+
+// Modalidade de um dia de trabalho — afeta SÓ o VT (presencial paga; home office não).
+export type Modalidade = "presencial" | "home_office";
 
 // Ciclo de domingo (modelo: trabalha N domingos seguidos, depois folga 1)
 export type SundayCycle = {
@@ -688,6 +694,11 @@ export type EscalaMes = {
   // Mapas paralelos a prevista/real — mesma estrutura, valor = unidadeId.
   unidadesPrevistas?: { [empregadoId: string]: { [date: string]: string } };
   unidadesReais?:     { [empregadoId: string]: { [date: string]: string } };
+
+  // Modalidade (presencial/home office) por dia — paralelo a prevista/real.
+  // Guarda só o desvio "home_office"; ausência = presencial. Afeta só o VT.
+  modalidadePrevistas?: { [empregadoId: string]: { [date: string]: Modalidade } };
+  modalidadeReais?:     { [empregadoId: string]: { [date: string]: Modalidade } };
 
   // ── Integração com Registros de Ponto ───────────────────────────────────
   // Metadata dos ajustes na PRATICADA — quem ajustou e por quê, pra fechar
@@ -1649,6 +1660,8 @@ export type BeneficioPagLinha = {
   forma: BeneficioForma;
   chavePix?: string | null;
   diasTrabalhados: number;       // dias de trabalho+comp_trab na prevista
+  diasVtPresencial?: number;     // dias presenciais (base do VT diário) — home office não conta
+  diasVr?: number;               // dias que pagam VR (trabalho+comp_trab+atestado)
   // VT
   vtAtivo: boolean;
   vtValorDiario: number;
