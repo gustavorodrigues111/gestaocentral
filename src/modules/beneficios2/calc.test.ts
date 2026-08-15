@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { montarLinhasPagamento, vtDiarioDe, ativoNoMes, totaisDoLote, diasPrevistosMesCheio, proporcaoAuxilio, contarDiasVR } from "./calc";
+import { montarLinhasPagamento, vtDiarioDe, ativoNoMes, totaisDoLote, diasPrevistosMesCheio, proporcaoAuxilio, contarDiasVR, recalcularLinha } from "./calc";
 import type { Empregado, EscalaMes, Cargo, ScheduleStatus, WorkSchedule } from "../../core/types";
 
 // Horário com todos os 7 dias ativos → mês cheio = todos os dias do mês.
@@ -180,6 +180,18 @@ describe("VT presencial × home office", () => {
     expect(l.diasVr).toBe(22);               // VR paga home office
     expect(l.vtTotal).toBe(200);             // 20 × 10 (presenciais)
     expect(l.vrTotal).toBe(440);             // 22 × 20
+  });
+});
+
+describe("recalcularLinha (valor editável por lote)", () => {
+  it("recomputa VT/VR/total ao editar valor-dia e auxílio", () => {
+    const base = { empregadoId: "e1", empregadoNome: "Ana", forma: "caju", diasTrabalhados: 20,
+      diasVtPresencial: 20, diasVr: 20, vtAtivo: true, vtValorDiario: 10, vtAuxFixo: 0,
+      vrAtivo: true, vrValorDiario: 20, vrAuxFixo: 0, ajuste: 0 } as unknown as import("../../core/types").BeneficioPagLinha;
+    const editada = recalcularLinha({ ...base, vtValorDiario: 12, vrValorDiario: 25, vtAuxFixo: 50 });
+    expect(editada.vtTotal).toBe(290);   // 20×12 + 50
+    expect(editada.vrTotal).toBe(500);   // 20×25
+    expect(editada.total).toBe(790);
   });
 });
 

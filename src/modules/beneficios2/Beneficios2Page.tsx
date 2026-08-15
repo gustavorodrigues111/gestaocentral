@@ -13,8 +13,10 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
+import { Modal } from "../../core/ui/Modal";
+import { Input } from "../../core/ui/Input";
 import { nomeMes, pad2, shiftMonth } from "../../core/utils/date";
-import { montarLinhasPagamento, totaisDoLote } from "./calc";
+import { montarLinhasPagamento, totaisDoLote, recalcularLinha } from "./calc";
 import { ajustePorEmpregadoPendente } from "./ajuste";
 import { AjustesTab } from "./AjustesTab";
 import { exportarCajuPag, exportarPixPag, baixarCsv } from "./exportar";
@@ -51,6 +53,11 @@ export function Beneficios2Page() {
   const [ajustesTodos, setAjustesTodos] = useState<BeneficioAjusteLote[]>([]);
   const [salvando, setSalvando] = useState(false);
   const iniciadoRef = useRef(false);   // abre no próximo mês a pagar só 1×
+  // Override de valor por lote (só na prévia): valor-dia / auxílio por empregado.
+  type LinhaOverride = Partial<Pick<BeneficioPagLinha, "vtValorDiario" | "vrValorDiario" | "vtAuxFixo" | "vrAuxFixo">>;
+  const [overrides, setOverrides] = useState<Record<string, LinhaOverride>>({});
+  const [editando, setEditando] = useState<BeneficioPagLinha | null>(null);
+  useEffect(() => { setOverrides({}); }, [ano, mes]);   // zera ao trocar de mês
 
   useEffect(() => { if (!rid) return; return onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)), (s) => setEmpregados(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado))); }, [rid]);
   useEffect(() => { if (!rid) return; return onSnapshot(query(collection(db, "cargos"), where("restaurantId", "==", rid)), (s) => setCargos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo))); }, [rid]);
@@ -87,7 +94,12 @@ export function Beneficios2Page() {
   // que foi cancelado por engano, restaurando exatamente o que foi pago.
   const loteCancelado = useMemo(() => (!loteAtivo ? (lotesDoMes.find((l) => l.status === "cancelado") || null) : null), [lotesDoMes, loteAtivo]);
   const preview = useMemo<BeneficioPagLinha[]>(() => loteAtivo ? [] : montarLinhasPagamento(empregados, cargos, escala, ano, mes, usaVR, ajustePendente), [loteAtivo, empregados, cargos, escala, ano, mes, usaVR, ajustePendente]);
-  const linhas = loteAtivo ? loteAtivo.linhas : preview;
+  // Aplica os overrides de valor por lote sobre a prévia (recomputa a linha).
+  const linhasView = useMemo(() => preview.map((l) => {
+    const o = overrides[l.empregadoId];
+    return o ? recalcularLinha({ ...l, ...o }) : l;
+  }), [preview, overrides]);
+  const linhas = loteAtivo ? loteAtivo.linhas : linhasView;
   const totais = useMemo(() => totaisDoLote(linhas), [linhas]);
   const temAjuste = linhas.some((l) => (l.ajuste || 0) !== 0);
   // VT e VR agora mostram SÓ a parte diária (valor-dia × dias); o auxílio fixo
@@ -260,6 +272,11 @@ export function Beneficios2Page() {
                   <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
                     {l.empregadoNome}
                     {l.semConfig && <span className="text-[9px] px-1 py-0.5 rounded-full bg-rose-100 text-rose-700" title="Ativo mas sem valor diário">sem valor</span>}
+                    {overrides[l.empregadoId] && <span className="text-[9px] px-1 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" title="Valor editado só neste lote">editado</span>}
+                    {!loteAtivo && podeConfig && (
+                      <button onClick={() => setEditando(l)} title="Editar valores desta linha (só neste lote)"
+                        className="text-gray-300 hover:text-indigo-600 text-xs leading-none">✏️</button>
+                    )}
                   </div>
                   {l.cargoNome && <div className="text-[11px] text-gray-400">{l.cargoNome}</div>}
                 </td>
@@ -362,6 +379,59 @@ export function Beneficios2Page() {
           </div>
         )
       )}
+
+      {editando && (
+        <EditarValoresModal
+          linha={editando}
+          override={overrides[editando.empregadoId]}
+          usaVR={usaVR}
+          onClose={() => setEditando(null)}
+          onSave={(ov) => {
+            setOverrides((prev) => {
+              const next = { ...prev };
+              if (ov) next[editando.empregadoId] = ov; else delete next[editando.empregadoId];
+              return next;
+            });
+            setEditando(null);
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function EditarValoresModal({ linha, override, usaVR, onClose, onSave }: {
+  linha: BeneficioPagLinha;
+  override?: Partial<Pick<BeneficioPagLinha, "vtValorDiario" | "vrValorDiario" | "vtAuxFixo" | "vrAuxFixo">>;
+  usaVR: boolean;
+  onClose: () => void;
+  onSave: (ov: Partial<Pick<BeneficioPagLinha, "vtValorDiario" | "vrValorDiario" | "vtAuxFixo" | "vrAuxFixo">> | null) => void;
+}) {
+  const [vtVd, setVtVd] = useState(String((override?.vtValorDiario ?? linha.vtValorDiario) || 0));
+  const [vrVd, setVrVd] = useState(String((override?.vrValorDiario ?? linha.vrValorDiario) || 0));
+  const [auxVt, setAuxVt] = useState(String((override?.vtAuxFixo ?? linha.vtAuxFixo) || 0));
+  const [auxVr, setAuxVr] = useState(String((override?.vrAuxFixo ?? linha.vrAuxFixo) || 0));
+  const num = (s: string) => Math.max(0, parseFloat(s.replace(",", ".")) || 0);
+  return (
+    <Modal title={`Editar valores — ${linha.empregadoNome}`} onClose={onClose}>
+      <div className="space-y-3">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Vale <b>só pra este lote</b>; o padrão continua vindo do cadastro. Dias: <b>{linha.diasVtPresencial ?? linha.diasTrabalhados}</b> presenciais (VT) · <b>{linha.diasVr ?? linha.diasTrabalhados}</b> VR.
+        </p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Input label="VT / dia" value={vtVd} onChange={(e) => setVtVd(e.target.value)} />
+          {usaVR && <Input label="VR / dia" value={vrVd} onChange={(e) => setVrVd(e.target.value)} />}
+          <Input label="Auxílio VT (mensal)" value={auxVt} onChange={(e) => setAuxVt(e.target.value)} />
+          {usaVR && <Input label="Auxílio VR (mensal)" value={auxVr} onChange={(e) => setAuxVr(e.target.value)} />}
+        </div>
+        <div className="flex items-center justify-between gap-2 pt-2">
+          <Button variant="ghost" onClick={() => onSave(null)}>Restaurar padrão</Button>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+            <Button onClick={() => onSave({ vtValorDiario: num(vtVd), vrValorDiario: num(vrVd), vtAuxFixo: num(auxVt), vrAuxFixo: num(auxVr) })}>Salvar</Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }

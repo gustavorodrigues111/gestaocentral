@@ -163,6 +163,16 @@ export function montarLinhasPagamento(
   return linhas.sort((a, b) => a.empregadoNome.localeCompare(b.empregadoNome, "pt-BR"));
 }
 
+// Recalcula os totais de uma linha após edição de valor (valor-dia ou auxílio)
+// por lote. Usa as bases de dias já congeladas na linha (presencial p/ VT, VR p/ VR).
+export function recalcularLinha(l: BeneficioPagLinha): BeneficioPagLinha {
+  const diasVT = l.diasVtPresencial ?? l.diasTrabalhados;
+  const diasVR = l.diasVr ?? l.diasTrabalhados;
+  const vtTotal = round2((l.vtAtivo ? diasVT * l.vtValorDiario : 0) + (l.vtAuxFixo || 0));
+  const vrTotal = round2((l.vrAtivo ? diasVR * l.vrValorDiario : 0) + (l.vrAuxFixo || 0));
+  return { ...l, vtTotal, vrTotal, total: round2(vtTotal + vrTotal + (l.ajuste || 0)) };
+}
+
 export function totaisDoLote(linhas: BeneficioPagLinha[]): { totalVt: number; totalVr: number; totalAjuste: number; totalGeral: number } {
   const totalVt = round2(linhas.reduce((s, l) => s + l.vtTotal, 0));
   const totalVr = round2(linhas.reduce((s, l) => s + l.vrTotal, 0));
