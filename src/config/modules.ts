@@ -86,11 +86,11 @@ export const MODULES: ModuleDef[] = [
   // ═══ 💰 FINANCEIRO ═══
 
   // ── Equipe (benefícios + variáveis) ──────────────────────────────
-  { id: "beneficios",  area: "fin", subarea: "Equipe (benefícios + variáveis)", label: "Benefícios", icon: "🎁", status: "ativo", etapa: "beta", desc: "Lote único de VT (Mobilidade) + VR (Refeição) + auxílio fixo, com 1 CSV pro Caju. Vigente de junho/2026.", dependsOn: ["pessoas", "escala"] },
-  { id: "beneficios2", area: "fin", subarea: "Equipe (benefícios + variáveis)", label: "Benefícios ✨", icon: "🎁", status: "ativo", etapa: "beta", desc: "Novo módulo de benefícios: pagamento por valor diário × dias da escala prevista, VT+VR em colunas, Caju/Pix. (substituirá VT/VR/Benefícios)", dependsOn: ["pessoas", "escala"] },
+  { id: "beneficios",  area: "fin", subarea: "Equipe (benefícios + variáveis)", label: "Benefícios (antigo)", icon: "🎁", status: "ativo", etapa: "beta", oculto: true, desc: "Legado — substituído pelo módulo Benefícios. Oculto; histórico preservado.", dependsOn: ["pessoas", "escala"] },
+  { id: "beneficios2", area: "fin", subarea: "Equipe (benefícios + variáveis)", label: "Benefícios", icon: "🎁", status: "ativo", etapa: "beta", desc: "Módulo único de benefícios: VT + VR + auxílio fixo por lote, valor diário × dias da escala, Caju/Pix. Substitui VT, VR e o Benefícios antigo.", dependsOn: ["pessoas", "escala"] },
   { id: "gorjetas",    area: "fin", subarea: "Equipe (benefícios + variáveis)", label: "Gorjetas",  icon: "💸", status: "ativo", etapa: "beta", desc: "Lançamento e divisão de gorjetas", dependsOn: ["pessoas", "escala"] },
-  { id: "vt",          area: "fin", subarea: "Equipe (benefícios + variáveis)", label: "Vale Transporte", icon: "🚌", status: "ativo", etapa: "beta", desc: "VT por empregado (migrando pra Benefícios)", dependsOn: ["pessoas", "escala"] },
-  { id: "vr",          area: "fin", subarea: "Equipe (benefícios + variáveis)", label: "Vale Refeição", icon: "🍱", status: "ativo", etapa: "beta", desc: "VR diário (migrando pra Benefícios)", dependsOn: ["pessoas", "escala"] },
+  { id: "vt",          area: "fin", subarea: "Equipe (benefícios + variáveis)", label: "Vale Transporte", icon: "🚌", status: "ativo", etapa: "beta", oculto: true, desc: "Legado — VT agora vive dentro do módulo Benefícios. Oculto; histórico preservado.", dependsOn: ["pessoas", "escala"] },
+  { id: "vr",          area: "fin", subarea: "Equipe (benefícios + variáveis)", label: "Vale Refeição", icon: "🍱", status: "ativo", etapa: "beta", oculto: true, desc: "Legado — VR agora vive dentro do módulo Benefícios. Oculto; histórico preservado.", dependsOn: ["pessoas", "escala"] },
 
   // ── Despesas ─────────────────────────────────────────────────────
   { id: "vendas",      area: "fin", subarea: "Vendas & Permutas",      label: "Vendas",          icon: "🧾", status: "ativo", etapa: "beta", desc: "Registro de vendas fora do sistema fiscal (entre empresas, permutas, sem margem). Cobrança via WhatsApp, quitação e permuta recíproca." },
