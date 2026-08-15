@@ -1,5 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { montarLinhasPagamento, vtDiarioDe, ativoNoMes, totaisDoLote, diasPrevistosMesCheio, proporcaoAuxilio, contarDiasVR, recalcularLinha } from "./calc";
+import { previstaFechadaParaEmp } from "../../core/escala/statusEfetivo";
 import type { Empregado, EscalaMes, Cargo, ScheduleStatus, WorkSchedule } from "../../core/types";
 
 // Horário com todos os 7 dias ativos → mês cheio = todos os dias do mês.
@@ -192,6 +193,26 @@ describe("recalcularLinha (valor editável por lote)", () => {
     expect(editada.vtTotal).toBe(290);   // 20×12 + 50
     expect(editada.vrTotal).toBe(500);   // 20×25
     expect(editada.total).toBe(790);
+  });
+});
+
+describe("Fase 2 — subconjunto de empregados + lock por empregado", () => {
+  it("montarLinhasPagamento respeita empregadoIds (só o subconjunto)", () => {
+    const e1 = emp({ vtAtivo: true, vtValorDiario: 10 });
+    const e2 = { ...emp({ vtAtivo: true, vtValorDiario: 10 }), id: "e2", nome: "Bia" } as unknown as import("../../core/types").Empregado;
+    const esc = escala("e1", diasPadrao());
+    expect(montarLinhasPagamento([e1, e2], cargos, esc, 2026, 7, false)).toHaveLength(2);
+    const so1 = montarLinhasPagamento([e1, e2], cargos, esc, 2026, 7, false, {}, ["e1"]);
+    expect(so1).toHaveLength(1);
+    expect(so1[0].empregadoId).toBe("e1");
+  });
+  it("previstaFechadaParaEmp: mapa por empregado manda; fora do mapa = editável", () => {
+    const escMapa = { previstaFechadaEm: "x", previstaFechadaPorEmp: { e1: { loteId: "L1", em: "x" } } } as unknown as import("../../core/types").EscalaMes;
+    expect(previstaFechadaParaEmp(escMapa, "e1")).toBe(true);
+    expect(previstaFechadaParaEmp(escMapa, "e2")).toBe(false);      // admitido depois = editável
+    const escDoc = { previstaFechadaEm: "x" } as unknown as import("../../core/types").EscalaMes;
+    expect(previstaFechadaParaEmp(escDoc, "qualquer")).toBe(true);  // mês antigo sem mapa
+    expect(previstaFechadaParaEmp(null, "x")).toBe(false);          // prevista aberta
   });
 });
 

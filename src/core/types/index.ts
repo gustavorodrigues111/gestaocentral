@@ -742,6 +742,12 @@ export type EscalaMes = {
   previstaReabertaPorNome?: string | null;
   previstaReabertaMotivo?: string;
 
+  // ── Fase 2 (lotes de previsão): fechamento da prevista POR EMPREGADO ───────
+  // Quando presente, é a fonte da verdade de "quem está travado". Empregado FORA
+  // do mapa = prevista dele ainda editável (ex.: admitido no meio do mês, depois
+  // do 1º fechamento). Ausente (meses antigos) → cai no previstaFechadaEm do doc.
+  previstaFechadaPorEmp?: { [empregadoId: string]: { loteId: string; em: string } };
+
   // ── Fase 3: VT PAGO (consequência de marcar lote VT como pago) ────────────
   vtPagoEm?: string | null;       // ISO — congela "prevista" após pagamento
   vtPagoPor?: string | null;
@@ -758,6 +764,22 @@ export type EscalaMes = {
   versoesAnteriores?: EscalaSnapshot[];
 
   updatedAt: string;
+};
+
+// Lote de PREVISÃO (Fase 2): fechamento da prevista de um subconjunto de
+// empregados, num mês. Objeto de primeira classe — cada lote pode gerar seu
+// pagamento de benefícios. Entra gente no meio do mês → novo lote pra eles.
+export type LotePrevisao = {
+  id: string;
+  restaurantId: string;
+  ano: number;
+  mes: number;
+  empregadoIds: string[];        // quem foi fechado neste lote
+  ordem: number;                 // 1 = fechamento inicial do mês; 2+ = novos
+  criadoEm: string;
+  criadoPor?: string | null;
+  criadoPorNome?: string | null;
+  motivo?: string;
 };
 
 // ─── Integração Ponto × Escala ─────────────────────────────────────────────

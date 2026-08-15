@@ -111,10 +111,13 @@ export function montarLinhasPagamento(
   mes: number,
   usaVR: boolean,
   ajustePorEmp: Record<string, number> = {},   // desconto/crédito do mês anterior
+  empregadoIds?: string[] | null,               // Fase 2: só estes (lote de previsão)
 ): BeneficioPagLinha[] {
   const cargoNomeDe = new Map(cargos.map((c) => [c.id, c.nome] as const));
+  const soEstes = empregadoIds && empregadoIds.length ? new Set(empregadoIds) : null;
   const linhas: BeneficioPagLinha[] = [];
   for (const e of empregados) {
+    if (soEstes && !soEstes.has(e.id)) continue;   // lote de previsão de um subconjunto
     if (!ativoNoMes(e, ano, mes)) continue;
     const vtAtivo = !!e.vtAtivo;
     const vrAtivo = usaVR && !!e.vrAtivo;

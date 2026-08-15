@@ -28,6 +28,16 @@
 import type { Empregado, EscalaMes, Modalidade, ScheduleStatus } from "../types";
 import { derivedScheduleForEmpregado, modalidadeDerivadaDia } from "./horarios";
 
+// Fase 2 — prevista FECHADA para um empregado específico. Se o mês usa o mapa
+// por empregado (previstaFechadaPorEmp), ele é a fonte da verdade (empregado fora
+// do mapa = editável, ex.: admitido no meio do mês). Meses antigos sem o mapa →
+// cai no flag do doc (previstaFechadaEm) — retrocompatível.
+export function previstaFechadaParaEmp(escala: EscalaMes | null, empregadoId: string): boolean {
+  if (!escala) return false;
+  if (escala.previstaFechadaPorEmp) return !!escala.previstaFechadaPorEmp[empregadoId];
+  return !!escala.previstaFechadaEm;
+}
+
 // Modalidade EFETIVA de um dia: override real (praticada) → override prevista →
 // derivado do cadastro → presencial. Afeta só o VT.
 export function modalidadeEfetivaEmpDia(
