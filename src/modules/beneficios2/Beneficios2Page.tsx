@@ -100,6 +100,13 @@ export function Beneficios2Page() {
     return o ? recalcularLinha({ ...l, ...o }) : l;
   }), [preview, overrides]);
   const linhas = loteAtivo ? loteAtivo.linhas : linhasView;
+  // Fase 2 — pagamento por LOTE: quem já foi pago em algum lote (não cancelado) do
+  // mês, e quem ainda não (newcomers). Permite gerar um lote só pros que faltam.
+  const pagosIds = useMemo(() => new Set(lotesDoMes.filter((l) => l.status !== "cancelado").flatMap((l) => l.linhas.map((x) => x.empregadoId))), [lotesDoMes]);
+  const naoPagosIds = useMemo(() => empregados.filter((e) => !pagosIds.has(e.id)).map((e) => e.id), [empregados, pagosIds]);
+  const naoPagosLinhas = useMemo(() => (previstaFechada && naoPagosIds.length)
+    ? montarLinhasPagamento(empregados, cargos, escala, ano, mes, usaVR, ajustePendente, naoPagosIds).map((l) => { const o = overrides[l.empregadoId]; return o ? recalcularLinha({ ...l, ...o }) : l; })
+    : [], [previstaFechada, naoPagosIds, empregados, cargos, escala, ano, mes, usaVR, ajustePendente, overrides]);
   const totais = useMemo(() => totaisDoLote(linhas), [linhas]);
   const temAjuste = linhas.some((l) => (l.ajuste || 0) !== 0);
   // VT e VR agora mostram SÓ a parte diária (valor-dia × dias); o auxílio fixo
@@ -155,6 +162,30 @@ export function Beneficios2Page() {
       for (const a of pendentes) {
         await updateDoc(doc(db, "beneficioAjustes", a.id), { status: "aplicado", aplicadoEm: nowIso, aplicadoNoPagamentoId: novo.id }).catch(() => {});
       }
+    } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); }
+    finally { setSalvando(false); }
+  }
+  // Fase 2 — gera um lote de pagamento SÓ pros empregados ainda não pagos no mês
+  // (ex.: admitidos depois do 1º lote). Não consome ajustes (newcomer não tem mês
+  // anterior a reconciliar aqui).
+  async function confirmarPagamentoNovos() {
+    if (!rid || !podeConfig || !previstaFechada) return;
+    const novas = naoPagosLinhas;
+    if (!novas.length) return;
+    if (!confirm(`Gerar pagamento de ${novas.length} empregado(s) que ainda não foram pagos em ${nomeMes(mes)}?`)) return;
+    setSalvando(true);
+    try {
+      const t = totaisDoLote(novas);
+      const nowIso = new Date().toISOString();
+      const lote: Omit<BeneficioPagLote, "id"> = {
+        restaurantId: rid, ano, mes, status: "pago", linhas: novas,
+        totalVt: t.totalVt, totalVr: t.totalVr, totalAjuste: t.totalAjuste, totalGeral: t.totalGeral,
+        criadoEm: nowIso, criadoPor: me?.id || null, criadoPorNome: me?.nome || null,
+        pagoEm: nowIso, pagoPor: me?.id || null,
+        historico: [{ tipo: "pago", em: nowIso, por: me?.id || null, porNome: me?.nome || null }],
+        updatedAt: nowIso,
+      };
+      await addDoc(collection(db, "beneficioPagamentos"), sanitizeForFirestore(lote));
     } catch (e) { alert("Erro ao salvar: " + (e instanceof Error ? e.message : "?")); }
     finally { setSalvando(false); }
   }
@@ -233,6 +264,14 @@ export function Beneficios2Page() {
         </div>
       ) : (
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 p-3 mb-3 text-sm text-gray-600 dark:text-gray-300">Prévia em cima da escala prevista (fechada). Confira e confirme.</div>
+      )}
+
+      {/* Fase 2 — já pagou o lote do mês, mas entrou gente depois → paga só os novos */}
+      {loteAtivo && previstaFechada && podeConfig && naoPagosLinhas.length > 0 && (
+        <div className="rounded-xl border border-indigo-300 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-3 mb-3 text-sm text-indigo-800 dark:text-indigo-200 flex items-center justify-between gap-2 flex-wrap">
+          <span>🆕 <b>{naoPagosLinhas.length}</b> empregado(s) entraram depois e ainda <b>não foram pagos</b> neste mês (total {fmt(totaisDoLote(naoPagosLinhas).totalGeral)}).</span>
+          <button type="button" onClick={() => void confirmarPagamentoNovos()} disabled={salvando} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60">{salvando ? "Gerando…" : "Gerar pagamento dos novos"}</button>
+        </div>
       )}
 
       {/* Bloqueio: precisa fazer o ajuste do mês anterior antes de pagar este */}
