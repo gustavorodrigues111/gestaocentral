@@ -457,6 +457,18 @@ export function EscalaPage() {
     });
   }
 
+  // Fase 2 — reabre a previsão de UM empregado (tira do lock). A prevista dele
+  // volta a ser editável. Não mexe em pagamento de benefício já feito.
+  async function reabrirPrevisaoEmp(empId: string, nome: string) {
+    if (!rid || !escala || !previstaFechadaParaEmp(escala, empId)) return;
+    if (!confirm(`Reabrir a previsão de ${nome}? A prevista dele volta a ser editável. (Pagamento de benefício já feito não muda.)`)) return;
+    const escId = `${rid}_${fmtAnoMes(ano, mes)}`;
+    await updateDoc(doc(db, "escalas", escId), {
+      [`previstaFechadaPorEmp.${empId}`]: deleteField(),
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
   // `copiarPrevistaParaReal` removida — agora cópia é automática no 1º
   // fechamento da prevista.
 
@@ -885,6 +897,7 @@ export function EscalaPage() {
               podeEditar={podeEditar}
               onSetStatus={setStatusCelula}
               onSetModalidade={setModalidadeCelula}
+              onReabrirPrevisao={reabrirPrevisaoEmp}
               unidadesAtivas={unidadesAtivas}
               usaMultiUnidades={usaMultiUnidades}
               filtroUnidadeId={filtroUnidadeId}
@@ -1191,7 +1204,7 @@ function Legenda() {
 }
 
 function Grade({
-  ano, mes, dias, empregados, cargos, escala, derivados, versao, podeEditar, onSetStatus, onSetModalidade,
+  ano, mes, dias, empregados, cargos, escala, derivados, versao, podeEditar, onSetStatus, onSetModalidade, onReabrirPrevisao,
   unidadesAtivas, usaMultiUnidades, filtroUnidadeId, swapsPorCelula,
 }: {
   ano: number; mes: number; dias: number;
@@ -1201,6 +1214,7 @@ function Grade({
   podeEditar: boolean;
   onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null, unidadeId?: string | null) => Promise<ValidacaoEscalaIssue[]>;
   onSetModalidade: (empregadoId: string, ymd: string, modalidade: Modalidade | null) => Promise<void>;
+  onReabrirPrevisao: (empregadoId: string, nome: string) => Promise<void>;
   unidadesAtivas: Unidade[];
   usaMultiUnidades: boolean;
   filtroUnidadeId: string;
@@ -1423,6 +1437,16 @@ function Grade({
                         ) : (
                           <span className="text-sm">↻</span>
                         )}
+                      </button>
+                    )}
+                    {podeEditar && versao === "prevista" && escala && escala.previstaFechadaPorEmp && previstaFechadaParaEmp(escala, e.id) && (
+                      <button
+                        type="button"
+                        onClick={() => onReabrirPrevisao(e.id, e.nome)}
+                        title={`Reabrir a previsão de ${e.nome} (voltar a editar a prevista dele)`}
+                        className="shrink-0 w-6 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <span className="text-sm">🔓</span>
                       </button>
                     )}
                   </div>
