@@ -528,8 +528,8 @@ export function DiasTabela({
 }) {
   const padraoNome = unidadesAtivas.find(u => u.id === unidadePadraoId)?.nome;
   const gridCols = mostraUnidade
-    ? "grid-cols-[70px_50px_85px_85px_70px_70px_110px_50px]"
-    : "grid-cols-[80px_60px_90px_90px_80px_80px_60px]";
+    ? "grid-cols-[70px_50px_85px_85px_70px_70px_44px_110px_50px]"
+    : "grid-cols-[80px_60px_90px_90px_80px_80px_44px_60px]";
   return (
     <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden bg-white dark:bg-gray-900">
       <div className={`grid ${gridCols} gap-1 px-3 py-2 bg-gray-50 dark:bg-gray-800 text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400`}>
@@ -539,6 +539,7 @@ export function DiasTabela({
         <div className="text-center">Saída</div>
         <div className="text-right">Intervalo</div>
         <div className="text-right">Contratada</div>
+        <div className="text-center" title="Home office neste dia — não paga VT (mantém VR)">🏠</div>
         {mostraUnidade && <div className="text-center">Unidade</div>}
         <div className="text-center">Copiar</div>
       </div>
@@ -573,6 +574,11 @@ export function DiasTabela({
             </div>
             <div className="text-right text-xs text-gray-700 dark:text-gray-300 tabular-nums">
               {calc ? fmtHHMM(calc.totalContract) : "—"}
+            </div>
+            <div className="text-center">
+              <input type="checkbox" disabled={!d.active} checked={!!d.homeOffice}
+                onChange={(e) => onPatch(wd.idx, { homeOffice: e.target.checked || undefined })}
+                title="Home office neste dia — não paga VT (mantém VR e gorjeta)" />
             </div>
             {mostraUnidade && (
               <div>

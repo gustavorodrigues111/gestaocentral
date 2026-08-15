@@ -15,9 +15,10 @@ import { AjustesSolicitadosTab } from "./AjustesSolicitadosTab";
 import {
   daysInMonth, dowShort, fmtAnoMes, fmtBR, nomeMes, pad2, parseYmd, shiftMonth, ymd as ymdFromDate,
 } from "../../core/utils/date";
-import type { Area, Cargo, Empregado, EscalaMes, ScheduleStatus, SundaySwap, Unidade, EscalaFase, AjusteEscalaMeta, AtrasoEscalaMeta } from "../../core/types";
+import type { Area, Cargo, Empregado, EscalaMes, Modalidade, ScheduleStatus, SundaySwap, Unidade, EscalaFase, AjusteEscalaMeta, AtrasoEscalaMeta } from "../../core/types";
 import { AREAS, ESCALA_FASE_LABEL, ESCALA_FASE_ICON, getEscalaFase, AJUSTE_MOTIVO_LABEL } from "../../core/types";
-import { derivedScheduleForEmpregado, type DerivedDay } from "../../core/escala/horarios";
+import { derivedScheduleForEmpregado, modalidadeDerivadaDia, type DerivedDay } from "../../core/escala/horarios";
+import { modalidadeEfetivaEmpDia } from "../../core/escala/statusEfetivo";
 import { empregadoAtivoEm } from "../../core/utils/empregado";
 import { validarOverride, type ValidacaoEscalaIssue } from "../../core/escala/validarEscala";
 import { ReabrirMesModal } from "./FecharMesModal";
@@ -429,6 +430,24 @@ export function EscalaPage() {
     return [];
   }
 
+  // Modalidade (presencial/home office) de um dia. Grava só o desvio "home_office"
+  // (null = volta pra presencial → apaga o override). Versão-aware (prevista/real).
+  async function setModalidadeCelula(empregadoId: string, ymdDate: string, modalidade: Modalidade | null) {
+    const dayAno = parseInt(ymdDate.slice(0, 4), 10);
+    const dayMes = parseInt(ymdDate.slice(5, 7), 10);
+    const escId = `${rid}_${fmtAnoMes(dayAno, dayMes)}`;
+    const ref = doc(db, "escalas", escId);
+    const snap = await getDoc(ref);
+    if (!snap.exists()) {
+      await setDoc(ref, { id: escId, restaurantId: rid, ano: dayAno, mes: dayMes, prevista: {}, real: {}, updatedAt: new Date().toISOString() });
+    }
+    const campo = versao === "prevista" ? "modalidadePrevistas" : "modalidadeReais";
+    await updateDoc(ref, {
+      [`${campo}.${empregadoId}.${ymdDate}`]: modalidade === null ? deleteField() : modalidade,
+      updatedAt: new Date().toISOString(),
+    });
+  }
+
   // `copiarPrevistaParaReal` removida — agora cópia é automática no 1º
   // fechamento da prevista.
 
@@ -449,16 +468,25 @@ export function EscalaPage() {
     // Congela o status efetivo nas células ainda vazias (override ∪ derivado)
     const prevAtual = escala?.prevista || {};
     const novaPrevista: { [empregadoId: string]: { [date: string]: ScheduleStatus } } = {};
+    // Snapshot da MODALIDADE: congela o home office derivado do cadastro na
+    // fotografia, pra mudança futura no horário não reescrever o mês fechado.
+    const modAtual = escala?.modalidadePrevistas || {};
+    const novaModalidade: { [empregadoId: string]: { [date: string]: Modalidade } } = {};
     for (const e of empregadosDoMes) {
       const empCells = prevAtual[e.id] || {};
       const derivado = derivedScheduleForEmpregado(e, ano, mes);
       const cellsFinal: { [d: string]: ScheduleStatus } = { ...empCells };
+      const modEmp: { [d: string]: Modalidade } = { ...(modAtual[e.id] || {}) };
       for (const date of Object.keys(derivado)) {
         if (cellsFinal[date] === undefined) {
           cellsFinal[date] = derivado[date].status;
         }
+        if (modEmp[date] === undefined && modalidadeDerivadaDia(e, date) === "home_office") {
+          modEmp[date] = "home_office";
+        }
       }
       novaPrevista[e.id] = cellsFinal;
+      if (Object.keys(modEmp).length) novaModalidade[e.id] = modEmp;
     }
     const now = new Date().toISOString();
     // PRIMEIRO fechamento: copia a prevista pra praticada (espelho inicial).
@@ -484,6 +512,8 @@ export function EscalaPage() {
       ano, mes,
       prevista: novaPrevista,
       ...(deveReplicarPraticada ? { real: novaPrevista } : {}),
+      ...(Object.keys(novaModalidade).length ? { modalidadePrevistas: novaModalidade } : {}),
+      ...(deveReplicarPraticada && Object.keys(novaModalidade).length ? { modalidadeReais: novaModalidade } : {}),
       previstaFechadaEm: now,
       previstaFechadaPor: me.id,
       previstaFechadaPorNome: me.nome,
@@ -835,6 +865,7 @@ export function EscalaPage() {
               versao={versao}
               podeEditar={podeEditar}
               onSetStatus={setStatusCelula}
+              onSetModalidade={setModalidadeCelula}
               unidadesAtivas={unidadesAtivas}
               usaMultiUnidades={usaMultiUnidades}
               filtroUnidadeId={filtroUnidadeId}
@@ -1141,7 +1172,7 @@ function Legenda() {
 }
 
 function Grade({
-  ano, mes, dias, empregados, cargos, escala, derivados, versao, podeEditar, onSetStatus,
+  ano, mes, dias, empregados, cargos, escala, derivados, versao, podeEditar, onSetStatus, onSetModalidade,
   unidadesAtivas, usaMultiUnidades, filtroUnidadeId, swapsPorCelula,
 }: {
   ano: number; mes: number; dias: number;
@@ -1150,6 +1181,7 @@ function Grade({
   versao: "prevista" | "real";
   podeEditar: boolean;
   onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null, unidadeId?: string | null) => Promise<ValidacaoEscalaIssue[]>;
+  onSetModalidade: (empregadoId: string, ymd: string, modalidade: Modalidade | null) => Promise<void>;
   unidadesAtivas: Unidade[];
   usaMultiUnidades: boolean;
   filtroUnidadeId: string;
@@ -1244,6 +1276,20 @@ function Grade({
         .slice(0, 10)
         .join("\n");
       alert(`⚠ ${erros.length} célula(s) bloqueada(s) por violação CLT.\n${aplicados > 0 ? `${aplicados} célula(s) foram aplicadas.\n` : ""}\n${msg}${erros.length > 10 ? "\n…" : ""}`);
+    }
+    setSelecionadas(new Set());
+  }
+
+  // Aplica MODALIDADE (presencial/home office) às células selecionadas. Home
+  // office garante status "trabalho" (anula falta/folga — trabalhou de casa).
+  async function aplicarModalidadeBulk(modalidade: Modalidade | null) {
+    if (selecionadas.size === 0) return;
+    for (const key of selecionadas) {
+      const [empId, date] = key.split("|");
+      if (modalidade === "home_office") {
+        await onSetStatus(empId, date, "trabalho", usaMultiUnidades ? resolverUnidade(empId, date) : null);
+      }
+      await onSetModalidade(empId, date, modalidade);
     }
     setSelecionadas(new Set());
   }
@@ -1441,6 +1487,7 @@ function Grade({
                         // com origem "solides_sync" (fechamento de folha), não só `real`
                         // nem apontamento automático (ponto_auto).
                         previsto={versao === "real" && escala?.realAjustes?.[e.id]?.[d]?.origem !== "solides_sync"}
+                        modalidade={escala ? modalidadeEfetivaEmpDia(e, escala, d, versao) : undefined}
                       />
                     </td>
                   );
@@ -1462,6 +1509,7 @@ function Grade({
             selecionadas={selecionadas}
             empregados={empregados}
             onApply={aplicarBulk}
+            onApplyModalidade={aplicarModalidadeBulk}
             onClear={() => setSelecionadas(new Set())}
             unidadesAtivas={unidadesAtivas}
             usaMultiUnidades={usaMultiUnidades}
@@ -1480,7 +1528,7 @@ function Grade({
 // - Selecionada (multi-select): ring indigo
 function Celula({
   override, derived, podeEditar, isOpen, isSelected, onClick, unidadeBadge, swap, empregadoId,
-  ajuste, atraso, previsto,
+  ajuste, atraso, previsto, modalidade,
 }: {
   override: ScheduleStatus | undefined;
   derived: DerivedDay | undefined;
@@ -1497,7 +1545,12 @@ function Celula({
   // Na praticada: dia AINDA não fechado (mostra a prevista como fallback) →
   // tracejado/esmaecido pra diferenciar do dia já fechado (praticada confirmada).
   previsto?: boolean;
+  modalidade?: Modalidade;   // "home_office" pinta um 🏠 no canto (sem VT)
 }) {
+  const homeOfficeBadge = modalidade === "home_office" ? (
+    <span className="absolute -top-1 -right-1 text-[9px] leading-none px-0.5 rounded bg-amber-500 text-white font-bold border border-amber-600 shadow-sm"
+      style={{ minWidth: "11px", textAlign: "center" }} title="Home office — não paga VT (mantém VR/gorjeta)">🏠</span>
+  ) : null;
   // Resolve display
   const displayStatus = override ?? derived?.status;
   const isFromOverride = !!override;
@@ -1579,6 +1632,7 @@ function Celula({
       >
         {isImplicito ? "·" : ""}
         {unidadeSubscript}
+        {homeOfficeBadge}
         {swapBadge}
         {ajusteBadge}
         {atrasoBadge}
@@ -1620,12 +1674,13 @@ const STATUS_KEY: Partial<Record<ScheduleStatus, string>> = {
 };
 
 function BulkActionBar({
-  selecionadas, empregados, onApply, onClear,
+  selecionadas, empregados, onApply, onApplyModalidade, onClear,
   unidadesAtivas, usaMultiUnidades, unidadeOverride, onChangeUnidadeOverride,
 }: {
   selecionadas: Set<string>;
   empregados: Empregado[];
   onApply: (status: ScheduleStatus | null) => void;
+  onApplyModalidade: (modalidade: Modalidade | null) => void;
   onClear: () => void;
   unidadesAtivas: Unidade[];
   usaMultiUnidades: boolean;
@@ -1727,6 +1782,18 @@ function BulkActionBar({
             >
               <span className="whitespace-nowrap">↩ Reverter</span>
               <kbd className="text-[10px] font-mono font-bold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 px-1.5 py-0.5 rounded leading-none">⌫</kbd>
+            </button>
+            {/* Modalidade — home office não paga VT (mantém VR/gorjeta) */}
+            <span className="w-px h-5 bg-indigo-300 dark:bg-indigo-700 mx-0.5" aria-hidden />
+            <button type="button" onClick={() => onApplyModalidade("home_office")}
+              title="Marcar como home office nos dias selecionados (não paga VT; garante trabalho)"
+              className="inline-flex items-center gap-1 pl-2 pr-2 py-1 rounded-lg text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 hover:scale-105 active:scale-95 transition-transform font-bold shadow-sm">
+              🏠 <span className="hidden md:inline whitespace-nowrap">Home office</span>
+            </button>
+            <button type="button" onClick={() => onApplyModalidade(null)}
+              title="Voltar pra presencial nos dias selecionados"
+              className="inline-flex items-center gap-1 pl-2 pr-2 py-1 rounded-lg text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 font-medium shadow-sm">
+              🏢 <span className="hidden md:inline whitespace-nowrap">Presencial</span>
             </button>
           </div>
 
