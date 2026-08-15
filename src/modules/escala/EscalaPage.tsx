@@ -18,7 +18,7 @@ import {
 import type { Area, Cargo, Empregado, EscalaMes, Modalidade, ScheduleStatus, SundaySwap, Unidade, EscalaFase, AjusteEscalaMeta, AtrasoEscalaMeta } from "../../core/types";
 import { AREAS, ESCALA_FASE_LABEL, ESCALA_FASE_ICON, getEscalaFase, AJUSTE_MOTIVO_LABEL } from "../../core/types";
 import { derivedScheduleForEmpregado, modalidadeDerivadaDia, type DerivedDay } from "../../core/escala/horarios";
-import { modalidadeEfetivaEmpDia } from "../../core/escala/statusEfetivo";
+import { modalidadeEfetivaEmpDia, previstaFechadaParaEmp } from "../../core/escala/statusEfetivo";
 import { empregadoAtivoEm } from "../../core/utils/empregado";
 import { validarOverride, type ValidacaoEscalaIssue } from "../../core/escala/validarEscala";
 import { ReabrirMesModal } from "./FecharMesModal";
@@ -377,6 +377,15 @@ export function EscalaPage() {
       );
       return [];
     }
+    // Fase 2 — lote de previsão: empregado já FECHADO num lote não é editável na
+    // prevista (exceto master). Quem entrou depois (fora do mapa) segue editável.
+    if (versao === "prevista" && !isMaster && previstaFechadaParaEmp(escala, empregadoId) && escala?.previstaFechadaPorEmp) {
+      alert(
+        "🔒 A previsão deste empregado já foi fechada num lote.\n\n" +
+        "Pra ajustar, reabra a previsão dele — ou peça a um master."
+      );
+      return [];
+    }
 
     // ── VALIDAÇÃO CLT ──
     // Antes de aplicar, simula o estado novo e checa DSR.
@@ -489,6 +498,15 @@ export function EscalaPage() {
       if (Object.keys(modEmp).length) novaModalidade[e.id] = modEmp;
     }
     const now = new Date().toISOString();
+    // Fase 2 — lock por empregado (lote de previsão): trava os empregados fechados
+    // agora, carimbando o loteId. Quem entrar depois (não está no mapa) continua
+    // com a prevista editável. Aditivo: os leitores atuais seguem no previstaFechadaEm.
+    const lotesExistentes = new Set(Object.values(escala?.previstaFechadaPorEmp || {}).map((v) => v.loteId));
+    const loteId = `lp_${escalaId}_${lotesExistentes.size + 1}`;
+    const previstaFechadaPorEmp: { [empId: string]: { loteId: string; em: string } } = { ...(escala?.previstaFechadaPorEmp || {}) };
+    for (const e of empregadosDoMes) {
+      if (!previstaFechadaPorEmp[e.id]) previstaFechadaPorEmp[e.id] = { loteId, em: now };
+    }
     // PRIMEIRO fechamento: copia a prevista pra praticada (espelho inicial).
     // Re-fechamentos (após reabrir+ajustar): pergunta ao usuário se quer
     // sobrescrever a Praticada com a Prevista atualizada. Se a Praticada
@@ -514,6 +532,7 @@ export function EscalaPage() {
       ...(deveReplicarPraticada ? { real: novaPrevista } : {}),
       ...(Object.keys(novaModalidade).length ? { modalidadePrevistas: novaModalidade } : {}),
       ...(deveReplicarPraticada && Object.keys(novaModalidade).length ? { modalidadeReais: novaModalidade } : {}),
+      previstaFechadaPorEmp,
       previstaFechadaEm: now,
       previstaFechadaPor: me.id,
       previstaFechadaPorNome: me.nome,
