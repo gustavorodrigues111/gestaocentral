@@ -371,12 +371,15 @@ export function derivedScheduleForEmpregado(
   emp: Empregado,
   year: number,
   month: number,           // 1-12
+  opts: { ignorarVigencia?: boolean } = {},
 ): { [date: string]: DerivedDay } {
   const result: { [date: string]: DerivedDay } = {};
   const lastDay = new Date(year, month, 0).getDate();
   for (let d = 1; d <= lastDay; d++) {
     const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
-    if (!empregadoAtivoEm(emp, dateStr)) continue;
+    // ignorarVigencia: conta o mês CHEIO (divisor da proporcionalidade de
+    // benefícios) — como se a pessoa estivesse ativa o mês inteiro.
+    if (!opts.ignorarVigencia && !empregadoAtivoEm(emp, dateStr)) continue;
     const ws = getActiveWorkSchedule(emp.workSchedules, dateStr);
     if (!ws) {
       // Sem cadastro de horário — empregado é considerado trabalhando todo dia

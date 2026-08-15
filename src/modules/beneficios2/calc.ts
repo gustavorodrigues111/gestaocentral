@@ -6,8 +6,10 @@
 //  de graça: a escala só tem dias de trabalho nos dias em que a pessoa está ativa.
 //  Funções PURAS (testáveis) — nada de Firestore aqui.
 // ════════════════════════════════════════════════════════════════════════════
-import type { Empregado, Cargo, EscalaMes, BeneficioPagLinha } from "../../core/types";
+import type { Empregado, Cargo, EscalaMes, BeneficioPagLinha, ScheduleStatus } from "../../core/types";
 import { contarDiasTrabalhados, round2 } from "../vt/calc";
+import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
+import { statusEfetivoEmpMes } from "../../core/escala/statusEfetivo";
 import { daysInMonth, pad2 } from "../../core/utils/date";
 
 // Empregado ativo em ALGUM dia do mês (mesma regra de /escala e do VT).
@@ -27,6 +29,37 @@ export function ativoNoMes(emp: Empregado, ano: number, mes: number): boolean {
 export function vtDiarioDe(e: Empregado): number {
   if (e.vtValorDiario != null) return e.vtValorDiario;
   return round2((e.vtPassagensPorDia ?? 0) * (e.vtValorPassagem ?? 0));
+}
+
+// Divisor da proporcionalidade do AUXÍLIO fixo mensal: quantos dias a pessoa
+// trabalharia num MÊS CHEIO segundo o horário cadastrado (ignora admissão/
+// demissão). null = sem cadastro de horário → não dá pra proporcionalizar, então
+// paga o auxílio cheio (mantém o comportamento atual, sem regressão).
+export function diasPrevistosMesCheio(emp: Empregado, ano: number, mes: number): number | null {
+  if (!(emp.workSchedules || []).length) return null;
+  const derived = derivedScheduleForEmpregado(emp, ano, mes, { ignorarVigencia: true });
+  let n = 0;
+  for (const k of Object.keys(derived)) if (derived[k].status === "trabalho") n++;
+  return n > 0 ? n : null;
+}
+
+// Proporção do auxílio: dias efetivos ÷ mês cheio (teto 1). Sem cadastro → 1.
+export function proporcaoAuxilio(emp: Empregado, dias: number, ano: number, mes: number): number {
+  const cheio = diasPrevistosMesCheio(emp, ano, mes);
+  return cheio ? Math.min(1, dias / cheio) : 1;
+}
+
+// VR conta dias trabalhados + ATESTADO (falta_j) — decisão: atestado paga VR.
+// (o VT NÃO conta atestado; por isso VR e VT deixam de compartilhar o predicado.)
+const STATUS_CONTA_VR: Record<ScheduleStatus, boolean> = {
+  trabalho: true, comp_trab: true, falta_j: true,
+  comp: false, freela: false, folga: false, ferias: false, falta_i: false,
+};
+export function contarDiasVR(emp: Empregado, escala: EscalaMes | null, ano: number, mes: number, versao: "prevista" | "real"): number {
+  const dias = statusEfetivoEmpMes(emp, escala, ano, mes, versao);
+  let n = 0;
+  for (const k of Object.keys(dias)) if (STATUS_CONTA_VR[dias[k]]) n++;
+  return n;
 }
 
 // Monta as linhas do lote de pagamento a partir da escala PREVISTA do mês.
@@ -52,10 +85,15 @@ export function montarLinhasPagamento(
     if (!vtAtivo && !vrAtivo && auxVt <= 0 && auxVr <= 0) continue;
 
     const dias = contarDiasTrabalhados(e, escala, ano, mes, "prevista");
+    const diasVR = contarDiasVR(e, escala, ano, mes, "prevista");   // VR conta atestado
     const vtValorDiario = vtDiarioDe(e);
     const vrValorDiario = e.vrValorDiario ?? 0;
-    const vtTotal = round2((vtAtivo ? dias * vtValorDiario : 0) + auxVt);
-    const vrTotal = round2((vrAtivo ? dias * vrValorDiario : 0) + auxVr);
+    // Auxílio fixo PROPORCIONAL ao mês cheio (admissão/demissão/faltas).
+    const prop = proporcaoAuxilio(e, dias, ano, mes);
+    const auxVtProp = round2(auxVt * prop);
+    const auxVrProp = round2(auxVr * prop);
+    const vtTotal = round2((vtAtivo ? dias * vtValorDiario : 0) + auxVtProp);
+    const vrTotal = round2((vrAtivo ? diasVR * vrValorDiario : 0) + auxVrProp);
     const ajuste = round2(ajustePorEmp[e.id] || 0);
 
     const cargo = (e as { cargoId?: string }).cargoId;
@@ -69,11 +107,11 @@ export function montarLinhasPagamento(
       diasTrabalhados: dias,
       vtAtivo,
       vtValorDiario,
-      vtAuxFixo: auxVt,
+      vtAuxFixo: auxVtProp,
       vtTotal,
       vrAtivo,
       vrValorDiario,
-      vrAuxFixo: auxVr,
+      vrAuxFixo: auxVrProp,
       vrTotal,
       ajuste,
       total: round2(vtTotal + vrTotal + ajuste),

@@ -1,6 +1,14 @@
 import { describe, it, expect } from "vitest";
-import { montarLinhasPagamento, vtDiarioDe, ativoNoMes, totaisDoLote } from "./calc";
-import type { Empregado, EscalaMes, Cargo, ScheduleStatus } from "../../core/types";
+import { montarLinhasPagamento, vtDiarioDe, ativoNoMes, totaisDoLote, diasPrevistosMesCheio, proporcaoAuxilio, contarDiasVR } from "./calc";
+import type { Empregado, EscalaMes, Cargo, ScheduleStatus, WorkSchedule } from "../../core/types";
+
+// Horário com todos os 7 dias ativos → mês cheio = todos os dias do mês.
+function wsTodosDias(): WorkSchedule {
+  const day = { active: true, in: "08:00", out: "16:00" };
+  const days: Record<number, unknown> = {};
+  for (let i = 0; i <= 6; i++) days[i] = day;
+  return { validFrom: "2020-01-01", type: "single", totalContract: 0, days, registradoEm: "2020-01-01", registradoPor: "x" } as unknown as WorkSchedule;
+}
 
 // Empregado sem horário → derivedSchedule vazio → os dias vêm só do override `prevista`,
 // o que deixa os testes determinísticos.
@@ -96,6 +104,63 @@ describe("montarLinhasPagamento", () => {
     const l = montarLinhasPagamento([e], cargos, escala("e1", {}), 2026, 7, false)[0];
     expect(l.vtTotal).toBe(30);
     expect(l.total).toBe(30);
+  });
+});
+
+describe("diasPrevistosMesCheio (divisor da proporcionalidade)", () => {
+  it("sem cadastro de horário → null (não proporcionaliza)", () => {
+    expect(diasPrevistosMesCheio(emp({}), 2026, 7)).toBeNull();
+  });
+  it("com horário de todos os dias → mês cheio = dias do mês (jul=31)", () => {
+    expect(diasPrevistosMesCheio(emp({ workSchedules: [wsTodosDias()] as never }), 2026, 7)).toBe(31);
+  });
+  it("ignora admissão no meio do mês (conta o mês inteiro)", () => {
+    const e = emp({ workSchedules: [wsTodosDias()] as never, periodos: [{ admissao: "2026-07-16", demissao: null }] as never });
+    expect(diasPrevistosMesCheio(e, 2026, 7)).toBe(31);   // mês cheio, não os 16 dias ativos
+  });
+});
+
+describe("proporcaoAuxilio", () => {
+  it("sem cadastro → 1 (paga cheio)", () => {
+    expect(proporcaoAuxilio(emp({}), 12, 2026, 7)).toBe(1);
+  });
+  it("proporcional aos dias ÷ mês cheio", () => {
+    expect(proporcaoAuxilio(emp({ workSchedules: [wsTodosDias()] as never }), 16, 2026, 7)).toBeCloseTo(16 / 31, 6);
+  });
+  it("teto em 1 (dias > mês cheio)", () => {
+    expect(proporcaoAuxilio(emp({ workSchedules: [wsTodosDias()] as never }), 40, 2026, 7)).toBe(1);
+  });
+});
+
+describe("auxílio proporcional no pagamento", () => {
+  it("admissão dia 16 com horário → auxílio proporcional ao mês cheio", () => {
+    // 310 × 16/31 = 160. VT diário desligado; só o auxílio (proporcional).
+    const e = emp({ vtAtivo: false, vtAuxilioFixoMensal: 310, workSchedules: [wsTodosDias()] as never,
+      periodos: [{ admissao: "2026-07-16", demissao: null }] as never });
+    const l = montarLinhasPagamento([e], cargos, escala("e1", {}), 2026, 7, false)[0];
+    expect(l.diasTrabalhados).toBe(16);       // dias 16..31
+    expect(l.vtTotal).toBe(160);              // auxílio proporcional
+  });
+  it("sem cadastro de horário → auxílio cheio (sem regressão)", () => {
+    const e = emp({ vtAtivo: false, vtAuxilioFixoMensal: 250,
+      periodos: [{ admissao: "2026-07-16", demissao: null }] as never });
+    const l = montarLinhasPagamento([e], cargos, escala("e1", {}), 2026, 7, false)[0];
+    expect(l.vtTotal).toBe(250);              // cheio — não dá pra proporcionalizar
+  });
+});
+
+describe("VR conta atestado (falta_j)", () => {
+  it("VR paga o dia de atestado; VT não conta", () => {
+    const dias: Record<string, ScheduleStatus> = {};
+    for (let i = 1; i <= 20; i++) dias[`2026-07-${String(i).padStart(2, "0")}`] = "trabalho";
+    dias["2026-07-21"] = "falta_j"; dias["2026-07-22"] = "falta_j";  // 2 atestados
+    for (let i = 23; i <= 31; i++) dias[`2026-07-${i}`] = "folga";
+    const e = emp({ vtAtivo: true, vtValorDiario: 10, vrAtivo: true, vrValorDiario: 20 });
+    expect(contarDiasVR(e, escala("e1", dias), 2026, 7, "prevista")).toBe(22);  // 20 + 2 atestado
+    const l = montarLinhasPagamento([e], cargos, escala("e1", dias), 2026, 7, true)[0];
+    expect(l.diasTrabalhados).toBe(20);       // VT não conta atestado
+    expect(l.vtTotal).toBe(200);              // 20 × 10
+    expect(l.vrTotal).toBe(440);              // 22 × 20 (atestado paga VR)
   });
 });
 
