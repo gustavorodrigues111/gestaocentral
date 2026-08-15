@@ -918,6 +918,7 @@ export function EscalaPage() {
               versao={versao}
               podeEditar={podeEditar}
               onSetStatus={setStatusCelula}
+              onSetModalidade={setModalidadeCelula}
               swapsPorCelula={swapsPorCelula}
               onMesChange={(novoAno, novoMes) => {
                 setAno(novoAno);
@@ -1999,7 +2000,7 @@ function getSegunda(date: Date): Date {
 }
 
 function GradeMobile({
-  ano, mes, empregados, cargos, escala, escalaPorMes, derivados, versao, podeEditar, onSetStatus,
+  ano, mes, empregados, cargos, escala, escalaPorMes, derivados, versao, podeEditar, onSetStatus, onSetModalidade,
   swapsPorCelula,
   onMesChange,
 }: {
@@ -2012,6 +2013,7 @@ function GradeMobile({
   versao: "prevista" | "real";
   podeEditar: boolean;
   onSetStatus: (empregadoId: string, ymd: string, status: ScheduleStatus | null) => Promise<ValidacaoEscalaIssue[]>;
+  onSetModalidade: (empregadoId: string, ymd: string, modalidade: Modalidade | null) => Promise<void>;
   swapsPorCelula: Record<string, SundaySwap>;
   // Callback pra avisar a EscalaPage quando a semana visualizada cai num
   // outro mês (atravessou virada). A página recarrega escala/derivados do
@@ -2128,6 +2130,13 @@ function GradeMobile({
   async function aplicarStatus(status: ScheduleStatus | null) {
     if (!picker) return;
     await onSetStatus(picker.empId, picker.date, status);
+    setPicker(null);
+  }
+  async function aplicarModalidade(modalidade: Modalidade | null) {
+    if (!picker) return;
+    // Home office garante status trabalho (trabalhou de casa = anula falta/folga).
+    if (modalidade === "home_office") await onSetStatus(picker.empId, picker.date, "trabalho");
+    await onSetModalidade(picker.empId, picker.date, modalidade);
     setPicker(null);
   }
 
@@ -2259,7 +2268,9 @@ function GradeMobile({
           empregadoNome={empregadoPicker.nome}
           date={picker.date}
           atual={escala?.[versao]?.[picker.empId]?.[picker.date]}
+          modalidadeAtual={empregadoPicker && escala ? modalidadeEfetivaEmpDia(empregadoPicker, escala, picker.date, versao) : "presencial"}
           onApply={aplicarStatus}
+          onApplyModalidade={aplicarModalidade}
           onClose={() => setPicker(null)}
         />
       )}
@@ -2268,12 +2279,14 @@ function GradeMobile({
 }
 
 function StatusPickerSheet({
-  empregadoNome, date, atual, onApply, onClose,
+  empregadoNome, date, atual, modalidadeAtual, onApply, onApplyModalidade, onClose,
 }: {
   empregadoNome: string;
   date: string;
   atual: ScheduleStatus | undefined;
+  modalidadeAtual?: Modalidade;
   onApply: (status: ScheduleStatus | null) => void;
+  onApplyModalidade: (modalidade: Modalidade | null) => void;
   onClose: () => void;
 }) {
   const dataBr = (() => {
@@ -2333,6 +2346,16 @@ function StatusPickerSheet({
             <span className="inline-flex items-center justify-center w-8 h-8 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-sm flex-shrink-0">↩</span>
             <span className="flex-1 text-sm">Reverter ao cadastrado</span>
           </button>
+          {/* Modalidade — home office não paga VT (mantém VR/gorjeta) */}
+          <div className="border-t border-gray-200 dark:border-gray-800 mt-1 pt-2">
+            <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Modalidade (VT)</div>
+            <button type="button" onClick={() => onApplyModalidade(modalidadeAtual === "home_office" ? null : "home_office")}
+              className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-colors ${modalidadeAtual === "home_office" ? "bg-amber-50 dark:bg-amber-900/30 ring-2 ring-amber-400" : "hover:bg-gray-50 dark:hover:bg-gray-800 active:bg-gray-100"}`}>
+              <span className="inline-flex items-center justify-center w-8 h-8 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-sm flex-shrink-0">🏠</span>
+              <span className="flex-1 text-sm text-gray-900 dark:text-gray-100">Home office <span className="text-[11px] text-gray-500">— sem VT</span></span>
+              {modalidadeAtual === "home_office" && <span className="text-amber-600 dark:text-amber-400 text-sm">✓</span>}
+            </button>
+          </div>
         </div>
         {/* Cancelar */}
         <div className="px-3 py-3 border-t border-gray-200 dark:border-gray-800">
