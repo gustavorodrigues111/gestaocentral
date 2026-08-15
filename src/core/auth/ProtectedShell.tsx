@@ -11,6 +11,7 @@
 import { useEffect } from "react";
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { useAuth } from "./AuthContext";
+import { useTelemetria } from "../telemetry/useTelemetria";
 import { RestaurantProvider, useRestaurant } from "../restaurant/RestaurantContext";
 import { LoginScreen } from "./LoginScreen";
 import { AppShell } from "../layout/AppShell";
@@ -76,12 +77,20 @@ function ModuleRouter() {
   const { moduleId, rid } = useParams<{ moduleId: string; rid: string }>();
   const { activeId, setActiveId } = useRestaurant();
   const { pessoa } = useAuth();
+  const tel = useTelemetria();
 
   // Sincroniza activeId no contexto com o :rid da URL (URL é source of truth).
   // Usa useEffect pra não disparar setState durante render.
   useEffect(() => {
     if (rid && rid !== activeId) setActiveId(rid);
   }, [rid, activeId, setActiveId]);
+
+  // Telemetria de uso: marca a abertura do app (1x/sessão) e de cada módulo.
+  useEffect(() => {
+    tel.appOpen();
+    if (moduleId) tel.view(moduleId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [moduleId, rid]);
 
   // key força remount quando muda restaurante — limpa estado interno dos forms.
   const k = rid || "";

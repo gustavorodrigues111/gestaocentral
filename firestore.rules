@@ -235,6 +235,8 @@ service cloud.firestore {
     match /estoqueConfig/{id}        { allow read, write: if authed(); }
     match /fechamentoConfig/{id}     { allow read, write: if authed(); }
     match /fechamentoMes/{id}        { allow read, write: if authed(); }
+    // Telemetria de uso: qualquer autenticado grava (fire-and-forget); só master lê.
+    match /telemetria/{id}           { allow create: if authed(); allow read: if isMaster(); allow update, delete: if false; }
     match /etiquetas/{id}           { allow read, write: if authed(); }
     match /etiquetaConfig/{id}      { allow read, write: if authed(); }
     match /fechamentosCaixa/{id}    { allow read, write: if authed(); }
