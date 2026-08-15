@@ -529,6 +529,7 @@ export function ChecklistsPage() {
           run={runEditor.run}
           empregados={empregados}
           restaurantId={rid}
+          podeExecutar={podeExecutar}
           podeConfig={podeConfig}
           onClose={() => setRunEditor(null)}
         />

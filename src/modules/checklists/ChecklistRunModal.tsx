@@ -25,13 +25,15 @@ type Props = {
   run: ChecklistRun | null;
   empregados: Empregado[];
   restaurantId: string;
+  podeExecutar: boolean;
   podeConfig: boolean;
   onClose: () => void;
 };
 
-export function ChecklistRunModal({ template, run, empregados, restaurantId, podeConfig, onClose }: Props) {
+export function ChecklistRunModal({ template, run, empregados, restaurantId, podeExecutar, podeConfig, onClose }: Props) {
   const { pessoa: me } = useAuth();
-  const isReadonly = !podeConfig;
+  // Preenche quem pode EXECUTAR (ou editar templates). Só-leitura = quem só tem histórico.
+  const isReadonly = !(podeExecutar || podeConfig);
 
   function mapaInicial(): ResMap {
     if (run?.resultado) return { ...run.resultado };
