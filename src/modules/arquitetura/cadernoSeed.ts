@@ -64,6 +64,13 @@ const SEED: Seed[] = [
 
   // ── Análise de ponto ──
   { modulo: "analise-ponto", resp: "ia", titulo: "Fechamento de ponto cockpit — Fase 2 (aba Inconsistências) e Fase 3 (correção in-app pelo empregado)" },
+
+  // ── Câmeras & Analytics ──
+  { modulo: "cameras", resp: "gustavo", titulo: "Ativar o NUC central no escritório (mini-PC sempre ligado) — pré-requisito pra retomar a análise por câmera", descricao: "Piloto validou o caminho ponta a ponta: captura 1 foto/30s → Drive → análise, calibração das 36 mesas nas 3 câmeras, cruzamento com o POS Altec. Análise recorrente SEGURADA até o NUC estar de pé." },
+  { modulo: "cameras", resp: "ia", titulo: "SEGURADO até o NUC: teste cego de ocupação — usuário não informa o número; entregar só couvert do POS + linha do tempo de mesas pela câmera, SEM estimar cabeça", descricao: "Lição dura do piloto: câmera SD NÃO conta gente em multidão (oclusão) — flip-floppei 35→70→45→70. Quem conta gente é o POS (couvert exato, 196 no dia 15/08); a câmera só dá tempo/ocupação por mesa. Nunca mais estimar cabeça pela câmera." },
+  { modulo: "cameras", resp: "gustavo", titulo: "Ligar o Altec sync do Sororoca: cadastrar restaurants/{sororoca}.altec = { host: sororocabar.r3.riser.com.br, credKey: SOROROCA } + secrets ALTEC_SOROROCA_USER/PASS (você cadastra o segredo)", descricao: "Gerencial (dashboardData.php) e o relatório de Cupons Emitidos (rlt/fcx/relCuponsNew.php, com mesa+valor+abriu+fechou) já validados logado. Falta a config pro sync automático." },
+  { modulo: "cameras", resp: "ia", titulo: "Achar o endpoint da LISTA de comandas abertas ao vivo (ocupação em tempo real por mesa) — o card 'Vendas em Aberto' da dashboard tem só o valor; falta a lista das mesas", descricao: "Garimpar o 'Ver mais' do card. msgFunction.php deu File not found; o relatório de cupons só traz as Encerradas." },
+  { modulo: "cameras", resp: "ia", titulo: "Produção: robô de visão local no NUC contando MESA ocupada/livre (não cabeça) → evento no Firestore → painel; cruzar com relCuponsNew (per-mesa) do Altec", descricao: "Vídeo não sai da loja, só evento de texto sobe. Câmera = tempo/ocupação por mesa; POS = couvert/dinheiro exato." },
 ];
 
 export const CADERNO_SEED: CadernoItem[] = SEED.map((s, i) => ({
