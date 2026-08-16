@@ -5,7 +5,8 @@
     "api/orcamento-pdf.ts": { "memory": 1024, "maxDuration": 90 },
     "api/contrato-pdf.ts": { "memory": 1024, "maxDuration": 90 },
     "api/getin-sync.ts": { "memory": 1024, "maxDuration": 300 },
-    "api/altec-sync.ts": { "memory": 1024, "maxDuration": 300 }
+    "api/altec-sync.ts": { "memory": 1024, "maxDuration": 300 },
+    "api/fatura-extrair.ts": { "memory": 1024, "maxDuration": 300 }
   },
   "rewrites": [
     {

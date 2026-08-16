@@ -6,11 +6,12 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { requireUser, AuthError } from "./_auth.js";
 
-export const config = { maxDuration: 60 };
+export const config = { maxDuration: 300 };
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-opus-4-8";
-const REQ_TIMEOUT_MS = 55_000;
+const DOWNLOAD_TIMEOUT_MS = 30_000;   // baixar o PDF do Storage — se travar aqui, é rede, não a IA
+const IA_TIMEOUT_MS = 285_000;        // leitura+classificação pela IA (fatura grande com vários cartões pode passar de 1min)
 
 type VercelReq = { method?: string; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
@@ -73,15 +74,25 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     .map((h) => ({ descricao: String(h.descricao).slice(0, 80), destino: h.destino ? String(h.destino).slice(0, 60) : null, categoria: h.categoria ? String(h.categoria).slice(0, 60) : null }))
     .slice(0, 200);
 
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);
+  // Download do PDF: teto curto próprio (se travar aqui é rede/Storage, não a IA).
+  const dlCtrl = new AbortController();
+  const dlTimer = setTimeout(() => dlCtrl.abort(), DOWNLOAD_TIMEOUT_MS);
+  let b64: string;
   try {
-    const pr = await fetch(pdfUrl, { signal: ctrl.signal });
+    const pr = await fetch(pdfUrl, { signal: dlCtrl.signal });
     if (!pr.ok) { res.status(502).json({ error: `Não consegui baixar o PDF (HTTP ${pr.status}).` }); return; }
     const buf = Buffer.from(await pr.arrayBuffer());
     if (buf.length > 25 * 1024 * 1024) { res.status(413).json({ error: "PDF muito grande (máx 25MB)." }); return; }
-    const b64 = buf.toString("base64");
+    b64 = buf.toString("base64");
+  } catch (e) {
+    const msg = e instanceof Error && e.name === "AbortError" ? `Timeout (${DOWNLOAD_TIMEOUT_MS / 1000}s) ao baixar o PDF do Storage.` : (e instanceof Error ? e.message : "Falha ao baixar o PDF.");
+    res.status(502).json({ error: msg }); return;
+  } finally { clearTimeout(dlTimer); }
 
+  // Leitura+classificação pela IA: teto longo (fatura grande com vários cartões pode passar de 1min).
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), IA_TIMEOUT_MS);
+  try {
     const payload = {
       model: MODEL,
       max_tokens: 16000,
@@ -119,7 +130,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       : null;
     res.status(200).json({ cartao: cartaoDetectado, vencimento: parsed.vencimento || null, totalFatura: typeof parsed.totalFatura === "number" ? parsed.totalFatura : null, lancamentos });
   } catch (e) {
-    const msg = e instanceof Error && e.name === "AbortError" ? `Timeout (${REQ_TIMEOUT_MS / 1000}s) na leitura do PDF.` : (e instanceof Error ? e.message : "Falha ao processar.");
+    const msg = e instanceof Error && e.name === "AbortError" ? `Timeout (${IA_TIMEOUT_MS / 1000}s) na leitura do PDF.` : (e instanceof Error ? e.message : "Falha ao processar.");
     res.status(502).json({ error: msg });
   } finally { clearTimeout(timer); }
 }
