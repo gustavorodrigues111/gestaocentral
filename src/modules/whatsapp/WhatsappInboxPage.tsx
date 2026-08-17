@@ -2329,6 +2329,18 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
   const [aberto, setAberto] = useState(false);
   const [buscaU, setBuscaU] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [reparando, setReparando] = useState(false);
+  // Conserta o caso "aparece Conectado mas não envia/recebe": reinicia o socket
+  // na Evolution (sem novo QR) e re-aponta o webhook.
+  async function repararConexao() {
+    setReparando(true);
+    try {
+      const r = await chamarInstancia("restart", numero.id);
+      if (r.error) { alert("Falha ao reparar: " + r.error); return; }
+      alert(`Conexão reiniciada e webhook reapontado. Estado: ${r.estado || "?"}.\nMande uma mensagem de teste; se ainda não fluir, use Desconectar e reconecte com QR.`);
+    } catch (e) { alert("Falha ao reparar: " + (e instanceof Error ? e.message : "?")); }
+    finally { setReparando(false); }
+  }
   const [draft, setDraft] = useState(() => ({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], apelidos: numero.apelidos || {}, regras: numero.regras || "", modo: numero.modo || "atribuicao", ativo: numero.ativo !== false }));
   // Ressincroniza o rascunho quando o doc muda (ex.: depois de salvar).
   useEffect(() => { setDraft({ nome: numero.nome, descricao: numero.descricao || "", restaurantIds: numero.restaurantIds || [], usuariosIds: numero.usuariosIds || [], apelidos: numero.apelidos || {}, regras: numero.regras || "", modo: numero.modo || "atribuicao", ativo: numero.ativo !== false });
@@ -2393,9 +2405,16 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
             <div className="flex items-center gap-2 flex-wrap">
               <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${em.cls}`}>{em.label}</span>
               {estado === "open"
-                ? <button type="button" onClick={onLogout} className="text-xs px-2.5 py-1.5 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">⏻ Desconectar</button>
+                ? <>
+                    <button type="button" onClick={repararConexao} disabled={reparando}
+                      className="text-xs px-2.5 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 disabled:opacity-50">
+                      {reparando ? "🔧 Reparando…" : "🔧 Reparar (não envia/recebe?)"}
+                    </button>
+                    <button type="button" onClick={onLogout} className="text-xs px-2.5 py-1.5 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">⏻ Desconectar</button>
+                  </>
                 : <button type="button" onClick={onQr} className="text-xs px-2.5 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300">{estado === "close" ? "🔄 Reconectar" : "🔌 Conectar"}</button>}
             </div>
+            <p className="text-[11px] text-gray-400 mt-1.5">Aparece Conectado mas as mensagens não entram/saem? Clique em <b>Reparar</b> — reinicia a conexão (sem novo QR) e reaponta o webhook.</p>
           </SecaoCfg>
 
           {/* Identificação */}

@@ -64,6 +64,19 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       res.status(200).json({ ok: true, qr });
       return;
     }
+    if (acao === "webhook") {   // só reaponta o webhook (recebimento), sem mexer na sessão
+      const w = await setWebhook();
+      res.status(w.ok ? 200 : 502).json({ ok: w.ok, ...(w.ok ? {} : { error: `Evolution HTTP ${w.status}. ${String(w.raw).slice(0, 200)}` }) });
+      return;
+    }
+    if (acao === "restart") {   // reinicia o socket (reconecta com a sessão salva, SEM novo QR) + reaponta webhook
+      await setWebhook().catch(() => {});
+      const r = await call(`/instance/restart/${encodeURIComponent(instancia)}`, "POST");
+      const c = await call(`/instance/connectionState/${encodeURIComponent(instancia)}`, "GET");
+      const estado = (c.json as { instance?: { state?: string }; state?: string })?.instance?.state || (c.json as { state?: string })?.state || "unknown";
+      res.status(200).json({ ok: r.ok, estado });
+      return;
+    }
     if (acao === "status") {
       const c = await call(`/instance/connectionState/${encodeURIComponent(instancia)}`, "GET");
       const estado = (c.json as { instance?: { state?: string }; state?: string })?.instance?.state || (c.json as { state?: string })?.state || "unknown";

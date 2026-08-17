@@ -90,6 +90,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
   const base = (process.env.EVOLUTION_API_URL || "").replace(/\/+$/, "");
   const key = process.env.EVOLUTION_API_KEY;
   if (!base || !key) { res.status(200).json({ ok: true, skip: "Evolution não configurada" }); return; }
+  // URL do webhook que os números conectados devem ter (re-asserção idempotente).
+  const appUrl = (process.env.APP_URL || "https://admin.planejamento.app").replace(/\/+$/, "");
+  const webhookToken = process.env.EVOLUTION_WEBHOOK_TOKEN || "";
+  const webhookUrl = webhookToken ? `${appUrl}/api/evolution-webhook?token=${encodeURIComponent(webhookToken)}` : "";
   if (!firestoreDisponivel()) { res.status(200).json({ ok: true, skip: "Firestore (serviço) indisponível" }); return; }
 
   const agora = Date.now();
@@ -141,6 +145,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     if (st === "open") {
       if (prev.ok === false) await resolverFalha(prev.falhaId); // reconectou → limpa
       novoInst[nome] = { ok: true, estado: st };
+      // Re-aponta o webhook (idempotente). Se a Evolution reiniciou e perdeu o
+      // webhook, o número volta a RECEBER sozinho sem intervenção manual.
+      if (webhookUrl) {
+        await fetch(`${base}/webhook/set/${encodeURIComponent(nome)}`, {
+          method: "POST", headers: { apikey: key, "Content-Type": "application/json" },
+          body: JSON.stringify({ webhook: { enabled: true, url: webhookUrl, webhookByEvents: false, webhookBase64: false, events: ["MESSAGES_UPSERT", "MESSAGES_UPDATE"] } }),
+        }).catch(() => {});
+      }
     } else {
       problemas.push(`${nome} (${st})`);
       if (deveAlertar(prev, agora)) {
