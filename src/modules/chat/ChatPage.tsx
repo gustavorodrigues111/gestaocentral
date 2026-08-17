@@ -46,6 +46,10 @@ const CAT_COR: Record<string, string> = {
 };
 const catCor = (c: string) => CAT_COR[c] || "#64748b";
 
+// Categorias que NÃO são pendências — não entram na Minha Semana (nem atrasados
+// nem grade). Continuam visíveis na aba "Avisos do sistema".
+const EXCLUIR_CENTRAL = new Set(["Ideias", "Recebimento", "Gorjetas"]);
+
 export function ChatPage() {
   const { pessoa } = useAuth();
   const { restaurants, activeRestaurant, setActiveId } = useRestaurant();
@@ -278,6 +282,9 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
   const [selCat, setSelCat] = useState<string>("todos");   // filtro por categoria
   const [selSub, setSelSub] = useState<string>("todos");   // filtro por tipo de prazo
   const [expCat, setExpCat] = useState<Set<string>>(new Set()); // grupos com "mostrar tudo"
+  const [colCat, setColCat] = useState<Set<string>>(new Set()); // grupos recolhidos (sanfona)
+  const [travados, setTravados] = useState<Set<string>>(new Set()); // itens marcados feitos NESTA sessão — ficam fixos no lugar
+  const [detalhe, setDetalhe] = useState<Aviso | null>(null); // item aberto no modal
   const hoje = ymdHoje();
   const seg = useMemo(() => segundaDaSemana(ref), [ref]);
   const dias = useMemo(() => Array.from({ length: 7 }, (_, i) => addYmd(seg, i)), [seg]);
@@ -287,17 +294,21 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
   const { porDia, atrasados } = useMemo(() => {
     const pd: Record<string, Aviso[]> = {}; dias.forEach(d => (pd[d] = []));
     const atr: Aviso[] = [];
+    // Item "vivo" = ainda não feito OU marcado feito nesta sessão (fica no lugar).
+    const vivo = (id: string) => !lidosIds.has(id) || travados.has(id);
     for (const a of todos) {
+      if (EXCLUIR_CENTRAL.has(a.categoria)) continue;
       const em = (a.em || "").slice(0, 10);
       const semData = !a.em || a.em >= "9999";
-      if (semData) { if (!lidosIds.has(a.id)) atr.push(a); continue; }
+      if (semData) { if (vivo(a.id)) atr.push(a); continue; }
       if (em >= seg && em <= fim) pd[em].push(a);
-      else if (em < hoje && !lidosIds.has(a.id)) atr.push(a);
+      else if (em < hoje && vivo(a.id)) atr.push(a);
     }
     Object.values(pd).forEach(arr => arr.sort((x, y) => (x.em || "").localeCompare(y.em || "")));
-    atr.sort((x, y) => (x.em || "").localeCompare(y.em || ""));
+    // Ordena por data (estável): marcar feito NÃO muda a posição.
+    atr.sort((x, y) => (x.em || "").localeCompare(y.em || "") || x.id.localeCompare(y.id));
     return { porDia: pd, atrasados: atr };
-  }, [todos, dias, seg, fim, hoje, lidosIds]);
+  }, [todos, dias, seg, fim, hoje, lidosIds, travados]);
 
   // Agrupa os atrasados por CATEGORIA, em ordem fixa: Tarefas → Prazos → demais
   // (por volume) → Checklists por último. Cada grupo mantém a ordem por data.
@@ -318,6 +329,11 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
 
   const rangeLabel = `${Number(seg.slice(8))} – ${Number(fim.slice(8))} de ${MES_CURTO[Number(fim.slice(5, 7)) - 1]}`;
   const onCheck = (a: Aviso) => (a.rotina ? concluirRotina(a) : marcarLido(a));
+  // Nos atrasados: trava o item no lugar antes de marcar (não sobe/desce).
+  const onCheckAtr = (a: Aviso) => { setTravados(s => { const n = new Set(s); n.add(a.id); return n; }); onCheck(a); };
+  // Clique no item: abre um modal com o resumo (sem sair da tela). Fale com DP
+  // segue no seu modal próprio.
+  const abrirDetalhe = (a: Aviso) => { if (a.faleDp) { onAbrir(a); return; } setDetalhe(a); };
 
   // Botões de ação — só dos módulos que a pessoa pode acessar.
   const podeVer = (mod: string, ...acts: string[]) => acts.some(x => can(mod, x));
@@ -394,29 +410,37 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
                 if (isPrazo && selSub !== "todos") itens = itens.filter(a => (a.subcategoria || "Outros") === selSub);
                 const expandido = focus || expCat.has(cat);
                 const shown = expandido ? itens : itens.slice(0, 4);
+                const collapsed = colCat.has(cat);
                 return (
-                  <div key={cat} className="mb-2.5">
-                    <div className="flex items-center gap-1.5 px-1 mb-1">
+                  <div key={cat} className="mb-1.5">
+                    {/* Cabeçalho do grupo = sanfona (clica pra abrir/fechar) */}
+                    <button onClick={() => setColCat(s => { const n = new Set(s); n.has(cat) ? n.delete(cat) : n.add(cat); return n; })}
+                      className="w-full flex items-center gap-1.5 px-1 py-1 rounded-lg hover:bg-white/70 dark:hover:bg-gray-800/40">
+                      <span className="text-[9px] text-gray-400 transition-transform" style={{ transform: collapsed ? "rotate(-90deg)" : "none" }}>▼</span>
                       <span className="text-[13px]">{arr[0]?.categoriaIcone}</span>
                       <span className="text-[12px] font-extrabold text-gray-800 dark:text-gray-100">{cat}</span>
                       <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-full px-1.5">{arr.length}</span>
-                    </div>
-                    {isPrazo && focus && prazoSubs.length > 1 && (
-                      <div className="flex flex-wrap gap-1 mb-1.5 pl-1">
-                        <button onClick={() => setSelSub("todos")} className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${selSub === "todos" ? "bg-sky-600 text-white border-sky-600" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>Todos os tipos</button>
-                        {prazoSubs.map(([s, n]) => (
-                          <button key={s} onClick={() => setSelSub(s)} className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${selSub === s ? "bg-sky-600 text-white border-sky-600" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{s} <span className="opacity-70">{n}</span></button>
-                        ))}
+                    </button>
+                    {!collapsed && (
+                      <div className="pt-1">
+                        {isPrazo && focus && prazoSubs.length > 1 && (
+                          <div className="flex flex-wrap gap-1 mb-1.5 pl-1">
+                            <button onClick={() => setSelSub("todos")} className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${selSub === "todos" ? "bg-sky-600 text-white border-sky-600" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>Todos os tipos</button>
+                            {prazoSubs.map(([s, n]) => (
+                              <button key={s} onClick={() => setSelSub(s)} className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${selSub === s ? "bg-sky-600 text-white border-sky-600" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{s} <span className="opacity-70">{n}</span></button>
+                            ))}
+                          </div>
+                        )}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                          {shown.map(a => <MiniCard key={a.id} a={a} lido={lidosIds.has(a.id)} multiRest={multiRest} onAbrir={() => abrirDetalhe(a)} onCheck={() => onCheckAtr(a)} />)}
+                        </div>
+                        {!focus && itens.length > 4 && (
+                          <button onClick={() => setExpCat(s => { const n = new Set(s); n.has(cat) ? n.delete(cat) : n.add(cat); return n; })}
+                            className="mt-1.5 text-[11px] font-semibold hover:underline" style={{ color: cor }}>
+                            {expCat.has(cat) ? "▲ mostrar menos" : `▼ mostrar mais (${itens.length - 4})`}
+                          </button>
+                        )}
                       </div>
-                    )}
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-                      {shown.map(a => <MiniCard key={a.id} a={a} lido={lidosIds.has(a.id)} multiRest={multiRest} onAbrir={() => onAbrir(a)} onCheck={() => onCheck(a)} />)}
-                    </div>
-                    {!focus && itens.length > 4 && (
-                      <button onClick={() => setExpCat(s => { const n = new Set(s); n.has(cat) ? n.delete(cat) : n.add(cat); return n; })}
-                        className="mt-1.5 text-[11px] font-semibold hover:underline" style={{ color: cor }}>
-                        {expCat.has(cat) ? "▲ mostrar menos" : `▼ mostrar mais (${itens.length - 4})`}
-                      </button>
                     )}
                   </div>
                 );
@@ -442,7 +466,7 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
               <div className="p-1.5 flex flex-col gap-1.5 flex-1">
                 {itens.length === 0
                   ? <span className="text-[11px] text-gray-300 dark:text-gray-700 m-auto">—</span>
-                  : itens.map(a => <MiniCard key={a.id} a={a} lido={lidosIds.has(a.id)} multiRest={multiRest} onAbrir={() => onAbrir(a)} onCheck={() => onCheck(a)} />)}
+                  : itens.map(a => <MiniCard key={a.id} a={a} lido={lidosIds.has(a.id)} multiRest={multiRest} onAbrir={() => abrirDetalhe(a)} onCheck={() => onCheck(a)} />)}
               </div>
             </div>
           );
@@ -452,6 +476,37 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
       <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-3 px-1">
         Cada card vem de um módulo (Prazos, Fechamento, Rotinas, Tarefas, Avisos…) filtrado por você. Marcar ✓ dá baixa no módulo de origem.
       </p>
+
+      {/* Modal de detalhe — mostra o item sem sair da tela */}
+      {detalhe && (
+        <div onClick={() => setDetalhe(null)} className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40">
+          <div onClick={e => e.stopPropagation()} className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 shadow-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-gray-100 dark:border-gray-800">
+              <span className="text-lg">{detalhe.categoriaIcone}</span>
+              <span className="text-[11px] font-bold uppercase tracking-wide" style={{ color: catCor(detalhe.categoria) }}>{detalhe.categoria}</span>
+              {detalhe.subcategoria && <span className="text-[10px] font-bold text-gray-500 bg-gray-100 dark:bg-gray-800 rounded-full px-2 py-0.5">{detalhe.subcategoria}</span>}
+              <button onClick={() => setDetalhe(null)} className="ml-auto text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-lg leading-none">×</button>
+            </div>
+            <div className="px-4 py-3">
+              <div className="text-[15px] font-bold text-gray-900 dark:text-gray-100">{detalhe.titulo}</div>
+              {detalhe.descricao && <div className="text-[13px] text-gray-600 dark:text-gray-300 mt-1.5 leading-relaxed">{detalhe.descricao}</div>}
+              <div className="flex items-center gap-2 mt-3 text-[12px] text-gray-500 dark:text-gray-400">
+                <span>🏠 {detalhe.restauranteNome}</span>
+                {detalhe.em && detalhe.em < "9999" && <span>· 📅 {detalhe.em.slice(8, 10)}/{detalhe.em.slice(5, 7)}/{detalhe.em.slice(0, 4)}</span>}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40">
+              <button onClick={() => { onCheckAtr(detalhe); setDetalhe(null); }}
+                className="text-[12px] font-bold px-3 py-1.5 rounded-lg bg-green-600 text-white hover:bg-green-700">✓ Marcar feito</button>
+              {detalhe.href && (
+                <button onClick={() => { const d = detalhe; setDetalhe(null); onAbrir(d); }}
+                  className="text-[12px] font-bold px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:border-indigo-400">Abrir no módulo →</button>
+              )}
+              <button onClick={() => setDetalhe(null)} className="ml-auto text-[12px] font-semibold text-gray-500 hover:text-gray-800 dark:hover:text-gray-200">Fechar</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
