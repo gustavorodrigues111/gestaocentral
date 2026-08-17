@@ -271,7 +271,6 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
   concluirRotina: (a: Aviso) => void;
 }) {
   const navigate = useNavigate();
-  const { pessoa } = useAuth();
   const { activeRestaurant } = useRestaurant();
   const { can } = useCanAcao(activeRestaurant?.id || "");
   const [ref, setRef] = useState(ymdHoje());
