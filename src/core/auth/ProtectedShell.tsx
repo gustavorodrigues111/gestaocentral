@@ -72,6 +72,7 @@ import { FerramentasCredenciaisPage } from "../../modules/ferramentasCredenciais
 import { ChatPage } from "../../modules/chat/ChatPage";
 import { AvisosProvider } from "../../modules/chat/useAvisos";
 import { PrimeiroAcesso } from "./PrimeiroAcesso";
+import { canUse } from "./permissions";
 
 function ModuleRouter() {
   const { moduleId, rid } = useParams<{ moduleId: string; rid: string }>();
@@ -129,7 +130,10 @@ function ModuleRouter() {
     case "sites":         return <SitesPage key={k} />;
     case "cardapio":      return <CardapioPage key={k} />;
     case "uniformes":     return <UniformesPage key={k} />;
-    case "tarefas":       return pessoa?.modoTarefa === "simplificado" ? <LenteEnxutaPage key={k} /> : <TarefasPage key={k} />;
+    // Item único "Tarefas": o MODO vem do perfil de acesso. Perfil de Gestor
+    // (permissão "tarefas") → avançado; perfil simplificado (só "planoDeAcao")
+    // → lente enxuta. Master sempre avançado.
+    case "tarefas":       return canUse(pessoa, rid || "", "tarefas") ? <TarefasPage key={k} /> : <LenteEnxutaPage key={k} />;
     case "wikiProcessos": return <WikiProcessosPage key={k} />;
     case "iaGovernanca": return <IaGovernancaPage key={k} />;
     case "whatsapp": return <WhatsappPage key={k} />;

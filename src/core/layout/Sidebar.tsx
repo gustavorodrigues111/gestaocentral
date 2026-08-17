@@ -114,6 +114,14 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     // modulosAtivos vale pra TODOS (inclusive master): módulo desativado nas
     // Configurações da empresa não aparece no menu. Pra reativar → Catálogo de
     // módulos (sempre disponível). Master ainda ignora só a checagem de permissão.
+    // "Tarefas" virou item único: mostra pra quem tem o perfil avançado
+    // (permissão tarefas) OU o simplificado (permissão planoDeAcao). O modo é
+    // decidido no ProtectedShell. Ativo se qualquer um dos dois estiver ligado.
+    if (moduleId === "tarefas") {
+      if (!modulosAtivos.includes("tarefas") && !modulosAtivos.includes("planoDeAcao")) return false;
+      if (pessoa.isMaster) return true;
+      return canUse(pessoa, rid, "tarefas") || canUse(pessoa, rid, "planoDeAcao");
+    }
     if (!modulosAtivos.includes(moduleId)) return false;
     if (pessoa.isMaster) return true;
     return canUse(pessoa, rid, moduleId);

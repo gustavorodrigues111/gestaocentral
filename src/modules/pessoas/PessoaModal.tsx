@@ -137,7 +137,6 @@ function TabIdentidade({
     cpf: pessoa?.cpf || "",
     whatsapp: pessoa?.whatsapp || "",
     pix: pessoa?.pix || "",
-    modoTarefa: pessoa?.modoTarefa || "avancado",
   });
   const [vinculoNovo, setVinculoNovo] = useState<VinculoLogico | "">("");
   // Terá login? Decisão explícita por pessoa (padrão Não). Independe do vínculo.
@@ -303,7 +302,6 @@ function TabIdentidade({
           cadastroIncompleto: !cpfDigits,
           whatsapp: form.whatsapp.trim() || null,
           pix: form.pix.trim() || null,
-          modoTarefa: form.modoTarefa,
           isMaster: false,
           temLogin,
           restaurantIds: [restaurantId],
@@ -337,7 +335,6 @@ function TabIdentidade({
           cpf: cpfDigits || null,
           whatsapp: form.whatsapp.trim() || null,
           pix: form.pix.trim() || null,
-          modoTarefa: form.modoTarefa,
           cadastroIncompleto: !cpfDigits,
           temLogin,
         };
@@ -470,18 +467,6 @@ function TabIdentidade({
         />
       </div>
 
-      <div className="flex flex-col gap-1">
-        <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Modo do módulo Tarefas</label>
-        <select
-          value={form.modoTarefa}
-          onChange={(e) => setForm({ ...form, modoTarefa: e.target.value as "simplificado" | "avancado" })}
-          className="w-full border border-gray-300 dark:border-gray-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-gray-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-        >
-          <option value="avancado">Avançado — Gestor de Tarefas completo (escritório)</option>
-          <option value="simplificado">Simplificado — lista enxuta da operação (mobile)</option>
-        </select>
-        <p className="text-[11px] text-gray-500 dark:text-gray-400">Define qual tela o módulo Tarefas abre pra essa pessoa e qual criador o botão “+ Tarefa” da Minha Central usa.</p>
-      </div>
 
       {isNew && (
         <div className="flex flex-col gap-1">

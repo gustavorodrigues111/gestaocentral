@@ -412,9 +412,9 @@ export const CATALOGO: CatalogoModulo[] = [
 
   {
     id: "planoDeAcao",
-    icon: "🎯",
-    label: "Plano de Ação",
-    desc: "Ações com responsável, prazo e status",
+    icon: "✅",
+    label: "Tarefas — modo simplificado (operação)",
+    desc: "Perfil da operação: abre o item 'Tarefas' na LISTA ENXUTA mobile (concluir com um toque). Quem tem só permissões aqui (e nenhuma em 'Tarefas — modo avançado') abre o item 'Tarefas' no modo SIMPLIFICADO.",
     area: "time",
     acoes: [
       { id: "receberAvisos", label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
@@ -622,8 +622,8 @@ export const CATALOGO: CatalogoModulo[] = [
   {
     id: "tarefas",
     icon: "📋",
-    label: "Tarefas",
-    desc: "Gestor de Tarefas (Área > Projeto > Tarefa)",
+    label: "Tarefas — modo avançado (Gestor completo)",
+    desc: "Perfil de escritório: abre o Gestor de Tarefas completo (Área > Projeto > Tarefa). Quem tem QUALQUER permissão aqui abre o item 'Tarefas' no modo AVANÇADO. Pra dar o modo simplificado (lista da operação), use o módulo 'Tarefas (simplificado)' em vez deste.",
     area: "gestao",
     acoes: [
       { id: "verProprias",       label: "Ver suas tarefas (Minhas Tarefas)" },
