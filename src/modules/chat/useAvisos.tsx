@@ -45,6 +45,7 @@ export type Aviso = {
   rotina?: { rotina: Rotina; ocorrenciaData: string; atrasada: boolean }; // rotina pendente
   categoria: string;          // rótulo do módulo — agrupa o Histórico
   categoriaIcone: string;     // ícone do módulo (não do item)
+  subcategoria?: string;      // sub-tipo dentro da categoria (ex.: tipo do Prazo) — filtro na Minha Central
 };
 
 // API exposta pela Central de Avisos: caixa de entrada (não lidos), histórico
@@ -526,7 +527,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
         em: p.vencimento,
         restauranteId: r, restauranteNome: nomePorRid[r] || "Restaurante",
         cta: "Abrir Prazos", href: `/r/${r}/prazos`,
-        categoria: "Prazos", categoriaIcone: "📅",
+        categoria: "Prazos", categoriaIcone: "📅", subcategoria: PRAZO_TIPO_LABEL[p.tipo] || "Outros",
       });
     }
 

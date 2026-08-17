@@ -275,7 +275,9 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
   const { can } = useCanAcao(activeRestaurant?.id || "");
   const [ref, setRef] = useState(ymdHoje());
   const [atrOpen, setAtrOpen] = useState(true);   // faixa de atrasados aberta?
-  const [atrTudo, setAtrTudo] = useState(false);  // mostrar todos ou só 2 linhas?
+  const [selCat, setSelCat] = useState<string>("todos");   // filtro por categoria
+  const [selSub, setSelSub] = useState<string>("todos");   // filtro por tipo de prazo
+  const [expCat, setExpCat] = useState<Set<string>>(new Set()); // grupos com "mostrar tudo"
   const hoje = ymdHoje();
   const seg = useMemo(() => segundaDaSemana(ref), [ref]);
   const dias = useMemo(() => Array.from({ length: 7 }, (_, i) => addYmd(seg, i)), [seg]);
@@ -296,6 +298,23 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
     atr.sort((x, y) => (x.em || "").localeCompare(y.em || ""));
     return { porDia: pd, atrasados: atr };
   }, [todos, dias, seg, fim, hoje, lidosIds]);
+
+  // Agrupa os atrasados por CATEGORIA, em ordem fixa: Tarefas → Prazos → demais
+  // (por volume) → Checklists por último. Cada grupo mantém a ordem por data.
+  const grupos = useMemo(() => {
+    const m = new Map<string, Aviso[]>();
+    for (const a of atrasados) { const arr = m.get(a.categoria); if (arr) arr.push(a); else m.set(a.categoria, [a]); }
+    const ord = (c: string) => c === "Tarefas" ? 0 : c === "Prazos" ? 1 : c === "Checklists" ? 8 : 4;
+    return [...m.entries()].sort((x, y) => ord(x[0]) - ord(y[0]) || y[1].length - x[1].length || x[0].localeCompare(y[0]));
+  }, [atrasados]);
+
+  // Sub-tipos do grupo Prazos (Conta / Técnico / Trabalhista / Avulso) com contagem.
+  const prazoSubs = useMemo(() => {
+    const pr = grupos.find(g => g[0] === "Prazos")?.[1] || [];
+    const m = new Map<string, number>();
+    for (const a of pr) { const s = a.subcategoria || "Outros"; m.set(s, (m.get(s) || 0) + 1); }
+    return [...m.entries()].sort((a, b) => b[1] - a[1]);
+  }, [grupos]);
 
   const rangeLabel = `${Number(seg.slice(8))} – ${Number(fim.slice(8))} de ${MES_CURTO[Number(fim.slice(5, 7)) - 1]}`;
   const onCheck = (a: Aviso) => (a.rotina ? concluirRotina(a) : marcarLido(a));
@@ -335,26 +354,73 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
         )}
       </div>
 
-      {/* Atrasados & sem data — colapsável, 2 linhas por padrão */}
+      {/* Precisam de atenção — agrupado por categoria (Tarefas → Prazos → …),
+          com filtro por categoria e por tipo de prazo. */}
       {atrasados.length > 0 && (
         <div className="mb-3 rounded-xl border border-amber-300 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/20">
           <button onClick={() => setAtrOpen(o => !o)} className="w-full flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-500">
             <span className="inline-block transition-transform text-[9px]" style={{ transform: atrOpen ? "rotate(90deg)" : "none" }}>▶</span>
-            ⚠️ Atrasados &amp; sem data
+            ⚠️ Precisam de atenção
             <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px]">{atrasados.length}</span>
           </button>
           {atrOpen && (
             <div className="px-2.5 pb-2.5">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-                {(atrTudo ? atrasados : atrasados.slice(0, 6)).map(a => (
-                  <MiniCard key={a.id} a={a} lido={lidosIds.has(a.id)} multiRest={multiRest} onAbrir={() => onAbrir(a)} onCheck={() => onCheck(a)} />
-                ))}
-              </div>
-              {atrasados.length > 6 && (
-                <button onClick={() => setAtrTudo(t => !t)} className="mt-2 text-[11px] font-semibold text-amber-700 dark:text-amber-500 hover:underline">
-                  {atrTudo ? "▲ mostrar menos" : `▼ mostrar mais (${atrasados.length - 6})`}
+              {/* Chips de categoria */}
+              <div className="flex flex-wrap gap-1.5 mb-2.5">
+                <button onClick={() => { setSelCat("todos"); setSelSub("todos"); }}
+                  className={`text-[11px] font-bold px-2.5 py-1 rounded-full border ${selCat === "todos" ? "bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 border-transparent" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 bg-white dark:bg-gray-900"}`}>
+                  Todos <span className="opacity-70">{atrasados.length}</span>
                 </button>
-              )}
+                {grupos.map(([cat, arr]) => {
+                  const on = selCat === cat; const cor = catCor(cat);
+                  return (
+                    <button key={cat} onClick={() => { setSelCat(on ? "todos" : cat); setSelSub("todos"); }}
+                      style={on ? { background: cor, borderColor: cor, color: "#fff" } : { borderColor: cor }}
+                      className="text-[11px] font-bold px-2.5 py-1 rounded-full border bg-white dark:bg-gray-900 flex items-center gap-1.5">
+                      {!on && <span className="w-2 h-2 rounded-sm" style={{ background: cor }} />}
+                      <span style={on ? undefined : { color: cor }}>{cat}</span>
+                      <span className="opacity-80">{arr.length}</span>
+                    </button>
+                  );
+                })}
+              </div>
+
+              {/* Grupos */}
+              {grupos.filter(([cat]) => selCat === "todos" || selCat === cat).map(([cat, arr]) => {
+                const cor = catCor(cat);
+                const isPrazo = cat === "Prazos";
+                const focus = selCat === cat;
+                let itens = arr;
+                if (isPrazo && selSub !== "todos") itens = itens.filter(a => (a.subcategoria || "Outros") === selSub);
+                const expandido = focus || expCat.has(cat);
+                const shown = expandido ? itens : itens.slice(0, 4);
+                return (
+                  <div key={cat} className="mb-2.5">
+                    <div className="flex items-center gap-1.5 px-1 mb-1">
+                      <span className="text-[13px]">{arr[0]?.categoriaIcone}</span>
+                      <span className="text-[12px] font-extrabold text-gray-800 dark:text-gray-100">{cat}</span>
+                      <span className="text-[10px] font-bold text-gray-500 dark:text-gray-400 bg-white dark:bg-gray-800 rounded-full px-1.5">{arr.length}</span>
+                    </div>
+                    {isPrazo && focus && prazoSubs.length > 1 && (
+                      <div className="flex flex-wrap gap-1 mb-1.5 pl-1">
+                        <button onClick={() => setSelSub("todos")} className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${selSub === "todos" ? "bg-sky-600 text-white border-sky-600" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>Todos os tipos</button>
+                        {prazoSubs.map(([s, n]) => (
+                          <button key={s} onClick={() => setSelSub(s)} className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${selSub === s ? "bg-sky-600 text-white border-sky-600" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{s} <span className="opacity-70">{n}</span></button>
+                        ))}
+                      </div>
+                    )}
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+                      {shown.map(a => <MiniCard key={a.id} a={a} lido={lidosIds.has(a.id)} multiRest={multiRest} onAbrir={() => onAbrir(a)} onCheck={() => onCheck(a)} />)}
+                    </div>
+                    {!focus && itens.length > 4 && (
+                      <button onClick={() => setExpCat(s => { const n = new Set(s); n.has(cat) ? n.delete(cat) : n.add(cat); return n; })}
+                        className="mt-1.5 text-[11px] font-semibold hover:underline" style={{ color: cor }}>
+                        {expCat.has(cat) ? "▲ mostrar menos" : `▼ mostrar mais (${itens.length - 4})`}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           )}
         </div>
