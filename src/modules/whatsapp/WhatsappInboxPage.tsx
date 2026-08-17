@@ -2330,6 +2330,22 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
   const [buscaU, setBuscaU] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [reparando, setReparando] = useState(false);
+  const [testResult, setTestResult] = useState<string>("");
+  // Diagnóstico: dispara um envio de teste e mostra a RESPOSTA CRUA da Evolution
+  // (HTTP + corpo), pra descobrir por que "não envia".
+  async function testarEnvio() {
+    const num = prompt("Diagnóstico de envio — número de teste (com DDD, ex.: 91999999999):");
+    if (!num) return;
+    setTestResult("Enviando teste…");
+    try {
+      const r = await fetch("/api/evolution-enviar", {
+        method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
+        body: JSON.stringify({ instancia: numero.id, to: soDig(num), texto: "🩺 Teste de envio (diagnóstico planejamento.app)" }),
+      });
+      const j = await r.json().catch(() => ({}));
+      setTestResult(`HTTP ${r.status}\n${JSON.stringify(j, null, 2)}`);
+    } catch (e) { setTestResult("Falha na chamada: " + (e instanceof Error ? e.message : "?")); }
+  }
   // Conserta o caso "aparece Conectado mas não envia/recebe": reinicia o socket
   // na Evolution (sem novo QR) e re-aponta o webhook.
   async function repararConexao() {
@@ -2410,11 +2426,15 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
                       className="text-xs px-2.5 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 disabled:opacity-50">
                       {reparando ? "🔧 Reparando…" : "🔧 Reparar (não envia/recebe?)"}
                     </button>
+                    <button type="button" onClick={testarEnvio} className="text-xs px-2.5 py-1.5 rounded-lg border border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-300">🩺 Testar envio</button>
                     <button type="button" onClick={onLogout} className="text-xs px-2.5 py-1.5 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">⏻ Desconectar</button>
                   </>
                 : <button type="button" onClick={onQr} className="text-xs px-2.5 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300">{estado === "close" ? "🔄 Reconectar" : "🔌 Conectar"}</button>}
             </div>
-            <p className="text-[11px] text-gray-400 mt-1.5">Aparece Conectado mas as mensagens não entram/saem? Clique em <b>Reparar</b> — reinicia a conexão (sem novo QR) e reaponta o webhook.</p>
+            <p className="text-[11px] text-gray-400 mt-1.5">Aparece Conectado mas as mensagens não entram/saem? Clique em <b>Reparar</b> — reinicia a conexão (sem novo QR) e reaponta o webhook. Se o envio falha, use <b>Testar envio</b> e me mande o resultado.</p>
+            {testResult && (
+              <pre className="mt-2 text-[10.5px] leading-snug whitespace-pre-wrap break-words bg-gray-900 text-emerald-200 rounded-lg p-2.5 max-h-52 overflow-auto select-all">{testResult}</pre>
+            )}
           </SecaoCfg>
 
           {/* Identificação */}
