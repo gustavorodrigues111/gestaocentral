@@ -824,7 +824,7 @@ export function KanbanView({ tarefas, projetos, autor, onAbrir }: {
 
 // ─── VIEW: Calendário (semana) ─────────────────────────────────────────────
 
-export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia }: {
+export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia, onIdeiaNoDia }: {
   tarefas: Tarefa[];
   projetos: TarefaProjeto[];
   subprojetos?: TarefaSubprojeto[];
@@ -832,6 +832,9 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
   autor?: { id: string; nome: string };
   // Quando chamado com `prazo`, vai pra aquele dia; sem args, cria sem data.
   onNovaTarefaNoDia?: (prazo?: string) => void;
+  // Arrastou uma ideia (da Caixa de ideias) pra um dia → abre o modal de nova
+  // tarefa naquele dia, já com título/descrição da ideia.
+  onIdeiaNoDia?: (ideia: { id: string; titulo: string; descricao: string }, prazo: string) => void;
 }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(hoje));
@@ -941,19 +944,26 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
     return (
       <div
         key={data}
-        onDragOver={podeArrastar ? (e) => {
+        onDragOver={(podeArrastar || onIdeiaNoDia) ? (e) => {
           e.preventDefault();
-          e.dataTransfer.dropEffect = "move";
+          const ehIdeia = e.dataTransfer.types.includes("application/x-ideia");
+          e.dataTransfer.dropEffect = ehIdeia ? "copy" : "move";
           if (dropTarget !== data) setDropTarget(data);
         } : undefined}
-        onDragLeave={podeArrastar ? () => {
+        onDragLeave={(podeArrastar || onIdeiaNoDia) ? () => {
           if (dropTarget === data) setDropTarget(null);
         } : undefined}
-        onDrop={podeArrastar ? (e) => {
+        onDrop={(podeArrastar || onIdeiaNoDia) ? (e) => {
           e.preventDefault();
-          const id = e.dataTransfer.getData("text/plain");
           setDropTarget(null);
           setDraggingId(null);
+          // Ideia arrastada da Caixa de ideias → vira tarefa neste dia.
+          const rawIdeia = e.dataTransfer.getData("application/x-ideia");
+          if (rawIdeia && onIdeiaNoDia) {
+            try { const i = JSON.parse(rawIdeia); if (i?.id) onIdeiaNoDia(i, data); } catch { /* payload inválido */ }
+            return;
+          }
+          const id = e.dataTransfer.getData("text/plain");
           if (id) reordenarNoDia(id, data, null);
         } : undefined}
         title={feriadoNome ? `Feriado: ${feriadoNome}` : undefined}
@@ -1002,16 +1012,22 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
                   setDropTarget(null);
                   setDropAntes(null);
                 } : undefined}
-                onDragOver={podeArrastar ? (e) => {
+                onDragOver={(podeArrastar || onIdeiaNoDia) ? (e) => {
                   e.preventDefault(); e.stopPropagation();
-                  e.dataTransfer.dropEffect = "move";
-                  if (draggingId !== t.id && dropAntes !== t.id) setDropAntes(t.id);
+                  const ehIdeia = e.dataTransfer.types.includes("application/x-ideia");
+                  e.dataTransfer.dropEffect = ehIdeia ? "copy" : "move";
+                  if (!ehIdeia && draggingId !== t.id && dropAntes !== t.id) setDropAntes(t.id);
                 } : undefined}
-                onDragLeave={podeArrastar ? () => { if (dropAntes === t.id) setDropAntes(null); } : undefined}
-                onDrop={podeArrastar ? (e) => {
+                onDragLeave={(podeArrastar || onIdeiaNoDia) ? () => { if (dropAntes === t.id) setDropAntes(null); } : undefined}
+                onDrop={(podeArrastar || onIdeiaNoDia) ? (e) => {
                   e.preventDefault(); e.stopPropagation();
-                  const id = e.dataTransfer.getData("text/plain");
                   setDropAntes(null); setDropTarget(null); setDraggingId(null);
+                  const rawIdeia = e.dataTransfer.getData("application/x-ideia");
+                  if (rawIdeia && onIdeiaNoDia) {
+                    try { const i = JSON.parse(rawIdeia); if (i?.id) onIdeiaNoDia(i, data); } catch { /* payload inválido */ }
+                    return;
+                  }
+                  const id = e.dataTransfer.getData("text/plain");
                   if (id && id !== t.id) reordenarNoDia(id, data, t.id);
                 } : undefined}
                 onClick={() => onAbrir(t.id)}

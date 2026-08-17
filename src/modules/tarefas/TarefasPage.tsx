@@ -376,6 +376,7 @@ export function TarefasPage() {
                 onAbrir={setDetalheId}
                 autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
                 onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })}
+                onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })}
               />
               <CaixaIdeiasFaixa
                 rids={pessoa?.restaurantIds || []}
@@ -423,7 +424,7 @@ export function TarefasPage() {
             <div className="flex-1" />
             {acoesHeader}
           </div>
-          {viewMinhas === "calendario" && <CalendarioView tarefas={filtrar(minhas)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} />}
+          {viewMinhas === "calendario" && <CalendarioView tarefas={filtrar(minhas)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} />}
           {viewMinhas === "lista" && <MinhasTarefasView tarefas={filtrar(minhas)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />}
           {viewMinhas === "kanban" && <KanbanView tarefas={filtrar(minhas)} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />}
         </div>

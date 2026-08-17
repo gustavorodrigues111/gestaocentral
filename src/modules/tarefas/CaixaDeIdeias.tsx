@@ -58,7 +58,14 @@ export function CaixaIdeiasFaixa({ rids, ridAtivo, meId, isMaster, restaurants, 
       ) : (
         <div className="grid gap-2" style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}>
           {minhas.map(i => (
-            <div key={i.id} className="group relative rounded-lg border border-amber-200/70 dark:border-amber-900/40 bg-white dark:bg-gray-900 p-2 hover:border-amber-400 dark:hover:border-amber-600 transition-colors">
+            <div key={i.id} draggable
+              onDragStart={(e) => {
+                // Arrastar a ideia pra um dia do calendário acima → vira tarefa naquele dia.
+                e.dataTransfer.setData("application/x-ideia", JSON.stringify({ id: i.id, titulo: i.titulo, descricao: i.descricao || "" }));
+                e.dataTransfer.effectAllowed = "copy";
+              }}
+              title="Arraste pra um dia do calendário pra virar tarefa"
+              className="group relative rounded-lg border border-amber-200/70 dark:border-amber-900/40 bg-white dark:bg-gray-900 p-2 hover:border-amber-400 dark:hover:border-amber-600 transition-colors cursor-grab active:cursor-grabbing">
               <button type="button" onClick={() => setEditing(i)} className="w-full text-left">
                 <div className="text-[12px] font-medium text-gray-900 dark:text-gray-100 line-clamp-2 leading-snug">{i.visibilidade === "privada" && <span title="privada" className="text-indigo-600 dark:text-indigo-400">🔒 </span>}{i.titulo}</div>
                 {(multiEmpresa || i.categoria) && (
