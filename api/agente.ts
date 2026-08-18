@@ -247,14 +247,17 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
     },
   },
   gerar_pdf: {
-    desc: "Gera o PDF FINAL da filipeta do Puba e devolve o link. `cardapio` diz QUAL folha: 'comidas' | 'bebidas' | 'vinhos' (Carta de Vinhos) | 'especiais_almoco' (Especiais de Almoço) | 'especiais' (Especiais do dia) | 'dobravel' (CARDÁPIO DOBRÁVEL: 1 folha A4 dobrada ao meio, frente = Especiais de Almoço + capa 'Comidas e Bebidas', verso = Comidas | Bebidas) | 'todos'. Se o usuário não disser, PERGUNTE antes e gere só a que ele pedir. Pra mais de uma, chame uma vez por folha (arquivos separados).",
+    desc: "Gera o PDF FINAL da filipeta do Puba e devolve o link. `cardapio` diz QUAL folha: 'comidas' | 'bebidas' | 'vinhos' (Carta de Vinhos) | 'especiais_almoco' (Especiais de Almoço) | 'especiais' (Especiais do dia) | 'dobravel' (CARDÁPIO DOBRÁVEL: 1 folha A4 dobrada ao meio, frente = Especiais de Almoço + capa 'Comidas e Bebidas', verso = Comidas | Bebidas) | 'todos'. IMPORTANTE: quando o usuário pedir 'comidas e bebidas', 'o cardápio' ou 'o cardápio principal', use 'dobravel' (é a peça dobrável de 2 páginas — não gere comidas e bebidas em folhas separadas). Só use 'comidas' ou 'bebidas' sozinhos se ele pedir explicitamente UMA folha isolada. Se não disser qual, PERGUNTE antes.",
     tipo: "write",
     schema: { type: "object", properties: { cardapio: { type: "string", description: "comidas | bebidas | vinhos | especiais_almoco | especiais | dobravel | todos" } }, required: [] },
     exec: async (a: { cardapio?: string } = {}) => {
       const est = await lerCardapioEstado();
       const alvo = String(a?.cardapio || "todos").toLowerCase().trim();
       // Cardápio DOBRÁVEL: peça única (Especiais+capa na frente, Comidas|Bebidas no verso).
-      const FOLDER = new Set(["dobravel", "dobrável", "folder", "dobrado", "folheto", "cardapio dobravel", "cardápio dobrável", "completo dobravel"]);
+      // "comidas e bebidas" / "o cardápio principal" = essa peça dobrável (2 páginas).
+      const FOLDER = new Set(["dobravel", "dobrável", "folder", "dobrado", "folheto", "cardapio dobravel", "cardápio dobrável", "completo dobravel",
+        "comidas e bebidas", "comidas e bebida", "comidas+bebidas", "comidas bebidas", "comidas_bebidas",
+        "cardapio comidas e bebidas", "cardápio comidas e bebidas", "cardapio principal", "cardápio principal", "cardapio", "cardápio"]);
       const ehFolder = FOLDER.has(alvo);
       const MAPA: Record<string, keyof CardapioEstado> = { comidas: "comidas", bebidas: "bebidas", vinhos: "vinhos", "carta de vinhos": "vinhos", "especiais de almoco": "vendinha", "especiais de almoço": "vendinha", especiais_almoco: "vendinha", almoco: "vendinha", "almoço": "vendinha", vendinha: "vendinha", especiais: "especiais", "especiais do dia": "especiais" };
       const key = MAPA[alvo];

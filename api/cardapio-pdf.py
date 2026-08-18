@@ -205,45 +205,55 @@ def draw_cover_title(c, lines, cx, col_w=262.0):
         t.setTextOrigin(cx - w / 2.0, PH - base); t.textLine(ln)
         c.drawText(t)
 
-# Carta Curadoria na COLUNA ESQUERDA da capa: título + sommelier + bio + vinhos.
+# Carta Curadoria na COLUNA ESQUERDA da capa: título + sommelier + bio no topo;
+# os vinhos DISTRIBUÍDOS na altura restante (aproveita a página toda).
 def draw_curadoria(c, cur, x0=18.0, x1=282.0):
     if not cur: return
     INK = (0.16, 0.2, 0.32)
     W = x1 - x0
-    y = 44.0
-    # Título "CARTA CURADORIA" (Bebas laranja)
-    c.setFillColorRGB(*ORANGE); c.setFont('Bebas', 25)
+    NM, LH = 13.0, 9.8   # avanço após o nome do vinho · altura de linha (uva/notas)
+    # ── Cabeçalho (topo): título + sommelier + bio ──
+    y = 50.0
+    c.setFillColorRGB(*ORANGE); c.setFont('Bebas', 30)
     for ln in ["CARTA", "CURADORIA"]:
-        c.drawString(x0, PH - y, ln); y += 21
-    y += 6
-    # Sommelier
-    somm = str(cur.get('sommelier', '')).strip(); ano = str(cur.get('ano', '')).strip()
-    linha = somm + (f" — Sommelier do Ano {ano}" if somm else f"Sommelier do Ano {ano}")
-    c.setFillColorRGB(*BLUE); c.setFont('I700', 8.4); c.drawString(x0, PH - y, linha); y += 12
-    # Bio
-    for ln in wrap(c, str(cur.get('bio', '')), 'I400', 7.2, W):
-        c.setFillColorRGB(*INK); c.setFont('I400', 7.2); c.drawString(x0, PH - y, ln); y += 9.4
+        c.drawString(x0, PH - y, ln); y += 26
     y += 8
-    c.setFillColorRGB(*BLUE); c.rect(x0, PH - y, W, 1.2, stroke=0, fill=1); y += 13
-    # Vinhos (ordem: espumante · branco · rosé · laranja · tinto — como já vier)
-    for w in (cur.get('vinhos') or []):
+    somm = str(cur.get('sommelier', '')).strip(); ano = str(cur.get('ano', '')).strip()
+    linha = somm + (f" — Sommelier do Ano {ano}" if somm else "") if somm else (f"Sommelier do Ano {ano}" if ano else "")
+    if linha:
+        c.setFillColorRGB(*BLUE); c.setFont('I700', 9.0); c.drawString(x0, PH - y, linha); y += 14
+    for ln in wrap(c, str(cur.get('bio', '')), 'I400', 8.0, W):
+        c.setFillColorRGB(*INK); c.setFont('I400', 8.0); c.drawString(x0, PH - y, ln); y += 10.6
+    y += 10
+    c.setFillColorRGB(*BLUE); c.rect(x0, PH - y, W, 1.3, stroke=0, fill=1); y += 6
+    # ── Vinhos: distribui no RESTANTE da coluna (de `y` até a margem inferior) ──
+    vinhos = cur.get('vinhos') or []
+    def wlines(w):
+        uv = wrap(c, str(w.get('uva', '')), 'I400', 7.6, W) if w.get('uva') else []
+        nt = wrap(c, str(w.get('notas', '')), 'I400', 7.6, W) if w.get('notas') else []
+        return uv, nt
+    parsed = [(w, *wlines(w)) for w in vinhos]
+    heights = [NM + (len(uv) + len(nt)) * LH for _, uv, nt in parsed]
+    y_bot = PH - 22.0                       # margem inferior (em distância do topo)
+    area = max(1.0, y_bot - y)
+    n = len(parsed) or 1
+    gap = (area - sum(heights)) / (n + 1)
+    gap = max(10.0, min(gap, 72.0))         # não cola nem espalha demais
+    yy = y + gap
+    for (w, uv, nt), h in zip(parsed, heights):
         nome = str(w.get('nome', '')); tipo = str(w.get('tipo', '')); preco = str(w.get('preco', ''))
-        c.setFillColorRGB(*BLUE); c.setFont('I700', 8.8); c.drawString(x0, PH - y, nome)
-        nw = c.stringWidth(nome, 'I700', 8.8)
+        c.setFillColorRGB(*BLUE); c.setFont('I700', 10.5); c.drawString(x0, PH - yy, nome)
+        nw = c.stringWidth(nome, 'I700', 10.5)
         if tipo:
-            c.setFillColorRGB(*ORANGE); c.setFont('I400', 6.0); c.drawString(x0 + nw + 5, PH - y, tipo.upper())
+            c.setFillColorRGB(*ORANGE); c.setFont('I400', 6.4); c.drawString(x0 + nw + 6, PH - yy, tipo.upper())
         if preco:
-            c.setFillColorRGB(*BLUE); c.setFont('I700', 8.2); c.drawRightString(x1, PH - y, preco)
-        y += 10.5
-        uva = str(w.get('uva', ''))
-        if uva:
-            for ln in wrap(c, uva, 'I400', 6.6, W):
-                c.setFillColorRGB(*BLUE); c.setFont('I400', 6.6); c.drawString(x0, PH - y, ln); y += 8.1
-        notas = str(w.get('notas', ''))
-        if notas:
-            for ln in wrap(c, notas, 'I400', 6.6, W):
-                c.setFillColorRGB(*INK); c.setFont('I400', 6.6); c.drawString(x0, PH - y, ln); y += 8.1
-        y += 6.5
+            c.setFillColorRGB(*BLUE); c.setFont('I700', 9.6); c.drawRightString(x1, PH - yy, preco)
+        yy += NM
+        for ln in uv:
+            c.setFillColorRGB(*BLUE); c.setFont('I400', 7.6); c.drawString(x0, PH - yy, ln); yy += LH
+        for ln in nt:
+            c.setFillColorRGB(*INK); c.setFont('I400', 7.6); c.drawString(x0, PH - yy, ln); yy += LH
+        yy += gap
 
 def draw_cover(c, curadoria=None):
     # Capa da Carta de Vinhos: Curadoria na esquerda + "CARTA DE VINHOS" na direita.
