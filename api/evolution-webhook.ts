@@ -204,13 +204,21 @@ async function processarStatus(numeroId: string, itens: EvoMsg[]): Promise<void>
     if (m.key?.fromMe === false) continue;   // status de mensagem do cliente não interessa
     const id = m.keyId || m.key?.id;
     if (!id) continue;
+    const raw = String(m.status ?? m.update?.status ?? "").toUpperCase();
     const nivel = nivelStatus(m.status ?? m.update?.status);
-    if (!nivel) continue;
     const docId = `${numeroId}_${id}`;
     try {
-      const atual = await firestoreLer("whatsappMensagens", docId) as { status?: number } | null;
+      const atual = await firestoreLer("whatsappMensagens", docId) as { status?: number; falhou?: boolean } | null;
       if (!atual) continue;
-      if (nivel > Number(atual.status || 0)) await firestoreAtualizar("whatsappMensagens", docId, { status: nivel });
+      if (raw === "ERROR" || raw === "0") {
+        // WhatsApp REJEITOU o envio (não saiu). Marca a mensagem como falha.
+        if (!atual.falhou) await firestoreAtualizar("whatsappMensagens", docId, { falhou: true });
+      } else if (nivel > 0) {
+        const patch: Record<string, unknown> = {};
+        if (nivel > Number(atual.status || 0)) patch.status = nivel;
+        if (atual.falhou) patch.falhou = false;   // veio ACK depois → recuperou, tira o ❌
+        if (Object.keys(patch).length) await firestoreAtualizar("whatsappMensagens", docId, patch);
+      }
     } catch (e) { console.log("[evo-webhook] status:", (e as Error)?.message); }
   }
 }

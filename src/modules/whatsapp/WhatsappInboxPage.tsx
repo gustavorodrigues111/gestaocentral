@@ -23,7 +23,7 @@ import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
 import { PAPEIS_WHATSAPP, type PapelWhatsapp, type WhatsappRoteio } from "../../core/whatsapp/roteios";
 
-type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; apagadaParaCliente?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean; status?: number; origTimestamp?: string; quotedId?: string | null; quotedTexto?: string | null; quotedAutor?: string | null };
+type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; apagadaParaCliente?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean; status?: number; falhou?: boolean; origTimestamp?: string; quotedId?: string | null; quotedTexto?: string | null; quotedAutor?: string | null };
 
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const fmtBRcurto = (ymd?: string | null) => { if (!ymd) return ""; const [a, m, d] = String(ymd).split("-"); return d ? `${d}/${m}/${a?.slice(2) || ""}` : String(ymd); };
@@ -1606,6 +1606,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                       );
                     })()}
                     <div className="text-[10px] text-gray-400 mt-0.5 text-right">{m.editado && !m.apagada && <span className="italic">editado · </span>}{hhmm(m.timestamp)}{m.direcao === "out" && !m.apagada && (() => {
+                      if (m.falhou) return <span className="ml-0.5 text-rose-500 font-semibold" title="O WhatsApp não entregou esta mensagem (falha no envio). Reconecte o número (QR) e tente de novo.">❌ não entregue</span>;
                       const nivel = m.status ?? 1;   // enviado por padrão
                       return <span className={`ml-0.5 ${nivel >= 3 ? "text-sky-500" : "text-gray-400"}`} title={nivel >= 3 ? "Lida" : nivel >= 2 ? "Entregue" : "Enviada"}>{nivel >= 2 ? "✓✓" : "✓"}</span>;
                     })()}</div>
