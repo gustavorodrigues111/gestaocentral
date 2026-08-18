@@ -2272,6 +2272,12 @@ export function NumerosManager() {
             <NumeroConfigCard key={n.id} numero={n} estado={estados[n.id] || "unknown"} pessoas={pessoas} restaurants={restaurants}
               onQr={() => setQr({ instancia: n.id, nome: n.nome, qr: null })}
               onLogout={async () => { if (!confirm(`Desconectar "${n.nome}"? O número sai do ar até reconectar.`)) return; await chamarInstancia("logout", n.id); void atualizarStatus(); }}
+              onRecriar={async () => {
+                if (!confirm(`Recriar a sessão de "${n.nome}" na Evolution?\n\nApaga SÓ a sessão corrompida do WhatsApp e recria a instância com o mesmo nome. MANTÉM toda a config (nome, usuários, empresas, IA, tags) e o histórico de conversas. Você vai escanear o QR de novo.`)) return;
+                const r = await chamarInstancia("recreate", n.id);
+                if (r.error) { alert("Falha ao recriar: " + r.error); return; }
+                setQr({ instancia: n.id, nome: n.nome, qr: r.qr || null });
+              }}
               onExcluir={() => void excluir(n)} />
           ))}
         </div>
@@ -2323,10 +2329,12 @@ function SecaoCfg({ icon, titulo, hint, children }: { icon?: string; titulo?: st
   );
 }
 
-function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout, onExcluir }: {
+function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout, onRecriar, onExcluir }: {
   numero: WhatsappNumero; estado: string; pessoas: Pessoa[]; restaurants: { id: string; nome: string }[];
-  onQr: () => void; onLogout: () => void; onExcluir: () => void;
+  onQr: () => void; onLogout: () => void; onRecriar: () => void; onExcluir: () => void;
 }) {
+  const { pessoa: me } = useAuth();
+  const isMaster = !!me?.isMaster;
   const [aberto, setAberto] = useState(false);
   const [buscaU, setBuscaU] = useState("");
   const [salvando, setSalvando] = useState(false);
@@ -2431,8 +2439,12 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
                     <button type="button" onClick={onLogout} className="text-xs px-2.5 py-1.5 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">⏻ Desconectar</button>
                   </>
                 : <button type="button" onClick={onQr} className="text-xs px-2.5 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300">{estado === "close" ? "🔄 Reconectar" : "🔌 Conectar"}</button>}
+              {isMaster && (
+                <button type="button" onClick={onRecriar} className="text-xs px-2.5 py-1.5 rounded-lg border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300">♻️ Recriar sessão (master)</button>
+              )}
             </div>
-            <p className="text-[11px] text-gray-400 mt-1.5">Aparece Conectado mas as mensagens não entram/saem? Clique em <b>Reparar</b> — reinicia a conexão (sem novo QR) e reaponta o webhook. Se o envio falha, use <b>Testar envio</b> e me mande o resultado.</p>
+            <p className="text-[11px] text-gray-400 mt-1.5">Aparece Conectado mas as mensagens não entram/saem? Clique em <b>Reparar</b> — reinicia a conexão (sem novo QR) e reaponta o webhook. Se o envio falha, use <b>Testar envio</b>.</p>
+            {isMaster && <p className="text-[11px] text-purple-500 dark:text-purple-400 mt-1">♻️ <b>Recriar sessão</b>: quando reconectar por QR não resolve (ex.: envia em grupo mas 1:1 dá ❌). Apaga só a sessão corrompida na Evolution e recria a instância — <b>mantém</b> nome, usuários, empresas, IA, tags e o histórico. Você reescaneia o QR.</p>}
             {testResult && (
               <pre className="mt-2 text-[10.5px] leading-snug whitespace-pre-wrap break-words bg-gray-900 text-emerald-200 rounded-lg p-2.5 max-h-52 overflow-auto select-all">{testResult}</pre>
             )}

@@ -69,6 +69,18 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       res.status(w.ok ? 200 : 502).json({ ok: w.ok, ...(w.ok ? {} : { error: `Evolution HTTP ${w.status}. ${String(w.raw).slice(0, 200)}` }) });
       return;
     }
+    if (acao === "recreate") {  // APAGA a instância na Evolution (limpa sessão corrompida) e RECRIA com o mesmo nome → devolve QR. NÃO mexe no doc do número (config/histórico ficam).
+      await call(`/instance/logout/${encodeURIComponent(instancia)}`, "DELETE").catch(() => {});
+      await call(`/instance/delete/${encodeURIComponent(instancia)}`, "DELETE").catch(() => {});
+      const r = await call("/instance/create", "POST", { instanceName: instancia, qrcode: true, integration: "WHATSAPP-BAILEYS" });
+      if (!r.ok && r.status !== 403 && r.status !== 409) { res.status(502).json({ error: `Evolution HTTP ${r.status}. ${String(r.raw).slice(0, 300)}` }); return; }
+      await setWebhook().catch(() => {});
+      const j = r.json as { qrcode?: { base64?: string } } | null;
+      let qr = j?.qrcode?.base64 || null;
+      if (!qr) { const c = await call(`/instance/connect/${encodeURIComponent(instancia)}`, "GET"); qr = (c.json as { base64?: string })?.base64 || null; }
+      res.status(200).json({ ok: true, qr });
+      return;
+    }
     if (acao === "restart") {   // reinicia o socket (reconecta com a sessão salva, SEM novo QR) + reaponta webhook
       await setWebhook().catch(() => {});
       const r = await call(`/instance/restart/${encodeURIComponent(instancia)}`, "POST");
