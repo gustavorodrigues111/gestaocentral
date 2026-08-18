@@ -63,6 +63,7 @@ async function lerCardapioEstado(): Promise<CardapioEstado & { versao: number }>
     // Backfill de folhas novas ainda ausentes no doc salvo (ex.: Carta de
     // Vinhos): pega do seed até o usuário editar/salvar por ela.
     if (!e.vinhos && CARDAPIO_SEED.vinhos) e.vinhos = CARDAPIO_SEED.vinhos;
+    if (!e.curadoria && CARDAPIO_SEED.curadoria) e.curadoria = CARDAPIO_SEED.curadoria;
     return e;
   }
   return { ...CARDAPIO_SEED, versao: 0 };
@@ -261,7 +262,9 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
       // Folha específica → manda só ela (o render pula as vazias). "todos" → tudo.
       const payload: Record<string, unknown> = ehFolder
         ? { comidas: est.comidas || [], bebidas: est.bebidas || [], vendinha: est.vendinha || [], versao: est.versao, _layout: "folder" }
-        : (alvo !== "todos" && key) ? { [key]: (est as Record<string, unknown>)[key] || [], versao: est.versao } : est;
+        : (alvo !== "todos" && key)
+          ? { [key]: (est as Record<string, unknown>)[key] || [], versao: est.versao, ...(key === "vinhos" ? { curadoria: est.curadoria } : {}) }
+          : est;
       const sufixo = ehFolder ? "dobravel" : (alvo !== "todos" && key) ? String(key) : "completo";
       const origin = process.env.APP_ORIGIN || "https://admin.planejamento.app";
       let j: { pdfBase64?: string; error?: string };
@@ -274,6 +277,29 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
       const url = await subirStorage(path, j.pdfBase64, "application/pdf");
       if (!url) return { resumo: "falha no upload", conteudo: JSON.stringify({ erro: "PDF gerado mas o upload falhou." }) };
       return { resumo: `PDF (${sufixo}) v${est.versao || 0} pronto`, conteudo: JSON.stringify({ pdfUrl: url, cardapio: sufixo, versao: est.versao || 0 }) };
+    },
+  },
+  salvar_curadoria: {
+    desc: "Edita a CARTA CURADORIA (Sommelier do Ano) que aparece na COLUNA ESQUERDA da capa da Carta de Vinhos. Leia o atual antes (ler_cardapio traz o campo `curadoria`), modifique e passe o objeto COMPLETO. Campos: sommelier (nome), ano (ex.: '25/26'), bio (texto curto — a biografia do sommelier), vinhos: lista de { nome, tipo ('Espumante'|'Branco'|'Rosé'|'Laranja'|'Tinto'), uva (linha 'uva: <uvas> | <região>, <país>'), notas (degustação: aromas/boca/final), preco ('R$ 190') }. ORDENE os vinhos: espumante → branco → rosé → laranja → tinto. Depois gere o PDF de vinhos (gerar_pdf cardapio='vinhos') pra conferir.",
+    tipo: "write",
+    schema: { type: "object", properties: {
+      sommelier: { type: "string" }, ano: { type: "string" }, bio: { type: "string" },
+      vinhos: { type: "array", items: { type: "object", properties: {
+        nome: { type: "string" }, tipo: { type: "string" }, uva: { type: "string" }, notas: { type: "string" }, preco: { type: "string" },
+      }, required: ["nome"] } },
+    }, required: [] },
+    exec: async (args, ctx) => {
+      const est = await lerCardapioEstado();
+      const atual = est.curadoria || { vinhos: [] };
+      const s = (v: unknown, fb = "") => (v != null ? String(v) : fb);
+      const vin = Array.isArray(args.vinhos)
+        ? (args.vinhos as Array<Record<string, unknown>>).map((v) => ({ nome: s(v?.nome), tipo: s(v?.tipo), uva: s(v?.uva), notas: s(v?.notas), preco: s(v?.preco) })).filter((v) => v.nome)
+        : (atual.vinhos || []);
+      const cur = { sommelier: s(args.sommelier, atual.sommelier || ""), ano: s(args.ano, atual.ano || ""), bio: s(args.bio, atual.bio || ""), vinhos: vin };
+      const novaVersao = (est.versao || 0) + 1;
+      const nowIso = new Date().toISOString();
+      const salvo = await firestoreAtualizar("cardapioEstado", docPuba(), { curadoria: cur as unknown as Doc, versao: novaVersao, atualizadoEm: nowIso, atualizadoPor: ctx.pessoaNome });
+      return { resumo: `curadoria → v${novaVersao} (${vin.length} vinhos)`, conteudo: JSON.stringify({ versao: novaVersao, curadoria: cur, salvo }) };
     },
   },
   gerar_previa: {

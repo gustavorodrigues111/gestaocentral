@@ -5,7 +5,10 @@
 export type CardapioPreco = string | { qual: string; val: string };
 export type CardapioItem = { nome: string; descricao: string; precos: CardapioPreco[]; descW?: number };
 export type CardapioSecao = { secao: string; itens: CardapioItem[] };
-export type CardapioEstado = { comidas: CardapioSecao[]; bebidas: CardapioSecao[]; vendinha: CardapioSecao[]; especiais?: CardapioSecao[]; vinhos?: CardapioSecao[] };
+// Carta Curadoria (Sommelier do Ano) — coluna esquerda da capa da Carta de Vinhos.
+export type CuradoriaVinho = { nome: string; tipo?: string; uva?: string; notas?: string; preco?: string };
+export type CardapioCuradoria = { sommelier?: string; ano?: string; bio?: string; vinhos: CuradoriaVinho[] };
+export type CardapioEstado = { comidas: CardapioSecao[]; bebidas: CardapioSecao[]; vendinha: CardapioSecao[]; especiais?: CardapioSecao[]; vinhos?: CardapioSecao[]; curadoria?: CardapioCuradoria };
 
 export const CARDAPIO_SEED: CardapioEstado = {
   "comidas": [
@@ -379,5 +382,17 @@ export const CARDAPIO_SEED: CardapioEstado = {
         { "nome": "KRYA TINTO", "descricao": "uva: montepulciano | abruzzo, itália\n\nTinto macio e frutado, com notas de frutas vermelhas maduras e leve toque de especiarias. Equilibrado e fácil de beber.", "precos": ["R$ 230"] }
       ]
     }
-  ]
+  ],
+  "curadoria": {
+    "sommelier": "Leandro Mattiuz",
+    "ano": "25/26",
+    "bio": "Gaúcho de Veranópolis, começou no mundo do vinho em 2005, em Porto Alegre. Passou quase cinco anos em Londres — de loja de vinhos a winebar e restaurante com estrela Michelin, onde foi sommelier — e concluiu o diploma WSET. Viveu cerca de dois anos na Itália, formando-se pela Associação Italiana de Sommelier. Em São Paulo desde 2012, foi consultor técnico de uma das maiores importadoras do país e, em 2017, tornou-se embaixador do vinho italiano no mundo. Em 2019 fundou o Elevado Bar, no centro de São Paulo, eleito o melhor bar de vinhos da cidade pela Veja SP.",
+    "vinhos": [
+      { "nome": "BENJE WHITE", "tipo": "Branco", "uva": "uva: listán blanco | ilhas canárias, espanha", "notas": "Branco atlântico de vinhas velhas em solo vulcânico, com maceração pelicular parcial. Aromas cítricos e de fruta branca com fundo mineral. Em boca tem textura, boa acidez e final persistente.", "preco": "R$ 440" },
+      { "nome": "CARA SUCIA", "tipo": "Branco", "uva": "uva: blend de castas antigas | rivadavia, mendoza, argentina", "notas": "Co-fermentação de castas históricas, vinificada em concreto. Aromas florais de jasmim com notas cítricas de lima. Fresco e leve, de acidez vibrante e final delicado.", "preco": "R$ 190" },
+      { "nome": "ZANTHO PINK", "tipo": "Rosé", "uva": "uva: zweigelt | burgenland, áustria", "notas": "Rosé da casta tinta emblemática da Áustria. Cor rosa viva, aromas especiados de cereja e frutas vermelhas. Frutado e leve, com acidez crocante e final refrescante.", "preco": "R$ 190" },
+      { "nome": "EL ELEFANTE PISADOR", "tipo": "Laranja", "uva": "uva: traminer aromático | atlántida, uruguai", "notas": "Vinho laranja com cerca de uma semana de maceração pelicular. Nariz floral e perfumado; em boca lembra um branco fresco, com acidez marcada e final seco.", "preco": "R$ 290" },
+      { "nome": "MICROCÓSMICO GARNACHA", "tipo": "Tinto", "uva": "uva: garnacha | valdejalón, aragón, espanha", "notas": "Garnacha de vinhas velhas em altitude, da Frontonio, de mínima intervenção. Perfil floral e austero, com fruta vermelha fresca. Seco e fluido, de acidez viva e taninos finos.", "preco": "R$ 440" }
+    ]
+  }
 };

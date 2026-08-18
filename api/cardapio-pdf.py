@@ -205,8 +205,49 @@ def draw_cover_title(c, lines, cx, col_w=262.0):
         t.setTextOrigin(cx - w / 2.0, PH - base); t.textLine(ln)
         c.drawText(t)
 
-def draw_cover(c):
-    # Capa da Carta de Vinhos: só "CARTA DE VINHOS" na coluna da direita + dobra.
+# Carta Curadoria na COLUNA ESQUERDA da capa: título + sommelier + bio + vinhos.
+def draw_curadoria(c, cur, x0=18.0, x1=282.0):
+    if not cur: return
+    INK = (0.16, 0.2, 0.32)
+    W = x1 - x0
+    y = 44.0
+    # Título "CARTA CURADORIA" (Bebas laranja)
+    c.setFillColorRGB(*ORANGE); c.setFont('Bebas', 25)
+    for ln in ["CARTA", "CURADORIA"]:
+        c.drawString(x0, PH - y, ln); y += 21
+    y += 6
+    # Sommelier
+    somm = str(cur.get('sommelier', '')).strip(); ano = str(cur.get('ano', '')).strip()
+    linha = somm + (f" — Sommelier do Ano {ano}" if somm else f"Sommelier do Ano {ano}")
+    c.setFillColorRGB(*BLUE); c.setFont('I700', 8.4); c.drawString(x0, PH - y, linha); y += 12
+    # Bio
+    for ln in wrap(c, str(cur.get('bio', '')), 'I400', 7.2, W):
+        c.setFillColorRGB(*INK); c.setFont('I400', 7.2); c.drawString(x0, PH - y, ln); y += 9.4
+    y += 8
+    c.setFillColorRGB(*BLUE); c.rect(x0, PH - y, W, 1.2, stroke=0, fill=1); y += 13
+    # Vinhos (ordem: espumante · branco · rosé · laranja · tinto — como já vier)
+    for w in (cur.get('vinhos') or []):
+        nome = str(w.get('nome', '')); tipo = str(w.get('tipo', '')); preco = str(w.get('preco', ''))
+        c.setFillColorRGB(*BLUE); c.setFont('I700', 8.8); c.drawString(x0, PH - y, nome)
+        nw = c.stringWidth(nome, 'I700', 8.8)
+        if tipo:
+            c.setFillColorRGB(*ORANGE); c.setFont('I400', 6.0); c.drawString(x0 + nw + 5, PH - y, tipo.upper())
+        if preco:
+            c.setFillColorRGB(*BLUE); c.setFont('I700', 8.2); c.drawRightString(x1, PH - y, preco)
+        y += 10.5
+        uva = str(w.get('uva', ''))
+        if uva:
+            for ln in wrap(c, uva, 'I400', 6.6, W):
+                c.setFillColorRGB(*BLUE); c.setFont('I400', 6.6); c.drawString(x0, PH - y, ln); y += 8.1
+        notas = str(w.get('notas', ''))
+        if notas:
+            for ln in wrap(c, notas, 'I400', 6.6, W):
+                c.setFillColorRGB(*INK); c.setFont('I400', 6.6); c.drawString(x0, PH - y, ln); y += 8.1
+        y += 6.5
+
+def draw_cover(c, curadoria=None):
+    # Capa da Carta de Vinhos: Curadoria na esquerda + "CARTA DE VINHOS" na direita.
+    draw_curadoria(c, curadoria)
     draw_cover_title(c, ["CARTA DE", "VINHOS"], PW * 0.75)
     cut_line(c, PW / 2, 8, PW / 2, PH - 8)          # guia de dobra ao meio
     c.showPage()
@@ -249,7 +290,7 @@ def render(estado):
     # altura, podendo QUEBRAR uma seção — a label repete na 2ª coluna (ex.: os
     # Brancos continuam na direita). NÃO replica e não tem linha de corte.
     if vinhos:
-        draw_cover(c)   # página 1 da carta: capa
+        draw_cover(c, estado.get('curadoria'))   # página 1 da carta: Curadoria (esq) + capa (dir)
         flat = [(sec, it, item_height(c, it)) for sec, items in vinhos for it in items]
         total = sum(h for _, _, h in flat) or 1
         left_pairs, right_pairs, acc = [], [], 0.0
