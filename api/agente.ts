@@ -198,6 +198,12 @@ function previaCardapioHtml(est: CardapioEstado & { versao?: number }): string {
         (sec.itens || []).map((it) => `<div class="item"><div class="l"><b>${esc(it.nome)}</b>${it.descricao ? ` <span class="d">${esc(it.descricao)}</span>` : ""}</div><div class="p">${precoTxt(it.precos)}</div></div>`).join("") +
         `</div>`).join("")
     : "";
+  // Carta Curadoria (Sommelier do Ano) — aparece na capa da Carta de Vinhos.
+  const curadoriaHtml = (cur: CardapioEstado["curadoria"]) => (cur && cur.vinhos && cur.vinhos.length)
+    ? `<h2>Carta Curadoria${cur.ano ? ` · Sommelier do Ano ${esc(cur.ano)}` : ""}</h2>`
+        + ((cur.sommelier || cur.bio) ? `<div class="d" style="margin:2px 0 12px;line-height:1.5">${cur.sommelier ? `<b style="color:#1f2937">${esc(cur.sommelier)}</b> — ` : ""}${esc(cur.bio || "")}</div>` : "")
+        + `<div class="sec">` + cur.vinhos.map((v) => `<div class="item"><div class="l"><b>${esc(v.nome)}</b>${v.tipo ? ` <span style="color:#b45309;font-size:11px;font-weight:700;text-transform:uppercase">${esc(v.tipo)}</span>` : ""}${(v.uva || v.notas) ? ` <span class="d">${esc([v.uva, v.notas].filter(Boolean).join(" — "))}</span>` : ""}</div><div class="p">${esc(v.preco || "")}</div></div>`).join("") + `</div>`
+    : "";
   return `<!doctype html><html lang="pt-br"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Prévia do cardápio · Puba</title>`
     + `<style>body{font-family:-apple-system,Segoe UI,Roboto,sans-serif;max-width:680px;margin:0 auto;padding:16px;color:#1f2937;background:#faf9f7}`
     + `h1{font-size:20px;margin:0 0 2px}.v{color:#9ca3af;font-size:12px;margin-bottom:16px}`
@@ -206,7 +212,7 @@ function previaCardapioHtml(est: CardapioEstado & { versao?: number }): string {
     + `.item{display:flex;gap:10px;justify-content:space-between;padding:6px 0;border-bottom:1px dashed #ece7dd}`
     + `.l b{font-size:14px}.d{color:#9ca3af;font-size:12px}.p{white-space:nowrap;font-weight:600;font-size:13px}</style></head><body>`
     + `<h1>🍽️ Cardápio do Puba — prévia</h1><div class="v">versão ${est.versao || 0} · confira e aprove</div>`
-    + pagina("Comidas", est.comidas) + pagina("Bebidas", est.bebidas) + pagina("Especiais de Almoço", est.vendinha) + pagina("Especiais do dia", est.especiais) + pagina("Carta de Vinhos", est.vinhos)
+    + pagina("Comidas", est.comidas) + pagina("Bebidas", est.bebidas) + pagina("Especiais de Almoço", est.vendinha) + pagina("Especiais do dia", est.especiais) + curadoriaHtml(est.curadoria) + pagina("Carta de Vinhos", est.vinhos)
     + `</body></html>`;
 }
 

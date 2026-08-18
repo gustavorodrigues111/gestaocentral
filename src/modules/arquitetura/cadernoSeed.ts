@@ -37,7 +37,6 @@ const SEED: Seed[] = [
   // ── Cardápio ──
   { modulo: "cardapio", resp: "ia", titulo: "Render do cardápio no site público + PDF de impressão + tradução EN por IA" },
   { modulo: "cardapio", resp: "ia", titulo: "Selo da Carta Curadoria (LM · safra) na capa da Carta de Vinhos — desenhar em reportlab (círculo + 'CURADORIA DO SOMMELIER' + estrela). Ficou pra depois a pedido do usuário.", descricao: "Carta Curadoria já entrou na coluna esquerda da capa (título + bio + 5 vinhos, editável pelo agente via salvar_curadoria). Só o selo não." },
-  { modulo: "cardapio", resp: "ia", titulo: "Prévia HTML (gerar_previa) não reflete o cardápio DOBRÁVEL nem a Curadoria da capa — só o PDF final mostra. Portar pra dar pra conferir sem gerar PDF.", descricao: "Cardápio dobrável (comidas+bebidas+especiais numa folha) e Curadoria na capa dos vinhos já saem no PDF (cardapio-pdf.py). A prévia previaCardapioHtml ainda é o formato antigo." },
 
   // ── Vendas ──
   { modulo: "vendas", resp: "ia", titulo: "Editar/excluir venda + PDF de cobrança" },
