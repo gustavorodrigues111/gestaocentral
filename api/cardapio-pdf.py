@@ -186,21 +186,28 @@ def cut_line(c, x0, y0, x1, y1):
     c.setStrokeColorRGB(0.65, 0.65, 0.65); c.setLineWidth(0.4); c.setDash(3, 3)
     c.line(x0, y0, x1, y1); c.setDash()
 
-def draw_cover(c):
-    # Capa simples: só "CARTA DE VINHOS" em Bebas (laranja), centralizado na
-    # COLUNA DA DIREITA (a folha dobra ao meio). Linha de dobra no meio.
-    cx = PW * 0.75                                  # centro da coluna da direita
-    tsize = 40.0; tcs = 3.0; lines = ["CARTA DE", "VINHOS"]
+# Título de capa (Bebas laranja, centralizado numa coluna), auto-ajustado à
+# largura. NÃO desenha dobra nem showPage — dá pra compor com outra coluna.
+def draw_cover_title(c, lines, cx, col_w=262.0):
+    tcs = 3.0
+    line_w = lambda ln, s: c.stringWidth(ln, 'Bebas', s) + tcs * (len(ln) - 1)
+    tsize = 40.0
+    while tsize > 16 and max(line_w(ln, tsize) for ln in lines) > col_w:
+        tsize -= 1.0
     caph = tsize * 0.72; pitch = caph + 12.0
     title_h = caph + (len(lines) - 1) * pitch
     top = (PH - title_h) / 2.0
     c.setFillColorRGB(*ORANGE)
     for i, ln in enumerate(lines):
         base = top + caph + i * pitch
-        w = c.stringWidth(ln, 'Bebas', tsize) + tcs * (len(ln) - 1)
+        w = line_w(ln, tsize)
         t = c.beginText(); t.setFont('Bebas', tsize); t.setCharSpace(tcs)
         t.setTextOrigin(cx - w / 2.0, PH - base); t.textLine(ln)
         c.drawText(t)
+
+def draw_cover(c):
+    # Capa da Carta de Vinhos: só "CARTA DE VINHOS" na coluna da direita + dobra.
+    draw_cover_title(c, ["CARTA DE", "VINHOS"], PW * 0.75)
     cut_line(c, PW / 2, 8, PW / 2, PH - 8)          # guia de dobra ao meio
     c.showPage()
 
@@ -214,6 +221,26 @@ def render(estado):
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=(PW, PH))
     Hd = lambda n: os.path.join(ASSET_DIR, 'headers', n)
+
+    # ── LAYOUT "FOLDER": 1 folha A4 dobrada ao meio (vertical), frente e verso ──
+    # Externa: Especiais de Almoço (esq) | capa "COMIDAS E BEBIDAS" (dir).
+    # Interna: Comidas (esq) | Bebidas (dir). Conteúdo real; muda só a diagramação.
+    if estado.get('_layout') == 'folder':
+        RB = 822.3; HALF = PH / 2
+        # Frente (externa): especiais na METADE DE CIMA da coluna esquerda + capa
+        if vendinha:
+            draw_copy(c, 0.0, 0.0, Hd('header_comidas_sem_titulo.png'), vendinha, ["ESPECIAIS", "DE ALMOÇO"], HALF - 14.0)
+        draw_cover_title(c, ["COMIDAS", "E BEBIDAS"], PW * 0.75)
+        cut_line(c, PW / 2, 8, PW / 2, PH - 8); c.showPage()
+        # Verso (interna): comidas | bebidas
+        if comidas:
+            draw_copy(c, 0.0, 0.0, Hd('header_comidas_sem_titulo.png'), comidas, ["COMIDAS"], RB)
+        if bebidas:
+            draw_copy(c, 297.8, 0.0, Hd('header_bebidas_sem_titulo.png'), bebidas, ["BEBIDAS"], RB)
+        cut_line(c, PW / 2, 8, PW / 2, PH - 8); c.showPage()
+        c.save()
+        return buf.getvalue()
+
     for header, secs, title in [(Hd('header_comidas_sem_titulo.png'), comidas, ["COMIDAS"]), (Hd('header_bebidas_sem_titulo.png'), bebidas, ["BEBIDAS"])]:
         if secs:   # sem a folha → não gera página em branco (permite PDF de 1 cardápio só)
             for dx in (0.0, 297.8): draw_copy(c, dx, 0.0, header, secs, title, 822.3)

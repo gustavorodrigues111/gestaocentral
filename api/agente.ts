@@ -246,17 +246,23 @@ const SKILL_TOOLS: Record<string, SkillTool> = {
     },
   },
   gerar_pdf: {
-    desc: "Gera o PDF FINAL da filipeta do Puba e devolve o link. `cardapio` diz QUAL folha: 'comidas' | 'bebidas' | 'vinhos' (Carta de Vinhos) | 'especiais_almoco' (Especiais de Almoço) | 'especiais' (Especiais do dia) | 'todos'. Se o usuário não disser, PERGUNTE antes e gere só a que ele pedir. Pra mais de uma, chame uma vez por folha (arquivos separados).",
+    desc: "Gera o PDF FINAL da filipeta do Puba e devolve o link. `cardapio` diz QUAL folha: 'comidas' | 'bebidas' | 'vinhos' (Carta de Vinhos) | 'especiais_almoco' (Especiais de Almoço) | 'especiais' (Especiais do dia) | 'dobravel' (CARDÁPIO DOBRÁVEL: 1 folha A4 dobrada ao meio, frente = Especiais de Almoço + capa 'Comidas e Bebidas', verso = Comidas | Bebidas) | 'todos'. Se o usuário não disser, PERGUNTE antes e gere só a que ele pedir. Pra mais de uma, chame uma vez por folha (arquivos separados).",
     tipo: "write",
-    schema: { type: "object", properties: { cardapio: { type: "string", description: "comidas | bebidas | vinhos | especiais_almoco | especiais | todos" } }, required: [] },
+    schema: { type: "object", properties: { cardapio: { type: "string", description: "comidas | bebidas | vinhos | especiais_almoco | especiais | dobravel | todos" } }, required: [] },
     exec: async (a: { cardapio?: string } = {}) => {
       const est = await lerCardapioEstado();
       const alvo = String(a?.cardapio || "todos").toLowerCase().trim();
+      // Cardápio DOBRÁVEL: peça única (Especiais+capa na frente, Comidas|Bebidas no verso).
+      const FOLDER = new Set(["dobravel", "dobrável", "folder", "dobrado", "folheto", "cardapio dobravel", "cardápio dobrável", "completo dobravel"]);
+      const ehFolder = FOLDER.has(alvo);
       const MAPA: Record<string, keyof CardapioEstado> = { comidas: "comidas", bebidas: "bebidas", vinhos: "vinhos", "carta de vinhos": "vinhos", "especiais de almoco": "vendinha", "especiais de almoço": "vendinha", especiais_almoco: "vendinha", almoco: "vendinha", "almoço": "vendinha", vendinha: "vendinha", especiais: "especiais", "especiais do dia": "especiais" };
       const key = MAPA[alvo];
+      // dobrável → comidas+bebidas+especiais de almoço com o flag de layout.
       // Folha específica → manda só ela (o render pula as vazias). "todos" → tudo.
-      const payload: Record<string, unknown> = (alvo !== "todos" && key) ? { [key]: (est as Record<string, unknown>)[key] || [], versao: est.versao } : est;
-      const sufixo = (alvo !== "todos" && key) ? String(key) : "completo";
+      const payload: Record<string, unknown> = ehFolder
+        ? { comidas: est.comidas || [], bebidas: est.bebidas || [], vendinha: est.vendinha || [], versao: est.versao, _layout: "folder" }
+        : (alvo !== "todos" && key) ? { [key]: (est as Record<string, unknown>)[key] || [], versao: est.versao } : est;
+      const sufixo = ehFolder ? "dobravel" : (alvo !== "todos" && key) ? String(key) : "completo";
       const origin = process.env.APP_ORIGIN || "https://admin.planejamento.app";
       let j: { pdfBase64?: string; error?: string };
       try {
