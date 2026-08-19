@@ -294,7 +294,8 @@ export type SegurancaModelo = {
 };
 
 // Uma foto de não-conformidade, armazenada no Google Drive (subpasta por data).
-export type SegurancaFoto = { driveId: string; nome: string; webViewLink?: string };
+// Fotos: novas vão pro Firebase Storage (url+path); as antigas ainda têm driveId (Drive).
+export type SegurancaFoto = { nome: string; url?: string; path?: string; driveId?: string; webViewLink?: string };
 
 // Resultado de UMA resposta. Chave no mapa `resultado` = segResKey(itemId, área)
 // = `itemId::área` (ou só `itemId` p/ item sem área / legado). Como uma pergunta

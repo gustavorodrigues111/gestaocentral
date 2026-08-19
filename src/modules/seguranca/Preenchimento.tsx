@@ -27,7 +27,7 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
 
   useEffect(() => ouvirAvaliacao(avaliacaoId, setAv), [avaliacaoId]);
 
-  const rootFolderId = activeRestaurant?.driveRootFolderId;
+  const rid = activeRestaurant?.id;   // fotos vão pro Firebase Storage (seguranca/{rid}/…)
   // Nome da pasta da avaliação: "dd-mm-aaaa HHhMM" (estável pelo iniciadoEm).
   const pastaLabel = useMemo(() => {
     if (!av) return "";
@@ -154,7 +154,7 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
                   key={item.id}
                   item={item}
                   areasToShow={areasToShow}
-                  rootFolderId={rootFolderId}
+                  rid={rid}
                   pastaLabel={pastaLabel}
                   readOnly={readOnly}
                   resultadoDe={(area) => av.resultado?.[segResKey(item.id, area)]}
@@ -181,10 +181,10 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
 }
 
 // ── Card de uma pergunta (com 1 linha de resposta por área) ──
-function ItemCard({ item, areasToShow, rootFolderId, pastaLabel, readOnly, resultadoDe, onMarcar, onObs, onFotos }: {
+function ItemCard({ item, areasToShow, rid, pastaLabel, readOnly, resultadoDe, onMarcar, onObs, onFotos }: {
   item: SegurancaItem;
   areasToShow: (string | undefined)[];
-  rootFolderId?: string;
+  rid?: string;
   pastaLabel: string;
   readOnly: boolean;
   resultadoDe: (area: string | undefined) => SegurancaResultadoItem | undefined;
@@ -206,7 +206,7 @@ function ItemCard({ item, areasToShow, rootFolderId, pastaLabel, readOnly, resul
             area={area}
             multi={areasToShow.length > 1}
             readOnly={readOnly}
-            rootFolderId={rootFolderId}
+            rid={rid}
             pastaLabel={pastaLabel}
             resultado={resultadoDe(area)}
             onMarcar={(r) => onMarcar(area, r)}
@@ -220,11 +220,11 @@ function ItemCard({ item, areasToShow, rootFolderId, pastaLabel, readOnly, resul
 }
 
 // ── Uma resposta (Conforme/Não conforme) de uma área ──
-function AreaAnswer({ area, multi, readOnly, rootFolderId, pastaLabel, resultado, onMarcar, onObs, onFotos }: {
+function AreaAnswer({ area, multi, readOnly, rid, pastaLabel, resultado, onMarcar, onObs, onFotos }: {
   area?: string;
   multi: boolean;
   readOnly: boolean;
-  rootFolderId?: string;
+  rid?: string;
   pastaLabel: string;
   resultado?: SegurancaResultadoItem;
   onMarcar: (r: SegurancaResposta) => void;
@@ -264,7 +264,7 @@ function AreaAnswer({ area, multi, readOnly, rootFolderId, pastaLabel, resultado
             value={obs} onChange={(e) => setObs(e.target.value)} onBlur={() => onObs(obs)}
             disabled={readOnly} rows={2} placeholder="O que foi observado…"
             className="w-full text-[15px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 px-3 py-2 text-gray-900 dark:text-gray-100" />
-          <SegurancaFotos rootFolderId={rootFolderId} pastaLabel={pastaLabel} fotos={resultado?.fotos || []} onChange={onFotos} disabled={readOnly} />
+          <SegurancaFotos rid={rid} pastaLabel={pastaLabel} fotos={resultado?.fotos || []} onChange={onFotos} disabled={readOnly} />
         </div>
       )}
     </div>

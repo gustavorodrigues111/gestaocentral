@@ -1,14 +1,15 @@
-// Fotos das não-conformidades — armazenadas no Google Drive (subpasta por data).
-// Mobile-first: o botão abre a CÂMERA. Miniatura mostrada in-app (bytes baixados
-// do Drive); clicar abre um modal DENTRO do app (não navega pro Drive).
+// Fotos das não-conformidades — armazenadas no FIREBASE STORAGE (sem login/pop-up
+// do Drive). Mobile-first: o botão abre a CÂMERA. Miniatura mostrada in-app;
+// clicar abre um modal DENTRO do app. Fotos ANTIGAS (driveId) ainda carregam do Drive.
 import { useEffect, useRef, useState } from "react";
 import type { SegurancaFoto } from "../../core/types";
-import { subirFotoSeguranca, carregarFotoDataUrl } from "./driveFoto";
+import { subirFotoSegurancaStorage, removerFotoSegurancaStorage, carregarFotoDataUrl } from "./driveFoto";
 
 const MAX_MB = 15;
+const keyFoto = (f: SegurancaFoto) => f.path || f.driveId || f.url || f.nome;
 
-export function SegurancaFotos({ rootFolderId, pastaLabel, fotos, onChange, disabled }: {
-  rootFolderId?: string;
+export function SegurancaFotos({ rid, pastaLabel, fotos, onChange, disabled }: {
+  rid?: string;
   pastaLabel: string;
   fotos: SegurancaFoto[];
   onChange: (fotos: SegurancaFoto[]) => void;
@@ -23,21 +24,21 @@ export function SegurancaFotos({ rootFolderId, pastaLabel, fotos, onChange, disa
     setErro("");
     if (!file.type.startsWith("image/")) { setErro("Precisa ser imagem."); return; }
     if (file.size / (1024 * 1024) > MAX_MB) { setErro(`Máx ${MAX_MB} MB.`); return; }
-    if (!rootFolderId) { setErro("Configure a pasta do Drive primeiro."); return; }
+    if (!rid) { setErro("Sem restaurante no contexto."); return; }
     setUploading(true);
     try {
-      const foto = await subirFotoSeguranca(rootFolderId, pastaLabel, file);
+      const foto = await subirFotoSegurancaStorage(rid, pastaLabel, file);
       onChange([...fotos, foto]);
     } catch (e) {
-      setErro("Falha ao enviar pro Drive: " + (e instanceof Error ? e.message : "?"));
+      setErro("Falha ao enviar a foto: " + (e instanceof Error ? e.message : "?"));
     } finally { setUploading(false); }
   }
-  function remover(f: SegurancaFoto) { onChange(fotos.filter((x) => x.driveId !== f.driveId)); }
+  function remover(f: SegurancaFoto) { void removerFotoSegurancaStorage(f); onChange(fotos.filter((x) => keyFoto(x) !== keyFoto(f))); }
 
   return (
     <div className="flex flex-wrap gap-2">
       {fotos.map((f) => (
-        <div key={f.driveId} className="relative">
+        <div key={keyFoto(f)} className="relative">
           <button type="button" onClick={() => setAberta(f)} className="block">
             <Miniatura foto={f} />
           </button>
@@ -51,8 +52,7 @@ export function SegurancaFotos({ rootFolderId, pastaLabel, fotos, onChange, disa
         <>
           <input ref={inputRef} type="file" accept="image/*" capture="environment" className="hidden"
             onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
-          <button type="button" disabled={uploading || !rootFolderId} onClick={() => inputRef.current?.click()}
-            title={rootFolderId ? "" : "Configure a pasta do Drive nas configurações do módulo"}
+          <button type="button" disabled={uploading || !rid} onClick={() => inputRef.current?.click()}
             className="w-16 h-16 rounded-xl border border-dashed border-indigo-400/70 text-indigo-600 dark:text-indigo-300 flex flex-col items-center justify-center gap-0.5 disabled:opacity-50 active:scale-95 transition-transform">
             <span className="text-xl leading-none">📷</span>
             <span className="text-[10px] font-semibold">{uploading ? "enviando…" : "foto"}</span>
@@ -65,15 +65,23 @@ export function SegurancaFotos({ rootFolderId, pastaLabel, fotos, onChange, disa
   );
 }
 
-// Miniatura: baixa o data URL do Drive uma vez (cache) e mostra.
-function Miniatura({ foto }: { foto: SegurancaFoto }) {
-  const [url, setUrl] = useState<string | null>(null);
+// Resolve a URL de exibição: Firebase (url direta) OU Drive (fotos antigas).
+function useFotoUrl(foto: SegurancaFoto) {
+  const [url, setUrl] = useState<string | null>(foto.url || null);
   const [erro, setErro] = useState(false);
   useEffect(() => {
     let vivo = true;
-    carregarFotoDataUrl(foto.driveId).then((u) => { if (vivo) setUrl(u); }).catch(() => { if (vivo) setErro(true); });
+    if (foto.url) { setUrl(foto.url); return () => { vivo = false; }; }
+    if (foto.driveId) carregarFotoDataUrl(foto.driveId).then((u) => { if (vivo) setUrl(u); }).catch(() => { if (vivo) setErro(true); });
+    else setErro(true);
     return () => { vivo = false; };
-  }, [foto.driveId]);
+  }, [foto.url, foto.driveId]);
+  return { url, erro };
+}
+
+// Miniatura: mostra a foto (Firebase direto, ou Drive baixado).
+function Miniatura({ foto }: { foto: SegurancaFoto }) {
+  const { url, erro } = useFotoUrl(foto);
   if (erro) return <div className="w-16 h-16 rounded-xl border border-gray-200 dark:border-gray-700 grid place-items-center text-lg bg-gray-50 dark:bg-gray-800 text-gray-400">🖼️</div>;
   if (!url) return <div className="w-16 h-16 rounded-xl border border-gray-200 dark:border-gray-700 grid place-items-center bg-gray-50 dark:bg-gray-800 animate-pulse text-gray-300 text-xs">…</div>;
   return <img src={url} alt={foto.nome} className="w-16 h-16 rounded-xl object-cover border border-gray-200 dark:border-gray-700" />;
@@ -81,13 +89,7 @@ function Miniatura({ foto }: { foto: SegurancaFoto }) {
 
 // Modal in-app da foto (não sai do planejamento.app).
 function FotoModal({ foto, onClose }: { foto: SegurancaFoto; onClose: () => void }) {
-  const [url, setUrl] = useState<string | null>(null);
-  const [erro, setErro] = useState(false);
-  useEffect(() => {
-    let vivo = true;
-    carregarFotoDataUrl(foto.driveId).then((u) => { if (vivo) setUrl(u); }).catch(() => { if (vivo) setErro(true); });
-    return () => { vivo = false; };
-  }, [foto.driveId]);
+  const { url, erro } = useFotoUrl(foto);
   return (
     <div className="fixed inset-0 z-[70] bg-black/75 flex items-center justify-center p-4" onClick={onClose}>
       <div className="max-w-2xl w-full bg-white dark:bg-gray-900 rounded-2xl overflow-hidden shadow-2xl" onClick={(e) => e.stopPropagation()}>
@@ -101,7 +103,7 @@ function FotoModal({ foto, onClose }: { foto: SegurancaFoto; onClose: () => void
         <div className="bg-gray-50 dark:bg-gray-950 grid place-items-center min-h-[280px] max-h-[75vh] overflow-auto">
           {erro ? <span className="text-sm text-gray-400 py-16">Não foi possível carregar a foto.</span>
             : url ? <img src={url} alt={foto.nome} className="max-w-full max-h-[75vh] object-contain" />
-            : <span className="text-sm text-gray-400 py-16 animate-pulse">Carregando do Drive…</span>}
+            : <span className="text-sm text-gray-400 py-16 animate-pulse">Carregando…</span>}
         </div>
       </div>
     </div>
