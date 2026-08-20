@@ -161,6 +161,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [novoGrupo, setNovoGrupo] = useState(false);
   const [qrRecon, setQrRecon] = useState<{ instancia: string; nome: string } | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  const [sincronizando, setSincronizando] = useState(true);   // true enquanto os dados vêm do cache (ainda buscando o servidor)
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [contatos, setContatos] = useState<Record<string, WhatsappContato>>({});
   const [clientes, setClientes] = useState<Cliente[]>([]);
@@ -259,8 +260,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // devolve permission-denied e o listener morre → tela vazia até reload manual.
   useEffect(() => {
     if (!authPronta) return;
-    return assinarComRetry(query(collection(db, "whatsappMensagens"), orderBy("timestamp", "asc")), snap =>
-      setMsgs(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Msg)));
+    return assinarComRetry(query(collection(db, "whatsappMensagens"), orderBy("timestamp", "asc")), snap => {
+      setMsgs(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Msg));
+      setSincronizando(snap.metadata.fromCache);   // cache = ainda buscando servidor
+    });
   }, [authPronta]);
 
   useEffect(() => {
@@ -1166,7 +1169,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     <div className={embutido ? "" : "max-w-4xl"}>
       {!embutido && (
         <div className="mb-3">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">💬 WhatsApp</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">💬 WhatsApp
+            {sincronizando && <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />atualizando…</span>}
+          </h1>
           <p className="text-xs text-gray-500">Mensagens recebidas no número da plataforma (número único, não por restaurante).</p>
         </div>
       )}

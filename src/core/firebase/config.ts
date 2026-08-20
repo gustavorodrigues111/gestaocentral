@@ -6,7 +6,7 @@
 // das Firestore Rules (versionadas no firestore.rules) + Firebase App Check.
 
 import { initializeApp } from "firebase/app";
-import { initializeFirestore, type Firestore } from "firebase/firestore";
+import { initializeFirestore, persistentLocalCache, persistentMultipleTabManager, type Firestore } from "firebase/firestore";
 import { getAuth, type Auth } from "firebase/auth";
 import { getStorage, type FirebaseStorage } from "firebase/storage";
 import { initializeAppCheck, ReCaptchaV3Provider } from "firebase/app-check";
@@ -48,9 +48,19 @@ try {
   // Firestore tem que cair pra long-polling. Sem isso, o site público
   // ficava preso em "Carregando..." no Safari mobile com privacidade
   // avançada ativa.
-  db = initializeFirestore(app, {
-    experimentalAutoDetectLongPolling: true,
-  });
+  // localCache persistente (IndexedDB): serve os dados JÁ salvos na hora
+  // (cache-first) e sincroniza com o servidor em segundo plano — as telas
+  // (ex.: inbox do WhatsApp) abrem instantâneas em vez de esperar a rede.
+  // persistentMultipleTabManager = seguro com várias abas abertas. Se o
+  // IndexedDB não estiver disponível (ex.: navegação privada), cai no default.
+  try {
+    db = initializeFirestore(app, {
+      experimentalAutoDetectLongPolling: true,
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+    });
+  } catch {
+    db = initializeFirestore(app, { experimentalAutoDetectLongPolling: true });
+  }
   auth = getAuth(app);
   storage = getStorage(app);
 
