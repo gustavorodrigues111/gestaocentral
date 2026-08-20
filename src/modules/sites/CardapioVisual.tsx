@@ -10,6 +10,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { baixarOuCompartilhar, podeCompartilharArquivo } from "../../core/pdf/baixarOuCompartilhar";
 import { resolverFonte } from "./shared/cardapioFontes";
 import { carregarFontesCardapio } from "./shared/FontePicker";
+import { IconeCardapioView } from "../cardapio/iconesCardapio";
 import type { CardapioEstruturado, CardapioLayout, SecaoCardapio } from "../../core/types";
 
 const TEAL = "#1d3c4b";
@@ -270,6 +271,13 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
         )}
         {!semCabecalho && obs && <div style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, fontStyle: "italic", color: lay.corDescricao, textAlign: align, marginBottom: 8 }}>{obs}</div>}
         {pratos.map((p) => {
+          // Item só-imagem: uma logo centralizada (sem nome/preço).
+          if (p.tipo === "imagem") {
+            if (!p.iconeUrl) return null;
+            return <div key={p.id} style={{ marginBottom: lay.espacoPratos, textAlign: "center" }}>
+              <img src={p.iconeUrl} alt="" style={{ maxWidth: "60%", maxHeight: Math.round((lay.tamTitulo || 12) * 3), objectFit: "contain", display: "inline-block" }} />
+            </div>;
+          }
           const titulo = (en && p.tituloEn) || p.titulo; if (!titulo) return null;
           const subt = (en && p.subtituloEn) || p.subtitulo;
           const preco = (p.preco || "").trim();
@@ -277,12 +285,22 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
           const precoTxt = preco ? (ehNota ? preco : (lay.mostrarCifrao ? `$ ${preco}` : preco)) : "";
           const campoTit: CampoPrato = en ? "tituloEn" : "titulo";
           const campoSub: CampoPrato = en ? "subtituloEn" : "subtitulo";
+          // Ícone à esquerda do item (iconeId = biblioteca; iconeUrl = imagem própria).
+          const icoSize = Math.round((lay.tamTitulo || 12) * 1.25);
+          const iconeNode = p.iconeUrl
+            ? <img src={p.iconeUrl} alt="" style={{ width: icoSize, height: icoSize, objectFit: "contain", flexShrink: 0 }} />
+            : p.iconeId
+              ? <IconeCardapioView id={p.iconeId} size={icoSize} color={lay.corPratos} style={{ flexShrink: 0 }} />
+              : null;
           return (
             <div key={p.id} style={{ marginBottom: lay.espacoPratos }}>
               <div style={{ display: "flex", justifyContent: justPrato, alignItems: "baseline", gap: 8 }}>
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                {iconeNode}
                 <span contentEditable={!!onEditarPrato} suppressContentEditableWarning
                   onBlur={(e) => onEditarPrato?.(p.id, campoTit, e.currentTarget.innerText)}
                   style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: lay.corPratos, whiteSpace: "pre-line", outline: "none" }}>{titulo}</span>
+                </span>
                 {(precoTxt || (p.taca && (p.precoTaca || "").trim())) && (
                   <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, gap: 1 }}>
                     {precoTxt && (
