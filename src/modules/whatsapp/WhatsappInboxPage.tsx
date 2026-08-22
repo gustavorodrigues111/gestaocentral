@@ -264,12 +264,16 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     // coleção INTEIRA a cada abertura, o que deixava o inbox lento. Isso cobre as
     // conversas ativas; abrir uma conversa muito antiga mostra até esse limite.
     const cutoff = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString();
-    return assinarComRetry(query(collection(db, "whatsappMensagens"), where("timestamp", ">=", cutoff), orderBy("timestamp", "desc"), limit(4000)), snap => {
+    // Fallback: no máximo ~5s em "conectando…" — se o servidor confirmar antes,
+    // vira "conectado" na hora; se o fromCache ficar preso, o timer garante.
+    const timer = setTimeout(() => setSincronizando(false), 5000);
+    const unsub = assinarComRetry(query(collection(db, "whatsappMensagens"), where("timestamp", ">=", cutoff), orderBy("timestamp", "desc"), limit(4000)), snap => {
       setMsgs(snap.docs.slice().reverse().map(d => ({ id: d.id, ...d.data() }) as Msg));   // reverse → ordem crescente
-      // Só do carregamento inicial: some na 1ª confirmação do servidor e NÃO
-      // volta a piscar (senão ficava "atualizando…" toda hora que chegava msg).
+      // Some na 1ª confirmação do servidor e NÃO volta a piscar (senão ficava
+      // "conectando" toda hora que chegava msg nova).
       if (!snap.metadata.fromCache) setSincronizando(false);
     });
+    return () => { clearTimeout(timer); unsub(); };
   }, [authPronta]);
 
   useEffect(() => {
