@@ -1221,6 +1221,11 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 📱 {n.nome}
               </button>
             ))}
+            {sincronizando && (
+              <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 inline-flex items-center gap-1 px-1" title="Mostrando o que já estava salvo — buscando as novidades no servidor">
+                <span className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />atualizando…
+              </span>
+            )}
             {/* Notificações do navegador — SEMPRE visível, refletindo o estado (nunca some). */}
             {typeof Notification !== "undefined" && (
               <button type="button"
