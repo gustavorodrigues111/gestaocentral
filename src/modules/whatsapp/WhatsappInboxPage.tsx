@@ -122,14 +122,16 @@ function tempoEsperaLabel(ms: number): { txt: string; cor: string } {
 // token de auth ainda não propagou ao abrir o módulo), re-tenta com backoff em
 // vez de morrer calada — senão a lista de números/conversas fica vazia até um
 // reload manual.
-function assinarComRetry(q: Query<DocumentData>, onData: (s: QuerySnapshot<DocumentData>) => void): () => void {
+function assinarComRetry(q: Query<DocumentData>, onData: (s: QuerySnapshot<DocumentData>) => void, incluirMetadata = false): () => void {
   let unsub = () => {};
   let cancelado = false;
   let tentativa = 0;
   let timer: ReturnType<typeof setTimeout> | null = null;
   const attach = () => {
     if (cancelado) return;
-    unsub = onSnapshot(q, (s) => { tentativa = 0; onData(s); }, () => {
+    // includeMetadataChanges: entrega também a transição cache→servidor
+    // (fromCache: false) mesmo sem mudança de dado — é o que confirma "ao vivo".
+    unsub = onSnapshot(q, { includeMetadataChanges: incluirMetadata }, (s) => { tentativa = 0; onData(s); }, () => {
       unsub();
       if (cancelado) return;
       timer = setTimeout(attach, Math.min(800 * 2 ** tentativa++, 6000));
@@ -264,16 +266,20 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     // coleção INTEIRA a cada abertura, o que deixava o inbox lento. Isso cobre as
     // conversas ativas; abrir uma conversa muito antiga mostra até esse limite.
     const cutoff = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString();
-    // Fallback: no máximo ~5s em "conectando…" — se o servidor confirmar antes,
-    // vira "conectado" na hora; se o fromCache ficar preso, o timer garante.
-    const timer = setTimeout(() => setSincronizando(false), 5000);
+    let offTimer: ReturnType<typeof setTimeout> | null = null;
     const unsub = assinarComRetry(query(collection(db, "whatsappMensagens"), where("timestamp", ">=", cutoff), orderBy("timestamp", "desc"), limit(4000)), snap => {
       setMsgs(snap.docs.slice().reverse().map(d => ({ id: d.id, ...d.data() }) as Msg));   // reverse → ordem crescente
-      // Some na 1ª confirmação do servidor e NÃO volta a piscar (senão ficava
-      // "conectando" toda hora que chegava msg nova).
-      if (!snap.metadata.fromCache) setSincronizando(false);
-    });
-    return () => { clearTimeout(timer); unsub(); };
+      // Status AO VIVO: fromCache=false = veio do servidor agora (conectado).
+      // Se cair pro cache, só marca "conectando" se ficar assim >2s (evita
+      // piscar a cada envio/mensagem, que passa rápido pelo cache local).
+      if (!snap.metadata.fromCache) {
+        if (offTimer) { clearTimeout(offTimer); offTimer = null; }
+        setSincronizando(false);
+      } else if (!offTimer) {
+        offTimer = setTimeout(() => { setSincronizando(true); offTimer = null; }, 2000);
+      }
+    }, true);   // includeMetadataChanges: pra receber a confirmação do servidor
+    return () => { if (offTimer) clearTimeout(offTimer); unsub(); };
   }, [authPronta]);
 
   useEffect(() => {
