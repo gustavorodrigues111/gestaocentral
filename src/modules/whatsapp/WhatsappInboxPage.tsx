@@ -1189,7 +1189,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             <span className={`text-[11px] font-semibold inline-flex items-center gap-1 ${sincronizando ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
               {sincronizando
                 ? <><span className="w-2.5 h-2.5 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />conectando…</>
-                : <><span className="w-2 h-2 rounded-full bg-emerald-500" />conectado</>}
+                : <><span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />AO VIVO</>}
             </span>
           </h1>
           <p className="text-xs text-gray-500">Mensagens recebidas no número da plataforma (número único, não por restaurante).</p>
@@ -1238,10 +1238,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
               </button>
             ))}
             <span className={`text-[11px] font-semibold inline-flex items-center gap-1 px-1 ${sincronizando ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}
-              title={sincronizando ? "Conectando ao servidor… (mostrando o que já estava salvo)" : "Conectado — mensagens sincronizadas"}>
+              title={sincronizando ? "Conectando ao servidor… (mostrando o que já estava salvo)" : "Ao vivo — recebendo e enviando em tempo real"}>
               {sincronizando
                 ? <><span className="w-3 h-3 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />conectando…</>
-                : <><span className="w-2 h-2 rounded-full bg-emerald-500" />conectado</>}
+                : <><span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />AO VIVO</>}
             </span>
             {/* Notificações do navegador — SEMPRE visível, refletindo o estado (nunca some). */}
             {typeof Notification !== "undefined" && (
