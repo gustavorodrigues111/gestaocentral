@@ -266,7 +266,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     const cutoff = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString();
     return assinarComRetry(query(collection(db, "whatsappMensagens"), where("timestamp", ">=", cutoff), orderBy("timestamp", "desc"), limit(4000)), snap => {
       setMsgs(snap.docs.slice().reverse().map(d => ({ id: d.id, ...d.data() }) as Msg));   // reverse → ordem crescente
-      setSincronizando(snap.metadata.fromCache);   // cache = ainda buscando servidor
+      // Só do carregamento inicial: some na 1ª confirmação do servidor e NÃO
+      // volta a piscar (senão ficava "atualizando…" toda hora que chegava msg).
+      if (!snap.metadata.fromCache) setSincronizando(false);
     });
   }, [authPronta]);
 
