@@ -9,7 +9,7 @@
 // e catálogo de tags em whatsappTags.
 import { useEffect, useMemo, useRef, useState, type ReactNode, type ChangeEvent, type TouchEvent as RTouchEvent } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
-import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, orderBy, query, setDoc, updateDoc, where, writeBatch, type Query, type QuerySnapshot, type DocumentData } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, deleteField, doc, limit, onSnapshot, orderBy, query, setDoc, updateDoc, where, writeBatch, type Query, type QuerySnapshot, type DocumentData } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -260,8 +260,12 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // devolve permission-denied e o listener morre → tela vazia até reload manual.
   useEffect(() => {
     if (!authPronta) return;
-    return assinarComRetry(query(collection(db, "whatsappMensagens"), orderBy("timestamp", "asc")), snap => {
-      setMsgs(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Msg));
+    // Só as mensagens RECENTES (últimos 90 dias, cap 4000) — antes puxava a
+    // coleção INTEIRA a cada abertura, o que deixava o inbox lento. Isso cobre as
+    // conversas ativas; abrir uma conversa muito antiga mostra até esse limite.
+    const cutoff = new Date(Date.now() - 90 * 24 * 3600 * 1000).toISOString();
+    return assinarComRetry(query(collection(db, "whatsappMensagens"), where("timestamp", ">=", cutoff), orderBy("timestamp", "desc"), limit(4000)), snap => {
+      setMsgs(snap.docs.slice().reverse().map(d => ({ id: d.id, ...d.data() }) as Msg));   // reverse → ordem crescente
       setSincronizando(snap.metadata.fromCache);   // cache = ainda buscando servidor
     });
   }, [authPronta]);
