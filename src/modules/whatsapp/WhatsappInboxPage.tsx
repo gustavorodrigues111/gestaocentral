@@ -188,6 +188,8 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   useEffect(() => { setRespondendo(null); }, [sel]);   // troca de conversa cancela a citação em andamento
   const [emojiAberto, setEmojiAberto] = useState(false);
   const [filtroTag, setFiltroTag] = useState<string | null>(null);
+  const [busca, setBusca] = useState("");   // busca por contato/número/conteúdo nas conversas do número aberto
+  useEffect(() => { setBusca(""); }, [numeroSel]);   // troca de número zera a busca
   // Atribuição: inicio (Sem resp.|Minhas) · outras (De outros|Finalizadas) · spam.
   // Livre: conversas (lista única) · finalizados · spam. abaAtual normaliza por modo.
   const [filtroAtrib, setFiltroAtrib] = useState<"inicio" | "outras" | "spam" | "conversas" | "finalizados">("inicio");
@@ -509,40 +511,63 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // Respeita o filtro de tag também na tela Início.
   const passaTag = (waId: string) => !filtroTag || (contatos[foneKey(waId)]?.tagIds || []).includes(filtroTag);
 
+  // ── Busca por conversa/contato (número aberto) ────────────────────────────
+  // Casa por nome do contato, número (só dígitos) OU conteúdo de qualquer
+  // mensagem da conversa. O índice de texto só é montado quando há termo.
+  const buscaNorm = busca.trim().toLowerCase();
+  const buscaDigitos = buscaNorm.replace(/\D/g, "");
+  const textoPorConversa = useMemo(() => {
+    if (!buscaNorm) return null;
+    const m = new Map<string, string>();
+    for (const msg of msgsDoNumero) {
+      if (!msg.texto) continue;
+      const k = foneKey(msg.waId);
+      m.set(k, (m.get(k) || "") + " " + msg.texto.toLowerCase());
+    }
+    return m;
+  }, [msgsDoNumero, buscaNorm]);
+  const passaBusca = (waId: string) => {
+    if (!buscaNorm) return true;
+    if (nomeConversa(waId).toLowerCase().includes(buscaNorm)) return true;
+    if (buscaDigitos.length >= 3 && waId.replace(/\D/g, "").includes(buscaDigitos)) return true;
+    const txt = textoPorConversa?.get(foneKey(waId));
+    return !!txt && txt.includes(buscaNorm);
+  };
+
   // Coluna direita do Início: "Minhas" — todas as minhas ativas, sempre por
   // mensagem mais recente (herda a ordem de `conversas`).
   const minhas = useMemo(() => conversas
-    .filter(c => passaTag(c.waId) && souResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)),
+    .filter(c => passaTag(c.waId) && passaBusca(c.waId) &&souResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [conversas, contatos, me?.id, filtroTag]);
+    [conversas, contatos, me?.id, filtroTag, busca]);
   // Coluna esquerda do Início: "Sem responsável ainda" — ninguém assumiu (recente primeiro).
   const semRespAinda = useMemo(() => conversas
-    .filter(c => passaTag(c.waId) && !temResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)),
+    .filter(c => passaTag(c.waId) && passaBusca(c.waId) &&!temResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [conversas, contatos, filtroTag]);
+    [conversas, contatos, filtroTag, busca]);
 
   // Modo do número selecionado. "livre" = sem dono, lista única lido/não lido.
   const numeroLivre = numeros.find(n => n.id === numeroSel)?.modo === "livre";
 
   // Coluna esquerda de "Outras": conversas atribuídas a OUTRA pessoa (não a mim).
   const deOutros = useMemo(() => conversas
-    .filter(c => passaTag(c.waId) && temResponsavel(c.waId) && !souResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)),
+    .filter(c => passaTag(c.waId) && passaBusca(c.waId) &&temResponsavel(c.waId) && !souResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [conversas, contatos, me?.id, filtroTag]);
+    [conversas, contatos, me?.id, filtroTag, busca]);
   const finalizadasList = useMemo(() => conversas
-    .filter(c => passaTag(c.waId) && finalizadaDe(c.waId) && !spamDe(c.waId)),
+    .filter(c => passaTag(c.waId) && passaBusca(c.waId) &&finalizadaDe(c.waId) && !spamDe(c.waId)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [conversas, contatos, filtroTag]);
+    [conversas, contatos, filtroTag, busca]);
   const spamList = useMemo(() => conversas
-    .filter(c => passaTag(c.waId) && spamDe(c.waId)),
+    .filter(c => passaTag(c.waId) && passaBusca(c.waId) &&spamDe(c.waId)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [conversas, contatos, filtroTag]);
+    [conversas, contatos, filtroTag, busca]);
   // Modo livre: lista única ativa, sempre por mensagem mais recente (herda a ordem
   // de `conversas`, que já vem do mais recente pro mais antigo).
   const conversasLivre = useMemo(() => conversas
-    .filter(c => passaTag(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)),
+    .filter(c => passaTag(c.waId) && passaBusca(c.waId) &&!finalizadaDe(c.waId) && !spamDe(c.waId)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [conversas, contatos, filtroTag]);
+    [conversas, contatos, filtroTag, busca]);
 
   // Contadores dos chips.
   const minhasAguardando = minhas.filter(c => c.naoLidas > 0 || c.ultima.direcao === "in").length;
@@ -1305,6 +1330,21 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
               })}
             </div>
           )}
+
+          {/* Busca por contato / conversa (número aberto) */}
+          <div className="relative mb-2.5">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm">🔍</span>
+            <input
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+              placeholder="Buscar contato, número ou mensagem…"
+              className="w-full pl-9 pr-8 py-2 text-sm rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-emerald-500/40"
+            />
+            {busca && (
+              <button type="button" onClick={() => setBusca("")} aria-label="Limpar busca"
+                className="absolute right-2 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center text-sm leading-none">×</button>
+            )}
+          </div>
 
           {/* Filtro por tag */}
           {tags.length > 0 && (
