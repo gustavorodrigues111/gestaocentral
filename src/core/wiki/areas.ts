@@ -42,3 +42,38 @@ export type WikiGuia = {
   atualizadoPor?: string;
   atualizadoPorNome?: string;
 };
+
+// ── Acervo da área ────────────────────────────────────────────────────────────
+// Além do guia HTML, cada área tem um ACERVO de documentos de referência
+// (regulamento interno, convenção coletiva, catálogo de documentos…). O agente da
+// área responde a partir do guia + acervo. Guarda o texto extraído (fonte da IA) e,
+// quando houver, o arquivo original no Storage (pra baixar). Coleção `wikiDocs`.
+export type WikiDocTipo = "pdf" | "html" | "texto" | "imagem" | "outro";
+
+export type WikiDoc = {
+  id: string;
+  area: WikiAreaKey;
+  nome: string;
+  tipo: WikiDocTipo;
+  url?: string;         // original no Storage (download)
+  storagePath?: string;
+  texto?: string;       // texto extraído — é o que a IA lê
+  tamanho?: number;
+  atualizadoEm?: string;
+  atualizadoPor?: string;
+  atualizadoPorNome?: string;
+};
+
+export function tipoDeArquivo(mime: string, nome: string): WikiDocTipo {
+  const m = (mime || "").toLowerCase();
+  const n = (nome || "").toLowerCase();
+  if (m.includes("pdf") || n.endsWith(".pdf")) return "pdf";
+  if (m.includes("html") || n.endsWith(".html") || n.endsWith(".htm")) return "html";
+  if (m.startsWith("image/")) return "imagem";
+  if (m.startsWith("text/") || n.endsWith(".txt") || n.endsWith(".md")) return "texto";
+  return "outro";
+}
+
+export const TIPO_ICON: Record<WikiDocTipo, string> = {
+  pdf: "📕", html: "🌐", texto: "📄", imagem: "🖼️", outro: "📎",
+};

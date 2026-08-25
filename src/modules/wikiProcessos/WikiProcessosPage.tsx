@@ -8,8 +8,9 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
-import { collection, onSnapshot, doc, setDoc } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
+import { collection, onSnapshot, doc, setDoc, deleteDoc } from "firebase/firestore";
+import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
+import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { authHeader } from "../../core/firebase/idToken";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -20,7 +21,7 @@ import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { wikiCategoriasAcessiveis } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
-import { WIKI_AREAS, GUIA_SEED, type WikiAreaKey, type WikiAreaMeta, type WikiGuia } from "../../core/wiki/areas";
+import { WIKI_AREAS, GUIA_SEED, tipoDeArquivo, TIPO_ICON, type WikiAreaKey, type WikiAreaMeta, type WikiGuia, type WikiDoc } from "../../core/wiki/areas";
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -42,10 +43,12 @@ export function WikiProcessosPage() {
   const podeEditar = can("wikiProcessos", "editar") || !!pessoa?.isMaster;
 
   const [guias, setGuias] = useState<Record<string, WikiGuia>>({});
+  const [docs, setDocs] = useState<WikiDoc[]>([]);
   const [diretrizes, setDiretrizes] = useState("");
   const [verGuia, setVerGuia] = useState<WikiAreaMeta | null>(null);
   const [chat, setChat] = useState<WikiAreaMeta | null>(null);
   const [editar, setEditar] = useState<WikiAreaMeta | null>(null);
+  const [acervo, setAcervo] = useState<WikiAreaMeta | null>(null);
 
   useEffect(() => {
     const ug = onSnapshot(collection(db, "wikiGuias"), snap => {
@@ -53,7 +56,9 @@ export function WikiProcessosPage() {
       snap.docs.forEach(d => { m[d.id] = { key: d.id as WikiAreaKey, ...(d.data() as object) } as WikiGuia; });
       setGuias(m);
     });
-    return () => ug();
+    const ud = onSnapshot(collection(db, "wikiDocs"), snap =>
+      setDocs(snap.docs.map(d => ({ id: d.id, ...(d.data() as object) }) as WikiDoc)));
+    return () => { ug(); ud(); };
   }, []);
   useEffect(() => {
     if (!rid) return;
@@ -71,6 +76,15 @@ export function WikiProcessosPage() {
 
   // HTML efetivo: override do banco tem prioridade; senão cai na semente bundlada.
   const htmlDe = (k: WikiAreaKey) => (guias[k]?.html?.trim() || GUIA_SEED[k] || "");
+  const docsDe = (k: WikiAreaKey) => docs.filter(d => d.area === k).sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
+  // Corpus que alimenta o agente da área: guia (em texto) + textos do acervo.
+  const corpusDe = (k: WikiAreaKey) => {
+    const partes: string[] = [];
+    const g = htmlToTexto(htmlDe(k));
+    if (g) partes.push(`===== GUIA DE FUNCIONAMENTO =====\n${g}`);
+    for (const d of docsDe(k)) if (d.texto?.trim()) partes.push(`===== DOCUMENTO: ${d.nome} =====\n${d.texto.trim()}`);
+    return partes.join("\n\n").slice(0, 118000);
+  };
 
   return (
     <div className="max-w-5xl mx-auto p-4 sm:p-6">
@@ -88,6 +102,8 @@ export function WikiProcessosPage() {
             const g = guias[a.key];
             const temGuia = !!html;
             const semente = !g?.html?.trim() && !!GUIA_SEED[a.key];
+            const nDocs = docsDe(a.key).length;
+            const temFonte = temGuia || nDocs > 0;   // IA responde se há guia OU acervo
             return (
               <div key={a.key} className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 flex flex-col"
                 style={{ borderTopWidth: 3, borderTopColor: a.cor }}>
@@ -100,13 +116,15 @@ export function WikiProcessosPage() {
                 </div>
                 <div className="text-[11px] text-gray-400 mt-3">
                   {temGuia
-                    ? <>Guia publicado{g?.atualizadoEm ? ` · atualizado ${fmtBR(g.atualizadoEm)}` : semente ? " · modelo inicial" : ""}{g?.atualizadoPorNome ? ` por ${g.atualizadoPorNome}` : ""}</>
+                    ? <>Guia publicado{g?.atualizadoEm ? ` · atualizado ${fmtBR(g.atualizadoEm)}` : semente ? " · modelo inicial" : ""}</>
                     : <span className="text-amber-600 dark:text-amber-400">Guia ainda não publicado</span>}
+                  {nDocs > 0 && <> · 📎 {nDocs} {nDocs === 1 ? "documento" : "documentos"} no acervo</>}
                 </div>
                 <div className="flex flex-wrap gap-2 mt-3">
                   <Button variant="secondary" onClick={() => setVerGuia(a)} disabled={!temGuia}>📖 Abrir guia</Button>
-                  <Button variant="secondary" onClick={() => setChat(a)} disabled={!temGuia}>🤖 Pergunte à IA</Button>
-                  {podeEditar && <Button variant="ghost" onClick={() => setEditar(a)}>⬆️ {temGuia ? "Atualizar HTML" : "Publicar guia"}</Button>}
+                  <Button variant="secondary" onClick={() => setChat(a)} disabled={!temFonte}>🤖 Pergunte à IA</Button>
+                  <Button variant="ghost" onClick={() => setAcervo(a)}>📎 Acervo{nDocs > 0 ? ` (${nDocs})` : ""}</Button>
+                  {podeEditar && <Button variant="ghost" onClick={() => setEditar(a)}>⬆️ {temGuia ? "Atualizar guia" : "Publicar guia"}</Button>}
                 </div>
               </div>
             );
@@ -116,12 +134,16 @@ export function WikiProcessosPage() {
 
       {verGuia && <GuiaViewerModal area={verGuia} html={htmlDe(verGuia.key)} onClose={() => setVerGuia(null)} />}
       {chat && (
-        <AreaChatModal area={chat} guiaTexto={htmlToTexto(htmlDe(chat.key)).slice(0, 55000)} diretrizes={diretrizes}
+        <AreaChatModal area={chat} fonteTexto={corpusDe(chat.key)} nDocs={docsDe(chat.key).length} diretrizes={diretrizes}
           rid={rid || ""} pessoaId={pessoa.id} pessoaNome={pessoa.nome} onClose={() => setChat(null)} />
       )}
       {editar && podeEditar && (
         <GuiaUploadModal area={editar} atual={guias[editar.key]} temSeed={!!GUIA_SEED[editar.key]}
           pessoaId={pessoa.id} pessoaNome={pessoa.nome} onClose={() => setEditar(null)} />
+      )}
+      {acervo && (
+        <AcervoModal area={acervo} docs={docsDe(acervo.key)} podeEditar={podeEditar}
+          pessoaId={pessoa.id} pessoaNome={pessoa.nome} onClose={() => setAcervo(null)} />
       )}
     </div>
   );
@@ -148,8 +170,8 @@ function GuiaViewerModal({ area, html, onClose }: { area: WikiAreaMeta; html: st
 
 // ─── Agente de IA por área (responde SÓ a partir do guia da área) ────────────
 type ChatMsg = { role: "user" | "ia"; texto: string };
-function AreaChatModal({ area, guiaTexto, diretrizes, rid, pessoaId, pessoaNome, onClose }: {
-  area: WikiAreaMeta; guiaTexto: string; diretrizes: string; rid: string; pessoaId: string; pessoaNome: string; onClose: () => void;
+function AreaChatModal({ area, fonteTexto, nDocs, diretrizes, rid, pessoaId, pessoaNome, onClose }: {
+  area: WikiAreaMeta; fonteTexto: string; nDocs: number; diretrizes: string; rid: string; pessoaId: string; pessoaNome: string; onClose: () => void;
 }) {
   const [pergunta, setPergunta] = useState("");
   const [msgs, setMsgs] = useState<ChatMsg[]>([]);
@@ -176,7 +198,7 @@ function AreaChatModal({ area, guiaTexto, diretrizes, rid, pessoaId, pessoaNome,
       const r = await fetch("/api/wiki-perguntar", {
         method: "POST",
         headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ pergunta: q, diretrizes, guia: guiaTexto, areaNome: area.nome, processos: [] }),
+        body: JSON.stringify({ pergunta: q, diretrizes, guia: fonteTexto, areaNome: area.nome, processos: [] }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
@@ -203,7 +225,7 @@ function AreaChatModal({ area, guiaTexto, diretrizes, rid, pessoaId, pessoaNome,
         <div className="flex items-start justify-between gap-2 p-4 border-b border-gray-100 dark:border-gray-800">
           <div className="min-w-0">
             <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{area.emoji} Assistente de {area.nome}</h2>
-            <div className="text-xs text-gray-500">Respostas a partir do guia de funcionamento da área.</div>
+            <div className="text-xs text-gray-500">Respostas a partir do guia{nDocs > 0 ? ` e de ${nDocs} ${nDocs === 1 ? "documento" : "documentos"} do acervo` : " de funcionamento da área"}.</div>
             <div className="text-[10px] text-gray-400 mt-0.5">🔒 LGPD: as interações com a IA são registradas.</div>
           </div>
           <button type="button" onClick={onClose} className="shrink-0 text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
@@ -327,6 +349,150 @@ function GuiaUploadModal({ area, atual, temSeed, pessoaId, pessoaNome, onClose }
             <Button onClick={salvar} disabled={salvando || !html.trim()}>{salvando ? "Salvando…" : "Salvar guia"}</Button>
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Acervo da área (documentos de referência que a IA consulta) ─────────────
+const slug = (s: string) => (s || "arquivo").replace(/[^\w.\-]+/g, "_").slice(0, 80);
+function AcervoModal({ area, docs, podeEditar, pessoaId, pessoaNome, onClose }: {
+  area: WikiAreaMeta; docs: WikiDoc[]; podeEditar: boolean; pessoaId: string; pessoaNome: string; onClose: () => void;
+}) {
+  const [addModo, setAddModo] = useState<null | "arquivo" | "texto">(null);
+  const [file, setFile] = useState<File | null>(null);
+  const [nome, setNome] = useState("");
+  const [texto, setTexto] = useState("");
+  const [status, setStatus] = useState("");
+  const [erro, setErro] = useState("");
+  const salvando = !!status;
+  const inp = "w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100";
+
+  function reset() { setAddModo(null); setFile(null); setNome(""); setTexto(""); setStatus(""); setErro(""); }
+
+  async function extrairTexto(f: File, tipo: string, url: string): Promise<string> {
+    if (tipo === "html") return htmlToTexto(await f.text());
+    if (tipo === "texto") return (await f.text()).slice(0, 200000);
+    if (tipo === "pdf" || tipo === "imagem") {
+      const r = await fetch("/api/wiki-extrair", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ fileUrl: url, mime: f.type }) });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d?.error || `HTTP ${r.status}`);
+      return String(d.texto || "");
+    }
+    return ""; // outro (docx/doc): fica só pra download; use "colar texto" p/ entrar na IA
+  }
+
+  async function salvarArquivo() {
+    if (!file) return;
+    setErro(""); setStatus("Subindo arquivo…");
+    try {
+      const tipo = tipoDeArquivo(file.type, file.name);
+      const id = `doc-${uid()}`;
+      const path = `wiki-acervo/${area.key}/${Date.now()}_${slug(file.name)}`;
+      await uploadBytes(storageRef(storage, path), file, { contentType: file.type || "application/octet-stream" });
+      const url = await getDownloadURL(storageRef(storage, path));
+      let txt = "";
+      if (tipo === "pdf" || tipo === "imagem") setStatus("Extraindo texto (pode levar alguns segundos)…");
+      try { txt = await extrairTexto(file, tipo, url); } catch (e) { setErro(`Arquivo salvo, mas a extração de texto falhou: ${e instanceof Error ? e.message : ""}. O documento fica pra download; a IA não vai lê-lo até você colar o texto.`); }
+      await setDoc(doc(db, "wikiDocs", id), sanitizeForFirestore({
+        id, area: area.key, nome: (nome.trim() || file.name), tipo, url, storagePath: path,
+        texto: txt || undefined, tamanho: file.size,
+        atualizadoEm: new Date().toISOString(), atualizadoPor: pessoaId, atualizadoPorNome: pessoaNome,
+      }));
+      reset();
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao salvar o documento.");
+      setStatus("");
+    }
+  }
+
+  async function salvarTexto() {
+    if (!nome.trim() || !texto.trim()) return;
+    setErro(""); setStatus("Salvando…");
+    try {
+      const id = `doc-${uid()}`;
+      await setDoc(doc(db, "wikiDocs", id), sanitizeForFirestore({
+        id, area: area.key, nome: nome.trim(), tipo: "texto", texto: texto.slice(0, 200000),
+        atualizadoEm: new Date().toISOString(), atualizadoPor: pessoaId, atualizadoPorNome: pessoaNome,
+      }));
+      reset();
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao salvar."); setStatus(""); }
+  }
+
+  async function remover(d: WikiDoc) {
+    if (!confirm(`Remover "${d.nome}" do acervo de ${area.nome}?`)) return;
+    try {
+      await deleteDoc(doc(db, "wikiDocs", d.id));
+      if (d.storagePath) deleteObject(storageRef(storage, d.storagePath)).catch(() => {});
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao remover."); }
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        <div className="flex items-start justify-between gap-2 p-4 border-b border-gray-100 dark:border-gray-800">
+          <div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{area.emoji} Acervo — {area.nome}</h2>
+            <div className="text-xs text-gray-500">Documentos de referência que o assistente de {area.nome} consulta (regulamento, convenção, modelos…).</div>
+          </div>
+          <button type="button" onClick={onClose} className="shrink-0 text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+        </div>
+
+        <div className="p-4 space-y-2 overflow-y-auto">
+          {docs.length === 0 && !addModo && (
+            <div className="text-center text-gray-500 dark:text-gray-400 py-6 text-sm">Nenhum documento no acervo ainda.{podeEditar ? " Adicione o primeiro abaixo." : ""}</div>
+          )}
+          {docs.map(d => (
+            <div key={d.id} className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2">
+              <div className="text-xl">{TIPO_ICON[d.tipo] || "📎"}</div>
+              <div className="min-w-0 flex-1">
+                <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{d.nome}</div>
+                <div className="text-[11px] text-gray-400">
+                  {d.tamanho ? `${Math.round(d.tamanho / 1024)} KB · ` : ""}{d.texto ? "na IA" : <span className="text-amber-600">só download (sem texto na IA)</span>}{d.atualizadoEm ? ` · ${fmtBR(d.atualizadoEm)}` : ""}
+                </div>
+              </div>
+              {d.url && <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline shrink-0">⬇️ baixar</a>}
+              {podeEditar && <button type="button" onClick={() => void remover(d)} className="text-gray-400 hover:text-rose-600 text-sm shrink-0" title="Remover">🗑️</button>}
+            </div>
+          ))}
+
+          {podeEditar && addModo === "arquivo" && (
+            <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-3 space-y-2 mt-2">
+              <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 cursor-pointer text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
+                📎 Escolher arquivo
+                <input type="file" accept=".pdf,.html,.htm,.txt,.md,.png,.jpg,.jpeg,.webp,image/*,application/pdf" className="hidden"
+                  onChange={e => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) { setFile(f); setNome(f.name); setErro(""); } }} />
+              </label>
+              {file && <div className="text-[11px] text-gray-500">{file.name} · {Math.round(file.size / 1024)} KB · {tipoDeArquivo(file.type, file.name)}{["pdf", "imagem"].includes(tipoDeArquivo(file.type, file.name)) ? " (a IA extrai o texto ao salvar)" : tipoDeArquivo(file.type, file.name) === "outro" ? " (só download — cole o texto se quiser que a IA use)" : ""}</div>}
+              <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome do documento" className={inp} />
+              {status && <div className="text-xs text-gray-500">{status}</div>}
+              {erro && <div className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">{erro}</div>}
+              <div className="flex gap-2 justify-end">
+                <Button variant="secondary" onClick={reset} disabled={salvando}>Cancelar</Button>
+                <Button onClick={salvarArquivo} disabled={salvando || !file}>{salvando ? "Salvando…" : "Adicionar"}</Button>
+              </div>
+            </div>
+          )}
+          {podeEditar && addModo === "texto" && (
+            <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-3 space-y-2 mt-2">
+              <input value={nome} onChange={e => setNome(e.target.value)} placeholder="Nome do documento (ex.: Regulamento Interno)" className={inp} />
+              <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={8} placeholder="Cole aqui o texto do documento…" className={`${inp} text-[13px]`} />
+              {status && <div className="text-xs text-gray-500">{status}</div>}
+              {erro && <div className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">{erro}</div>}
+              <div className="flex gap-2 justify-end">
+                <Button variant="secondary" onClick={reset} disabled={salvando}>Cancelar</Button>
+                <Button onClick={salvarTexto} disabled={salvando || !nome.trim() || !texto.trim()}>{salvando ? "Salvando…" : "Adicionar"}</Button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {podeEditar && !addModo && (
+          <div className="p-4 border-t border-gray-100 dark:border-gray-800 flex gap-2 justify-end">
+            <Button variant="secondary" onClick={() => { setErro(""); setAddModo("texto"); }}>✍️ Colar texto</Button>
+            <Button onClick={() => { setErro(""); setAddModo("arquivo"); }}>📎 Subir arquivo</Button>
+          </div>
+        )}
       </div>
     </div>
   );
