@@ -643,8 +643,14 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Guias de funcionamento por área + assistente de IA que responde as dúvidas da equipe",
     area: "gestao",
     acoes: [
-      { id: "ver",      label: "Abrir os guias das áreas e perguntar à IA" },
-      { id: "editar",   label: "Publicar e atualizar o guia HTML da área", sensivel: true },
+      { id: "abrir_pessoas",     label: "Pessoas — abrir guia e perguntar à IA" },
+      { id: "editar_pessoas",    label: "Pessoas — publicar guia e gerir acervo", sensivel: true },
+      { id: "abrir_financeiro",  label: "Financeiro — abrir guia e perguntar à IA" },
+      { id: "editar_financeiro", label: "Financeiro — publicar guia e gerir acervo", sensivel: true },
+      { id: "abrir_compras",     label: "Compras — abrir guia e perguntar à IA" },
+      { id: "editar_compras",    label: "Compras — publicar guia e gerir acervo", sensivel: true },
+      { id: "abrir_eventos",     label: "Eventos — abrir guia e perguntar à IA" },
+      { id: "editar_eventos",    label: "Eventos — publicar guia e gerir acervo", sensivel: true },
     ],
   },
   {

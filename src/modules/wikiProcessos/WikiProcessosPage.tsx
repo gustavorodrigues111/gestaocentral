@@ -17,8 +17,6 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useDitado } from "../../core/hooks/useDitado";
 import { transcreverAudio } from "../../core/hooks/transcreverAudio";
-import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
-import { wikiCategoriasAcessiveis } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
 import { WIKI_AREAS, GUIA_SEED, tipoDeArquivo, TIPO_ICON, type WikiAreaKey, type WikiAreaMeta, type WikiGuia, type WikiDoc } from "../../core/wiki/areas";
@@ -38,9 +36,9 @@ export function WikiProcessosPage() {
   const { pessoa } = useAuth();
   const { rid } = useParams<{ rid: string }>();
   const { can, loading: loadingPerfis } = useCanAcao(rid || "");
-  const { perfis } = useAccessProfiles();
-  const podeVer = can("wikiProcessos", "ver") || can("wikiProcessos", "editar");
-  const podeEditar = can("wikiProcessos", "editar") || !!pessoa?.isMaster;
+  const master = !!pessoa?.isMaster;
+  const podeAbrir = (k: WikiAreaKey) => master || can("wikiProcessos", `abrir_${k}`) || can("wikiProcessos", `editar_${k}`);
+  const podeEditarArea = (k: WikiAreaKey) => master || can("wikiProcessos", `editar_${k}`);
 
   const [guias, setGuias] = useState<Record<string, WikiGuia>>({});
   const [docs, setDocs] = useState<WikiDoc[]>([]);
@@ -68,11 +66,10 @@ export function WikiProcessosPage() {
 
   if (!pessoa) return null;
   if (loadingPerfis) return <div className="max-w-5xl mx-auto p-6 text-sm text-gray-400">Carregando…</div>;
-  if (!podeVer) return <div className="max-w-5xl mx-auto p-8 text-center text-gray-500">Você não tem permissão para acessar a Wiki de Processos.</div>;
 
-  // Escopo por perfil: null = todas; [...] = só as áreas cujos NOMES estão liberados.
-  const catsPermitidas = wikiCategoriasAcessiveis(pessoa, rid || "", perfis);
-  const areasVis = catsPermitidas ? WIKI_AREAS.filter(a => catsPermitidas.includes(a.nome)) : WIKI_AREAS;
+  // Só as áreas que o perfil pode abrir (ou editar). Permissão é por área.
+  const areasVis = WIKI_AREAS.filter(a => podeAbrir(a.key));
+  if (areasVis.length === 0) return <div className="max-w-5xl mx-auto p-8 text-center text-gray-500">Você não tem permissão para acessar a Wiki de Processos.</div>;
 
   // HTML efetivo: override do banco tem prioridade; senão cai na semente bundlada.
   const htmlDe = (k: WikiAreaKey) => (guias[k]?.html?.trim() || GUIA_SEED[k] || "");
@@ -124,7 +121,7 @@ export function WikiProcessosPage() {
                   <Button variant="secondary" onClick={() => setVerGuia(a)} disabled={!temGuia}>📖 Abrir guia</Button>
                   <Button variant="secondary" onClick={() => setChat(a)} disabled={!temFonte}>🤖 Pergunte à IA</Button>
                   <Button variant="ghost" onClick={() => setAcervo(a)}>📎 Acervo{nDocs > 0 ? ` (${nDocs})` : ""}</Button>
-                  {podeEditar && <Button variant="ghost" onClick={() => setEditar(a)}>⬆️ {temGuia ? "Atualizar guia" : "Publicar guia"}</Button>}
+                  {podeEditarArea(a.key) && <Button variant="ghost" onClick={() => setEditar(a)}>⬆️ {temGuia ? "Atualizar guia" : "Publicar guia"}</Button>}
                 </div>
               </div>
             );
@@ -137,12 +134,12 @@ export function WikiProcessosPage() {
         <AreaChatModal area={chat} fonteTexto={corpusDe(chat.key)} nDocs={docsDe(chat.key).length} diretrizes={diretrizes}
           rid={rid || ""} pessoaId={pessoa.id} pessoaNome={pessoa.nome} onClose={() => setChat(null)} />
       )}
-      {editar && podeEditar && (
+      {editar && podeEditarArea(editar.key) && (
         <GuiaUploadModal area={editar} atual={guias[editar.key]} temSeed={!!GUIA_SEED[editar.key]}
           pessoaId={pessoa.id} pessoaNome={pessoa.nome} onClose={() => setEditar(null)} />
       )}
       {acervo && (
-        <AcervoModal area={acervo} docs={docsDe(acervo.key)} podeEditar={podeEditar}
+        <AcervoModal area={acervo} docs={docsDe(acervo.key)} podeEditar={podeEditarArea(acervo.key)}
           pessoaId={pessoa.id} pessoaNome={pessoa.nome} onClose={() => setAcervo(null)} />
       )}
     </div>
