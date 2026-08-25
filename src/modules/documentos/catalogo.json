@@ -281,6 +281,38 @@
 "obrigatorio": true,
 "origem": "data",
 "ajuda": "O modelo já imprime \"20\" antes."
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome do empregado",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "MATRICULA",
+"rotulo": "Matrícula",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "CARGO_EMPREGADO",
+"rotulo": "Cargo",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "SETOR",
+"rotulo": "Setor",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
 }
 ],
 "texto_livre": []
@@ -882,6 +914,14 @@
 "tipo": "texto",
 "obrigatorio": true,
 "origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "DATA_COMPARECIMENTO_CTPS",
+"rotulo": "Data de comparecimento ao escritório (com a CTPS)",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
 "ajuda": ""
 }
 ],
@@ -3068,6 +3108,22 @@
 "obrigatorio": true,
 "origem": "data",
 "ajuda": "O modelo já imprime \"20\" antes."
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome do empregado",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "empregado",
+"ajuda": ""
 }
 ],
 "texto_livre": [
@@ -3556,6 +3612,14 @@
 "obrigatorio": true,
 "origem": "data",
 "ajuda": "O modelo já imprime \"20\" antes."
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": false,
+"origem": "data",
+"ajuda": ""
 }
 ],
 "texto_livre": []
