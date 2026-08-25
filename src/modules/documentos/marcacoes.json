@@ -1,0 +1,72 @@
+{
+  "opcao-vale-transporte-dinheiro": [
+    { "campo": "OPCAO_VT", "rotulo": "Vale-transporte", "opcoes": [
+      { "valor": "receber", "label": "Receber vale-transporte", "ancora": "receber vales transporte, respeitadas" },
+      { "valor": "nao", "label": "Não receber", "ancora": "não receber vales-transportes" }
+    ] }
+  ],
+  "requisicao-vale-transporte": [
+    { "campo": "OPCAO_VT", "rotulo": "Vale-transporte", "opcoes": [
+      { "valor": "receber", "label": "Receber vale-transporte", "ancora": "receber vale-transporte, comprometendo-me" },
+      { "valor": "nao", "label": "Não receber", "ancora": "não receber vale-transportes" }
+    ] }
+  ],
+  "opcao-vale-refeicao": [
+    { "campo": "OPCAO_VR", "rotulo": "Vale-refeição", "opcoes": [
+      { "valor": "receber", "label": "Receber vale-refeição", "ancora": "receber vale-refeição, autorizando o desconto" },
+      { "valor": "nao", "label": "Não receber", "ancora": "não receber vale refeição" }
+    ] }
+  ],
+  "manutencao-plano-saude": [
+    { "campo": "OPCAO_PLANO", "rotulo": "Manutenção do plano de saúde após o desligamento", "opcoes": [
+      { "valor": "opta", "label": "Opta pela manutenção", "ancora": "opto pela manutenção do plano de saúde, para mim" },
+      { "valor": "nao", "label": "Não opta", "ancora": "não opto pela manutenção" }
+    ] }
+  ],
+  "declaracao-pai-mae-adotante": [
+    { "campo": "OPCAO_LICENCA", "rotulo": "Licença-maternidade (adoção)", "opcoes": [
+      { "valor": "a", "label": "A — quem declara vai gozar a licença", "ancora": "opta por gozar o período de licença-maternidade, haja vista" },
+      { "valor": "b", "label": "B — o cônjuge/parceiro adotante vai gozar", "ancora": "período de licença-maternidade será gozado pelo seu cônjuge" }
+    ] }
+  ],
+  "termo-deposito-conta-propria": [
+    { "campo": "TIPO_CONTA", "rotulo": "Tipo de conta", "opcoes": [
+      { "valor": "salario", "label": "Conta salário (aberta pela empregadora)", "ancora": "conta salário (a qual será aberta" },
+      { "valor": "existente", "label": "Conta bancária já existente", "ancora": "conta bancária já existente" }
+    ] },
+    { "campo": "CORRENTE_POUPANCA", "rotulo": "Natureza da conta", "opcoes": [
+      { "valor": "corrente", "label": "Conta corrente", "ancora": "conta corrente:" },
+      { "valor": "poupanca", "label": "Conta poupança", "ancora": "conta poupança:" }
+    ] }
+  ],
+  "termo-deposito-conta-terceiros": [
+    { "campo": "CORRENTE_POUPANCA", "rotulo": "Natureza da conta", "opcoes": [
+      { "valor": "corrente", "label": "Conta corrente", "ancora": "conta corrente:" },
+      { "valor": "poupanca", "label": "Conta poupança", "ancora": "conta poupança:" }
+    ] }
+  ],
+  "opcao-desconto-contribuicoes-sindicais": [
+    { "campo": "SINDICAL_ANUAL", "rotulo": "Contribuição sindical anual (CLT)", "opcoes": [
+      { "valor": "autorizo", "label": "AUTORIZO", "ancora": "autorizo o desconto/retenção da contribuição sindical anual" },
+      { "valor": "nao", "label": "NÃO AUTORIZO", "ancora": "não autorizo o desconto/retenção da contribuição sindical anual" }
+    ] },
+    { "campo": "CONTRIB_CONVENCAO", "rotulo": "Contribuição da Convenção Coletiva", "opcoes": [
+      { "valor": "autorizo", "label": "AUTORIZO", "ancora": "autorizo que a presente empregadora proceda as retenções" },
+      { "valor": "nao", "label": "NÃO AUTORIZO", "ancora": "não autorizo o desconto/retenção da contribuição (" }
+    ] }
+  ],
+  "termo-adesao-plano-saude": [
+    { "campo": "OPCAO_ADESAO", "rotulo": "Assistência médica", "opcoes": [
+      { "valor": "opta", "label": "Opta (será titular do plano)", "ancora": "opta pela utilização da assistência médica pela" },
+      { "valor": "nao", "label": "Não opta", "ancora": "não opta pela utilização da assistência médica" }
+    ] },
+    { "campo": "MODALIDADE_PLANO", "rotulo": "Modalidade / acomodação", "opcoes": [
+      { "valor": "orig_enf", "label": "Original — Enfermaria/Coletivo", "ancora": "original - acomodação enfermaria" },
+      { "valor": "orig_apto", "label": "Original — Apartamento/Individual", "ancora": "original - acomodação apartamento" },
+      { "valor": "padrao_enf", "label": "Padrão — Enfermaria/Coletivo", "ancora": "padrão - acomodação enfermaria" },
+      { "valor": "padrao_apto", "label": "Padrão — Apartamento/Individual", "ancora": "padrão - acomodação apartamento" },
+      { "valor": "integral", "label": "Integral — Apartamento/Individual", "ancora": "integral - acomodação apartamento" },
+      { "valor": "supremo", "label": "Supremo — Apartamento/Individual", "ancora": "supremo - acomodação apartamento" }
+    ] }
+  ]
+}

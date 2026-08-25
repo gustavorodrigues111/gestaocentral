@@ -17,11 +17,15 @@ import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
 import type { Pessoa, Empregado } from "../../core/types";
 import CATALOGO from "./catalogo.json";
+import MARCACOES_JSON from "./marcacoes.json";
 
 type Campo = { token: string; rotulo: string; tipo: string; obrigatorio: boolean; origem: string; ajuda: string };
 type TextoLivre = { campo: string; rotulo: string; apos: string };
 type DocModelo = { id: string; titulo: string; categoria: string; quando_usar: string; observacoes: string; campos: Campo[]; texto_livre: TextoLivre[] };
+type MarcOpcao = { valor: string; label: string; ancora: string };
+type Marcacao = { campo: string; rotulo: string; opcoes: MarcOpcao[] };
 const DOCS = CATALOGO as DocModelo[];
+const MARCACOES = MARCACOES_JSON as Record<string, Marcacao[]>;
 
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
@@ -140,6 +144,7 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
   const [buscaEmp, setBuscaEmp] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
   const [livres, setLivres] = useState<Record<string, string>>({});
+  const [marcado, setMarcado] = useState<Record<string, string>>({});
   const [assinaturas, setAssinaturas] = useState(false);
   const [testemunhas, setTestemunhas] = useState(false);
   const [gerando, setGerando] = useState(false);
@@ -150,6 +155,8 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
   const emp = empsAtivos.find(e => e.id === empId) || null;
   const pes = emp?.pessoaId ? pessoas.find(p => p.id === emp.pessoaId) : null;
   const empresaData = empresas[empresaRid] || {};
+  const marcs = MARCACOES[modelo.id] || [];
+  const faltamMarcacoes = marcs.some(g => !marcado[g.campo]);
 
   // Valores default por token (empresa → data → empregado). Recalcula quando muda
   // empresa/empregado; o usuário pode sobrescrever qualquer campo.
@@ -188,6 +195,8 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
       for (const c of modelo.campos) dados[c.token] = valDe(c.token);
       const _inserir = modelo.texto_livre.filter(t => (livres[t.campo] || "").trim()).map(t => ({ apos: t.apos, texto: (livres[t.campo] || "").trim() }));
       if (_inserir.length) dados._inserir = _inserir;
+      const _marcar = marcs.map(g => g.opcoes.find(o => o.valor === marcado[g.campo])).filter(Boolean).map(o => ({ ancora: (o as MarcOpcao).ancora }));
+      if (_marcar.length) dados._marcar = _marcar;
       if (assinaturas) dados._assinaturas = { empregado: valDe("NOME_EMPREGADO"), empregadora: valDe("RAZAO_SOCIAL") };
       if (testemunhas) dados._testemunhas = true;
 
@@ -281,6 +290,28 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
             </div>
           ))}
 
+          {/* Opções (marcações do documento) */}
+          {marcs.length > 0 && (
+            <div>
+              <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">☑️ Opções do documento</div>
+              <div className="space-y-3">
+                {marcs.map(g => (
+                  <div key={g.campo}>
+                    <div className="text-[12px] font-medium text-gray-700 dark:text-gray-200 mb-1">{g.rotulo}</div>
+                    <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+                      {g.opcoes.map(o => (
+                        <label key={o.valor} className="inline-flex items-center gap-1.5 text-sm text-gray-700 dark:text-gray-200 cursor-pointer">
+                          <input type="radio" name={`${modelo.id}-${g.campo}`} checked={marcado[g.campo] === o.valor} onChange={() => setMarcado(s => ({ ...s, [g.campo]: o.valor }))} />
+                          {o.label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Textos livres */}
           {modelo.texto_livre.length > 0 && (
             <div>
@@ -312,8 +343,11 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
         </div>
 
         <div className="p-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>Fechar</Button>
-          <Button onClick={gerar} disabled={gerando}>{gerando ? "Gerando…" : "📄 Gerar documento (DOCX)"}</Button>
+          <div className="flex items-center gap-2">
+            {faltamMarcacoes && <span className="text-[11px] text-amber-600">Escolha as opções do documento</span>}
+            <Button variant="secondary" onClick={onClose}>Fechar</Button>
+            <Button onClick={gerar} disabled={gerando || faltamMarcacoes}>{gerando ? "Gerando…" : "📄 Gerar documento (DOCX)"}</Button>
+          </div>
         </div>
       </div>
     </div>

@@ -112,6 +112,21 @@ def preencher_bytes(modelo_path, dados):
             if not replace_span(p, m.start(), m.end(), str(valor)):
                 break
 
+    # Marcações ( ) → (X): acha o parágrafo/célula pela âncora e marca o 1º ( ).
+    def _norm(s):
+        return re.sub(r'\s+', ' ', (s or '').replace('\xa0', ' ')).strip().lower()
+    box = re.compile(r'\(\s+\)')
+    for mk in (dados.get("_marcar") or []):
+        anc = _norm(mk.get("ancora", ""))
+        if not anc:
+            continue
+        for p in iter_paragraphs(doc):
+            if anc in _norm(p.text):
+                m = box.search(p.text)
+                if m:
+                    replace_span(p, m.start(), m.end(), "(X)")
+                break
+
     for ins in (dados.get("_inserir") or []):
         alvo, texto = str(ins.get("apos", "")).strip().lower(), ins.get("texto", "")
         if not alvo or not texto:
