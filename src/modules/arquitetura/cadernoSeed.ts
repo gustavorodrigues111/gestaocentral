@@ -16,7 +16,7 @@ const SEED: Seed[] = [
   { modulo: "recebimento", resp: "gustavo", titulo: "Configurar a CONTA CENTRAL do Drive na Vercel (GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_DRIVE_REFRESH_TOKEN) — sem isso os uploads caem no login Google de cada usuário e batem no bloqueio 'app só pode ser usado dentro da organização'", descricao: "Código já usa driveShared (central quando configurada). Refresh token via OAuth Playground com um client Web + a conta que dona da pasta. Vale pra Fechamento e Recebimento." },
 
   // ── Admissão ──
-  { modulo: "admissao", resp: "ia", titulo: "Envio da ficha do candidato agora passa pelo servidor (/api/admissao-submit) — acabou o 'Missing or insufficient permissions'. Pendente: TRAVAR a regra pública de admissoes (só authed()) já que o cliente não grava mais direto; e depois validar que a foto (Storage) sobe como image/jpeg (rule exige jpeg/png)." },
+  { modulo: "admissao", resp: "ia", titulo: "Envio da ficha do candidato passa pelo servidor (/api/admissao-submit) — acabou o 'Missing or insufficient permissions'. Regra pública de escrita de admissoes TRAVADA (só authed). Pendente: validar que a foto (Storage) sobe como image/jpeg (rule exige jpeg/png)." },
 
   // ── Segurança Sanitária ──
   { modulo: "seguranca", resp: "gustavo", titulo: "Criar o template da lista-base, atribuir áreas dos itens e apagar as avaliações de teste antigas" },
