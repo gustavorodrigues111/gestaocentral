@@ -14,7 +14,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent } from "react";
-import { collection, doc, getDocs, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
@@ -30,6 +30,7 @@ import {
   salvarClicksignStatus,
 } from "../../core/admissao/admissaoHelpers";
 import { NovaEntregaModal } from "../uniformes/NovaEntregaModal";
+import { GeradorModal, DOCS, type DocModelo } from "../documentos/DocumentosPage";
 import { isDriveConfigured, driveFolderUrl } from "../../core/google/driveConfig";
 import {
   createEmployeeFolderTree, uploadFileToFolder, listFolderFiles,
@@ -89,6 +90,20 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   );
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+
+  // ─── Fonte de documentos: módulo Documentos ───
+  // Mapa termo→modelo + dados cadastrais da empresa (documentosEmpresas/{rid}).
+  const [empresaCfg, setEmpresaCfg] = useState<{ campos: Record<string, string>; habilitados: string[] | null; termoMap: Record<string, string> }>({ campos: {}, habilitados: null, termoMap: {} });
+  const [gerarDoc, setGerarDoc] = useState<{ termoId: string; doc: DocModelo } | null>(null);
+  useEffect(() => {
+    (async () => {
+      try {
+        const snap = await getDoc(doc(db, "documentosEmpresas", admissao.restaurantId));
+        const data = snap.data() as { campos?: Record<string, string>; habilitados?: string[] | null; termoMap?: Record<string, string> } | undefined;
+        setEmpresaCfg({ campos: data?.campos || {}, habilitados: data?.habilitados ?? null, termoMap: data?.termoMap || {} });
+      } catch { /* sem config ainda — segue manual */ }
+    })();
+  }, [admissao.restaurantId]);
 
   // ─── Google Drive (kit de documentos para assinatura) ───
   // Pasta no Drive da conta conectada. Seed do que já tá salvo na admissão.
@@ -1123,6 +1138,19 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
               </div>
               {!t.naoSeAplica && (
               <div className="mt-2 pl-6 space-y-1.5">
+                {/* Gerar pelo módulo Documentos (termo mapeado, não-especial):
+                    abre o gerador com empregado/empresa da admissão pré-preenchidos
+                    e sobe o DOCX direto pra "docs a assinar". */}
+                {!t.tipoEspecial && empresaCfg.termoMap[t.id] && (() => {
+                  const d = DOCS.find(x => x.id === empresaCfg.termoMap[t.id]);
+                  if (!d) return null;
+                  return (
+                    <button type="button" onClick={() => setGerarDoc({ termoId: t.id, doc: d })}
+                      className="text-[11px] px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-medium">
+                      📄 Gerar pelo Documentos
+                    </button>
+                  );
+                })()}
                 {/* Botão "Gerar termo" pra termos com tipo especial (uniforme/EPI).
                     Abre o modal de entrega — gera PDF + baixa estoque + cria
                     registro de entrega. Quando já existe uma entrega criada
@@ -1229,6 +1257,31 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         </div>
       </div>
 
+      {gerarDoc && (
+        <GeradorModal
+          doc={gerarDoc.doc}
+          rid={admissao.restaurantId}
+          restaurants={[{ id: admissao.restaurantId, nome: activeRestaurant.nome }]}
+          pessoas={[]}
+          empregados={[]}
+          empresas={{ [admissao.restaurantId]: empresaCfg }}
+          prefill={{ NOME_EMPREGADO: admissao.candidato?.nome || "", CPF_EMPREGADO: admissao.candidato?.cpf || "" }}
+          lockEmpresa
+          hideEmpregado
+          subtitulo={`Termo da admissão de ${admissao.candidato?.nome || ""}`}
+          onGerado={async (blob, nome) => {
+            const { aAssinar } = await ensureTree();
+            const file = new File([blob], nome, { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+            const uploaded = await uploadFileToFolder(aAssinar, file);
+            if (uploaded.webViewLink) {
+              const novos = termos.map(t => t.id === gerarDoc.termoId ? { ...t, link: uploaded.webViewLink as string, linkFileId: uploaded.id } : t);
+              setTermos(novos);
+              await persistirTermos(novos);
+            }
+          }}
+          onClose={() => setGerarDoc(null)}
+        />
+      )}
       {gerarTermoTipo && (
         <NovaEntregaModal
           tipo={gerarTermoTipo}

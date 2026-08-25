@@ -16,6 +16,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
 import type { Pessoa, Empregado } from "../../core/types";
+import { getTermosAssinaturaDefault } from "../../core/admissao/admissaoHelpers";
 import CATALOGO from "./catalogo.json";
 import MARCACOES_JSON from "./marcacoes.json";
 import QUADROS_JSON from "./quadros.json";
@@ -26,8 +27,9 @@ type DocModelo = { id: string; titulo: string; categoria: string; quando_usar: s
 type MarcOpcao = { valor: string; label: string; ancora: string };
 type Marcacao = { campo: string; rotulo: string; opcoes: MarcOpcao[] };
 type Quadro = { titulo: string; tabela: number; linha_inicial: number; col_inicial: number; max_linhas: number; podeAdicionar: boolean; colunas: string[] };
-type EmpresaCfg = { campos: Record<string, string>; habilitados: string[] | null };
-const DOCS = CATALOGO as DocModelo[];
+type EmpresaCfg = { campos: Record<string, string>; habilitados: string[] | null; termoMap: Record<string, string> };
+export type { DocModelo };
+export const DOCS = CATALOGO as DocModelo[];
 const MARCACOES = MARCACOES_JSON as Record<string, Marcacao[]>;
 const QUADROS = QUADROS_JSON as Record<string, Quadro[]>;
 
@@ -81,7 +83,7 @@ export function DocumentosPage() {
       snap => setEmpregados(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Empregado)));
     const uc = onSnapshot(collection(db, "documentosEmpresas"), snap => {
       const m: Record<string, EmpresaCfg> = {};
-      snap.docs.forEach(d => { const data = d.data() as { campos?: Record<string, string>; habilitados?: string[] | null }; m[d.id] = { campos: data?.campos || {}, habilitados: data?.habilitados ?? null }; });
+      snap.docs.forEach(d => { const data = d.data() as { campos?: Record<string, string>; habilitados?: string[] | null; termoMap?: Record<string, string> }; m[d.id] = { campos: data?.campos || {}, habilitados: data?.habilitados ?? null, termoMap: data?.termoMap || {} }; });
       setEmpresas(m);
     });
     return () => { up(); ue(); uc(); };
@@ -155,9 +157,13 @@ export function DocumentosPage() {
 }
 
 // ─── Gerador de um documento ─────────────────────────────────────────────────
-function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empresas, onClose }: {
+export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empresas, onClose, prefill, onGerado, lockEmpresa, hideEmpregado, subtitulo }: {
   doc: DocModelo; rid: string; restaurants: { id: string; nome: string }[]; pessoas: Pessoa[]; empregados: Empregado[];
   empresas: Record<string, EmpresaCfg>; onClose: () => void;
+  // Uso externo (ex.: Admissão): prefill de campos, empresa travada, empregado
+  // oculto, e callback que recebe o DOCX gerado (em vez de baixar).
+  prefill?: Record<string, string>; onGerado?: (blob: Blob, nome: string) => Promise<void> | void;
+  lockEmpresa?: boolean; hideEmpregado?: boolean; subtitulo?: string;
 }) {
   const [empresaRid, setEmpresaRid] = useState(rid || restaurants[0]?.id || "");
   const [empId, setEmpId] = useState<string>("");
@@ -202,9 +208,10 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
       ANO2: ano2, ANO2_1: ano2, ANO2_2: ano2, DATA: dataStr, CIDADE: empresaData.CIDADE || "",
       NOME_EMPREGADO: nome, CPF_EMPREGADO: cpf, DATA_ADMISSAO: adm ? fmtBR(adm) : "",
       ...empresaData,
+      ...(prefill || {}),
     };
     return d;
-  }, [empresaData, emp, pes]);
+  }, [empresaData, emp, pes, prefill]);
 
   useEffect(() => { setValues({}); setLivres({}); setFaltando(null); }, [empresaRid, empId]);
 
@@ -241,7 +248,6 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
-      // Download do DOCX.
       const bin = atob(String(data.docxBase64 || ""));
       const arr = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
@@ -249,9 +255,13 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
       const hoje = new Date();
       const stamp = `${hoje.getFullYear()}.${String(hoje.getMonth() + 1).padStart(2, "0")}.${String(hoje.getDate()).padStart(2, "0")}`;
       const nomeArq = `${stamp} ${modelo.titulo}${valDe("NOME_EMPREGADO") ? " - " + valDe("NOME_EMPREGADO") : ""}.docx`;
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a"); a.href = url; a.download = nomeArq; document.body.appendChild(a); a.click(); a.remove();
-      URL.revokeObjectURL(url);
+      if (onGerado) {
+        await onGerado(blob, nomeArq);   // uso externo (ex.: sobe pro Drive da Admissão)
+      } else {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a"); a.href = url; a.download = nomeArq; document.body.appendChild(a); a.click(); a.remove();
+        URL.revokeObjectURL(url);
+      }
       setFaltando(Array.isArray(data.faltando) ? data.faltando : []);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao gerar o documento.");
@@ -268,7 +278,7 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
         <div className="flex items-start justify-between gap-2 p-4 border-b border-gray-100 dark:border-gray-800">
           <div className="min-w-0">
             <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{modelo.titulo}</h2>
-            <div className="text-xs text-gray-500">{modelo.categoria}</div>
+            <div className="text-xs text-gray-500">{subtitulo || modelo.categoria}</div>
           </div>
           <button type="button" onClick={onClose} className="shrink-0 text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
         </div>
@@ -282,12 +292,12 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Empresa</label>
-              <select value={empresaRid} onChange={e => setEmpresaRid(e.target.value)} className={`${inp} mt-1`}>
+              <select value={empresaRid} onChange={e => setEmpresaRid(e.target.value)} disabled={lockEmpresa} className={`${inp} mt-1 ${lockEmpresa ? "opacity-70" : ""}`}>
                 {restaurants.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
               </select>
-              {empresaIncompleta && <div className="text-[11px] text-rose-600 mt-1">Sem dados trabalhistas — preencha em "🏢 Dados das empresas".</div>}
+              {empresaIncompleta && <div className="text-[11px] text-rose-600 mt-1">Sem dados cadastrais — preencha em ⚙️ Configurações.</div>}
             </div>
-            <div>
+            <div className={hideEmpregado ? "hidden" : ""}>
               <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Empregado</label>
               {emp ? (
                 <div className="mt-1 flex items-center gap-2 px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 text-sm">
@@ -404,7 +414,7 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
 
           {faltando && (
             <div className={`text-[12px] rounded-lg px-3 py-2 ${faltando.length ? "text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20" : "text-emerald-800 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-900/20"}`}>
-              {faltando.length ? <>✅ DOCX gerado. Campos deixados em branco pra preencher à mão: <b>{faltando.join(", ")}</b>.</> : "✅ DOCX gerado e baixado — nada ficou em branco."}
+              {faltando.length ? <>✅ Documento gerado{onGerado ? "" : " e baixado"}. Campos em branco pra preencher à mão: <b>{faltando.join(", ")}</b>.</> : `✅ Documento gerado${onGerado ? "" : " e baixado"} — nada ficou em branco.`}
             </div>
           )}
           {erro && <div className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">{erro}</div>}
@@ -432,6 +442,8 @@ function ConfigView({ restaurants, empresas, empresaRid, setEmpresaRid, pessoaId
 }) {
   const [campos, setCampos] = useState<Record<string, string>>({});
   const [habil, setHabil] = useState<Set<string>>(new Set());
+  const [termoMap, setTermoMap] = useState<Record<string, string>>({});
+  const termos = getTermosAssinaturaDefault();
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [okMsg, setOkMsg] = useState("");
@@ -448,6 +460,7 @@ function ConfigView({ restaurants, empresas, empresaRid, setEmpresaRid, pessoaId
       ...(cfg?.campos || {}),
     });
     setHabil(new Set(cfg?.habilitados ?? DOCS.map(d => d.id)));
+    setTermoMap(cfg?.termoMap || {});
     setErro(""); setOkMsg("");
   }, [empresaRid, empresas, restaurants]);
 
@@ -460,7 +473,7 @@ function ConfigView({ restaurants, empresas, empresaRid, setEmpresaRid, pessoaId
     setSalvando(true); setErro(""); setOkMsg("");
     try {
       await setDoc(doc(db, "documentosEmpresas", empresaRid), sanitizeForFirestore({
-        rid: empresaRid, campos, habilitados: [...habil],
+        rid: empresaRid, campos, habilitados: [...habil], termoMap,
         atualizadoEm: new Date().toISOString(), atualizadoPor: pessoaId, atualizadoPorNome: pessoaNome,
       }), { merge: true });
       setOkMsg("Configuração salva.");
@@ -537,6 +550,27 @@ function ConfigView({ restaurants, empresas, empresaRid, setEmpresaRid, pessoaId
               </div>
             );
           })}
+        </div>
+      </section>
+
+      {/* Mapa: termos da Admissão → modelo de documento */}
+      <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-4">
+        <h2 className="font-bold text-gray-900 dark:text-gray-100 mb-1">🪪 Termos da Admissão → modelo</h2>
+        <p className="text-xs text-gray-500 mb-3">Qual documento cada termo do "kit de assinatura" da Admissão usa. Assim a Admissão gera o termo já preenchido por este módulo.</p>
+        <div className="space-y-2">
+          {termos.map(t => (
+            <div key={t.id} className="grid grid-cols-1 sm:grid-cols-2 gap-2 items-center">
+              <div className="text-sm text-gray-700 dark:text-gray-200">{t.nome}{t.obrigatorio ? " *" : ""}</div>
+              <select value={termoMap[t.id] || ""} onChange={e => setTermoMap(s => ({ ...s, [t.id]: e.target.value }))} className={inp}>
+                <option value="">— nenhum (segue manual) —</option>
+                {[...porCat.entries()].map(([cat, lista]) => (
+                  <optgroup key={cat} label={cat}>
+                    {lista.map(d => <option key={d.id} value={d.id}>{d.titulo}</option>)}
+                  </optgroup>
+                ))}
+              </select>
+            </div>
+          ))}
         </div>
       </section>
 
