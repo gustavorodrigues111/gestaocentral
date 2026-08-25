@@ -26,6 +26,7 @@ type DocModelo = { id: string; titulo: string; categoria: string; quando_usar: s
 type MarcOpcao = { valor: string; label: string; ancora: string };
 type Marcacao = { campo: string; rotulo: string; opcoes: MarcOpcao[] };
 type Quadro = { titulo: string; tabela: number; linha_inicial: number; col_inicial: number; max_linhas: number; podeAdicionar: boolean; colunas: string[] };
+type EmpresaCfg = { campos: Record<string, string>; habilitados: string[] | null };
 const DOCS = CATALOGO as DocModelo[];
 const MARCACOES = MARCACOES_JSON as Record<string, Marcacao[]>;
 const QUADROS = QUADROS_JSON as Record<string, Quadro[]>;
@@ -65,11 +66,13 @@ export function DocumentosPage() {
 
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
-  const [empresas, setEmpresas] = useState<Record<string, Record<string, string>>>({});
+  const [empresas, setEmpresas] = useState<Record<string, EmpresaCfg>>({});
   const [busca, setBusca] = useState("");
   const [sel, setSel] = useState<DocModelo | null>(null);
-  const [configEmpresa, setConfigEmpresa] = useState<string | null>(null);
+  const [modo, setModo] = useState<"catalogo" | "config">("catalogo");
+  const [empresaRid, setEmpresaRid] = useState(rid || "");
 
+  useEffect(() => { if (rid) setEmpresaRid(rid); }, [rid]);
   useEffect(() => {
     if (!rid) return;
     const up = onSnapshot(query(collection(db, "pessoas"), where("restaurantIds", "array-contains", rid)),
@@ -77,8 +80,8 @@ export function DocumentosPage() {
     const ue = onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)),
       snap => setEmpregados(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Empregado)));
     const uc = onSnapshot(collection(db, "documentosEmpresas"), snap => {
-      const m: Record<string, Record<string, string>> = {};
-      snap.docs.forEach(d => { m[d.id] = (d.data() as { campos?: Record<string, string> })?.campos || {}; });
+      const m: Record<string, EmpresaCfg> = {};
+      snap.docs.forEach(d => { const data = d.data() as { campos?: Record<string, string>; habilitados?: string[] | null }; m[d.id] = { campos: data?.campos || {}, habilitados: data?.habilitados ?? null }; });
       setEmpresas(m);
     });
     return () => { up(); ue(); uc(); };
@@ -88,10 +91,18 @@ export function DocumentosPage() {
   if (loading) return <div className="max-w-5xl mx-auto p-6 text-sm text-gray-400">Carregando…</div>;
   if (!podeGerar && !podeConfig) return <div className="max-w-5xl mx-auto p-8 text-center text-gray-500">Você não tem permissão para acessar Documentos.</div>;
 
+  // Documentos disponíveis pra empresa selecionada (habilitados null/ausente = todos).
+  const habil = empresas[empresaRid]?.habilitados;
+  const disponiveis = habil ? DOCS.filter(d => habil.includes(d.id)) : DOCS;
   const q = busca.trim().toLowerCase();
-  const filtrados = DOCS.filter(d => !q || `${d.titulo} ${d.categoria} ${d.quando_usar}`.toLowerCase().includes(q));
+  const filtrados = disponiveis.filter(d => !q || `${d.titulo} ${d.categoria} ${d.quando_usar}`.toLowerCase().includes(q));
   const porCategoria = new Map<string, DocModelo[]>();
   for (const d of filtrados) { const arr = porCategoria.get(d.categoria) || []; arr.push(d); porCategoria.set(d.categoria, arr); }
+
+  if (modo === "config" && podeConfig) {
+    return <ConfigView restaurants={restaurants} empresas={empresas} empresaRid={empresaRid} setEmpresaRid={setEmpresaRid}
+      pessoaId={pessoa.id} pessoaNome={pessoa.nome} onVoltar={() => setModo("catalogo")} />;
+  }
 
   return (
     <div className="max-w-5xl mx-auto p-4 sm:p-6">
@@ -100,38 +111,44 @@ export function DocumentosPage() {
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">📄 Documentos</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Modelos trabalhistas do escritório, preenchidos com os dados da empresa e do empregado. Saída em DOCX pra assinatura.</p>
         </div>
-        {podeConfig && <Button variant="secondary" onClick={() => setConfigEmpresa(rid || restaurants[0]?.id || "")}>🏢 Dados das empresas</Button>}
+        {podeConfig && <Button variant="secondary" onClick={() => setModo("config")}>⚙️ Configurações</Button>}
       </header>
 
-      <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="🔍 Buscar documento…"
-        className="w-full mb-4 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+      <div className="flex flex-col sm:flex-row gap-2 mb-4">
+        <select value={empresaRid} onChange={e => setEmpresaRid(e.target.value)}
+          className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100 sm:w-56">
+          {restaurants.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
+        </select>
+        <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="🔍 Buscar documento…"
+          className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+      </div>
 
       {podeGerar ? (
-        [...porCategoria.entries()].map(([cat, lista]) => (
-          <div key={cat} className="mb-5">
-            <div className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">{cat}</div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {lista.map(d => (
-                <button key={d.id} type="button" onClick={() => setSel(d)}
-                  className="text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2.5 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
-                  <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{d.titulo}</div>
-                  <div className="text-[11px] text-gray-400 line-clamp-2 mt-0.5">{d.quando_usar}</div>
-                </button>
-              ))}
+        porCategoria.size === 0 ? (
+          <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nenhum documento disponível para esta empresa. {podeConfig ? "Habilite documentos em ⚙️ Configurações." : "Fale com quem configura o módulo."}</div>
+        ) : (
+          [...porCategoria.entries()].map(([cat, lista]) => (
+            <div key={cat} className="mb-5">
+              <div className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">{cat}</div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {lista.map(d => (
+                  <button key={d.id} type="button" onClick={() => setSel(d)}
+                    className="text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2.5 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{d.titulo}</div>
+                    <div className="text-[11px] text-gray-400 line-clamp-2 mt-0.5">{d.quando_usar}</div>
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
-        ))
+          ))
+        )
       ) : (
-        <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Você pode editar os dados das empresas, mas não tem permissão para gerar documentos.</div>
+        <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Você pode configurar o módulo, mas não tem permissão para gerar documentos.</div>
       )}
 
       {sel && podeGerar && (
-        <GeradorModal key={sel.id} doc={sel} rid={rid || ""} restaurants={restaurants} pessoas={pessoas} empregados={empregados}
+        <GeradorModal key={sel.id} doc={sel} rid={empresaRid || rid || ""} restaurants={restaurants} pessoas={pessoas} empregados={empregados}
           empresas={empresas} onClose={() => setSel(null)} />
-      )}
-      {configEmpresa && podeConfig && (
-        <EmpresaConfigModal rid={configEmpresa} restaurants={restaurants} atual={empresas[configEmpresa] || {}}
-          pessoaId={pessoa.id} pessoaNome={pessoa.nome} onTrocar={setConfigEmpresa} onClose={() => setConfigEmpresa(null)} />
       )}
     </div>
   );
@@ -140,7 +157,7 @@ export function DocumentosPage() {
 // ─── Gerador de um documento ─────────────────────────────────────────────────
 function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empresas, onClose }: {
   doc: DocModelo; rid: string; restaurants: { id: string; nome: string }[]; pessoas: Pessoa[]; empregados: Empregado[];
-  empresas: Record<string, Record<string, string>>; onClose: () => void;
+  empresas: Record<string, EmpresaCfg>; onClose: () => void;
 }) {
   const [empresaRid, setEmpresaRid] = useState(rid || restaurants[0]?.id || "");
   const [empId, setEmpId] = useState<string>("");
@@ -158,7 +175,7 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
   const empsAtivos = useMemo(() => empregados.filter(e => e.restaurantId === empresaRid && e.estaAtivo !== false), [empregados, empresaRid]);
   const emp = empsAtivos.find(e => e.id === empId) || null;
   const pes = emp?.pessoaId ? pessoas.find(p => p.id === emp.pessoaId) : null;
-  const empresaData = empresas[empresaRid] || {};
+  const empresaData = empresas[empresaRid]?.campos || {};
   const marcs = MARCACOES[modelo.id] || [];
   const faltamMarcacoes = marcs.some(g => !marcado[g.campo]);
   const quads = QUADROS[modelo.id] || [];
@@ -405,78 +422,128 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
   );
 }
 
-// ─── Editor dos dados trabalhistas das empresas ──────────────────────────────
-function EmpresaConfigModal({ rid, restaurants, atual, pessoaId, pessoaNome, onTrocar, onClose }: {
-  rid: string; restaurants: { id: string; nome: string; razaoSocial?: string; cnpj?: string; endereco?: string }[];
-  atual: Record<string, string>; pessoaId: string; pessoaNome: string; onTrocar: (rid: string) => void; onClose: () => void;
+// ─── Configurações do módulo (por empresa) ───────────────────────────────────
+// Dados cadastrais da empresa + quais documentos ficam disponíveis pra ela.
+// É o hub: outros módulos (ex.: Admissão) consomem estes documentos.
+function ConfigView({ restaurants, empresas, empresaRid, setEmpresaRid, pessoaId, pessoaNome, onVoltar }: {
+  restaurants: { id: string; nome: string; razaoSocial?: string; cnpj?: string; endereco?: string }[];
+  empresas: Record<string, EmpresaCfg>; empresaRid: string; setEmpresaRid: (r: string) => void;
+  pessoaId: string; pessoaNome: string; onVoltar: () => void;
 }) {
-  const rest = restaurants.find(r => r.id === rid);
-  // Pré-preenche do cadastro do restaurante o que der (razão, CNPJ, endereço).
-  const seed: Record<string, string> = {
-    RAZAO_SOCIAL: atual.RAZAO_SOCIAL || rest?.razaoSocial || "",
-    CNPJ_EMPRESA: atual.CNPJ_EMPRESA || rest?.cnpj || "",
-    ENDERECO_EMPRESA: atual.ENDERECO_EMPRESA || rest?.endereco || "",
-    ...atual,
-  };
-  const [campos, setCampos] = useState<Record<string, string>>(seed);
+  const [campos, setCampos] = useState<Record<string, string>>({});
+  const [habil, setHabil] = useState<Set<string>>(new Set());
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+  const [okMsg, setOkMsg] = useState("");
   const inp = "w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100";
 
-  // Ao trocar de empresa, o componente é remontado (key=rid no pai) — mas garantimos.
-  useEffect(() => { setCampos(seed); /* eslint-disable-next-line */ }, [rid]);
+  // Carrega os dados da empresa selecionada (pré-preenche cadastrais do restaurante).
+  useEffect(() => {
+    const cfg = empresas[empresaRid];
+    const rest = restaurants.find(r => r.id === empresaRid);
+    setCampos({
+      RAZAO_SOCIAL: cfg?.campos.RAZAO_SOCIAL || rest?.razaoSocial || "",
+      CNPJ_EMPRESA: cfg?.campos.CNPJ_EMPRESA || rest?.cnpj || "",
+      ENDERECO_EMPRESA: cfg?.campos.ENDERECO_EMPRESA || rest?.endereco || "",
+      ...(cfg?.campos || {}),
+    });
+    setHabil(new Set(cfg?.habilitados ?? DOCS.map(d => d.id)));
+    setErro(""); setOkMsg("");
+  }, [empresaRid, empresas, restaurants]);
+
+  const toggle = (id: string) => setHabil(s => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
+  const porCat = new Map<string, DocModelo[]>();
+  for (const d of DOCS) { const a = porCat.get(d.categoria) || []; a.push(d); porCat.set(d.categoria, a); }
+  const setCat = (lista: DocModelo[], on: boolean) => setHabil(s => { const n = new Set(s); lista.forEach(d => on ? n.add(d.id) : n.delete(d.id)); return n; });
 
   async function salvar() {
-    setSalvando(true); setErro("");
+    setSalvando(true); setErro(""); setOkMsg("");
     try {
-      await setDoc(doc(db, "documentosEmpresas", rid), sanitizeForFirestore({
-        rid, campos, atualizadoEm: new Date().toISOString(), atualizadoPor: pessoaId, atualizadoPorNome: pessoaNome,
+      await setDoc(doc(db, "documentosEmpresas", empresaRid), sanitizeForFirestore({
+        rid: empresaRid, campos, habilitados: [...habil],
+        atualizadoEm: new Date().toISOString(), atualizadoPor: pessoaId, atualizadoPorNome: pessoaNome,
       }), { merge: true });
-      onClose();
+      setOkMsg("Configuração salva.");
     } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao salvar."); }
     finally { setSalvando(false); }
   }
 
   return (
-    <div className="fixed inset-0 bg-black/40 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
-        <div className="flex items-start justify-between gap-2 p-4 border-b border-gray-100 dark:border-gray-800">
-          <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">🏢 Dados trabalhistas da empresa</h2>
-            <div className="text-xs text-gray-500">Usados no preenchimento dos documentos. Uma vez por empresa.</div>
-          </div>
-          <button type="button" onClick={onClose} className="shrink-0 text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
+    <div className="max-w-5xl mx-auto p-4 sm:p-6">
+      <header className="mb-4 flex items-center gap-2">
+        <button type="button" onClick={onVoltar} className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 text-sm">← Voltar</button>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">⚙️ Configurações — Documentos</h1>
+      </header>
+
+      <div className="mb-4">
+        <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Empresa</label>
+        <select value={empresaRid} onChange={e => setEmpresaRid(e.target.value)} className={`${inp} mt-1 sm:w-72`}>
+          {restaurants.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
+        </select>
+      </div>
+
+      {/* Dados cadastrais */}
+      <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-4">
+        <h2 className="font-bold text-gray-900 dark:text-gray-100 mb-1">🏢 Dados cadastrais da empresa</h2>
+        <p className="text-xs text-gray-500 mb-3">Usados no preenchimento dos documentos.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {EMPRESA_ESSENCIAIS.map(({ token, rotulo }) => (
+            <div key={token} className={token === "RAZAO_SOCIAL" || token === "ENDERECO_EMPRESA" ? "sm:col-span-2" : ""}>
+              <label className="text-[11px] text-gray-500">{rotulo}</label>
+              <input value={campos[token] || ""} onChange={e => setCampos(s => ({ ...s, [token]: e.target.value }))} className={`${inp} mt-0.5`} />
+            </div>
+          ))}
         </div>
-        <div className="p-4 space-y-3 overflow-y-auto">
-          <select value={rid} onChange={e => onTrocar(e.target.value)} className={inp}>
-            {restaurants.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
-          </select>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {EMPRESA_ESSENCIAIS.map(({ token, rotulo }) => (
-              <div key={token} className={token === "RAZAO_SOCIAL" || token === "ENDERECO_EMPRESA" ? "sm:col-span-2" : ""}>
-                <label className="text-[11px] text-gray-500">{rotulo}</label>
+        <details className="rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2 mt-2">
+          <summary className="text-xs font-medium text-gray-600 dark:text-gray-300 cursor-pointer">Campos opcionais — usados só em documentos específicos</summary>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+            {EMPRESA_ESPECIFICOS.map(({ token, rotulo, nota }) => (
+              <div key={token}>
+                <label className="text-[11px] text-gray-500">{rotulo}{nota ? <span className="text-gray-400"> — {nota}</span> : null}</label>
                 <input value={campos[token] || ""} onChange={e => setCampos(s => ({ ...s, [token]: e.target.value }))} className={`${inp} mt-0.5`} />
               </div>
             ))}
           </div>
+        </details>
+      </section>
 
-          <details className="rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2">
-            <summary className="text-xs font-medium text-gray-600 dark:text-gray-300 cursor-pointer">Campos opcionais — usados só em documentos específicos</summary>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
-              {EMPRESA_ESPECIFICOS.map(({ token, rotulo, nota }) => (
-                <div key={token}>
-                  <label className="text-[11px] text-gray-500">{rotulo}{nota ? <span className="text-gray-400"> — {nota}</span> : null}</label>
-                  <input value={campos[token] || ""} onChange={e => setCampos(s => ({ ...s, [token]: e.target.value }))} className={`${inp} mt-0.5`} />
+      {/* Documentos disponíveis */}
+      <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-4">
+        <div className="flex items-center justify-between gap-2 mb-1">
+          <h2 className="font-bold text-gray-900 dark:text-gray-100">📄 Documentos disponíveis nesta empresa</h2>
+          <div className="text-xs flex gap-2 shrink-0">
+            <button type="button" onClick={() => setHabil(new Set(DOCS.map(d => d.id)))} className="text-indigo-600 dark:text-indigo-400 hover:underline">todos</button>
+            <button type="button" onClick={() => setHabil(new Set())} className="text-gray-500 hover:underline">nenhum</button>
+          </div>
+        </div>
+        <p className="text-xs text-gray-500 mb-3">{habil.size} de {DOCS.length} habilitados. Só os marcados aparecem na lista pra gerar.</p>
+        <div className="space-y-3">
+          {[...porCat.entries()].map(([cat, lista]) => {
+            const todosCat = lista.every(d => habil.has(d.id));
+            return (
+              <div key={cat}>
+                <div className="flex items-center justify-between">
+                  <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">{cat}</div>
+                  <button type="button" onClick={() => setCat(lista, !todosCat)} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">{todosCat ? "desmarcar" : "marcar"} categoria</button>
                 </div>
-              ))}
-            </div>
-          </details>
-          {erro && <div className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">{erro}</div>}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1 mt-1">
+                  {lista.map(d => (
+                    <label key={d.id} className="inline-flex items-center gap-2 text-sm text-gray-700 dark:text-gray-200 cursor-pointer py-0.5">
+                      <input type="checkbox" checked={habil.has(d.id)} onChange={() => toggle(d.id)} />
+                      <span className="truncate">{d.titulo}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
         </div>
-        <div className="p-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">
-          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button>
-        </div>
+      </section>
+
+      <div className="flex items-center justify-end gap-3 sticky bottom-0 bg-gradient-to-t from-white dark:from-gray-950 to-transparent py-3">
+        {okMsg && <span className="text-sm text-emerald-600">{okMsg}</span>}
+        {erro && <span className="text-sm text-rose-600">{erro}</span>}
+        <Button onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : "Salvar configuração"}</Button>
       </div>
     </div>
   );

@@ -26,6 +26,7 @@ const SEED: Seed[] = [
   // ── Documentos (fábrica de documentos trabalhistas) ──
   { modulo: "documentos", resp: "gustavo", titulo: "Preencher os Dados trabalhistas das 4 empresas (🏢 Dados das empresas) — razão, CNPJ, endereço, cidade, e-mail, contato e conta salário. Sem isso os campos de empresa saem em branco." },
   { modulo: "documentos", resp: "ia", titulo: "IA redigir os textos livres (motivo da advertência etc.) a partir do relato — hoje o texto é digitado à mão no gerador. Endpoint dedicado + botão '✍️ IA redigir'." },
+  { modulo: "documentos", resp: "ia", titulo: "FASE 2 — Documentos vira a FONTE da Admissão: o 'checklist de termos a assinar' da Admissão (ChecklistTermosModal) passa a gerar cada termo pelo módulo Documentos (doc + empregado/empresa pré-preenchidos → DOCX → Drive/Clicksign). Depois, abrir o gerador embutido pra outros módulos. Config já tem por-empresa; falta mapear termo→docId e o ponto de entrada compartilhado." },
   { modulo: "documentos", resp: "ia", titulo: "Ampliar o auto-preenchimento do empregado (RG, CTPS, endereço, salário) quando esses campos existirem no cadastro; hoje só nome/CPF/admissão vêm automáticos." },
   { modulo: "documentos", resp: "gustavo", titulo: "docx→PDF idêntico no app: quando quiser PDF direto (não pela skill), subir LibreOffice/Gotenberg no host do Railway (onde roda o Evolution) e o app chama. Por ora, DOCX no app + PDF pela skill." },
 
