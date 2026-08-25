@@ -1,0 +1,4741 @@
+[
+{
+"id": "aditivo-confidencialidade-lgpd-afastamento",
+"titulo": "Aditivo de confidencialidade, LGPD, imagem e afastamento",
+"categoria": "LGPD e diversos",
+"quando_usar": "Quando um empregado já contratado precisa assinar, em aditivo ao contrato de trabalho, as cláusulas de sigilo e propriedade intelectual, autorização de uso de imagem e voz, tratamento de dados pessoais (LGPD), regras de WhatsApp corporativo e obrigações em caso de afastamento previdenciário.",
+"observacoes": "É um aditivo: só faz sentido se já existe contrato de trabalho assinado. Assinam a empregadora, o empregado e duas testemunhas (nome, endereço e CPF de cada uma são preenchidos à mão nas linhas do modelo). Prevê multa de 10 salários mínimos por violação do sigilo e prazo de 30 dias para o empregado entregar o extrato do Meu INSS. Aceita assinatura eletrônica (MP 2.200).",
+"campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+}
+],
+"texto_livre": []
+},
+{
+"id": "aditivo-home-office-hibrido",
+"titulo": "Aditivo de home office híbrido",
+"categoria": "Admissão e contratos",
+"quando_usar": "Quando um empregado passa a trabalhar parte da semana em home office e parte presencialmente, e é preciso registrar por escrito os dias de cada regime, a ajuda de custo e as regras de ergonomia, LGPD e WhatsApp.",
+"observacoes": "Aditivo por prazo indeterminado; a alteração de regime de teletrabalho deve ser feita por escrito (art. 75-C da CLT). Fixa R$ 100,00 por mês de indenização por água, luz e internet, proporcionalizados pelos dias em casa. O empregado continua marcando ponto. Assinam empregadora, empregado e duas testemunhas. Os quadros de e-mail/WhatsApp de contato e dos equipamentos cedidos (tipo, marca, modelo e número de série) são preenchidos manualmente e não estão entre os brancos deste modelo.",
+"campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "DIAS_HORARIOS_PRESENCIAL",
+"rotulo": "Dias e horários de trabalho presencial",
+"tipo": "multilinha",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Ex.: segunda e quarta-feira, das 9h às 18h, com 1h de intervalo"
+},
+{
+"token": "DIAS_HORARIOS_HOME_OFFICE",
+"rotulo": "Dias e horários de trabalho em home office",
+"tipo": "multilinha",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Ex.: terça, quinta e sexta-feira, das 9h às 18h, com 1h de intervalo"
+}
+],
+"texto_livre": []
+},
+{
+"id": "autorizacao-horas-extras",
+"titulo": "Autorização para realização de horas extras",
+"categoria": "Férias e jornada",
+"quando_usar": "Quando a empresa precisa autorizar previamente e por escrito que um empregado faça horas extras em datas e horários determinados, conforme o regulamento interno.",
+"observacoes": "Emitir antes da realização das horas extras, não depois. Assinado pelo empregado (a autorização parte da empregadora). Não exige testemunhas. O modelo traz quadros que são preenchidos à mão ou caso a caso e não são brancos automáticos: identificação do empregado (nome, matrícula, cargo, setor), as linhas de \"Atividades a Serem Desenvolvidas\" e o detalhamento com data, horário e nº de horas de cada dia autorizado.",
+"campos": [
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número do dia."
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso, em minúsculas."
+},
+{
+"token": "ANO2",
+"rotulo": "Ano (dois últimos dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime \"20\" antes."
+}
+],
+"texto_livre": []
+},
+{
+"id": "carta-advertencia",
+"titulo": "Carta de advertência",
+"categoria": "Disciplina",
+"quando_usar": "Quando o empregado comete uma falta e a empresa quer registrar formalmente a advertência escrita, depois de já ter advertido verbalmente.",
+"observacoes": "Entregar em duas vias e colher a assinatura do empregado na hora; se ele se recusar a assinar, colher a assinatura de duas testemunhas com nome e CPF na própria carta e registrar a recusa. Aplicar o mais próximo possível do fato (a punição tardia perde efeito e pode ser anulada). Guardar a via assinada no prontuário: é ela que sustenta uma futura justa causa por reincidência. O modelo tem um parágrafo em branco logo após 'adverti-lo (a) expressamente por' para a descrição da falta — descreva o fato com data, hora e local, sem adjetivos.",
+"campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+}
+],
+"texto_livre": [
+{
+"campo": "MOTIVO_ADVERTENCIA",
+"rotulo": "Descrição da falta que gerou a advertência",
+"apos": "formulamos a presente com o intuito de vir adverti-lo (a) expressamente por"
+}
+]
+},
+{
+"id": "carta-demissao-justa-causa",
+"titulo": "Carta de demissão por justa causa",
+"categoria": "Desligamento",
+"quando_usar": "Para comunicar formalmente ao empregado a rescisão do contrato de trabalho por justa causa, descrevendo a falta apurada, nos termos do art. 482 da CLT.",
+"observacoes": "Exige duas testemunhas (assinatura, nome completo, endereço e CPF), principalmente se o empregado se recusar a assinar. A falta deve ser descrita de forma concreta (data, local, conduta) e a punição deve ser imediata, sob pena de perdão tácito. Guarde as provas da apuração. O acerto rescisório deve ser pago em até 10 dias corridos do fim do contrato (art. 477, §6º da CLT).",
+"campos": [
+{
+"token": "DESCRICAO_FALTA",
+"rotulo": "Descrição da falta cometida pelo empregado",
+"tipo": "multilinha",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Entra na frase \"Foi constatado que V.Sa., ___, fato este que é inaceitável nesta Empregadora\". Descreva a conduta com data, local e detalhes, ex.: \"em 12/03/2026, por volta das 14h, desferiu agressão física contra colega de trabalho no refeitório\"."
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura por extenso",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "ANO2",
+"rotulo": "Dois últimos dígitos do ano",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes do branco."
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Com bairro, cidade/UF e CEP."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "carta-pedido-demissao",
+"titulo": "Carta de pedido de demissão",
+"categoria": "Desligamento",
+"quando_usar": "Quando o próprio empregado decide sair da empresa e precisa formalizar por escrito o pedido de demissão.",
+"observacoes": "Quem assina é o empregado, de próprio punho e com a data do dia. O modelo traz duas redações alternativas separadas por \"(OU)\": uma para quem não vai cumprir aviso prévio e outra para quem vai cumprir aviso trabalhado — apague a que não se aplica antes de imprimir. Se o empregado não cumprir o aviso, o valor pode ser descontado na rescisão. Guarde a via assinada junto com o TRCT.",
+"campos": [
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura por extenso",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "ANO2",
+"rotulo": "Dois últimos dígitos do ano",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes."
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Com bairro, cidade/UF e CEP."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "comunicacao-extincao-contrato-experiencia",
+"titulo": "Comunicação de extinção do contrato de experiência",
+"categoria": "Desligamento",
+"quando_usar": "Quando a empresa decide não efetivar o empregado e avisa por escrito que o contrato de experiência se encerra no seu termo final, sem prorrogação.",
+"observacoes": "Entregar ao empregado antes do último dia do contrato, colhendo a assinatura dele na via da empresa. Como a extinção ocorre no termo final, não há aviso prévio nem multa de 40% do FGTS; se a empresa quiser encerrar antes da data ajustada, o documento correto é o de rescisão antecipada. As verbas rescisórias devem ser pagas em até 10 dias do fim do contrato.",
+"campos": [
+{
+"token": "DATA_EXTINCAO_CONTRATO",
+"rotulo": "Data em que o contrato de experiência se extingue",
+"tipo": "data",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Último dia do contrato de experiência"
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+}
+],
+"texto_livre": []
+},
+{
+"id": "comunicado-ferias",
+"titulo": "Comunicado de férias",
+"categoria": "Férias e jornada",
+"quando_usar": "Quando a empresa vai conceder férias e precisa avisar o empregado por escrito com pelo menos 30 dias de antecedência do início do gozo.",
+"observacoes": "As datas de período aquisitivo, gozo e retorno foram convertidas em campos preenchíveis (no modelo original vinham como xx/xx/xxxx). O comunicado deve ser entregue com no mínimo 30 dias de antecedência, nos termos do art. 135 da CLT. O quadro de e-mail para contato continua sendo preenchido à mão.",
+"campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+},
+{
+"token": "DATA_INICIO_AQUISITIVO",
+"rotulo": "Início do período aquisitivo",
+"tipo": "data",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Data em que começou o período aquisitivo (12 meses de trabalho que geraram o direito)"
+},
+{
+"token": "DATA_FIM_AQUISITIVO",
+"rotulo": "Fim do período aquisitivo",
+"tipo": "data",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "DATA_INICIO_FERIAS",
+"rotulo": "Primeiro dia de férias",
+"tipo": "data",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "DATA_FIM_FERIAS",
+"rotulo": "Último dia de férias",
+"tipo": "data",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "DATA_RETORNO",
+"rotulo": "Data de retorno ao trabalho",
+"tipo": "data",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Normalmente o dia seguinte ao fim das férias"
+}
+],
+"texto_livre": []
+},
+{
+"id": "comunicado-rescisao-antecipada-experiencia",
+"titulo": "Comunicado de rescisão antecipada do contrato de experiência",
+"categoria": "Desligamento",
+"quando_usar": "Quando a empresa decide encerrar o contrato de experiência antes do prazo final combinado e precisa comunicar o empregado por escrito.",
+"observacoes": "Assinam a empregadora e o empregado (o modelo tem as duas linhas de assinatura). Entregue uma via ao empregado e guarde a outra com o recibo. Rescindir a experiência antes do prazo gera indenização do artigo 479 da CLT (metade da remuneração dos dias que faltavam), salvo se houver cláusula assecuratória. No corpo do texto há uma data manuscrita (.../.../....) para a ida ao escritório com a CTPS — preencha à mão ou ajuste o documento. Prazo de pagamento da rescisão: 10 dias corridos.",
+"campos": [
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura por extenso",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "ANO2",
+"rotulo": "Dois últimos dígitos do ano",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes."
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Com bairro, cidade/UF e CEP."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "concordancia-ferias-tres-periodos",
+"titulo": "Termo de concordância para divisão de férias em até 3 períodos",
+"categoria": "Férias e jornada",
+"quando_usar": "Quando o empregado concorda em fracionar as férias de um período aquisitivo em mais de um período, nos termos do art. 134, §1º da CLT (Reforma Trabalhista).",
+"observacoes": "A CLT permite no máximo 3 períodos; nenhum pode ser inferior a 5 dias corridos e um deles deve ter ao menos 14 dias. Assinado apenas pelo empregado (não exige testemunhas). O fracionamento depende de concordância expressa e não pode iniciar nos 2 dias que antecedem feriado ou dia de repouso (art. 134, §3º).",
+"campos": [
+{
+"token": "PERIODO_CONCESSIVO_FERIAS",
+"rotulo": "Período concessivo das férias",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Os 12 meses seguintes ao período aquisitivo em que as férias devem ser gozadas, ex.: 01/03/2026 a 28/02/2027."
+},
+{
+"token": "QUANTIDADE_PERIODOS_FERIAS",
+"rotulo": "Quantidade de períodos em que as férias podem ser divididas",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "No máximo 3, conforme o art. 134, §1º da CLT."
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura por extenso",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "ANO2",
+"rotulo": "Dois últimos dígitos do ano",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes do branco."
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Com bairro, cidade/UF e CEP."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "contrato-prestacao-servicos-autonomo",
+"titulo": "Contrato de prestação de serviços de autônomo",
+"categoria": "Admissão e contratos",
+"quando_usar": "Quando a empresa contrata um profissional autônomo (sem vínculo de emprego), pago mediante RPA, com horário livre e cláusulas de confidencialidade, não concorrência, anticorrupção e LGPD.",
+"observacoes": "Assinado em 2 vias pela contratante, pelo contratado e por duas testemunhas (assinatura, nome, endereço e CPF preenchidos à mão). Cuidado com a caracterização de vínculo: só use se não houver pessoalidade, habitualidade e subordinação — o contrato é o documento de defesa, mas o que vale é a realidade da prestação. O pagamento depende da entrega do RPA no prazo indicado no quadro sintético e a contratante recolhe INSS e IRRF sobre o valor. Confidencialidade e não concorrência valem por 12 meses após o fim do contrato (o dever de sigilo da cláusula sexta é por prazo indeterminado). A rescisão exige aviso extrajudicial com 30 dias de antecedência. As atividades contratadas devem ser descritas em detalhe no quadro sintético — é o que delimita o objeto.",
+"campos": [
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do contratado (autônomo)",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "O mesmo nome aparece de novo em \"representada neste ato por\""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do contratado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "RG_EMPREGADO",
+"rotulo": "RG do contratado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Logradouro e número do contratado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Só a rua e o número — bairro, cidade, UF e CEP têm campos próprios"
+},
+{
+"token": "CEP_EMPREGADO",
+"rotulo": "CEP do contratado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "BAIRRO_EMPREGADO",
+"rotulo": "Bairro do contratado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CIDADE_EMPREGADO",
+"rotulo": "Cidade do contratado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "UF_EMPREGADO",
+"rotulo": "Estado (UF) do contratado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da contratante",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da contratante",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço da contratante",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": "Rua, número, bairro e cidade — o CEP tem campo próprio"
+},
+{
+"token": "CEP_EMPRESA",
+"rotulo": "CEP da contratante",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ATIVIDADE_1",
+"rotulo": "Atividade contratada 1",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Descreva de forma detalhada o serviço ajustado"
+},
+{
+"token": "ATIVIDADE_2",
+"rotulo": "Atividade contratada 2",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "ATIVIDADE_3",
+"rotulo": "Atividade contratada 3",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "VALOR_MENSAL",
+"rotulo": "Valor mensal fixo da contraprestação",
+"tipo": "valor",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "O modelo já imprime \"R$\" antes"
+},
+{
+"token": "VALOR_MENSAL_EXTENSO",
+"rotulo": "Valor mensal por extenso",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Ex.: três mil reais"
+},
+{
+"token": "DADOS_BANCARIOS",
+"rotulo": "Dados bancários do contratado",
+"tipo": "multilinha",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Banco, agência, conta e titular"
+},
+{
+"token": "DIA_LIMITE_ENVIO_RPA",
+"rotulo": "Dia do mês limite para envio do RPA",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Só o número; o modelo já imprime o \"º dia do mês\""
+},
+{
+"token": "DATA_LIMITE_PAGAMENTO",
+"rotulo": "Data limite de pagamento",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Ex.: dia 10 do mês seguinte"
+},
+{
+"token": "HORA_INICIO_FUNCIONAMENTO",
+"rotulo": "Horário de abertura da contratante",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Ex.: 08:00"
+},
+{
+"token": "HORA_FIM_FUNCIONAMENTO",
+"rotulo": "Horário de fechamento da contratante",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Ex.: 18:00"
+},
+{
+"token": "DIAS_FUNCIONAMENTO",
+"rotulo": "Dias de funcionamento da contratante",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Ex.: segunda a sexta-feira"
+},
+{
+"token": "TIPO_PRAZO_VIGENCIA",
+"rotulo": "Tipo de prazo de vigência",
+"tipo": "opcao",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "determinado ou indeterminado"
+},
+{
+"token": "DATA_INICIO_VIGENCIA",
+"rotulo": "Data de início da vigência",
+"tipo": "data",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "DIA_ENTRADA_VIGOR",
+"rotulo": "Dia da entrada em vigor",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Só o número"
+},
+{
+"token": "MES_ENTRADA_VIGOR",
+"rotulo": "Mês da entrada em vigor",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2_ENTRADA_VIGOR",
+"rotulo": "Ano da entrada em vigor (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "O modelo já imprime o \"20\" antes"
+}
+],
+"texto_livre": []
+},
+{
+"id": "contrato-trabalho-art-62-atividade-externa",
+"titulo": "Contrato de trabalho para atividade externa (art. 62 da CLT)",
+"categoria": "Admissão e contratos",
+"quando_usar": "Na admissão de empregado que exerce atividade externa incompatível com controle de jornada (vendedor externo, representante, técnico de campo), enquadrado no art. 62, I, da CLT, com cláusulas de LGPD, imagem, sigilo e WhatsApp.",
+"observacoes": "Assinado em 3 vias, pela empregadora, pelo empregado e por duas testemunhas (nome, endereço e CPF preenchidos à mão). Traz período de experiência de 45 dias prorrogável por mais 45. O enquadramento no art. 62, I, só se sustenta se a atividade for realmente incompatível com controle de horário e a condição estiver anotada na CTPS e no registro do empregado. No quadro sintético, os campos de função, remuneração, descrição das atividades e e-mail/WhatsApp de contato vêm com orientações entre parênteses e são editados manualmente — não estão entre os brancos automáticos.",
+"campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+}
+],
+"texto_livre": []
+},
+{
+"id": "contrato-trabalho-confidencialidade-aposentadoria",
+"titulo": "Contrato de trabalho com confidencialidade, LGPD e tempo de contribuição",
+"categoria": "Admissão e contratos",
+"quando_usar": "Na admissão de empregado em jornada padrão (44 horas semanais), quando se quer um contrato individual completo, com cláusulas de confidencialidade e propriedade intelectual, LGPD, uso de imagem e voz, regras de WhatsApp e acompanhamento do tempo de contribuição no MEU INSS (empregado próximo da aposentadoria).",
+"observacoes": "Modelo pensado para assinatura digital/eletrônica: as assinaturas da empregadora, do empregado e das duas testemunhas são \"indicadas na assinatura eletrônica do instrumento\", e o próprio texto avisa que, se a assinatura for digital, o bloco de assinaturas manuscritas deve ser retirado. O empregado tem 30 dias, contados da assinatura, para entregar o extrato de tempo de contribuição do MEU INSS. Prazo de experiência de 45 dias, prorrogável por mais 45. No quadro sintético, os campos FUNÇÃO, REMUNERAÇÃO, DESCRIÇÃO DAS ATIVIDADES e e-mail/WhatsApp de contato vêm com orientações entre parênteses e são editados manualmente — não estão entre os brancos automáticos; a qualificação do empregado também não é preenchida aqui (o modelo remete à assinatura eletrônica).",
+"campos": [
+{
+"token": "DATA",
+"rotulo": "Data de assinatura do contrato",
+"tipo": "data",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo tem um único campo \"Data:\""
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "contrato-trabalho-home-office-art-62",
+"titulo": "Contrato de trabalho em home office / teletrabalho (art. 62 da CLT)",
+"categoria": "Admissão e contratos",
+"quando_usar": "Na admissão de empregado que vai trabalhar em home office ou em regime híbrido, sem controle de jornada (enquadrado no art. 62 da CLT), com entrega de computador da empresa, ajuda de custo de insumos e cláusulas de LGPD, imagem, voz, confidencialidade e WhatsApp.",
+"observacoes": "Assinado em 3 vias, pela empregadora, pelo empregado e por duas testemunhas (nome, endereço e CPF preenchidos à mão). O contrato já fixa R$ 100,00 por mês de indenização por água, luz e internet e funciona também como termo de responsabilidade ergonômico e de entrega do computador. Período de experiência de 45 dias, prorrogável por mais 45. No quadro sintético, FUNÇÃO, REMUNERAÇÃO, DESCRIÇÃO DAS ATIVIDADES, e-mail/WhatsApp de contato e as três fichas de equipamento (tipo, marca, modelo e número de série) vêm em branco ou com orientação entre parênteses e são preenchidos manualmente — não estão entre os brancos automáticos. Confira se o inciso do art. 62 informado é o correto: inciso I para atividade externa incompatível com controle de horário e inciso III para o empregado em teletrabalho por produção ou tarefa.",
+"campos": [
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP — é onde o trabalho remoto será prestado"
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "INCISO_ARTIGO_62",
+"rotulo": "Inciso do art. 62 da CLT em que o empregado é enquadrado",
+"tipo": "opcao",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "I (atividade externa incompatível com controle de jornada) ou III (teletrabalho por produção ou tarefa)"
+}
+],
+"texto_livre": []
+},
+{
+"id": "contrato-trabalho-prazo-determinado",
+"titulo": "Contrato de trabalho por prazo determinado",
+"categoria": "Admissão e contratos",
+"quando_usar": "Na admissão por tempo certo, com base no art. 443, § 2º, alínea \"a\", da CLT (serviço cuja natureza justifica a predeterminação do prazo), com cláusulas de LGPD, uso de imagem e voz, confidencialidade, WhatsApp e regras para o caso de afastamento previdenciário.",
+"observacoes": "Assinado em vias de igual teor, pela empregadora, pelo empregado e por duas testemunhas (assinatura, nome, endereço e CPF preenchidos à mão). O prazo precisa ser escrito no campo VIGÊNCIA DO CONTRATO do quadro sintético e anotado na CTPS: contrato por prazo determinado não pode passar de 2 anos e admite uma única prorrogação (art. 445 e 451 da CLT); se for prorrogado mais de uma vez, vira contrato por prazo indeterminado. No quadro sintético, FUNÇÃO, REMUNERAÇÃO, DESCRIÇÃO DAS ATIVIDADES e e-mail de contato vêm com orientações entre parênteses e são editados manualmente — não estão entre os brancos automáticos. O horário de trabalho já vem fixo no modelo (08:00 às 12:00 e 13:00 às 17:48, de segunda a sexta, 44h semanais): altere no texto se for diferente.",
+"campos": [
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "VIGENCIA_CONTRATO",
+"rotulo": "Vigência do contrato",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Prazo com início e término, por exemplo: de 01/03/2026 a 31/08/2026 (6 meses)"
+}
+],
+"texto_livre": []
+},
+{
+"id": "declaracao-encargos-familia-ir",
+"titulo": "Declaração de encargos de família para fins de Imposto de Renda",
+"categoria": "LGPD e diversos",
+"quando_usar": "Na admissão, ou sempre que mudar a composição familiar, para o empregado declarar quais são seus dependentes e permitir a dedução deles no cálculo do Imposto de Renda retido na folha.",
+"observacoes": "O quadro de dependentes (número, nome completo, relação de dependência, data de nascimento, estado civil e escolaridade — até 6 linhas) é preenchido manualmente e não entra nos campos automáticos; a coluna \"relação de dependência\" usa os números 1 a 8 da lista \"Autorizados\" que consta no rodapé do modelo. O mesmo dependente não pode ser deduzido pelos dois cônjuges. O empregado se compromete a avisar sempre que o rol de dependentes mudar. Contém consentimento LGPD para compartilhar os dados com Previdência Social, Receita Federal e contabilidade externa. Só o empregado assina; não exige testemunhas. Peça cópia das certidões de nascimento ou documentos dos dependentes como anexo.",
+"campos": [
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "declaracao-pai-mae-adotante",
+"titulo": "Declaração de opção de licença-maternidade para pai ou mãe adotante",
+"categoria": "Benefícios",
+"quando_usar": "Quando um empregado adota uma criança ou obtém a guarda judicial e precisa declarar à empresa se ele mesmo vai gozar a licença-maternidade ou se quem vai gozar é o cônjuge/parceiro adotante.",
+"observacoes": "O empregado precisa entregar junto o documento de adoção/guarda, que é o que dispara a contagem da licença. O modelo traz duas opções, A e B, marcadas à mão nos parênteses — confira se a opção certa foi marcada antes de imprimir. Assinam o empregado e duas testemunhas (nome, endereço e CPF de cada uma). Na opção A o salário-maternidade é pedido direto ao INSS, não à empresa.",
+"campos": [
+{
+"token": "DATA_DOCUMENTO_ADOCAO",
+"rotulo": "Data do documento que comprova a adoção/guarda",
+"tipo": "data",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Data que consta no termo de guarda ou na sentença de adoção apresentada pelo empregado."
+},
+{
+"token": "ORGAO_EXPEDIDOR_ADOCAO",
+"rotulo": "Órgão que expediu o documento de adoção/guarda",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Ex.: Vara da Infância e Juventude da Comarca de ..."
+},
+{
+"token": "NOME_MENOR_ADOTADO",
+"rotulo": "Nome do menor adotado ou sob guarda",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura por extenso",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "ANO2",
+"rotulo": "Dois últimos dígitos do ano",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes."
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Com bairro, cidade/UF e CEP."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "declaracao-pessoa-com-deficiencia",
+"titulo": "Declaração de ciência de inclusão na cota de pessoas com deficiência",
+"categoria": "LGPD e diversos",
+"quando_usar": "Quando a empresa vai contar o empregado na cota legal de pessoas com deficiência e precisa registrar que ele está ciente do uso do CID e consente com o tratamento e o compartilhamento desses dados.",
+"observacoes": "Assinado só pelo empregado; não exige testemunhas. Envolve dado pessoal sensível (CID): guardar em pasta de acesso restrito e anexar o laudo médico que comprova a deficiência, que é o documento exigido pela fiscalização para validar a cota da Lei nº 8.213/91.",
+"campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+}
+],
+"texto_livre": []
+},
+{
+"id": "demissao-sem-justa-causa-aviso-indenizado",
+"titulo": "Carta de demissão sem justa causa com aviso prévio indenizado",
+"categoria": "Desligamento",
+"quando_usar": "Quando a empresa dispensa o empregado sem justa causa e opta por indenizar o aviso prévio em vez de cumpri-lo trabalhado.",
+"observacoes": "Entregar em duas vias na data da dispensa e colher a assinatura do empregado; se houver recusa, colher duas testemunhas. O contrato termina na data desta carta, mas a projeção do aviso indenizado conta para férias, 13º e data de baixa na CTPS. Prazo de 10 dias corridos, a partir do desligamento, para pagar a rescisão, dar baixa na CTPS e entregar as guias (art. 477, §6º, da CLT). O exame demissional é obrigatório e deve ser feito em até 10 dias do desligamento (NR-7) — daí os campos de data, hora e endereço da clínica. Enviar também o comunicado de dispensa ao eSocial.",
+"campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "DATA_EXAME_DEMISSIONAL",
+"rotulo": "Data do exame demissional",
+"tipo": "data",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Dia em que o empregado deve comparecer à clínica"
+},
+{
+"token": "HORA_EXAME_DEMISSIONAL",
+"rotulo": "Hora do exame demissional",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "O modelo já imprime \"hs\" depois; informe só o horário, ex.: 09:00"
+},
+{
+"token": "ENDERECO_EXAME_DEMISSIONAL",
+"rotulo": "Endereço da clínica do exame demissional",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Endereço completo do local do exame"
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+}
+],
+"texto_livre": []
+},
+{
+"id": "desistencia-vale-transporte",
+"titulo": "Opção de desistência do vale-transporte",
+"categoria": "Benefícios",
+"quando_usar": "Quando o empregado não quer receber vale-transporte porque tem meios próprios de locomoção e precisa formalizar essa recusa por escrito.",
+"observacoes": "Documento redigido em nome do empregado e assinado só por ele; não exige testemunhas. A opção é por tempo indeterminado, mas o empregado pode voltar atrás a qualquer momento — nesse caso é preciso novo termo de requisição de vale-transporte. Guarde o original no prontuário, pois é a prova de que a empresa não descumpriu a Lei 7.418/85. O nome da empregadora já vem impresso no modelo.",
+"campos": [
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número do dia."
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Mês por extenso."
+},
+{
+"token": "ANO2",
+"rotulo": "Ano (dois últimos dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime \"20\" antes; informe só os dois últimos dígitos."
+}
+],
+"texto_livre": []
+},
+{
+"id": "encaminhamento-abertura-conta-salario",
+"titulo": "Encaminhamento ao banco para abertura de conta salário",
+"categoria": "Admissão e contratos",
+"quando_usar": "Na admissão, quando a empresa envia o empregado recém-contratado ao banco onde mantém a conta empresarial para que ele abra a conta salário que receberá os pagamentos.",
+"observacoes": "Carta em papel timbrado dirigida ao banco: quem assina é o responsável da empresa, não o empregado. Confira os dados da conta empresarial (agência e conta corrente) antes de enviar. A conta salário é isenta de tarifas e o empregado não pode ser obrigado a abrir conta corrente comum. O modelo assume empregado brasileiro e solteiro — ajuste o texto se não for o caso. Traz cláusula de consentimento LGPD para o compartilhamento dos dados com a instituição bancária.",
+"campos": [
+{
+"token": "BANCO",
+"rotulo": "Nome do banco",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": "Mesmo banco em que a empresa mantém a conta empresarial."
+},
+{
+"token": "AGENCIA_EMPRESA",
+"rotulo": "Agência da conta empresarial",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": "Número da agência; o nome da agência é preenchido à mão no parêntese ao lado."
+},
+{
+"token": "CONTA_EMPRESA",
+"rotulo": "Conta corrente da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "RG_EMPREGADO",
+"rotulo": "RG do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "DATA_ADMISSAO",
+"rotulo": "Data de admissão",
+"tipo": "data",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Data a partir da qual o empregado será registrado."
+},
+{
+"token": "SALARIO_EMPREGADO",
+"rotulo": "Salário mensal",
+"tipo": "valor",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Só o número; o modelo já imprime o \"R$\" antes."
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura por extenso",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "ANO2",
+"rotulo": "Dois últimos dígitos do ano",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes."
+}
+],
+"texto_livre": []
+},
+{
+"id": "encaminhamento-exames-ocupacionais",
+"titulo": "Termo de encaminhamento para exames ocupacionais",
+"categoria": "LGPD e diversos",
+"quando_usar": "Quando a empresa manda o empregado à clínica de medicina do trabalho para fazer exame admissional, periódico, de retorno ao trabalho, de mudança de função ou demissional.",
+"observacoes": "É a carta que o empregado leva à clínica, endereçada a ela — preencha o nome da clínica no cabeçalho, além da função e da descrição das atividades no quadro do final, que é o que orienta o médico a emitir o ASO. O exame admissional tem de ser feito antes do primeiro dia de trabalho e o demissional dentro dos prazos do PCMSO. Há cláusula de consentimento LGPD porque o documento cita dados de saúde: só descreva a doença ou a causa do afastamento quando for exame de retorno ao trabalho. Assina o empregado; o ASO volta em duas vias.",
+"campos": [
+{
+"token": "TIPO_EXAME",
+"rotulo": "Tipo de exame ocupacional",
+"tipo": "opcao",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Admissional, periódico, retorno ao trabalho, mudança de função ou demissional."
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura por extenso",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "ANO2",
+"rotulo": "Dois últimos dígitos do ano",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes."
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Com bairro, cidade/UF e CEP."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "ficha-entrega-uniforme",
+"titulo": "Ficha de entrega de uniforme",
+"categoria": "Termos de responsabilidade",
+"quando_usar": "Quando a empresa entrega uniforme ao empregado e precisa registrar o recebimento, as regras de uso, conservação e devolução ao fim do contrato.",
+"observacoes": "Assinado só pelo empregado; não exige testemunhas. A linha \"Empregado: ____\" é a assinatura manuscrita e fica em branco. Ao final há uma tabela (Data / Tipo de uniforme e quantidade / Assinatura) preenchida à mão a cada entrega, inclusive nas trocas futuras — não há brancos automáticos nela. Guardar uma via assinada na pasta funcional: é ela que autoriza o desconto do valor do uniforme não devolvido nas verbas rescisórias (art. 462, parágrafo único, da CLT).",
+"campos": [
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+}
+],
+"texto_livre": []
+},
+{
+"id": "manutencao-plano-saude",
+"titulo": "Declaração de manutenção do plano de saúde após o desligamento",
+"categoria": "Desligamento",
+"quando_usar": "Na demissão sem justa causa de empregado que era coparticipante no custeio do plano de saúde, para registrar que ele foi comunicado das regras dos arts. 30 e 31 da Lei 9.656/1998 e para colher sua opção de manter ou não o plano.",
+"observacoes": "Deve ser colhido no ato da comunicação da dispensa, junto com o aviso prévio. Assinado pelo empregado e pela empregadora. O empregado marca à mão uma das duas opções (opta / não opta pela manutenção) — o modelo não tem branco para isso. Só cabe em demissão sem justa causa e para quem contribuía com o custeio; se ele optar, passa a pagar o valor integral do plano. Guarde uma via assinada e comunique a operadora.",
+"campos": [
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "RG_EMPREGADO",
+"rotulo": "RG do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura por extenso",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "ANO2",
+"rotulo": "Dois últimos dígitos do ano",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes do branco."
+}
+],
+"texto_livre": []
+},
+{
+"id": "opcao-desconto-contribuicoes-sindicais",
+"titulo": "Termo de opção de desconto das contribuições sindicais",
+"categoria": "LGPD e diversos",
+"quando_usar": "Quando a empresa precisa consultar por escrito se o empregado autoriza ou não o desconto da contribuição sindical anual e das contribuições previstas na convenção coletiva, antes de fazer qualquer retenção em folha.",
+"observacoes": "Sem esta autorização expressa e individual nenhum desconto sindical pode ser feito (art. 578/579 da CLT e Tema 935 do STF). Colha o termo antes do mês da data-base e refaça a cada nova data-base. Assinado só pelo empregado; não exige testemunhas. As opções (AUTORIZO / NÃO AUTORIZO) são marcadas à mão nos parênteses e não estão entre os campos preenchíveis; o campo \"Motivo\" só é preenchido quando o empregado não autoriza. O empregado pode alterar a opção a qualquer tempo, com novo formulário, e as contribuições já retidas não são devolvidas.",
+"campos": [
+{
+"token": "MES_DATA_BASE",
+"rotulo": "Mês da data-base da categoria",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Primeira parte do par \"(mês)/(ano)\" da convenção ou acordo coletivo aplicável."
+},
+{
+"token": "ANO_DATA_BASE",
+"rotulo": "Ano da data-base da categoria",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Segunda parte do par \"(mês)/(ano)\" da convenção ou acordo coletivo aplicável."
+},
+{
+"token": "MOTIVO_NAO_AUTORIZACAO_SINDICAL_ANUAL",
+"rotulo": "Motivo de não autorizar a contribuição sindical anual",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": "Só preencha se o empregado marcar NÃO AUTORIZO na contribuição sindical anual."
+},
+{
+"token": "MOTIVO_NAO_AUTORIZACAO_CONTRIBUICAO_NORMA_COLETIVA",
+"rotulo": "Motivo de não autorizar a contribuição da norma coletiva",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": "Só preencha se o empregado marcar NÃO AUTORIZO na contribuição prevista na convenção coletiva."
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número do dia."
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Mês por extenso."
+},
+{
+"token": "ANO2",
+"rotulo": "Ano (dois últimos dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime \"20\" antes."
+}
+],
+"texto_livre": []
+},
+{
+"id": "opcao-vale-refeicao",
+"titulo": "Declaração de opção ao vale-refeição com consentimento LGPD",
+"categoria": "Benefícios",
+"quando_usar": "Na admissão ou sempre que o empregado quiser aderir ou deixar de receber o vale-refeição, autorizando o desconto de 20% do valor diário e o compartilhamento de dados com a empresa fornecedora do benefício.",
+"observacoes": "ATENÇÃO: o arquivo original ainda tem alterações controladas (marcas de revisão) na lista de itens — aceite ou rejeite as revisões no Word antes de usar, senão a numeração sai como \"c)[b)]\". O documento tem duas vias com o mesmo conteúdo (uma para a empresa e outra para o empregado) — os dados de data e do quadro sintético se repetem e são preenchidos com os mesmos valores. O empregado marca à mão uma das opções (receber / não receber); o modelo não tem branco para isso. Assinado só pelo empregado, sem testemunhas. Para trocar a opção depois é preciso preencher um novo termo. Mantenha o desconto limitado a 20% do valor diário, conforme o PAT.",
+"campos": [
+{
+"token": "VALOR_DIARIO_VALE_REFEICAO",
+"rotulo": "Valor diário do vale-refeição",
+"tipo": "valor",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "O modelo já imprime \"R$\" antes do branco. Sobre esse valor incide o desconto de 20% a cargo do empregado."
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura por extenso",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "ANO2",
+"rotulo": "Dois últimos dígitos do ano",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes do branco."
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Com bairro, cidade/UF e CEP."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "opcao-vale-transporte-dinheiro",
+"titulo": "Declaração de opção de recebimento de vale-transporte em dinheiro",
+"categoria": "Benefícios",
+"quando_usar": "Na admissão ou sempre que o empregado precisa formalizar se quer ou não receber vale-transporte, optando pelo pagamento do benefício em dinheiro e declarando o percurso residência-trabalho.",
+"observacoes": "O empregado marca à mão uma das duas opções (não receber / receber) e, no quadro final, escreve o percurso de ida e de volta com o valor de cada passagem; esses campos e o e-mail/WhatsApp de contato não são preenchidos automaticamente. Se optar por não receber, deve escrever o motivo nas linhas em branco logo abaixo. Até 6% do salário básico pode ser descontado para custeio (art. 4º da Lei 7.418/85). O empregado se obriga a atualizar o endereço anualmente ou sempre que mudar. Contém cláusula de consentimento LGPD para compartilhar os dados com fornecedores de benefícios. Só o empregado assina.",
+"campos": [
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "É o endereço que serve de base para o benefício: rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "ponto-individual-manual",
+"titulo": "Folha de ponto individual manual",
+"categoria": "Férias e jornada",
+"quando_usar": "Para registrar manualmente a jornada mensal do empregado (entrada, intervalo e saída, dia a dia), quando a empresa não usa ponto eletrônico.",
+"observacoes": "O modelo não tem brancos preenchíveis automaticamente: é uma grade impressa com rótulos (EMPREGADOR, CEI/CNPJ, ENDEREÇO, EMPREGADO(A), CTPS, DATA DE ADMISSÃO, FUNÇÃO, HORÁRIO CONTRATUAL, PIS, MÊS, ANO) e 31 linhas de dias, todos preenchidos à mão ou digitados diretamente no arquivo. Imprima uma folha por empregado e por mês. O empregado assina cada dia; a marcação do intervalo é obrigatória para jornadas acima de 6 horas. Guarde as folhas por pelo menos 5 anos.",
+"campos": [],
+"texto_livre": []
+},
+{
+"id": "recibo-documentos-rescisorios",
+"titulo": "Recibo de entrega de documentos rescisórios",
+"categoria": "Desligamento",
+"quando_usar": "No acerto da rescisão, para o empregado dar quitação da entrega do TRCT, das guias do seguro-desemprego e do FGTS e da devolução da CTPS com a baixa anotada.",
+"observacoes": "Assinado pelo empregado no ato do acerto; não exige testemunhas. Só use quando as guias forem realmente entregues em papel — se a comunicação de dispensa e o saque forem feitos por meio eletrônico, risque os itens correspondentes. Vale como recibo de devolução da CTPS, então não é preciso termo separado. O prazo de pagamento e entrega é de 10 dias corridos do fim do contrato (art. 477, §6º da CLT).",
+"campos": [
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número do dia."
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Mês por extenso."
+},
+{
+"token": "ANO2",
+"rotulo": "Ano (dois últimos dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime \"20\" antes."
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "relatorio-ocorrencia-ponto",
+"titulo": "Relatório de ocorrência de ponto",
+"categoria": "Férias e jornada",
+"quando_usar": "Quando o empregado esquece de bater o ponto ou a marcação sai errada e é preciso justificar e documentar a correção feita no sistema de ponto eletrônico.",
+"observacoes": "Assinado pelo empregado; a empresa arquiva junto ao espelho de ponto do mês. A justificativa aqui não vale como abono da falta nem como perdão da empresa — a advertência, a suspensão ou a justa causa continuam possíveis. Guarde com o espelho de ponto para sustentar a alteração no programa de tratamento do SREP (Portaria 1.510/2009). Os campos \"Empregado(a)\", \"CPF nº\", \"Data\" e \"Assinatura\" do corpo do relatório vêm como linhas soltas no modelo e são preenchidos à mão na hora da assinatura.",
+"campos": [
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número do dia."
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Mês por extenso."
+},
+{
+"token": "ANO2",
+"rotulo": "Ano (dois últimos dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime \"20\" antes."
+}
+],
+"texto_livre": [
+{
+"campo": "OCORRENCIAS_PONTO",
+"rotulo": "Dias e justificativa das omissões ou erros de marcação",
+"apos": "(Dias e Justificativa para as omissões ou erros no batimento de ponto eletrônico):"
+}
+]
+},
+{
+"id": "requerimento-abono-pecuniario",
+"titulo": "Requerimento de abono pecuniário de férias",
+"categoria": "Férias e jornada",
+"quando_usar": "Quando o empregado quer vender 1/3 das suas férias, convertendo esse terço em dinheiro (abono pecuniário), antes da concessão do período.",
+"observacoes": "O pedido parte do empregado e deve ser feito até 15 dias antes do término do período aquisitivo (art. 143, §1º da CLT). Só o empregado assina; não exige testemunhas. Guarde junto com o aviso e o recibo de férias. O modelo não tem campo para o período de férias nem para o valor: se precisar registrar isso, faça em documento anexo.",
+"campos": [
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "requisicao-vale-transporte",
+"titulo": "Declaração de opção de recebimento do vale-transporte",
+"categoria": "Benefícios",
+"quando_usar": "Na admissão ou na renovação anual, quando o empregado precisa declarar se quer ou não receber vale-transporte e informar o percurso residência-trabalho e o valor das passagens.",
+"observacoes": "Assinado só pelo empregado; não exige testemunhas. A opção (receber / não receber) é marcada à mão nos parênteses e não está entre os campos preenchíveis. O quadro de deslocamento (linhas de ida e volta com o valor de cada passagem) fica no final do modelo e é preenchido item a item na hora, não por token. Deve ser renovado anualmente ou sempre que mudar o endereço ou o itinerário. Lembre que até 6% do salário básico pode ser descontado e que declaração falsa é falta grave (Lei 7.418/85 e Decreto 95.247/87). Guarde o original no prontuário.",
+"campos": [
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "É o endereço que serve de base para o cálculo do vale-transporte: rua, número, bairro, cidade/UF e CEP."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número do dia."
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Mês por extenso."
+},
+{
+"token": "ANO2",
+"rotulo": "Ano (dois últimos dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime \"20\" antes."
+}
+],
+"texto_livre": [
+{
+"campo": "MOTIVO_RECUSA_VALE_TRANSPORTE",
+"rotulo": "Motivo de não querer o vale-transporte",
+"apos": "Declaro não ser de meu interesse o recebimento do vale-transporte pelos seguintes motivos:"
+}
+]
+},
+{
+"id": "telegrama-convocacao-comparecimento",
+"titulo": "Telegrama de convocação para comparecimento presencial",
+"categoria": "LGPD e diversos",
+"quando_usar": "Quando o empregado precisa comparecer pessoalmente à empresa (acerto rescisório, exame médico, entrega de documentos, retorno ao trabalho) e não atende aos contatos informais.",
+"observacoes": "O texto é redigido para ser enviado por telegrama com aviso de recebimento (ou carta com AR) — o comprovante de envio e entrega é a prova, então guarde-o junto com uma cópia do texto. Assinado pela empregadora; não exige testemunhas. Escreva a finalidade de forma objetiva e informe endereço completo; se houver dia e hora marcados, inclua-os na finalidade.",
+"campos": [
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_COMPARECIMENTO",
+"rotulo": "Endereço onde o empregado deve comparecer",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Normalmente o endereço da empresa, mas pode ser outro local (clínica, filial). Informe endereço completo."
+},
+{
+"token": "MOTIVO_CONVOCACAO",
+"rotulo": "Finalidade do comparecimento",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Ex.: acerto rescisório, realização de exame demissional, retorno ao trabalho."
+}
+],
+"texto_livre": []
+},
+{
+"id": "telegrama-reintegracao",
+"titulo": "Telegrama de reintegração ao emprego",
+"categoria": "Desligamento",
+"quando_usar": "Quando a empresa anula uma dispensa sem justa causa já comunicada (estabilidade descoberta depois, gestante, acidente de trabalho, decisão judicial) e precisa chamar o empregado de volta ao posto de trabalho.",
+"observacoes": "Envie por telegrama com aviso de recebimento ou carta com AR e guarde o comprovante — é a prova de que a empresa ofereceu a reintegração. Assinado pela empregadora; não exige testemunhas. Feita a reintegração, o contrato segue sem interrupção: refaça a folha, estorne a rescisão e pague os salários do período parado. Se o empregado se recusar a voltar, registre a recusa por escrito.",
+"campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "MOTIVO_ANULACAO_DEMISSAO",
+"rotulo": "Motivo da anulação da demissão",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Complete a frase \"Isto se deve, pois ...\". Ex.: foi constatada gravidez no curso do aviso prévio; determinação judicial nos autos do processo nº ..."
+},
+{
+"token": "DATA_COMPARECIMENTO",
+"rotulo": "Data em que deve comparecer",
+"tipo": "data",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Data do retorno ao posto de trabalho."
+},
+{
+"token": "HORA_COMPARECIMENTO",
+"rotulo": "Horário de comparecimento",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Só o horário; o modelo já imprime \"hs.\" depois."
+},
+{
+"token": "ENDERECO_COMPARECIMENTO",
+"rotulo": "Endereço onde deve se apresentar",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Endereço completo do posto de trabalho."
+}
+],
+"texto_livre": []
+},
+{
+"id": "termo-adesao-plano-saude",
+"titulo": "Solicitação de adesão ao plano de saúde",
+"categoria": "Benefícios",
+"quando_usar": "Quando o empregado opta por aderir (ou por não aderir) ao plano de saúde da empresa e precisa indicar a modalidade escolhida e os dependentes que serão incluídos.",
+"observacoes": "Assinado pelo empregado; não exige testemunhas. A tabela de preços e a discriminação da rede credenciada devem ser anexadas ao termo — o texto diz expressamente que o anexo é parte integrante. O empregado recebe cópia do contrato assinado. As opções de adesão (opta / não opta), a modalidade do plano (Original, Padrão, Integral, Supremo e tipo de acomodação), o nome da operadora e o quadro de dependentes são marcados/preenchidos à mão ou caso a caso, pois não são brancos do modelo. Autoriza desconto em folha.",
+"campos": [
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número do dia."
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso, em minúsculas."
+},
+{
+"token": "ANO2",
+"rotulo": "Ano (dois últimos dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime \"20\" antes."
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "termo-auxilio-combustivel",
+"titulo": "Termo de auxílio combustível (vale-transporte pago em dinheiro)",
+"categoria": "Benefícios",
+"quando_usar": "Quando o empregado usa o próprio veículo no trajeto casa-trabalho e a empresa converte o vale-transporte em dinheiro, a título de auxílio combustível.",
+"observacoes": "Assinado pelo empregado e pela empregadora; não exige testemunhas. O valor é apenas substitutivo do vale-transporte e não cobre pneus, reparos, colisões ou desgaste. Prevê desconto proporcional em faltas injustificadas e nas interrupções/suspensões do contrato (férias, licenças). A empresa pode voltar ao vale-transporte em cartão a qualquer tempo, com base no art. 468 da CLT. Atenção: a linha de data do modelo não tem espaço para o dia — sai como \"Cidade, de mês de 20XX\".",
+"campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "VALOR_AUXILIO_COMBUSTIVEL",
+"rotulo": "Valor mensal do auxílio combustível",
+"tipo": "valor",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Só o número; o modelo já imprime \"R$\" antes. Ex.: 350,00"
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso, em minúsculas."
+},
+{
+"token": "ANO2",
+"rotulo": "Ano (dois últimos dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime \"20\" antes."
+}
+],
+"texto_livre": []
+},
+{
+"id": "termo-deposito-conta-propria",
+"titulo": "Termo de responsabilidade por conta bancária própria",
+"categoria": "Termos de responsabilidade",
+"quando_usar": "Quando o empregado prefere receber salário e demais verbas em uma conta bancária que já tem, em vez de conta salário aberta pela empresa, e assume a responsabilidade pelos dados informados.",
+"observacoes": "A conta informada tem de ser de titularidade do próprio empregado. Ele marca à mão se opta por conta salário ou por conta já existente, e se a conta é corrente ou poupança. Exige anexo: cópia do cartão bancário ou do extrato, enviada pelo canal indicado no termo; o cadastro só vale depois dessa confirmação. Se mudar de conta, o empregado deve avisar por escrito e com protocolo. Contém consentimento LGPD para compartilhar os dados com o banco da empregadora e com a contabilidade. Só o empregado assina; não exige testemunhas.",
+"campos": [
+{
+"token": "CANAL_ENVIO_COMPROVANTE",
+"rotulo": "Canal pelo qual o empregado envia o cartão ou extrato",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Entra na frase \"para confirmação das informações por ___ para o número ___\". Ex.: WhatsApp"
+},
+{
+"token": "NUMERO_CONTATO_EMPRESA",
+"rotulo": "Número da empresa que recebe o cartão ou extrato",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": "Telefone/WhatsApp do RH para onde o empregado deve enviar o comprovante"
+},
+{
+"token": "BANCO",
+"rotulo": "Banco do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Nome ou número do banco, ex.: 341 - Itaú"
+},
+{
+"token": "NUMERO_CONTA",
+"rotulo": "Número da conta (com dígito)",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "A conta tem de ser de titularidade do próprio empregado"
+},
+{
+"token": "AGENCIA_BANCARIA",
+"rotulo": "Agência (com dígito, se houver)",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "É também o titular da conta bancária informada"
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "termo-deposito-conta-terceiros",
+"titulo": "Termo de responsabilidade por depósito em conta de terceiro",
+"categoria": "Termos de responsabilidade",
+"quando_usar": "Quando o empregado pede que salário, demais verbas trabalhistas e a rescisão sejam depositados na conta bancária de outra pessoa, por ter pendências ou restrições nas próprias contas.",
+"observacoes": "Quem assina é só o empregado; não exige testemunhas. O empregado precisa entregar cópia do cartão bancário ou do extrato do titular da conta por e-mail, e a conta só é cadastrada depois da confirmação desses dados. O modelo tem duas caixas de marcar (Conta Corrente / Conta Poupança) que não são preenchidas automaticamente: marque a correta antes de imprimir. Guardar junto com o comprovante do titular, porque é a prova de que a mudança partiu do empregado.",
+"campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "EMAIL_EMPRESA",
+"rotulo": "E-mail da empresa para envio do comprovante bancário",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": "E-mail do DP/RH que vai receber a cópia do cartão ou do extrato do titular"
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "BANCO_DEPOSITO",
+"rotulo": "Banco da conta indicada",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Nome ou número do banco"
+},
+{
+"token": "AGENCIA_DEPOSITO",
+"rotulo": "Agência da conta indicada",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Com dígito, se houver"
+},
+{
+"token": "CONTA_DEPOSITO",
+"rotulo": "Número da conta indicada",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Com dígito verificador"
+},
+{
+"token": "NOME_TITULAR_CONTA",
+"rotulo": "Nome completo do titular da conta bancária",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "O terceiro que vai receber os depósitos"
+},
+{
+"token": "CPF_TITULAR_CONTA",
+"rotulo": "CPF do titular da conta bancária",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+}
+],
+"texto_livre": []
+},
+{
+"id": "termo-entrega-cracha",
+"titulo": "Declaração de entrega de crachá",
+"categoria": "Termos de responsabilidade",
+"quando_usar": "Quando a empresa entrega o crachá de identificação ao empregado, normalmente na admissão, e quer registrar o recebimento e a autorização de desconto em caso de perda.",
+"observacoes": "Assinado só pelo empregado; não exige testemunhas. É esta assinatura que autoriza o desconto em folha do custo de um novo crachá em caso de perda ou extravio por culpa do empregado (art. 462, §1º, da CLT) — sem ela o desconto é indevido. Guardar a via assinada no prontuário e cobrar a devolução do crachá no desligamento.",
+"campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+}
+],
+"texto_livre": []
+},
+{
+"id": "termo-entrega-devolucao-ctps",
+"titulo": "Recibo de entrega e devolução da CTPS",
+"categoria": "Admissão e contratos",
+"quando_usar": "Quando o empregado entrega a CTPS física à empresa para as anotações (admissão, alteração de salário ou função, férias, rescisão) e depois a recebe de volta.",
+"observacoes": "São dois recibos no mesmo documento: o de cima (entrega da CTPS à empresa) é assinado pelo empregado no dia em que ele entrega a carteira; o de baixo (devolução) só é assinado quando a CTPS volta às mãos dele. Por isso as duas datas são diferentes — se a devolução ainda não ocorreu, deixe os campos da segunda data em branco e preencha à mão na hora. A empresa tem 48 horas para fazer as anotações e devolver (art. 29 da CLT); o recibo assinado é a prova de que a carteira foi devolvida no prazo. Assinado só pelo empregado, sem testemunhas. Vale para a CTPS em papel; com a CTPS digital não há entrega física e este recibo é dispensável.",
+"campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "CTPS_EMPREGADO",
+"rotulo": "Número da CTPS",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Só o número; a série tem campo próprio"
+},
+{
+"token": "SERIE_CTPS",
+"rotulo": "Série da CTPS",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "DATA_EMISSAO_CTPS",
+"rotulo": "Data de emissão da CTPS",
+"tipo": "data",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Vale para os dois recibos"
+},
+{
+"token": "DIA_1",
+"rotulo": "Dia da entrega da CTPS à empresa",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES_1",
+"rotulo": "Mês da entrega da CTPS à empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2_1",
+"rotulo": "Ano da entrega da CTPS (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+},
+{
+"token": "DIA_2",
+"rotulo": "Dia da devolução da CTPS ao empregado",
+"tipo": "numero",
+"obrigatorio": false,
+"origem": "data",
+"ajuda": "Só o número; deixe em branco se a devolução ainda não ocorreu"
+},
+{
+"token": "MES_2",
+"rotulo": "Mês da devolução da CTPS ao empregado",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "data",
+"ajuda": "Por extenso; deixe em branco se a devolução ainda não ocorreu"
+},
+{
+"token": "ANO2_2",
+"rotulo": "Ano da devolução da CTPS (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": false,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes; deixe em branco se a devolução ainda não ocorreu"
+}
+],
+"texto_livre": []
+},
+{
+"id": "termo-entrega-epi",
+"titulo": "Ficha de entrega de EPI",
+"categoria": "Termos de responsabilidade",
+"quando_usar": "Quando a empresa entrega equipamentos de proteção individual ao empregado e precisa registrar o recebimento e as responsabilidades de uso, guarda e devolução.",
+"observacoes": "Assinado só pelo empregado; não exige testemunhas. O quadro de equipamentos (espécie, marca, quantidade, C.A., data de entrega, assinatura, quantidade devolvida e data de devolução) é preenchido à mão ou item a item na hora da entrega, e não está entre os brancos deste modelo. Guardar a via assinada no prontuário: é a prova exigida pela NR-6 em fiscalização e em ação trabalhista.",
+"campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+}
+],
+"texto_livre": []
+},
+{
+"id": "termo-responsabilidade-atualizacao-dados",
+"titulo": "Termo de responsabilidade sobre atualização de dados cadastrais",
+"categoria": "Termos de responsabilidade",
+"quando_usar": "Na admissão, para o empregado se comprometer a comunicar de imediato qualquer mudança nos dados informados à empresa (endereço, estado civil, dependentes, escolaridade, contatos e 2ª vias de documentos).",
+"observacoes": "Assinado apenas pelo empregado; não exige testemunhas. Guardar no prontuário junto com a ficha de registro. O texto lembra que a omissão pode configurar justa causa (art. 482 da CLT) e o art. 171 do Código Penal. O quadro sintético no fim traz a qualificação das partes e um campo de e-mail para contato/assinatura que é preenchido à mão ou por assinatura eletrônica.",
+"campos": [
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número do dia."
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso, em minúsculas."
+},
+{
+"token": "ANO2",
+"rotulo": "Ano (dois últimos dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime \"20\" antes."
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "termo-responsabilidade-celular",
+"titulo": "Termo de responsabilidade pelo uso do celular da empresa",
+"categoria": "Termos de responsabilidade",
+"quando_usar": "Quando a empresa entrega um aparelho celular corporativo ao empregado e precisa registrar que o uso é exclusivamente a serviço e que ele responde por perda, furto, dano e mau uso.",
+"observacoes": "Assinado só pelo empregado; não exige testemunhas. O modelo tem duas partes: o termo de entrega (assinado na entrega do aparelho) e a DECLARAÇÃO DE ESTADO DE CONSERVAÇÃO E DEVOLUÇÃO no fim, assinada pela empresa e pelo empregado só na devolução — por isso a data da devolução é preenchida depois, e é preciso riscar a alternativa que não se aplica (aparelho em perfeito funcionamento OU com avarias). A descrição do aparelho no quadro sintético (tipo, marca, modelo, número de série e acessórios) não está entre os brancos automáticos: preencha à mão ou no Word antes de imprimir. O aparelho deve ser devolvido antes das férias e no desligamento.",
+"campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da entrega do celular",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da entrega do celular",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da entrega (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+},
+{
+"token": "DIA_DEVOLUCAO",
+"rotulo": "Dia da devolução do celular",
+"tipo": "numero",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": "Só o número. Fica em branco se o termo está sendo emitido só para a entrega"
+},
+{
+"token": "MES_DEVOLUCAO",
+"rotulo": "Mês da devolução do celular",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2_DEVOLUCAO",
+"rotulo": "Ano da devolução (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": "O modelo já imprime o \"20\" antes"
+}
+],
+"texto_livre": [
+{
+"campo": "AVARIAS_DEVOLUCAO",
+"rotulo": "Avarias ou acessórios faltantes na devolução",
+"apos": "O equipamento foi entregue com as seguintes avarias ou falta de acessórios"
+}
+]
+},
+{
+"id": "termo-responsabilidade-equipamento",
+"titulo": "Termo de responsabilidade pelo uso e posse de equipamento",
+"categoria": "Termos de responsabilidade",
+"quando_usar": "Quando a empresa entrega ao empregado um equipamento de trabalho (notebook, tablet, ferramenta, máquina) e precisa registrar que o uso é exclusivamente profissional e que ele responde por perda, furto, dano, mau uso e instalação de software irregular.",
+"observacoes": "Assinam a empregadora, o empregado e duas testemunhas — nome completo, endereço e CPF de cada testemunha são preenchidos à mão nas linhas do modelo. O modelo tem duas partes: o termo de entrega e a DECLARAÇÃO DE ESTADO DE CONSERVAÇÃO E DEVOLUÇÃO, assinada só na devolução (também com duas testemunhas) e entregue ao empregado em cópia — por isso a data e as avarias da devolução ficam em branco na entrega, e é preciso riscar a alternativa que não se aplica (equipamento em perfeito funcionamento OU com avarias). A descrição dos equipamentos no quadro sintético (tipo, marca, modelo, número de série e acessórios, em três blocos) não está entre os brancos automáticos: preencha à mão ou no Word antes de imprimir. Em caso de perda, roubo ou furto o empregado precisa fazer boletim de ocorrência e entregá-lo à empresa para acionar o seguro.",
+"campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da entrega do equipamento",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da entrega do equipamento",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da entrega (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+},
+{
+"token": "DIA_DEVOLUCAO",
+"rotulo": "Dia da devolução do equipamento",
+"tipo": "numero",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": "Só o número. Fica em branco se o termo está sendo emitido só para a entrega"
+},
+{
+"token": "MES_DEVOLUCAO",
+"rotulo": "Mês da devolução do equipamento",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2_DEVOLUCAO",
+"rotulo": "Ano da devolução (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": "O modelo já imprime o \"20\" antes"
+},
+{
+"token": "AVARIA_1",
+"rotulo": "Avaria ou acessório faltante 1 (na devolução)",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": "Só preencher se o equipamento voltar com problema"
+},
+{
+"token": "AVARIA_2",
+"rotulo": "Avaria ou acessório faltante 2 (na devolução)",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "AVARIA_3",
+"rotulo": "Avaria ou acessório faltante 3 (na devolução)",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "termo-responsabilidade-motocicleta",
+"titulo": "Termo de responsabilidade pelo uso de motocicleta da empresa",
+"categoria": "Termos de responsabilidade",
+"quando_usar": "Quando a empresa entrega uma motocicleta ao empregado para uso exclusivo no trabalho e precisa registrar as regras de conduta no trânsito, o uso obrigatório de capacete e vestuário de proteção e a responsabilidade por multas e avarias.",
+"observacoes": "Assinam o empregado e a empregadora, com espaço para 2 testemunhas (nome, endereço e CPF preenchidos à mão). O termo é anexo ao contrato de trabalho. Antes de imprimir, reveja no texto do modelo três lacunas em destaque que não são campos automáticos: o quadro \"DADOS COMPLETOS DA MOTOCICLETA\" (marca, modelo, ano, placa, chassi, renavam), a quilometragem para a revisão mecânica no item XIII e as regiões cobertas pelo rastreamento por satélite no item XVI; a descrição da motocicleta também se repete no Termo de Posse e no Termo de Devolução. O Termo de Posse é assinado junto na entrega; o Termo de Devolução fica em branco e só é preenchido na vistoria de devolução — por isso a data dele não é preenchida na geração. Guarde junto o comprovante de entrega dos EPIs de motociclista (capacete, viseira e vestuário de proteção).",
+"campos": [
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número do dia. Vale para o termo principal e para o Termo de Posse."
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Mês por extenso."
+},
+{
+"token": "ANO2",
+"rotulo": "Ano (dois últimos dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime \"20\" antes."
+}
+],
+"texto_livre": [
+{
+"campo": "OBSERVACOES_ESTADO_MOTOCICLETA_ENTREGA",
+"rotulo": "Observações sobre o estado da motocicleta na entrega",
+"apos": "Observações: (constar a existência de riscos e onde, ou, constar a inexistência de quaisquer riscos)"
+}
+]
+},
+{
+"id": "termo-responsabilidade-senha",
+"titulo": "Termo de responsabilidade pela entrega de senha",
+"categoria": "Termos de responsabilidade",
+"quando_usar": "Quando a empresa entrega ao empregado uma senha de acesso a sistema, conta ou serviço e precisa registrar que ela é pessoal, que não pode ser emprestada nem alterada sem aviso, e quais procedimentos ele deve seguir ao usá-la.",
+"observacoes": "Assinado só pelo empregado; não exige testemunhas. Vale enquanto durar o contrato ou a função que exige a senha — na mudança de função ou no desligamento, cancele o acesso. O modelo traz a qualificação do empregado e da empregadora escritas por extenso no corpo do texto (\"..qualificação completa..\") e não em quadro sintético: confira esses trechos no Word antes de imprimir. O parágrafo de exemplo entre parênteses, que explica o que descrever nos procedimentos, deve ser apagado depois de escrever os procedimentos reais.",
+"campos": [
+{
+"token": "SISTEMA_SENHA",
+"rotulo": "Sistema ou serviço a que a senha dá acesso",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Aparece no título do termo, por exemplo: DO SISTEMA DE PONTO, DO E-MAIL CORPORATIVO"
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+}
+],
+"texto_livre": [
+{
+"campo": "PROCEDIMENTOS_SENHA",
+"rotulo": "Procedimentos que o empregado deve seguir ao usar a senha",
+"apos": "Descrever todos os procedimentos"
+}
+]
+},
+{
+"id": "termo-responsabilidade-veiculo",
+"titulo": "Termo de responsabilidade pelo uso de veículo da empresa",
+"categoria": "Termos de responsabilidade",
+"quando_usar": "Quando a empresa entrega um veículo automotor ao empregado para uso exclusivo no trabalho e precisa registrar as regras de uso, a responsabilidade por multas e avarias e a autorização de desconto em folha.",
+"observacoes": "Assinam o empregado e a empregadora, na presença de 2 testemunhas (nome, endereço e CPF preenchidos à mão), em 2 vias de igual teor. O termo é anexo ao contrato de trabalho e vale por prazo indeterminado enquanto durar o vínculo. O documento traz ainda o \"Termo de Posse\", assinado junto com o termo principal na entrega do veículo, e o \"Termo de Devolução\", que fica em branco e só é preenchido e assinado na vistoria de devolução — por isso a data do Termo de Devolução não é preenchida na geração. O croqui de vistoria e as observações sobre riscos e avarias são preenchidos na hora da entrega e da devolução.",
+"campos": [
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "DESCRICAO_VEICULO",
+"rotulo": "Descrição do veículo",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "Marca, modelo, ano e cor — por exemplo \"Fiat Strada Endurance 1.4, 2023/2024, branca\"."
+},
+{
+"token": "PLACA_VEICULO",
+"rotulo": "Placa do veículo",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número do dia. Vale para o termo principal e para o Termo de Posse."
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Mês por extenso."
+},
+{
+"token": "ANO2",
+"rotulo": "Ano (dois últimos dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime \"20\" antes."
+}
+],
+"texto_livre": [
+{
+"campo": "OBSERVACOES_ESTADO_VEICULO_ENTREGA",
+"rotulo": "Observações sobre o estado do veículo na entrega",
+"apos": "Observações: (constar a existência de riscos e onde, ou, constar a inexistência de quaisquer riscos)"
+}
+]
+},
+{
+"id": "termo-salario-familia",
+"titulo": "Termo de responsabilidade de salário-família",
+"categoria": "Benefícios",
+"quando_usar": "Quando o empregado com filhos passa a receber o salário-família e precisa se responsabilizar por comunicar os fatos que fazem cessar o direito (óbito do filho, fim da invalidez, decisão judicial).",
+"observacoes": "Assinado só pelo empregado; não precisa de testemunhas. Depende de anexos obrigatórios: CTPS (digital), certidão de nascimento do filho, caderneta de vacinação (menor de 6 anos, entrega anual em novembro) e comprovante de frequência escolar (a partir de 7 anos, entrega em maio e novembro). O benefício só é devido a partir do mês em que a documentação é entregue. Precisa ser refeito a cada novo dependente. O quadro de beneficiários no fim (nome, data de nascimento, invalidez) é preenchido caso a caso.",
+"campos": [
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número do dia."
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso, em minúsculas."
+},
+{
+"token": "ANO2",
+"rotulo": "Ano (dois últimos dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime \"20\" antes."
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": []
+},
+{
+"id": "termo-suspensao-empregado",
+"titulo": "Termo de suspensão disciplinar do empregado",
+"categoria": "Disciplina",
+"quando_usar": "Quando as advertências anteriores não resolveram e a empresa decide aplicar suspensão disciplinar, afastando o empregado por alguns dias sem salário, em razão de uma falta cometida.",
+"observacoes": "A suspensão disciplinar não pode passar de 30 dias seguidos, sob pena de ser considerada rescisão injusta (art. 474 da CLT). A punição deve ser imediata à apuração da falta, sob pena de perdão tácito, e os dias suspensos são descontados do salário. Assinam o empregado e a empregadora; se o empregado se recusar a assinar, colha a assinatura de duas testemunhas do ato. Descreva a falta de forma concreta (data, local, conduta) e guarde as provas.",
+"campos": [
+{
+"token": "DIAS_SUSPENSAO",
+"rotulo": "Quantidade de dias de suspensão",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "especifico",
+"ajuda": "No máximo 30 dias seguidos (art. 474 da CLT)"
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número"
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Por extenso"
+},
+{
+"token": "ANO2",
+"rotulo": "Ano da assinatura (dois dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime o \"20\" antes"
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo do empregado",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP"
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empregadora",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+}
+],
+"texto_livre": [
+{
+"campo": "DESCRICAO_FALTA",
+"rotulo": "Descrição da falta que motivou a suspensão",
+"apos": "Como de nada valeram nossas advertências verbais"
+}
+]
+},
+{
+"id": "termo-uso-imagem-autonomo",
+"titulo": "Termo de uso de imagem para fins promocionais e internos",
+"categoria": "LGPD e diversos",
+"quando_usar": "Quando a empresa vai fotografar ou filmar uma pessoa (autônomo, prestador ou colaborador) e precisa da autorização por escrito para usar a imagem em redes sociais, site, anúncios e treinamentos internos, sem pagar cachê.",
+"observacoes": "A autorização é graciosa (sem contraprestação). Assinam o cedente da imagem e o representante da empresa (cessionária), além de 2 testemunhas com nome, endereço, RG e CPF — os campos das testemunhas ficam em branco para preenchimento à mão. O uso é livre por 5 anos e passa a ser por prazo indeterminado depois disso, salvo se o cedente notificar por escrito até 60 dias antes do fim desse prazo. Serve também como consentimento LGPD, por isso guarde a via assinada.",
+"campos": [
+{
+"token": "CONSENTIMENTO_ADICIONAL_1",
+"rotulo": "Consentimento adicional 1",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": "Outra finalidade de uso da imagem que se queira listar além das já previstas. Deixe em branco se não houver."
+},
+{
+"token": "CONSENTIMENTO_ADICIONAL_2",
+"rotulo": "Consentimento adicional 2",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": "Deixe em branco se não houver."
+},
+{
+"token": "CONSENTIMENTO_ADICIONAL_3",
+"rotulo": "Consentimento adicional 3",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": "Deixe em branco se não houver."
+},
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa (cessionária)",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "CNPJ_EMPRESA",
+"rotulo": "CNPJ da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPRESA",
+"rotulo": "Endereço completo da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "NOME_EMPREGADO",
+"rotulo": "Nome completo de quem cede a imagem",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "É o CEDENTE do termo."
+},
+{
+"token": "CPF_EMPREGADO",
+"rotulo": "CPF de quem cede a imagem",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": ""
+},
+{
+"token": "ENDERECO_EMPREGADO",
+"rotulo": "Endereço completo de quem cede a imagem",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empregado",
+"ajuda": "Rua, número, bairro, cidade/UF e CEP."
+},
+{
+"token": "CIDADE",
+"rotulo": "Cidade da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": ""
+},
+{
+"token": "DIA",
+"rotulo": "Dia da assinatura",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Só o número do dia."
+},
+{
+"token": "MES",
+"rotulo": "Mês da assinatura",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "Mês por extenso."
+},
+{
+"token": "ANO2",
+"rotulo": "Ano (dois últimos dígitos)",
+"tipo": "numero",
+"obrigatorio": true,
+"origem": "data",
+"ajuda": "O modelo já imprime \"20\" antes."
+}
+],
+"texto_livre": []
+}
+]

@@ -654,6 +654,17 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "documentos",
+    icon: "📄",
+    label: "Documentos",
+    desc: "Fábrica de documentos trabalhistas (advertência, contratos, desligamento, termos…) — gera o DOCX preenchido do escritório",
+    area: "time",
+    acoes: [
+      { id: "gerar",          label: "Gerar documentos preenchidos", sensivel: true },
+      { id: "configEmpresas", label: "Editar os dados trabalhistas das empresas", sensivel: true },
+    ],
+  },
+  {
     id: "iaGovernanca",
     icon: "🛡️",
     label: "Governança de IA",

@@ -23,8 +23,11 @@ const SEED: Seed[] = [
   { modulo: "wikiProcessos", resp: "ia", titulo: "Links do guia pro próprio sistema (deep-links) — decidir target (_top pra navegar o app x _blank) e como o iframe abre a rota certa do rid atual" },
   { modulo: "wikiProcessos", resp: "ia", titulo: "Avaliar reaproveitar o wikiGuias/wikiDocs como fonte da skill do Claude (SKILL.md de Pessoas) — hoje as references são geradas do HTML canônico por script externo" },
   { modulo: "wikiProcessos", resp: "gustavo", titulo: "Popular o acervo das áreas: subir regulamento interno, convenção coletiva e demais docs de referência (Acervo de cada área — PDF/imagem extraem texto sozinhos; docx/outros = colar texto)" },
-  { modulo: "wikiProcessos", resp: "ia", titulo: "FÁBRICA DE DOCUMENTOS (próxima rodada): módulo na área Pessoas que pega os 50 modelos .docx do escritório, preenche por empresa (cadastro) + empregado (Pessoas) + IA nos textos livres e entrega o DOCX preenchido. PDF exato fica na skill/LibreOffice por ora (decisão do usuário)." },
-  { modulo: "wikiProcessos", resp: "gustavo", titulo: "docx→PDF idêntico no app (fábrica): quando quiser PDF direto no app, subir um conversor LibreOffice/Gotenberg no host do Railway (onde roda o Evolution) e o app chama. Por ora, PDF sai pela skill." },
+  // ── Documentos (fábrica de documentos trabalhistas) ──
+  { modulo: "documentos", resp: "gustavo", titulo: "Preencher os Dados trabalhistas das 4 empresas (🏢 Dados das empresas) — razão, CNPJ, endereço, cidade, e-mail, contato e conta salário. Sem isso os campos de empresa saem em branco." },
+  { modulo: "documentos", resp: "ia", titulo: "IA redigir os textos livres (motivo da advertência etc.) a partir do relato — hoje o texto é digitado à mão no gerador. Endpoint dedicado + botão '✍️ IA redigir'." },
+  { modulo: "documentos", resp: "ia", titulo: "Ampliar o auto-preenchimento do empregado (RG, CTPS, endereço, salário) quando esses campos existirem no cadastro; hoje só nome/CPF/admissão vêm automáticos." },
+  { modulo: "documentos", resp: "gustavo", titulo: "docx→PDF idêntico no app: quando quiser PDF direto (não pela skill), subir LibreOffice/Gotenberg no host do Railway (onde roda o Evolution) e o app chama. Por ora, DOCX no app + PDF pela skill." },
 
   // ── Pessoas / onboarding ──
   { modulo: "pessoas", resp: "gustavo", titulo: "Recuperação de senha 100% automática: liberar Admin SDK (org policy) OU configurar domínio/remetente verificado nos templates de Authentication do Firebase (pra o email de reset parar de cair no spam do Hotmail)", descricao: "Sem Admin não dá pra resetar senha de conta existente por código — só recriar. Hoje: apagar no Console + '🔁 Reenviar acesso (email)' recria e manda pelo Resend." },
