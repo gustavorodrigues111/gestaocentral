@@ -18,14 +18,17 @@ import { fmtBR } from "../../core/utils/date";
 import type { Pessoa, Empregado } from "../../core/types";
 import CATALOGO from "./catalogo.json";
 import MARCACOES_JSON from "./marcacoes.json";
+import QUADROS_JSON from "./quadros.json";
 
 type Campo = { token: string; rotulo: string; tipo: string; obrigatorio: boolean; origem: string; ajuda: string };
 type TextoLivre = { campo: string; rotulo: string; apos: string };
 type DocModelo = { id: string; titulo: string; categoria: string; quando_usar: string; observacoes: string; campos: Campo[]; texto_livre: TextoLivre[] };
 type MarcOpcao = { valor: string; label: string; ancora: string };
 type Marcacao = { campo: string; rotulo: string; opcoes: MarcOpcao[] };
+type Quadro = { titulo: string; tabela: number; linha_inicial: number; col_inicial: number; max_linhas: number; podeAdicionar: boolean; colunas: string[] };
 const DOCS = CATALOGO as DocModelo[];
 const MARCACOES = MARCACOES_JSON as Record<string, Marcacao[]>;
+const QUADROS = QUADROS_JSON as Record<string, Quadro[]>;
 
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
@@ -123,7 +126,7 @@ export function DocumentosPage() {
       )}
 
       {sel && podeGerar && (
-        <GeradorModal doc={sel} rid={rid || ""} restaurants={restaurants} pessoas={pessoas} empregados={empregados}
+        <GeradorModal key={sel.id} doc={sel} rid={rid || ""} restaurants={restaurants} pessoas={pessoas} empregados={empregados}
           empresas={empresas} onClose={() => setSel(null)} />
       )}
       {configEmpresa && podeConfig && (
@@ -145,6 +148,7 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
   const [values, setValues] = useState<Record<string, string>>({});
   const [livres, setLivres] = useState<Record<string, string>>({});
   const [marcado, setMarcado] = useState<Record<string, string>>({});
+  const [linhasQ, setLinhasQ] = useState<Record<number, string[][]>>({});
   const [assinaturas, setAssinaturas] = useState(false);
   const [testemunhas, setTestemunhas] = useState(false);
   const [gerando, setGerando] = useState(false);
@@ -157,6 +161,15 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
   const empresaData = empresas[empresaRid] || {};
   const marcs = MARCACOES[modelo.id] || [];
   const faltamMarcacoes = marcs.some(g => !marcado[g.campo]);
+  const quads = QUADROS[modelo.id] || [];
+  const linhasDe = (qi: number, cols: number) => linhasQ[qi] || [Array(cols).fill("")];
+  const setCel = (qi: number, ri: number, ci: number, v: string, cols: number) => setLinhasQ(s => {
+    const cur = (s[qi] || [Array(cols).fill("")]).map(r => [...r]);
+    cur[ri][ci] = v;
+    return { ...s, [qi]: cur };
+  });
+  const addLinha = (qi: number, cols: number) => setLinhasQ(s => ({ ...s, [qi]: [...(s[qi] || [Array(cols).fill("")]), Array(cols).fill("")] }));
+  const delLinha = (qi: number, ri: number) => setLinhasQ(s => ({ ...s, [qi]: (s[qi] || []).filter((_, i) => i !== ri) }));
 
   // Valores default por token (empresa → data → empregado). Recalcula quando muda
   // empresa/empregado; o usuário pode sobrescrever qualquer campo.
@@ -197,6 +210,11 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
       if (_inserir.length) dados._inserir = _inserir;
       const _marcar = marcs.map(g => g.opcoes.find(o => o.valor === marcado[g.campo])).filter(Boolean).map(o => ({ ancora: (o as MarcOpcao).ancora }));
       if (_marcar.length) dados._marcar = _marcar;
+      const _tabela = quads.map((qd, qi) => ({
+        tabela: qd.tabela, linha_inicial: qd.linha_inicial, col_inicial: qd.col_inicial,
+        linhas: (linhasQ[qi] || []).map(r => r.map(v => (v || "").trim())).filter(r => r.some(v => v)),
+      })).filter(x => x.linhas.length);
+      if (_tabela.length) dados._tabela = _tabela;
       if (assinaturas) dados._assinaturas = { empregado: valDe("NOME_EMPREGADO"), empregadora: valDe("RAZAO_SOCIAL") };
       if (testemunhas) dados._testemunhas = true;
 
@@ -311,6 +329,37 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
               </div>
             </div>
           )}
+
+          {/* Quadros repetíveis */}
+          {quads.map((qd, qi) => {
+            const cols = qd.colunas.length;
+            const linhas = linhasDe(qi, cols);
+            return (
+              <div key={qi}>
+                <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">🧾 {qd.titulo}</div>
+                <div className="overflow-x-auto">
+                  <div className="space-y-1.5 min-w-[400px]">
+                    <div className="flex gap-1.5">
+                      {qd.colunas.map(c => <div key={c} className="flex-1 text-[10px] text-gray-400 px-1">{c}</div>)}
+                      <div className="w-6" />
+                    </div>
+                    {linhas.map((linha, ri) => (
+                      <div key={ri} className="flex gap-1.5 items-center">
+                        {qd.colunas.map((_, ci) => (
+                          <input key={ci} value={linha[ci] || ""} onChange={e => setCel(qi, ri, ci, e.target.value, cols)}
+                            className="flex-1 min-w-0 px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+                        ))}
+                        <button type="button" onClick={() => delLinha(qi, ri)} className="w-6 shrink-0 text-gray-400 hover:text-rose-600 text-sm" title="Remover linha">✕</button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                {linhas.length < qd.max_linhas && (
+                  <button type="button" onClick={() => addLinha(qi, cols)} className="mt-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:underline">➕ adicionar linha</button>
+                )}
+              </div>
+            );
+          })}
 
           {/* Textos livres */}
           {modelo.texto_livre.length > 0 && (

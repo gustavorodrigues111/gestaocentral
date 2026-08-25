@@ -143,6 +143,33 @@ def preencher_bytes(modelo_path, dados):
                     np.runs[0].bold = False
                 break
 
+    # Quadros repetíveis: escreve valores nas células (linha/coluna inicial),
+    # adicionando linha quando faltar. Preserva o estilo da célula.
+    def _set_cell(cell, text):
+        p = cell.paragraphs[0]
+        if p.runs:
+            p.runs[0].text = text
+            for r in p.runs[1:]:
+                r.text = ""
+        else:
+            p.add_run(text)
+    for tb in (dados.get("_tabela") or []):
+        ti = tb.get("tabela")
+        if ti is None or not isinstance(ti, int) or ti < 0 or ti >= len(doc.tables):
+            continue
+        t = doc.tables[ti]
+        li = int(tb.get("linha_inicial", 1) or 0)
+        ci = int(tb.get("col_inicial", 0) or 0)
+        for i, linha in enumerate(tb.get("linhas") or []):
+            r = li + i
+            while r >= len(t.rows):
+                t.add_row()
+            row = t.rows[r]
+            for j, val in enumerate(linha or []):
+                c = ci + j
+                if c < len(row.cells) and str(val).strip():
+                    _set_cell(row.cells[c], str(val))
+
     _nomes_assinatura(doc, dados.get("_assinaturas") or {})
     if dados.get("_testemunhas"):
         _bloco_testemunhas(doc)
