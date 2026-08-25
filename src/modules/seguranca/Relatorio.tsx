@@ -175,30 +175,106 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
       const { jsPDF } = await import("jspdf");
       const { default: autoTable } = await import("jspdf-autotable");
       const d = new jsPDF({ unit: "mm", format: "a4" });
-      const M = 12;
-      d.setFont("helvetica", "bold"); d.setFontSize(16); d.setTextColor(30, 30, 30);
-      d.text("Segurança Sanitária — Relatório", M, 14);
-      d.setFont("helvetica", "normal"); d.setFontSize(10); d.setTextColor(100, 116, 139);
-      d.text(`${av.avaliadorNome || "—"}  ·  ${dmy(av.data)}`, M, 20);
-      d.setFont("helvetica", "bold"); d.setFontSize(13);
-      const rgb = hexToRgb(cor);
-      d.setTextColor(rgb[0], rgb[1], rgb[2]);
-      d.text(`Nota ${score}%  ·  ${faixaLabel}`, M, 27);
-      autoTable(d, {
-        startY: 32,
-        head: [["Área", "Item", "Observação"]],
-        body: inconformidades.map((i) => [i.area || "—", i.texto, i.r.observacao || ""]),
-        theme: "grid",
-        margin: { left: M, right: M },
-        styles: { fontSize: 8, cellPadding: 1.6, lineWidth: 0.1, lineColor: [200, 200, 200], valign: "top", textColor: [30, 30, 30] },
-        headStyles: { fillColor: [233, 226, 209], textColor: [30, 30, 30], fontStyle: "bold" },
-        columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 78 } },
-      });
+      const pageW = d.internal.pageSize.getWidth();
+      const pageH = d.internal.pageSize.getHeight();
+      const M = 14;
+      const contentW = pageW - 2 * M;
+      const bot = 16;                     // margem inferior útil (acima do rodapé)
 
-      // ── Evidências: fotos das não-conformidades ──
-      // Carrega a foto e NORMALIZA num canvas: assa os pixels na orientação que o
-      // navegador decodou (resolve EXIF) e reexporta em JPEG. Assim as dimensões
-      // que eu passo pro jsPDF batem exatamente com a imagem — nunca distorce.
+      // Paleta
+      type RGB = [number, number, number];
+      const INK: RGB = [31, 41, 55], MUT: RGB = [107, 114, 128], FAINT: RGB = [160, 165, 175];
+      const LINE: RGB = [228, 231, 236], CARD: RGB = [247, 246, 242];
+      const ROSE: RGB = [214, 40, 71], EMER: RGB = [17, 145, 108];
+      const acc = hexToRgb(cor);
+      const tint = (c: RGB, k = 0.84): RGB => [Math.round(c[0] + (255 - c[0]) * k), Math.round(c[1] + (255 - c[1]) * k), Math.round(c[2] + (255 - c[2]) * k)];
+      const dark = (c: RGB, k = 0.68): RGB => [Math.round(c[0] * k), Math.round(c[1] * k), Math.round(c[2] * k)];
+      const tc = (c: RGB) => d.setTextColor(c[0], c[1], c[2]);
+      const fc = (c: RGB) => d.setFillColor(c[0], c[1], c[2]);
+      const dcol = (c: RGB) => d.setDrawColor(c[0], c[1], c[2]);
+      const modeloNome = (av as { modeloNome?: string }).modeloNome || "";
+
+      // ── Cabeçalho ──
+      const hy = M, hh = 30;
+      fc(CARD); d.roundedRect(M, hy, contentW, hh, 3, 3, "F");
+      fc(acc); d.roundedRect(M, hy, 3, hh, 1.5, 1.5, "F");
+      d.setFont("helvetica", "bold"); d.setFontSize(16); tc(INK);
+      d.text("Relatório de Segurança Sanitária", M + 8, hy + 11);
+      d.setFont("helvetica", "normal"); d.setFontSize(9.5); tc(MUT);
+      d.text(`${av.avaliadorNome || "—"}   ·   ${dmy(av.data)}${modeloNome ? "   ·   " + modeloNome : ""}`, M + 8, hy + 18);
+      if (av.status !== "finalizada") { d.setFontSize(8); tc([180, 120, 20]); d.text("Rascunho — nota parcial", M + 8, hy + 24.5); }
+      // Selo de nota
+      const bw = 44, bh = 22, bx = M + contentW - bw - 5, by = hy + 4;
+      fc(acc); d.roundedRect(bx, by, bw, bh, 3, 3, "F");
+      tc([255, 255, 255]); d.setFont("helvetica", "bold"); d.setFontSize(20);
+      d.text(`${score}%`, bx + bw / 2, by + 11, { align: "center" });
+      d.setFont("helvetica", "normal"); d.setFontSize(7.5);
+      d.text(faixaLabel.toUpperCase(), bx + bw / 2, by + 17, { align: "center" });
+
+      // ── KPIs ──
+      let y = hy + hh + 6;
+      const gap = 5, kw = (contentW - 2 * gap) / 3, kh = 18;
+      const kpi = (x: number, label: string, val: number, c: RGB) => {
+        dcol(LINE); d.setLineWidth(0.3); fc([255, 255, 255]);
+        d.roundedRect(x, y, kw, kh, 2.5, 2.5, "FD");
+        d.setFont("helvetica", "bold"); d.setFontSize(16); tc(c);
+        d.text(String(val), x + 5, y + 9.5);
+        d.setFont("helvetica", "normal"); d.setFontSize(8); tc(MUT);
+        d.text(label, x + 5, y + 14.5);
+      };
+      kpi(M, "Conformes", calc.conformes, EMER);
+      kpi(M + kw + gap, "Não-conformes", calc.naoConformes, ROSE);
+      kpi(M + 2 * (kw + gap), "Itens pontuados", calc.respondidos, INK);
+      y += kh + 9;
+
+      // ── Não-conformes por área (barras) ──
+      if (ncPorArea.length) {
+        d.setFont("helvetica", "bold"); d.setFontSize(8.5); tc(FAINT);
+        d.text("NÃO-CONFORMES POR ÁREA", M, y); y += 5;
+        const maxA = Math.max(1, ...ncPorArea.map((x) => x.n));
+        const labW = 42, barX = M + labW + 2, barW = contentW - labW - 12, rh = 6.4;
+        for (const a of ncPorArea) {
+          const ac = hexToRgb(segAreaCor(a.area).dot);
+          d.setFont("helvetica", "normal"); d.setFontSize(8.5); tc(INK);
+          d.text(d.splitTextToSize(a.area, labW)[0], M, y + 4.2);
+          fc([237, 239, 243]); d.roundedRect(barX, y + 1, barW, rh - 2, 1, 1, "F");
+          const w = Math.max(2, (a.n / maxA) * barW);
+          fc(ac); d.roundedRect(barX, y + 1, w, rh - 2, 1, 1, "F");
+          d.setFont("helvetica", "bold"); d.setFontSize(8.5); tc(INK);
+          d.text(String(a.n), barX + barW + 3, y + 4.2);
+          y += rh;
+        }
+        y += 5;
+      }
+
+      // ── Tabela de inconformidades ──
+      d.setFont("helvetica", "bold"); d.setFontSize(8.5); tc(FAINT);
+      d.text(`INCONFORMIDADES (${inconformidades.length})`, M, y); y += 2.5;
+      if (inconformidades.length === 0) {
+        y += 6; d.setFont("helvetica", "normal"); d.setFontSize(10); tc(EMER);
+        d.text("Nenhuma inconformidade nesta avaliação.", M, y);
+      } else {
+        autoTable(d, {
+          startY: y,
+          head: [["Área", "Item", "Observação"]],
+          body: inconformidades.map((i) => [i.area || "—", i.texto, i.r.observacao || ""]),
+          theme: "striped",
+          margin: { left: M, right: M, bottom: bot },
+          styles: { font: "helvetica", fontSize: 8, cellPadding: 2, lineColor: LINE, lineWidth: 0.1, textColor: INK, valign: "top" },
+          headStyles: { fillColor: INK, textColor: [255, 255, 255], fontStyle: "bold", fontSize: 8 },
+          alternateRowStyles: { fillColor: [249, 250, 251] },
+          columnStyles: { 0: { cellWidth: 34, cellPadding: { left: 6, top: 2, right: 2, bottom: 2 } }, 1: { cellWidth: 72 } },
+          didDrawCell: (data) => {
+            if (data.section === "body" && data.column.index === 0) {
+              const area = (data.row.raw as string[])[0];
+              if (area && area !== "—") { const c = hexToRgb(segAreaCor(area).dot); fc(c); d.circle(data.cell.x + 3, data.cell.y + 3.6, 1.1, "F"); }
+            }
+          },
+        });
+      }
+
+      // ── Fotos por item ──
+      // Normaliza cada foto num canvas (resolve EXIF + reexporta JPEG) — sem distorção.
       const carregarImagem = (url: string): Promise<{ dataUrl: string; w: number; h: number } | null> =>
         new Promise((resolve) => {
           fetch(url).then((r) => r.blob()).then((blob) => {
@@ -208,11 +284,10 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
               const img = new Image();
               img.onload = () => {
                 try {
-                  const maxSide = 1400;   // downscale — PDF leve, sem perder nitidez de tela
+                  const maxSide = 1400;
                   const nw = img.naturalWidth || 1, nh = img.naturalHeight || 1;
                   const scale = Math.min(1, maxSide / Math.max(nw, nh));
-                  const cw = Math.max(1, Math.round(nw * scale));
-                  const ch = Math.max(1, Math.round(nh * scale));
+                  const cw = Math.max(1, Math.round(nw * scale)), ch = Math.max(1, Math.round(nh * scale));
                   const canvas = document.createElement("canvas");
                   canvas.width = cw; canvas.height = ch;
                   const ctx = canvas.getContext("2d");
@@ -231,55 +306,70 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
           }).catch(() => resolve(null));
         });
 
+      // Pílula de área (dot + nome, tom pastel da cor da área)
+      const chip = (x: number, cy: number, area?: string) => {
+        const base: RGB = area ? hexToRgb(segAreaCor(area).dot) : MUT;
+        const label = area || "sem área";
+        d.setFont("helvetica", "bold"); d.setFontSize(8);
+        const tw = d.getTextWidth(label);
+        fc(tint(base)); d.roundedRect(x, cy - 3.4, tw + 8, 5.2, 2.6, 2.6, "F");
+        fc(base); d.circle(x + 3, cy - 0.8, 1, "F");
+        tc(dark(base)); d.text(label, x + 5.5, cy);
+      };
+
       const comFotos = inconformidades.filter((i) => (i.r.fotos || []).some((f) => f.url));
       if (comFotos.length) {
-        const pageW = d.internal.pageSize.getWidth();
-        const pageH = d.internal.pageSize.getHeight();
-        const contentW = pageW - 2 * M;
-        const gap = 5;
-        const colW = (contentW - gap) / 2;   // 2 fotos por linha
-        const maxH = 78;                       // altura máx da foto (mm) — evita foto gigante
-        const bot = 14;                        // margem inferior
         d.addPage();
-        let y = 16;
-        d.setFont("helvetica", "bold"); d.setFontSize(13); d.setTextColor(30, 30, 30);
-        d.text("Fotos por item", M, y); y += 7;
-
+        let py = M + 2;
+        d.setFont("helvetica", "bold"); d.setFontSize(14); tc(INK);
+        d.text("Fotos por item", M, py + 4); py += 11;
+        const cw = (contentW - 6) / 2, maxH = 74;
         for (const i of comFotos) {
           const fotos = (i.r.fotos || []).filter((f) => f.url);
-          // Cabeçalho do item (não deixa órfão no rodapé)
-          if (y > pageH - bot - 26) { d.addPage(); y = 16; }
-          d.setFont("helvetica", "bold"); d.setFontSize(9.5); d.setTextColor(30, 30, 30);
-          const cab = d.splitTextToSize(`${i.area || "—"} · ${i.texto}`, contentW);
-          d.text(cab, M, y); y += cab.length * 4.8 + 1;
+          if (py > pageH - bot - 34) { d.addPage(); py = M + 2; }
+          chip(M, py + 1, i.area); py += 7;
+          d.setFont("helvetica", "bold"); d.setFontSize(10); tc(INK);
+          const t = d.splitTextToSize(i.texto, contentW);
+          d.text(t, M, py); py += t.length * 5 + 1;
           if (i.r.observacao) {
-            d.setFont("helvetica", "normal"); d.setFontSize(8); d.setTextColor(100, 116, 139);
-            const obs = d.splitTextToSize(`Obs: ${i.r.observacao}`, contentW);
-            d.text(obs, M, y); y += obs.length * 4 + 1.5;
+            d.setFont("helvetica", "normal"); d.setFontSize(8.5); tc(MUT);
+            const o = d.splitTextToSize(i.r.observacao, contentW);
+            d.text(o, M, py); py += o.length * 4.2 + 2;
           }
-          // Fotos: 2 por linha, cada uma encaixada numa caixa colW×maxH SEM
-          // distorcer (escala pela menor razão, preservando a proporção).
           let col = 0, rowH = 0;
           for (const f of fotos) {
             const img = await carregarImagem(f.url as string);
             if (!img) continue;
             const ratio = (img.w || 1) / (img.h || 1);
-            let dw = colW, dh = dw / ratio;
-            if (dh > maxH) { dh = maxH; dw = dh * ratio; }   // limita altura, mantém proporção
-            // Garante que cabe: fecha a linha e/ou pula de página se necessário.
-            if (y + dh > pageH - bot) {
-              if (col === 1) { y += rowH + gap; col = 0; rowH = 0; }
-              if (y + dh > pageH - bot) { d.addPage(); y = 16; col = 0; rowH = 0; }
+            let dw = cw, dh = dw / ratio;
+            if (dh > maxH) { dh = maxH; dw = dh * ratio; }
+            if (py + dh > pageH - bot) {
+              if (col === 1) { py += rowH + 5; col = 0; rowH = 0; }
+              if (py + dh > pageH - bot) { d.addPage(); py = M + 2; col = 0; rowH = 0; }
             }
-            const x = M + col * (colW + gap);
-            try { d.addImage(img.dataUrl, "JPEG", x, y, dw, dh); } catch { continue; }
-            rowH = Math.max(rowH, dh);
-            col++;
-            if (col === 2) { y += rowH + gap; col = 0; rowH = 0; }
+            const x = M + col * (cw + 6) + (cw - dw) / 2;   // centraliza na coluna
+            try { d.addImage(img.dataUrl, "JPEG", x, py, dw, dh); } catch { continue; }
+            dcol(LINE); d.setLineWidth(0.3); d.roundedRect(x, py, dw, dh, 1.2, 1.2, "S");   // moldura
+            rowH = Math.max(rowH, dh); col++;
+            if (col === 2) { py += rowH + 5; col = 0; rowH = 0; }
           }
-          if (col === 1) { y += rowH + gap; }   // linha terminou com 1 foto
-          y += 4;   // respiro entre itens
+          if (col === 1) { py += rowH + 5; }
+          dcol(LINE); d.setLineWidth(0.2); d.line(M, py + 1, pageW - M, py + 1);
+          py += 7;
         }
+      }
+
+      // ── Rodapé em todas as páginas ──
+      const totalPg = d.getNumberOfPages();
+      const now = new Date();
+      const ger = `${String(now.getDate()).padStart(2, "0")}/${String(now.getMonth() + 1).padStart(2, "0")}/${now.getFullYear()}`;
+      for (let p = 1; p <= totalPg; p++) {
+        d.setPage(p);
+        dcol(LINE); d.setLineWidth(0.2); d.line(M, pageH - 10, pageW - M, pageH - 10);
+        d.setFont("helvetica", "normal"); d.setFontSize(7.5); tc(FAINT);
+        d.text("Segurança Sanitária", M, pageH - 6);
+        d.text(`Gerado em ${ger}`, pageW / 2, pageH - 6, { align: "center" });
+        d.text(`Página ${p}/${totalPg}`, pageW - M, pageH - 6, { align: "right" });
       }
 
       d.save(`seguranca-${av.data}.pdf`);
