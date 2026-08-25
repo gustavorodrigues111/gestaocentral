@@ -1,0 +1,1030 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FFFFFF">
+<title>Processos de Pessoas — Quibebe</title>
+<style>
+:root{
+  --bg:#F4F6FA; --surface:#FFF; --line:#E4E7EF;
+  --ink:#12151E; --ink-2:#3C4356; --muted:#69718A; --faint:#98A0B6;
+  --indigo:#4F46E5; --indigo-bg:#EEF0FF; --indigo-line:#D7DAFB;
+  --amber:#B45309; --amber-bg:#FDF4E3; --amber-line:#F0DCB2;
+  --red:#B42318; --red-bg:#FDECEA;
+  --sans:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Inter,Roboto,sans-serif;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --top:env(safe-area-inset-top,0px);
+  --bot:env(safe-area-inset-bottom,0px);
+  --col:720px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--ink);font-family:var(--sans);font-size:16px;
+  line-height:1.62;-webkit-font-smoothing:antialiased;overflow:hidden;overscroll-behavior:none}
+@media (prefers-reduced-motion:reduce){*{transition-duration:.01ms!important}}
+:focus-visible{outline:2px solid var(--indigo);outline-offset:2px;border-radius:8px}
+
+/* ── barra ── */
+.bar{position:fixed;top:0;left:0;right:0;z-index:50;
+  padding:calc(var(--top) + 9px) 14px 9px;background:rgba(255,255,255,.93);
+  backdrop-filter:saturate(180%) blur(14px);border-bottom:1px solid var(--line);
+  display:flex;align-items:center;gap:10px;min-height:calc(var(--top) + 54px)}
+.back{width:38px;height:38px;flex:0 0 38px;border:1px solid var(--line);background:var(--surface);
+  border-radius:11px;font-size:17px;color:var(--ink-2);display:none;align-items:center;
+  justify-content:center;cursor:pointer;padding:0}
+body.deep .back{display:flex}
+.bartxt{flex:1;min-width:0}
+.bartxt .up{font-size:10.5px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.bartxt .now{font-size:16px;font-weight:680;letter-spacing:-.02em;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.rmbtn{width:38px;height:38px;flex:0 0 38px;border:1px solid var(--line);background:var(--surface);
+  border-radius:11px;font-size:13px;font-weight:700;color:var(--faint);display:flex;
+  align-items:center;justify-content:center;cursor:pointer;padding:0;position:relative}
+.rmbtn::after{content:"◆"}
+body.rm .rmbtn{background:var(--amber-bg);border-color:var(--amber-line);color:var(--amber)}
+.rmbtn b{position:absolute;top:-5px;right:-5px;font-size:9.5px;font-weight:700;background:var(--amber);
+  color:#fff;border-radius:999px;padding:1px 5px;border:2px solid #fff;display:none}
+body.rm .rmbtn b{display:block}
+
+/* ── telas ── */
+.screens{position:fixed;inset:0;overflow:hidden}
+.s{position:absolute;inset:0;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  padding:calc(var(--top) + 66px) 15px calc(var(--bot) + 60px);background:var(--bg);
+  transition:transform .27s cubic-bezier(.32,.72,0,1),opacity .2s;will-change:transform}
+.s.out-l{transform:translateX(-26%);opacity:0;pointer-events:none}
+.s.out-r{transform:translateX(100%);pointer-events:none}
+
+/* ── busca ── */
+.sb{display:flex;align-items:center;gap:9px;background:var(--surface);border:1px solid var(--line);
+  border-radius:13px;padding:12px 14px;margin-bottom:18px}
+.sb input{border:0;outline:0;font:inherit;font-size:16px;width:100%;background:transparent;color:var(--ink)}
+.sb i{font-style:normal;color:var(--faint);font-size:15px}
+.sb button{border:0;background:none;color:var(--faint);font-size:16px;padding:0 2px;cursor:pointer;display:none}
+.sb.has button{display:block}
+
+.hi{margin:2px 0 22px}
+.hi h1{margin:0 0 8px;font-size:28px;line-height:1.18;font-weight:730;letter-spacing:-.035em}
+.hi p{margin:0;color:var(--muted);font-size:15.5px}
+.lbl{font-size:10.5px;font-weight:700;letter-spacing:.11em;text-transform:uppercase;
+  color:var(--faint);margin:28px 0 10px}
+.lbl:first-of-type{margin-top:0}
+.lbl small{display:block;text-transform:none;letter-spacing:0;font-size:13px;font-weight:400;
+  color:var(--muted);margin-top:5px;line-height:1.5}
+
+/* ── linhas ── */
+.row{display:flex;align-items:center;gap:13px;width:100%;text-align:left;background:var(--surface);
+  border:1px solid var(--line);border-radius:14px;padding:15px;margin-bottom:9px;cursor:pointer;
+  font:inherit;color:var(--ink);min-height:62px;transition:background .12s,border-color .12s}
+.row:hover{border-color:var(--indigo-line)}
+.row:active{background:var(--indigo-bg)}
+.row > i{font-style:normal;font-size:21px;flex:0 0 26px;text-align:center}
+.row .tx{flex:1;min-width:0}
+.row .tx b{display:block;font-size:16px;font-weight:640;letter-spacing:-.015em;line-height:1.35}
+.row .tx small{display:block;font-size:13.5px;color:var(--muted);margin-top:3px;line-height:1.45}
+.row .arw{color:#C6CBD8;font-size:17px;flex:0 0 auto}
+.row .cnt{font-family:var(--mono);font-size:11px;font-weight:700;color:var(--faint);
+  background:var(--bg);border-radius:7px;padding:2px 7px;flex:0 0 auto}
+.row .imp{display:none;align-items:center;gap:3px;font-size:11px;font-weight:700;color:var(--amber);
+  background:var(--amber-bg);border:1px solid var(--amber-line);border-radius:7px;padding:2px 6px;flex:0 0 auto}
+.row .imp::before{content:"◆";font-size:8px}
+body.rm .row .imp{display:inline-flex}
+body.rm .row.has-imp{border-color:var(--amber-line)}
+
+.chips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{flex:0 0 auto;background:var(--surface);border:1px solid var(--line);border-radius:999px;
+  padding:9px 15px;font:inherit;font-size:14px;font-weight:600;color:var(--ink-2);cursor:pointer}
+.chip:hover{border-color:var(--indigo-line)}
+.chip:active{background:var(--indigo-bg);color:var(--indigo)}
+
+/* ── leitura ── */
+.rd{background:var(--surface);border:1px solid var(--line);border-radius:16px;padding:20px 19px 24px}
+.rd > *:first-child{margin-top:0}
+.rd p{margin:0 0 14px;color:var(--ink-2)}
+.rd h5{margin:26px 0 11px;font-size:14.5px;font-weight:700;letter-spacing:-.01em;color:var(--ink)}
+.rd ul,.rd ol.pl{margin:0 0 14px;padding-left:20px}
+.rd li{margin-bottom:9px;color:var(--ink-2)}
+.rd b{font-weight:650;color:var(--ink)}
+.rd .lead{font-size:17px;color:var(--ink);margin-bottom:16px}
+
+.rule{border-left:3px solid var(--indigo);background:var(--indigo-bg);border-radius:0 10px 10px 0;
+  padding:14px 16px;margin:0 0 15px}
+.rule b.h{display:block;font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--indigo);margin-bottom:5px}
+.rule p{margin:0;font-size:15px}
+.rule p + p{margin-top:9px}
+
+.steps{counter-reset:s;list-style:none;margin:0 0 15px;padding:0}
+.steps li{counter-increment:s;position:relative;padding-left:40px;margin-bottom:17px}
+.steps li::before{content:counter(s,decimal-leading-zero);position:absolute;left:0;top:0;
+  width:28px;height:28px;border-radius:9px;background:var(--bg);border:1px solid var(--line);
+  color:var(--muted);font-family:var(--mono);font-size:11px;font-weight:600;
+  display:flex;align-items:center;justify-content:center}
+.steps li::after{content:"";position:absolute;left:14px;top:31px;bottom:-17px;width:1px;background:var(--line)}
+.steps li:last-child::after{display:none}
+.steps strong{display:block;font-size:15px;font-weight:650;margin-bottom:4px;color:var(--ink)}
+.steps p{margin:0 0 8px;font-size:15px;color:var(--ink-2)}
+.steps p:last-child{margin-bottom:0}
+
+.who{display:flex;flex-wrap:wrap;gap:6px;margin-top:9px}
+.who span{font-size:12px;font-weight:600;padding:4px 9px;border-radius:7px;
+  background:var(--bg);border:1px solid var(--line);color:var(--muted)}
+.who span.ap{background:var(--indigo-bg);border-color:var(--indigo-line);color:var(--indigo)}
+.who span.ex::before{content:"executa · ";font-weight:500;color:var(--faint)}
+.who span.ap::before{content:"aprova · ";font-weight:500;opacity:.7}
+
+.st{font-family:var(--mono);font-size:13px;font-weight:600;background:var(--bg);
+  border:1px solid var(--line);border-radius:6px;padding:1px 6px;white-space:nowrap}
+
+.rd table{width:100%;border-collapse:collapse;margin:0 0 15px;display:block}
+.rd thead{display:none}
+.rd tbody{display:block}
+.rd tr{display:block;border:1px solid var(--line);border-radius:12px;padding:13px 15px;
+  margin-bottom:9px;background:var(--bg)}
+.rd td{display:block;padding:0;border:0;font-size:14.5px;color:var(--ink-2)}
+.rd td:first-child{font-weight:680;color:var(--ink);margin-bottom:5px}
+.rd td + td{margin-top:6px}
+.rd table .st{background:var(--surface)}
+
+.imp-box{display:none;border-left:3px solid var(--amber);background:var(--amber-bg);
+  border-radius:0 10px 10px 0;padding:14px 16px;margin:0 0 13px;position:relative}
+body.rm .imp-box{display:block}
+.imp-box .kind{display:inline-block;font-size:9.5px;font-weight:700;letter-spacing:.05em;
+  text-transform:uppercase;color:var(--amber);border:1px solid var(--amber-line);
+  background:rgba(255,255,255,.7);border-radius:5px;padding:1px 6px;margin-bottom:7px}
+.imp-box b.h{display:inline-flex;align-items:center;gap:5px;font-size:10.5px;font-weight:700;
+  letter-spacing:.09em;text-transform:uppercase;color:var(--amber);margin-bottom:5px}
+.imp-box b.h::before{content:"◆";font-size:8px}
+.imp-box p{margin:0;font-size:14.5px;color:#6B4415}
+.imp-box.q{border-left-color:var(--red);background:var(--red-bg)}
+.imp-box.q b.h{color:var(--red)} .imp-box.q b.h::before{content:"?"}
+.imp-box.q p{color:#7A2A22}
+.imp-box.q .kind{color:var(--red);border-color:#F2CDC9}
+
+.sub{margin-top:22px}
+.empty{text-align:center;color:var(--faint);font-size:14.5px;padding:38px 20px}
+.foot{text-align:center;color:var(--faint);font-size:12.5px;padding:32px 10px 10px;line-height:1.7}
+
+/* ── coluna centralizada em tela larga ── */
+@media(min-width:760px){
+  body{background:#EBEEF4}
+  .bar,.s{max-width:var(--col);left:50%;transform:translateX(-50%)}
+  .s.out-l{transform:translateX(calc(-50% - 26%));opacity:0}
+  .s.out-r{transform:translateX(calc(-50% + 100%))}
+  .s{border-left:1px solid var(--line);border-right:1px solid var(--line);padding-left:26px;padding-right:26px}
+  .hi h1{font-size:31px}
+  .rd{padding:24px 26px 28px}
+  /* em tela larga a tabela volta a ser tabela */
+  .rd table{display:table}
+  .rd thead{display:table-header-group}
+  .rd tbody{display:table-row-group}
+  .rd tr{display:table-row;border:0;border-radius:0;padding:0;margin:0;background:none}
+  .rd th,.rd td{display:table-cell;padding:10px 12px;border-bottom:1px solid #EFF1F7;vertical-align:top}
+  .rd th{font-size:10.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--faint);font-weight:700;text-align:left}
+  .rd td:first-child{margin:0}
+  .rd td + td{margin:0}
+  .rd tr:last-child td{border-bottom:none}
+}
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <button class="back" id="back" aria-label="Voltar">‹</button>
+  <div class="bartxt">
+    <div class="up" id="up">Quibebe · escritório</div>
+    <div class="now" id="now">Processos de Pessoas</div>
+  </div>
+  <button class="rmbtn" id="rm" aria-label="Camada de roadmap" aria-pressed="false"><b id="rmc">0</b></button>
+</div>
+<div class="screens" id="screens"></div>
+<script>
+const T = {
+  id:'root', t:'Processos de Pessoas', sub:'Quibebe · escritório',
+  d:`<p class="lead">Como o escritório conduz a área de Pessoas das cinco empresas: o que se faz em cada processo, em que ordem, em qual módulo do sistema, quem executa e quem aprova.</p>
+     <p>O documento cobre o ciclo de vida do empregado, as rotinas mensais e os casos que chegam sem data marcada. Serve para consulta no meio do trabalho, para formar quem entra na área e para que a mesma situação receba a mesma resposta independentemente de quem a atenda.</p>
+     <div class="rule"><b class="h">A camada de roadmap</b><p>O botão ◆ na barra superior sobrepõe ao texto os pontos de melhoria já mapeados: o que ainda não existe no sistema, o que existe e não é usado, e as decisões pendentes. Com ele desligado, o documento descreve apenas o processo vigente — que é como a equipe deve lê-lo.</p></div>`,
+  c:[]
+};
+</script>
+<script>
+T.c = [
+
+/* ══════════════ VISÃO GERAL ══════════════ */
+
+{g:'Visão geral', i:'🧭', t:'Fundamentos', d:`
+  <p class="lead">O que o escritório faz pelas empresas, o que a área de Pessoas produz dentro dele e qual é o critério de decisão quando não há processo escrito.</p>
+  <p>Esta seção não descreve rotina. Ela existe porque sempre aparecem situações que o mapa não cobre, e nesses casos a decisão precisa apoiar-se em algum critério explícito.</p>`, c:[
+
+ {i:'💠', t:'Por que o escritório existe', d:`
+  <p class="lead">O escritório não fatura. O resultado do seu trabalho aparece como despesa que não ocorreu, e não como receita.</p>
+  <p>Isso muda o que se considera um bom mês na área. Não há meta de venda nem volume a atingir: o que se mede é folha paga sem erro, prazo cumprido, documento assinado no tempo certo e ausência de autuação ou reclamatória. Um mês em que nada aconteceu é um mês bem-sucedido.</p>
+  <h5>As três formas de contribuição</h5>
+  <ul>
+   <li><b>Gestão que torna as empresas eficientes.</b> Compra centralizada, escala planejada, benefício pago em lote único: cada rotina que sai da mão da operação e passa para o escritório reduz o retrabalho de quem está no restaurante.</li>
+   <li><b>Análise crítica.</b> Todos os dados de pessoal das cinco empresas passam por aqui. Custo por área, giro de equipe, horas extras recorrentes e evolução da gorjeta são informações que só o escritório enxerga de forma consolidada, e que devolvidas à operação mudam decisão.</li>
+   <li><b>Prevenção de erro e passivo.</b> Um desconto indevido de duzentos reais não custa duzentos reais. Virando reclamatória, custa as verbas pedidas, a multa, os honorários e o tempo da direção.</li>
+  </ul>
+  <p>Há ainda um efeito difícil de medir. Quando o benefício cai na data, o extrato de gorjeta bate com o holerite e a escala sai no prazo, some do dia a dia da operação uma camada de atrito que ninguém contabiliza mas todos sentem.</p>`},
+
+ {i:'🏢', t:'Como o escritório atende as empresas', d:`
+  <p class="lead">O Quibebe é um escritório de assessoria administrativa centralizada. Ele presta serviço a quatro operações e a si mesmo, em quatro frentes: Financeiro, Compras, Eventos e Pessoas.</p>
+  <h5>As empresas atendidas</h5>
+  <table>
+   <tr><th>Empresa</th><th>Praça</th></tr>
+   <tr><td><b>Lobozó</b></td><td>São Paulo · Vila Madalena</td></tr>
+   <tr><td><b>Sororoca</b></td><td>São Paulo · Vila Madalena</td></tr>
+   <tr><td><b>Puba SP</b></td><td>São Paulo · Rua Simão Álvares</td></tr>
+   <tr><td><b>Puba Bar</b></td><td>Belém · Cidade Velha</td></tr>
+   <tr><td><b>Quibebe</b></td><td>O próprio escritório</td></tr>
+  </table>
+  <h5>O que isso implica na prática da área</h5>
+  <p>Cada operação é uma pessoa jurídica distinta, com quadro societário próprio. Gustavo é sócio de todas; os demais sócios são diferentes em cada casa. Nenhuma liderança de restaurante é chefia da equipe do escritório.</p>
+  <p>Toda rotina descrita neste mapa é executada <b>uma vez por empresa</b>, e as empresas não são intercambiáveis entre si:</p>
+  <ul>
+   <li><b>Convenções coletivas diferentes.</b> São Paulo e Belém seguem sindicatos distintos, com regras próprias de banco de horas, jornada e gorjeta.</li>
+   <li><b>Regimes tributários diferentes.</b> O percentual de encargo sobre a gorjeta varia conforme o regime de cada CNPJ.</li>
+   <li><b>Calendários que coincidem.</b> Escala, benefício e folha vencem na mesma data para as quatro, o que concentra a carga em blocos do mês.</li>
+  </ul>
+  <div class="rule"><b class="h">Antes de aplicar qualquer regra</b><p>Verifique a qual empresa o caso pertence. Praça, convenção e regime tributário mudam a resposta correta para a mesma pergunta.</p></div>`},
+
+ {i:'🔍', t:'O papel da área de Pessoas', d:`
+  <p class="lead">A área tem duas camadas de trabalho, e a diferença entre elas define como o tempo é distribuído.</p>
+  <h5>DP — a rotina</h5>
+  <p>Admissão, desligamento, férias, ponto, folha, documento, prazo. É trabalho de execução e conferência, com data marcada e resultado verificável.</p>
+  <p>Boa parte já é automatizada pelo sistema e pelos parceiros: a contabilidade gera holerite, TRCT e aviso de férias; o sistema calcula gorjeta, benefício e inconsistência de ponto. Por isso a tarefa central deixou de ser <b>produzir o documento</b> e passou a ser <b>conferir o documento produzido</b>.</p>
+  <div class="rule"><b class="h">Nada segue sem revisão</b><p>Holerite com verba trocada, TRCT com valor a menos, aviso de férias com data errada: são ocorrências normais, não excepcionais. A conferência é etapa do processo, com tempo previsto, e não zelo adicional de quem é caprichoso.</p></div>
+  <h5>Pessoas — a gestão</h5>
+  <p>A outra camada é o trabalho que não tem prazo e por isso tende a ser adiado: ouvir quem está na operação, identificar o que gera dificuldade recorrente, agrupar demandas parecidas, priorizar o que afeta mais gente e instruir.</p>
+  <p>Concretamente, é o que alimenta os comunicados, a pauta das reuniões individuais, a revisão de um processo que a equipe não consegue seguir e o canal <b>Fale com DP</b> do Portal do Empregado, que aceita mensagem identificada ou anônima.</p>
+  <p>A área é também o ponto único de contato com a contabilidade, com a advocacia, com as clínicas de exame e com os fornecedores de benefício. Quando a liderança de um restaurante precisa de algo desses parceiros, o pedido passa pelo escritório.</p>`},
+
+ {i:'⚖️', t:'Isonomia', d:`
+  <div class="rule"><b class="h">Regra fundamental</b><p>Mesmo erro, mesmo tratamento, independente de quem seja, do tempo de casa ou da relação com a liderança. Aplica-se inclusive aos descontos previstos em lei.</p></div>
+  <p>Na prática, isso significa que uma decisão tomada para uma pessoa vira o padrão para todas as que estiverem na mesma situação depois. Antes de conceder uma exceção, a pergunta correta não é se aquela pessoa merece — é se o escritório está disposto a conceder o mesmo a todos os próximos casos idênticos.</p>
+  <h5>As duas razões</h5>
+  <p><b>Interna.</b> Tratamento diferente para o mesmo erro é percebido rapidamente pela equipe, circula, e corrói a autoridade de quem aplicou a regra da próxima vez.</p>
+  <p><b>Jurídica.</b> Em uma reclamatória, demonstrar que outro empregado cometeu a mesma falta e não sofreu a mesma consequência é um dos argumentos mais simples de sustentar contra a empresa, e costuma derrubar a penalidade discutida.</p>
+  <h5>Como isso aparece no trabalho</h5>
+  <ul>
+   <li>Ao aplicar advertência, verifique na Trilha se houve caso equivalente antes e qual foi o desfecho.</li>
+   <li>Ao conceder ou negar um pedido fora do padrão — dispensa de desconto, antecipação, flexibilização de prazo — registre o motivo, para que a próxima decisão possa ser coerente.</li>
+   <li>Quando alguém pedir exceção, encaminhe a Gustavo em vez de decidir no balcão. A exceção não deixa de existir, mas passa a ser decisão consciente da direção.</li>
+  </ul>`}
+]},
+
+{g:'Visão geral', i:'🏛️', t:'Governança', d:`
+  <p class="lead">Quem responde por quê, o que precisa de aprovação antes de ser executado, quando levar o assunto adiante e como acionar cada parceiro externo.</p>
+  <p>A equipe do escritório é enxuta e atende cinco empresas com sócios diferentes. Saber de quem se aceita instrução e o que se confirma antes de executar é, nesse arranjo, tão operacional quanto qualquer rotina.</p>`, c:[
+
+ {i:'👥', t:'Quem é quem', d:`
+  <table>
+   <tr><th>Papel</th><th>Quem</th><th>Responde por</th></tr>
+   <tr><td><b>Diretor Geral</b></td><td>Gustavo Rodrigues</td><td>Sócio de todas as empresas. Aprova as decisões críticas de Pessoas e é a instância final de qualquer impasse.</td></tr>
+   <tr><td><b>Coordenadora Geral</b></td><td>Janaynna Oliveira</td><td>Coordena o escritório e responde pelo Financeiro. Liderança direta da Analista de Pessoas. Lança os valores de gorjeta arrecadados.</td></tr>
+   <tr><td><b>Analista de Pessoas</b></td><td>Graziela Ribeiro</td><td>Executa e confere todo o ciclo de vida do empregado nas cinco empresas.</td></tr>
+   <tr><td><b>Técnica de Compras e Eventos</b></td><td>Ruth dos Reis</td><td>Conduz as compras e a operação de eventos privados das casas.</td></tr>
+  </table>
+  <h5>Fora do escritório</h5>
+  <p>Cada restaurante tem lideranças próprias de cozinha e de salão. Elas não são chefia da equipe do escritório, mas são as contrapartes de várias rotinas: entregam a escala prevista, solicitam vagas e advertências, conduzem a entrevista técnica e a capacitação da frente técnica.</p>`},
+
+ {i:'✋', t:'Decisões que só o diretor aprova', d:`
+  <div class="rule"><b class="h">Cinco atos dependem de aprovação de Gustavo</b><p>Admissão · desligamento · justa causa · advertência · férias.</p></div>
+  <p>A regra vale <b>inclusive quando quem pede é sócio de uma das operações</b>. Como os quadros societários são diferentes em cada casa, uma orientação dada de boa-fé por um sócio pode contrariar o que foi combinado em outra empresa. Gustavo é o único ponto comum às cinco, e por isso é onde a decisão converge.</p>
+  <h5>Como isso funciona sem travar o dia a dia</h5>
+  <p>A aprovação incide sobre o <b>ato final</b>, não sobre a preparação. O DP segue normalmente: reúne os dados, confere a documentação, monta o pacote e deixa pronto para executar. O que aguarda é a autorização de executar.</p>
+  <ol class="pl">
+   <li>Recebida a solicitação — de uma liderança, de um sócio ou do próprio empregado — o DP registra e prepara.</li>
+   <li>Leva a Gustavo o caso já instruído: o que se pede, o impacto na operação, o custo quando houver e a recomendação.</li>
+   <li>Com a aprovação, executa e registra na Trilha do Empregado.</li>
+  </ol>
+  <p>Se houver prazo correndo e a resposta demorar, cabe ao DP cobrar. A pendência de aprovação não suspende o prazo legal.</p>`},
+
+ {i:'📶', t:'Quando escalar', d:`
+  <p class="lead">Assuntos que envolvem o comportamento ou a resposta de um empregado seguem uma régua simples de tentativas.</p>
+  <ol class="steps">
+   <li><strong>Primeira tentativa</strong><p>O DP trata diretamente com a pessoa: explica o que é necessário, o prazo e o motivo.</p></li>
+   <li><strong>Segunda tentativa</strong><p>Nova abordagem, agora registrando o contato. Se possível, por canal que deixe rastro — mensagem pelo sistema ou WhatsApp.</p></li>
+   <li><strong>Escalar</strong><p>Não resolvido, o assunto vai a Gustavo, que emprega a autoridade de sócio para resolver. O DP entrega o histórico do que já foi tentado, com datas.</p></li>
+  </ol>
+  <p>Insistir uma terceira vez costuma desgastar quem cobra sem alterar o comportamento. Duas tentativas sem resultado já indicam que o assunto não se resolve no plano da orientação.</p>
+  <div class="rule"><b class="h">O diretor é recurso, não fiscal</b><p>Escalar cedo é o comportamento esperado, e não sinal de que a área não deu conta. O acionamento existe justamente para que a analista não precise sustentar sozinha um conflito que não é dela.</p></div>
+  <h5>Vão direto ao diretor, sem passar pela régua</h5>
+  <ul>
+   <li>Qualquer reclamação sobre uma liderança, inclusive sobre alguém a quem o DP responde.</li>
+   <li>Conflito de relacionamento entre pessoas da equipe.</li>
+   <li>Pedido de exceção a uma regra estabelecida.</li>
+   <li>Assunto que envolva valor: remuneração, acordo de desligamento, dispensa de desconto.</li>
+  </ul>`},
+
+ {i:'🤝', t:'Parceiros externos', d:`
+  <p class="lead">Três parceiros sustentam a área. Cada um tem forma própria de acionamento, e usar o canal errado custa tempo ou dinheiro.</p>
+  <h5>Senador / SCI · contabilidade</h5>
+  <p>Executa as rotinas legais de DP: processa a folha, emite holerite, TRCT, aviso e recibo de férias e as guias. Recebe do escritório os espelhos de ponto fechados e os valores de gorjeta por empregado.</p>
+  <p>Contato direto do DP, sem intermediação. <b>Todo documento que volta é conferido antes de seguir</b> para assinatura ou pagamento.</p>
+  <h5>Figueiredo Filho · advocacia</h5>
+  <p>Responde por jurídico preventivo, trabalhista e contratos. Redigiu a documentação trabalhista que o escritório utiliza — contrato de trabalho, termos de entrega e termos de advertência.</p>
+  <div class="rule"><b class="h">O acionamento é limitado</b><p>São <b>3 horas de consultoria por mês</b>. Por isso a dúvida é filtrada com Gustavo antes de ir ao advogado. Cabendo, pergunta-se no <b>grupo de WhatsApp preventivo</b>, onde Gustavo também está — o que resolve boa parte das questões sem consumir hora. Assunto crítico Gustavo trata diretamente.</p></div>
+  <h5>Clínicas e fornecedores</h5>
+  <p>Exames ocupacionais e parasitológicos, fornecedores de uniforme e EPI, e a Caju como gestora de benefícios. O cadastro de cada um fica no módulo de Exames Médicos ou de Uniformes &amp; EPIs, com o responsável indicado.</p>`},
+
+ {i:'📜', t:'Sindicato e convenção coletiva', d:`
+  <p class="lead">As convenções coletivas definem regras que se sobrepõem à CLT em vários pontos da rotina. São <b>diferentes por praça</b>: São Paulo e Belém seguem sindicatos distintos.</p>
+  <h5>O que a convenção determina e aparece no trabalho</h5>
+  <ul>
+   <li><b>Banco de horas</b> — se é permitido e qual o prazo máximo para quitação do saldo.</li>
+   <li><b>Rateio de gorjeta</b> — a forma de divisão precisa estar homologada em assembleia dos empregados.</li>
+   <li><b>Aviso prévio</b> — hipóteses de dispensa do desconto, como a carta do novo empregador.</li>
+   <li><b>Jornada, intervalos e adicionais</b> — parâmetros que o motor de ponto usa na validação.</li>
+   <li><b>Piso salarial e data-base</b> — reajuste anual a aplicar na folha.</li>
+  </ul>
+  <div class="rule"><b class="h">Antes de responder</b><p>Confirme a qual praça o caso pertence. A mesma pergunta sobre banco de horas tem respostas diferentes para Lobozó, Sororoca e Puba SP (São Paulo) e para o Puba Bar (Belém).</p></div>
+  <h5>Assembleia de rateio de gorjeta</h5>
+  <p>A regra de divisão praticada precisa ter sido aprovada em assembleia dos empregados, com documentação arquivada. É esse documento que sustenta o critério de rateio se ele for questionado individualmente ou pelo sindicato.</p>
+  <div class="imp-box"><span class="kind">regularizar</span><b class="h">Melhoria</b><p>A assembleia está defasada e não há certeza de que toda a documentação existe. Reorganizar e refazer, com apoio da advocacia.</p></div>
+  <div class="imp-box"><span class="kind">rotina nova</span><b class="h">Melhoria</b><p>As convenções se renovam a cada um ou dois anos. Cadastrar o vencimento de cada uma em <b>Prazos</b> e acompanhar diretamente, em vez de depender do aviso da contabilidade.</p></div>`}
+]},
+
+/* ══════════════ PROCESSOS ══════════════ */
+
+{g:'Processos', i:'🔄', t:'Ciclo de vida do empregado', d:`
+  <p class="lead">Da abertura da vaga ao arquivamento da pasta: os cinco processos que acompanham uma pessoa do início ao fim do vínculo.</p>
+  <p>As etapas são encadeadas. O que se define na abertura da vaga vira a proposta; a proposta vira o contrato; o que se entrega na admissão vira prazo de validade a controlar; e tudo se acumula na Trilha do Empregado, que é o registro que permanece depois do desligamento.</p>`, c:[
+
+ {i:'🎯', t:'Processo seletivo', d:`
+  <p class="lead">Da identificação da necessidade até o candidato aprovado e encaminhado para a Admissão. Conduzido no módulo <b>Processo Seletivo</b>.</p>
+  <p>A vaga quase sempre nasce de uma reposição, mas a reposição não é automática: a saída de alguém é a única ocasião em que o desenho da posição fica aberto para revisão.</p>`, c:[
+
+   {i:'📋', t:'Abertura da vaga', d:`
+    <ol class="steps">
+     <li><strong>A liderança solicita</strong><p>Normalmente após um desligamento, às vezes por aumento de quadro. A solicitação chega ao DP por WhatsApp ou em reunião.</p><div class="who"><span class="ex">liderança da área</span></div></li>
+     <li><strong>O DP revisa a necessidade com a liderança</strong><p>Antes de repor nos mesmos termos, verifique com ela: o cargo continua o mesmo? Alguma atribuição pode ser redistribuída entre quem já está? A faixa de remuneração ainda corresponde ao que o mercado pratica? O horário atende à escala atual?</p><p>Reabrir a vaga por inércia é a forma mais comum de carregar por anos uma estrutura que já não corresponde à operação.</p><div class="who"><span class="ex">DP + liderança</span></div></li>
+     <li><strong>O DP consolida o pacote</strong><p>Cargo, job description, faixa de remuneração, horários e área. O resultado é uma definição fechada, não uma proposta em aberto.</p><div class="who"><span class="ex">DP</span></div></li>
+     <li><strong>Gustavo aprova</strong><p>Duas decisões nesta etapa: autorizar a vaga e definir a estratégia de divulgação.</p><div class="who"><span class="ex">DP apresenta</span><span class="ap">Gustavo</span></div></li>
+     <li><strong>A vaga é cadastrada</strong><p>No módulo, com perguntas próprias do formulário, responsável e remuneração. O cadastro gera o endereço público da vaga na página <b>Trabalhe Conosco</b>.</p><div class="who"><span class="ex">DP</span></div></li>
+    </ol>
+    <div class="imp-box"><span class="kind">falta no sistema</span><b class="h">Melhoria</b><p>Não existe etapa de aprovação da vaga no módulo. Hoje o cadastro pode ser publicado sem passar por autorização registrada; a aprovação acontece por fora, em conversa.</p></div>`},
+
+   {i:'📣', t:'Divulgação e candidaturas', d:`
+    <p class="lead">A divulgação é multicanal e a combinação é decidida caso a caso, conforme o cargo e a urgência.</p>
+    <h5>Canais disponíveis</h5>
+    <ul>
+     <li><b>Página Trabalhe Conosco</b> do site da casa, gerada pelo próprio sistema. As candidaturas caem direto no kanban.</li>
+     <li><b>Redes sociais</b>, por meio da equipe de social media.</li>
+     <li><b>Plataformas de vaga</b> externas.</li>
+     <li><b>Busca ativa</b> na base de currículos do site assinado pelo escritório — útil para cargos com pouca procura espontânea.</li>
+     <li><b>Indicação</b> de quem já trabalha na casa.</li>
+    </ul>
+    <h5>O kanban de candidaturas</h5>
+    <p>Três colunas: <span class="st">Novas</span> → <span class="st">Entrevistas marcadas</span> → <span class="st">Aprovadas</span>. Rejeitados e encaminhados saem do quadro. Cada candidatura registra data de entrada e permite transferir responsável ou rejeitar com motivo.</p>
+    <p>Todo interessado permanece registrado, inclusive quem não avançou. A base acumulada é ativo do escritório: em vaga futura do mesmo cargo, ela é o primeiro lugar a consultar, antes de abrir divulgação nova.</p>
+    <div class="imp-box"><span class="kind">rotina nova</span><b class="h">Melhoria</b><p>Duas práticas a instituir: dar retorno a quem participou e não foi escolhido, e consultar a base de candidatos anteriores ao abrir vaga nova. Hoje a base é alimentada, mas não é consultada.</p></div>`},
+
+   {i:'🔎', t:'Pré-seleção e entrevistas', d:`
+    <ol class="steps">
+     <li><strong>Triagem por requisito</strong><p>O DP filtra as candidaturas pelos requisitos definidos na abertura: experiência, disponibilidade de horário e região de moradia — que em escala de restaurante costuma ser decisivo, por causa do transporte no fim do turno.</p></li>
+     <li><strong>Agendamento em lote</strong><p>O DP alinha com a liderança uma janela de horários e agenda as entrevistas em bloco, em vez de negociar cada uma isoladamente. A primeira conversa pode ser online.</p></li>
+     <li><strong>Entrevista técnica</strong><p>Conduzida pela liderança da área, que avalia domínio do ofício. <b>O DP participa</b>: verifica disponibilidade real de horário, expectativa de remuneração, situação de registro anterior e pendências que apareceriam depois na admissão.</p><div class="who"><span class="ex">liderança conduz · DP acompanha</span></div></li>
+    </ol>
+    <p>A participação do DP não é formalidade. É nessa conversa que se descobrem as informações que, se aparecerem só na admissão, custam o processo inteiro — pessoa em seguro-desemprego, indisponibilidade para o turno da noite, ou expectativa salarial acima da faixa aprovada.</p>
+    <div class="imp-box"><span class="kind">falta no sistema</span><b class="h">Melhoria</b><p>Não há coluna nem registro da triagem feita pelo DP antes da entrevista. O kanban salta de <i>Novas</i> para <i>Entrevistas marcadas</i>, sem rastro do critério aplicado.</p></div>`},
+
+   {i:'🧪', t:'Teste prático', d:`
+    <p class="lead">Uma ou duas diárias remuneradas, em operação real, antes da decisão de contratar.</p>
+    <table>
+     <tr><th>Item</th><th>Valor</th></tr>
+     <tr><td><b>Hora</b></td><td><span class="st">R$ 18,75</span></td></tr>
+     <tr><td><b>Diária de 8 horas</b></td><td><span class="st">R$ 150,00</span></td></tr>
+    </table>
+    <h5>Como se opera</h5>
+    <p>O sistema cadastra o candidato como <b>freela</b> pelo CPF e lança os turnos de teste. O pagamento segue o mesmo fluxo dos demais freelas: precificação por horas no fechamento, montagem do lote com a chave Pix e geração do comprovante em PDF.</p>
+    <h5>O que o teste resolve</h5>
+    <ul>
+     <li>Verifica se a pessoa executa o que descreveu na entrevista, sob o ritmo real da casa.</li>
+     <li>Permite que a equipe avalie a convivência, que é metade do trabalho em cozinha e salão.</li>
+     <li>Permite que o próprio candidato veja a operação antes de decidir. Desistência após a diária é resultado do processo, não perda.</li>
+    </ul>
+    <p>Aprovado, a liderança aciona o DP. No kanban, o candidato é movido para <span class="st">Aprovadas</span> e encaminhado à Admissão, o que gera aviso na Central de quem tem acesso ao módulo.</p>
+    <div class="who"><span class="ex">DP lança · liderança avalia</span><span class="ap">Gustavo</span></div>
+    <div class="imp-box q"><span class="kind">a definir</span><b class="h">Decisão pendente</b><p>Falta definir como a diária de teste é registrada e documentada. Trata-se de pagamento a quem ainda não tem vínculo, e o enquadramento precisa ser confirmado com a contabilidade e a advocacia.</p></div>`}
+ ]},
+
+ {i:'🪪', t:'Admissão', d:`
+  <p class="lead">Do aceite da proposta até a criação do empregado no sistema. Conduzido no módulo <b>Admissão</b>, em kanban de sete colunas.</p>
+  <p>É o processo mais longo da área e o que mais depende de terceiros: a pessoa precisa preencher o formulário, a clínica precisa liberar o exame, a contabilidade precisa devolver o contrato. Por isso o avanço é inteiramente manual — o card só muda de coluna quando alguém confirma que a etapa foi concluída, e não quando um documento é apenas enviado.</p>`, c:[
+
+   {i:'🚪', t:'Portas de entrada', d:`
+    <h5>Porta 1 · Processo seletivo</h5>
+    <p>O candidato aprovado no kanban de vagas é encaminhado à Admissão, já com cargo, remuneração e horários definidos na abertura da vaga.</p>
+    <h5>Porta 2 · Indicação</h5>
+    <p>Alguém da equipe indica uma pessoa; ela é chamada como freelancer em um ou dois dias de necessidade real, e o dia trabalhado cumpre a função do teste.</p>
+    <p>É o caminho mais frequente em reposição urgente e costuma ter boa taxa de acerto, porque quem indica compromete a própria reputação junto à equipe. O registro segue igual ao do teste prático: cadastro como freela, turno lançado, pagamento por lote.</p>
+    <div class="rule"><b class="h">O que não muda entre as duas portas</b><p>Independentemente de como a pessoa chegou, a admissão só começa depois da proposta formalizada e do aceite. A indicação encurta a seleção, não o processo de contratação.</p></div>`},
+
+   {i:'📝', t:'Proposta e aceite', d:`
+    <p class="lead">É o portão do processo. Antes dele não se abre card, não se pede exame e não se comunica data de início.</p>
+    <h5>O que a proposta precisa conter</h5>
+    <ul>
+     <li><b>Cargo</b> e a descrição do que a pessoa vai fazer.</li>
+     <li><b>Remuneração</b>, separando salário e a estimativa de gorjeta, que é variável — apresentar valor único gera frustração no primeiro mês fraco.</li>
+     <li><b>Horários e escala</b>: turnos, dias de folga e se há trabalho em fim de semana e feriado.</li>
+     <li><b>Benefícios</b>: vale-transporte, vale-refeição e auxílio fixo, quando houver.</li>
+     <li><b>Data prevista de início</b>.</li>
+    </ul>
+    <h5>O aceite</h5>
+    <p>É necessária a <b>confirmação explícita da pessoa</b> sobre esses termos. Aceite verbal em conversa não serve como registro: o que sustenta o processo é a confirmação escrita, ainda que por mensagem.</p>
+    <p>Para abrir o card no sistema bastam <b>nome e WhatsApp</b>; os demais dados vêm do formulário que a própria pessoa preenche.</p>
+    <div class="imp-box"><span class="kind">falta no sistema</span><b class="h">Melhoria</b><p>Não há registro de proposta e aceite no fluxo. O kanban começa em <i>Pessoas a admitir</i>, sem etapa anterior que guarde o que foi combinado — o que deixa a área sem prova do acordado se houver divergência depois.</p></div>
+    <div class="imp-box q"><span class="kind">a definir</span><b class="h">Decisão pendente</b><p>Definir se a proposta será documento assinado pela ferramenta de assinatura ou se a confirmação por WhatsApp é suficiente.</p></div>`},
+
+   {i:'🗂️', t:'As sete colunas', d:`
+    <p class="lead">Cada card abre um checklist da etapa. O fluxo é linear e o avanço é manual: preencher o formulário não move o card.</p>
+    <table>
+     <tr><th>Coluna</th><th>O que acontece</th></tr>
+     <tr><td><b>1 · Pessoas a admitir</b></td><td>Pré-formulário com os dados básicos da pessoa e da vaga: nome, WhatsApp, empresa, cargo e data prevista.</td></tr>
+     <tr><td><b>2 · Aguardando preenchimento</b></td><td>Envio do link público do formulário por WhatsApp. O link tem token com prazo de validade; é possível reenviar e estender o prazo.</td></tr>
+     <tr><td><b>3 · Exames, conta e dados internos</b></td><td>Agendamento e realização do exame admissional, coleta dos dados bancários e conferência do que foi preenchido — documentos, dependentes, endereço.</td></tr>
+     <tr><td><b>4 · Contabilidade &amp; contratos</b></td><td>Envio dos dados à contabilidade, montagem do contrato e coleta da assinatura.</td></tr>
+     <tr><td><b>5 · Última milha</b></td><td>Entregas físicas: uniformes e EPIs conforme o kit da área, com termo assinado, e lançamento das validades.</td></tr>
+     <tr><td><b>6 · Admitido &amp; onboarding</b></td><td>Criação do empregado no sistema, o que gera evento automático na Trilha e libera o acesso ao app. Início da capacitação.</td></tr>
+     <tr><td><b>7 · Cancelados / expirados</b></td><td>Processos que não se concluíram.</td></tr>
+    </table>
+    <div class="rule"><b class="h">Acompanhe os cards parados</b><p>Card parado em <i>Aguardando preenchimento</i> raramente significa desinteresse: em geral a pessoa não recebeu o link, não entendeu o que fazer ou travou em algum campo. Uma ligação resolve o que uma semana de espera não resolve — e o token expira.</p></div>
+    <div class="imp-box"><span class="kind">em construção</span><b class="h">Melhoria</b><p>A documentação trabalhista redigida pela advocacia — contrato, termos de entrega, termos de advertência — está sendo incorporada a uma Skill que gera os documentos dentro do planejamento.app. A analista confere e envia para assinatura, sem redigir do zero.</p></div>`}
+ ]},
+
+ {i:'🎓', t:'Capacitação', d:`
+  <p class="lead">Duas frentes, com responsáveis diferentes, executadas em paralelo nas primeiras semanas.</p>
+  <p>A separação importa porque as duas falham de formas distintas. Quando a capacitação técnica falha, o problema aparece em dias: o prato sai errado, o atendimento trava, a liderança percebe. Quando falha a institucional, nada aparece de imediato — aparece semanas depois, quando a pessoa falta sem avisar porque ninguém explicou o procedimento, entrega o atestado fora do prazo ou descobre pelo colega uma informação que deveria ter recebido do escritório.</p>`, c:[
+
+   {i:'🔧', t:'Frente técnica', d:`
+    <div class="rule"><b class="h">Responsável: a liderança da área</b><p>Método de trabalho, produtos e cardápio, padrão de atendimento, operação de cozinha, armazenamento e boas práticas sanitárias.</p></div>
+    <h5>O que cabe ao DP nesta frente</h5>
+    <p><b>Registrar.</b> O treinamento realizado é lançado na Trilha do Empregado com data e responsável. Esse registro é o que comprova capacitação em fiscalização sanitária e em discussão sobre acidente de trabalho — sem ele, do ponto de vista documental, o treinamento não aconteceu.</p>
+    <p><b>Sinalizar quando não acontece.</b> Empregado novo com ocorrências operacionais repetidas nas primeiras semanas raramente é caso de advertência. É, quase sempre, caso de treinamento que não foi dado, e o encaminhamento correto é conversar com a liderança, não abrir rito disciplinar.</p>`},
+
+   {i:'🏛️', t:'Frente institucional', d:`
+    <div class="rule"><b class="h">Responsável: o DP</b><p>Ninguém mais detém esse conhecimento. Trata do funcionamento da empresa e do que se espera de quem trabalha nela.</p></div>
+    <h5>Conteúdo a cobrir</h5>
+    <ul>
+     <li><b>História da casa e quem são os sócios.</b> São restaurantes autorais, com conceito e trajetória próprios. O básico é obrigatório na entrada; o aprofundamento vem ao longo do tempo.</li>
+     <li><b>Registro de ponto.</b> Quais são as quatro batidas obrigatórias, como corrigir pelo app e o que acontece quando a correção não é feita.</li>
+     <li><b>Gorjeta.</b> Como funciona o rateio por pontuação, onde consultar o extrato diário e por que falta abonada não gera gorjeta.</li>
+     <li><b>Ausências.</b> O que fazer ao adoecer, prazo de entrega do atestado e a quem avisar.</li>
+     <li><b>Férias.</b> Que o pedido se faz <b>direto ao DP</b>, não à liderança.</li>
+     <li><b>Documentos e benefícios.</b> Prazos de entrega, como acessar o holerite e datas de pagamento.</li>
+     <li><b>Canais.</b> Como falar com o escritório, incluindo o <b>Fale com DP</b> e a opção anônima.</li>
+    </ul>
+    <div class="imp-box"><span class="kind">usar o que existe</span><b class="h">Melhoria</b><p>Converter a frente institucional em vídeos curtos com prova de absorção ao final, exigidos na admissão — a absorção por material escrito é baixa. Já existe o vídeo sobre a história do Lobozó; faltam os demais temas. O módulo <b>Trilhas</b> do AppTip já suporta o formato: falta produzir e cadastrar o conteúdo.</p></div>`}
+ ]},
+
+ {i:'👋', t:'Desligamento', d:`
+  <p class="lead">Do início do processo ao arquivamento da pasta. Conduzido no módulo <b>Demissão</b>, em kanban de sete colunas com cascata automática de inativação.</p>
+  <p>Identificar corretamente a modalidade é a primeira decisão e condiciona todo o resto: cálculo do TRCT, acesso ou não ao seguro-desemprego, multa do FGTS, aviso prévio e até o momento em que o acesso da pessoa aos sistemas é bloqueado. Corrigir a modalidade depois de iniciado significa refazer o processo com a contabilidade.</p>`, c:[
+
+   {i:'🔢', t:'As cinco modalidades', d:`
+    <table>
+     <tr><th>Modalidade</th><th>Como funciona</th></tr>
+     <tr><td><b>1 · Pedido de demissão</b><br><span style="color:var(--muted)">iniciativa do empregado</span></td><td>Exige <b>carta formal</b> da pessoa; o escritório fornece o modelo. Sem multa do FGTS e sem seguro-desemprego. O aviso prévio pode ser cumprido ou descontado. A carta segue à contabilidade, que gera o TRCT.</td></tr>
+     <tr><td><b>2 · Sem justa causa</b><br><span style="color:var(--muted)">iniciativa da empresa</span></td><td>Com ou sem cumprimento de aviso. Dispensado o cumprimento, paga-se o aviso indenizado. Devidas a multa de 40% do FGTS e as verbas rescisórias; a pessoa acessa o seguro-desemprego. O cumprimento efetivo é raro: manter por 30 dias alguém cujo desempenho já não atende tende a agravar a situação, e só se aplica quando a saída é consensual.</td></tr>
+     <tr><td><b>3 · Com justa causa</b><br><span style="color:var(--muted)">iniciativa da empresa</span></td><td>Rito próprio, sempre conduzido com contabilidade e advocacia. Sem multa, sem aviso e sem seguro-desemprego. Exige base documental — ver <b>Advertências</b>.</td></tr>
+     <tr><td><b>4 · Acordo formal (CLT)</b></td><td>Previsto em lei: metade da multa do FGTS, metade do aviso indenizado, saque parcial do FGTS e <b>sem</b> seguro-desemprego. Pouco procurado pelos empregados justamente pela ausência do seguro.</td></tr>
+     <tr><td><b>5 · Acordo informal</b></td><td>A empresa formaliza dispensa sem justa causa, a pessoa acessa o seguro-desemprego e devolve a multa do FGTS. É a modalidade mais solicitada. Tratada quase sempre diretamente por Gustavo, que vai ao restaurante conversar com a pessoa.</td></tr>
+    </table>
+    <div class="rule"><b class="h">O campo do sistema hoje</b><p>O módulo registra a iniciativa em três opções: <b>empresa</b>, <b>empregado</b> e <b>acordo</b>. Não distingue sem justa causa de justa causa, nem acordo formal de informal — a diferença precisa ser anotada no motivo.</p></div>
+    <div class="imp-box"><span class="kind">falta no sistema</span><b class="h">Melhoria</b><p>Ampliar o campo iniciativa para as cinco modalidades, já que cada uma tem cálculo, documentação e efeitos distintos.</p></div>`},
+
+   {i:'⏳', t:'Aviso prévio', d:`
+    <p class="lead">No pedido de demissão, quando a pessoa solicita dispensa do cumprimento, a decisão sobre descontar ou não é do diretor.</p>
+    <ol class="steps">
+     <li><strong>A pessoa formaliza o pedido</strong><p>Na carta de demissão, indicando se pretende cumprir ou pede dispensa.</p></li>
+     <li><strong>O DP leva a Gustavo</strong><p>Com a informação do impacto na escala: se a saída imediata deixa turno descoberto.</p></li>
+     <li><strong>Gustavo decide</strong><p>Na maior parte dos casos o valor é descontado.</p><div class="who"><span class="ex">DP</span><span class="ap">Gustavo</span></div></li>
+    </ol>
+    <p>O argumento a usar quando a pessoa questionar é a simetria: o aviso existe para dar à outra parte tempo de se reorganizar. Quando é a empresa que dispensa, ela paga o período indenizado; quando é o empregado que sai sem cumprir, o desconto é a contrapartida equivalente.</p>
+    <div class="rule"><b class="h">Exceção prevista em convenção</b><p>Se o novo empregador enviar carta informando a contratação, o desconto é dispensado. A carta é anexada ao processo e enviada à contabilidade <b>junto com os demais documentos</b>, para que o TRCT já venha sem o desconto — corrigir depois exige refazer o cálculo.</p></div>`},
+
+   {i:'🚦', t:'Condução no sistema', d:`
+    <p class="lead">Sete colunas, com checklist por etapa e cascata automática ao concluir.</p>
+    <p><span class="st">Iniciado</span> → <span class="st">Aguardando prévia</span> → <span class="st">Decisão tomada</span> → <span class="st">Comunicação e agendamentos</span> → <span class="st">Execução</span> → <span class="st">Encerramento</span> → <span class="st">Concluído</span></p>
+    <h5>Ao iniciar</h5>
+    <p>Informa-se o empregado, a <b>iniciativa</b>, a data alvo, o tratamento do aviso prévio e o motivo. As subtarefas de cada etapa pedem link do Drive, data ou canal — contabilidade por e-mail, clínica para o exame demissional, WhatsApp para a pessoa.</p>
+    <div class="rule"><b class="h">Regra crítica de acesso</b>
+      <p>Iniciativa <b>empregado</b> ou <b>acordo</b> bloqueia o acesso da pessoa <b>imediatamente</b>, ao iniciar o processo.</p>
+      <p>Iniciativa <b>empresa</b> só bloqueia quando se marca a subtarefa <i>Informar demissão pro empregado</i>. Marcá-la antes da conversa acontecer derruba o acesso da pessoa antes de ela saber do desligamento. <b>Marcar somente após a comunicação.</b></p></div>
+    <div class="imp-box"><span class="kind">adoção</span><b class="h">Melhoria</b><p>O módulo está pronto e em beta, mas os desligamentos vêm sendo conduzidos fora dele. Passar a usá-lo é o que garante a cascata de inativação, o registro automático na Trilha e a rastreabilidade das etapas.</p></div>`},
+
+   {i:'📦', t:'Fechamento', d:`
+    <ol class="steps">
+     <li><strong>Conferir o TRCT</strong><p>Devolvido pela contabilidade. Verificar verba por verba: saldo de salário, aviso, férias vencidas e proporcionais com o terço, décimo terceiro proporcional, multa do FGTS quando devida e os descontos. Conferir também se o <b>saldo de banco de horas</b> foi quitado.</p></li>
+     <li><strong>Agendar o pagamento</strong><p>Dentro do prazo legal, contado da data do desligamento.</p></li>
+     <li><strong>Solicitar o exame demissional</strong><p>Pela clínica cadastrada. É obrigatório e sua ausência invalida a homologação.</p></li>
+     <li><strong>Concluir no sistema</strong><p>A conclusão fecha o período do empregado, inativa a pessoa — o login é bloqueado em até 30 segundos —, desativa os exames pendentes e registra o evento na Trilha. Cancelar o processo reverte tudo.</p></li>
+     <li><strong>Arquivar a pasta</strong><p>Mover a pasta da pessoa no Drive de <b>ativos</b> para <b>desligados</b>, com todos os documentos do vínculo.</p></li>
+    </ol>
+    <div class="imp-box"><span class="kind">falta no sistema</span><b class="h">Melhoria</b><p>Gerar um <b>prontuário em PDF</b> no encerramento, congelando a Trilha da pessoa e arquivando junto à pasta. É a base de defesa em reclamatória, e vale validar o formato com a advocacia para assegurar valor probatório.</p></div>`}
+ ]},
+
+ {i:'🛤️', t:'Trilha do empregado', d:`
+  <p class="lead">Registro cronológico e individual de tudo que acontece no vínculo, da admissão ao desligamento. Módulo <b>Trilha do Empregado</b>.</p>
+  <h5>O que registra</h5>
+  <p>Admissão, mudança de cargo, promoção, alteração de remuneração, treinamento realizado, feedback positivo e negativo, advertência, férias, exames, reunião individual, entrega de uniforme, atraso, falta e compensação de horas.</p>
+  <p>Os eventos têm origem <b>automática</b> ou <b>manual</b>. Os automáticos são gerados pela Admissão, pela Demissão e pela mudança de cargo, e não são editáveis. Os manuais são lançados pelo DP ou pela liderança.</p>
+  <div class="rule"><b class="h">Dado sensível · LGPD</b>
+    <p>Cada abertura da Trilha registra <b>log de visualização</b> com autor e data. A consulta é ato auditado e deve ter motivo.</p>
+    <p>Eventos <b>não são excluídos</b>. Podem apenas ser anulados, com motivo obrigatório e identificação de quem anulou — o registro original permanece visível.</p></div>
+  <h5>Para que serve na operação</h5>
+  <ul>
+   <li><b>Decidir promoção com base em fato.</b> São cerca de 90 empregados, com projeção de 120. Sem registro, a promoção se decide por impressão de quem está mais próximo da liderança.</li>
+   <li><b>Identificar desempenho consistente.</b> Quem não gera ocorrência tende a não ser notado. A Trilha torna visível o empregado sem atrasos e com boa execução, que muitas vezes cabe reconhecer dentro do próprio cargo, sem necessariamente virar liderança.</li>
+   <li><b>Responder a quem pede promoção.</b> Permite uma conversa apoiada em histórico verificável, em vez de resposta genérica.</li>
+   <li><b>Sustentar o rito disciplinar.</b> Advertência e justa causa dependem de histórico registrado para se sustentarem.</li>
+  </ul>
+  <div class="imp-box q"><span class="kind">confirmar</span><b class="h">Verificação pendente</b><p>Confirmar se a <b>Ocorrência com pessoa vinculada</b> gera evento automático na Trilha. O caso típico é o líder de salão registrar um problema de atendimento e marcar o empregado envolvido. A documentação dos dois módulos não descreve essa integração.</p></div>`}
+]},
+
+{g:'Processos', i:'📆', t:'Rotina do mês', d:`
+  <p class="lead">As cinco rotinas que se repetem todo mês, nas mesmas datas, para as cinco empresas.</p>
+  <p>Estão encadeadas: o ponto alimenta a escala praticada; a praticada define o ajuste dos benefícios e o rateio da gorjeta; os dois desembocam na folha. Atraso no início da cadeia aparece no fim dela, e o fim da cadeia é o valor que a pessoa recebe.</p>
+  <p>É a maior parte da carga de trabalho do mês e convém tratá-la como bloco fixo de agenda: a conferência de ponto é diária, o fechamento da escala prevista se concentra a partir do dia 21 e o pagamento dos benefícios cai no último dia útil.</p>`, c:[
+
+ {i:'📊', t:'Ponto', d:`
+  <p class="lead">Registro de jornada pela <b>Sólides</b>, com conferência e tratamento de inconsistências no módulo <b>Análise de Ponto</b>, conectado por API.</p>
+  <p>Concentra o maior volume de inconsistências da área. São cerca de 90 pessoas registrando quatro marcações por dia, em turnos que viram, com trocas de última hora. Uma proporção de erro é esperada e não indica má-fé; o que não pode acontecer é o erro chegar ao fechamento sem tratamento, porque a partir daí ele contamina a escala praticada, a gorjeta do dia e o cálculo de horas.</p>`, c:[
+
+   {i:'📱', t:'Como o empregado registra', d:`
+    <p>Pelo aplicativo da <b>Sólides</b> no celular.</p>
+    <div class="rule"><b class="h">O celular pessoal não é obrigatório</b><p>A empresa não pode condicionar o registro de jornada ao uso de aparelho particular, e isso precisa ser dito na integração. Quem não quiser ou não puder usar o próprio celular registra em aparelho ou computador da empresa, ou no totem.</p></div>
+    <h5>As quatro batidas obrigatórias</h5>
+    <ol class="pl">
+     <li>Entrada</li>
+     <li>Saída para o intervalo</li>
+     <li>Retorno do intervalo</li>
+     <li>Saída final</li>
+    </ol>
+    <p>Havendo segundo intervalo na jornada, ele também é registrado, com as duas marcações correspondentes.</p>
+    <p>A batida do intervalo é a que mais falha e é justamente a de maior consequência: intervalo não registrado é presumido como não concedido, o que gera hora extra devida com adicional. Vale reforçar esse ponto especificamente na capacitação institucional.</p>`},
+
+   {i:'✅', t:'Conferência diária', d:`
+    <p class="lead">A conferência é feita <b>dia a dia, por empresa</b>, com semáforo: <b>verde</b> para o dia já conferido, <b>amarelo</b> para o pendente.</p>
+    <h5>O que o motor valida</h5>
+    <p>A cada carga das marcações, o cálculo é refeito do zero e confronta três coisas:</p>
+    <ul>
+     <li><b>Carga prevista contra trabalhada</b> — a jornada do dia corresponde ao que a escala previa.</li>
+     <li><b>Intervalo mínimo</b> — foi registrado e tem a duração exigida.</li>
+     <li><b>Batidas em par</b> — toda entrada tem a saída correspondente.</li>
+    </ul>
+    <p>O que escapa dessas regras é separado em <b>A corrigir</b>, que exige ação da pessoa, e <b>A avaliar</b>, que depende apenas de leitura de quem confere. Nas inconsistências, o sistema agrupa por empregado e permite disparar uma única mensagem de WhatsApp com todas as pendências, com prazo — o padrão é 6 horas, com contagem regressiva.</p>
+    <h5>O travamento do dia</h5>
+    <p>Marcar <b>ok verificado</b> trava o dia; para alterar depois é preciso reabrir. O travamento existe para que o fechamento tenha base estável: sem ele, um ajuste tardio mudaria silenciosamente a escala praticada que já serviu de base para a gorjeta e para os benefícios.</p>
+    <div class="rule"><b class="h">Cadência</b><p>Conferir diariamente, ou no máximo a cada dois dias. Acumular uma semana torna a correção muito mais difícil, porque a pessoa já não lembra o que houve naquele turno.</p></div>`},
+
+   {i:'🔁', t:'Correção · fluxo padrão', d:`
+    <ol class="steps">
+     <li><strong>O sistema identifica a inconsistência</strong><p>Na carga das marcações, com a separação entre corrigir e avaliar.</p></li>
+     <li><strong>Disparo de WhatsApp ao empregado</strong><p>Uma mensagem por pessoa, com todas as pendências e o prazo de resposta.</p></li>
+     <li><strong>O empregado corrige no app</strong><p>Informa o horário correto, e a solicitação entra na fila de aprovações pendentes.</p></li>
+     <li><strong>O DP aprova ou reprova</strong><p>Individualmente ou em lote. Aprovar não é homologar o que a pessoa digitou: é confrontar com a escala prevista e, havendo dúvida, com o relato da liderança. A ação fica auditada e dispara reanálise automática.</p><div class="who"><span class="ap">DP</span></div></li>
+    </ol>
+    <div class="rule"><b class="h">Este é o caminho oficial</b><p>O empregado corrige, o DP aprova. É o que mantém a responsabilidade pelo registro com quem executou a jornada e produz histórico auditável.</p></div>`},
+
+   {i:'⚠️', t:'Correção · exceção', d:`
+    <p class="lead">Quando a pessoa não responde e há urgência de fechamento, o DP apura por telefone e faz a <b>correção manual</b>, em aba própria do módulo. O ajuste sobe para a Sólides e corrige a escala praticada.</p>
+    <div class="rule"><b class="h">Exceção, não padrão</b><p>Usar apenas com fechamento em curso e após tentativa de contato registrada.</p></div>
+    <h5>Por que não se transforma em rotina</h5>
+    <p>É questão de prova. Quando o empregado corrige no app, fica registrado que a alteração partiu de quem executou a jornada. Quando o DP corrige, o registro mostra o escritório alterando a marcação de um terceiro — posição consideravelmente mais frágil se a jornada for questionada depois.</p>
+    <h5>O que fazer ao usar</h5>
+    <p>Registrar no campo de observação o que foi apurado e com quem: data da conversa e o que a pessoa relatou. Leva alguns segundos e é o que sustenta o ajuste posteriormente.</p>`}
+ ]},
+
+ {i:'📅', t:'Escala e benefícios', d:`
+  <p class="lead">Os dois assuntos são o mesmo processo visto de dois ângulos: o benefício é calculado sobre a escala.</p>
+  <p>O cálculo não é por cargo nem por valor fixo. É <b>valor-dia multiplicado pelos dias em que a pessoa está escalada</b>, mais o auxílio fixo quando houver. Escala errada, portanto, é benefício errado — e como o pagamento é antecipado, o erro só se corrige no ajuste do mês seguinte.</p>`, c:[
+
+   {i:'🔀', t:'Prevista e praticada', d:`
+    <table>
+     <tr><th>Versão</th><th>O que é</th><th>Base para</th></tr>
+     <tr><td><b>Prevista</b></td><td>O planejamento do mês, entregue pelas lideranças de cozinha e salão.</td><td>Cálculo e pagamento dos benefícios.</td></tr>
+     <tr><td><b>Praticada</b></td><td>O que de fato ocorreu, apurado a partir do ponto.</td><td>Conferência, ajuste dos benefícios e rateio da gorjeta.</td></tr>
+    </table>
+    <h5>Os status de cada dia</h5>
+    <p>Cada célula da grade — empregado por dia — recebe um status: trabalho (TR), folga (FO), freela (FR), folga ou trabalho por compensação (FC/TC), férias (FE), falta justificada (FJ) e falta injustificada (FI). Em dia de trabalho, registra-se também a unidade e a modalidade.</p>
+    <h5>O fechamento da prevista</h5>
+    <p>Fechar a prevista congela a fotografia oficial do mês, libera o pagamento dos benefícios e popula automaticamente a praticada, que a partir daí passa a ser corrigida conforme a realidade. O mês pode ser reaberto quando necessário.</p>
+    <p>A diferença entre as duas nunca é zero, e não deveria ser: uma é planejamento, a outra é execução. É essa diferença que a rotina de ajuste apura no mês seguinte. Quando a distância é grande e recorrente numa mesma área, porém, o problema deixa de ser de apuração e passa a ser de planejamento da escala — cabe conversa com a liderança.</p>`},
+
+   {i:'🗓️', t:'O calendário do mês', d:`
+    <table>
+     <tr><th>Quando</th><th>O quê</th><th>Quem</th></tr>
+     <tr><td><b>Até o dia 20</b><br><span style="color:var(--muted)">do mês anterior</span></td><td>Lideranças de cozinha e salão de cada casa entregam a escala prevista do mês seguinte.</td><td>Lideranças</td></tr>
+     <tr><td><b>A partir do dia 21</b></td><td>Conferir a prevista, apontar divergências à liderança, aprovar e <b>fechar</b>.</td><td>DP</td></tr>
+     <tr><td><b>Último dia útil</b><br><span style="color:var(--muted)">do mês vigente</span></td><td>Apurar a praticada, gerar os acréscimos e descontos do ajuste e <b>pagar os benefícios</b> do mês seguinte.</td><td>DP</td></tr>
+     <tr><td><b>1º dia útil</b><br><span style="color:var(--muted)">do mês seguinte</span></td><td>Fechar os últimos dias pendentes da praticada.</td><td>DP</td></tr>
+    </table>
+    <div class="rule"><b class="h">Os bloqueios do sistema</b><p>O pagamento de um mês só é liberado com a <b>escala prevista fechada</b>. E o mês seguinte fica bloqueado enquanto não existir o <b>ajuste do mês anterior</b>. Não é possível pular etapa: um atraso propaga para o mês seguinte.</p></div>
+    <div class="imp-box"><span class="kind">rotina nova</span><b class="h">Melhoria</b><p>A régua do dia 20 não está cadastrada em lugar nenhum. Criar como prazo recorrente em <b>Prazos</b> ou <b>Rotinas</b>, com aviso automático às lideranças — hoje a cobrança depende de alguém lembrar.</p></div>`},
+
+   {i:'💳', t:'Pagamento dos benefícios', d:`
+    <p class="lead">Módulo <b>Benefícios</b>, que reúne vale-transporte, vale-refeição e auxílio fixo em lote mensal único.</p>
+    <h5>O que a prévia mostra</h5>
+    <ul>
+     <li>O <b>previsto</b> do mês seguinte, calculado sobre a escala prevista.</li>
+     <li>O <b>ajuste</b> do último lote fechado — a diferença entre praticada e prevista, com auxílio proporcional em caso de rescisão.</li>
+     <li>O <b>líquido</b> a pagar por pessoa.</li>
+    </ul>
+    <h5>As duas vias de pagamento</h5>
+    <p><b>Caju.</b> Exporta-se o CSV do sistema e importa-se na plataforma, que credita nos cartões.</p>
+    <p><b>Pix.</b> Solicitado a Janaynna e pago pela conta da empresa, com a lista gerada pelo módulo.</p>
+    <div class="rule"><b class="h">Verificação obrigatória antes de exportar para a Caju</b><p>O elo entre os dois sistemas é o <b>CPF</b>. Se qualquer pessoa do lote não estiver cadastrada na Caju, a planilha inteira é rejeitada com <b>erro genérico</b>, que não identifica quem causou a falha.</p><p>Confira o cadastro de todos antes de exportar — sobretudo os admitidos no mês. A identificação posterior do cadastro faltante é trabalhosa.</p></div>
+    <p>Confirmado o pagamento, o lote é congelado. É possível cancelar e reativar um lote, e o histórico fica disponível por competência.</p>`}
+ ]},
+
+ {i:'💸', t:'Gorjeta', d:`
+  <p class="lead">Lançamento diário do valor arrecadado, rateio automático entre quem trabalhou e publicação do extrato para o empregado. Módulo <b>Gorjetas</b>.</p>
+  <p>Para boa parte de quem trabalha no salão, a gorjeta responde por fatia significativa da renda mensal e varia conforme movimento, escala e cargo. É recurso que a empresa não gera: arrecada dos clientes, retém os encargos devidos e repassa. Isso explica por que o cálculo é publicado dia a dia e por que divergência aqui é tratada como prioridade.</p>`, c:[
+
+   {i:'➗', t:'Como o rateio funciona', d:`
+    <p class="lead">Divisão diária por <b>pontuação de cargo</b>, sobre a escala praticada.</p>
+    <ol class="steps">
+     <li><strong>Soma-se a pontuação de quem trabalhou no dia</strong><p>Cada cargo tem pontuação definida no cadastro de Cargos. Turnos de freela entram no cálculo.</p></li>
+     <li><strong>Divide-se o valor do dia pelo total de pontos</strong><p>O resultado é o <b>valor do ponto</b> naquele dia.</p></li>
+     <li><strong>Multiplica-se pela pontuação de cada pessoa</strong><p>O produto é o valor bruto individual do dia.</p></li>
+    </ol>
+    <h5>O lançamento</h5>
+    <p><b>Janaynna</b> consulta os valores arrecadados no PDV (<b>Otec</b>) e os lança por dia e por unidade no sistema. O motor faz a divisão automaticamente, aplicando a <b>versão de regra ativa</b> — as regras são versionadas, de modo que uma alteração não reescreve o histórico já publicado.</p>
+    <p>Cada dia pode ser marcado como <b>publicado</b>, o que congela um retrato da divisão e o exibe no app do empregado, e depois como <b>pago</b>.</p>
+    <div class="imp-box"><span class="kind">integração</span><b class="h">Melhoria</b><p>Automatizar o lançamento por API do Otec, eliminando a digitação diária e o risco de erro de transcrição.</p></div>`},
+
+   {i:'🥇', t:'Quem recebe e quem não recebe', d:`
+    <div class="rule"><b class="h">Regra geral</b><p>Recebe gorjeta do dia quem <b>trabalhou</b> no dia.</p><p><b>Única exceção:</b> folga por compensação de banco de horas — a pessoa já prestou aquelas horas em outro dia, e portanto já figurou no rateio correspondente.</p></div>
+    <p>Qualquer outra ausência não gera direito à gorjeta do dia, <b>inclusive falta justificada por atestado</b>.</p>
+    <h5>A explicação a dar quando surgir a dúvida</h5>
+    <p>A distinção costuma gerar questionamento, e a resposta é a natureza diferente das duas parcelas.</p>
+    <p>O <b>salário</b> é pago pela empresa, e a lei impede o desconto de uma falta abonada por atestado — por isso o dia é preservado.</p>
+    <p>A <b>gorjeta</b> não é paga pela empresa: é arrecadada dos clientes e rateada entre quem esteve no salão naquele turno. Quem não trabalhou não integrou o rateio daquele dia, e incluí-lo reduziria o valor de todos os demais que trabalharam.</p>`},
+
+   {i:'📉', t:'Desconto legal', d:`
+    <p class="lead">Sobre a gorjeta incidem encargos quando ela passa pela folha. A alíquota depende do regime tributário da empresa.</p>
+    <table>
+     <tr><th>Regime</th><th>Percentual</th></tr>
+     <tr><td><b>Simples Nacional</b></td><td><span class="st">20%</span></td></tr>
+     <tr><td><b>Lucro Presumido ou Real</b></td><td><span class="st">33%</span></td></tr>
+    </table>
+    <div class="rule"><b class="h">Não é operação do DP</b><p>O percentual vem do cadastro do restaurante, em <b>Configurações</b>, junto com o regime tributário. É cadastro feito uma vez e alterado apenas pelo master, caso o regime mude.</p></div>
+    <p>Como consequência, empresas do grupo podem apresentar percentuais diferentes para o mesmo cargo. Não é erro de cálculo nem tratamento desigual, e essa é a explicação a dar se um empregado comparar o próprio extrato com o de um colega de outra casa.</p>
+    <p>O valor bruto por empregado é enviado à contabilidade e aparece no holerite em verba própria.</p>`},
+
+   {i:'👁️', t:'Transparência e conferência', d:`
+    <div class="rule"><b class="h">O extrato é aberto</b><p>Todo empregado vê no app a divisão diária da própria gorjeta, com bruto, retenção e líquido. A soma do mês precisa corresponder ao que consta no holerite.</p></div>
+    <h5>Como a conferência é feita</h5>
+    <p>O cruzamento é automático na rotina de <b>Conferência de Folhas</b>, que compara o valor da gorjeta do sistema com as verbas correspondentes do espelho de folha, por CPF, e reporta a divergência.</p>
+    <p>Quando não bate, a divergência é do escritório e deve ser identificada antes que o empregado a aponte.</p>
+    <h5>Por que a transparência foi construída assim</h5>
+    <p>Sem extrato aberto, cada mês vira objeto de desconfiança e o DP passa a gastar tempo justificando cálculo em vez de operar. Com a divisão publicada dia a dia, a conversa deixa de ser sobre confiança e passa a ser sobre um número que as duas partes conseguem verificar.</p>`},
+
+   {i:'📄', t:'Empregado sem registro', d:`
+    <p class="lead">Pela dificuldade de contratação, há situações em que se acorda que a pessoa trabalhe sem registro por um período — o caso mais comum é quem está recebendo seguro-desemprego.</p>
+    <h5>Como se opera</h5>
+    <ul>
+     <li>O valor correspondente sai normalmente do montante total arrecadado.</li>
+     <li>A pessoa recebe salário e gorjeta proporcionais por <b>recibo interno</b>, produzido pelo escritório.</li>
+     <li>Essa informação <b>não é enviada à contabilidade</b> e, portanto, não aparece na folha.</li>
+    </ul>
+    <div class="imp-box"><span class="kind">consultar parceiro</span><b class="h">Melhoria</b><p>Verificar com a contabilidade a possibilidade de emitirem o recibo, recebendo a informação já marcada como <i>sem registro</i>. O ganho é haver histórico contábil do período para quando a pessoa vier a ser registrada.</p></div>`}
+ ]},
+
+ {i:'⏱️', t:'Banco de horas', d:`
+  <p class="lead">Compensação de jornada prevista na <b>convenção coletiva</b>, com prazo máximo de quitação que varia conforme o sindicato de cada praça.</p>
+  <h5>Como funciona</h5>
+  <p>Horas trabalhadas além da jornada prevista formam saldo positivo; horas não trabalhadas formam saldo negativo. A quitação se dá de duas formas: em <b>folga</b>, dentro do prazo da convenção, ou em <b>pagamento</b> como hora extra, quando o prazo se esgota sem compensação.</p>
+  <p>Na escala, a compensação aparece nos status <b>FC</b> (folga por compensação) e <b>TC</b> (trabalho por compensação). Na Análise de Ponto, o motor acompanha o saldo do período em jornada flexível.</p>
+  <div class="rule"><b class="h">Efeito sobre a gorjeta</b><p>Folga por compensação é a <b>única exceção</b> à regra de que só recebe gorjeta quem trabalhou no dia, porque as horas correspondentes já foram prestadas e já entraram em rateio anterior.</p></div>
+  <h5>Situação atual</h5>
+  <p>O saldo é apurado e registrado, mas sem acompanhamento sistemático. O prazo de quitação não é monitorado, e no fechamento de desligamento o saldo precisa ser verificado manualmente antes de conferir o TRCT.</p>
+  <div class="imp-box"><span class="kind">urgente</span><b class="h">Melhoria · trabalho prioritário da área</b><p>Três frentes: validar o relatório de apuração que já existe, <b>quitar os saldos abertos</b> dentro do prazo de cada convenção, e instituir acompanhamento mensal no planejamento.app com alerta de vencimento. Saldo vencido não deixa de ser devido — converte-se em hora extra com adicional e constitui passivo crescente.</p></div>`},
+
+ {i:'🧾', t:'Folha', d:`
+  <p class="lead">Envio dos dados à contabilidade, recebimento dos holerites e conferência antes de qualquer pagamento.</p>
+  <h5>O que o escritório envia</h5>
+  <ul>
+   <li><b>Espelhos de ponto fechados</b>, com horas extras, adicional noturno e faltas.</li>
+   <li><b>Valores de gorjeta</b> por empregado, no bruto.</li>
+  </ul>
+  <p>A contabilidade processa e devolve os holerites e o espelho de folha.</p>
+  <div class="rule"><b class="h">Regra geral da área</b><p>Todo documento vindo da contabilidade relacionado a empregado é <b>conferido pelo DP</b> antes de seguir: holerite, TRCT, aviso de férias e guias. Sem exceção. A responsabilidade final perante o empregado é do escritório.</p></div>
+  <h5>Como a conferência é feita</h5>
+  <p>Pelo módulo <b>Conferência de Folhas</b>, um agente auditor que recebe os espelhos em PDF do Senador, extrai os dados e aplica um motor de regras. Ele reporta <b>apenas os erros</b>, classificados por gravidade, e não lista o que está correto.</p>
+  <p>O cruzamento reúne folha, adiantamento e a gorjeta do sistema por CPF. Um bloco de leitura valida antes se o PDF foi lido por inteiro, comparando a soma dos líquidos com o resumo do documento.</p>
+  <h5>O que ele costuma apontar</h5>
+  <ul>
+   <li>Divergência entre a gorjeta do sistema e a lançada na folha.</li>
+   <li>Empregado em férias processado como mês normal.</li>
+   <li>Duplicidade de processamento.</li>
+   <li>Adiantamento indevido ou ausente.</li>
+   <li>Divergência cadastral entre os dois sistemas.</li>
+  </ul>
+  <p>Fechar a competência grava os apontamentos como referência e marca o status do mês. Casos recorrentes e legítimos podem ser cadastrados como exceção, para deixarem de ser reportados.</p>
+  <div class="imp-box"><span class="kind">transferir</span><b class="h">Melhoria</b><p>A rotina vem sendo executada por Gustavo. A ferramenta está pronta e a operação deve migrar para a área de Pessoas.</p></div>`}
+]},
+
+{g:'Processos', i:'📋', t:'Direitos e ocorrências', d:`
+  <p class="lead">O que chega sem data marcada: pedido de férias, atestado e falta disciplinar.</p>
+  <p>Os três têm em comum o fato de a resposta imediata do DP ser sempre a mesma — registrar, verificar e encaminhar a quem aprova. Nenhum se resolve no balcão, e prometer resposta na hora, em qualquer direção, é o erro mais frequente nesta parte da área.</p>
+  <p>É também onde a isonomia se torna verificável: são exatamente os assuntos em que a equipe compara o próprio tratamento com o do colega, e em que uma decisão tomada por conveniência cria precedente que será cobrado depois.</p>`, c:[
+
+ {i:'🌴', t:'Férias', d:`
+  <p class="lead">Não há férias coletivas: os restaurantes não fecham, então cada período é individual, negociado e aprovado caso a caso.</p>
+  <p>Férias são simultaneamente um direito com prazo legal e uma decisão de operação — retirar duas pessoas da mesma área no mesmo mês pode inviabilizar a escala. O DP é quem enxerga os dois lados.</p>`, c:[
+
+   {i:'📐', t:'Períodos e prazos', d:`
+    <p>Cada empregado acumula direito a férias ao longo de um <b>período aquisitivo de 12 meses</b> de trabalho. Concluído esse período, abre-se o <b>período concessivo de 11 meses</b>, dentro do qual a empresa precisa conceder o descanso.</p>
+    <div class="rule"><b class="h">O custo de estourar o prazo</b><p>Férias concedidas após o fim do período concessivo são devidas <b>em dobro</b>. É um dos poucos erros de DP em que o prejuízo é imediato, líquido e certo: não depende de reclamatória nem de fiscalização.</p></div>
+    <h5>Como acompanhar</h5>
+    <p>O controle é preventivo. A regra prática é tratar o vencimento do concessivo como prazo final e trabalhar com folga de alguns meses, porque entre a decisão e o início ainda é preciso negociar a data com a liderança e emitir o aviso com 30 dias de antecedência.</p>
+    <p>Antes de responder qualquer coisa ao empregado, consulte o período aquisitivo dele. Se o concessivo estiver perto do fim, a margem de negociação é menor: a empresa passa a ter obrigação de conceder.</p>`},
+
+   {i:'🙋', t:'Quando o empregado pede', d:`
+    <ol class="steps">
+     <li><strong>O pedido chega ao DP</strong><p>Diretamente, não pela liderança. Essa orientação é dada na capacitação institucional; sem ela, o pedido é dirigido ao líder e não chega ao controle.</p></li>
+     <li><strong>O DP verifica a viabilidade</strong><p>Consulta o período aquisitivo e checa com a liderança se o período pretendido não coincide com outras férias já marcadas na mesma área e se não cai em temporada de movimento alto.</p></li>
+     <li><strong>Leva a Gustavo com parecer</strong><p>Não apenas o pedido: o parecer da liderança, a situação do período aquisitivo e o impacto na escala.</p><div class="who"><span class="ex">DP</span><span class="ap">Gustavo</span></div></li>
+    </ol>
+    <div class="rule"><b class="h">Quem decide é a empresa</b><p>O pedido do empregado é solicitação, não marcação. Todas as férias são aprovadas por Gustavo, que confere com a liderança para não comprometer a operação.</p></div>`},
+
+   {i:'🏢', t:'Quando a empresa decide', d:`
+    <p class="lead">Em períodos de menor movimento, a iniciativa parte da direção ou da liderança, que identificam a janela adequada.</p>
+    <ol class="steps">
+     <li><strong>Definição do período</strong><p>Gustavo ou a liderança identificam quem e quando, considerando a escala.</p></li>
+     <li><strong>Conversa prévia com a pessoa</strong><p>Antes de formalizar, e com antecedência. Conduzida pela liderança; quando a iniciativa parte de Gustavo e trata da equipe do escritório, conduzida pelo DP.</p></li>
+     <li><strong>Ajuste, se houver</strong><p>Se a pessoa pedir alteração de data, o caso volta a Gustavo para decisão.</p><div class="who"><span class="ex">liderança ou DP</span><span class="ap">Gustavo</span></div></li>
+    </ol>
+    <p>A antecedência não é cortesia. Férias marcadas em cima da hora desorganizam quem tem compromisso familiar, custo de viagem já assumido ou curso em andamento. E a regra dos 30 dias do aviso vale igualmente aqui: decidir hoje para iniciar na semana seguinte é irregular.</p>`},
+
+   {i:'⏰', t:'Aviso de férias · 30 dias', d:`
+    <div class="rule"><b class="h">Prazo legal</b><p>O aviso e recibo de férias, emitido pela contabilidade, precisa estar <b>assinado pelo empregado com no mínimo 30 dias de antecedência</b> do início do período.</p></div>
+    <ol class="steps">
+     <li><strong>Solicitar à contabilidade</strong><p>Assim que o período for definido e aprovado.</p></li>
+     <li><strong>Conferir o documento</strong><p>Datas de início e fim, período aquisitivo correspondente, valores estimados e se há abono pecuniário.</p></li>
+     <li><strong>Enviar para assinatura</strong><p>Pela ferramenta de assinatura, com a estimativa de valores — que permite à pessoa se organizar financeiramente antes do período.</p></li>
+     <li><strong>Arquivar</strong><p>O documento assinado vai para a pasta da pessoa no Drive, e o evento é lançado na Trilha.</p></li>
+    </ol>
+    <p>O prazo não é formalidade: aviso entregue com menos de 30 dias é irregularidade que aparece em fiscalização e em reclamatória, e o período pode ser questionado por inteiro. Definida a data de início, conte 30 dias para trás e trate essa data como prazo real de emissão.</p>
+    <div class="imp-box"><span class="kind">falta no sistema</span><b class="h">Melhoria</b><p>Não há controle automático desse prazo. Cadastrar como prazo derivado da data de início das férias, para que o alerta dispare sozinho na antecedência necessária.</p></div>`}
+ ]},
+
+ {i:'🤒', t:'Atestados', d:`
+  <p class="lead">Recebimento, conferência e conversão da falta em falta justificada no ponto.</p>
+  <ol class="steps">
+   <li><strong>O empregado entrega</strong><p>Dentro do prazo orientado na capacitação. Entrega física no restaurante ou envio digital ao escritório.</p></li>
+   <li><strong>O DP confere</strong><p>Verifica a identificação do profissional e o registro no conselho, a data, o período de afastamento indicado e o CID quando houver. Havendo dúvida quanto à autenticidade, é possível ligar à UBS, ao posto ou ao consultório emissor para confirmar.</p></li>
+   <li><strong>Converte no ponto</strong><p>Sendo válido, a falta passa a <b>falta justificada (FJ)</b> na escala praticada, o que preserva o salário do dia.</p></li>
+   <li><strong>Registra</strong><p>Lança o evento na Trilha e arquiva o documento na pasta da pessoa.</p></li>
+  </ol>
+  <div class="rule"><b class="h">Falta justificada não gera gorjeta</b><p>O atestado preserva o salário do dia, porque a lei impede o desconto de falta abonada. A gorjeta segue a regra do rateio: quem não trabalhou não integrou a divisão daquele dia. Ver <b>Gorjeta · Quem recebe e quem não recebe</b>.</p></div>
+  <p>A conferência não é desconfiança dirigida a alguém: é procedimento aplicado a todos os atestados, exatamente para que a verificação de um caso específico não pareça perseguição.</p>
+  <div class="imp-box"><span class="kind">consultar parceiro</span><b class="h">Melhoria</b><p>Revisar o regulamento interno com a advocacia para fixar por escrito o <b>prazo de entrega</b> do atestado e os <b>critérios de validade</b> para abono. Hoje o critério é de quem confere, o que abre espaço para tratamento desigual entre casos parecidos.</p></div>`},
+
+ {i:'⚠️', t:'Advertências e justa causa', d:`
+  <p class="lead">O tratamento padrão é a orientação direta. O rito formal é acionado na reincidência e, quando acionado, aplica-se igualmente a todos.</p>
+  <p>Há uma tensão real neste processo. Documentar pouco deixa a empresa sem base quando o caso evolui para justa causa. Documentar demais transforma a relação em vigilância e antecipa o conflito. A saída adotada é <b>registrar sempre</b> — a conversa também entra na Trilha, como feedback — mas <b>emitir documento formal apenas a partir da reincidência</b> ou de má-fé evidente.</p>`, c:[
+
+   {i:'🪜', t:'A escala de medidas', d:`
+    <ol class="steps">
+     <li><strong>Primeira ocorrência · conversa</strong><p>Explicação e instrução, conduzidas pela liderança direta. A maior parte dos casos se resolve aqui e não gera documento — mas convém registrar como feedback na Trilha, para haver histórico se houver reincidência.</p></li>
+     <li><strong>Segunda ocorrência · nova conversa</strong><p>Ainda sem documento formal, agora com registro. É o momento de verificar se o problema é de conduta ou de treinamento: erro que se repete após duas orientações às vezes indica que a instrução nunca foi clara.</p></li>
+     <li><strong>Reincidência · rito formal</strong><p>Advertência escrita, depois suspensão e, persistindo, eventual justa causa. Cada etapa gera documento assinado, solicitado pela liderança e aprovado por Gustavo.</p><div class="who"><span class="ex">liderança solicita</span><span class="ap">Gustavo</span></div></li>
+    </ol>
+    <div class="rule"><b class="h">Havendo má-fé, o rito começa de imediato</b><p>Furto, agressão, fraude no registro de ponto e conduta que exponha colega ou cliente não passam pela fase de conversa. A orientação prévia pressupõe erro, não intenção.</p></div>`},
+
+   {i:'⚖️', t:'Isonomia no rito', d:`
+    <div class="rule"><b class="h">O rito não depende de má-fé</b><p>Se uma pessoa recebeu advertência por determinado erro, outra que cometa o mesmo erro também recebe — independente de quem seja, do tempo de casa ou da relação com a liderança.</p></div>
+    <h5>Verificação antes de aplicar</h5>
+    <ul>
+     <li>Consultar a Trilha para saber se houve caso equivalente antes e qual foi o desfecho.</li>
+     <li>Confirmar que a ocorrência está registrada com data e descrição objetiva do fato, não com juízo sobre a pessoa.</li>
+     <li>Levar a Gustavo com esse histórico. A aprovação é dele; a instrução do caso é do DP.</li>
+    </ul>
+    <p>A razão jurídica é direta: em reclamatória, demonstrar que outro empregado cometeu a mesma falta sem sofrer a mesma consequência costuma derrubar a penalidade discutida.</p>
+    <div class="imp-box"><span class="kind">falta no sistema</span><b class="h">Melhoria</b><p>Não existe módulo de Advertências. Hoje a advertência é apenas um <i>tipo de evento</i> na Trilha, sem geração do documento. O desejável é que ela nasça no sistema, com o termo redigido pela advocacia, e alimente a Trilha automaticamente.</p></div>`},
+
+   {i:'🚫', t:'Justa causa', d:`
+    <p class="lead">Modalidade rara, com rito próprio, sempre conduzida com a contabilidade e a advocacia.</p>
+    <p>Pode ser aplicada mesmo havendo <b>risco conhecido de reversão judicial</b>, quando a conduta foi presenciada pela equipe e deixá-la sem resposta comprometeria a regra para todos. Essa ponderação é decisão da direção, não da área.</p>
+    <div class="rule"><b class="h">O que a área precisa garantir</b><p>Base documental. Justa causa sem histórico registrado — advertências anteriores, ocorrências com data, documentos assinados — dificilmente se sustenta em juízo. É aqui que a Trilha do Empregado deixa de ser controle interno e passa a ser peça de defesa.</p></div>
+    <h5>Preferência da direção</h5>
+    <p>Intervir cedo. Depois da advertência escrita a relação muda: a pessoa se sente marcada, a liderança passa a observar de perto e cresce a probabilidade de o desligamento terminar em reclamatória. Tratar a primeira ocorrência em conversa costuma resolver o mesmo problema sem esse custo.</p>`}
+ ]}
+]},
+
+{g:'Processos', i:'🦺', t:'Saúde e equipamentos', d:`
+  <p class="lead">Obrigações de cumprimento contínuo, geridas por vencimento e não por demanda: exames ocupacionais e entrega de uniformes e EPIs.</p>
+  <p>Distinguem-se do resto da área num ponto: não produzem resultado visível quando estão em dia. Exame válido e EPI dentro do prazo não aparecem para ninguém — aparecem na fiscalização, no acidente ou na reclamatória, e nesse momento o que se verifica é a data, não o esforço.</p>
+  <p>Por isso o trabalho aqui é manter o cadastro correto e responder aos avisos de vencimento que chegam à Central. Com o cadastro em ordem, a área se conduz praticamente sozinha.</p>`, c:[
+
+ {i:'🩺', t:'Exames médicos', d:`
+  <p class="lead">Controle dos exames obrigatórios por cargo, com agendamento, baixa do resultado e cálculo automático do próximo vencimento. Módulo <b>Exames Médicos</b>.</p>
+  <h5>Os dois tipos</h5>
+  <p><b>Ocupacional</b>, previsto na CLT e conduzido conforme o PCMSO: exame <b>admissional</b> antes do início das atividades, <b>periódico</b> em geral anual, <b>demissional</b> no encerramento do vínculo, além dos exames de mudança de função e de retorno ao trabalho.</p>
+  <p><b>Parasitológico</b>, exigido de quem manipula alimentos — coprocultura e correlatos, com periodicidade própria definida no cadastro do tipo de exame.</p>
+  <h5>Como o módulo opera</h5>
+  <p>A aba <b>Por empregado</b> cruza cada pessoa ativa com os exames aplicáveis ao seu cargo e área, exibindo quatro status: <b>falta</b>, <b>vencido</b>, <b>a vencer</b> (dentro de 30 dias) e <b>em dia</b>.</p>
+  <ol class="steps">
+     <li><strong>Agendar</strong><p>Junto ao fornecedor cadastrado, conforme a praça da empresa.</p></li>
+     <li><strong>Lançar o exame</strong><p>Informa-se data e fornecedor; o sistema calcula o próximo vencimento somando a periodicidade do tipo.</p></li>
+     <li><strong>Anexar o resultado</strong><p>O PDF é vinculado à pasta do empregado no Drive.</p></li>
+  </ol>
+  <p>A configuração dos tipos de exame — periodicidade, antecedência do alerta, cargos e áreas obrigatórios — é de acesso master. Desligamento e mudança de área desativam automaticamente os exames que deixam de ser aplicáveis.</p>
+  <div class="imp-box"><span class="kind">carga de dados</span><b class="h">Melhoria</b><p>A ferramenta está implantada, mas o cadastro não reflete a realidade. Falta o levantamento inicial dos exames vigentes de toda a equipe — data de realização e vencimento — para que o controle passe a ser feito pelo sistema. Enquanto isso não ocorre, os alertas não são confiáveis.</p></div>`},
+
+ {i:'🦺', t:'Uniformes e EPIs', d:`
+  <p class="lead">Catálogo, estoque, entregas, devoluções e vencimentos, organizados a partir do <b>kit mínimo por área</b>. Módulo <b>Uniformes &amp; EPIs</b>.</p>
+  <h5>O kit por área</h5>
+  <p>Cada área — cozinha, salão, bar, limpeza — tem um kit mínimo definido em configuração: quais peças de uniforme e quais equipamentos de proteção a pessoa precisa receber. Esse kit é a base do que se entrega na etapa <i>Última milha</i> da admissão.</p>
+  <h5>Entrega e devolução</h5>
+  <ol class="steps">
+     <li><strong>Registrar a entrega</strong><p>Item, variação e quantidade, com baixa no estoque. O sistema gera o <b>termo de responsabilidade em PDF</b>.</p></li>
+     <li><strong>Coletar a assinatura</strong><p>O termo assinado é arquivado na pasta do empregado.</p></li>
+     <li><strong>Acompanhar a validade</strong><p>EPI tem prazo de validade e vida útil. O módulo sinaliza os itens que vencem em 30 dias, por empregado.</p></li>
+     <li><strong>Registrar a devolução</strong><p>No desligamento ou na troca por item novo, com o registro correspondente.</p></li>
+  </ol>
+  <div class="rule"><b class="h">Por que o termo assinado importa</b><p>Em fiscalização e em discussão sobre acidente de trabalho, o que se exige da empresa é a prova de que forneceu o equipamento adequado, no prazo, e de que a pessoa o recebeu. Entrega sem termo assinado equivale, do ponto de vista documental, a entrega não realizada.</p></div>
+  <div class="imp-box"><span class="kind">carga de dados</span><b class="h">Melhoria</b><p>Assim como nos exames, falta a carga inicial: o que cada pessoa já recebeu, quando, e a validade dos EPIs em uso. Sem isso o controle de vencimento não opera.</p></div>`}
+]}
+
+];
+</script>
+<script>
+(function(){
+const screens=document.getElementById('screens'),
+      bar={up:document.getElementById('up'),now:document.getElementById('now')},
+      back=document.getElementById('back');
+
+/* ── preparar a árvore ── */
+const ALL=[];
+(function prep(n,d,p){
+  n.uid=ALL.length+1;n.depth=d;n.parent=p;n.c=n.c||[];
+  n.own=(n.d||'').split('imp-box').length-1;
+  ALL.push(n); n.c.forEach(k=>prep(k,d+1,n));
+  n.tot=n.own+n.c.reduce((a,k)=>a+k.tot,0);
+  n.hay=(n.t+' '+(n.d||'')).replace(/<[^>]+>/g,' ').toLowerCase();
+})(T,0,null);
+document.getElementById('rmc').textContent=T.tot;
+
+/* resumo de uma linha, tirado da abertura do texto */
+function gist(n){
+  const lead=(n.d||'').match(/class="lead">([\s\S]*?)<\/p>/);
+  let t=lead?lead[1]:(n.d||'');
+  t=t.replace(/<[^>]+>/g,' ').replace(/\s+/g,' ').trim();
+  if(!t)return n.c.length?n.c.map(k=>k.t).join(' · '):'';
+  const m=t.match(/^[^.!?]+[.!?]?/), s=m?m[0]:t;
+  return s.length>108?s.slice(0,106)+'…':s;
+}
+function trail(n){const a=[];let p=n.parent;while(p&&p.depth>0){a.unshift(p.t);p=p.parent;}return a.join(' › ');}
+
+/* ── pilha de telas ── */
+const stack=[];
+let useHist=true;
+try{history.replaceState({u:1},'',location.hash||'#1');}catch(e){useHist=false;}
+function hpush(u){if(!useHist)return;try{history.pushState({u:u},'','#'+u);}catch(e){useHist=false;}}
+function hback(){if(useHist){try{history.back();return;}catch(e){useHist=false;}}pop();}
+
+function mk(html){
+  const d=document.createElement('div');
+  d.className='s out-r';d.innerHTML=html;screens.appendChild(d);
+  d.getBoundingClientRect();
+  requestAnimationFrame(()=>d.classList.remove('out-r'));
+  return d;
+}
+function push(node){
+  if(stack.length)stack[stack.length-1].el.classList.add('out-l');
+  const el=mk(view(node));
+  stack.push({node,el}); wire(el); head(); hpush(node.uid);
+}
+function pop(){
+  if(stack.length<2)return;
+  const t=stack.pop();
+  t.el.classList.add('out-r');
+  setTimeout(()=>t.el.remove(),300);
+  stack[stack.length-1].el.classList.remove('out-l');
+  head();
+}
+function head(){
+  const cur=stack[stack.length-1].node;
+  document.body.classList.toggle('deep',stack.length>1);
+  bar.now.textContent=cur.depth?cur.t:'Processos de Pessoas';
+  bar.up.textContent=cur.depth?(trail(cur)||'Mapa de processos'):'Quibebe · escritório';
+}
+
+/* ── montagem ── */
+function rowsOf(list){
+  return list.map(n=>
+    '<button class="row'+(n.tot?' has-imp':'')+'" data-go="'+n.uid+'">'+
+      '<i>'+(n.i||'•')+'</i>'+
+      '<span class="tx"><b>'+n.t+'</b>'+(gist(n)?'<small>'+gist(n)+'</small>':'')+'</span>'+
+      (n.tot?'<span class="imp">'+n.tot+'</span>':'')+
+      (n.c.length?'<span class="cnt">'+n.c.length+'</span>':'')+
+      '<span class="arw">›</span>'+
+    '</button>').join('');
+}
+
+const GRUPOS=[
+  {nome:'Visão geral', desc:'Como o escritório funciona e qual o critério de decisão quando não há processo escrito.'},
+  {nome:'Processos',   desc:'As rotinas da área, do ciclo de vida do empregado às obrigações que correm por prazo.'}
+];
+
+function home(){
+  const fav=['Ponto','Gorjeta','Férias','Desligamento','Admissão','Advertências e justa causa','Banco de horas'];
+  const favN=fav.map(t=>ALL.find(n=>n.t===t)).filter(Boolean);
+  let h='<div class="sb" id="sbw"><i>⌕</i><input id="q" type="search" placeholder="Buscar processo, regra, prazo…" aria-label="Buscar"><button id="qx" aria-label="Limpar">✕</button></div>'
+   + '<div id="res"></div><div id="main">'
+   + '<div class="hi"><h1>O que você precisa saber?</h1><p>Processos de Pessoas do escritório — o que se faz, em qual módulo, quem executa e quem aprova.</p></div>'
+   + '<div class="lbl">Consulta frequente</div>'
+   + '<div class="chips">'+favN.map(n=>'<button class="chip" data-go="'+n.uid+'">'+n.i+' '+n.t+'</button>').join('')+'</div>';
+  GRUPOS.forEach(g=>{
+    const itens=T.c.filter(n=>n.g===g.nome);
+    if(!itens.length)return;
+    h+='<div class="lbl">'+g.nome+'<small>'+g.desc+'</small></div>'+rowsOf(itens);
+  });
+  h+='<div class="foot">Documento vivo, revisado conforme os processos mudam.<br>A camada ◆ marca o que ainda não está implantado.</div></div>';
+  return h;
+}
+
+function view(n){
+  if(n.depth===0)return home();
+  let h='';
+  if(n.d)h+='<div class="rd">'+n.d+'</div>';
+  if(n.c.length)h+='<div class="sub"><div class="lbl">'+(n.depth===1?'Nesta área':'Detalha em')+'</div>'+rowsOf(n.c)+'</div>';
+  if(!n.d&&!n.c.length)h+='<div class="empty">Sem conteúdo neste nó.</div>';
+  return h;
+}
+function impList(){
+  return '<div class="lbl">Índice de melhorias<small>Todos os pontos marcados ◆ no documento.</small></div>'
+    + rowsOf(ALL.filter(n=>n.own>0));
+}
+
+/* ── eventos ── */
+function wire(el){
+  el.querySelectorAll('[data-go]').forEach(b=>{
+    b.addEventListener('click',()=>{
+      const n=ALL.find(x=>x.uid===+b.dataset.go); if(n)push(n);
+    });
+  });
+  const q=el.querySelector('#q');
+  if(!q)return;
+  const res=el.querySelector('#res'),main=el.querySelector('#main'),
+        sbw=el.querySelector('#sbw'),qx=el.querySelector('#qx');
+  function run(){
+    const v=q.value.trim().toLowerCase();
+    sbw.classList.toggle('has',!!v);
+    if(v.length<2){res.innerHTML='';main.style.display='';return;}
+    main.style.display='none';
+    const hit=ALL.filter(n=>n.depth>0&&n.hay.indexOf(v)>-1);
+    res.innerHTML=hit.length
+      ? '<div class="lbl">'+hit.length+' resultado'+(hit.length>1?'s':'')+'</div>'+rowsOf(hit)
+      : '<div class="empty">Nada encontrado para “'+q.value+'”.<br>Tente uma palavra do processo — <b>gorjeta</b>, <b>atestado</b>, <b>banco de horas</b>.</div>';
+    wire(res);
+  }
+  q.addEventListener('input',run);
+  qx.addEventListener('click',()=>{q.value='';run();q.focus();});
+}
+
+back.addEventListener('click',hback);
+window.addEventListener('popstate',()=>{if(stack.length>1)pop();});
+
+/* deslizar da borda esquerda para voltar */
+let sx=0,sy=0,tr=false;
+screens.addEventListener('touchstart',e=>{
+  if(stack.length<2)return;
+  const t=e.touches[0]; if(t.clientX>44)return;
+  sx=t.clientX;sy=t.clientY;tr=true;
+},{passive:true});
+screens.addEventListener('touchend',e=>{
+  if(!tr)return;tr=false;
+  const t=e.changedTouches[0];
+  if(t.clientX-sx>62&&Math.abs(t.clientY-sy)<58)hback();
+},{passive:true});
+
+/* camada de roadmap */
+const rm=document.getElementById('rm');
+rm.addEventListener('click',()=>{
+  const on=document.body.classList.toggle('rm');
+  rm.setAttribute('aria-pressed',on?'true':'false');
+  const box=stack[0].el.querySelector('#main');
+  if(!box)return;
+  let idx=box.querySelector('#impidx');
+  if(on){
+    if(!idx){idx=document.createElement('div');idx.id='impidx';idx.innerHTML=impList();box.appendChild(idx);wire(idx);}
+    idx.style.display='';
+  }else if(idx)idx.style.display='none';
+});
+
+/* start */
+stack.push({node:T,el:mk(home())});
+wire(stack[0].el); head();
+try{if(useHist)history.replaceState({u:T.uid},'','#'+T.uid);}catch(e){}
+})();
+</script>
+</body>
+</html>

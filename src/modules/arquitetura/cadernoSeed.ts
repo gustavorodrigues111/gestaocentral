@@ -18,6 +18,11 @@ const SEED: Seed[] = [
   // ── Segurança Sanitária ──
   { modulo: "seguranca", resp: "gustavo", titulo: "Criar o template da lista-base, atribuir áreas dos itens e apagar as avaliações de teste antigas" },
 
+  // ── Wiki de Processos (guias por área + agente de IA) ──
+  { modulo: "wikiProcessos", resp: "gustavo", titulo: "Subir os guias HTML de Financeiro, Compras e Eventos (Pessoas já vem com o modelo inicial embutido)", descricao: "Módulo reformulado: cada área (Pessoas/Financeiro/Compras/Eventos) = 1 guia HTML + 1 agente de IA que responde a partir do guia. Upload em ⬆️ Publicar guia (salva em wikiGuias/{key}, sem deploy)." },
+  { modulo: "wikiProcessos", resp: "ia", titulo: "Links do guia pro próprio sistema (deep-links) — decidir target (_top pra navegar o app x _blank) e como o iframe abre a rota certa do rid atual" },
+  { modulo: "wikiProcessos", resp: "ia", titulo: "Avaliar reaproveitar o wikiGuias como fonte da skill do Claude (SKILL.md de Pessoas) — hoje as references são geradas do HTML canônico por script externo" },
+
   // ── Pessoas / onboarding ──
   { modulo: "pessoas", resp: "gustavo", titulo: "Recuperação de senha 100% automática: liberar Admin SDK (org policy) OU configurar domínio/remetente verificado nos templates de Authentication do Firebase (pra o email de reset parar de cair no spam do Hotmail)", descricao: "Sem Admin não dá pra resetar senha de conta existente por código — só recriar. Hoje: apagar no Console + '🔁 Reenviar acesso (email)' recria e manda pelo Resend." },
   { modulo: "pessoas", resp: "ia", titulo: "P3 do redesenho de Pessoas: fundir o EmpregadoModal no cadastro" },

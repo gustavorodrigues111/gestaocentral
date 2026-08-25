@@ -640,13 +640,11 @@ export const CATALOGO: CatalogoModulo[] = [
     id: "wikiProcessos",
     icon: "📚",
     label: "Wiki de Processos",
-    desc: "Documentação dos processos internos por área (texto/checklist/passo-a-passo + fotos)",
+    desc: "Guias de funcionamento por área + assistente de IA que responde as dúvidas da equipe",
     area: "gestao",
     acoes: [
-      { id: "ver",      label: "Consultar os processos documentados" },
-      { id: "criar",    label: "Documentar novo processo" },
-      { id: "editar",   label: "Editar processo" },
-      { id: "deletar",  label: "Excluir processo", sensivel: true },
+      { id: "ver",      label: "Abrir os guias das áreas e perguntar à IA" },
+      { id: "editar",   label: "Publicar e atualizar o guia HTML da área", sensivel: true },
     ],
   },
   {
