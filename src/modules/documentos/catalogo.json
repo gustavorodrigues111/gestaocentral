@@ -135,6 +135,110 @@
 "obrigatorio": true,
 "origem": "especifico",
 "ajuda": "Ex.: terça, quinta e sexta-feira, das 9h às 18h, com 1h de intervalo"
+},
+{
+"token": "EMAIL_CONTATO",
+"rotulo": "E-mail (contato/assinatura)",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP1_TIPO",
+"rotulo": "Equipamento 1 — tipo",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP1_MARCA",
+"rotulo": "Equipamento 1 — marca",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP1_MODELO",
+"rotulo": "Equipamento 1 — modelo",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP1_SERIE",
+"rotulo": "Equipamento 1 — nº de série",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP2_TIPO",
+"rotulo": "Equipamento 2 — tipo",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP2_MARCA",
+"rotulo": "Equipamento 2 — marca",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP2_MODELO",
+"rotulo": "Equipamento 2 — modelo",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP2_SERIE",
+"rotulo": "Equipamento 2 — nº de série",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP3_TIPO",
+"rotulo": "Equipamento 3 — tipo",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP3_MARCA",
+"rotulo": "Equipamento 3 — marca",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP3_MODELO",
+"rotulo": "Equipamento 3 — modelo",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP3_SERIE",
+"rotulo": "Equipamento 3 — nº de série",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
 }
 ],
 "texto_livre": []
@@ -1241,6 +1345,38 @@
 "obrigatorio": true,
 "origem": "data",
 "ajuda": "O modelo já imprime o \"20\" antes"
+},
+{
+"token": "FUNCAO",
+"rotulo": "Função exercida",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "REMUNERACAO",
+"rotulo": "Remuneração (salário e detalhes)",
+"tipo": "textarea",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "DESCRICAO_ATIVIDADES",
+"rotulo": "Descrição das atividades",
+"tipo": "textarea",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EMAIL_CONTATO",
+"rotulo": "E-mail (contato/assinatura)",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
 }
 ],
 "texto_livre": []
@@ -1282,6 +1418,38 @@
 "tipo": "texto",
 "obrigatorio": true,
 "origem": "empresa",
+"ajuda": ""
+},
+{
+"token": "FUNCAO",
+"rotulo": "Função exercida",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "REMUNERACAO",
+"rotulo": "Remuneração (salário e detalhes)",
+"tipo": "textarea",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "DESCRICAO_ATIVIDADES",
+"rotulo": "Descrição das atividades",
+"tipo": "textarea",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EMAIL_CONTATO",
+"rotulo": "E-mail (contato/assinatura)",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
 "ajuda": ""
 }
 ],
@@ -1381,6 +1549,134 @@
 "obrigatorio": true,
 "origem": "especifico",
 "ajuda": "I (atividade externa incompatível com controle de jornada) ou III (teletrabalho por produção ou tarefa)"
+},
+{
+"token": "FUNCAO",
+"rotulo": "Função exercida",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "REMUNERACAO",
+"rotulo": "Remuneração (salário e detalhes)",
+"tipo": "textarea",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "DESCRICAO_ATIVIDADES",
+"rotulo": "Descrição das atividades",
+"tipo": "textarea",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EMAIL_CONTATO",
+"rotulo": "E-mail (contato/assinatura)",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP1_TIPO",
+"rotulo": "Equipamento 1 — tipo",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP1_MARCA",
+"rotulo": "Equipamento 1 — marca",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP1_MODELO",
+"rotulo": "Equipamento 1 — modelo",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP1_SERIE",
+"rotulo": "Equipamento 1 — nº de série",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP2_TIPO",
+"rotulo": "Equipamento 2 — tipo",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP2_MARCA",
+"rotulo": "Equipamento 2 — marca",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP2_MODELO",
+"rotulo": "Equipamento 2 — modelo",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP2_SERIE",
+"rotulo": "Equipamento 2 — nº de série",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP3_TIPO",
+"rotulo": "Equipamento 3 — tipo",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP3_MARCA",
+"rotulo": "Equipamento 3 — marca",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP3_MODELO",
+"rotulo": "Equipamento 3 — modelo",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EQUIP3_SERIE",
+"rotulo": "Equipamento 3 — nº de série",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
 }
 ],
 "texto_livre": []
@@ -1479,6 +1775,38 @@
 "obrigatorio": true,
 "origem": "especifico",
 "ajuda": "Prazo com início e término, por exemplo: de 01/03/2026 a 31/08/2026 (6 meses)"
+},
+{
+"token": "FUNCAO",
+"rotulo": "Função exercida",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "REMUNERACAO",
+"rotulo": "Remuneração (salário e detalhes)",
+"tipo": "textarea",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "DESCRICAO_ATIVIDADES",
+"rotulo": "Descrição das atividades",
+"tipo": "textarea",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
+},
+{
+"token": "EMAIL_CONTATO",
+"rotulo": "E-mail (contato/assinatura)",
+"tipo": "texto",
+"obrigatorio": false,
+"origem": "especifico",
+"ajuda": ""
 }
 ],
 "texto_livre": []

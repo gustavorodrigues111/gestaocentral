@@ -299,9 +299,11 @@ function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empr
               <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{ORIGEM_LABEL[origem] || origem}</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {campos.map(c => (
-                  <div key={c.token}>
+                  <div key={c.token} className={c.tipo === "textarea" ? "sm:col-span-2" : ""}>
                     <label className="text-[11px] text-gray-500">{c.rotulo}{c.obrigatorio ? " *" : ""}</label>
-                    <input value={valDe(c.token)} onChange={e => setVal(c.token, e.target.value)} placeholder={c.ajuda || ""} className={`${inp} mt-0.5`} />
+                    {c.tipo === "textarea"
+                      ? <textarea value={valDe(c.token)} onChange={e => setVal(c.token, e.target.value)} placeholder={c.ajuda || ""} rows={2} className={`${inp} mt-0.5`} />
+                      : <input value={valDe(c.token)} onChange={e => setVal(c.token, e.target.value)} placeholder={c.ajuda || ""} className={`${inp} mt-0.5`} />}
                   </div>
                 ))}
               </div>
