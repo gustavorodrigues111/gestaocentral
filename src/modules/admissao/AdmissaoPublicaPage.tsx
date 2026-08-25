@@ -12,7 +12,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
-  collection, doc, getDocs, query, setDoc, where,
+  collection, getDocs, query, where,
 } from "firebase/firestore";
 import { ref as storageRef, uploadBytes } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
@@ -252,11 +252,11 @@ export function AdmissaoPublicaPage() {
     if (!admissao) return;
     setSalvandoAuto(true);
     try {
-      await setDoc(
-        doc(db, "admissoes", admissao.id),
-        { dadosPreenchidos: d, updatedAt: new Date().toISOString() },
-        { merge: true },
-      );
+      const r = await fetch("/api/admissao-submit", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ admissaoId: admissao.id, token, dadosPreenchidos: d }),
+      });
+      if (!r.ok) { const j = await r.json().catch(() => null); throw new Error(j?.error || `HTTP ${r.status}`); }
     } catch (e) {
       console.warn("Erro auto-save:", e);
     } finally {
@@ -325,8 +325,8 @@ export function AdmissaoPublicaPage() {
     setEnviando(true);
     try {
       const now = new Date().toISOString();
+      // selfie vai pro Storage pelo endpoint (não embutida no doc) — só metadados aqui.
       const validacao = {
-        selfieDataUrl,
         declaracaoEm: now,
         declaracaoTexto: TEXTO_DECLARACAO,
         ciencias: {
@@ -378,26 +378,27 @@ export function AdmissaoPublicaPage() {
             }
           : s,
       );
-      await setDoc(
-        doc(db, "admissoes", admissao.id),
-        {
+      const r = await fetch("/api/admissao-submit", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          admissaoId: admissao.id, token, final: true,
           dadosPreenchidos: dados,
-          status: "formulario_preenchido",
-          preenchidoEm: now,
-          validacao,
           documentos,
+          validacao,
+          selfieBase64: selfieDataUrl,
           ...(subtarefas.length > 0 ? { subtarefas } : {}),
           ...(dadosBancariosItau ? { dadosBancariosItau } : {}),
-          updatedAt: now,
-        },
-        { merge: true },
-      );
+        }),
+      });
+      const jr = await r.json().catch(() => null);
+      if (!r.ok) throw new Error(jr?.error || `HTTP ${r.status}`);
+      const validacaoFinal = jr?.selfieUrl ? { ...validacao, selfieUrl: jr.selfieUrl } : validacao;
       setAdmissao({
         ...admissao,
         dadosPreenchidos: dados,
         status: "formulario_preenchido",
         preenchidoEm: now,
-        validacao,
+        validacao: validacaoFinal,
         documentos,
         subtarefas,
         ...(dadosBancariosItau ? { dadosBancariosItau } : {}),

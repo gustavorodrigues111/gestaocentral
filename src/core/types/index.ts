@@ -3325,7 +3325,9 @@ export type Admissao = {
   // Declaração de veracidade + selfie + ciências obrigatórias do candidato.
   // Submetidas junto com o form. Tudo aceito = libera submit do form.
   validacao?: {
-    selfieDataUrl?: string;    // base64 (JPEG comprimido, max ~250KB)
+    selfieUrl?: string;        // URL da selfie no Storage (novo — via /api/admissao-submit)
+    selfiePath?: string;       // path no Storage (pra resolver/baixar)
+    selfieDataUrl?: string;    // LEGADO: base64 embutido (registros antigos)
     declaracaoEm: string;      // ISO — quando o candidato marcou o checkbox
     declaracaoTexto: string;   // snapshot do texto da declaração (pra histórico jurídico)
     // Ciência sobre conta Itaú e envio de docs por WhatsApp — boxes mostrados

@@ -1351,7 +1351,7 @@ function DocumentosConferencia({
 
   // Admissão encerrada (arquivada/cancelada) → não dá mais pra mexer.
   const encerrada = !!admissao.finalizadoEm || admissao.status === "cancelada";
-  const selfiePendente = !!admissao.validacao?.selfieDataUrl && !admissao.documentos?.selfieDriveFileId;
+  const selfiePendente = !!(admissao.validacao?.selfieUrl || admissao.validacao?.selfieDataUrl) && !admissao.documentos?.selfieDriveFileId;
   const arquivosPendentes = itens.reduce(
     (n, it) => n + (it.arquivos || []).filter((a) => !a.driveFileId).length, 0,
   );
@@ -1455,7 +1455,7 @@ function DocumentosConferencia({
 
       // Selfie da ficha cadastral (serve de foto 3x4) — só se ainda não subiu.
       let selfieDriveFileId = admissao.documentos.selfieDriveFileId;
-      const selfie = admissao.validacao?.selfieDataUrl;
+      const selfie = admissao.validacao?.selfieUrl || admissao.validacao?.selfieDataUrl;
       if (selfie && !selfieDriveFileId) {
         const resp = await fetch(selfie);
         const blob = await resp.blob();
