@@ -20,6 +20,7 @@ const SEED: Seed[] = [
 
   // ── Segurança Sanitária ──
   { modulo: "seguranca", resp: "gustavo", titulo: "Criar o template da lista-base, atribuir áreas dos itens e apagar as avaliações de teste antigas" },
+  { modulo: "seguranca", resp: "ia", titulo: "PDF do relatório agora embute as fotos (seção Evidências) + Duplicar área (com itens) no editor de modelo. Caveat: só embute fotos com URL do Storage; fotos legado do Drive (driveId/webViewLink) não entram no PDF." },
 
   // ── Wiki de Processos (guias por área + agente de IA) ──
   { modulo: "wikiProcessos", resp: "gustavo", titulo: "Subir os guias HTML de Financeiro, Compras e Eventos (Pessoas já vem com o modelo inicial embutido)", descricao: "Módulo reformulado: cada área (Pessoas/Financeiro/Compras/Eventos) = 1 guia HTML + 1 agente de IA que responde a partir do guia. Upload em ⬆️ Publicar guia (salva em wikiGuias/{key}, sem deploy)." },

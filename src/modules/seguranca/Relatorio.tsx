@@ -194,6 +194,57 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
         headStyles: { fillColor: [233, 226, 209], textColor: [30, 30, 30], fontStyle: "bold" },
         columnStyles: { 0: { cellWidth: 22 }, 1: { cellWidth: 78 } },
       });
+
+      // ── Evidências: fotos das não-conformidades ──
+      const carregarImagem = (url: string): Promise<{ dataUrl: string; w: number; h: number } | null> =>
+        new Promise((resolve) => {
+          fetch(url).then((r) => r.blob()).then((blob) => {
+            const fr = new FileReader();
+            fr.onload = () => {
+              const dataUrl = String(fr.result || "");
+              const img = new Image();
+              img.onload = () => resolve({ dataUrl, w: img.naturalWidth || 1, h: img.naturalHeight || 1 });
+              img.onerror = () => resolve(null);
+              img.src = dataUrl;
+            };
+            fr.onerror = () => resolve(null);
+            fr.readAsDataURL(blob);
+          }).catch(() => resolve(null));
+        });
+
+      const comFotos = inconformidades.filter((i) => (i.r.fotos || []).some((f) => f.url));
+      if (comFotos.length) {
+        const pageW = d.internal.pageSize.getWidth();
+        const pageH = d.internal.pageSize.getHeight();
+        d.addPage();
+        let y = 16;
+        d.setFont("helvetica", "bold"); d.setFontSize(13); d.setTextColor(30, 30, 30);
+        d.text("Evidências", M, y); y += 7;
+        for (const i of comFotos) {
+          const fotos = (i.r.fotos || []).filter((f) => f.url);
+          if (y > pageH - 24) { d.addPage(); y = 16; }
+          d.setFont("helvetica", "bold"); d.setFontSize(9); d.setTextColor(30, 30, 30);
+          const cab = d.splitTextToSize(`${i.area || "—"} · ${i.texto}`, pageW - 2 * M);
+          d.text(cab, M, y); y += cab.length * 4.6 + 1;
+          if (i.r.observacao) {
+            d.setFont("helvetica", "normal"); d.setFontSize(8); d.setTextColor(100, 116, 139);
+            const obs = d.splitTextToSize(`Obs: ${i.r.observacao}`, pageW - 2 * M);
+            d.text(obs, M, y); y += obs.length * 4 + 1;
+          }
+          for (const f of fotos) {
+            const img = await carregarImagem(f.url as string);
+            if (!img) continue;
+            const w = Math.min(90, pageW - 2 * M);
+            const h = w * (img.h / img.w);
+            if (y + h > pageH - 12) { d.addPage(); y = 16; }
+            const fmt = img.dataUrl.includes("image/png") ? "PNG" : "JPEG";
+            try { d.addImage(img.dataUrl, fmt, M, y, w, h); } catch { continue; }
+            y += h + 4;
+          }
+          y += 3;
+        }
+      }
+
       d.save(`seguranca-${av.data}.pdf`);
     } finally { setExportando(false); }
   }

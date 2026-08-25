@@ -304,7 +304,7 @@ export type SegurancaFoto = { nome: string; url?: string; path?: string; driveId
 export type SegurancaResultadoItem = {
   resposta: SegurancaResposta;
   observacao?: string;
-  fotos?: SegurancaFoto[];     // no Google Drive (não no Storage)
+  fotos?: SegurancaFoto[];     // no Firebase Storage (url/path); legado pode ter driveId
   acaoId?: string | null;      // ação gerada no Plano de Ação (Fase 3)
   marcadoEm: string;
   marcadoPorId?: string;

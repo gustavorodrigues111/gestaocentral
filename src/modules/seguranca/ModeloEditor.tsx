@@ -86,6 +86,21 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
       if (d.responsaveisArea) delete d.responsaveisArea[nome];
     });
   }
+  // Duplica uma área COM os itens que se aplicam a ela (e os líderes).
+  function duplicarArea(idx: number) {
+    const orig = m.areas[idx];
+    mut((d) => {
+      let nn = `Cópia de ${orig}`, n = 2;
+      while (d.areas.includes(nn)) nn = `Cópia de ${orig} (${n++})`;
+      d.areas.push(nn);
+      const itensDaArea = d.itens.filter((i) => (i.areas || []).includes(orig));
+      for (const it of itensDaArea) {
+        const max = Math.max(0, ...d.itens.filter((x) => x.blocoId === it.blocoId).map((x) => x.ordem));
+        d.itens.push({ ...it, id: uid(), areas: [nn], ordem: max + 1 });
+      }
+      if (d.responsaveisArea?.[orig]) d.responsaveisArea[nn] = [...d.responsaveisArea[orig]];
+    });
+  }
   function addLiderArea(area: string, pid: string) {
     if (!pid) return;
     mut((d) => {
@@ -183,6 +198,7 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
               <span key={idx} className={`inline-flex items-center gap-1.5 text-[13px] font-medium pl-2.5 pr-1.5 py-1 rounded-full ${c.bg} ${c.fg}`}>
                 <span className="w-2 h-2 rounded-full" style={{ background: c.dot }} />
                 <button type="button" onClick={() => renomearArea(idx)} title="Renomear">{a}</button>
+                <button type="button" onClick={() => duplicarArea(idx)} title="Duplicar área com os itens" className="opacity-60 hover:opacity-100 text-xs leading-none">⧉</button>
                 <button type="button" onClick={() => removerArea(idx)} title="Remover" className="opacity-60 hover:opacity-100 text-sm leading-none">×</button>
               </span>
             );
