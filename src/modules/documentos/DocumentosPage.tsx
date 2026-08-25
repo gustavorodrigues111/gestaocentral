@@ -26,17 +26,22 @@ const DOCS = CATALOGO as DocModelo[];
 const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
 
 // Dados trabalhistas por empresa (Firestore documentosEmpresas/{rid}).
-const EMPRESA_CAMPOS: [string, string][] = [
-  ["RAZAO_SOCIAL", "Razão social"],
-  ["CNPJ_EMPRESA", "CNPJ"],
-  ["ENDERECO_EMPRESA", "Endereço completo"],
-  ["CIDADE", "Cidade (usada na data de assinatura)"],
-  ["CEP_EMPRESA", "CEP"],
-  ["EMAIL_EMPRESA", "E-mail"],
-  ["NUMERO_CONTATO_EMPRESA", "Telefone / WhatsApp de contato"],
-  ["BANCO", "Banco (conta salário)"],
-  ["AGENCIA_EMPRESA", "Agência"],
-  ["CONTA_EMPRESA", "Conta"],
+// Essenciais aparecem na maioria dos documentos; os "de nicho" servem a UM
+// documento cada (mostrados numa seção opcional, com a nota de onde entram).
+type EmpresaCampo = { token: string; rotulo: string; nota?: string };
+const EMPRESA_ESSENCIAIS: EmpresaCampo[] = [
+  { token: "RAZAO_SOCIAL", rotulo: "Razão social" },
+  { token: "CNPJ_EMPRESA", rotulo: "CNPJ" },
+  { token: "ENDERECO_EMPRESA", rotulo: "Endereço completo" },
+  { token: "CIDADE", rotulo: "Cidade (usada na data de assinatura)" },
+];
+const EMPRESA_ESPECIFICOS: EmpresaCampo[] = [
+  { token: "EMAIL_EMPRESA", rotulo: "E-mail", nota: "só no termo de depósito em conta de terceiro" },
+  { token: "NUMERO_CONTATO_EMPRESA", rotulo: "Telefone / WhatsApp", nota: "só no termo de conta bancária própria" },
+  { token: "CEP_EMPRESA", rotulo: "CEP", nota: "só no contrato de autônomo" },
+  { token: "BANCO", rotulo: "Banco", nota: "só na carta de encaminhamento pra conta salário" },
+  { token: "AGENCIA_EMPRESA", rotulo: "Agência", nota: "idem — carta de conta salário" },
+  { token: "CONTA_EMPRESA", rotulo: "Conta", nota: "idem — carta de conta salário" },
 ];
 
 const ORIGEM_LABEL: Record<string, string> = { empresa: "🏢 Empresa", data: "📅 Data (hoje)", empregado: "🧑 Empregado", especifico: "✏️ Específicos do documento" };
@@ -362,13 +367,25 @@ function EmpresaConfigModal({ rid, restaurants, atual, pessoaId, pessoaNome, onT
             {restaurants.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
           </select>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-            {EMPRESA_CAMPOS.map(([token, rotulo]) => (
+            {EMPRESA_ESSENCIAIS.map(({ token, rotulo }) => (
               <div key={token} className={token === "RAZAO_SOCIAL" || token === "ENDERECO_EMPRESA" ? "sm:col-span-2" : ""}>
                 <label className="text-[11px] text-gray-500">{rotulo}</label>
                 <input value={campos[token] || ""} onChange={e => setCampos(s => ({ ...s, [token]: e.target.value }))} className={`${inp} mt-0.5`} />
               </div>
             ))}
           </div>
+
+          <details className="rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2">
+            <summary className="text-xs font-medium text-gray-600 dark:text-gray-300 cursor-pointer">Campos opcionais — usados só em documentos específicos</summary>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-2">
+              {EMPRESA_ESPECIFICOS.map(({ token, rotulo, nota }) => (
+                <div key={token}>
+                  <label className="text-[11px] text-gray-500">{rotulo}{nota ? <span className="text-gray-400"> — {nota}</span> : null}</label>
+                  <input value={campos[token] || ""} onChange={e => setCampos(s => ({ ...s, [token]: e.target.value }))} className={`${inp} mt-0.5`} />
+                </div>
+              ))}
+            </div>
+          </details>
           {erro && <div className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">{erro}</div>}
         </div>
         <div className="p-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">
