@@ -216,32 +216,51 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
       if (comFotos.length) {
         const pageW = d.internal.pageSize.getWidth();
         const pageH = d.internal.pageSize.getHeight();
+        const contentW = pageW - 2 * M;
+        const gap = 5;
+        const colW = (contentW - gap) / 2;   // 2 fotos por linha
+        const maxH = 78;                       // altura máx da foto (mm) — evita foto gigante
+        const bot = 14;                        // margem inferior
         d.addPage();
         let y = 16;
         d.setFont("helvetica", "bold"); d.setFontSize(13); d.setTextColor(30, 30, 30);
-        d.text("Evidências", M, y); y += 7;
+        d.text("Fotos por item", M, y); y += 7;
+
         for (const i of comFotos) {
           const fotos = (i.r.fotos || []).filter((f) => f.url);
-          if (y > pageH - 24) { d.addPage(); y = 16; }
-          d.setFont("helvetica", "bold"); d.setFontSize(9); d.setTextColor(30, 30, 30);
-          const cab = d.splitTextToSize(`${i.area || "—"} · ${i.texto}`, pageW - 2 * M);
-          d.text(cab, M, y); y += cab.length * 4.6 + 1;
+          // Cabeçalho do item (não deixa órfão no rodapé)
+          if (y > pageH - bot - 26) { d.addPage(); y = 16; }
+          d.setFont("helvetica", "bold"); d.setFontSize(9.5); d.setTextColor(30, 30, 30);
+          const cab = d.splitTextToSize(`${i.area || "—"} · ${i.texto}`, contentW);
+          d.text(cab, M, y); y += cab.length * 4.8 + 1;
           if (i.r.observacao) {
             d.setFont("helvetica", "normal"); d.setFontSize(8); d.setTextColor(100, 116, 139);
-            const obs = d.splitTextToSize(`Obs: ${i.r.observacao}`, pageW - 2 * M);
-            d.text(obs, M, y); y += obs.length * 4 + 1;
+            const obs = d.splitTextToSize(`Obs: ${i.r.observacao}`, contentW);
+            d.text(obs, M, y); y += obs.length * 4 + 1.5;
           }
+          // Fotos: 2 por linha, cada uma encaixada numa caixa colW×maxH SEM
+          // distorcer (escala pela menor razão, preservando a proporção).
+          let col = 0, rowH = 0;
           for (const f of fotos) {
             const img = await carregarImagem(f.url as string);
             if (!img) continue;
-            const w = Math.min(90, pageW - 2 * M);
-            const h = w * (img.h / img.w);
-            if (y + h > pageH - 12) { d.addPage(); y = 16; }
+            const ratio = (img.w || 1) / (img.h || 1);
+            let dw = colW, dh = dw / ratio;
+            if (dh > maxH) { dh = maxH; dw = dh * ratio; }   // limita altura, mantém proporção
+            // Garante que cabe: fecha a linha e/ou pula de página se necessário.
+            if (y + dh > pageH - bot) {
+              if (col === 1) { y += rowH + gap; col = 0; rowH = 0; }
+              if (y + dh > pageH - bot) { d.addPage(); y = 16; col = 0; rowH = 0; }
+            }
+            const x = M + col * (colW + gap);
             const fmt = img.dataUrl.includes("image/png") ? "PNG" : "JPEG";
-            try { d.addImage(img.dataUrl, fmt, M, y, w, h); } catch { continue; }
-            y += h + 4;
+            try { d.addImage(img.dataUrl, fmt, x, y, dw, dh); } catch { continue; }
+            rowH = Math.max(rowH, dh);
+            col++;
+            if (col === 2) { y += rowH + gap; col = 0; rowH = 0; }
           }
-          y += 3;
+          if (col === 1) { y += rowH + gap; }   // linha terminou com 1 foto
+          y += 4;   // respiro entre itens
         }
       }
 
