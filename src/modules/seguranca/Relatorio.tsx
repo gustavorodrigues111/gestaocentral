@@ -196,16 +196,35 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
       });
 
       // ── Evidências: fotos das não-conformidades ──
+      // Carrega a foto e NORMALIZA num canvas: assa os pixels na orientação que o
+      // navegador decodou (resolve EXIF) e reexporta em JPEG. Assim as dimensões
+      // que eu passo pro jsPDF batem exatamente com a imagem — nunca distorce.
       const carregarImagem = (url: string): Promise<{ dataUrl: string; w: number; h: number } | null> =>
         new Promise((resolve) => {
           fetch(url).then((r) => r.blob()).then((blob) => {
             const fr = new FileReader();
             fr.onload = () => {
-              const dataUrl = String(fr.result || "");
+              const src = String(fr.result || "");
               const img = new Image();
-              img.onload = () => resolve({ dataUrl, w: img.naturalWidth || 1, h: img.naturalHeight || 1 });
+              img.onload = () => {
+                try {
+                  const maxSide = 1400;   // downscale — PDF leve, sem perder nitidez de tela
+                  const nw = img.naturalWidth || 1, nh = img.naturalHeight || 1;
+                  const scale = Math.min(1, maxSide / Math.max(nw, nh));
+                  const cw = Math.max(1, Math.round(nw * scale));
+                  const ch = Math.max(1, Math.round(nh * scale));
+                  const canvas = document.createElement("canvas");
+                  canvas.width = cw; canvas.height = ch;
+                  const ctx = canvas.getContext("2d");
+                  if (!ctx) { resolve(null); return; }
+                  ctx.drawImage(img, 0, 0, cw, ch);
+                  let dataUrl = src;
+                  try { dataUrl = canvas.toDataURL("image/jpeg", 0.85); } catch { /* mantém src */ }
+                  resolve({ dataUrl, w: cw, h: ch });
+                } catch { resolve(null); }
+              };
               img.onerror = () => resolve(null);
-              img.src = dataUrl;
+              img.src = src;
             };
             fr.onerror = () => resolve(null);
             fr.readAsDataURL(blob);
@@ -253,8 +272,7 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
               if (y + dh > pageH - bot) { d.addPage(); y = 16; col = 0; rowH = 0; }
             }
             const x = M + col * (colW + gap);
-            const fmt = img.dataUrl.includes("image/png") ? "PNG" : "JPEG";
-            try { d.addImage(img.dataUrl, fmt, x, y, dw, dh); } catch { continue; }
+            try { d.addImage(img.dataUrl, "JPEG", x, y, dw, dh); } catch { continue; }
             rowH = Math.max(rowH, dh);
             col++;
             if (col === 2) { y += rowH + gap; col = 0; rowH = 0; }
