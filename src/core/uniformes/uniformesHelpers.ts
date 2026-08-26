@@ -432,10 +432,41 @@ export async function atualizarEntrega(opts: {
   return { ...entrega, ...patch };
 }
 
+// ── Devoluções (parciais, acumulativas) ──────────────────────────────────────
+// Combina a devolução legada (evento único) com o array `devolucoes[]`.
+export function devolucoesDe(e: EntregaUniforme) {
+  return [...(e.devolucao ? [e.devolucao] : []), ...(e.devolucoes || [])];
+}
+// Qtd já devolvida por linha (itemId + variação).
+function chaveLinha(itemId: string, variacaoId?: string) { return `${itemId}|${variacaoId || ""}`; }
+export function qtdDevolvidaPorLinha(e: EntregaUniforme): Map<string, number> {
+  const m = new Map<string, number>();
+  for (const ev of devolucoesDe(e)) for (const it of ev.itens) {
+    const k = chaveLinha(it.itemId, it.variacaoId);
+    m.set(k, (m.get(k) || 0) + (it.qtd || 0));
+  }
+  return m;
+}
+export type LinhaRestante = { itemId: string; variacaoId?: string; nome: string; tamanho?: string; qtdEntregue: number; qtdDevolvida: number; qtdRestante: number };
+export function restantePorLinha(e: EntregaUniforme): LinhaRestante[] {
+  const dev = qtdDevolvidaPorLinha(e);
+  return (e.itens || []).map((it) => {
+    const qtdDevolvida = dev.get(chaveLinha(it.itemId, it.variacaoId)) || 0;
+    return { itemId: it.itemId, variacaoId: it.variacaoId, nome: it.nome, tamanho: it.tamanho, qtdEntregue: it.qtd, qtdDevolvida, qtdRestante: Math.max(0, it.qtd - qtdDevolvida) };
+  });
+}
+export function totalmenteDevolvida(e: EntregaUniforme): boolean {
+  return restantePorLinha(e).every((l) => l.qtdRestante <= 0);
+}
+export function parcialmenteDevolvida(e: EntregaUniforme): boolean {
+  return devolucoesDe(e).length > 0 && !totalmenteDevolvida(e);
+}
+
 /**
  * Registra devolução total/parcial de uma entrega. Pra cada item devolvido
  * com status="devolvido", devolve a qtd ao estoque. Status "descartado" e
  * "levado_pelo_empregado" NÃO alteram estoque (item sai do controle).
+ * Acumula em devolucoes[] — pode devolver o resto depois.
  */
 export async function registrarDevolucao(opts: {
   entrega: EntregaUniforme;
@@ -446,21 +477,19 @@ export async function registrarDevolucao(opts: {
   catalogo: ItemUniforme[];
 }): Promise<void> {
   const { entrega, itens, observacao, pessoa, catalogo } = opts;
-  if (entrega.devolucao) {
-    throw new Error("Essa entrega já tem devolução registrada.");
-  }
   const now = new Date().toISOString();
+  const itensDoEvento = itens.filter(i => (i.qtd || 0) > 0);
+  if (itensDoEvento.length === 0) throw new Error("Nenhum item pra devolver.");
+  // Acumula em devolucoes[] — permite várias devoluções PARCIAIS ao longo do tempo.
   await updateDoc(doc(db, "entregasUniforme", entrega.id), sanitizeForFirestore({
-    devolucao: {
-      devolvidoEm: now,
-      devolvidoPor: { id: pessoa.id, nome: pessoa.nome },
-      itens,
-      observacao,
-    },
+    devolucoes: [
+      ...(entrega.devolucoes || []),
+      { devolvidoEm: now, devolvidoPor: { id: pessoa.id, nome: pessoa.nome }, itens: itensDoEvento, observacao },
+    ],
   }));
 
   // Devolve ao estoque só os itens com status "devolvido"
-  for (const i of itens) {
+  for (const i of itensDoEvento) {
     if (i.status !== "devolvido") continue;
     const item = catalogo.find(x => x.id === i.itemId);
     if (!item || !i.variacaoId) continue;

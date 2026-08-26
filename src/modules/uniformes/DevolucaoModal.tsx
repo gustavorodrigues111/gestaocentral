@@ -8,7 +8,7 @@ import { Button } from "../../core/ui/Button";
 import type {
   DevolucaoStatus, EntregaUniforme, ItemUniforme, Pessoa,
 } from "../../core/types";
-import { registrarDevolucao } from "../../core/uniformes/uniformesHelpers";
+import { registrarDevolucao, restantePorLinha } from "../../core/uniformes/uniformesHelpers";
 
 type Props = {
   entrega: EntregaUniforme;
@@ -34,14 +34,15 @@ const STATUS_LABEL: Record<DevolucaoStatus, string> = {
 };
 
 export function DevolucaoModal({ entrega, itens, pessoa, onClose }: Props) {
+  // Só o que AINDA resta devolver (permite devoluções parciais em vezes diferentes).
   const [linhas, setLinhas] = useState<LinhaDevolucao[]>(() =>
-    entrega.itens.map(i => ({
-      itemId: i.itemId,
-      variacaoId: i.variacaoId,
-      nome: i.nome,
-      tamanho: i.tamanho,
-      qtdEntregue: i.qtd,
-      qtdDevolver: i.qtd,
+    restantePorLinha(entrega).filter(l => l.qtdRestante > 0).map(l => ({
+      itemId: l.itemId,
+      variacaoId: l.variacaoId,
+      nome: l.nome,
+      tamanho: l.tamanho,
+      qtdEntregue: l.qtdRestante,   // máximo devolvível AGORA = o que resta
+      qtdDevolver: l.qtdRestante,
       status: "devolvido" as DevolucaoStatus,
     })),
   );
@@ -99,7 +100,7 @@ export function DevolucaoModal({ entrega, itens, pessoa, onClose }: Props) {
                   {l.nome} {l.tamanho && <span className="text-gray-500">· {l.tamanho}</span>}
                 </div>
                 <div className="text-[10px] text-gray-500">
-                  entregue: <strong>{l.qtdEntregue}</strong>
+                  resta devolver: <strong>{l.qtdEntregue}</strong>
                 </div>
               </div>
               <input

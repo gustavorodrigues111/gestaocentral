@@ -10,6 +10,7 @@ import type {
 import { NovaEntregaModal } from "./NovaEntregaModal";
 import { DevolucaoModal } from "./DevolucaoModal";
 import { CancelarEntregaModal } from "./CancelarEntregaModal";
+import { devolucoesDe, totalmenteDevolvida, parcialmenteDevolvida } from "../../core/uniformes/uniformesHelpers";
 
 type Props = {
   itens: ItemUniforme[];
@@ -54,8 +55,8 @@ export function EntregasTab({
   const filtradas = useMemo(() => {
     let r = entregas;
     if (filtroTipo !== "todos") r = r.filter(e => e.tipo === filtroTipo);
-    if (filtroStatus === "ativas") r = r.filter(e => !e.devolucao && !e.cancelamento);
-    else if (filtroStatus === "devolvidas") r = r.filter(e => !!e.devolucao);
+    if (filtroStatus === "ativas") r = r.filter(e => !totalmenteDevolvida(e) && !e.cancelamento);
+    else if (filtroStatus === "devolvidas") r = r.filter(e => devolucoesDe(e).length > 0);
     else if (filtroStatus === "canceladas") r = r.filter(e => !!e.cancelamento);
     if (busca.trim()) {
       const q = busca.toLowerCase();
@@ -223,14 +224,14 @@ function EntregaRow({
             {totalQtd} peça(s) · R$ {total.toFixed(2)} · entregue por {entrega.entreguePor.nome}
           </div>
         </div>
-        {podeConfig && !entrega.devolucao && !entrega.cancelamento && (
+        {podeConfig && !totalmenteDevolvida(entrega) && !entrega.cancelamento && (
           <div className="flex flex-col gap-1 items-end">
             <button
               type="button"
               onClick={onDevolver}
               className="text-[10px] px-2 py-1 rounded border border-rose-200 dark:border-rose-900 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-rose-700 dark:text-rose-300 whitespace-nowrap"
             >
-              registrar devolução
+              {parcialmenteDevolvida(entrega) ? "devolver mais" : "registrar devolução"}
             </button>
             <button
               type="button"
@@ -242,9 +243,11 @@ function EntregaRow({
             </button>
           </div>
         )}
-        {entrega.devolucao && (
-          <span className="text-[10px] uppercase tracking-wider font-bold bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300 px-1.5 py-0.5 rounded whitespace-nowrap">
-            ↶ devolvido
+        {devolucoesDe(entrega).length > 0 && (
+          <span className={`text-[10px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded whitespace-nowrap ${
+            totalmenteDevolvida(entrega) ? "bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300" : "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300"
+          }`}>
+            {totalmenteDevolvida(entrega) ? "↶ devolvido" : "↶ parcial"}
           </span>
         )}
         {entrega.cancelamento && (
@@ -269,13 +272,14 @@ function EntregaRow({
         ))}
       </div>
 
-      {entrega.devolucao && (
-        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800 text-[10px] text-gray-500">
-          Devolução registrada em {new Date(entrega.devolucao.devolvidoEm).toLocaleDateString("pt-BR")}
-          {" "}por {entrega.devolucao.devolvidoPor.nome}
-          {entrega.devolucao.observacao && (
-            <span className="italic"> · "{entrega.devolucao.observacao}"</span>
-          )}
+      {devolucoesDe(entrega).length > 0 && (
+        <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-800 text-[10px] text-gray-500 space-y-0.5">
+          {devolucoesDe(entrega).map((dv, i) => (
+            <div key={i}>
+              ↶ {dv.itens.reduce((s, it) => s + (it.qtd || 0), 0)} peça(s) em {new Date(dv.devolvidoEm).toLocaleDateString("pt-BR")} por {dv.devolvidoPor.nome}
+              {dv.observacao && <span className="italic"> · "{dv.observacao}"</span>}
+            </div>
+          ))}
         </div>
       )}
 

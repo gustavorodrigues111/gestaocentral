@@ -4579,6 +4579,8 @@ export type EntregaUniforme = {
   termoPdfUrl?: string;                // se subir PDF assinado depois (Drive/Clicksign)
   observacao?: string;
   // Devolução total ou parcial (na demissão ou em troca)
+  // Devolução legada (evento único). Novos eventos vão em `devolucoes[]` — os
+  // helpers leem os dois juntos. Mantido pra retrocompat.
   devolucao?: {
     devolvidoEm: string;
     devolvidoPor: { id: string; nome: string };
@@ -4590,6 +4592,18 @@ export type EntregaUniforme = {
     }[];
     observacao?: string;
   };
+  // Devoluções parciais ao longo do tempo — cada evento devolve alguns itens.
+  devolucoes?: {
+    devolvidoEm: string;
+    devolvidoPor: { id: string; nome: string };
+    itens: {
+      itemId: string;
+      variacaoId?: string;
+      qtd: number;
+      status: DevolucaoStatus;
+    }[];
+    observacao?: string;
+  }[];
   // Cancelamento — quando a entrega foi planejada/registrada mas o
   // empregado NÃO recebeu (mudança de plano, candidato desistiu, etc.).
   // Reverte 100% dos itens ao estoque. Mutuamente exclusivo com devolução.

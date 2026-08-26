@@ -11,6 +11,7 @@ import type {
   Cargo, Empregado, EntregaUniforme, ItemUniforme, KitAreaUniforme, Pessoa, Restaurant, TipoItemUniforme,
 } from "../../core/types";
 import { NovaEntregaModal } from "./NovaEntregaModal";
+import { devolucoesDe, restantePorLinha } from "../../core/uniformes/uniformesHelpers";
 
 type Props = {
   itens: ItemUniforme[];
@@ -59,7 +60,7 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRes
     const rec = new Map<string, number>();
     for (const e of emps) {
       for (const it of e.itens) rec.set(it.itemId, (rec.get(it.itemId) || 0) + (it.qtd || 0));
-      for (const dv of e.devolucao?.itens || []) rec.set(dv.itemId, (rec.get(dv.itemId) || 0) - (dv.qtd || 0));
+      for (const ev of devolucoesDe(e)) for (const dv of ev.itens) rec.set(dv.itemId, (rec.get(dv.itemId) || 0) - (dv.qtd || 0));
     }
     return rec;
   }
@@ -85,15 +86,18 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRes
         vencendo.sort((a, b) => a.validadeAte.localeCompare(b.validadeAte));
         // Peças em posse (histórico de entregas não canceladas), com data de
         // entrega e validade de cada. Vencendo/vencido no topo.
-        const emPosse = ents.flatMap(en => (en.itens || []).map(it => ({
-          nome: it.nome,
-          tamanho: it.tamanho,
-          qtd: it.qtd,
-          tipo: en.tipo,
-          entregueEm: (en.entregueEm || "").slice(0, 10),
-          validadeAte: it.validadeAte || null,
-          dias: it.validadeAte ? Math.round((new Date(it.validadeAte + "T12:00:00").getTime() - new Date(hoje + "T12:00:00").getTime()) / 86400_000) : null,
-        })));
+        const emPosse = ents.flatMap(en => {
+          const rest = restantePorLinha(en);   // mesma ordem/tamanho de en.itens
+          return (en.itens || []).map((it, idx) => ({
+            nome: it.nome,
+            tamanho: it.tamanho,
+            qtd: rest[idx]?.qtdRestante ?? it.qtd,   // desconta o que já foi devolvido
+            tipo: en.tipo,
+            entregueEm: (en.entregueEm || "").slice(0, 10),
+            validadeAte: it.validadeAte || null,
+            dias: it.validadeAte ? Math.round((new Date(it.validadeAte + "T12:00:00").getTime() - new Date(hoje + "T12:00:00").getTime()) / 86400_000) : null,
+          })).filter(p => p.qtd > 0);
+        });
         emPosse.sort((a, b) => (a.validadeAte || "9999").localeCompare(b.validadeAte || "9999") || b.entregueEm.localeCompare(a.entregueEm));
         return { emp: e, cargo, area, itensKit, pendencias: itensKit.filter(i => i.falta > 0).length, semKit: !!area && !kit, vencendo, emPosse };
       })
