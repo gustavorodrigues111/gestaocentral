@@ -86,7 +86,7 @@ type Props = {
 export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClose }: Props) {
   // Inicializa com o existente OU com o default global
   const [termos, setTermos] = useState<TermoAssinado[]>(
-    () => instanciarTermosAssinados(admissao.termosAssinados),
+    () => instanciarTermosAssinados(admissao.termosAssinados, activeRestaurant.documentosPorCargo?.[admissao.cargoId]),
   );
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");

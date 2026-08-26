@@ -1096,6 +1096,9 @@ export type Restaurant = {
   // ─── Admissão (módulo Admissão) ───
   admissaoPrazoDias?: number;            // 1-7, default 1
   whatsappDP?: string;                   // só dígitos — pra candidato mandar docs
+  // Quais termos do "kit de assinatura" cada cargo precisa. Vazio/ausente pra um
+  // cargo = todos (padrão). Ids = getTermosAssinaturaDefault().id.
+  documentosPorCargo?: { [cargoId: string]: string[] };
   // Contatos externos com canal preferido (email/whatsapp/telefone). Cada
   // restaurante pode customizar. Defaults em formTemplate.ts.
   contatosAdmissao?: {

@@ -840,8 +840,12 @@ export function getTermosAssinaturaDefault(): {
 // novos do default que faltam, mantém termos custom que o restaurante criou.
 export function instanciarTermosAssinados(
   termosAtuais: TermoAssinado[] | undefined,
+  termoIdsPermitidos?: string[] | null,   // se dado (config por cargo), só instancia esses
 ): TermoAssinado[] {
-  const defaults = getTermosAssinaturaDefault();
+  let defaults = getTermosAssinaturaDefault();
+  if (termoIdsPermitidos && termoIdsPermitidos.length > 0) {
+    defaults = defaults.filter(t => termoIdsPermitidos.includes(t.id));
+  }
   if (!termosAtuais || termosAtuais.length === 0) {
     return defaults.map(t => ({ ...t, assinado: false }));
   }
@@ -1179,6 +1183,7 @@ export async function salvarConfigAdmissao(
     | "regulamentoInternoUrl"
     | "regulamentoInternoFileId"
     | "documentosAdmissao"
+    | "documentosPorCargo"
   >>,
 ): Promise<void> {
   await setDoc(

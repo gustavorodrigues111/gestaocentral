@@ -4,6 +4,8 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useState } from "react";
+import { collection, getDocs, query, where } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -13,6 +15,7 @@ import {
   getContatoFinanceiro,
   getPrazoDias,
   getTemplate,
+  getTermosAssinaturaDefault,
   getWhatsappDP,
   PLACEHOLDERS_DISPONIVEIS,
   resetarLayoutKanban,
@@ -21,7 +24,7 @@ import {
   type TemplateKey,
 } from "../../core/admissao/admissaoHelpers";
 import { DOCUMENTOS_ADMISSAO_DEFAULT } from "../../core/admissao/formTemplate";
-import type { CanalContato, ContatoExterno, DocumentoAdmissaoDef, Restaurant } from "../../core/types";
+import type { CanalContato, Cargo, ContatoExterno, DocumentoAdmissaoDef, Restaurant } from "../../core/types";
 import { isDriveConfigured } from "../../core/google/driveConfig";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { centralConfigured, centralEnsureTopFolder, centralEnsureFolder, centralMoveFolder, parseDriveFolderId } from "../../core/google/driveCentral";
@@ -104,6 +107,17 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
       ? activeRestaurant.documentosAdmissao
       : DOCUMENTOS_ADMISSAO_DEFAULT,
   );
+  // Documentos (termos do kit de assinatura) por cargo.
+  const [cargos, setCargos] = useState<Cargo[]>([]);
+  const [docsPorCargo, setDocsPorCargo] = useState<{ [cargoId: string]: string[] }>(
+    () => activeRestaurant.documentosPorCargo || {},
+  );
+  useEffect(() => {
+    let vivo = true;
+    void getDocs(query(collection(db, "cargos"), where("restaurantId", "==", rid)))
+      .then(snap => { if (vivo) setCargos(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Cargo).filter(c => c.ativo !== false)); });
+    return () => { vivo = false; };
+  }, [rid]);
 
   async function selecionarPastaDrive() {
     setDriveMsg("");
@@ -222,6 +236,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
         regulamentoInternoUrl: regulamentoInternoUrl.trim() || undefined,
         regulamentoInternoFileId: extractDriveFileId(regulamentoInternoUrl.trim()) || undefined,
         documentosAdmissao: docsAdmissao,
+        documentosPorCargo: docsPorCargo,
       });
       setMsg("✓ Salvo.");
     } catch (e) {
@@ -512,6 +527,11 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
         </div>
       </details>
 
+      {/* Documentos (termos a assinar) por cargo — o checklist já vem certo */}
+      {cargos.length > 0 && (
+        <DocumentosPorCargoEditor cargos={cargos} value={docsPorCargo} onChange={setDocsPorCargo} />
+      )}
+
       {/* Documentos que o candidato envia no form público */}
       <DocumentosEditor docs={docsAdmissao} onChange={setDocsAdmissao} />
 
@@ -705,6 +725,53 @@ function EditorTemplate({
         className="w-full text-xs px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 font-mono resize-y"
       />
     </div>
+  );
+}
+
+// ─── Documentos (termos a assinar) por cargo ─────────────────────────────────
+function DocumentosPorCargoEditor({ cargos, value, onChange }: {
+  cargos: Cargo[];
+  value: { [cargoId: string]: string[] };
+  onChange: (v: { [cargoId: string]: string[] }) => void;
+}) {
+  const termos = getTermosAssinaturaDefault();
+  const allIds = termos.map(t => t.id);
+  const selDe = (cid: string) => value[cid] ?? allIds;   // sem config = todos (padrão)
+  const toggle = (cid: string, tid: string) => {
+    const atual = new Set(selDe(cid));
+    if (atual.has(tid)) atual.delete(tid); else atual.add(tid);
+    onChange({ ...value, [cid]: termos.filter(t => atual.has(t.id)).map(t => t.id) });
+  };
+  const configurados = Object.keys(value).length;
+  return (
+    <details className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
+      <summary className="cursor-pointer px-4 py-3 font-bold text-sm text-gray-900 dark:text-gray-100 select-none">
+        🪪 Documentos por cargo
+        <span className="ml-2 text-[11px] font-normal text-gray-500 dark:text-gray-400">
+          ({configurados > 0 ? `${configurados} cargo(s) ajustado(s)` : "todos usam o padrão"} — toque pra editar)
+        </span>
+      </summary>
+      <div className="p-4 pt-0 space-y-3">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Marque quais termos do <strong>kit de assinatura</strong> cada cargo precisa. Quando a
+          admissão entra num cargo, o checklist já vem com esses — sem configurar admissão por
+          admissão. Cargo sem ajustar = <strong>todos</strong> (padrão).
+        </p>
+        {cargos.map((c) => (
+          <div key={c.id} className="border border-gray-200 dark:border-gray-800 rounded-lg p-3">
+            <div className="font-semibold text-xs text-gray-900 dark:text-gray-100 mb-1.5">{c.nome}</div>
+            <div className="flex flex-wrap gap-x-4 gap-y-1.5">
+              {termos.map((t) => (
+                <label key={t.id} className="inline-flex items-center gap-1.5 text-[12px] text-gray-700 dark:text-gray-300 cursor-pointer">
+                  <input type="checkbox" checked={selDe(c.id).includes(t.id)} onChange={() => toggle(c.id, t.id)} className="accent-indigo-600" />
+                  {t.nome}
+                </label>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </details>
   );
 }
 
