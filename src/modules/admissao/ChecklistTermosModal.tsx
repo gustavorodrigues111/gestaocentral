@@ -19,7 +19,7 @@ import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import type {
-  Admissao, ClicksignEnvioRef, EntregaUniforme, ItemUniforme, KitAreaUniforme,
+  Admissao, Cargo, ClicksignEnvioRef, EntregaUniforme, ItemUniforme, KitAreaUniforme,
   Pessoa, Restaurant, TermoAssinado,
 } from "../../core/types";
 import {
@@ -95,6 +95,8 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   // Mapa termo→modelo + dados cadastrais da empresa (documentosEmpresas/{rid}).
   const [empresaCfg, setEmpresaCfg] = useState<{ campos: Record<string, string>; habilitados: string[] | null; termoMap: Record<string, string> }>({ campos: {}, habilitados: null, termoMap: {} });
   const [gerarDoc, setGerarDoc] = useState<{ termoId: string; doc: DocModelo } | null>(null);
+  // Cargo da admissão — alimenta função/remuneração/atividades dos contratos.
+  const [cargo, setCargo] = useState<Cargo | null>(null);
   useEffect(() => {
     (async () => {
       try {
@@ -103,7 +105,25 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         setEmpresaCfg({ campos: data?.campos || {}, habilitados: data?.habilitados ?? null, termoMap: data?.termoMap || {} });
       } catch { /* sem config ainda — segue manual */ }
     })();
-  }, [admissao.restaurantId]);
+    (async () => {
+      if (!admissao.cargoId) return;
+      try {
+        const cs = await getDoc(doc(db, "cargos", admissao.cargoId));
+        if (cs.exists()) setCargo({ id: cs.id, ...cs.data() } as Cargo);
+      } catch { /* sem cargo — segue */ }
+    })();
+  }, [admissao.restaurantId, admissao.cargoId]);
+  // Prefill dos documentos com dados do candidato + cargo (função/remuneração/atividades).
+  const prefillDoc = useMemo(() => {
+    const p: Record<string, string> = {
+      NOME_EMPREGADO: admissao.candidato?.nome || "",
+      CPF_EMPREGADO: admissao.candidato?.cpf || "",
+    };
+    if (cargo?.nome) p.FUNCAO = cargo.nome;
+    if (cargo?.salarioBase != null) p.REMUNERACAO = `R$ ${cargo.salarioBase.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} mensais`;
+    if (cargo?.descricao) p.DESCRICAO_ATIVIDADES = cargo.descricao;
+    return p;
+  }, [admissao.candidato, cargo]);
 
   // ─── Google Drive (kit de documentos para assinatura) ───
   // Pasta no Drive da conta conectada. Seed do que já tá salvo na admissão.
@@ -1261,7 +1281,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
           pessoas={[]}
           empregados={[]}
           empresas={{ [admissao.restaurantId]: empresaCfg }}
-          prefill={{ NOME_EMPREGADO: admissao.candidato?.nome || "", CPF_EMPREGADO: admissao.candidato?.cpf || "" }}
+          prefill={prefillDoc}
           lockEmpresa
           hideEmpregado
           subtitulo={`Termo da admissão de ${admissao.candidato?.nome || ""}`}
