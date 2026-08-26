@@ -157,13 +157,16 @@ export function DocumentosPage() {
 }
 
 // ─── Gerador de um documento ─────────────────────────────────────────────────
-export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empresas, onClose, prefill, onGerado, lockEmpresa, hideEmpregado, subtitulo }: {
+export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empresas, onClose, prefill, onGerado, lockEmpresa, hideEmpregado, subtitulo, prefillQuadros }: {
   doc: DocModelo; rid: string; restaurants: { id: string; nome: string }[]; pessoas: Pessoa[]; empregados: Empregado[];
   empresas: Record<string, EmpresaCfg>; onClose: () => void;
   // Uso externo (ex.: Admissão): prefill de campos, empresa travada, empregado
   // oculto, e callback que recebe o DOCX gerado (em vez de baixar).
   prefill?: Record<string, string>; onGerado?: (blob: Blob, nome: string) => Promise<void> | void;
   lockEmpresa?: boolean; hideEmpregado?: boolean; subtitulo?: string;
+  // Linhas de quadro pré-preenchidas (ex.: itens de uma entrega de uniforme/EPI),
+  // por índice do quadro.
+  prefillQuadros?: Record<number, string[][]>;
 }) {
   const [empresaRid, setEmpresaRid] = useState(rid || restaurants[0]?.id || "");
   const [empId, setEmpId] = useState<string>("");
@@ -171,7 +174,7 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
   const [values, setValues] = useState<Record<string, string>>({});
   const [livres, setLivres] = useState<Record<string, string>>({});
   const [marcado, setMarcado] = useState<Record<string, string>>({});
-  const [linhasQ, setLinhasQ] = useState<Record<number, string[][]>>({});
+  const [linhasQ, setLinhasQ] = useState<Record<number, string[][]>>(() => prefillQuadros || {});
   const [assinaturas, setAssinaturas] = useState(false);
   const [testemunhas, setTestemunhas] = useState(false);
   const [gerando, setGerando] = useState(false);

@@ -94,7 +94,23 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   // ─── Fonte de documentos: módulo Documentos ───
   // Mapa termo→modelo + dados cadastrais da empresa (documentosEmpresas/{rid}).
   const [empresaCfg, setEmpresaCfg] = useState<{ campos: Record<string, string>; habilitados: string[] | null; termoMap: Record<string, string> }>({ campos: {}, habilitados: null, termoMap: {} });
-  const [gerarDoc, setGerarDoc] = useState<{ termoId: string; doc: DocModelo } | null>(null);
+  const [gerarDoc, setGerarDoc] = useState<{ termoId: string; doc: DocModelo; prefillQuadros?: Record<number, string[][]> } | null>(null);
+
+  // Monta as linhas do quadro do documento do advogado a partir de uma entrega
+  // de uniforme/EPI (usa os snapshots nome/tamanho/qtd/caEpi da própria entrega).
+  function quadrosDeEntrega(tipo: "uniforme" | "epi", ent: EntregaUniforme): Record<number, string[][]> {
+    const h = new Date();
+    const dmy = `${String(h.getDate()).padStart(2, "0")}/${String(h.getMonth() + 1).padStart(2, "0")}/${h.getFullYear()}`;
+    const rows = (ent.itens || []).map((it) => {
+      const nomeTam = it.tamanho && it.tamanho !== "único" ? `${it.nome} · ${it.tamanho}` : it.nome;
+      return tipo === "epi"
+        ? [it.nome, "", String(it.qtd), it.caEpi || "", dmy]   // Espécie · Marca · Qtd · C.A. · Data
+        : [dmy, nomeTam];                                       // Data · Tipo de uniforme
+    });
+    return { 0: rows };
+  }
+  const docIdEntrega = (t: TermoAssinado): string =>
+    empresaCfg.termoMap[t.id] || (t.tipoEspecial === "epi" ? "termo-entrega-epi" : "ficha-entrega-uniforme");
   useEffect(() => {
     (async () => {
       try {
@@ -232,16 +248,16 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   function aoGerarTermoEspecial(pdf?: { blob: Blob; filename: string }) {
     const tipo = gerarTermoTipo;
     if (!tipo) return;
+    const termo = termos.find(t => t.tipoEspecial === tipo);
+    // Se há documento do ADVOGADO pra este termo (fábrica), o termo assinado é
+    // ELE — gerado pelo botão "📄 Gerar termo do advogado", já com os itens da
+    // entrega. A entrega só REGISTRA o estoque; não usamos o PDF interno, pra
+    // não ter documento duplicado. (Fallback antigo só se não houver o do advogado.)
+    if (termo && DOCS.some(x => x.id === docIdEntrega(termo))) return;
     marcarTermoEspecialComoAssinado(tipo);
     if (!pdf || !isDriveConfigured()) return;
-    const termo = termos.find(t => t.tipoEspecial === tipo);
-    // Abre o preview do PDF gerado pra conferência ANTES de subir pro Drive.
     setDriveErro("");
-    setPreviewUpload({
-      pdfUrl: URL.createObjectURL(pdf.blob),
-      pdf,
-      termoId: termo?.id ?? null,
-    });
+    setPreviewUpload({ pdfUrl: URL.createObjectURL(pdf.blob), pdf, termoId: termo?.id ?? null });
   }
 
   // Sobe o termo gerado do preview pra "docs a assinar" (vai pro Clicksign).
@@ -1168,15 +1184,29 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                       : (tipo === "uniforme"
                           ? "📦 Gerar termo de uniformes"
                           : "🦺 Gerar termo de EPIs");
+                  const docAdv = DOCS.find(x => x.id === docIdEntrega(t));
                   return (
-                    <button
-                      type="button"
-                      onClick={() => abrirGerarTermo(tipo)}
-                      disabled={carregandoUniformes}
-                      className="text-[11px] px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white font-medium"
-                    >
-                      {label}
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => abrirGerarTermo(tipo)}
+                        disabled={carregandoUniformes}
+                        className="text-[11px] px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white font-medium"
+                      >
+                        {label}
+                      </button>
+                      {/* Depois de registrar a entrega (estoque), gera o termo do
+                          ADVOGADO pela fábrica, já com os itens preenchidos. */}
+                      {entExistente && docAdv && (
+                        <button
+                          type="button"
+                          onClick={() => setGerarDoc({ termoId: t.id, doc: docAdv, prefillQuadros: quadrosDeEntrega(tipo, entExistente) })}
+                          className="text-[11px] px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-medium"
+                        >
+                          📄 Gerar termo do advogado
+                        </button>
+                      )}
+                    </div>
                   );
                 })()}
                 {isDriveConfigured() && (
@@ -1265,6 +1295,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
           pessoas={[]}
           empregados={[]}
           empresas={{ [admissao.restaurantId]: empresaCfg }}
+          prefillQuadros={gerarDoc.prefillQuadros}
           prefill={{ NOME_EMPREGADO: admissao.candidato?.nome || "", CPF_EMPREGADO: admissao.candidato?.cpf || "" }}
           lockEmpresa
           hideEmpregado
