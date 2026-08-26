@@ -7,8 +7,9 @@
 //   5. Salva → cria entrega + baixa estoque + gera PDF pra download
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, getDocs, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { authHeader } from "../../core/firebase/idToken";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import type {
@@ -25,7 +26,7 @@ function fmtDateTime(iso: string): string {
   } catch { return iso; }
 }
 import { criarEntrega, atualizarEntrega } from "../../core/uniformes/uniformesHelpers";
-import { gerarTermoUniformesPDF, termoUniformesFilename } from "./gerarTermoPDF";
+import { gerarTermoUniformesPDF } from "./gerarTermoPDF";
 
 type Props = {
   tipo: TipoItemUniforme;
@@ -262,18 +263,49 @@ export function NovaEntregaModal({
       const cpfPdf = modoAdmissao && admissaoContexto
         ? admissaoContexto.candidato.cpf
         : (pessoaSel?.cpf || "");
-      const pdfParams = {
-        entrega,
-        restaurant: activeRestaurant,
-        candidatoNome: nomePdf,
-        candidatoCpf: cpfPdf,
-        funcao: cargo?.nome,
-        config: cfg,
-      };
-      const doc = await gerarTermoUniformesPDF(pdfParams);
-      const filename = termoUniformesFilename(pdfParams);
-      doc.save(filename); // baixa cópia local (comportamento de antes)
-      onEntregaCriada?.({ blob: doc.output("blob"), filename });
+      // Termo = documento do ADVOGADO (fábrica): ficha-entrega-uniforme /
+      // termo-entrega-epi, já com os itens da entrega no quadro. Mesmo termo
+      // na admissão e na reposição pelo módulo. Fallback pro PDF interno se
+      // a fábrica falhar (pra nunca travar a entrega).
+      let blob: Blob;
+      let ehDocx = false;
+      try {
+        const cfgDoc = await getDoc(doc(db, "documentosEmpresas", restaurantId));
+        const campos = (cfgDoc.data() as { campos?: Record<string, string> } | undefined)?.campos || {};
+        const h = new Date();
+        const MESES = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+        const dataBR = `${String(h.getDate()).padStart(2, "0")}/${String(h.getMonth() + 1).padStart(2, "0")}/${h.getFullYear()}`;
+        const rows = (entrega.itens || []).map((it) => {
+          const nomeTam = it.tamanho && it.tamanho !== "único" ? `${it.nome} · ${it.tamanho}` : it.nome;
+          return tipo === "epi"
+            ? [it.nome, "", String(it.qtd), it.caEpi || "", dataBR]   // Espécie · Marca · Qtd · C.A. · Data
+            : [dataBR, nomeTam];                                       // Data · Tipo de uniforme
+        });
+        const dados: Record<string, unknown> = {
+          ...campos,
+          NOME_EMPREGADO: nomePdf, CPF_EMPREGADO: cpfPdf,
+          CIDADE: campos.CIDADE || "", DIA: String(h.getDate()), MES: MESES[h.getMonth()], ANO2: String(h.getFullYear()).slice(-2),
+          _tabela: [{ tabela: tipo === "epi" ? 1 : 0, linha_inicial: 1, col_inicial: 0, linhas: rows }],
+        };
+        const r = await fetch("/api/documento-preencher", {
+          method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
+          body: JSON.stringify({ modeloId: tipo === "epi" ? "termo-entrega-epi" : "ficha-entrega-uniforme", dados }),
+        });
+        const data = await r.json();
+        if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+        const bin = atob(String(data.docxBase64 || ""));
+        const u8 = new Uint8Array(bin.length);
+        for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
+        blob = new Blob([u8], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+        ehDocx = true;
+      } catch {
+        const pdfParams = { entrega, restaurant: activeRestaurant, candidatoNome: nomePdf, candidatoCpf: cpfPdf, funcao: cargo?.nome, config: cfg };
+        blob = (await gerarTermoUniformesPDF(pdfParams)).output("blob");
+      }
+      const stamp = (() => { const h = new Date(); return `${h.getFullYear()}.${String(h.getMonth() + 1).padStart(2, "0")}.${String(h.getDate()).padStart(2, "0")}`; })();
+      const filename = `${stamp} Termo de entrega de ${tipo === "epi" ? "EPI" : "uniforme"} - ${nomePdf || "sem nome"}.${ehDocx ? "docx" : "pdf"}`;
+      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+      onEntregaCriada?.({ blob, filename });
       onClose();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao salvar.");
