@@ -83,7 +83,19 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRes
           .filter(it => it.validadeAte && it.validadeAte <= limiteVenc)
           .map(it => ({ nome: it.nome, validadeAte: it.validadeAte!, dias: Math.round((new Date(it.validadeAte! + "T12:00:00").getTime() - new Date(hoje + "T12:00:00").getTime()) / 86400_000) })));
         vencendo.sort((a, b) => a.validadeAte.localeCompare(b.validadeAte));
-        return { emp: e, cargo, area, itensKit, pendencias: itensKit.filter(i => i.falta > 0).length, semKit: !!area && !kit, vencendo };
+        // Peças em posse (histórico de entregas não canceladas), com data de
+        // entrega e validade de cada. Vencendo/vencido no topo.
+        const emPosse = ents.flatMap(en => (en.itens || []).map(it => ({
+          nome: it.nome,
+          tamanho: it.tamanho,
+          qtd: it.qtd,
+          tipo: en.tipo,
+          entregueEm: (en.entregueEm || "").slice(0, 10),
+          validadeAte: it.validadeAte || null,
+          dias: it.validadeAte ? Math.round((new Date(it.validadeAte + "T12:00:00").getTime() - new Date(hoje + "T12:00:00").getTime()) / 86400_000) : null,
+        })));
+        emPosse.sort((a, b) => (a.validadeAte || "9999").localeCompare(b.validadeAte || "9999") || b.entregueEm.localeCompare(a.entregueEm));
+        return { emp: e, cargo, area, itensKit, pendencias: itensKit.filter(i => i.falta > 0).length, semKit: !!area && !kit, vencendo, emPosse };
       })
       .filter(l => !!l.area);
     out.sort((a, b) => (b.pendencias - a.pendencias) || a.emp.nome.localeCompare(b.emp.nome, "pt-BR"));
@@ -115,7 +127,7 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRes
 
       {visiveis.length === 0 ? (
         <div className="text-center py-12 text-gray-500">{filtro === "vencer" ? "Nada vencendo nos próximos 30 dias." : "Nenhum empregado ativo com cargo/área."}</div>
-      ) : visiveis.map(({ emp, cargo, area, itensKit, pendencias, semKit, vencendo }) => (
+      ) : visiveis.map(({ emp, cargo, area, itensKit, pendencias, semKit, vencendo, emPosse }) => (
         <div key={emp.id} className={`rounded-xl border overflow-hidden bg-white dark:bg-gray-900 ${pendencias > 0 && filtro === "todos" ? "border-red-200 dark:border-red-800" : "border-gray-200 dark:border-gray-800"}`}>
           <div className="p-3 flex items-center justify-between gap-2 flex-wrap">
             <div className="min-w-0">
@@ -149,21 +161,48 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRes
           ) : semKit ? (
             <div className="px-3 pb-3 text-xs text-gray-500">Defina o kit da área <strong>{area}</strong> em Configurações pra controlar o mínimo.</div>
           ) : (
-            <div className="px-3 pb-3 space-y-1">
-              {itensKit.length === 0 ? (
-                <div className="text-xs text-gray-500">Kit da área sem itens.</div>
-              ) : itensKit.map(it => (
-                <div key={it.itemId} className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-sm ${
-                  it.falta > 0 ? "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300" : "bg-gray-50 dark:bg-gray-800/40 text-gray-700 dark:text-gray-200"
-                }`}>
-                  <span className="min-w-0 truncate">{it.nome}</span>
-                  <span className="tabular-nums shrink-0">
-                    {it.have}/{it.minimo}
-                    {it.falta > 0 ? <strong className="ml-1">· falta {it.falta}</strong> : <span className="ml-1 text-emerald-600 dark:text-emerald-400">✓</span>}
-                  </span>
+            <>
+              {/* Kit da área — mínimo vs. em posse */}
+              <div className="px-3 pb-2 space-y-1">
+                <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-0.5">Kit da área (mínimo)</div>
+                {itensKit.length === 0 ? (
+                  <div className="text-xs text-gray-500">Kit da área sem itens.</div>
+                ) : itensKit.map(it => (
+                  <div key={it.itemId} className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-sm ${
+                    it.falta > 0 ? "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300" : "bg-gray-50 dark:bg-gray-800/40 text-gray-700 dark:text-gray-200"
+                  }`}>
+                    <span className="min-w-0 truncate">{it.nome}</span>
+                    <span className="tabular-nums shrink-0">
+                      {it.have}/{it.minimo}
+                      {it.falta > 0 ? <strong className="ml-1">· falta {it.falta}</strong> : <span className="ml-1 text-emerald-600 dark:text-emerald-400">✓</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              {/* Peças em posse — data de entrega + validade */}
+              {emPosse.length > 0 && (
+                <div className="px-3 pb-3">
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">
+                    Em posse ({emPosse.reduce((s, p) => s + (p.qtd || 0), 0)} peça(s))
+                  </div>
+                  <div className="space-y-1">
+                    {emPosse.map((p, i) => (
+                      <div key={i} className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-sm ${
+                        p.dias != null && p.dias < 0 ? "bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-300"
+                          : p.dias != null && p.dias <= 30 ? "bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300"
+                          : "bg-gray-50 dark:bg-gray-800/40 text-gray-700 dark:text-gray-200"
+                      }`}>
+                        <span className="min-w-0 truncate">{p.tipo === "epi" ? "🦺" : "👕"} {p.qtd}× {p.nome}{p.tamanho && p.tamanho !== "único" ? ` (${p.tamanho})` : ""}</span>
+                        <span className="tabular-nums shrink-0 text-xs">
+                          {p.entregueEm ? p.entregueEm.split("-").reverse().join("/") : "—"}
+                          {p.validadeAte ? ` · ${p.dias != null && p.dias < 0 ? `venceu há ${-p.dias}d` : `vence em ${p.dias}d`}` : " · sem validade"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
-              ))}
-            </div>
+              )}
+            </>
           )}
         </div>
       ))}
