@@ -24,11 +24,13 @@ import { itensProximosVencimento } from "../../core/uniformes/uniformesHelpers";
 import { ItensTab } from "./ItensTab";
 import { KitsAreaTab } from "./KitsAreaTab";
 import { PorEmpregadoTab } from "./PorEmpregadoTab";
+import { EntregasTab } from "./EntregasTab";
 
-type TabId = "porEmpregado" | "estoque" | "config";
+type TabId = "porEmpregado" | "entregas" | "estoque" | "config";
 
 const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
   { id: "porEmpregado", label: "Por empregado", icon: "👥" },
+  { id: "entregas",     label: "Entregas",      icon: "📋" },
   { id: "estoque",      label: "Estoque",       icon: "📦" },
   { id: "config",       label: "Configurações", icon: "⚙️" },
 ];
@@ -77,6 +79,7 @@ export function UniformesPage() {
 
   const badges: Record<TabId, number> = {
     porEmpregado: countVencendo,
+    entregas: 0,
     estoque: 0,
     config: 0,
   };
@@ -120,6 +123,12 @@ export function UniformesPage() {
         <PorEmpregadoTab
           itens={itens} kits={kits} entregas={entregas} restaurantId={rid}
           activeRestaurant={activeRestaurant} me={me} podeConfig={podeConfig}
+        />
+      )}
+      {tab === "entregas" && me && (
+        <EntregasTab
+          itens={itens} kits={kits} entregas={entregas} podeConfig={podeConfig}
+          pessoa={me} restaurantId={rid} activeRestaurant={activeRestaurant}
         />
       )}
       {tab === "estoque" && me && (
