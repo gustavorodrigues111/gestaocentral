@@ -202,6 +202,20 @@ export function NovaEntregaModal({
         return;
       }
     }
+    // TRAVA C.A. — todo EPI precisa de Certificado de Aprovação (obrigatório por
+    // lei, NR-6). Sem C.A. cadastrado no item, não gera o termo.
+    if (tipo === "epi") {
+      const semCA = [...new Set(
+        linhas
+          .map((l) => itens.find((i) => i.id === l.itemId))
+          .filter((it): it is ItemUniforme => !!it && !(it.caEpi || "").trim())
+          .map((it) => it.nome),
+      )];
+      if (semCA.length > 0) {
+        setErro(`EPI sem C.A. (Certificado de Aprovação): ${semCA.join(", ")}. O C.A. é obrigatório por lei (NR-6) — cadastre o C.A. desses itens em Estoque antes de gerar o termo.`);
+        return;
+      }
+    }
 
     setSalvando(true);
     try {
