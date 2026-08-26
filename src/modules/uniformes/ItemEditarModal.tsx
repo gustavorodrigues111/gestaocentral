@@ -106,6 +106,7 @@ export function ItemEditarModal({ item, pessoa, restaurantId, onClose }: Props) 
     if (!isFinite(custo) || custo < 0) { setErro("Custo unitário inválido."); return; }
     const dias = parseInt(validadeDias, 10);
     if (!isFinite(dias) || dias < 0) { setErro("Validade inválida (use 0 pra sem validade)."); return; }
+    if (tipo === "epi" && !caEpi.trim()) { setErro("EPI precisa do C.A. (Certificado de Aprovação) — obrigatório por lei (NR-6)."); return; }
     if (variacoes.length === 0) { setErro("Adicione pelo menos 1 variação."); return; }
     for (const v of variacoes) {
       if (!v.tamanho.trim()) { setErro("Cada variação precisa de um tamanho."); return; }
@@ -223,7 +224,7 @@ export function ItemEditarModal({ item, pessoa, restaurantId, onClose }: Props) 
 
         {tipo === "epi" && (
           <Input
-            label="CA — Certificado de Aprovação"
+            label="CA — Certificado de Aprovação *"
             value={caEpi}
             onChange={(e) => setCaEpi(e.target.value)}
             placeholder="27921"
