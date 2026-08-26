@@ -158,29 +158,33 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRes
                 </div>
               ))}
             </div>
-          ) : semKit ? (
-            <div className="px-3 pb-3 text-xs text-gray-500">Defina o kit da área <strong>{area}</strong> em Configurações pra controlar o mínimo.</div>
           ) : (
             <>
-              {/* Kit da área — mínimo vs. em posse */}
-              <div className="px-3 pb-2 space-y-1">
-                <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-0.5">Kit da área (mínimo)</div>
-                {itensKit.length === 0 ? (
-                  <div className="text-xs text-gray-500">Kit da área sem itens.</div>
-                ) : itensKit.map(it => (
-                  <div key={it.itemId} className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-sm ${
-                    it.falta > 0 ? "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300" : "bg-gray-50 dark:bg-gray-800/40 text-gray-700 dark:text-gray-200"
-                  }`}>
-                    <span className="min-w-0 truncate">{it.nome}</span>
-                    <span className="tabular-nums shrink-0">
-                      {it.have}/{it.minimo}
-                      {it.falta > 0 ? <strong className="ml-1">· falta {it.falta}</strong> : <span className="ml-1 text-emerald-600 dark:text-emerald-400">✓</span>}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              {/* Peças em posse — data de entrega + validade */}
-              {emPosse.length > 0 && (
+              {/* Kit da área — mínimo vs. em posse (ou aviso se a área não tem kit) */}
+              {semKit ? (
+                <div className="px-3 pb-2 text-xs text-gray-500">Defina o kit da área <strong>{area}</strong> em Configurações pra controlar o mínimo.</div>
+              ) : (
+                <div className="px-3 pb-2 space-y-1">
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-0.5">Kit da área (mínimo)</div>
+                  {itensKit.length === 0 ? (
+                    <div className="text-xs text-gray-500">Kit da área sem itens.</div>
+                  ) : itensKit.map(it => (
+                    <div key={it.itemId} className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-sm ${
+                      it.falta > 0 ? "bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-300" : "bg-gray-50 dark:bg-gray-800/40 text-gray-700 dark:text-gray-200"
+                    }`}>
+                      <span className="min-w-0 truncate">{it.nome}</span>
+                      <span className="tabular-nums shrink-0">
+                        {it.have}/{it.minimo}
+                        {it.falta > 0 ? <strong className="ml-1">· falta {it.falta}</strong> : <span className="ml-1 text-emerald-600 dark:text-emerald-400">✓</span>}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Peças em posse — data de entrega + validade (sempre, mesmo sem kit) */}
+              {emPosse.length === 0 ? (
+                <div className="px-3 pb-3 text-xs text-gray-400">Nenhuma peça entregue ainda.</div>
+              ) : (
                 <div className="px-3 pb-3">
                   <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">
                     Em posse ({emPosse.reduce((s, p) => s + (p.qtd || 0), 0)} peça(s))
