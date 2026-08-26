@@ -151,6 +151,27 @@ export function NovaEntregaModal({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [areaDaPessoa, tipo]);
 
+  // Áreas que têm kit com itens do tipo atual — oferecidas no seletor de kit.
+  const areasComKit = useMemo(
+    () => kits.filter(k => (k.itens || []).some(ki => itensTipo.some(i => i.id === ki.itemId))).map(k => k.area),
+    [kits, itensTipo],
+  );
+  // Adiciona (ANEXA) todas as peças de um kit de área. Deixa o tamanho pra
+  // escolher quando o item tiver mais de uma variação (o kit não fixou tamanho).
+  function adicionarKit(area: string) {
+    const kit = kits.find(k => k.area === area);
+    if (!kit) return;
+    const novas: LinhaEntrega[] = [];
+    for (const ki of kit.itens) {
+      const item = itens.find(i => i.id === ki.itemId && i.tipo === tipo);
+      if (!item) continue;
+      let variacaoId = ki.variacaoId || "";
+      if (!variacaoId && item.variacoes.length === 1) variacaoId = item.variacoes[0].id;
+      novas.push({ itemId: item.id, variacaoId, qtd: ki.quantidade });
+    }
+    if (novas.length) setLinhas(prev => [...prev, ...novas]);
+  }
+
   function addLinha() {
     setLinhas(prev => [...prev, { itemId: "", variacaoId: "", qtd: 1 }]);
   }
@@ -382,6 +403,17 @@ export function NovaEntregaModal({
                 >
                   ↻ aplicar kit da área "{areaDaPessoa}"
                 </button>
+              )}
+              {areasComKit.length > 0 && (
+                <select
+                  value=""
+                  onChange={(e) => { const v = e.target.value; e.currentTarget.value = ""; if (v) adicionarKit(v); }}
+                  title="Adicionar todas as peças de um kit de área (escolha o tamanho depois)"
+                  className="text-[11px] px-2 py-1 rounded border border-dashed border-indigo-400 text-indigo-700 dark:text-indigo-300 bg-white dark:bg-gray-900 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+                >
+                  <option value="">➕ Kit da área…</option>
+                  {areasComKit.map(a => <option key={a} value={a}>{a}</option>)}
+                </select>
               )}
               <button
                 type="button"
