@@ -20,6 +20,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { criarNotaCliente } from "./notasCliente";
+import { reservaMesaIds } from "../../core/reservas/mesas";
 import type { Mesa, Reserva, Salao } from "../../core/types";
 
 type Props = {
@@ -33,10 +34,14 @@ type Props = {
 export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: Props) {
   const { pessoa: me } = useAuth();
 
-  const [mesaId, setMesaId] = useState<string>(reserva.mesaId || "");
+  const [mesaIds, setMesaIds] = useState<string[]>(() => reservaMesaIds(reserva));
   const [nota, setNota] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
+
+  function toggleMesa(id: string) {
+    setMesaIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
 
   // Mesas que outras reservas já estão usando no mesmo slot (ignorando a
   // própria reserva e canceladas/no-show). Pra não confundir, exibe como
@@ -47,7 +52,7 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
       if (r.id === reserva.id) continue;
       if (r.status === "cancelada" || r.status === "no_show") continue;
       if (r.horario !== reserva.horario) continue;
-      if (r.mesaId) s.add(r.mesaId);
+      for (const id of reservaMesaIds(r)) s.add(id);
     }
     return s;
   }, [reservasDoDia, reserva.id, reserva.horario]);
@@ -95,12 +100,12 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
 
   async function salvar() {
     if (!me) return;
-    if (!mesaId) {
-      setErro("Escolhe a mesa onde o cliente sentou.");
+    if (mesaIds.length === 0) {
+      setErro("Escolhe a(s) mesa(s) onde o cliente sentou.");
       return;
     }
-    const mesa = mesas.find(m => m.id === mesaId);
-    if (!mesa) {
+    const mesasSel = mesaIds.map(id => mesas.find(m => m.id === id)).filter((m): m is Mesa => !!m);
+    if (mesasSel.length === 0) {
       setErro("Mesa não encontrada.");
       return;
     }
@@ -110,8 +115,10 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
       const now = new Date().toISOString();
       const patch: Partial<Reserva> = {
         status: "chegou",
-        mesaId: mesa.id,
-        mesaNomeSnapshot: mesa.nome,
+        mesaId: mesasSel[0].id,               // legado: 1ª mesa
+        mesaNomeSnapshot: mesasSel[0].nome,   // legado: nome da 1ª
+        mesaIds: mesaIds,
+        mesasNomesSnapshot: mesasSel.map(m => m.nome),
         chegouEm: now,
         atualizadoEm: now,
       };
@@ -163,8 +170,9 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
   }
 
   function renderMesa(m: Mesa) {
-    const ativo = mesaId === m.id;
+    const ativo = mesaIds.includes(m.id);
     const status = statusMesa(m);
+    const bloqueada = status === "ocupada" && !ativo;
     // Estilos por status — visual de "tile" de mesa, número grande e cap pequena.
     let containerCls = "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 text-gray-800 dark:text-gray-200 hover:border-indigo-400";
     let badge = "";
@@ -188,9 +196,10 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
       <button
         key={m.id}
         type="button"
-        onClick={() => setMesaId(m.id)}
-        className={`relative aspect-[5/4] flex flex-col items-center justify-center rounded-xl border-2 transition-all ${containerCls}`}
-        title={`Mesa ${m.nome} · ${m.capacidade} pax`}
+        onClick={() => toggleMesa(m.id)}
+        disabled={bloqueada}
+        className={`relative aspect-[5/4] flex flex-col items-center justify-center rounded-xl border-2 transition-all ${containerCls} ${bloqueada ? "cursor-not-allowed" : ""}`}
+        title={bloqueada ? "Mesa já reservada nesse horário" : `Mesa ${m.nome} · ${m.capacidade} pax`}
       >
         <div className="text-2xl font-bold leading-none">{m.nome}</div>
         <div className={`text-[11px] mt-1 ${ativo ? "opacity-90" : "opacity-70"}`}>
@@ -225,10 +234,8 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
   const semMesasNoSistema =
     gruposPorSalao.grupos.length === 0 && gruposPorSalao.semSalao.length === 0;
 
-  const mesaSelecionada = mesaId ? mesas.find(m => m.id === mesaId) : null;
-  const salaoSelecionado = mesaSelecionada?.salaoId
-    ? saloes.find(s => s.id === mesaSelecionada.salaoId)
-    : null;
+  const mesasSelecionadas = mesaIds.map(id => mesas.find(m => m.id === id)).filter((m): m is Mesa => !!m);
+  const capacidadeSel = mesasSelecionadas.reduce((s, m) => s + (m.capacidade || 0), 0);
 
   return (
     <Modal title={`🪑 Cliente chegou — ${reserva.clienteNomeSnapshot || "Reserva"}`} onClose={onClose} maxWidth="max-w-xl">
@@ -238,12 +245,10 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
           <Chip>⏰ {reserva.horario}</Chip>
           <Chip>👥 {reserva.pessoas} {reserva.pessoas === 1 ? "pessoa" : "pessoas"}</Chip>
           {reserva.salaoNomeSnapshot && <Chip>🏛️ {reserva.salaoNomeSnapshot}</Chip>}
-          {mesaSelecionada && (
+          {mesasSelecionadas.length > 0 && (
             <Chip cor="indigo">
-              ✓ Mesa {mesaSelecionada.nome}
-              {salaoSelecionado && salaoSelecionado.id !== reserva.salaoId && (
-                <> · {salaoSelecionado.nome}</>
-              )}
+              ✓ {mesasSelecionadas.length > 1 ? "Mesas" : "Mesa"} {mesasSelecionadas.map(m => m.nome).join(" + ")}
+              {mesasSelecionadas.length > 1 && <> · 👥 {capacidadeSel}</>}
             </Chip>
           )}
         </div>
@@ -331,7 +336,7 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
 
         <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={salvar} disabled={salvando || !mesaId}>
+          <Button onClick={salvar} disabled={salvando || mesaIds.length === 0}>
             {salvando ? "Salvando..." : "Marcar como chegou"}
           </Button>
         </div>

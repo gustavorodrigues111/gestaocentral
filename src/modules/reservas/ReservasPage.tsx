@@ -9,6 +9,7 @@ import { Button } from "../../core/ui/Button";
 import { todayYmd } from "../../core/utils/date";
 import { RESERVA_STATUS_ICON, RESERVA_STATUS_LABEL } from "../../core/types";
 import type { Cliente, ConfiguracaoReservas, Mesa, Reserva, ReservaPII, ReservaStatus, Salao } from "../../core/types";
+import { reservaMesasNomes } from "../../core/reservas/mesas";
 import { ReservaModal } from "./ReservaModal";
 import { CancelarReservaModal } from "./CancelarReservaModal";
 import { ClientesTab } from "./ClientesTab";
@@ -862,7 +863,7 @@ export function ReservasPage() {
               <span>⏰ {reserva.horario}</span>
               <span>👥 {reserva.pessoas}</span>
               {reserva.salaoNomeSnapshot && <span>🏛️ {reserva.salaoNomeSnapshot}</span>}
-              {reserva.mesaNomeSnapshot && <span>🪑 {reserva.mesaNomeSnapshot}</span>}
+              {reservaMesasNomes(reserva).length > 0 && <span>🪑 {reservaMesasNomes(reserva).join(" + ")}</span>}
               {reserva.clienteTelefoneSnapshot && <span>📞 {reserva.clienteTelefoneSnapshot}</span>}
             </div>
             {!piiLight && (reserva.observacoes || cliente?.restricoesAlimentares) && (

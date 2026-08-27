@@ -77,6 +77,7 @@ const SEED: Seed[] = [
 
   // ── Reservas / Concierge ──
   { modulo: "reservas", resp: "ia", titulo: "Concierge IA no WhatsApp: ligar no webhook + cron + booking agent (Fase 1 de config no ar)" },
+  { modulo: "reservas", resp: "ia", titulo: "Unir mesas numa reserva (multi-mesa) — feito", descricao: "Reserva.mesaIds[] (retrocompat com mesaId legado via reservaMesaIds/reservaMesasNomes em core/reservas/mesas.ts). Form (ReservaModal) e chegada (ChegouModal) agora selecionam N mesas em chips/tiles: capacidade SOMADA (só avisa, não bloqueia) e mesa já ocupada no horário (±2h) fica BLOQUEADA. Lista e histórico mostram 'M15 + M16'. Pendente: WhatsApp/comprovante ainda não citam mesa." },
 
   // ── Escala ──
   { modulo: "escala", resp: "ia", titulo: "Solicitação de ajuste de escala: notificar o empregado quando aprovado/aplicado" },

@@ -9,6 +9,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { todayYmd } from "../../core/utils/date";
 import { RESERVA_STATUS_ICON, RESERVA_STATUS_LABEL } from "../../core/types";
 import type { Cliente, Mesa, Reserva, ReservaStatus } from "../../core/types";
+import { reservaMesaIds } from "../../core/reservas/mesas";
 import { ClienteModal } from "./ClienteModal";
 
 type Props = {
@@ -37,8 +38,8 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
   const [showSearch, setShowSearch] = useState(false);
   const [searchCliente, setSearchCliente] = useState("");
   const [novoClienteOpen, setNovoClienteOpen] = useState(false);
-  // Mesa
-  const [mesaId, setMesaId] = useState<string | null>(reserva?.mesaId ?? null);
+  // Mesa(s) — pode unir várias numa reserva (ex: 15+16+17 pra um grupo)
+  const [mesaIds, setMesaIds] = useState<string[]>(() => reservaMesaIds(reserva));
   // Outros
   const [observacoes, setObservacoes] = useState(reserva?.observacoes || "");
   const [ocasiao, setOcasiao] = useState(reserva?.ocasiao || "");
@@ -71,28 +72,40 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
     ).slice(0, 50);
   }, [clientes, searchCliente]);
 
-  // Detecta conflito de mesa: outra reserva ATIVA na mesma mesa em janela de ±2h
-  const conflitoMesa = useMemo(() => {
-    if (!mesaId || !horario) return null;
+  // Mesas OCUPADAS por outras reservas ativas em janela de ±2h do horário.
+  // Essas ficam bloqueadas pra seleção (não dá pra unir uma mesa já em uso).
+  const mesasOcupadas = useMemo(() => {
+    const s = new Set<string>();
+    if (!horario) return s;
     const [h, m] = horario.split(":").map(Number);
     const inicio = h * 60 + m - 120; // 2h antes
     const fim = h * 60 + m + 120;    // 2h depois
-    return reservasMesmoDia.find(r => {
-      if (r.id === reserva?.id) return false;
-      if (r.mesaId !== mesaId) return false;
-      if (r.status === "cancelada" || r.status === "no_show") return false;
+    for (const r of reservasMesmoDia) {
+      if (r.id === reserva?.id) continue;
+      if (r.status === "cancelada" || r.status === "no_show") continue;
       const [rh, rm] = (r.horario || "00:00").split(":").map(Number);
       const rmin = rh * 60 + rm;
-      return rmin >= inicio && rmin <= fim;
-    });
-  }, [mesaId, horario, reservasMesmoDia, reserva?.id]);
+      if (rmin < inicio || rmin > fim) continue;
+      for (const id of reservaMesaIds(r)) s.add(id);
+    }
+    return s;
+  }, [horario, reservasMesmoDia, reserva?.id]);
 
-  // Mesa selecionada — checa capacidade
-  const mesaSel = mesas.find(m => m.id === mesaId);
+  function toggleMesa(id: string) {
+    if (mesasOcupadas.has(id) && !mesaIds.includes(id)) return; // bloqueada
+    setMesaIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }
+
   const pessoasNum = parseInt(pessoas, 10) || 0;
-  const capacidadeOk = !mesaSel || mesaSel.capacidade >= pessoasNum;
+  // Mesas selecionadas, na ordem de seleção; capacidade é a SOMA delas.
+  const mesasSel = useMemo(
+    () => mesaIds.map(id => mesas.find(m => m.id === id)).filter((m): m is Mesa => !!m),
+    [mesaIds, mesas],
+  );
+  const capacidadeTotal = mesasSel.reduce((s, m) => s + (m.capacidade || 0), 0);
+  const capacidadeOk = mesaIds.length === 0 || capacidadeTotal >= pessoasNum;
 
-  // Mesas ativas com capacidade suficiente, ordenadas
+  // Mesas ativas, ordenadas por setor/nome
   const mesasOrdenadas = useMemo(() => {
     return [...mesas]
       .filter(m => m.ativa)
@@ -110,7 +123,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
     setSaving(true);
     try {
       const now = new Date().toISOString();
-      const mesaSnapshot = mesaSel ? mesaSel.nome : undefined;
+      const nomesMesas = mesasSel.map(m => m.nome);
 
       // Detecta mudança de status pra timestamp
       const statusMudou = reserva?.status !== status;
@@ -131,8 +144,10 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
         horario,
         clienteId: clienteId || null,
         pessoas: pessoasNum,
-        mesaId: mesaId || null,
-        mesaNomeSnapshot: mesaSnapshot,
+        mesaId: mesasSel[0]?.id ?? null,          // legado: 1ª mesa
+        mesaNomeSnapshot: mesasSel[0]?.nome,       // legado: nome da 1ª
+        mesaIds: mesaIds.length ? mesaIds : null,
+        mesasNomesSnapshot: nomesMesas.length ? nomesMesas : undefined,
         status,
         confirmadaEm: confirmadaEm ?? null,
         chegouEm: chegouEm ?? null,
@@ -262,29 +277,51 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
             <Input label="Pessoas *" type="number" min={1} value={pessoas} onChange={(e) => setPessoas(e.target.value)} />
           </div>
 
-          {/* Mesa */}
+          {/* Mesa(s) — pode unir várias numa reserva */}
           <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Mesa</label>
-            <select
-              value={mesaId || ""}
-              onChange={(e) => setMesaId(e.target.value || null)}
-              className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
-            >
-              <option value="">— sem mesa designada —</option>
-              {mesasOrdenadas.map(m => (
-                <option key={m.id} value={m.id}>
-                  {m.setor ? `[${m.setor}] ` : ""}{m.nome} · 👥 {m.capacidade}
-                </option>
-              ))}
-            </select>
+            <div className="flex items-baseline justify-between">
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
+                Mesa(s) <span className="font-normal text-gray-400">— toque pra unir várias</span>
+              </label>
+              {mesaIds.length > 0 && (
+                <span className="text-[11px] text-gray-500">
+                  {mesaIds.length} mesa(s) · capacidade 👥 {capacidadeTotal}
+                </span>
+              )}
+            </div>
+            <div className="mt-1 flex flex-wrap gap-1.5">
+              {mesasOrdenadas.map(m => {
+                const sel = mesaIds.includes(m.id);
+                const ocupada = mesasOcupadas.has(m.id) && !sel;
+                return (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => toggleMesa(m.id)}
+                    disabled={ocupada}
+                    title={ocupada ? "Mesa já reservada nesse horário" : m.setor || undefined}
+                    className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
+                      sel
+                        ? "border-indigo-500 bg-indigo-600 text-white font-semibold"
+                        : ocupada
+                          ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-gray-400 line-through cursor-not-allowed"
+                          : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400"
+                    }`}
+                  >
+                    {m.nome} · 👥{m.capacidade}{ocupada ? " · ocupada" : ""}
+                  </button>
+                );
+              })}
+              {mesasOrdenadas.length === 0 && (
+                <span className="text-xs text-gray-400">Nenhuma mesa cadastrada. Configure em Mesas.</span>
+              )}
+            </div>
+            {mesaIds.length === 0 && (
+              <div className="text-[11px] text-gray-400 mt-1">Sem mesa designada — pode confirmar na chegada.</div>
+            )}
             {!capacidadeOk && (
               <div className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                ⚠ Mesa "{mesaSel?.nome}" tem capacidade {mesaSel?.capacidade}, mas a reserva é pra {pessoasNum} pessoa(s).
-              </div>
-            )}
-            {conflitoMesa && (
-              <div className="text-xs text-rose-700 dark:text-rose-400 mt-1">
-                ⚠ Conflito: já existe outra reserva nessa mesa às <strong>{conflitoMesa.horario}</strong> ({conflitoMesa.clienteNomeSnapshot}).
+                ⚠ Capacidade somada das mesas ({capacidadeTotal}) é menor que a reserva de {pessoasNum} pessoa(s). Dá pra criar mesmo assim.
               </div>
             )}
           </div>

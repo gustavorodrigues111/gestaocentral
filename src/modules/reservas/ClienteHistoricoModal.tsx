@@ -16,6 +16,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { RESERVA_STATUS_ICON, RESERVA_STATUS_LABEL } from "../../core/types";
 import type { Cliente, NotaCliente, Reserva, ReservaStatus } from "../../core/types";
+import { reservaMesasNomes } from "../../core/reservas/mesas";
 import { criarNotaCliente, deletarNotaCliente, ordenarNotasDesc } from "./notasCliente";
 
 type Props = {
@@ -213,7 +214,7 @@ export function ClienteHistoricoModal({ cliente, reservas, mode = "completo", on
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400">
                       {r.salaoNomeSnapshot && <>🏛️ {r.salaoNomeSnapshot}</>}
-                      {r.mesaNomeSnapshot && <> · 🪑 {r.mesaNomeSnapshot}</>}
+                      {reservaMesasNomes(r).length > 0 && <> · 🪑 {reservaMesasNomes(r).join(" + ")}</>}
                       {r.ocasiao && <> · 🎉 {r.ocasiao}</>}
                       {r.observacoes && <> · 📝 {r.observacoes}</>}
                     </div>

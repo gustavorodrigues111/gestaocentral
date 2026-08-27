@@ -2495,8 +2495,10 @@ export type Reserva = {
   // até confirmar (compat. com fluxo antigo).
   salaoId?: string | null;
   salaoNomeSnapshot?: string;
-  mesaId?: string | null;             // opcional — pode confirmar mesa só na chegada
-  mesaNomeSnapshot?: string;
+  mesaId?: string | null;             // LEGADO (retrocompat) — 1ª mesa; use mesaIds via reservaMesaIds()
+  mesaNomeSnapshot?: string;          // LEGADO — nome da 1ª mesa
+  mesaIds?: string[] | null;          // mesas unidas numa reserva (ex: 15+16+17 pra um grupo)
+  mesasNomesSnapshot?: string[];      // nomes (snapshot) das mesas unidas
   // Cliente: só ID (PII fica em /reservasPII e /clientes — auth-only)
   clienteId?: string | null;
   // PII (LEGADO): aparece em reservas antigas. Nas novas, mergeado a partir
