@@ -30,7 +30,7 @@ type TabId = "porEmpregado" | "entregas" | "estoque" | "config";
 
 const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
   { id: "porEmpregado", label: "Por empregado", icon: "👥" },
-  { id: "entregas",     label: "Entregas",      icon: "📋" },
+  { id: "entregas",     label: "Histórico",     icon: "🗂️" },
   { id: "estoque",      label: "Estoque",       icon: "📦" },
   { id: "config",       label: "Configurações", icon: "⚙️" },
 ];

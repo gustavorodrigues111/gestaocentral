@@ -71,6 +71,10 @@ export function EntregasTab({
 
   return (
     <div className="space-y-3">
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        Registro de todas as entregas — inclusive <strong>devolvidas</strong>, <strong>canceladas</strong> e as feitas
+        durante a <strong>admissão</strong>. O dia a dia (o que cada empregado tem em posse) fica na aba "Por empregado".
+      </p>
       {/* Header */}
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1">
