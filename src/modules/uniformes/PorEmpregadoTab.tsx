@@ -11,6 +11,8 @@ import type {
   Cargo, Empregado, EntregaUniforme, ItemUniforme, KitAreaUniforme, Pessoa, Restaurant, TipoItemUniforme,
 } from "../../core/types";
 import { NovaEntregaModal } from "./NovaEntregaModal";
+import { DevolucaoModal } from "./DevolucaoModal";
+import { CancelarEntregaModal } from "./CancelarEntregaModal";
 import { devolucoesDe, restantePorLinha } from "../../core/uniformes/uniformesHelpers";
 
 type Props = {
@@ -30,6 +32,8 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRes
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [filtro, setFiltro] = useState<"todos" | "vencer">("todos");
   const [entregaModal, setEntregaModal] = useState<{ pessoaId?: string; tipo: TipoItemUniforme } | null>(null);
+  const [devolverEntrega, setDevolverEntrega] = useState<EntregaUniforme | null>(null);
+  const [cancelarEntrega, setCancelarEntrega] = useState<EntregaUniforme | null>(null);
 
   useEffect(() => {
     if (!restaurantId) return;
@@ -86,20 +90,25 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRes
         vencendo.sort((a, b) => a.validadeAte.localeCompare(b.validadeAte));
         // Peças em posse (histórico de entregas não canceladas), com data de
         // entrega e validade de cada. Vencendo/vencido no topo.
-        const emPosse = ents.flatMap(en => {
-          const rest = restantePorLinha(en);   // mesma ordem/tamanho de en.itens
-          return (en.itens || []).map((it, idx) => ({
-            nome: it.nome,
-            tamanho: it.tamanho,
-            qtd: rest[idx]?.qtdRestante ?? it.qtd,   // desconta o que já foi devolvido
-            tipo: en.tipo,
-            entregueEm: (en.entregueEm || "").slice(0, 10),
-            validadeAte: it.validadeAte || null,
-            dias: it.validadeAte ? Math.round((new Date(it.validadeAte + "T12:00:00").getTime() - new Date(hoje + "T12:00:00").getTime()) / 86400_000) : null,
-          })).filter(p => p.qtd > 0);
-        });
-        emPosse.sort((a, b) => (a.validadeAte || "9999").localeCompare(b.validadeAte || "9999") || b.entregueEm.localeCompare(a.entregueEm));
-        return { emp: e, cargo, area, itensKit, pendencias: itensKit.filter(i => i.falta > 0).length, semKit: !!area && !kit, vencendo, emPosse };
+        // Entregas ativas do empregado, agrupadas — cada uma com os itens que
+        // AINDA estão em posse (desconta devoluções) + ações (devolver/cancelar).
+        const entregasView = ents
+          .filter(en => !en.cancelamento)
+          .map(en => {
+            const rest = restantePorLinha(en);
+            const itensRest = (en.itens || []).map((it, idx) => ({
+              nome: it.nome,
+              tamanho: it.tamanho,
+              qtd: rest[idx]?.qtdRestante ?? it.qtd,
+              validadeAte: it.validadeAte || null,
+              dias: it.validadeAte ? Math.round((new Date(it.validadeAte + "T12:00:00").getTime() - new Date(hoje + "T12:00:00").getTime()) / 86400_000) : null,
+            })).filter(p => p.qtd > 0);
+            return { entrega: en, tipo: en.tipo, entregueEm: (en.entregueEm || "").slice(0, 10), itensRest, temRetorno: devolucoesDe(en).length > 0 };
+          })
+          .filter(v => v.itensRest.length > 0)
+          .sort((a, b) => b.entregueEm.localeCompare(a.entregueEm));
+        const totalPosse = entregasView.reduce((s, v) => s + v.itensRest.reduce((n, p) => n + p.qtd, 0), 0);
+        return { emp: e, cargo, area, itensKit, pendencias: itensKit.filter(i => i.falta > 0).length, semKit: !!area && !kit, vencendo, entregasView, totalPosse };
       })
       .filter(l => !!l.area);
     out.sort((a, b) => (b.pendencias - a.pendencias) || a.emp.nome.localeCompare(b.emp.nome, "pt-BR"));
@@ -131,7 +140,7 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRes
 
       {visiveis.length === 0 ? (
         <div className="text-center py-12 text-gray-500">{filtro === "vencer" ? "Nada vencendo nos próximos 30 dias." : "Nenhum empregado ativo com cargo/área."}</div>
-      ) : visiveis.map(({ emp, cargo, area, itensKit, pendencias, semKit, vencendo, emPosse }) => (
+      ) : visiveis.map(({ emp, cargo, area, itensKit, pendencias, semKit, vencendo, entregasView, totalPosse }) => (
         <div key={emp.id} className={`rounded-xl border overflow-hidden bg-white dark:bg-gray-900 ${pendencias > 0 && filtro === "todos" ? "border-red-200 dark:border-red-800" : "border-gray-200 dark:border-gray-800"}`}>
           <div className="p-3 flex items-center justify-between gap-2 flex-wrap">
             <div className="min-w-0">
@@ -185,29 +194,49 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRes
                   ))}
                 </div>
               )}
-              {/* Peças em posse — data de entrega + validade (sempre, mesmo sem kit) */}
-              {emPosse.length === 0 ? (
-                <div className="px-3 pb-3 text-xs text-gray-400">Nenhuma peça entregue ainda.</div>
+              {/* Em posse — agrupado por entrega, com ações (devolver/cancelar) */}
+              {entregasView.length === 0 ? (
+                <div className="px-3 pb-3 text-xs text-gray-400">Nenhuma peça em posse.</div>
               ) : (
-                <div className="px-3 pb-3">
-                  <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400 mb-1">
-                    Em posse ({emPosse.reduce((s, p) => s + (p.qtd || 0), 0)} peça(s))
+                <div className="px-3 pb-3 space-y-2">
+                  <div className="text-[10px] uppercase font-bold tracking-wider text-gray-400">
+                    Em posse ({totalPosse} peça(s))
                   </div>
-                  <div className="space-y-1">
-                    {emPosse.map((p, i) => (
-                      <div key={i} className={`flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg text-sm ${
-                        p.dias != null && p.dias < 0 ? "bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-300"
-                          : p.dias != null && p.dias <= 30 ? "bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300"
-                          : "bg-gray-50 dark:bg-gray-800/40 text-gray-700 dark:text-gray-200"
-                      }`}>
-                        <span className="min-w-0 truncate">{p.tipo === "epi" ? "🦺" : "👕"} {p.qtd}× {p.nome}{p.tamanho && p.tamanho !== "único" ? ` (${p.tamanho})` : ""}</span>
-                        <span className="tabular-nums shrink-0 text-xs">
-                          {p.entregueEm ? p.entregueEm.split("-").reverse().join("/") : "—"}
-                          {p.validadeAte ? ` · ${p.dias != null && p.dias < 0 ? `venceu há ${-p.dias}d` : `vence em ${p.dias}d`}` : " · sem validade"}
+                  {entregasView.map((v) => (
+                    <div key={v.entrega.id} className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
+                      <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-gray-50 dark:bg-gray-800/40">
+                        <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                          {v.tipo === "epi" ? "🦺 EPI" : "👕 Uniforme"} · entregue {v.entregueEm ? v.entregueEm.split("-").reverse().join("/") : "—"}
+                          {v.temRetorno && <span className="ml-1 text-amber-600 dark:text-amber-400">· parcial</span>}
                         </span>
+                        {podeConfig && (
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button type="button" onClick={() => setDevolverEntrega(v.entrega)}
+                              className="text-[10px] px-2 py-0.5 rounded border border-rose-200 dark:border-rose-900 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20 whitespace-nowrap">↶ devolver</button>
+                            {!v.temRetorno && (
+                              <button type="button" onClick={() => setCancelarEntrega(v.entrega)}
+                                title="Lançamento errado — devolve tudo ao estoque"
+                                className="text-[10px] text-gray-400 hover:text-rose-600 hover:underline whitespace-nowrap">❌ cancelar</button>
+                            )}
+                          </div>
+                        )}
                       </div>
-                    ))}
-                  </div>
+                      <div className="p-1.5 space-y-1">
+                        {v.itensRest.map((p, i) => (
+                          <div key={i} className={`flex items-center justify-between gap-2 px-2 py-1 rounded text-sm ${
+                            p.dias != null && p.dias < 0 ? "bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-300"
+                              : p.dias != null && p.dias <= 30 ? "bg-amber-50 dark:bg-amber-950/30 text-amber-800 dark:text-amber-300"
+                              : "text-gray-700 dark:text-gray-200"
+                          }`}>
+                            <span className="min-w-0 truncate">{p.qtd}× {p.nome}{p.tamanho && p.tamanho !== "único" ? ` (${p.tamanho})` : ""}</span>
+                            <span className="tabular-nums shrink-0 text-xs">
+                              {p.validadeAte ? (p.dias != null && p.dias < 0 ? `venceu há ${-p.dias}d` : `vence em ${p.dias}d`) : "sem validade"}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </>
@@ -226,6 +255,12 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRes
           pessoaInicialId={entregaModal.pessoaId}
           onClose={() => setEntregaModal(null)}
         />
+      )}
+      {devolverEntrega && (
+        <DevolucaoModal entrega={devolverEntrega} itens={itens} pessoa={me} onClose={() => setDevolverEntrega(null)} />
+      )}
+      {cancelarEntrega && (
+        <CancelarEntregaModal entrega={cancelarEntrega} itens={itens} pessoa={me} onClose={() => setCancelarEntrega(null)} />
       )}
     </div>
   );
