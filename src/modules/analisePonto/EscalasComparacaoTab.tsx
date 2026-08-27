@@ -272,6 +272,9 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
 
   const mostraSol = fonte === "comparar" || fonte === "solides";
   const mostraApp = fonte === "comparar" || fonte === "app";
+  // Grade das colunas por dia: [Dia] [Sólides] [Planej] [ícone]. Em modo de uma
+  // fonte só, some as colunas da outra e o ícone.
+  const cols = fonte === "comparar" ? "40px 1fr 1fr 28px" : "40px 1fr";
 
   async function exportarPDF() {
     setGerando(true); setErro("");
@@ -368,41 +371,46 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
                   : <span className="text-[10px] text-amber-600 ml-auto">sem vínculo (CPF)</span>)}
               </div>
 
-              {/* Linhas por dia da semana */}
-              <div className="mt-2 space-y-0.5">
-                {l.dias.map((d) => {
-                  const destaque = fonte === "comparar" && d.diverge;
-                  return (
-                    <div key={d.wd}
-                      className={`grid items-start gap-2 rounded px-1.5 py-1 ${destaque ? "bg-red-50 dark:bg-red-950/30" : ""}`}
-                      style={{ gridTemplateColumns: "34px 1fr auto" }}>
-                      <div className={`text-[11px] font-semibold pt-0.5 ${destaque ? "text-red-600" : "text-gray-400"}`}>{DIAS[d.wd]}</div>
-                      <div className="min-w-0 space-y-0.5">
+              {/* Dias em colunas: Dia | Sólides | planejamento.app | divergência */}
+              <div className="mt-2">
+                {/* Cabeçalho das colunas */}
+                <div className="grid items-center gap-2 px-1.5 pb-1 text-[9px] uppercase tracking-wide text-gray-400" style={{ gridTemplateColumns: cols }}>
+                  <div />
+                  {mostraSol && <div>Sólides</div>}
+                  {mostraApp && <div>planejamento.app</div>}
+                  {fonte === "comparar" && <div />}
+                </div>
+                <div className="space-y-0.5">
+                  {l.dias.map((d) => {
+                    const destaque = fonte === "comparar" && d.diverge;
+                    return (
+                      <div key={d.wd}
+                        className={`grid items-center gap-2 rounded px-1.5 py-1 ${destaque ? "bg-red-50 dark:bg-red-950/30" : ""}`}
+                        style={{ gridTemplateColumns: cols }}>
+                        <div className={`text-[11px] font-semibold ${destaque ? "text-red-600" : "text-gray-400"}`}>{DIAS[d.wd]}</div>
                         {mostraSol && (
-                          <div className="flex items-baseline gap-1.5">
-                            <span className="text-[9px] uppercase tracking-wide text-gray-400 shrink-0 w-14">Sólides</span>
-                            <span className={`text-[12px] tabular-nums ${d.sol.ativo ? "text-gray-800 dark:text-gray-200" : "text-gray-400"}`}>{d.sol.label}</span>
+                          <div className="min-w-0 flex items-baseline gap-1.5 flex-wrap">
+                            <span className={`text-[12px] tabular-nums leading-tight ${d.sol.ativo ? "text-gray-800 dark:text-gray-200" : "text-gray-400"}`}>{d.sol.label}</span>
                             {d.sol.ativo && <span className="text-[10px] text-gray-400 shrink-0">· {fmtH(d.sol.carga)}</span>}
                           </div>
                         )}
                         {mostraApp && (
-                          <div className="flex items-baseline gap-1.5">
-                            <span className="text-[9px] uppercase tracking-wide text-gray-400 shrink-0 w-14">Planej.</span>
-                            <span className={`text-[12px] tabular-nums ${!l.temApp ? "text-gray-300" : d.app.ativo ? "text-gray-800 dark:text-gray-200" : "text-gray-400"}`}>{l.temApp ? d.app.label : "—"}</span>
+                          <div className="min-w-0 flex items-baseline gap-1.5 flex-wrap">
+                            <span className={`text-[12px] tabular-nums leading-tight ${!l.temApp ? "text-gray-300" : d.app.ativo ? "text-gray-800 dark:text-gray-200" : "text-gray-400"}`}>{l.temApp ? d.app.label : "—"}</span>
                             {l.temApp && d.app.ativo && <span className="text-[10px] text-gray-400 shrink-0">· {fmtH(d.app.carga)}</span>}
                           </div>
                         )}
+                        {fonte === "comparar" && (
+                          <div className="flex gap-0.5 justify-end text-[11px]">
+                            {destaque && d.soUmLado && <span title="Escala só num lado (o outro está de folga)">➖</span>}
+                            {destaque && d.horarioDiff && <span title="Horário cadastrado diferente entre as fontes">⏰</span>}
+                            {destaque && d.cargaDiff && !d.horarioDiff && <span title="Carga horária do dia diferente">⏱</span>}
+                          </div>
+                        )}
                       </div>
-                      {destaque && (
-                        <div className="flex gap-0.5 pt-0.5 text-[11px]">
-                          {d.soUmLado && <span title="Escala só num lado (o outro está de folga)">➖</span>}
-                          {d.horarioDiff && <span title="Horário cadastrado diferente entre as fontes">⏰</span>}
-                          {d.cargaDiff && !d.horarioDiff && <span title="Carga horária do dia diferente">⏱</span>}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
 
               <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-gray-800/60 text-[10px] text-gray-400">
