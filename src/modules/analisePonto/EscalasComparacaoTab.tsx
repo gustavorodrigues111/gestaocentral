@@ -22,8 +22,8 @@ import type { Cargo, Empregado, HorarioDia, Restaurant, TipoVinculo, WorkSchedul
 import { defaultBatePontoPorVinculo, empregadoBatePonto } from "../../core/types";
 import { fetchScheduleCatalog, fetchRoster } from "../../core/ponto/solidesPontoClient";
 import type { PontoColaborador, PontoEscala } from "../../core/ponto/analise";
-import { gerarEscalasPDF, type EscalaPDFLinha } from "./gerarEscalasPDF";
-import { baixarOuCompartilhar } from "../../core/pdf/baixarOuCompartilhar";
+import { type EscalaPDFLinha } from "./gerarEscalasPDF";
+import { ExportarEscalasModal } from "./ExportarEscalasModal";
 
 const VINCULO_LABEL: Record<TipoVinculo, string> = {
   registrado: "CLT", provisorio: "provisório", estagiario: "estagiário", terceirizado: "terceirizado",
@@ -155,7 +155,7 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
   const [fonte, setFonte] = useState<FonteSel>("comparar");
   const [busca, setBusca] = useState("");
   const [soDivergentes, setSoDivergentes] = useState(false);
-  const [gerando, setGerando] = useState(false);
+  const [exportar, setExportar] = useState<EscalaPDFLinha[] | null>(null);
 
   useEffect(() => {
     if (!rid) return;
@@ -276,29 +276,22 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
   // fonte só, some as colunas da outra e o ícone.
   const cols = fonte === "comparar" ? "40px 1fr 1fr 28px" : "40px 1fr";
 
-  async function exportarPDF() {
-    setGerando(true); setErro("");
-    try {
-      const pdfLinhas: EscalaPDFLinha[] = linhasView.map((l) => ({
-        nome: l.r.name || "—",
-        vinculo: l.vinculo,
-        confianca: l.ehConfianca,
-        ciclo: l.ciclo,
-        temApp: l.temApp,
-        totalSol: l.totalSol,
-        totalApp: l.totalApp,
-        dias: l.dias.map((d) => ({
-          sol: d.sol.label, app: d.app.label,
-          solAtivo: d.sol.ativo, appAtivo: d.app.ativo,
-          cargaSol: d.sol.carga, cargaApp: d.app.carga, diverge: d.diverge,
-        })),
-      }));
-      const doc = await gerarEscalasPDF({ restaurantNome: activeRestaurant.nome, linhas: pdfLinhas });
-      const nome = `escalas-${activeRestaurant.shortCode || "rest"}-${hojeStr}.pdf`;
-      await baixarOuCompartilhar(doc.output("blob"), nome, { titulo: "Escalas cadastradas", texto: activeRestaurant.nome });
-    } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao gerar o PDF.");
-    } finally { setGerando(false); }
+  function abrirExportacao() {
+    const pdfLinhas: EscalaPDFLinha[] = linhasView.map((l) => ({
+      nome: l.r.name || "—",
+      vinculo: l.vinculo,
+      confianca: l.ehConfianca,
+      ciclo: l.ciclo,
+      temApp: l.temApp,
+      totalSol: l.totalSol,
+      totalApp: l.totalApp,
+      dias: l.dias.map((d) => ({
+        sol: d.sol.label, app: d.app.label,
+        solAtivo: d.sol.ativo, appAtivo: d.app.ativo,
+        cargaSol: d.sol.carga, cargaApp: d.app.carga, diverge: d.diverge,
+      })),
+    }));
+    setExportar(pdfLinhas);
   }
 
   const SEG: { id: FonteSel; label: string }[] = [
@@ -330,9 +323,9 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
             só divergentes
           </label>
         )}
-        <button type="button" onClick={() => void exportarPDF()} disabled={gerando || linhasView.length === 0}
+        <button type="button" onClick={abrirExportacao} disabled={linhasView.length === 0}
           className="ml-auto px-2.5 py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold">
-          {gerando ? "Gerando…" : "📄 Exportar PDF"}
+          📄 Exportar PDF
         </button>
         <button type="button" onClick={() => void carregar()} className="text-indigo-600 hover:underline">↻ recarregar</button>
       </div>
@@ -427,6 +420,15 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
           <div className="text-center text-sm text-gray-400 py-8">Nenhum colaborador com esse filtro.</div>
         )}
       </div>
+
+      {exportar && (
+        <ExportarEscalasModal
+          restaurantNome={activeRestaurant.nome}
+          fileBase={`escalas-${activeRestaurant.shortCode || "rest"}-${hojeStr}`}
+          linhas={exportar}
+          onClose={() => setExportar(null)}
+        />
+      )}
     </div>
   );
 }
