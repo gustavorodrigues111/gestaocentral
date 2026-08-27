@@ -2,11 +2,17 @@
 //  Aba "Escalas" — compara a escala CADASTRADA no Sólides (currentWorkSchedule)
 //  com a cadastrada no planejamento.app, por empregado (casado por CPF).
 //
-//  Comparação por CARGA POR DIA DA SEMANA (minutos previstos), que é robusta a
-//  diferenças de formato. Marca quem é cíclico (doubleBindEmployee) — nesses, a
-//  API só expõe o ciclo ATUAL, então a comparação é do estado vigente (a config
-//  completa do ciclo não vem na API; registrar no app fecha isso depois).
+//  Mostra, por dia da semana, tanto o HORÁRIO cadastrado (entrada / intervalo /
+//  saída) quanto a CARGA (minutos previstos) de cada fonte. Um seletor no topo
+//  alterna entre ver só o Sólides, só o planejamento.app, ou comparar os dois.
 //
+//  Na comparação, três tipos de divergência são destacados por dia:
+//    ⏰ horário diferente  (mesma carga pode ter horário distinto: 08–17 × 09–18)
+//    ⏱ carga diferente     (total de minutos do dia difere)
+//    ➖ só num lado         (um lado tem escala, o outro está de folga)
+//
+//  Cíclico (doubleBindEmployee / escala alternante A-B): a API do Sólides só
+//  expõe o ciclo ATUAL, então a comparação é do estado vigente hoje.
 //  Tudo vem do CADASTRO (Sólides + app), nunca das batidas.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
@@ -19,35 +25,72 @@ import type { PontoColaborador, PontoEscala } from "../../core/ponto/analise";
 const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const soDigitos = (s?: string | null) => (s || "").replace(/\D/g, "");
 const fmtH = (min: number) => (min <= 0 ? "—" : `${Math.floor(min / 60)}h${min % 60 ? String(min % 60).padStart(2, "0") : ""}`);
+const minToHHMM = (min: number) => {
+  const m = (((Math.round(min) % 1440) + 1440) % 1440);
+  return `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+};
 function timeToMin(s?: string): number | null {
   if (!s || !/^\d{1,2}:\d{2}$/.test(s)) return null;
   const [h, m] = s.split(":").map(Number);
   return h * 60 + m;
 }
 
-// Sólides currentWorkSchedule → minutos por dia da semana (idx 0=Dom..6=Sáb).
-// O catálogo traz day 1=Dom..7=Sáb e turnos em ms desde a meia-noite.
-function minutosSolides(sched: PontoEscala | undefined): number[] {
-  const out = [0, 0, 0, 0, 0, 0, 0];
-  for (const tt of sched?.workScheduleTimetableList || []) {
-    if (typeof tt.day !== "number") continue;
-    const idx = tt.day - 1; // 1=Dom → 0
-    if (idx < 0 || idx > 6) continue;
-    for (const [a, b] of [["startShift1", "endShift1"], ["startShift2", "endShift2"]] as const) {
-      const s = tt[a]; const e = tt[b];
-      if (typeof s === "number" && typeof e === "number") out[idx] += Math.round((e - s) / 60000);
-    }
+type FonteSel = "comparar" | "solides" | "app";
+
+// Horário de UM dia, de UMA fonte, já normalizado pra exibir e comparar.
+type DiaFonte = {
+  ativo: boolean;        // false = folga / sem escala
+  label: string;         // "08:00–12:00 / 13:00–17:00" | "folga"
+  entrada: number | null; // min desde a meia-noite (null = folga)
+  saida: number | null;   // min (pode passar de 1440 no overnight do app)
+  breakMin: number;       // intervalo em minutos
+  carga: number;          // minutos trabalhados no dia
+};
+
+const FOLGA: DiaFonte = { ativo: false, label: "folga", entrada: null, saida: null, breakMin: 0, carga: 0 };
+
+// Sólides: turno de um dia (ms desde a meia-noite) → DiaFonte.
+// O catálogo traz day 1=Dom..7=Sáb e até 2 turnos (shift1 antes do intervalo,
+// shift2 depois). O intervalo é o gap entre o fim do shift1 e o início do shift2.
+function solidesDia(sched: PontoEscala | undefined, wd: number): DiaFonte {
+  const tt = (sched?.workScheduleTimetableList || []).find((t) => t.day === wd + 1);
+  if (!tt) return FOLGA;
+  const seg: [number, number][] = [];
+  for (const [a, b] of [["startShift1", "endShift1"], ["startShift2", "endShift2"]] as const) {
+    const s = tt[a]; const e = tt[b];
+    if (typeof s === "number" && typeof e === "number") seg.push([Math.round(s / 60000), Math.round(e / 60000)]);
   }
-  return out;
+  if (!seg.length) return FOLGA;
+  const entrada = seg[0][0];
+  const saida = seg[seg.length - 1][1];
+  const carga = seg.reduce((a, [x, y]) => a + Math.max(0, y - x), 0);
+  const breakMin = seg.length > 1 ? Math.max(0, seg[1][0] - seg[0][1]) : 0;
+  const label = seg.map(([x, y]) => `${minToHHMM(x)}–${minToHHMM(y)}`).join(" / ");
+  return { ativo: true, label, entrada, saida, breakMin, carga };
 }
 
-// HorarioDia → minutos (trata virada de dia: out < in → +24h).
-function minutosDia(d?: HorarioDia): number {
-  if (!d?.active) return 0;
-  const i = timeToMin(d.in); let o = timeToMin(d.out);
-  if (i == null || o == null) return 0;
+// planejamento.app: HorarioDia → DiaFonte (trata virada de dia; usa os horários
+// de intervalo quando existem, senão o break em minutos).
+function appDia(d?: HorarioDia): DiaFonte {
+  if (!d?.active) return FOLGA;
+  const i = timeToMin(d.in);
+  let o = timeToMin(d.out);
+  if (i == null || o == null) return { ...FOLGA, label: "—" };
   if (o < i) o += 1440;
-  return Math.max(0, o - i - (d.break || 0));
+  const ii = timeToMin(d.intervalIn);
+  const io = timeToMin(d.intervalOut);
+  let breakMin = d.break || 0;
+  let label: string;
+  if (ii != null && io != null) {
+    breakMin = Math.max(0, io - ii);
+    label = `${d.in}–${d.intervalIn} / ${d.intervalOut}–${d.out}`;
+  } else if (breakMin > 0) {
+    label = `${d.in}–${d.out} · int ${breakMin}m`;
+  } else {
+    label = `${d.in}–${d.out}`;
+  }
+  const carga = Math.max(0, o - i - breakMin);
+  return { ativo: true, label, entrada: i, saida: o, breakMin, carga };
 }
 
 // Qual semana (A/B) está vigente hoje numa escala alternante (via anchor).
@@ -59,16 +102,14 @@ function semanaVigente(ws: WorkSchedule, hoje: Date): "A" | "B" | null {
   return ehAncora ? ws.anchor.week : (ws.anchor.week === "A" ? "B" : "A");
 }
 
-// App WorkSchedule → minutos por dia da semana (idx 0=Dom..6=Sáb), resolvendo
-// a semana vigente hoje pra escalas alternadas (A/B via anchor).
-function minutosApp(ws: WorkSchedule | undefined, hoje: Date): number[] {
-  if (!ws) return [0, 0, 0, 0, 0, 0, 0];
+// App WorkSchedule → HorarioDia por dia da semana (0=Dom..6=Sáb), resolvendo a
+// semana vigente hoje pra escalas alternadas (A/B via anchor).
+function appDiasVigentes(ws: WorkSchedule | undefined, hoje: Date): (HorarioDia | undefined)[] {
+  if (!ws) return Array(7).fill(undefined);
   let days = ws.days;
   const semana = semanaVigente(ws, hoje);
   if (semana && ws.weeks) days = ws.weeks[semana]?.days;
-  const out = [0, 0, 0, 0, 0, 0, 0];
-  for (let wd = 0; wd < 7; wd++) out[wd] = minutosDia(days?.[wd]);
-  return out;
+  return Array.from({ length: 7 }, (_, wd) => days?.[wd]);
 }
 
 function escalaAppVigente(emp: Empregado, hoje: string): WorkSchedule | undefined {
@@ -76,6 +117,10 @@ function escalaAppVigente(emp: Empregado, hoje: string): WorkSchedule | undefine
   if (arr.length === 0) return emp.workSchedules?.[0];
   return arr.sort((a, b) => a.validFrom.localeCompare(b.validFrom))[arr.length - 1];
 }
+
+// Assinatura do horário de um dia (entrada|saída|intervalo em min) pra comparar
+// horários independentemente do formato de origem.
+const sig = (d: DiaFonte) => `${d.entrada}|${d.saida}|${d.breakMin}`;
 
 export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; activeRestaurant: Restaurant }) {
   const [carregando, setCarregando] = useState(!!activeRestaurant.shortCode);
@@ -85,6 +130,9 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [carregou, setCarregou] = useState(false);
+  const [fonte, setFonte] = useState<FonteSel>("comparar");
+  const [busca, setBusca] = useState("");
+  const [soDivergentes, setSoDivergentes] = useState(false);
 
   useEffect(() => {
     if (!rid) return;
@@ -137,21 +185,28 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
       .filter((r) => !r.fired)
       .map((r) => {
         const solSched = catById.get(r.currentWorkSchedule?.id ?? -1);
-        const minSol = minutosSolides(solSched);
         const appEmp = empAppPorCpf.get(soDigitos(r.cpf));
         const area = appEmp ? cargoArea.get(appEmp.cargoId) : undefined;
         const wsApp = appEmp ? escalaAppVigente(appEmp, hojeStr) : undefined;
-        // A API do Sólides não expõe o ciclo. O cíclico é conhecido pelo CADASTRO
-        // do app: escala alternante (A/B). (doubleBindEmployee fica como sinal extra.)
         const ciclico = wsApp?.type === "alternating" || !!r.doubleBindEmployee;
         const semanaCiclo = ciclico && wsApp?.type === "alternating" ? semanaVigente(wsApp, hoje) : null;
-        const minApp = minutosApp(wsApp, hoje);
         const temApp = !!appEmp;
-        const divergeDias = temApp ? DIAS.map((_, wd) => minSol[wd] !== minApp[wd]) : [];
-        const totalSol = minSol.reduce((a, b) => a + b, 0);
-        const totalApp = minApp.reduce((a, b) => a + b, 0);
-        const bate = temApp && divergeDias.every((x) => !x);
-        return { r, ciclico, semanaCiclo, solSched, minSol, appEmp, area, minApp, temApp, divergeDias, totalSol, totalApp, bate };
+        const appDs = appDiasVigentes(wsApp, hoje);
+
+        const dias = DIAS.map((_, wd) => {
+          const sol = solidesDia(solSched, wd);
+          const app = appDia(appDs[wd]);
+          const soUmLado = temApp && sol.ativo !== app.ativo;
+          const cargaDiff = temApp && sol.carga !== app.carga;
+          const horarioDiff = temApp && sol.ativo && app.ativo && sig(sol) !== sig(app);
+          const diverge = soUmLado || cargaDiff || horarioDiff;
+          return { wd, sol, app, soUmLado, cargaDiff, horarioDiff, diverge };
+        });
+
+        const totalSol = dias.reduce((a, d) => a + d.sol.carga, 0);
+        const totalApp = dias.reduce((a, d) => a + d.app.carga, 0);
+        const bate = temApp && dias.every((d) => !d.diverge);
+        return { r, ciclico, semanaCiclo, area, appEmp, temApp, dias, totalSol, totalApp, bate };
       })
       .sort((a, b) => (a.r.name || "").localeCompare(b.r.name || ""));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -174,51 +229,135 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
   const divergentes = linhas.filter((l) => l.temApp && !l.bate).length;
   const semApp = linhas.filter((l) => !l.temApp).length;
 
+  const buscaDig = soDigitos(busca);
+  const linhasView = linhas.filter((l) => {
+    if (fonte === "comparar" && soDivergentes && !(l.temApp && !l.bate)) return false;
+    if (busca.trim()) {
+      const nome = (l.r.name || "").toLowerCase();
+      const cpf = soDigitos(l.r.cpf);
+      if (!nome.includes(busca.trim().toLowerCase()) && !(buscaDig && cpf.includes(buscaDig))) return false;
+    }
+    return true;
+  });
+
+  const mostraSol = fonte === "comparar" || fonte === "solides";
+  const mostraApp = fonte === "comparar" || fonte === "app";
+
+  const SEG: { id: FonteSel; label: string }[] = [
+    { id: "comparar", label: "Comparar" },
+    { id: "solides", label: "Só Sólides" },
+    { id: "app", label: "Só Planejamento" },
+  ];
+
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-3 text-xs text-gray-500">
+      {/* Seletor de fonte */}
+      <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-900">
+        {SEG.map((s) => (
+          <button key={s.id} type="button" onClick={() => setFonte(s.id)}
+            className={`px-3 py-1.5 text-xs font-semibold rounded-md transition-colors ${
+              fonte === s.id ? "bg-indigo-600 text-white" : "text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"}`}>
+            {s.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="flex items-center gap-3 text-xs text-gray-500 flex-wrap">
         <span>{linhas.length} colaborador(es)</span>
-        <span className="text-red-600">{divergentes} divergente(s)</span>
+        {fonte === "comparar" && <span className="text-red-600">{divergentes} divergente(s)</span>}
         <span className="text-amber-600">{semApp} sem vínculo no planejamento.app</span>
+        {fonte === "comparar" && (
+          <label className="flex items-center gap-1 cursor-pointer select-none">
+            <input type="checkbox" checked={soDivergentes} onChange={(e) => setSoDivergentes(e.target.checked)} className="accent-indigo-600" />
+            só divergentes
+          </label>
+        )}
         <button type="button" onClick={() => void carregar()} className="ml-auto text-indigo-600 hover:underline">↻ recarregar</button>
       </div>
 
-      <div className="space-y-2">
-        {linhas.map((l) => (
-          <div key={l.r.id} className={`rounded-xl border p-3 ${l.temApp ? (l.bate ? "border-gray-200 dark:border-gray-800" : "border-red-200 dark:border-red-900/50") : "border-amber-200 dark:border-amber-900/50"}`}>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{l.r.name}</span>
-              {l.area && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{l.area}</span>}
-              {l.ciclico && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300" title="Escala alternante (cíclica) — comparando a semana vigente">🔁 cíclico{l.semanaCiclo ? ` · semana ${l.semanaCiclo}` : ""}</span>}
-              {!l.temApp && <span className="text-[10px] text-amber-600 ml-auto">sem empregado vinculado no planejamento.app (CPF)</span>}
-              {l.temApp && (l.bate
-                ? <span className="text-[11px] text-emerald-600 ml-auto">✓ batem</span>
-                : <span className="text-[11px] text-red-600 ml-auto">⚠ divergem</span>)}
-            </div>
+      <input type="text" value={busca} onChange={(e) => setBusca(e.target.value)}
+        placeholder="Buscar por nome ou CPF…"
+        className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
 
-            {/* Grade semanal: Sólides × planejamento.app (scroll horizontal no mobile) */}
-            <div className="mt-2 overflow-x-auto -mx-1 px-1">
-              <div className="grid gap-1 text-center text-[10px] min-w-[440px]" style={{ gridTemplateColumns: "minmax(72px,auto) repeat(7, 1fr)" }}>
-                <div />
-                {DIAS.map((d) => <div key={d} className="font-semibold text-gray-400">{d}</div>)}
-                <div className="text-left text-[10px] text-gray-500 self-center">Sólides</div>
-                {l.minSol.map((m, wd) => (
-                  <div key={`s${wd}`} className={`py-1 rounded ${l.temApp && l.divergeDias[wd] ? "bg-red-50 text-red-700 dark:bg-red-950/40" : "bg-gray-50 dark:bg-gray-800/40 text-gray-700 dark:text-gray-300"}`}>{fmtH(m)}</div>
-                ))}
-                <div className="text-left text-[10px] text-gray-500 self-center">planejamento.app</div>
-                {l.temApp
-                  ? l.minApp.map((m, wd) => (
-                      <div key={`a${wd}`} className={`py-1 rounded ${l.divergeDias[wd] ? "bg-red-50 text-red-700 dark:bg-red-950/40" : "bg-gray-50 dark:bg-gray-800/40 text-gray-700 dark:text-gray-300"}`}>{fmtH(m)}</div>
-                    ))
-                  : DIAS.map((_, wd) => <div key={`a${wd}`} className="py-1 rounded bg-gray-50 dark:bg-gray-800/40 text-gray-300">—</div>)}
+      {fonte === "comparar" && (
+        <div className="flex items-center gap-3 text-[10px] text-gray-400 flex-wrap">
+          <span>⏰ horário diferente</span>
+          <span>⏱ carga diferente</span>
+          <span>➖ escala só num lado</span>
+        </div>
+      )}
+
+      <div className="space-y-2">
+        {linhasView.map((l) => {
+          const borda = fonte !== "comparar"
+            ? "border-gray-200 dark:border-gray-800"
+            : l.temApp ? (l.bate ? "border-gray-200 dark:border-gray-800" : "border-red-200 dark:border-red-900/50")
+              : "border-amber-200 dark:border-amber-900/50";
+          return (
+            <div key={l.r.id} className={`rounded-xl border p-3 ${borda}`}>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{l.r.name}</span>
+                {l.area && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{l.area}</span>}
+                {l.ciclico && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300" title="Escala alternante (cíclica) — comparando a semana vigente">🔁 cíclico{l.semanaCiclo ? ` · semana ${l.semanaCiclo}` : ""}</span>}
+                {fonte === "comparar" && !l.temApp && <span className="text-[10px] text-amber-600 ml-auto">sem empregado vinculado (CPF)</span>}
+                {fonte === "comparar" && l.temApp && (l.bate
+                  ? <span className="text-[11px] text-emerald-600 ml-auto">✓ batem</span>
+                  : <span className="text-[11px] text-red-600 ml-auto">⚠ divergem</span>)}
+                {fonte === "solides" && <span className="text-[11px] text-gray-400 ml-auto">semana {fmtH(l.totalSol)}</span>}
+                {fonte === "app" && (l.temApp
+                  ? <span className="text-[11px] text-gray-400 ml-auto">semana {fmtH(l.totalApp)}</span>
+                  : <span className="text-[10px] text-amber-600 ml-auto">sem vínculo (CPF)</span>)}
+              </div>
+
+              {/* Linhas por dia da semana */}
+              <div className="mt-2 space-y-0.5">
+                {l.dias.map((d) => {
+                  const destaque = fonte === "comparar" && d.diverge;
+                  return (
+                    <div key={d.wd}
+                      className={`grid items-start gap-2 rounded px-1.5 py-1 ${destaque ? "bg-red-50 dark:bg-red-950/30" : ""}`}
+                      style={{ gridTemplateColumns: "34px 1fr auto" }}>
+                      <div className={`text-[11px] font-semibold pt-0.5 ${destaque ? "text-red-600" : "text-gray-400"}`}>{DIAS[d.wd]}</div>
+                      <div className="min-w-0 space-y-0.5">
+                        {mostraSol && (
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-[9px] uppercase tracking-wide text-gray-400 shrink-0 w-14">Sólides</span>
+                            <span className={`text-[12px] tabular-nums ${d.sol.ativo ? "text-gray-800 dark:text-gray-200" : "text-gray-400"}`}>{d.sol.label}</span>
+                            {d.sol.ativo && <span className="text-[10px] text-gray-400 shrink-0">· {fmtH(d.sol.carga)}</span>}
+                          </div>
+                        )}
+                        {mostraApp && (
+                          <div className="flex items-baseline gap-1.5">
+                            <span className="text-[9px] uppercase tracking-wide text-gray-400 shrink-0 w-14">Planej.</span>
+                            <span className={`text-[12px] tabular-nums ${!l.temApp ? "text-gray-300" : d.app.ativo ? "text-gray-800 dark:text-gray-200" : "text-gray-400"}`}>{l.temApp ? d.app.label : "—"}</span>
+                            {l.temApp && d.app.ativo && <span className="text-[10px] text-gray-400 shrink-0">· {fmtH(d.app.carga)}</span>}
+                          </div>
+                        )}
+                      </div>
+                      {destaque && (
+                        <div className="flex gap-0.5 pt-0.5 text-[11px]">
+                          {d.soUmLado && <span title="Escala só num lado (o outro está de folga)">➖</span>}
+                          {d.horarioDiff && <span title="Horário cadastrado diferente entre as fontes">⏰</span>}
+                          {d.cargaDiff && !d.horarioDiff && <span title="Carga horária do dia diferente">⏱</span>}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="mt-1.5 pt-1.5 border-t border-gray-100 dark:border-gray-800/60 text-[10px] text-gray-400">
+                {fonte === "comparar" && <>Carga semanal — Sólides: {fmtH(l.totalSol)}{l.temApp ? ` · planejamento.app: ${fmtH(l.totalApp)}` : ""}</>}
+                {fonte === "solides" && <>Carga semanal — Sólides: {fmtH(l.totalSol)}</>}
+                {fonte === "app" && (l.temApp ? <>Carga semanal — planejamento.app: {fmtH(l.totalApp)}</> : <>Sem escala vinculada no planejamento.app.</>)}
+                {l.ciclico ? ` · cíclico: semana ${l.semanaCiclo ?? "vigente"} (a Sólides só expõe o ciclo atual; o ciclo completo está no cadastro alternante do planejamento.app)` : ""}
               </div>
             </div>
-            <div className="mt-1 text-[10px] text-gray-400">
-              Carga semanal — Sólides: {fmtH(l.totalSol)} {l.temApp ? `· planejamento.app: ${fmtH(l.totalApp)}` : ""}
-              {l.ciclico ? ` · cíclico: comparando a semana ${l.semanaCiclo ?? "vigente"} (a Sólides só expõe o ciclo atual; o ciclo completo está no cadastro alternante do planejamento.app)` : ""}
-            </div>
-          </div>
-        ))}
+          );
+        })}
+        {linhasView.length === 0 && (
+          <div className="text-center text-sm text-gray-400 py-8">Nenhum colaborador com esse filtro.</div>
+        )}
       </div>
     </div>
   );
