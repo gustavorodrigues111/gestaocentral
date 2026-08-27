@@ -1,8 +1,8 @@
 // Gera PDF das escalas cadastradas — Sólides × planejamento.app — de todos os
-// colaboradores, pra imprimir/compartilhar. Um bloco por pessoa: banner com
-// vínculo, marca de CARGO DE CONFIANÇA e o CICLO DE DOMINGOS (planejamento.app),
-// seguido de duas linhas (Sólides / planejamento.app) com o horário de cada dia.
-// Dias divergentes ficam destacados na linha do planejamento.app.
+// colaboradores, pra imprimir/compartilhar. Segue o mesmo padrão da tela: por
+// pessoa, um banner (vínculo · CARGO DE CONFIANÇA · CICLO DE DOMINGOS · carga)
+// seguido de uma tabela com colunas Dia | Sólides | planejamento.app. Dias
+// divergentes ficam destacados na coluna do planejamento.app.
 //
 // Uso: const doc = await gerarEscalasPDF({ ... }); baixarOuCompartilhar(doc.output("blob"), ...)
 
@@ -23,6 +23,8 @@ export type EscalaPDFDia = {
   app: string;      // horário planejamento.app
   solAtivo: boolean;
   appAtivo: boolean;
+  cargaSol: number; // minutos
+  cargaApp: number; // minutos
   diverge: boolean;
 };
 
@@ -43,6 +45,7 @@ export type EscalaPDFParams = {
 };
 
 const fmtH = (min: number) => (min <= 0 ? "—" : `${Math.floor(min / 60)}h${min % 60 ? String(min % 60).padStart(2, "0") : ""}`);
+const comCarga = (label: string, ativo: boolean, carga: number) => (ativo ? `${label}   ·   ${fmtH(carga)}` : label);
 
 export async function gerarEscalasPDF({ restaurantNome, linhas }: EscalaPDFParams): Promise<JsPDFType> {
   const [{ jsPDF }, { default: autoTable }] = await Promise.all([
@@ -50,36 +53,37 @@ export async function gerarEscalasPDF({ restaurantNome, linhas }: EscalaPDFParam
     import("jspdf-autotable"),
   ]);
 
-  const doc = new jsPDF({ orientation: "landscape", unit: "mm", format: "a4" });
+  const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
-  const MARGIN_X = 8;
+  const MARGIN_X = 10;
 
   doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
+  doc.setFontSize(15);
   doc.setTextColor(...TXT_DARK);
-  doc.text("Escalas cadastradas — Sólides × planejamento.app", MARGIN_X, 12);
+  doc.text("Escalas cadastradas — Sólides × planejamento.app", MARGIN_X, 13);
 
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
   doc.setTextColor(100, 116, 139);
-  doc.text(restaurantNome, MARGIN_X, 17);
+  doc.text(restaurantNome, MARGIN_X, 18);
 
   const agora = new Date();
   const stamp =
     `Gerado em ${pad2(agora.getDate())}/${pad2(agora.getMonth() + 1)}/${agora.getFullYear()} ` +
     `${pad2(agora.getHours())}:${pad2(agora.getMinutes())}`;
   doc.setFontSize(8);
-  doc.text(stamp, pageW - MARGIN_X, 12, { align: "right" });
+  doc.text(stamp, pageW - MARGIN_X, 13, { align: "right" });
 
   type Cell = string | { content: string; styles?: object; colSpan?: number };
   const head: Cell[] = [
-    { content: "", styles: { halign: "left" } },
-    ...DIAS.map((d) => ({ content: d, styles: { halign: "center" } })),
+    { content: "Dia", styles: { halign: "center" } },
+    { content: "Sólides", styles: { halign: "left" } },
+    { content: "planejamento.app", styles: { halign: "left" } },
   ];
 
   const body: Cell[][] = [];
   for (const l of linhas) {
-    // Banner da pessoa (colSpan 8): nome · vínculo · confiança · ciclo · carga.
+    // Banner da pessoa (colSpan 3): nome · vínculo · confiança · ciclo · carga.
     const partes: string[] = [l.nome];
     if (l.vinculo) partes.push(l.vinculo);
     if (l.confianca) partes.push("🔒 CARGO DE CONFIANÇA (não bate ponto)");
@@ -87,46 +91,41 @@ export async function gerarEscalasPDF({ restaurantNome, linhas }: EscalaPDFParam
     partes.push(`Carga sem. — Sólides: ${fmtH(l.totalSol)}${l.temApp ? ` · planejamento.app: ${fmtH(l.totalApp)}` : ""}`);
     body.push([{
       content: partes.join("   ·   "),
-      colSpan: 8,
+      colSpan: 3,
       styles: {
         fillColor: l.confianca ? ROXO_BG : [242, 242, 242],
-        textColor: TXT_DARK, fontStyle: "bold", halign: "left", fontSize: 8,
+        textColor: TXT_DARK, fontStyle: "bold", halign: "left", fontSize: 8.5,
       },
     }]);
 
-    // Linha Sólides.
-    body.push([
-      { content: "Sólides", styles: { halign: "left", fontStyle: "bold", textColor: CINZA, fontSize: 7 } },
-      ...l.dias.map((d) => ({
-        content: d.sol,
-        styles: { halign: "center", textColor: d.solAtivo ? TXT_DARK : CINZA },
-      })),
-    ]);
-
-    // Linha planejamento.app (destaca divergências).
-    body.push([
-      { content: "planejamento.app", styles: { halign: "left", fontStyle: "bold", textColor: CINZA, fontSize: 7 } },
-      ...l.dias.map((d) => ({
-        content: l.temApp ? d.app : "—",
-        styles: l.temApp && d.diverge
-          ? { halign: "center", fillColor: VERM_BG, textColor: VERM_TX, fontStyle: "bold" }
-          : { halign: "center", textColor: l.temApp && d.appAtivo ? TXT_DARK : CINZA },
-      })),
-    ]);
+    // Um dia por linha: Dia | Sólides | planejamento.app.
+    for (let wd = 0; wd < 7; wd++) {
+      const d = l.dias[wd];
+      const diverge = l.temApp && d.diverge;
+      body.push([
+        { content: DIAS[wd], styles: { halign: "center", fontStyle: "bold", textColor: diverge ? VERM_TX : CINZA, fontSize: 8 } },
+        { content: comCarga(d.sol, d.solAtivo, d.cargaSol), styles: { halign: "left", textColor: d.solAtivo ? TXT_DARK : CINZA } },
+        l.temApp
+          ? { content: comCarga(d.app, d.appAtivo, d.cargaApp), styles: diverge
+              ? { halign: "left", fillColor: VERM_BG, textColor: VERM_TX, fontStyle: "bold" }
+              : { halign: "left", textColor: d.appAtivo ? TXT_DARK : CINZA } }
+          : { content: "—", styles: { halign: "left", textColor: CINZA } },
+      ]);
+    }
 
     // Espaço entre pessoas.
-    body.push([{ content: "", colSpan: 8, styles: { fillColor: [255, 255, 255], lineWidth: 0, minCellHeight: 1.5 } }]);
+    body.push([{ content: "", colSpan: 3, styles: { fillColor: [255, 255, 255], lineWidth: 0, minCellHeight: 2 } }]);
   }
 
   autoTable(doc, {
-    startY: 22,
+    startY: 23,
     head: [head],
     body,
     theme: "grid",
     margin: { left: MARGIN_X, right: MARGIN_X },
     styles: {
-      fontSize: 7.5,
-      cellPadding: { top: 1.2, bottom: 1.2, left: 2, right: 2 },
+      fontSize: 9,
+      cellPadding: { top: 1.4, bottom: 1.4, left: 2.5, right: 2.5 },
       lineWidth: 0.15,
       lineColor: [210, 210, 210],
       valign: "middle",
@@ -134,9 +133,13 @@ export async function gerarEscalasPDF({ restaurantNome, linhas }: EscalaPDFParam
       overflow: "linebreak",
     },
     headStyles: {
-      fillColor: AREIA, textColor: TXT_DARK, fontStyle: "bold", fontSize: 8, halign: "center",
+      fillColor: AREIA, textColor: TXT_DARK, fontStyle: "bold", fontSize: 9,
     },
-    columnStyles: { 0: { cellWidth: 34, halign: "left" } },
+    columnStyles: {
+      0: { cellWidth: 16, halign: "center" },
+      1: { cellWidth: "auto" },
+      2: { cellWidth: "auto" },
+    },
   });
 
   return doc;

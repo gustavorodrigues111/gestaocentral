@@ -289,7 +289,8 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
         totalApp: l.totalApp,
         dias: l.dias.map((d) => ({
           sol: d.sol.label, app: d.app.label,
-          solAtivo: d.sol.ativo, appAtivo: d.app.ativo, diverge: d.diverge,
+          solAtivo: d.sol.ativo, appAtivo: d.app.ativo,
+          cargaSol: d.sol.carga, cargaApp: d.app.carga, diverge: d.diverge,
         })),
       }));
       const doc = await gerarEscalasPDF({ restaurantNome: activeRestaurant.nome, linhas: pdfLinhas });
