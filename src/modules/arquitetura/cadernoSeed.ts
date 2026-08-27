@@ -83,6 +83,7 @@ const SEED: Seed[] = [
 
   // ── Análise de ponto ──
   { modulo: "analise-ponto", resp: "ia", titulo: "Fechamento de ponto cockpit — Fase 2 (aba Inconsistências) e Fase 3 (correção in-app pelo empregado)" },
+  { modulo: "analise-ponto", resp: "ia", titulo: "Comparação de escalas: agora mostra horário cadastrado/dia + seletor Comparar/Só Sólides/Só Planejamento + divergência de horário (feito)", descricao: "A aba Escalas exibe entrada/intervalo/saída de cada fonte por dia, não só a carga. Detecta ⏰ horário diferente (ex: 08–17 × 09–18, mesma carga), ⏱ carga diferente e ➖ dia só num lado. Pendente: comparar por data-calendário (hoje é por dia-da-semana vigente) e ler o ciclo completo do alternante." },
 
   // ── Câmeras & Analytics ──
   { modulo: "cameras", resp: "gustavo", titulo: "Ativar o NUC central no escritório (mini-PC sempre ligado) — pré-requisito pra retomar a análise por câmera", descricao: "Piloto validou o caminho ponta a ponta: captura 1 foto/30s → Drive → análise, calibração das 36 mesas nas 3 câmeras, cruzamento com o POS Altec. Análise recorrente SEGURADA até o NUC estar de pé." },
