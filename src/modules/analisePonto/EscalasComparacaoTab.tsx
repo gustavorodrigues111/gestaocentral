@@ -18,9 +18,16 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import type { Area, Cargo, Empregado, HorarioDia, Restaurant, WorkSchedule } from "../../core/types";
+import type { Cargo, Empregado, HorarioDia, Restaurant, TipoVinculo, WorkSchedule } from "../../core/types";
+import { defaultBatePontoPorVinculo, empregadoBatePonto } from "../../core/types";
 import { fetchScheduleCatalog, fetchRoster } from "../../core/ponto/solidesPontoClient";
 import type { PontoColaborador, PontoEscala } from "../../core/ponto/analise";
+import { gerarEscalasPDF, type EscalaPDFLinha } from "./gerarEscalasPDF";
+import { baixarOuCompartilhar } from "../../core/pdf/baixarOuCompartilhar";
+
+const VINCULO_LABEL: Record<TipoVinculo, string> = {
+  registrado: "CLT", provisorio: "provisório", estagiario: "estagiário", terceirizado: "terceirizado",
+};
 
 const DIAS = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
 const soDigitos = (s?: string | null) => (s || "").replace(/\D/g, "");
@@ -122,6 +129,21 @@ function escalaAppVigente(emp: Empregado, hoje: string): WorkSchedule | undefine
 // horários independentemente do formato de origem.
 const sig = (d: DiaFonte) => `${d.entrada}|${d.saida}|${d.breakMin}`;
 
+// Ciclo de domingos no planejamento.app: escala alternante (A/B) pode dar folga
+// de domingo só numa das semanas. Descreve o padrão + a semana vigente.
+function cicloDomingos(ws: WorkSchedule | undefined, semanaVig: "A" | "B" | null): string {
+  if (!ws) return "sem escala no planejamento.app";
+  if (ws.type !== "alternating" || !ws.weeks) {
+    return ws.days?.[0]?.active ? "trabalha todo domingo (sem ciclo)" : "folga todo domingo (sem ciclo)";
+  }
+  const a = !!ws.weeks.A?.days?.[0]?.active;
+  const b = !!ws.weeks.B?.days?.[0]?.active;
+  const st = (x: boolean) => (x ? "trabalha" : "folga");
+  const vig = semanaVig ? ` · vigente: semana ${semanaVig}` : "";
+  if (a === b) return `${st(a)} todos os domingos (escala alterna outros dias)${vig}`;
+  return `alternado — semana A: ${st(a)} · semana B: ${st(b)}${vig}`;
+}
+
 export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; activeRestaurant: Restaurant }) {
   const [carregando, setCarregando] = useState(!!activeRestaurant.shortCode);
   const [erro, setErro] = useState("");
@@ -133,6 +155,7 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
   const [fonte, setFonte] = useState<FonteSel>("comparar");
   const [busca, setBusca] = useState("");
   const [soDivergentes, setSoDivergentes] = useState(false);
+  const [gerando, setGerando] = useState(false);
 
   useEffect(() => {
     if (!rid) return;
@@ -168,9 +191,9 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
     for (const c of catalogo) if (c.id != null) m.set(c.id, c);
     return m;
   }, [catalogo]);
-  const cargoArea = useMemo(() => {
-    const m = new Map<string, Area>();
-    for (const c of cargos) m.set(c.id, c.area);
+  const cargoById = useMemo(() => {
+    const m = new Map<string, Cargo>();
+    for (const c of cargos) m.set(c.id, c);
     return m;
   }, [cargos]);
   const empAppPorCpf = useMemo(() => {
@@ -186,10 +209,17 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
       .map((r) => {
         const solSched = catById.get(r.currentWorkSchedule?.id ?? -1);
         const appEmp = empAppPorCpf.get(soDigitos(r.cpf));
-        const area = appEmp ? cargoArea.get(appEmp.cargoId) : undefined;
+        const cargo = appEmp ? cargoById.get(appEmp.cargoId) : undefined;
+        const area = cargo?.area;
+        const vinculo = cargo ? VINCULO_LABEL[cargo.tipoVinculo] : undefined;
+        // Cargo de confiança = vínculo que normalmente bate ponto (CLT/estagiário)
+        // mas está marcado como NÃO bate (override) — o gerente exempto.
+        const ehConfianca = !!cargo && defaultBatePontoPorVinculo(cargo.tipoVinculo)
+          && !empregadoBatePonto(appEmp, cargo);
         const wsApp = appEmp ? escalaAppVigente(appEmp, hojeStr) : undefined;
         const ciclico = wsApp?.type === "alternating" || !!r.doubleBindEmployee;
         const semanaCiclo = ciclico && wsApp?.type === "alternating" ? semanaVigente(wsApp, hoje) : null;
+        const ciclo = cicloDomingos(wsApp, semanaCiclo);
         const temApp = !!appEmp;
         const appDs = appDiasVigentes(wsApp, hoje);
 
@@ -206,11 +236,11 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
         const totalSol = dias.reduce((a, d) => a + d.sol.carga, 0);
         const totalApp = dias.reduce((a, d) => a + d.app.carga, 0);
         const bate = temApp && dias.every((d) => !d.diverge);
-        return { r, ciclico, semanaCiclo, area, appEmp, temApp, dias, totalSol, totalApp, bate };
+        return { r, ciclico, semanaCiclo, ciclo, area, vinculo, ehConfianca, appEmp, temApp, dias, totalSol, totalApp, bate };
       })
       .sort((a, b) => (a.r.name || "").localeCompare(b.r.name || ""));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [roster, catById, empAppPorCpf, cargoArea, hojeStr]);
+  }, [roster, catById, empAppPorCpf, cargoById, hojeStr]);
 
   if (!carregou && !carregando) {
     return (
@@ -243,6 +273,30 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
   const mostraSol = fonte === "comparar" || fonte === "solides";
   const mostraApp = fonte === "comparar" || fonte === "app";
 
+  async function exportarPDF() {
+    setGerando(true); setErro("");
+    try {
+      const pdfLinhas: EscalaPDFLinha[] = linhasView.map((l) => ({
+        nome: l.r.name || "—",
+        vinculo: l.vinculo,
+        confianca: l.ehConfianca,
+        ciclo: l.ciclo,
+        temApp: l.temApp,
+        totalSol: l.totalSol,
+        totalApp: l.totalApp,
+        dias: l.dias.map((d) => ({
+          sol: d.sol.label, app: d.app.label,
+          solAtivo: d.sol.ativo, appAtivo: d.app.ativo, diverge: d.diverge,
+        })),
+      }));
+      const doc = await gerarEscalasPDF({ restaurantNome: activeRestaurant.nome, linhas: pdfLinhas });
+      const nome = `escalas-${activeRestaurant.shortCode || "rest"}-${hojeStr}.pdf`;
+      await baixarOuCompartilhar(doc.output("blob"), nome, { titulo: "Escalas cadastradas", texto: activeRestaurant.nome });
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao gerar o PDF.");
+    } finally { setGerando(false); }
+  }
+
   const SEG: { id: FonteSel; label: string }[] = [
     { id: "comparar", label: "Comparar" },
     { id: "solides", label: "Só Sólides" },
@@ -272,7 +326,11 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
             só divergentes
           </label>
         )}
-        <button type="button" onClick={() => void carregar()} className="ml-auto text-indigo-600 hover:underline">↻ recarregar</button>
+        <button type="button" onClick={() => void exportarPDF()} disabled={gerando || linhasView.length === 0}
+          className="ml-auto px-2.5 py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold">
+          {gerando ? "Gerando…" : "📄 Exportar PDF"}
+        </button>
+        <button type="button" onClick={() => void carregar()} className="text-indigo-600 hover:underline">↻ recarregar</button>
       </div>
 
       <input type="text" value={busca} onChange={(e) => setBusca(e.target.value)}
@@ -298,6 +356,7 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{l.r.name}</span>
                 {l.area && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{l.area}</span>}
+                {l.ehConfianca && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300" title="Cargo de confiança — não bate ponto (isento de controle de jornada)">🔒 confiança</span>}
                 {l.ciclico && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300" title="Escala alternante (cíclica) — comparando a semana vigente">🔁 cíclico{l.semanaCiclo ? ` · semana ${l.semanaCiclo}` : ""}</span>}
                 {fonte === "comparar" && !l.temApp && <span className="text-[10px] text-amber-600 ml-auto">sem empregado vinculado (CPF)</span>}
                 {fonte === "comparar" && l.temApp && (l.bate
