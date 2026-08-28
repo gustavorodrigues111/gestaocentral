@@ -1445,8 +1445,8 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
               // Coluna de ícone fixa e uniforme, reservada sempre que a seção usa
               // ícones (assim nomes com e sem ícone alinham) e alinhada à esquerda.
               const secComIcone = s.pratos.some(q => !!(q.iconeUrl || q.iconeId));
-              const ico = txCorpo(28);
-              const colIco = txCorpo(38);
+              const ico = txCorpo(38);
+              const colIco = txCorpo(46);
               const iconeNode = p.iconeUrl
                 ? <img src={p.iconeUrl} alt="" style={{ width: ico, height: ico, objectFit: "contain", display: "block" }} />
                 : p.iconeId
@@ -1455,7 +1455,7 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
               return (
               <div key={p.id} style={{ padding: "9px 0", borderBottom: `1px solid ${corSecundaria}22`, display: "flex", alignItems: "flex-start", gap: 10 }}>
                 {secComIcone && (
-                  <div style={{ flexShrink: 0, width: colIco, display: "flex", justifyContent: "flex-start", paddingTop: txCorpo(2) }}>
+                  <div style={{ flexShrink: 0, width: colIco, display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: txCorpo(1) }}>
                     {iconeNode}
                   </div>
                 )}

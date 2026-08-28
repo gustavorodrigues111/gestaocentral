@@ -1,32 +1,34 @@
 // Biblioteca embutida de ícones de bebida (SVG inline — renderiza no editor, no
-// site e no PDF via html2canvas sem problema de CORS). Cada ícone é traço
-// (currentColor), 24x24. Pra logos de marca, usar upload (iconeUrl).
+// site e no PDF via html2canvas sem problema de CORS). Cada ícone é uma SILHUETA
+// PREENCHIDA, 24x24. Pra logos de marca, usar upload (iconeUrl).
 import { useState, type CSSProperties } from "react";
 
 export type IconeCardapio = { id: string; nome: string; paths: string };
 
-// Desenhos simples de traço (line icons).
+// Silhuetas PREENCHIDAS (fill), normalizadas na caixa 24x24 e centradas, pra
+// ficarem uniformes e alinhadas (estilo de cardápio impresso). Subpaths internos
+// (ex: cubo de gelo do copo baixo) viram "furo" via fill-rule evenodd.
 export const ICONES_CARDAPIO: IconeCardapio[] = [
-  { id: "taca",     nome: "Taça de vinho", paths: "M8 3h8l-1 6a3 3 0 0 1-6 0L8 3zM12 12v6M9 21h6" },
-  { id: "martini",  nome: "Martini",       paths: "M5 4h14l-7 8-7-8zM12 12v7M8 21h8" },
-  { id: "cerveja",  nome: "Caneca",        paths: "M6 6h9v13H6zM15 9h3v6h-3M6 6l1-2h7l1 2" },
-  { id: "long",     nome: "Long drink",    paths: "M8 3h8l-1 17H9L8 3zM8.5 9h7" },
-  { id: "short",    nome: "Copo baixo",    paths: "M7 8h10l-1 11H8L7 8z" },
-  { id: "garrafa",  nome: "Garrafa",       paths: "M10 3h4v3l1 3v11H9V9l1-3V3zM9 12h6" },
-  { id: "coco",     nome: "Coco",          paths: "M4 11a8 8 0 0 0 16 0H4zM13 11l3-7M16 4l2-1" },
-  { id: "cafe",     nome: "Café",          paths: "M5 8h12v5a4 4 0 0 1-4 4H9a4 4 0 0 1-4-4V8zM17 9h2a2 2 0 0 1 0 4h-2M8 4v1M11 4v1M14 4v1" },
-  { id: "lata",     nome: "Lata",          paths: "M7 5h10v14H7zM7 8h10M7 16h10" },
-  { id: "espumante",nome: "Espumante",     paths: "M9 3h6l-1 7a2 2 0 0 1-4 0L9 3zM12 12v6M9 21h6M7 4l-1-1M17 4l1-1" },
-  { id: "limao",    nome: "Cítrico",       paths: "M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 4v16M4 12h16M6 6l12 12M18 6L6 18" },
-  { id: "folha",    nome: "Herbal",        paths: "M5 19c0-8 6-14 14-14 0 8-6 14-14 14zM5 19l7-7" },
+  { id: "taca",     nome: "Taça de vinho", paths: "M6.5 3H17.5C17.5 8.5 15 11.5 12 11.5S6.5 8.5 6.5 3ZM11 11.2H13V19H16V21H8V19H11Z" },
+  { id: "martini",  nome: "Martini",       paths: "M4.5 4H19.5L12 13ZM11 12H13V19H16V21H8V19H11Z" },
+  { id: "cerveja",  nome: "Caneca",        paths: "M6 5H15.5V20.5H6ZM15.5 8.5H17.3A3 3 0 0 1 17.3 13.7H15.5V12.1H17.1A1.4 1.4 0 0 0 17.1 10.5H15.5Z" },
+  { id: "long",     nome: "Long drink",    paths: "M8 3H16L15.2 21H8.8Z" },
+  { id: "short",    nome: "Copo baixo",    paths: "M7 8H17L16 20H8ZM10.4 11H14V14.6H10.4Z" },
+  { id: "garrafa",  nome: "Garrafa",       paths: "M10 2.5H14V5.5L15 8.5V20A1.2 1.2 0 0 1 13.8 21.2H10.2A1.2 1.2 0 0 1 9 20V8.5L10 5.5Z" },
+  { id: "coco",     nome: "Coco",          paths: "M4.5 11A7.5 7.5 0 0 0 19.5 11ZM13.5 11L16.5 3L18 3.6L15 11Z" },
+  { id: "cafe",     nome: "Café",          paths: "M6 8.5H16V12.5A4.5 4.5 0 0 1 11.5 17H10.5A4.5 4.5 0 0 1 6 12.5ZM16 9.6H17.6A2.3 2.3 0 0 1 17.6 14.2H16V12.7H17.4A0.9 0.9 0 0 0 17.4 10.9H16ZM5 19H18V20.5H5Z" },
+  { id: "lata",     nome: "Lata",          paths: "M8 4H16A2 2 0 0 1 18 6V18A2 2 0 0 1 16 20H8A2 2 0 0 1 6 18V6A2 2 0 0 1 8 4ZM8.5 7.5H15.5V8.6H8.5Z" },
+  { id: "espumante",nome: "Espumante",     paths: "M9.5 3H14.5L13.3 12A1.3 1.3 0 0 1 10.7 12ZM11 11.5H13V19H16V21H8V19H11Z" },
+  { id: "limao",    nome: "Cítrico",       paths: "M4 12A8 8 0 1 0 20 12A8 8 0 1 0 4 12Z" },
+  { id: "folha",    nome: "Herbal",        paths: "M5 19C5 10.5 10.5 5 19 5C19 13.5 13.5 19 5 19Z" },
 ];
 
 export function IconeCardapioView({ id, size = 22, color = "#1d3c4b", style }: { id: string; size?: number; color?: string; style?: CSSProperties }) {
   const ic = ICONES_CARDAPIO.find((i) => i.id === id);
   if (!ic) return null;
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth={1.5} strokeLinecap="round" strokeLinejoin="round" style={style}>
-      {ic.paths.split("M").filter(Boolean).map((d, i) => <path key={i} d={"M" + d} />)}
+    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} stroke="none" style={style}>
+      <path d={ic.paths} fillRule="evenodd" clipRule="evenodd" />
     </svg>
   );
 }

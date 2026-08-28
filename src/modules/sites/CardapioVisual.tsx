@@ -266,8 +266,8 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
     // alinhamento consistente mesmo quando quebra em outra coluna). Só reserva a
     // coluna do ícone onde há ícone — seções sem ícone ficam flush à esquerda.
     const secaoComIcone = s.pratos.some(p => !!(p.iconeId || p.iconeUrl));
-    const icoSize = Math.round((lay.tamTitulo || 12) * 1.7);
-    const colIcone = Math.round(icoSize * 1.35);
+    const icoSize = Math.round((lay.tamTitulo || 12) * 2.3);
+    const colIcone = Math.round(icoSize * 1.2);
     return (
       <div style={{ textAlign: align }}>
         {!semCabecalho && (
@@ -302,7 +302,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
           return (
             <div key={p.id} style={{ marginBottom: lay.espacoPratos, display: "flex", alignItems: "flex-start", gap: 0 }}>
               {secaoComIcone && (
-                <div style={{ width: colIcone, flexShrink: 0, display: "flex", justifyContent: "flex-start", alignItems: "flex-start", paddingTop: Math.round((lay.tamTitulo || 12) * 0.12) }}>
+                <div style={{ width: colIcone, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: Math.round((lay.tamTitulo || 12) * 0.05) }}>
                   {iconeNode}
                 </div>
               )}

@@ -54,7 +54,7 @@ const SEED: Seed[] = [
 
   // ── Cardápio ──
   { modulo: "cardapio", resp: "ia", titulo: "Render do cardápio no site público + PDF de impressão + tradução EN por IA" },
-  { modulo: "cardapio", resp: "ia", titulo: "Ícones de bebida: tamanho fixo uniforme + coluna à esquerda + descrição indentada (feito)", descricao: "Antes o ícone acompanhava a fonte (×1.25) e ficava inline/baseline → menor e desalinhado. Agora coluna fixa reservada quando a seção tem ícone (CardapioVisual p/ PDF+editor e PersonalizadoTemplate p/ site). Pendente/decisão: os ícones do catálogo são de TRAÇO; a referência do usuário usa SILHUETA PREENCHIDA — redesenhar os 12 copos como silhueta se ele quiser esse estilo." },
+  { modulo: "cardapio", resp: "ia", titulo: "Ícones de bebida: silhueta preenchida + maior + coluna centrada uniforme (feito)", descricao: "Os 12 ícones do catálogo (iconesCardapio.tsx) foram redesenhados de traço → SILHUETA PREENCHIDA (fill + fill-rule evenodd p/ furos como o gelo do copo baixo). Tamanho aumentado (CardapioVisual ×2.3; site ×38/46 txCorpo) e coluna fixa CENTRADA por seção que usa ícone, descrição indentada. Verificado rasterizando via qlmanage." },
   { modulo: "cardapio", resp: "ia", titulo: "Selo da Carta Curadoria (LM · safra) na capa da Carta de Vinhos — desenhar em reportlab (círculo + 'CURADORIA DO SOMMELIER' + estrela). Ficou pra depois a pedido do usuário.", descricao: "Carta Curadoria já entrou na coluna esquerda da capa (título + bio + 5 vinhos, editável pelo agente via salvar_curadoria). Só o selo não." },
 
   // ── Vendas ──
