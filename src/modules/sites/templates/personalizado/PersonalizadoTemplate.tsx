@@ -1441,16 +1441,25 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
           <div key={s.id} style={{ marginTop: aba.secoes.length > 1 ? 16 : 0 }}>
             {obsSec(s) && <p style={{ fontSize: txCorpo(13), opacity: 0.7, fontStyle: "italic", margin: "0 0 12px" }}>{obsSec(s)}</p>}
           <div style={{ marginTop: 4 }}>
-            {s.pratos.filter((p) => tituloPr(p)).map((p) => (
-              <div key={p.id} style={{ padding: "9px 0", borderBottom: `1px solid ${corSecundaria}22`, display: "flex", alignItems: "center", gap: 10 }}>
-                {(p.iconeUrl || p.iconeId) && (
-                  <div style={{ flexShrink: 0, width: txCorpo(28), display: "flex", justifyContent: "center" }}>
-                    {p.iconeUrl
-                      ? <img src={p.iconeUrl} alt="" style={{ width: txCorpo(26), height: txCorpo(26), objectFit: "contain" }} />
-                      : <IconeCardapioView id={p.iconeId!} size={txCorpo(24)} color={corPrimaria} />}
+            {s.pratos.filter((p) => tituloPr(p)).map((p) => {
+              // Coluna de ícone fixa e uniforme, reservada sempre que a seção usa
+              // ícones (assim nomes com e sem ícone alinham) e alinhada à esquerda.
+              const secComIcone = s.pratos.some(q => !!(q.iconeUrl || q.iconeId));
+              const ico = txCorpo(28);
+              const colIco = txCorpo(38);
+              const iconeNode = p.iconeUrl
+                ? <img src={p.iconeUrl} alt="" style={{ width: ico, height: ico, objectFit: "contain", display: "block" }} />
+                : p.iconeId
+                  ? <IconeCardapioView id={p.iconeId} size={ico} color={corPrimaria} style={{ display: "block" }} />
+                  : null;
+              return (
+              <div key={p.id} style={{ padding: "9px 0", borderBottom: `1px solid ${corSecundaria}22`, display: "flex", alignItems: "flex-start", gap: 10 }}>
+                {secComIcone && (
+                  <div style={{ flexShrink: 0, width: colIco, display: "flex", justifyContent: "flex-start", paddingTop: txCorpo(2) }}>
+                    {iconeNode}
                   </div>
                 )}
-                <div style={{ flex: 1 }}>
+                <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
                     <span style={{ fontSize: txCorpo(17), fontWeight: 600, flex: 1, whiteSpace: "pre-line" }}>{tituloPr(p)}</span>
                     {(p.preco || (p.taca && (p.precoTaca || "").trim())) && (
@@ -1475,7 +1484,8 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
                   {subPr(p) && <div style={{ fontSize: txCorpo(13.5), opacity: 0.7, marginTop: 2, lineHeight: 1.35, whiteSpace: "pre-line" }}>{subPr(p)}</div>}
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
           </div>
           ))}
