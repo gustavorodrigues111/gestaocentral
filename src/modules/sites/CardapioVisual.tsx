@@ -300,9 +300,9 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
               ? <IconeCardapioView id={p.iconeId} size={icoSize} color={lay.corPratos} style={{ display: "block" }} />
               : null;
           return (
-            <div key={p.id} style={{ marginBottom: lay.espacoPratos, display: "flex", alignItems: "flex-start", gap: 0 }}>
+            <div key={p.id} style={{ marginBottom: lay.espacoPratos, display: "flex", alignItems: "center", gap: 0 }}>
               {secaoComIcone && (
-                <div style={{ width: colIcone, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: Math.round((lay.tamTitulo || 12) * 0.05) }}>
+                <div style={{ width: colIcone, flexShrink: 0, display: "flex", justifyContent: "center", alignItems: "center" }}>
                   {iconeNode}
                 </div>
               )}

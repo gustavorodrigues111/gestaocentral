@@ -1453,9 +1453,9 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
                   ? <IconeCardapioView id={p.iconeId} size={ico} color={corPrimaria} style={{ display: "block" }} />
                   : null;
               return (
-              <div key={p.id} style={{ padding: "9px 0", borderBottom: `1px solid ${corSecundaria}22`, display: "flex", alignItems: "flex-start", gap: 10 }}>
+              <div key={p.id} style={{ padding: "9px 0", borderBottom: `1px solid ${corSecundaria}22`, display: "flex", alignItems: "center", gap: 10 }}>
                 {secComIcone && (
-                  <div style={{ flexShrink: 0, width: colIco, display: "flex", justifyContent: "center", alignItems: "flex-start", paddingTop: txCorpo(1) }}>
+                  <div style={{ flexShrink: 0, width: colIco, display: "flex", justifyContent: "center", alignItems: "center" }}>
                     {iconeNode}
                   </div>
                 )}
