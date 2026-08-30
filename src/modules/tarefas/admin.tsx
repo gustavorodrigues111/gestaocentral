@@ -1,8 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
-import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
+import { useTodasPessoas, usePessoasAtivasLista } from "../../core/pessoas/PessoasContext";
 import { salvarProjeto, salvarSubprojeto, contarTarefasDoSubprojeto, moverSubprojetoParaProjeto, ouvirAutomacoes, salvarAutomacao, propagarAutomacaoEmAbertas } from "./repository";
 import { MODULES } from "../../config/modules";
 import { type TarefaProjeto, type TarefaSubprojeto, type TarefaVisibilidade, type TarefaTemplate, type TarefaCustomField, type TarefaCustomFieldTipo, type TarefaAutomacao, type ModuloOrigemTarefa, TAREFA_ORIGEM_LABEL, TAREFA_VISIBILIDADE_LABEL, RECORRENCIA_TIPO_LABEL, TAREFA_CUSTOM_FIELD_TIPO_LABEL, MODULOS_ORIGEM_TAREFA } from "../../core/types";
@@ -19,21 +18,11 @@ export function AdminView({ projetos, subprojetos, pessoaId }: {
   const [editandoSubId, setEditandoSubId] = useState<string | null>(null);
   const [criandoSubIn, setCriandoSubIn] = useState<string | null>(null);
   const [importando, setImportando] = useState(false);
-  const [pessoasMap, setPessoasMap] = useState<Record<string, string>>({});
+  const _todasPessoas = useTodasPessoas();
+  const pessoasMap = useMemo(() => Object.fromEntries(_todasPessoas.filter(p => p.nome).map(p => [p.id, p.nome as string])), [_todasPessoas]);
   // Sub-tab interna do AdminView: "Projetos" (CRUD atual) vs "Automações"
   // (config de responsáveis padrão por módulo origem das tarefas auto).
   const [adminTab, setAdminTab] = useState<"projetos" | "automacoes">("projetos");
-  useEffect(() => {
-    const u = onSnapshot(collection(db, "pessoas"), snap => {
-      const m: Record<string, string> = {};
-      snap.docs.forEach(d => {
-        const data = d.data() as { nome?: string };
-        if (data.nome) m[d.id] = data.nome;
-      });
-      setPessoasMap(m);
-    });
-    return () => u();
-  }, []);
 
   async function deletarProjeto(p: TarefaProjeto) {
     if (!confirm(`Excluir "${p.nome}"? Todos os projetos vão junto. Tarefas existentes não são afetadas (só perdem referência).`)) return;
@@ -239,22 +228,9 @@ export function AdminView({ projetos, subprojetos, pessoaId }: {
 function AutomacoesTab({ pessoaId }: { pessoaId: string }) {
   const { activeId } = useRestaurant();
   const rid = activeId || "";
-  const [pessoas, setPessoas] = useState<Array<{ id: string; nome: string }>>([]);
+  const pessoas = usePessoasAtivasLista();
   const [automacoes, setAutomacoes] = useState<TarefaAutomacao[]>([]);
   const [salvandoMod, setSalvandoMod] = useState<string | null>(null);
-
-  // Pessoas (pra picker)
-  useEffect(() => {
-    const u = onSnapshot(collection(db, "pessoas"), snap => {
-      const list = snap.docs
-        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean })
-        .filter(p => p.ativa !== false && p.nome)
-        .map(p => ({ id: p.id, nome: p.nome as string }))
-        .sort((a, b) => a.nome.localeCompare(b.nome));
-      setPessoas(list);
-    });
-    return () => u();
-  }, []);
 
   // Automações do restaurante atual
   useEffect(() => {
@@ -425,18 +401,7 @@ function ProjetoForm({ projeto, pessoaId, onClose, isModal }: {
     ordem: 99,
     ativo: true,
   });
-  const [pessoasLista, setPessoasLista] = useState<Array<{ id: string; nome: string }>>([]);
-  useEffect(() => {
-    const u = onSnapshot(collection(db, "pessoas"), snap => {
-      const list = snap.docs
-        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean })
-        .filter(p => p.ativa !== false && p.nome)
-        .map(p => ({ id: p.id, nome: p.nome as string }))
-        .sort((a, b) => a.nome.localeCompare(b.nome));
-      setPessoasLista(list);
-    });
-    return () => u();
-  }, []);
+  const pessoasLista = usePessoasAtivasLista();
 
   async function salvar() {
     if (!f.nome) { alert("Nome obrigatório"); return; }
@@ -526,18 +491,11 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
     ativo: true,
     recorrenciaTipo: "nenhuma",
   });
-  const [pessoas, setPessoas] = useState<Array<{ id: string; nome: string; isMaster?: boolean }>>([]);
-  useEffect(() => {
-    const u = onSnapshot(collection(db, "pessoas"), snap => {
-      const list = snap.docs
-        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean; isMaster?: boolean })
-        .filter(p => p.ativa !== false && p.nome)
-        .map(p => ({ id: p.id, nome: p.nome as string, isMaster: !!p.isMaster }))
-        .sort((a, b) => a.nome.localeCompare(b.nome));
-      setPessoas(list);
-    });
-    return () => u();
-  }, []);
+  const _todasPessoas2 = useTodasPessoas();
+  const pessoas = useMemo(() => _todasPessoas2
+    .filter(p => p.ativa !== false && p.nome)
+    .map(p => ({ id: p.id, nome: p.nome as string, isMaster: !!p.isMaster }))
+    .sort((a, b) => a.nome.localeCompare(b.nome)), [_todasPessoas2]);
 
   // Filtra pessoas elegíveis pra responsável padrão deste subprojeto baseado
   // na visibilidade do PROJETO pai. Não faz sentido oferecer pessoas que

@@ -7,11 +7,12 @@
 //  (a pessoa vai ver badge "📨 Você foi adicionada a X" no próximo login).
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useEffect, useMemo, useState } from "react";
-import { collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
+import { useMemo, useState } from "react";
+import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { useTodasPessoas, usePessoasLoading } from "../../core/pessoas/PessoasContext";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
@@ -26,20 +27,10 @@ type Props = {
 export function VincularPessoaModal({ restaurantId, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
-  const [todasPessoas, setTodasPessoas] = useState<Pessoa[]>([]);
+  const todasPessoas = useTodasPessoas();
+  const loading = usePessoasLoading();
   const [search, setSearch] = useState("");
   const [vinculandoId, setVinculandoId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  // Lê TODAS as pessoas (sem filtro de rid)
-  useEffect(() => {
-    setLoading(true);
-    const unsub = onSnapshot(collection(db, "pessoas"), (snap) => {
-      setTodasPessoas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa));
-      setLoading(false);
-    });
-    return () => unsub();
-  }, []);
 
   // Filtra: tira quem já é deste rest + aplica busca
   const candidatas = useMemo(() => {

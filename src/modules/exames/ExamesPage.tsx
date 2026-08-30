@@ -16,6 +16,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { useTodasPessoas } from "../../core/pessoas/PessoasContext";
 import { Button } from "../../core/ui/Button";
 import { pickDriveFile } from "../../core/google/drivePicker";
 import { subirExameNoDrive } from "./driveExames";
@@ -391,7 +392,11 @@ function ConfigTab({ tipos, rid, pessoaId, cargos }: { tipos: ExameTipoConfig[];
   };
   const [criando, setCriando] = useState(false);
   const [editando, setEditando] = useState<ExameTipoConfig | null>(null);
-  const [pessoas, setPessoas] = useState<Array<{ id: string; nome: string }>>([]);
+  const _todasPessoas = useTodasPessoas();
+  const pessoas = useMemo(() => _todasPessoas
+    .filter(p => p.ativa !== false && p.nome)
+    .map(p => ({ id: p.id, nome: p.nome as string }))
+    .sort((a, b) => a.nome.localeCompare(b.nome)), [_todasPessoas]);
   const [semeando, setSemeando] = useState(false);
   const [migrando, setMigrando] = useState(false);
 
@@ -469,17 +474,6 @@ function ConfigTab({ tipos, rid, pessoaId, cargos }: { tipos: ExameTipoConfig[];
     }
   }
 
-  useEffect(() => {
-    const u = onSnapshot(collection(db, "pessoas"), snap => {
-      const list = snap.docs
-        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean })
-        .filter(p => p.ativa !== false && p.nome)
-        .map(p => ({ id: p.id, nome: p.nome as string }))
-        .sort((a, b) => a.nome.localeCompare(b.nome));
-      setPessoas(list);
-    });
-    return () => u();
-  }, []);
 
   async function deletarTipo(t: ExameTipoConfig) {
     if (!confirm(`Excluir tipo "${t.nome}"? Os exames existentes desse tipo NÃO serão removidos.`)) return;

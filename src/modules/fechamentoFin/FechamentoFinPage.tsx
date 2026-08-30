@@ -13,9 +13,10 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { collection, doc, onSnapshot, setDoc } from "firebase/firestore";
+import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { useTodasPessoas } from "../../core/pessoas/PessoasContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -120,7 +121,7 @@ export function FechamentoFinPage() {
   const [config, setConfig] = useState<FechamentoConfig | null>(null);
   const [configCarregado, setConfigCarregado] = useState(false);
   const [mes, setMes] = useState<FechamentoMes | null>(null);
-  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  const pessoas = useTodasPessoas();
   const [comp, setComp] = useState(compAtual());
   const [aba, setAba] = useState<"matriz" | "config">("matriz");
   const [editando, setEditando] = useState<FechamentoItem | "novo" | null>(null);
@@ -139,12 +140,6 @@ export function FechamentoFinPage() {
     });
     return unsub;
   }, [comp]);
-  useEffect(() => {
-    const unsub = onSnapshot(collection(db, "pessoas"), (snap) => {
-      setPessoas(snap.docs.map(d => ({ id: d.id, ...(d.data() as object) }) as Pessoa));
-    });
-    return unsub;
-  }, []);
 
   const pessoaNome = useMemo(() => Object.fromEntries(pessoas.map(p => [p.id, p.nome])), [pessoas]);
 

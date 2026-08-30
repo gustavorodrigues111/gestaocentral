@@ -1,10 +1,10 @@
 import { useEffect, useState, useMemo } from "react";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
-import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { useTodasPessoas, usePessoasAtivasLista } from "../../core/pessoas/PessoasContext";
 import { criarTarefa, softDeleteTarefa, marcarSubtarefa, adicionarComentario, atualizarTarefa } from "./repository";
-import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type TarefaStatus, type TarefaPrioridade, type TarefaVisibilidade, type TarefaAnexo, type Subtarefa, type Pessoa, type Restaurant, type PrazoRecorrencia, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL, TAREFA_VISIBILIDADE_LABEL } from "../../core/types";
+import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type TarefaStatus, type TarefaPrioridade, type TarefaVisibilidade, type TarefaAnexo, type Subtarefa, type Restaurant, type PrazoRecorrencia, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL, TAREFA_VISIBILIDADE_LABEL } from "../../core/types";
 import { RecorrenciaEditor } from "../prazos/PrazoModal";
 import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
@@ -108,19 +108,8 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [maxPrazoChecklist]);
 
-  // Lista de pessoas — pra select de responsável. Snapshot direto da coleção.
-  const [pessoasLista, setPessoasLista] = useState<Array<{ id: string; nome: string }>>([]);
-  useEffect(() => {
-    const u = onSnapshot(collection(db, "pessoas"), snap => {
-      const list = snap.docs
-        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean })
-        .filter(p => p.ativa !== false && p.nome)
-        .map(p => ({ id: p.id, nome: p.nome as string }))
-        .sort((a, b) => a.nome.localeCompare(b.nome));
-      setPessoasLista(list);
-    });
-    return () => u();
-  }, []);
+  // Lista de pessoas — pra select de responsável (cache compartilhado).
+  const pessoasLista = usePessoasAtivasLista();
 
   // Sub bloqueado pra criação manual não aparece na lista de seleção —
   // ele só recebe tarefas via hooks automáticos.
@@ -509,24 +498,10 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
   const cor = tarefa.corHerdada || projeto?.cor || "#6b7280";
 
   const { restaurants } = useRestaurant();
-  const [pessoasLista, setPessoasLista] = useState<Array<{ id: string; nome: string }>>([]);
+  const pessoasLista = usePessoasAtivasLista();
   // State pro modal de prorrogação. Setado pelo botão "Prorrogar contrato"
   // do banner de Decisão de Experiência 1ª etapa, com o empregadoId.
   const [prorrogarParaEmpregadoId, setProrrogarParaEmpregadoId] = useState<string | null>(null);
-
-  // Carrega lista de pessoas pra usar nos pickers de responsável/co-resp.
-  // Onsnapshot pra ficar sempre atualizada (raramente muda mas barato).
-  useEffect(() => {
-    const u = onSnapshot(collection(db, "pessoas"), snap => {
-      const lista = snap.docs
-        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean })
-        .filter(p => p.ativa !== false && p.nome)
-        .map(p => ({ id: p.id, nome: p.nome as string }))
-        .sort((a, b) => a.nome.localeCompare(b.nome));
-      setPessoasLista(lista);
-    });
-    return () => u();
-  }, []);
 
   const [novaSubtarefa, setNovaSubtarefa] = useState("");
   const [novoComentario, setNovoComentario] = useState("");
@@ -1265,19 +1240,12 @@ export function ImportadorModal({ projetos, subprojetos, pessoaId, onClose }: {
   const [importando, setImportando] = useState(false);
   const [progresso, setProgresso] = useState<{ atual: number; total: number } | null>(null);
   const [resultado, setResultado] = useState<{ criadas: number; vinculadas: number; erros: string[] } | null>(null);
-  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  const _todasPessoas = useTodasPessoas();
+  const pessoas = useMemo(() => _todasPessoas.filter(p => p.ativa !== false), [_todasPessoas]);
   // Filtros pra escolher quais linhas importar
   const [excluirConcluidas, setExcluirConcluidas] = useState(true);
   const [excluirPassadas, setExcluirPassadas] = useState(false);
   const [excluirSemPrazo, setExcluirSemPrazo] = useState(false);
-
-  useEffect(() => {
-    const u = onSnapshot(collection(db, "pessoas"), snap => {
-      const lista = snap.docs.map(d => ({ id: d.id, ...d.data() } as Pessoa)).filter(p => p.ativa !== false);
-      setPessoas(lista);
-    });
-    return () => u();
-  }, []);
 
   const subsDoProjeto = subprojetos.filter(s => s.projetoId === projetoDestino);
   useEffect(() => {

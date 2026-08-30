@@ -13,6 +13,7 @@ import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { useTelemetria } from "../telemetry/useTelemetria";
 import { RestaurantProvider, useRestaurant } from "../restaurant/RestaurantContext";
+import { PessoasProvider } from "../pessoas/PessoasContext";
 import { LoginScreen } from "./LoginScreen";
 import { AppShell } from "../layout/AppShell";
 import { HomePage } from "../layout/HomePage";
@@ -190,6 +191,7 @@ export function ProtectedShell() {
   return (
     <RestaurantProvider>
       <SubdomainGuard>
+        <PessoasProvider>
         <AvisosProvider>
         <AppShell>
           <Routes>
@@ -202,6 +204,7 @@ export function ProtectedShell() {
           </Routes>
         </AppShell>
         </AvisosProvider>
+        </PessoasProvider>
       </SubdomainGuard>
     </RestaurantProvider>
   );

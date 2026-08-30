@@ -1,8 +1,9 @@
 import { useEffect, useState, useMemo, type ReactNode } from "react";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
-import { collection, doc, onSnapshot, writeBatch } from "firebase/firestore";
+import { doc, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { usePessoasAtivasLista } from "../../core/pessoas/PessoasContext";
 import { softDeleteTarefa, restaurarTarefa, atualizarTarefa, marcarSubtarefa } from "./repository";
 import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type Subtarefa, type TarefaStatus, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL } from "../../core/types";
 import { fmtBR } from "../../core/utils/date";
@@ -323,21 +324,9 @@ function BulkActionsBar({ ids, autor, onDone }: {
   autor: { id: string; nome: string };
   onDone: () => void;
 }) {
-  const [pessoas, setPessoas] = useState<Array<{ id: string; nome: string }>>([]);
+  const pessoas = usePessoasAtivasLista();
   const [trocandoResp, setTrocandoResp] = useState(false);
   const [autorizando, setAutorizando] = useState(false);
-  useEffect(() => {
-    if (!trocandoResp && !autorizando) return;
-    const u = onSnapshot(collection(db, "pessoas"), snap => {
-      const list = snap.docs
-        .map(d => ({ id: d.id, ...(d.data() as Record<string, unknown>) }) as { id: string; nome?: string; ativa?: boolean })
-        .filter(p => p.ativa !== false && p.nome)
-        .map(p => ({ id: p.id, nome: p.nome as string }))
-        .sort((a, b) => a.nome.localeCompare(b.nome));
-      setPessoas(list);
-    });
-    return () => u();
-  }, [trocandoResp, autorizando]);
 
   async function mudarStatusBulk(status: TarefaStatus) {
     if (!confirm(`Mudar status de ${ids.length} tarefa(s) pra "${TAREFA_STATUS_LABEL[status]}"?`)) return;

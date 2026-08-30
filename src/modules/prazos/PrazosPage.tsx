@@ -9,6 +9,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { useTodasPessoas } from "../../core/pessoas/PessoasContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { canAcao } from "../../core/auth/permissions";
@@ -58,7 +59,7 @@ export function PrazosPage() {
 
   const [prazos, setPrazos] = useState<Prazo[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
-  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  const pessoas = useTodasPessoas();
   const [imoveis, setImoveis] = useState<Imovel[]>([]);
   const [showImoveis, setShowImoveis] = useState(false);
   const [tipoFiltro, setTipoFiltro] = useState<PrazoTipo | "todos" | "agendados">("todos");
@@ -88,9 +89,8 @@ export function PrazosPage() {
         : query(collection(db, "prazos"), where("restaurantIds", "array-contains-any", meRests.length ? meRests : [rid]));
     const u1 = onSnapshot(qy, (s) => setPrazos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Prazo).filter((p) => !p.deletadoEm)), () => setPrazos([]));
     const u2 = onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)), (s) => setEmpregados(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado)), () => setEmpregados([]));
-    const u3 = onSnapshot(collection(db, "pessoas"), (s) => setPessoas(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Pessoa)), () => setPessoas([]));
     const u4 = onSnapshot(query(collection(db, "imoveis"), where("restaurantId", "==", rid)), (s) => setImoveis(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Imovel).filter((im) => !im.deletadoEm)), () => setImoveis([]));
-    return () => { u1(); u2(); u3(); u4(); };
+    return () => { u1(); u2(); u4(); };
   }, [rid, todosRest, isMaster, meRests]);
   const imovelNome = (id?: string | null) => imoveis.find((im) => im.id === id)?.apelido || "";
   // Responsáveis possíveis POR CATEGORIA = quem acessa (vê/gere) aquele tipo nesta empresa.

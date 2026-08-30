@@ -8,6 +8,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
+import { useTodasPessoas } from "../../core/pessoas/PessoasContext";
 import { CATALOGO, type CatalogoModulo } from "../../core/auth/actionCatalog";
 import { SETORES } from "../../core/wiki/setores";
 import { MODULES, AREA_INFO } from "../../config/modules";
@@ -22,11 +23,7 @@ export function PerfisAcessoPage() {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
   const { perfis, perfisCustomDb, loading, erro, salvar, deletar } = useAccessProfiles();
-  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
-  useEffect(() => {
-    const u = onSnapshot(collection(db, "pessoas"), snap => setPessoas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa)));
-    return () => u();
-  }, []);
+  const pessoas = useTodasPessoas();
 
   // Migração: o Gerente de Restaurante deixou de ser built-in. Materializa ele
   // como perfil CUSTOM no Firestore (mesmo id → não quebra vínculos), 1 vez.
