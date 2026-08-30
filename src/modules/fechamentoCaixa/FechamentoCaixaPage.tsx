@@ -31,6 +31,15 @@ import { paraOcrBlock, carimbarImagem } from "../../core/imagem/processarImagem"
 import { exportarFechamentosPDF, exportarFechamentosXLSX, exportarComandasPDF, exportarComandasXLSX } from "./exportFechamentos";
 import { montarPainel, painelEmailHtml, fmtBRLp, fmtDiaCurto } from "./painelFechamento";
 
+// Timeout p/ awaits que podem pendurar (Drive/rede): em vez de travar o botão
+// em "Fechando…" pra sempre sem erro, rejeita com uma mensagem que diz o passo.
+function comTimeout<T>(p: Promise<T>, ms: number, passo: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`o passo "${passo}" demorou mais de ${Math.round(ms / 1000)}s (Drive/rede sem responder)`)), ms)),
+  ]);
+}
+
 const pad = (n: number) => String(n).padStart(2, "0");
 const ymd = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
 const fmtBRL = (v?: number) => v == null ? "—" : v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -582,6 +591,7 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
       if (problema) { setConfirmarDT(problema); return; }
     }
     setSalvando(true);
+    let passo = "preparando";
     try {
       const agora = new Date();
       const fechadoEm = agora.toISOString();
@@ -589,9 +599,12 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
       let driveFolderUrl: string | undefined;
       if (anexos.length) {
         // {raiz}/planejamento.app/Fechamentos / <dia dd.mm.aaaa> / <turno> /
-        const base = await ensureModuloFolder(restaurant.driveRootFolderId as string, "Fechamentos");
-        const diaId = await findOrCreateSubfolder(base, diaLabel(data));
-        const turnoId = await findOrCreateSubfolder(diaId, TURNO_CAIXA_LABEL[turno]);
+        passo = "abrir a pasta Fechamentos no Drive";
+        const base = await comTimeout(ensureModuloFolder(restaurant.driveRootFolderId as string, "Fechamentos"), 30000, passo);
+        passo = `abrir a pasta do dia (${diaLabel(data)}) no Drive`;
+        const diaId = await comTimeout(findOrCreateSubfolder(base, diaLabel(data)), 30000, passo);
+        passo = `abrir a pasta do turno (${TURNO_CAIXA_LABEL[turno]}) no Drive`;
+        const turnoId = await comTimeout(findOrCreateSubfolder(diaId, TURNO_CAIXA_LABEL[turno]), 30000, passo);
         driveFolderUrl = `https://drive.google.com/drive/folders/${turnoId}`;
         const carimbo = [`Fechado por ${por.nome}`, `${TURNO_CAIXA_LABEL[turno]} · ${fmtData(data)}`, fmtDataHora(fechadoEm)];
         const contagem: Partial<Record<GrupoAnexoFechamento, number>> = {};
@@ -602,8 +615,10 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
           const base = a.grupo === "comanda" && a.rotulo
             ? `comanda ${a.rotulo.replace(/[⚠·]/g, "").replace(/[\\/:]/g, "-").replace(/\s+/g, " ").trim()}`
             : `${a.grupo}${n}`;
-          const alvo = await carimbarImagem(new File([a.file], `${base}${ext}`, { type: a.file.type }), carimbo, false);
-          const s = await uploadFileToFolder(turnoId, alvo);
+          passo = `preparar o anexo "${base}${ext}"`;
+          const alvo = await comTimeout(carimbarImagem(new File([a.file], `${base}${ext}`, { type: a.file.type }), carimbo, false), 30000, passo);
+          passo = `enviar o anexo "${alvo.name}" pro Drive`;
+          const s = await comTimeout(uploadFileToFolder(turnoId, alvo), 60000, passo);
           anexosSalvos.push({ driveFileId: s.id, nome: alvo.name, grupo: a.grupo, ...(a.rotulo ? { rotulo: a.rotulo } : {}), ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
         }
       }
@@ -634,7 +649,8 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
         ...(driveFolderUrl ? { driveFolderUrl } : {}),
         ...(emails.length ? { emailEnviadoPara: emails } : {}),
       };
-      await addDoc(collection(db, "fechamentosCaixa"), fechamento);
+      passo = "gravar o fechamento no banco";
+      await comTimeout(addDoc(collection(db, "fechamentosCaixa"), fechamento), 25000, passo);
       // Email de resumo pros sócios (best-effort — não trava o save).
       if (emails.length) void enviarEmailResumo(emails, restaurant.nome || "Restaurante", fechamento, recentes, restaurant.fechamentoEmailRemetente);
       // WhatsApp pros sócios (mesma ideia do email — aditivo, best-effort). Só dispara
@@ -651,7 +667,9 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
       }
       setSalvo(true);
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao salvar o fechamento.");
+      const msg = e instanceof Error ? e.message : String(e);
+      setErro(`Não deu pra fechar — falhou ao ${passo}. Detalhe: ${msg}`);
+      console.error("[fechamentoCaixa] falha no passo:", passo, e);
     } finally { setSalvando(false); }
   }
 
@@ -837,6 +855,7 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
                 <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={2} className={inputCls} />
               </div>
             )}
+            {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">⚠ {erro}</div>}
             <div className="flex justify-between pt-1"><Button variant="secondary" size="sm" disabled={salvando} onClick={() => setEtapa("comandas")}>← Voltar</Button><Button disabled={salvando} onClick={() => void salvar()}>{salvando ? "Fechando…" : "✓ Fechar caixa"}</Button></div>
           </div>
         )}
