@@ -3,7 +3,7 @@
 // O motor de chat + execução de ferramentas (loop tool-use no api/agente.ts)
 // entra no F1b. Escrita sempre em modo confirmação; permissão herda de Pessoas.
 import { useEffect, useMemo, useRef, useState } from "react";
-import { collection, onSnapshot, doc, setDoc, deleteDoc, addDoc, query, where, writeBatch } from "firebase/firestore";
+import { collection, onSnapshot, doc, setDoc, deleteDoc, addDoc, query, where, orderBy, limit, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { authHeader } from "../../core/firebase/idToken";
@@ -34,7 +34,7 @@ export function AgentesPage() {
   }, []);
   useEffect(() => {
     if (aba !== "historico") return;
-    const u = onSnapshot(collection(db, "agenteLogs"), s => setLogs(s.docs.map(d => ({ id: d.id, ...d.data() }) as AgenteLog).sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || "")).slice(0, 200)));
+    const u = onSnapshot(query(collection(db, "agenteLogs"), orderBy("criadoEm", "desc"), limit(200)), s => setLogs(s.docs.map(d => ({ id: d.id, ...d.data() }) as AgenteLog)));
     return () => u();
   }, [aba]);
 
