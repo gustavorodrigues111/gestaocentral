@@ -495,6 +495,9 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
   const [lendoComandas, setLendoComandas] = useState(0); // comandas em leitura (OCR)
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
+  // true = salvo LOCAL mas o servidor ainda não confirmou (rede ruim); a
+  // gravação sincroniza sozinha em segundo plano (IndexedDB persistente).
+  const [sincronizandoSalvo, setSincronizandoSalvo] = useState(false);
   const [erro, setErro] = useState("");
   const leituraSeq = useRef(0);
   const [confirmarDT, setConfirmarDT] = useState<string | null>(null);  // mensagem da inconsistência dia/turno
@@ -650,7 +653,20 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
         ...(emails.length ? { emailEnviadoPara: emails } : {}),
       };
       passo = "gravar o fechamento no banco";
-      await comTimeout(addDoc(collection(db, "fechamentosCaixa"), fechamento), 25000, passo);
+      // Numa conexão ruim, o addDoc pode demorar a CONFIRMAR no servidor — mas a
+      // gravação já fica salva localmente (IndexedDB persistente) e sincroniza
+      // sozinha. Então NÃO travamos esperando: se o servidor não confirmar em 8s,
+      // seguimos como "salvo (sincronizando)" e a escrita completa em background.
+      const gravacao = addDoc(collection(db, "fechamentosCaixa"), fechamento);
+      gravacao.catch((e2) => console.error("[fechamentoCaixa] sincronização do fechamento falhou:", e2));
+      try {
+        await comTimeout(gravacao, 8000, passo);
+      } catch (eTimeout) {
+        // Só engole o TIMEOUT (rede lenta). Erro REAL do Firestore (permissão,
+        // doc inválido) tem outra mensagem → repropaga pra aparecer o motivo.
+        if (eTimeout instanceof Error && /demorou mais de/.test(eTimeout.message)) setSincronizandoSalvo(true);
+        else throw eTimeout;
+      }
       // Email de resumo pros sócios (best-effort — não trava o save).
       if (emails.length) void enviarEmailResumo(emails, restaurant.nome || "Restaurante", fechamento, recentes, restaurant.fechamentoEmailRemetente);
       // WhatsApp pros sócios (mesma ideia do email — aditivo, best-effort). Só dispara
@@ -678,12 +694,17 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
     return (
       <Modal title="💵 Novo fechamento" onClose={onSalvo} maxWidth="max-w-lg">
         <div className="py-10 flex flex-col items-center text-center gap-3">
-          <div className="text-5xl">✅</div>
-          <div className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">Fechamento registrado!</div>
+          <div className="text-5xl">{sincronizandoSalvo ? "🕗" : "✅"}</div>
+          <div className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">{sincronizandoSalvo ? "Fechamento salvo!" : "Fechamento registrado!"}</div>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {TURNO_CAIXA_LABEL[turno]} de {fmtData(data)} salvo{anexos.length ? " e arquivado no Drive" : ""}.
             {(restaurant.fechamentoSociosEmails || []).filter((e) => e.includes("@")).length ? " Email enviado aos sócios." : ""}
           </p>
+          {sincronizandoSalvo && (
+            <p className="text-[13px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2 max-w-sm">
+              A internet estava lenta, então o fechamento ficou <strong>salvo no aparelho</strong> e vai subir pro servidor sozinho assim que a conexão melhorar. Pode concluir normalmente — só deixe o app abrir de novo mais tarde no mesmo aparelho pra garantir que subiu (confira em "Fechamentos enviados").
+            </p>
+          )}
           <Button onClick={onSalvo}>Concluir</Button>
         </div>
       </Modal>
