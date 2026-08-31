@@ -412,7 +412,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   useEffect(() => {
     if (!numeroSel) { setStatusConexao("unknown"); return; }
     let vivo = true;
-    const checar = async () => { const r = await chamarInstancia("status", numeroSel).catch(() => null); if (vivo && r) setStatusConexao(r.estado || "unknown"); };
+    // Falha na checagem → "unknown" (não mantém o "open" antigo, senão o inbox
+    // mostra vivo enquanto a conexão caiu).
+    const checar = async () => { const r = await chamarInstancia("status", numeroSel).catch(() => null); if (vivo) setStatusConexao(r?.estado || "unknown"); };
     setStatusConexao("unknown"); void checar();
     const t = setInterval(checar, 20000);
     return () => { vivo = false; clearInterval(t); };
@@ -2226,6 +2228,9 @@ const ESTADO_META: Record<string, { label: string; cls: string }> = {
   open: { label: "Conectado", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
   connecting: { label: "Conectando…", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
   close: { label: "Desconectado", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" },
+  // "unknown" = a checagem de status NÃO respondeu (ex.: Evolution/rede fora).
+  // Mostra âmbar "Sem resposta" em vez de mentir "Conectado" com dado velho.
+  unknown: { label: "⚠ Sem resposta", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
 };
 // Gestão dos números (aba Configuração do módulo WhatsApp). Self-contido.
 export function NumerosManager() {
@@ -2268,9 +2273,14 @@ export function NumerosManager() {
   const [estados, setEstados] = useState<Record<string, string>>({});
   const slug = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 
-  // Poll do status de conexão de cada número.
+  // Poll do status de conexão de cada número. Se a checagem de um número FALHAR
+  // (Evolution/rede fora), esse número vira "unknown" — nunca congela no último
+  // "Conectado" (era o bug: caía tudo e o selo continuava verde).
   async function atualizarStatus() {
-    const res = await Promise.all(numeros.map(async n => [n.id, (await chamarInstancia("status", n.id)).estado || "unknown"] as const));
+    const res = await Promise.all(numeros.map(async n => {
+      try { return [n.id, (await chamarInstancia("status", n.id)).estado || "unknown"] as const; }
+      catch { return [n.id, "unknown"] as const; }
+    }));
     setEstados(Object.fromEntries(res));
   }
   useEffect(() => { void atualizarStatus(); const t = setInterval(() => void atualizarStatus(), 8000); return () => clearInterval(t); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [numeros.map(n => n.id).join(",")]);
