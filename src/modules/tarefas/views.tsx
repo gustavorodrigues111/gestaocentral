@@ -1115,11 +1115,24 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
             🔥 {atrasadas.length} atrasada(s)
           </summary>
           <div className="mt-2 space-y-1 text-sm">
+            {podeArrastar && <div className="text-[10px] text-gray-400 mb-1">Arraste uma atrasada pra um dia da semana pra reagendar.</div>}
             {atrasadas.slice(0, 20).map(t => {
               const proj = projetos.find(p => p.id === t.projetoId);
               const cor = t.corHerdada || proj?.cor || "#6b7280";
+              const arrastavel = podeArrastar && !t.id.includes("::");
               return (
-                <div key={t.id} onClick={() => onAbrir(t.id)} className="p-2 rounded-md border cursor-pointer hover:shadow-sm flex items-center gap-2 bg-white dark:bg-gray-900 border-rose-200 dark:border-rose-900/40" style={{ borderLeftWidth: 3, borderLeftColor: cor }}>
+                <div key={t.id}
+                  draggable={arrastavel}
+                  onDragStart={arrastavel ? (e) => {
+                    e.dataTransfer.setData("text/plain", t.id);
+                    e.dataTransfer.effectAllowed = "move";
+                    setDraggingId(t.id);
+                  } : undefined}
+                  onDragEnd={arrastavel ? () => { setDraggingId(null); setDropTarget(null); setDropAntes(null); } : undefined}
+                  onClick={() => onAbrir(t.id)}
+                  className={`p-2 rounded-md border hover:shadow-sm flex items-center gap-2 bg-white dark:bg-gray-900 border-rose-200 dark:border-rose-900/40 ${arrastavel ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${draggingId === t.id ? "opacity-50" : ""}`}
+                  style={{ borderLeftWidth: 3, borderLeftColor: cor }}>
+                  {arrastavel && <span className="text-gray-300 dark:text-gray-600 select-none" title="Arraste pra um dia">⠿</span>}
                   <span style={{ color: cor }}>{proj?.emoji}</span>
                   <span className="flex-1">{t.titulo}</span>
                   <span className="text-[10px] text-rose-600 dark:text-rose-400">{fmtBR(t.prazo)}</span>
