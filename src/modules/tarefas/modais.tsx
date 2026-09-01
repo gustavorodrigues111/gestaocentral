@@ -506,6 +506,9 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
   const [novaSubtarefa, setNovaSubtarefa] = useState("");
   const [novoComentario, setNovoComentario] = useState("");
   const [detMais, setDetMais] = useState(false);
+  const [addLink, setAddLink] = useState(false);
+  const [linkUrl, setLinkUrl] = useState("");
+  const [linkNome, setLinkNome] = useState("");
   const [editandoTitulo, setEditandoTitulo] = useState(false);
   const [tituloDraft, setTituloDraft] = useState(tarefa.titulo);
   const [editandoDescricao, setEditandoDescricao] = useState(false);
@@ -571,9 +574,13 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
   }
 
   async function addAnexoManual() {
-    const url = prompt("Cole o link (Drive, Docs, ou qualquer URL):");
+    let url = linkUrl.trim();
     if (!url) return;
-    const nome = prompt("Nome / label do anexo:", url.split("/").pop() || "Anexo") || "Anexo";
+    if (!/^https?:\/\//i.test(url)) url = "https://" + url;   // completa o esquema
+    const nome = linkNome.trim() || (() => {
+      try { return new URL(url).hostname.replace(/^www\./, "") + (new URL(url).pathname !== "/" ? " …" : ""); }
+      catch { return url.split("/").pop() || "Link"; }
+    })();
     const anexo: TarefaAnexo = {
       id: Math.random().toString(36).slice(2, 11),
       nome, url,
@@ -583,6 +590,7 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
     await atualizarTarefa(tarefa.id, {
       anexos: [...(tarefa.anexos || []), anexo],
     }, autor, { acao: "anexo_adicionado", detalhe: nome });
+    setLinkUrl(""); setLinkNome(""); setAddLink(false);
   }
 
   async function addAnexoDrive() {
@@ -996,11 +1004,28 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
                 </div>
               ))}
             </div>
-            <div className="flex gap-2 mt-2 flex-wrap">
-              <Button size="sm" variant="ghost" onClick={addAnexoManual}>🔗 Link</Button>
-              <Button size="sm" variant="ghost" onClick={addAnexoDriveFile}>📎 Arquivo Drive</Button>
-              <Button size="sm" variant="ghost" onClick={addAnexoDrive}>📁 Pasta Drive</Button>
-            </div>
+            {addLink ? (
+              <div className="mt-2 flex flex-col gap-2 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-900/10 p-2.5">
+                <input autoFocus value={linkUrl} onChange={e => setLinkUrl(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void addAnexoManual(); } if (e.key === "Escape") { setAddLink(false); setLinkUrl(""); setLinkNome(""); } }}
+                  placeholder="Cole ou digite o link (Drive, Docs, planilha, qualquer URL)…"
+                  className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                <div className="flex gap-2 items-center">
+                  <input value={linkNome} onChange={e => setLinkNome(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); void addAnexoManual(); } }}
+                    placeholder="Nome (opcional)"
+                    className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
+                  <Button size="sm" onClick={() => void addAnexoManual()} disabled={!linkUrl.trim()}>Adicionar</Button>
+                  <Button size="sm" variant="ghost" onClick={() => { setAddLink(false); setLinkUrl(""); setLinkNome(""); }}>Cancelar</Button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2 mt-2 flex-wrap">
+                <Button size="sm" variant="ghost" onClick={() => setAddLink(true)}>🔗 Link</Button>
+                <Button size="sm" variant="ghost" onClick={addAnexoDriveFile}>📎 Arquivo Drive</Button>
+                <Button size="sm" variant="ghost" onClick={addAnexoDrive}>📁 Pasta Drive</Button>
+              </div>
+            )}
           </div>
 
           {/* ─── Ação especial: decisão Experiência ─── */}
