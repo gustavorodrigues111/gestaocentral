@@ -12,9 +12,10 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import type { Admissao } from "../../core/types";
+import type { Admissao, Cargo } from "../../core/types";
 import { authHeader } from "../../core/firebase/idToken";
 import { gerarContratoDocx, baixarDocxBase64 } from "./contratoApi";
+import type { DocCargo } from "./ConfigCargos";
 
 type EmpresaCat = Record<string, { nome?: string; cnpj?: string; endereco?: string; cidade?: string; cct?: string }>;
 type CargoCat = Record<string, { funcao?: string; cbo?: string; salario?: number; regime?: string; horario?: string; descricao?: string; gorjeta_texto?: string }>;
@@ -72,6 +73,9 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
   const [cat, setCat] = useState<{ modelos: Modelo[]; empresas: EmpresaCat; cargos: CargoCat } | null>(null);
   const [erroCat, setErroCat] = useState("");
   const [admissoes, setAdmissoes] = useState<Admissao[]>([]);
+  const [cargosApp, setCargosApp] = useState<Cargo[]>([]);
+  const [docCargos, setDocCargos] = useState<DocCargo[]>([]);
+  const [cargoAdmId, setCargoAdmId] = useState("");   // cargoId vindo da admissão
   const [passo, setPasso] = useState<"triagem" | "dados">("triagem");
 
   const [tr, setTr] = useState({ casa: "", ponto: "", vinculo: "" });
@@ -107,8 +111,25 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
       s => setAdmissoes(s.docs.map(d => ({ id: d.id, ...d.data() }) as Admissao)), () => setAdmissoes([]));
   }, [rid]);
 
+  // Cargos do app + configuração de contrato (documentosCargos) da empresa atual.
+  useEffect(() => {
+    if (!rid) { setCargosApp([]); return; }
+    return onSnapshot(query(collection(db, "cargos"), where("restaurantId", "==", rid)),
+      s => setCargosApp(s.docs.map(d => ({ id: d.id, ...d.data() }) as Cargo)), () => setCargosApp([]));
+  }, [rid]);
+  useEffect(() => {
+    if (!rid) { setDocCargos([]); return; }
+    return onSnapshot(query(collection(db, "documentosCargos"), where("restaurantId", "==", rid)),
+      s => setDocCargos(s.docs.map(d => ({ id: d.id, ...d.data() }) as DocCargo)), () => setDocCargos([]));
+  }, [rid]);
+
   const cargosList = useMemo(() => Object.entries(cat?.cargos || {}).filter(([k]) => !k.startsWith("_")), [cat]);
   const cargoSel = cargoKey ? cat?.cargos?.[cargoKey] : null;
+
+  // Cargo puxado da admissão + sua configuração de contrato.
+  const cargoApp = useMemo(() => cargosApp.find(c => c.id === cargoAdmId) || null, [cargosApp, cargoAdmId]);
+  const docCargo = useMemo(() => docCargos.find(d => d.cargoId === cargoAdmId) || null, [docCargos, cargoAdmId]);
+  const docCargoOk = !!docCargo && !!(docCargo.cbo || docCargo.horario || (docCargo.descricao && docCargo.descricao.length));
   const modeloDesc = (id: string) => cat?.modelos.find(m => m.id === id)?.descricao || id;
   const restNome = restaurants.find(r => r.id === rid)?.nome || "";
 
@@ -137,8 +158,12 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
   function puxarAdmissao(a: Admissao) {
     setEmp(dadosDoCandidato(a));
     setAdmSelNome(a.candidato?.nome || "");
+    setCargoAdmId(a.cargoId || "");
     if (a.dataAdmissao) setDataInicio(a.dataAdmissao);
+    // Salário: admissão > config do cargo.
+    const dc = docCargos.find(d => d.cargoId === a.cargoId);
     if (a.salario) setSalario(String(a.salario));
+    else if (dc?.salario) setSalario(String(dc.salario));
     setBuscaAdm("");
   }
 
@@ -152,12 +177,27 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
     if (!empresaKey && !ehAutonomo) { setErro(`A empresa "${restNome}" não está no catálogo de contratos. Cadastre-a na skill antes de gerar.`); return; }
     setGerando(true);
     try {
+      // Bloco cargo: config do app (documentosCargos) tem prioridade sobre o
+      // catálogo bundled; o salário digitado sobrescreve tudo.
+      const cargoBlock: Record<string, unknown> = docCargo ? {
+        funcao: docCargo.funcao,
+        ...(docCargo.cbo ? { cbo: docCargo.cbo } : {}),
+        ...(docCargo.salario != null ? { salario: docCargo.salario } : {}),
+        ...(docCargo.regime ? { regime: docCargo.regime } : {}),
+        ...(docCargo.horario ? { horario: docCargo.horario } : {}),
+        ...(docCargo.gorjeta_texto ? { gorjeta_texto: docCargo.gorjeta_texto } : {}),
+        ...(docCargo.descricao?.length ? { descricao: docCargo.descricao } : {}),
+        ...(docCargo.ajuda_custo_home_office != null ? { ajuda_custo_home_office: docCargo.ajuda_custo_home_office } : {}),
+        ...(docCargo.presencial_dias_horarios ? { presencial_dias_horarios: docCargo.presencial_dias_horarios } : {}),
+        ...(docCargo.home_office_dias_horarios ? { home_office_dias_horarios: docCargo.home_office_dias_horarios } : {}),
+      } : {};
+      if (salario.trim()) cargoBlock.salario = Number(salario.replace(/[^\d]/g, ""));
       const dados: Record<string, unknown> = {
         empresaKey: empresaKey || undefined,
         cargoKey: cargoKey || undefined,
         empregado: { nome: emp.nome.trim(), cpf: emp.cpf.trim(), ...(emp.rg ? { rg: emp.rg.trim() } : {}), endereco: emp.endereco.trim(), ...(emp.email ? { email: emp.email.trim() } : {}), ...(emp.whatsapp ? { whatsapp: emp.whatsapp.trim() } : {}) },
         contrato: { ...(dataInicio ? { data_inicio: dataInicio } : {}), cidade: cidade.trim(), ...(dataAssin ? { data_assinatura: dataAssin } : {}) },
-        ...(salario.trim() ? { cargo: { salario: Number(salario.replace(/[^\d]/g, "")) } } : {}),
+        ...(Object.keys(cargoBlock).length ? { cargo: cargoBlock } : {}),
       };
       const j = await gerarContratoDocx(modelo, dados);
       baixarDocxBase64(j.docxBase64, j.filename);
@@ -263,15 +303,34 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
               )}
             </Bloco>
 
-            <Bloco icon="💼" titulo="Cargo" tag="do catálogo">
-              <select value={cargoKey} onChange={e => setCargoKey(e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-                <option value="">— escolher —</option>
-                {cargosList.map(([k, v]) => <option key={k} value={k}>{v.funcao || k}</option>)}
-              </select>
-              {cargoSel && (
-                <div className="mt-2 text-[12px] text-gray-600 dark:text-gray-300">
-                  {cargoSel.cbo ? `CBO ${cargoSel.cbo}` : ""}{cargoSel.salario ? ` · R$ ${cargoSel.salario.toLocaleString("pt-BR")}` : ""}{cargoSel.regime ? ` · ${cargoSel.regime}` : ""}
+            <Bloco icon="💼" titulo="Cargo" tag={cargoAdmId ? (docCargoOk ? "da admissão · configurado" : "da admissão") : "do catálogo"} tagCor={cargoAdmId && !docCargoOk ? "ask" : "ok"}>
+              {cargoAdmId ? (
+                <div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{docCargo?.funcao || cargoApp?.nome || "Cargo da admissão"}</div>
+                  {docCargoOk ? (
+                    <div className="mt-1 text-[12px] text-gray-600 dark:text-gray-300">
+                      {docCargo?.cbo ? `CBO ${docCargo.cbo}` : ""}{docCargo?.salario ? ` · R$ ${docCargo.salario.toLocaleString("pt-BR")}` : ""}{docCargo?.regime ? ` · ${docCargo.regime}` : ""}
+                    </div>
+                  ) : (
+                    <div className="mt-1.5 text-[12px] text-amber-700 dark:text-amber-300">
+                      Esse cargo ainda não tem dados de contrato (CBO, jornada, gorjeta média). Configure na aba <strong>⚙️ Cargos p/ contrato</strong> — o contrato sai sem esses campos até lá.
+                    </div>
+                  )}
                   <input placeholder="Sobrescrever salário (opcional)" value={salario} onChange={e => setSalario(e.target.value)} className="mt-2 w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                </div>
+              ) : (
+                <div>
+                  <p className="text-[11px] text-gray-400 mb-1.5">Puxe um candidato da admissão pra trazer o cargo, ou escolha do catálogo:</p>
+                  <select value={cargoKey} onChange={e => setCargoKey(e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                    <option value="">— escolher —</option>
+                    {cargosList.map(([k, v]) => <option key={k} value={k}>{v.funcao || k}</option>)}
+                  </select>
+                  {cargoSel && (
+                    <div className="mt-2 text-[12px] text-gray-600 dark:text-gray-300">
+                      {cargoSel.cbo ? `CBO ${cargoSel.cbo}` : ""}{cargoSel.salario ? ` · R$ ${cargoSel.salario.toLocaleString("pt-BR")}` : ""}{cargoSel.regime ? ` · ${cargoSel.regime}` : ""}
+                      <input placeholder="Sobrescrever salário (opcional)" value={salario} onChange={e => setSalario(e.target.value)} className="mt-2 w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                    </div>
+                  )}
                 </div>
               )}
             </Bloco>

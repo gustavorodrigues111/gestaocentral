@@ -19,6 +19,7 @@ import type { Pessoa, Empregado } from "../../core/types";
 import { getTermosAssinaturaDefault } from "../../core/admissao/admissaoHelpers";
 import { ContratosTrabalho } from "./ContratosTrabalho";
 import { HistoricoDocumentos } from "./HistoricoDocumentos";
+import { ConfigCargos } from "./ConfigCargos";
 import CATALOGO from "./catalogo.json";
 import MARCACOES_JSON from "./marcacoes.json";
 import QUADROS_JSON from "./quadros.json";
@@ -74,7 +75,7 @@ export function DocumentosPage() {
   const [busca, setBusca] = useState("");
   const [sel, setSel] = useState<DocModelo | null>(null);
   const [modo, setModo] = useState<"catalogo" | "config">("catalogo");
-  const [secao, setSecao] = useState<"contratos" | "outros" | "historico">("contratos");
+  const [secao, setSecao] = useState<"contratos" | "outros" | "historico" | "cargos">("contratos");
   const [empresaRid, setEmpresaRid] = useState(rid || "");
 
   useEffect(() => { if (rid) setEmpresaRid(rid); }, [rid]);
@@ -121,7 +122,7 @@ export function DocumentosPage() {
 
       {/* Abas por tipo de documento */}
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
-        {([["contratos", "📝 Novos contratos de trabalho"], ["historico", "🗂️ Histórico"], ["outros", "📄 Outros modelos"]] as const).map(([id, lb]) => (
+        {([["contratos", "📝 Novos contratos de trabalho"], ["cargos", "⚙️ Cargos p/ contrato"], ["historico", "🗂️ Histórico"], ["outros", "📄 Outros modelos"]] as const).map(([id, lb]) => (
           <button key={id} type="button" onClick={() => setSecao(id)}
             className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${secao === id ? "border-indigo-600 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"}`}>
             {lb}
@@ -131,6 +132,8 @@ export function DocumentosPage() {
 
       {secao === "contratos" && podeGerar && <ContratosTrabalho rid={rid || empresaRid || ""} restaurants={restaurants} />}
       {secao === "contratos" && !podeGerar && <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Sem permissão para gerar documentos.</div>}
+
+      {secao === "cargos" && <ConfigCargos rid={rid || empresaRid || ""} />}
 
       {secao === "historico" && <HistoricoDocumentos rid={rid || empresaRid || ""} />}
 
