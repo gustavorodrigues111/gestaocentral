@@ -29,6 +29,15 @@ import { ExportarEscalaModal } from "./ExportarEscalaModal";
 // no repo caso queiramos reaproveitar partes (ex: histórico de versões) no
 // futuro como botão dedicado.
 
+// Timeout p/ writes que podem pendurar (rede/Firestore) — vira erro visível em
+// vez de a aplicação em lote morrer muda ("selecionei e não foi").
+function comTimeout<T>(p: Promise<T>, ms: number, passo: string): Promise<T> {
+  return Promise.race([
+    p,
+    new Promise<T>((_, rej) => setTimeout(() => rej(new Error(`o passo "${passo}" demorou mais de ${Math.round(ms / 1000)}s (rede/servidor sem responder)`)), ms)),
+  ]);
+}
+
 // Tabela de status: cor + label curto + label longo
 const STATUS_INFO: Record<ScheduleStatus, { label: string; short: string; bg: string; text: string }> = {
   trabalho:  { label: "Trabalho",                short: "TR", bg: "bg-emerald-500",  text: "text-white" },
@@ -1305,9 +1314,15 @@ function Grade({
     for (const key of selecionadas) {
       const [empId, date] = key.split("|");
       const unidadeId = (status === "trabalho" && usaMultiUnidades) ? resolverUnidade(empId, date) : null;
-      const issues = await onSetStatus(empId, date, status, unidadeId);
-      if (issues.length > 0) erros.push(...issues);
-      else aplicados++;
+      try {
+        const issues = await comTimeout(onSetStatus(empId, date, status, unidadeId), 15000, "salvar no banco");
+        if (issues.length > 0) erros.push(...issues);
+        else aplicados++;
+      } catch (e) {
+        alert(`Não consegui aplicar em ${fmtBR(date)}: ${e instanceof Error ? e.message : String(e)}`);
+        setSelecionadas(new Set());
+        return;
+      }
     }
     if (erros.length > 0) {
       const empMap = Object.fromEntries(empregados.map(e => [e.id, e.nome]));
@@ -1328,12 +1343,16 @@ function Grade({
   // office garante status "trabalho" (anula falta/folga — trabalhou de casa).
   async function aplicarModalidadeBulk(modalidade: Modalidade | null) {
     if (selecionadas.size === 0) return;
-    for (const key of selecionadas) {
-      const [empId, date] = key.split("|");
-      if (modalidade === "home_office") {
-        await onSetStatus(empId, date, "trabalho", usaMultiUnidades ? resolverUnidade(empId, date) : null);
+    try {
+      for (const key of selecionadas) {
+        const [empId, date] = key.split("|");
+        if (modalidade === "home_office") {
+          await comTimeout(onSetStatus(empId, date, "trabalho", usaMultiUnidades ? resolverUnidade(empId, date) : null), 15000, "salvar (trabalho)");
+        }
+        await comTimeout(onSetModalidade(empId, date, modalidade), 15000, "salvar (modalidade)");
       }
-      await onSetModalidade(empId, date, modalidade);
+    } catch (e) {
+      alert(`Não consegui aplicar: ${e instanceof Error ? e.message : String(e)}`);
     }
     setSelecionadas(new Set());
   }
