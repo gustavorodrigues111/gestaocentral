@@ -100,7 +100,7 @@ const ACOES_SELF_SERVICE: Record<string, Set<string>> = {
 // Fechamento (valores, lotes). Só as ações sensíveis de DP (atribuirValor,
 // fecharLote, acessarDados, verRelatoriosLote) abrem o Fechamento.
 const ACOES_OPERACIONAIS: Record<string, Set<string>> = {
-  freelas: new Set(["lancarTurnos", "criarVaga", "atribuir", "avaliar"]),
+  freelas: new Set(["lancarTurnos", "lancarRetroativo", "criarVaga", "atribuir", "avaliar"]),
   // "receber" e "editar" abrem a tela mas não são "configurar" (pasta do Drive).
   recebimento: new Set(["receber", "editar"]),
   fechamentoCaixa: new Set(["fechar", "editar"]),

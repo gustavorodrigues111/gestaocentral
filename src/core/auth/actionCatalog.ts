@@ -355,6 +355,7 @@ export const CATALOGO: CatalogoModulo[] = [
       { id: "atribuir",          label: "Atribuir vaga a alguém" },
       { id: "avaliar",           label: "Avaliar performance do freela" },
       { id: "lancarTurnos",      label: "Lançar turnos do freela" },
+      { id: "lancarRetroativo",  label: "Lançar turno em data passada (retroativo)", sensivel: true },
       { id: "atribuirValor",     label: "Atribuir valor de hora/diária do freela", sensivel: true },
       { id: "fecharLote",        label: "Fechar lote de freelas da semana", sensivel: true },
       { id: "acessarDados",      label: "Acessar dados do freela (CPF, contato)", sensivel: true },

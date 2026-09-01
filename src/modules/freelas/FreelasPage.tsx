@@ -3,6 +3,7 @@ import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import type {
@@ -16,13 +17,15 @@ import { ImportLoteFreelasModal } from "./ImportLoteFreelasModal";
 import { LancamentoTab } from "./LancamentoTab";
 import { FechamentoTab } from "./FechamentoTab";
 import { HistoricoTab } from "./HistoricoTab";
+import { RetroativoTab } from "./RetroativoTab";
 
-type TabId = "lancamentos" | "fechamento" | "historico";
+type TabId = "lancamentos" | "retroativo" | "fechamento" | "historico";
 
 const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
-  { id: "lancamentos", label: "Lançamentos", icon: "📝" },
-  { id: "fechamento",  label: "Fechamento",  icon: "💰" },
-  { id: "historico",   label: "Histórico",   icon: "🗂️" },
+  { id: "lancamentos", label: "Lançamentos",    icon: "📝" },
+  { id: "retroativo",  label: "Turnos passados", icon: "⏪" },
+  { id: "fechamento",  label: "Fechamento",     icon: "💰" },
+  { id: "historico",   label: "Histórico",      icon: "🗂️" },
 ];
 
 export function FreelasPage() {
@@ -39,15 +42,19 @@ export function FreelasPage() {
   //   - "configurar" → acesso completo a FECHAMENTO + HISTÓRICO
   //   - master → tudo
   const isMaster = !!me?.isMaster;
+  const { can } = useCanAcao(rid);
   const podeOperar = isMaster || me?.permissions?.[rid]?.freelas?.ver === true;
   const podeDp     = isMaster || me?.permissions?.[rid]?.freelas?.configurar === true;
+  // Lançar turno RETROATIVO (data passada) = permissão exclusiva, concedida à parte.
+  const podeRetro  = isMaster || can("freelas", "lancarRetroativo");
 
   const tabsVisiveis = useMemo<TabId[]>(() => {
     const out: TabId[] = [];
     if (podeOperar) out.push("lancamentos");
+    if (podeRetro)  out.push("retroativo");
     if (podeDp)     out.push("fechamento", "historico");
     return out;
-  }, [podeOperar, podeDp]);
+  }, [podeOperar, podeRetro, podeDp]);
 
   const [tab, setTab] = useState<TabId>(() => tabsVisiveis[0] || "lancamentos");
   const [showCadastro, setShowCadastro] = useState(false);
@@ -100,7 +107,7 @@ export function FreelasPage() {
   }, [rid]);
 
   if (!activeRestaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
-  if (!podeOperar && !podeDp) {
+  if (!podeOperar && !podeDp && !podeRetro) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
         <div className="text-4xl mb-3">🔒</div>
@@ -151,6 +158,7 @@ export function FreelasPage() {
           const active = tab === t.id;
           const count =
             t.id === "lancamentos" ? totalAbertos :
+            t.id === "retroativo"  ? 0 :
             t.id === "fechamento"  ? totalPendentes :
                                      totalHistorico;
           return (
@@ -192,6 +200,14 @@ export function FreelasPage() {
           onCloseNovo={() => setShowNovoTurno(false)}
           showAvulso={showAvulsoTurno}
           onCloseAvulso={() => setShowAvulsoTurno(false)}
+        />
+      )}
+      {tab === "retroativo" && podeRetro && (
+        <RetroativoTab
+          restaurantId={rid}
+          shifts={shifts}
+          empregados={empregados}
+          pessoas={pessoas}
         />
       )}
       {tab === "fechamento" && podeDp && (

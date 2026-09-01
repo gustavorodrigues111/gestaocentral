@@ -10,7 +10,7 @@ import { TimeInput } from "../../core/ui/TimeInput";
 import { fmtAnoMes, parseYmd, todayYmd } from "../../core/utils/date";
 import { empregadoAtivoEm } from "../../core/utils/empregado";
 import { AREAS, type Area, type Empregado, type FreelaIntervalo, type FreelaShift, type Pessoa } from "../../core/types";
-import { onlyDigits, resolverPixWhats } from "./helpers";
+import { onlyDigits, resolverPixWhats, somaIntervalos, calcHoras } from "./helpers";
 import { SeletorSemana } from "./SeletorSemana";
 import { CadastroPorCpf } from "./CadastroPorCpf";
 import { IntervalosEditor } from "./IntervalosEditor";
@@ -22,8 +22,10 @@ type Props = {
   initialDate?: string;
   // "planejar" (default) → cria turno PLANEJADO (status agendado), grava só os
   // campos previstos. "avulso" → abre um turno agora (status aberto, hoje),
-  // grava a entrada REAL — sem planejamento.
-  modo?: "planejar" | "avulso";
+  // grava a entrada REAL — sem planejamento. "retroativo" → lança um turno em
+  // data PASSADA já completo (entrada+saída+intervalos reais, status aberto);
+  // permissão exclusiva (freelas.lancarRetroativo).
+  modo?: "planejar" | "avulso" | "retroativo";
   // Quando presente, o modal ALTERA um turno planejado existente (mesma pessoa,
   // edita data/área/previsto/obs) em vez de criar um novo.
   editShift?: FreelaShift;
@@ -46,8 +48,11 @@ export function NovoTurnoModal({
   const preFreela = preselectFreelaId ? pessoas.find((p) => p.id === preselectFreelaId) || null : null;
   const isEdit = !!editShift;
   const isAvulso = modo === "avulso" && !isEdit;
-  // Avulso é sempre hoje (abrir agora). Planejar/editar pode ser hoje ou futuro.
-  const [date, setDate] = useState(editShift?.date || (isAvulso ? todayYmd() : (initialDate || todayYmd())));
+  const isRetro = modo === "retroativo" && !isEdit;
+  const ontem = (() => { const d = parseYmd(todayYmd()); d.setDate(d.getDate() - 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; })();
+  // Avulso é sempre hoje (abrir agora). Retroativo abre em data passada (default ontem).
+  // Planejar/editar pode ser hoje ou futuro.
+  const [date, setDate] = useState(editShift?.date || (isAvulso ? todayYmd() : (isRetro ? ontem : (initialDate || todayYmd()))));
   const [area, setArea] = useState<Area | "">(editShift?.area || "");
   const [entrada, setEntrada] = useState(editShift?.entradaPrevista || "");
   const [saidaPrevista, setSaidaPrevista] = useState(editShift?.saidaPrevista || "");
@@ -63,7 +68,7 @@ export function NovoTurnoModal({
 
   // Estado-alvo: planejar sempre cria PLANEJADO (status agendado), mesmo pra
   // hoje (abrir é ação por botão). Avulso já abre o turno.
-  const statusAlvo: "agendado" | "aberto" = isAvulso ? "aberto" : "agendado";
+  const statusAlvo: "agendado" | "aberto" = (isAvulso || isRetro) ? "aberto" : "agendado";
 
   // "Ativo como EMPREGADO neste dia": empregado comum usa estaAtivo; freela
   // mensalista só é empregado DENTRO do período de cobertura — fora dele volta a
@@ -113,6 +118,10 @@ export function NovoTurnoModal({
       setErr("Confirme a hora de entrada (chegada) pra abrir o turno.");
       return;
     }
+    if (isRetro) {
+      if (date >= todayYmd()) { setErr("Turno retroativo é só pra data PASSADA. Pra hoje use \"Abrir turno\"."); return; }
+      if (!entrada || !saidaPrevista) { setErr("Informe entrada e saída do turno passado."); return; }
+    }
 
     setSaving(true);
     try {
@@ -160,6 +169,15 @@ export function NovoTurnoModal({
         area,
         ...(isAvulso
           ? { entrada } // entrada REAL — abre o turno na hora
+          : isRetro
+          ? {
+              // Retroativo: turno passado já COMPLETO — grava os campos REAIS,
+              // cai direto no Fechamento (aguardando precificação).
+              entrada,
+              saida: saidaPrevista,
+              ...(intervalos.length ? { intervalos, intervalo: somaIntervalos(intervalos) } : {}),
+              horas: calcHoras(entrada, saidaPrevista, somaIntervalos(intervalos)),
+            }
           : {
               // Planejado: grava só os PREVISTOS (nunca os campos reais).
               ...(entrada ? { entradaPrevista: entrada } : {}),
@@ -191,7 +209,7 @@ export function NovoTurnoModal({
 
   return (
     <Modal
-      title={isEdit ? "✏️ Alterar turno planejado" : (isAvulso ? "🟢 Abrir turno avulso" : "📋 Planejar turno de freela")}
+      title={isEdit ? "✏️ Alterar turno planejado" : (isAvulso ? "🟢 Abrir turno avulso" : isRetro ? "⏪ Lançar turno passado" : "📋 Planejar turno de freela")}
       onClose={onClose}
       maxWidth="max-w-lg"
     >
@@ -204,9 +222,12 @@ export function NovoTurnoModal({
         ) : (
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">
-              Data *
+              Data *{isRetro && <span className="ml-1 text-amber-600 dark:text-amber-400 font-normal">(passada)</span>}
             </label>
             <SeletorSemana value={date} onChange={setDate} />
+            {isRetro && (
+              <p className="text-[10px] text-amber-600 dark:text-amber-400">⏪ Lançamento retroativo — escolha um dia já passado.</p>
+            )}
           </div>
         )}
 
@@ -372,6 +393,30 @@ export function NovoTurnoModal({
             <TimeInput value={entrada} onChange={setEntrada} placeholder="HH:MM" />
             <p className="text-[10px] text-gray-400 dark:text-gray-500">Saída e intervalos são confirmados no fechamento.</p>
           </div>
+        ) : isRetro ? (
+          // Retroativo: turno passado COMPLETO — entrada, saída e intervalos reais.
+          <>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Entrada *</label>
+                <TimeInput value={entrada} onChange={setEntrada} placeholder="HH:MM" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Saída *</label>
+                <TimeInput value={saidaPrevista} onChange={setSaidaPrevista} placeholder="HH:MM" />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Intervalos (opcional)</label>
+              <IntervalosEditor value={intervalos} onChange={setIntervalos} />
+            </div>
+            {entrada && saidaPrevista && (
+              <p className="text-[11px] text-gray-600 dark:text-gray-400">
+                Total: <strong>{calcHoras(entrada, saidaPrevista, somaIntervalos(intervalos)).toFixed(2)}h</strong>
+                {intervalos.length > 0 && <span className="text-gray-400"> · {somaIntervalos(intervalos)}min de intervalo</span>}
+              </p>
+            )}
+          </>
         ) : (
           // Planejar: tudo PREVISTO (opcional). Vira sugestão na hora de abrir/fechar.
           <>
@@ -425,7 +470,7 @@ export function NovoTurnoModal({
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button>
           <Button onClick={salvar} disabled={saving || (!isEdit && !selecionado)}>
-            {saving ? "Salvando…" : (isEdit ? "💾 Salvar" : (isAvulso ? "🟢 Abrir turno" : "📋 Planejar"))}
+            {saving ? "Salvando…" : (isEdit ? "💾 Salvar" : (isAvulso ? "🟢 Abrir turno" : isRetro ? "⏪ Lançar turno passado" : "📋 Planejar"))}
           </Button>
         </div>
       </div>
