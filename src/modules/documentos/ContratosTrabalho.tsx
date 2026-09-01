@@ -6,12 +6,15 @@
 //  Dados do empregado: puxados de um CANDIDATO da Admissão (dadosPreenchidos).
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { addDoc, collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import { authHeader } from "../../core/firebase/idToken";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import type { Admissao } from "../../core/types";
+import { authHeader } from "../../core/firebase/idToken";
+import { gerarContratoDocx, baixarDocxBase64 } from "./contratoApi";
 
 type EmpresaCat = Record<string, { nome?: string; cnpj?: string; endereco?: string; cidade?: string; cct?: string }>;
 type CargoCat = Record<string, { funcao?: string; cbo?: string; salario?: number; regime?: string; horario?: string; descricao?: string; gorjeta_texto?: string }>;
@@ -65,6 +68,7 @@ function dadosDoCandidato(a: Admissao) {
 }
 
 export function ContratosTrabalho({ rid, restaurants }: { rid: string; restaurants: { id: string; nome?: string }[] }) {
+  const { pessoa: me } = useAuth();
   const [cat, setCat] = useState<{ modelos: Modelo[]; empresas: EmpresaCat; cargos: CargoCat } | null>(null);
   const [erroCat, setErroCat] = useState("");
   const [admissoes, setAdmissoes] = useState<Admissao[]>([]);
@@ -155,16 +159,16 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
         contrato: { ...(dataInicio ? { data_inicio: dataInicio } : {}), cidade: cidade.trim(), ...(dataAssin ? { data_assinatura: dataAssin } : {}) },
         ...(salario.trim() ? { cargo: { salario: Number(salario.replace(/[^\d]/g, "")) } } : {}),
       };
-      const r = await fetch("/api/contrato-preencher", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ action: "gerar", modelo, dados }) });
-      const j = await r.json();
-      if (!r.ok) { setErro(j.error || "Falha ao gerar."); setGerando(false); return; }
-      const bin = atob(j.docxBase64);
-      const bytes = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-      const blob = new Blob([bytes], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a"); a.href = url; a.download = j.filename || "contrato.docx";
-      document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 5000);
+      const j = await gerarContratoDocx(modelo, dados);
+      baixarDocxBase64(j.docxBase64, j.filename);
+      // Histórico: salva o INPUT (regenera no re-download — não guarda arquivo).
+      await addDoc(collection(db, "documentosGerados"), sanitizeForFirestore({
+        restaurantId: rid, tipo: "contrato", modelo, modeloDesc: modeloDesc(modelo),
+        empregadoNome: emp.nome.trim(), empregadoCpf: emp.cpf.trim(),
+        empresaNome: empresaSel?.nome || restNome, filename: j.filename,
+        dados, criadoEm: new Date().toISOString(),
+        criadoPor: { id: me?.id || "", nome: me?.nome || "" },
+      })).catch(() => {});
     } catch (e) { setErro(e instanceof Error ? e.message : "Erro de rede."); }
     finally { setGerando(false); }
   }

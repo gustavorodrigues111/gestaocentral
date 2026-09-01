@@ -313,6 +313,8 @@ service cloud.firestore {
     match /wikiGuias/{key}          { allow read, write: if authed(); }
     match /wikiDocs/{id}            { allow read, write: if authed(); }
     match /documentosEmpresas/{rid} { allow read, write: if authed(); }
+    match /documentosGerados/{id}   { allow read, write: if authed(); }
+    match /documentosCargos/{id}    { allow read, write: if authed(); }
     match /iaConfig/{rid}           { allow read, write: if authed(); }
     match /iaInteracoes/{id}        { allow read, create: if authed(); allow update, delete: if isMaster(); }
     // Exames médicos (Fase 7) — auth-only por enquanto. Fase futura: escopo
