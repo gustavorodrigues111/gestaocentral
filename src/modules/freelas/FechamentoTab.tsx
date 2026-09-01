@@ -94,6 +94,10 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   const unidades = useMemo(() => restaurant?.unidades || [], [restaurant]);
   const [escala, setEscala] = useState<EscalaMes | null>(null);
   const [gorjetasMes, setGorjetasMes] = useState<Gorjeta[]>([]);
+  // Todas as gorjetas do restaurante (qualquer mês) — o fechamento de FREELA
+  // precifica turnos de meses diferentes do competência selecionado (que é dos
+  // mensalistas), então a gorjeta do dia do freela vem daqui, não do gorjetasMes.
+  const [gorjetasTodas, setGorjetasTodas] = useState<Gorjeta[]>([]);
   type AjModo = "reais" | "pct";
   type MensInput = { remuneracao: string; modo: "bruto" | "liquido"; desconto: string; descontoModo: AjModo; descontoDesc: string; acrescimo: string; acrescimoModo: AjModo; acrescimoDesc: string };
   type ConfLinha = FreelaMensalistaLinha & { docId: string; input?: MensInput };
@@ -182,7 +186,11 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   useEffect(() => {
     if (!restaurantId) return;
     return onSnapshot(query(collection(db, "gorjetas"), where("restaurantId", "==", restaurantId)),
-      (snap) => setGorjetasMes(snap.docs.map(d => ({ id: d.id, ...d.data() } as Gorjeta)).filter(g => (g.date || "").startsWith(competencia))));
+      (snap) => {
+        const todas = snap.docs.map(d => ({ id: d.id, ...d.data() } as Gorjeta));
+        setGorjetasTodas(todas);
+        setGorjetasMes(todas.filter(g => (g.date || "").startsWith(competencia)));
+      });
   }, [restaurantId, competencia]);
 
   const mensalistas = useMemo(() => mensalistasAtivosNoMes(empregados, ano, mes), [empregados, ano, mes]);
@@ -282,12 +290,12 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
   // (Cidade Velha) em vez de ficar "sem gorjeta". Retorna a chave da unidade
   // (ou null = a unidade que arrecada no dia, single-unit).
   const unidadeEfetivaDoDia = useCallback((date: string, shiftUnidadeId: string | null | undefined): string | null => {
-    const doDia = gorjetasMes.filter((x) => x.date === date && !x.semGorjeta && (x.valorBruto || 0) > 0);
+    const doDia = gorjetasTodas.filter((x) => x.date === date && !x.semGorjeta && (x.valorBruto || 0) > 0);
     const u = shiftUnidadeId || null;
     if (u && doDia.some((x) => (x.unidadeId || null) === u)) return u;    // a unidade dele arrecadou → mantém
     const top = doDia.slice().sort((a, b) => (b.valorBruto || 0) - (a.valorBruto || 0))[0];
     return top ? (top.unidadeId || null) : null;                          // senão, a que mais arrecadou
-  }, [gorjetasMes]);
+  }, [gorjetasTodas]);
 
   // Freelas de um dia (marcados com cargo de gorjeta) — pra prévia ao vivo.
   const freelasDoDiaLive = useCallback((date: string, unidadeId: string | null) => {
@@ -312,7 +320,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
     if (!s.gorjetaCargoId) return { valor: 0, estado: "sem" };
     // Gorjetas com valor no dia. Freela COM unidade → a dela; SEM unidade →
     // a que mais arrecada no dia (unidade principal — ex.: Cidade Velha).
-    const doDia = gorjetasMes.filter((x) => x.date === s.date && !x.semGorjeta && x.valorBruto > 0);
+    const doDia = gorjetasTodas.filter((x) => x.date === s.date && !x.semGorjeta && x.valorBruto > 0);
     // Unidade efetiva: a do turno se arrecadou; senão a que mais arrecadou no dia.
     const eff = unidadeEfetivaDoDia(s.date, s.unidadeId);
     const g = doDia.find((x) => (x.unidadeId || null) === eff);
@@ -327,7 +335,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
     const res = calcularDivisaoDia(g.date, liquido, empregados, cargos, escala, sv, g.unidadeId || null, unidades, freelasDoDiaLive(g.date, g.unidadeId || null));
     const it = res.itens.find((i) => i.freelaShiftId === s.id);
     return { valor: Math.round((it?.valor || 0) * 100) / 100, estado: "previa" };
-  }, [gorjetasMes, splitVersions, empregados, cargos, escala, unidades, freelasDoDiaLive, unidadeEfetivaDoDia]);
+  }, [gorjetasTodas, splitVersions, empregados, cargos, escala, unidades, freelasDoDiaLive, unidadeEfetivaDoDia]);
 
   // Cancela um turno lançado errado: status "cancelado", zera o valor e
   // registra o motivo. Some da precificação e entra em "Prontos pra lote"
