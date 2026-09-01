@@ -146,7 +146,9 @@ export function GorjetasPage() {
   const unidades = escopoUnidades === null
     ? todasUnidades
     : todasUnidades.filter(u => escopoUnidades.includes(u.id));
-  const unidadesAtendimento = unidades.filter(u => u.tipo === "atendimento" && u.ativa);
+  // Inclui unidade ENCERRADA nos meses até o encerramento (senão o Porto Futuro
+  // some das linhas de lançamento/divisão do histórico, mesmo tendo gorjeta lá).
+  const unidadesAtendimento = unidades.filter(u => u.tipo === "atendimento" && unidadeVisivelNoMes(u));
   // Pra filtro: todas as ativas (atendimento + produção). Empregados de
   // produção dividem gorjeta de TODAS as unidades, então faz sentido filtrar
   // por eles na Divisão (Cozinha de Produção etc).
