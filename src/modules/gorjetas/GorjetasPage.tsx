@@ -134,9 +134,13 @@ export function GorjetasPage() {
     return () => unsub();
   }, [rid, ano, mes]);
 
-  // Multi-unidades. UI ativa apenas quando há 2+ unidades ativas.
+  // Multi-unidades. Uma unidade ENCERRADA continua visível nos meses ATÉ o
+  // encerramento (pra não sumir com o histórico dela). Ex: Porto Futuro
+  // encerrada em 2026-08-31 aparece em agosto e antes, some de setembro.
   const todasUnidades = activeRestaurant?.unidades || [];
-  const usaMultiUnidades = todasUnidades.filter(u => u.ativa).length > 1;
+  const mesRef = `${ano}-${String(mes).padStart(2, "0")}`;
+  const unidadeVisivelNoMes = (u: Unidade) => u.ativa || (!!u.encerradaEm && mesRef <= u.encerradaEm.slice(0, 7));
+  const usaMultiUnidades = todasUnidades.filter(unidadeVisivelNoMes).length > 1;
   // Escopo de permissão de gorjetas — se ampla, mostra todas; senão filtra
   const escopoUnidades = unidadesAcessiveis(me, rid, "gorjetas");
   const unidades = escopoUnidades === null
@@ -148,12 +152,12 @@ export function GorjetasPage() {
   // por eles na Divisão (Cozinha de Produção etc).
   // Atendimento primeiro pra leitura natural.
   const unidadesAtivasParaFiltro = useMemo(() => {
-    const ativas = unidades.filter(u => u.ativa);
+    const visiveis = unidades.filter(unidadeVisivelNoMes);
     return [
-      ...ativas.filter(u => u.tipo === "atendimento"),
-      ...ativas.filter(u => u.tipo === "producao"),
+      ...visiveis.filter(u => u.tipo === "atendimento"),
+      ...visiveis.filter(u => u.tipo === "producao"),
     ];
-  }, [unidades]);
+  }, [unidades, mesRef]);
 
   // Key da gorjeta na map:
   //   single-unit: date            (gorjetaMap["2026-05-10"])
