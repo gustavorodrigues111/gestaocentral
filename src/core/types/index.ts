@@ -1017,6 +1017,11 @@ export type Unidade = {
   cnpj?: string;                    // opcional — pode compartilhar CNPJ com outras
   ordem: number;
   ativa: boolean;
+  // Encerramento com data de corte (último dia de funcionamento, YYYY-MM-DD).
+  // A partir do dia seguinte, empregados/turnos/gorjetas/escala dessa unidade
+  // passaram pra `encerradaMigradaPara`. Histórico ATÉ a data fica intacto.
+  encerradaEm?: string;
+  encerradaMigradaPara?: string;    // unidadeId que absorveu (destino)
 };
 
 // ─── ENDEREÇOS (cadastro compartilhado) ────────────────────────────────────

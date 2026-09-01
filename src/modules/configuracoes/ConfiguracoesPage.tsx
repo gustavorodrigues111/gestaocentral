@@ -13,6 +13,8 @@ import { UNIDADE_TIPO_LABEL } from "../../core/types";
 import type { Endereco, ModuleArea, ModuleId, Unidade, UnidadeTipo } from "../../core/types";
 import { isValidSubdomain } from "../../core/restaurant/subdomain";
 import { pickDriveFolder } from "../../core/google/drivePicker";
+import { fmtBR } from "../../core/utils/date";
+import { EncerrarUnidadeModal } from "./EncerrarUnidadeModal";
 
 export function ConfiguracoesPage() {
   const { pessoa: me } = useAuth();
@@ -551,6 +553,7 @@ function UnidadesForm({ rid, atual }: {
   const [saving, setSaving] = useState(false);
   const [savedAt, setSavedAt] = useState("");
   const [err, setErr] = useState("");
+  const [encerrandoId, setEncerrandoId] = useState<string | null>(null);
 
   function addUnidade() {
     const id = `u_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
@@ -604,6 +607,8 @@ function UnidadesForm({ rid, atual }: {
           ativa: u.ativa,
         };
         if (cnpjLimpo) out.cnpj = cnpjLimpo;
+        if (u.encerradaEm) out.encerradaEm = u.encerradaEm;
+        if (u.encerradaMigradaPara) out.encerradaMigradaPara = u.encerradaMigradaPara;
         return out;
       }) : [];
       await updateDoc(doc(db, "restaurants", rid), {
@@ -675,14 +680,32 @@ function UnidadesForm({ rid, atual }: {
                     onChange={(e) => updateUnidade(u.id, { ativa: e.target.checked })}
                   />
                 </label>
-                <button
-                  type="button"
-                  onClick={() => removerUnidade(u.id)}
-                  className="col-span-1 text-rose-600 hover:text-rose-700 text-sm"
-                  title="Remover"
-                >
-                  ×
-                </button>
+                <div className="col-span-1 flex items-center justify-end gap-1">
+                  {u.encerradaEm ? (
+                    <span className="text-[10px] text-amber-700 dark:text-amber-400 whitespace-nowrap" title={`Encerrada em ${fmtBR(u.encerradaEm)}`}>
+                      ⏹ {fmtBR(u.encerradaEm)}
+                    </span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setEncerrandoId(u.id)}
+                        className="text-amber-600 hover:text-amber-700 text-sm"
+                        title="Encerrar unidade (com data de corte)"
+                      >
+                        ⏹
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => removerUnidade(u.id)}
+                        className="text-rose-600 hover:text-rose-700 text-sm"
+                        title="Remover"
+                      >
+                        ×
+                      </button>
+                    </>
+                  )}
+                </div>
               </div>
             ))
           )}
@@ -708,6 +731,20 @@ function UnidadesForm({ rid, atual }: {
         </Button>
         {savedAt && <span className="text-xs text-emerald-600 dark:text-emerald-400">✓ Salvo às {savedAt}</span>}
       </div>
+
+      {encerrandoId && (() => {
+        const u = unidades.find((x) => x.id === encerrandoId);
+        if (!u) return null;
+        return (
+          <EncerrarUnidadeModal
+            rid={rid}
+            unidade={u}
+            unidades={unidades}
+            onClose={() => setEncerrandoId(null)}
+            onDone={(novas) => { setUnidades(novas); setEncerrandoId(null); setSavedAt(new Date().toLocaleTimeString("pt-BR")); }}
+          />
+        );
+      })()}
     </div>
   );
 }
