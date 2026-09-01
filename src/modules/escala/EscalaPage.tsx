@@ -1729,6 +1729,7 @@ function Celula({
     >
       {info.short}
       {unidadeSubscript}
+      {homeOfficeBadge}
       {swapBadge}
       {ajusteBadge}
       {atrasoBadge}
