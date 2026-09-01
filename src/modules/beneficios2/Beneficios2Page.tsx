@@ -206,7 +206,7 @@ export function Beneficios2Page() {
     finally { setSalvando(false); }
   }
   function exportarCaju() {
-    const r = exportarCajuPag(linhas, empregados, slugify(rest?.nome || ""), ano, mes);
+    const r = exportarCajuPag(linhas, empregados, slugify(rest?.nome || ""), ano, mes, rest?.beneficiosCajuCategoria);
     baixarCsv(r.csv, r.filename);
     if (r.ignoradas.length) alert(`${r.qtd} pessoa(s) no CSV do Caju.\n\n${r.ignoradas.length} ficaram de fora:\n${r.ignoradas.map((x) => `• ${x.nome} — ${x.motivo}`).join("\n")}`);
   }
@@ -383,6 +383,19 @@ export function Beneficios2Page() {
       {/* Ações — bloqueadas até fazer o ajuste do mês anterior */}
       <div className="flex flex-wrap gap-2 mt-3 justify-end">
         {linhas.length > 0 && !precisaAjuste && <Button variant="secondary" onClick={() => void gerarPagamentoPDF({ linhas, restaurantNome: rest?.nome || "", ano, mes, usaVR, totais, ajustes: ajustesDoPagamento })}>📄 Exportar PDF</Button>}
+        {linhas.length > 0 && !precisaAjuste && podeConfig && (
+          <select
+            value={rest?.beneficiosCajuCategoria || "padrao"}
+            onChange={(e) => void updateDoc(doc(db, "restaurants", rid), { beneficiosCajuCategoria: e.target.value })}
+            title="Em qual categoria do Caju o benefício deste restaurante entra"
+            className="text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5">
+            <option value="padrao">Caju: VT→Mobilidade · VR→Refeição</option>
+            <option value="mobilidade">Caju: tudo em Mobilidade</option>
+            <option value="multi">Caju: tudo em Multi</option>
+            <option value="refeicao">Caju: tudo em Refeição</option>
+            <option value="alimentacao">Caju: tudo em Alimentação</option>
+          </select>
+        )}
         {linhas.length > 0 && !precisaAjuste && <Button variant="secondary" onClick={exportarCaju}>🟣 Exportar Caju (CSV)</Button>}
         {temPix && !precisaAjuste && <Button variant="secondary" onClick={exportarPix}>⚡ Exportar Pix</Button>}
         {!loteAtivo && podeConfig && (

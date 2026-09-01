@@ -1158,6 +1158,10 @@ export type Restaurant = {
   fechamentoSociosEmails?: string[];       // legado (avulso) — mantido pra retrocompat
   fechamentoSociosWhatsapp?: string[];     // legado (avulso)
   fechamentoCanalEnvio?: "email" | "whatsapp" | "ambos";  // canal do aviso aos sócios (default "ambos")
+  // Categoria do Caju que recebe o benefício no CSV de export. undefined/"padrao"
+  // = split VT→Mobilidade / VR→Refeição; senão o valor inteiro vai na coluna
+  // escolhida (ex.: Puba usa "multi", Lobozó fica no padrão Mobilidade).
+  beneficiosCajuCategoria?: "padrao" | "multi" | "mobilidade" | "refeicao" | "alimentacao";
   fechamentoEmailRemetente?: string;       // remetente do email aos sócios (domínio verificado na Resend)
   fechamentoComandas?: ComandaCadastro[];  // comandas cadastradas (nº + finalidade)
   fechamentoTemIfood?: boolean;            // restaurante tem iFood → conciliação aceita planilha do iFood

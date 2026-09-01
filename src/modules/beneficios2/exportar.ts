@@ -16,13 +16,21 @@ const HEADER_CAJU = [
   "Educação", "Valor fixo em educação", "Home Office", "Valor fixo em home office",
   "Saldo Livre", "Multi",
 ].join(";");
-const COL_REFEICAO = 3, COL_MOBILIDADE = 8, NUM_COLUNAS = 20;
+const COL_REFEICAO = 3, COL_ALIMENTACAO = 5, COL_MOBILIDADE = 8, COL_MULTI = 19, NUM_COLUNAS = 20;
+// Categoria única do Caju (config do restaurante) → coluna do template. Quando
+// definida, o benefício INTEIRO (VT + VR + aux) vai nessa coluna. Sem config
+// (ou "padrao"), mantém o split VT→Mobilidade / VR→Refeição. (Ex.: Lobozó usa
+// Mobilidade; Puba usa Multi.)
+const COL_POR_CATEGORIA: Record<string, number> = { multi: COL_MULTI, mobilidade: COL_MOBILIDADE, refeicao: COL_REFEICAO, alimentacao: COL_ALIMENTACAO };
 
 export type IgnoradaPag = { nome: string; motivo: string; total: number };
 export type ExportCajuPag = { csv: string; filename: string; qtd: number; totalVt: number; totalVr: number; ignoradas: IgnoradaPag[] };
 
-export function exportarCajuPag(linhas: BeneficioPagLinha[], empregados: Empregado[], slug: string, ano: number, mes: number): ExportCajuPag {
+export function exportarCajuPag(linhas: BeneficioPagLinha[], empregados: Empregado[], slug: string, ano: number, mes: number, categoria?: string | null): ExportCajuPag {
   const empMap = Object.fromEntries(empregados.map((e) => [e.id, e]));
+  // Categoria única configurada pro restaurante (ex.: Puba = "multi"). Se não,
+  // undefined = comportamento padrão (VT→Mobilidade, VR→Refeição).
+  const colUnica = categoria && categoria !== "padrao" ? COL_POR_CATEGORIA[categoria] : undefined;
   const out = [HEADER_CAJU];
   const ignoradas: IgnoradaPag[] = [];
   let totalVt = 0, totalVr = 0, qtd = 0;
@@ -40,8 +48,14 @@ export function exportarCajuPag(linhas: BeneficioPagLinha[], empregados: Emprega
     if (cpf.length !== 11) { ignoradas.push({ nome: l.empregadoNome, motivo: "CPF inválido ou ausente", total: l.total }); continue; }
     const cols = new Array(NUM_COLUNAS).fill("0");
     cols[0] = cpf; cols[1] = "";
-    if (refei > 0) cols[COL_REFEICAO] = brl(refei);
-    if (mobil > 0) cols[COL_MOBILIDADE] = brl(mobil);
+    if (colUnica != null) {
+      // Tudo numa categoria só (ex.: Multi) — soma VT + VR + aux num valor.
+      const totalCat = Math.round((mobil + refei) * 100) / 100;
+      if (totalCat > 0) cols[colUnica] = brl(totalCat);
+    } else {
+      if (refei > 0) cols[COL_REFEICAO] = brl(refei);
+      if (mobil > 0) cols[COL_MOBILIDADE] = brl(mobil);
+    }
     out.push(cols.join(";"));
     totalVt += mobil; totalVr += refei; qtd++;
   }
