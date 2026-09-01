@@ -128,7 +128,7 @@ export function DocumentosPage() {
         ))}
       </div>
 
-      {secao === "contratos" && podeGerar && <ContratosTrabalho empregados={empregados} />}
+      {secao === "contratos" && podeGerar && <ContratosTrabalho rid={rid || empresaRid || ""} restaurants={restaurants} />}
       {secao === "contratos" && !podeGerar && <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Sem permissão para gerar documentos.</div>}
 
       {secao === "outros" && (<>

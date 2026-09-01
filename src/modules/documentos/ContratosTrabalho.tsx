@@ -1,19 +1,24 @@
 // ════════════════════════════════════════════════════════════════════════════
-//  Novos contratos de trabalho — fluxo: TRIAGEM (qual modelo) → DADOS (empresa/
-//  cargo dos catálogos + empregado) → GERAR (DOCX pelo /api/contrato-preencher,
-//  que roda a lógica da skill contratos-trabalho). PDF fica pra depois.
+//  Novos contratos de trabalho — TRIAGEM (qual modelo) → DADOS → GERAR (DOCX via
+//  /api/contrato-preencher, que roda a skill contratos-trabalho). PDF fica pra depois.
+//
+//  Escopo: SEMPRE a empresa atual selecionada no sistema (como os outros módulos).
+//  Dados do empregado: puxados de um CANDIDATO da Admissão (dadosPreenchidos).
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import type { Empregado } from "../../core/types";
+import type { Admissao } from "../../core/types";
 
 type EmpresaCat = Record<string, { nome?: string; cnpj?: string; endereco?: string; cidade?: string; cct?: string }>;
 type CargoCat = Record<string, { funcao?: string; cbo?: string; salario?: number; regime?: string; horario?: string; descricao?: string; gorjeta_texto?: string }>;
 type Modelo = { id: string; descricao: string };
 
-// Triagem → chave do modelo (espelha references/escolha-modelo da skill).
+const norm = (s?: string) => (s || "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+
 function decidirModelo(t: { casa: string; ponto: string; vinculo: string }): { modelo: string; motivo: string } {
   if (t.vinculo === "autonomo") return { modelo: "contrato-autonomo", motivo: "Prestador sem subordinação (RPA)." };
   if (t.vinculo === "transitorio") return { modelo: "contrato-prazo-determinado", motivo: "Necessidade transitória (art. 443 §2º 'a')." };
@@ -23,27 +28,57 @@ function decidirModelo(t: { casa: string; ponto: string; vinculo: string }): { m
 }
 
 const TRAP: Record<string, string> = {
-  "contrato-autonomo": "⚠️ Autônomo para garçom, cozinheiro ou função de escala é fraude de vínculo. Só use para quem não tem horário, uniforme e chefe.",
-  "contrato-atividade-externa": "⚠️ Art. 62 só vale para quem realmente não tem como ter horário controlado. Quem bate ponto é teletrabalho por jornada, não art. 62.",
-  "contrato-hibrido": "⚠️ Híbrido tem que estar escrito, com ajuda de custo/equipamento previstos. Registrar como presencial e deixar em casa gera passivo.",
+  "contrato-autonomo": "Autônomo para garçom, cozinheiro ou função de escala é fraude de vínculo. Só use para quem não tem horário, uniforme e chefe.",
+  "contrato-atividade-externa": "Art. 62 só vale para quem realmente não tem como controlar o horário. Quem bate ponto é teletrabalho por jornada, não art. 62.",
+  "contrato-hibrido": "Híbrido tem que estar escrito, com ajuda de custo/equipamento previstos. Registrar como presencial e deixar em casa gera passivo.",
 };
 
-export function ContratosTrabalho({ empregados }: { empregados: Empregado[] }) {
+function Bloco({ icon, titulo, tag, tagCor, children }: { icon: string; titulo: string; tag?: string; tagCor?: "ok" | "ask"; children: React.ReactNode }) {
+  const cor = tagCor === "ask"
+    ? "text-amber-700 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300"
+    : "text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-300";
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+      <div className="flex items-center gap-2 px-3.5 py-2 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800">
+        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{icon} {titulo}</span>
+        {tag && <span className={`ml-auto text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${cor}`}>{tag}</span>}
+      </div>
+      <div className="p-3.5">{children}</div>
+    </div>
+  );
+}
+
+// Monta RG e endereço a partir do dadosPreenchidos do candidato.
+function dadosDoCandidato(a: Admissao) {
+  const dp = (a.dadosPreenchidos || {}) as Record<string, string>;
+  const g = (k: string) => (dp[k] || "").toString().trim();
+  const rg = g("rg") ? `${g("rg")}${g("rg_orgao") ? " " + g("rg_orgao") : ""}${g("rg_uf") ? "/" + g("rg_uf") : ""}` : "";
+  const end = [
+    g("endereco_logradouro") ? `${g("endereco_logradouro")}${g("endereco_numero") ? ", nº " + g("endereco_numero") : ""}` : "",
+    g("endereco_complemento"),
+    g("endereco_bairro"),
+    g("endereco_cidade") && g("endereco_estado") ? `${g("endereco_cidade")}/${g("endereco_estado")}` : g("endereco_cidade"),
+    g("endereco_cep") ? `CEP ${g("endereco_cep")}` : "",
+  ].filter(Boolean).join(", ");
+  const cpf = (a.candidato?.cpf || "").replace(/\D/g, "").replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4");
+  return { nome: a.candidato?.nome || "", cpf, rg, endereco: end, email: a.candidato?.email || "", whatsapp: a.candidato?.whatsapp || "" };
+}
+
+export function ContratosTrabalho({ rid, restaurants }: { rid: string; restaurants: { id: string; nome?: string }[] }) {
   const [cat, setCat] = useState<{ modelos: Modelo[]; empresas: EmpresaCat; cargos: CargoCat } | null>(null);
   const [erroCat, setErroCat] = useState("");
+  const [admissoes, setAdmissoes] = useState<Admissao[]>([]);
   const [passo, setPasso] = useState<"triagem" | "dados">("triagem");
 
-  // Triagem
   const [tr, setTr] = useState({ casa: "", ponto: "", vinculo: "" });
   const decisao = tr.casa && tr.vinculo ? decidirModelo(tr) : null;
-  const [modelo, setModelo] = useState("");   // pode sobrescrever a sugestão
+  const [modelo, setModelo] = useState("");
 
-  // Dados
-  const [empresaKey, setEmpresaKey] = useState("");
   const [cargoKey, setCargoKey] = useState("");
-  const [salario, setSalario] = useState("");        // override opcional
+  const [salario, setSalario] = useState("");
   const [emp, setEmp] = useState({ nome: "", cpf: "", rg: "", endereco: "", email: "", whatsapp: "" });
-  const [buscaEmp, setBuscaEmp] = useState("");
+  const [buscaAdm, setBuscaAdm] = useState("");
+  const [admSelNome, setAdmSelNome] = useState("");
   const [dataInicio, setDataInicio] = useState("");
   const [cidade, setCidade] = useState("São Paulo");
   const [dataAssin, setDataAssin] = useState("");
@@ -61,28 +96,56 @@ export function ContratosTrabalho({ empregados }: { empregados: Empregado[] }) {
     })();
   }, []);
 
-  const empresasList = useMemo(() => Object.entries(cat?.empresas || {}).filter(([k]) => !k.startsWith("_")), [cat]);
+  // Admissões da EMPRESA ATUAL só.
+  useEffect(() => {
+    if (!rid) { setAdmissoes([]); return; }
+    return onSnapshot(query(collection(db, "admissoes"), where("restaurantId", "==", rid)),
+      s => setAdmissoes(s.docs.map(d => ({ id: d.id, ...d.data() }) as Admissao)), () => setAdmissoes([]));
+  }, [rid]);
+
   const cargosList = useMemo(() => Object.entries(cat?.cargos || {}).filter(([k]) => !k.startsWith("_")), [cat]);
   const cargoSel = cargoKey ? cat?.cargos?.[cargoKey] : null;
+  const modeloDesc = (id: string) => cat?.modelos.find(m => m.id === id)?.descricao || id;
+  const restNome = restaurants.find(r => r.id === rid)?.nome || "";
 
-  const empSug = useMemo(() => {
-    const s = buscaEmp.trim().toLowerCase();
-    if (!s) return [];
-    return empregados.filter(e => (e.nome || "").toLowerCase().includes(s)).slice(0, 6);
-  }, [buscaEmp, empregados]);
+  // Empresa = a atual do sistema. Casa o restaurante com a chave do catálogo por nome.
+  const empresaKey = useMemo(() => {
+    if (!cat) return "";
+    const rn = norm(restNome);
+    if (!rn) return "";
+    for (const [k, v] of Object.entries(cat.empresas)) {
+      if (k.startsWith("_")) continue;
+      const en = norm(v.nome);
+      if (en && (en.includes(rn) || rn.includes(en))) return k;
+      if (norm(k).replace(/ /g, "") === rn.replace(/ /g, "")) return k;
+    }
+    return "";
+  }, [cat, restNome]);
+  const empresaSel = empresaKey ? cat?.empresas?.[empresaKey] : null;
 
-  function irParaDados() {
-    if (!decisao) return;
-    setModelo(modelo || decisao.modelo);
-    setPasso("dados");
+  const admSug = useMemo(() => {
+    const s = buscaAdm.trim().toLowerCase();
+    const base = [...admissoes].sort((a, b) => (b.iniciadoEm || "").localeCompare(a.iniciadoEm || ""));
+    if (!s) return base.slice(0, 8);
+    return base.filter(a => (a.candidato?.nome || "").toLowerCase().includes(s) || (a.candidato?.cpf || "").includes(s.replace(/\D/g, ""))).slice(0, 8);
+  }, [buscaAdm, admissoes]);
+
+  function puxarAdmissao(a: Admissao) {
+    setEmp(dadosDoCandidato(a));
+    setAdmSelNome(a.candidato?.nome || "");
+    if (a.dataAdmissao) setDataInicio(a.dataAdmissao);
+    if (a.salario) setSalario(String(a.salario));
+    setBuscaAdm("");
   }
+
+  function irParaDados() { if (!decisao) return; setModelo(modelo || decisao.modelo); setPasso("dados"); }
 
   async function gerar() {
     setErro("");
     if (!modelo) { setErro("Escolha o modelo (triagem)."); return; }
     const ehAutonomo = modelo === "contrato-autonomo";
     if (!emp.nome.trim() || !emp.cpf.trim()) { setErro("Nome e CPF são obrigatórios."); return; }
-    if (!empresaKey && !ehAutonomo) { setErro("Escolha a empresa."); return; }
+    if (!empresaKey && !ehAutonomo) { setErro(`A empresa "${restNome}" não está no catálogo de contratos. Cadastre-a na skill antes de gerar.`); return; }
     setGerando(true);
     try {
       const dados: Record<string, unknown> = {
@@ -107,15 +170,20 @@ export function ContratosTrabalho({ empregados }: { empregados: Empregado[] }) {
   }
 
   if (erroCat) return <div className="text-sm text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-2">{erroCat}</div>;
-  if (!cat) return <div className="text-sm text-gray-400 py-8 text-center">Carregando modelos…</div>;
+  if (!cat) return <div className="text-sm text-gray-400 py-10 text-center">Carregando modelos…</div>;
 
-  const q = (label: string, val: string, set: (v: string) => void, opts: [string, string][]) => (
-    <div className="mb-4">
-      <div className="text-sm font-semibold mb-2">{label}</div>
-      <div className="flex flex-wrap gap-2">
+  const numContratos = cat.modelos.filter(m => m.id.startsWith("contrato")).length;
+
+  const Pergunta = ({ n, label, val, set, opts }: { n: number; label: string; val: string; set: (v: string) => void; opts: [string, string][] }) => (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+      <div className="flex items-center gap-2.5">
+        <span className="w-5 h-5 rounded-md bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-[11px] font-bold grid place-items-center flex-none">{n}</span>
+        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{label}</div>
+      </div>
+      <div className="flex flex-wrap gap-2 mt-3 pl-7">
         {opts.map(([v, lb]) => (
           <button key={v} type="button" onClick={() => set(v)}
-            className={`text-[13px] px-3 py-1.5 rounded-lg border ${val === v ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>
+            className={`text-[13px] px-3.5 py-1.5 rounded-lg border transition-colors ${val === v ? "border-indigo-500 bg-indigo-600 text-white font-medium" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-indigo-300 dark:hover:border-indigo-700"}`}>
             {lb}
           </button>
         ))}
@@ -123,31 +191,41 @@ export function ContratosTrabalho({ empregados }: { empregados: Empregado[] }) {
     </div>
   );
 
-  const modeloDesc = (id: string) => cat.modelos.find(m => m.id === id)?.descricao || id;
-
   return (
     <div className="max-w-3xl">
-      {/* Passos */}
-      <div className="flex items-center gap-2 text-xs mb-5">
-        <span className={`px-2.5 py-1 rounded-full font-medium ${passo === "triagem" ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-500"}`}>1 · Triagem</span>
-        <span className="text-gray-300">→</span>
-        <span className={`px-2.5 py-1 rounded-full font-medium ${passo === "dados" ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-500"}`}>2 · Dados e geração</span>
+      <div className="flex items-stretch border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden mb-6 bg-white dark:bg-gray-900">
+        {([["triagem", "1", "Triagem", "qual modelo"], ["dados", "2", "Dados e geração", "puxa, completa e baixa"]] as const).map(([id, n, lb, sub], i) => {
+          const ativo = passo === id;
+          return (
+            <div key={id} className={`flex-1 px-4 py-2.5 flex items-center gap-2.5 ${i === 0 ? "border-r border-gray-200 dark:border-gray-800" : ""} ${ativo ? "bg-indigo-50 dark:bg-indigo-900/20" : ""}`}>
+              <span className={`w-6 h-6 rounded-md text-[11px] font-bold grid place-items-center flex-none ${ativo ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-400"}`}>{n}</span>
+              <div className="min-w-0">
+                <div className={`text-[13px] font-semibold ${ativo ? "text-indigo-700 dark:text-indigo-300" : "text-gray-500"}`}>{lb}</div>
+                <div className="text-[11px] text-gray-400 truncate">{sub}</div>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
       {passo === "triagem" && (
-        <div>
-          <p className="text-sm text-gray-500 mb-4">Poucas perguntas escolhem o modelo certo entre os {cat.modelos.filter(m => m.id.startsWith("contrato")).length} de contrato.</p>
-          {q("A pessoa vai trabalhar de casa em algum dia?", tr.casa, v => setTr(s => ({ ...s, casa: v })), [["nao", "Não, presencial"], ["alguns", "Sim, alguns dias"], ["totalmente", "Totalmente em casa/rua"]])}
-          {q("Tem controle de jornada (bate ponto)?", tr.ponto, v => setTr(s => ({ ...s, ponto: v })), [["sim", "Sim"], ["nao", "Não — por produção"]])}
-          {q("Que tipo de vínculo?", tr.vinculo, v => setTr(s => ({ ...s, vinculo: v })), [["clt", "CLT permanente"], ["transitorio", "Necessidade transitória"], ["autonomo", "Prestador (RPA)"]])}
+        <div className="space-y-3">
+          <p className="text-sm text-gray-500 dark:text-gray-400">Poucas perguntas escolhem o modelo certo entre os {numContratos} de contrato — com os avisos de armadilha embutidos.</p>
+          <Pergunta n={1} label="A pessoa vai trabalhar de casa em algum dia?" val={tr.casa} set={v => setTr(s => ({ ...s, casa: v }))} opts={[["nao", "Não, presencial"], ["alguns", "Sim, alguns dias"], ["totalmente", "Totalmente em casa/rua"]]} />
+          <Pergunta n={2} label="Tem controle de jornada (bate ponto)?" val={tr.ponto} set={v => setTr(s => ({ ...s, ponto: v }))} opts={[["sim", "Sim"], ["nao", "Não — por produção"]]} />
+          <Pergunta n={3} label="Que tipo de vínculo?" val={tr.vinculo} set={v => setTr(s => ({ ...s, vinculo: v }))} opts={[["clt", "CLT permanente"], ["transitorio", "Necessidade transitória"], ["autonomo", "Prestador (RPA)"]]} />
 
           {decisao && (
-            <div className="mt-5 rounded-xl border border-indigo-300 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-4">
-              <div className="text-[11px] uppercase tracking-wider text-indigo-600 dark:text-indigo-300 font-semibold">Modelo recomendado</div>
-              <div className="font-semibold text-lg text-indigo-900 dark:text-indigo-200 mt-0.5">{modeloDesc(decisao.modelo)}</div>
-              <div className="text-[12px] text-gray-600 dark:text-gray-300 mt-1">{decisao.motivo} <span className="font-mono text-gray-400">· {decisao.modelo}</span></div>
-              {TRAP[decisao.modelo] && <div className="text-[12.5px] text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2 mt-3">{TRAP[decisao.modelo]}</div>}
-              <div className="mt-3 flex items-center gap-2 flex-wrap">
+            <div className="rounded-2xl border-2 border-indigo-300 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-5 mt-2">
+              <div className="text-[11px] uppercase tracking-[0.12em] text-indigo-600 dark:text-indigo-300 font-semibold">Modelo recomendado</div>
+              <div className="font-bold text-xl text-indigo-900 dark:text-indigo-100 mt-0.5 leading-tight">{modeloDesc(modelo || decisao.modelo)}</div>
+              <div className="text-[12.5px] text-gray-600 dark:text-gray-300 mt-1.5">{decisao.motivo} <span className="font-mono text-gray-400">· {modelo || decisao.modelo}</span></div>
+              {TRAP[modelo || decisao.modelo] && (
+                <div className="flex gap-2 items-start text-[12.5px] text-amber-900 dark:text-amber-200 bg-amber-100/70 dark:bg-amber-900/25 border border-amber-300 dark:border-amber-900/50 rounded-lg px-3 py-2.5 mt-3">
+                  <span>⚠️</span><span>{TRAP[modelo || decisao.modelo]}</span>
+                </div>
+              )}
+              <div className="mt-4 flex items-center gap-2 flex-wrap">
                 <label className="text-[12px] text-gray-500">Trocar modelo:</label>
                 <select value={modelo || decisao.modelo} onChange={e => setModelo(e.target.value)} className="text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5">
                   {cat.modelos.map(m => <option key={m.id} value={m.id}>{m.descricao}</option>)}
@@ -161,71 +239,80 @@ export function ContratosTrabalho({ empregados }: { empregados: Empregado[] }) {
 
       {passo === "dados" && (
         <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="text-sm"><span className="text-gray-400">Modelo:</span> <strong>{modeloDesc(modelo)}</strong></div>
-            <button type="button" onClick={() => setPasso("triagem")} className="text-xs text-indigo-600 hover:underline">← Trocar modelo</button>
+          <div className="flex items-center justify-between rounded-lg bg-gray-50 dark:bg-gray-900/50 border border-gray-200 dark:border-gray-800 px-3.5 py-2">
+            <div className="text-sm text-gray-700 dark:text-gray-200"><span className="text-gray-400">Modelo:</span> <strong>{modeloDesc(modelo)}</strong> <span className="font-mono text-[11px] text-gray-400">· {modelo}</span></div>
+            <button type="button" onClick={() => setPasso("triagem")} className="text-xs text-indigo-600 hover:underline">← Trocar</button>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Empresa</label>
-              <select value={empresaKey} onChange={e => setEmpresaKey(e.target.value)} className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-                <option value="">— escolher —</option>
-                {empresasList.map(([k, v]) => <option key={k} value={k}>{v.nome || k}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Cargo (do catálogo)</label>
-              <select value={cargoKey} onChange={e => setCargoKey(e.target.value)} className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+            <Bloco icon="🏢" titulo="Empresa" tag={empresaSel ? "atual do sistema" : undefined} tagCor="ok">
+              {empresaSel ? (
+                <div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{empresaSel.nome}</div>
+                  <div className="mt-1 space-y-1 text-[12px]">
+                    {empresaSel.cnpj && <div className="flex justify-between gap-3"><span className="text-gray-400 font-mono text-[11px]">cnpj</span><span className="text-gray-700 dark:text-gray-200">{empresaSel.cnpj}</span></div>}
+                    {empresaSel.cct && <div className="flex justify-between gap-3"><span className="text-gray-400 font-mono text-[11px]">cct</span><span className="text-gray-700 dark:text-gray-200 text-right">{empresaSel.cct}</span></div>}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-[12.5px] text-amber-700 dark:text-amber-300">A empresa atual <strong>{restNome || "—"}</strong> não está no catálogo de contratos. Cadastre-a na skill (empresas.json) pra gerar por aqui.</div>
+              )}
+            </Bloco>
+
+            <Bloco icon="💼" titulo="Cargo" tag="do catálogo">
+              <select value={cargoKey} onChange={e => setCargoKey(e.target.value)} className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
                 <option value="">— escolher —</option>
                 {cargosList.map(([k, v]) => <option key={k} value={k}>{v.funcao || k}</option>)}
               </select>
-            </div>
+              {cargoSel && (
+                <div className="mt-2 text-[12px] text-gray-600 dark:text-gray-300">
+                  {cargoSel.cbo ? `CBO ${cargoSel.cbo}` : ""}{cargoSel.salario ? ` · R$ ${cargoSel.salario.toLocaleString("pt-BR")}` : ""}{cargoSel.regime ? ` · ${cargoSel.regime}` : ""}
+                  <input placeholder="Sobrescrever salário (opcional)" value={salario} onChange={e => setSalario(e.target.value)} className="mt-2 w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                </div>
+              )}
+            </Bloco>
           </div>
-          {cargoSel && (
-            <div className="text-[12px] text-gray-500 -mt-1">
-              {cargoSel.funcao}{cargoSel.cbo ? ` · CBO ${cargoSel.cbo}` : ""}{cargoSel.salario ? ` · R$ ${cargoSel.salario.toLocaleString("pt-BR")}` : ""}{cargoSel.regime ? ` · ${cargoSel.regime}` : ""}
-              <Input placeholder="Sobrescrever salário desta pessoa (opcional)" value={salario} onChange={e => setSalario(e.target.value)} className="mt-2 max-w-xs" />
-            </div>
-          )}
 
-          {/* Empregado */}
-          <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
-            <div className="flex items-center justify-between mb-2">
-              <label className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">Empregado</label>
+          <Bloco icon="🧑" titulo="Empregado" tag={admSelNome ? "puxado da admissão" : "da admissão"} tagCor={admSelNome ? "ok" : "ask"}>
+            <div className="flex justify-end mb-2">
               <div className="relative">
-                <input value={buscaEmp} onChange={e => setBuscaEmp(e.target.value)} placeholder="🔎 puxar de um empregado…"
-                  className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 w-56" />
-                {empSug.length > 0 && (
-                  <div className="absolute right-0 z-10 mt-1 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg max-h-56 overflow-y-auto">
-                    {empSug.map(e => (
-                      <button key={e.id} type="button" onClick={() => { setEmp(p => ({ ...p, nome: e.nome || "", cpf: (e as { cpf?: string }).cpf || "", endereco: (e as { endereco?: string }).endereco || p.endereco })); setBuscaEmp(""); }}
-                        className="w-full text-left px-3 py-1.5 text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50">{e.nome}</button>
+                <input value={buscaAdm} onChange={e => setBuscaAdm(e.target.value)} onFocus={() => setBuscaAdm(b => b)} placeholder="🔎 puxar candidato da admissão…"
+                  className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 w-64" />
+                {(buscaAdm.trim() ? admSug.length > 0 : false) && (
+                  <div className="absolute right-0 z-10 mt-1 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                    {admSug.map(a => (
+                      <button key={a.id} type="button" onClick={() => puxarAdmissao(a)}
+                        className="w-full text-left px-3 py-1.5 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                        <div className="text-sm">{a.candidato?.nome}</div>
+                        <div className="text-[11px] text-gray-400">{a.candidato?.cpf ? a.candidato.cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4") : ""}{a.dadosPreenchidos && Object.keys(a.dadosPreenchidos).length ? " · dados preenchidos ✓" : " · sem dados ainda"}</div>
+                      </button>
                     ))}
                   </div>
                 )}
               </div>
             </div>
+            {admissoes.length === 0 && <p className="text-[11px] text-amber-600 mb-2">Nenhuma admissão nesta empresa ainda — preencha os dados manualmente abaixo.</p>}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input label="Nome completo *" value={emp.nome} onChange={e => setEmp(p => ({ ...p, nome: e.target.value }))} />
               <Input label="CPF *" value={emp.cpf} onChange={e => setEmp(p => ({ ...p, cpf: e.target.value }))} />
               <Input label="RG" value={emp.rg} onChange={e => setEmp(p => ({ ...p, rg: e.target.value }))} />
               <Input label="E-mail (assinatura)" value={emp.email} onChange={e => setEmp(p => ({ ...p, email: e.target.value }))} />
               <Input label="WhatsApp" value={emp.whatsapp} onChange={e => setEmp(p => ({ ...p, whatsapp: e.target.value }))} />
-              <Input label="Endereço completo (c/ CEP)" value={emp.endereco} onChange={e => setEmp(p => ({ ...p, endereco: e.target.value }))} className="sm:col-span-2" />
+              <Input label="Endereço completo (c/ CEP)" value={emp.endereco} onChange={e => setEmp(p => ({ ...p, endereco: e.target.value }))} className="sm:col-span-1" />
             </div>
-          </div>
+          </Bloco>
 
-          {/* Contrato */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <Input label="Início" type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
-            <Input label="Cidade" value={cidade} onChange={e => setCidade(e.target.value)} />
-            <Input label="Data de assinatura" type="date" value={dataAssin} onChange={e => setDataAssin(e.target.value)} />
-          </div>
-          <p className="text-[11px] text-gray-400">Experiência 45+45 e pagamento no 5º dia útil são o padrão do script. Plano de saúde não se aplica (cláusula removida automaticamente).</p>
+          <Bloco icon="📝" titulo="Contrato" tag="confirmar" tagCor="ask">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Input label="Início" type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
+              <Input label="Cidade" value={cidade} onChange={e => setCidade(e.target.value)} />
+              <Input label="Assinatura" type="date" value={dataAssin} onChange={e => setDataAssin(e.target.value)} />
+            </div>
+            <p className="text-[11px] text-gray-400 mt-2.5">Experiência 45+45 e pagamento no 5º dia útil são o padrão do script. Plano de saúde não se aplica (cláusula removida automaticamente).</p>
+          </Bloco>
 
           {erro && <div className="text-sm text-rose-600">{erro}</div>}
-          <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+          <div className="flex justify-end gap-2 pt-1">
             <Button onClick={() => void gerar()} disabled={gerando}>{gerando ? "Gerando…" : "📄 Gerar contrato (DOCX)"}</Button>
           </div>
         </div>
