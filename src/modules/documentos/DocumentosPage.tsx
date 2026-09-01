@@ -17,6 +17,7 @@ import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
 import type { Pessoa, Empregado } from "../../core/types";
 import { getTermosAssinaturaDefault } from "../../core/admissao/admissaoHelpers";
+import { ContratosTrabalho } from "./ContratosTrabalho";
 import CATALOGO from "./catalogo.json";
 import MARCACOES_JSON from "./marcacoes.json";
 import QUADROS_JSON from "./quadros.json";
@@ -72,6 +73,7 @@ export function DocumentosPage() {
   const [busca, setBusca] = useState("");
   const [sel, setSel] = useState<DocModelo | null>(null);
   const [modo, setModo] = useState<"catalogo" | "config">("catalogo");
+  const [secao, setSecao] = useState<"contratos" | "outros">("contratos");
   const [empresaRid, setEmpresaRid] = useState(rid || "");
 
   useEffect(() => { if (rid) setEmpresaRid(rid); }, [rid]);
@@ -116,6 +118,20 @@ export function DocumentosPage() {
         {podeConfig && <Button variant="secondary" onClick={() => setModo("config")}>⚙️ Configurações</Button>}
       </header>
 
+      {/* Abas por tipo de documento */}
+      <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
+        {([["contratos", "📝 Novos contratos de trabalho"], ["outros", "📄 Outros modelos"]] as const).map(([id, lb]) => (
+          <button key={id} type="button" onClick={() => setSecao(id)}
+            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${secao === id ? "border-indigo-600 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"}`}>
+            {lb}
+          </button>
+        ))}
+      </div>
+
+      {secao === "contratos" && podeGerar && <ContratosTrabalho empregados={empregados} />}
+      {secao === "contratos" && !podeGerar && <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Sem permissão para gerar documentos.</div>}
+
+      {secao === "outros" && (<>
       <div className="flex flex-col sm:flex-row gap-2 mb-4">
         <select value={empresaRid} onChange={e => setEmpresaRid(e.target.value)}
           className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100 sm:w-56">
@@ -152,6 +168,7 @@ export function DocumentosPage() {
         <GeradorModal key={sel.id} doc={sel} rid={empresaRid || rid || ""} restaurants={restaurants} pessoas={pessoas} empregados={empregados}
           empresas={empresas} onClose={() => setSel(null)} />
       )}
+      </>)}
     </div>
   );
 }

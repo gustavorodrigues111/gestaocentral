@@ -1,0 +1,85 @@
+{
+  "_instrucoes": "Catálogo de cargos. Cada entrada traz os valores-padrão que entram no bloco 'cargo' do JSON de preenchimento. Quando o usuário informar um cargo novo ou corrigir um existente, atualize AQUI e no arquivo de memória /areas/contratos-trabalho.md, e reempacote a skill. 'descricao' é uma lista de atribuições; 'horario' é o texto completo da jornada; 'regime' é presencial | hibrido | externo; 'modelo_padrao' é o modelo de contrato que normalmente se usa para o cargo.",
+  "analista-de-dp": {
+    "empresa_padrao": "quibebe",
+    "funcao": "Analista de DP",
+    "cbo": "2524-05",
+    "salario": 3350.0,
+    "regime": "hibrido",
+    "modelo_padrao": "contrato-hibrido",
+    "ajuda_custo_home_office": 100.0,
+    "horario": "De segunda a sexta-feira, das 09:00 às 12:00 e das 13:00 às 18:48, com 01 (uma) hora de intervalo para refeição e descanso, perfazendo 44 (quarenta e quatro) horas semanais, com descanso semanal remunerado aos sábados e domingos",
+    "presencial_dias_horarios": "Dias definidos pela EMPREGADORA, das 09:00 às 12:00 e das 13:00 às 18:48, na sede da EMPREGADORA.",
+    "home_office_dias_horarios": "Um ou mais dias por semana, definidos pela EMPREGADORA, das 09:00 às 12:00 e das 13:00 às 18:48, na residência do(a) EMPREGADO(A), com marcação de ponto.",
+    "descricao": [
+      "Execução e conferência das rotinas de Departamento Pessoal e de Recursos Humanos da EMPREGADORA e das demais empresas do grupo econômico: admissão, registro, movimentações, férias e desligamento de empregados",
+      "fechamento mensal da folha de pagamento, incluindo cálculo e conferência de gorjetas — com reconciliação entre o apurado na operação e o lançado em folha —, comissões, adicionais, horas extras, adicional noturno, descontos e benefícios",
+      "apuração e controle de ponto, jornadas, banco de horas, faltas e atrasos nos sistemas de folha e de controle de ponto",
+      "administração de benefícios (vale-transporte, vale-refeição/alimentação, insalubridade) e da rotina sindical de cada unidade, observadas as diferenças entre localidades",
+      "apoio à apuração de encargos e provisões para o fechamento contábil e cumprimento das obrigações do eSocial, em conjunto com o escritório de contabilidade",
+      "interface com a contabilidade e com a consultoria jurídica trabalhista",
+      "condução centralizada de recrutamento e seleção e apoio à integração (onboarding) das novas contratações",
+      "apoio às lideranças na gestão e no desenvolvimento das pessoas e das áreas das unidades atendidas, incluindo treinamento e avaliação",
+      "operação do sistema de gestão da EMPREGADORA, padronização de processos e rotinas de RH/DP entre as unidades",
+      "organização e guarda da documentação trabalhista e dos cadastros",
+      "atendimento a empregados e gestores em assuntos de DP/RH"
+    ],
+    "observacoes": "Subordinada à Coordenação Geral. Regime híbrido com dias presenciais e de home office definidos pela Empregadora (um ou mais por semana) — não fixar o dia no contrato nem no aditivo."
+  },
+  "cozinheiro": {
+    "empresa_padrao": "",
+    "funcao": "Cozinheiro",
+    "cbo": "5132-05",
+    "salario": null,
+    "regime": "presencial",
+    "modelo_padrao": "contrato-padrao",
+    "horario": "",
+    "descricao": [],
+    "observacoes": "A PREENCHER com o usuário."
+  },
+  "auxiliar-de-cozinha": {
+    "empresa_padrao": "",
+    "funcao": "Auxiliar de Cozinha",
+    "cbo": "5135-05",
+    "salario": null,
+    "regime": "presencial",
+    "modelo_padrao": "contrato-padrao",
+    "horario": "",
+    "descricao": [],
+    "observacoes": "A PREENCHER com o usuário."
+  },
+  "auxiliar-de-limpeza": {
+    "empresa_padrao": "",
+    "funcao": "Auxiliar de Limpeza",
+    "cbo": "5143-20",
+    "salario": null,
+    "regime": "presencial",
+    "modelo_padrao": "contrato-padrao",
+    "horario": "",
+    "descricao": [],
+    "observacoes": "A PREENCHER com o usuário."
+  },
+  "garcom-3-sororoca": {
+    "empresa_padrao": "sororoca",
+    "funcao": "Garçom III (Salão)",
+    "cbo": "5134-05",
+    "salario": 1883.0,
+    "regime": "presencial",
+    "modelo_padrao": "contrato-padrao",
+    "taxa_servico": "13% sobre o consumo, rateio por pontuação conforme o cargo (não igualitário)",
+    "gorjeta_estimativa_mensal": 2500.0,
+    "gorjeta_texto": "Além do salário fixo, o(a) EMPREGADO(A) participa do rateio da taxa de serviço de 13% (treze por cento) cobrada dos clientes, distribuída entre os empregados por sistema de pontuação conforme o cargo, nos termos do art. 457, §§ 3º a 5º, da CLT (Lei nº 13.419/2017) e da convenção coletiva aplicável. A estimativa média mensal de gorjeta para a função, anotada para os fins legais, é de R$ 2.500,00 (dois mil e quinhentos reais) brutos, sujeitos aos descontos legais, valor meramente estimativo e variável conforme o movimento da casa",
+    "horario": "Escala semanal: domingo, das 10:30 às 18:28, com 01 (uma) hora de intervalo; quarta e quinta-feira, das 14:10 às 23:30, com 01 (uma) hora de intervalo; sexta-feira e sábado, das 11:45 às 23:30, com 02 (duas) horas de intervalo; folgas às segundas e terças-feiras, respeitado o limite de 44 (quarenta e quatro) horas semanais. A EMPREGADORA poderá alterar a escala conforme a necessidade do serviço, observadas a legislação e a convenção coletiva",
+    "descricao": [
+      "Atendimento aos clientes do salão, apresentação do cardápio e lançamento dos pedidos em comandas eletrônicas, garantindo o registro correto de cada item",
+      "servir pratos e bebidas seguindo o padrão de apresentação da casa, acompanhando o andamento do atendimento em cada mesa",
+      "mise en place do salão antes de cada turno (limpeza do salão, organização de mesas, cadeiras, talheres e utensílios, reposição de bebidas nas geladeiras do salão) e apoio ao fechamento do espaço ao final do expediente",
+      "manutenção do salão limpo e organizado durante todo o expediente, zelando pela apresentação do ambiente",
+      "fechamento e cobrança das contas das mesas atendidas",
+      "trabalho em equipe com os demais garçons, o bar e a cozinha, repassando pedidos e informações para garantir agilidade no serviço",
+      "apoio à operação do bar e da cozinha e a eventos realizados pela casa",
+      "cumprimento das normas de higiene, segurança alimentar e de uso de uniforme"
+    ],
+    "observacoes": "Salário R$ 1.883,00 já com o dissídio de 2026 (antes R$ 1.804,00, que ainda aparece no site sororoca.com.br). Escala do planejamento.app: dom 10:30–18:28 (1h), qua/qui 14:10–23:30 (1h), sex/sáb 11:45–23:30 (2h), folga seg/ter. Estimativa de gorjeta no contrato: R$ 2.500 brutos (o usuário preferiu estimar abaixo da média publicada na vaga, R$ 3.300)."
+  }
+}

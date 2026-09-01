@@ -1,0 +1,50 @@
+{
+  "_instrucoes": "Uma entrada por CNPJ. Preencha os campos vazios quando o usuário informar. 'endereco' vai literalmente no contrato (rua, nº, complemento, bairro, cidade/UF, CEP). 'cct' identifica a convenção coletiva que rege os empregados dessa empresa.",
+  "quibebe": {
+    "nome": "Quibebe Cozinha Ltda.",
+    "cnpj": "23.972.933/0001-46",
+    "endereco": "Rua Girassol, nº 139, conj. 72, Vila Madalena, São Paulo/SP, CEP 05433-000",
+    "cidade": "São Paulo",
+    "atividade": "Escritório/assessoria administrativa do grupo (financeiro, DP, compras)",
+    "cct": "SEAAC-SP x Sescon-SP (empregados de empresas de assessoramento e serviços contábeis). CCT 2025/2026 vigente de 01/08/2025 a 31/07/2026; data-base 1º de agosto.",
+    "cct_resumo": "Piso geral R$ 2.100,00; HE 60% (2 primeiras), 80% (excedentes), 100% dom/feriado; VR/VA mín. R$ 31,00/dia inclusive em home office; VT só em dias presenciais (cl. 37); vale quinzenal 40% automático; seguro de vida obrigatório (cl. 18); compensação de horas exige acordo individual escrito (cl. 41.1); nenhum valor fixado para ajuda de custo de home office.",
+    "contato_assinatura_padrao": "pessoas@quibebe.com.br"
+  },
+  "sororoca": {
+    "nome": "Sororoca Restaurante Ltda.",
+    "cnpj": "52.349.568/0001-16",
+    "endereco": "Rua Harmonia, nº 321, Vila Madalena, São Paulo/SP, CEP 05435-000",
+    "endereco_fiscal": "Rua Simão Álvares, nº 785, Pinheiros, São Paulo/SP, CEP 05417-030 (confirmar qual endereço usar no contrato)",
+    "cidade": "São Paulo",
+    "atividade": "Restaurante / bar de frutos do mar",
+    "cct": "Bares e restaurantes de São Paulo (SINTHORESP) — confirmar CCT vigente antes de preencher",
+    "cct_resumo": ""
+  },
+  "lobozo": {
+    "nome": "",
+    "cnpj": "",
+    "endereco": "",
+    "cidade": "São Paulo",
+    "atividade": "Restaurante (Vila Madalena)",
+    "cct": "Bares e restaurantes de São Paulo (SINTHORESP) — confirmar CCT vigente",
+    "cct_resumo": ""
+  },
+  "puba-sp": {
+    "nome": "",
+    "cnpj": "",
+    "endereco": "Rua Simão Álvares (nº a confirmar), Pinheiros, São Paulo/SP",
+    "cidade": "São Paulo",
+    "atividade": "Bar/restaurante",
+    "cct": "Bares e restaurantes de São Paulo (SINTHORESP) — confirmar CCT vigente",
+    "cct_resumo": ""
+  },
+  "puba-bar-belem": {
+    "nome": "",
+    "cnpj": "",
+    "endereco": "Cidade Velha, Belém/PA (completar)",
+    "cidade": "Belém",
+    "atividade": "Bar de ingredientes amazônicos",
+    "cct": "Sindicato de hotéis, bares e restaurantes do Pará — confirmar CCT vigente",
+    "cct_resumo": ""
+  }
+}

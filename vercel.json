@@ -2,6 +2,7 @@
   "functions": {
     "api/cardapio-pdf.py": { "includeFiles": "api/_cardapio_assets/**" },
     "api/documento-preencher.py": { "includeFiles": "api/_docrh/**" },
+    "api/contrato-preencher.py": { "includeFiles": "api/_contratos/**", "maxDuration": 30 },
     "api/cardapio-site-pdf.ts": { "memory": 1024, "maxDuration": 90 },
     "api/orcamento-pdf.ts": { "memory": 1024, "maxDuration": 90 },
     "api/contrato-pdf.ts": { "memory": 1024, "maxDuration": 90 },
