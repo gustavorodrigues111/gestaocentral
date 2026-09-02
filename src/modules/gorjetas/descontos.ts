@@ -36,9 +36,10 @@ export function areaDoFreela(s: FreelaShift, cargoById: Record<string, Cargo>): 
 export type DescontoDetalheFreela = { nome: string; dias: { date: string; diaria: number }[]; diaria: number };
 export type DescontoCalc = {
   desconto: GorjetaDesconto;
-  valor: number;            // valor efetivamente descontado (já pode estar capado à área)
+  valor: number;            // valor pedido (base × perc), antes de capar por dia
   valorBase: number;        // base do cálculo (diária dos freelas, quando percFreelas)
   detalhe: DescontoDetalheFreela[];
+  basePorDia: Record<string, number>;   // date -> soma das diárias de freela (percFreelas)
   periodoDe: string; periodoAte: string;
 };
 
@@ -51,17 +52,19 @@ export function calcularDesconto(
   const periodoDe = d.periodoDe || `${d.competencia}-01`;
   const periodoAte = d.periodoAte || fimDoMes(d.competencia);
   if (d.tipo === "valor") {
-    return { desconto: d, valor: round2(d.valorFixo || 0), valorBase: 0, detalhe: [], periodoDe, periodoAte };
+    return { desconto: d, valor: round2(d.valorFixo || 0), valorBase: 0, detalhe: [], basePorDia: {}, periodoDe, periodoAte };
   }
   // percFreelas: base = soma das DIÁRIAS (totalCalc) dos freelas da área no período.
   const fs = freelaShifts.filter(s =>
     STATUS_TRABALHADO.has(s.status) && s.date >= periodoDe && s.date <= periodoAte
     && areaDoFreela(s, cargoById) === d.area);
   const porFreela: Record<string, DescontoDetalheFreela> = {};
+  const basePorDia: Record<string, number> = {};
   let base = 0;
   for (const s of fs) {
     const diaria = s.totalCalc || 0;
     base += diaria;
+    basePorDia[s.date] = (basePorDia[s.date] || 0) + diaria;
     const k = (s.pessoaId || s.empregadoId || `nome:${(s.nomeSnapshot || "").toLowerCase()}`);
     if (!porFreela[k]) porFreela[k] = { nome: s.nomeSnapshot || "—", dias: [], diaria: 0 };
     porFreela[k].dias.push({ date: s.date, diaria });
@@ -69,7 +72,45 @@ export function calcularDesconto(
   }
   const valor = round2(base * (d.perc || 0) / 100);
   const detalhe = Object.values(porFreela).map(f => ({ ...f, dias: f.dias.sort((a, b) => a.date.localeCompare(b.date)), diaria: round2(f.diaria) })).sort((a, b) => b.diaria - a.diaria);
-  return { desconto: d, valor, valorBase: round2(base), detalhe, periodoDe, periodoAte };
+  return { desconto: d, valor, valorBase: round2(base), detalhe, basePorDia, periodoDe, periodoAte };
+}
+
+// Mapa date -> { area -> R$ a descontar naquele dia } (só percFreelas).
+// desconto do dia na área = (soma das diárias de freela da área no dia) × perc.
+export function reducaoDiaArea(descontosCalc: DescontoCalc[]): Map<string, Record<string, number>> {
+  const m = new Map<string, Record<string, number>>();
+  for (const dc of descontosCalc) {
+    if (dc.desconto.tipo !== "percFreelas") continue;
+    const perc = (dc.desconto.perc || 0) / 100;
+    for (const [date, base] of Object.entries(dc.basePorDia)) {
+      const byArea = m.get(date) || {};
+      byArea[dc.desconto.area] = (byArea[dc.desconto.area] || 0) + round2(base * perc);
+      m.set(date, byArea);
+    }
+  }
+  return m;
+}
+
+// Reduz os itens de UM dia (uma gorjeta): tira, por área, o valor do desconto
+// daquele dia, proporcional entre os NÃO-freelas da área (capado ao líquido da
+// área no dia). Retorna itens novos + quanto foi efetivamente aplicado por área.
+export function reduzirItensDia<T extends { valor: number; area: string; freela?: boolean }>(
+  itens: T[], date: string, mapa: Map<string, Record<string, number>>,
+): { itens: T[]; aplicadoPorArea: Record<string, number> } {
+  const byArea = mapa.get(date);
+  if (!byArea) return { itens, aplicadoPorArea: {} };
+  const liqArea: Record<string, number> = {};
+  for (const it of itens) if (!it.freela) liqArea[it.area] = (liqArea[it.area] || 0) + it.valor;
+  const aplicadoPorArea: Record<string, number> = {};
+  const fatorArea: Record<string, number> = {};
+  for (const area of Object.keys(byArea)) {
+    const at = liqArea[area] || 0;
+    const efetivo = Math.min(byArea[area], at);
+    if (efetivo > 0) { aplicadoPorArea[area] = round2(efetivo); fatorArea[area] = at > 0 ? 1 - efetivo / at : 1; }
+  }
+  if (Object.keys(fatorArea).length === 0) return { itens, aplicadoPorArea: {} };
+  const novos = itens.map(it => (!it.freela && fatorArea[it.area] != null) ? { ...it, valor: it.valor * fatorArea[it.area] } : it);
+  return { itens: novos, aplicadoPorArea };
 }
 
 // Aplica os descontos às linhas (reduz proporcional os empregados da área).

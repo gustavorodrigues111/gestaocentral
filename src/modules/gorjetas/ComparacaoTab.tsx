@@ -22,7 +22,7 @@ import { getActiveSplitVersion } from "./splitRules";
 // Label "Junho/2026" a partir de "2026-06" (o util nomeMes só dá o nome do mês).
 const labelMes = (ym: string) => { const [y, m] = ym.split("-"); return `${nomeMes(Number(m))}/${y}`; };
 import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
-import { calcularDesconto, type GorjetaDesconto } from "./descontos";
+import { calcularDesconto, reducaoDiaArea, reduzirItensDia, type GorjetaDesconto } from "./descontos";
 import { gerarComparacaoPDF } from "./gerarComparacaoPDF";
 import type { Area, Cargo, DivisaoItem, Empregado, EscalaMes, FreelaShift, Gorjeta, SplitVersion, Unidade } from "../../core/types";
 
@@ -137,6 +137,10 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
   const brutoPorEmp = useMemo(() => (ym: string, escala: EscalaMes | null): Map<string, LinhaEmp> => {
     const acc = new Map<string, LinhaEmp>();
     const liquidoPorArea: Record<string, number> = {};
+    // Descontos do mês: % dos freelas aplica DIA A DIA (na gorjeta do dia);
+    // valor fixo aplica no total do mês (proporcional na área).
+    const dcs = descontos.filter((d) => d.competencia === ym).map((d) => calcularDesconto(d, freelaShifts, cargoById)).filter((x) => x.valor > 0);
+    const redDia = reducaoDiaArea(dcs);
     for (const g of gorjetas) {
       if (g.date.slice(0, 7) !== ym || g.semGorjeta || !g.valorBruto) continue;
       const sv = getActiveSplitVersion(splitVersions, g.date);
@@ -149,6 +153,8 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
         const liq = calcularValorLiquido(g.valorBruto, taxRate);
         itens = calcularDivisaoDia(g.date, liq, empregados, cargos, escala, sv, g.unidadeId || null, unidades, freelasDoDia(g.date, g.unidadeId || null)).itens;
       }
+      // Desconto % freelas: reduz por dia antes de agregar (bate com a Divisão).
+      if (redDia.size > 0) itens = reduzirItensDia(itens, g.date, redDia).itens;
       for (const it of itens) {
         if (it.freela) continue;   // freela dilui a divisão, mas não é linha de empregado na comparação
         const cur = acc.get(it.empregadoId) || { nome: it.empregadoNome, cargoNome: it.cargoNome, area: it.area, bruto: 0 };
@@ -157,13 +163,11 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
         liquidoPorArea[it.area] = (liquidoPorArea[it.area] || 0) + it.valor;
       }
     }
-    // Aplica os descontos do mês (mesma regra da Divisão): reduz proporcional
-    // a fatia dos empregados da área. O fator é uniforme por área, então vale
-    // igual pro bruto.
-    const dcs = descontos.filter((d) => d.competencia === ym).map((d) => calcularDesconto(d, freelaShifts, cargoById)).filter((x) => x.valor > 0);
-    if (dcs.length) {
+    // Valor FIXO: mês-nível proporcional (uniforme por área → vale pro bruto).
+    const fixos = dcs.filter((dc) => dc.desconto.tipo === "valor");
+    if (fixos.length) {
       const pedidoPorArea: Record<string, number> = {};
-      for (const dc of dcs) pedidoPorArea[dc.desconto.area] = (pedidoPorArea[dc.desconto.area] || 0) + dc.valor;
+      for (const dc of fixos) pedidoPorArea[dc.desconto.area] = (pedidoPorArea[dc.desconto.area] || 0) + dc.valor;
       const fatorArea: Record<string, number> = {};
       for (const area of Object.keys(pedidoPorArea)) {
         const at = liquidoPorArea[area] || 0;

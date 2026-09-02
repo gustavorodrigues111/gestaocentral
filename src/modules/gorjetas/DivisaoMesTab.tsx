@@ -6,7 +6,7 @@ import type { Area, Cargo, DivisaoItem, Empregado, EscalaMes, FreelaShift, Gorje
 import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
 import { getActiveSplitVersion } from "./splitRules";
 import { DescontosPanel } from "./DescontosPanel";
-import { calcularDesconto, aplicarDescontos, type DescontoCalc, type GorjetaDesconto } from "./descontos";
+import { calcularDesconto, aplicarDescontos, reducaoDiaArea, reduzirItensDia, type DescontoCalc, type GorjetaDesconto } from "./descontos";
 import { nomeMes } from "../../core/utils/date";
 import { ExportarGorjetasPDFModal } from "./ExportarGorjetasPDFModal";
 import { recalcularSnapshotGorjeta } from "./publicar";
@@ -132,12 +132,21 @@ export function DivisaoMesTab({
     return gorjetas.filter(g => g.unidadeId === filtroUnidadeId);
   }, [gorjetas, filtroUnidadeId, tipoUnidadeFiltro]);
 
+  // Descontos da gorjeta (config) → cálculo (valor, detalhe, base por dia).
+  const descontosCalc = useMemo<DescontoCalc[]>(
+    () => descontos.map(d => calcularDesconto(d, freelaShifts || [], cargoById)).filter(dc => dc.valor > 0),
+    [descontos, freelaShifts, cargoById],
+  );
+  // % dos freelas: quanto descontar POR DIA em cada área (aplicado dia a dia).
+  const reducaoDia = useMemo(() => reducaoDiaArea(descontosCalc), [descontosCalc]);
+
   // Agrega por empregado: pra cada gorjeta do mês, calcula a divisão.
   // bruto do empregado = liquido / (1 - taxRate/100); retenção = bruto - liquido.
-  const linhas = useMemo<LinhaEmpregado[]>(() => {
+  const { linhas, descontoAplicadoPorArea } = useMemo<{ linhas: LinhaEmpregado[]; descontoAplicadoPorArea: Record<string, number> }>(() => {
     const acc: Record<string, LinhaEmpregado> = {};
     // Freelas agregados por NOME (um freela pode ter vários dias no mês).
     const freelaAcc: Record<string, { nome: string; bruto: number; retencao: number; liquido: number; dias: DiaEmpregado[] }> = {};
+    const descontoAplicadoPorArea: Record<string, number> = {};
 
     for (const g of gorjetasFiltradas) {
       const splitVersion = getActiveSplitVersion(splitVersions, g.date);
@@ -163,6 +172,14 @@ export function DivisaoMesTab({
         // Marca o fator como inverso do arredondamento real — pra na
         // agregação por empregado, brutoEmp / liquidoEmp baterem certinho
         // sem reabrir buraco. (calcularValorLiquido já arredondou.)
+      }
+
+      // Desconto POR DIA (% dos freelas): reduz os itens não-freela da área
+      // ANTES de agregar — assim o desconto sai da gorjeta daquele dia.
+      if (reducaoDia.size > 0) {
+        const red = reduzirItensDia(itens, g.date, reducaoDia);
+        itens = red.itens;
+        for (const [area, v] of Object.entries(red.aplicadoPorArea)) descontoAplicadoPorArea[area] = (descontoAplicadoPorArea[area] || 0) + v;
       }
 
       for (const it of itens) {
@@ -272,19 +289,28 @@ export function DivisaoMesTab({
         ehGrupoFreela: true, freelasDetalhe: freelasDet, demitidoEm: null,
       });
     }
-    return ordenado;
-  }, [gorjetasFiltradas, empregados, cargos, escala, splitVersions, unidades, filtroUnidadeId, tipoUnidadeFiltro, freelasDoDia]);
+    return { linhas: ordenado, descontoAplicadoPorArea };
+  }, [gorjetasFiltradas, empregados, cargos, escala, splitVersions, unidades, filtroUnidadeId, tipoUnidadeFiltro, freelasDoDia, reducaoDia]);
 
-  // Descontos da gorjeta por área (reduzem proporcional os empregados da área).
-  const descontosCalc = useMemo<DescontoCalc[]>(
-    () => descontos.map(d => calcularDesconto(d, freelaShifts || [], cargoById)).filter(dc => dc.valor > 0),
-    [descontos, freelaShifts, cargoById],
-  );
   const areasPresentes = useMemo(
     () => [...new Set(linhas.filter(l => !l.ehGrupoFreela && l.area).map(l => l.area))].sort(),
     [linhas],
   );
-  const { linhasAjustadas } = useMemo(() => aplicarDescontos(linhas, descontosCalc), [linhas, descontosCalc]);
+  // Descontos de VALOR FIXO: aplicados no total do mês (proporcional na área);
+  // os de % dos freelas já entraram dia a dia acima.
+  const descontosFixos = useMemo(() => descontosCalc.filter(dc => dc.desconto.tipo === "valor"), [descontosCalc]);
+  const { linhasAjustadas, efetivoPorArea: efetivoFixoPorArea } = useMemo(() => aplicarDescontos(linhas, descontosFixos), [linhas, descontosFixos]);
+  // Valor efetivamente descontado por desconto (pra exibir na linha):
+  //   % freelas → o aplicado por área (dia a dia); valor fixo → o efetivo da área.
+  const valorEfetivoPorDesconto = useMemo(() => {
+    const out: Record<string, number> = {};
+    for (const dc of descontosCalc) {
+      out[dc.desconto.id] = dc.desconto.tipo === "percFreelas"
+        ? (descontoAplicadoPorArea[dc.desconto.area] || 0)
+        : (efetivoFixoPorArea[dc.desconto.area] || 0);
+    }
+    return out;
+  }, [descontosCalc, descontoAplicadoPorArea, efetivoFixoPorArea]);
 
   // Detalha a discrepância entre líquido do mês e soma distribuída.
   // Duas causas reais (NÃO existe efeito de semGorjeta=true diluindo, esse
@@ -825,6 +851,7 @@ export function DivisaoMesTab({
           const isE = expDesconto === dc.desconto.id;
           const temDet = dc.desconto.tipo === "percFreelas" && dc.detalhe.length > 0;
           const rot = dc.desconto.descricao || (dc.desconto.tipo === "percFreelas" ? `${dc.desconto.perc}% dos freelas` : "gorjeta");
+          const valEf = valorEfetivoPorDesconto[dc.desconto.id] || 0;
           return (
             <Fragment key={`desc-${dc.desconto.id}`}>
               <button type="button" onClick={() => temDet && setExpDesconto(isE ? null : dc.desconto.id)}
@@ -840,7 +867,7 @@ export function DivisaoMesTab({
                 <div className="text-right tabular-nums text-gray-400">{temDet ? dc.detalhe.length : ""}</div>
                 <div></div>
                 <div></div>
-                <div className="text-right tabular-nums font-bold text-rose-600 dark:text-rose-400">−{fmtBR(dc.valor)}</div>
+                <div className="text-right tabular-nums font-bold text-rose-600 dark:text-rose-400">−{fmtBR(valEf)}</div>
               </button>
               {isE && temDet && (
                 <div className="hidden md:block px-3 py-2 bg-rose-50/30 dark:bg-rose-900/10 border-t border-gray-100 dark:border-gray-800">
@@ -861,7 +888,7 @@ export function DivisaoMesTab({
                     <span className="text-gray-400 text-xs">{temDet ? (isE ? "▼" : "▶") : ""}</span>
                     <span className="text-sm font-medium text-rose-700 dark:text-rose-300 truncate">Desconto — {rot}</span>
                   </div>
-                  <span className="tabular-nums font-bold text-rose-600 dark:text-rose-400">−{fmtBR(dc.valor)}</span>
+                  <span className="tabular-nums font-bold text-rose-600 dark:text-rose-400">−{fmtBR(valEf)}</span>
                 </div>
                 {isE && temDet && (
                   <div className="mt-2 space-y-0.5">
