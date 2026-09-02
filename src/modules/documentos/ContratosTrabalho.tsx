@@ -130,6 +130,14 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
   const cargoApp = useMemo(() => cargosApp.find(c => c.id === cargoAdmId) || null, [cargosApp, cargoAdmId]);
   const docCargo = useMemo(() => docCargos.find(d => d.cargoId === cargoAdmId) || null, [docCargos, cargoAdmId]);
   const docCargoOk = !!docCargo && !!(docCargo.cbo || docCargo.horario || (docCargo.descricao && docCargo.descricao.length));
+  // Campos que, faltando, saem EM BRANCO no contrato (jornada e atividades).
+  const docCargoFaltas = useMemo(() => {
+    if (!docCargo) return [] as string[];
+    const f: string[] = [];
+    if (!(docCargo.horario && docCargo.horario.trim())) f.push("jornada/horário");
+    if (!(docCargo.descricao && docCargo.descricao.length)) f.push("atribuições");
+    return f;
+  }, [docCargo]);
   const modeloDesc = (id: string) => cat?.modelos.find(m => m.id === id)?.descricao || id;
   const restNome = restaurants.find(r => r.id === rid)?.nome || "";
 
@@ -314,6 +322,11 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
                   ) : (
                     <div className="mt-1.5 text-[12px] text-amber-700 dark:text-amber-300">
                       Esse cargo ainda não tem dados de contrato (CBO, jornada, gorjeta média). Configure na aba <strong>⚙️ Cargos p/ contrato</strong> — o contrato sai sem esses campos até lá.
+                    </div>
+                  )}
+                  {docCargoOk && docCargoFaltas.length > 0 && (
+                    <div className="mt-1.5 text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-2.5 py-1.5">
+                      ⚠ Falta preencher <strong>{docCargoFaltas.join(" e ")}</strong> deste cargo — o contrato sai com esse(s) campo(s) EM BRANCO. Preencha em <strong>⚙️ Cargos p/ contrato</strong>.
                     </div>
                   )}
                   <input placeholder="Sobrescrever salário (opcional)" value={salario} onChange={e => setSalario(e.target.value)} className="mt-2 w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
