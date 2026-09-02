@@ -63,6 +63,10 @@ type LinhaEmpregado = {
   // Linha AGREGADA de freelas: uma só "Freelas" com o total; expande em cada freela.
   ehGrupoFreela?: boolean;
   freelasDetalhe?: { nome: string; bruto: number; retencao: number; liquido: number; dias: DiaEmpregado[] }[];
+  // Linha de FREELA DESCONTO: recebedor virtual que "recebeu" o valor descontado
+  // (pra os totais fecharem). Expande no detalhe dos freelas descontados.
+  ehDesconto?: boolean;
+  descontoDetalhe?: DescontoCalc[];
 };
 
 export function DivisaoMesTab({
@@ -71,7 +75,6 @@ export function DivisaoMesTab({
 }: Props) {
   const competencia = `${ano}-${String(mes).padStart(2, "0")}`;
   const [descontos, setDescontos] = useState<GorjetaDesconto[]>([]);
-  const [expDesconto, setExpDesconto] = useState<string | null>(null);
   useEffect(() => {
     if (!rid) return;
     return onSnapshot(query(collection(db, "gorjetaDescontos"), where("restaurantId", "==", rid), where("competencia", "==", competencia)),
@@ -142,11 +145,12 @@ export function DivisaoMesTab({
 
   // Agrega por empregado: pra cada gorjeta do mês, calcula a divisão.
   // bruto do empregado = liquido / (1 - taxRate/100); retenção = bruto - liquido.
-  const { linhas, descontoAplicadoPorArea } = useMemo<{ linhas: LinhaEmpregado[]; descontoAplicadoPorArea: Record<string, number> }>(() => {
+  const { linhas, descAcc } = useMemo<{ linhas: LinhaEmpregado[]; descAcc: Record<string, { liquido: number; bruto: number; retencao: number }> }>(() => {
     const acc: Record<string, LinhaEmpregado> = {};
     // Freelas agregados por NOME (um freela pode ter vários dias no mês).
     const freelaAcc: Record<string, { nome: string; bruto: number; retencao: number; liquido: number; dias: DiaEmpregado[] }> = {};
-    const descontoAplicadoPorArea: Record<string, number> = {};
+    // % freelas descontado por área (bruto/retenção/líquido) → vira a linha "FREELA DESCONTO".
+    const descAcc: Record<string, { liquido: number; bruto: number; retencao: number }> = {};
 
     for (const g of gorjetasFiltradas) {
       const splitVersion = getActiveSplitVersion(splitVersions, g.date);
@@ -179,7 +183,11 @@ export function DivisaoMesTab({
       if (reducaoDia.size > 0) {
         const red = reduzirItensDia(itens, g.date, reducaoDia);
         itens = red.itens;
-        for (const [area, v] of Object.entries(red.aplicadoPorArea)) descontoAplicadoPorArea[area] = (descontoAplicadoPorArea[area] || 0) + v;
+        for (const [area, v] of Object.entries(red.aplicadoPorArea)) {
+          const b = fator > 0 ? v / fator : v;
+          if (!descAcc[area]) descAcc[area] = { liquido: 0, bruto: 0, retencao: 0 };
+          descAcc[area].liquido += v; descAcc[area].bruto += b; descAcc[area].retencao += b - v;
+        }
       }
 
       for (const it of itens) {
@@ -289,7 +297,7 @@ export function DivisaoMesTab({
         ehGrupoFreela: true, freelasDetalhe: freelasDet, demitidoEm: null,
       });
     }
-    return { linhas: ordenado, descontoAplicadoPorArea };
+    return { linhas: ordenado, descAcc };
   }, [gorjetasFiltradas, empregados, cargos, escala, splitVersions, unidades, filtroUnidadeId, tipoUnidadeFiltro, freelasDoDia, reducaoDia]);
 
   const areasPresentes = useMemo(
@@ -299,18 +307,39 @@ export function DivisaoMesTab({
   // Descontos de VALOR FIXO: aplicados no total do mês (proporcional na área);
   // os de % dos freelas já entraram dia a dia acima.
   const descontosFixos = useMemo(() => descontosCalc.filter(dc => dc.desconto.tipo === "valor"), [descontosCalc]);
-  const { linhasAjustadas, efetivoPorArea: efetivoFixoPorArea } = useMemo(() => aplicarDescontos(linhas, descontosFixos), [linhas, descontosFixos]);
-  // Valor efetivamente descontado por desconto (pra exibir na linha):
-  //   % freelas → o aplicado por área (dia a dia); valor fixo → o efetivo da área.
-  const valorEfetivoPorDesconto = useMemo(() => {
-    const out: Record<string, number> = {};
-    for (const dc of descontosCalc) {
-      out[dc.desconto.id] = dc.desconto.tipo === "percFreelas"
-        ? (descontoAplicadoPorArea[dc.desconto.area] || 0)
-        : (efetivoFixoPorArea[dc.desconto.area] || 0);
+
+  // Linhas FINAIS = empregados reduzidos (% freelas no dia + valor fixo no mês)
+  // + linha(s) "FREELA DESCONTO" (recebedor virtual do valor descontado), pra os
+  // totais fecharem e entrar igual no PDF/planilha.
+  const linhasFinais = useMemo<LinhaEmpregado[]>(() => {
+    const r2 = (n: number) => Math.round(n * 100) / 100;
+    const { linhasAjustadas } = aplicarDescontos(linhas, descontosFixos);
+    // Quanto o valor-fixo removeu por área (líquido/bruto/retenção).
+    const byIdAdj = Object.fromEntries(linhasAjustadas.map(l => [l.empregadoId, l]));
+    const totalPorArea: Record<string, { liquido: number; bruto: number; retencao: number }> = {};
+    const add = (a: string, l: number, b: number, r: number) => {
+      if (!totalPorArea[a]) totalPorArea[a] = { liquido: 0, bruto: 0, retencao: 0 };
+      totalPorArea[a].liquido += l; totalPorArea[a].bruto += b; totalPorArea[a].retencao += r;
+    };
+    for (const [a, v] of Object.entries(descAcc)) add(a, v.liquido, v.bruto, v.retencao);
+    for (const l of linhas) {
+      if (l.ehGrupoFreela) continue;
+      const adj = byIdAdj[l.empregadoId]; if (!adj) continue;
+      const dl = l.liquido - adj.liquido;
+      if (dl > 0.005) add(l.area, dl, l.bruto - adj.bruto, l.retencao - adj.retencao);
     }
-    return out;
-  }, [descontosCalc, descontoAplicadoPorArea, efetivoFixoPorArea]);
+    const descLines: LinhaEmpregado[] = Object.entries(totalPorArea)
+      .filter(([, v]) => v.liquido > 0.005)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([area, v]) => ({
+        empregadoId: `__desc_${area}__`, nome: "FREELA DESCONTO", cargoNome: area || "gorjeta", area: "",
+        bruto: r2(v.bruto), retencao: r2(v.retencao), liquido: r2(v.liquido),
+        diasComRecebimento: 0, dias: [], ehDesconto: true,
+        descontoDetalhe: descontosCalc.filter(dc => dc.desconto.area === area),
+        demitidoEm: null,
+      }));
+    return [...linhasAjustadas, ...descLines];
+  }, [linhas, descAcc, descontosFixos, descontosCalc]);
 
   // Detalha a discrepância entre líquido do mês e soma distribuída.
   // Duas causas reais (NÃO existe efeito de semGorjeta=true diluindo, esse
@@ -382,9 +411,9 @@ export function DivisaoMesTab({
       return s + calcularValorLiquido(g.valorBruto || 0, tax);
     }, 0);
     const retencao = bruto - liquido;
-    const distribuido = linhas.reduce((s, l) => s + l.liquido, 0);
+    const distribuido = linhasFinais.reduce((s, l) => s + l.liquido, 0);
     return { bruto, liquido, retencao, distribuido };
-  }, [gorjetasFiltradas, linhas, splitVersions, tipoUnidadeFiltro]);
+  }, [gorjetasFiltradas, linhas, linhasFinais, splitVersions, tipoUnidadeFiltro]);
 
   const [exportando, setExportando] = useState(false);
   const [pdfModalOpen, setPdfModalOpen] = useState(false);
@@ -496,16 +525,16 @@ export function DivisaoMesTab({
 
     // Aba 2: Divisão por empregado
     const divisaoHeader = ["Empregado", "Cargo", "Área", "Dias", "Bruto", "Retenção", "Líquido"];
-    const divisaoRows = linhas.map(l => [
+    const divisaoRows = linhasFinais.map(l => [
       l.nome, l.cargoNome, l.area, l.diasComRecebimento,
       l.bruto, l.retencao, l.liquido,
     ]);
     // Linha de totais
     const totalRow = [
-      "TOTAL", "", "", linhas.reduce((s, l) => s + l.diasComRecebimento, 0),
-      linhas.reduce((s, l) => s + l.bruto, 0),
-      linhas.reduce((s, l) => s + l.retencao, 0),
-      linhas.reduce((s, l) => s + l.liquido, 0),
+      "TOTAL", "", "", linhasFinais.reduce((s, l) => s + l.diasComRecebimento, 0),
+      linhasFinais.reduce((s, l) => s + l.bruto, 0),
+      linhasFinais.reduce((s, l) => s + l.retencao, 0),
+      linhasFinais.reduce((s, l) => s + l.liquido, 0),
     ];
     const divisaoWS = XLSX.utils.aoa_to_sheet([divisaoHeader, ...divisaoRows, [], totalRow]);
     XLSX.utils.book_append_sheet(wb, divisaoWS, "Divisão");
@@ -676,8 +705,8 @@ export function DivisaoMesTab({
           <div className="text-right">Retenção</div>
           <div className="text-right">Líquido</div>
         </div>
-        {linhasAjustadas.map((l, i) => {
-          const areaPrev = i > 0 ? linhasAjustadas[i - 1].area : null;
+        {linhasFinais.map((l, i) => {
+          const areaPrev = i > 0 ? linhasFinais[i - 1].area : null;
           const isPrimeiroDaArea = l.area !== areaPrev;
           const isExpanded = expandedEmpId === l.empregadoId;
           return (
@@ -789,8 +818,30 @@ export function DivisaoMesTab({
                 </div>
               )}
 
+              {/* Detalhe da linha FREELA DESCONTO: freelas descontados */}
+              {isExpanded && l.ehDesconto && l.descontoDetalhe && l.descontoDetalhe.length > 0 && (
+                <div className="bg-rose-50/30 dark:bg-rose-900/10 border-t border-rose-100 dark:border-rose-900/40 px-3 py-2 space-y-2">
+                  {l.descontoDetalhe.map((dc) => (
+                    <div key={dc.desconto.id}>
+                      <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1">
+                        {dc.desconto.tipo === "percFreelas"
+                          ? `${dc.desconto.perc}% da diária dos freelas de ${dc.desconto.area} · ${dc.periodoDe} a ${dc.periodoAte}`
+                          : `Valor fixo · ${dc.desconto.area}`}
+                        {dc.desconto.descricao ? ` · ${dc.desconto.descricao}` : ""}
+                      </div>
+                      {dc.detalhe.map((f, fi) => (
+                        <div key={fi} className="flex justify-between gap-3 py-0.5 text-[12px] text-gray-600 dark:text-gray-300">
+                          <span>{f.nome} <span className="text-gray-400">· {f.dias.length} dia{f.dias.length === 1 ? "" : "s"}</span></span>
+                          <span className="tabular-nums">diária {fmtBR(f.diaria)} → desconto {fmtBR(Math.round(f.diaria * (dc.desconto.perc || 0)) / 100)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Drill-down: dia-a-dia desse empregado */}
-              {isExpanded && !l.ehGrupoFreela && l.dias.length > 0 && (
+              {isExpanded && !l.ehGrupoFreela && !l.ehDesconto && l.dias.length > 0 && (
                 <div className="bg-indigo-50/30 dark:bg-indigo-900/10 border-t border-indigo-100 dark:border-indigo-900/40 px-3 py-2">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 mb-1.5">
                     📅 Detalhamento de {l.nome.split(" ")[0]} — {l.dias.length} dia(s)
@@ -846,81 +897,21 @@ export function DivisaoMesTab({
             </Fragment>
           );
         })}
-        {/* Linhas de DESCONTO (última(s) linha(s), reduzem a área — expandem no detalhe) */}
-        {descontosCalc.map(dc => {
-          const isE = expDesconto === dc.desconto.id;
-          const temDet = dc.desconto.tipo === "percFreelas" && dc.detalhe.length > 0;
-          const rot = dc.desconto.tipo === "percFreelas"
-            ? `${dc.desconto.perc}% dos freelas${dc.desconto.descricao ? ` · ${dc.desconto.descricao}` : ""}`
-            : (dc.desconto.descricao || "gorjeta");
-          const valEf = valorEfetivoPorDesconto[dc.desconto.id] || 0;
-          return (
-            <Fragment key={`desc-${dc.desconto.id}`}>
-              <button type="button" onClick={() => temDet && setExpDesconto(isE ? null : dc.desconto.id)}
-                className={`hidden md:grid w-full grid-cols-[24px_1fr_60px_120px_110px_120px] gap-2 px-3 py-2 items-center text-sm border-t border-gray-100 dark:border-gray-800 text-left ${temDet ? "hover:bg-rose-50/40 dark:hover:bg-rose-900/10" : "cursor-default"} ${isE ? "bg-rose-50/40 dark:bg-rose-900/10" : ""}`}>
-                <span className="text-gray-400 text-xs">{temDet ? (isE ? "▼" : "▶") : ""}</span>
-                <div className="min-w-0">
-                  <div className="font-medium text-rose-700 dark:text-rose-300 truncate flex items-center gap-1.5">
-                    {dc.desconto.area && <span className="text-[9px] bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">{dc.desconto.area}</span>}
-                    <span className="truncate">Desconto — {rot}</span>
-                  </div>
-                  {dc.desconto.tipo === "percFreelas" && <div className="text-[10px] text-gray-500">{dc.desconto.perc}% de {fmtBR(dc.valorBase)} em diárias de freelas · {dc.periodoDe} a {dc.periodoAte}</div>}
-                </div>
-                <div className="text-right tabular-nums text-gray-400">{temDet ? dc.detalhe.length : ""}</div>
-                <div></div>
-                <div></div>
-                <div className="text-right tabular-nums font-bold text-rose-600 dark:text-rose-400">−{fmtBR(valEf)}</div>
-              </button>
-              {isE && temDet && (
-                <div className="hidden md:block px-3 py-2 bg-rose-50/30 dark:bg-rose-900/10 border-t border-gray-100 dark:border-gray-800">
-                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 pl-6">Freelas de {dc.desconto.area} no período — {dc.desconto.perc}% descontado da diária</div>
-                  {dc.detalhe.map((f, fi) => (
-                    <div key={fi} className="flex justify-between gap-3 py-0.5 pl-6 pr-1 text-[12px] text-gray-600 dark:text-gray-300">
-                      <span>{f.nome} <span className="text-gray-400">· {f.dias.length} dia{f.dias.length === 1 ? "" : "s"}</span></span>
-                      <span className="tabular-nums">diária {fmtBR(f.diaria)} → desconto {fmtBR(Math.round(f.diaria * (dc.desconto.perc || 0)) / 100)}</span>
-                    </div>
-                  ))}
-                </div>
-              )}
-              {/* Mobile */}
-              <button type="button" onClick={() => temDet && setExpDesconto(isE ? null : dc.desconto.id)}
-                className={`md:hidden w-full px-3 py-2.5 border-t border-gray-100 dark:border-gray-800 text-left ${isE ? "bg-rose-50/40 dark:bg-rose-900/10" : ""}`}>
-                <div className="flex items-center justify-between gap-2">
-                  <div className="min-w-0 flex items-center gap-1.5">
-                    <span className="text-gray-400 text-xs">{temDet ? (isE ? "▼" : "▶") : ""}</span>
-                    <span className="text-sm font-medium text-rose-700 dark:text-rose-300 truncate">Desconto — {rot}</span>
-                  </div>
-                  <span className="tabular-nums font-bold text-rose-600 dark:text-rose-400">−{fmtBR(valEf)}</span>
-                </div>
-                {isE && temDet && (
-                  <div className="mt-2 space-y-0.5">
-                    {dc.detalhe.map((f, fi) => (
-                      <div key={fi} className="flex justify-between gap-2 text-[11px] text-gray-600 dark:text-gray-300">
-                        <span className="truncate">{f.nome} · {f.dias.length}d</span>
-                        <span className="tabular-nums">−{fmtBR(Math.round(f.diaria * (dc.desconto.perc || 0)) / 100)}</span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </button>
-            </Fragment>
-          );
-        })}
         {/* Linha de total — desktop */}
         <div className="hidden md:grid grid-cols-[24px_1fr_60px_120px_110px_120px] gap-2 px-3 py-3 items-center text-sm border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 font-bold">
           <div></div>
           <div>TOTAL</div>
-          <div className="text-right tabular-nums">{linhas.reduce((s, l) => s + l.diasComRecebimento, 0)}</div>
-          <div className="text-right tabular-nums">{fmtBR(linhas.reduce((s, l) => s + l.bruto, 0))}</div>
-          <div className="text-right tabular-nums text-amber-700 dark:text-amber-400">{fmtBR(linhas.reduce((s, l) => s + l.retencao, 0))}</div>
-          <div className="text-right tabular-nums text-emerald-700 dark:text-emerald-300">{fmtBR(linhas.reduce((s, l) => s + l.liquido, 0))}</div>
+          <div className="text-right tabular-nums">{linhasFinais.reduce((s, l) => s + l.diasComRecebimento, 0)}</div>
+          <div className="text-right tabular-nums">{fmtBR(linhasFinais.reduce((s, l) => s + l.bruto, 0))}</div>
+          <div className="text-right tabular-nums text-amber-700 dark:text-amber-400">{fmtBR(linhasFinais.reduce((s, l) => s + l.retencao, 0))}</div>
+          <div className="text-right tabular-nums text-emerald-700 dark:text-emerald-300">{fmtBR(linhasFinais.reduce((s, l) => s + l.liquido, 0))}</div>
         </div>
         {/* Linha de total — mobile */}
         <div className="md:hidden flex items-center justify-between px-3 py-3 border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-800/50 font-bold text-sm">
-          <span>TOTAL ({linhas.reduce((s, l) => s + l.diasComRecebimento, 0)} dias)</span>
+          <span>TOTAL ({linhasFinais.reduce((s, l) => s + l.diasComRecebimento, 0)} dias)</span>
           <div className="text-right">
-            <div className="tabular-nums text-emerald-700 dark:text-emerald-300">{fmtBR(linhas.reduce((s, l) => s + l.liquido, 0))}</div>
-            <div className="text-[10px] font-normal tabular-nums text-gray-500">bruto {fmtBR(linhas.reduce((s, l) => s + l.bruto, 0))}</div>
+            <div className="tabular-nums text-emerald-700 dark:text-emerald-300">{fmtBR(linhasFinais.reduce((s, l) => s + l.liquido, 0))}</div>
+            <div className="text-[10px] font-normal tabular-nums text-gray-500">bruto {fmtBR(linhasFinais.reduce((s, l) => s + l.bruto, 0))}</div>
           </div>
         </div>
       </div>
@@ -992,7 +983,7 @@ export function DivisaoMesTab({
           ano={ano}
           mes={mes}
           restaurantNome={restaurantNome}
-          linhas={linhas.map(l => ({
+          linhas={linhasFinais.map(l => ({
             empregadoId: l.empregadoId,
             nome: l.nome,
             cargoNome: l.cargoNome,
