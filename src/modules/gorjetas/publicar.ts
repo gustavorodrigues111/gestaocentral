@@ -43,14 +43,20 @@ function freelasDoDia(
   cargos: Cargo[],
   date: string,
   unidadeId: string | null,
+  unidades: Unidade[],
 ): { id: string; nome: string; cargoId: string; pontos: number; area: Area }[] {
   const cargoById: Record<string, Cargo> = Object.fromEntries(cargos.map((c) => [c.id, c]));
+  // Unidades de atendimento ATIVAS (não encerradas). Um freela tagueado numa
+  // unidade que não é mais ativa (ex.: Porto Futuro encerrado) é "defasado" e
+  // dobra na unidade sendo publicada — senão sumiria da divisão.
+  const atendAtivas = new Set(
+    unidades.filter((u) => u.tipo === "atendimento" && u.ativa && !u.encerradaEm).map((u) => u.id),
+  );
   return (freelaShifts || [])
-    // Freela SEM unidade (f.unidadeId null) entra na gorjeta da unidade que está
-    // sendo calculada — casa com a unidade que arrecada no dia (ex.: só Cidade
-    // Velha, com Porto desativado). Freela COM unidade só entra na dela.
+    // Entra se: SEM unidade; OU unidade == a que está sendo calculada; OU a
+    // unidade dele não é mais atendimento-ativa (defasada/encerrada → dobra aqui).
     .filter((f) => f.date === date && f.gorjetaCargoId && f.status !== "cancelado" && f.status !== "nao_compareceu"
-      && (!unidadeId || !f.unidadeId || (f.unidadeId || null) === unidadeId))
+      && (!unidadeId || !f.unidadeId || (f.unidadeId || null) === unidadeId || !atendAtivas.has(f.unidadeId)))
     .map((f) => {
       const c = cargoById[f.gorjetaCargoId as string];
       return { id: f.id, nome: f.nomeSnapshot, cargoId: f.gorjetaCargoId as string, pontos: c?.pontos || 0, area: (c?.area || f.area || "Salão") as Area };
@@ -78,7 +84,7 @@ export async function publicarGorjeta(p: PublicarParams): Promise<void> {
     sv,
     gorjeta.unidadeId || null,
     unidades,
-    freelasDoDia(p.freelaShifts, cargos, gorjeta.date, gorjeta.unidadeId || null),
+    freelasDoDia(p.freelaShifts, cargos, gorjeta.date, gorjeta.unidadeId || null, unidades),
   );
   const now = new Date().toISOString();
   await updateDoc(doc(db, "gorjetas", gorjeta.id), sanitizeForFirestore({
@@ -120,7 +126,7 @@ export async function recalcularSnapshotGorjeta(p: PublicarParams): Promise<void
     sv,
     gorjeta.unidadeId || null,
     unidades,
-    freelasDoDia(p.freelaShifts, cargos, gorjeta.date, gorjeta.unidadeId || null),
+    freelasDoDia(p.freelaShifts, cargos, gorjeta.date, gorjeta.unidadeId || null, unidades),
   );
   const now = new Date().toISOString();
   await updateDoc(doc(db, "gorjetas", gorjeta.id), sanitizeForFirestore({

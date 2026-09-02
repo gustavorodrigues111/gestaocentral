@@ -66,16 +66,27 @@ export function DivisaoMesTab({
   // Freelas de UM dia que entram na gorjeta (têm gorjetaCargoId + trabalharam).
   // Já filtra por unidade quando a gorjeta é de uma unidade específica.
   const cargoById = useMemo(() => Object.fromEntries(cargos.map(c => [c.id, c])), [cargos]);
+  // Unidade EFETIVA do turno de freela: a dele SE arrecadou gorjeta nesse dia;
+  // senão, cai na unidade que mais arrecadou. Assim turno com unidade defasada/
+  // encerrada (ex: Porto Futuro) entra na divisão da unidade que sobrou (Cidade
+  // Velha) em vez de sumir. (Mesma regra do Fechamento de freelas.)
+  const unidadeEfetivaDoDia = useMemo(() => (date: string, shiftUnidadeId: string | null | undefined): string | null => {
+    const doDia = (gorjetas || []).filter(x => x.date === date && !x.semGorjeta && (x.valorBruto || 0) > 0);
+    const u = shiftUnidadeId || null;
+    if (u && doDia.some(x => (x.unidadeId || null) === u)) return u;
+    const top = doDia.slice().sort((a, b) => (b.valorBruto || 0) - (a.valorBruto || 0))[0];
+    return top ? (top.unidadeId || null) : null;
+  }, [gorjetas]);
   const freelasDoDia = useMemo(() => (date: string, unidadeId: string | null) =>
     (freelaShifts || [])
       .filter(f => f.date === date && f.gorjetaCargoId && f.status !== "cancelado" && f.status !== "nao_compareceu"
-        && (!unidadeId || (f.unidadeId || null) === unidadeId))
+        && (!unidadeId || unidadeEfetivaDoDia(date, f.unidadeId) === unidadeId))
       .map(f => {
         const c = cargoById[f.gorjetaCargoId as string];
         return { id: f.id, nome: f.nomeSnapshot, cargoId: f.gorjetaCargoId as string, pontos: c?.pontos || 0, area: (c?.area || f.area || "Salão") as Area };
       })
       .filter(f => f.pontos > 0),
-  [freelaShifts, cargoById]);
+  [freelaShifts, cargoById, unidadeEfetivaDoDia]);
   // Drill-down: empregadoId atualmente expandido (mostra dia-a-dia)
   const [expandedEmpId, setExpandedEmpId] = useState<string | null>(null);
 
