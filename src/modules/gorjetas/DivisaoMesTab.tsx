@@ -850,7 +850,9 @@ export function DivisaoMesTab({
         {descontosCalc.map(dc => {
           const isE = expDesconto === dc.desconto.id;
           const temDet = dc.desconto.tipo === "percFreelas" && dc.detalhe.length > 0;
-          const rot = dc.desconto.descricao || (dc.desconto.tipo === "percFreelas" ? `${dc.desconto.perc}% dos freelas` : "gorjeta");
+          const rot = dc.desconto.tipo === "percFreelas"
+            ? `${dc.desconto.perc}% dos freelas${dc.desconto.descricao ? ` · ${dc.desconto.descricao}` : ""}`
+            : (dc.desconto.descricao || "gorjeta");
           const valEf = valorEfetivoPorDesconto[dc.desconto.id] || 0;
           return (
             <Fragment key={`desc-${dc.desconto.id}`}>

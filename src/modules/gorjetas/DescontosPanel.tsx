@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { addDoc, collection, deleteDoc, doc } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Modal } from "../../core/ui/Modal";
@@ -20,6 +20,7 @@ type Props = {
 
 export function DescontosPanel({ restaurantId, competencia, areas, descontosCalc, criadoPor, podeEditar }: Props) {
   const [novo, setNovo] = useState(false);
+  const [editando, setEditando] = useState<GorjetaDesconto | null>(null);
   const total = useMemo(() => descontosCalc.reduce((s, d) => s + d.valor, 0), [descontosCalc]);
 
   async function remover(id: string) {
@@ -42,31 +43,33 @@ export function DescontosPanel({ restaurantId, competencia, areas, descontosCalc
           {descontosCalc.map(dc => (
             <div key={dc.desconto.id} className="flex items-center gap-2 text-[12.5px] text-gray-600 dark:text-gray-300 flex-wrap">
               <span className="text-[10px] font-bold uppercase tracking-wide bg-gray-100 dark:bg-gray-800 px-1.5 py-0.5 rounded">{dc.desconto.area}</span>
-              <span className="truncate">{dc.desconto.descricao || (dc.desconto.tipo === "percFreelas" ? `${dc.desconto.perc}% dos freelas` : "Desconto")}</span>
-              {dc.desconto.tipo === "percFreelas" && <span className="text-gray-400">({dc.desconto.perc}% de {fmtBR(dc.valorBase)} em freelas)</span>}
+              <span className="font-semibold text-gray-800 dark:text-gray-100">{dc.desconto.tipo === "percFreelas" ? `${dc.desconto.perc}% dos freelas` : "Valor fixo"}</span>
+              {dc.desconto.descricao && <span className="text-gray-500 truncate">· {dc.desconto.descricao}</span>}
+              {dc.desconto.tipo === "percFreelas" && <span className="text-gray-400">({dc.desconto.perc}% de {fmtBR(dc.valorBase)} em diárias)</span>}
               <span className="text-rose-600 dark:text-rose-400 font-semibold tabular-nums ml-auto">−{fmtBR(dc.valor)}</span>
-              {podeEditar && <button type="button" onClick={() => void remover(dc.desconto.id)} className="text-rose-500 hover:text-rose-600 text-xs">✕</button>}
+              {podeEditar && <button type="button" onClick={() => setEditando(dc.desconto)} className="text-indigo-500 hover:text-indigo-600 text-xs" title="Editar">✏️</button>}
+              {podeEditar && <button type="button" onClick={() => void remover(dc.desconto.id)} className="text-rose-500 hover:text-rose-600 text-xs" title="Remover">✕</button>}
             </div>
           ))}
         </div>
       )}
-      {novo && (
-        <NovoDescontoModal restaurantId={restaurantId} competencia={competencia} areas={areas} criadoPor={criadoPor} onClose={() => setNovo(false)} />
+      {(novo || editando) && (
+        <NovoDescontoModal restaurantId={restaurantId} competencia={competencia} areas={areas} criadoPor={criadoPor} editar={editando} onClose={() => { setNovo(false); setEditando(null); }} />
       )}
     </div>
   );
 }
 
-function NovoDescontoModal({ restaurantId, competencia, areas, criadoPor, onClose }: {
-  restaurantId: string; competencia: string; areas: string[]; criadoPor: { id: string; nome: string }; onClose: () => void;
+function NovoDescontoModal({ restaurantId, competencia, areas, criadoPor, editar, onClose }: {
+  restaurantId: string; competencia: string; areas: string[]; criadoPor: { id: string; nome: string }; editar?: GorjetaDesconto | null; onClose: () => void;
 }) {
-  const [area, setArea] = useState(areas[0] || "");
-  const [descricao, setDescricao] = useState("");
-  const [tipo, setTipo] = useState<"percFreelas" | "valor">("percFreelas");
-  const [perc, setPerc] = useState("50");
-  const [valorFixo, setValorFixo] = useState("");
-  const [periodoDe, setPeriodoDe] = useState(`${competencia}-01`);
-  const [periodoAte, setPeriodoAte] = useState(fimDoMes(competencia));
+  const [area, setArea] = useState(editar?.area || areas[0] || "");
+  const [descricao, setDescricao] = useState(editar?.descricao || "");
+  const [tipo, setTipo] = useState<"percFreelas" | "valor">(editar?.tipo || "percFreelas");
+  const [perc, setPerc] = useState(editar?.perc != null ? String(editar.perc) : "50");
+  const [valorFixo, setValorFixo] = useState(editar?.valorFixo != null ? String(editar.valorFixo) : "");
+  const [periodoDe, setPeriodoDe] = useState(editar?.periodoDe || `${competencia}-01`);
+  const [periodoAte, setPeriodoAte] = useState(editar?.periodoAte || fimDoMes(competencia));
   const [salvando, setSalvando] = useState(false);
   const [err, setErr] = useState("");
   const inp = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
@@ -82,15 +85,16 @@ function NovoDescontoModal({ restaurantId, competencia, areas, criadoPor, onClos
         restaurantId, competencia, area, descricao: descricao.trim(),
         tipo,
         ...(tipo === "percFreelas" ? { perc: Number(perc), periodoDe, periodoAte } : { valorFixo: Number(valorFixo.replace(/[^\d,.-]/g, "").replace(",", ".")) }),
-        criadoEm: new Date().toISOString(), criadoPor,
+        criadoEm: editar?.criadoEm || new Date().toISOString(), criadoPor: editar?.criadoPor || criadoPor,
       };
-      await addDoc(collection(db, "gorjetaDescontos"), sanitizeForFirestore(d));
+      if (editar) await setDoc(doc(db, "gorjetaDescontos", editar.id), sanitizeForFirestore(d));
+      else await addDoc(collection(db, "gorjetaDescontos"), sanitizeForFirestore(d));
       onClose();
     } catch (e) { setErr(e instanceof Error ? e.message : "Falha ao salvar."); setSalvando(false); }
   }
 
   return (
-    <Modal title="Adicionar desconto da gorjeta" onClose={onClose} maxWidth="max-w-md">
+    <Modal title={editar ? "Editar desconto da gorjeta" : "Adicionar desconto da gorjeta"} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
         <div className="flex flex-col gap-1"><label className={lbl}>Área</label>
           <select value={area} onChange={e => setArea(e.target.value)} className={inp}>
@@ -98,8 +102,9 @@ function NovoDescontoModal({ restaurantId, competencia, areas, criadoPor, onClos
             {areas.map(a => <option key={a} value={a}>{a}</option>)}
           </select>
         </div>
-        <div className="flex flex-col gap-1"><label className={lbl}>Descrição (motivo — aparece na linha)</label>
-          <input value={descricao} onChange={e => setDescricao(e.target.value)} placeholder="ex: 50% dos freelas de salão de agosto" className={inp} />
+        <div className="flex flex-col gap-1"><label className={lbl}>Descrição (motivo — texto livre, opcional)</label>
+          <input value={descricao} onChange={e => setDescricao(e.target.value)} placeholder="ex: rateio dos freelas de agosto" className={inp} />
+          <span className="text-[10px] text-gray-400">O percentual é o campo abaixo — aqui é só um rótulo.</span>
         </div>
         <div className="flex gap-2">
           <label className={`flex-1 flex items-center gap-2 rounded-lg border px-3 py-2 cursor-pointer text-sm ${tipo === "percFreelas" ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20" : "border-gray-300 dark:border-gray-700"}`}>
