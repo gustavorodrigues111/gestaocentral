@@ -22,6 +22,7 @@ import { getActiveSplitVersion } from "./splitRules";
 // Label "Junho/2026" a partir de "2026-06" (o util nomeMes só dá o nome do mês).
 const labelMes = (ym: string) => { const [y, m] = ym.split("-"); return `${nomeMes(Number(m))}/${y}`; };
 import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
+import { calcularDesconto, type GorjetaDesconto } from "./descontos";
 import { gerarComparacaoPDF } from "./gerarComparacaoPDF";
 import type { Area, Cargo, DivisaoItem, Empregado, EscalaMes, FreelaShift, Gorjeta, SplitVersion, Unidade } from "../../core/types";
 
@@ -99,6 +100,13 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
     return onSnapshot(query(collection(db, "freelaShifts"), where("restaurantId", "==", rid)),
       (snap) => setFreelaShifts(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FreelaShift)));
   }, [rid]);
+  // Descontos por área — pra Comparação bater com a Divisão do mês.
+  const [descontos, setDescontos] = useState<GorjetaDesconto[]>([]);
+  useEffect(() => {
+    if (!rid) return;
+    return onSnapshot(query(collection(db, "gorjetaDescontos"), where("restaurantId", "==", rid)),
+      (snap) => setDescontos(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as GorjetaDesconto)));
+  }, [rid]);
 
   // Unidade efetiva + freelas do dia (mesma regra da Divisão/Fechamento).
   const cargoById = useMemo(() => Object.fromEntries(cargos.map((c) => [c.id, c])), [cargos]);
@@ -128,6 +136,7 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
   // bruto = líquido / (1 − retenção%). taxRate vem do snapshot quando publicada.
   const brutoPorEmp = useMemo(() => (ym: string, escala: EscalaMes | null): Map<string, LinhaEmp> => {
     const acc = new Map<string, LinhaEmp>();
+    const liquidoPorArea: Record<string, number> = {};
     for (const g of gorjetas) {
       if (g.date.slice(0, 7) !== ym || g.semGorjeta || !g.valorBruto) continue;
       const sv = getActiveSplitVersion(splitVersions, g.date);
@@ -145,11 +154,27 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
         const cur = acc.get(it.empregadoId) || { nome: it.empregadoNome, cargoNome: it.cargoNome, area: it.area, bruto: 0 };
         cur.bruto += fator > 0 ? it.valor / fator : it.valor;
         acc.set(it.empregadoId, cur);
+        liquidoPorArea[it.area] = (liquidoPorArea[it.area] || 0) + it.valor;
       }
+    }
+    // Aplica os descontos do mês (mesma regra da Divisão): reduz proporcional
+    // a fatia dos empregados da área. O fator é uniforme por área, então vale
+    // igual pro bruto.
+    const dcs = descontos.filter((d) => d.competencia === ym).map((d) => calcularDesconto(d, freelaShifts, cargoById)).filter((x) => x.valor > 0);
+    if (dcs.length) {
+      const pedidoPorArea: Record<string, number> = {};
+      for (const dc of dcs) pedidoPorArea[dc.desconto.area] = (pedidoPorArea[dc.desconto.area] || 0) + dc.valor;
+      const fatorArea: Record<string, number> = {};
+      for (const area of Object.keys(pedidoPorArea)) {
+        const at = liquidoPorArea[area] || 0;
+        const efetivo = Math.min(pedidoPorArea[area], at);
+        fatorArea[area] = at > 0 ? 1 - efetivo / at : 1;
+      }
+      for (const v of acc.values()) { const f = fatorArea[v.area]; if (f != null && f < 1) v.bruto *= f; }
     }
     for (const v of acc.values()) v.bruto = Math.round(v.bruto * 100) / 100;
     return acc;
-  }, [gorjetas, splitVersions, empregados, cargos, unidades, freelasDoDia]);
+  }, [gorjetas, splitVersions, empregados, cargos, unidades, freelasDoDia, descontos, freelaShifts, cargoById]);
 
   // Ordena cronologicamente: base = mais antigo, comparado = mais recente.
   const [base, comparado] = mesA <= mesB ? [mesA, mesB] : [mesB, mesA];
