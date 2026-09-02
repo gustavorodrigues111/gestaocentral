@@ -51,6 +51,7 @@ import { SitesPage } from "../../modules/sites/SitesPage";
 import { CardapioPage } from "../../modules/cardapio/CardapioPage";
 import { UniformesPage } from "../../modules/uniformes/UniformesPage";
 import { ArquiteturaPage } from "../../modules/arquitetura/ArquiteturaPage";
+import { PropostasPage } from "../../modules/propostas/PropostasPage";
 import { PerfisAcessoPage } from "../../modules/perfisAcesso/PerfisAcessoPage";
 import { PortalPage } from "../../modules/portalEmpregado/PortalPage";
 import { TarefasPage } from "../../modules/tarefas/TarefasPage";
@@ -197,6 +198,7 @@ export function ProtectedShell() {
           <Routes>
             <Route path="/" element={<HomePage />} />
             <Route path="/arquitetura" element={<ArquiteturaPage />} />
+            <Route path="/propostas" element={<PropostasPage />} />
             <Route path="/perfis" element={<PerfisAcessoPage />} />
             <Route path="/portal/:rid" element={<PortalPage />} />
             <Route path="/r/:rid/:moduleId" element={<ModuleRouter />} />

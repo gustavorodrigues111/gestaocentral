@@ -281,6 +281,10 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                         <span>🛡️</span><span className="flex-1 truncate">Perfis de Acesso</span>
                         <span className="text-[9px] text-gray-400">master</span>
                       </NavLink>
+                      <NavLink to="/propostas" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                        <span>📄</span><span className="flex-1 truncate">Propostas</span>
+                        <span className="text-[9px] text-gray-400">master</span>
+                      </NavLink>
                       {masterModuloLigado("agentes") && (
                         <NavLink to={rid ? `/r/${rid}/agentes` : "#"} onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
                           <span>🤖</span><span className="flex-1 truncate">Agentes de IA</span>
