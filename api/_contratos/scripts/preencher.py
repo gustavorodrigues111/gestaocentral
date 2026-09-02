@@ -279,7 +279,10 @@ def txt_remuneracao(c):
 def txt_descricao(c):
     d = c.get("descricao")
     if isinstance(d, list):
-        d = "; ".join(x.rstrip(".;") for x in d) + "."
+        d = "; ".join(x.rstrip(".;") for x in d if x) + "." if any(d) else None
+    if not d:
+        # Cargo sem atribuições cadastradas: cláusula genérica (não quebra o contrato).
+        return "- todas as atividades inerentes e correlatas à função, conforme orientação da EMPREGADORA."
     return "- " + d
 
 
@@ -304,7 +307,12 @@ def txt_vigencia(ct):
 
 
 def txt_horario(c):
-    h = c["horario"]
+    h = c.get("horario")
+    if not h:
+        # Sem horário na admissão nem no cargo: mantém jornada padrão de 44h
+        # (o app já avisa na tela quando falta cadastrar o horário).
+        h = ("De segunda-feira a sábado, das 08:00 às 12:00 e das 13:00 às 17:48, "
+             "com 1 (uma) hora de intervalo para refeição e descanso, perfazendo 44 horas semanais.")
     if c.get("regime") == "hibrido" and not c.get("horario_inclui_regime"):
         h = h.rstrip(".") + (". As atividades serão prestadas em regime híbrido, alternando trabalho presencial "
                              "no estabelecimento da EMPREGADORA e teletrabalho (home office) na residência do(a) "
