@@ -900,7 +900,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   async function transferirPara(p: Pessoa, nota: string) {
     const alvo = transferWaId || sel;
     if (!alvo) return;
-    await salvarContato(alvo, { atribuidoA: p.id, atribuidoNome: p.nome });
+    // Ao transferir: passa pro novo dono, REABRE (se estava finalizada não pode
+    // cair em "Finalizados") e marca como NÃO LIDA — pro novo dono ver na fila.
+    await salvarContato(alvo, { atribuidoA: p.id, atribuidoNome: p.nome, finalizadoEm: null, finalizadoPor: null, naoLidaManual: true });
     await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({
       waId: alvo, numeroId: numeroSel, direcao: "out", tipo: "sistema", sistema: true, lido: true,
       texto: `🔀 Conversa transferida para ${p.nome} por ${me?.nome || "—"}${nota ? ` — ${nota}` : ""}`,
