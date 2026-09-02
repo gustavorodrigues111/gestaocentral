@@ -131,10 +131,10 @@ export function calcularDivisaoDia(
 
     if (cargo.recebeProducao) {
       // Cargo "recebe produção" = recebe gorjeta de TODAS as unidades de
-      // atendimento, independente da unidade onde o empregado está lotado
-      // ou onde trabalhou no dia. Em multi-unidade exige só que tenha
-      // trabalhado; em single-unit recebe TODO dia (comportamento antigo).
-      if (isMultiUnidades && !trabalhou) continue;
+      // atendimento em TODO dia que a casa arrecadou, independente da escala/
+      // presença (folga inclusive) e da unidade onde está lotado. Vale tanto
+      // em single quanto em multi-unidade. Só exige estar ATIVO no dia
+      // (admitido e não demitido) — já checado por empregadoAtivoEm acima.
       motivo = "producao";
     } else {
       // Cargo normal: precisa ter trabalhado
