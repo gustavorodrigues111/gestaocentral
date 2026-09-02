@@ -23,7 +23,7 @@ import { getActiveSplitVersion } from "./splitRules";
 const labelMes = (ym: string) => { const [y, m] = ym.split("-"); return `${nomeMes(Number(m))}/${y}`; };
 import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
 import { gerarComparacaoPDF } from "./gerarComparacaoPDF";
-import type { Cargo, DivisaoItem, Empregado, EscalaMes, Gorjeta, SplitVersion, Unidade } from "../../core/types";
+import type { Area, Cargo, DivisaoItem, Empregado, EscalaMes, FreelaShift, Gorjeta, SplitVersion, Unidade } from "../../core/types";
 
 const fmtBR = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -81,6 +81,7 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
   const [mesB, setMesB] = useState(mesesOpcoes[0]);                   // mês atual
 
   const [gorjetas, setGorjetas] = useState<Gorjeta[]>([]);
+  const [freelaShifts, setFreelaShifts] = useState<FreelaShift[]>([]);
   const [escalaA, setEscalaA] = useState<EscalaMes | null>(null);
   const [escalaB, setEscalaB] = useState<EscalaMes | null>(null);
 
@@ -91,6 +92,29 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
       setGorjetas(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as Gorjeta));
     });
   }, [rid]);
+  // Freelas — precisam entrar na divisão (diluem os CLT) pra a Comparação bater
+  // com a Divisão do mês. Dias publicados já trazem o freela no snapshot.
+  useEffect(() => {
+    if (!rid) return;
+    return onSnapshot(query(collection(db, "freelaShifts"), where("restaurantId", "==", rid)),
+      (snap) => setFreelaShifts(snap.docs.map((d) => ({ id: d.id, ...d.data() }) as FreelaShift)));
+  }, [rid]);
+
+  // Unidade efetiva + freelas do dia (mesma regra da Divisão/Fechamento).
+  const cargoById = useMemo(() => Object.fromEntries(cargos.map((c) => [c.id, c])), [cargos]);
+  const unidadeEfetiva = useMemo(() => (date: string, u0: string | null | undefined): string | null => {
+    const doDia = gorjetas.filter((x) => x.date === date && !x.semGorjeta && (x.valorBruto || 0) > 0);
+    const u = u0 || null;
+    if (u && doDia.some((x) => (x.unidadeId || null) === u)) return u;
+    const top = doDia.slice().sort((a, b) => (b.valorBruto || 0) - (a.valorBruto || 0))[0];
+    return top ? (top.unidadeId || null) : null;
+  }, [gorjetas]);
+  const freelasDoDia = useMemo(() => (date: string, unidadeId: string | null) =>
+    freelaShifts.filter((f) => f.date === date && f.gorjetaCargoId && f.status !== "cancelado" && f.status !== "nao_compareceu"
+      && (!unidadeId || unidadeEfetiva(date, f.unidadeId) === unidadeId))
+      .map((f) => { const c = cargoById[f.gorjetaCargoId as string]; return { id: f.id, nome: f.nomeSnapshot, cargoId: f.gorjetaCargoId as string, pontos: c?.pontos || 0, area: (c?.area || f.area || "Salão") as Area }; })
+      .filter((f) => f.pontos > 0),
+  [freelaShifts, cargoById, unidadeEfetiva]);
   useEffect(() => {
     if (!rid) return;
     return onSnapshot(doc(db, "escalas", `${rid}_${mesA}`), (s) => setEscalaA(s.exists() ? ({ id: s.id, ...s.data() } as EscalaMes) : null));
@@ -114,9 +138,10 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
         itens = g.divisaoSnapshot;
       } else {
         const liq = calcularValorLiquido(g.valorBruto, taxRate);
-        itens = calcularDivisaoDia(g.date, liq, empregados, cargos, escala, sv, g.unidadeId || null, unidades).itens;
+        itens = calcularDivisaoDia(g.date, liq, empregados, cargos, escala, sv, g.unidadeId || null, unidades, freelasDoDia(g.date, g.unidadeId || null)).itens;
       }
       for (const it of itens) {
+        if (it.freela) continue;   // freela dilui a divisão, mas não é linha de empregado na comparação
         const cur = acc.get(it.empregadoId) || { nome: it.empregadoNome, cargoNome: it.cargoNome, area: it.area, bruto: 0 };
         cur.bruto += fator > 0 ? it.valor / fator : it.valor;
         acc.set(it.empregadoId, cur);
@@ -124,7 +149,7 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
     }
     for (const v of acc.values()) v.bruto = Math.round(v.bruto * 100) / 100;
     return acc;
-  }, [gorjetas, splitVersions, empregados, cargos, unidades]);
+  }, [gorjetas, splitVersions, empregados, cargos, unidades, freelasDoDia]);
 
   // Ordena cronologicamente: base = mais antigo, comparado = mais recente.
   const [base, comparado] = mesA <= mesB ? [mesA, mesB] : [mesB, mesA];

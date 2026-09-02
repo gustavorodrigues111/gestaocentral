@@ -18,13 +18,15 @@ import { LancamentoTab } from "./LancamentoTab";
 import { FechamentoTab } from "./FechamentoTab";
 import { HistoricoTab } from "./HistoricoTab";
 import { RetroativoTab } from "./RetroativoTab";
+import { RelatoriosTab } from "./RelatoriosTab";
 
-type TabId = "lancamentos" | "retroativo" | "fechamento" | "historico";
+type TabId = "lancamentos" | "retroativo" | "fechamento" | "relatorios" | "historico";
 
 const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
   { id: "lancamentos", label: "Lançamentos",    icon: "📝" },
   { id: "retroativo",  label: "Turnos passados", icon: "⏪" },
   { id: "fechamento",  label: "Fechamento",     icon: "💰" },
+  { id: "relatorios",  label: "Relatórios",     icon: "📊" },
   { id: "historico",   label: "Histórico",      icon: "🗂️" },
 ];
 
@@ -52,7 +54,7 @@ export function FreelasPage() {
     const out: TabId[] = [];
     if (podeOperar) out.push("lancamentos");
     if (podeRetro)  out.push("retroativo");
-    if (podeDp)     out.push("fechamento", "historico");
+    if (podeDp)     out.push("fechamento", "relatorios", "historico");
     return out;
   }, [podeOperar, podeRetro, podeDp]);
 
@@ -160,6 +162,7 @@ export function FreelasPage() {
             t.id === "lancamentos" ? totalAbertos :
             t.id === "retroativo"  ? 0 :
             t.id === "fechamento"  ? totalPendentes :
+            t.id === "relatorios"  ? 0 :
                                      totalHistorico;
           return (
             <button
@@ -208,6 +211,14 @@ export function FreelasPage() {
           shifts={shifts}
           empregados={empregados}
           pessoas={pessoas}
+        />
+      )}
+      {tab === "relatorios" && podeDp && (
+        <RelatoriosTab
+          restaurantId={rid}
+          restaurantNome={activeRestaurant.nome}
+          unidades={activeRestaurant.unidades || []}
+          shifts={shifts}
         />
       )}
       {tab === "fechamento" && podeDp && (
