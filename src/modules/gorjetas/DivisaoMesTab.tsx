@@ -1,8 +1,12 @@
-import { Fragment, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useState } from "react";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
 import type { Area, Cargo, DivisaoItem, Empregado, EscalaMes, FreelaShift, Gorjeta, SplitVersion, Unidade } from "../../core/types";
 import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
 import { getActiveSplitVersion } from "./splitRules";
+import { DescontosPanel } from "./DescontosPanel";
+import { calcularDesconto, aplicarDescontos, type DescontoCalc, type GorjetaDesconto } from "./descontos";
 import { nomeMes } from "../../core/utils/date";
 import { ExportarGorjetasPDFModal } from "./ExportarGorjetasPDFModal";
 import { recalcularSnapshotGorjeta } from "./publicar";
@@ -24,6 +28,7 @@ function fmtDataSaida(demitidoEm: string): string {
 type Props = {
   ano: number;
   mes: number;
+  rid: string;
   gorjetas: Gorjeta[];
   empregados: Empregado[];
   cargos: Cargo[];
@@ -34,6 +39,7 @@ type Props = {
   usaMultiUnidades: boolean;
   filtroUnidadeId: string;   // controlado pela GorjetasPage (pills do header)
   freelaShifts?: FreelaShift[];   // turnos de freela — os com gorjetaCargoId entram na divisão
+  podeEditar?: boolean;           // pode gerir descontos da gorjeta
 };
 
 type DiaEmpregado = {
@@ -60,9 +66,17 @@ type LinhaEmpregado = {
 };
 
 export function DivisaoMesTab({
-  ano, mes, gorjetas, empregados, cargos, escala, splitVersions, restaurantNome,
-  unidades, usaMultiUnidades, filtroUnidadeId, freelaShifts,
+  ano, mes, rid, gorjetas, empregados, cargos, escala, splitVersions, restaurantNome,
+  unidades, usaMultiUnidades, filtroUnidadeId, freelaShifts, podeEditar,
 }: Props) {
+  const competencia = `${ano}-${String(mes).padStart(2, "0")}`;
+  const [descontos, setDescontos] = useState<GorjetaDesconto[]>([]);
+  const [expDesconto, setExpDesconto] = useState<string | null>(null);
+  useEffect(() => {
+    if (!rid) return;
+    return onSnapshot(query(collection(db, "gorjetaDescontos"), where("restaurantId", "==", rid), where("competencia", "==", competencia)),
+      s => setDescontos(s.docs.map(d => ({ id: d.id, ...d.data() } as GorjetaDesconto))), () => setDescontos([]));
+  }, [rid, competencia]);
   // Freelas de UM dia que entram na gorjeta (têm gorjetaCargoId + trabalharam).
   // Já filtra por unidade quando a gorjeta é de uma unidade específica.
   const cargoById = useMemo(() => Object.fromEntries(cargos.map(c => [c.id, c])), [cargos]);
@@ -260,6 +274,17 @@ export function DivisaoMesTab({
     }
     return ordenado;
   }, [gorjetasFiltradas, empregados, cargos, escala, splitVersions, unidades, filtroUnidadeId, tipoUnidadeFiltro, freelasDoDia]);
+
+  // Descontos da gorjeta por área (reduzem proporcional os empregados da área).
+  const descontosCalc = useMemo<DescontoCalc[]>(
+    () => descontos.map(d => calcularDesconto(d, freelaShifts || [], cargoById)).filter(dc => dc.valor > 0),
+    [descontos, freelaShifts, cargoById],
+  );
+  const areasPresentes = useMemo(
+    () => [...new Set(linhas.filter(l => !l.ehGrupoFreela && l.area).map(l => l.area))].sort(),
+    [linhas],
+  );
+  const { linhasAjustadas } = useMemo(() => aplicarDescontos(linhas, descontosCalc), [linhas, descontosCalc]);
 
   // Detalha a discrepância entre líquido do mês e soma distribuída.
   // Duas causas reais (NÃO existe efeito de semGorjeta=true diluindo, esse
@@ -599,6 +624,18 @@ export function DivisaoMesTab({
         </div>
       )}
 
+      {/* Descontos da gorjeta por área */}
+      {(podeEditar || descontosCalc.length > 0) && (
+        <DescontosPanel
+          restaurantId={rid}
+          competencia={competencia}
+          areas={areasPresentes}
+          descontosCalc={descontosCalc}
+          criadoPor={{ id: me?.id || "", nome: me?.nome || "" }}
+          podeEditar={!!podeEditar}
+        />
+      )}
+
       {/* Tabela de divisão (cabeçalho com 1 col extra pro chevron expand/collapse) */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
         <div className="text-[11px] text-gray-500 dark:text-gray-400 px-3 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-800/30">
@@ -613,8 +650,8 @@ export function DivisaoMesTab({
           <div className="text-right">Retenção</div>
           <div className="text-right">Líquido</div>
         </div>
-        {linhas.map((l, i) => {
-          const areaPrev = i > 0 ? linhas[i - 1].area : null;
+        {linhasAjustadas.map((l, i) => {
+          const areaPrev = i > 0 ? linhasAjustadas[i - 1].area : null;
           const isPrimeiroDaArea = l.area !== areaPrev;
           const isExpanded = expandedEmpId === l.empregadoId;
           return (
@@ -780,6 +817,63 @@ export function DivisaoMesTab({
                   </div>
                 </div>
               )}
+            </Fragment>
+          );
+        })}
+        {/* Linhas de DESCONTO (última(s) linha(s), reduzem a área — expandem no detalhe) */}
+        {descontosCalc.map(dc => {
+          const isE = expDesconto === dc.desconto.id;
+          const temDet = dc.desconto.tipo === "percFreelas" && dc.detalhe.length > 0;
+          const rot = dc.desconto.descricao || (dc.desconto.tipo === "percFreelas" ? `${dc.desconto.perc}% dos freelas` : "gorjeta");
+          return (
+            <Fragment key={`desc-${dc.desconto.id}`}>
+              <button type="button" onClick={() => temDet && setExpDesconto(isE ? null : dc.desconto.id)}
+                className={`hidden md:grid w-full grid-cols-[24px_1fr_60px_120px_110px_120px] gap-2 px-3 py-2 items-center text-sm border-t border-gray-100 dark:border-gray-800 text-left ${temDet ? "hover:bg-rose-50/40 dark:hover:bg-rose-900/10" : "cursor-default"} ${isE ? "bg-rose-50/40 dark:bg-rose-900/10" : ""}`}>
+                <span className="text-gray-400 text-xs">{temDet ? (isE ? "▼" : "▶") : ""}</span>
+                <div className="min-w-0">
+                  <div className="font-medium text-rose-700 dark:text-rose-300 truncate flex items-center gap-1.5">
+                    {dc.desconto.area && <span className="text-[9px] bg-rose-100 dark:bg-rose-900/40 text-rose-700 dark:text-rose-300 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">{dc.desconto.area}</span>}
+                    <span className="truncate">Desconto — {rot}</span>
+                  </div>
+                  {dc.desconto.tipo === "percFreelas" && <div className="text-[10px] text-gray-500">{dc.desconto.perc}% de {fmtBR(dc.valorBase)} em diárias de freelas · {dc.periodoDe} a {dc.periodoAte}</div>}
+                </div>
+                <div className="text-right tabular-nums text-gray-400">{temDet ? dc.detalhe.length : ""}</div>
+                <div></div>
+                <div></div>
+                <div className="text-right tabular-nums font-bold text-rose-600 dark:text-rose-400">−{fmtBR(dc.valor)}</div>
+              </button>
+              {isE && temDet && (
+                <div className="hidden md:block px-3 py-2 bg-rose-50/30 dark:bg-rose-900/10 border-t border-gray-100 dark:border-gray-800">
+                  <div className="text-[10px] uppercase tracking-wide text-gray-500 mb-1 pl-6">Freelas de {dc.desconto.area} no período — {dc.desconto.perc}% descontado da diária</div>
+                  {dc.detalhe.map((f, fi) => (
+                    <div key={fi} className="flex justify-between gap-3 py-0.5 pl-6 pr-1 text-[12px] text-gray-600 dark:text-gray-300">
+                      <span>{f.nome} <span className="text-gray-400">· {f.dias.length} dia{f.dias.length === 1 ? "" : "s"}</span></span>
+                      <span className="tabular-nums">diária {fmtBR(f.diaria)} → desconto {fmtBR(Math.round(f.diaria * (dc.desconto.perc || 0)) / 100)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {/* Mobile */}
+              <button type="button" onClick={() => temDet && setExpDesconto(isE ? null : dc.desconto.id)}
+                className={`md:hidden w-full px-3 py-2.5 border-t border-gray-100 dark:border-gray-800 text-left ${isE ? "bg-rose-50/40 dark:bg-rose-900/10" : ""}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="min-w-0 flex items-center gap-1.5">
+                    <span className="text-gray-400 text-xs">{temDet ? (isE ? "▼" : "▶") : ""}</span>
+                    <span className="text-sm font-medium text-rose-700 dark:text-rose-300 truncate">Desconto — {rot}</span>
+                  </div>
+                  <span className="tabular-nums font-bold text-rose-600 dark:text-rose-400">−{fmtBR(dc.valor)}</span>
+                </div>
+                {isE && temDet && (
+                  <div className="mt-2 space-y-0.5">
+                    {dc.detalhe.map((f, fi) => (
+                      <div key={fi} className="flex justify-between gap-2 text-[11px] text-gray-600 dark:text-gray-300">
+                        <span className="truncate">{f.nome} · {f.dias.length}d</span>
+                        <span className="tabular-nums">−{fmtBR(Math.round(f.diaria * (dc.desconto.perc || 0)) / 100)}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </button>
             </Fragment>
           );
         })}

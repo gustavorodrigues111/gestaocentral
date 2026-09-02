@@ -382,6 +382,7 @@ export function GorjetasPage() {
         <DivisaoMesTab
           ano={ano}
           mes={mes}
+          rid={rid}
           gorjetas={gorjetas}
           empregados={empregados}
           cargos={cargos}
@@ -392,6 +393,7 @@ export function GorjetasPage() {
           usaMultiUnidades={usaMultiUnidades}
           filtroUnidadeId={filtroUnidadeId}
           freelaShifts={freelaShifts}
+          podeEditar={podeConfig}
         />
       )}
 
