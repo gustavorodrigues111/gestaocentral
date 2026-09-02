@@ -68,6 +68,46 @@ function dadosDoCandidato(a: Admissao) {
   return { nome: a.candidato?.nome || "", cpf, rg, endereco: end, email: a.candidato?.email || "", whatsapp: a.candidato?.whatsapp || "" };
 }
 
+// Monta o texto da JORNADA a partir do horário cadastrado na admissão
+// (Record<dia 0..6, {active,in,out,break}>). Agrupa dias consecutivos iguais e
+// calcula as horas semanais. É o que vai no contrato como "horário de trabalho".
+const DIAS_NOME = ["domingo", "segunda-feira", "terça-feira", "quarta-feira", "quinta-feira", "sexta-feira", "sábado"];
+function jornadaTexto(hc?: Record<string, { active?: boolean; in?: string; out?: string; break?: number }> | null): string {
+  if (!hc) return "";
+  type D = { d: number; in: string; out: string; brk: number };
+  const dias: D[] = [];
+  let horas = 0;
+  for (let d = 0; d <= 6; d++) {
+    const h = hc[String(d)] || hc[d as unknown as string];
+    if (!h || !h.active || !h.in || !h.out) continue;
+    const brk = Number(h.break) || 0;
+    dias.push({ d, in: h.in, out: h.out, brk });
+    const [ih, im] = h.in.split(":").map(Number);
+    const [oh, om] = h.out.split(":").map(Number);
+    let min = (oh * 60 + om) - (ih * 60 + im); if (min < 0) min += 24 * 60; min -= brk;
+    horas += Math.max(0, min) / 60;
+  }
+  if (dias.length === 0) return "";
+  const grupos: { di: number; df: number; in: string; out: string; brk: number }[] = [];
+  for (const dd of dias) {
+    const g = grupos[grupos.length - 1];
+    if (g && dd.d === g.df + 1 && dd.in === g.in && dd.out === g.out && dd.brk === g.brk) g.df = dd.d;
+    else grupos.push({ di: dd.d, df: dd.d, in: dd.in, out: dd.out, brk: dd.brk });
+  }
+  const intervTxt = (m: number) => m <= 0 ? "" : (m % 60 === 0 ? `${m / 60} hora${m / 60 > 1 ? "s" : ""}` : `${m} minutos`);
+  const partes = grupos.map(g => {
+    const faixa = g.di === g.df ? DIAS_NOME[g.di] : `de ${DIAS_NOME[g.di]} a ${DIAS_NOME[g.df]}`;
+    const it = intervTxt(g.brk);
+    return `${faixa}, das ${g.in} às ${g.out}${it ? `, com ${it} de intervalo para refeição e descanso` : ""}`;
+  });
+  const ativos = new Set(dias.map(d => d.d));
+  const folgas = [0, 1, 2, 3, 4, 5, 6].filter(d => !ativos.has(d));
+  const folgaTxt = folgas.length ? `, com descanso semanal remunerado ${folgas.length === 1 ? `no ${DIAS_NOME[folgas[0]]}` : `nos dias de ${folgas.map(f => DIAS_NOME[f]).join(", ")}`}` : "";
+  const horasStr = Number.isInteger(horas) ? String(horas) : horas.toFixed(1).replace(".", ",");
+  const t = `${partes.join("; ")}, perfazendo ${horasStr} horas semanais${folgaTxt}.`;
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 export function ContratosTrabalho({ rid, restaurants }: { rid: string; restaurants: { id: string; nome?: string }[] }) {
   const { pessoa: me } = useAuth();
   const [cat, setCat] = useState<{ modelos: Modelo[]; empresas: EmpresaCat; cargos: CargoCat } | null>(null);
@@ -87,6 +127,7 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
   const [emp, setEmp] = useState({ nome: "", cpf: "", rg: "", endereco: "", email: "", whatsapp: "" });
   const [buscaAdm, setBuscaAdm] = useState("");
   const [admSelNome, setAdmSelNome] = useState("");
+  const [horarioAdm, setHorarioAdm] = useState("");   // jornada montada da admissão
   const [dataInicio, setDataInicio] = useState("");
   const [cidade, setCidade] = useState("São Paulo");
   const [dataAssin, setDataAssin] = useState("");
@@ -129,15 +170,17 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
   // Cargo puxado da admissão + sua configuração de contrato.
   const cargoApp = useMemo(() => cargosApp.find(c => c.id === cargoAdmId) || null, [cargosApp, cargoAdmId]);
   const docCargo = useMemo(() => docCargos.find(d => d.cargoId === cargoAdmId) || null, [docCargos, cargoAdmId]);
-  const docCargoOk = !!docCargo && !!(docCargo.cbo || docCargo.horario || (docCargo.descricao && docCargo.descricao.length));
-  // Campos que, faltando, saem EM BRANCO no contrato (jornada e atividades).
+  const docCargoOk = !!docCargo && !!(docCargo.cbo || (docCargo.descricao && docCargo.descricao.length));
+  // Campos do cargo que, faltando, saem EM BRANCO no contrato (só atribuições —
+  // o horário vem da admissão, não daqui).
   const docCargoFaltas = useMemo(() => {
     if (!docCargo) return [] as string[];
     const f: string[] = [];
-    if (!(docCargo.horario && docCargo.horario.trim())) f.push("jornada/horário");
     if (!(docCargo.descricao && docCargo.descricao.length)) f.push("atribuições");
     return f;
   }, [docCargo]);
+  // Horário: vem da admissão. Só alerta se nem a admissão nem o cargo têm.
+  const horarioFalta = !horarioAdm && !(docCargo?.horario && docCargo.horario.trim());
   const modeloDesc = (id: string) => cat?.modelos.find(m => m.id === id)?.descricao || id;
   const restNome = restaurants.find(r => r.id === rid)?.nome || "";
 
@@ -167,6 +210,8 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
     setEmp(dadosDoCandidato(a));
     setAdmSelNome(a.candidato?.nome || "");
     setCargoAdmId(a.cargoId || "");
+    // Horário/jornada vem da ADMISSÃO (é onde a pessoa tem carga/horário reais).
+    setHorarioAdm(jornadaTexto(a.horariosCadastrados as Record<string, { active?: boolean; in?: string; out?: string; break?: number }> | undefined));
     if (a.dataAdmissao) setDataInicio(a.dataAdmissao);
     // Salário: admissão > config do cargo.
     const dc = docCargos.find(d => d.cargoId === a.cargoId);
@@ -192,13 +237,18 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
         ...(docCargo.cbo ? { cbo: docCargo.cbo } : {}),
         ...(docCargo.salario != null ? { salario: docCargo.salario } : {}),
         ...(docCargo.regime ? { regime: docCargo.regime } : {}),
-        ...(docCargo.horario ? { horario: docCargo.horario } : {}),
         ...(docCargo.gorjeta_texto ? { gorjeta_texto: docCargo.gorjeta_texto } : {}),
         ...(docCargo.descricao?.length ? { descricao: docCargo.descricao } : {}),
         ...(docCargo.ajuda_custo_home_office != null ? { ajuda_custo_home_office: docCargo.ajuda_custo_home_office } : {}),
         ...(docCargo.presencial_dias_horarios ? { presencial_dias_horarios: docCargo.presencial_dias_horarios } : {}),
         ...(docCargo.home_office_dias_horarios ? { home_office_dias_horarios: docCargo.home_office_dias_horarios } : {}),
       } : {};
+      // HORÁRIO: vem da ADMISSÃO (horariosCadastrados). O cargo só é fallback
+      // se a admissão não tiver jornada preenchida.
+      const horarioFinal = horarioAdm || docCargo?.horario;
+      if (horarioFinal) cargoBlock.horario = horarioFinal;
+      // Se não veio da config de cargo, ainda precisamos da função no bloco.
+      if (!cargoBlock.funcao) { const fn = cargoApp?.nome; if (fn) cargoBlock.funcao = fn; }
       if (salario.trim()) cargoBlock.salario = Number(salario.replace(/[^\d]/g, ""));
       const dados: Record<string, unknown> = {
         empresaKey: empresaKey || undefined,
@@ -321,7 +371,7 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
                     </div>
                   ) : (
                     <div className="mt-1.5 text-[12px] text-amber-700 dark:text-amber-300">
-                      Esse cargo ainda não tem dados de contrato (CBO, jornada, gorjeta média). Configure na aba <strong>⚙️ Cargos p/ contrato</strong> — o contrato sai sem esses campos até lá.
+                      Esse cargo ainda não tem dados de contrato (CBO, gorjeta média, atribuições). Configure na aba <strong>⚙️ Cargos p/ contrato</strong> — o contrato sai sem esses campos até lá.
                     </div>
                   )}
                   {docCargoOk && docCargoFaltas.length > 0 && (
@@ -329,6 +379,15 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
                       ⚠ Falta preencher <strong>{docCargoFaltas.join(" e ")}</strong> deste cargo — o contrato sai com esse(s) campo(s) EM BRANCO. Preencha em <strong>⚙️ Cargos p/ contrato</strong>.
                     </div>
                   )}
+                  {horarioAdm ? (
+                    <div className="mt-1.5 text-[12px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/15 border border-emerald-200 dark:border-emerald-800 rounded-lg px-2.5 py-1.5">
+                      🕐 <strong>Horário (da admissão):</strong> {horarioAdm}
+                    </div>
+                  ) : horarioFalta ? (
+                    <div className="mt-1.5 text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-2.5 py-1.5">
+                      ⚠ Essa admissão não tem <strong>horário de trabalho</strong> cadastrado — o contrato sai sem a jornada. Preencha os horários na <strong>Admissão</strong> desse candidato.
+                    </div>
+                  ) : null}
                   <input placeholder="Sobrescrever salário (opcional)" value={salario} onChange={e => setSalario(e.target.value)} className="mt-2 w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
                 </div>
               ) : (
