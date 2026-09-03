@@ -12,8 +12,11 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { requireUser, AuthError } from "./_auth.js";
 
-export const config = { maxDuration: 30 };
-const REQ_TIMEOUT_MS = 20_000;
+export const config = { maxDuration: 60 };
+// Evolution/Railway sob carga (ex.: Sororoca) pode levar >20s pra devolver o
+// messageId, mesmo entregando a mensagem. Damos margem generosa antes de abortar
+// pra não gerar "falso timeout" (a msg sai no WhatsApp mas não volta o id).
+const REQ_TIMEOUT_MS = 55_000;
 
 type VercelReq = { method?: string; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };

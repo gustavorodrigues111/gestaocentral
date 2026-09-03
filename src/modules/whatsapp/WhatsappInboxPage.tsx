@@ -23,7 +23,7 @@ import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
 import { PAPEIS_WHATSAPP, type PapelWhatsapp, type WhatsappRoteio } from "../../core/whatsapp/roteios";
 
-type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; apagadaParaCliente?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean; status?: number; falhou?: boolean; origTimestamp?: string; quotedId?: string | null; quotedTexto?: string | null; quotedAutor?: string | null };
+type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; apagadaParaCliente?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean; status?: number; falhou?: boolean; incerto?: boolean; origTimestamp?: string; quotedId?: string | null; quotedTexto?: string | null; quotedAutor?: string | null };
 
 const hhmm = (iso?: string) => { if (!iso) return ""; const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
 const fmtBRcurto = (ymd?: string | null) => { if (!ymd) return ""; const [a, m, d] = String(ymd).split("-"); return d ? `${d}/${m}/${a?.slice(2) || ""}` : String(ymd); };
@@ -611,7 +611,18 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [msgs, notifPerm, numerosVisiveis, sel, numeroSel]);
 
-  const thread = useMemo(() => msgsDoNumero.filter(x => foneKey(x.waId) === foneKey(sel || "")), [msgsDoNumero, sel]);
+  const thread = useMemo(() => {
+    const base = msgsDoNumero.filter(x => foneKey(x.waId) === foneKey(sel || ""));
+    // Dedup do envio "incerto" (timeout): se depois chegou o eco/ACK confirmado
+    // (mesma saída, mesmo texto, ~5min), esconde a bolha ⏳ pra não duplicar.
+    if (!base.some(m => m.incerto)) return base;
+    const confirmadas = base.filter(m => m.direcao === "out" && !m.incerto);
+    return base.filter(m => {
+      if (!m.incerto) return true;
+      const t = Date.parse(m.timestamp || "") || 0;
+      return !confirmadas.some(c => (c.texto || "") === (m.texto || "") && Math.abs((Date.parse(c.timestamp || "") || 0) - t) < 5 * 60_000);
+    });
+  }, [msgsDoNumero, sel]);
   // Rola pro fim ao abrir a conversa ou chegar mensagem nova.
   useEffect(() => { const t = setTimeout(() => msgsEndRef.current?.scrollIntoView({ block: "end" }), 50); return () => clearTimeout(t); }, [sel, thread.length]);
   const nomeSel = sel ? nomeConversa(sel, conversas.find(c => foneKey(c.waId) === foneKey(sel))?.nome) : "";
@@ -695,20 +706,32 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         body: JSON.stringify({ instancia: numeroSel, to: grupoSel ? paraEnviar : `${contatos[foneKey(sel)]?.telefoneManual || soDig(paraEnviar)}@s.whatsapp.net`, texto: txt, autorNome: autorCliente, ...(mentioned.length ? { mentioned } : {}), ...(quoted ? { quoted } : {}) }),
       });
       const j = await r.json().catch(() => ({}));
+      // Base do doc (sem status): reusada no sucesso e no "incerto" (timeout).
+      const baseDoc = (extra: Record<string, unknown>) => sanitizeForFirestore({ waId: sel, nome: nomeSel || null, direcao: "out", tipo: "text", texto: txt, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null, ...(cit ? { quotedId: cit.messageId || cit.id, quotedTexto: (citTexto || "").slice(0, 300) || null, quotedAutor: citAutor } : {}), ...extra });
       if (r.ok && (j as { ok?: boolean }).ok) {
-        // Guarda o texto CRU (sem o prefixo *Nome:*); a autoria vai em autorNome.
         // Grava com id determinístico ${numeroId}_${messageId} pra (1) permitir
         // editar/apagar depois e (2) casar com o eco fromMe do webhook (dedup).
         const mid = (j as { messageId?: string }).messageId || null;
-        const docMsg = sanitizeForFirestore({ waId: sel, nome: nomeSel || null, direcao: "out", tipo: "text", texto: txt, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null, status: 1, ...(mid ? { messageId: mid } : {}), ...(cit ? { quotedId: cit.messageId || cit.id, quotedTexto: (citTexto || "").slice(0, 300) || null, quotedAutor: citAutor } : {}) });
+        const docMsg = baseDoc({ status: 1, ...(mid ? { messageId: mid } : {}) });
         if (mid) await setDoc(doc(db, "whatsappMensagens", `${numeroSel}_${mid}`), docMsg, { merge: true });
         else await addDoc(collection(db, "whatsappMensagens"), docMsg);
         rascunhosRef.current[foneKey(sel)] = "";   // rascunho enviado → limpa
         setResposta(""); setMencionados([]); setRespondendo(null);
+      } else if ((j as { naoConfigurado?: boolean; numeroInexistente?: boolean }).naoConfigurado || (j as { numeroInexistente?: boolean }).numeroInexistente) {
+        // Falha DEFINITIVA (não configurado / número sem WhatsApp): não grava, avisa.
+        alert((j as { naoConfigurado?: boolean }).naoConfigurado ? "Evolution ainda não configurada (env vars na Vercel)." : ((j as { error?: string }).error || "Este número não tem WhatsApp."));
       } else {
-        alert((j as { naoConfigurado?: boolean }).naoConfigurado ? "Evolution ainda não configurada (env vars na Vercel)." : ((j as { error?: string }).error || "Falha ao enviar."));
+        // Timeout / Evolution instável: a mensagem PODE ter saído (Evolution lento
+        // devolve erro mesmo entregando). Grava como INCERTA (⏳) pra não sumir — o
+        // ACK/eco do webhook confirma depois (ou o operador reenvia se ficar ⏳).
+        await addDoc(collection(db, "whatsappMensagens"), baseDoc({ status: 0, incerto: true }));
+        rascunhosRef.current[foneKey(sel)] = "";
+        setResposta(""); setMencionados([]); setRespondendo(null);
       }
-    } catch (e) { alert("Falha ao enviar: " + (e instanceof Error ? e.message : "?")); }
+    } catch (e) {
+      // Rede caiu no meio: também grava incerta em vez de perder a mensagem.
+      if (sel && numeroSel) await addDoc(collection(db, "whatsappMensagens"), sanitizeForFirestore({ waId: sel, nome: nomeSel || null, direcao: "out", tipo: "text", texto: txt, timestamp: new Date().toISOString(), recebidoEm: new Date().toISOString(), lido: true, numeroId: numeroSel, autorNome: me?.nome || null, autorId: me?.id || null, status: 0, incerto: true })).catch(() => alert("Falha ao enviar: " + (e instanceof Error ? e.message : "?")));
+    }
     finally { setEnviando(false); enviandoRef.current = false; }
   }
 
@@ -1683,6 +1706,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                     <div className="text-[10px] text-gray-400 mt-0.5 text-right">{m.editado && !m.apagada && <span className="italic">editado · </span>}{hhmm(m.timestamp)}{m.direcao === "out" && !m.apagada && (() => {
                       if (m.falhou) return <span className="ml-0.5 text-rose-500 font-semibold" title="O WhatsApp não entregou esta mensagem (falha no envio). Reconecte o número (QR) e tente de novo.">❌ não entregue</span>;
                       const nivel = m.status ?? 1;   // enviado por padrão
+                      // status 0 = ainda não confirmado. Se veio de timeout (incerto),
+                      // a msg PODE ter saído; o webhook confirma e vira ✓.
+                      if (nivel <= 0) return <span className="ml-0.5 text-amber-500" title={m.incerto ? "Envio não confirmado — a Evolution demorou a responder. A mensagem pode ter sido entregue; aguarde a confirmação (vira ✓). Se ficar assim, reenvie." : "Enviando…"}>⏳ {m.incerto ? "não confirmada" : "enviando"}</span>;
                       return <span className={`ml-0.5 ${nivel >= 3 ? "text-sky-500" : "text-gray-400"}`} title={nivel >= 3 ? "Lida" : nivel >= 2 ? "Entregue" : "Enviada"}>{nivel >= 2 ? "✓✓" : "✓"}</span>;
                     })()}</div>
                   </div>
