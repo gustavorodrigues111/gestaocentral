@@ -12,9 +12,13 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { requireUser, AuthError } from "./_auth.js";
 
+// Nota de várias páginas (ex.: DANFE Heineken, 6 páginas) leva bem mais que o
+// default da Vercel (~15s) — SEM isto, a função era morta pela plataforma antes
+// do timeout interno e o recebimento falhava com "Falha ao chamar o leitor".
+export const config = { maxDuration: 60 };
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-sonnet-4-6"; // lê nota fiscal melhor que o Haiku; ~3x o custo (ainda centavos/nota)
-const REQ_TIMEOUT_MS = 30_000;
+const REQ_TIMEOUT_MS = 55_000;
 
 type VercelReq = { method?: string; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
