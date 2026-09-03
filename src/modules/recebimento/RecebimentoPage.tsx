@@ -38,6 +38,20 @@ async function subirArquivo(parentId: string, file: File): Promise<{ id: string;
 import { exportarRecebimentosPDF, exportarRecebimentosXLSX } from "./exportRecebimentos";
 import { criarPendentesEntrada } from "../estoqueValidade/entradasPendentes";
 
+// Chama o leitor de nota (OCR) com TIMEOUT de cliente — sem isto, se o servidor
+// ou a rede pendurar, o spinner "lendo…" gira PRA SEMPRE (usuário fica travado).
+// Em timeout, lança um erro claro pro chamador mostrar em vez de travar.
+async function postOcr(body: unknown, timeoutMs = 65_000): Promise<Response> {
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), timeoutMs);
+  try {
+    return await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify(body), signal: ctrl.signal });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw new Error("A leitura da nota demorou demais e foi cancelada. Tente de novo ou preencha os dados manualmente.");
+    throw e;
+  } finally { clearTimeout(t); }
+}
+
 // Arquivo → base64 (sem o prefixo data:...;base64,).
 function fileToBase64(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -924,7 +938,7 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
     setLendoBoleto(true);
     try {
       const bloco = await paraOcrBlock(file);
-      const resp = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ files: [bloco], tipo: "boleto" }) });
+      const resp = await postOcr({ files: [bloco], tipo: "boleto" });
       const j = await resp.json().catch(() => ({}));
       if (resp.ok && Array.isArray(j.duplicatas) && j.duplicatas.length) {
         const novas = j.duplicatas as DuplicataNota[];
@@ -1206,7 +1220,7 @@ function IncluirDanfeModal({ nota, restaurant, por, onClose, onSaved }: {
     setLendo(true); setLeuOcr(false); setOcrErro("");
     try {
       const blocos = await Promise.all(files.map(paraOcrBlock));
-      const resp = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ files: blocos }) });
+      const resp = await postOcr({ files: blocos });
       const j = await resp.json().catch(() => ({}));
       if (seq !== leituraSeq.current) return;
       if (resp.ok) {
@@ -1239,7 +1253,7 @@ function IncluirDanfeModal({ nota, restaurant, por, onClose, onSaved }: {
     setLendoBoleto(true);
     try {
       const bloco = await paraOcrBlock(file);
-      const resp = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ files: [bloco], tipo: "boleto" }) });
+      const resp = await postOcr({ files: [bloco], tipo: "boleto" });
       const j = await resp.json().catch(() => ({}));
       if (resp.ok && Array.isArray(j.duplicatas) && j.duplicatas.length) mesclarDups(j.duplicatas as DuplicataNota[]);
     } catch { /* best-effort */ }
@@ -1522,11 +1536,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
     setLendo(true); setLeuOcr(false); setOcrErro("");
     try {
       const blocos = await Promise.all(files.map(paraOcrBlock));
-      const resp = await fetch("/api/ocr-nota", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ files: blocos }),
-      });
+      const resp = await postOcr({ files: blocos });
       const j = await resp.json().catch(() => ({}));
       if (seq !== leituraSeq.current) return; // chegou uma leitura mais nova — descarta esta
       if (resp.ok) {
@@ -1568,11 +1578,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
     setLendoBoleto(true);
     try {
       const bloco = await paraOcrBlock(file);
-      const resp = await fetch("/api/ocr-nota", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ files: [bloco], tipo: "boleto" }),
-      });
+      const resp = await postOcr({ files: [bloco], tipo: "boleto" });
       const j = await resp.json().catch(() => ({}));
       if (resp.ok && Array.isArray(j.duplicatas) && j.duplicatas.length) {
         const novas = j.duplicatas as DuplicataNota[];
