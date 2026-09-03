@@ -123,8 +123,16 @@ export async function requestAccessToken(forceConsent = false): Promise<string> 
   if (!oauth2) throw new Error("Google Identity Services indisponível.");
   ensureClient(oauth2);
   return new Promise<string>((resolve, reject) => {
-    currentResolve = resolve;
-    currentReject = reject;
+    // GIS às vezes NÃO chama callback nenhum se o popup for bloqueado/fechado —
+    // sem isto a Promise (e o "Salvando…" do módulo) penduraria pra sempre.
+    let settled = false;
+    const to = setTimeout(() => {
+      if (settled) return;
+      settled = true; currentResolve = null; currentReject = null;
+      reject(new Error("A autorização do Google Drive não respondeu (o popup pode ter sido bloqueado). Recarregue a página e conecte o Drive de novo."));
+    }, 90_000);
+    currentResolve = (t: string) => { if (settled) return; settled = true; clearTimeout(to); resolve(t); };
+    currentReject = (e: Error) => { if (settled) return; settled = true; clearTimeout(to); reject(e); };
     tokenClient!.requestAccessToken({ prompt: forceConsent ? "consent" : "" });
   });
 }
