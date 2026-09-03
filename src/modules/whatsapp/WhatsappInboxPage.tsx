@@ -60,6 +60,20 @@ function foneKey(raw?: string | null): string {
   return d.length >= 10 ? d.slice(0, 2) + d.slice(-8) : d;
 }
 const ehGrupoWaId = (waId?: string | null): boolean => (waId || "").startsWith("g:");
+// Formas de waId sob as quais uma MESMA conversa pode estar gravada (com/sem DDI
+// 55, com/sem 9º dígito). Usado pra query direcionada da conversa aberta (in ≤30).
+function waIdVariantes(sel: string): string[] {
+  if (!sel) return [];
+  if (sel.startsWith("g:")) return [sel];                 // grupo = chave exata
+  let n = soDig(sel);
+  if ((n.length === 12 || n.length === 13) && n.startsWith("55")) n = n.slice(2);
+  const set = new Set<string>([sel, soDig(sel)]);
+  if (n.length >= 10) {
+    const ddd = n.slice(0, 2), last8 = n.slice(-8);
+    for (const nac of [ddd + last8, ddd + "9" + last8]) { set.add(nac); set.add("55" + nac); }
+  }
+  return [...set].filter(Boolean).slice(0, 30);
+}
 // Número digitado à mão → dígitos E.164 (sem +). Com "+" na frente = DDI explícito
 // (usa verbatim). Sem "+": 10/11 díg = BR local → prefixa 55; senão já tem DDI.
 const digitosEnviaveis = (raw: string): string => {
@@ -163,6 +177,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [novoGrupo, setNovoGrupo] = useState(false);
   const [qrRecon, setQrRecon] = useState<{ instancia: string; nome: string } | null>(null);
   const [msgs, setMsgs] = useState<Msg[]>([]);
+  // Histórico COMPLETO da conversa aberta (query direcionada, sem o limite global
+  // de 4000 — que fazia conversas paradas "sumirem" quando o inbox tinha muito
+  // volume recente). Carregado sob demanda ao abrir a conversa.
+  const [convMsgs, setConvMsgs] = useState<Msg[]>([]);
   const [sincronizando, setSincronizando] = useState(true);   // true enquanto os dados vêm do cache (ainda buscando o servidor)
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
   const [contatos, setContatos] = useState<Record<string, WhatsappContato>>({});
@@ -283,6 +301,24 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     }, true);   // includeMetadataChanges: pra receber a confirmação do servidor
     return () => { if (offTimer) clearTimeout(offTimer); unsub(); };
   }, [authPronta]);
+
+  // Histórico completo da conversa ABERTA — query direcionada por waId (variantes
+  // com/sem 9º dígito; grupo = chave exata), sem o limite global. Garante que a
+  // conversa nunca "some" por causa do teto de 4000 msgs recentes do inbox todo.
+  useEffect(() => {
+    if (!authPronta || !sel) { setConvMsgs([]); return; }
+    const variantes = waIdVariantes(sel);
+    if (!variantes.length) { setConvMsgs([]); return; }
+    setConvMsgs([]);
+    // Sem orderBy/limit de propósito: `where in` usa o índice automático de campo
+    // único (sem exigir índice composto novo). É UMA conversa só → volume ok; a
+    // ordenação por timestamp acontece no memo `thread`.
+    return assinarComRetry(
+      query(collection(db, "whatsappMensagens"), where("waId", "in", variantes)),
+      snap => setConvMsgs(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Msg)),
+      false,
+    );
+  }, [authPronta, sel]);
 
   useEffect(() => {
     if (!authPronta) return;
@@ -612,7 +648,14 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   }, [msgs, notifPerm, numerosVisiveis, sel, numeroSel]);
 
   const thread = useMemo(() => {
-    const base = msgsDoNumero.filter(x => foneKey(x.waId) === foneKey(sel || ""));
+    const alvo = foneKey(sel || "");
+    // União do histórico COMPLETO da conversa (convMsgs, query direcionada) com o
+    // que já veio no feed global — dedup por id. convMsgs cobre o histórico antigo
+    // que caía fora do teto de 4000; o global cobre o instantâneo/otimista.
+    const porId = new Map<string, Msg>();
+    for (const m of convMsgs) if (foneKey(m.waId) === alvo && (!numeroSel || m.numeroId === numeroSel)) porId.set(m.id, m);
+    for (const m of msgsDoNumero) if (foneKey(m.waId) === alvo) porId.set(m.id, m);
+    const base = [...porId.values()].sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
     // Dedup do envio "incerto" (timeout): se depois chegou o eco/ACK confirmado
     // (mesma saída, mesmo texto, ~5min), esconde a bolha ⏳ pra não duplicar.
     if (!base.some(m => m.incerto)) return base;
@@ -622,7 +665,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       const t = Date.parse(m.timestamp || "") || 0;
       return !confirmadas.some(c => (c.texto || "") === (m.texto || "") && Math.abs((Date.parse(c.timestamp || "") || 0) - t) < 5 * 60_000);
     });
-  }, [msgsDoNumero, sel]);
+  }, [msgsDoNumero, convMsgs, sel, numeroSel]);
   // Rola pro fim ao abrir a conversa ou chegar mensagem nova.
   useEffect(() => { const t = setTimeout(() => msgsEndRef.current?.scrollIntoView({ block: "end" }), 50); return () => clearTimeout(t); }, [sel, thread.length]);
   const nomeSel = sel ? nomeConversa(sel, conversas.find(c => foneKey(c.waId) === foneKey(sel))?.nome) : "";
