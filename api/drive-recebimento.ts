@@ -15,6 +15,10 @@ import { isCentralConfigured, getCentralAccessToken, ensureTopFolder, ensureSubf
 type VercelReq = { method?: string; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
 
+// Upload multipart de vários MB + chamadas ao Google Drive levam mais que o
+// default da Vercel (~15s) — sem isto a função morria e o save "travava".
+export const config = { maxDuration: 60 };
+
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
   try { await requireUser(req); } catch (e) {
     res.status(e instanceof AuthError ? e.status : 401).json({ error: e instanceof Error ? e.message : "Não autorizado." });

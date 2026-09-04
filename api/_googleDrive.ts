@@ -46,7 +46,14 @@ export async function getCentralAccessToken(): Promise<string> {
     body: body.toString(),
   });
   const txt = await resp.text();
-  if (!resp.ok) throw new Error(`Falha ao renovar token do Drive central (HTTP ${resp.status}). ${txt.slice(0, 200)}`);
+  if (!resp.ok) {
+    // invalid_grant = refresh token revogado/expirado (ex.: OAuth app em modo
+    // "Testing" expira o refresh token em 7 dias). Erro acionável pro operador.
+    if (txt.includes("invalid_grant")) {
+      throw new Error("A conta central do Google Drive precisa ser reconectada (autorização expirou ou foi revogada). Gere um novo GOOGLE_DRIVE_REFRESH_TOKEN e publique o app OAuth em produção. (invalid_grant)");
+    }
+    throw new Error(`Falha ao renovar token do Drive central (HTTP ${resp.status}). ${txt.slice(0, 200)}`);
+  }
   const j = JSON.parse(txt) as { access_token?: string; expires_in?: number };
   if (!j.access_token) throw new Error("Resposta do Google sem access_token.");
   tokenCache = { token: j.access_token, exp: now + (j.expires_in ?? 3600) * 1000 };

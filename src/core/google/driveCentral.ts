@@ -12,13 +12,24 @@
 import { authHeader } from "../firebase/idToken";
 
 async function post<T>(action: string, extra: Record<string, unknown> = {}): Promise<T> {
-  const resp = await fetch("/api/drive-recebimento", {
-    method: "POST",
-    headers: { "Content-Type": "application/json", ...(await authHeader()) },
-    body: JSON.stringify({ action, ...extra }),
-  });
+  // Timeout de cliente: sem isto, se o backend/Google pendurar, o "Salvando…" do
+  // recebimento gira pra sempre. Em timeout, erro com motivo (não trava).
+  const ctrl = new AbortController();
+  const t = setTimeout(() => ctrl.abort(), 55_000);
+  let resp: Response;
+  try {
+    resp = await fetch("/api/drive-recebimento", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(await authHeader()) },
+      body: JSON.stringify({ action, ...extra }),
+      signal: ctrl.signal,
+    });
+  } catch (e) {
+    if (e instanceof DOMException && e.name === "AbortError") throw new Error(`Drive central não respondeu a tempo (ação "${action}"). Tente de novo; se persistir, a conta central pode estar fora do ar.`);
+    throw new Error(`Sem conexão com o Drive central (ação "${action}"): ${e instanceof Error ? e.message : "erro de rede"}`);
+  } finally { clearTimeout(t); }
   const j = await resp.json().catch(() => ({}));
-  if (!resp.ok) throw new Error((j as { error?: string }).error || `Falha no Drive central (HTTP ${resp.status}).`);
+  if (!resp.ok) throw new Error((j as { error?: string }).error || `Falha no Drive central na ação "${action}" (HTTP ${resp.status}).`);
   return j as T;
 }
 
@@ -97,7 +108,11 @@ function fileToBase64(file: Blob): Promise<string> {
 async function prepararArquivo(file: File): Promise<{ data: string; mimeType: string }> {
   if (file.type.startsWith("image/")) {
     try {
-      const bitmap = await createImageBitmap(file);
+      // timeout: createImageBitmap pode nunca resolver em arquivo problemático.
+      const bitmap = await Promise.race([
+        createImageBitmap(file),
+        new Promise<ImageBitmap>((_, rej) => setTimeout(() => rej(new Error("timeout ao decodificar")), 15_000)),
+      ]);
       const maxLado = 2200; // legível pra arquivo da nota e leve o suficiente
       const escala = Math.min(1, maxLado / Math.max(bitmap.width, bitmap.height));
       const w = Math.max(1, Math.round(bitmap.width * escala));

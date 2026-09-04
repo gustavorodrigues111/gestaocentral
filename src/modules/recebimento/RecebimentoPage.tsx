@@ -62,6 +62,16 @@ function fileToBase64(file: File): Promise<string> {
   });
 }
 
+// createImageBitmap com timeout: em navegador/arquivo problemático ele pode
+// nunca resolver → sem isto a preparação da imagem trava a tela. Rejeita em 15s
+// pro chamador cair no fallback (mandar o original) em vez de pendurar.
+function bitmapComTimeout(file: File, ms = 15_000): Promise<ImageBitmap> {
+  return Promise.race([
+    createImageBitmap(file),
+    new Promise<ImageBitmap>((_, rej) => setTimeout(() => rej(new Error("timeout ao decodificar a imagem")), ms)),
+  ]);
+}
+
 // Bloco pro OCR: imagens são redimensionadas/comprimidas (canvas) pra não
 // estourar o limite de payload da função serverless (Vercel ~4,5 MB) quando há
 // várias páginas. PDFs vão sem alteração. O arquivo ORIGINAL é o que sobe pro Drive.
@@ -70,7 +80,7 @@ async function paraOcrBlock(file: File): Promise<{ data: string; mediaType: stri
     return { data: await fileToBase64(file), mediaType: file.type || "application/pdf" };
   }
   try {
-    const bitmap = await createImageBitmap(file);
+    const bitmap = await bitmapComTimeout(file);
     const maxLado = 1600; // suficiente pra OCR; reduz bastante o tamanho
     const escala = Math.min(1, maxLado / Math.max(bitmap.width, bitmap.height));
     const w = Math.max(1, Math.round(bitmap.width * escala));
@@ -96,7 +106,7 @@ async function carimbarImagem(file: File, linhas: string[], scan = false): Promi
   if (!file.type.startsWith("image/")) return file;
   if (!linhas.length && !scan) return file;
   try {
-    const bitmap = await createImageBitmap(file);
+    const bitmap = await bitmapComTimeout(file);
     const maxLado = 2400; // resolução maior pra leitura humana do documento
     const escala = Math.min(1, maxLado / Math.max(bitmap.width, bitmap.height));
     const w = Math.max(1, Math.round(bitmap.width * escala));
@@ -1618,13 +1628,16 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
     if (!conforme && !divergencia.trim()) { setErro("Descreva a divergência."); return; }
     if (temArquivos && !restaurant.driveRootFolderId) { setErro("Defina a pasta raiz do restaurante em Configurações › Google Drive."); return; }
     setSalvando(true);
+    let etapa = "iniciar o recebimento";   // rótulo pro erro dizer ONDE falhou
     try {
       // Arquivos vão pra {raiz}/planejamento.app/Recebimento/<semana>/ — fluxo do
       // navegador (a raiz é o Drive pessoal de quem configurou).
+      etapa = "conectar ao Google Drive";
       if (temArquivos && !(await centralConfigured())) await requestAccessToken();
       const agora = new Date();
       const recebidoEm = agora.toISOString();
       const { label } = semanaDe(agora);
+      etapa = "criar a pasta do recebimento no Drive";
       const base = temArquivos ? await ensureModuloFolder(restaurant.driveRootFolderId as string, MODULO) : "";
       const semanaId = temArquivos ? await findOrCreateSubfolder(base, label) : "";
       // Nome dos arquivos: "<fornecedor> <data emissão> nota" (e ...boleto / boleto1, boleto2…).
@@ -1637,6 +1650,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
       // Carimbo (selo) gravado nas imagens antes de subir: quem recebeu + data/hora.
       const carimbo = [`Recebido por ${por.nome}`, fmtDataHora(recebidoEm)];
       // Páginas da nota: "<base> nota" se 1 só; "<base> nota1/2/3…" se mais de uma.
+      etapa = "enviar a nota pro Drive";
       const notaPaginas: BoletoNota[] = [];
       for (let i = 0; i < notaFiles.length; i++) {
         const nf = notaFiles[i];
@@ -1649,6 +1663,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
       // Boletos: subpasta "boletos da semana <label>" dentro da pasta da semana.
       const boletos: BoletoNota[] = [];
       if (boletoFiles.length) {
+        etapa = "enviar o boleto pro Drive";
         const boletosFolderId = await findOrCreateSubfolder(semanaId, `boletos da semana ${label}`);
         for (let i = 0; i < boletoFiles.length; i++) {
           const bf = boletoFiles[i];
@@ -1660,6 +1675,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
       }
       // Comprovantes (ex: cartão): "<base> comprovante" / comprovante1, 2…
       const comprovantes: BoletoNota[] = [];
+      if (comprovanteFiles.length) etapa = "enviar o comprovante pro Drive";
       for (let i = 0; i < comprovanteFiles.length; i++) {
         const cf = comprovanteFiles[i];
         const sufixo = comprovanteFiles.length > 1 ? `comprovante${i + 1}` : "comprovante";
@@ -1669,6 +1685,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
       }
       let fotoDiv: { id: string; url?: string } | null = null;
       if (!conforme && fotoDivFile) {
+        etapa = "enviar a foto da divergência pro Drive";
         const extFoto = (fotoDivFile.name.match(/\.[a-z0-9]+$/i) || [".jpg"])[0];
         const alvo = await carimbarImagem(new File([fotoDivFile], `${baseNome} - divergencia${extFoto}`, { type: fotoDivFile.type }), carimbo);
         const s = await subirArquivo(semanaId, alvo);
@@ -1700,12 +1717,13 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
         ...(comprovantes.length ? { comprovantes } : {}),
         ...(fotoDiv ? { fotoDivergenciaDriveFileId: fotoDiv.id, ...(fotoDiv.url ? { fotoDivergenciaUrl: fotoDiv.url } : {}) } : {}),
       };
+      etapa = "gravar o recebimento";
       const ref = await addDoc(collection(db, "recebimentos"), nota);
       setSalvo(true);
       // Alimenta o Estoques e Validades com rascunhos de entrada (idempotente).
       void criarPendentesEntrada(rid, ref.id, emissor.trim(), itens).catch(() => {});
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "Falha ao salvar o recebimento.");
+      setErro(`Falhou ao ${etapa}: ${e instanceof Error ? e.message : "erro desconhecido"}`);
     } finally { setSalvando(false); }
   }
 
