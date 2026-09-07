@@ -200,6 +200,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [mencionados, setMencionados] = useState<{ numero: string; jid: string }[]>([]);  // @-marcados (grupo)
   const [enviando, setEnviando] = useState(false);
   const enviandoRef = useRef(false);   // trava síncrona contra duplo-envio (state é async)
+  const enviandoMidiaRef = useRef(false);   // idem para mídia (áudio/foto/doc)
   const [acaoMsgId, setAcaoMsgId] = useState<string | null>(null);   // popover de ações aberto (id da msg)
   const [editMsg, setEditMsg] = useState<{ id: string; texto: string } | null>(null);   // edição inline
   const [respondendo, setRespondendo] = useState<Msg | null>(null);   // mensagem sendo citada (reply)
@@ -656,12 +657,15 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     for (const m of convMsgs) if (foneKey(m.waId) === alvo && (!numeroSel || m.numeroId === numeroSel)) porId.set(m.id, m);
     for (const m of msgsDoNumero) if (foneKey(m.waId) === alvo) porId.set(m.id, m);
     const base = [...porId.values()].sort((a, b) => (a.timestamp || "").localeCompare(b.timestamp || ""));
-    // Dedup do envio "incerto" (timeout): se depois chegou o eco/ACK confirmado
-    // (mesma saída, mesmo texto, ~5min), esconde a bolha ⏳ pra não duplicar.
-    if (!base.some(m => m.incerto)) return base;
-    const confirmadas = base.filter(m => m.direcao === "out" && !m.incerto);
+    // Dedup do envio otimista (⏳ incerto OU OK-sem-messageId): quando chega o eco
+    // do webhook (doc COM messageId, mesmo texto, ~5min), esconde a bolha otimista
+    // (a que NÃO tem messageId) pra não duplicar. Cobre timeout e resposta OK sem id.
+    const otimistas = base.filter(m => m.direcao === "out" && !m.messageId);
+    if (otimistas.length === 0) return base;
+    const confirmadas = base.filter(m => m.direcao === "out" && !!m.messageId);
+    if (confirmadas.length === 0) return base;
     return base.filter(m => {
-      if (!m.incerto) return true;
+      if (m.direcao !== "out" || m.messageId) return true;   // só filtra otimista sem id
       const t = Date.parse(m.timestamp || "") || 0;
       return !confirmadas.some(c => (c.texto || "") === (m.texto || "") && Math.abs((Date.parse(c.timestamp || "") || 0) - t) < 5 * 60_000);
     });
@@ -781,8 +785,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // ── Mídia: foto/vídeo/documento/áudio ──────────────────────────────────────
   async function enviarMidia(tipo: "image" | "video" | "document" | "audio", dataUrl: string, fileName: string, mimetype: string, caption = "") {
     if (!sel || !numeroSel) return;
+    if (enviandoMidiaRef.current) return;   // anti-duplo-envio (state é async)
+    enviandoMidiaRef.current = true;
     const grupoSel = ehGrupoWaId(sel);
-    if (!grupoSel && !(await assumirConversa(sel))) return;
+    if (!numeroLivre && !grupoSel && !(await assumirConversa(sel))) { enviandoMidiaRef.current = false; return; }   // livre = quem vê responde, sem assumir
     const inbound = thread.filter(m => m.direcao === "in");
     const paraEnviar = grupoSel ? `${sel.slice(2)}@g.us` : (inbound.length ? inbound[inbound.length - 1].waId : sel);
     setEnviandoMidia(true);
@@ -812,7 +818,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         alert((j as { naoConfigurado?: boolean }).naoConfigurado ? "Evolution ainda não configurada (env vars na Vercel)." : ((j as { error?: string }).error || "Falha ao enviar mídia."));
       }
     } catch (e) { alert("Falha ao enviar mídia: " + (e instanceof Error ? e.message : "?")); }
-    setEnviandoMidia(false);
+    setEnviandoMidia(false); enviandoMidiaRef.current = false;
   }
 
   function onArquivo(e: ChangeEvent<HTMLInputElement>, forcarDoc: boolean) {
@@ -1036,7 +1042,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     try {
       const r = await fetch("/api/evolution-acao", {
         method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ instancia: numero, acao, remoteJid: `${soDig(m.waId)}@s.whatsapp.net`, id: m.messageId, fromMe: m.direcao === "out", to: soDig(m.waId), ...extra }),
+        body: JSON.stringify({ instancia: numero, acao, remoteJid: (m.ehGrupo || ehGrupoWaId(m.waId)) ? `${soDig(m.waId)}@g.us` : `${soDig(m.waId)}@s.whatsapp.net`, id: m.messageId, fromMe: m.direcao === "out", to: soDig(m.waId), ...extra }),
       });
       const j = await r.json().catch(() => ({}));
       if (!(r.ok && (j as { ok?: boolean }).ok)) { alert((j as { naoConfigurado?: boolean }).naoConfigurado ? "Evolution não configurada." : ((j as { error?: string }).error || "Falha na ação.")); return false; }

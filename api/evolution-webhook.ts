@@ -13,7 +13,10 @@ import { firestoreCriar, firestoreLer, firestoreAtualizar, firestoreDisponivel, 
 type RotOpcao = { id?: string; rotulo?: string; pessoaId?: string; pessoaNome?: string; atalhos?: string[] };
 type Roteamento = { ativo?: boolean; saudacao?: string; mensagemRoteado?: string; opcoes?: RotOpcao[] };
 
-export const config = { maxDuration: 15 };
+// maxDuration ANTES era 15s, mas baixar mídia tem timeout de 25s e a
+// classificação de reserva chamava Opus — estourava → 504 → a Evolution
+// REENTREGAVA o webhook → auto-respostas/menu duplicados. 60s dá folga.
+export const config = { maxDuration: 60 };
 
 type Req = { method?: string; query?: Record<string, string | string[] | undefined>; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type Res = { status: (c: number) => Res; json: (b: unknown) => void; send: (b: string) => void };
@@ -278,7 +281,12 @@ async function processar(body: EvoBody): Promise<void> {
     // Storage e a URL fica no doc — abre de verdade na conversa. Erro/grande
     // (>~20MB) cai no rótulo.
     let midia: { url: string; mime: string; nome?: string } | null = null;
-    if (m.message?.stickerMessage || m.message?.imageMessage || m.message?.audioMessage || m.message?.videoMessage || m.message?.documentMessage) {
+    const temMidia = !!(m.message?.stickerMessage || m.message?.imageMessage || m.message?.audioMessage || m.message?.videoMessage || m.message?.documentMessage);
+    // Eco fromMe de mídia ENVIADA PELO APP: o doc já existe (com a mídia) → não
+    // re-baixar/re-subir (evita arquivo órfão no Storage). Mídia do APARELHO
+    // (doc ainda não existe) baixa normal.
+    const jaGravado = fromMe && temMidia ? await firestoreLer("whatsappMensagens", `${numeroId}_${id}`) : null;
+    if (temMidia && !jaGravado) {
       midia = await baixarMidia(numeroId, m);
     }
     const quo = quotedDe(m.message);
@@ -459,7 +467,9 @@ async function classificarConfirmacao(texto: string): Promise<"positivo" | "nega
     const resp = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify({ model: "claude-opus-4-8", max_tokens: 512, thinking: { type: "adaptive" }, messages: [{ role: "user", content: [{ type: "text", text: prompt }] }] }),
+      // Haiku basta p/ sim/não/dúvida — rápido e barato DENTRO do webhook (Opus
+      // + thinking era lento e ajudava a estourar o tempo da função).
+      body: JSON.stringify({ model: "claude-haiku-4-5", max_tokens: 16, messages: [{ role: "user", content: [{ type: "text", text: prompt }] }] }),
     });
     const j = (await resp.json()) as { content?: Array<{ type?: string; text?: string }> };
     const out = ((j.content || []).find((b) => b.type === "text")?.text || "").toLowerCase();
