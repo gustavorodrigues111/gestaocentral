@@ -163,11 +163,13 @@ export function PtrpApuracaoTab() {
 
   const cpfNoRoster = useMemo(() => new Set((roster || []).map(r => soDig(r.cpf)).filter(Boolean)), [roster]);
   const cpfComBatida = useMemo(() => new Set(Object.keys(batidasPorCpf)), [batidasPorCpf]);
-  // "Está na Sólides" = tem batida no mês OU consta no roster. O roster do Sólides
-  // (employee/find-all) devolve CPF vazio pra muita gente; a BATIDA é a fonte de
-  // CPF confiável (mesma que a Análise de Ponto usa). Só marca SEM SÓLIDES quem
-  // não tem batida E não está no roster.
-  const temSolides = (e: Empregado) => { const c = soDig(e.cpf); if (!c || !roster) return true; return cpfComBatida.has(c) || cpfNoRoster.has(c); };
+  // O roster do Sólides (employee/find-all) às vezes NÃO traz CPF; a BATIDA é a
+  // fonte de CPF confiável. "Sem cadastro na Sólides" (cinza) só é AFIRMÁVEL
+  // quando o roster realmente trouxe CPFs e o do empregado não está nem no roster
+  // nem nas batidas. Senão, quem tem cadastro mas não bateu no mês vira AMARELO
+  // (as faltas do motor já pintam de amarelo), não cinza.
+  const rosterTemCpf = cpfNoRoster.size > 0;
+  const semCadastroSolides = (e: Empregado) => { const c = soDig(e.cpf); return !!c && !!roster && rosterTemCpf && !cpfNoRoster.has(c) && !cpfComBatida.has(c); };
 
   // Comparação de cadastros: equipe CLT ATIVA do app (empVis) × Sólides (roster ∪ batidas).
   const comparacao = useMemo(() => {
@@ -254,22 +256,23 @@ export function PtrpApuracaoTab() {
                 <div className="flex flex-col gap-1.5">
                   {cols.map(({ emp, r }) => {
                     const naoBate = naoBatePonto(emp);
-                    const semSol = !naoBate && !temSolides(emp);
-                    // Cargo de confiança (não bate ponto) → sempre verde (não tem ponto na Sólides).
-                    const st = naoBate ? "ok" : (!r.temCpf || semSol || r.linhas.length === 0) ? "sem" : r.exc > 0 ? "exc" : "ok";
+                    const semCad = !naoBate && semCadastroSolides(emp);   // cinza: confirmado sem cadastro na Sólides
+                    // Confiança → verde. Sem cadastro na Sólides → cinza. Tem cadastro
+                    // mas com exceções (inclusive sem batida no mês = faltas) → amarelo.
+                    const st = naoBate ? "ok" : (!r.temCpf || semCad) ? "sem" : r.exc > 0 ? "exc" : "ok";
                     const selado = emp.id === aberto;
                     const cls = st === "ok" ? "bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200 dark:border-emerald-800"
                       : st === "exc" ? "bg-amber-50 border-amber-300 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200 dark:border-amber-800"
                       : "bg-gray-50 border-gray-200 text-gray-400 dark:bg-gray-800/40 dark:border-gray-700";
                     return (
                       <button key={emp.id} type="button" onClick={() => setAberto(selado ? null : emp.id)}
-                        title={naoBate ? "Cargo de confiança — não bate ponto" : semSol ? "Sem batida no mês (não está na Sólides ou faltou sincronizar)" : !r.temCpf ? "Sem CPF no app" : st === "exc" ? `${r.exc} exceção(ões)` : "Sem exceções"}
+                        title={naoBate ? "Cargo de confiança — não bate ponto" : semCad ? "Sem cadastro na Sólides" : !r.temCpf ? "Sem CPF no app" : st === "exc" ? `${r.exc} exceção(ões)` : "Sem exceções"}
                         className={`text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors hover:brightness-95 ${cls} ${selado ? "ring-2 ring-indigo-500" : ""}`}>
                         <span className="shrink-0">{st === "ok" ? "✓" : st === "exc" ? "●" : "○"}</span>
                         <span className="truncate flex-1">{naoBate ? "🎩 " : ""}{emp.nome}</span>
-                        {!naoBate && !semSol && r.exc > 0 && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200 tabular-nums">{r.exc}</span>}
+                        {!naoBate && !semCad && r.exc > 0 && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200 tabular-nums">{r.exc}</span>}
                         {naoBate && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-violet-200 text-violet-800 dark:bg-violet-900 dark:text-violet-200">S/ PONTO</span>}
-                        {semSol && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-200">SEM SÓLIDES</span>}
+                        {semCad && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-200">SEM SÓLIDES</span>}
                       </button>
                     );
                   })}
