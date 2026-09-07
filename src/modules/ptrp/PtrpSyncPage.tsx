@@ -1,0 +1,129 @@
+// ════════════════════════════════════════════════════════════════════════════
+//  PTRP · Status do sync de batidas (master).
+//  Mostra, por empresa, o cursor e o resultado da última sincronização do
+//  /api/ptrp-punch-sync (batidas do Sólides → coleção imutável ptrpBatidas).
+//  Permite disparar o sync na hora (geral ou por empresa) pra acompanhar o
+//  backfill sem abrir o console do Firestore.
+// ════════════════════════════════════════════════════════════════════════════
+import { useEffect, useMemo, useState } from "react";
+import { collection, onSnapshot } from "firebase/firestore";
+import { db } from "../../core/firebase/config";
+import { useAuth } from "../../core/auth/AuthContext";
+import { authHeader } from "../../core/firebase/idToken";
+import { Button } from "../../core/ui/Button";
+
+type SyncState = {
+  id: string;
+  cursor?: string;
+  ultimaSync?: string;
+  ok?: boolean;
+  erro?: string | null;
+  ultimaJanela?: { desde?: string; ate?: string };
+  lidasUltima?: number;
+  criadasUltima?: number;
+  atrasado?: boolean;
+};
+
+const hojeBRT = () => new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+const fmtDT = (iso?: string) => iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "—";
+const fmtD = (ymd?: string) => ymd ? ymd.split("-").reverse().join("/") : "—";
+const desde = (iso?: string) => {
+  if (!iso) return "";
+  const s = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+  if (s < 90) return "agora há pouco";
+  if (s < 3600) return `há ${Math.floor(s / 60)} min`;
+  if (s < 86400) return `há ${Math.floor(s / 3600)} h`;
+  return `há ${Math.floor(s / 86400)} d`;
+};
+
+export function PtrpSyncPage() {
+  const { pessoa: me } = useAuth();
+  const [estados, setEstados] = useState<SyncState[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [rodando, setRodando] = useState<string | null>(null);   // "*" = geral; ou empresaKey
+  const [msg, setMsg] = useState("");
+
+  useEffect(() => {
+    const u = onSnapshot(collection(db, "ptrpSyncState"), snap => {
+      setEstados(snap.docs.map(d => ({ id: d.id, ...d.data() }) as SyncState).sort((a, b) => a.id.localeCompare(b.id)));
+      setLoading(false);
+    }, () => setLoading(false));
+    return () => u();
+  }, []);
+
+  const hoje = hojeBRT();
+  const algumAtrasado = useMemo(() => estados.some(e => (e.cursor || "") < hoje), [estados, hoje]);
+
+  async function sincronizar(empresaKey?: string) {
+    setRodando(empresaKey || "*"); setMsg("");
+    try {
+      const qs = empresaKey ? `?empresa=${encodeURIComponent(empresaKey)}` : "";
+      const r = await fetch(`/api/ptrp-punch-sync${qs}`, { method: "GET", headers: { ...(await authHeader()) } });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { setMsg(`Falha: ${(j as { error?: string }).error || `HTTP ${r.status}`}`); return; }
+      const res = (j as { resultado?: Record<string, { criadas?: number; lidas?: number; erro?: string }> }).resultado || {};
+      const partes = Object.entries(res).map(([k, v]) => v.erro ? `${k}: erro` : `${k}: +${v.criadas ?? 0} novas`);
+      setMsg(`✓ Sincronizado — ${partes.join(" · ") || "sem novidades"}`);
+    } catch (e) {
+      setMsg("Falha ao chamar o sync: " + (e instanceof Error ? e.message : "erro de rede"));
+    } finally { setRodando(null); }
+  }
+
+  if (!me?.isMaster) return <div className="max-w-3xl mx-auto p-8 text-center text-gray-500">🔒 Só o master acessa o status do ponto.</div>;
+
+  return (
+    <div className="max-w-4xl mx-auto">
+      <div className="mb-4">
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">⏱️ Ponto · Sincronização de batidas</h1>
+        <p className="text-xs text-gray-500 mt-0.5">As batidas do Sólides são espelhadas numa coleção imutável (<code>ptrpBatidas</code>) — base da apuração do PTRP. O sync roda a cada 15 min; aqui dá pra acompanhar e forçar.</p>
+      </div>
+
+      <div className="flex items-center gap-2 flex-wrap mb-3">
+        <Button size="sm" onClick={() => void sincronizar()} disabled={!!rodando}>
+          {rodando === "*" ? "Sincronizando…" : "🔄 Sincronizar todas"}
+        </Button>
+        {algumAtrasado && <span className="text-xs text-amber-600 dark:text-amber-400">⏳ Backfill em andamento — rode algumas vezes até o cursor chegar em hoje ({fmtD(hoje)}).</span>}
+        {msg && <span className="text-xs text-gray-600 dark:text-gray-300">{msg}</span>}
+      </div>
+
+      {loading ? (
+        <div className="text-sm text-gray-400 py-10 text-center">Carregando…</div>
+      ) : estados.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">
+          Nenhuma empresa sincronizada ainda. Clique em <strong>Sincronizar todas</strong> pra iniciar o backfill (ou aguarde o cron).
+          <div className="mt-1 text-[11px] text-gray-400">Se continuar vazio, confira <code>SOLIDES_TOKENS</code> nas env vars da Vercel.</div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {estados.map(e => {
+            const atrasado = (e.cursor || "") < hoje;
+            return (
+              <div key={e.id} className={`rounded-xl border p-3.5 ${e.ok === false ? "border-rose-300 dark:border-rose-800 bg-rose-50/40 dark:bg-rose-900/10" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="font-semibold text-gray-900 dark:text-gray-100">🏢 {e.id}</div>
+                  {e.ok === false
+                    ? <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-rose-500 text-white">erro</span>
+                    : atrasado
+                      ? <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-400 text-amber-900">backfill</span>
+                      : <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500 text-white">em dia</span>}
+                </div>
+                <div className="mt-2 grid grid-cols-2 gap-y-1 text-[12.5px]">
+                  <span className="text-gray-500">Cursor (até)</span><span className="text-right font-medium tabular-nums">{fmtD(e.cursor)}</span>
+                  <span className="text-gray-500">Última sync</span><span className="text-right">{fmtDT(e.ultimaSync)} <span className="text-gray-400">{desde(e.ultimaSync)}</span></span>
+                  <span className="text-gray-500">Última janela</span><span className="text-right tabular-nums">{fmtD(e.ultimaJanela?.desde)}–{fmtD(e.ultimaJanela?.ate)}</span>
+                  <span className="text-gray-500">Lidas / novas</span><span className="text-right tabular-nums">{e.lidasUltima ?? 0} / <strong className="text-emerald-600 dark:text-emerald-400">{e.criadasUltima ?? 0}</strong></span>
+                </div>
+                {e.erro && <div className="mt-2 text-[11px] text-rose-600 dark:text-rose-400 break-words">⚠ {e.erro}</div>}
+                <div className="mt-2.5 flex justify-end">
+                  <Button size="sm" variant="secondary" onClick={() => void sincronizar(e.id)} disabled={!!rodando}>
+                    {rodando === e.id ? "…" : "Sincronizar"}
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
