@@ -7,19 +7,22 @@
 //  como OVERRIDE opcional (fase seguinte). Valida contra o Sólides (Fase 1).
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { Modal } from "../../core/ui/Modal";
+import { Button } from "../../core/ui/Button";
 import type { Empregado, HorarioDia } from "../../core/types";
-import type { ParametrosCCT, PtrpTurno } from "../../core/ptrp/tipos";
+import type { ParametrosCCT, PtrpTurno, PtrpAjuste, PtrpAjusteTipo } from "../../core/ptrp/tipos";
 import { cctVigenteEm } from "../../core/ptrp/tipos";
 import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horarios";
-import { apurarDia, minutoDoDiaBRT, type BatidaBloco } from "../../core/ptrp/apuracao";
+import { apurarDia, minutoDoDiaBRT, hhmmToMin, type BatidaBloco, type AjusteDia } from "../../core/ptrp/apuracao";
 import { fetchRoster } from "../../core/ponto/solidesPontoClient";
 import type { PontoColaborador } from "../../core/ponto/analise";
 
-type BatidaDoc = { id: string; empresaKey: string; cpf?: string | null; date?: string | null; dateIn?: number | null; dateOut?: number | null; excluded?: boolean; raw?: { employee?: { name?: string }; employeeName?: string } };
+type BatidaDoc = { id: string; empresaKey: string; punchId?: string; cpf?: string | null; date?: string | null; dateIn?: number | null; dateOut?: number | null; excluded?: boolean; raw?: { employee?: { name?: string }; employeeName?: string } };
 
 const compAtual = () => new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 7);
 const hm = (min: number) => min <= 0 ? "0h00" : `${Math.floor(min / 60)}h${String(Math.round(min % 60)).padStart(2, "0")}`;
@@ -52,6 +55,8 @@ export function PtrpApuracaoTab() {
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [cargos, setCargos] = useState<{ id: string; area?: string }[]>([]);
   const [batidas, setBatidas] = useState<BatidaDoc[]>([]);
+  const [ajustes, setAjustes] = useState<PtrpAjuste[]>([]);
+  const [ajusteModal, setAjusteModal] = useState<{ emp: Empregado; data: string; bs: BatidaDoc[] } | null>(null);
   const [ccts, setCcts] = useState<ParametrosCCT[]>([]);
   const [aberto, setAberto] = useState<string | null>(null);
   const [roster, setRoster] = useState<PontoColaborador[] | null>(null);
@@ -81,6 +86,12 @@ export function PtrpApuracaoTab() {
     const q = query(collection(db, "ptrpBatidas"), where("empresaKey", "==", shortCode), where("date", ">=", `${comp}-01`), where("date", "<=", `${comp}-99`));
     return onSnapshot(q, s => setBatidas(s.docs.map(d => ({ id: d.id, ...d.data() }) as BatidaDoc)), () => setBatidas([]));
   }, [shortCode, comp]);
+  useEffect(() => {
+    if (!shortCode) { setAjustes([]); return; }
+    // Ajustes são poucos → filtra por empresa e recorta o mês no cliente (sem índice).
+    return onSnapshot(query(collection(db, "ptrpAjustes"), where("empresaKey", "==", shortCode)),
+      s => setAjustes(s.docs.map(d => ({ id: d.id, ...d.data() }) as PtrpAjuste).filter(a => (a.data || "").startsWith(comp))), () => setAjustes([]));
+  }, [shortCode, comp]);
 
   const cct = useMemo(() => cctVigenteEm(ccts, shortCode, `${comp}-15`), [ccts, shortCode, comp]);
   const [ano, mes] = comp.split("-").map(Number);
@@ -98,30 +109,47 @@ export function PtrpApuracaoTab() {
     for (const b of batidas) { const c = soDig(b.cpf); if (!c) continue; (m[c] = m[c] || {}); (m[c][b.date || ""] = m[c][b.date || ""] || []).push(b); }
     return m;
   }, [batidas]);
+  // Ajustes (não cancelados) por CPF → dia.
+  const ajustesPorCpf = useMemo(() => {
+    const m: Record<string, Record<string, PtrpAjuste[]>> = {};
+    for (const a of ajustes) { if (a.cancelado) continue; const c = soDig(a.cpf); if (!c) continue; (m[c] = m[c] || {}); (m[c][a.data] = m[c][a.data] || []).push(a); }
+    return m;
+  }, [ajustes]);
 
+  type Linha = { data: string; bs: BatidaDoc[]; descPunch: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; trabalhado: number; extra: number; noturno: number; excecoes: string[] };
   function apurarColab(emp: Empregado) {
     const cpf = soDig(emp.cpf);
     const dias = batidasPorCpf[cpf] || {};
-    const linhas: { data: string; bs: BatidaDoc[]; previstoTxt: string; trabalhado: number; extra: number; noturno: number; excecoes: string[] }[] = [];
+    const ajDias = ajustesPorCpf[cpf] || {};
+    const linhas: Linha[] = [];
     for (let d = 1; d <= diasDoMes; d++) {
       const data = `${comp}-${String(d).padStart(2, "0")}`;
       const bs = dias[data] || [];
+      const ajustesDia = ajDias[data] || [];
       const prev = turnoPrevisto(emp, data);
-      if (prev.kind === "folga" && bs.length === 0) continue;                 // folga tranquila — não polui
-      if (prev.kind === "implicito" && bs.length === 0) continue;
-      const blocos: BatidaBloco[] = bs.filter(b => !b.excluded).map(b => ({ dateIn: b.dateIn as number, dateOut: (b.dateOut ?? null) as number | null }));
+      if (prev.kind === "folga" && bs.length === 0 && ajustesDia.length === 0) continue;
+      if (prev.kind === "implicito" && bs.length === 0 && ajustesDia.length === 0) continue;
+      // Desconsideração: remove a batida referida ANTES de apurar (imutável — só ignora).
+      const descPunch = new Set(ajustesDia.filter(a => a.tipo === "desconsideracao" && a.punchId).map(a => a.punchId as string));
+      const blocos: BatidaBloco[] = bs.filter(b => !b.excluded && !(b.punchId && descPunch.has(b.punchId))).map(b => ({ dateIn: b.dateIn as number, dateOut: (b.dateOut ?? null) as number | null }));
+      // Inclusões e abonos entram como lançamento no motor.
+      const ajMotor: AjusteDia[] = [];
+      for (const a of ajustesDia) {
+        if (a.tipo === "inclusao" && a.in && a.out) ajMotor.push({ tipo: "inclusao", in: hhmmToMin(a.in), out: hhmmToMin(a.out) });
+        else if (["abono", "atestado", "folga", "ferias", "afastamento"].includes(a.tipo)) ajMotor.push({ tipo: a.tipo as "abono", minutos: a.minutos || undefined });
+      }
       const ehDomingo = new Date(data + "T12:00:00").getDay() === 0;
       let trabalhado = 0, extra = 0, noturno = 0, excecoes: string[] = [], previstoTxt = "—";
       if (prev.kind === "trabalho" && prev.turno) previstoTxt = prev.turno.janelas.map(j => `${j.in}–${j.out}`).join(" ");
       else if (prev.kind === "folga") previstoTxt = "folga";
       else previstoTxt = "sem cadastro";
       if (cct && prev.kind !== "implicito") {
-        const ap = apurarDia({ data, blocos, turno: prev.turno, cct, ehDomingo });
+        const ap = apurarDia({ data, blocos, turno: prev.turno, cct, ehDomingo, ajustes: ajMotor });
         trabalhado = ap.minutosTrabalhados; extra = ap.minutosExtras; noturno = ap.noturnoMin; excecoes = ap.excecoes;
       } else {
         trabalhado = blocos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
       }
-      linhas.push({ data, bs, previstoTxt, trabalhado, extra, noturno, excecoes });
+      linhas.push({ data, bs, descPunch, ajustesDia, previstoTxt, trabalhado, extra, noturno, excecoes });
     }
     return { linhas, temCpf: !!cpf, totTrab: linhas.reduce((s, l) => s + l.trabalhado, 0), totExtra: linhas.reduce((s, l) => s + l.extra, 0), totNot: linhas.reduce((s, l) => s + l.noturno, 0), exc: linhas.reduce((s, l) => s + l.excecoes.length, 0) };
   }
@@ -145,13 +173,18 @@ export function PtrpApuracaoTab() {
   // Apura todo mundo e agrupa por ÁREA (colunas), como o Fechamento de ponto.
   const resultados = useMemo(() => empVis.map(emp => ({ emp, area: areaDoEmp(emp) || "Sem área", r: apurarColab(emp) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [empVis, batidasPorCpf, cct, comp, areaDoCargo]);
+    [empVis, batidasPorCpf, ajustesPorCpf, cct, comp, areaDoCargo]);
   const porArea = useMemo(() => {
     const m = new Map<string, typeof resultados>();
     for (const x of resultados) { const a = m.get(x.area) || []; a.push(x); m.set(x.area, a); }
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [resultados]);
   const sel = resultados.find(x => x.emp.id === aberto) || null;
+
+  async function cancelarAjuste(a: PtrpAjuste) {
+    if (!confirm("Cancelar este tratamento? Ele fica registrado na trilha (não some).")) return;
+    await updateDoc(doc(db, "ptrpAjustes", a.id), { cancelado: true, canceladoPor: { id: me?.id || "", nome: me?.nome || "" }, canceladoEm: new Date().toISOString() }).catch(e => alert("Falha: " + (e instanceof Error ? e.message : "?")));
+  }
 
   if (!me?.isMaster) return <div className="p-8 text-center text-gray-500">🔒 Só o master.</div>;
 
@@ -244,17 +277,26 @@ export function PtrpApuracaoTab() {
             <div className="px-3 py-2 overflow-x-auto">
               {sel.r.linhas.length === 0 ? <div className="text-sm text-gray-400 py-4 text-center">Sem batidas nem dias previstos de trabalho em {comp}.</div> : (
               <table className="w-full text-[12px] min-w-[620px]">
-                <thead><tr className="text-gray-400 text-left"><th className="py-1 font-medium">Dia</th><th className="font-medium">Previsto</th><th className="font-medium">Batidas</th><th className="font-medium text-right">Trab.</th><th className="font-medium text-right">Extra</th><th className="font-medium text-right">Not.</th><th className="font-medium">Exceções</th></tr></thead>
+                <thead><tr className="text-gray-400 text-left"><th className="py-1 font-medium">Dia</th><th className="font-medium">Previsto</th><th className="font-medium">Batidas / tratamento</th><th className="font-medium text-right">Trab.</th><th className="font-medium text-right">Extra</th><th className="font-medium text-right">Not.</th><th className="font-medium">Exceções</th><th className="font-medium text-right">Ação</th></tr></thead>
                 <tbody>
                   {sel.r.linhas.map(l => (
                     <tr key={l.data} className={`border-t border-gray-50 dark:border-gray-800/50 ${l.excecoes.includes("falta") ? "bg-rose-50/40 dark:bg-rose-900/10" : ""}`}>
-                      <td className="py-1 tabular-nums text-gray-600 dark:text-gray-300">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
-                      <td className="text-gray-500">{l.previstoTxt}</td>
-                      <td className="text-gray-700 dark:text-gray-200">{l.bs.length ? l.bs.map((b, i) => <span key={i} className={b.excluded ? "line-through text-gray-400" : ""}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}</span>) : <span className="text-gray-400">—</span>}</td>
-                      <td className="text-right tabular-nums">{hm(l.trabalhado)}</td>
-                      <td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{l.extra ? hm(l.extra) : ""}</td>
-                      <td className="text-right tabular-nums text-indigo-500">{l.noturno ? hm(l.noturno) : ""}</td>
-                      <td>{l.excecoes.map(e => <span key={e} className="inline-block mr-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{EXC_LABEL[e] || e}</span>)}</td>
+                      <td className="py-1 tabular-nums text-gray-600 dark:text-gray-300 align-top">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
+                      <td className="text-gray-500 align-top">{l.previstoTxt}</td>
+                      <td className="text-gray-700 dark:text-gray-200 align-top">
+                        <div>{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); return <span key={i} className={b.excluded || desc ? "line-through text-gray-400" : ""} title={desc ? "desconsiderada" : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}</span>; }) : <span className="text-gray-400">—</span>}</div>
+                        {l.ajustesDia.map(a => (
+                          <span key={a.id} className="inline-flex items-center gap-1 mt-0.5 mr-1 text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300">
+                            {a.tipo === "inclusao" ? `➕ ${a.in}–${a.out}` : a.tipo === "desconsideracao" ? "🚫 desconsid." : `☂️ ${a.tipo}`}{a.motivo ? ` · ${a.motivo}` : ""}
+                            <button type="button" onClick={() => void cancelarAjuste(a)} className="text-rose-500 hover:text-rose-600" title="Cancelar tratamento">✕</button>
+                          </span>
+                        ))}
+                      </td>
+                      <td className="text-right tabular-nums align-top">{hm(l.trabalhado)}</td>
+                      <td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400 align-top">{l.extra ? hm(l.extra) : ""}</td>
+                      <td className="text-right tabular-nums text-indigo-500 align-top">{l.noturno ? hm(l.noturno) : ""}</td>
+                      <td className="align-top">{l.excecoes.map(e => <span key={e} className="inline-block mr-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{EXC_LABEL[e] || e}</span>)}</td>
+                      <td className="text-right align-top"><button type="button" onClick={() => setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bs })} className="text-[11px] px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" title="Tratar (incluir/desconsiderar/abonar)">⚙️</button></td>
                     </tr>
                   ))}
                 </tbody>
@@ -269,6 +311,78 @@ export function PtrpApuracaoTab() {
         )}
         </>
       )}
+      {ajusteModal && me && <AjusteModal empresaKey={shortCode} emp={ajusteModal.emp} data={ajusteModal.data} bs={ajusteModal.bs} autor={{ id: me.id, nome: me.nome }} onClose={() => setAjusteModal(null)} />}
     </div>
+  );
+}
+
+// Modal de TRATAMENTO (gera ptrpAjustes — nunca edita a batida original).
+function AjusteModal({ empresaKey, emp, data, bs, autor, onClose }: { empresaKey: string; emp: Empregado; data: string; bs: BatidaDoc[]; autor: { id: string; nome: string }; onClose: () => void }) {
+  const [tipo, setTipo] = useState<PtrpAjusteTipo>("inclusao");
+  const [hin, setHin] = useState("08:00");
+  const [hout, setHout] = useState("17:00");
+  const [punchId, setPunchId] = useState(bs[0]?.punchId || "");
+  const [motivo, setMotivo] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const [err, setErr] = useState("");
+  const inp = "w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+
+  async function salvar() {
+    if (!motivo.trim()) { setErr("Descreva o motivo (obrigatório na trilha)."); return; }
+    if (tipo === "desconsideracao" && !punchId) { setErr("Escolha a batida a desconsiderar."); return; }
+    setErr(""); setSalvando(true);
+    try {
+      const aj: Omit<PtrpAjuste, "id"> = {
+        empresaKey, colaboradorId: emp.id, cpf: (emp.cpf || "").replace(/\D/g, ""), data, tipo,
+        ...(tipo === "inclusao" ? { in: hin, out: hout } : {}),
+        ...(tipo === "desconsideracao" ? { punchId } : {}),
+        motivo: motivo.trim(), autor, criadoEm: new Date().toISOString(), cancelado: false,
+      };
+      await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore(aj));
+      onClose();
+    } catch (e) { setErr(e instanceof Error ? e.message : "Falha ao salvar."); setSalvando(false); }
+  }
+
+  const hhmmLocal = (ms?: number | null) => { if (ms == null) return "—"; const t = minutoDoDiaBRT(ms); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
+
+  return (
+    <Modal title={`Tratar · ${emp.nome} · ${data.slice(-2)}/${data.slice(5, 7)}`} onClose={onClose} maxWidth="max-w-md">
+      <div className="space-y-3">
+        <div className="text-[11px] text-gray-500">A batida original é imutável — o tratamento entra como lançamento adicional, com autor e data (Portaria 671).</div>
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Tipo de tratamento</label>
+          <select value={tipo} onChange={e => setTipo(e.target.value as PtrpAjusteTipo)} className={inp}>
+            <option value="inclusao">➕ Incluir marcação (esquecimento)</option>
+            <option value="desconsideracao">🚫 Desconsiderar uma batida (duplicada/errada)</option>
+            <option value="abono">☂️ Abono</option>
+            <option value="atestado">🩺 Atestado</option>
+            <option value="folga">🌴 Folga</option>
+            <option value="ferias">🏖️ Férias</option>
+            <option value="afastamento">📋 Afastamento</option>
+          </select>
+        </div>
+        {tipo === "inclusao" && (
+          <div className="grid grid-cols-2 gap-2">
+            <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Entrada</label><input type="time" value={hin} onChange={e => setHin(e.target.value)} className={inp} /></div>
+            <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Saída</label><input type="time" value={hout} onChange={e => setHout(e.target.value)} className={inp} /></div>
+          </div>
+        )}
+        {tipo === "desconsideracao" && (
+          <div className="flex flex-col gap-1">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Batida a desconsiderar</label>
+            <select value={punchId} onChange={e => setPunchId(e.target.value)} className={inp}>
+              {bs.length === 0 && <option value="">— sem batidas neste dia —</option>}
+              {bs.map(b => <option key={b.punchId || b.id} value={b.punchId || ""}>{hhmmLocal(b.dateIn)}–{hhmmLocal(b.dateOut)}</option>)}
+            </select>
+          </div>
+        )}
+        <div className="flex flex-col gap-1">
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Motivo / justificativa</label>
+          <textarea value={motivo} onChange={e => setMotivo(e.target.value)} rows={2} placeholder="Ex.: esqueceu de bater a saída; atestado de 1 dia; batida duplicada…" className={inp} />
+        </div>
+        {err && <div className="text-sm text-rose-600">{err}</div>}
+        <div className="flex justify-end gap-2 pt-1"><Button variant="secondary" onClick={onClose} disabled={salvando}>Cancelar</Button><Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando…" : "Lançar tratamento"}</Button></div>
+      </div>
+    </Modal>
   );
 }

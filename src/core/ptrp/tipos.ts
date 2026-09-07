@@ -54,6 +54,28 @@ export type PtrpEscalaMes = {
   atualizadoPor?: { id: string; nome: string };
 };
 
+// ─── Ajuste (tratamento) — Portaria 671: a batida original é IMUTÁVEL; todo
+// tratamento é um LANÇAMENTO adicional com tipo/motivo/autor/timestamp. ────────
+export type PtrpAjusteTipo = "inclusao" | "desconsideracao" | "abono" | "atestado" | "folga" | "ferias" | "afastamento";
+export type PtrpAjuste = {
+  id: string;
+  empresaKey: string;
+  colaboradorId: string;          // id do empregado no app
+  cpf: string;
+  data: string;                   // YYYY-MM-DD
+  tipo: PtrpAjusteTipo;
+  in?: string | null;             // "HH:MM" (inclusao — marcação incluída)
+  out?: string | null;            // "HH:MM" (inclusao)
+  punchId?: string | null;        // batida desprezada (desconsideracao)
+  minutos?: number | null;        // abono parcial (default: dia inteiro)
+  motivo: string;
+  autor?: { id: string; nome: string };
+  criadoEm?: string;
+  cancelado?: boolean;            // soft-delete: preserva a trilha (nunca apaga)
+  canceladoPor?: { id: string; nome: string } | null;
+  canceladoEm?: string | null;
+};
+
 // ════════════════════════════════════════════════════════════════════════════
 //  Parâmetros de CCT por empresa (com VIGÊNCIA — renovam na data-base anual).
 //  A apuração resolve os parâmetros pela empresa do colaborador E pela data da
