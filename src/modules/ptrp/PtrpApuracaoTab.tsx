@@ -6,7 +6,7 @@
 //  empregado (mesma fonte da Análise de Ponto). ptrpTurnos/ptrpEscalas ficam
 //  como OVERRIDE opcional (fase seguinte). Valida contra o Sólides (Fase 1).
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -42,23 +42,24 @@ function turnoPrevisto(emp: Empregado, date: string): { kind: "trabalho" | "folg
 
 export function PtrpApuracaoTab() {
   const { pessoa: me } = useAuth();
-  const { restaurants } = useRestaurant();
-  const comShort = useMemo(() => restaurants.filter(r => (r as { shortCode?: string }).shortCode), [restaurants]);
-  const [rid, setRid] = useState("");
+  // Segue o restaurante ATIVO do sistema (seletor global), como a Análise de Ponto.
+  const { activeRestaurant } = useRestaurant();
+  const rid = activeRestaurant?.id || "";
+  const shortCode = (activeRestaurant as { shortCode?: string } | null)?.shortCode || "";
   const [comp, setComp] = useState(compAtual());
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
+  const [cargos, setCargos] = useState<{ id: string; area?: string }[]>([]);
   const [batidas, setBatidas] = useState<BatidaDoc[]>([]);
   const [ccts, setCcts] = useState<ParametrosCCT[]>([]);
   const [aberto, setAberto] = useState<string | null>(null);
-
-  useEffect(() => { if (!rid && comShort.length) setRid(comShort[0].id); }, [comShort, rid]);
-  const restaurante = comShort.find(r => r.id === rid) || null;
-  const shortCode = (restaurante as { shortCode?: string } | null)?.shortCode || "";
+  const [filtroArea, setFiltroArea] = useState<string | null>(null);
 
   useEffect(() => onSnapshot(collection(db, "parametrosCCT"), s => setCcts(s.docs.map(d => ({ id: d.id, ...d.data() }) as ParametrosCCT))), []);
   useEffect(() => {
-    if (!rid) { setEmpregados([]); return; }
-    return onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)), s => setEmpregados(s.docs.map(d => ({ id: d.id, ...d.data() }) as Empregado)));
+    if (!rid) { setEmpregados([]); setCargos([]); return; }
+    const u1 = onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)), s => setEmpregados(s.docs.map(d => ({ id: d.id, ...d.data() }) as Empregado)));
+    const u2 = onSnapshot(query(collection(db, "cargos"), where("restaurantId", "==", rid)), s => setCargos(s.docs.map(d => ({ id: d.id, ...(d.data() as { area?: string }) }))));
+    return () => { u1(); u2(); };
   }, [rid]);
   useEffect(() => {
     if (!shortCode || !comp) { setBatidas([]); return; }
@@ -69,6 +70,11 @@ export function PtrpApuracaoTab() {
   const cct = useMemo(() => cctVigenteEm(ccts, shortCode, `${comp}-15`), [ccts, shortCode, comp]);
   const [ano, mes] = comp.split("-").map(Number);
   const diasDoMes = new Date(ano, mes, 0).getDate();
+
+  const areaDoCargo = useMemo(() => Object.fromEntries(cargos.map(c => [c.id, c.area || ""])), [cargos]);
+  const areaDoEmp = (e: Empregado) => areaDoCargo[e.cargoId] || "";
+  const areas = useMemo(() => [...new Set(empregados.map(areaDoEmp).filter(Boolean))].sort(), [empregados, areaDoCargo]);
+  const empVis = useMemo(() => [...empregados].filter(e => !filtroArea || areaDoEmp(e) === filtroArea).sort((a, b) => a.nome.localeCompare(b.nome)), [empregados, filtroArea, areaDoCargo]);
 
   // Batidas por CPF → dia.
   const batidasPorCpf = useMemo(() => {
@@ -109,31 +115,37 @@ export function PtrpApuracaoTab() {
 
   if (!me?.isMaster) return <div className="p-8 text-center text-gray-500">🔒 Só o master.</div>;
 
+  if (!shortCode) return <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">O restaurante ativo (<strong>{activeRestaurant?.nome || "—"}</strong>) não tem <strong>shortCode</strong> do Sólides configurado. Troque de restaurante no seletor do topo, ou configure o shortCode.</div>;
+
   return (
     <div>
-      <div className="flex items-center gap-2 flex-wrap mb-3">
-        <select value={rid} onChange={e => setRid(e.target.value)} className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
-          {comShort.length === 0 && <option value="">— nenhum restaurante c/ shortCode —</option>}
-          {comShort.map(r => <option key={r.id} value={r.id}>{r.nome} · {(r as { shortCode?: string }).shortCode}</option>)}
-        </select>
+      <div className="flex items-center gap-2 flex-wrap mb-2">
+        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{activeRestaurant?.nome} · {shortCode}</span>
         <input type="month" value={comp} onChange={e => setComp(e.target.value)} className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
-        {!cct && shortCode && <span className="text-xs text-amber-600 dark:text-amber-400">⚠ Sem CCT — configure em Convenções (extras/noturno não calculam).</span>}
+        {!cct && <span className="text-xs text-amber-600 dark:text-amber-400">⚠ Sem CCT — configure em Convenções (extras/noturno não calculam).</span>}
       </div>
-      <p className="text-[11px] text-gray-400 mb-3">Previsto puxado do cadastro do empregado (vínculo/horário), casado com as batidas por CPF. Prévia — validar contra o Sólides antes de oficializar.</p>
+      {areas.length > 0 && (
+        <div className="flex gap-1.5 mb-2 flex-wrap">
+          <Chip ativo={!filtroArea} onClick={() => setFiltroArea(null)}>Todas</Chip>
+          {areas.map(a => <Chip key={a} ativo={filtroArea === a} onClick={() => setFiltroArea(filtroArea === a ? null : a)}>{a}</Chip>)}
+        </div>
+      )}
+      <p className="text-[11px] text-gray-400 mb-3">Segue o restaurante do seletor global. Previsto puxado do cadastro do empregado (vínculo/horário), casado com as batidas por CPF. Prévia — validar contra o Sólides.</p>
 
-      {empregados.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">Nenhum empregado nesse restaurante (ou sem shortCode). Selecione outro.</div>
+      {empVis.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">Nenhum empregado{filtroArea ? ` na área ${filtroArea}` : ""} neste restaurante.</div>
       ) : (
         <div className="space-y-2">
-          {[...empregados].sort((a, b) => a.nome.localeCompare(b.nome)).map(emp => {
+          {empVis.map(emp => {
             const r = apurarColab(emp);
             if (r.linhas.length === 0) return null;
             const on = aberto === emp.id;
+            const area = areaDoEmp(emp);
             return (
               <div key={emp.id} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
                 <button type="button" onClick={() => setAberto(on ? null : emp.id)} className="w-full flex items-center justify-between gap-2 p-3 text-left">
                   <div className="min-w-0">
-                    <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{emp.nome}{!r.temCpf && <span className="text-[10px] text-rose-500 ml-1">sem CPF</span>}</div>
+                    <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{emp.nome}{area && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 align-middle">{area}</span>}{!r.temCpf && <span className="text-[10px] text-rose-500 ml-1">sem CPF</span>}</div>
                     <div className="text-[11px] text-gray-500">trabalhado {hm(r.totTrab)}{r.totExtra ? ` · extra ${hm(r.totExtra)}` : ""}{r.totNot ? ` · noturno ${hm(r.totNot)}` : ""}</div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
@@ -172,5 +184,14 @@ export function PtrpApuracaoTab() {
         </div>
       )}
     </div>
+  );
+}
+
+function Chip({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: ReactNode }) {
+  return (
+    <button type="button" onClick={onClick}
+      className={`shrink-0 whitespace-nowrap text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${ativo ? "bg-emerald-600 text-white border-emerald-600" : "text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+      {children}
+    </button>
   );
 }
