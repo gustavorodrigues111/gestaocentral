@@ -122,7 +122,9 @@ async function sincronizarEmpresa(empresaKey: string, token: string, desdeOverri
   const hoje = hojeBRT();
   // Sem cursor → backfill inicial. Com cursor → janela [cursor-overlap, cursor+step].
   const baseDesde = desdeOverride || (estado?.cursor ? somaDias(estado.cursor, -OVERLAP_DIAS) : somaDias(hoje, -BACKFILL_DIAS));
-  const ate = minYmd(ateOverride || (estado?.cursor ? somaDias(estado.cursor, STEP_DIAS) : hoje), hoje);
+  // "desde" manual → busca até HOJE (rebusca cheia do período escolhido pelo
+  // usuário). Automático → avança em passos (backfill) ou fica na janela recente.
+  const ate = minYmd(ateOverride || (desdeOverride ? hoje : (estado?.cursor ? somaDias(estado.cursor, STEP_DIAS) : hoje)), hoje);
   const desde = minYmd(baseDesde, ate);
 
   const batidas = await buscarBatidas(token, desde, ate);

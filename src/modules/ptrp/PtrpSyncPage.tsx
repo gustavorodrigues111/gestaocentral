@@ -12,6 +12,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { PtrpCctTab } from "./PtrpCctTab";
+import { PtrpTurnosTab } from "./PtrpTurnosTab";
 
 type SyncState = {
   id: string;
@@ -43,7 +44,8 @@ export function PtrpSyncPage() {
   const [loading, setLoading] = useState(true);
   const [rodando, setRodando] = useState<string | null>(null);   // "*" = geral; ou empresaKey
   const [msg, setMsg] = useState("");
-  const [aba, setAba] = useState<"sync" | "cct">("sync");
+  const [aba, setAba] = useState<"sync" | "turnos" | "cct">("sync");
+  const [desdeInput, setDesdeInput] = useState("");
 
   useEffect(() => {
     const u = onSnapshot(collection(db, "ptrpSyncState"), snap => {
@@ -56,10 +58,14 @@ export function PtrpSyncPage() {
   const hoje = hojeBRT();
   const algumAtrasado = useMemo(() => estados.some(e => (e.cursor || "") < hoje), [estados, hoje]);
 
-  async function sincronizar(empresaKey?: string) {
+  async function sincronizar(opts?: { empresa?: string; desde?: string }) {
+    const empresaKey = opts?.empresa;
     setRodando(empresaKey || "*"); setMsg("");
     try {
-      const qs = empresaKey ? `?empresa=${encodeURIComponent(empresaKey)}` : "";
+      const p = new URLSearchParams();
+      if (empresaKey) p.set("empresa", empresaKey);
+      if (opts?.desde) p.set("desde", opts.desde);
+      const qs = p.toString() ? `?${p.toString()}` : "";
       const r = await fetch(`/api/ptrp-punch-sync${qs}`, { method: "GET", headers: { ...(await authHeader()) } });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { setMsg(`Falha: ${(j as { error?: string }).error || `HTTP ${r.status}`}`); return; }
@@ -81,21 +87,28 @@ export function PtrpSyncPage() {
       </div>
 
       <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
-        {([["sync", "🔄 Sincronização"], ["cct", "📜 Convenções (CCT)"]] as const).map(([v, l]) => (
+        {([["sync", "🔄 Sincronização"], ["turnos", "🕐 Turnos"], ["cct", "📜 Convenções (CCT)"]] as const).map(([v, l]) => (
           <button key={v} type="button" onClick={() => setAba(v)}
             className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${aba === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
         ))}
       </div>
 
-      {aba === "cct" ? <PtrpCctTab /> : (
+      {aba === "cct" ? <PtrpCctTab /> : aba === "turnos" ? <PtrpTurnosTab /> : (
       <>
-      <div className="flex items-center gap-2 flex-wrap mb-3">
+      <div className="flex items-center gap-2 flex-wrap mb-2">
         <Button size="sm" onClick={() => void sincronizar()} disabled={!!rodando}>
-          {rodando === "*" ? "Sincronizando…" : "🔄 Sincronizar todas"}
+          {rodando === "*" ? "Sincronizando…" : "🔄 Sincronizar (janela automática)"}
         </Button>
-        {algumAtrasado && <span className="text-xs text-amber-600 dark:text-amber-400">⏳ Backfill em andamento — rode algumas vezes até o cursor chegar em hoje ({fmtD(hoje)}).</span>}
         {msg && <span className="text-xs text-gray-600 dark:text-gray-300">{msg}</span>}
       </div>
+      <div className="flex items-center gap-2 flex-wrap mb-3 text-xs text-gray-600 dark:text-gray-300">
+        <span>Rebuscar desde:</span>
+        <input type="date" value={desdeInput} max={hoje} onChange={e => setDesdeInput(e.target.value)}
+          className="px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
+        <Button size="sm" variant="secondary" disabled={!!rodando || !desdeInput} onClick={() => void sincronizar({ desde: desdeInput })}>Rebuscar</Button>
+        <span className="text-gray-400">força puxar tudo a partir dessa data (ex.: início do mês a validar).</span>
+      </div>
+      {algumAtrasado && <div className="text-xs text-amber-600 dark:text-amber-400 mb-3">⏳ Backfill em andamento — rode algumas vezes até o cursor chegar em hoje ({fmtD(hoje)}).</div>}
 
       {loading ? (
         <div className="text-sm text-gray-400 py-10 text-center">Carregando…</div>
@@ -126,7 +139,7 @@ export function PtrpSyncPage() {
                 </div>
                 {e.erro && <div className="mt-2 text-[11px] text-rose-600 dark:text-rose-400 break-words">⚠ {e.erro}</div>}
                 <div className="mt-2.5 flex justify-end">
-                  <Button size="sm" variant="secondary" onClick={() => void sincronizar(e.id)} disabled={!!rodando}>
+                  <Button size="sm" variant="secondary" onClick={() => void sincronizar({ empresa: e.id, ...(desdeInput ? { desde: desdeInput } : {}) })} disabled={!!rodando}>
                     {rodando === e.id ? "…" : "Sincronizar"}
                   </Button>
                 </div>
