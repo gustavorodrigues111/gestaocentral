@@ -593,10 +593,31 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     .filter(c => passaTag(c.waId) && passaBusca(c.waId) &&temResponsavel(c.waId) && !souResponsavel(c.waId) && !finalizadaDe(c.waId) && !spamDe(c.waId)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [conversas, contatos, me?.id, filtroTag, busca]);
-  const finalizadasList = useMemo(() => conversas
-    .filter(c => passaTag(c.waId) && passaBusca(c.waId) &&finalizadaDe(c.waId) && !spamDe(c.waId)),
+  const finalizadasList = useMemo(() => {
+    // Finalizadas COM mensagem no feed (têm preview real da última mensagem).
+    const base = conversas.filter(c => passaTag(c.waId) && passaBusca(c.waId) && finalizadaDe(c.waId) && !spamDe(c.waId));
+    const vistos = new Set(base.map(c => foneKey(c.waId)));
+    // Completa com as finalizadas ANTIGAS: o estado "finalizado" mora no CONTATO
+    // (estados[numeroSel].finalizadoEm) e todos os contatos já estão carregados —
+    // então listamos todas, mesmo sem mensagem recente no feed de 4000/90d.
+    const extras: typeof base = [];
+    if (numeroSel) {
+      for (const c of Object.values(contatos)) {
+        const cc = c as WhatsappContato & { waId?: string; id?: string; estados?: Record<string, { finalizadoEm?: string | null }> };
+        const waId = cc.waId || cc.id || "";
+        if (!waId) continue;
+        const k = foneKey(waId);
+        if (vistos.has(k)) continue;
+        const fin = cc.estados?.[numeroSel]?.finalizadoEm;   // finalizada NESTE número
+        if (!fin || cc.spam) continue;
+        if (!passaTag(waId) || !passaBusca(waId)) continue;
+        vistos.add(k);
+        extras.push({ waId, nome: undefined, ultima: { waId, direcao: "out", texto: "— atendimento finalizado —", timestamp: fin } as Msg, naoLidas: 0 });
+      }
+    }
+    return [...base, ...extras].sort((a, b) => (b.ultima.timestamp || "").localeCompare(a.ultima.timestamp || ""));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [conversas, contatos, filtroTag, busca]);
+  }, [conversas, contatos, filtroTag, busca, numeroSel]);
   const spamList = useMemo(() => conversas
     .filter(c => passaTag(c.waId) && passaBusca(c.waId) &&spamDe(c.waId)),
     // eslint-disable-next-line react-hooks/exhaustive-deps
