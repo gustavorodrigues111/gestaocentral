@@ -1264,7 +1264,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             {cTags.map(t => <span key={t.id} className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: t.cor || "#6366f1" }} title={t.nome} />)}
           </div>
           <div className={`text-xs truncate ${naoLida ? "text-gray-700 dark:text-gray-200 font-medium" : "text-gray-500"}`}>{c.ultima.direcao === "out" ? "Você: " : ""}{textoMostra(c.ultima)}</div>
-          {atribuido && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 truncate">🙋 {atribuido}</div>}
+          {!numeroLivre && atribuido && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 truncate">🙋 {atribuido}</div>}
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <span className="text-[10px] text-gray-400">{hhmm(c.ultima.timestamp)}</span>
@@ -1518,7 +1518,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 )}
                 {clienteSel && <span className="text-emerald-600 dark:text-emerald-300"> · 🧑 {clienteSel.nome}</span>}
                 {pessoaSel && <span className="text-indigo-600 dark:text-indigo-300"> · 👤 {pessoaSel.nome}</span>}
-                {contatoSel?.atribuidoNome && <span> · 🙋 {contatoSel.atribuidoNome}</span>}
+                {!numeroLivre && contatoSel?.atribuidoNome && <span> · 🙋 {contatoSel.atribuidoNome}</span>}
               </div>
             </div>
             {podeResponder && !ehGrupoWaId(sel || "") && <button type="button" onClick={() => setEditarNum(true)} title="Editar contato (nome/número)" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">✏️</button>}
