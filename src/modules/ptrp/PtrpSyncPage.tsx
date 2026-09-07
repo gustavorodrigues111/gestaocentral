@@ -11,6 +11,7 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
+import { PtrpCctTab } from "./PtrpCctTab";
 
 type SyncState = {
   id: string;
@@ -42,6 +43,7 @@ export function PtrpSyncPage() {
   const [loading, setLoading] = useState(true);
   const [rodando, setRodando] = useState<string | null>(null);   // "*" = geral; ou empresaKey
   const [msg, setMsg] = useState("");
+  const [aba, setAba] = useState<"sync" | "cct">("sync");
 
   useEffect(() => {
     const u = onSnapshot(collection(db, "ptrpSyncState"), snap => {
@@ -73,11 +75,20 @@ export function PtrpSyncPage() {
 
   return (
     <div className="max-w-4xl mx-auto">
-      <div className="mb-4">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">⏱️ Ponto · Sincronização de batidas</h1>
-        <p className="text-xs text-gray-500 mt-0.5">As batidas do Sólides são espelhadas numa coleção imutável (<code>ptrpBatidas</code>) — base da apuração do PTRP. O sync roda a cada 15 min; aqui dá pra acompanhar e forçar.</p>
+      <div className="mb-3">
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">⏱️ Ponto (PTRP)</h1>
+        <p className="text-xs text-gray-500 mt-0.5">Tratamento de ponto — as batidas do Sólides são espelhadas numa coleção imutável (<code>ptrpBatidas</code>), base da apuração.</p>
       </div>
 
+      <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
+        {([["sync", "🔄 Sincronização"], ["cct", "📜 Convenções (CCT)"]] as const).map(([v, l]) => (
+          <button key={v} type="button" onClick={() => setAba(v)}
+            className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${aba === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
+        ))}
+      </div>
+
+      {aba === "cct" ? <PtrpCctTab /> : (
+      <>
       <div className="flex items-center gap-2 flex-wrap mb-3">
         <Button size="sm" onClick={() => void sincronizar()} disabled={!!rodando}>
           {rodando === "*" ? "Sincronizando…" : "🔄 Sincronizar todas"}
@@ -123,6 +134,8 @@ export function PtrpSyncPage() {
             );
           })}
         </div>
+      )}
+      </>
       )}
     </div>
   );
