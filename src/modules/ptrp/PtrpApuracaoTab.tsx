@@ -16,6 +16,8 @@ import type { ParametrosCCT, PtrpTurno } from "../../core/ptrp/tipos";
 import { cctVigenteEm } from "../../core/ptrp/tipos";
 import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horarios";
 import { apurarDia, minutoDoDiaBRT, type BatidaBloco } from "../../core/ptrp/apuracao";
+import { fetchRoster } from "../../core/ponto/solidesPontoClient";
+import type { PontoColaborador } from "../../core/ponto/analise";
 
 type BatidaDoc = { id: string; empresaKey: string; cpf?: string | null; date?: string | null; dateIn?: number | null; dateOut?: number | null; excluded?: boolean; raw?: { employee?: { name?: string }; employeeName?: string } };
 
@@ -52,6 +54,19 @@ export function PtrpApuracaoTab() {
   const [batidas, setBatidas] = useState<BatidaDoc[]>([]);
   const [ccts, setCcts] = useState<ParametrosCCT[]>([]);
   const [aberto, setAberto] = useState<string | null>(null);
+  const [roster, setRoster] = useState<PontoColaborador[] | null>(null);
+  const [carregandoRoster, setCarregandoRoster] = useState(false);
+  const [rosterErr, setRosterErr] = useState("");
+  const [mostrarComp, setMostrarComp] = useState(false);
+
+  async function carregarRoster() {
+    if (!shortCode) return;
+    setCarregandoRoster(true); setRosterErr(""); setMostrarComp(true);
+    try { setRoster(await fetchRoster(shortCode, true)); }
+    catch (e) { setRosterErr(e instanceof Error ? e.message : "Falha ao buscar o cadastro da Sólides."); }
+    finally { setCarregandoRoster(false); }
+  }
+  useEffect(() => { setRoster(null); setMostrarComp(false); setRosterErr(""); }, [shortCode]);
 
   useEffect(() => onSnapshot(collection(db, "parametrosCCT"), s => setCcts(s.docs.map(d => ({ id: d.id, ...d.data() }) as ParametrosCCT))), []);
   useEffect(() => {
@@ -111,6 +126,16 @@ export function PtrpApuracaoTab() {
   const cpfsComEmpregado = useMemo(() => new Set(empregados.map(e => soDig(e.cpf)).filter(Boolean)), [empregados]);
   const batidasSemCadastro = useMemo(() => Object.keys(batidasPorCpf).filter(c => !cpfsComEmpregado.has(c)), [batidasPorCpf, cpfsComEmpregado]);
 
+  // Comparação de cadastros Sólides × planejamento.app (por CPF).
+  const comparacao = useMemo(() => {
+    if (!roster) return null;
+    const appByCpf = new Map(empregados.filter(e => soDig(e.cpf)).map(e => [soDig(e.cpf), e]));
+    const solByCpf = new Map(roster.filter(r => soDig(r.cpf)).map(r => [soDig(r.cpf), r]));
+    const soNaSolides = [...solByCpf].filter(([c]) => !appByCpf.has(c)).map(([, r]) => r);
+    const soNoApp = [...appByCpf].filter(([c]) => !solByCpf.has(c)).map(([, e]) => e);
+    return { soNaSolides, soNoApp, semCpfApp: empregados.filter(e => !soDig(e.cpf)), ambos: appByCpf.size - soNoApp.length };
+  }, [roster, empregados]);
+
   // Apura todo mundo e agrupa por ÁREA (colunas), como o Fechamento de ponto.
   const resultados = useMemo(() => empVis.map(emp => ({ emp, area: areaDoEmp(emp) || "Sem área", r: apurarColab(emp) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -133,8 +158,35 @@ export function PtrpApuracaoTab() {
         <input type="month" value={comp} onChange={e => setComp(e.target.value)} className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
         {!cct && <span className="text-xs text-amber-600 dark:text-amber-400">⚠ Sem CCT — configure em Convenções (extras/noturno não calculam).</span>}
       </div>
-      <div className="text-[12px] rounded-lg px-3 py-2 mb-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
+      <div className="text-[12px] rounded-lg px-3 py-2 mb-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
         Escolha um colaborador pelo chip. <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ verde</span> = sem exceções · <span className="font-semibold text-amber-700 dark:text-amber-300">● amarelo</span> = tem exceções a tratar · <span className="font-semibold text-gray-400">○ cinza</span> = sem batidas / sem CPF. Previsto vem do cadastro do empregado; prévia — validar contra o Sólides.
+      </div>
+
+      {/* Comparação de cadastros Sólides × planejamento.app */}
+      <div className="mb-3">
+        <button type="button" onClick={() => (mostrarComp && roster ? setMostrarComp(false) : void carregarRoster())} disabled={carregandoRoster}
+          className="text-[12px] font-semibold px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800">
+          {carregandoRoster ? "Buscando cadastro da Sólides…" : mostrarComp && roster ? "▲ Ocultar comparação de cadastros" : "🔍 Comparar cadastros (Sólides × app)"}
+        </button>
+        {rosterErr && <span className="ml-2 text-[12px] text-rose-600">{rosterErr}</span>}
+        {mostrarComp && comparacao && (
+          <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <div className="rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/40 dark:bg-rose-900/10 p-3">
+              <div className="text-[11px] font-bold uppercase text-rose-700 dark:text-rose-300 mb-1">Só na Sólides ({comparacao.soNaSolides.length})</div>
+              <div className="text-[11px] text-gray-500 mb-1.5">Batem ponto mas não estão no planejamento.app — cadastrar/atualizar (ou demitido não removido).</div>
+              {comparacao.soNaSolides.length === 0 ? <div className="text-[12px] text-gray-400">— nenhum —</div> :
+                <ul className="space-y-0.5 text-[12.5px] text-gray-700 dark:text-gray-200">{comparacao.soNaSolides.map(r => <li key={r.id || r.cpf}>{r.name || r.cpf}{r.fired && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-rose-200 text-rose-800 dark:bg-rose-900 dark:text-rose-200">DEM</span>}</li>)}</ul>}
+            </div>
+            <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-900/10 p-3">
+              <div className="text-[11px] font-bold uppercase text-indigo-700 dark:text-indigo-300 mb-1">Só no planejamento.app ({comparacao.soNoApp.length})</div>
+              <div className="text-[11px] text-gray-500 mb-1.5">Cadastrados no app mas não estão na Sólides — verificar/excluir/desatualizado.</div>
+              {comparacao.soNoApp.length === 0 ? <div className="text-[12px] text-gray-400">— nenhum —</div> :
+                <ul className="space-y-0.5 text-[12.5px] text-gray-700 dark:text-gray-200">{comparacao.soNoApp.map(e => <li key={e.id}>{e.nome}</li>)}</ul>}
+              {comparacao.semCpfApp.length > 0 && <div className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">+ {comparacao.semCpfApp.length} no app sem CPF (não dá pra casar).</div>}
+            </div>
+            <div className="sm:col-span-2 text-[11px] text-gray-400">✓ {comparacao.ambos} em ambos os cadastros.</div>
+          </div>
+        )}
       </div>
 
       {empVis.length === 0 ? (
