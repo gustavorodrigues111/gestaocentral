@@ -158,17 +158,23 @@ export function PtrpApuracaoTab() {
   const batidasSemCadastro = useMemo(() => Object.keys(batidasPorCpf).filter(c => !cpfsComEmpregado.has(c)), [batidasPorCpf, cpfsComEmpregado]);
 
   const cpfNoRoster = useMemo(() => new Set((roster || []).map(r => soDig(r.cpf)).filter(Boolean)), [roster]);
-  const temSolides = (e: Empregado) => !roster || cpfNoRoster.has(soDig(e.cpf));   // sem roster ainda → assume que tem
+  const cpfComBatida = useMemo(() => new Set(Object.keys(batidasPorCpf)), [batidasPorCpf]);
+  // "Está na Sólides" = tem batida no mês OU consta no roster. O roster do Sólides
+  // (employee/find-all) devolve CPF vazio pra muita gente; a BATIDA é a fonte de
+  // CPF confiável (mesma que a Análise de Ponto usa). Só marca SEM SÓLIDES quem
+  // não tem batida E não está no roster.
+  const temSolides = (e: Empregado) => { const c = soDig(e.cpf); if (!c || !roster) return true; return cpfComBatida.has(c) || cpfNoRoster.has(c); };
 
-  // Comparação de cadastros: equipe CLT ATIVA do app (empVis) × Sólides.
+  // Comparação de cadastros: equipe CLT ATIVA do app (empVis) × Sólides (roster ∪ batidas).
   const comparacao = useMemo(() => {
     if (!roster) return null;
-    const appByCpf = new Map(empVis.filter(e => soDig(e.cpf)).map(e => [soDig(e.cpf), e]));
-    const solByCpf = new Map(roster.filter(r => soDig(r.cpf)).map(r => [soDig(r.cpf), r]));
-    const soNaSolides = [...solByCpf].filter(([c]) => !appByCpf.has(c)).map(([, r]) => r);
-    const soNoApp = [...appByCpf].filter(([c]) => !solByCpf.has(c)).map(([, e]) => e);
-    return { soNaSolides, soNoApp, semCpfApp: empVis.filter(e => !soDig(e.cpf)), ambos: appByCpf.size - soNoApp.length };
-  }, [roster, empVis, cpfNoRoster]);
+    const solCpfs = new Set<string>([...cpfNoRoster, ...cpfComBatida]);
+    const ativosComCpf = empVis.filter(e => soDig(e.cpf));
+    const soNoApp = ativosComCpf.filter(e => !solCpfs.has(soDig(e.cpf)));
+    const appCpfs = new Set(ativosComCpf.map(e => soDig(e.cpf)));
+    const soNaSolides = roster.filter(r => soDig(r.cpf) && !appCpfs.has(soDig(r.cpf)));
+    return { soNaSolides, soNoApp, semCpfApp: empVis.filter(e => !soDig(e.cpf)), ambos: ativosComCpf.length - soNoApp.length };
+  }, [roster, empVis, cpfNoRoster, cpfComBatida]);
 
   // Apura todo mundo e agrupa por ÁREA (colunas), como o Fechamento de ponto.
   const resultados = useMemo(() => empVis.map(emp => ({ emp, area: areaDoEmp(emp) || "Sem área", r: apurarColab(emp) })),
