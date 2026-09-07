@@ -13,6 +13,7 @@ import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { PtrpCctTab } from "./PtrpCctTab";
 import { PtrpTurnosTab } from "./PtrpTurnosTab";
+import { PtrpApuracaoTab } from "./PtrpApuracaoTab";
 
 type SyncState = {
   id: string;
@@ -44,7 +45,7 @@ export function PtrpSyncPage() {
   const [loading, setLoading] = useState(true);
   const [rodando, setRodando] = useState<string | null>(null);   // "*" = geral; ou empresaKey
   const [msg, setMsg] = useState("");
-  const [aba, setAba] = useState<"sync" | "turnos" | "cct">("sync");
+  const [aba, setAba] = useState<"sync" | "turnos" | "apuracao" | "cct">("sync");
   const [desdeInput, setDesdeInput] = useState("");
 
   useEffect(() => {
@@ -87,13 +88,13 @@ export function PtrpSyncPage() {
       </div>
 
       <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
-        {([["sync", "🔄 Sincronização"], ["turnos", "🕐 Turnos"], ["cct", "📜 Convenções (CCT)"]] as const).map(([v, l]) => (
+        {([["sync", "🔄 Sincronização"], ["turnos", "🕐 Turnos"], ["apuracao", "📊 Conferência"], ["cct", "📜 Convenções (CCT)"]] as const).map(([v, l]) => (
           <button key={v} type="button" onClick={() => setAba(v)}
             className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${aba === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
         ))}
       </div>
 
-      {aba === "cct" ? <PtrpCctTab /> : aba === "turnos" ? <PtrpTurnosTab /> : (
+      {aba === "cct" ? <PtrpCctTab /> : aba === "turnos" ? <PtrpTurnosTab /> : aba === "apuracao" ? <PtrpApuracaoTab /> : (
       <>
       <div className="flex items-center gap-2 flex-wrap mb-2">
         <Button size="sm" onClick={() => void sincronizar()} disabled={!!rodando}>
