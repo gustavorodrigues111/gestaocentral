@@ -113,7 +113,7 @@ function InfoBadge({ texto }: { texto: string }) {
       {open && (
         <>
           <button type="button" aria-hidden className="fixed inset-0 z-40 cursor-default" onClick={(e) => { e.stopPropagation(); setOpen(false); }} />
-          <span className="absolute z-50 top-5 left-1/2 -translate-x-1/2 w-52 p-2.5 rounded-lg bg-gray-900 dark:bg-gray-700 text-gray-50 text-[11px] font-normal normal-case tracking-normal leading-snug shadow-xl text-left whitespace-normal">{texto}</span>
+          <span className="absolute z-50 top-5 left-1/2 -translate-x-1/2 w-[min(13rem,calc(100vw-1.5rem))] max-w-[calc(100vw-1.5rem)] p-2.5 rounded-lg bg-gray-900 dark:bg-gray-700 text-gray-50 text-[11px] font-normal normal-case tracking-normal leading-snug shadow-xl text-left whitespace-normal">{texto}</span>
         </>
       )}
     </span>
@@ -621,9 +621,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     ? (filtroAtrib === "finalizados" || filtroAtrib === "spam" ? filtroAtrib : "conversas")
     : (filtroAtrib === "outras" || filtroAtrib === "spam" ? filtroAtrib : "inicio");
 
-  // Tem não-lida numa lista? (pra sombrear o chip de vermelho).
+  // Tem não-lida numa lista? (pra sombrear o chip de vermelho). Conversa
+  // FINALIZADA está arquivada → nunca deixa o chip vermelho (não é urgente).
   const temNaoLida = (lista: { waId: string; naoLidas: number }[]) =>
-    lista.some(c => c.naoLidas > 0 || naoLidaManualDe(c.waId));
+    lista.some(c => !finalizadaDe(c.waId) && (c.naoLidas > 0 || naoLidaManualDe(c.waId)));
 
   // Notificação no PC: dispara pra cada mensagem RECEBIDA nova nos números que a
   // pessoa acessa. 1ª carga (e histórico) não notifica.
@@ -2722,8 +2723,9 @@ function RespostasNumero({ numeroId }: { numeroId: string }) {
   const [texto, setTexto] = useState("");
   const [addOpen, setAddOpen] = useState(false);
   useEffect(() => {
-    const u = onSnapshot(collection(db, "whatsappRespostas"), snap =>
-      setItens(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WhatsappResposta).filter(r => r.numeroId === numeroId).sort((a, b) => (a.atalho || a.texto).localeCompare(b.atalho || b.texto))));
+    // Só as respostas DESTE número (antes lia a coleção inteira e filtrava no cliente).
+    const u = onSnapshot(query(collection(db, "whatsappRespostas"), where("numeroId", "==", numeroId)), snap =>
+      setItens(snap.docs.map(d => ({ id: d.id, ...d.data() }) as WhatsappResposta).sort((a, b) => (a.atalho || a.texto).localeCompare(b.atalho || b.texto))));
     return () => u();
   }, [numeroId]);
   const inp = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
@@ -2833,12 +2835,17 @@ function QrModal({ instancia, nome, qrInicial, onClose }: { instancia: string; n
   const [qr, setQr] = useState<string | null>(qrInicial);
   const [estado, setEstado] = useState<string>("connecting");
   const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState("");
 
   async function regenerar() {
-    setCarregando(true);
-    const r = await chamarInstancia("connect", instancia);
-    if (r.qr) setQr(r.qr);
-    setCarregando(false);
+    setCarregando(true); setErro("");
+    try {
+      const r = await chamarInstancia("connect", instancia);
+      if (r.qr) setQr(r.qr);
+      else if (r.estado !== "open") setErro(r.error || "Não veio o QR. O servidor da conexão (Evolution) pode estar fora do ar. Tente de novo.");
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao gerar o QR.");
+    } finally { setCarregando(false); }
   }
   useEffect(() => { if (!qrInicial) void regenerar(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, []);
   useEffect(() => {
@@ -2862,7 +2869,9 @@ function QrModal({ instancia, nome, qrInicial, onClose }: { instancia: string; n
       ) : (
         <div className="text-center space-y-3">
           <p className="text-sm text-gray-600 dark:text-gray-300">No celular do número: <b>Aparelhos conectados → Conectar um aparelho</b> e escaneie:</p>
-          {qr ? <img src={qr} alt="QR Code" className="mx-auto w-56 h-56 rounded-lg border border-gray-200 dark:border-gray-700 bg-white" /> : <div className="py-16 text-gray-400 text-sm">Gerando QR…</div>}
+          {qr ? <img src={qr} alt="QR Code" className="mx-auto w-56 h-56 rounded-lg border border-gray-200 dark:border-gray-700 bg-white" />
+            : erro ? <div className="py-10 px-3 text-rose-600 dark:text-rose-400 text-sm">⚠ {erro}</div>
+            : <div className="py-16 text-gray-400 text-sm">{carregando ? "Gerando QR…" : "Toque em “Gerar novo QR”."}</div>}
           <p className="text-[11px] text-gray-400">O QR expira em ~40s. Se não ler, gere um novo.</p>
           <div className="flex gap-2 justify-center">
             <Button variant="secondary" onClick={() => void regenerar()} disabled={carregando}>{carregando ? "…" : "↻ Gerar novo QR"}</Button>
