@@ -152,6 +152,19 @@ export async function firestoreAtualizar(colecao: string, docId: string, obj: Re
   throw new Error(`Firestore PATCH ${resp.status}: ${t.slice(0, 200)}`);
 }
 
+// Como firestoreCriar, mas devolve SE criou (true) ou já existia (false, 409) —
+// sem leitura extra. Pra sync idempotente que precisa contar só os docs novos.
+export async function firestoreCriarSeAusente(colecao: string, docId: string, obj: Record<string, unknown>): Promise<boolean> {
+  const token = await idToken();
+  const fields: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(obj)) { const e = encVal(v); if (e) fields[k] = e; }
+  const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/${colecao}?documentId=${encodeURIComponent(docId)}`;
+  const resp = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ fields }) });
+  if (resp.status === 409) return false;
+  if (resp.ok) return true;
+  throw new Error(`Firestore ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+}
+
 // Cria um doc com id conhecido. 409 (já existe) = ok (dedupe). Devolve true se gravou/existia.
 export async function firestoreCriar(colecao: string, docId: string, obj: Record<string, unknown>): Promise<boolean> {
   const token = await idToken();

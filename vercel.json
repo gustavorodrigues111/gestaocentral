@@ -8,6 +8,7 @@
     "api/contrato-pdf.ts": { "memory": 1024, "maxDuration": 90 },
     "api/getin-sync.ts": { "memory": 1024, "maxDuration": 300 },
     "api/altec-sync.ts": { "memory": 1024, "maxDuration": 300 },
+    "api/ptrp-punch-sync.ts": { "memory": 1024, "maxDuration": 300 },
     "api/fatura-extrair.ts": { "memory": 1024, "maxDuration": 300 }
   },
   "rewrites": [
@@ -67,6 +68,10 @@
     },
     {
       "path": "/api/altec-sync",
+      "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/ptrp-punch-sync",
       "schedule": "*/15 * * * *"
     }
   ]

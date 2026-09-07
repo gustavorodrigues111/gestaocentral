@@ -208,6 +208,10 @@ service cloud.firestore {
     match /cartaoLancamentos/{id}      { allow read, write: if authed(); }
     // Agentes de IA: config só master edita; conversas authed; logs append-only.
     match /agentesIA/{id}     { allow read: if authed(); allow create, update, delete: if isMaster(); }
+    // PTRP (tratamento de ponto). Batidas do registrador (Sólides) = IMUTÁVEIS:
+    // só a rotina de sync cria; NINGUÉM atualiza/apaga (Portaria 671/2021).
+    match /ptrpBatidas/{id}   { allow read: if authed(); allow create: if authed(); allow update, delete: if false; }
+    match /ptrpSyncState/{id} { allow read, write: if authed(); }
     match /agenteMensagens/{id} { allow read, write: if authed(); }
     match /agenteLogs/{id}    { allow read: if authed(); allow create: if authed(); allow update, delete: if false; }
     match /ftCardapio/{id}             { allow read, write: if authed(); }
