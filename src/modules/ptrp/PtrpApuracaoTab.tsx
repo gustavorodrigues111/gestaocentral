@@ -14,7 +14,8 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
-import type { Empregado, HorarioDia } from "../../core/types";
+import type { Empregado, HorarioDia, Cargo } from "../../core/types";
+import { empregadoBatePonto } from "../../core/types";
 import type { ParametrosCCT, PtrpTurno, PtrpAjuste, PtrpAjusteTipo } from "../../core/ptrp/tipos";
 import { cctVigenteEm } from "../../core/ptrp/tipos";
 import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horarios";
@@ -53,7 +54,7 @@ export function PtrpApuracaoTab() {
   const shortCode = (activeRestaurant as { shortCode?: string } | null)?.shortCode || "";
   const [comp, setComp] = useState(compAtual());
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
-  const [cargos, setCargos] = useState<{ id: string; area?: string }[]>([]);
+  const [cargos, setCargos] = useState<Cargo[]>([]);
   const [batidas, setBatidas] = useState<BatidaDoc[]>([]);
   const [ajustes, setAjustes] = useState<PtrpAjuste[]>([]);
   const [ajusteModal, setAjusteModal] = useState<{ emp: Empregado; data: string; bs: BatidaDoc[] } | null>(null);
@@ -78,7 +79,7 @@ export function PtrpApuracaoTab() {
   useEffect(() => {
     if (!rid) { setEmpregados([]); setCargos([]); return; }
     const u1 = onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)), s => setEmpregados(s.docs.map(d => ({ id: d.id, ...d.data() }) as Empregado)));
-    const u2 = onSnapshot(query(collection(db, "cargos"), where("restaurantId", "==", rid)), s => setCargos(s.docs.map(d => ({ id: d.id, ...(d.data() as { area?: string }) }))));
+    const u2 = onSnapshot(query(collection(db, "cargos"), where("restaurantId", "==", rid)), s => setCargos(s.docs.map(d => ({ id: d.id, ...d.data() }) as Cargo)));
     return () => { u1(); u2(); };
   }, [rid]);
   useEffect(() => {
@@ -97,8 +98,11 @@ export function PtrpApuracaoTab() {
   const [ano, mes] = comp.split("-").map(Number);
   const diasDoMes = new Date(ano, mes, 0).getDate();
 
-  const areaDoCargo = useMemo(() => Object.fromEntries(cargos.map(c => [c.id, c.area || ""])), [cargos]);
-  const areaDoEmp = (e: Empregado) => areaDoCargo[e.cargoId] || "";
+  const cargoPorId = useMemo(() => Object.fromEntries(cargos.map(c => [c.id, c])), [cargos]);
+  const areaDoEmp = (e: Empregado) => (cargoPorId[e.cargoId]?.area) || "";
+  // Cargo de confiança / que NÃO bate ponto (usa o override do empregado ou o
+  // default do cargo/vínculo). Esses não têm ponto na Sólides → sempre verde.
+  const naoBatePonto = (e: Empregado) => !empregadoBatePonto(e, cargoPorId[e.cargoId]);
   // Só EQUIPE CLT ATIVA do planejamento.app (fonte da verdade de quem entra). Tira
   // demitidos/inativos e freela mensalista (não bate ponto).
   const empVis = useMemo(() => empregados.filter(e => e.estaAtivo && !e.freelaMensalista).sort((a, b) => a.nome.localeCompare(b.nome)), [empregados]);
@@ -179,7 +183,7 @@ export function PtrpApuracaoTab() {
   // Apura todo mundo e agrupa por ÁREA (colunas), como o Fechamento de ponto.
   const resultados = useMemo(() => empVis.map(emp => ({ emp, area: areaDoEmp(emp) || "Sem área", r: apurarColab(emp) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [empVis, batidasPorCpf, ajustesPorCpf, cct, comp, areaDoCargo]);
+    [empVis, batidasPorCpf, ajustesPorCpf, cct, comp, cargoPorId]);
   const porArea = useMemo(() => {
     const m = new Map<string, typeof resultados>();
     for (const x of resultados) { const a = m.get(x.area) || []; a.push(x); m.set(x.area, a); }
@@ -240,7 +244,7 @@ export function PtrpApuracaoTab() {
         <>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
           {porArea.map(([area, cols]) => {
-            const comExc = cols.filter(c => c.r.exc > 0).length;
+            const comExc = cols.filter(c => !naoBatePonto(c.emp) && c.r.exc > 0).length;
             return (
               <div key={area} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-2.5">
                 <div className="flex items-center justify-between mb-2 px-1">
@@ -249,22 +253,23 @@ export function PtrpApuracaoTab() {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   {cols.map(({ emp, r }) => {
-                    const semSol = !temSolides(emp);
-                    const st = !r.temCpf || semSol ? "sem" : r.linhas.length === 0 ? "sem" : r.exc > 0 ? "exc" : "ok";
+                    const naoBate = naoBatePonto(emp);
+                    const semSol = !naoBate && !temSolides(emp);
+                    // Cargo de confiança (não bate ponto) → sempre verde (não tem ponto na Sólides).
+                    const st = naoBate ? "ok" : (!r.temCpf || semSol || r.linhas.length === 0) ? "sem" : r.exc > 0 ? "exc" : "ok";
                     const selado = emp.id === aberto;
                     const cls = st === "ok" ? "bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200 dark:border-emerald-800"
                       : st === "exc" ? "bg-amber-50 border-amber-300 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200 dark:border-amber-800"
                       : "bg-gray-50 border-gray-200 text-gray-400 dark:bg-gray-800/40 dark:border-gray-700";
-                    const naoBate = (emp as { batePonto?: boolean }).batePonto === false;
                     return (
                       <button key={emp.id} type="button" onClick={() => setAberto(selado ? null : emp.id)}
-                        title={semSol ? "Sem cadastro na Sólides" : !r.temCpf ? "Sem CPF no app" : st === "exc" ? `${r.exc} exceção(ões)` : st === "sem" ? "Sem batidas no mês" : "Sem exceções"}
+                        title={naoBate ? "Cargo de confiança — não bate ponto" : semSol ? "Sem batida no mês (não está na Sólides ou faltou sincronizar)" : !r.temCpf ? "Sem CPF no app" : st === "exc" ? `${r.exc} exceção(ões)` : "Sem exceções"}
                         className={`text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors hover:brightness-95 ${cls} ${selado ? "ring-2 ring-indigo-500" : ""}`}>
                         <span className="shrink-0">{st === "ok" ? "✓" : st === "exc" ? "●" : "○"}</span>
                         <span className="truncate flex-1">{naoBate ? "🎩 " : ""}{emp.nome}</span>
-                        {!semSol && r.exc > 0 && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200 tabular-nums">{r.exc}</span>}
+                        {!naoBate && !semSol && r.exc > 0 && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200 tabular-nums">{r.exc}</span>}
+                        {naoBate && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-violet-200 text-violet-800 dark:bg-violet-900 dark:text-violet-200">S/ PONTO</span>}
                         {semSol && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-200">SEM SÓLIDES</span>}
-                        {!semSol && naoBate && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-violet-200 text-violet-800 dark:bg-violet-900 dark:text-violet-200">S/ PONTO</span>}
                       </button>
                     );
                   })}
