@@ -6,7 +6,7 @@
 //  empregado (mesma fonte da Análise de Ponto). ptrpTurnos/ptrpEscalas ficam
 //  como OVERRIDE opcional (fase seguinte). Valida contra o Sólides (Fase 1).
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -52,7 +52,6 @@ export function PtrpApuracaoTab() {
   const [batidas, setBatidas] = useState<BatidaDoc[]>([]);
   const [ccts, setCcts] = useState<ParametrosCCT[]>([]);
   const [aberto, setAberto] = useState<string | null>(null);
-  const [filtroArea, setFiltroArea] = useState<string | null>(null);
 
   useEffect(() => onSnapshot(collection(db, "parametrosCCT"), s => setCcts(s.docs.map(d => ({ id: d.id, ...d.data() }) as ParametrosCCT))), []);
   useEffect(() => {
@@ -73,8 +72,7 @@ export function PtrpApuracaoTab() {
 
   const areaDoCargo = useMemo(() => Object.fromEntries(cargos.map(c => [c.id, c.area || ""])), [cargos]);
   const areaDoEmp = (e: Empregado) => areaDoCargo[e.cargoId] || "";
-  const areas = useMemo(() => [...new Set(empregados.map(areaDoEmp).filter(Boolean))].sort(), [empregados, areaDoCargo]);
-  const empVis = useMemo(() => [...empregados].filter(e => !filtroArea || areaDoEmp(e) === filtroArea).sort((a, b) => a.nome.localeCompare(b.nome)), [empregados, filtroArea, areaDoCargo]);
+  const empVis = useMemo(() => [...empregados].sort((a, b) => a.nome.localeCompare(b.nome)), [empregados]);
 
   // Batidas por CPF → dia.
   const batidasPorCpf = useMemo(() => {
@@ -113,6 +111,17 @@ export function PtrpApuracaoTab() {
   const cpfsComEmpregado = useMemo(() => new Set(empregados.map(e => soDig(e.cpf)).filter(Boolean)), [empregados]);
   const batidasSemCadastro = useMemo(() => Object.keys(batidasPorCpf).filter(c => !cpfsComEmpregado.has(c)), [batidasPorCpf, cpfsComEmpregado]);
 
+  // Apura todo mundo e agrupa por ÁREA (colunas), como o Fechamento de ponto.
+  const resultados = useMemo(() => empVis.map(emp => ({ emp, area: areaDoEmp(emp) || "Sem área", r: apurarColab(emp) })),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [empVis, batidasPorCpf, cct, comp, areaDoCargo]);
+  const porArea = useMemo(() => {
+    const m = new Map<string, typeof resultados>();
+    for (const x of resultados) { const a = m.get(x.area) || []; a.push(x); m.set(x.area, a); }
+    return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
+  }, [resultados]);
+  const sel = resultados.find(x => x.emp.id === aberto) || null;
+
   if (!me?.isMaster) return <div className="p-8 text-center text-gray-500">🔒 Só o master.</div>;
 
   if (!shortCode) return <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">O restaurante ativo (<strong>{activeRestaurant?.nome || "—"}</strong>) não tem <strong>shortCode</strong> do Sólides configurado. Troque de restaurante no seletor do topo, ou configure o shortCode.</div>;
@@ -124,74 +133,83 @@ export function PtrpApuracaoTab() {
         <input type="month" value={comp} onChange={e => setComp(e.target.value)} className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
         {!cct && <span className="text-xs text-amber-600 dark:text-amber-400">⚠ Sem CCT — configure em Convenções (extras/noturno não calculam).</span>}
       </div>
-      {areas.length > 0 && (
-        <div className="flex gap-1.5 mb-2 flex-wrap">
-          <Chip ativo={!filtroArea} onClick={() => setFiltroArea(null)}>Todas</Chip>
-          {areas.map(a => <Chip key={a} ativo={filtroArea === a} onClick={() => setFiltroArea(filtroArea === a ? null : a)}>{a}</Chip>)}
-        </div>
-      )}
-      <p className="text-[11px] text-gray-400 mb-3">Segue o restaurante do seletor global. Previsto puxado do cadastro do empregado (vínculo/horário), casado com as batidas por CPF. Prévia — validar contra o Sólides.</p>
+      <div className="text-[12px] rounded-lg px-3 py-2 mb-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
+        Escolha um colaborador pelo chip. <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ verde</span> = sem exceções · <span className="font-semibold text-amber-700 dark:text-amber-300">● amarelo</span> = tem exceções a tratar · <span className="font-semibold text-gray-400">○ cinza</span> = sem batidas / sem CPF. Previsto vem do cadastro do empregado; prévia — validar contra o Sólides.
+      </div>
 
       {empVis.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">Nenhum empregado{filtroArea ? ` na área ${filtroArea}` : ""} neste restaurante.</div>
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">Nenhum empregado neste restaurante.</div>
       ) : (
-        <div className="space-y-2">
-          {empVis.map(emp => {
-            const r = apurarColab(emp);
-            if (r.linhas.length === 0) return null;
-            const on = aberto === emp.id;
-            const area = areaDoEmp(emp);
+        <>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {porArea.map(([area, cols]) => {
+            const comExc = cols.filter(c => c.r.exc > 0).length;
             return (
-              <div key={emp.id} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-                <button type="button" onClick={() => setAberto(on ? null : emp.id)} className="w-full flex items-center justify-between gap-2 p-3 text-left">
-                  <div className="min-w-0">
-                    <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{emp.nome}{area && <span className="ml-1.5 text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 align-middle">{area}</span>}{!r.temCpf && <span className="text-[10px] text-rose-500 ml-1">sem CPF</span>}</div>
-                    <div className="text-[11px] text-gray-500">trabalhado {hm(r.totTrab)}{r.totExtra ? ` · extra ${hm(r.totExtra)}` : ""}{r.totNot ? ` · noturno ${hm(r.totNot)}` : ""}</div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    {r.exc > 0 && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-rose-500 text-white">{r.exc}</span>}
-                    <span className="text-gray-400 text-xs">{on ? "▲" : "▼"}</span>
-                  </div>
-                </button>
-                {on && (
-                  <div className="border-t border-gray-100 dark:border-gray-800 px-3 py-2 overflow-x-auto">
-                    <table className="w-full text-[12px] min-w-[620px]">
-                      <thead><tr className="text-gray-400 text-left"><th className="py-1 font-medium">Dia</th><th className="font-medium">Previsto</th><th className="font-medium">Batidas</th><th className="font-medium text-right">Trab.</th><th className="font-medium text-right">Extra</th><th className="font-medium text-right">Not.</th><th className="font-medium">Exceções</th></tr></thead>
-                      <tbody>
-                        {r.linhas.map(l => (
-                          <tr key={l.data} className={`border-t border-gray-50 dark:border-gray-800/50 ${l.excecoes.includes("falta") ? "bg-rose-50/40 dark:bg-rose-900/10" : ""}`}>
-                            <td className="py-1 tabular-nums text-gray-600 dark:text-gray-300">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
-                            <td className="text-gray-500">{l.previstoTxt}</td>
-                            <td className="text-gray-700 dark:text-gray-200">{l.bs.length ? l.bs.map((b, i) => <span key={i} className={b.excluded ? "line-through text-gray-400" : ""}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}</span>) : <span className="text-gray-400">—</span>}</td>
-                            <td className="text-right tabular-nums">{hm(l.trabalhado)}</td>
-                            <td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{l.extra ? hm(l.extra) : ""}</td>
-                            <td className="text-right tabular-nums text-indigo-500">{l.noturno ? hm(l.noturno) : ""}</td>
-                            <td>{l.excecoes.map(e => <span key={e} className="inline-block mr-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{EXC_LABEL[e] || e}</span>)}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
+              <div key={area} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-2.5">
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">{area}</span>
+                  <span className="text-[10px] text-gray-400 tabular-nums">{comExc}/{cols.length}</span>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  {cols.map(({ emp, r }) => {
+                    const st = !r.temCpf || r.linhas.length === 0 ? "sem" : r.exc > 0 ? "exc" : "ok";
+                    const selado = emp.id === aberto;
+                    const cls = st === "ok" ? "bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200 dark:border-emerald-800"
+                      : st === "exc" ? "bg-amber-50 border-amber-300 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200 dark:border-amber-800"
+                      : "bg-gray-50 border-gray-200 text-gray-400 dark:bg-gray-800/40 dark:border-gray-700";
+                    const naoBate = (emp as { batePonto?: boolean }).batePonto === false;
+                    const freela = !!(emp as { freelaMensalista?: boolean }).freelaMensalista;
+                    return (
+                      <button key={emp.id} type="button" onClick={() => setAberto(selado ? null : emp.id)}
+                        title={st === "sem" ? "Sem batidas / sem CPF" : st === "exc" ? `${r.exc} exceção(ões)` : "Sem exceções"}
+                        className={`text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors hover:brightness-95 ${cls} ${selado ? "ring-2 ring-indigo-500" : ""}`}>
+                        <span className="shrink-0">{st === "ok" ? "✓" : st === "exc" ? "●" : "○"}</span>
+                        <span className="truncate flex-1">{freela ? "🗓️ " : naoBate ? "🎩 " : ""}{emp.nome}</span>
+                        {r.exc > 0 && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200 tabular-nums">{r.exc}</span>}
+                        {(naoBate || freela) && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-violet-200 text-violet-800 dark:bg-violet-900 dark:text-violet-200">{freela ? "FREELA" : "S/ PONTO"}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             );
           })}
-          {batidasSemCadastro.length > 0 && (
-            <div className="rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-900/10 p-3 text-[12px] text-amber-800 dark:text-amber-300">
-              ⚠ {batidasSemCadastro.length} pessoa(s) com batida mas <strong>sem empregado cadastrado</strong> neste restaurante (CPF não casou). Confira o cadastro pra apurar corretamente.
-            </div>
-          )}
         </div>
+
+        {sel && (
+          <div className="mt-3 rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-white dark:bg-gray-900 overflow-hidden">
+            <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between gap-2">
+              <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{sel.emp.nome} <span className="text-[11px] font-normal text-gray-500">· {sel.area}</span></div>
+              <div className="text-[11px] text-gray-500 shrink-0">trab. {hm(sel.r.totTrab)}{sel.r.totExtra ? ` · extra ${hm(sel.r.totExtra)}` : ""}{sel.r.totNot ? ` · not. ${hm(sel.r.totNot)}` : ""}</div>
+            </div>
+            <div className="px-3 py-2 overflow-x-auto">
+              {sel.r.linhas.length === 0 ? <div className="text-sm text-gray-400 py-4 text-center">Sem batidas nem dias previstos de trabalho em {comp}.</div> : (
+              <table className="w-full text-[12px] min-w-[620px]">
+                <thead><tr className="text-gray-400 text-left"><th className="py-1 font-medium">Dia</th><th className="font-medium">Previsto</th><th className="font-medium">Batidas</th><th className="font-medium text-right">Trab.</th><th className="font-medium text-right">Extra</th><th className="font-medium text-right">Not.</th><th className="font-medium">Exceções</th></tr></thead>
+                <tbody>
+                  {sel.r.linhas.map(l => (
+                    <tr key={l.data} className={`border-t border-gray-50 dark:border-gray-800/50 ${l.excecoes.includes("falta") ? "bg-rose-50/40 dark:bg-rose-900/10" : ""}`}>
+                      <td className="py-1 tabular-nums text-gray-600 dark:text-gray-300">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
+                      <td className="text-gray-500">{l.previstoTxt}</td>
+                      <td className="text-gray-700 dark:text-gray-200">{l.bs.length ? l.bs.map((b, i) => <span key={i} className={b.excluded ? "line-through text-gray-400" : ""}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}</span>) : <span className="text-gray-400">—</span>}</td>
+                      <td className="text-right tabular-nums">{hm(l.trabalhado)}</td>
+                      <td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{l.extra ? hm(l.extra) : ""}</td>
+                      <td className="text-right tabular-nums text-indigo-500">{l.noturno ? hm(l.noturno) : ""}</td>
+                      <td>{l.excecoes.map(e => <span key={e} className="inline-block mr-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{EXC_LABEL[e] || e}</span>)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>)}
+            </div>
+          </div>
+        )}
+        {batidasSemCadastro.length > 0 && (
+          <div className="mt-3 rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-900/10 p-3 text-[12px] text-amber-800 dark:text-amber-300">
+            ⚠ {batidasSemCadastro.length} pessoa(s) com batida mas <strong>sem empregado cadastrado</strong> neste restaurante (CPF não casou).
+          </div>
+        )}
+        </>
       )}
     </div>
-  );
-}
-
-function Chip({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: ReactNode }) {
-  return (
-    <button type="button" onClick={onClick}
-      className={`shrink-0 whitespace-nowrap text-xs font-semibold px-3 py-1.5 rounded-full border transition-colors ${ativo ? "bg-emerald-600 text-white border-emerald-600" : "text-gray-600 dark:text-gray-300 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-      {children}
-    </button>
   );
 }
