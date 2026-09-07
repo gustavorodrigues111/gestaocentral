@@ -59,14 +59,15 @@ export function PtrpApuracaoTab() {
   const [rosterErr, setRosterErr] = useState("");
   const [mostrarComp, setMostrarComp] = useState(false);
 
-  async function carregarRoster() {
+  async function carregarRoster(silencioso = false) {
     if (!shortCode) return;
-    setCarregandoRoster(true); setRosterErr(""); setMostrarComp(true);
+    setCarregandoRoster(true); setRosterErr(""); if (!silencioso) setMostrarComp(true);
     try { setRoster(await fetchRoster(shortCode, true)); }
-    catch (e) { setRosterErr(e instanceof Error ? e.message : "Falha ao buscar o cadastro da Sólides."); }
+    catch (e) { if (!silencioso) setRosterErr(e instanceof Error ? e.message : "Falha ao buscar o cadastro da Sólides."); }
     finally { setCarregandoRoster(false); }
   }
-  useEffect(() => { setRoster(null); setMostrarComp(false); setRosterErr(""); }, [shortCode]);
+  // Carrega o roster da Sólides automaticamente (pra colorir os chips "sem Sólides").
+  useEffect(() => { setRoster(null); setMostrarComp(false); setRosterErr(""); if (shortCode) void carregarRoster(true); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [shortCode]);
 
   useEffect(() => onSnapshot(collection(db, "parametrosCCT"), s => setCcts(s.docs.map(d => ({ id: d.id, ...d.data() }) as ParametrosCCT))), []);
   useEffect(() => {
@@ -87,7 +88,9 @@ export function PtrpApuracaoTab() {
 
   const areaDoCargo = useMemo(() => Object.fromEntries(cargos.map(c => [c.id, c.area || ""])), [cargos]);
   const areaDoEmp = (e: Empregado) => areaDoCargo[e.cargoId] || "";
-  const empVis = useMemo(() => [...empregados].sort((a, b) => a.nome.localeCompare(b.nome)), [empregados]);
+  // Só EQUIPE CLT ATIVA do planejamento.app (fonte da verdade de quem entra). Tira
+  // demitidos/inativos e freela mensalista (não bate ponto).
+  const empVis = useMemo(() => empregados.filter(e => e.estaAtivo && !e.freelaMensalista).sort((a, b) => a.nome.localeCompare(b.nome)), [empregados]);
 
   // Batidas por CPF → dia.
   const batidasPorCpf = useMemo(() => {
@@ -126,15 +129,18 @@ export function PtrpApuracaoTab() {
   const cpfsComEmpregado = useMemo(() => new Set(empregados.map(e => soDig(e.cpf)).filter(Boolean)), [empregados]);
   const batidasSemCadastro = useMemo(() => Object.keys(batidasPorCpf).filter(c => !cpfsComEmpregado.has(c)), [batidasPorCpf, cpfsComEmpregado]);
 
-  // Comparação de cadastros Sólides × planejamento.app (por CPF).
+  const cpfNoRoster = useMemo(() => new Set((roster || []).map(r => soDig(r.cpf)).filter(Boolean)), [roster]);
+  const temSolides = (e: Empregado) => !roster || cpfNoRoster.has(soDig(e.cpf));   // sem roster ainda → assume que tem
+
+  // Comparação de cadastros: equipe CLT ATIVA do app (empVis) × Sólides.
   const comparacao = useMemo(() => {
     if (!roster) return null;
-    const appByCpf = new Map(empregados.filter(e => soDig(e.cpf)).map(e => [soDig(e.cpf), e]));
+    const appByCpf = new Map(empVis.filter(e => soDig(e.cpf)).map(e => [soDig(e.cpf), e]));
     const solByCpf = new Map(roster.filter(r => soDig(r.cpf)).map(r => [soDig(r.cpf), r]));
     const soNaSolides = [...solByCpf].filter(([c]) => !appByCpf.has(c)).map(([, r]) => r);
     const soNoApp = [...appByCpf].filter(([c]) => !solByCpf.has(c)).map(([, e]) => e);
-    return { soNaSolides, soNoApp, semCpfApp: empregados.filter(e => !soDig(e.cpf)), ambos: appByCpf.size - soNoApp.length };
-  }, [roster, empregados]);
+    return { soNaSolides, soNoApp, semCpfApp: empVis.filter(e => !soDig(e.cpf)), ambos: appByCpf.size - soNoApp.length };
+  }, [roster, empVis, cpfNoRoster]);
 
   // Apura todo mundo e agrupa por ÁREA (colunas), como o Fechamento de ponto.
   const resultados = useMemo(() => empVis.map(emp => ({ emp, area: areaDoEmp(emp) || "Sem área", r: apurarColab(emp) })),
@@ -172,14 +178,14 @@ export function PtrpApuracaoTab() {
         {mostrarComp && comparacao && (
           <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
             <div className="rounded-xl border border-rose-200 dark:border-rose-900/50 bg-rose-50/40 dark:bg-rose-900/10 p-3">
-              <div className="text-[11px] font-bold uppercase text-rose-700 dark:text-rose-300 mb-1">Só na Sólides ({comparacao.soNaSolides.length})</div>
-              <div className="text-[11px] text-gray-500 mb-1.5">Batem ponto mas não estão no planejamento.app — cadastrar/atualizar (ou demitido não removido).</div>
+              <div className="text-[11px] font-bold uppercase text-rose-700 dark:text-rose-300 mb-1">Na Sólides, fora da equipe ativa ({comparacao.soNaSolides.length})</div>
+              <div className="text-[11px] text-gray-500 mb-1.5">Estão na Sólides mas não são equipe CLT ativa no app — ex.: demitido/inativo no app ainda ativo na Sólides (remover lá), ou falta cadastrar.</div>
               {comparacao.soNaSolides.length === 0 ? <div className="text-[12px] text-gray-400">— nenhum —</div> :
                 <ul className="space-y-0.5 text-[12.5px] text-gray-700 dark:text-gray-200">{comparacao.soNaSolides.map(r => <li key={r.id || r.cpf}>{r.name || r.cpf}{r.fired && <span className="ml-1 text-[9px] font-bold px-1 rounded bg-rose-200 text-rose-800 dark:bg-rose-900 dark:text-rose-200">DEM</span>}</li>)}</ul>}
             </div>
             <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-900/10 p-3">
-              <div className="text-[11px] font-bold uppercase text-indigo-700 dark:text-indigo-300 mb-1">Só no planejamento.app ({comparacao.soNoApp.length})</div>
-              <div className="text-[11px] text-gray-500 mb-1.5">Cadastrados no app mas não estão na Sólides — verificar/excluir/desatualizado.</div>
+              <div className="text-[11px] font-bold uppercase text-indigo-700 dark:text-indigo-300 mb-1">Equipe ativa sem Sólides ({comparacao.soNoApp.length})</div>
+              <div className="text-[11px] text-gray-500 mb-1.5">Equipe CLT ativa no app mas sem cadastro na Sólides — batem ponto? Falta cadastrar na Sólides (aparecem em cinza na lista).</div>
               {comparacao.soNoApp.length === 0 ? <div className="text-[12px] text-gray-400">— nenhum —</div> :
                 <ul className="space-y-0.5 text-[12.5px] text-gray-700 dark:text-gray-200">{comparacao.soNoApp.map(e => <li key={e.id}>{e.nome}</li>)}</ul>}
               {comparacao.semCpfApp.length > 0 && <div className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">+ {comparacao.semCpfApp.length} no app sem CPF (não dá pra casar).</div>}
@@ -204,21 +210,22 @@ export function PtrpApuracaoTab() {
                 </div>
                 <div className="flex flex-col gap-1.5">
                   {cols.map(({ emp, r }) => {
-                    const st = !r.temCpf || r.linhas.length === 0 ? "sem" : r.exc > 0 ? "exc" : "ok";
+                    const semSol = !temSolides(emp);
+                    const st = !r.temCpf || semSol ? "sem" : r.linhas.length === 0 ? "sem" : r.exc > 0 ? "exc" : "ok";
                     const selado = emp.id === aberto;
                     const cls = st === "ok" ? "bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200 dark:border-emerald-800"
                       : st === "exc" ? "bg-amber-50 border-amber-300 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200 dark:border-amber-800"
                       : "bg-gray-50 border-gray-200 text-gray-400 dark:bg-gray-800/40 dark:border-gray-700";
                     const naoBate = (emp as { batePonto?: boolean }).batePonto === false;
-                    const freela = !!(emp as { freelaMensalista?: boolean }).freelaMensalista;
                     return (
                       <button key={emp.id} type="button" onClick={() => setAberto(selado ? null : emp.id)}
-                        title={st === "sem" ? "Sem batidas / sem CPF" : st === "exc" ? `${r.exc} exceção(ões)` : "Sem exceções"}
+                        title={semSol ? "Sem cadastro na Sólides" : !r.temCpf ? "Sem CPF no app" : st === "exc" ? `${r.exc} exceção(ões)` : st === "sem" ? "Sem batidas no mês" : "Sem exceções"}
                         className={`text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors hover:brightness-95 ${cls} ${selado ? "ring-2 ring-indigo-500" : ""}`}>
                         <span className="shrink-0">{st === "ok" ? "✓" : st === "exc" ? "●" : "○"}</span>
-                        <span className="truncate flex-1">{freela ? "🗓️ " : naoBate ? "🎩 " : ""}{emp.nome}</span>
-                        {r.exc > 0 && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200 tabular-nums">{r.exc}</span>}
-                        {(naoBate || freela) && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-violet-200 text-violet-800 dark:bg-violet-900 dark:text-violet-200">{freela ? "FREELA" : "S/ PONTO"}</span>}
+                        <span className="truncate flex-1">{naoBate ? "🎩 " : ""}{emp.nome}</span>
+                        {!semSol && r.exc > 0 && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200 tabular-nums">{r.exc}</span>}
+                        {semSol && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-200">SEM SÓLIDES</span>}
+                        {!semSol && naoBate && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-violet-200 text-violet-800 dark:bg-violet-900 dark:text-violet-200">S/ PONTO</span>}
                       </button>
                     );
                   })}
