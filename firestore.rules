@@ -210,8 +210,16 @@ service cloud.firestore {
     match /agentesIA/{id}     { allow read: if authed(); allow create, update, delete: if isMaster(); }
     // PTRP (tratamento de ponto). Batidas do registrador (Sólides) = IMUTÁVEIS:
     // só a rotina de sync cria; NINGUÉM atualiza/apaga (Portaria 671/2021).
-    match /ptrpBatidas/{id}   { allow read: if authed(); allow create: if authed(); allow update, delete: if false; }
-    match /ptrpSyncState/{id} { allow read, write: if authed(); }
+    match /ptrpBatidas/{id}     { allow read: if authed(); allow create: if authed(); allow update, delete: if false; }
+    match /ptrpSyncState/{id}   { allow read, write: if authed(); }
+    match /ptrpColaboradores/{id} { allow read, write: if authed(); }
+    match /ptrpTurnos/{id}      { allow read, write: if authed(); }
+    match /ptrpEscalas/{id}     { allow read, write: if authed(); }
+    match /ptrpAjustes/{id}     { allow read, write: if authed(); }   // tratamento (nunca edita batida)
+    match /ptrpApuracoes/{id}   { allow read, write: if authed(); }   // materializado (recalculável)
+    match /ptrpFechamentos/{id} { allow read, write: if authed(); }
+    match /ptrpBancoHoras/{id}  { allow read, write: if authed(); }
+    match /parametrosCCT/{id}   { allow read: if authed(); allow write: if isMaster(); }
     match /agenteMensagens/{id} { allow read, write: if authed(); }
     match /agenteLogs/{id}    { allow read: if authed(); allow create: if authed(); allow update, delete: if false; }
     match /ftCardapio/{id}             { allow read, write: if authed(); }
