@@ -11,6 +11,7 @@
 //  Corpo: { instancia, to, texto, autorNome? }
 // ════════════════════════════════════════════════════════════════════════════
 import { requireUser, AuthError } from "./_auth.js";
+import { autorizarNumero } from "./_whatsappAuth.js";
 
 export const config = { maxDuration: 60 };
 // Evolution/Railway sob carga (ex.: Sororoca) pode levar >20s pra devolver o
@@ -30,7 +31,8 @@ function normalizarFone(raw: string): string {
 }
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
-  try { await requireUser(req); } catch (e) {
+  let user;
+  try { user = await requireUser(req); } catch (e) {
     res.status(e instanceof AuthError ? e.status : 401).json({ error: e instanceof Error ? e.message : "Não autorizado." });
     return;
   }
@@ -42,6 +44,9 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 
   const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as { instancia?: string; to?: string; texto?: string; autorNome?: string; mentioned?: string[]; quoted?: { key?: { id?: string; remoteJid?: string; fromMe?: boolean; participant?: string }; message?: unknown } } | null;
   const instancia = (body?.instancia || "").toString().trim();
+  if (!instancia) { res.status(400).json({ error: "Informe a instância (número)." }); return; }
+  const autz = await autorizarNumero(user, instancia);
+  if (!autz.permitido) { res.status(403).json({ error: autz.motivo || "Sem acesso a este número." }); return; }
   const toRaw = (body?.to || "").toString();
   // Grupo: JID "<id>@g.us" vai VERBATIM (não normaliza — senão perde o @g.us e
   // vira envio pra um número). JID individual completo "<num>@s.whatsapp.net":

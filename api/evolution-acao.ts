@@ -9,6 +9,7 @@
 //  Corpo: { instancia, acao, remoteJid, id, fromMe, reaction?, texto?, to? }
 // ════════════════════════════════════════════════════════════════════════════
 import { requireUser, AuthError } from "./_auth.js";
+import { autorizarNumero } from "./_whatsappAuth.js";
 
 export const config = { maxDuration: 20 };
 const REQ_TIMEOUT_MS = 15_000;
@@ -17,7 +18,8 @@ type VercelReq = { method?: string; headers?: Record<string, string | string[] |
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
-  try { await requireUser(req); } catch (e) {
+  let user;
+  try { user = await requireUser(req); } catch (e) {
     res.status(e instanceof AuthError ? e.status : 401).json({ error: e instanceof Error ? e.message : "Não autorizado." });
     return;
   }
@@ -39,6 +41,8 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const fromMe = !!body?.fromMe;
   if (!instancia) { res.status(400).json({ error: "Informe a instância." }); return; }
   if (!remoteJid || !id) { res.status(400).json({ error: "Mensagem inválida (falta remoteJid/id)." }); return; }
+  const autz = await autorizarNumero(user, instancia);
+  if (!autz.permitido) { res.status(403).json({ error: autz.motivo || "Sem acesso a este número." }); return; }
 
   const msgKey = { remoteJid, fromMe, id };
   let url = "";

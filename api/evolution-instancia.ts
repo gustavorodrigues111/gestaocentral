@@ -9,6 +9,7 @@
 //  EVOLUTION_WEBHOOK_TOKEN, APP_URL (opcional, default admin.planejamento.app).
 // ════════════════════════════════════════════════════════════════════════════
 import { requireUser, AuthError } from "./_auth.js";
+import { autorizarNumero } from "./_whatsappAuth.js";
 
 export const config = { maxDuration: 30 };
 const REQ_TIMEOUT_MS = 20_000;
@@ -17,7 +18,8 @@ type VercelReq = { method?: string; headers?: Record<string, string | string[] |
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
-  try { await requireUser(req); } catch (e) {
+  let user;
+  try { user = await requireUser(req); } catch (e) {
     res.status(e instanceof AuthError ? e.status : 401).json({ error: e instanceof Error ? e.message : "Não autorizado." });
     return;
   }
@@ -33,6 +35,14 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const acao = (body?.acao || "").toString();
   const instancia = (body?.instancia || "").toString().trim();
   if (!instancia) { res.status(400).json({ error: "Informe a instância." }); return; }
+  // status = benigno e POLLADO a cada poucos segundos → sem checagem (não onerar
+  // leituras). create/delete/logout/recreate = destrutivo → só MASTER. connect
+  // (gera QR) e demais = precisa ter o número no perfil (usuariosIds) ou master.
+  if (acao !== "status") {
+    const destrutiva = ["create", "delete", "logout", "recreate", "restart"].includes(acao);
+    const autz = await autorizarNumero(user, instancia, destrutiva);
+    if (!autz.permitido) { res.status(403).json({ error: autz.motivo || "Sem acesso a este número." }); return; }
+  }
 
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQ_TIMEOUT_MS);

@@ -118,6 +118,25 @@ export async function firestoreLer(colecao: string, docId: string): Promise<Reco
   return decDoc((await resp.json()) as { name?: string; fields?: Record<string, Record<string, unknown>> });
 }
 
+// Consulta 1 doc por igualdade de campo (string). null se não achar. Usa o
+// runQuery da REST — barato (não lê a coleção inteira). Retorna com .id.
+export async function firestoreConsultarUm(colecao: string, campo: string, valor: string): Promise<Record<string, unknown> | null> {
+  const token = await idToken();
+  const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents:runQuery`;
+  const body = {
+    structuredQuery: {
+      from: [{ collectionId: colecao }],
+      where: { fieldFilter: { field: { fieldPath: campo }, op: "EQUAL", value: { stringValue: valor } } },
+      limit: 1,
+    },
+  };
+  const resp = await fetch(url, { method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  if (!resp.ok) throw new Error(`Firestore query ${resp.status}`);
+  const arr = (await resp.json()) as Array<{ document?: { name?: string; fields?: Record<string, Record<string, unknown>> } }>;
+  const doc = arr.find(x => x.document)?.document;
+  return doc ? decDoc(doc) : null;
+}
+
 // Atualiza (merge) campos de um doc existente via PATCH + updateMask.
 // Só mexe nos campos passados; cria o doc se não existir.
 export async function firestoreAtualizar(colecao: string, docId: string, obj: Record<string, unknown>): Promise<boolean> {

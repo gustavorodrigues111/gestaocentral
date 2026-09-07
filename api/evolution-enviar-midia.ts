@@ -7,6 +7,7 @@
 //           base64, mimetype?, fileName?, caption?, autorNome? }
 // ════════════════════════════════════════════════════════════════════════════
 import { requireUser, AuthError } from "./_auth.js";
+import { autorizarNumero } from "./_whatsappAuth.js";
 
 export const config = { maxDuration: 60 };
 const REQ_TIMEOUT_MS = 45_000;
@@ -25,7 +26,8 @@ function safeParse(s: string): unknown { try { return JSON.parse(s); } catch { r
 function soBase64(s: string): string { const i = s.indexOf("base64,"); return i >= 0 ? s.slice(i + 7) : s; }
 
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
-  try { await requireUser(req); } catch (e) {
+  let user;
+  try { user = await requireUser(req); } catch (e) {
     res.status(e instanceof AuthError ? e.status : 401).json({ error: e instanceof Error ? e.message : "Não autorizado." });
     return;
   }
@@ -38,6 +40,9 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const body = (typeof req.body === "string" ? safeParse(req.body) : req.body) as
     { instancia?: string; to?: string; tipo?: string; base64?: string; mimetype?: string; fileName?: string; caption?: string; autorNome?: string } | null;
   const instancia = (body?.instancia || "").toString().trim();
+  if (!instancia) { res.status(400).json({ error: "Informe a instância." }); return; }
+  const autz = await autorizarNumero(user, instancia);
+  if (!autz.permitido) { res.status(403).json({ error: autz.motivo || "Sem acesso a este número." }); return; }
   // Grupo "<id>@g.us" e JID individual completo "<num>@s.whatsapp.net" vão
   // verbatim (número já é E.164 internacional — não prefixa 55). Só número cru
   // passa pelo normalizarFone. Ver nota em api/evolution-enviar.ts.
