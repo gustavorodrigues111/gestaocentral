@@ -9,6 +9,7 @@ import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
 import type { ParametrosCCT } from "../../core/ptrp/tipos";
 import { PtrpCctEditor } from "./PtrpCctEditor";
+import { PtrpAejConfig } from "./PtrpAejConfig";
 
 const fmtD = (ymd?: string) => ymd ? ymd.split("-").reverse().join("/") : "—";
 
@@ -33,6 +34,7 @@ export function PtrpCctTab() {
 
   return (
     <div>
+      <PtrpAejConfig empresas={empresas} />
       <p className="text-xs text-gray-500 mb-3">Cada empresa tem sua convenção com <strong>vigência</strong>. Clique em Configurar pra ver e editar <strong>todas as premissas</strong> (o editor pré-preenche com um modelo e deixa tudo ajustável). A apuração resolve os parâmetros pela empresa do colaborador e pela data da ocorrência. As empresas aparecem após o primeiro sync.</p>
       {empresas.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">Nenhuma empresa ainda — rode o sync primeiro (aba Sincronização).</div>
