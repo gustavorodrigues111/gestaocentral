@@ -24,7 +24,8 @@ import { baixarOuCompartilhar } from "../../core/pdf/baixarOuCompartilhar";
 import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horarios";
 import { apurarDia, minutoDoDiaBRT, hhmmToMin, type BatidaBloco, type AjusteDia } from "../../core/ptrp/apuracao";
 import { feriadosDoAno } from "../../core/ptrp/feriados";
-import { fetchRoster, decidirAprovacao } from "../../core/ponto/solidesPontoClient";
+import { fetchRoster, decidirAprovacao, corrigirPontoAtraso, excluirBatida, fetchJustificativas } from "../../core/ponto/solidesPontoClient";
+import type { Justificativa } from "../../core/ponto/solidesPontoClient";
 import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import { useTodasPessoas } from "../../core/pessoas/PessoasContext";
 import type { PontoColaborador } from "../../core/ponto/analise";
@@ -33,7 +34,7 @@ import { nomeMes } from "../../core/utils/date";
 const labelComp = (ym: string) => { const [y, m] = ym.split("-"); return `${nomeMes(Number(m))}/${y}`; };
 const addMes = (ym: string, n: number) => { const [y, m] = ym.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
 
-type BatidaDoc = { id: string; empresaKey: string; punchId?: string; cpf?: string | null; date?: string | null; dateIn?: number | null; dateOut?: number | null; excluded?: boolean; status?: string | null; edited?: boolean; raw?: { employee?: { name?: string }; employeeName?: string } };
+type BatidaDoc = { id: string; empresaKey: string; punchId?: string; employeeId?: string | null; cpf?: string | null; date?: string | null; dateIn?: number | null; dateOut?: number | null; excluded?: boolean; status?: string | null; edited?: boolean; raw?: { employee?: { name?: string }; employeeName?: string } };
 
 // Correção AINDA NÃO aprovada no Sólides (o empregado/gestor pediu ajuste, mas
 // não entrou no espelho oficial). Portaria 671: batida original ≠ tratamento.
@@ -193,6 +194,8 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     for (const b of batidas) { const c = soDig(b.cpf); if (!c) continue; (m[c] = m[c] || {}); (m[c][b.date || ""] = m[c][b.date || ""] || []).push(b); }
     return m;
   }, [batidas]);
+  // employeeId do Sólides por CPF (das batidas) — pra aplicar correções lá.
+  const empIdPorCpf = useMemo(() => { const m = new Map<string, string>(); for (const b of batidas) { const c = soDig(b.cpf); if (c && b.employeeId && !m.has(c)) m.set(c, String(b.employeeId)); } return m; }, [batidas]);
   // Ajustes (não cancelados) por CPF → dia.
   const ajustesPorCpf = useMemo(() => {
     const m: Record<string, Record<string, PtrpAjuste[]>> = {};
@@ -771,7 +774,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         )}
         </>
       ))}
-      {ajusteModal && me && <AjusteModal empresaKey={shortCode} emp={ajusteModal.emp} data={ajusteModal.data} bs={ajusteModal.bs} autor={{ id: me.id, nome: me.nome }} onClose={() => setAjusteModal(null)} />}
+      {ajusteModal && me && <AjusteModal empresaKey={shortCode} emp={ajusteModal.emp} data={ajusteModal.data} bs={ajusteModal.bs} solidesEmpId={empIdPorCpf.get(soDig(ajusteModal.emp.cpf)) || null} autor={{ id: me.id, nome: me.nome }} onClose={() => setAjusteModal(null)} />}
       {preview && (
         <Modal title={preview.titulo} onClose={fecharPreview} maxWidth="max-w-4xl">
           <div className="space-y-2">
@@ -818,21 +821,48 @@ function CorrecaoLoteModal({ emp, qtd, textoInicial, onClose, onEnviar }: { emp:
 }
 
 // Modal de TRATAMENTO (gera ptrpAjustes — nunca edita a batida original).
-function AjusteModal({ empresaKey, emp, data, bs, autor, onClose }: { empresaKey: string; emp: Empregado; data: string; bs: BatidaDoc[]; autor: { id: string; nome: string }; onClose: () => void }) {
+function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }: { empresaKey: string; emp: Empregado; data: string; bs: BatidaDoc[]; solidesEmpId: string | null; autor: { id: string; nome: string }; onClose: () => void }) {
   const [tipo, setTipo] = useState<PtrpAjusteTipo>("inclusao");
   const [hin, setHin] = useState("08:00");
   const [hout, setHout] = useState("17:00");
   const [punchId, setPunchId] = useState(bs[0]?.punchId || "");
   const [motivo, setMotivo] = useState("");
+  const [aplicarSolides, setAplicarSolides] = useState(true);
+  const [justs, setJusts] = useState<Justificativa[]>([]);
+  const [justId, setJustId] = useState<number | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [err, setErr] = useState("");
   const inp = "w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+  // Fase 1: só inclusão/desconsideração refletem na Sólides. Afastamentos = fase 2.
+  const refleteSolides = tipo === "inclusao" || tipo === "desconsideracao";
+
+  useEffect(() => {
+    if (tipo === "inclusao" && aplicarSolides && justs.length === 0) {
+      void fetchJustificativas(empresaKey).then(js => { setJusts(js); if (js[0]) setJustId(js[0].id); }).catch(() => {});
+    }
+  }, [tipo, aplicarSolides, empresaKey, justs.length]);
 
   async function salvar() {
     if (!motivo.trim()) { setErr("Descreva o motivo (obrigatório na trilha)."); return; }
     if (tipo === "desconsideracao" && !punchId) { setErr("Escolha a batida a desconsiderar."); return; }
+    const aplicar = refleteSolides && aplicarSolides;
+    if (aplicar && !solidesEmpId) { setErr("Sem o vínculo Sólides deste colaborador (nenhuma batida com employeeId no mês). Sincronize, ou desmarque 'aplicar na Sólides'."); return; }
+    if (aplicar && tipo === "inclusao" && !justId) { setErr("Escolha a justificativa (exigida pela Sólides)."); return; }
     setErr(""); setSalvando(true);
     try {
+      // 1) Aplica na Sólides PRIMEIRO (mantém os dois lados consistentes; se falhar, não grava aqui).
+      if (aplicar && tipo === "inclusao") {
+        const iso = (hhmm: string) => `${data}T${hhmm}:00.000-0300`;
+        await corrigirPontoAtraso(empresaKey, { employeeId: Number(solidesEmpId), dataHoraIso: iso(hin), justificativaId: justId! });
+        await corrigirPontoAtraso(empresaKey, { employeeId: Number(solidesEmpId), dataHoraIso: iso(hout), justificativaId: justId! });
+      } else if (aplicar && tipo === "desconsideracao") {
+        const b = bs.find(x => (x.punchId || "") === punchId);
+        if (!b) throw new Error("Batida não encontrada.");
+        const empId = b.employeeId || solidesEmpId;
+        if (!empId) throw new Error("Sem o employeeId da batida.");
+        await excluirBatida(empresaKey, { employeeId: Number(empId), punchId: Number(punchId), dateIn: b.dateIn ?? undefined, dateOut: b.dateOut ?? undefined });
+      }
+      // 2) Grava a trilha no app (Portaria 671).
       const aj: Omit<PtrpAjuste, "id"> = {
         empresaKey, colaboradorId: emp.id, cpf: (emp.cpf || "").replace(/\D/g, ""), data, tipo,
         ...(tipo === "inclusao" ? { in: hin, out: hout } : {}),
@@ -841,7 +871,7 @@ function AjusteModal({ empresaKey, emp, data, bs, autor, onClose }: { empresaKey
       };
       await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore(aj));
       onClose();
-    } catch (e) { setErr(e instanceof Error ? e.message : "Falha ao salvar."); setSalvando(false); }
+    } catch (e) { setErr((refleteSolides && aplicarSolides ? "Falha ao aplicar na Sólides: " : "Falha ao salvar: ") + (e instanceof Error ? e.message : "erro")); setSalvando(false); }
   }
 
   const hhmmLocal = (ms?: number | null) => { if (ms == null) return "—"; const t = minutoDoDiaBRT(ms); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
@@ -877,8 +907,28 @@ function AjusteModal({ empresaKey, emp, data, bs, autor, onClose }: { empresaKey
             </select>
           </div>
         )}
+        {refleteSolides ? (
+          <div className="rounded-lg border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/40 dark:bg-indigo-900/10 p-2.5 space-y-2">
+            <label className="flex items-center gap-2 text-[12.5px] text-gray-700 dark:text-gray-200">
+              <input type="checkbox" checked={aplicarSolides} onChange={e => setAplicarSolides(e.target.checked)} />
+              Aplicar também na Sólides {tipo === "inclusao" ? "(registra as marcações lá)" : "(exclui a batida lá)"}
+            </label>
+            {aplicarSolides && !solidesEmpId && <div className="text-[11px] text-amber-700 dark:text-amber-400">⚠ Sem vínculo Sólides deste colaborador no mês — sincronize antes, ou desmarque acima.</div>}
+            {aplicarSolides && tipo === "inclusao" && (
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Justificativa (exigida pela Sólides)</label>
+                <select value={justId ?? ""} onChange={e => setJustId(Number(e.target.value) || null)} className={inp}>
+                  {justs.length === 0 && <option value="">carregando…</option>}
+                  {justs.map(j => <option key={j.id} value={j.id}>{j.description}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="text-[11px] text-gray-500 rounded-lg border border-gray-200 dark:border-gray-800 p-2">☂️ Abonos/afastamentos são registrados só no app por enquanto — a integração com a Sólides vem na fase 2.</div>
+        )}
         <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Motivo / justificativa</label>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Motivo / justificativa (trilha do app)</label>
           <textarea value={motivo} onChange={e => setMotivo(e.target.value)} rows={2} placeholder="Ex.: esqueceu de bater a saída; atestado de 1 dia; batida duplicada…" className={inp} />
         </div>
         {err && <div className="text-sm text-rose-600">{err}</div>}
