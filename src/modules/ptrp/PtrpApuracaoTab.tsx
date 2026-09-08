@@ -28,7 +28,13 @@ import { nomeMes } from "../../core/utils/date";
 const labelComp = (ym: string) => { const [y, m] = ym.split("-"); return `${nomeMes(Number(m))}/${y}`; };
 const addMes = (ym: string, n: number) => { const [y, m] = ym.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
 
-type BatidaDoc = { id: string; empresaKey: string; punchId?: string; cpf?: string | null; date?: string | null; dateIn?: number | null; dateOut?: number | null; excluded?: boolean; raw?: { employee?: { name?: string }; employeeName?: string } };
+type BatidaDoc = { id: string; empresaKey: string; punchId?: string; cpf?: string | null; date?: string | null; dateIn?: number | null; dateOut?: number | null; excluded?: boolean; status?: string | null; edited?: boolean; raw?: { employee?: { name?: string }; employeeName?: string } };
+
+// Correção AINDA NÃO aprovada no Sólides (o empregado/gestor pediu ajuste, mas
+// não entrou no espelho oficial). Portaria 671: batida original ≠ tratamento.
+// O espelho legal do Sólides só conta APPROVED — espelhamos isso: PENDING/REJECTED
+// não somam horas, mas ficam VISÍVEIS na conferência (correção a aprovar).
+const correcaoPendente = (b: BatidaDoc) => b.status === "PENDING" || b.status === "REJECTED";
 
 const compAtual = () => new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 7);
 const hm = (min: number) => min <= 0 ? "0h00" : `${Math.floor(min / 60)}h${String(Math.round(min % 60)).padStart(2, "0")}`;
@@ -37,7 +43,7 @@ const somaDiasYmd = (ymd: string, n: number) => { const [y, m, d] = ymd.split("-
 const fmtDataBR = (ymd?: string | null) => ymd ? ymd.split("-").reverse().join("/") : "—";
 const hhmm = (ms?: number | null) => { if (ms == null) return "—"; const t = minutoDoDiaBRT(ms); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
 const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
-const EXC_LABEL: Record<string, string> = { sem_batida: "sem batida", falta: "falta", fora_escala: "fora de escala", batida_impar: "batida ímpar", atraso: "atraso", intervalo_curto: "intervalo curto", jornada_longa: "jornada > limite", interjornada: "interjornada < mín." };
+const EXC_LABEL: Record<string, string> = { sem_batida: "sem batida", falta: "falta", fora_escala: "fora de escala", batida_impar: "batida ímpar", atraso: "atraso", intervalo_curto: "intervalo curto", jornada_longa: "jornada > limite", interjornada: "interjornada < mín.", correcao_pendente: "correção pendente" };
 // Mesmo visual dos status da Escala (short + cor), pra a coluna Previsto bater.
 const STATUS_INFO: Record<ScheduleStatus, { label: string; short: string; bg: string; text: string }> = {
   trabalho:  { label: "Trabalho", short: "TR", bg: "bg-emerald-500", text: "text-white" },
@@ -186,7 +192,9 @@ export function PtrpApuracaoTab() {
       if (prev.kind === "implicito" && bs.length === 0 && ajustesDia.length === 0) continue;
       // Desconsideração: remove a batida referida ANTES de apurar (imutável — só ignora).
       const descPunch = new Set(ajustesDia.filter(a => a.tipo === "desconsideracao" && a.punchId).map(a => a.punchId as string));
-      const blocos: BatidaBloco[] = bs.filter(b => !b.excluded && !(b.punchId && descPunch.has(b.punchId))).map(b => ({ dateIn: b.dateIn as number, dateOut: (b.dateOut ?? null) as number | null }));
+      // Só a batida EFETIVA (aprovada) entra na apuração — espelha o oficial.
+      // A correção pendente é preservada em `bs` (aparece na linha), mas não soma.
+      const blocos: BatidaBloco[] = bs.filter(b => !b.excluded && !correcaoPendente(b) && !(b.punchId && descPunch.has(b.punchId))).map(b => ({ dateIn: b.dateIn as number, dateOut: (b.dateOut ?? null) as number | null }));
       // Inclusões e abonos entram como lançamento no motor.
       const ajMotor: AjusteDia[] = [];
       for (const a of ajustesDia) {
@@ -206,6 +214,8 @@ export function PtrpApuracaoTab() {
       } else {
         trabalhado = blocos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
       }
+      // Correção não aprovada no dia → sinaliza como pendência a tratar (não é falta).
+      if (bs.some(correcaoPendente)) excecoes = [...excecoes, "correcao_pendente"];
       // Entrada/saída reais (ms) do dia — pra checar interjornada entre dias.
       const ins = blocos.map(b => b.dateIn).filter((x): x is number => typeof x === "number");
       const outs = blocos.map(b => b.dateOut).filter((x): x is number => typeof x === "number");
@@ -451,7 +461,7 @@ export function PtrpApuracaoTab() {
                         {l.ehFeriado && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">feriado</span>}
                       </td>
                       <td className="text-gray-700 dark:text-gray-200">
-                        <div className="tabular-nums">{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); return <span key={i} className={b.excluded || desc ? "line-through text-gray-400" : ""} title={desc ? "desconsiderada" : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}</span>; }) : <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
+                        <div className="tabular-nums">{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); const pend = correcaoPendente(b); const cls = b.excluded || desc ? "line-through text-gray-400" : pend ? "text-amber-600 dark:text-amber-400 underline decoration-dashed decoration-amber-400" : ""; return <span key={i} className={cls} title={desc ? "desconsiderada" : pend ? `correção ${b.status === "REJECTED" ? "rejeitada" : "pendente"} no Sólides — não entra no oficial` : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}{pend ? " 🟡" : ""}</span>; }) : <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
                         {l.ajustesDia.map(a => (
                           <span key={a.id} className="inline-flex items-center gap-1 mt-1 mr-1 text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300">
                             {a.tipo === "inclusao" ? `➕ ${a.in}–${a.out}` : a.tipo === "desconsideracao" ? "🚫 desconsid." : `☂️ ${a.tipo}`}{a.motivo ? ` · ${a.motivo}` : ""}
