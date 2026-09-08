@@ -72,7 +72,7 @@ export type ModuleId =
   | "rotinas"
   // Escritório
   | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "beneficios" | "beneficios2" | "compras" | "recebimento" | "fechamentoCaixa" | "recursos" | "faleDp"
-  | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "analise-ponto" | "admissao" | "processoSeletivo" | "sites" | "cardapio"
+  | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "analise-ponto" | "ptrp" | "admissao" | "processoSeletivo" | "sites" | "cardapio"
   | "uniformes"
   // Gestor de Tarefas + cadastros mestres
   | "tarefas"
@@ -203,6 +203,7 @@ export type ModuleDef = {
   etapa?: ModuleEtapa;
   dependsOn?: ModuleId[];
   oculto?: boolean;   // não aparece no menu/início (não pronto ou em transição)
+  descontinuado?: boolean;   // substituído por outro módulo — some do Config (rota mantida)
 };
 
 // ─── ESCALA / EQUIPE ───

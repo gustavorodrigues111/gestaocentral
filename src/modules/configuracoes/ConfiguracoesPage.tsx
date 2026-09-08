@@ -257,7 +257,7 @@ export function ConfiguracoesPage() {
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Escolha quais módulos esse restaurante usa. Apenas os ativos aparecem pra equipe.</p>
         <div className="space-y-5">
           {areas.map(area => {
-            const mods = modulesByArea(area);
+            const mods = modulesByArea(area).filter(m => !m.descontinuado);   // esconde módulos descontinuados do Config
             if (mods.length === 0) return null; // pula áreas sem módulos (ex: master vazio)
             const info = AREA_INFO[area];
             return (

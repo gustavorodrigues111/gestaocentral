@@ -122,14 +122,18 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
       if (pessoa.isMaster) return true;
       return canUse(pessoa, rid, "tarefas") || canUse(pessoa, rid, "planoDeAcao");
     }
+    // Ponto (PTRP): módulo "ptrp", mas a permissão é a do catálogo "ponto/*".
+    if (moduleId === "ptrp") {
+      if (!modulosAtivos.includes("ptrp")) return false;
+      if (pessoa.isMaster) return true;
+      return canAcaoRid("ponto", "conferir") || canAcaoRid("ponto", "banco") || canAcaoRid("ponto", "sincronizar") || canAcaoRid("ponto", "regras");
+    }
     if (!modulosAtivos.includes(moduleId)) return false;
     if (pessoa.isMaster) return true;
     return canUse(pessoa, rid, moduleId);
   }
 
   const areas: ModuleArea[] = ["planejamento", "ops", "dp", "fin", "inst"];
-  // Ponto (PTRP) — rota top-level /ptrp, exibida no grupo Pessoas (dp).
-  const podeVerPtrp = !!pessoa?.isMaster || canAcaoRid("ponto", "conferir") || canAcaoRid("ponto", "banco") || canAcaoRid("ponto", "sincronizar") || canAcaoRid("ponto", "regras");
 
   // Seção Master (Tarefas + Planner): ferramentas pessoais do dono.
   // Diferente das demais áreas, RESPEITA modulosAtivos MESMO pro master —
@@ -273,14 +277,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                       </div>
                     );
                   })}
-                  {area === "dp" && podeVerPtrp && (
-                    <>
-                      <div className="px-3 pt-2 pb-0.5 text-[9px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Ponto & Jornada</div>
-                      <NavLink to="/ptrp" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-                        <span>⏱️</span><span className="flex-1 truncate">Ponto (PTRP)</span>
-                      </NavLink>
-                    </>
-                  )}
                   {area === "inst" && pessoa?.isMaster && (
                     <>
                       <NavLink to="/arquitetura" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>

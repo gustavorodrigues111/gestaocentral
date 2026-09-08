@@ -128,6 +128,7 @@ function ModuleRouter() {
     case "fechamentoCaixa": return <FechamentoCaixaPage key={k} />;
     case "excecoes":      return <RegistrosPontoPage key={k} />;
     case "analise-ponto": return <AnalisePontoPage key={k} />;
+    case "ptrp":          return <PtrpSyncPage key={k} />;
     case "admissao":      return <AdmissaoPage key={k} />;
     case "processoSeletivo": return <ProcessoSeletivoPage key={k} />;
     case "eventos":       return <EventosPage key={k} />;
