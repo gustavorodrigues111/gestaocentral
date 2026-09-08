@@ -726,10 +726,13 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                     // Nº de marcações válidas (cada entrada/saída = 1). Padrão do dia
                     // completo = 4 ou 6. Ímpar = ponto aberto (corrigir → vermelho);
                     // exatamente 2 = suspeito (só entrada/saída, sem intervalo → amarelo).
-                    const marks = montarMarcacoes(l).filter(m => !m.desconsiderada && !m.pendente).reduce((n, m) => n + (m.in ? 1 : 0) + (m.out ? 1 : 0), 0);
-                    const diaTrab = !folga && !l.ehFeriado && !l.ehFuturo;
-                    const precisaCorrecao = !l.ehFuturo && (l.excecoes.includes("falta") || (marks > 0 && marks % 2 !== 0));
-                    const suspeito = diaTrab && marks === 2;
+                    const validMarcs = montarMarcacoes(l).filter(m => !m.desconsiderada && !m.pendente);
+                    const marks = validMarcs.reduce((n, m) => n + (m.in ? 1 : 0) + (m.out ? 1 : 0), 0);
+                    // Batida sem par (entrada sem saída ou vice-versa) = ponto aberto → corrigir.
+                    const incompleta = validMarcs.some(m => (!!m.in) !== (!!m.out));
+                    const precisaCorrecao = !l.ehFuturo && (l.excecoes.includes("falta") || incompleta || (marks > 0 && marks % 2 !== 0));
+                    // Suspeito = 1 par completo só (2 marcações), quando o padrão é 4 ou 6. Vale inclusive em feriado trabalhado.
+                    const suspeito = !folga && !l.ehFuturo && !incompleta && marks === 2;
                     const rowBg = l.ehFuturo ? "bg-blue-50/70 dark:bg-blue-950/25"
                       : precisaCorrecao ? "bg-rose-100/70 dark:bg-rose-900/25"
                       : suspeito ? "bg-amber-50 dark:bg-amber-950/25"
@@ -767,7 +770,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                       <td className="text-right tabular-nums font-medium">{l.trabalhado ? hm(l.trabalhado) : <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
                       <td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{l.extra ? hm(l.extra) : ""}</td>
                       <td className="text-right tabular-nums text-indigo-500">{l.noturno ? hm(l.noturno) : ""}</td>
-                      <td>{l.ehFuturo ? <span className="text-blue-500 text-[11px]">a realizar</span> : l.excecoes.length ? <span className="inline-flex flex-wrap items-center gap-1 text-[14px] leading-none">{l.excecoes.map(e => <span key={e} className="cursor-help" title={EXC_LABEL[e] || e}>{EXC_ICON[e] || "⚠️"}</span>)}</span> : suspeito ? <span className="cursor-help text-[14px]" title="Só 2 batidas — o padrão é 4 ou 6 (falta marcar o intervalo?)">✌️</span> : <span className="text-emerald-500 text-[12px]">✓</span>}</td>
+                      <td>{l.ehFuturo ? <span className="text-blue-500 text-[11px]">a realizar</span> : l.excecoes.length ? <span className="inline-flex flex-wrap items-center gap-1 text-[14px] leading-none">{l.excecoes.map(e => <span key={e} className="cursor-help" title={EXC_LABEL[e] || e}>{EXC_ICON[e] || "⚠️"}</span>)}</span> : incompleta ? <span className="cursor-help text-[14px]" title="Batida sem par (ponto aberto) — precisa corrigir">3️⃣</span> : suspeito ? <span className="cursor-help text-[14px]" title="Só 2 batidas — o padrão é 4 ou 6 (falta marcar o intervalo?)">✌️</span> : <span className="text-emerald-500 text-[12px]">✓</span>}</td>
                       <td className="text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-1">
                           {pendUndecided && !travado && <>
