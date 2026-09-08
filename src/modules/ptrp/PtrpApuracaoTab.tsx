@@ -14,7 +14,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
-import type { Empregado, HorarioDia, Cargo, EscalaMes } from "../../core/types";
+import type { Empregado, HorarioDia, Cargo, EscalaMes, ScheduleStatus } from "../../core/types";
 import { empregadoBatePonto } from "../../core/types";
 import type { ParametrosCCT, PtrpTurno, PtrpAjuste, PtrpAjusteTipo } from "../../core/ptrp/tipos";
 import { cctVigenteEm } from "../../core/ptrp/tipos";
@@ -35,6 +35,17 @@ const hm = (min: number) => min <= 0 ? "0h00" : `${Math.floor(min / 60)}h${Strin
 const hhmm = (ms?: number | null) => { if (ms == null) return "—"; const t = minutoDoDiaBRT(ms); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
 const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
 const EXC_LABEL: Record<string, string> = { sem_batida: "sem batida", falta: "falta", fora_escala: "fora de escala", batida_impar: "batida ímpar", atraso: "atraso", intervalo_curto: "intervalo curto", jornada_longa: "jornada > limite", interjornada: "interjornada < mín." };
+// Mesmo visual dos status da Escala (short + cor), pra a coluna Previsto bater.
+const STATUS_INFO: Record<ScheduleStatus, { label: string; short: string; bg: string; text: string }> = {
+  trabalho:  { label: "Trabalho", short: "TR", bg: "bg-emerald-500", text: "text-white" },
+  folga:     { label: "Folga", short: "FO", bg: "bg-gray-300 dark:bg-gray-700", text: "text-gray-700 dark:text-gray-200" },
+  freela:    { label: "Freela", short: "FR", bg: "bg-purple-500", text: "text-white" },
+  comp:      { label: "Folga por compensação", short: "FC", bg: "bg-gray-500", text: "text-white" },
+  comp_trab: { label: "Trabalho por compensação", short: "TC", bg: "bg-emerald-800", text: "text-white" },
+  ferias:    { label: "Férias", short: "FE", bg: "bg-sky-500", text: "text-white" },
+  falta_j:   { label: "Falta justificada", short: "FJ", bg: "bg-rose-300", text: "text-rose-900" },
+  falta_i:   { label: "Falta injustificada", short: "FI", bg: "bg-rose-600", text: "text-white" },
+};
 
 const FOLGA_TIPOS = new Set<string>(["folga", "ferias", "falta_j", "falta_i", "afastamento"]);
 const TRAB_TIPOS = new Set<string>(["trabalho", "comp_trab", "freela", "comp"]);
@@ -144,7 +155,7 @@ export function PtrpApuracaoTab() {
     return m;
   }, [ajustes]);
 
-  type Linha = { data: string; bs: BatidaDoc[]; descPunch: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; trabalhado: number; extra: number; noturno: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean };
+  type Linha = { data: string; bs: BatidaDoc[]; descPunch: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean };
   function apurarColab(emp: Empregado) {
     const cpf = soDig(emp.cpf);
     const dias = batidasPorCpf[cpf] || {};
@@ -184,7 +195,7 @@ export function PtrpApuracaoTab() {
       const outs = blocos.map(b => b.dateOut).filter((x): x is number => typeof x === "number");
       const primeiraMs = ins.length ? Math.min(...ins) : null;
       const ultimaMs = outs.length ? Math.max(...outs) : null;
-      linhas.push({ data, bs, descPunch, ajustesDia, previstoTxt, trabalhado, extra, noturno, excecoes, primeiraMs, ultimaMs, ehFeriado });
+      linhas.push({ data, bs, descPunch, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, excecoes, primeiraMs, ultimaMs, ehFeriado });
     }
     // Interjornada: descanso entre a última saída de um dia e a 1ª entrada do dia
     // seguinte (calendário) < mínimo da CCT → exceção no dia seguinte.
@@ -347,7 +358,11 @@ export function PtrpApuracaoTab() {
                     return (
                     <tr key={l.data} className={`border-b border-gray-50 dark:border-gray-800/40 ${l.excecoes.includes("falta") ? "bg-rose-50/50 dark:bg-rose-900/10" : idx % 2 ? "bg-gray-50/40 dark:bg-gray-800/20" : ""}`}>
                       <td className="tabular-nums font-medium text-gray-700 dark:text-gray-200">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
-                      <td className={folga ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}>{l.previstoTxt}{l.ehFeriado && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">feriado</span>}</td>
+                      <td className={folga ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}>
+                        {l.statusEscala && <span className={`inline-block mr-1 text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[l.statusEscala].bg} ${STATUS_INFO[l.statusEscala].text}`} title={STATUS_INFO[l.statusEscala].label}>{STATUS_INFO[l.statusEscala].short}</span>}
+                        {l.statusEscala ? (l.previstoTxt.includes("–") ? l.previstoTxt : "") : l.previstoTxt}
+                        {l.ehFeriado && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">feriado</span>}
+                      </td>
                       <td className="text-gray-700 dark:text-gray-200">
                         <div className="tabular-nums">{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); return <span key={i} className={b.excluded || desc ? "line-through text-gray-400" : ""} title={desc ? "desconsiderada" : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}</span>; }) : <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
                         {l.ajustesDia.map(a => (
