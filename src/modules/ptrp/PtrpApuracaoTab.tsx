@@ -715,13 +715,13 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                     return (
                     <tr key={l.data} className={`border-b border-gray-50 dark:border-gray-800/40 ${rowBg}`}>
                       <td className="tabular-nums font-medium text-gray-700 dark:text-gray-200">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
-                      <td className={folga ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}>
+                      <td className={`whitespace-nowrap ${folga ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}`}>
                         {l.statusEscala && <span className={`inline-block mr-1 text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[l.statusEscala].bg} ${STATUS_INFO[l.statusEscala].text}`} title={STATUS_INFO[l.statusEscala].label}>{STATUS_INFO[l.statusEscala].short}</span>}
                         {l.statusEscala ? (l.previstoTxt.includes("–") ? l.previstoTxt : "") : l.previstoTxt}
                         {l.ehFeriado && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">feriado</span>}
-                        {l.ehFuturo && <span className="ml-1 text-[10px] font-semibold px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">futuro</span>}
                       </td>
                       <td className="text-gray-700 dark:text-gray-200">
+                        {l.ehFuturo ? <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-300">futuro</span> : <>
                         <div className="tabular-nums">{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); const pend = correcaoPendente(b) && !(b.punchId && l.decididos.has(b.punchId)); const tratada = !!(b.punchId && inclPunch.has(b.punchId)); const cls = b.excluded || desc ? "line-through text-gray-400" : pend ? "text-amber-600 dark:text-amber-400 underline decoration-dashed decoration-amber-400" : tratada ? "text-indigo-600 dark:text-indigo-300 underline decoration-dotted decoration-indigo-400" : ""; return <span key={i} className={cls} title={desc ? "desconsiderada" : pend ? `correção ${b.status === "REJECTED" ? "rejeitada" : "pendente"} no Sólides — não entra no oficial` : tratada ? "horário tratado (correção)" : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}{pend ? " 🟡" : ""}{tratada ? " ✎" : ""}</span>; }) : <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
                         {l.ajustesDia.length > 0 && (
                           <div className="mt-1 flex flex-col gap-0.5">
@@ -731,7 +731,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                               // Inclusão com batida inline (correção aprovada) não repete o horário; inclusão manual mostra.
                               const label = a.motivo?.trim() || (a.tipo === "inclusao" ? "Correção incluída" : a.tipo === "desconsideracao" ? "Batida desconsiderada" : a.tipo);
                               return (
-                                <div key={a.id} className="flex items-center flex-wrap gap-x-1 text-[10.5px] text-indigo-700 dark:text-indigo-300">
+                                <div key={a.id} className="flex items-center gap-x-1 whitespace-nowrap text-[10.5px] text-indigo-700 dark:text-indigo-300">
                                   <span>{icon} {a.tipo === "inclusao" && !inline && a.in ? `${a.in}–${a.out} · ` : ""}{label}</span>
                                   {a.autor?.nome && <span className="text-indigo-400 dark:text-indigo-500">· por {a.autor.nome}</span>}
                                   <button type="button" onClick={() => void cancelarAjuste(a)} className="text-rose-400 hover:text-rose-600 ml-0.5" title={a.solidesDecisao ? "Desfazer a decisão nos dois lados: reverte para pendente na Sólides e cancela o tratamento no app (fica na trilha)" : "Cancelar este tratamento no app (fica na trilha)"}>✕</button>
@@ -740,6 +740,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                             })}
                           </div>
                         )}
+                        </>}
                       </td>
                       <td className="text-right tabular-nums font-medium">{l.trabalhado ? hm(l.trabalhado) : <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
                       <td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{l.extra ? hm(l.extra) : ""}</td>
