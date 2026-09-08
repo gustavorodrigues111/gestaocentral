@@ -288,7 +288,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
           empresaKey: shortCode, colaboradorId: emp.id, cpf: soDig(emp.cpf), data: l.data, punchId: b.punchId as string,
           ...(aprovComHoras ? { tipo: "inclusao" as PtrpAjusteTipo, in: minToHHMM(inMin as number), out: minToHHMM(outMin as number) } : { tipo: "desconsideracao" as PtrpAjusteTipo }),
           motivo: status === "APPROVED" ? "Correção do empregado aprovada (via Sólides)" : "Correção do empregado reprovada (via Sólides)",
-          autor: { id: me.id, nome: me.nome }, criadoEm: new Date().toISOString(), cancelado: false,
+          autor: { id: me.id, nome: me.nome }, criadoEm: new Date().toISOString(), solidesDecisao: true, cancelado: false,
         };
         await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore(aj));
       }
@@ -500,8 +500,18 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   }
 
   async function cancelarAjuste(a: PtrpAjuste) {
-    if (!confirm("Cancelar este tratamento? Ele fica registrado na trilha (não some).")) return;
-    await updateDoc(doc(db, "ptrpAjustes", a.id), { cancelado: true, canceladoPor: { id: me?.id || "", nome: me?.nome || "" }, canceladoEm: new Date().toISOString() }).catch(e => alert("Falha: " + (e instanceof Error ? e.message : "?")));
+    const reverteSolides = !!(a.solidesDecisao && a.punchId);
+    const msg = reverteSolides
+      ? "Desfazer esta decisão? A correção volta a PENDENTE na Sólides E o tratamento é cancelado aqui (fica na trilha)."
+      : "Cancelar este tratamento? Ele fica registrado na trilha (não some).";
+    if (!confirm(msg)) return;
+    try {
+      // Desfaz nos DOIS lados: primeiro reverte a decisão na Sólides (→ PENDENTE),
+      // só então cancela o tratamento no app (se a Sólides falhar, não cancela aqui).
+      if (reverteSolides) await decidirAprovacao(shortCode, { punchId: Number(a.punchId), status: "PENDING", observation: "Decisão desfeita no planejamento.app" });
+      await updateDoc(doc(db, "ptrpAjustes", a.id), { cancelado: true, canceladoPor: { id: me?.id || "", nome: me?.nome || "" }, canceladoEm: new Date().toISOString() });
+      setAcaoMsg(reverteSolides ? "✓ Decisão desfeita — correção voltou a pendente na Sólides." : "✓ Tratamento cancelado.");
+    } catch (e) { setAcaoMsg("Falha ao desfazer: " + (e instanceof Error ? e.message : "erro")); }
   }
 
   if (!me?.isMaster) return <div className="p-8 text-center text-gray-500">🔒 Só o master.</div>;
@@ -724,7 +734,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                                 <div key={a.id} className="flex items-center flex-wrap gap-x-1 text-[10.5px] text-indigo-700 dark:text-indigo-300">
                                   <span>{icon} {a.tipo === "inclusao" && !inline && a.in ? `${a.in}–${a.out} · ` : ""}{label}</span>
                                   {a.autor?.nome && <span className="text-indigo-400 dark:text-indigo-500">· por {a.autor.nome}</span>}
-                                  <button type="button" onClick={() => void cancelarAjuste(a)} className="text-rose-400 hover:text-rose-600 ml-0.5" title="Cancelar este tratamento no app (fica na trilha; não desfaz a aprovação já feita na Sólides)">✕</button>
+                                  <button type="button" onClick={() => void cancelarAjuste(a)} className="text-rose-400 hover:text-rose-600 ml-0.5" title={a.solidesDecisao ? "Desfazer a decisão nos dois lados: reverte para pendente na Sólides e cancela o tratamento no app (fica na trilha)" : "Cancelar este tratamento no app (fica na trilha)"}>✕</button>
                                 </div>
                               );
                             })}

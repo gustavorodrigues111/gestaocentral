@@ -71,6 +71,9 @@ export type PtrpAjuste = {
   motivo: string;
   autor?: { id: string; nome: string };
   criadoEm?: string;
+  // Tratamento que reflete uma DECISÃO tomada na Sólides (aprovar/reprovar
+  // correção do empregado). Ao cancelar, a decisão é revertida na Sólides também.
+  solidesDecisao?: boolean;
   cancelado?: boolean;            // soft-delete: preserva a trilha (nunca apaga)
   canceladoPor?: { id: string; nome: string } | null;
   canceladoEm?: string | null;

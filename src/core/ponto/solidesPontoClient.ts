@@ -134,7 +134,7 @@ export async function fetchAprovacoesPendentes(
 // Decide um ponto: APPROVED ou REPROVED (PUT .../status/{status} na Sólides).
 export async function decidirAprovacao(
   restaurantKey: string,
-  params: { punchId: number; status: "APPROVED" | "REPROVED"; observation?: string },
+  params: { punchId: number; status: "APPROVED" | "REPROVED" | "PENDING"; observation?: string },
 ): Promise<{ ok: boolean; resultado: unknown }> {
   const resp = await fetch(`/api/solides-ponto-aprovacoes`, {
     method: "POST",
