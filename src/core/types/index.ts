@@ -1068,6 +1068,9 @@ export type Restaurant = {
   cnpj?: string;
   razaoSocial?: string;
   codigoContabil?: string;
+  // Pasta do Drive onde o PTRP arquiva os espelhos ASSINADOS (Pontos assinados/{mês}).
+  drivePontoAssinadoFolderId?: string;
+  drivePontoAssinadoFolderNome?: string;
   endereco?: string;
   whatsappFinanceiro?: string;
   whatsappOperacional?: string;

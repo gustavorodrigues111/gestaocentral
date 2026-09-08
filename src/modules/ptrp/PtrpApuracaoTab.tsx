@@ -804,7 +804,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         </>
       ))}
       {ajusteModal && me && <AjusteModal empresaKey={shortCode} emp={ajusteModal.emp} data={ajusteModal.data} bs={ajusteModal.bs} solidesEmpId={empIdPorCpf.get(soDig(ajusteModal.emp.cpf)) || null} autor={{ id: me.id, nome: me.nome }} onClose={() => setAjusteModal(null)} />}
-      {assModal && me && <PtrpAssinaturasModal empresaKey={shortCode} comp={comp} compLabel={labelComp(comp)} alvos={alvosAssinatura()} meta={espelhoMeta()} autor={{ id: me.id, nome: me.nome }} onClose={() => setAssModal(false)} />}
+      {assModal && me && <PtrpAssinaturasModal empresaKey={shortCode} comp={comp} compLabel={labelComp(comp)} restaurantId={rid} driveFolderInit={{ id: (activeRestaurant as { drivePontoAssinadoFolderId?: string } | null)?.drivePontoAssinadoFolderId, nome: (activeRestaurant as { drivePontoAssinadoFolderNome?: string } | null)?.drivePontoAssinadoFolderNome }} alvos={alvosAssinatura()} meta={espelhoMeta()} autor={{ id: me.id, nome: me.nome }} onClose={() => setAssModal(false)} />}
       {preview && (
         <Modal title={preview.titulo} onClose={fecharPreview} maxWidth="max-w-4xl">
           <div className="space-y-2">
