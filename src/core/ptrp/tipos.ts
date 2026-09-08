@@ -76,6 +76,21 @@ export type PtrpAjuste = {
   canceladoEm?: string | null;
 };
 
+// ─── Banco de horas: 1 movimento por competência/colaborador. Saldo do mês
+// (+ crédito / − débito) com prazo de compensação (vencimento) da CCT. ─────────
+export type PtrpBancoMov = {
+  id: string;
+  empresaKey: string;
+  colaboradorId: string;
+  cpf: string;
+  competencia: string;          // YYYY-MM
+  saldoMinutos: number;         // + crédito (extra a compensar) / − débito
+  vencimento?: string | null;   // YYYY-MM-DD — prazo de compensação do crédito
+  regime?: string;              // banco | compensacao_prazo (da CCT vigente)
+  registradoEm?: string;
+  registradoPor?: { id: string; nome: string };
+};
+
 // ════════════════════════════════════════════════════════════════════════════
 //  Parâmetros de CCT por empresa (com VIGÊNCIA — renovam na data-base anual).
 //  A apuração resolve os parâmetros pela empresa do colaborador E pela data da

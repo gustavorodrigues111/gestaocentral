@@ -7,7 +7,7 @@
 //  como OVERRIDE opcional (fase seguinte). Valida contra o Sólides (Fase 1).
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -16,7 +16,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import type { Empregado, HorarioDia, Cargo, EscalaMes, ScheduleStatus } from "../../core/types";
 import { empregadoBatePonto } from "../../core/types";
-import type { ParametrosCCT, PtrpTurno, PtrpAjuste, PtrpAjusteTipo } from "../../core/ptrp/tipos";
+import type { ParametrosCCT, PtrpTurno, PtrpAjuste, PtrpAjusteTipo, PtrpBancoMov } from "../../core/ptrp/tipos";
 import { cctVigenteEm } from "../../core/ptrp/tipos";
 import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horarios";
 import { apurarDia, minutoDoDiaBRT, hhmmToMin, type BatidaBloco, type AjusteDia } from "../../core/ptrp/apuracao";
@@ -32,6 +32,9 @@ type BatidaDoc = { id: string; empresaKey: string; punchId?: string; cpf?: strin
 
 const compAtual = () => new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 7);
 const hm = (min: number) => min <= 0 ? "0h00" : `${Math.floor(min / 60)}h${String(Math.round(min % 60)).padStart(2, "0")}`;
+const hmSigned = (min: number) => (min < 0 ? "−" : "+") + hm(Math.abs(min));
+const somaDiasYmd = (ymd: string, n: number) => { const [y, m, d] = ymd.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+const fmtDataBR = (ymd?: string | null) => ymd ? ymd.split("-").reverse().join("/") : "—";
 const hhmm = (ms?: number | null) => { if (ms == null) return "—"; const t = minutoDoDiaBRT(ms); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
 const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
 const EXC_LABEL: Record<string, string> = { sem_batida: "sem batida", falta: "falta", fora_escala: "fora de escala", batida_impar: "batida ímpar", atraso: "atraso", intervalo_curto: "intervalo curto", jornada_longa: "jornada > limite", interjornada: "interjornada < mín." };
@@ -89,6 +92,9 @@ export function PtrpApuracaoTab() {
   const [ccts, setCcts] = useState<ParametrosCCT[]>([]);
   const [escala, setEscala] = useState<EscalaMes | null>(null);
   const [aberto, setAberto] = useState<string | null>(null);
+  const [bancoMovs, setBancoMovs] = useState<PtrpBancoMov[]>([]);
+  const [mostrarBanco, setMostrarBanco] = useState(false);
+  const [registrando, setRegistrando] = useState(false);
   const [roster, setRoster] = useState<PontoColaborador[] | null>(null);
   const [carregandoRoster, setCarregandoRoster] = useState(false);
   const [rosterErr, setRosterErr] = useState("");
@@ -126,6 +132,11 @@ export function PtrpApuracaoTab() {
     return onSnapshot(query(collection(db, "ptrpAjustes"), where("empresaKey", "==", shortCode)),
       s => setAjustes(s.docs.map(d => ({ id: d.id, ...d.data() }) as PtrpAjuste).filter(a => (a.data || "").startsWith(comp))), () => setAjustes([]));
   }, [shortCode, comp]);
+  useEffect(() => {
+    if (!shortCode) { setBancoMovs([]); return; }
+    return onSnapshot(query(collection(db, "ptrpBancoHoras"), where("empresaKey", "==", shortCode)),
+      s => setBancoMovs(s.docs.map(d => ({ id: d.id, ...d.data() }) as PtrpBancoMov)), () => setBancoMovs([]));
+  }, [shortCode]);
 
   const cct = useMemo(() => cctVigenteEm(ccts, shortCode, `${comp}-15`), [ccts, shortCode, comp]);
   const [ano, mes] = comp.split("-").map(Number);
@@ -161,6 +172,7 @@ export function PtrpApuracaoTab() {
     const dias = batidasPorCpf[cpf] || {};
     const ajDias = ajustesPorCpf[cpf] || {};
     const linhas: Linha[] = [];
+    let saldoMes = 0;   // banco de horas do mês: Σ (trabalhado + abonado − previsto)
     for (let d = 1; d <= diasDoMes; d++) {
       const data = `${comp}-${String(d).padStart(2, "0")}`;
       const bs = dias[data] || [];
@@ -187,6 +199,7 @@ export function PtrpApuracaoTab() {
       if (cct && prev.kind !== "implicito") {
         const ap = apurarDia({ data, blocos, turno: prev.turno, cct, ehDomingo, ehFeriado, ajustes: ajMotor });
         trabalhado = ap.minutosTrabalhados; extra = ap.minutosExtras; noturno = ap.noturnoMin; excecoes = ap.excecoes;
+        saldoMes += ap.minutosTrabalhados + ap.abonadoMin - ap.minutosPrevistos;   // + extra / − falta
       } else {
         trabalhado = blocos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
       }
@@ -205,7 +218,7 @@ export function PtrpApuracaoTab() {
       const consecutivo = (Date.parse(atu.data) - Date.parse(ant.data)) === 86_400_000;
       if (consecutivo && ant.ultimaMs != null && atu.primeiraMs != null && (atu.primeiraMs - ant.ultimaMs) < minInter && !atu.excecoes.includes("interjornada")) atu.excecoes.push("interjornada");
     }
-    return { linhas, temCpf: !!cpf, totTrab: linhas.reduce((s, l) => s + l.trabalhado, 0), totExtra: linhas.reduce((s, l) => s + l.extra, 0), totNot: linhas.reduce((s, l) => s + l.noturno, 0), exc: linhas.reduce((s, l) => s + l.excecoes.length, 0) };
+    return { linhas, temCpf: !!cpf, saldoMes, totTrab: linhas.reduce((s, l) => s + l.trabalhado, 0), totExtra: linhas.reduce((s, l) => s + l.extra, 0), totNot: linhas.reduce((s, l) => s + l.noturno, 0), exc: linhas.reduce((s, l) => s + l.excecoes.length, 0) };
   }
 
   const cpfsComEmpregado = useMemo(() => new Set(empregados.map(e => soDig(e.cpf)).filter(Boolean)), [empregados]);
@@ -240,6 +253,33 @@ export function PtrpApuracaoTab() {
     return [...m.entries()].sort((a, b) => a[0].localeCompare(b[0]));
   }, [resultados]);
   const sel = resultados.find(x => x.emp.id === aberto) || null;
+
+  // Banco de horas: saldo acumulado (Σ movimentos) e extrato por colaborador.
+  const saldoAcumPorColab = useMemo(() => { const m = new Map<string, number>(); for (const mv of bancoMovs) m.set(mv.colaboradorId, (m.get(mv.colaboradorId) || 0) + (mv.saldoMinutos || 0)); return m; }, [bancoMovs]);
+  const movsPorColab = useMemo(() => { const m = new Map<string, PtrpBancoMov[]>(); for (const mv of bancoMovs) { const a = m.get(mv.colaboradorId) || []; a.push(mv); m.set(mv.colaboradorId, a); } for (const a of m.values()) a.sort((x, y) => x.competencia.localeCompare(y.competencia)); return m; }, [bancoMovs]);
+  const hojeYmd = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+  const movVencido = (mv: PtrpBancoMov) => (mv.saldoMinutos || 0) > 0 && !!mv.vencimento && mv.vencimento < hojeYmd;
+  const registradoComp = (colabId: string) => bancoMovs.some(mv => mv.colaboradorId === colabId && mv.competencia === comp);
+
+  async function registrarBanco() {
+    if (!shortCode) return;
+    setRegistrando(true);
+    try {
+      const fim = `${comp}-${String(diasDoMes).padStart(2, "0")}`;
+      const prazo = cct?.prazoCompensacaoDias || 90;
+      for (const x of resultados) {
+        const saldo = Math.round(x.r.saldoMes || 0);
+        if (!saldo) continue;
+        const mov: Omit<PtrpBancoMov, "id"> = {
+          empresaKey: shortCode, colaboradorId: x.emp.id, cpf: soDig(x.emp.cpf), competencia: comp,
+          saldoMinutos: saldo, vencimento: saldo > 0 ? somaDiasYmd(fim, prazo) : null,
+          regime: cct?.regimeCompensacao, registradoEm: new Date().toISOString(), registradoPor: { id: me?.id || "", nome: me?.nome || "" },
+        };
+        await setDoc(doc(db, "ptrpBancoHoras", `${shortCode}_${comp}_${x.emp.id}`), sanitizeForFirestore(mov));
+      }
+    } catch (e) { alert("Falha ao registrar no banco: " + (e instanceof Error ? e.message : "?")); }
+    finally { setRegistrando(false); }
+  }
 
   async function cancelarAjuste(a: PtrpAjuste) {
     if (!confirm("Cancelar este tratamento? Ele fica registrado na trilha (não some).")) return;
@@ -290,6 +330,50 @@ export function PtrpApuracaoTab() {
               {comparacao.semCpfApp.length > 0 && <div className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">+ {comparacao.semCpfApp.length} no app sem CPF (não dá pra casar).</div>}
             </div>
             <div className="sm:col-span-2 text-[11px] text-gray-400">✓ {comparacao.ambos} em ambos os cadastros.</div>
+          </div>
+        )}
+      </div>
+
+      {/* Banco de horas / compensação */}
+      <div className="mb-3">
+        <div className="flex items-center gap-2 flex-wrap">
+          <button type="button" onClick={() => setMostrarBanco(v => !v)}
+            className="text-[12px] font-semibold px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800">
+            {mostrarBanco ? "▲ Ocultar banco de horas" : "🏦 Banco de horas / compensação"}
+          </button>
+          {mostrarBanco && (
+            <Button size="sm" variant="secondary" disabled={registrando || !cct} onClick={() => void registrarBanco()}>
+              {registrando ? "Registrando…" : `Registrar ${labelComp(comp)} no banco`}
+            </Button>
+          )}
+          {mostrarBanco && !cct && <span className="text-[11px] text-amber-600">configure a CCT (Regras) pra calcular o vencimento.</span>}
+        </div>
+        {mostrarBanco && (
+          <div className="mt-2 rounded-xl border border-gray-200 dark:border-gray-800 overflow-x-auto">
+            <table className="w-full text-[12px] min-w-[560px] [&_td]:px-2 [&_td]:py-1.5 [&_th]:px-2">
+              <thead><tr className="text-[10px] uppercase tracking-wide text-gray-400 text-left border-b border-gray-200 dark:border-gray-800">
+                <th className="py-1.5 font-semibold">Colaborador</th><th className="font-semibold text-right">Saldo {labelComp(comp)}</th><th className="font-semibold text-right">Saldo acumulado</th><th className="font-semibold">Próx. vencimento</th><th className="font-semibold">Extrato</th>
+              </tr></thead>
+              <tbody>
+                {resultados.filter(x => !naoBatePonto(x.emp)).map(({ emp, r }) => {
+                  const acum = saldoAcumPorColab.get(emp.id) || 0;
+                  const movs = movsPorColab.get(emp.id) || [];
+                  const vencidos = movs.filter(movVencido);
+                  const proxVenc = movs.filter(m => (m.saldoMinutos || 0) > 0 && m.vencimento && m.vencimento >= hojeYmd).map(m => m.vencimento!).sort()[0];
+                  if (!r.saldoMes && movs.length === 0) return null;
+                  return (
+                    <tr key={emp.id} className="border-b border-gray-50 dark:border-gray-800/40">
+                      <td className="font-medium text-gray-700 dark:text-gray-200 truncate">{emp.nome}{registradoComp(emp.id) && <span className="ml-1 text-[9px] text-emerald-600">✓ registrado</span>}</td>
+                      <td className={`text-right tabular-nums font-medium ${r.saldoMes < 0 ? "text-rose-600 dark:text-rose-400" : r.saldoMes > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400"}`}>{r.saldoMes ? hmSigned(Math.round(r.saldoMes)) : "0h00"}</td>
+                      <td className={`text-right tabular-nums font-semibold ${acum < 0 ? "text-rose-600 dark:text-rose-400" : acum > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400"}`}>{acum ? hmSigned(acum) : "0h00"}</td>
+                      <td className="text-gray-600 dark:text-gray-300">{vencidos.length > 0 ? <span className="text-rose-600 dark:text-rose-400 font-semibold">⚠ {vencidos.length} vencido(s)</span> : proxVenc ? fmtDataBR(proxVenc) : "—"}</td>
+                      <td className="text-[11px] text-gray-500">{movs.length === 0 ? "—" : movs.map(m => <span key={m.id} className={`inline-block mr-1.5 ${movVencido(m) ? "text-rose-500" : ""}`} title={m.vencimento ? `vence ${fmtDataBR(m.vencimento)}` : ""}>{labelComp(m.competencia).slice(0, 3)}: {hmSigned(m.saldoMinutos || 0)}</span>)}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div className="px-3 py-2 text-[10px] text-gray-400 border-t border-gray-100 dark:border-gray-800">Saldo do mês = trabalhado + abonado − previsto. "Registrar no banco" grava o saldo do mês com vencimento = fim da competência + {cct?.prazoCompensacaoDias || 90} dias (prazo da CCT). Crédito vencido (não compensado no prazo) deve ser pago como extra.</div>
           </div>
         )}
       </div>
