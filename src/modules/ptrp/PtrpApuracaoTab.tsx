@@ -21,7 +21,7 @@ import { cctVigenteEm } from "../../core/ptrp/tipos";
 import { gerarEspelhoPDF } from "../../core/ptrp/espelhoPDF";
 import { gerarAEJ } from "../../core/ptrp/aej";
 import { baixarOuCompartilhar } from "../../core/pdf/baixarOuCompartilhar";
-import { DEV_PADRAO, type ParametrosPTRP } from "./PtrpAejConfig";
+import { DEV_PADRAO, REP_PADRAO, type ParametrosPTRP } from "./PtrpAejConfig";
 import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horarios";
 import { apurarDia, minutoDoDiaBRT, hhmmToMin, type BatidaBloco, type AjusteDia } from "../../core/ptrp/apuracao";
 import { feriadosDoAno } from "../../core/ptrp/feriados";
@@ -389,8 +389,10 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
 
   const colabsFechaveis = () => resultados.filter(x => x.r.temCpf && !naoBatePonto(x.emp) && x.r.linhas.length);
   const empCfg = () => ptrpCfg.empresas?.[shortCode] || {};
-  const empCnpj = () => (empCfg().cnpj || (activeRestaurant as { cnpj?: string } | null)?.cnpj || "") || null;
-  const espelhoMeta = () => ({ empresaNome: activeRestaurant?.nome || shortCode, empresaCnpj: empCnpj(), cctNome: cct?.cctNome || null, compLabel: labelComp(comp), geradoPor: me?.nome || null });
+  // CNPJ e razão social vêm do CADASTRO do restaurante (Configurações); REP da config do AEJ.
+  const empCnpj = () => (((activeRestaurant as { cnpj?: string } | null)?.cnpj || "").replace(/\D/g, "") || null);
+  const empNome = () => (activeRestaurant as { razaoSocial?: string } | null)?.razaoSocial || activeRestaurant?.nome || shortCode;
+  const espelhoMeta = () => ({ empresaNome: empNome(), empresaCnpj: empCnpj(), cctNome: cct?.cctNome || null, compLabel: labelComp(comp), geradoPor: me?.nome || null });
 
   // Encerrar mês: congela a apuração (ptrpApuracoes) + marca o fechamento.
   async function encerrarMes() {
@@ -446,8 +448,8 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       const e = empCfg();
       const dev = ptrpCfg.desenvolvedor || DEV_PADRAO;
       const txt = gerarAEJ(alvo.map(snapshotColab), {
-        empresaNome: activeRestaurant?.nome || shortCode, empresaCnpj: empCnpj(), compLabel: labelComp(comp), competencia: comp,
-        repTipo: e.repTipo || "3", repNumero: e.repNumero || null,
+        empresaNome: empNome(), empresaCnpj: empCnpj(), compLabel: labelComp(comp), competencia: comp,
+        repTipo: e.repTipo || "3", repNumero: e.repNumero || REP_PADRAO,
         ptrp: { nome: "planejamento.app", versao: "5", devTipoId: dev.tipoId, devId: dev.id, devNome: dev.nome, devEmail: dev.email },
       });
       await baixarOuCompartilhar(new Blob([txt], { type: "text/plain;charset=utf-8" }), `AEJ-${shortCode}-${comp}.txt`, { titulo: "AEJ" });
