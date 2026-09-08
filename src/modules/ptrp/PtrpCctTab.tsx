@@ -6,6 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import type { ParametrosCCT } from "../../core/ptrp/tipos";
 import { PtrpCctEditor } from "./PtrpCctEditor";
@@ -14,6 +15,8 @@ import { PtrpAejConfig } from "./PtrpAejConfig";
 const fmtD = (ymd?: string) => ymd ? ymd.split("-").reverse().join("/") : "—";
 
 export function PtrpCctTab() {
+  const { activeRestaurant } = useRestaurant();
+  const shortCode = (activeRestaurant as { shortCode?: string } | null)?.shortCode || "";
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [ccts, setCcts] = useState<ParametrosCCT[]>([]);
   const [editando, setEditando] = useState<{ empresaKey: string; inicial: ParametrosCCT | null } | null>(null);
@@ -31,13 +34,15 @@ export function PtrpCctTab() {
   }, [ccts]);
 
   // Acesso controlado pela permissão "regras" (Perfis de Acesso), não mais só master.
+  // Segue o restaurante ATIVO do sistema — mostra só a empresa selecionada.
+  const empresasVis = shortCode ? [shortCode] : empresas;
 
   return (
     <div>
-      <PtrpAejConfig empresas={empresas} />
-      <p className="text-xs text-gray-500 mb-3">Cada empresa tem sua convenção com <strong>vigência</strong>. Clique em Configurar pra ver e editar <strong>todas as premissas</strong> (o editor pré-preenche com um modelo e deixa tudo ajustável). A apuração resolve os parâmetros pela empresa do colaborador e pela data da ocorrência. As empresas aparecem após o primeiro sync.</p>
-      {empresas.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">Nenhuma empresa ainda — rode o sync primeiro (aba Sincronização).</div>
+      <PtrpAejConfig empresas={empresasVis} />
+      <p className="text-xs text-gray-500 mb-3">Convenção da empresa <strong>{activeRestaurant?.nome || shortCode}</strong> (segue o restaurante ativo no topo), com <strong>vigência</strong>. Clique em Configurar pra ver e editar <strong>todas as premissas</strong> (o editor pré-preenche com um modelo e deixa tudo ajustável). A apuração resolve os parâmetros pela empresa do colaborador e pela data da ocorrência.</p>
+      {empresasVis.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">Restaurante ativo sem shortCode do Sólides — troque no seletor do topo.</div>
       ) : (
         <div className="space-y-3">
           {empresas.map(empresaKey => {
