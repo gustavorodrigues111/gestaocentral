@@ -113,6 +113,8 @@ export function PtrpApuracaoTab() {
   const [mostrarComp, setMostrarComp] = useState(false);
   const [acaoBusy, setAcaoBusy] = useState(false);
   const [acaoMsg, setAcaoMsg] = useState("");
+  const [selCorr, setSelCorr] = useState<Set<string>>(new Set());   // dias marcados p/ pedir correção (lote)
+  const [corrModal, setCorrModal] = useState(false);
   const abrirWhatsapp = useAbrirWhatsapp();
   const pessoas = useTodasPessoas();
   // WhatsApp do empregado: Pessoa.whatsapp (por CPF) → fallback Empregado.telefone.
@@ -155,6 +157,8 @@ export function PtrpApuracaoTab() {
     return onSnapshot(query(collection(db, "ptrpBancoHoras"), where("empresaKey", "==", shortCode)),
       s => setBancoMovs(s.docs.map(d => ({ id: d.id, ...d.data() }) as PtrpBancoMov)), () => setBancoMovs([]));
   }, [shortCode]);
+  // Troca de colaborador/mês/empresa → limpa a seleção de correção do lote.
+  useEffect(() => { setSelCorr(new Set()); setCorrModal(false); setAcaoMsg(""); }, [aberto, comp, shortCode]);
 
   const cct = useMemo(() => cctVigenteEm(ccts, shortCode, `${comp}-15`), [ccts, shortCode, comp]);
   const [ano, mes] = comp.split("-").map(Number);
@@ -278,16 +282,31 @@ export function PtrpApuracaoTab() {
     finally { setAcaoBusy(false); }
   }
 
-  // Solicitar correção ao empregado por WhatsApp (linha do DP/Ponto — "empregados"),
-  // listando o que ele precisa ajustar na própria marcação (batida ímpar etc.).
-  function solicitarCorrecao(emp: Empregado, l: Linha) {
-    const probs = l.excecoes.filter(e => EXC_CORRIGIVEL.has(e)).map(e => EXC_LABEL[e] || e);
-    if (!probs.length) return;
+  // Marca/desmarca um dia p/ o pedido de correção em LOTE (qualquer dia serve —
+  // não só os que o sistema aponta; ex.: você sabe que faltou batida num dia par).
+  const toggleCorr = (data: string) => setSelCorr(prev => { const n = new Set(prev); if (n.has(data)) n.delete(data); else n.add(data); return n; });
+
+  // Monta UMA mensagem com todos os dias selecionados. Dia detectado → lista o
+  // problema; dia sem exceção (suspeita sua) → "revisar as marcações". Editável no modal.
+  function montarTextoCorrecao(emp: Empregado, linhas: Linha[]): string {
+    const itens = linhas.slice().sort((a, b) => a.data.localeCompare(b.data)).map(l => {
+      const diaBR = `${l.data.slice(-2)}/${l.data.slice(5, 7)}`;
+      const probs = l.excecoes.filter(e => EXC_CORRIGIVEL.has(e)).map(e => EXC_LABEL[e] || e);
+      const bat = l.bs.filter(b => !b.excluded && !correcaoPendente(b)).map(b => `${hhmm(b.dateIn)}–${hhmm(b.dateOut)}`).join(", ") || "sem batidas";
+      const desc = probs.length ? probs.join("; ") : "revisar as marcações — parece faltar batida";
+      return `• ${diaBR}: ${desc} (registrado: ${bat})`;
+    });
+    const n = linhas.length;
+    return `Olá ${emp.nome.split(" ")[0]}, tudo bem?\n\nRevisando seu registro de ponto, ${n === 1 ? "um dia precisa" : "alguns dias precisam"} de ajuste no aplicativo da Sólides:\n\n${itens.join("\n")}\n\nPor favor, corrija as marcações no app da Sólides. Depois passam pela nossa revisão e aprovação. Qualquer dúvida, é só chamar por aqui. Obrigado! 🙏`;
+  }
+
+  // Abre o WhatsApp (linha do DP/Ponto = papel "empregados") com o texto do lote.
+  function enviarCorrecaoLote(emp: Empregado, texto: string) {
     const tel = (emp.cpf ? whatsPorCpf.get(soDig(emp.cpf)) : "") || soDig((emp as { telefone?: string }).telefone);
-    if (!tel) { setAcaoMsg(`${emp.nome} não tem WhatsApp no cadastro (Pessoa ou Empregado).`); return; }
-    const diaBR = `${l.data.slice(-2)}/${l.data.slice(5, 7)}`;
-    const texto = `Olá ${emp.nome.split(" ")[0]}, tudo bem?\n\nIdentificamos uma pendência no seu registro de ponto do dia ${diaBR} que precisa de ajuste no aplicativo da Sólides:\n\n• ${probs.join("\n• ")}\n\nPor favor, corrija a marcação no app da Sólides. Depois passa pela nossa revisão e aprovação. Qualquer dúvida, é só chamar por aqui. Obrigado! 🙏`;
+    if (!tel) { setAcaoMsg(`${emp.nome} não tem WhatsApp no cadastro (Pessoa ou Empregado).`); setCorrModal(false); return; }
     void abrirWhatsapp(rid, "empregados", tel, emp.nome, texto);
+    setSelCorr(new Set()); setCorrModal(false);
+    setAcaoMsg("✓ Pedido de correção aberto no WhatsApp (linha do DP/Ponto).");
   }
 
   const cpfsComEmpregado = useMemo(() => new Set(empregados.map(e => soDig(e.cpf)).filter(Boolean)), [empregados]);
@@ -373,7 +392,7 @@ export function PtrpApuracaoTab() {
         {!cct && <span className="text-xs text-amber-600 dark:text-amber-400">⚠ Sem CCT — configure em Regras (extras/noturno não calculam).</span>}
       </div>
       <div className="text-[12px] rounded-lg px-3 py-2 mb-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
-        Escolha um colaborador pelo chip. <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ verde</span> = sem exceções · <span className="font-semibold text-amber-700 dark:text-amber-300">● amarelo</span> = tem exceções a tratar · <span className="font-semibold text-gray-400">○ cinza</span> = sem batidas / sem CPF. Previsto vem do cadastro do empregado; prévia — validar contra o Sólides. Na tabela do dia: <span className="text-amber-600 dark:text-amber-400">🟡 tracejado</span> = correção pedida no Sólides ainda não aprovada (não conta) → <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ aprovar</span> / <span className="font-semibold text-rose-600">✗ reprovar</span>; <span className="text-blue-600">💬</span> pede a correção ao empregado por WhatsApp (linha do DP).
+        Escolha um colaborador pelo chip. <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ verde</span> = sem exceções · <span className="font-semibold text-amber-700 dark:text-amber-300">● amarelo</span> = tem exceções a tratar · <span className="font-semibold text-gray-400">○ cinza</span> = sem batidas / sem CPF. Previsto vem do cadastro do empregado; prévia — validar contra o Sólides. Na tabela do dia: <span className="text-amber-600 dark:text-amber-400">🟡 tracejado</span> = correção pedida no Sólides ainda não aprovada (não conta) → <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ aprovar</span> / <span className="font-semibold text-rose-600">✗ reprovar</span>; <span className="text-blue-600">💬</span> marca o dia p/ pedir correção — junta vários numa mensagem só (inclusive dias sem erro que você suspeita), e o botão azul no topo monta o WhatsApp (linha do DP).
       </div>
 
       {/* Comparação de cadastros Sólides × planejamento.app */}
@@ -496,6 +515,15 @@ export function PtrpApuracaoTab() {
               <div className="text-[11px] text-gray-500 shrink-0">trab. {hm(sel.r.totTrab)}{sel.r.totExtra ? ` · extra ${hm(sel.r.totExtra)}` : ""}{sel.r.totNot ? ` · not. ${hm(sel.r.totNot)}` : ""}</div>
             </div>
             {acaoMsg && <div className={`px-3 py-1.5 text-[11.5px] border-b border-gray-100 dark:border-gray-800 ${acaoMsg.startsWith("✓") ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{acaoMsg}</div>}
+            {selCorr.size > 0 && (
+              <div className="px-3 py-2 border-b border-blue-100 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-950/20 flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-[12px] text-blue-800 dark:text-blue-200 font-medium">💬 {selCorr.size} dia(s) selecionado(s) para pedir correção ao empregado</span>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setSelCorr(new Set())} className="text-[11px] px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800">Limpar</button>
+                  <button type="button" onClick={() => setCorrModal(true)} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-blue-500 text-white hover:bg-blue-600">Montar mensagem →</button>
+                </div>
+              </div>
+            )}
             <div className="px-3 py-2 overflow-x-auto">
               {sel.r.linhas.length === 0 ? <div className="text-sm text-gray-400 py-4 text-center">Sem batidas nem dias previstos de trabalho em {comp}.</div> : (
               <table className="w-full text-[12px] min-w-[640px] border-collapse [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top [&_th]:px-2">
@@ -511,6 +539,7 @@ export function PtrpApuracaoTab() {
                     const folga = l.previstoTxt === "folga";
                     const pendUndecided = l.bs.some(b => correcaoPendente(b) && b.punchId && !l.decididos.has(b.punchId));
                     const temCorrigivel = l.excecoes.some(e => EXC_CORRIGIVEL.has(e));
+                    const corrSel = selCorr.has(l.data);
                     return (
                     <tr key={l.data} className={`border-b border-gray-50 dark:border-gray-800/40 ${l.excecoes.includes("falta") ? "bg-rose-50/50 dark:bg-rose-900/10" : idx % 2 ? "bg-gray-50/40 dark:bg-gray-800/20" : ""}`}>
                       <td className="tabular-nums font-medium text-gray-700 dark:text-gray-200">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
@@ -538,7 +567,7 @@ export function PtrpApuracaoTab() {
                             <button type="button" disabled={acaoBusy} onClick={() => void decidirCorrecao(sel.emp, l, "APPROVED")} className="text-[12px] w-6 h-6 rounded border border-emerald-300 dark:border-emerald-800 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40" title="Aprovar correção do empregado (grava na Sólides + trilha no app)">✓</button>
                             <button type="button" disabled={acaoBusy} onClick={() => void decidirCorrecao(sel.emp, l, "REPROVED")} className="text-[12px] w-6 h-6 rounded border border-rose-300 dark:border-rose-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40" title="Reprovar correção do empregado">✗</button>
                           </>}
-                          {temCorrigivel && <button type="button" onClick={() => solicitarCorrecao(sel.emp, l)} className="text-[12px] w-6 h-6 rounded border border-blue-300 dark:border-blue-800 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20" title="Solicitar correção ao empregado por WhatsApp (linha do DP/Ponto)">💬</button>}
+                          <button type="button" onClick={() => toggleCorr(l.data)} className={`text-[12px] w-6 h-6 rounded border ${corrSel ? "bg-blue-500 border-blue-500 text-white" : temCorrigivel ? "border-blue-300 dark:border-blue-800 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20" : "border-gray-300 dark:border-gray-700 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}`} title={corrSel ? "Remover do pedido de correção" : temCorrigivel ? "Selecionar p/ pedir correção (junta vários numa mensagem só)" : "Selecionar este dia p/ pedir correção — mesmo sem erro detectado (ex.: você sabe que faltou batida)"}>💬</button>
                           <button type="button" onClick={() => setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bs })} className="text-[12px] w-6 h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" title="Tratar (incluir/desconsiderar/abonar)">⚙️</button>
                         </div>
                       </td>
@@ -558,7 +587,34 @@ export function PtrpApuracaoTab() {
         </>
       )}
       {ajusteModal && me && <AjusteModal empresaKey={shortCode} emp={ajusteModal.emp} data={ajusteModal.data} bs={ajusteModal.bs} autor={{ id: me.id, nome: me.nome }} onClose={() => setAjusteModal(null)} />}
+      {corrModal && sel && (
+        <CorrecaoLoteModal
+          emp={sel.emp}
+          qtd={selCorr.size}
+          textoInicial={montarTextoCorrecao(sel.emp, sel.r.linhas.filter(l => selCorr.has(l.data)))}
+          onClose={() => setCorrModal(false)}
+          onEnviar={texto => enviarCorrecaoLote(sel.emp, texto)}
+        />
+      )}
     </div>
+  );
+}
+
+// Modal do pedido de correção em LOTE — mostra a mensagem montada (todos os dias
+// selecionados), EDITÁVEL, e envia pela linha do DP/Ponto no WhatsApp interno.
+function CorrecaoLoteModal({ emp, qtd, textoInicial, onClose, onEnviar }: { emp: Empregado; qtd: number; textoInicial: string; onClose: () => void; onEnviar: (texto: string) => void }) {
+  const [texto, setTexto] = useState(textoInicial);
+  return (
+    <Modal title={`Pedir correção · ${emp.nome} · ${qtd} dia(s)`} onClose={onClose} maxWidth="max-w-lg">
+      <div className="space-y-3">
+        <div className="text-[11px] text-gray-500">Revise/edite a mensagem — ela vai pela linha de <strong>Empregados / DP</strong> no WhatsApp. Você pode ajustar o texto (ex.: “faltam 2 batidas nesse dia”).</div>
+        <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={12} className="w-full px-2.5 py-1.5 text-[12.5px] leading-relaxed rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 font-mono" />
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => onEnviar(texto)} disabled={!texto.trim()}>💬 Abrir no WhatsApp</Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
