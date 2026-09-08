@@ -398,6 +398,51 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const espelhoMeta = () => ({ empresaNome: empNome(), empresaCnpj: empCnpj(), cctNome: cct?.cctNome || null, compLabel: labelComp(comp), geradoPor: me?.nome || null });
   const alvosAssinatura = (): AlvoAssinatura[] => colabsFechaveis().map(x => { const cpf = soDig(x.emp.cpf); return { snap: snapshotColab(x), whatsapp: (cpf ? whatsPorCpf.get(cpf) : "") || soDig((x.emp as { telefone?: string }).telefone), email: (cpf ? emailPorCpf.get(cpf) : "") || "" }; });
 
+  // ─── Helpers de render da linha do dia (reusados na tabela desktop e nos cards mobile) ───
+  const flagsLinha = (l: Linha, idx: number) => {
+    const folga = l.previstoTxt === "folga";
+    const pendUndecided = l.bs.some(b => correcaoPendente(b) && b.punchId && !l.decididos.has(b.punchId));
+    const temCorrigivel = l.excecoes.some(e => EXC_CORRIGIVEL.has(e));
+    const inclPunch = new Set(l.ajustesDia.filter(a => a.tipo === "inclusao" && a.punchId).map(a => a.punchId as string));
+    const validMarcs = montarMarcacoes(l).filter(m => !m.desconsiderada && !m.pendente);
+    const marks = validMarcs.reduce((n, m) => n + (m.in ? 1 : 0) + (m.out ? 1 : 0), 0);
+    const incompleta = validMarcs.some(m => (!!m.in) !== (!!m.out));
+    const precisaCorrecao = !l.ehFuturo && (l.excecoes.includes("falta") || incompleta || (marks > 0 && marks % 2 !== 0));
+    const suspeito = !folga && !l.ehFuturo && !incompleta && marks === 2;
+    const rowBg = l.ehFuturo ? "bg-blue-50/70 dark:bg-blue-950/25" : precisaCorrecao ? "bg-rose-100/70 dark:bg-rose-900/25" : suspeito ? "bg-amber-50 dark:bg-amber-950/25" : idx % 2 ? "bg-gray-50/40 dark:bg-gray-800/20" : "";
+    return { folga, pendUndecided, temCorrigivel, inclPunch, incompleta, suspeito, rowBg };
+  };
+  const renderPrevisto = (l: Linha) => (<>
+    {l.statusEscala && <span className={`inline-block mr-1 text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[l.statusEscala].bg} ${STATUS_INFO[l.statusEscala].text}`} title={STATUS_INFO[l.statusEscala].label}>{STATUS_INFO[l.statusEscala].short}</span>}
+    {l.statusEscala ? (l.previstoTxt.includes("–") ? l.previstoTxt : "") : l.previstoTxt}
+    {l.ehFeriado && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">feriado</span>}
+  </>);
+  const renderBatidas = (l: Linha, inclPunch: Set<string>) => l.ehFuturo ? <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-300">futuro</span> : (<>
+    <div className="tabular-nums">{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); const pend = correcaoPendente(b) && !(b.punchId && l.decididos.has(b.punchId)); const tratada = !!(b.punchId && inclPunch.has(b.punchId)); const cls = b.excluded || desc ? "line-through text-gray-400" : pend ? "text-amber-600 dark:text-amber-400 underline decoration-dashed decoration-amber-400" : tratada ? "text-indigo-600 dark:text-indigo-300 underline decoration-dotted decoration-indigo-400" : ""; return <span key={i} className={cls} title={desc ? "desconsiderada" : pend ? `correção ${b.status === "REJECTED" ? "rejeitada" : "pendente"} no Sólides — não entra no oficial` : tratada ? "horário tratado (correção)" : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}{pend ? " 🟡" : ""}{tratada ? " ✎" : ""}</span>; }) : <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
+    {l.ajustesDia.length > 0 && (
+      <div className="mt-1 flex flex-col gap-0.5">
+        {l.ajustesDia.map(a => { const inline = a.tipo === "inclusao" && !!a.punchId && l.bs.some(b => b.punchId === a.punchId); const icon = a.tipo === "inclusao" ? "✎" : a.tipo === "desconsideracao" ? "🚫" : "☂️"; const label = a.motivo?.trim() || (a.tipo === "inclusao" ? "Correção incluída" : a.tipo === "desconsideracao" ? "Batida desconsiderada" : a.tipo); return (
+          <div key={a.id} className="flex items-center gap-x-1 text-[10.5px] text-indigo-700 dark:text-indigo-300">
+            <span>{icon} {a.tipo === "inclusao" && !inline && a.in ? `${a.in}–${a.out} · ` : ""}{label}</span>
+            {a.autor?.nome && <span className="text-indigo-400 dark:text-indigo-500">· por {a.autor.nome}</span>}
+            <button type="button" onClick={() => void cancelarAjuste(a)} className="text-rose-400 hover:text-rose-600 ml-0.5" title={a.solidesDecisao ? "Desfazer nos dois lados (Sólides + app)" : "Cancelar tratamento no app"}>✕</button>
+          </div>
+        ); })}
+      </div>
+    )}
+  </>);
+  const renderExcecoes = (l: Linha, incompleta: boolean, suspeito: boolean) => l.ehFuturo ? <span className="text-blue-500 text-[11px]">a realizar</span> : l.excecoes.length ? <span className="inline-flex flex-wrap items-center gap-1 text-[14px] leading-none">{l.excecoes.map(e => <span key={e} className="cursor-help" title={EXC_LABEL[e] || e}>{EXC_ICON[e] || "⚠️"}</span>)}</span> : incompleta ? <span className="cursor-help text-[14px]" title="Batida sem par (ponto aberto) — precisa corrigir">3️⃣</span> : suspeito ? <span className="cursor-help text-[14px]" title="Só 2 batidas — o padrão é 4 ou 6">✌️</span> : <span className="text-emerald-500 text-[12px]">✓</span>;
+  const renderAcoes = (l: Linha, pendUndecided: boolean, temCorrigivel: boolean) => { const corrSel = selCorr.has(l.data); return (
+    <div className="inline-flex items-center gap-1">
+      {pendUndecided && !travado && <>
+        <button type="button" disabled={acaoBusy} onClick={() => sel && void decidirCorrecao(sel.emp, l, "APPROVED")} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-emerald-300 dark:border-emerald-800 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40" title="Aprovar correção (Sólides + trilha)">✓</button>
+        <button type="button" disabled={acaoBusy} onClick={() => sel && void decidirCorrecao(sel.emp, l, "REPROVED")} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-rose-300 dark:border-rose-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40" title="Reprovar correção">✗</button>
+      </>}
+      <button type="button" onClick={() => toggleCorr(l.data)} className={`text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border ${corrSel ? "bg-blue-500 border-blue-500 text-white" : temCorrigivel ? "border-blue-300 dark:border-blue-800 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20" : "border-gray-300 dark:border-gray-700 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}`} title={corrSel ? "Remover do pedido de correção" : "Selecionar p/ pedir correção"}>💬</button>
+      <button type="button" disabled={travado} onClick={() => sel && setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bs })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title={travado ? "Mês fechado" : "Tratar"}>⚙️</button>
+    </div>
+  ); };
+
   // Encerrar mês: congela a apuração (ptrpApuracoes) + marca o fechamento.
   async function encerrarMes() {
     if (!me) return;
@@ -712,8 +757,30 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                 </div>
               </div>
             )}
-            <div className="px-3 py-2 overflow-x-auto">
-              {sel.r.linhas.length === 0 ? <div className="text-sm text-gray-400 py-4 text-center">Sem batidas nem dias previstos de trabalho em {comp}.</div> : (
+            <div className="px-3 py-2">
+              {sel.r.linhas.length === 0 ? <div className="text-sm text-gray-400 py-4 text-center">Sem batidas nem dias previstos de trabalho em {comp}.</div> : (<>
+
+              {/* MOBILE — card por dia */}
+              <div className="sm:hidden flex flex-col gap-1.5">
+                {sel.r.linhas.map((l, idx) => { const f = flagsLinha(l, idx); return (
+                  <div key={l.data} className={`rounded-lg px-2.5 py-2 ${f.rowBg || "bg-gray-50/40 dark:bg-gray-800/20"}`}>
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0 text-[12.5px] text-gray-600 dark:text-gray-300"><span className="font-semibold tabular-nums text-gray-800 dark:text-gray-100 mr-1.5">{l.data.slice(-2)}/{l.data.slice(5, 7)}</span>{renderPrevisto(l)}</div>
+                      {renderAcoes(l, f.pendUndecided, f.temCorrigivel)}
+                    </div>
+                    <div className="mt-1 text-[12.5px] text-gray-700 dark:text-gray-200">{renderBatidas(l, f.inclPunch)}</div>
+                    <div className="mt-1.5 flex items-center gap-3 text-[11.5px]">
+                      <span className="text-gray-500">Trab. <strong className="text-gray-700 dark:text-gray-200 tabular-nums">{l.trabalhado ? hm(l.trabalhado) : "—"}</strong></span>
+                      {l.extra > 0 && <span className="text-emerald-600 dark:text-emerald-400 tabular-nums">extra {hm(l.extra)}</span>}
+                      {l.noturno > 0 && <span className="text-indigo-500 tabular-nums">not. {hm(l.noturno)}</span>}
+                      <span className="ml-auto">{renderExcecoes(l, f.incompleta, f.suspeito)}</span>
+                    </div>
+                  </div>
+                ); })}
+              </div>
+
+              {/* DESKTOP — tabela */}
+              <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-[12px] min-w-[640px] border-collapse [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top [&_th]:px-2">
                 <colgroup><col className="w-14" /><col className="w-32" /><col /><col className="w-16" /><col className="w-16" /><col className="w-14" /><col className="w-20" /><col className="w-12" /></colgroup>
                 <thead>
@@ -723,76 +790,22 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                   </tr>
                 </thead>
                 <tbody>
-                  {sel.r.linhas.map((l, idx) => {
-                    const folga = l.previstoTxt === "folga";
-                    const pendUndecided = l.bs.some(b => correcaoPendente(b) && b.punchId && !l.decididos.has(b.punchId));
-                    const temCorrigivel = l.excecoes.some(e => EXC_CORRIGIVEL.has(e));
-                    const corrSel = selCorr.has(l.data);
-                    // Batidas cujo horário foi TRATADO (correção incluída) → destaque roxo inline.
-                    const inclPunch = new Set(l.ajustesDia.filter(a => a.tipo === "inclusao" && a.punchId).map(a => a.punchId as string));
-                    // Nº de marcações válidas (cada entrada/saída = 1). Padrão do dia
-                    // completo = 4 ou 6. Ímpar = ponto aberto (corrigir → vermelho);
-                    // exatamente 2 = suspeito (só entrada/saída, sem intervalo → amarelo).
-                    const validMarcs = montarMarcacoes(l).filter(m => !m.desconsiderada && !m.pendente);
-                    const marks = validMarcs.reduce((n, m) => n + (m.in ? 1 : 0) + (m.out ? 1 : 0), 0);
-                    // Batida sem par (entrada sem saída ou vice-versa) = ponto aberto → corrigir.
-                    const incompleta = validMarcs.some(m => (!!m.in) !== (!!m.out));
-                    const precisaCorrecao = !l.ehFuturo && (l.excecoes.includes("falta") || incompleta || (marks > 0 && marks % 2 !== 0));
-                    // Suspeito = 1 par completo só (2 marcações), quando o padrão é 4 ou 6. Vale inclusive em feriado trabalhado.
-                    const suspeito = !folga && !l.ehFuturo && !incompleta && marks === 2;
-                    const rowBg = l.ehFuturo ? "bg-blue-50/70 dark:bg-blue-950/25"
-                      : precisaCorrecao ? "bg-rose-100/70 dark:bg-rose-900/25"
-                      : suspeito ? "bg-amber-50 dark:bg-amber-950/25"
-                      : idx % 2 ? "bg-gray-50/40 dark:bg-gray-800/20" : "";
-                    return (
-                    <tr key={l.data} className={`border-b border-gray-50 dark:border-gray-800/40 ${rowBg}`}>
+                  {sel.r.linhas.map((l, idx) => { const f = flagsLinha(l, idx); return (
+                    <tr key={l.data} className={`border-b border-gray-50 dark:border-gray-800/40 ${f.rowBg}`}>
                       <td className="tabular-nums font-medium text-gray-700 dark:text-gray-200">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
-                      <td className={`whitespace-nowrap ${folga ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}`}>
-                        {l.statusEscala && <span className={`inline-block mr-1 text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[l.statusEscala].bg} ${STATUS_INFO[l.statusEscala].text}`} title={STATUS_INFO[l.statusEscala].label}>{STATUS_INFO[l.statusEscala].short}</span>}
-                        {l.statusEscala ? (l.previstoTxt.includes("–") ? l.previstoTxt : "") : l.previstoTxt}
-                        {l.ehFeriado && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">feriado</span>}
-                      </td>
-                      <td className="text-gray-700 dark:text-gray-200">
-                        {l.ehFuturo ? <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-300">futuro</span> : <>
-                        <div className="tabular-nums">{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); const pend = correcaoPendente(b) && !(b.punchId && l.decididos.has(b.punchId)); const tratada = !!(b.punchId && inclPunch.has(b.punchId)); const cls = b.excluded || desc ? "line-through text-gray-400" : pend ? "text-amber-600 dark:text-amber-400 underline decoration-dashed decoration-amber-400" : tratada ? "text-indigo-600 dark:text-indigo-300 underline decoration-dotted decoration-indigo-400" : ""; return <span key={i} className={cls} title={desc ? "desconsiderada" : pend ? `correção ${b.status === "REJECTED" ? "rejeitada" : "pendente"} no Sólides — não entra no oficial` : tratada ? "horário tratado (correção)" : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}{pend ? " 🟡" : ""}{tratada ? " ✎" : ""}</span>; }) : <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
-                        {l.ajustesDia.length > 0 && (
-                          <div className="mt-1 flex flex-col gap-0.5">
-                            {l.ajustesDia.map(a => {
-                              const inline = a.tipo === "inclusao" && !!a.punchId && l.bs.some(b => b.punchId === a.punchId);
-                              const icon = a.tipo === "inclusao" ? "✎" : a.tipo === "desconsideracao" ? "🚫" : "☂️";
-                              // Inclusão com batida inline (correção aprovada) não repete o horário; inclusão manual mostra.
-                              const label = a.motivo?.trim() || (a.tipo === "inclusao" ? "Correção incluída" : a.tipo === "desconsideracao" ? "Batida desconsiderada" : a.tipo);
-                              return (
-                                <div key={a.id} className="flex items-center gap-x-1 whitespace-nowrap text-[10.5px] text-indigo-700 dark:text-indigo-300">
-                                  <span>{icon} {a.tipo === "inclusao" && !inline && a.in ? `${a.in}–${a.out} · ` : ""}{label}</span>
-                                  {a.autor?.nome && <span className="text-indigo-400 dark:text-indigo-500">· por {a.autor.nome}</span>}
-                                  <button type="button" onClick={() => void cancelarAjuste(a)} className="text-rose-400 hover:text-rose-600 ml-0.5" title={a.solidesDecisao ? "Desfazer a decisão nos dois lados: reverte para pendente na Sólides e cancela o tratamento no app (fica na trilha)" : "Cancelar este tratamento no app (fica na trilha)"}>✕</button>
-                                </div>
-                              );
-                            })}
-                          </div>
-                        )}
-                        </>}
-                      </td>
+                      <td className={`whitespace-nowrap ${f.folga ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}`}>{renderPrevisto(l)}</td>
+                      <td className="text-gray-700 dark:text-gray-200">{renderBatidas(l, f.inclPunch)}</td>
                       <td className="text-right tabular-nums font-medium">{l.trabalhado ? hm(l.trabalhado) : <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
                       <td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{l.extra ? hm(l.extra) : ""}</td>
                       <td className="text-right tabular-nums text-indigo-500">{l.noturno ? hm(l.noturno) : ""}</td>
-                      <td>{l.ehFuturo ? <span className="text-blue-500 text-[11px]">a realizar</span> : l.excecoes.length ? <span className="inline-flex flex-wrap items-center gap-1 text-[14px] leading-none">{l.excecoes.map(e => <span key={e} className="cursor-help" title={EXC_LABEL[e] || e}>{EXC_ICON[e] || "⚠️"}</span>)}</span> : incompleta ? <span className="cursor-help text-[14px]" title="Batida sem par (ponto aberto) — precisa corrigir">3️⃣</span> : suspeito ? <span className="cursor-help text-[14px]" title="Só 2 batidas — o padrão é 4 ou 6 (falta marcar o intervalo?)">✌️</span> : <span className="text-emerald-500 text-[12px]">✓</span>}</td>
-                      <td className="text-right whitespace-nowrap">
-                        <div className="inline-flex items-center gap-1">
-                          {pendUndecided && !travado && <>
-                            <button type="button" disabled={acaoBusy} onClick={() => void decidirCorrecao(sel.emp, l, "APPROVED")} className="text-[12px] w-6 h-6 rounded border border-emerald-300 dark:border-emerald-800 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40" title="Aprovar correção do empregado (grava na Sólides + trilha no app)">✓</button>
-                            <button type="button" disabled={acaoBusy} onClick={() => void decidirCorrecao(sel.emp, l, "REPROVED")} className="text-[12px] w-6 h-6 rounded border border-rose-300 dark:border-rose-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40" title="Reprovar correção do empregado">✗</button>
-                          </>}
-                          <button type="button" onClick={() => toggleCorr(l.data)} className={`text-[12px] w-6 h-6 rounded border ${corrSel ? "bg-blue-500 border-blue-500 text-white" : temCorrigivel ? "border-blue-300 dark:border-blue-800 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20" : "border-gray-300 dark:border-gray-700 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}`} title={corrSel ? "Remover do pedido de correção" : temCorrigivel ? "Selecionar p/ pedir correção (junta vários numa mensagem só)" : "Selecionar este dia p/ pedir correção — mesmo sem erro detectado (ex.: você sabe que faltou batida)"}>💬</button>
-                          <button type="button" disabled={travado} onClick={() => setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bs })} className="text-[12px] w-6 h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title={travado ? "Mês fechado — reabra para tratar" : "Tratar (incluir/desconsiderar/abonar)"}>⚙️</button>
-                        </div>
-                      </td>
+                      <td>{renderExcecoes(l, f.incompleta, f.suspeito)}</td>
+                      <td className="text-right whitespace-nowrap">{renderAcoes(l, f.pendUndecided, f.temCorrigivel)}</td>
                     </tr>
-                    );
-                  })}
+                  ); })}
                 </tbody>
-              </table>)}
+              </table>
+              </div>
+              </>)}
             </div>
           </div>
         )}
