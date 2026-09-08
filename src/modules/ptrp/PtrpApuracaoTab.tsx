@@ -216,8 +216,8 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       if (data > hojeStr && bs.length === 0 && ajustesDia.length === 0) continue;
       const statusEscala = escala ? (escala.real?.[emp.id]?.[data] ?? escala.prevista?.[emp.id]?.[data]) : undefined;
       const prev = turnoPrevisto(emp, data, statusEscala);
-      if (prev.kind === "folga" && bs.length === 0 && ajustesDia.length === 0) continue;
-      if (prev.kind === "implicito" && bs.length === 0 && ajustesDia.length === 0) continue;
+      // Mostra TODOS os dias do mês (inclusive folgas e dias sem batida) — só os
+      // futuros ficam ocultos (acima). Folga sem batida entra como linha "folga".
       // Desconsideração: remove a batida referida ANTES de apurar (imutável — só ignora).
       const descPunch = new Set(ajustesDia.filter(a => a.tipo === "desconsideracao" && a.punchId).map(a => a.punchId as string));
       // Batidas pendentes já DECIDIDAS (aprovada→inclusão / reprovada→desconsideração
