@@ -514,7 +514,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     } catch (e) { setAcaoMsg("Falha ao desfazer: " + (e instanceof Error ? e.message : "erro")); }
   }
 
-  if (!me?.isMaster) return <div className="p-8 text-center text-gray-500">🔒 Só o master.</div>;
+  // Acesso é controlado pelas PERMISSÕES por aba (Perfis de Acesso), não mais só master.
 
   if (!shortCode) return <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">O restaurante ativo (<strong>{activeRestaurant?.nome || "—"}</strong>) não tem <strong>shortCode</strong> do Sólides configurado. Troque de restaurante no seletor do topo, ou configure o shortCode.</div>;
 

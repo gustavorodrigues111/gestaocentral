@@ -219,7 +219,7 @@ service cloud.firestore {
     match /ptrpApuracoes/{id}   { allow read, write: if authed(); }   // materializado (recalculável)
     match /ptrpFechamentos/{id} { allow read, write: if authed(); }
     match /ptrpBancoHoras/{id}  { allow read, write: if authed(); }
-    match /parametrosCCT/{id}   { allow read: if authed(); allow write: if isMaster(); }
+    match /parametrosCCT/{id}   { allow read, write: if authed(); }   // acesso governado pela permissão "ponto/regras" na UI
     match /agenteMensagens/{id} { allow read, write: if authed(); }
     match /agenteLogs/{id}    { allow read: if authed(); allow create: if authed(); allow update, delete: if false; }
     match /ftCardapio/{id}             { allow read, write: if authed(); }

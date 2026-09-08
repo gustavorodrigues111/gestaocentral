@@ -6,7 +6,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
-import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import type { ParametrosCCT } from "../../core/ptrp/tipos";
 import { PtrpCctEditor } from "./PtrpCctEditor";
@@ -14,7 +13,6 @@ import { PtrpCctEditor } from "./PtrpCctEditor";
 const fmtD = (ymd?: string) => ymd ? ymd.split("-").reverse().join("/") : "—";
 
 export function PtrpCctTab() {
-  const { pessoa: me } = useAuth();
   const [empresas, setEmpresas] = useState<string[]>([]);
   const [ccts, setCcts] = useState<ParametrosCCT[]>([]);
   const [editando, setEditando] = useState<{ empresaKey: string; inicial: ParametrosCCT | null } | null>(null);
@@ -31,7 +29,7 @@ export function PtrpCctTab() {
     return m;
   }, [ccts]);
 
-  if (!me?.isMaster) return <div className="p-8 text-center text-gray-500">🔒 Só o master.</div>;
+  // Acesso controlado pela permissão "regras" (Perfis de Acesso), não mais só master.
 
   return (
     <div>
