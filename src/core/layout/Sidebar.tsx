@@ -128,6 +128,8 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   }
 
   const areas: ModuleArea[] = ["planejamento", "ops", "dp", "fin", "inst"];
+  // Ponto (PTRP) — rota top-level /ptrp, exibida no grupo Pessoas (dp).
+  const podeVerPtrp = !!pessoa?.isMaster || canAcaoRid("ponto", "conferir") || canAcaoRid("ponto", "banco") || canAcaoRid("ponto", "sincronizar") || canAcaoRid("ponto", "regras");
 
   // Seção Master (Tarefas + Planner): ferramentas pessoais do dono.
   // Diferente das demais áreas, RESPEITA modulosAtivos MESMO pro master —
@@ -271,6 +273,14 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                       </div>
                     );
                   })}
+                  {area === "dp" && podeVerPtrp && (
+                    <>
+                      <div className="px-3 pt-2 pb-0.5 text-[9px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Ponto & Jornada</div>
+                      <NavLink to="/ptrp" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                        <span>⏱️</span><span className="flex-1 truncate">Ponto (PTRP)</span>
+                      </NavLink>
+                    </>
+                  )}
                   {area === "inst" && pessoa?.isMaster && (
                     <>
                       <NavLink to="/arquitetura" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
@@ -283,10 +293,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                       </NavLink>
                       <NavLink to="/propostas" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
                         <span>📄</span><span className="flex-1 truncate">Propostas</span>
-                        <span className="text-[9px] text-gray-400">master</span>
-                      </NavLink>
-                      <NavLink to="/ptrp" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-                        <span>⏱️</span><span className="flex-1 truncate">Ponto (PTRP)</span>
                         <span className="text-[9px] text-gray-400">master</span>
                       </NavLink>
                       {masterModuloLigado("agentes") && (
@@ -315,13 +321,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             );
           })}
 
-          {/* Ponto (PTRP) — link p/ NÃO-master com permissão (o master vê no bloco
-              institucional acima). É rota top-level, não entra na lista automática. */}
-          {!pessoa?.isMaster && (canAcaoRid("ponto", "conferir") || canAcaoRid("ponto", "sincronizar") || canAcaoRid("ponto", "regras")) && (
-            <NavLink to="/ptrp" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-              <span>⏱️</span><span className="flex-1 truncate">Ponto (PTRP)</span>
-            </NavLink>
-          )}
 
           {/* Seção Master — Tarefas + Planner. Respeita modulosAtivos mesmo
               pro master (ligável/desligável nas Configurações). */}
