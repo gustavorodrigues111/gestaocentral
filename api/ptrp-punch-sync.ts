@@ -118,7 +118,7 @@ async function gravarBatidas(empresaKey: string, batidas: Punch[]): Promise<numb
 }
 
 async function sincronizarEmpresa(empresaKey: string, token: string, desdeOverride?: string, ateOverride?: string): Promise<Record<string, unknown>> {
-  const estado = await firestoreLer("ptrpSyncState", empresaKey) as { cursor?: string } | null;
+  const estado = await firestoreLer("ptrpSyncState", empresaKey) as { cursor?: string; primeiroDia?: string } | null;
   const hoje = hojeBRT();
   // Sem cursor → backfill inicial. Com cursor → janela [cursor-overlap, cursor+step].
   const baseDesde = desdeOverride || (estado?.cursor ? somaDias(estado.cursor, -OVERLAP_DIAS) : somaDias(hoje, -BACKFILL_DIAS));
@@ -131,8 +131,11 @@ async function sincronizarEmpresa(empresaKey: string, token: string, desdeOverri
   const criadas = await gravarBatidas(empresaKey, batidas);
 
   const novoCursor = ate;
+  // Menor data já sincronizada (1ª batida coberta ever) — pra a UI mostrar desde quando há dados.
+  const primeiroDia = estado?.primeiroDia ? minYmd(estado.primeiroDia, desde) : desde;
   await firestoreAtualizar("ptrpSyncState", empresaKey, {
     cursor: novoCursor,
+    primeiroDia,
     ultimaSync: new Date().toISOString(),
     ok: true,
     erro: null,

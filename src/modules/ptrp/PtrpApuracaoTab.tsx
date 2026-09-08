@@ -20,6 +20,7 @@ import type { ParametrosCCT, PtrpTurno, PtrpAjuste, PtrpAjusteTipo } from "../..
 import { cctVigenteEm } from "../../core/ptrp/tipos";
 import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horarios";
 import { apurarDia, minutoDoDiaBRT, hhmmToMin, type BatidaBloco, type AjusteDia } from "../../core/ptrp/apuracao";
+import { feriadosDoAno } from "../../core/ptrp/feriados";
 import { fetchRoster } from "../../core/ponto/solidesPontoClient";
 import type { PontoColaborador } from "../../core/ponto/analise";
 import { nomeMes } from "../../core/utils/date";
@@ -101,6 +102,7 @@ export function PtrpApuracaoTab() {
   const [ano, mes] = comp.split("-").map(Number);
   const diasDoMes = new Date(ano, mes, 0).getDate();
   const mesesOpcoes = useMemo(() => { const out: string[] = []; let c = compAtual(); for (let i = 0; i < 24; i++) { out.push(c); c = addMes(c, -1); } return out; }, []);
+  const feriadosSet = useMemo(() => feriadosDoAno(ano, cct), [ano, cct]);
 
   const cargoPorId = useMemo(() => Object.fromEntries(cargos.map(c => [c.id, c])), [cargos]);
   const areaDoEmp = (e: Empregado) => (cargoPorId[e.cargoId]?.area) || "";
@@ -124,7 +126,7 @@ export function PtrpApuracaoTab() {
     return m;
   }, [ajustes]);
 
-  type Linha = { data: string; bs: BatidaDoc[]; descPunch: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; trabalhado: number; extra: number; noturno: number; excecoes: string[] };
+  type Linha = { data: string; bs: BatidaDoc[]; descPunch: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; trabalhado: number; extra: number; noturno: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean };
   function apurarColab(emp: Empregado) {
     const cpf = soDig(emp.cpf);
     const dias = batidasPorCpf[cpf] || {};
@@ -147,17 +149,31 @@ export function PtrpApuracaoTab() {
         else if (["abono", "atestado", "folga", "ferias", "afastamento"].includes(a.tipo)) ajMotor.push({ tipo: a.tipo as "abono", minutos: a.minutos || undefined });
       }
       const ehDomingo = new Date(data + "T12:00:00").getDay() === 0;
+      const ehFeriado = feriadosSet.has(data);
       let trabalhado = 0, extra = 0, noturno = 0, excecoes: string[] = [], previstoTxt = "—";
       if (prev.kind === "trabalho" && prev.turno) previstoTxt = prev.turno.janelas.map(j => `${j.in}–${j.out}`).join(" ");
       else if (prev.kind === "folga") previstoTxt = "folga";
       else previstoTxt = "sem cadastro";
       if (cct && prev.kind !== "implicito") {
-        const ap = apurarDia({ data, blocos, turno: prev.turno, cct, ehDomingo, ajustes: ajMotor });
+        const ap = apurarDia({ data, blocos, turno: prev.turno, cct, ehDomingo, ehFeriado, ajustes: ajMotor });
         trabalhado = ap.minutosTrabalhados; extra = ap.minutosExtras; noturno = ap.noturnoMin; excecoes = ap.excecoes;
       } else {
         trabalhado = blocos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
       }
-      linhas.push({ data, bs, descPunch, ajustesDia, previstoTxt, trabalhado, extra, noturno, excecoes });
+      // Entrada/saída reais (ms) do dia — pra checar interjornada entre dias.
+      const ins = blocos.map(b => b.dateIn).filter((x): x is number => typeof x === "number");
+      const outs = blocos.map(b => b.dateOut).filter((x): x is number => typeof x === "number");
+      const primeiraMs = ins.length ? Math.min(...ins) : null;
+      const ultimaMs = outs.length ? Math.max(...outs) : null;
+      linhas.push({ data, bs, descPunch, ajustesDia, previstoTxt, trabalhado, extra, noturno, excecoes, primeiraMs, ultimaMs, ehFeriado });
+    }
+    // Interjornada: descanso entre a última saída de um dia e a 1ª entrada do dia
+    // seguinte (calendário) < mínimo da CCT → exceção no dia seguinte.
+    const minInter = (cct?.interjornadaMinHoras || 11) * 3_600_000;
+    for (let i = 1; i < linhas.length; i++) {
+      const ant = linhas[i - 1], atu = linhas[i];
+      const consecutivo = (Date.parse(atu.data) - Date.parse(ant.data)) === 86_400_000;
+      if (consecutivo && ant.ultimaMs != null && atu.primeiraMs != null && (atu.primeiraMs - ant.ultimaMs) < minInter && !atu.excecoes.includes("interjornada")) atu.excecoes.push("interjornada");
     }
     return { linhas, temCpf: !!cpf, totTrab: linhas.reduce((s, l) => s + l.trabalhado, 0), totExtra: linhas.reduce((s, l) => s + l.extra, 0), totNot: linhas.reduce((s, l) => s + l.noturno, 0), exc: linhas.reduce((s, l) => s + l.excecoes.length, 0) };
   }
@@ -304,7 +320,7 @@ export function PtrpApuracaoTab() {
                   {sel.r.linhas.map(l => (
                     <tr key={l.data} className={`border-t border-gray-50 dark:border-gray-800/50 ${l.excecoes.includes("falta") ? "bg-rose-50/40 dark:bg-rose-900/10" : ""}`}>
                       <td className="py-1 tabular-nums text-gray-600 dark:text-gray-300 align-top">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
-                      <td className="text-gray-500 align-top">{l.previstoTxt}</td>
+                      <td className="text-gray-500 align-top">{l.previstoTxt}{l.ehFeriado && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">feriado</span>}</td>
                       <td className="text-gray-700 dark:text-gray-200 align-top">
                         <div>{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); return <span key={i} className={b.excluded || desc ? "line-through text-gray-400" : ""} title={desc ? "desconsiderada" : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}</span>; }) : <span className="text-gray-400">—</span>}</div>
                         {l.ajustesDia.map(a => (

@@ -23,6 +23,7 @@ type SyncState = {
   ok?: boolean;
   erro?: string | null;
   ultimaJanela?: { desde?: string; ate?: string };
+  primeiroDia?: string;
   lidasUltima?: number;
   criadasUltima?: number;
   atrasado?: boolean;
@@ -147,6 +148,7 @@ export function PtrpSyncPage() {
                       : <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500 text-white">em dia</span>}
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-y-1 text-[12.5px]">
+                  <span className="text-gray-500">Sincronizado desde</span><span className="text-right tabular-nums">{fmtD(e.primeiroDia)}</span>
                   <span className="text-gray-500">Cursor (até)</span><span className="text-right font-medium tabular-nums">{fmtD(e.cursor)}</span>
                   <span className="text-gray-500">Última sync</span><span className="text-right">{fmtDT(e.ultimaSync)} <span className="text-gray-400">{desde(e.ultimaSync)}</span></span>
                   <span className="text-gray-500">Última janela</span><span className="text-right tabular-nums">{fmtD(e.ultimaJanela?.desde)}–{fmtD(e.ultimaJanela?.ate)}</span>
