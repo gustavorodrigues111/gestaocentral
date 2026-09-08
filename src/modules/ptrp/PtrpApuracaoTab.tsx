@@ -14,7 +14,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
-import type { Empregado, HorarioDia, Cargo } from "../../core/types";
+import type { Empregado, HorarioDia, Cargo, EscalaMes } from "../../core/types";
 import { empregadoBatePonto } from "../../core/types";
 import type { ParametrosCCT, PtrpTurno, PtrpAjuste, PtrpAjusteTipo } from "../../core/ptrp/tipos";
 import { cctVigenteEm } from "../../core/ptrp/tipos";
@@ -36,19 +36,31 @@ const hhmm = (ms?: number | null) => { if (ms == null) return "—"; const t = m
 const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
 const EXC_LABEL: Record<string, string> = { sem_batida: "sem batida", falta: "falta", fora_escala: "fora de escala", batida_impar: "batida ímpar", atraso: "atraso", intervalo_curto: "intervalo curto", jornada_longa: "jornada > limite", interjornada: "interjornada < mín." };
 
-// Previsto do dia a partir do cadastro do empregado (workSchedules). null = folga.
-function turnoPrevisto(emp: Empregado, date: string): { kind: "trabalho" | "folga" | "implicito"; turno: PtrpTurno | null } {
+const FOLGA_TIPOS = new Set<string>(["folga", "ferias", "falta_j", "falta_i", "afastamento"]);
+const TRAB_TIPOS = new Set<string>(["trabalho", "comp_trab", "freela", "comp"]);
+
+// Previsto do dia: HORÁRIO vem do vínculo (workSchedules → dia da semana). O
+// STATUS do dia (folga × trabalho) é SOBREPOSTO pela ESCALA DO MÊS quando houver
+// (alterações pontuais: folga trocada, dia mexido). statusEscala = célula da
+// escala praticada/prevista daquele dia (ScheduleStatus).
+function turnoPrevisto(emp: Empregado, date: string, statusEscala?: string): { kind: "trabalho" | "folga" | "implicito"; turno: PtrpTurno | null } {
   const ws = getActiveWorkSchedule(emp.workSchedules, date);
-  if (!ws) return { kind: "implicito", turno: null };
-  const days = getEffectiveDays(ws, date) as Record<number, HorarioDia> | null;
-  if (!days) return { kind: "implicito", turno: null };
+  const days = ws ? (getEffectiveDays(ws, date) as Record<number, HorarioDia> | null) : null;
   const dow = new Date(date + "T12:00:00").getDay();
-  const hd = days[dow];
-  if (!hd || !hd.active || !hd.in || !hd.out) return { kind: "folga", turno: null };
-  const partido = !!(hd.intervalIn && hd.intervalOut);
-  const janelas = partido ? [{ in: hd.in, out: hd.intervalIn! }, { in: hd.intervalOut!, out: hd.out }] : [{ in: hd.in, out: hd.out }];
-  const turno: PtrpTurno = { id: "prev", empresaKey: "", nome: "previsto", janelas, intervaloMin: partido ? 0 : (hd.break || 0), toleranciaEntradaMin: 5, adicionalNoturno: false };
-  return { kind: "trabalho", turno };
+  const hd = days ? days[dow] : null;
+  const hdAtivo = !!(hd && hd.active && hd.in && hd.out);
+  const turnoDoHd = (): PtrpTurno => {
+    const partido = !!(hd!.intervalIn && hd!.intervalOut);
+    const janelas = partido ? [{ in: hd!.in!, out: hd!.intervalIn! }, { in: hd!.intervalOut!, out: hd!.out! }] : [{ in: hd!.in!, out: hd!.out! }];
+    return { id: "prev", empresaKey: "", nome: "previsto", janelas, intervaloMin: partido ? 0 : (hd!.break || 0), toleranciaEntradaMin: 5, adicionalNoturno: false };
+  };
+  // Escala do mês manda no STATUS do dia:
+  if (statusEscala && FOLGA_TIPOS.has(statusEscala)) return { kind: "folga", turno: null };
+  if (statusEscala && TRAB_TIPOS.has(statusEscala)) return hdAtivo ? { kind: "trabalho", turno: turnoDoHd() } : { kind: "implicito", turno: null };
+  // Sem escala do mês → deriva só do vínculo (folga/trabalho pelo dia da semana).
+  if (!ws || !days) return { kind: "implicito", turno: null };
+  if (!hdAtivo) return { kind: "folga", turno: null };
+  return { kind: "trabalho", turno: turnoDoHd() };
 }
 
 export function PtrpApuracaoTab() {
@@ -64,6 +76,7 @@ export function PtrpApuracaoTab() {
   const [ajustes, setAjustes] = useState<PtrpAjuste[]>([]);
   const [ajusteModal, setAjusteModal] = useState<{ emp: Empregado; data: string; bs: BatidaDoc[] } | null>(null);
   const [ccts, setCcts] = useState<ParametrosCCT[]>([]);
+  const [escala, setEscala] = useState<EscalaMes | null>(null);
   const [aberto, setAberto] = useState<string | null>(null);
   const [roster, setRoster] = useState<PontoColaborador[] | null>(null);
   const [carregandoRoster, setCarregandoRoster] = useState(false);
@@ -91,6 +104,11 @@ export function PtrpApuracaoTab() {
     const q = query(collection(db, "ptrpBatidas"), where("empresaKey", "==", shortCode), where("date", ">=", `${comp}-01`), where("date", "<=", `${comp}-99`));
     return onSnapshot(q, s => setBatidas(s.docs.map(d => ({ id: d.id, ...d.data() }) as BatidaDoc)), () => setBatidas([]));
   }, [shortCode, comp]);
+  useEffect(() => {
+    // Escala do mês (prevista/praticada) — sobrepõe o status do dia (folga trocada etc.).
+    if (!rid || !comp) { setEscala(null); return; }
+    return onSnapshot(doc(db, "escalas", `${rid}_${comp}`), d => setEscala(d.exists() ? ({ id: d.id, ...d.data() } as EscalaMes) : null), () => setEscala(null));
+  }, [rid, comp]);
   useEffect(() => {
     if (!shortCode) { setAjustes([]); return; }
     // Ajustes são poucos → filtra por empresa e recorta o mês no cliente (sem índice).
@@ -136,7 +154,8 @@ export function PtrpApuracaoTab() {
       const data = `${comp}-${String(d).padStart(2, "0")}`;
       const bs = dias[data] || [];
       const ajustesDia = ajDias[data] || [];
-      const prev = turnoPrevisto(emp, data);
+      const statusEscala = escala ? (escala.real?.[emp.id]?.[data] ?? escala.prevista?.[emp.id]?.[data]) : undefined;
+      const prev = turnoPrevisto(emp, data, statusEscala);
       if (prev.kind === "folga" && bs.length === 0 && ajustesDia.length === 0) continue;
       if (prev.kind === "implicito" && bs.length === 0 && ajustesDia.length === 0) continue;
       // Desconsideração: remove a batida referida ANTES de apurar (imutável — só ignora).
@@ -203,7 +222,7 @@ export function PtrpApuracaoTab() {
   // Apura todo mundo e agrupa por ÁREA (colunas), como o Fechamento de ponto.
   const resultados = useMemo(() => empVis.map(emp => ({ emp, area: areaDoEmp(emp) || "Sem área", r: apurarColab(emp) })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [empVis, batidasPorCpf, ajustesPorCpf, cct, comp, cargoPorId]);
+    [empVis, batidasPorCpf, ajustesPorCpf, escala, feriadosSet, cct, comp, cargoPorId]);
   const porArea = useMemo(() => {
     const m = new Map<string, typeof resultados>();
     for (const x of resultados) { const a = m.get(x.area) || []; a.push(x); m.set(x.area, a); }
@@ -314,29 +333,38 @@ export function PtrpApuracaoTab() {
             </div>
             <div className="px-3 py-2 overflow-x-auto">
               {sel.r.linhas.length === 0 ? <div className="text-sm text-gray-400 py-4 text-center">Sem batidas nem dias previstos de trabalho em {comp}.</div> : (
-              <table className="w-full text-[12px] min-w-[620px]">
-                <thead><tr className="text-gray-400 text-left"><th className="py-1 font-medium">Dia</th><th className="font-medium">Previsto</th><th className="font-medium">Batidas / tratamento</th><th className="font-medium text-right">Trab.</th><th className="font-medium text-right">Extra</th><th className="font-medium text-right">Not.</th><th className="font-medium">Exceções</th><th className="font-medium text-right">Ação</th></tr></thead>
+              <table className="w-full text-[12px] min-w-[640px] border-collapse [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top [&_th]:px-2">
+                <colgroup><col className="w-14" /><col className="w-32" /><col /><col className="w-16" /><col className="w-16" /><col className="w-14" /><col className="w-44" /><col className="w-12" /></colgroup>
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wide text-gray-400 text-left border-b border-gray-200 dark:border-gray-800">
+                    <th className="py-1.5 font-semibold">Dia</th><th className="font-semibold">Previsto</th><th className="font-semibold">Batidas / tratamento</th>
+                    <th className="font-semibold text-right">Trab.</th><th className="font-semibold text-right">Extra</th><th className="font-semibold text-right">Not.</th><th className="font-semibold">Exceções</th><th className="font-semibold text-right">Ação</th>
+                  </tr>
+                </thead>
                 <tbody>
-                  {sel.r.linhas.map(l => (
-                    <tr key={l.data} className={`border-t border-gray-50 dark:border-gray-800/50 ${l.excecoes.includes("falta") ? "bg-rose-50/40 dark:bg-rose-900/10" : ""}`}>
-                      <td className="py-1 tabular-nums text-gray-600 dark:text-gray-300 align-top">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
-                      <td className="text-gray-500 align-top">{l.previstoTxt}{l.ehFeriado && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">feriado</span>}</td>
-                      <td className="text-gray-700 dark:text-gray-200 align-top">
-                        <div>{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); return <span key={i} className={b.excluded || desc ? "line-through text-gray-400" : ""} title={desc ? "desconsiderada" : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}</span>; }) : <span className="text-gray-400">—</span>}</div>
+                  {sel.r.linhas.map((l, idx) => {
+                    const folga = l.previstoTxt === "folga";
+                    return (
+                    <tr key={l.data} className={`border-b border-gray-50 dark:border-gray-800/40 ${l.excecoes.includes("falta") ? "bg-rose-50/50 dark:bg-rose-900/10" : idx % 2 ? "bg-gray-50/40 dark:bg-gray-800/20" : ""}`}>
+                      <td className="tabular-nums font-medium text-gray-700 dark:text-gray-200">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
+                      <td className={folga ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}>{l.previstoTxt}{l.ehFeriado && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">feriado</span>}</td>
+                      <td className="text-gray-700 dark:text-gray-200">
+                        <div className="tabular-nums">{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); return <span key={i} className={b.excluded || desc ? "line-through text-gray-400" : ""} title={desc ? "desconsiderada" : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}</span>; }) : <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
                         {l.ajustesDia.map(a => (
-                          <span key={a.id} className="inline-flex items-center gap-1 mt-0.5 mr-1 text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300">
+                          <span key={a.id} className="inline-flex items-center gap-1 mt-1 mr-1 text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300">
                             {a.tipo === "inclusao" ? `➕ ${a.in}–${a.out}` : a.tipo === "desconsideracao" ? "🚫 desconsid." : `☂️ ${a.tipo}`}{a.motivo ? ` · ${a.motivo}` : ""}
                             <button type="button" onClick={() => void cancelarAjuste(a)} className="text-rose-500 hover:text-rose-600" title="Cancelar tratamento">✕</button>
                           </span>
                         ))}
                       </td>
-                      <td className="text-right tabular-nums align-top">{hm(l.trabalhado)}</td>
-                      <td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400 align-top">{l.extra ? hm(l.extra) : ""}</td>
-                      <td className="text-right tabular-nums text-indigo-500 align-top">{l.noturno ? hm(l.noturno) : ""}</td>
-                      <td className="align-top">{l.excecoes.map(e => <span key={e} className="inline-block mr-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{EXC_LABEL[e] || e}</span>)}</td>
-                      <td className="text-right align-top"><button type="button" onClick={() => setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bs })} className="text-[11px] px-1.5 py-0.5 rounded border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800" title="Tratar (incluir/desconsiderar/abonar)">⚙️</button></td>
+                      <td className="text-right tabular-nums font-medium">{l.trabalhado ? hm(l.trabalhado) : <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
+                      <td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{l.extra ? hm(l.extra) : ""}</td>
+                      <td className="text-right tabular-nums text-indigo-500">{l.noturno ? hm(l.noturno) : ""}</td>
+                      <td>{l.excecoes.length ? l.excecoes.map(e => <span key={e} className="inline-block mb-0.5 mr-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{EXC_LABEL[e] || e}</span>) : <span className="text-emerald-500 text-[11px]">✓</span>}</td>
+                      <td className="text-right"><button type="button" onClick={() => setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bs })} className="text-[12px] w-6 h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" title="Tratar (incluir/desconsiderar/abonar)">⚙️</button></td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>)}
             </div>
