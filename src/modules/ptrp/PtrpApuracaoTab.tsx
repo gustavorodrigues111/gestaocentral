@@ -21,7 +21,9 @@ import { cctVigenteEm } from "../../core/ptrp/tipos";
 import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horarios";
 import { apurarDia, minutoDoDiaBRT, hhmmToMin, type BatidaBloco, type AjusteDia } from "../../core/ptrp/apuracao";
 import { feriadosDoAno } from "../../core/ptrp/feriados";
-import { fetchRoster } from "../../core/ponto/solidesPontoClient";
+import { fetchRoster, decidirAprovacao } from "../../core/ponto/solidesPontoClient";
+import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
+import { useTodasPessoas } from "../../core/pessoas/PessoasContext";
 import type { PontoColaborador } from "../../core/ponto/analise";
 import { nomeMes } from "../../core/utils/date";
 
@@ -44,6 +46,10 @@ const fmtDataBR = (ymd?: string | null) => ymd ? ymd.split("-").reverse().join("
 const hhmm = (ms?: number | null) => { if (ms == null) return "—"; const t = minutoDoDiaBRT(ms); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
 const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
 const EXC_LABEL: Record<string, string> = { sem_batida: "sem batida", falta: "falta", fora_escala: "fora de escala", batida_impar: "batida ímpar", atraso: "atraso", intervalo_curto: "intervalo curto", jornada_longa: "jornada > limite", interjornada: "interjornada < mín.", correcao_pendente: "correção pendente" };
+// Exceções que o EMPREGADO resolve ajustando a própria marcação (esquecimento /
+// batida ímpar / intervalo não registrado) → cabe pedir correção por WhatsApp.
+const EXC_CORRIGIVEL = new Set(["batida_impar", "sem_batida", "intervalo_curto"]);
+const minToHHMM = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(Math.round(m % 60)).padStart(2, "0")}`;
 // Mesmo visual dos status da Escala (short + cor), pra a coluna Previsto bater.
 const STATUS_INFO: Record<ScheduleStatus, { label: string; short: string; bg: string; text: string }> = {
   trabalho:  { label: "Trabalho", short: "TR", bg: "bg-emerald-500", text: "text-white" },
@@ -105,6 +111,12 @@ export function PtrpApuracaoTab() {
   const [carregandoRoster, setCarregandoRoster] = useState(false);
   const [rosterErr, setRosterErr] = useState("");
   const [mostrarComp, setMostrarComp] = useState(false);
+  const [acaoBusy, setAcaoBusy] = useState(false);
+  const [acaoMsg, setAcaoMsg] = useState("");
+  const abrirWhatsapp = useAbrirWhatsapp();
+  const pessoas = useTodasPessoas();
+  // WhatsApp do empregado: Pessoa.whatsapp (por CPF) → fallback Empregado.telefone.
+  const whatsPorCpf = useMemo(() => { const m = new Map<string, string>(); for (const p of pessoas) { const c = soDig(p.cpf); if (c && p.whatsapp) m.set(c, soDig(p.whatsapp)); } return m; }, [pessoas]);
 
   async function carregarRoster(silencioso = false) {
     if (!shortCode) return;
@@ -172,7 +184,7 @@ export function PtrpApuracaoTab() {
     return m;
   }, [ajustes]);
 
-  type Linha = { data: string; bs: BatidaDoc[]; descPunch: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean };
+  type Linha = { data: string; bs: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean };
   function apurarColab(emp: Empregado) {
     const cpf = soDig(emp.cpf);
     const dias = batidasPorCpf[cpf] || {};
@@ -192,6 +204,9 @@ export function PtrpApuracaoTab() {
       if (prev.kind === "implicito" && bs.length === 0 && ajustesDia.length === 0) continue;
       // Desconsideração: remove a batida referida ANTES de apurar (imutável — só ignora).
       const descPunch = new Set(ajustesDia.filter(a => a.tipo === "desconsideracao" && a.punchId).map(a => a.punchId as string));
+      // Batidas pendentes já DECIDIDAS (aprovada→inclusão / reprovada→desconsideração
+      // carregam o punchId) — deixam de contar como "correção pendente".
+      const decididos = new Set<string>([...descPunch, ...ajustesDia.filter(a => a.tipo === "inclusao" && a.punchId).map(a => a.punchId as string)]);
       // Só a batida EFETIVA (aprovada) entra na apuração — espelha o oficial.
       // A correção pendente é preservada em `bs` (aparece na linha), mas não soma.
       const blocos: BatidaBloco[] = bs.filter(b => !b.excluded && !correcaoPendente(b) && !(b.punchId && descPunch.has(b.punchId))).map(b => ({ dateIn: b.dateIn as number, dateOut: (b.dateOut ?? null) as number | null }));
@@ -214,14 +229,14 @@ export function PtrpApuracaoTab() {
       } else {
         trabalhado = blocos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
       }
-      // Correção não aprovada no dia → sinaliza como pendência a tratar (não é falta).
-      if (bs.some(correcaoPendente)) excecoes = [...excecoes, "correcao_pendente"];
+      // Correção não aprovada E ainda não decidida → pendência a tratar (não é falta).
+      if (bs.some(b => correcaoPendente(b) && !(b.punchId && decididos.has(b.punchId)))) excecoes = [...excecoes, "correcao_pendente"];
       // Entrada/saída reais (ms) do dia — pra checar interjornada entre dias.
       const ins = blocos.map(b => b.dateIn).filter((x): x is number => typeof x === "number");
       const outs = blocos.map(b => b.dateOut).filter((x): x is number => typeof x === "number");
       const primeiraMs = ins.length ? Math.min(...ins) : null;
       const ultimaMs = outs.length ? Math.max(...outs) : null;
-      linhas.push({ data, bs, descPunch, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, excecoes, primeiraMs, ultimaMs, ehFeriado });
+      linhas.push({ data, bs, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, excecoes, primeiraMs, ultimaMs, ehFeriado });
     }
     // Interjornada: descanso entre a última saída de um dia e a 1ª entrada do dia
     // seguinte (calendário) < mínimo da CCT → exceção no dia seguinte.
@@ -232,6 +247,47 @@ export function PtrpApuracaoTab() {
       if (consecutivo && ant.ultimaMs != null && atu.primeiraMs != null && (atu.primeiraMs - ant.ultimaMs) < minInter && !atu.excecoes.includes("interjornada")) atu.excecoes.push("interjornada");
     }
     return { linhas, temCpf: !!cpf, saldoMes, totTrab: linhas.reduce((s, l) => s + l.trabalhado, 0), totExtra: linhas.reduce((s, l) => s + l.extra, 0), totNot: linhas.reduce((s, l) => s + l.noturno, 0), exc: linhas.reduce((s, l) => s + l.excecoes.length, 0) };
+  }
+
+  // Aprovar/Reprovar a correção pendente: grava a decisão na Sólides (PUT status,
+  // espelho legal de hoje) E registra a trilha no app (Portaria 671) — aprovada
+  // vira inclusão (passa a contar); reprovada vira desconsideração.
+  async function decidirCorrecao(emp: Empregado, l: Linha, status: "APPROVED" | "REPROVED") {
+    if (!me) return;
+    const pend = l.bs.filter(b => correcaoPendente(b) && b.punchId && !l.decididos.has(b.punchId));
+    if (!pend.length) return;
+    const diaBR = `${l.data.slice(-2)}/${l.data.slice(5, 7)}`;
+    if (!window.confirm(`${status === "APPROVED" ? "Aprovar" : "Reprovar"} a correção de ${emp.nome} em ${diaBR}?\n\n${status === "APPROVED" ? "A marcação passa a contar e a Sólides é atualizada." : "A marcação é descartada e a Sólides é atualizada."}`)) return;
+    setAcaoBusy(true); setAcaoMsg("");
+    try {
+      for (const b of pend) {
+        await decidirAprovacao(shortCode, { punchId: Number(b.punchId), status });
+        const inMin = b.dateIn != null ? minutoDoDiaBRT(b.dateIn) : null;
+        const outMin = b.dateOut != null ? minutoDoDiaBRT(b.dateOut) : null;
+        const aprovComHoras = status === "APPROVED" && inMin != null && outMin != null;
+        const aj: Omit<PtrpAjuste, "id"> = {
+          empresaKey: shortCode, colaboradorId: emp.id, cpf: soDig(emp.cpf), data: l.data, punchId: b.punchId as string,
+          ...(aprovComHoras ? { tipo: "inclusao" as PtrpAjusteTipo, in: minToHHMM(inMin as number), out: minToHHMM(outMin as number) } : { tipo: "desconsideracao" as PtrpAjusteTipo }),
+          motivo: status === "APPROVED" ? "Correção do empregado aprovada (via Sólides)" : "Correção do empregado reprovada (via Sólides)",
+          autor: { id: me.id, nome: me.nome }, criadoEm: new Date().toISOString(), cancelado: false,
+        };
+        await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore(aj));
+      }
+      setAcaoMsg(`✓ Correção de ${diaBR} ${status === "APPROVED" ? "aprovada" : "reprovada"}.`);
+    } catch (e) { setAcaoMsg("Falha ao decidir: " + (e instanceof Error ? e.message : "erro")); }
+    finally { setAcaoBusy(false); }
+  }
+
+  // Solicitar correção ao empregado por WhatsApp (linha do DP/Ponto — "empregados"),
+  // listando o que ele precisa ajustar na própria marcação (batida ímpar etc.).
+  function solicitarCorrecao(emp: Empregado, l: Linha) {
+    const probs = l.excecoes.filter(e => EXC_CORRIGIVEL.has(e)).map(e => EXC_LABEL[e] || e);
+    if (!probs.length) return;
+    const tel = (emp.cpf ? whatsPorCpf.get(soDig(emp.cpf)) : "") || soDig((emp as { telefone?: string }).telefone);
+    if (!tel) { setAcaoMsg(`${emp.nome} não tem WhatsApp no cadastro (Pessoa ou Empregado).`); return; }
+    const diaBR = `${l.data.slice(-2)}/${l.data.slice(5, 7)}`;
+    const texto = `Olá ${emp.nome.split(" ")[0]}, tudo bem?\n\nIdentificamos uma pendência no seu registro de ponto do dia ${diaBR} que precisa de ajuste no aplicativo da Sólides:\n\n• ${probs.join("\n• ")}\n\nPor favor, corrija a marcação no app da Sólides. Depois passa pela nossa revisão e aprovação. Qualquer dúvida, é só chamar por aqui. Obrigado! 🙏`;
+    void abrirWhatsapp(rid, "empregados", tel, emp.nome, texto);
   }
 
   const cpfsComEmpregado = useMemo(() => new Set(empregados.map(e => soDig(e.cpf)).filter(Boolean)), [empregados]);
@@ -317,7 +373,7 @@ export function PtrpApuracaoTab() {
         {!cct && <span className="text-xs text-amber-600 dark:text-amber-400">⚠ Sem CCT — configure em Regras (extras/noturno não calculam).</span>}
       </div>
       <div className="text-[12px] rounded-lg px-3 py-2 mb-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
-        Escolha um colaborador pelo chip. <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ verde</span> = sem exceções · <span className="font-semibold text-amber-700 dark:text-amber-300">● amarelo</span> = tem exceções a tratar · <span className="font-semibold text-gray-400">○ cinza</span> = sem batidas / sem CPF. Previsto vem do cadastro do empregado; prévia — validar contra o Sólides.
+        Escolha um colaborador pelo chip. <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ verde</span> = sem exceções · <span className="font-semibold text-amber-700 dark:text-amber-300">● amarelo</span> = tem exceções a tratar · <span className="font-semibold text-gray-400">○ cinza</span> = sem batidas / sem CPF. Previsto vem do cadastro do empregado; prévia — validar contra o Sólides. Na tabela do dia: <span className="text-amber-600 dark:text-amber-400">🟡 tracejado</span> = correção pedida no Sólides ainda não aprovada (não conta) → <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ aprovar</span> / <span className="font-semibold text-rose-600">✗ reprovar</span>; <span className="text-blue-600">💬</span> pede a correção ao empregado por WhatsApp (linha do DP).
       </div>
 
       {/* Comparação de cadastros Sólides × planejamento.app */}
@@ -439,6 +495,7 @@ export function PtrpApuracaoTab() {
               <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{sel.emp.nome} <span className="text-[11px] font-normal text-gray-500">· {sel.area}</span></div>
               <div className="text-[11px] text-gray-500 shrink-0">trab. {hm(sel.r.totTrab)}{sel.r.totExtra ? ` · extra ${hm(sel.r.totExtra)}` : ""}{sel.r.totNot ? ` · not. ${hm(sel.r.totNot)}` : ""}</div>
             </div>
+            {acaoMsg && <div className={`px-3 py-1.5 text-[11.5px] border-b border-gray-100 dark:border-gray-800 ${acaoMsg.startsWith("✓") ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{acaoMsg}</div>}
             <div className="px-3 py-2 overflow-x-auto">
               {sel.r.linhas.length === 0 ? <div className="text-sm text-gray-400 py-4 text-center">Sem batidas nem dias previstos de trabalho em {comp}.</div> : (
               <table className="w-full text-[12px] min-w-[640px] border-collapse [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top [&_th]:px-2">
@@ -446,12 +503,14 @@ export function PtrpApuracaoTab() {
                 <thead>
                   <tr className="text-[10px] uppercase tracking-wide text-gray-400 text-left border-b border-gray-200 dark:border-gray-800">
                     <th className="py-1.5 font-semibold">Dia</th><th className="font-semibold">Previsto</th><th className="font-semibold">Batidas / tratamento</th>
-                    <th className="font-semibold text-right">Trab.</th><th className="font-semibold text-right">Extra</th><th className="font-semibold text-right">Not.</th><th className="font-semibold">Exceções</th><th className="font-semibold text-right">Ação</th>
+                    <th className="font-semibold text-right">Trab.</th><th className="font-semibold text-right">Extra</th><th className="font-semibold text-right" title="Adicional noturno — minutos trabalhados na faixa noturna (22h–05h)">Not.</th><th className="font-semibold">Exceções</th><th className="font-semibold text-right">Ação</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sel.r.linhas.map((l, idx) => {
                     const folga = l.previstoTxt === "folga";
+                    const pendUndecided = l.bs.some(b => correcaoPendente(b) && b.punchId && !l.decididos.has(b.punchId));
+                    const temCorrigivel = l.excecoes.some(e => EXC_CORRIGIVEL.has(e));
                     return (
                     <tr key={l.data} className={`border-b border-gray-50 dark:border-gray-800/40 ${l.excecoes.includes("falta") ? "bg-rose-50/50 dark:bg-rose-900/10" : idx % 2 ? "bg-gray-50/40 dark:bg-gray-800/20" : ""}`}>
                       <td className="tabular-nums font-medium text-gray-700 dark:text-gray-200">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
@@ -461,7 +520,7 @@ export function PtrpApuracaoTab() {
                         {l.ehFeriado && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">feriado</span>}
                       </td>
                       <td className="text-gray-700 dark:text-gray-200">
-                        <div className="tabular-nums">{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); const pend = correcaoPendente(b); const cls = b.excluded || desc ? "line-through text-gray-400" : pend ? "text-amber-600 dark:text-amber-400 underline decoration-dashed decoration-amber-400" : ""; return <span key={i} className={cls} title={desc ? "desconsiderada" : pend ? `correção ${b.status === "REJECTED" ? "rejeitada" : "pendente"} no Sólides — não entra no oficial` : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}{pend ? " 🟡" : ""}</span>; }) : <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
+                        <div className="tabular-nums">{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); const pend = correcaoPendente(b) && !(b.punchId && l.decididos.has(b.punchId)); const cls = b.excluded || desc ? "line-through text-gray-400" : pend ? "text-amber-600 dark:text-amber-400 underline decoration-dashed decoration-amber-400" : ""; return <span key={i} className={cls} title={desc ? "desconsiderada" : pend ? `correção ${b.status === "REJECTED" ? "rejeitada" : "pendente"} no Sólides — não entra no oficial` : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}{pend ? " 🟡" : ""}</span>; }) : <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
                         {l.ajustesDia.map(a => (
                           <span key={a.id} className="inline-flex items-center gap-1 mt-1 mr-1 text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300">
                             {a.tipo === "inclusao" ? `➕ ${a.in}–${a.out}` : a.tipo === "desconsideracao" ? "🚫 desconsid." : `☂️ ${a.tipo}`}{a.motivo ? ` · ${a.motivo}` : ""}
@@ -473,7 +532,16 @@ export function PtrpApuracaoTab() {
                       <td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{l.extra ? hm(l.extra) : ""}</td>
                       <td className="text-right tabular-nums text-indigo-500">{l.noturno ? hm(l.noturno) : ""}</td>
                       <td>{l.excecoes.length ? l.excecoes.map(e => <span key={e} className="inline-block mb-0.5 mr-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{EXC_LABEL[e] || e}</span>) : <span className="text-emerald-500 text-[11px]">✓</span>}</td>
-                      <td className="text-right"><button type="button" onClick={() => setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bs })} className="text-[12px] w-6 h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" title="Tratar (incluir/desconsiderar/abonar)">⚙️</button></td>
+                      <td className="text-right whitespace-nowrap">
+                        <div className="inline-flex items-center gap-1">
+                          {pendUndecided && <>
+                            <button type="button" disabled={acaoBusy} onClick={() => void decidirCorrecao(sel.emp, l, "APPROVED")} className="text-[12px] w-6 h-6 rounded border border-emerald-300 dark:border-emerald-800 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40" title="Aprovar correção do empregado (grava na Sólides + trilha no app)">✓</button>
+                            <button type="button" disabled={acaoBusy} onClick={() => void decidirCorrecao(sel.emp, l, "REPROVED")} className="text-[12px] w-6 h-6 rounded border border-rose-300 dark:border-rose-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40" title="Reprovar correção do empregado">✗</button>
+                          </>}
+                          {temCorrigivel && <button type="button" onClick={() => solicitarCorrecao(sel.emp, l)} className="text-[12px] w-6 h-6 rounded border border-blue-300 dark:border-blue-800 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20" title="Solicitar correção ao empregado por WhatsApp (linha do DP/Ponto)">💬</button>}
+                          <button type="button" onClick={() => setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bs })} className="text-[12px] w-6 h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" title="Tratar (incluir/desconsiderar/abonar)">⚙️</button>
+                        </div>
+                      </td>
                     </tr>
                     );
                   })}
