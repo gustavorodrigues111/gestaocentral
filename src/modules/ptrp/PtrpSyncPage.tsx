@@ -6,7 +6,7 @@
 //  backfill sem abrir o console do Firestore.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -78,6 +78,16 @@ export function PtrpSyncPage() {
   const algumAtrasado = useMemo(() => estados.some(e => (e.cursor || "") < hoje), [estados, hoje]);
   // A aba Sincronização mostra SÓ a empresa ativa no seletor do sistema.
   const estadosVis = useMemo(() => estados.filter(e => !shortCode || e.id === shortCode), [estados, shortCode]);
+  // Primeiro dia REAL com batida no Sólides (menor data em ptrpBatidas) da empresa ativa.
+  const [primeiroReal, setPrimeiroReal] = useState("");
+  useEffect(() => {
+    if (!shortCode) { setPrimeiroReal(""); return; }
+    let cancel = false;
+    getDocs(query(collection(db, "ptrpBatidas"), where("empresaKey", "==", shortCode), orderBy("date", "asc"), limit(1)))
+      .then(s => { if (!cancel) setPrimeiroReal((s.docs[0]?.data() as { date?: string })?.date || ""); })
+      .catch(() => { if (!cancel) setPrimeiroReal(""); });
+    return () => { cancel = true; };
+  }, [shortCode, estados]);
 
   async function sincronizar(opts?: { empresa?: string; desde?: string }) {
     const empresaKey = opts?.empresa;
@@ -154,7 +164,7 @@ export function PtrpSyncPage() {
                       : <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-500 text-white">em dia</span>}
                 </div>
                 <div className="mt-2 grid grid-cols-2 gap-y-1 text-[12.5px]">
-                  <span className="text-gray-500">Sincronizado desde</span><span className="text-right tabular-nums">{fmtD(e.primeiroDia)}</span>
+                  <span className="text-gray-500">Sincronizado desde</span><span className="text-right tabular-nums" title="Menor data de batida já espelhada do Sólides">{fmtD(primeiroReal || e.primeiroDia)}</span>
                   <span className="text-gray-500">Cursor (até)</span><span className="text-right font-medium tabular-nums">{fmtD(e.cursor)}</span>
                   <span className="text-gray-500">Última sync</span><span className="text-right">{fmtDT(e.ultimaSync)} <span className="text-gray-400">{desde(e.ultimaSync)}</span></span>
                   <span className="text-gray-500">Última janela</span><span className="text-right tabular-nums">{fmtD(e.ultimaJanela?.desde)}–{fmtD(e.ultimaJanela?.ate)}</span>
