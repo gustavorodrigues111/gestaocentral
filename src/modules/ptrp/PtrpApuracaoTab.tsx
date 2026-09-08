@@ -7,7 +7,7 @@
 //  como OVERRIDE opcional (fase seguinte). Valida contra o Sólides (Fase 1).
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, doc, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -16,8 +16,11 @@ import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import type { Empregado, HorarioDia, Cargo, EscalaMes, ScheduleStatus } from "../../core/types";
 import { empregadoBatePonto } from "../../core/types";
-import type { ParametrosCCT, PtrpTurno, PtrpAjuste, PtrpAjusteTipo, PtrpBancoMov } from "../../core/ptrp/tipos";
+import type { ParametrosCCT, PtrpTurno, PtrpAjuste, PtrpAjusteTipo, PtrpBancoMov, PtrpApuracaoColab, PtrpApuracaoDia, PtrpFechamento } from "../../core/ptrp/tipos";
 import { cctVigenteEm } from "../../core/ptrp/tipos";
+import { gerarEspelhoPDF } from "../../core/ptrp/espelhoPDF";
+import { gerarAEJ } from "../../core/ptrp/aej";
+import { baixarOuCompartilhar } from "../../core/pdf/baixarOuCompartilhar";
 import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horarios";
 import { apurarDia, minutoDoDiaBRT, hhmmToMin, type BatidaBloco, type AjusteDia } from "../../core/ptrp/apuracao";
 import { feriadosDoAno } from "../../core/ptrp/feriados";
@@ -44,6 +47,7 @@ const hmSigned = (min: number) => (min < 0 ? "−" : "+") + hm(Math.abs(min));
 const somaDiasYmd = (ymd: string, n: number) => { const [y, m, d] = ymd.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
 const fmtDataBR = (ymd?: string | null) => ymd ? ymd.split("-").reverse().join("/") : "—";
 const hhmm = (ms?: number | null) => { if (ms == null) return "—"; const t = minutoDoDiaBRT(ms); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
+const hhmmN = (ms?: number | null) => ms == null ? null : hhmm(ms);
 const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
 const EXC_LABEL: Record<string, string> = { sem_batida: "sem batida", falta: "falta", fora_escala: "fora de escala", batida_impar: "batida ímpar", atraso: "atraso", intervalo_curto: "intervalo curto", jornada_longa: "jornada > limite", interjornada: "interjornada < mín.", correcao_pendente: "correção pendente" };
 // Exceções que o EMPREGADO resolve ajustando a própria marcação (esquecimento /
@@ -115,6 +119,9 @@ export function PtrpApuracaoTab() {
   const [acaoMsg, setAcaoMsg] = useState("");
   const [selCorr, setSelCorr] = useState<Set<string>>(new Set());   // dias marcados p/ pedir correção (lote)
   const [corrModal, setCorrModal] = useState(false);
+  const [fech, setFech] = useState<PtrpFechamento | null>(null);    // fechamento do mês (empresa+comp)
+  const [fechBusy, setFechBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState("");                  // "espelho" | "espelhos" | "aej"
   const abrirWhatsapp = useAbrirWhatsapp();
   const pessoas = useTodasPessoas();
   // WhatsApp do empregado: Pessoa.whatsapp (por CPF) → fallback Empregado.telefone.
@@ -159,6 +166,11 @@ export function PtrpApuracaoTab() {
   }, [shortCode]);
   // Troca de colaborador/mês/empresa → limpa a seleção de correção do lote.
   useEffect(() => { setSelCorr(new Set()); setCorrModal(false); setAcaoMsg(""); }, [aberto, comp, shortCode]);
+  // Fechamento do mês (empresa+competência) — trava a apuração quando "fechado".
+  useEffect(() => {
+    if (!shortCode || !comp) { setFech(null); return; }
+    return onSnapshot(doc(db, "ptrpFechamentos", `${shortCode}_${comp}`), d => setFech(d.exists() ? ({ id: d.id, ...d.data() } as PtrpFechamento) : null), () => setFech(null));
+  }, [shortCode, comp]);
 
   const cct = useMemo(() => cctVigenteEm(ccts, shortCode, `${comp}-15`), [ccts, shortCode, comp]);
   const [ano, mes] = comp.split("-").map(Number);
@@ -188,7 +200,7 @@ export function PtrpApuracaoTab() {
     return m;
   }, [ajustes]);
 
-  type Linha = { data: string; bs: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean };
+  type Linha = { data: string; bs: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean };
   function apurarColab(emp: Empregado) {
     const cpf = soDig(emp.cpf);
     const dias = batidasPorCpf[cpf] || {};
@@ -222,13 +234,14 @@ export function PtrpApuracaoTab() {
       }
       const ehDomingo = new Date(data + "T12:00:00").getDay() === 0;
       const ehFeriado = feriadosSet.has(data);
-      let trabalhado = 0, extra = 0, noturno = 0, excecoes: string[] = [], previstoTxt = "—";
+      let trabalhado = 0, extra = 0, noturno = 0, previstoMin = 0, atrasoMin = 0, abonadoMin = 0, excecoes: string[] = [], previstoTxt = "—";
       if (prev.kind === "trabalho" && prev.turno) previstoTxt = prev.turno.janelas.map(j => `${j.in}–${j.out}`).join(" ");
       else if (prev.kind === "folga") previstoTxt = "folga";
       else previstoTxt = "sem cadastro";
       if (cct && prev.kind !== "implicito") {
         const ap = apurarDia({ data, blocos, turno: prev.turno, cct, ehDomingo, ehFeriado, ajustes: ajMotor });
         trabalhado = ap.minutosTrabalhados; extra = ap.minutosExtras; noturno = ap.noturnoMin; excecoes = ap.excecoes;
+        previstoMin = ap.minutosPrevistos; atrasoMin = ap.atrasoMin; abonadoMin = ap.abonadoMin;
         saldoMes += ap.minutosTrabalhados + ap.abonadoMin - ap.minutosPrevistos;   // + extra / − falta
       } else {
         trabalhado = blocos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
@@ -240,7 +253,7 @@ export function PtrpApuracaoTab() {
       const outs = blocos.map(b => b.dateOut).filter((x): x is number => typeof x === "number");
       const primeiraMs = ins.length ? Math.min(...ins) : null;
       const ultimaMs = outs.length ? Math.max(...outs) : null;
-      linhas.push({ data, bs, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, excecoes, primeiraMs, ultimaMs, ehFeriado });
+      linhas.push({ data, bs, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado });
     }
     // Interjornada: descanso entre a última saída de um dia e a 1ª entrada do dia
     // seguinte (calendário) < mínimo da CCT → exceção no dia seguinte.
@@ -307,6 +320,84 @@ export function PtrpApuracaoTab() {
     void abrirWhatsapp(rid, "empregados", tel, emp.nome, texto);
     setSelCorr(new Set()); setCorrModal(false);
     setAcaoMsg("✓ Pedido de correção aberto no WhatsApp (linha do DP/Ponto).");
+  }
+
+  const travado = fech?.status === "fechado";
+
+  // Serializa a apuração de um colaborador no snapshot congelável (base do
+  // fechamento, do espelho PDF e do AEJ).
+  function snapshotColab(x: { emp: Empregado; area: string; r: ReturnType<typeof apurarColab> }): PtrpApuracaoColab {
+    const emp = x.emp;
+    const dias: PtrpApuracaoDia[] = x.r.linhas.map(l => ({
+      data: l.data, previstoMin: l.previstoMin, trabalhadoMin: l.trabalhado, extraMin: l.extra, noturnoMin: l.noturno,
+      atrasoMin: l.atrasoMin, faltaMin: l.excecoes.includes("falta") ? l.previstoMin : 0, abonadoMin: l.abonadoMin,
+      excecoes: l.excecoes,
+      marcacoes: l.bs.filter(b => !b.excluded && !(b.punchId && l.descPunch.has(b.punchId))).map(b => ({ in: hhmmN(b.dateIn), out: hhmmN(b.dateOut), status: b.status || null, pendente: correcaoPendente(b) && !(b.punchId && l.decididos.has(b.punchId)), punchId: b.punchId || null })),
+      ajustes: l.ajustesDia.map(a => ({ tipo: a.tipo, in: a.in || null, out: a.out || null, motivo: a.motivo || null })),
+      previstoTxt: l.previstoTxt, statusEscala: l.statusEscala || null, feriado: l.ehFeriado,
+    }));
+    return {
+      id: `${shortCode}_${comp}_${emp.id}`, empresaKey: shortCode, competencia: comp, colaboradorId: emp.id,
+      cpf: soDig(emp.cpf), nome: emp.nome, cargo: (cargoPorId[emp.cargoId] as { nome?: string })?.nome || null, area: x.area,
+      admissao: (emp as { admissao?: string }).admissao || null, dias,
+      totalPrevistoMin: dias.reduce((s, d) => s + d.previstoMin, 0), totalTrabalhadoMin: x.r.totTrab, totalExtraMin: x.r.totExtra,
+      totalNoturnoMin: x.r.totNot, totalAtrasoMin: dias.reduce((s, d) => s + (d.atrasoMin || 0), 0), saldoMin: x.r.saldoMes,
+      geradoEm: new Date().toISOString(),
+    };
+  }
+
+  const colabsFechaveis = () => resultados.filter(x => x.r.temCpf && !naoBatePonto(x.emp) && x.r.linhas.length);
+  const espelhoMeta = () => ({ empresaNome: activeRestaurant?.nome || shortCode, empresaCnpj: (activeRestaurant as { cnpj?: string } | null)?.cnpj || null, cctNome: cct?.cctNome || null, compLabel: labelComp(comp), geradoPor: me?.nome || null });
+
+  // Encerrar mês: congela a apuração (ptrpApuracoes) + marca o fechamento.
+  async function encerrarMes() {
+    if (!me) return;
+    const alvo = colabsFechaveis();
+    if (!alvo.length) { setAcaoMsg("Nada a fechar — nenhum colaborador cruzável neste mês."); return; }
+    if (!window.confirm(`Encerrar ${labelComp(comp)} de ${activeRestaurant?.nome}?\n\n${alvo.length} colaborador(es) terão a apuração CONGELADA (base do espelho e do AEJ). Dá pra reabrir depois.`)) return;
+    setFechBusy(true); setAcaoMsg("");
+    try {
+      const batch = writeBatch(db);
+      for (const x of alvo) { const snap = snapshotColab(x); batch.set(doc(db, "ptrpApuracoes", snap.id), sanitizeForFirestore(snap)); }
+      const header: PtrpFechamento = { id: `${shortCode}_${comp}`, empresaKey: shortCode, competencia: comp, status: "fechado", colaboradores: alvo.length, cctNome: cct?.cctNome || null, fechadoEm: new Date().toISOString(), fechadoPor: { id: me.id, nome: me.nome } };
+      batch.set(doc(db, "ptrpFechamentos", header.id), sanitizeForFirestore(header));
+      await batch.commit();
+      setAcaoMsg(`✓ ${labelComp(comp)} fechado — ${alvo.length} colaborador(es) congelados.`);
+    } catch (e) { setAcaoMsg("Falha ao fechar: " + (e instanceof Error ? e.message : "erro")); }
+    finally { setFechBusy(false); }
+  }
+  async function reabrirMes() {
+    if (!me || !fech) return;
+    if (!window.confirm(`Reabrir ${labelComp(comp)}? A apuração volta a ser editável (o snapshot fica guardado).`)) return;
+    setFechBusy(true);
+    try { await setDoc(doc(db, "ptrpFechamentos", `${shortCode}_${comp}`), sanitizeForFirestore({ ...fech, status: "reaberto", reabertoEm: new Date().toISOString(), reabertoPor: { id: me.id, nome: me.nome } })); setAcaoMsg(`✓ ${labelComp(comp)} reaberto.`); }
+    catch (e) { setAcaoMsg("Falha ao reabrir: " + (e instanceof Error ? e.message : "erro")); }
+    finally { setFechBusy(false); }
+  }
+
+  async function baixarEspelho(x: { emp: Empregado; area: string; r: ReturnType<typeof apurarColab> }) {
+    setExportBusy("espelho");
+    try { const pdf = await gerarEspelhoPDF([snapshotColab(x)], espelhoMeta()); await baixarOuCompartilhar(pdf.output("blob"), `espelho-${x.emp.nome.split(" ")[0].toLowerCase()}-${comp}.pdf`, { titulo: "Espelho de ponto" }); }
+    catch (e) { setAcaoMsg("Falha no PDF: " + (e instanceof Error ? e.message : "erro")); }
+    finally { setExportBusy(""); }
+  }
+  async function baixarEspelhosTodos() {
+    const alvo = colabsFechaveis();
+    if (!alvo.length) { setAcaoMsg("Sem colaboradores para o espelho."); return; }
+    setExportBusy("espelhos");
+    try { const pdf = await gerarEspelhoPDF(alvo.map(snapshotColab), espelhoMeta()); await baixarOuCompartilhar(pdf.output("blob"), `espelhos-${shortCode}-${comp}.pdf`, { titulo: "Espelhos de ponto" }); }
+    catch (e) { setAcaoMsg("Falha no PDF: " + (e instanceof Error ? e.message : "erro")); }
+    finally { setExportBusy(""); }
+  }
+  async function baixarAEJ() {
+    const alvo = colabsFechaveis();
+    if (!alvo.length) { setAcaoMsg("Sem dados para o AEJ."); return; }
+    setExportBusy("aej");
+    try {
+      const txt = gerarAEJ(alvo.map(snapshotColab), { empresaNome: activeRestaurant?.nome || shortCode, empresaCnpj: (activeRestaurant as { cnpj?: string } | null)?.cnpj || null, compLabel: labelComp(comp), competencia: comp });
+      await baixarOuCompartilhar(new Blob([txt], { type: "text/plain;charset=utf-8" }), `AEJ-${shortCode}-${comp}.txt`, { titulo: "AEJ" });
+    } catch (e) { setAcaoMsg("Falha no AEJ: " + (e instanceof Error ? e.message : "erro")); }
+    finally { setExportBusy(""); }
   }
 
   const cpfsComEmpregado = useMemo(() => new Set(empregados.map(e => soDig(e.cpf)).filter(Boolean)), [empregados]);
@@ -390,6 +481,20 @@ export function PtrpApuracaoTab() {
           <button type="button" onClick={() => setComp(addMes(comp, 1))} disabled={comp >= compAtual()} className="px-2 py-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title="Próximo mês">›</button>
         </div>
         {!cct && <span className="text-xs text-amber-600 dark:text-amber-400">⚠ Sem CCT — configure em Regras (extras/noturno não calculam).</span>}
+      </div>
+
+      {/* Fechamento mensal + exportações (espelho PDF / AEJ) */}
+      <div className="flex items-center gap-2 flex-wrap mb-2">
+        {travado
+          ? <span className="text-[11px] font-bold uppercase px-2 py-1 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" title={fech?.fechadoEm ? `Fechado em ${fmtDataBR(fech.fechadoEm.slice(0, 10))}${fech.fechadoPor ? ` por ${fech.fechadoPor.nome}` : ""}` : ""}>🔒 Mês fechado</span>
+          : fech?.status === "reaberto"
+            ? <span className="text-[11px] font-bold uppercase px-2 py-1 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">↻ Reaberto</span>
+            : <span className="text-[11px] font-bold uppercase px-2 py-1 rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Aberto</span>}
+        {travado
+          ? <Button size="sm" variant="secondary" disabled={fechBusy} onClick={() => void reabrirMes()}>{fechBusy ? "…" : "🔓 Reabrir mês"}</Button>
+          : <Button size="sm" disabled={fechBusy} onClick={() => void encerrarMes()}>{fechBusy ? "Fechando…" : `🔒 Encerrar ${labelComp(comp)}`}</Button>}
+        <Button size="sm" variant="secondary" disabled={!!exportBusy} onClick={() => void baixarEspelhosTodos()}>{exportBusy === "espelhos" ? "Gerando…" : "🖨 Espelhos (todos)"}</Button>
+        <Button size="sm" variant="secondary" disabled={!!exportBusy} onClick={() => void baixarAEJ()}>{exportBusy === "aej" ? "Gerando…" : "⬇️ AEJ"}</Button>
       </div>
       <div className="text-[12px] rounded-lg px-3 py-2 mb-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
         Escolha um colaborador pelo chip. <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ verde</span> = sem exceções · <span className="font-semibold text-amber-700 dark:text-amber-300">● amarelo</span> = tem exceções a tratar · <span className="font-semibold text-gray-400">○ cinza</span> = sem batidas / sem CPF. Previsto vem do cadastro do empregado; prévia — validar contra o Sólides. Na tabela do dia: <span className="text-amber-600 dark:text-amber-400">🟡 tracejado</span> = correção pedida no Sólides ainda não aprovada (não conta) → <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ aprovar</span> / <span className="font-semibold text-rose-600">✗ reprovar</span>; <span className="text-blue-600">💬</span> marca o dia p/ pedir correção — junta vários numa mensagem só (inclusive dias sem erro que você suspeita), e o botão azul no topo monta o WhatsApp (linha do DP).
@@ -512,7 +617,10 @@ export function PtrpApuracaoTab() {
           <div className="mt-3 rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-white dark:bg-gray-900 overflow-hidden">
             <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between gap-2">
               <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{sel.emp.nome} <span className="text-[11px] font-normal text-gray-500">· {sel.area}</span></div>
-              <div className="text-[11px] text-gray-500 shrink-0">trab. {hm(sel.r.totTrab)}{sel.r.totExtra ? ` · extra ${hm(sel.r.totExtra)}` : ""}{sel.r.totNot ? ` · not. ${hm(sel.r.totNot)}` : ""}</div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-[11px] text-gray-500">trab. {hm(sel.r.totTrab)}{sel.r.totExtra ? ` · extra ${hm(sel.r.totExtra)}` : ""}{sel.r.totNot ? ` · not. ${hm(sel.r.totNot)}` : ""}</span>
+                <button type="button" disabled={!!exportBusy} onClick={() => void baixarEspelho(sel)} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40" title="Espelho de ponto deste colaborador (PDF)">{exportBusy === "espelho" ? "…" : "🖨 Espelho"}</button>
+              </div>
             </div>
             {acaoMsg && <div className={`px-3 py-1.5 text-[11.5px] border-b border-gray-100 dark:border-gray-800 ${acaoMsg.startsWith("✓") ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{acaoMsg}</div>}
             {selCorr.size > 0 && (
@@ -563,12 +671,12 @@ export function PtrpApuracaoTab() {
                       <td>{l.excecoes.length ? l.excecoes.map(e => <span key={e} className="inline-block mb-0.5 mr-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{EXC_LABEL[e] || e}</span>) : <span className="text-emerald-500 text-[11px]">✓</span>}</td>
                       <td className="text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-1">
-                          {pendUndecided && <>
+                          {pendUndecided && !travado && <>
                             <button type="button" disabled={acaoBusy} onClick={() => void decidirCorrecao(sel.emp, l, "APPROVED")} className="text-[12px] w-6 h-6 rounded border border-emerald-300 dark:border-emerald-800 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40" title="Aprovar correção do empregado (grava na Sólides + trilha no app)">✓</button>
                             <button type="button" disabled={acaoBusy} onClick={() => void decidirCorrecao(sel.emp, l, "REPROVED")} className="text-[12px] w-6 h-6 rounded border border-rose-300 dark:border-rose-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40" title="Reprovar correção do empregado">✗</button>
                           </>}
                           <button type="button" onClick={() => toggleCorr(l.data)} className={`text-[12px] w-6 h-6 rounded border ${corrSel ? "bg-blue-500 border-blue-500 text-white" : temCorrigivel ? "border-blue-300 dark:border-blue-800 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20" : "border-gray-300 dark:border-gray-700 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}`} title={corrSel ? "Remover do pedido de correção" : temCorrigivel ? "Selecionar p/ pedir correção (junta vários numa mensagem só)" : "Selecionar este dia p/ pedir correção — mesmo sem erro detectado (ex.: você sabe que faltou batida)"}>💬</button>
-                          <button type="button" onClick={() => setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bs })} className="text-[12px] w-6 h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" title="Tratar (incluir/desconsiderar/abonar)">⚙️</button>
+                          <button type="button" disabled={travado} onClick={() => setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bs })} className="text-[12px] w-6 h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title={travado ? "Mês fechado — reabra para tratar" : "Tratar (incluir/desconsiderar/abonar)"}>⚙️</button>
                         </div>
                       </td>
                     </tr>

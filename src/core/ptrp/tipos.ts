@@ -91,6 +91,60 @@ export type PtrpBancoMov = {
   registradoPor?: { id: string; nome: string };
 };
 
+// ─── Fechamento mensal: SNAPSHOT congelado da apuração (Portaria 671) ─────────
+// Ao "Encerrar mês", a apuração de cada colaborador é materializada (imutável de
+// fato via UI travada) — vira a base do espelho de ponto (PDF) e do AEJ.
+export type PtrpMarcacaoSnap = { in: string | null; out: string | null; status?: string | null; pendente?: boolean; punchId?: string | null };
+export type PtrpAjusteSnap = { tipo: string; in?: string | null; out?: string | null; motivo?: string | null };
+export type PtrpApuracaoDia = {
+  data: string;                 // YYYY-MM-DD
+  previstoMin: number;
+  trabalhadoMin: number;
+  extraMin: number;
+  noturnoMin: number;
+  atrasoMin?: number;
+  faltaMin?: number;
+  abonadoMin?: number;
+  intervaloMin?: number;
+  excecoes: string[];
+  marcacoes: PtrpMarcacaoSnap[]; // batidas efetivas (in/out HH:MM)
+  ajustes: PtrpAjusteSnap[];
+  previstoTxt: string;
+  statusEscala?: string | null;
+  feriado?: boolean;
+};
+export type PtrpApuracaoColab = {
+  id: string;                   // {empresaKey}_{YYYY-MM}_{colaboradorId}
+  empresaKey: string;
+  competencia: string;          // YYYY-MM
+  colaboradorId: string;
+  cpf: string;
+  nome: string;
+  cargo?: string | null;
+  area?: string | null;
+  admissao?: string | null;
+  dias: PtrpApuracaoDia[];
+  totalPrevistoMin: number;
+  totalTrabalhadoMin: number;
+  totalExtraMin: number;
+  totalNoturnoMin: number;
+  totalAtrasoMin: number;
+  saldoMin: number;
+  geradoEm: string;
+};
+export type PtrpFechamento = {
+  id: string;                   // {empresaKey}_{YYYY-MM}
+  empresaKey: string;
+  competencia: string;          // YYYY-MM
+  status: "fechado" | "reaberto";
+  colaboradores: number;
+  cctNome?: string | null;
+  fechadoEm: string;
+  fechadoPor?: { id: string; nome: string };
+  reabertoEm?: string | null;
+  reabertoPor?: { id: string; nome: string } | null;
+};
+
 // ════════════════════════════════════════════════════════════════════════════
 //  Parâmetros de CCT por empresa (com VIGÊNCIA — renovam na data-base anual).
 //  A apuração resolve os parâmetros pela empresa do colaborador E pela data da
