@@ -689,6 +689,8 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                     const pendUndecided = l.bs.some(b => correcaoPendente(b) && b.punchId && !l.decididos.has(b.punchId));
                     const temCorrigivel = l.excecoes.some(e => EXC_CORRIGIVEL.has(e));
                     const corrSel = selCorr.has(l.data);
+                    // Batidas cujo horário foi TRATADO (correção incluída) → destaque roxo inline.
+                    const inclPunch = new Set(l.ajustesDia.filter(a => a.tipo === "inclusao" && a.punchId).map(a => a.punchId as string));
                     // Nº de marcações válidas (cada entrada/saída = 1). Padrão do dia
                     // completo = 4 ou 6. Ímpar = ponto aberto (corrigir → vermelho);
                     // exatamente 2 = suspeito (só entrada/saída, sem intervalo → amarelo).
@@ -710,13 +712,24 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                         {l.ehFuturo && <span className="ml-1 text-[10px] font-semibold px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">futuro</span>}
                       </td>
                       <td className="text-gray-700 dark:text-gray-200">
-                        <div className="tabular-nums">{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); const pend = correcaoPendente(b) && !(b.punchId && l.decididos.has(b.punchId)); const cls = b.excluded || desc ? "line-through text-gray-400" : pend ? "text-amber-600 dark:text-amber-400 underline decoration-dashed decoration-amber-400" : ""; return <span key={i} className={cls} title={desc ? "desconsiderada" : pend ? `correção ${b.status === "REJECTED" ? "rejeitada" : "pendente"} no Sólides — não entra no oficial` : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}{pend ? " 🟡" : ""}</span>; }) : <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
-                        {l.ajustesDia.map(a => (
-                          <span key={a.id} className="inline-flex items-center gap-1 mt-1 mr-1 text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300">
-                            {a.tipo === "inclusao" ? `➕ ${a.in}–${a.out}` : a.tipo === "desconsideracao" ? "🚫 desconsid." : `☂️ ${a.tipo}`}{a.motivo ? ` · ${a.motivo}` : ""}
-                            <button type="button" onClick={() => void cancelarAjuste(a)} className="text-rose-500 hover:text-rose-600" title="Cancelar tratamento">✕</button>
-                          </span>
-                        ))}
+                        <div className="tabular-nums">{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); const pend = correcaoPendente(b) && !(b.punchId && l.decididos.has(b.punchId)); const tratada = !!(b.punchId && inclPunch.has(b.punchId)); const cls = b.excluded || desc ? "line-through text-gray-400" : pend ? "text-amber-600 dark:text-amber-400 underline decoration-dashed decoration-amber-400" : tratada ? "text-indigo-600 dark:text-indigo-300 underline decoration-dotted decoration-indigo-400" : ""; return <span key={i} className={cls} title={desc ? "desconsiderada" : pend ? `correção ${b.status === "REJECTED" ? "rejeitada" : "pendente"} no Sólides — não entra no oficial` : tratada ? "horário tratado (correção)" : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}{pend ? " 🟡" : ""}{tratada ? " ✎" : ""}</span>; }) : <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
+                        {l.ajustesDia.length > 0 && (
+                          <div className="mt-1 flex flex-col gap-0.5">
+                            {l.ajustesDia.map(a => {
+                              const inline = a.tipo === "inclusao" && !!a.punchId && l.bs.some(b => b.punchId === a.punchId);
+                              const icon = a.tipo === "inclusao" ? "✎" : a.tipo === "desconsideracao" ? "🚫" : "☂️";
+                              // Inclusão com batida inline (correção aprovada) não repete o horário; inclusão manual mostra.
+                              const label = a.motivo?.trim() || (a.tipo === "inclusao" ? "Correção incluída" : a.tipo === "desconsideracao" ? "Batida desconsiderada" : a.tipo);
+                              return (
+                                <div key={a.id} className="flex items-center flex-wrap gap-x-1 text-[10.5px] text-indigo-700 dark:text-indigo-300">
+                                  <span>{icon} {a.tipo === "inclusao" && !inline && a.in ? `${a.in}–${a.out} · ` : ""}{label}</span>
+                                  {a.autor?.nome && <span className="text-indigo-400 dark:text-indigo-500">· por {a.autor.nome}</span>}
+                                  <button type="button" onClick={() => void cancelarAjuste(a)} className="text-rose-400 hover:text-rose-600 ml-0.5" title="Cancelar este tratamento no app (fica na trilha; não desfaz a aprovação já feita na Sólides)">✕</button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
                       </td>
                       <td className="text-right tabular-nums font-medium">{l.trabalhado ? hm(l.trabalhado) : <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
                       <td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{l.extra ? hm(l.extra) : ""}</td>
