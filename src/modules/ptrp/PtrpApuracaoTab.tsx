@@ -173,10 +173,13 @@ export function PtrpApuracaoTab() {
     const ajDias = ajustesPorCpf[cpf] || {};
     const linhas: Linha[] = [];
     let saldoMes = 0;   // banco de horas do mês: Σ (trabalhado + abonado − previsto)
+    const hojeStr = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
     for (let d = 1; d <= diasDoMes; d++) {
       const data = `${comp}-${String(d).padStart(2, "0")}`;
       const bs = dias[data] || [];
       const ajustesDia = ajDias[data] || [];
+      // Dia FUTURO (ainda não aconteceu) sem batida → não é falta; nem mostra.
+      if (data > hojeStr && bs.length === 0 && ajustesDia.length === 0) continue;
       const statusEscala = escala ? (escala.real?.[emp.id]?.[data] ?? escala.prevista?.[emp.id]?.[data]) : undefined;
       const prev = turnoPrevisto(emp, data, statusEscala);
       if (prev.kind === "folga" && bs.length === 0 && ajustesDia.length === 0) continue;
