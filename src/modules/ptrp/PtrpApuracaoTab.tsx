@@ -51,6 +51,8 @@ const hhmm = (ms?: number | null) => { if (ms == null) return "—"; const t = m
 const hhmmN = (ms?: number | null) => ms == null ? null : hhmm(ms);
 const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
 const EXC_LABEL: Record<string, string> = { sem_batida: "sem batida", falta: "falta", fora_escala: "fora de escala", batida_impar: "batida ímpar", atraso: "atraso", intervalo_curto: "intervalo curto", jornada_longa: "jornada > limite", interjornada: "interjornada < mín.", correcao_pendente: "correção pendente" };
+// Ícone por exceção (tooltip mostra o texto) — evita quebra de linha na coluna.
+const EXC_ICON: Record<string, string> = { sem_batida: "⭕", falta: "❌", fora_escala: "📆", batida_impar: "3️⃣", atraso: "⏰", intervalo_curto: "☕", jornada_longa: "⏳", interjornada: "🛌", correcao_pendente: "🟡" };
 // Exceções que o EMPREGADO resolve ajustando a própria marcação (esquecimento /
 // batida ímpar / intervalo não registrado) → cabe pedir correção por WhatsApp.
 const EXC_CORRIGIVEL = new Set(["batida_impar", "sem_batida", "intervalo_curto"]);
@@ -669,6 +671,12 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
 
         {sel && (
           <div className="mt-3 rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-white dark:bg-gray-900 overflow-hidden">
+            <div className="px-3 py-1.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/30 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-500 dark:text-gray-400">
+              <span className="font-semibold uppercase tracking-wide text-gray-400">Legenda:</span>
+              {Object.entries(EXC_ICON).map(([k, ic]) => <span key={k} className="inline-flex items-center gap-1"><span className="text-[12px] leading-none">{ic}</span>{EXC_LABEL[k]}</span>)}
+              <span className="inline-flex items-center gap-1"><span className="text-[12px] leading-none">✌️</span>2 batidas (conferir)</span>
+              <span className="inline-flex items-center gap-1"><span className="text-emerald-500">✓</span>sem exceção</span>
+            </div>
             <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between gap-2">
               <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{sel.emp.nome} <span className="text-[11px] font-normal text-gray-500">· {sel.area}</span></div>
               <div className="flex items-center gap-2 shrink-0">
@@ -689,7 +697,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
             <div className="px-3 py-2 overflow-x-auto">
               {sel.r.linhas.length === 0 ? <div className="text-sm text-gray-400 py-4 text-center">Sem batidas nem dias previstos de trabalho em {comp}.</div> : (
               <table className="w-full text-[12px] min-w-[640px] border-collapse [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top [&_th]:px-2">
-                <colgroup><col className="w-14" /><col className="w-32" /><col /><col className="w-16" /><col className="w-16" /><col className="w-14" /><col className="w-44" /><col className="w-12" /></colgroup>
+                <colgroup><col className="w-14" /><col className="w-32" /><col /><col className="w-16" /><col className="w-16" /><col className="w-14" /><col className="w-20" /><col className="w-12" /></colgroup>
                 <thead>
                   <tr className="text-[10px] uppercase tracking-wide text-gray-400 text-left border-b border-gray-200 dark:border-gray-800">
                     <th className="py-1.5 font-semibold">Dia</th><th className="font-semibold">Previsto</th><th className="font-semibold">Batidas / tratamento</th>
@@ -748,7 +756,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                       <td className="text-right tabular-nums font-medium">{l.trabalhado ? hm(l.trabalhado) : <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
                       <td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{l.extra ? hm(l.extra) : ""}</td>
                       <td className="text-right tabular-nums text-indigo-500">{l.noturno ? hm(l.noturno) : ""}</td>
-                      <td>{l.ehFuturo ? <span className="text-blue-500 text-[11px]">a realizar</span> : l.excecoes.length ? l.excecoes.map(e => <span key={e} className="inline-block mb-0.5 mr-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{EXC_LABEL[e] || e}</span>) : suspeito ? <span className="inline-block text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" title="Só 2 batidas — o padrão é 4 ou 6 (falta marcar o intervalo?)">conferir · 2 batidas</span> : <span className="text-emerald-500 text-[11px]">✓</span>}</td>
+                      <td>{l.ehFuturo ? <span className="text-blue-500 text-[11px]">a realizar</span> : l.excecoes.length ? <span className="inline-flex flex-wrap items-center gap-1 text-[14px] leading-none">{l.excecoes.map(e => <span key={e} className="cursor-help" title={EXC_LABEL[e] || e}>{EXC_ICON[e] || "⚠️"}</span>)}</span> : suspeito ? <span className="cursor-help text-[14px]" title="Só 2 batidas — o padrão é 4 ou 6 (falta marcar o intervalo?)">✌️</span> : <span className="text-emerald-500 text-[12px]">✓</span>}</td>
                       <td className="text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-1">
                           {pendUndecided && !travado && <>
