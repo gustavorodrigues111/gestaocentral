@@ -107,7 +107,8 @@ export function apurarDia(params: {
 
   // ── Minutos trabalhados + intervalo (maior gap entre pares) ───────────────
   let trabalhados = 0;
-  for (const p of pares) trabalhados += Math.max(0, p.out - p.in);
+  // Bloco que vira o dia (saída < entrada, ex.: 14:43→00:28) → soma 24h.
+  for (const p of pares) trabalhados += Math.max(0, (p.out < p.in ? p.out + 1440 : p.out) - p.in);
   let intervaloMin = 0;
   for (let i = 1; i < pares.length; i++) intervaloMin = Math.max(intervaloMin, pares[i].in - pares[i - 1].out);
   // Pré-assinalação (CCT SP cadastrada): se o turno pré-assinala e não houve
@@ -165,7 +166,8 @@ function previstoDoTurno(t: PtrpTurno | null): number {
   if (!t) return 0;
   if (t.cargaDiariaMin) return t.cargaDiariaMin;
   let m = 0;
-  for (const j of t.janelas) m += Math.max(0, hhmmToMin(j.out) - hhmmToMin(j.in));
+  // Janela que vira o dia (ex.: 14:30–00:00 = 9h30) → soma 24h em vez de zerar.
+  for (const j of t.janelas) { const d = hhmmToMin(j.out) - hhmmToMin(j.in); m += d < 0 ? d + 1440 : d; }
   return Math.max(0, m - (t.intervaloMin || 0));
 }
 
