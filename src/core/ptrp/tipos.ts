@@ -94,7 +94,10 @@ export type PtrpBancoMov = {
 // ─── Fechamento mensal: SNAPSHOT congelado da apuração (Portaria 671) ─────────
 // Ao "Encerrar mês", a apuração de cada colaborador é materializada (imutável de
 // fato via UI travada) — vira a base do espelho de ponto (PDF) e do AEJ.
-export type PtrpMarcacaoSnap = { in: string | null; out: string | null; status?: string | null; pendente?: boolean; punchId?: string | null };
+// origem: "rep" = marcação do registrador (Sólides) · "incluida" = tratamento
+// (inclusão) · "preassinalada" = intervalo pré-assinalado. desconsiderada = batida
+// tratada/desprezada. A Portaria 671 exige mostrar original × tratada no espelho.
+export type PtrpMarcacaoSnap = { in: string | null; out: string | null; status?: string | null; pendente?: boolean; desconsiderada?: boolean; origem?: "rep" | "incluida" | "preassinalada"; punchId?: string | null };
 export type PtrpAjusteSnap = { tipo: string; in?: string | null; out?: string | null; motivo?: string | null };
 export type PtrpApuracaoDia = {
   data: string;                 // YYYY-MM-DD

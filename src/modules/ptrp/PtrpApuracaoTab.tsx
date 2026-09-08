@@ -324,6 +324,37 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
 
   const travado = fech?.status === "fechado";
 
+  // Marcações do dia para o espelho: batida do REP + tratadas (incluída,
+  // desconsiderada) distinguidas — como a Portaria 671 exige. Aprovação de
+  // correção pendente vira "incluída" (não duplica com a batida pendente).
+  function montarMarcacoes(l: Linha): PtrpApuracaoDia["marcacoes"] {
+    const inclusaoPunch = new Set(l.ajustesDia.filter(a => a.tipo === "inclusao" && a.punchId).map(a => a.punchId as string));
+    const punchIdsBatida = new Set(l.bs.map(b => b.punchId).filter(Boolean) as string[]);
+    const out: PtrpApuracaoDia["marcacoes"] = [];
+    for (const b of l.bs) {
+      if (b.excluded) continue;
+      const pend = correcaoPendente(b);
+      const decidido = !!(b.punchId && l.decididos.has(b.punchId));
+      const descByAjuste = !!(b.punchId && l.descPunch.has(b.punchId));
+      const aprovadaTratada = pend && decidido && !!(b.punchId && inclusaoPunch.has(b.punchId));   // pendente aprovada → tratada/incluída
+      const reprovada = pend && decidido && !aprovadaTratada;                                       // pendente reprovada → desprezada
+      out.push({
+        in: hhmmN(b.dateIn), out: hhmmN(b.dateOut), status: b.status || null,
+        pendente: pend && !decidido,
+        desconsiderada: descByAjuste || reprovada,
+        origem: aprovadaTratada ? "incluida" : "rep",
+        punchId: b.punchId || null,
+      });
+    }
+    // Inclusões manuais (esquecimento) — sem batida correspondente no dia.
+    for (const a of l.ajustesDia) {
+      if (a.tipo === "inclusao" && a.in && a.out && !(a.punchId && punchIdsBatida.has(a.punchId))) {
+        out.push({ in: a.in, out: a.out, origem: "incluida", punchId: a.punchId || null });
+      }
+    }
+    return out;
+  }
+
   // Serializa a apuração de um colaborador no snapshot congelável (base do
   // fechamento, do espelho PDF e do AEJ).
   function snapshotColab(x: { emp: Empregado; area: string; r: ReturnType<typeof apurarColab> }): PtrpApuracaoColab {
@@ -332,7 +363,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       data: l.data, previstoMin: l.previstoMin, trabalhadoMin: l.trabalhado, extraMin: l.extra, noturnoMin: l.noturno,
       atrasoMin: l.atrasoMin, faltaMin: l.excecoes.includes("falta") ? l.previstoMin : 0, abonadoMin: l.abonadoMin,
       excecoes: l.excecoes,
-      marcacoes: l.bs.filter(b => !b.excluded && !(b.punchId && l.descPunch.has(b.punchId))).map(b => ({ in: hhmmN(b.dateIn), out: hhmmN(b.dateOut), status: b.status || null, pendente: correcaoPendente(b) && !(b.punchId && l.decididos.has(b.punchId)), punchId: b.punchId || null })),
+      marcacoes: montarMarcacoes(l),
       ajustes: l.ajustesDia.map(a => ({ tipo: a.tipo, in: a.in || null, out: a.out || null, motivo: a.motivo || null })),
       previstoTxt: l.previstoTxt, statusEscala: l.statusEscala || null, feriado: l.ehFeriado,
     }));

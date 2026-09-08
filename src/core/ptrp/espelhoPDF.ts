@@ -51,37 +51,41 @@ export async function gerarEspelhoPDF(colabs: PtrpApuracaoColab[], meta: Espelho
     linha("Cargo:", `${c.cargo || "—"}${c.admissao ? `     Admissão: ${fmtBR(c.admissao)}` : ""}`);
     if (meta.cctNome) linha("Convenção:", meta.cctNome);
 
-    // ── Tabela dia a dia ─────────────────────────────────────────────────
+    // ── Tabela dia a dia (Portaria 671, Art. 84): jornada contratual ×
+    //    marcações do REP e tratadas (incluída/desconsiderada) × duração
+    //    realizada. Sem análise de exceções/atraso (não é requisito do espelho).
+    const AUS: Record<string, string> = { abono: "Abono", atestado: "Atestado", folga: "Folga", ferias: "Férias", afastamento: "Afastamento" };
+    const marcTxt = (m: (typeof c.dias)[number]["marcacoes"][number]): string => {
+      const t = `${m.in || "—"}–${m.out || "—"}`;
+      if (m.desconsiderada) return `${t} (desconsiderada)`;
+      if (m.origem === "incluida") return `${t} (incluída)`;
+      if (m.pendente) return `${t} (correção pendente)`;
+      return t;
+    };
     const body = c.dias.map(d => {
-      const marc = d.marcacoes.length ? d.marcacoes.map(m => `${m.in || "—"}–${m.out || "—"}${m.pendente ? " (pend.)" : ""}`).join("  ") : "—";
-      const obs: string[] = [...d.excecoes];
-      for (const a of d.ajustes) obs.push(a.tipo + (a.in ? ` ${a.in}–${a.out}` : ""));
+      const marc = d.marcacoes.length ? d.marcacoes.map(marcTxt).join("   ") : "—";
+      const aus = d.ajustes.filter(a => AUS[a.tipo]).map(a => AUS[a.tipo]);
       return [
         `${d.data.slice(-2)}/${d.data.slice(5, 7)}`,
         dow(d.data),
-        d.feriado ? "feriado" : d.previstoTxt === "folga" ? "folga" : (d.previstoTxt.includes("–") ? d.previstoTxt : (d.previstoMin ? hm(d.previstoMin) : "—")),
-        marc,
+        d.feriado ? "Feriado" : d.previstoTxt === "folga" ? "Folga" : (d.previstoTxt.includes("–") ? d.previstoTxt : (d.previstoMin ? hm(d.previstoMin) : "—")),
+        [marc, ...(aus.length ? [aus.join(", ")] : [])].join("\n"),
         d.trabalhadoMin ? hm(d.trabalhadoMin) : "—",
-        d.extraMin ? hm(d.extraMin) : "",
         d.noturnoMin ? hm(d.noturnoMin) : "",
-        d.faltaMin ? hm(d.faltaMin) : "",
-        obs.join(", "),
       ];
     });
 
     autoTable(doc, {
       startY: y + 2,
-      head: [["Dia", "Sem", "Previsto", "Marcações", "Trab.", "Extra", "Not.", "Falta", "Ocorrências"]],
+      head: [["Dia", "Sem", "Jornada contratual", "Marcações do ponto", "Trabalhado", "Ad. noturno"]],
       body,
       theme: "grid",
-      styles: { font: "helvetica", fontSize: 7.5, cellPadding: 1.3, textColor: TXT_DARK, lineColor: [226, 232, 240] },
+      styles: { font: "helvetica", fontSize: 7.5, cellPadding: 1.4, textColor: TXT_DARK, lineColor: [226, 232, 240] },
       headStyles: { fillColor: [241, 245, 249], textColor: TXT_DARK, fontStyle: "bold" },
       columnStyles: {
-        0: { cellWidth: 12, halign: "center" }, 1: { cellWidth: 10, halign: "center" },
-        2: { cellWidth: 24 }, 3: { cellWidth: 42 },
-        4: { cellWidth: 13, halign: "right" }, 5: { cellWidth: 13, halign: "right" },
-        6: { cellWidth: 13, halign: "right" }, 7: { cellWidth: 13, halign: "right" },
-        8: { cellWidth: "auto" },
+        0: { cellWidth: 13, halign: "center" }, 1: { cellWidth: 11, halign: "center" },
+        2: { cellWidth: 30 }, 3: { cellWidth: "auto" },
+        4: { cellWidth: 22, halign: "right" }, 5: { cellWidth: 22, halign: "right" },
       },
       margin: { left: MX, right: MX },
     });
@@ -90,10 +94,12 @@ export async function gerarEspelhoPDF(colabs: PtrpApuracaoColab[], meta: Espelho
     const afterY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY || y + 40;
     let ty = afterY + 7;
     doc.setFontSize(9.5); doc.setTextColor(...TXT_DARK);
-    const sinal = c.saldoMin < 0 ? "−" : "+";
-    const totais = `Previsto: ${hm(c.totalPrevistoMin)}    Trabalhado: ${hm(c.totalTrabalhadoMin)}    Extra: ${hm(c.totalExtraMin)}    Noturno: ${hm(c.totalNoturnoMin)}    Atraso: ${hm(c.totalAtrasoMin)}    Saldo: ${sinal}${hm(Math.abs(c.saldoMin))}`;
+    const totais = `Jornada prevista: ${hm(c.totalPrevistoMin)}      Horas trabalhadas: ${hm(c.totalTrabalhadoMin)}      Horas extras: ${hm(c.totalExtraMin)}      Adicional noturno: ${hm(c.totalNoturnoMin)}`;
     doc.setFont("helvetica", "bold"); doc.text(totais, MX, ty);
-    ty += 14;
+    ty += 6;
+    doc.setFont("helvetica", "normal"); doc.setFontSize(7); doc.setTextColor(...CINZA);
+    doc.text('Marcações "(incluída)" e "(desconsiderada)" = tratamento no PTRP (Portaria 671); as demais são do registrador de ponto.', MX, ty);
+    ty += 12;
 
     // ── Assinatura + rodapé ──────────────────────────────────────────────
     doc.setDrawColor(120, 130, 145); doc.line(MX, ty, MX + 80, ty);
