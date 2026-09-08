@@ -22,6 +22,10 @@ import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horar
 import { apurarDia, minutoDoDiaBRT, hhmmToMin, type BatidaBloco, type AjusteDia } from "../../core/ptrp/apuracao";
 import { fetchRoster } from "../../core/ponto/solidesPontoClient";
 import type { PontoColaborador } from "../../core/ponto/analise";
+import { nomeMes } from "../../core/utils/date";
+
+const labelComp = (ym: string) => { const [y, m] = ym.split("-"); return `${nomeMes(Number(m))}/${y}`; };
+const addMes = (ym: string, n: number) => { const [y, m] = ym.split("-").map(Number); const d = new Date(y, m - 1 + n, 1); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`; };
 
 type BatidaDoc = { id: string; empresaKey: string; punchId?: string; cpf?: string | null; date?: string | null; dateIn?: number | null; dateOut?: number | null; excluded?: boolean; raw?: { employee?: { name?: string }; employeeName?: string } };
 
@@ -72,8 +76,7 @@ export function PtrpApuracaoTab() {
     catch (e) { if (!silencioso) setRosterErr(e instanceof Error ? e.message : "Falha ao buscar o cadastro da Sólides."); }
     finally { setCarregandoRoster(false); }
   }
-  // Carrega o roster da Sólides automaticamente (pra colorir os chips "sem Sólides").
-  useEffect(() => { setRoster(null); setMostrarComp(false); setRosterErr(""); if (shortCode) void carregarRoster(true); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [shortCode]);
+  useEffect(() => { setRoster(null); setMostrarComp(false); setRosterErr(""); }, [shortCode]);
 
   useEffect(() => onSnapshot(collection(db, "parametrosCCT"), s => setCcts(s.docs.map(d => ({ id: d.id, ...d.data() }) as ParametrosCCT))), []);
   useEffect(() => {
@@ -97,6 +100,7 @@ export function PtrpApuracaoTab() {
   const cct = useMemo(() => cctVigenteEm(ccts, shortCode, `${comp}-15`), [ccts, shortCode, comp]);
   const [ano, mes] = comp.split("-").map(Number);
   const diasDoMes = new Date(ano, mes, 0).getDate();
+  const mesesOpcoes = useMemo(() => { const out: string[] = []; let c = compAtual(); for (let i = 0; i < 24; i++) { out.push(c); c = addMes(c, -1); } return out; }, []);
 
   const cargoPorId = useMemo(() => Object.fromEntries(cargos.map(c => [c.id, c])), [cargos]);
   const areaDoEmp = (e: Empregado) => (cargoPorId[e.cargoId]?.area) || "";
@@ -163,13 +167,11 @@ export function PtrpApuracaoTab() {
 
   const cpfNoRoster = useMemo(() => new Set((roster || []).map(r => soDig(r.cpf)).filter(Boolean)), [roster]);
   const cpfComBatida = useMemo(() => new Set(Object.keys(batidasPorCpf)), [batidasPorCpf]);
-  // O roster do Sólides (employee/find-all) às vezes NÃO traz CPF; a BATIDA é a
-  // fonte de CPF confiável. "Sem cadastro na Sólides" (cinza) só é AFIRMÁVEL
-  // quando o roster realmente trouxe CPFs e o do empregado não está nem no roster
-  // nem nas batidas. Senão, quem tem cadastro mas não bateu no mês vira AMARELO
-  // (as faltas do motor já pintam de amarelo), não cinza.
-  const rosterTemCpf = cpfNoRoster.size > 0;
-  const semCadastroSolides = (e: Empregado) => { const c = soDig(e.cpf); return !!c && !!roster && rosterTemCpf && !cpfNoRoster.has(c) && !cpfComBatida.has(c); };
+  // NOTA: o roster do Sólides (employee/find-all) devolve CPF só de PARTE das
+  // pessoas — não dá pra afirmar "não tem cadastro" a partir dele. Por isso o
+  // chip NÃO pinta cinza por roster: cinza só pra quem não tem CPF no app (não
+  // dá pra cruzar). Quem tem cadastro mas não bateu no mês vira amarelo (faltas).
+  // A conferência explícita de quem falta cadastrar fica na aba "Comparar cadastros".
 
   // Comparação de cadastros: equipe CLT ATIVA do app (empVis) × Sólides (roster ∪ batidas).
   const comparacao = useMemo(() => {
@@ -206,8 +208,14 @@ export function PtrpApuracaoTab() {
     <div>
       <div className="flex items-center gap-2 flex-wrap mb-2">
         <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{activeRestaurant?.nome} · {shortCode}</span>
-        <input type="month" value={comp} onChange={e => setComp(e.target.value)} className="px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
-        {!cct && <span className="text-xs text-amber-600 dark:text-amber-400">⚠ Sem CCT — configure em Convenções (extras/noturno não calculam).</span>}
+        <div className="inline-flex items-center rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden">
+          <button type="button" onClick={() => setComp(addMes(comp, -1))} className="px-2 py-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800" title="Mês anterior">‹</button>
+          <select value={comp} onChange={e => setComp(e.target.value)} className="px-2 py-1.5 text-sm bg-white dark:bg-gray-900 dark:text-gray-100 font-medium border-x border-gray-200 dark:border-gray-700 focus:outline-none">
+            {mesesOpcoes.map(m => <option key={m} value={m}>{labelComp(m)}</option>)}
+          </select>
+          <button type="button" onClick={() => setComp(addMes(comp, 1))} disabled={comp >= compAtual()} className="px-2 py-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title="Próximo mês">›</button>
+        </div>
+        {!cct && <span className="text-xs text-amber-600 dark:text-amber-400">⚠ Sem CCT — configure em Regras (extras/noturno não calculam).</span>}
       </div>
       <div className="text-[12px] rounded-lg px-3 py-2 mb-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
         Escolha um colaborador pelo chip. <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ verde</span> = sem exceções · <span className="font-semibold text-amber-700 dark:text-amber-300">● amarelo</span> = tem exceções a tratar · <span className="font-semibold text-gray-400">○ cinza</span> = sem batidas / sem CPF. Previsto vem do cadastro do empregado; prévia — validar contra o Sólides.
@@ -256,23 +264,23 @@ export function PtrpApuracaoTab() {
                 <div className="flex flex-col gap-1.5">
                   {cols.map(({ emp, r }) => {
                     const naoBate = naoBatePonto(emp);
-                    const semCad = !naoBate && semCadastroSolides(emp);   // cinza: confirmado sem cadastro na Sólides
-                    // Confiança → verde. Sem cadastro na Sólides → cinza. Tem cadastro
-                    // mas com exceções (inclusive sem batida no mês = faltas) → amarelo.
-                    const st = naoBate ? "ok" : (!r.temCpf || semCad) ? "sem" : r.exc > 0 ? "exc" : "ok";
+                    const semCpf = !naoBate && !r.temCpf;   // cinza: sem CPF no app → não dá pra cruzar
+                    // Confiança → verde. Sem CPF → cinza. Com exceções (inclusive sem
+                    // batida no mês = faltas) → amarelo. Sem exceções → verde.
+                    const st = naoBate ? "ok" : semCpf ? "sem" : r.exc > 0 ? "exc" : "ok";
                     const selado = emp.id === aberto;
                     const cls = st === "ok" ? "bg-emerald-50 border-emerald-300 text-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-200 dark:border-emerald-800"
                       : st === "exc" ? "bg-amber-50 border-amber-300 text-amber-800 dark:bg-amber-950/30 dark:text-amber-200 dark:border-amber-800"
                       : "bg-gray-50 border-gray-200 text-gray-400 dark:bg-gray-800/40 dark:border-gray-700";
                     return (
                       <button key={emp.id} type="button" onClick={() => setAberto(selado ? null : emp.id)}
-                        title={naoBate ? "Cargo de confiança — não bate ponto" : semCad ? "Sem cadastro na Sólides" : !r.temCpf ? "Sem CPF no app" : st === "exc" ? `${r.exc} exceção(ões)` : "Sem exceções"}
+                        title={naoBate ? "Cargo de confiança — não bate ponto" : semCpf ? "Sem CPF no cadastro do app — não dá pra cruzar com a Sólides" : st === "exc" ? `${r.exc} exceção(ões)` : "Sem exceções"}
                         className={`text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors hover:brightness-95 ${cls} ${selado ? "ring-2 ring-indigo-500" : ""}`}>
                         <span className="shrink-0">{st === "ok" ? "✓" : st === "exc" ? "●" : "○"}</span>
                         <span className="truncate flex-1">{naoBate ? "🎩 " : ""}{emp.nome}</span>
-                        {!naoBate && !semCad && r.exc > 0 && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200 tabular-nums">{r.exc}</span>}
+                        {!naoBate && !semCpf && r.exc > 0 && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200 tabular-nums">{r.exc}</span>}
                         {naoBate && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-violet-200 text-violet-800 dark:bg-violet-900 dark:text-violet-200">S/ PONTO</span>}
-                        {semCad && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-200">SEM SÓLIDES</span>}
+                        {semCpf && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-200">SEM CPF</span>}
                       </button>
                     );
                   })}

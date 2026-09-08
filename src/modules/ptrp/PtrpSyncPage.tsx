@@ -9,10 +9,11 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { useCanAcao } from "../../core/auth/useCanAcao";
 import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { PtrpCctTab } from "./PtrpCctTab";
-import { PtrpTurnosTab } from "./PtrpTurnosTab";
 import { PtrpApuracaoTab } from "./PtrpApuracaoTab";
 
 type SyncState = {
@@ -41,12 +42,25 @@ const desde = (iso?: string) => {
 
 export function PtrpSyncPage() {
   const { pessoa: me } = useAuth();
+  const { activeRestaurant } = useRestaurant();
+  const { can } = useCanAcao(activeRestaurant?.id || "");
+  const isMaster = !!me?.isMaster;
+  const podeConferir = isMaster || can("ponto", "conferir");
+  const podeSincronizar = isMaster || can("ponto", "sincronizar");
+  const podeRegras = isMaster || can("ponto", "regras");
   const [estados, setEstados] = useState<SyncState[]>([]);
   const [loading, setLoading] = useState(true);
   const [rodando, setRodando] = useState<string | null>(null);   // "*" = geral; ou empresaKey
   const [msg, setMsg] = useState("");
-  const [aba, setAba] = useState<"sync" | "turnos" | "apuracao" | "cct">("sync");
+  const [aba, setAba] = useState<"conferencia" | "sync" | "regras">("conferencia");
   const [desdeInput, setDesdeInput] = useState("");
+  // Abas conforme permissão; a efetiva é a 1ª válida.
+  const abasPermitidas = [
+    ...(podeConferir ? [["conferencia", "📊 Conferência"] as const] : []),
+    ...(podeSincronizar ? [["sync", "🔄 Sincronização"] as const] : []),
+    ...(podeRegras ? [["regras", "📜 Regras"] as const] : []),
+  ];
+  const abaEfetiva = abasPermitidas.some(([v]) => v === aba) ? aba : (abasPermitidas[0]?.[0] || "conferencia");
 
   useEffect(() => {
     const u = onSnapshot(collection(db, "ptrpSyncState"), snap => {
@@ -78,7 +92,7 @@ export function PtrpSyncPage() {
     } finally { setRodando(null); }
   }
 
-  if (!me?.isMaster) return <div className="max-w-3xl mx-auto p-8 text-center text-gray-500">🔒 Só o master acessa o status do ponto.</div>;
+  if (abasPermitidas.length === 0) return <div className="max-w-3xl mx-auto p-8 text-center text-gray-500">🔒 Sem acesso ao módulo de Ponto. Peça permissão no Perfil de Acesso.</div>;
 
   return (
     <div className="max-w-4xl mx-auto">
@@ -88,13 +102,13 @@ export function PtrpSyncPage() {
       </div>
 
       <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
-        {([["sync", "🔄 Sincronização"], ["turnos", "🕐 Turnos"], ["apuracao", "📊 Conferência"], ["cct", "📜 Convenções (CCT)"]] as const).map(([v, l]) => (
+        {abasPermitidas.map(([v, l]) => (
           <button key={v} type="button" onClick={() => setAba(v)}
-            className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${aba === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
+            className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${abaEfetiva === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
         ))}
       </div>
 
-      {aba === "cct" ? <PtrpCctTab /> : aba === "turnos" ? <PtrpTurnosTab /> : aba === "apuracao" ? <PtrpApuracaoTab /> : (
+      {abaEfetiva === "conferencia" ? <PtrpApuracaoTab /> : abaEfetiva === "regras" ? <PtrpCctTab /> : (
       <>
       <div className="flex items-center gap-2 flex-wrap mb-2">
         <Button size="sm" onClick={() => void sincronizar()} disabled={!!rodando}>

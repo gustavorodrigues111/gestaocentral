@@ -528,6 +528,18 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "ponto",
+    icon: "⏱️",
+    label: "Ponto (PTRP)",
+    desc: "Tratamento de ponto (Portaria 671): conferência/apuração, sincronização das batidas e regras (CCT)",
+    area: "gestao",
+    acoes: [
+      { id: "conferir",    label: "Conferência / apuração + tratar exceções", sensivel: true },
+      { id: "sincronizar", label: "Sincronização das batidas (Sólides → app)", sensivel: true },
+      { id: "regras",      label: "Regras / convenções (CCT) por empresa", sensivel: true },
+    ],
+  },
+  {
     id: "prazos",
     icon: "📅",
     label: "Prazos",

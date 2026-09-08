@@ -315,6 +315,14 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             );
           })}
 
+          {/* Ponto (PTRP) — link p/ NÃO-master com permissão (o master vê no bloco
+              institucional acima). É rota top-level, não entra na lista automática. */}
+          {!pessoa?.isMaster && (canAcaoRid("ponto", "conferir") || canAcaoRid("ponto", "sincronizar") || canAcaoRid("ponto", "regras")) && (
+            <NavLink to="/ptrp" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+              <span>⏱️</span><span className="flex-1 truncate">Ponto (PTRP)</span>
+            </NavLink>
+          )}
+
           {/* Seção Master — Tarefas + Planner. Respeita modulosAtivos mesmo
               pro master (ligável/desligável nas Configurações). */}
           {masterMods.length > 0 && (() => {
