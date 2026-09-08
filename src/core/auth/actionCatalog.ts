@@ -535,6 +535,7 @@ export const CATALOGO: CatalogoModulo[] = [
     area: "gestao",
     acoes: [
       { id: "conferir",    label: "Conferência / apuração + tratar exceções", sensivel: true },
+      { id: "banco",       label: "Banco de horas / compensação", sensivel: true },
       { id: "sincronizar", label: "Sincronização das batidas (Sólides → app)", sensivel: true },
       { id: "regras",      label: "Regras / convenções (CCT) por empresa", sensivel: true },
     ],

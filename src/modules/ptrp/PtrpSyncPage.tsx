@@ -44,20 +44,23 @@ const desde = (iso?: string) => {
 export function PtrpSyncPage() {
   const { pessoa: me } = useAuth();
   const { activeRestaurant } = useRestaurant();
+  const shortCode = (activeRestaurant as { shortCode?: string } | null)?.shortCode || "";
   const { can } = useCanAcao(activeRestaurant?.id || "");
   const isMaster = !!me?.isMaster;
   const podeConferir = isMaster || can("ponto", "conferir");
+  const podeBanco = isMaster || can("ponto", "banco");
   const podeSincronizar = isMaster || can("ponto", "sincronizar");
   const podeRegras = isMaster || can("ponto", "regras");
   const [estados, setEstados] = useState<SyncState[]>([]);
   const [loading, setLoading] = useState(true);
   const [rodando, setRodando] = useState<string | null>(null);   // "*" = geral; ou empresaKey
   const [msg, setMsg] = useState("");
-  const [aba, setAba] = useState<"conferencia" | "sync" | "regras">("conferencia");
+  const [aba, setAba] = useState<"conferencia" | "banco" | "sync" | "regras">("conferencia");
   const [desdeInput, setDesdeInput] = useState("");
-  // Abas conforme permissão; a efetiva é a 1ª válida.
+  // Abas conforme permissão (ordem: Conferência · Banco · Sincronização · Regras); a efetiva é a 1ª válida.
   const abasPermitidas = [
     ...(podeConferir ? [["conferencia", "📊 Conferência"] as const] : []),
+    ...(podeBanco ? [["banco", "🏦 Banco de horas"] as const] : []),
     ...(podeSincronizar ? [["sync", "🔄 Sincronização"] as const] : []),
     ...(podeRegras ? [["regras", "📜 Regras"] as const] : []),
   ];
@@ -73,6 +76,8 @@ export function PtrpSyncPage() {
 
   const hoje = hojeBRT();
   const algumAtrasado = useMemo(() => estados.some(e => (e.cursor || "") < hoje), [estados, hoje]);
+  // A aba Sincronização mostra SÓ a empresa ativa no seletor do sistema.
+  const estadosVis = useMemo(() => estados.filter(e => !shortCode || e.id === shortCode), [estados, shortCode]);
 
   async function sincronizar(opts?: { empresa?: string; desde?: string }) {
     const empresaKey = opts?.empresa;
@@ -109,11 +114,12 @@ export function PtrpSyncPage() {
         ))}
       </div>
 
-      {abaEfetiva === "conferencia" ? <PtrpApuracaoTab /> : abaEfetiva === "regras" ? <PtrpCctTab /> : (
+      {abaEfetiva === "conferencia" ? <PtrpApuracaoTab /> : abaEfetiva === "banco" ? <PtrpApuracaoTab mode="banco" /> : abaEfetiva === "regras" ? <PtrpCctTab /> : (
       <>
+      <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5 mb-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{activeRestaurant?.nome} · {shortCode || "sem shortCode"}</div>
       <div className="flex items-center gap-2 flex-wrap mb-2">
-        <Button size="sm" onClick={() => void sincronizar()} disabled={!!rodando}>
-          {rodando === "*" ? "Sincronizando…" : "🔄 Sincronizar (janela automática)"}
+        <Button size="sm" onClick={() => void sincronizar(shortCode ? { empresa: shortCode } : undefined)} disabled={!!rodando}>
+          {rodando ? "Sincronizando…" : "🔄 Sincronizar agora"}
         </Button>
         {msg && <span className="text-xs text-gray-600 dark:text-gray-300">{msg}</span>}
       </div>
@@ -121,21 +127,21 @@ export function PtrpSyncPage() {
         <span>Rebuscar desde:</span>
         <input type="date" value={desdeInput} max={hoje} onChange={e => setDesdeInput(e.target.value)}
           className="px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [color-scheme:light] dark:[color-scheme:dark]" />
-        <Button size="sm" variant="secondary" disabled={!!rodando || !desdeInput} onClick={() => void sincronizar({ desde: desdeInput })}>Rebuscar</Button>
+        <Button size="sm" variant="secondary" disabled={!!rodando || !desdeInput} onClick={() => void sincronizar({ empresa: shortCode, desde: desdeInput })}>Rebuscar</Button>
         <span className="text-gray-400">força puxar tudo a partir dessa data (ex.: início do mês a validar).</span>
       </div>
       {algumAtrasado && <div className="text-xs text-amber-600 dark:text-amber-400 mb-3">⏳ Backfill em andamento — rode algumas vezes até o cursor chegar em hoje ({fmtD(hoje)}).</div>}
 
       {loading ? (
         <div className="text-sm text-gray-400 py-10 text-center">Carregando…</div>
-      ) : estados.length === 0 ? (
+      ) : estadosVis.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">
-          Nenhuma empresa sincronizada ainda. Clique em <strong>Sincronizar todas</strong> pra iniciar o backfill (ou aguarde o cron).
-          <div className="mt-1 text-[11px] text-gray-400">Se continuar vazio, confira <code>SOLIDES_TOKENS</code> nas env vars da Vercel.</div>
+          <strong>{activeRestaurant?.nome}</strong> ainda não foi sincronizado. Clique em <strong>Sincronizar agora</strong> pra iniciar o backfill (ou aguarde o cron).
+          <div className="mt-1 text-[11px] text-gray-400">Se continuar vazio, confira o token/shortcode desta empresa em <code>SOLIDES_TOKENS</code> nas env vars da Vercel.</div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {estados.map(e => {
+        <div className="grid grid-cols-1 gap-3">
+          {estadosVis.map(e => {
             const atrasado = (e.cursor || "") < hoje;
             return (
               <div key={e.id} className={`rounded-xl border p-3.5 ${e.ok === false ? "border-rose-300 dark:border-rose-800 bg-rose-50/40 dark:bg-rose-900/10" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
@@ -165,6 +171,9 @@ export function PtrpSyncPage() {
           })}
         </div>
       )}
+      <div className="mt-4 border-t border-gray-100 dark:border-gray-800 pt-3">
+        <PtrpApuracaoTab mode="comparar" />
+      </div>
       </>
       )}
     </div>

@@ -93,7 +93,7 @@ function turnoPrevisto(emp: Empregado, date: string, statusEscala?: string): { k
   return { kind: "trabalho", turno: turnoDoHd() };
 }
 
-export function PtrpApuracaoTab() {
+export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia" | "banco" | "comparar" } = {}) {
   const { pessoa: me } = useAuth();
   // Segue o restaurante ATIVO do sistema (seletor global), como a Análise de Ponto.
   const { activeRestaurant } = useRestaurant();
@@ -109,7 +109,6 @@ export function PtrpApuracaoTab() {
   const [escala, setEscala] = useState<EscalaMes | null>(null);
   const [aberto, setAberto] = useState<string | null>(null);
   const [bancoMovs, setBancoMovs] = useState<PtrpBancoMov[]>([]);
-  const [mostrarBanco, setMostrarBanco] = useState(false);
   const [registrando, setRegistrando] = useState(false);
   const [roster, setRoster] = useState<PontoColaborador[] | null>(null);
   const [carregandoRoster, setCarregandoRoster] = useState(false);
@@ -122,6 +121,7 @@ export function PtrpApuracaoTab() {
   const [fech, setFech] = useState<PtrpFechamento | null>(null);    // fechamento do mês (empresa+comp)
   const [fechBusy, setFechBusy] = useState(false);
   const [exportBusy, setExportBusy] = useState("");                  // "espelho" | "espelhos" | "aej"
+  const [preview, setPreview] = useState<{ url: string; blob: Blob; nome: string; titulo: string } | null>(null);
   const abrirWhatsapp = useAbrirWhatsapp();
   const pessoas = useTodasPessoas();
   // WhatsApp do empregado: Pessoa.whatsapp (por CPF) → fallback Empregado.telefone.
@@ -375,9 +375,15 @@ export function PtrpApuracaoTab() {
     finally { setFechBusy(false); }
   }
 
+  // Abre o modal de preview (revoga a URL anterior).
+  function abrirPreview(blob: Blob, nome: string, titulo: string) {
+    setPreview(prev => { if (prev) URL.revokeObjectURL(prev.url); return { url: URL.createObjectURL(blob), blob, nome, titulo }; });
+  }
+  function fecharPreview() { setPreview(prev => { if (prev) URL.revokeObjectURL(prev.url); return null; }); }
+
   async function baixarEspelho(x: { emp: Empregado; area: string; r: ReturnType<typeof apurarColab> }) {
     setExportBusy("espelho");
-    try { const pdf = await gerarEspelhoPDF([snapshotColab(x)], espelhoMeta()); await baixarOuCompartilhar(pdf.output("blob"), `espelho-${x.emp.nome.split(" ")[0].toLowerCase()}-${comp}.pdf`, { titulo: "Espelho de ponto" }); }
+    try { const pdf = await gerarEspelhoPDF([snapshotColab(x)], espelhoMeta()); abrirPreview(pdf.output("blob"), `espelho-${x.emp.nome.split(" ")[0].toLowerCase()}-${comp}.pdf`, `Espelho de ponto · ${x.emp.nome}`); }
     catch (e) { setAcaoMsg("Falha no PDF: " + (e instanceof Error ? e.message : "erro")); }
     finally { setExportBusy(""); }
   }
@@ -385,7 +391,7 @@ export function PtrpApuracaoTab() {
     const alvo = colabsFechaveis();
     if (!alvo.length) { setAcaoMsg("Sem colaboradores para o espelho."); return; }
     setExportBusy("espelhos");
-    try { const pdf = await gerarEspelhoPDF(alvo.map(snapshotColab), espelhoMeta()); await baixarOuCompartilhar(pdf.output("blob"), `espelhos-${shortCode}-${comp}.pdf`, { titulo: "Espelhos de ponto" }); }
+    try { const pdf = await gerarEspelhoPDF(alvo.map(snapshotColab), espelhoMeta()); abrirPreview(pdf.output("blob"), `espelhos-${shortCode}-${comp}.pdf`, `Espelhos de ponto · ${labelComp(comp)} (${alvo.length})`); }
     catch (e) { setAcaoMsg("Falha no PDF: " + (e instanceof Error ? e.message : "erro")); }
     finally { setExportBusy(""); }
   }
@@ -471,6 +477,7 @@ export function PtrpApuracaoTab() {
 
   return (
     <div>
+      {mode !== "comparar" && (
       <div className="flex items-center gap-2 flex-wrap mb-2">
         <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{activeRestaurant?.nome} · {shortCode}</span>
         <div className="inline-flex items-center rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden">
@@ -482,7 +489,9 @@ export function PtrpApuracaoTab() {
         </div>
         {!cct && <span className="text-xs text-amber-600 dark:text-amber-400">⚠ Sem CCT — configure em Regras (extras/noturno não calculam).</span>}
       </div>
+      )}
 
+      {mode === "conferencia" && (<>
       {/* Fechamento mensal + exportações (espelho PDF / AEJ) */}
       <div className="flex items-center gap-2 flex-wrap mb-2">
         {travado
@@ -499,9 +508,11 @@ export function PtrpApuracaoTab() {
       <div className="text-[12px] rounded-lg px-3 py-2 mb-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
         Escolha um colaborador pelo chip. <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ verde</span> = sem exceções · <span className="font-semibold text-amber-700 dark:text-amber-300">● amarelo</span> = tem exceções a tratar · <span className="font-semibold text-gray-400">○ cinza</span> = sem batidas / sem CPF. Previsto vem do cadastro do empregado; prévia — validar contra o Sólides. Na tabela do dia: <span className="text-amber-600 dark:text-amber-400">🟡 tracejado</span> = correção pedida no Sólides ainda não aprovada (não conta) → <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ aprovar</span> / <span className="font-semibold text-rose-600">✗ reprovar</span>; <span className="text-blue-600">💬</span> marca o dia p/ pedir correção — junta vários numa mensagem só (inclusive dias sem erro que você suspeita), e o botão azul no topo monta o WhatsApp (linha do DP).
       </div>
+      </>)}
 
-      {/* Comparação de cadastros Sólides × planejamento.app */}
+      {mode === "comparar" && (
       <div className="mb-3">
+        <div className="text-[12px] text-gray-500 mb-2">Cruza a equipe CLT ativa do <strong>{activeRestaurant?.nome}</strong> com o cadastro da Sólides (por CPF).</div>
         <button type="button" onClick={() => (mostrarComp && roster ? setMostrarComp(false) : void carregarRoster())} disabled={carregandoRoster}
           className="text-[12px] font-semibold px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800">
           {carregandoRoster ? "Buscando cadastro da Sólides…" : mostrarComp && roster ? "▲ Ocultar comparação de cadastros" : "🔍 Comparar cadastros (Sólides × app)"}
@@ -526,22 +537,18 @@ export function PtrpApuracaoTab() {
           </div>
         )}
       </div>
+      )}
 
-      {/* Banco de horas / compensação */}
+      {mode === "banco" && (
       <div className="mb-3">
-        <div className="flex items-center gap-2 flex-wrap">
-          <button type="button" onClick={() => setMostrarBanco(v => !v)}
-            className="text-[12px] font-semibold px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800">
-            {mostrarBanco ? "▲ Ocultar banco de horas" : "🏦 Banco de horas / compensação"}
-          </button>
-          {mostrarBanco && (
-            <Button size="sm" variant="secondary" disabled={registrando || !cct} onClick={() => void registrarBanco()}>
-              {registrando ? "Registrando…" : `Registrar ${labelComp(comp)} no banco`}
-            </Button>
-          )}
-          {mostrarBanco && !cct && <span className="text-[11px] text-amber-600">configure a CCT (Regras) pra calcular o vencimento.</span>}
+        <div className="flex items-center gap-2 flex-wrap mb-2">
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">🏦 Banco de horas / compensação · {labelComp(comp)}</span>
+          <Button size="sm" variant="secondary" disabled={registrando || !cct} onClick={() => void registrarBanco()}>
+            {registrando ? "Registrando…" : `Registrar ${labelComp(comp)} no banco`}
+          </Button>
+          {!cct && <span className="text-[11px] text-amber-600">configure a CCT (Regras) pra calcular o vencimento.</span>}
         </div>
-        {mostrarBanco && (
+        {(
           <div className="mt-2 rounded-xl border border-gray-200 dark:border-gray-800 overflow-x-auto">
             <table className="w-full text-[12px] min-w-[560px] [&_td]:px-2 [&_td]:py-1.5 [&_th]:px-2">
               <thead><tr className="text-[10px] uppercase tracking-wide text-gray-400 text-left border-b border-gray-200 dark:border-gray-800">
@@ -570,8 +577,9 @@ export function PtrpApuracaoTab() {
           </div>
         )}
       </div>
+      )}
 
-      {empVis.length === 0 ? (
+      {mode === "conferencia" && (empVis.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">Nenhum empregado neste restaurante.</div>
       ) : (
         <>
@@ -693,8 +701,22 @@ export function PtrpApuracaoTab() {
           </div>
         )}
         </>
-      )}
+      ))}
       {ajusteModal && me && <AjusteModal empresaKey={shortCode} emp={ajusteModal.emp} data={ajusteModal.data} bs={ajusteModal.bs} autor={{ id: me.id, nome: me.nome }} onClose={() => setAjusteModal(null)} />}
+      {preview && (
+        <Modal title={preview.titulo} onClose={fecharPreview} maxWidth="max-w-4xl">
+          <div className="space-y-2">
+            <iframe title="Espelho de ponto" src={preview.url} className="w-full rounded-lg border border-gray-200 dark:border-gray-800 bg-white" style={{ height: "70vh" }} />
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] text-gray-400">Pré-visualização — role para ver todas as páginas.</span>
+              <div className="flex gap-2">
+                <Button variant="secondary" onClick={fecharPreview}>Fechar</Button>
+                <Button onClick={() => void baixarOuCompartilhar(preview.blob, preview.nome, { titulo: preview.titulo })}>⬇️ Baixar / Compartilhar</Button>
+              </div>
+            </div>
+          </div>
+        </Modal>
+      )}
       {corrModal && sel && (
         <CorrecaoLoteModal
           emp={sel.emp}
