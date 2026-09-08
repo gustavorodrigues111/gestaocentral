@@ -200,7 +200,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     return m;
   }, [ajustes]);
 
-  type Linha = { data: string; bs: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean };
+  type Linha = { data: string; bs: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean; ehFuturo: boolean };
   function apurarColab(emp: Empregado) {
     const cpf = soDig(emp.cpf);
     const dias = batidasPorCpf[cpf] || {};
@@ -212,12 +212,11 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       const data = `${comp}-${String(d).padStart(2, "0")}`;
       const bs = dias[data] || [];
       const ajustesDia = ajDias[data] || [];
-      // Dia FUTURO (ainda não aconteceu) sem batida → não é falta; nem mostra.
-      if (data > hojeStr && bs.length === 0 && ajustesDia.length === 0) continue;
+      const ehFuturo = data > hojeStr;   // dia ainda não aconteceu (BRT)
       const statusEscala = escala ? (escala.real?.[emp.id]?.[data] ?? escala.prevista?.[emp.id]?.[data]) : undefined;
       const prev = turnoPrevisto(emp, data, statusEscala);
-      // Mostra TODOS os dias do mês (inclusive folgas e dias sem batida) — só os
-      // futuros ficam ocultos (acima). Folga sem batida entra como linha "folga".
+      // Mostra TODOS os dias do mês — inclusive folgas, dias sem batida e FUTUROS
+      // (estes só com o previsto, sem virar falta e fora do saldo).
       // Desconsideração: remove a batida referida ANTES de apurar (imutável — só ignora).
       const descPunch = new Set(ajustesDia.filter(a => a.tipo === "desconsideracao" && a.punchId).map(a => a.punchId as string));
       // Batidas pendentes já DECIDIDAS (aprovada→inclusão / reprovada→desconsideração
@@ -238,7 +237,10 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       if (prev.kind === "trabalho" && prev.turno) previstoTxt = prev.turno.janelas.map(j => `${j.in}–${j.out}`).join(" ");
       else if (prev.kind === "folga") previstoTxt = "folga";
       else previstoTxt = "sem cadastro";
-      if (cct && prev.kind !== "implicito") {
+      if (ehFuturo) {
+        // Dia futuro: só o previsto aparece; nada de falta/exceção nem saldo.
+        trabalhado = blocos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
+      } else if (cct && prev.kind !== "implicito") {
         const ap = apurarDia({ data, blocos, turno: prev.turno, cct, ehDomingo, ehFeriado, ajustes: ajMotor });
         trabalhado = ap.minutosTrabalhados; extra = ap.minutosExtras; noturno = ap.noturnoMin; excecoes = ap.excecoes;
         previstoMin = ap.minutosPrevistos; atrasoMin = ap.atrasoMin; abonadoMin = ap.abonadoMin;
@@ -253,7 +255,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       const outs = blocos.map(b => b.dateOut).filter((x): x is number => typeof x === "number");
       const primeiraMs = ins.length ? Math.min(...ins) : null;
       const ultimaMs = outs.length ? Math.max(...outs) : null;
-      linhas.push({ data, bs, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado });
+      linhas.push({ data, bs, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo });
     }
     // Interjornada: descanso entre a última saída de um dia e a 1ª entrada do dia
     // seguinte (calendário) < mínimo da CCT → exceção no dia seguinte.
@@ -537,7 +539,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         <Button size="sm" variant="secondary" disabled={!!exportBusy} onClick={() => void baixarAEJ()}>{exportBusy === "aej" ? "Gerando…" : "⬇️ AEJ"}</Button>
       </div>
       <div className="text-[12px] rounded-lg px-3 py-2 mb-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
-        Escolha um colaborador pelo chip. <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ verde</span> = sem exceções · <span className="font-semibold text-amber-700 dark:text-amber-300">● amarelo</span> = tem exceções a tratar · <span className="font-semibold text-gray-400">○ cinza</span> = sem batidas / sem CPF. Previsto vem do cadastro do empregado; prévia — validar contra o Sólides. Na tabela do dia: <span className="text-amber-600 dark:text-amber-400">🟡 tracejado</span> = correção pedida no Sólides ainda não aprovada (não conta) → <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ aprovar</span> / <span className="font-semibold text-rose-600">✗ reprovar</span>; <span className="text-blue-600">💬</span> marca o dia p/ pedir correção — junta vários numa mensagem só (inclusive dias sem erro que você suspeita), e o botão azul no topo monta o WhatsApp (linha do DP).
+        Escolha um colaborador pelo chip. <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ verde</span> = sem exceções · <span className="font-semibold text-amber-700 dark:text-amber-300">● amarelo</span> = tem exceções a tratar · <span className="font-semibold text-gray-400">○ cinza</span> = sem batidas / sem CPF. Previsto vem do cadastro do empregado; prévia — validar contra o Sólides. Na tabela do dia: <span className="text-amber-600 dark:text-amber-400">🟡 tracejado</span> = correção pedida no Sólides ainda não aprovada (não conta) → <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ aprovar</span> / <span className="font-semibold text-rose-600">✗ reprovar</span>; <span className="text-blue-600">💬</span> marca o dia p/ pedir correção — junta vários numa mensagem só (inclusive dias sem erro que você suspeita), e o botão azul no topo monta o WhatsApp (linha do DP). Cor da linha do dia: <span className="px-1 rounded bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300">vermelha</span> = correção necessária (nº ímpar de batidas / falta) · <span className="px-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">amarela</span> = suspeito (só 2 batidas; o padrão é 4 ou 6) · <span className="px-1 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">azul</span> = dia futuro.
       </div>
       </>)}
 
@@ -687,13 +689,25 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                     const pendUndecided = l.bs.some(b => correcaoPendente(b) && b.punchId && !l.decididos.has(b.punchId));
                     const temCorrigivel = l.excecoes.some(e => EXC_CORRIGIVEL.has(e));
                     const corrSel = selCorr.has(l.data);
+                    // Nº de marcações válidas (cada entrada/saída = 1). Padrão do dia
+                    // completo = 4 ou 6. Ímpar = ponto aberto (corrigir → vermelho);
+                    // exatamente 2 = suspeito (só entrada/saída, sem intervalo → amarelo).
+                    const marks = montarMarcacoes(l).filter(m => !m.desconsiderada && !m.pendente).reduce((n, m) => n + (m.in ? 1 : 0) + (m.out ? 1 : 0), 0);
+                    const diaTrab = !folga && !l.ehFeriado && !l.ehFuturo;
+                    const precisaCorrecao = !l.ehFuturo && (l.excecoes.includes("falta") || (marks > 0 && marks % 2 !== 0));
+                    const suspeito = diaTrab && marks === 2;
+                    const rowBg = l.ehFuturo ? "bg-blue-50/70 dark:bg-blue-950/25"
+                      : precisaCorrecao ? "bg-rose-100/70 dark:bg-rose-900/25"
+                      : suspeito ? "bg-amber-50 dark:bg-amber-950/25"
+                      : idx % 2 ? "bg-gray-50/40 dark:bg-gray-800/20" : "";
                     return (
-                    <tr key={l.data} className={`border-b border-gray-50 dark:border-gray-800/40 ${l.excecoes.includes("falta") ? "bg-rose-50/50 dark:bg-rose-900/10" : idx % 2 ? "bg-gray-50/40 dark:bg-gray-800/20" : ""}`}>
+                    <tr key={l.data} className={`border-b border-gray-50 dark:border-gray-800/40 ${rowBg}`}>
                       <td className="tabular-nums font-medium text-gray-700 dark:text-gray-200">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
                       <td className={folga ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}>
                         {l.statusEscala && <span className={`inline-block mr-1 text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[l.statusEscala].bg} ${STATUS_INFO[l.statusEscala].text}`} title={STATUS_INFO[l.statusEscala].label}>{STATUS_INFO[l.statusEscala].short}</span>}
                         {l.statusEscala ? (l.previstoTxt.includes("–") ? l.previstoTxt : "") : l.previstoTxt}
                         {l.ehFeriado && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">feriado</span>}
+                        {l.ehFuturo && <span className="ml-1 text-[10px] font-semibold px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">futuro</span>}
                       </td>
                       <td className="text-gray-700 dark:text-gray-200">
                         <div className="tabular-nums">{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); const pend = correcaoPendente(b) && !(b.punchId && l.decididos.has(b.punchId)); const cls = b.excluded || desc ? "line-through text-gray-400" : pend ? "text-amber-600 dark:text-amber-400 underline decoration-dashed decoration-amber-400" : ""; return <span key={i} className={cls} title={desc ? "desconsiderada" : pend ? `correção ${b.status === "REJECTED" ? "rejeitada" : "pendente"} no Sólides — não entra no oficial` : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}{pend ? " 🟡" : ""}</span>; }) : <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
@@ -707,7 +721,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                       <td className="text-right tabular-nums font-medium">{l.trabalhado ? hm(l.trabalhado) : <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
                       <td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{l.extra ? hm(l.extra) : ""}</td>
                       <td className="text-right tabular-nums text-indigo-500">{l.noturno ? hm(l.noturno) : ""}</td>
-                      <td>{l.excecoes.length ? l.excecoes.map(e => <span key={e} className="inline-block mb-0.5 mr-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{EXC_LABEL[e] || e}</span>) : <span className="text-emerald-500 text-[11px]">✓</span>}</td>
+                      <td>{l.ehFuturo ? <span className="text-blue-500 text-[11px]">a realizar</span> : l.excecoes.length ? l.excecoes.map(e => <span key={e} className="inline-block mb-0.5 mr-1 text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">{EXC_LABEL[e] || e}</span>) : suspeito ? <span className="inline-block text-[10px] px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300" title="Só 2 batidas — o padrão é 4 ou 6 (falta marcar o intervalo?)">conferir · 2 batidas</span> : <span className="text-emerald-500 text-[11px]">✓</span>}</td>
                       <td className="text-right whitespace-nowrap">
                         <div className="inline-flex items-center gap-1">
                           {pendUndecided && !travado && <>
