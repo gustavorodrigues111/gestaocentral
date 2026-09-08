@@ -22,6 +22,7 @@ import { gerarEspelhoPDF } from "../../core/ptrp/espelhoPDF";
 import { gerarAEJ } from "../../core/ptrp/aej";
 import { baixarOuCompartilhar } from "../../core/pdf/baixarOuCompartilhar";
 import { DEV_PADRAO, REP_PADRAO, type ParametrosPTRP } from "./PtrpAejConfig";
+import { PtrpAssinaturasModal, type AlvoAssinatura } from "./PtrpAssinaturasModal";
 import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horarios";
 import { apurarDia, minutoDoDiaBRT, hhmmToMin, type BatidaBloco, type AjusteDia } from "../../core/ptrp/apuracao";
 import { feriadosDoAno } from "../../core/ptrp/feriados";
@@ -131,6 +132,8 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const pessoas = useTodasPessoas();
   // WhatsApp do empregado: Pessoa.whatsapp (por CPF) → fallback Empregado.telefone.
   const whatsPorCpf = useMemo(() => { const m = new Map<string, string>(); for (const p of pessoas) { const c = soDig(p.cpf); if (c && p.whatsapp) m.set(c, soDig(p.whatsapp)); } return m; }, [pessoas]);
+  const emailPorCpf = useMemo(() => { const m = new Map<string, string>(); for (const p of pessoas) { const c = soDig(p.cpf); const e = (p as { email?: string }).email; if (c && e) m.set(c, e); } return m; }, [pessoas]);
+  const [assModal, setAssModal] = useState(false);
 
   async function carregarRoster(silencioso = false) {
     if (!shortCode) return;
@@ -393,6 +396,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const empCnpj = () => (((activeRestaurant as { cnpj?: string } | null)?.cnpj || "").replace(/\D/g, "") || null);
   const empNome = () => (activeRestaurant as { razaoSocial?: string } | null)?.razaoSocial || activeRestaurant?.nome || shortCode;
   const espelhoMeta = () => ({ empresaNome: empNome(), empresaCnpj: empCnpj(), cctNome: cct?.cctNome || null, compLabel: labelComp(comp), geradoPor: me?.nome || null });
+  const alvosAssinatura = (): AlvoAssinatura[] => colabsFechaveis().map(x => { const cpf = soDig(x.emp.cpf); return { snap: snapshotColab(x), whatsapp: (cpf ? whatsPorCpf.get(cpf) : "") || soDig((x.emp as { telefone?: string }).telefone), email: (cpf ? emailPorCpf.get(cpf) : "") || "" }; });
 
   // Encerrar mês: congela a apuração (ptrpApuracoes) + marca o fechamento.
   async function encerrarMes() {
@@ -563,6 +567,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         {travado
           ? <Button size="sm" variant="secondary" disabled={fechBusy} onClick={() => void reabrirMes()}>{fechBusy ? "…" : "🔓 Reabrir mês"}</Button>
           : <Button size="sm" disabled={fechBusy} onClick={() => void encerrarMes()}>{fechBusy ? "Fechando…" : `🔒 Encerrar ${labelComp(comp)}`}</Button>}
+        {travado && <Button size="sm" onClick={() => setAssModal(true)}>✍️ Enviar para assinatura</Button>}
         <Button size="sm" variant="secondary" disabled={!!exportBusy} onClick={() => void baixarEspelhosTodos()}>{exportBusy === "espelhos" ? "Gerando…" : "🖨 Espelhos (todos)"}</Button>
         <Button size="sm" variant="secondary" disabled={!!exportBusy} onClick={() => void baixarAEJ()}>{exportBusy === "aej" ? "Gerando…" : "⬇️ AEJ"}</Button>
       </div>
@@ -799,6 +804,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         </>
       ))}
       {ajusteModal && me && <AjusteModal empresaKey={shortCode} emp={ajusteModal.emp} data={ajusteModal.data} bs={ajusteModal.bs} solidesEmpId={empIdPorCpf.get(soDig(ajusteModal.emp.cpf)) || null} autor={{ id: me.id, nome: me.nome }} onClose={() => setAjusteModal(null)} />}
+      {assModal && me && <PtrpAssinaturasModal empresaKey={shortCode} comp={comp} compLabel={labelComp(comp)} alvos={alvosAssinatura()} meta={espelhoMeta()} autor={{ id: me.id, nome: me.nome }} onClose={() => setAssModal(false)} />}
       {preview && (
         <Modal title={preview.titulo} onClose={fecharPreview} maxWidth="max-w-4xl">
           <div className="space-y-2">
