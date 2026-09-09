@@ -402,6 +402,42 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const espelhoMeta = () => ({ empresaNome: empNome(), empresaCnpj: empCnpj(), cctNome: cct?.cctNome || null, compLabel: labelComp(comp), geradoPor: me?.nome || null });
   const alvosAssinatura = (): AlvoAssinatura[] => colabsFechaveis().map(x => { const cpf = soDig(x.emp.cpf); return { snap: snapshotColab(x), whatsapp: (cpf ? whatsPorCpf.get(cpf) : "") || soDig((x.emp as { telefone?: string }).telefone), email: (cpf ? emailPorCpf.get(cpf) : "") || "" }; });
 
+  // Status PRATICADO do dia (a partir da apuração + tratamento) — vira a escala real.
+  // Regra alinhada ao Análise de Ponto: motivo mapeado tem prioridade; senão,
+  // trabalhou→trabalho (ou comp_trab se previsto era folga/comp); dia de trabalho
+  // sem batida→falta_i; folga/comp/férias mantém. Futuro/hoje NÃO fecham.
+  function statusPraticado(l: Linha): ScheduleStatus | null {
+    if (l.ehFuturo || l.ehHoje) return null;
+    const ajComStatus = l.ajustesDia.find(a => a.statusEscala);
+    if (ajComStatus?.statusEscala) return ajComStatus.statusEscala as ScheduleStatus;
+    const prev = l.statusEscala as ScheduleStatus | undefined;
+    const trabalhou = l.trabalhado > 0 || l.bs.some(b => !b.excluded && !correcaoPendente(b) && b.dateIn != null);
+    if (trabalhou) {
+      if (prev === "comp_trab" || prev === "freela") return prev;
+      if (prev === "folga" || prev === "comp") return "comp_trab";
+      return "trabalho";
+    }
+    if (prev === "trabalho" || prev === "comp_trab" || (!prev && l.previstoTxt.includes("–"))) return "falta_i";   // dia de trabalho sem batida
+    return prev ?? "folga";   // folga/comp/férias mantém; sem previsto vira folga
+  }
+
+  // Grava a escala PRATICADA (escalas/{rid}_{comp}.real) a partir da apuração.
+  async function gerarPraticada() {
+    if (!me || !rid) return;
+    const alvo = colabsFechaveis();
+    if (!alvo.length) { setAcaoMsg("Nada a fechar."); return; }
+    if (!window.confirm(`Gerar a escala PRATICADA de ${labelComp(comp)} a partir da apuração?\n\nGrava o status realizado de cada dia (trabalho / falta / folga / afastamento) na escala do mês — vira a base da gorjeta e do fechamento. Dias de hoje/futuro não entram.`)) return;
+    setFechBusy(true); setAcaoMsg("");
+    try {
+      const realPatch: Record<string, Record<string, ScheduleStatus>> = {};
+      let n = 0;
+      for (const x of alvo) for (const l of x.r.linhas) { const st = statusPraticado(l); if (!st) continue; (realPatch[x.emp.id] = realPatch[x.emp.id] || {})[l.data] = st; n++; }
+      await setDoc(doc(db, "escalas", `${rid}_${comp}`), sanitizeForFirestore({ real: realPatch, atualizadoEm: new Date().toISOString(), atualizadoPor: { id: me.id, nome: me.nome } }), { merge: true });
+      setAcaoMsg(`✓ Escala praticada gerada — ${n} dia(s) em ${alvo.length} colaborador(es).`);
+    } catch (e) { setAcaoMsg("Falha ao gerar praticada: " + (e instanceof Error ? e.message : "erro")); }
+    finally { setFechBusy(false); }
+  }
+
   // ─── Helpers de render da linha do dia (reusados na tabela desktop e nos cards mobile) ───
   const flagsLinha = (l: Linha, idx: number) => {
     const folga = l.previstoTxt === "folga";
@@ -617,6 +653,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         {travado
           ? <Button size="sm" variant="secondary" disabled={fechBusy} onClick={() => void reabrirMes()}>{fechBusy ? "…" : "🔓 Reabrir mês"}</Button>
           : <Button size="sm" disabled={fechBusy} onClick={() => void encerrarMes()}>{fechBusy ? "Fechando…" : `🔒 Encerrar ${labelComp(comp)}`}</Button>}
+        {travado && <Button size="sm" variant="secondary" disabled={fechBusy} onClick={() => void gerarPraticada()}>🗓️ Gerar praticada</Button>}
         {travado && <Button size="sm" onClick={() => setAssModal(true)}>✍️ Enviar para assinatura</Button>}
         <Button size="sm" variant="secondary" disabled={!!exportBusy} onClick={() => void baixarEspelhosTodos()}>{exportBusy === "espelhos" ? "Gerando…" : "🖨 Espelhos (todos)"}</Button>
         <Button size="sm" variant="secondary" disabled={!!exportBusy} onClick={() => void baixarAEJ()}>{exportBusy === "aej" ? "Gerando…" : "⬇️ AEJ"}</Button>
