@@ -870,7 +870,15 @@ function CorrecaoLoteModal({ emp, qtd, textoInicial, onClose, onEnviar }: { emp:
 
 // Modal de TRATAMENTO (gera ptrpAjustes — nunca edita a batida original).
 function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }: { empresaKey: string; emp: Empregado; data: string; bs: BatidaDoc[]; solidesEmpId: string | null; autor: { id: string; nome: string }; onClose: () => void }) {
-  const [tipo, setTipo] = useState<PtrpAjusteTipo>("inclusao");
+  const [sel, setSel] = useState("inclusao");   // "inclusao" | "desconsideracao" | "motivo:<id>"
+  const [motivosMapa, setMotivosMapa] = useState<{ id: number; descricao: string; status: string }[]>([]);
+  useEffect(() => onSnapshot(doc(db, "ptrpMotivosMapa", empresaKey), d => {
+    const m = (d.exists() ? (d.data() as { mapa?: Record<string, { status?: string; exibir?: boolean; descricao?: string }> }).mapa : {}) || {};
+    setMotivosMapa(Object.entries(m).filter(([, v]) => v.exibir).map(([id, v]) => ({ id: Number(id), descricao: v.descricao || `Motivo ${id}`, status: v.status || "" })));
+  }), [empresaKey]);
+  const ehMotivo = sel.startsWith("motivo:");
+  const motivoInfo = ehMotivo ? motivosMapa.find(m => m.id === Number(sel.slice(7))) : null;
+  const tipo: PtrpAjusteTipo = sel === "desconsideracao" ? "desconsideracao" : sel === "inclusao" ? "inclusao" : "abono";
   const [hin, setHin] = useState("08:00");
   const [hout, setHout] = useState("17:00");
   const [punchId, setPunchId] = useState(bs[0]?.punchId || "");
@@ -891,7 +899,7 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
   }, [tipo, aplicarSolides, empresaKey, justs.length]);
 
   async function salvar() {
-    if (!motivo.trim()) { setErr("Descreva o motivo (obrigatório na trilha)."); return; }
+    if (!ehMotivo && !motivo.trim()) { setErr("Descreva o motivo (obrigatório na trilha)."); return; }
     if (tipo === "desconsideracao" && !punchId) { setErr("Escolha a batida a desconsiderar."); return; }
     const aplicar = refleteSolides && aplicarSolides;
     if (aplicar && !solidesEmpId) { setErr("Sem o vínculo Sólides deste colaborador (nenhuma batida com employeeId no mês). Sincronize, ou desmarque 'aplicar na Sólides'."); return; }
@@ -915,7 +923,8 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
         empresaKey, colaboradorId: emp.id, cpf: (emp.cpf || "").replace(/\D/g, ""), data, tipo,
         ...(tipo === "inclusao" ? { in: hin, out: hout } : {}),
         ...(tipo === "desconsideracao" ? { punchId } : {}),
-        motivo: motivo.trim(), autor, criadoEm: new Date().toISOString(), cancelado: false,
+        ...(ehMotivo && motivoInfo ? { motivoSolidesId: motivoInfo.id, statusEscala: motivoInfo.status || null } : {}),
+        motivo: motivo.trim() || (motivoInfo ? motivoInfo.descricao : ""), autor, criadoEm: new Date().toISOString(), cancelado: false,
       };
       await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore(aj));
       onClose();
@@ -930,15 +939,14 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
         <div className="text-[11px] text-gray-500">A batida original é imutável — o tratamento entra como lançamento adicional, com autor e data (Portaria 671).</div>
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Tipo de tratamento</label>
-          <select value={tipo} onChange={e => setTipo(e.target.value as PtrpAjusteTipo)} className={inp}>
+          <select value={sel} onChange={e => setSel(e.target.value)} className={inp}>
             <option value="inclusao">➕ Incluir marcação (esquecimento)</option>
             <option value="desconsideracao">🚫 Desconsiderar uma batida (duplicada/errada)</option>
-            <option value="abono">☂️ Abono</option>
-            <option value="atestado">🩺 Atestado</option>
-            <option value="folga">🌴 Folga</option>
-            <option value="ferias">🏖️ Férias</option>
-            <option value="afastamento">📋 Afastamento</option>
+            {motivosMapa.length > 0 && <optgroup label="☂️ Abono / Afastamento (motivos da Sólides)">
+              {motivosMapa.map(m => <option key={m.id} value={`motivo:${m.id}`}>{m.descricao}</option>)}
+            </optgroup>}
           </select>
+          {motivosMapa.length === 0 && <span className="text-[10px] text-amber-600 dark:text-amber-400">Nenhum motivo marcado — configure em Configurações › Mapeamento de motivos pra abonar/afastar.</span>}
         </div>
         {tipo === "inclusao" && (
           <div className="grid grid-cols-2 gap-2">
@@ -973,7 +981,7 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
             )}
           </div>
         ) : (
-          <div className="text-[11px] text-gray-500 rounded-lg border border-gray-200 dark:border-gray-800 p-2">☂️ Abonos/afastamentos são registrados só no app por enquanto — a integração com a Sólides vem na fase 2.</div>
+          <div className="text-[11px] rounded-lg border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/40 dark:bg-indigo-900/10 p-2 text-indigo-800 dark:text-indigo-200">☂️ Motivo <strong>{motivoInfo?.descricao}</strong> (Sólides) → praticada como <strong>{STATUS_INFO[(motivoInfo?.status || "trabalho") as ScheduleStatus]?.label || motivoInfo?.status || "—"}</strong>. Registrado no app por enquanto; envio à Sólides vem na fase 2.</div>
         )}
         <div className="flex flex-col gap-1">
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Motivo / justificativa (trilha do app)</label>

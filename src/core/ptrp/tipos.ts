@@ -68,6 +68,8 @@ export type PtrpAjuste = {
   out?: string | null;            // "HH:MM" (inclusao)
   punchId?: string | null;        // batida desprezada (desconsideracao)
   minutos?: number | null;        // abono parcial (default: dia inteiro)
+  motivoSolidesId?: number | null;   // motivo de ajuste/afastamento da Sólides (do mapeamento)
+  statusEscala?: string | null;      // ScheduleStatus que este tratamento imprime na praticada
   motivo: string;
   autor?: { id: string; nome: string };
   criadoEm?: string;
