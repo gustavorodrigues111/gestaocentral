@@ -259,8 +259,10 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       } else {
         trabalhado = blocos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
       }
-      // Correção não aprovada E ainda não decidida → pendência a tratar (não é falta).
-      if (bs.some(b => correcaoPendente(b) && !(b.punchId && decididos.has(b.punchId)))) excecoes = [...excecoes, "correcao_pendente"];
+      // Correção não aprovada E ainda não decidida → pendência a tratar. Como a
+      // batida pendente não conta, o motor marca falta/sem batida — mas a pessoa
+      // BATEU (só aguarda aprovação): remove falta/sem batida e sinaliza pendência.
+      if (bs.some(b => correcaoPendente(b) && !(b.punchId && decididos.has(b.punchId)))) excecoes = [...excecoes.filter(e => e !== "falta" && e !== "sem_batida"), "correcao_pendente"];
       // Entrada/saída reais (ms) do dia — pra checar interjornada entre dias.
       const ins = blocos.map(b => b.dateIn).filter((x): x is number => typeof x === "number");
       const outs = blocos.map(b => b.dateOut).filter((x): x is number => typeof x === "number");
@@ -407,9 +409,10 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     const validMarcs = montarMarcacoes(l).filter(m => !m.desconsiderada && !m.pendente);
     const marks = validMarcs.reduce((n, m) => n + (m.in ? 1 : 0) + (m.out ? 1 : 0), 0);
     const incompleta = validMarcs.some(m => (!!m.in) !== (!!m.out));
+    const temPendente = l.excecoes.includes("correcao_pendente");
     const precisaCorrecao = !l.ehFuturo && (l.excecoes.includes("falta") || incompleta || (marks > 0 && marks % 2 !== 0));
     const suspeito = !folga && !l.ehFuturo && !incompleta && marks === 2;
-    const rowBg = l.ehFuturo ? "bg-blue-50/70 dark:bg-blue-950/25" : precisaCorrecao ? "bg-rose-100/70 dark:bg-rose-900/25" : suspeito ? "bg-amber-50 dark:bg-amber-950/25" : idx % 2 ? "bg-gray-50/40 dark:bg-gray-800/20" : "";
+    const rowBg = l.ehFuturo ? "bg-blue-50/70 dark:bg-blue-950/25" : precisaCorrecao ? "bg-rose-100/70 dark:bg-rose-900/25" : (suspeito || temPendente) ? "bg-amber-50 dark:bg-amber-950/25" : idx % 2 ? "bg-gray-50/40 dark:bg-gray-800/20" : "";
     return { folga, pendUndecided, temCorrigivel, inclPunch, incompleta, suspeito, rowBg };
   };
   const renderPrevisto = (l: Linha) => (<>
