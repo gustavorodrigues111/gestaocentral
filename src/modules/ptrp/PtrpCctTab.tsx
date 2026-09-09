@@ -45,7 +45,7 @@ export function PtrpCctTab() {
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">Restaurante ativo sem shortCode do Sólides — troque no seletor do topo.</div>
       ) : (
         <div className="space-y-3">
-          {empresas.map(empresaKey => {
+          {empresasVis.map(empresaKey => {
             const atual = cctPorEmpresa[empresaKey] || null;
             return (
               <div key={empresaKey} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3.5">
