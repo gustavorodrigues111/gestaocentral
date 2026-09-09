@@ -14,8 +14,8 @@ export const config = { maxDuration: 120 };   // 120s: o PDF headless (Puppeteer
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL_PADRAO = "claude-opus-4-8";
 const MAX_LOOPS = 6;          // rodadas de tool-use por mensagem
-const MAX_LINHAS = 40;        // linhas por consulta devolvidas ao modelo
-const MAX_RESULT_CHARS = 12000;
+const MAX_LINHAS = 120;       // linhas por consulta (cobre 3+ meses de dados diários)
+const MAX_RESULT_CHARS = 120000;   // ~30k tokens — cabe um mês inteiro de vendasAltec sem truncar
 
 type VercelReq = { method?: string; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
