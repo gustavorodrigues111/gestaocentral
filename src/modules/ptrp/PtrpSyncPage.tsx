@@ -15,6 +15,7 @@ import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { PtrpCctTab } from "./PtrpCctTab";
 import { PtrpApuracaoTab } from "./PtrpApuracaoTab";
+import { PtrpMotivosTab } from "./PtrpMotivosTab";
 
 type SyncState = {
   id: string;
@@ -51,20 +52,28 @@ export function PtrpSyncPage() {
   const podeBanco = isMaster || can("ponto", "banco");
   const podeSincronizar = isMaster || can("ponto", "sincronizar");
   const podeRegras = isMaster || can("ponto", "regras");
+  const podeConfig = podeSincronizar || podeRegras;   // aba Configurações agrupa Regras/Sync/Mapeamento
   const [estados, setEstados] = useState<SyncState[]>([]);
   const [loading, setLoading] = useState(true);
   const [rodando, setRodando] = useState<string | null>(null);   // "*" = geral; ou empresaKey
   const [msg, setMsg] = useState("");
-  const [aba, setAba] = useState<"conferencia" | "banco" | "sync" | "regras">("conferencia");
+  const [aba, setAba] = useState<"conferencia" | "banco" | "config">("conferencia");
+  const [subAba, setSubAba] = useState<"regras" | "sync" | "mapeamento">("regras");
   const [desdeInput, setDesdeInput] = useState("");
-  // Abas conforme permissão (ordem: Conferência · Banco · Sincronização · Regras); a efetiva é a 1ª válida.
+  // Top-abas (Conferência · Banco · Configurações); a efetiva é a 1ª válida.
   const abasPermitidas = [
     ...(podeConferir ? [["conferencia", "📊 Conferência"] as const] : []),
     ...(podeBanco ? [["banco", "🏦 Banco de horas"] as const] : []),
-    ...(podeSincronizar ? [["sync", "🔄 Sincronização"] as const] : []),
-    ...(podeRegras ? [["regras", "📜 Regras"] as const] : []),
+    ...(podeConfig ? [["config", "⚙️ Configurações"] as const] : []),
   ];
   const abaEfetiva = abasPermitidas.some(([v]) => v === aba) ? aba : (abasPermitidas[0]?.[0] || "conferencia");
+  // Sub-abas de Configurações (Regras · Sincronização · Mapeamento de motivos).
+  const subAbas = [
+    ...(podeRegras ? [["regras", "📜 Regras"] as const] : []),
+    ...(podeSincronizar ? [["sync", "🔄 Sincronização"] as const] : []),
+    ...(podeRegras ? [["mapeamento", "🔀 Mapeamento de motivos"] as const] : []),
+  ];
+  const subAbaEfetiva = subAbas.some(([v]) => v === subAba) ? subAba : (subAbas[0]?.[0] || "regras");
 
   useEffect(() => {
     const u = onSnapshot(collection(db, "ptrpSyncState"), snap => {
@@ -124,7 +133,16 @@ export function PtrpSyncPage() {
         ))}
       </div>
 
-      {abaEfetiva === "conferencia" ? <PtrpApuracaoTab /> : abaEfetiva === "banco" ? <PtrpApuracaoTab mode="banco" /> : abaEfetiva === "regras" ? <PtrpCctTab /> : (
+      {abaEfetiva === "conferencia" ? <PtrpApuracaoTab /> : abaEfetiva === "banco" ? <PtrpApuracaoTab mode="banco" /> : (
+      <>
+      {/* Configurações → sub-abas */}
+      <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
+        {subAbas.map(([v, l]) => (
+          <button key={v} type="button" onClick={() => setSubAba(v)}
+            className={`px-3 py-1.5 text-[13px] font-semibold -mb-px border-b-2 ${subAbaEfetiva === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
+        ))}
+      </div>
+      {subAbaEfetiva === "regras" ? <PtrpCctTab /> : subAbaEfetiva === "mapeamento" ? <PtrpMotivosTab /> : (
       <>
       <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5 mb-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{activeRestaurant?.nome} · {shortCode || "sem shortCode"}</div>
       <div className="flex items-center gap-2 flex-wrap mb-2">
@@ -184,6 +202,8 @@ export function PtrpSyncPage() {
       <div className="mt-4 border-t border-gray-100 dark:border-gray-800 pt-3">
         <PtrpApuracaoTab mode="comparar" />
       </div>
+      </>
+      )}
       </>
       )}
     </div>
