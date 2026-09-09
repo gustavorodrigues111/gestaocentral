@@ -211,7 +211,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     return m;
   }, [ajustes]);
 
-  type Linha = { data: string; bs: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean; ehFuturo: boolean };
+  type Linha = { data: string; bs: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean; ehFuturo: boolean; ehHoje: boolean };
   function apurarColab(emp: Empregado) {
     const cpf = soDig(emp.cpf);
     const dias = batidasPorCpf[cpf] || {};
@@ -224,6 +224,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       const bs = dias[data] || [];
       const ajustesDia = ajDias[data] || [];
       const ehFuturo = data > hojeStr;   // dia ainda não aconteceu (BRT)
+      const ehHoje = data === hojeStr;   // dia em ANDAMENTO — não acusa erro ainda
       const statusEscala = escala ? (escala.real?.[emp.id]?.[data] ?? escala.prevista?.[emp.id]?.[data]) : undefined;
       const prev = turnoPrevisto(emp, data, statusEscala);
       // Mostra TODOS os dias do mês — inclusive folgas, dias sem batida e FUTUROS
@@ -253,22 +254,23 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         trabalhado = blocos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
       } else if (cct && prev.kind !== "implicito") {
         const ap = apurarDia({ data, blocos, turno: prev.turno, cct, ehDomingo, ehFeriado, ajustes: ajMotor });
-        trabalhado = ap.minutosTrabalhados; extra = ap.minutosExtras; noturno = ap.noturnoMin; excecoes = ap.excecoes;
+        trabalhado = ap.minutosTrabalhados; extra = ap.minutosExtras; noturno = ap.noturnoMin;
+        excecoes = ehHoje ? [] : ap.excecoes;   // HOJE em andamento → sem erro (falta/ponto aberto só a partir de amanhã)
         previstoMin = ap.minutosPrevistos; atrasoMin = ap.atrasoMin; abonadoMin = ap.abonadoMin;
-        saldoMes += ap.minutosTrabalhados + ap.abonadoMin - ap.minutosPrevistos;   // + extra / − falta
+        if (!ehHoje) saldoMes += ap.minutosTrabalhados + ap.abonadoMin - ap.minutosPrevistos;   // hoje ainda não entra no saldo
       } else {
         trabalhado = blocos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
       }
       // Correção não aprovada E ainda não decidida → pendência a tratar. Como a
       // batida pendente não conta, o motor marca falta/sem batida — mas a pessoa
       // BATEU (só aguarda aprovação): remove falta/sem batida e sinaliza pendência.
-      if (bs.some(b => correcaoPendente(b) && !(b.punchId && decididos.has(b.punchId)))) excecoes = [...excecoes.filter(e => e !== "falta" && e !== "sem_batida"), "correcao_pendente"];
+      if (!ehHoje && bs.some(b => correcaoPendente(b) && !(b.punchId && decididos.has(b.punchId)))) excecoes = [...excecoes.filter(e => e !== "falta" && e !== "sem_batida"), "correcao_pendente"];
       // Entrada/saída reais (ms) do dia — pra checar interjornada entre dias.
       const ins = blocos.map(b => b.dateIn).filter((x): x is number => typeof x === "number");
       const outs = blocos.map(b => b.dateOut).filter((x): x is number => typeof x === "number");
       const primeiraMs = ins.length ? Math.min(...ins) : null;
       const ultimaMs = outs.length ? Math.max(...outs) : null;
-      linhas.push({ data, bs, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo });
+      linhas.push({ data, bs, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo, ehHoje });
     }
     // Interjornada: descanso entre a última saída de um dia e a 1ª entrada do dia
     // seguinte (calendário) < mínimo da CCT → exceção no dia seguinte.
@@ -276,7 +278,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     for (let i = 1; i < linhas.length; i++) {
       const ant = linhas[i - 1], atu = linhas[i];
       const consecutivo = (Date.parse(atu.data) - Date.parse(ant.data)) === 86_400_000;
-      if (consecutivo && ant.ultimaMs != null && atu.primeiraMs != null && (atu.primeiraMs - ant.ultimaMs) < minInter && !atu.excecoes.includes("interjornada")) atu.excecoes.push("interjornada");
+      if (consecutivo && !atu.ehHoje && !atu.ehFuturo && ant.ultimaMs != null && atu.primeiraMs != null && (atu.primeiraMs - ant.ultimaMs) < minInter && !atu.excecoes.includes("interjornada")) atu.excecoes.push("interjornada");
     }
     return { linhas, temCpf: !!cpf, saldoMes, totTrab: linhas.reduce((s, l) => s + l.trabalhado, 0), totExtra: linhas.reduce((s, l) => s + l.extra, 0), totNot: linhas.reduce((s, l) => s + l.noturno, 0), exc: linhas.reduce((s, l) => s + l.excecoes.length, 0) };
   }
@@ -410,9 +412,9 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     const marks = validMarcs.reduce((n, m) => n + (m.in ? 1 : 0) + (m.out ? 1 : 0), 0);
     const incompleta = validMarcs.some(m => (!!m.in) !== (!!m.out));
     const temPendente = l.excecoes.includes("correcao_pendente");
-    const precisaCorrecao = !l.ehFuturo && (l.excecoes.includes("falta") || incompleta || (marks > 0 && marks % 2 !== 0));
-    const suspeito = !folga && !l.ehFuturo && !incompleta && marks === 2;
-    const rowBg = l.ehFuturo ? "bg-blue-50/70 dark:bg-blue-950/25" : precisaCorrecao ? "bg-rose-100/70 dark:bg-rose-900/25" : (suspeito || temPendente) ? "bg-amber-50 dark:bg-amber-950/25" : idx % 2 ? "bg-gray-50/40 dark:bg-gray-800/20" : "";
+    const precisaCorrecao = !l.ehFuturo && !l.ehHoje && (l.excecoes.includes("falta") || incompleta || (marks > 0 && marks % 2 !== 0));
+    const suspeito = !folga && !l.ehFuturo && !l.ehHoje && !incompleta && marks === 2;
+    const rowBg = (l.ehFuturo || l.ehHoje) ? "bg-blue-50/70 dark:bg-blue-950/25" : precisaCorrecao ? "bg-rose-100/70 dark:bg-rose-900/25" : (suspeito || temPendente) ? "bg-amber-50 dark:bg-amber-950/25" : idx % 2 ? "bg-gray-50/40 dark:bg-gray-800/20" : "";
     return { folga, pendUndecided, temCorrigivel, inclPunch, incompleta, suspeito, rowBg };
   };
   const renderPrevisto = (l: Linha) => (<>
@@ -434,7 +436,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       </div>
     )}
   </>);
-  const renderExcecoes = (l: Linha, incompleta: boolean, suspeito: boolean) => l.ehFuturo ? <span className="text-blue-500 text-[11px]">a realizar</span> : l.excecoes.length ? <span className="inline-flex flex-wrap items-center gap-1 text-[14px] leading-none">{l.excecoes.map(e => <span key={e} className="cursor-help" title={EXC_LABEL[e] || e}>{EXC_ICON[e] || "⚠️"}</span>)}</span> : incompleta ? <span className="cursor-help text-[14px]" title="Batida sem par (ponto aberto) — precisa corrigir">3️⃣</span> : suspeito ? <span className="cursor-help text-[14px]" title="Só 2 batidas — o padrão é 4 ou 6">✌️</span> : <span className="text-emerald-500 text-[12px]">✓</span>;
+  const renderExcecoes = (l: Linha, incompleta: boolean, suspeito: boolean) => l.ehHoje ? <span className="text-blue-600 dark:text-blue-300 text-[11px] font-bold">HOJE</span> : l.ehFuturo ? <span className="text-blue-500 text-[11px]">a realizar</span> : l.excecoes.length ? <span className="inline-flex flex-wrap items-center gap-1 text-[14px] leading-none">{l.excecoes.map(e => <span key={e} className="cursor-help" title={EXC_LABEL[e] || e}>{EXC_ICON[e] || "⚠️"}</span>)}</span> : incompleta ? <span className="cursor-help text-[14px]" title="Batida sem par (ponto aberto) — precisa corrigir">3️⃣</span> : suspeito ? <span className="cursor-help text-[14px]" title="Só 2 batidas — o padrão é 4 ou 6">✌️</span> : <span className="text-emerald-500 text-[12px]">✓</span>;
   const renderAcoes = (l: Linha, pendUndecided: boolean, temCorrigivel: boolean) => { const corrSel = selCorr.has(l.data); return (
     <div className="inline-flex items-center gap-1">
       {pendUndecided && !travado && <>
