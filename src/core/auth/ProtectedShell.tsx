@@ -61,6 +61,7 @@ import { DocumentosPage } from "../../modules/documentos/DocumentosPage";
 import { IaGovernancaPage } from "../../modules/iaGovernanca/IaGovernancaPage";
 import { WhatsappPage } from "../../modules/whatsapp/WhatsappPage";
 import { VendasPage } from "../../modules/vendas/VendasPage";
+import { RelatoriosVendasPage } from "../../modules/relatoriosVendas/RelatoriosVendasPage";
 import { FaturasPage } from "../../modules/faturas/FaturasPage";
 import { FolhasPage } from "../../modules/folhas/FolhasPage";
 import { PrazosPage } from "../../modules/prazos/PrazosPage";
@@ -144,6 +145,7 @@ function ModuleRouter() {
     case "iaGovernanca": return <IaGovernancaPage key={k} />;
     case "whatsapp": return <WhatsappPage key={k} />;
     case "vendas":        return <VendasPage key={k} />;
+    case "relatoriosVendas": return <RelatoriosVendasPage key={k} />;
     case "faturas":       return <FaturasPage key={k} />;
     case "folhas":        return <FolhasPage key={k} />;
     case "prazos":        return <PrazosPage key={k} />;

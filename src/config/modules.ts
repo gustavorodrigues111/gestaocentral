@@ -100,6 +100,7 @@ export const MODULES: ModuleDef[] = [
 
   // ── Despesas ─────────────────────────────────────────────────────
   { id: "vendas",      area: "fin", subarea: "Vendas & Permutas",      label: "Vendas",          icon: "🧾", status: "ativo", etapa: "beta", desc: "Registro de vendas fora do sistema fiscal (entre empresas, permutas, sem margem). Cobrança via WhatsApp, quitação e permuta recíproca." },
+  { id: "relatoriosVendas", area: "fin", subarea: "Vendas & Permutas", label: "Relatórios de Vendas", icon: "📊", status: "ativo", etapa: "beta", desc: "Relatórios do PDV Altec/Riser (caixa encerrado): produtos vendidos detalhados (qtd, faturamento bruto/líquido, curva ABC) e faturamento por turno (Almoço × Noite). Fonte oficial 'Vendas por Produto', completa (não só o top-10 do dia)." },
   { id: "faturas",     area: "fin", subarea: "Cartões & Faturas",      label: "Faturas",         icon: "💳", status: "ativo", etapa: "em_desenvolvimento", desc: "Faturas de cartão: sobe o PDF, a IA extrai e você classifica os gastos por categoria/empresa. Gastos atribuídos a outra empresa viram reembolso na Central de Avisos dela." },
   { id: "folhas",      area: "dp", subarea: "Folha de Pagamento",     label: "Conferência de Folhas", icon: "🧾", status: "ativo", etapa: "em_desenvolvimento", desc: "Agente auditor: sobe os espelhos da folha (Senador), a IA extrai e o motor de regras confere contra gorjeta, adiantamento (verba 953) e integridade. Reporta só os erros (P0/P1/P2), não o que está certo.", dependsOn: ["pessoas", "gorjetas"] },
 

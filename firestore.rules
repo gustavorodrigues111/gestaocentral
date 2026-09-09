@@ -65,6 +65,11 @@ service cloud.firestore {
     match /altecSyncStatus/{id} {
       allow read, write: if authed();
     }
+    // Snapshot mensal do relatório oficial "Vendas por Produto" (relVendGroupProd2)
+    //   — fonte completa (todos os produtos, não só top-10). api/altec-relatorio.
+    match /vendasProdutoAltec/{id} {
+      allow read, write: if authed();
+    }
 
     // ── Conferência de folhas de pagamento (dados sensíveis: financeiro +
     //   PII de empregado). Qualquer authed lê/grava; UI gateia por permissão.
