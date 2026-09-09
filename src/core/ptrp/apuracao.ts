@@ -80,12 +80,13 @@ export function apurarDia(params: {
   // ── Monta os pares [in,out] efetivos: batidas não-desconsideradas + inclusões.
   const desconsiderados = new Set(ajustes.filter(a => a.tipo === "desconsideracao").map(a => (a as { blocoIndex: number }).blocoIndex));
   const pares: { in: number; out: number }[] = [];
+  let temImpar = false;   // ALGUMA batida sem par (entrada sem saída) → ponto aberto (flag única, não 1 por batida)
   params.blocos.forEach((b, i) => {
     if (b.excluded || desconsiderados.has(i)) return;
     if (typeof b.dateIn === "number" && typeof b.dateOut === "number") {
       pares.push({ in: minutoDoDiaBRT(b.dateIn), out: minutoDoDiaBRT(b.dateOut) });
     } else if (typeof b.dateIn === "number") {
-      excecoes.push("batida_impar");   // entrada sem saída (ponto aberto)
+      temImpar = true;   // entrada sem saída (ponto aberto)
     }
   });
   for (const a of ajustes) if (a.tipo === "inclusao") pares.push({ in: a.in, out: a.out });
@@ -100,9 +101,12 @@ export function apurarDia(params: {
   // ── Regra central folga/falta ─────────────────────────────────────────────
   if (!trabalhou && !abonoDia) {
     if (folgaPrevista) return base(data, { folga: true });
+    // Bateu ponto mas SEM par completo (só entrada/ponto aberto) → corrigir, NÃO é falta/sem batida.
+    if (temImpar) { excecoes.push("batida_impar"); return base(data, { minutosPrevistos: previstoDoTurno(params.turno), excecoes }); }
     excecoes.push("sem_batida", "falta");
     return base(data, { falta: true, minutosPrevistos: previstoDoTurno(params.turno), excecoes });
   }
+  if (temImpar) excecoes.push("batida_impar");   // trabalhou (tem par) E ainda sobrou uma batida sem par
   if (trabalhou && folgaPrevista) excecoes.push("fora_escala");
 
   // ── Minutos trabalhados + intervalo (maior gap entre pares) ───────────────
@@ -158,7 +162,7 @@ export function apurarDia(params: {
     falta: false, folga: false,
     foraDeEscala: trabalhou && folgaPrevista,
     abonadoMin,
-    excecoes,
+    excecoes: [...new Set(excecoes)],
   };
 }
 
