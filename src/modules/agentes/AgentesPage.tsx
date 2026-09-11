@@ -172,7 +172,7 @@ type CardPreco = string | { qual?: string; val: string };
 type CardItem = { nome: string; descricao?: string; precos?: CardPreco[] };
 type CardSecao = { secao: string; itens?: CardItem[] };
 type CardEstado = { comidas?: CardSecao[]; bebidas?: CardSecao[]; vendinha?: CardSecao[]; versao?: number };
-type ChatMsg = { id: string; role: "user" | "assistant"; texto: string; tools?: { tool: string; resumo: string }[]; cardapio?: CardEstado; pdfUrl?: string; previaUrl?: string; criadoEm: string; canal?: string; pessoaNome?: string | null; conversaId?: string };
+type ChatMsg = { id: string; role: "user" | "assistant"; texto: string; tools?: { tool: string; resumo: string }[]; cardapio?: CardEstado; pdfUrl?: string; pdfUrls?: { url: string; nome: string }[]; previaUrl?: string; criadoEm: string; canal?: string; pessoaNome?: string | null; conversaId?: string };
 
 // Renderiza o texto da mensagem tornando CLICÁVEIS os links markdown [txt](url)
 // e as URLs soltas, e formatando **negrito**. Sem dangerouslySetInnerHTML.
@@ -256,10 +256,10 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
   }, [agente.id]);
   useEffect(() => { fimRef.current?.scrollIntoView({ behavior: "smooth" }); }, [msgs.length, enviando]);
 
-  async function persistir(role: "user" | "assistant", texto: string, tools?: { tool: string; resumo: string }[], cardapio?: CardEstado, pdfUrl?: string, previaUrl?: string) {
+  async function persistir(role: "user" | "assistant", texto: string, tools?: { tool: string; resumo: string }[], cardapio?: CardEstado, pdfUrl?: string, previaUrl?: string, pdfUrls?: { url: string; nome: string }[]) {
     await addDoc(collection(db, "agenteMensagens"), {
       agenteId: agente.id, conversaId, restaurantId: null, role, texto,
-      pessoaId: pessoaId || null, canal: "app", tools: tools || null, cardapio: cardapio || null, pdfUrl: pdfUrl || null, previaUrl: previaUrl || null,
+      pessoaId: pessoaId || null, canal: "app", tools: tools || null, cardapio: cardapio || null, pdfUrl: pdfUrl || null, previaUrl: previaUrl || null, pdfUrls: pdfUrls || null,
       criadoEm: new Date().toISOString(),
     });
   }
@@ -284,10 +284,10 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
       const r = await fetch("/api/agente", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ agenteId: agente.id, mensagem: m.trim(), historico, pessoaNome, ...(anx ? { anexo: { base64: anx.base64, mediaType: anx.mediaType } } : {}) }) });
       // Resposta pode não ser JSON quando a função estoura o tempo (ex.: PDF pesado) → não quebra.
       const raw = await r.text();
-      let j: { error?: string; resposta?: string; toolCalls?: { tool: string; resumo: string }[]; estadoCardapio?: CardEstado; pdfUrl?: string; previaUrl?: string } = {};
+      let j: { error?: string; resposta?: string; toolCalls?: { tool: string; resumo: string }[]; estadoCardapio?: CardEstado; pdfUrl?: string; pdfUrls?: { url: string; nome: string }[]; previaUrl?: string } = {};
       try { j = raw ? JSON.parse(raw) : {}; } catch { j = { error: r.status === 504 || !r.ok ? `O servidor demorou demais pra responder (HTTP ${r.status}). Se pediu PDF, tente de novo — a 1ª geração é mais lenta.` : "Resposta inválida do servidor." }; }
       if (!r.ok) { setErro(j.error || "Falha na resposta."); await persistir("assistant", "⚠️ " + (j.error || "Erro.")); return; }
-      await persistir("assistant", j.resposta || "(sem resposta)", j.toolCalls, j.estadoCardapio, j.pdfUrl, j.previaUrl);
+      await persistir("assistant", j.resposta || "(sem resposta)", j.toolCalls, j.estadoCardapio, j.pdfUrl, j.previaUrl, j.pdfUrls);
     } catch (e) { setErro(e instanceof Error ? e.message : "Erro de rede."); }
     finally { setEnviando(false); }
   }
@@ -402,12 +402,12 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
                   <span className="text-[13px] font-semibold text-gray-800 dark:text-gray-100">Abrir prévia (HTML) ↗</span>
                 </a>
               )}
-              {m.pdfUrl && (
-                <a href={m.pdfUrl} target="_blank" rel="noreferrer" className="mt-1.5 inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800">
+              {((m.pdfUrls && m.pdfUrls.length) ? m.pdfUrls : (m.pdfUrl ? [{ url: m.pdfUrl, nome: "" }] : [])).map((p, k) => (
+                <a key={k} href={p.url} target="_blank" rel="noreferrer" className="mt-1.5 inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800">
                   <span className="w-8 h-9 rounded bg-[#FC7659] text-white grid place-items-center text-[9px] font-extrabold">PDF</span>
-                  <span className="text-[13px] font-semibold text-gray-800 dark:text-gray-100">Baixar filipeta (PDF) ↓</span>
+                  <span className="text-[13px] font-semibold text-gray-800 dark:text-gray-100">{p.nome ? `${p.nome} (PDF) ↓` : "Baixar filipeta (PDF) ↓"}</span>
                 </a>
-              )}
+              ))}
             </div>
           ))}
           {enviando && <div className="text-xs text-gray-400">consultando…</div>}
