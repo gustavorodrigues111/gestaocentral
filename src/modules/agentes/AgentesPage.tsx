@@ -3,6 +3,7 @@
 // O motor de chat + execução de ferramentas (loop tool-use no api/agente.ts)
 // entra no F1b. Escrita sempre em modo confirmação; permissão herda de Pessoas.
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import { collection, onSnapshot, doc, setDoc, deleteDoc, addDoc, query, where, orderBy, limit, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -172,6 +173,29 @@ type CardItem = { nome: string; descricao?: string; precos?: CardPreco[] };
 type CardSecao = { secao: string; itens?: CardItem[] };
 type CardEstado = { comidas?: CardSecao[]; bebidas?: CardSecao[]; vendinha?: CardSecao[]; versao?: number };
 type ChatMsg = { id: string; role: "user" | "assistant"; texto: string; tools?: { tool: string; resumo: string }[]; cardapio?: CardEstado; pdfUrl?: string; previaUrl?: string; criadoEm: string; canal?: string; pessoaNome?: string | null; conversaId?: string };
+
+// Renderiza o texto da mensagem tornando CLICÁVEIS os links markdown [txt](url)
+// e as URLs soltas, e formatando **negrito**. Sem dangerouslySetInnerHTML.
+function renderRico(t: string): ReactNode[] {
+  const nodes: ReactNode[] = [];
+  const re = /\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)|(https?:\/\/[^\s)]+)|\*\*([^*\n]+)\*\*/g;
+  let last = 0, k = 0;
+  let m: RegExpExecArray | null;
+  const linkCls = "underline break-words hover:opacity-80";
+  while ((m = re.exec(t)) !== null) {
+    if (m.index > last) nodes.push(t.slice(last, m.index));
+    if (m[1] !== undefined && m[2] !== undefined) {
+      nodes.push(<a key={k++} href={m[2]} target="_blank" rel="noreferrer" className={linkCls}>{m[1]}</a>);
+    } else if (m[3] !== undefined) {
+      nodes.push(<a key={k++} href={m[3]} target="_blank" rel="noreferrer" className={`${linkCls} break-all`}>{m[3]}</a>);
+    } else if (m[4] !== undefined) {
+      nodes.push(<strong key={k++}>{m[4]}</strong>);
+    }
+    last = re.lastIndex;
+  }
+  if (last < t.length) nodes.push(t.slice(last));
+  return nodes;
+}
 
 // Prévia leve do cardápio (HTML) — mostrada no chat quando a skill lê/altera.
 function CardapioPreview({ e }: { e: CardEstado }) {
@@ -364,7 +388,7 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
                 </div>
               )}
               <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${m.role === "user" ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200"}`}>
-                {m.texto}
+                {renderRico(m.texto)}
                 {m.tools && m.tools.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-1">
                     {m.tools.map((t, k) => <span key={k} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200/70 dark:bg-gray-700/70 text-gray-500 dark:text-gray-400">🔎 {t.tool} · {t.resumo}</span>)}
