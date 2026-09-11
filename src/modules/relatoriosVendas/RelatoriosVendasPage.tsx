@@ -19,7 +19,7 @@ const qtdFmt = (v: number) => (Number.isInteger(v) ? String(v) : v.toLocaleStrin
 const dBR = (iso: string) => { const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
 
 type Produto = { id: string; produto: string; categoria: string; qtd: number; fatBruto: number; fatLiquido: number; pctTotal: number; curva: string };
-type Meta = { di: string; df: string; totalProdutos: number; totalQtd: number; totalFatBruto: number; totalFatLiquido: number };
+type Meta = { di: string; df: string; totalProdutos: number; totalQtd: number; totalFatBruto: number; totalFatLiquido: number; geradoEm?: string };
 type DiaHora = { data: string; fat: number; porHora: number[] };
 
 // Primeiro e último dia do mês atual (default do período).
@@ -34,6 +34,14 @@ function mesPassado(): { di: string; df: string } {
   const di = ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1));
   const df = ymd(new Date(now.getFullYear(), now.getMonth(), 0));
   return { di, df };
+}
+// di/df cobrem exatamente 1 mês-calendário? → "YYYY-MM" (a competência salva), senão "".
+function compMes(di: string, df: string): string {
+  const [ay, am, ad] = di.split("-").map(Number);
+  const [by, bm, bd] = df.split("-").map(Number);
+  if (ay !== by || am !== bm || ad !== 1) return "";
+  if (bd !== new Date(by, bm, 0).getDate()) return "";
+  return `${ay}-${String(am).padStart(2, "0")}`;
 }
 
 type Ordem = { col: keyof Produto; dir: 1 | -1 };
@@ -54,6 +62,27 @@ export function RelatoriosVendasPage() {
   const [catSel, setCatSel] = useState<string>("");
   const [ordem, setOrdem] = useState<Ordem>({ col: "fatBruto", dir: -1 });
   const [backfill, setBackfill] = useState("");
+  const [origem, setOrigem] = useState<"" | "live" | "salvo">("");
+
+  // Carrega o snapshot SALVO (vendasProdutoAltec) do mês selecionado — assim a
+  // tela já mostra o último relatório gerado, sem precisar gerar de novo.
+  // "Gerar relatório" atualiza ao vivo (e regrava o snapshot).
+  useEffect(() => {
+    if (aba !== "produtos" || !activeId) return;
+    const comp = compMes(di, df);
+    if (!comp) { return; }
+    let cancelado = false;
+    (async () => {
+      const s = await getDoc(doc(db, "vendasProdutoAltec", `${activeId}_${comp}`)).catch(() => null);
+      if (cancelado || !s || !s.exists()) return;
+      const d = s.data() as { produtos?: Produto[]; geradoEm?: string; di?: string; df?: string; totalProdutos?: number; totalQtd?: number; totalFatBruto?: number; totalFatLiquido?: number };
+      if (!Array.isArray(d.produtos)) return;
+      setProdutos(d.produtos);
+      setMeta({ di: d.di || di, df: d.df || df, totalProdutos: d.totalProdutos || d.produtos.length, totalQtd: d.totalQtd || 0, totalFatBruto: d.totalFatBruto || 0, totalFatLiquido: d.totalFatLiquido || 0, geradoEm: d.geradoEm });
+      setOrigem("salvo");
+    })();
+    return () => { cancelado = true; };
+  }, [aba, activeId, di, df]);
 
   // Grava os snapshots mensais (vendasProdutoAltec) que o agente de IA lê.
   async function salvarProAgente() {
@@ -74,7 +103,7 @@ export function RelatoriosVendasPage() {
 
   async function gerarProdutos() {
     if (!activeId || carregando) return;
-    setCarregando(true); setErro(""); setProdutos([]); setMeta(null);
+    setCarregando(true); setErro(""); setProdutos([]); setMeta(null); setOrigem("");
     try {
       const qs = new URLSearchParams({ rid: activeId, di, df, status: "E" });
       const r = await fetch(`/api/altec-relatorio?${qs.toString()}`, { method: "POST", headers: { ...(await authHeader()) } });
@@ -82,6 +111,7 @@ export function RelatoriosVendasPage() {
       if (!r.ok) { setErro((j as { error?: string }).error || `HTTP ${r.status}`); return; }
       setProdutos(((j as { produtos?: Produto[] }).produtos) || []);
       setMeta((j as { meta?: Meta }).meta || null);
+      setOrigem("live");
     } catch (e) {
       setErro(e instanceof Error ? e.message : "falha ao gerar relatório");
     } finally { setCarregando(false); }
@@ -224,12 +254,19 @@ export function RelatoriosVendasPage() {
 
           {!carregando && !erro && !meta && (
             <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">
-              Escolha o período e clique em <b>Gerar relatório</b>.
+              Sem relatório salvo pra este mês ainda. Clique em <b>Gerar relatório</b> — ele busca no PDV e <b>salva</b>, então da próxima vez já abre aqui.
             </div>
           )}
 
           {meta && !carregando && (
             <>
+              <div className={`mb-3 rounded-lg border p-2.5 text-xs flex items-center justify-between gap-2 ${origem === "salvo" ? "border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200" : "border-emerald-200 dark:border-emerald-900 bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-200"}`}>
+                <span>
+                  {origem === "salvo"
+                    ? <>📁 Mostrando o <b>relatório salvo</b>{meta.geradoEm ? ` (gerado em ${new Date(meta.geradoEm).toLocaleString("pt-BR")})` : ""}. Clique em <b>Gerar relatório</b> pra atualizar ao vivo.</>
+                    : <>✓ Gerado ao vivo{compMes(di, df) ? <> e <b>salvo</b> em <code>vendasProdutoAltec/{activeId}_{compMes(di, df)}</code> (o agente já lê).</> : <> (período não é 1 mês fechado — <b>não</b> foi salvo; ajuste pra 1º→último dia do mês pra salvar).</>}</>}
+                </span>
+              </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
                 <Card titulo="Produtos" valor={String(meta.totalProdutos)} />
                 <Card titulo="Itens vendidos" valor={qtdFmt(meta.totalQtd)} />
