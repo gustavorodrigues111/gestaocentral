@@ -20,6 +20,7 @@ const dBR = (iso: string) => { const [y, m, d] = iso.split("-"); return `${d}/${
 const dtBR = (iso?: string) => (iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
 
 const MESES_PT = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const MESES_ABBR = ["jan", "fev", "mar", "abr", "mai", "jun", "jul", "ago", "set", "out", "nov", "dez"];
 const nomeComp = (comp: string) => { const [y, m] = comp.split("-"); return `${MESES_PT[Number(m) - 1] || m} de ${y}`; };
 // Início/fim (ISO) de uma competência YYYY-MM; fim limitado a hoje (mês corrente).
 function rangeDoComp(comp: string): { di: string; df: string } {
@@ -130,6 +131,7 @@ export function RelatoriosVendasPage() {
     } catch (e) { setBackfill("erro: " + (e instanceof Error ? e.message : "?")); }
   }
 
+  const extraidosMap = useMemo(() => new Map(meses.map((m) => [m.comp, m.geradoEm] as const)), [meses]);
   const categorias = useMemo(() => [...new Set(produtos.map((p) => p.categoria))].sort(), [produtos]);
   const produtosVis = useMemo(() => {
     const b = busca.trim().toLowerCase();
@@ -217,16 +219,17 @@ export function RelatoriosVendasPage() {
       {aba === "produtos" ? (
         <div>
           {/* Extrair um mês */}
-          <div className="flex flex-wrap items-end gap-2 mb-2">
+          <div className="flex flex-wrap items-start gap-3 mb-3">
             <div>
-              <label className="block text-[11px] text-gray-500 mb-0.5">Extrair o mês</label>
-              <input type="month" value={mesInput} max={todayYmd().slice(0, 7)} onChange={(e) => setMesInput(e.target.value)}
-                className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5" />
+              <label className="block text-[11px] text-gray-500 mb-1">Escolha o mês pra extrair</label>
+              <SeletorMesAno value={mesInput} onChange={setMesInput} extraidos={extraidosMap} max={todayYmd().slice(0, 7)} />
             </div>
-            <Button size="sm" onClick={() => void extrair(mesInput)} disabled={carregando || !mesInput}>
-              {carregando ? "Extraindo…" : jaExtraido ? "Re-extrair" : "Extrair do PDV"}
-            </Button>
-            {jaExtraido && !carregando && <span className="text-xs text-gray-400 pb-1.5">já extraído em {dtBR(jaExtraido.geradoEm)}</span>}
+            <div className="pt-5 flex flex-col items-start gap-1">
+              <Button size="sm" onClick={() => void extrair(mesInput)} disabled={carregando || !mesInput}>
+                {carregando ? "Extraindo…" : jaExtraido ? `Re-extrair ${nomeComp(mesInput).replace(/^\w/, (c) => c.toUpperCase())}` : `Extrair ${nomeComp(mesInput).replace(/^\w/, (c) => c.toUpperCase())}`}
+              </Button>
+              {jaExtraido && !carregando && <span className="text-[11px] text-emerald-700 dark:text-emerald-300">✓ já extraído em {dtBR(jaExtraido.geradoEm)}</span>}
+            </div>
           </div>
 
           <div className="mb-3 text-xs">
@@ -423,6 +426,49 @@ export function RelatoriosVendasPage() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Seletor mês/ano: ano em setas + grade de 12 meses. Marca os já extraídos (✓
+// verde) e bloqueia os futuros. `max` = "YYYY-MM" mais recente permitido.
+function SeletorMesAno({ value, onChange, extraidos, max }: { value: string; onChange: (c: string) => void; extraidos: Map<string, string | undefined>; max: string }) {
+  const anoMax = Number(max.slice(0, 4));
+  const [ano, setAno] = useState(Number((value || max).slice(0, 4)) || anoMax);
+  const mesSel = value.slice(0, 4) === String(ano) ? Number(value.slice(5, 7)) : 0;
+  return (
+    <div className="inline-block rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-2.5 w-[260px]">
+      <div className="flex items-center justify-between mb-2">
+        <button type="button" onClick={() => setAno((a) => Math.max(2024, a - 1))} disabled={ano <= 2024}
+          className="w-7 h-7 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 disabled:opacity-30">‹</button>
+        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums">{ano}</span>
+        <button type="button" onClick={() => setAno((a) => Math.min(anoMax, a + 1))} disabled={ano >= anoMax}
+          className="w-7 h-7 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 disabled:opacity-30">›</button>
+      </div>
+      <div className="grid grid-cols-4 gap-1.5">
+        {MESES_ABBR.map((lbl, i) => {
+          const comp = `${ano}-${String(i + 1).padStart(2, "0")}`;
+          const futuro = comp > max;
+          const ext = extraidos.has(comp);
+          const sel = mesSel === i + 1;
+          return (
+            <button key={comp} type="button" disabled={futuro} onClick={() => onChange(comp)}
+              title={ext ? `extraído em ${dtBR(extraidos.get(comp))}` : futuro ? "mês futuro" : ""}
+              className={`relative text-xs py-1.5 rounded-lg border capitalize transition-colors ${
+                sel ? "border-indigo-600 bg-indigo-600 text-white font-semibold"
+                : futuro ? "border-transparent text-gray-300 dark:text-gray-700 cursor-not-allowed"
+                : ext ? "border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 hover:border-emerald-400"
+                : "border-gray-200 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+              {lbl}
+              {ext && !sel && <span className="absolute top-0.5 right-0.5 text-[8px] text-emerald-600 dark:text-emerald-400">✓</span>}
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-2 flex items-center gap-3 text-[10px] text-gray-400">
+        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800" /> extraído</span>
+        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-600" /> selecionado</span>
+      </div>
     </div>
   );
 }
