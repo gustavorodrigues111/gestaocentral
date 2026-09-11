@@ -747,7 +747,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
 // ── Núcleo reusável do agente ────────────────────────────────────────────────
 // Monta ferramentas/persona, roda o loop de tool-use no Claude e devolve a
 // resposta. Usado pelo handler (chat do app) E pelo webhook do WhatsApp.
-export type AgenteResultado = { resposta: string; toolCalls: { tool: string; resumo: string }[]; estadoCardapio?: unknown; pdfUrl?: string; previaUrl?: string };
+export type AgenteResultado = { resposta: string; toolCalls: { tool: string; resumo: string }[]; estadoCardapio?: unknown; pdfUrl?: string; pdfUrls?: { url: string; nome: string }[]; previaUrl?: string };
 export async function runAgenteCore(
   agente: Doc,
   opts: { mensagem: string; historico?: { role: string; texto: string }[]; pessoaNome: string; pessoaId: string; anexo?: { base64?: string; mediaType?: string }; canal?: string; modoTeste?: boolean; onProgress?: (msg: string) => Promise<void> },
@@ -800,7 +800,7 @@ export async function runAgenteCore(
       // Fluxo com CONFIRMAÇÃO antes de aplicar (o usuário é a operação). Há 5
       // cardápios: Comidas, Bebidas, Carta de Vinhos, Especiais do Dia e
       // Especiais de Almoço (esta é uma SEÇÃO do dobrável Comidas e Bebidas).
-      ? " ESTRUTURA DOS CARDÁPIOS (o Puba tem 3 PEÇAS): (A) o DOBRÁVEL 'Comidas e Bebidas' — UMA peça que reúne 3 SEÇÕES: *Comidas*, *Bebidas* e *Especiais de Almoço*; (B) a *Carta de Vinhos* (peça própria, com curadoria); (C) a filipeta *Especiais do Dia* (peça própria). ATENÇÃO: *Especiais de Almoço* NÃO é uma peça/cardápio separado — é SEÇÃO do dobrável Comidas e Bebidas; quando listar os cardápios, apresente as 3 peças (deixando claro que Especiais de Almoço é seção do dobrável). FLUXO DE ALTERAÇÃO (CONFIRME antes de mexer): (1) Quando pedirem uma alteração, primeiro IDENTIFIQUE onde está o item — use ler_cardapio e veja se é seção *Comidas*, *Bebidas* ou *Especiais de Almoço* (todas no dobrável), ou *Carta de Vinhos*, ou *Especiais do Dia*. (2) ANTES de aplicar, mande UMA mensagem curta CONFIRMANDO, nomeando o que SAI, o que ENTRA e em QUAL cardápio (ex.: 'Vou tirar *Prato X* e colocar *Prato Y* no cardápio de *Comidas* — confirma?'). NUNCA aplique sem esse ok. (3) Se faltar info pra fazer (preço, descrição, seção/categoria, ou em qual cardápio), PEÇA primeiro — não invente. (4) Só com o OK ('pode', 'confirma', 'isso', 'sim') chame aplicar_cardapio; depois responda 'Feito ✅' com 1 linha do que mudou e PERGUNTE se quer o PDF reformado (NÃO gere sozinho). (5) Na menor DÚVIDA (não achou o item, item parecido em mais de um cardápio, pedido ambíguo), PERGUNTE em vez de adivinhar. (6) Quando o usuário PEDIR o PDF/filipeta diretamente ('manda o pdf', 'gera a filipeta', 'quero o pdf de comidas'), aí sim gere e mande NA HORA, sem reconfirmar."
+      ? " ESTRUTURA DOS CARDÁPIOS (o Puba tem 3 PEÇAS): (A) o DOBRÁVEL 'Comidas e Bebidas' — UMA peça que reúne 3 SEÇÕES: *Comidas*, *Bebidas* e *Especiais de Almoço*; (B) a *Carta de Vinhos* (peça própria, com curadoria); (C) a filipeta *Especiais do Dia* (peça própria). ATENÇÃO: *Especiais de Almoço* NÃO é uma peça/cardápio separado — é SEÇÃO do dobrável Comidas e Bebidas; quando listar os cardápios, apresente as 3 peças (deixando claro que Especiais de Almoço é seção do dobrável). FLUXO DE ALTERAÇÃO (CONFIRME antes de mexer): (1) Quando pedirem uma alteração, primeiro IDENTIFIQUE onde está o item — use ler_cardapio e veja se é seção *Comidas*, *Bebidas* ou *Especiais de Almoço* (todas no dobrável), ou *Carta de Vinhos*, ou *Especiais do Dia*. (2) ANTES de aplicar, mande UMA mensagem curta CONFIRMANDO, nomeando o que SAI, o que ENTRA e em QUAL cardápio (ex.: 'Vou tirar *Prato X* e colocar *Prato Y* no cardápio de *Comidas* — confirma?'). NUNCA aplique sem esse ok. (3) Se faltar info pra fazer (preço, descrição, seção/categoria, ou em qual cardápio), PEÇA primeiro — não invente. (4) Só com o OK ('pode', 'confirma', 'isso', 'sim') chame aplicar_cardapio; depois responda 'Feito ✅' com 1 linha do que mudou e PERGUNTE se quer o PDF reformado (NÃO gere sozinho). (5) Na menor DÚVIDA (não achou o item, item parecido em mais de um cardápio, pedido ambíguo), PERGUNTE em vez de adivinhar. (6) Quando o usuário PEDIR o PDF/filipeta diretamente ('manda o pdf', 'gera a filipeta', 'quero o pdf de comidas'), aí sim gere e mande NA HORA, sem reconfirmar. (7) Quando pedirem TODOS os cardápios / 'os 3' / 'manda tudo', gere as 3 PEÇAS SEPARADAS chamando gerar_pdf TRÊS vezes — 'dobravel', 'vinhos' e 'especiais' — NUNCA use cardapio='todos' (que junta tudo numa peça só). Cada PDF é entregue como um arquivo próprio."
       : " Para QUALQUER alteração: primeiro PROPONHA em texto o que vai mudar e peça confirmação explícita; só chame a ferramenta de escrita DEPOIS que o usuário confirmar ('confirma'/'pode aplicar') na mensagem seguinte. Nunca aplique sem confirmação.";
   // No WhatsApp não há prévia HTML na tela — o agente descreve em texto e manda o link do PDF.
   const notaCardapio = !temCardapioClassico ? ""
@@ -846,6 +846,7 @@ export async function runAgenteCore(
   const toolCalls: { tool: string; resumo: string }[] = [];
   let tocouCardapio = false;
   let pdfUrl: string | null = null;
+  const pdfs: { url: string; nome: string }[] = [];   // TODOS os PDFs gerados no turno
   let previaUrl: string | null = null;
   for (let loop = 0; loop < MAX_LOOPS; loop++) {
     const payload = { model: (agente.model as string) || MODEL_PADRAO, max_tokens: 2000, system, messages, tools: anthropicTools };
@@ -864,6 +865,7 @@ export async function runAgenteCore(
       const out: AgenteResultado = { resposta: texto || "(sem resposta)", toolCalls };
       if (tocouCardapio) out.estadoCardapio = await lerCardapioEstado();
       if (pdfUrl) out.pdfUrl = pdfUrl;
+      if (pdfs.length) out.pdfUrls = pdfs;
       if (previaUrl) out.previaUrl = previaUrl;
       return out;
     }
@@ -879,7 +881,7 @@ export async function runAgenteCore(
         ? await skill.exec(input, { pessoaId: opts.pessoaId, pessoaNome: opts.pessoaNome, restaurantId: agenteRid, onProgress: opts.onProgress })
         : await execTool(b.name, input as { restaurantId?: string; periodo?: string; busca?: string }, escopo);
       toolCalls.push({ tool: b.name, resumo });
-      if (b.name === "gerar_pdf" || b.name === "gerar_pdf_site" || b.name === "gerar_pdf_lobozo") { try { const p = JSON.parse(conteudo) as { pdfUrl?: string }; if (p.pdfUrl) pdfUrl = p.pdfUrl; } catch { /* ignore */ } }
+      if (b.name === "gerar_pdf" || b.name === "gerar_pdf_site" || b.name === "gerar_pdf_lobozo") { try { const p = JSON.parse(conteudo) as { pdfUrl?: string; cardapio?: string }; if (p.pdfUrl) { pdfUrl = p.pdfUrl; const NOMES: Record<string, string> = { dobravel: "Comidas e Bebidas", vinhos: "Carta de Vinhos", especiais: "Especiais do Dia", vendinha: "Especiais de Almoço", especiais_almoco: "Especiais de Almoço", comidas: "Comidas", bebidas: "Bebidas", completo: "Cardápio" }; const nome = NOMES[String(p.cardapio || "").toLowerCase()] || "Cardápio"; if (!pdfs.some(x => x.url === p.pdfUrl)) pdfs.push({ url: p.pdfUrl, nome }); } } catch { /* ignore */ } }
       if (b.name === "gerar_previa" || b.name === "gerar_previa_site") { try { const p = JSON.parse(conteudo) as { previaUrl?: string }; if (p.previaUrl) previaUrl = p.previaUrl; } catch { /* ignore */ } }
       results.push({ type: "tool_result", tool_use_id: b.id, content: conteudo });
       try {

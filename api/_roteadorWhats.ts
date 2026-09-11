@@ -379,22 +379,26 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
       pessoaId: null, canal: "sistema", criadoEm: now(),
     }).catch(() => {});
   }
-  if (out.pdfUrl) {
-    // Nome do arquivo derivado do AGENTE (não fixo "puba", que confundia quem
-    // usa o agente de outro restaurante, ex.: Sororoca).
-    const slug = String(agente.nome || "")
-      .toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
-      .split(/\s+/)
-      .filter((w) => w.length >= 3 && !["agente", "cardapio", "assistente", "dos", "das", "com", "site", "novo"].includes(w))
-      .join("-").replace(/[^a-z0-9-]/g, "") || "cardapio";
-    const errDoc = await enviarWhatsDoc(from, out.pdfUrl, `cardapio-${slug}.pdf`);
+  // Envia TODOS os PDFs gerados no turno (ex.: "manda os 3 cardápios" → 3 docs).
+  // Se o motor só devolveu um `pdfUrl`, manda esse.
+  const slugBase = String(agente.nome || "")
+    .toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+    .split(/\s+/)
+    .filter((w) => w.length >= 3 && !["agente", "cardapio", "assistente", "dos", "das", "com", "site", "novo"].includes(w))
+    .join("-").replace(/[^a-z0-9-]/g, "") || "cardapio";
+  const slugify = (s: string) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "") || "cardapio";
+  const docs = (out.pdfUrls && out.pdfUrls.length)
+    ? out.pdfUrls.map((p) => ({ url: p.url, filename: `${slugBase}-${slugify(p.nome)}.pdf` }))
+    : (out.pdfUrl ? [{ url: out.pdfUrl, filename: `cardapio-${slugBase}.pdf` }] : []);
+  for (const d of docs) {
+    const errDoc = await enviarWhatsDoc(from, d.url, d.filename);
     if (errDoc) {
-      // O PDF NÃO foi entregue — manda o link em texto pra pessoa baixar (assim
-      // ela nunca fica sem o arquivo) e registra o motivo pra diagnosticar.
-      await enviarWhats(from, `📄 Não consegui anexar o PDF aqui, mas você abre/baixa por este link:\n${out.pdfUrl}`);
+      // Não entregou — manda o link em texto (a pessoa nunca fica sem o arquivo)
+      // e registra o motivo pra diagnosticar.
+      await enviarWhats(from, `📄 Não consegui anexar *${d.filename}* aqui, mas você abre/baixa por este link:\n${d.url}`);
       await firestoreCriar("agenteMensagens", `am_${rid()}`, {
         agenteId: agente.id, conversaId, restaurantId: null, role: "assistant",
-        texto: `⚠️ Falha ao ENVIAR o PDF no WhatsApp (mandei o link em texto). Motivo: ${errDoc}`,
+        texto: `⚠️ Falha ao ENVIAR o PDF (${d.filename}) no WhatsApp (mandei o link em texto). Motivo: ${errDoc}`,
         pessoaId: null, canal: "sistema", criadoEm: now(),
       }).catch(() => {});
     }
