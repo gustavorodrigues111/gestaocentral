@@ -119,17 +119,34 @@ def draw_title(c, dx, dy, title_lines):
         baseline_top = caps_top + caph + i * pitch
         c.drawCentredString(cx, PH - baseline_top, ln)
 
-def draw_copy(c, dx, dy, header_png, sections, title_lines, box_bot):
+def draw_copy(c, dx, dy, header_png, sections, title_lines, box_bot, cont_top=None):
     x0, x1 = BX0 + dx, BX1 + dx
-    hw = 286.0 - 10.3; hh = 125.4
-    c.drawImage(header_png, 10.3 + dx, PH - (dy + hh), width=hw, height=hh)
-    draw_title(c, dx, dy, title_lines)
-    hdr = dy + HDR_BOT; bbot = dy + box_bot
-    c.setFillColorRGB(*BLUE)
-    c.rect(DIV_X0 + dx, PH - hdr, DIV_X1 - DIV_X0, 1.5, stroke=0, fill=1)
+    # header_png=None → modo CONTINUAÇÃO: sem logo/título, a lista "continua" de
+    # outra coluna. `cont_top` (dist. do topo da página) define onde a grade começa
+    # — passe o topo do cabeçalho da coluna vizinha pra alinhar as duas colunas.
+    cont = header_png is None
+    if not cont:
+        hw = 286.0 - 10.3; hh = 125.4
+        c.drawImage(header_png, 10.3 + dx, PH - (dy + hh), width=hw, height=hh)
+        draw_title(c, dx, dy, title_lines)
+        hdr = dy + HDR_BOT
+        top_frame = dy + 125.0
+        c.setFillColorRGB(*BLUE)
+        c.rect(DIV_X0 + dx, PH - hdr, DIV_X1 - DIV_X0, 1.5, stroke=0, fill=1)
+    else:
+        # Continuação SEM cabeçalho: a grade sobe até `cont_top` (topo da coluna
+        # vizinha) pra preencher o vazio; fecha o topo com a régua azul + tampa.
+        top = (dy + cont_top) if cont_top is not None else (dy + 125.0)
+        top_frame = top
+        hdr = top + 12.0            # respiro abaixo da régua de topo
+        c.setFillColorRGB(*BLUE)
+        c.rect(DIV_X0 + dx, PH - top, DIV_X1 - DIV_X0, 1.5, stroke=0, fill=1)
+        c.setLineWidth(1.5); c.setStrokeColorRGB(*BLUE)
+        c.line(x0 - 0.75, PH - top, x1 + 0.75, PH - top)
+    bbot = dy + box_bot
     c.setLineWidth(1.5); c.setStrokeColorRGB(*BLUE)
-    c.line(x0, PH - (dy + 125.0), x0, PH - bbot)
-    c.line(x1, PH - (dy + 125.0), x1, PH - bbot)
+    c.line(x0, PH - top_frame, x0, PH - bbot)
+    c.line(x1, PH - top_frame, x1, PH - bbot)
     c.line(x0 - 0.75, PH - bbot, x1 + 0.75, PH - bbot)
     c.setFillColorRGB(*BLUE)
     c.rect(LBL_LINE_X0 + dx, PH - bbot, LBL_LINE_X1 - LBL_LINE_X0, bbot - hdr, stroke=0, fill=1)
@@ -262,6 +279,22 @@ def draw_cover(c, curadoria=None):
     cut_line(c, PW / 2, 8, PW / 2, PH - 8)          # guia de dobra ao meio
     c.showPage()
 
+# Reparte as seções em 2 grupos (esquerda / direita) enchendo a esquerda até
+# ~left_area sem quebrar seção. Se sobrar tudo na esquerda, joga a última seção
+# pra direita (pra honrar o layout de 1,5 coluna). Retorna (esq, dir).
+def split_por_altura(c, sections, left_area, gap=12.0):
+    def sec_h(items): return sum(item_height(c, it) for it in items) + (len(items) + 1) * gap
+    left, right, acc = [], [], 0.0
+    for sec, items in sections:
+        h = sec_h(items)
+        if not left or acc + h <= left_area:
+            left.append((sec, items)); acc += h
+        else:
+            right.append((sec, items))
+    if not right and len(left) > 1:
+        right.insert(0, left.pop())
+    return left, right
+
 def render(estado):
     _ensure_fonts()
     comidas = _to_sections(estado.get('comidas'))
@@ -278,17 +311,23 @@ def render(estado):
     # Interna: Comidas (esq) | Bebidas (dir). Conteúdo real; muda só a diagramação.
     if estado.get('_layout') == 'folder':
         RB = 822.3; HALF = PH / 2
-        # Frente (externa): especiais na METADE DE CIMA da coluna esquerda + capa
-        if vendinha:
-            draw_copy(c, 0.0, 0.0, Hd('header_comidas_sem_titulo.png'), vendinha, ["ESPECIAIS", "DE ALMOÇO"], HALF - 14.0)
+        # ── Frente (externa): BEBIDAS na CONTRACAPA (esq) + capa "Comidas e Bebidas" (dir)
+        if bebidas:
+            draw_copy(c, 0.0, 0.0, Hd('header_bebidas_sem_titulo.png'), bebidas, ["BEBIDAS"], RB)
         draw_cover_title(c, ["COMIDAS", "E BEBIDAS"], PW * 0.75)
         cut_line(c, PW / 2, 8, PW / 2, PH - 8); c.showPage()
-        # Verso (interna): comidas | bebidas
+        # ── Verso (interna): COMIDAS em 1,5 coluna (esquerda inteira + topo da
+        #    direita, fluindo) + ESPECIAIS DE ALMOÇO na metade de baixo da direita.
         if comidas:
-            draw_copy(c, 0.0, 0.0, Hd('header_comidas_sem_titulo.png'), comidas, ["COMIDAS"], RB)
-        if bebidas:
-            draw_copy(c, 297.8, 0.0, Hd('header_bebidas_sem_titulo.png'), bebidas, ["BEBIDAS"], RB)
-        cut_line(c, PW / 2, 8, PW / 2, PH - 8); c.showPage()
+            esq, dir_top = split_por_altura(c, comidas, RB - HDR_BOT - 30.0)
+            draw_copy(c, 0.0, 0.0, Hd('header_comidas_sem_titulo.png'), esq, ["COMIDAS"], RB)
+            if dir_top:   # continuação: sobe até o topo da coluna (alinha com o cabeçalho da esquerda)
+                draw_copy(c, 297.8, 0.0, None, dir_top, None, HALF - 14.0, cont_top=12.6)
+        if vendinha:
+            # base do Especiais alinhada com a base da coluna esquerda (RB).
+            draw_copy(c, 297.8, HALF, Hd('header_comidas_sem_titulo.png'), vendinha, ["ESPECIAIS", "DE ALMOÇO"], RB - HALF)
+        cut_line(c, PW / 2, 8, PW / 2, PH - 8)
+        c.showPage()
         c.save()
         return buf.getvalue()
 
