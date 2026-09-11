@@ -58,17 +58,52 @@ async function marcarLidoDigitando(messageId: string): Promise<void> {
   } catch { /* best-effort */ }
 }
 
-async function enviarWhatsDoc(to: string, link: string, filename: string): Promise<void> {
+// Sobe o binário do PDF pra Meta e devolve um media_id (mais confiável que
+// mandar por link — a Meta não precisa alcançar a nossa URL).
+async function subirMidiaMeta(bytes: Buffer, filename: string, mime: string): Promise<string | null> {
   const token = process.env.WHATSAPP_TOKEN, phoneId = process.env.WHATSAPP_PHONE_ID;
   const versao = process.env.WHATSAPP_API_VERSION || "v21.0";
-  if (!token || !phoneId || !link) return;
+  if (!token || !phoneId) return null;
   try {
-    await fetch(`https://graph.facebook.com/${versao}/${phoneId}/messages`, {
-      method: "POST",
-      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ messaging_product: "whatsapp", to: soDig(to), type: "document", document: { link, filename } }),
-    });
-  } catch { /* best-effort */ }
+    const fd = new FormData();
+    fd.append("messaging_product", "whatsapp");
+    fd.append("type", mime);
+    fd.append("file", new Blob([new Uint8Array(bytes)], { type: mime }), filename);
+    const r = await fetch(`https://graph.facebook.com/${versao}/${phoneId}/media`, { method: "POST", headers: { Authorization: `Bearer ${token}` }, body: fd });
+    if (!r.ok) return null;
+    const j = (await r.json()) as { id?: string };
+    return j.id || null;
+  } catch { return null; }
+}
+
+// Envia um documento (PDF). Tenta primeiro por MEDIA_ID (baixa o arquivo e sobe
+// pra Meta) e, se não der, por LINK. Devolve null em sucesso, ou o motivo da
+// falha (pra registrar/diagnosticar) — NÃO engole mais o erro.
+async function enviarWhatsDoc(to: string, link: string, filename: string): Promise<string | null> {
+  const token = process.env.WHATSAPP_TOKEN, phoneId = process.env.WHATSAPP_PHONE_ID;
+  const versao = process.env.WHATSAPP_API_VERSION || "v21.0";
+  if (!token || !phoneId) return "credenciais do WhatsApp ausentes";
+  if (!link) return "sem link do arquivo";
+  const url = `https://graph.facebook.com/${versao}/${phoneId}/messages`;
+  const headers = { Authorization: `Bearer ${token}`, "Content-Type": "application/json" };
+  // 1) via media_id (baixa o PDF e sobe pra Meta).
+  try {
+    const rf = await fetch(link);
+    if (rf.ok) {
+      const bytes = Buffer.from(await rf.arrayBuffer());
+      const mediaId = await subirMidiaMeta(bytes, filename, "application/pdf");
+      if (mediaId) {
+        const r = await fetch(url, { method: "POST", headers, body: JSON.stringify({ messaging_product: "whatsapp", to: soDig(to), type: "document", document: { id: mediaId, filename } }) });
+        if (r.ok) return null;
+      }
+    }
+  } catch { /* cai pro link abaixo */ }
+  // 2) via link (fallback).
+  try {
+    const r = await fetch(url, { method: "POST", headers, body: JSON.stringify({ messaging_product: "whatsapp", to: soDig(to), type: "document", document: { link, filename } }) });
+    if (!r.ok) { const t = await r.text().catch(() => ""); return `HTTP ${r.status}: ${t.slice(0, 300)}`; }
+    return null;
+  } catch (e) { return e instanceof Error ? e.message : "erro de rede"; }
 }
 
 const menuTexto = (agentes: Doc[]) =>
@@ -352,6 +387,16 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
       .split(/\s+/)
       .filter((w) => w.length >= 3 && !["agente", "cardapio", "assistente", "dos", "das", "com", "site", "novo"].includes(w))
       .join("-").replace(/[^a-z0-9-]/g, "") || "cardapio";
-    await enviarWhatsDoc(from, out.pdfUrl, `cardapio-${slug}.pdf`);
+    const errDoc = await enviarWhatsDoc(from, out.pdfUrl, `cardapio-${slug}.pdf`);
+    if (errDoc) {
+      // O PDF NÃO foi entregue — manda o link em texto pra pessoa baixar (assim
+      // ela nunca fica sem o arquivo) e registra o motivo pra diagnosticar.
+      await enviarWhats(from, `📄 Não consegui anexar o PDF aqui, mas você abre/baixa por este link:\n${out.pdfUrl}`);
+      await firestoreCriar("agenteMensagens", `am_${rid()}`, {
+        agenteId: agente.id, conversaId, restaurantId: null, role: "assistant",
+        texto: `⚠️ Falha ao ENVIAR o PDF no WhatsApp (mandei o link em texto). Motivo: ${errDoc}`,
+        pessoaId: null, canal: "sistema", criadoEm: now(),
+      }).catch(() => {});
+    }
   }
 }
