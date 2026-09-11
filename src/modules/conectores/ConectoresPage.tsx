@@ -2,9 +2,10 @@
 // Mostra o status do último sync por restaurante e permite forçar na hora.
 // Os dados vivem em <tipo>SyncStatus/{rid}, gravados pelos crons api/*-sync.
 import { useEffect, useMemo, useState } from "react";
-import { collection, onSnapshot } from "firebase/firestore";
+import { collection, onSnapshot, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import type { Restaurant } from "../../core/types";
 import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 
@@ -36,6 +37,26 @@ export function ConectoresPage() {
   const [statusPorCol, setStatusPorCol] = useState<Record<string, Record<string, Status>>>({});
   const [forcando, setForcando] = useState<string>("");   // `${tipo}_${rid}`
   const [backfill, setBackfill] = useState<{ rid: string; msg: string; rodando: boolean } | null>(null);
+  const [snap, setSnap] = useState<{ rid: string; msg: string; rodando: boolean } | null>(null);
+
+  // Grava os snapshots mensais (vendasProdutoAltec) que o agente de IA lê —
+  // relatório oficial "Vendas por Produto", 12 meses. É o que faz o agente
+  // responder "quanto vendeu de X no mês" com o número exato.
+  async function puxarSnapshots(rid: string) {
+    if (snap?.rodando) return;
+    setSnap({ rid, msg: "consultando o Altec (12 meses)…", rodando: true });
+    try {
+      const r = await fetch(`/api/altec-relatorio?rid=${encodeURIComponent(rid)}&meses=12`, { method: "POST", headers: { ...(await authHeader()) } });
+      const j = (await r.json().catch(() => ({}))) as { error?: string; resultado?: Array<{ meses?: unknown[]; erro?: string }> };
+      if (!r.ok) { setSnap({ rid, msg: "falha: " + (j.error || `HTTP ${r.status}`), rodando: false }); return; }
+      const casa = (j.resultado || [])[0];
+      if (casa?.erro) { setSnap({ rid, msg: "falha: " + casa.erro, rodando: false }); return; }
+      const n = Array.isArray(casa?.meses) ? casa!.meses!.length : 0;
+      setSnap({ rid, msg: `✓ ${n} meses gravados pro agente`, rodando: false });
+    } catch (e) {
+      setSnap({ rid, msg: "falha: " + (e instanceof Error ? e.message : "?"), rodando: false });
+    }
+  }
 
   useEffect(() => {
     const unsubs = CONECTORES.map((c) =>
@@ -152,6 +173,19 @@ export function ConectoresPage() {
                           {backfill?.rid === r.id && (
                             <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{backfill.msg}</div>
                           )}
+                          <div className="mt-1.5">
+                            <button
+                              type="button"
+                              disabled={snap?.rodando}
+                              onClick={() => void puxarSnapshots(r.id)}
+                              className="text-[12px] font-medium text-emerald-700 dark:text-emerald-300 hover:underline disabled:opacity-50 disabled:no-underline"
+                            >
+                              {snap?.rid === r.id && snap.rodando ? "⏳ salvando…" : "🤖 Salvar 12 meses de produtos pro agente"}
+                            </button>
+                            {snap?.rid === r.id && !snap.rodando && (
+                              <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{snap.msg}</div>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
@@ -160,6 +194,90 @@ export function ConectoresPage() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      <AltecConfig restaurants={restaurants} />
+    </div>
+  );
+}
+
+// ── Configuração do Altec por empresa ──────────────────────────────────────
+// Grava restaurants/{id}.altec = { ativo, host, credKey }. As credenciais
+// (usuário/senha) NÃO ficam aqui nem no banco — são secrets da Vercel
+// (ALTEC_<credKey>_USER / ALTEC_<credKey>_PASS), que só o master cadastra lá.
+const SUGESTOES: Record<string, { host: string; credKey: string }> = {
+  puba: { host: "pubabar.r3.riser.com.br", credKey: "PUBA" },
+  sororoca: { host: "sororocabar.r3.riser.com.br", credKey: "SOROROCA" },
+};
+function AltecConfig({ restaurants }: { restaurants: Restaurant[] }) {
+  const [aberto, setAberto] = useState(false);
+  const [rascunho, setRascunho] = useState<Record<string, { ativo: boolean; host: string; credKey: string }>>({});
+  const [salvo, setSalvo] = useState<string>("");
+
+  const valor = (r: Restaurant) => {
+    const d = rascunho[r.id];
+    if (d) return d;
+    const sug = Object.entries(SUGESTOES).find(([k]) => r.nome.toLowerCase().includes(k))?.[1];
+    return { ativo: !!r.altec?.ativo, host: r.altec?.host || sug?.host || "", credKey: r.altec?.credKey || sug?.credKey || "" };
+  };
+  const set = (rid: string, patch: Partial<{ ativo: boolean; host: string; credKey: string }>) => {
+    const r = restaurants.find((x) => x.id === rid)!;
+    setRascunho((p) => ({ ...p, [rid]: { ...valor(r), ...patch } }));
+  };
+  async function salvar(r: Restaurant) {
+    const v = valor(r);
+    setSalvo(r.id + ":salvando");
+    try {
+      await updateDoc(doc(db, "restaurants", r.id), { altec: { ativo: v.ativo, host: v.host.trim(), credKey: v.credKey.trim().toUpperCase() } });
+      setSalvo(r.id + ":ok");
+    } catch { setSalvo(r.id + ":erro"); }
+  }
+
+  const ordenados = [...restaurants].sort((a, b) => a.nome.localeCompare(b.nome));
+  return (
+    <div className="mt-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+      <button onClick={() => setAberto((v) => !v)} className="w-full flex items-center justify-between p-4 text-left">
+        <span className="font-semibold text-gray-900 dark:text-gray-100">⚙️ Configurar Altec (por empresa)</span>
+        <span className="text-gray-400">{aberto ? "▲" : "▼"}</span>
+      </button>
+      {aberto && (
+        <div className="px-4 pb-4 space-y-3">
+          <p className="text-xs text-gray-500 dark:text-gray-400">
+            Ligue o PDV Altec/Riser de cada empresa (host + apelido da credencial). As <b>senhas ficam só na Vercel</b> como secrets
+            <code className="mx-1 px-1 rounded bg-gray-100 dark:bg-gray-800">ALTEC_&lt;apelido&gt;_USER</code>/<code className="px-1 rounded bg-gray-100 dark:bg-gray-800">_PASS</code> — nunca no código nem no banco.
+          </p>
+          {ordenados.map((r) => {
+            const v = valor(r);
+            const st = salvo.startsWith(r.id + ":") ? salvo.split(":")[1] : "";
+            return (
+              <div key={r.id} className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <span className="font-medium text-sm text-gray-800 dark:text-gray-100">{r.nome}</span>
+                  <label className="flex items-center gap-1.5 text-xs text-gray-600 dark:text-gray-300">
+                    <input type="checkbox" checked={v.ativo} onChange={(e) => set(r.id, { ativo: e.target.checked })} /> ativo
+                  </label>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <label className="text-[11px] text-gray-500">Host do painel
+                    <input value={v.host} onChange={(e) => set(r.id, { host: e.target.value })} placeholder="ex.: sororocabar.r3.riser.com.br"
+                      className="mt-0.5 w-full text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5" />
+                  </label>
+                  <label className="text-[11px] text-gray-500">Apelido da credencial (credKey)
+                    <input value={v.credKey} onChange={(e) => set(r.id, { credKey: e.target.value })} placeholder="ex.: SOROROCA"
+                      className="mt-0.5 w-full text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5 uppercase" />
+                  </label>
+                </div>
+                <div className="flex items-center gap-2 mt-2">
+                  <Button size="sm" variant="secondary" onClick={() => void salvar(r)} disabled={st === "salvando"}>
+                    {st === "salvando" ? "Salvando…" : "Salvar"}
+                  </Button>
+                  {st === "ok" && <span className="text-xs text-emerald-600">✓ salvo — agora crie os secrets <code>ALTEC_{v.credKey || "…"}_USER/PASS</code> na Vercel</span>}
+                  {st === "erro" && <span className="text-xs text-rose-600">falha ao salvar</span>}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
     </div>

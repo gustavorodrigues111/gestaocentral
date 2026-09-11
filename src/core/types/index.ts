@@ -1079,6 +1079,10 @@ export type Restaurant = {
   serviceStartDate?: string;
   modulosAtivos: ModuleId[];
 
+  // Conector Altec/Riser (PDV/vendas): host do painel + credKey. As credenciais
+  // ficam em secrets da Vercel (ALTEC_<credKey>_USER / ALTEC_<credKey>_PASS).
+  altec?: { ativo?: boolean; host?: string; credKey?: string };
+
   // É um restaurante de fato? Default true (retrocompat: tudo que já existe é
   // restaurante). Desmarcar em entidades de gestão pessoal/escritório (ex:
   // Quibebe) — só rótulo/organização; os módulos continuam manuais.
