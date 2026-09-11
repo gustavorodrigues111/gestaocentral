@@ -221,7 +221,9 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     const hojeStr = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
     for (let d = 1; d <= diasDoMes; d++) {
       const data = `${comp}-${String(d).padStart(2, "0")}`;
-      const bs = dias[data] || [];
+      // Ordena as batidas por horário (a correção lançada depois pode vir fora de
+      // ordem no armazenamento) — deixa render/marcações/CSV cronológicos.
+      const bs = (dias[data] || []).slice().sort((a, b) => (a.dateIn ?? Infinity) - (b.dateIn ?? Infinity));
       const ajustesDia = ajDias[data] || [];
       const ehFuturo = data > hojeStr;   // dia ainda não aconteceu (BRT)
       const ehHoje = data === hojeStr;   // dia em ANDAMENTO — não acusa erro ainda
