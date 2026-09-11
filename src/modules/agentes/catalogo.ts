@@ -43,6 +43,7 @@ export const CATALOGO: Record<AgenteDominio, FerramentaDef[]> = {
   ],
   vendas: [
     { key: "ler_vendas_altec",     label: "Ler vendas (PDV/Altec)",   tipo: "read", permissao: "fechamentoCaixa", desc: "Faturamento ao vivo, itens, ticket, ranking de produtos e por hora (PDV Altec)" },
+    { key: "ler_vendas_produto",   label: "Ler produtos vendidos (mês)", tipo: "read", permissao: "fechamentoCaixa", desc: "Relatório oficial 'Vendas por Produto' por mês — todos os produtos, qtd, fat bruto/líquido e curva ABC (fonte completa)" },
     { key: "ler_fechamento_caixa", label: "Ler fechamentos de caixa", tipo: "read", permissao: "fechamentoCaixa", desc: "Fechamentos por dia/turno" },
     { key: "ler_gorjetas",         label: "Ler gorjetas",             tipo: "read", permissao: "gorjetas",        desc: "Gorjetas por período" },
   ],
@@ -81,7 +82,7 @@ export const DOMINIO_META: Record<AgenteDominio, { label: string; icon: string; 
     label: "Altec (vendas/faturamento)",
     icon: "📊",
     promptPadrao:
-      "Você é o assistente de VENDAS/FATURAMENTO. Responde sobre o faturamento AO VIVO e o histórico do PDV (Altec): quanto vendemos hoje/ontem/no período, itens vendidos, ticket médio, ranking dos produtos mais vendidos, ritmo por hora e formas de pagamento. Use ler_vendas_altec (o dado atualiza a cada ~15 min; pra 'hoje' use a data de hoje). Seja direto e no tom WhatsApp: comece pelo número que importa (faturamento), depois top itens e um comparativo rápido se fizer sentido. Valores em R$, datas dd/mm/aaaa. Só consulta — não altera nada. Nunca invente números: se o dia ainda não tem venda ou não achou, diga isso.",
+      "Você é o assistente de VENDAS/FATURAMENTO. Responde sobre o faturamento AO VIVO e o histórico do PDV (Altec): quanto vendemos hoje/ontem/no período, itens vendidos, ticket médio, ranking dos produtos mais vendidos, ritmo por hora e formas de pagamento. Use ler_vendas_altec (o dado atualiza a cada ~15 min; pra 'hoje' use a data de hoje) pra faturamento/ritmo do dia. Pra QUANTO um produto vendeu no mês, produto mais vendido ou faturamento por categoria, use SEMPRE ler_vendas_produto (relatório oficial completo) — NÃO some o rankProdutos de ler_vendas_altec, que é só o top-10 do dia e subconta. Seja direto e no tom WhatsApp: comece pelo número que importa (faturamento), depois top itens e um comparativo rápido se fizer sentido. Valores em R$, datas dd/mm/aaaa. Só consulta — não altera nada. Nunca invente números: se o dia ainda não tem venda ou não achou, diga isso.",
   },
   cardapio: {
     label: "Cardápio do Puba",

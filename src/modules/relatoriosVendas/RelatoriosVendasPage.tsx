@@ -53,6 +53,24 @@ export function RelatoriosVendasPage() {
   const [busca, setBusca] = useState("");
   const [catSel, setCatSel] = useState<string>("");
   const [ordem, setOrdem] = useState<Ordem>({ col: "fatBruto", dir: -1 });
+  const [backfill, setBackfill] = useState("");
+
+  // Grava os snapshots mensais (vendasProdutoAltec) que o agente de IA lê.
+  async function salvarProAgente() {
+    if (!activeId || backfill === "rodando") return;
+    setBackfill("rodando");
+    try {
+      const qs = new URLSearchParams({ rid: activeId, meses: "12" });
+      const r = await fetch(`/api/altec-relatorio?${qs.toString()}`, { method: "POST", headers: { ...(await authHeader()) } });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { setBackfill("erro: " + ((j as { error?: string }).error || `HTTP ${r.status}`)); return; }
+      const casa = ((j as { resultado?: Array<{ meses?: unknown[] }> }).resultado || [])[0];
+      const n = Array.isArray(casa?.meses) ? casa!.meses!.length : 0;
+      setBackfill(`✓ ${n} meses gravados pro agente`);
+    } catch (e) {
+      setBackfill("erro: " + (e instanceof Error ? e.message : "?"));
+    }
+  }
 
   async function gerarProdutos() {
     if (!activeId || carregando) return;
@@ -184,6 +202,16 @@ export function RelatoriosVendasPage() {
           </Button>
         )}
       </div>
+
+      {aba === "produtos" && (
+        <div className="flex items-center gap-2 mb-3 text-xs text-gray-500">
+          <button onClick={() => void salvarProAgente()} disabled={backfill === "rodando"} className="font-medium text-sky-700 dark:text-sky-300 hover:underline disabled:opacity-50">
+            {backfill === "rodando" ? "⏳ salvando…" : "⤓ Salvar últimos 12 meses pro agente de IA"}
+          </button>
+          {backfill && backfill !== "rodando" && <span>{backfill}</span>}
+          <span className="text-gray-400">— deixa o agente responder “quanto vendeu de X no mês” com precisão.</span>
+        </div>
+      )}
 
       {aba === "produtos" ? (
         <div>
