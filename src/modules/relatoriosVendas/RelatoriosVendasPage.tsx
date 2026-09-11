@@ -38,15 +38,6 @@ type MesExtraido = { comp: string; geradoEm?: string; totalProdutos: number; tot
 type DiaHora = { data: string; fat: number; porHora: number[] };
 type Ordem = { col: keyof Produto; dir: 1 | -1 };
 
-function mesAtual(): { di: string; df: string } {
-  const now = new Date();
-  return { di: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), df: ymd(new Date(now.getFullYear(), now.getMonth() + 1, 0)) };
-}
-function mesPassado(): { di: string; df: string } {
-  const now = new Date();
-  return { di: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), df: ymd(new Date(now.getFullYear(), now.getMonth(), 0)) };
-}
-
 export function RelatoriosVendasPage() {
   const { activeId, activeRestaurant } = useRestaurant();
   const [aba, setAba] = useState<"produtos" | "turno">("produtos");
@@ -54,13 +45,14 @@ export function RelatoriosVendasPage() {
   // ── Produtos: lista de meses extraídos + mês selecionado ──────────────────
   const [meses, setMeses] = useState<MesExtraido[]>([]);
   const [carregandoLista, setCarregandoLista] = useState(false);
-  const [mesInput, setMesInput] = useState(todayYmd().slice(0, 7)); // YYYY-MM
-  const [selecionado, setSelecionado] = useState("");
+  const [sel, setSel] = useState<Set<string>>(() => new Set([todayYmd().slice(0, 7)])); // meses marcados p/ extrair
+  const [selecionado, setSelecionado] = useState("");    // mês aberto na tabela
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [meta, setMeta] = useState<Meta | null>(null);
   const [carregando, setCarregando] = useState(false);   // extraindo (login+PDV)
+  const [progresso, setProgresso] = useState("");
   const [erro, setErro] = useState("");
-  const [confirmar, setConfirmar] = useState("");        // comp aguardando sobrescrever
+  const [confirmar, setConfirmar] = useState<string[]>([]); // comps aguardando sobrescrever
   const [busca, setBusca] = useState("");
   const [catSel, setCatSel] = useState("");
   const [ordem, setOrdem] = useState<Ordem>({ col: "fatBruto", dir: -1 });
@@ -96,26 +88,41 @@ export function RelatoriosVendasPage() {
     setSelecionado(comp);
   }
 
-  // Extrai (ao vivo, login no PDV) e salva o snapshot do mês. Se já existir e
-  // não for sobrescrever explícito, pede confirmação.
-  async function extrair(comp: string, sobrescrever = false) {
+  // Extrai (ao vivo, login no PDV) e salva o snapshot de UM ou VÁRIOS meses.
+  // Meses já extraídos pedem confirmação (sobrescrever) antes.
+  async function extrair(comps: string[], sobrescrever = false) {
     if (!activeId || carregando) return;
-    if (!sobrescrever && meses.some((m) => m.comp === comp)) { setConfirmar(comp); return; }
-    setConfirmar(""); setCarregando(true); setErro("");
+    const alvo = [...new Set(comps.filter((c) => /^\d{4}-\d{2}$/.test(c)))].sort();
+    if (!alvo.length) return;
+    if (!sobrescrever && alvo.some((c) => extraidosMap.has(c))) { setConfirmar(alvo); return; }
+    setConfirmar([]); setCarregando(true); setErro(""); setProgresso("");
     try {
-      const { di, df } = rangeDoComp(comp);
-      const qs = new URLSearchParams({ rid: activeId, di, df, status: "E" });
-      const r = await fetch(`/api/altec-relatorio?${qs.toString()}`, { method: "POST", headers: { ...(await authHeader()) } });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) { setErro((j as { error?: string }).error || `HTTP ${r.status}`); return; }
-      const p = ((j as { produtos?: Produto[] }).produtos) || [];
-      const m = (j as { meta?: Meta }).meta || null;
-      setProdutos(p); setMeta(m); setSelecionado(comp); setBusca(""); setCatSel("");
+      if (alvo.length === 1) {
+        const { di, df } = rangeDoComp(alvo[0]);
+        const qs = new URLSearchParams({ rid: activeId, di, df, status: "E" });
+        const r = await fetch(`/api/altec-relatorio?${qs.toString()}`, { method: "POST", headers: { ...(await authHeader()) } });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { setErro((j as { error?: string }).error || `HTTP ${r.status}`); return; }
+        setProdutos(((j as { produtos?: Produto[] }).produtos) || []);
+        setMeta((j as { meta?: Meta }).meta || null);
+        setSelecionado(alvo[0]); setBusca(""); setCatSel("");
+      } else {
+        // Vários meses: um login só no backend (comps=), depois abre o mais recente.
+        setProgresso(`Extraindo ${alvo.length} meses (login + relatórios)…`);
+        const qs = new URLSearchParams({ rid: activeId, comps: alvo.join(","), status: "E" });
+        const r = await fetch(`/api/altec-relatorio?${qs.toString()}`, { method: "POST", headers: { ...(await authHeader()) } });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok) { setErro((j as { error?: string }).error || `HTTP ${r.status}`); return; }
+        const casa = ((j as { resultado?: Array<{ meses?: unknown[]; erro?: string }> }).resultado || [])[0];
+        if (casa?.erro) { setErro(casa.erro); return; }
+        await abrirMes(alvo[alvo.length - 1]);
+      }
       await carregarLista(activeId);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "falha ao extrair");
-    } finally { setCarregando(false); }
+    } finally { setCarregando(false); setProgresso(""); }
   }
+  const toggleSel = (comp: string) => setSel((s) => { const n = new Set(s); n.has(comp) ? n.delete(comp) : n.add(comp); return n; });
 
   // Backfill em lote (12 meses) pro agente de IA.
   async function salvarProAgente() {
@@ -158,9 +165,8 @@ export function RelatoriosVendasPage() {
     </th>
   );
 
-  // ── Turno (lê vendasAltec já sincronizado) ─────────────────────────────────
-  const [di, setDi] = useState(mesAtual().di);
-  const [df, setDf] = useState(mesAtual().df);
+  // ── Turno (lê vendasAltec já sincronizado) — mesmo seletor de mês ──────────
+  const [mesTurno, setMesTurno] = useState(todayYmd().slice(0, 7));
   const [dias, setDias] = useState<DiaHora[]>([]);
   const [carregandoTurno, setCarregandoTurno] = useState(false);
   const [corte, setCorte] = useState(17);
@@ -170,6 +176,7 @@ export function RelatoriosVendasPage() {
     let cancelado = false;
     (async () => {
       setCarregandoTurno(true);
+      const { di, df } = rangeDoComp(mesTurno);
       const alvos: string[] = [];
       const d0 = new Date(`${di}T12:00:00`), d1 = new Date(`${df}T12:00:00`);
       for (let d = new Date(d0); d <= d1 && alvos.length < 92; d.setDate(d.getDate() + 1)) alvos.push(ymd(d));
@@ -185,7 +192,7 @@ export function RelatoriosVendasPage() {
       setDias(out); setCarregandoTurno(false);
     })();
     return () => { cancelado = true; };
-  }, [aba, activeId, di, df]);
+  }, [aba, activeId, mesTurno]);
 
   const turno = useMemo(() => {
     const somaFaixa = (h: number[], lo: number, hi: number) => h.slice(lo, hi).reduce((a, b) => a + (b || 0), 0);
@@ -195,8 +202,6 @@ export function RelatoriosVendasPage() {
   }, [dias, corte]);
 
   if (!activeId) return <div className="p-6 text-sm text-gray-500">Selecione um restaurante.</div>;
-
-  const jaExtraido = meses.find((m) => m.comp === mesInput);
 
   return (
     <div className="max-w-6xl">
@@ -218,17 +223,16 @@ export function RelatoriosVendasPage() {
 
       {aba === "produtos" ? (
         <div>
-          {/* Extrair um mês */}
-          <div className="flex flex-wrap items-start gap-3 mb-3">
-            <div>
-              <label className="block text-[11px] text-gray-500 mb-1">Escolha o mês pra extrair</label>
-              <SeletorMesAno value={mesInput} onChange={setMesInput} extraidos={extraidosMap} max={todayYmd().slice(0, 7)} />
-            </div>
-            <div className="pt-5 flex flex-col items-start gap-1">
-              <Button size="sm" onClick={() => void extrair(mesInput)} disabled={carregando || !mesInput}>
-                {carregando ? "Extraindo…" : jaExtraido ? `Re-extrair ${nomeComp(mesInput).replace(/^\w/, (c) => c.toUpperCase())}` : `Extrair ${nomeComp(mesInput).replace(/^\w/, (c) => c.toUpperCase())}`}
+          {/* Extrair meses (pode marcar vários) */}
+          <div className="mb-3">
+            <label className="block text-[11px] text-gray-500 mb-1">Escolha os meses pra extrair (pode marcar vários)</label>
+            <SeletorMesAno selected={sel} onPick={toggleSel} extraidos={extraidosMap} max={todayYmd().slice(0, 7)} />
+            <div className="flex items-center gap-2 mt-2">
+              <Button size="sm" onClick={() => void extrair([...sel])} disabled={carregando || sel.size === 0}>
+                {carregando ? "Extraindo…" : `Extrair ${sel.size} ${sel.size === 1 ? "mês" : "meses"}`}
               </Button>
-              {jaExtraido && !carregando && <span className="text-[11px] text-emerald-700 dark:text-emerald-300">✓ já extraído em {dtBR(jaExtraido.geradoEm)}</span>}
+              {sel.size > 0 && !carregando && <button onClick={() => setSel(new Set())} className="text-xs text-gray-400 hover:underline">limpar seleção</button>}
+              {progresso && <span className="text-xs text-gray-500">{progresso}</span>}
             </div>
           </div>
 
@@ -240,19 +244,23 @@ export function RelatoriosVendasPage() {
           </div>
 
           {/* Confirmação de sobrescrita */}
-          {confirmar && (
-            <div className="mb-3 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
-              <div className="text-sm text-amber-900 dark:text-amber-100">
-                <b>{nomeComp(confirmar).replace(/^\w/, (c) => c.toUpperCase())}</b> já foi extraído
-                {(() => { const m = meses.find((x) => x.comp === confirmar); return m?.geradoEm ? ` em ${dtBR(m.geradoEm)}` : ""; })()}. Extrair de novo do PDV e <b>sobrescrever</b>?
+          {confirmar.length > 0 && (() => {
+            const ja = confirmar.filter((c) => extraidosMap.has(c));
+            return (
+              <div className="mb-3 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
+                <div className="text-sm text-amber-900 dark:text-amber-100">
+                  {confirmar.length === 1
+                    ? <><b>{nomeComp(confirmar[0]).replace(/^\w/, (c) => c.toUpperCase())}</b> já foi extraído{ja[0] && extraidosMap.get(ja[0]) ? ` em ${dtBR(extraidosMap.get(ja[0]))}` : ""}. Extrair de novo do PDV e <b>sobrescrever</b>?</>
+                    : <><b>{confirmar.length} meses</b> selecionados — <b>{ja.length}</b> já extraído(s) serão <b>sobrescritos</b>. Extrair todos?</>}
+                </div>
+                <div className="flex gap-2 mt-2">
+                  <Button size="sm" variant="danger" onClick={() => void extrair(confirmar, true)}>{confirmar.length === 1 ? "Sobrescrever" : "Extrair todos"}</Button>
+                  {confirmar.length === 1 && <Button size="sm" variant="secondary" onClick={() => { const c = confirmar[0]; setConfirmar([]); void abrirMes(c); }}>Ver o salvo</Button>}
+                  <Button size="sm" variant="ghost" onClick={() => setConfirmar([])}>Cancelar</Button>
+                </div>
               </div>
-              <div className="flex gap-2 mt-2">
-                <Button size="sm" variant="danger" onClick={() => void extrair(confirmar, true)}>Sobrescrever</Button>
-                <Button size="sm" variant="secondary" onClick={() => { const c = confirmar; setConfirmar(""); void abrirMes(c); }}>Ver o salvo</Button>
-                <Button size="sm" variant="ghost" onClick={() => setConfirmar("")}>Cancelar</Button>
-              </div>
-            </div>
-          )}
+            );
+          })()}
 
           {carregando && (
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-6 text-sm text-gray-500 flex items-center gap-2">
@@ -281,7 +289,7 @@ export function RelatoriosVendasPage() {
                       </div>
                     </button>
                     <button onClick={() => void abrirMes(m.comp)} className="text-xs font-medium text-indigo-600 dark:text-indigo-300 hover:underline">Ver</button>
-                    <button onClick={() => void extrair(m.comp)} className="text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:underline">Re-extrair</button>
+                    <button onClick={() => void extrair([m.comp])} className="text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:underline">Re-extrair</button>
                   </li>
                 ))}
               </ul>
@@ -357,18 +365,14 @@ export function RelatoriosVendasPage() {
       ) : (
         // ── TURNO ──────────────────────────────────────────────────────────
         <div>
-          <div className="flex flex-wrap items-end gap-2 mb-3">
-            <div>
-              <label className="block text-[11px] text-gray-500 mb-0.5">Início</label>
-              <input type="date" value={di} onChange={(e) => setDi(e.target.value)} className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5" />
+          <div className="flex flex-wrap items-start gap-3 mb-3">
+            <div className="flex-1 min-w-[280px]">
+              <label className="block text-[11px] text-gray-500 mb-1">Escolha o mês</label>
+              <SeletorMesAno selected={new Set([mesTurno])} onPick={setMesTurno} max={todayYmd().slice(0, 7)} />
             </div>
-            <div>
-              <label className="block text-[11px] text-gray-500 mb-0.5">Fim</label>
-              <input type="date" value={df} onChange={(e) => setDf(e.target.value)} max={todayYmd()} className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5" />
-            </div>
-            <div className="flex items-center gap-1.5 pb-1">
-              <button onClick={() => { const r = mesAtual(); setDi(r.di); setDf(r.df); }} className="text-xs px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800">Mês atual</button>
-              <button onClick={() => { const r = mesPassado(); setDi(r.di); setDf(r.df); }} className="text-xs px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800">Mês passado</button>
+            <div className="pt-6">
+              <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">{nomeComp(mesTurno).replace(/^\w/, (c) => c.toUpperCase())}</h2>
+              <p className="text-[11px] text-gray-400">faturamento faturado (caixa encerrado) por turno</p>
             </div>
           </div>
           <div className="flex items-center gap-2 mb-3 text-sm">
@@ -430,31 +434,38 @@ export function RelatoriosVendasPage() {
   );
 }
 
-// Seletor mês/ano: ano em setas + grade de 12 meses. Marca os já extraídos (✓
-// verde) e bloqueia os futuros. `max` = "YYYY-MM" mais recente permitido.
-function SeletorMesAno({ value, onChange, extraidos, max }: { value: string; onChange: (c: string) => void; extraidos: Map<string, string | undefined>; max: string }) {
+// Seletor mês/ano HORIZONTAL, largura toda: ano em setas + 12 meses lado a lado.
+// Multi-seleção (via Set `selected` + `onPick` que alterna). Marca os já
+// extraídos (✓ verde) e bloqueia os futuros. `max` = "YYYY-MM" máximo.
+function SeletorMesAno({ selected, onPick, extraidos, max }: { selected: Set<string>; onPick: (c: string) => void; extraidos?: Map<string, string | undefined>; max: string }) {
   const anoMax = Number(max.slice(0, 4));
-  const [ano, setAno] = useState(Number((value || max).slice(0, 4)) || anoMax);
-  const mesSel = value.slice(0, 4) === String(ano) ? Number(value.slice(5, 7)) : 0;
+  const primeiroSel = [...selected][0];
+  const [ano, setAno] = useState(Number((primeiroSel || max).slice(0, 4)) || anoMax);
   return (
-    <div className="inline-block rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-2.5 w-[260px]">
-      <div className="flex items-center justify-between mb-2">
+    <div className="w-full rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 p-2.5">
+      <div className="flex items-center gap-3 mb-2">
         <button type="button" onClick={() => setAno((a) => Math.max(2024, a - 1))} disabled={ano <= 2024}
           className="w-7 h-7 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 disabled:opacity-30">‹</button>
-        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums">{ano}</span>
+        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 tabular-nums w-12 text-center">{ano}</span>
         <button type="button" onClick={() => setAno((a) => Math.min(anoMax, a + 1))} disabled={ano >= anoMax}
           className="w-7 h-7 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 disabled:opacity-30">›</button>
+        {extraidos && (
+          <div className="ml-auto flex items-center gap-3 text-[10px] text-gray-400">
+            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800" /> extraído</span>
+            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-600" /> selecionado</span>
+          </div>
+        )}
       </div>
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className="grid grid-cols-6 sm:grid-cols-12 gap-1.5">
         {MESES_ABBR.map((lbl, i) => {
           const comp = `${ano}-${String(i + 1).padStart(2, "0")}`;
           const futuro = comp > max;
-          const ext = extraidos.has(comp);
-          const sel = mesSel === i + 1;
+          const ext = extraidos?.has(comp) ?? false;
+          const sel = selected.has(comp);
           return (
-            <button key={comp} type="button" disabled={futuro} onClick={() => onChange(comp)}
-              title={ext ? `extraído em ${dtBR(extraidos.get(comp))}` : futuro ? "mês futuro" : ""}
-              className={`relative text-xs py-1.5 rounded-lg border capitalize transition-colors ${
+            <button key={comp} type="button" disabled={futuro} onClick={() => onPick(comp)}
+              title={ext ? `extraído em ${dtBR(extraidos?.get(comp))}` : futuro ? "mês futuro" : ""}
+              className={`relative text-xs py-2 rounded-lg border capitalize transition-colors ${
                 sel ? "border-indigo-600 bg-indigo-600 text-white font-semibold"
                 : futuro ? "border-transparent text-gray-300 dark:text-gray-700 cursor-not-allowed"
                 : ext ? "border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/30 hover:border-emerald-400"
@@ -464,10 +475,6 @@ function SeletorMesAno({ value, onChange, extraidos, max }: { value: string; onC
             </button>
           );
         })}
-      </div>
-      <div className="mt-2 flex items-center gap-3 text-[10px] text-gray-400">
-        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800" /> extraído</span>
-        <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-600" /> selecionado</span>
       </div>
     </div>
   );

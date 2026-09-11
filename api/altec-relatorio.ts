@@ -140,6 +140,16 @@ function competenciaSeMesInteiro(di: string, df: string): string {
   return `${ay}-${String(am).padStart(2, "0")}`;
 }
 
+// Início/fim (ISO) de uma competência YYYY-MM; fim limitado a hoje.
+function rangeComp(comp: string): { comp: string; di: string; df: string } {
+  const [y, m] = comp.split("-").map(Number);
+  const di = ymd(new Date(y, m - 1, 1));
+  let df = ymd(new Date(y, m, 0));
+  const hojeIso = ymd(new Date());
+  if (df > hojeIso) df = hojeIso;
+  return { comp, di, df };
+}
+
 // Mês atual + (n-1) anteriores → [{comp,di,df}], df limitado a hoje no mês corrente.
 function mesesRecentes(n: number): Array<{ comp: string; di: string; df: string }> {
   const hoje = new Date();
@@ -207,8 +217,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
     }
 
     // ── MODO SNAPSHOT/CRON/BACKFILL: sem di/df ────────────────────────────
-    const meses = Math.min(Math.max(parseInt(String(req.query.meses || "1"), 10) || 1, 1), 18);
-    const periodos = mesesRecentes(meses);
+    // ?comps=YYYY-MM,YYYY-MM (lista explícita) OU ?meses=N (mês atual + N-1 antes).
+    const compsParam = typeof req.query.comps === "string" ? req.query.comps : "";
+    const periodos = compsParam
+      ? compsParam.split(",").map((s) => s.trim()).filter((c) => /^\d{4}-\d{2}$/.test(c)).slice(0, 24).map(rangeComp)
+      : mesesRecentes(Math.min(Math.max(parseInt(String(req.query.meses || "1"), 10) || 1, 1), 18));
     let alvos = restaurantes.map(resolverAlvo).filter((a): a is Alvo => !!a);
     if (rid) alvos = alvos.filter((a) => a.rid === rid);
     if (!alvos.length) { res.status(200).json({ ok: true, aviso: "nenhuma casa com Altec configurado", resultado: [] }); return; }
@@ -235,7 +248,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
         resultado.push({ rid: alvo.rid, nome: alvo.nome, erro: e instanceof Error ? e.message : String(e) });
       }
     }
-    res.status(200).json({ ok: true, backfill: meses > 1, resultado });
+    res.status(200).json({ ok: true, backfill: periodos.length > 1, resultado });
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : "falha no relatório" });
   }
