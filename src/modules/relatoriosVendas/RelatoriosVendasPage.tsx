@@ -1,13 +1,13 @@
 // Relatórios de Vendas (PDV Altec/Riser) — dois relatórios:
 //   • Produtos vendidos: relatório oficial "Vendas por Produto" (via
-//     /api/altec-relatorio, ao vivo) — TODOS os produtos do período, com
-//     Fat. Bruto/Líquido e curva ABC. Fonte correta (o feed diário do
-//     dashboard só traz o top-10 do dia).
+//     /api/altec-relatorio, ao vivo) — TODOS os produtos do mês, com Fat.
+//     Bruto/Líquido e curva ABC. Cada extração vira um SNAPSHOT salvo
+//     (vendasProdutoAltec/{rid}_{YYYY-MM}); a tela lista os meses já extraídos.
 //   • Faturamento por turno: sai dos docs vendasAltec já sincronizados
 //     (vendasPorHora = faturamento faturado/encerrado por hora), agrupado
 //     em Almoço × Noite por um horário de corte configurável.
 import { useEffect, useMemo, useState } from "react";
-import { doc, getDoc } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { authHeader } from "../../core/firebase/idToken";
@@ -17,141 +17,151 @@ import { ymd, todayYmd } from "../../core/utils/date";
 const money = (v: number) => (isFinite(v) ? v : 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const qtdFmt = (v: number) => (Number.isInteger(v) ? String(v) : v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 3 }));
 const dBR = (iso: string) => { const [y, m, d] = iso.split("-"); return `${d}/${m}/${y}`; };
+const dtBR = (iso?: string) => (iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }) : "");
+
+const MESES_PT = ["janeiro", "fevereiro", "março", "abril", "maio", "junho", "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"];
+const nomeComp = (comp: string) => { const [y, m] = comp.split("-"); return `${MESES_PT[Number(m) - 1] || m} de ${y}`; };
+// Início/fim (ISO) de uma competência YYYY-MM; fim limitado a hoje (mês corrente).
+function rangeDoComp(comp: string): { di: string; df: string } {
+  const [y, m] = comp.split("-").map(Number);
+  const di = ymd(new Date(y, m - 1, 1));
+  let df = ymd(new Date(y, m, 0));
+  const hoje = todayYmd();
+  if (df > hoje) df = hoje;
+  return { di, df };
+}
 
 type Produto = { id: string; produto: string; categoria: string; qtd: number; fatBruto: number; fatLiquido: number; pctTotal: number; curva: string };
-type Meta = { di: string; df: string; totalProdutos: number; totalQtd: number; totalFatBruto: number; totalFatLiquido: number; geradoEm?: string };
+type Meta = { totalProdutos: number; totalQtd: number; totalFatBruto: number; totalFatLiquido: number; geradoEm?: string };
+type MesExtraido = { comp: string; geradoEm?: string; totalProdutos: number; totalQtd: number; totalFatBruto: number; totalFatLiquido: number };
 type DiaHora = { data: string; fat: number; porHora: number[] };
+type Ordem = { col: keyof Produto; dir: 1 | -1 };
 
-// Primeiro e último dia do mês atual (default do período).
 function mesAtual(): { di: string; df: string } {
   const now = new Date();
-  const di = ymd(new Date(now.getFullYear(), now.getMonth(), 1));
-  const df = ymd(new Date(now.getFullYear(), now.getMonth() + 1, 0));
-  return { di, df };
+  return { di: ymd(new Date(now.getFullYear(), now.getMonth(), 1)), df: ymd(new Date(now.getFullYear(), now.getMonth() + 1, 0)) };
 }
 function mesPassado(): { di: string; df: string } {
   const now = new Date();
-  const di = ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1));
-  const df = ymd(new Date(now.getFullYear(), now.getMonth(), 0));
-  return { di, df };
+  return { di: ymd(new Date(now.getFullYear(), now.getMonth() - 1, 1)), df: ymd(new Date(now.getFullYear(), now.getMonth(), 0)) };
 }
-// di/df cobrem exatamente 1 mês-calendário? → "YYYY-MM" (a competência salva), senão "".
-function compMes(di: string, df: string): string {
-  const [ay, am, ad] = di.split("-").map(Number);
-  const [by, bm, bd] = df.split("-").map(Number);
-  if (ay !== by || am !== bm || ad !== 1) return "";
-  if (bd !== new Date(by, bm, 0).getDate()) return "";
-  return `${ay}-${String(am).padStart(2, "0")}`;
-}
-
-type Ordem = { col: keyof Produto; dir: 1 | -1 };
 
 export function RelatoriosVendasPage() {
   const { activeId, activeRestaurant } = useRestaurant();
   const [aba, setAba] = useState<"produtos" | "turno">("produtos");
-  const inicial = mesAtual();
-  const [di, setDi] = useState(inicial.di);
-  const [df, setDf] = useState(inicial.df);
 
-  // ── Produtos ──────────────────────────────────────────────────────────
-  const [carregando, setCarregando] = useState(false);
-  const [erro, setErro] = useState("");
+  // ── Produtos: lista de meses extraídos + mês selecionado ──────────────────
+  const [meses, setMeses] = useState<MesExtraido[]>([]);
+  const [carregandoLista, setCarregandoLista] = useState(false);
+  const [mesInput, setMesInput] = useState(todayYmd().slice(0, 7)); // YYYY-MM
+  const [selecionado, setSelecionado] = useState("");
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [meta, setMeta] = useState<Meta | null>(null);
+  const [carregando, setCarregando] = useState(false);   // extraindo (login+PDV)
+  const [erro, setErro] = useState("");
+  const [confirmar, setConfirmar] = useState("");        // comp aguardando sobrescrever
   const [busca, setBusca] = useState("");
-  const [catSel, setCatSel] = useState<string>("");
+  const [catSel, setCatSel] = useState("");
   const [ordem, setOrdem] = useState<Ordem>({ col: "fatBruto", dir: -1 });
   const [backfill, setBackfill] = useState("");
-  const [origem, setOrigem] = useState<"" | "live" | "salvo">("");
 
-  // Carrega o snapshot SALVO (vendasProdutoAltec) do mês selecionado — assim a
-  // tela já mostra o último relatório gerado, sem precisar gerar de novo.
-  // "Gerar relatório" atualiza ao vivo (e regrava o snapshot).
-  useEffect(() => {
-    if (aba !== "produtos" || !activeId) return;
-    const comp = compMes(di, df);
-    if (!comp) { return; }
-    let cancelado = false;
-    (async () => {
-      const s = await getDoc(doc(db, "vendasProdutoAltec", `${activeId}_${comp}`)).catch(() => null);
-      if (cancelado || !s || !s.exists()) return;
-      const d = s.data() as { produtos?: Produto[]; geradoEm?: string; di?: string; df?: string; totalProdutos?: number; totalQtd?: number; totalFatBruto?: number; totalFatLiquido?: number };
-      if (!Array.isArray(d.produtos)) return;
-      setProdutos(d.produtos);
-      setMeta({ di: d.di || di, df: d.df || df, totalProdutos: d.totalProdutos || d.produtos.length, totalQtd: d.totalQtd || 0, totalFatBruto: d.totalFatBruto || 0, totalFatLiquido: d.totalFatLiquido || 0, geradoEm: d.geradoEm });
-      setOrigem("salvo");
-    })();
-    return () => { cancelado = true; };
-  }, [aba, activeId, di, df]);
-
-  // Grava os snapshots mensais (vendasProdutoAltec) que o agente de IA lê.
-  async function salvarProAgente() {
-    if (!activeId || backfill === "rodando") return;
-    setBackfill("rodando");
+  // Lista os meses já extraídos (snapshots) do restaurante.
+  async function carregarLista(rid: string) {
+    setCarregandoLista(true);
     try {
-      const qs = new URLSearchParams({ rid: activeId, meses: "12" });
-      const r = await fetch(`/api/altec-relatorio?${qs.toString()}`, { method: "POST", headers: { ...(await authHeader()) } });
-      const j = await r.json().catch(() => ({}));
-      if (!r.ok) { setBackfill("erro: " + ((j as { error?: string }).error || `HTTP ${r.status}`)); return; }
-      const casa = ((j as { resultado?: Array<{ meses?: unknown[] }> }).resultado || [])[0];
-      const n = Array.isArray(casa?.meses) ? casa!.meses!.length : 0;
-      setBackfill(`✓ ${n} meses gravados pro agente`);
-    } catch (e) {
-      setBackfill("erro: " + (e instanceof Error ? e.message : "?"));
-    }
+      const snap = await getDocs(query(collection(db, "vendasProdutoAltec"), where("restaurantId", "==", rid)));
+      const arr: MesExtraido[] = snap.docs.map((d) => {
+        const x = d.data() as Partial<MesExtraido> & { competencia?: string };
+        return {
+          comp: x.competencia || d.id.split("_").pop() || "",
+          geradoEm: x.geradoEm, totalProdutos: x.totalProdutos || 0, totalQtd: x.totalQtd || 0,
+          totalFatBruto: x.totalFatBruto || 0, totalFatLiquido: x.totalFatLiquido || 0,
+        };
+      }).filter((m) => /^\d{4}-\d{2}$/.test(m.comp)).sort((a, z) => z.comp.localeCompare(a.comp));
+      setMeses(arr);
+    } catch { /* rules/rede */ } finally { setCarregandoLista(false); }
+  }
+  useEffect(() => { if (aba === "produtos" && activeId) void carregarLista(activeId); }, [aba, activeId]);
+
+  // Abre um mês já extraído (mostra a tabela).
+  async function abrirMes(comp: string) {
+    if (!activeId) return;
+    setErro(""); setBusca(""); setCatSel("");
+    const s = await getDoc(doc(db, "vendasProdutoAltec", `${activeId}_${comp}`)).catch(() => null);
+    if (!s || !s.exists()) { setErro("não consegui abrir esse mês salvo"); return; }
+    const d = s.data() as { produtos?: Produto[] } & Partial<Meta>;
+    setProdutos(Array.isArray(d.produtos) ? d.produtos : []);
+    setMeta({ totalProdutos: d.totalProdutos || (d.produtos?.length || 0), totalQtd: d.totalQtd || 0, totalFatBruto: d.totalFatBruto || 0, totalFatLiquido: d.totalFatLiquido || 0, geradoEm: d.geradoEm });
+    setSelecionado(comp);
   }
 
-  async function gerarProdutos() {
+  // Extrai (ao vivo, login no PDV) e salva o snapshot do mês. Se já existir e
+  // não for sobrescrever explícito, pede confirmação.
+  async function extrair(comp: string, sobrescrever = false) {
     if (!activeId || carregando) return;
-    setCarregando(true); setErro(""); setProdutos([]); setMeta(null); setOrigem("");
+    if (!sobrescrever && meses.some((m) => m.comp === comp)) { setConfirmar(comp); return; }
+    setConfirmar(""); setCarregando(true); setErro("");
     try {
+      const { di, df } = rangeDoComp(comp);
       const qs = new URLSearchParams({ rid: activeId, di, df, status: "E" });
       const r = await fetch(`/api/altec-relatorio?${qs.toString()}`, { method: "POST", headers: { ...(await authHeader()) } });
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { setErro((j as { error?: string }).error || `HTTP ${r.status}`); return; }
-      setProdutos(((j as { produtos?: Produto[] }).produtos) || []);
-      setMeta((j as { meta?: Meta }).meta || null);
-      setOrigem("live");
+      const p = ((j as { produtos?: Produto[] }).produtos) || [];
+      const m = (j as { meta?: Meta }).meta || null;
+      setProdutos(p); setMeta(m); setSelecionado(comp); setBusca(""); setCatSel("");
+      await carregarLista(activeId);
     } catch (e) {
-      setErro(e instanceof Error ? e.message : "falha ao gerar relatório");
+      setErro(e instanceof Error ? e.message : "falha ao extrair");
     } finally { setCarregando(false); }
+  }
+
+  // Backfill em lote (12 meses) pro agente de IA.
+  async function salvarProAgente() {
+    if (!activeId || backfill === "rodando") return;
+    setBackfill("rodando");
+    try {
+      const r = await fetch(`/api/altec-relatorio?rid=${encodeURIComponent(activeId)}&meses=12`, { method: "POST", headers: { ...(await authHeader()) } });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { setBackfill("erro: " + ((j as { error?: string }).error || `HTTP ${r.status}`)); return; }
+      const casa = ((j as { resultado?: Array<{ meses?: unknown[] }> }).resultado || [])[0];
+      setBackfill(`✓ ${Array.isArray(casa?.meses) ? casa!.meses!.length : 0} meses gravados`);
+      await carregarLista(activeId);
+    } catch (e) { setBackfill("erro: " + (e instanceof Error ? e.message : "?")); }
   }
 
   const categorias = useMemo(() => [...new Set(produtos.map((p) => p.categoria))].sort(), [produtos]);
   const produtosVis = useMemo(() => {
     const b = busca.trim().toLowerCase();
-    let arr = produtos.filter((p) => (!catSel || p.categoria === catSel) && (!b || p.produto.toLowerCase().includes(b)));
-    arr = [...arr].sort((a, z) => {
+    const arr = produtos.filter((p) => (!catSel || p.categoria === catSel) && (!b || p.produto.toLowerCase().includes(b)));
+    return [...arr].sort((a, z) => {
       const va = a[ordem.col], vz = z[ordem.col];
       if (typeof va === "number" && typeof vz === "number") return (va - vz) * ordem.dir;
       return String(va).localeCompare(String(vz)) * ordem.dir;
     });
-    return arr;
   }, [produtos, busca, catSel, ordem]);
-
   const totVis = useMemo(() => produtosVis.reduce((s, p) => ({ qtd: s.qtd + p.qtd, bruto: s.bruto + p.fatBruto, liq: s.liq + p.fatLiquido }), { qtd: 0, bruto: 0, liq: 0 }), [produtosVis]);
 
-  function toggleOrdem(col: keyof Produto) {
-    setOrdem((o) => (o.col === col ? { col, dir: (o.dir === 1 ? -1 : 1) } : { col, dir: -1 }));
-  }
+  const toggleOrdem = (col: keyof Produto) => setOrdem((o) => (o.col === col ? { col, dir: (o.dir === 1 ? -1 : 1) } : { col, dir: -1 }));
   function exportarCSV() {
     const linhas = [["ID", "Produto", "Categoria", "Qtd", "Fat Bruto", "Fat Liquido", "% Total", "Curva"]];
     for (const p of produtosVis) linhas.push([p.id, p.produto, p.categoria, String(p.qtd).replace(".", ","), p.fatBruto.toFixed(2).replace(".", ","), p.fatLiquido.toFixed(2).replace(".", ","), p.pctTotal.toFixed(2).replace(".", ","), p.curva]);
     const csv = linhas.map((l) => l.map((c) => `"${c}"`).join(";")).join("\n");
     const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
-    const a = document.createElement("a"); a.href = url; a.download = `vendas-produto_${di}_${df}.csv`; a.click(); URL.revokeObjectURL(url);
+    const a = document.createElement("a"); a.href = url; a.download = `vendas-produto_${selecionado || "mes"}.csv`; a.click(); URL.revokeObjectURL(url);
   }
-
   const setC = (col: keyof Produto, label: string, cls = "text-right") => (
     <th className={`px-2 py-1.5 ${cls} cursor-pointer select-none whitespace-nowrap`} onClick={() => toggleOrdem(col)}>
       {label}{ordem.col === col ? (ordem.dir === -1 ? " ↓" : " ↑") : ""}
     </th>
   );
 
-  // ── Turno (lê vendasAltec já sincronizado) ─────────────────────────────
+  // ── Turno (lê vendasAltec já sincronizado) ─────────────────────────────────
+  const [di, setDi] = useState(mesAtual().di);
+  const [df, setDf] = useState(mesAtual().df);
   const [dias, setDias] = useState<DiaHora[]>([]);
   const [carregandoTurno, setCarregandoTurno] = useState(false);
-  const [corte, setCorte] = useState(17); // horário de corte Almoço × Noite
+  const [corte, setCorte] = useState(17);
 
   useEffect(() => {
     if (aba !== "turno" || !activeId) return;
@@ -170,28 +180,21 @@ export function RelatoriosVendasPage() {
         const fat = typeof data?.faturamento === "number" ? data.faturamento : porHora.reduce((a, b) => a + (b || 0), 0);
         if (fat > 0 || porHora.some((h) => h > 0)) out.push({ data: alvos[i], fat, porHora });
       });
-      setDias(out);
-      setCarregandoTurno(false);
+      setDias(out); setCarregandoTurno(false);
     })();
     return () => { cancelado = true; };
   }, [aba, activeId, di, df]);
 
   const turno = useMemo(() => {
     const somaFaixa = (h: number[], lo: number, hi: number) => h.slice(lo, hi).reduce((a, b) => a + (b || 0), 0);
-    const linhas = dias.map((d) => {
-      const almoco = somaFaixa(d.porHora, 0, corte);
-      const noite = d.fat - almoco; // resto do dia (inclui madrugada pós-meia-noite se houver)
-      return { data: d.data, almoco, noite, total: d.fat };
-    });
+    const linhas = dias.map((d) => { const almoco = somaFaixa(d.porHora, 0, corte); return { data: d.data, almoco, noite: d.fat - almoco, total: d.fat }; });
     const tot = linhas.reduce((s, l) => ({ almoco: s.almoco + l.almoco, noite: s.noite + l.noite, total: s.total + l.total }), { almoco: 0, noite: 0, total: 0 });
     return { linhas, tot };
   }, [dias, corte]);
 
   if (!activeId) return <div className="p-6 text-sm text-gray-500">Selecione um restaurante.</div>;
 
-  const preset = (label: string, r: { di: string; df: string }) => (
-    <button onClick={() => { setDi(r.di); setDf(r.df); }} className="text-xs px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800">{label}</button>
-  );
+  const jaExtraido = meses.find((m) => m.comp === mesInput);
 
   return (
     <div className="max-w-6xl">
@@ -202,7 +205,6 @@ export function RelatoriosVendasPage() {
         </p>
       </div>
 
-      {/* Abas */}
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-3">
         {([["produtos", "Produtos vendidos"], ["turno", "Faturamento por turno"]] as const).map(([id, label]) => (
           <button key={id} onClick={() => setAba(id)}
@@ -212,60 +214,83 @@ export function RelatoriosVendasPage() {
         ))}
       </div>
 
-      {/* Período */}
-      <div className="flex flex-wrap items-end gap-2 mb-3">
-        <div>
-          <label className="block text-[11px] text-gray-500 mb-0.5">Início</label>
-          <input type="date" value={di} onChange={(e) => setDi(e.target.value)} className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5" />
-        </div>
-        <div>
-          <label className="block text-[11px] text-gray-500 mb-0.5">Fim</label>
-          <input type="date" value={df} onChange={(e) => setDf(e.target.value)} max={todayYmd()} className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5" />
-        </div>
-        <div className="flex items-center gap-1.5 pb-1">
-          {preset("Mês atual", mesAtual())}
-          {preset("Mês passado", mesPassado())}
-        </div>
-        {aba === "produtos" && (
-          <Button size="sm" onClick={() => void gerarProdutos()} disabled={carregando}>
-            {carregando ? "Gerando…" : "Gerar relatório"}
-          </Button>
-        )}
-      </div>
-
-      {aba === "produtos" && (
-        <div className="flex items-center gap-2 mb-3 text-xs text-gray-500">
-          <button onClick={() => void salvarProAgente()} disabled={backfill === "rodando"} className="font-medium text-sky-700 dark:text-sky-300 hover:underline disabled:opacity-50">
-            {backfill === "rodando" ? "⏳ salvando…" : "⤓ Salvar últimos 12 meses pro agente de IA"}
-          </button>
-          {backfill && backfill !== "rodando" && <span>{backfill}</span>}
-          <span className="text-gray-400">— deixa o agente responder “quanto vendeu de X no mês” com precisão.</span>
-        </div>
-      )}
-
       {aba === "produtos" ? (
         <div>
+          {/* Extrair um mês */}
+          <div className="flex flex-wrap items-end gap-2 mb-2">
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-0.5">Extrair o mês</label>
+              <input type="month" value={mesInput} max={todayYmd().slice(0, 7)} onChange={(e) => setMesInput(e.target.value)}
+                className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5" />
+            </div>
+            <Button size="sm" onClick={() => void extrair(mesInput)} disabled={carregando || !mesInput}>
+              {carregando ? "Extraindo…" : jaExtraido ? "Re-extrair" : "Extrair do PDV"}
+            </Button>
+            {jaExtraido && !carregando && <span className="text-xs text-gray-400 pb-1.5">já extraído em {dtBR(jaExtraido.geradoEm)}</span>}
+          </div>
+
+          <div className="mb-3 text-xs">
+            <button onClick={() => void salvarProAgente()} disabled={backfill === "rodando"} className="font-medium text-sky-700 dark:text-sky-300 hover:underline disabled:opacity-50">
+              {backfill === "rodando" ? "⏳ extraindo 12 meses…" : "⤓ Extrair últimos 12 meses de uma vez (pro agente de IA)"}
+            </button>
+            {backfill && backfill !== "rodando" && <span className="ml-2 text-gray-500">{backfill}</span>}
+          </div>
+
+          {/* Confirmação de sobrescrita */}
+          {confirmar && (
+            <div className="mb-3 rounded-lg border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/30 p-3">
+              <div className="text-sm text-amber-900 dark:text-amber-100">
+                <b>{nomeComp(confirmar).replace(/^\w/, (c) => c.toUpperCase())}</b> já foi extraído
+                {(() => { const m = meses.find((x) => x.comp === confirmar); return m?.geradoEm ? ` em ${dtBR(m.geradoEm)}` : ""; })()}. Extrair de novo do PDV e <b>sobrescrever</b>?
+              </div>
+              <div className="flex gap-2 mt-2">
+                <Button size="sm" variant="danger" onClick={() => void extrair(confirmar, true)}>Sobrescrever</Button>
+                <Button size="sm" variant="secondary" onClick={() => { const c = confirmar; setConfirmar(""); void abrirMes(c); }}>Ver o salvo</Button>
+                <Button size="sm" variant="ghost" onClick={() => setConfirmar("")}>Cancelar</Button>
+              </div>
+            </div>
+          )}
+
           {carregando && (
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-6 text-sm text-gray-500 flex items-center gap-2">
               <span className="animate-spin">⏳</span> Consultando o Altec (login + relatório) — leva alguns segundos…
             </div>
           )}
-          {erro && <div className="rounded-lg border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 p-3 text-sm text-rose-700 dark:text-rose-300">⚠ {erro}</div>}
+          {erro && <div className="mb-3 rounded-lg border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 p-3 text-sm text-rose-700 dark:text-rose-300">⚠ {erro}</div>}
 
-          {!carregando && !erro && !meta && (
-            <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">
-              Sem relatório salvo pra este mês ainda. Clique em <b>Gerar relatório</b> — ele busca no PDV e <b>salva</b>, então da próxima vez já abre aqui.
+          {/* Lista de meses extraídos */}
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden mb-4">
+            <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 bg-gray-50 dark:bg-gray-900/60 border-b border-gray-200 dark:border-gray-800">
+              Meses extraídos {meses.length ? `(${meses.length})` : ""}
             </div>
-          )}
+            {carregandoLista ? (
+              <div className="p-4 text-sm text-gray-500">Carregando…</div>
+            ) : meses.length === 0 ? (
+              <div className="p-6 text-center text-sm text-gray-500">Nenhum mês extraído ainda. Escolha um mês acima e clique em <b>Extrair do PDV</b>.</div>
+            ) : (
+              <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                {meses.map((m) => (
+                  <li key={m.comp} className={`flex items-center gap-3 px-3 py-2.5 ${selecionado === m.comp ? "bg-indigo-50/60 dark:bg-indigo-950/20" : "hover:bg-gray-50 dark:hover:bg-gray-900/40"}`}>
+                    <button onClick={() => void abrirMes(m.comp)} className="flex-1 text-left">
+                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">📅 {nomeComp(m.comp).replace(/^\w/, (c) => c.toUpperCase())}</div>
+                      <div className="text-[11px] text-gray-500">
+                        {m.totalProdutos} produtos · {money(m.totalFatBruto)} · extraído em {dtBR(m.geradoEm) || "—"}
+                      </div>
+                    </button>
+                    <button onClick={() => void abrirMes(m.comp)} className="text-xs font-medium text-indigo-600 dark:text-indigo-300 hover:underline">Ver</button>
+                    <button onClick={() => void extrair(m.comp)} className="text-xs font-medium text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:underline">Re-extrair</button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
 
-          {meta && !carregando && (
+          {/* Tabela do mês selecionado */}
+          {selecionado && meta && (
             <>
-              <div className={`mb-3 rounded-lg border p-2.5 text-xs flex items-center justify-between gap-2 ${origem === "salvo" ? "border-amber-200 dark:border-amber-900 bg-amber-50/60 dark:bg-amber-950/20 text-amber-800 dark:text-amber-200" : "border-emerald-200 dark:border-emerald-900 bg-emerald-50/60 dark:bg-emerald-950/20 text-emerald-800 dark:text-emerald-200"}`}>
-                <span>
-                  {origem === "salvo"
-                    ? <>📁 Mostrando o <b>relatório salvo</b>{meta.geradoEm ? ` (gerado em ${new Date(meta.geradoEm).toLocaleString("pt-BR")})` : ""}. Clique em <b>Gerar relatório</b> pra atualizar ao vivo.</>
-                    : <>✓ Gerado ao vivo{compMes(di, df) ? <> e <b>salvo</b> em <code>vendasProdutoAltec/{activeId}_{compMes(di, df)}</code> (o agente já lê).</> : <> (período não é 1 mês fechado — <b>não</b> foi salvo; ajuste pra 1º→último dia do mês pra salvar).</>}</>}
-                </span>
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">{nomeComp(selecionado).replace(/^\w/, (c) => c.toUpperCase())}</h2>
+                <span className="text-[11px] text-gray-400">extraído em {dtBR(meta.geradoEm) || "—"}</span>
               </div>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
                 <Card titulo="Produtos" valor={String(meta.totalProdutos)} />
@@ -273,7 +298,6 @@ export function RelatoriosVendasPage() {
                 <Card titulo="Fat. Bruto" valor={money(meta.totalFatBruto)} />
                 <Card titulo="Fat. Líquido" valor={money(meta.totalFatLiquido)} />
               </div>
-
               <div className="flex flex-wrap items-center gap-2 mb-2">
                 <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto…" className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 py-1.5 flex-1 min-w-[160px]" />
                 <select value={catSel} onChange={(e) => setCatSel(e.target.value)} className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5">
@@ -282,7 +306,6 @@ export function RelatoriosVendasPage() {
                 </select>
                 <Button size="sm" variant="secondary" onClick={exportarCSV}>⤓ CSV</Button>
               </div>
-
               <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
                 <table className="w-full text-sm">
                   <thead className="bg-gray-50 dark:bg-gray-900/60 text-gray-600 dark:text-gray-300 text-xs">
@@ -331,6 +354,20 @@ export function RelatoriosVendasPage() {
       ) : (
         // ── TURNO ──────────────────────────────────────────────────────────
         <div>
+          <div className="flex flex-wrap items-end gap-2 mb-3">
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-0.5">Início</label>
+              <input type="date" value={di} onChange={(e) => setDi(e.target.value)} className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5" />
+            </div>
+            <div>
+              <label className="block text-[11px] text-gray-500 mb-0.5">Fim</label>
+              <input type="date" value={df} onChange={(e) => setDf(e.target.value)} max={todayYmd()} className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5" />
+            </div>
+            <div className="flex items-center gap-1.5 pb-1">
+              <button onClick={() => { const r = mesAtual(); setDi(r.di); setDf(r.df); }} className="text-xs px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800">Mês atual</button>
+              <button onClick={() => { const r = mesPassado(); setDi(r.di); setDf(r.df); }} className="text-xs px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800">Mês passado</button>
+            </div>
+          </div>
           <div className="flex items-center gap-2 mb-3 text-sm">
             <span className="text-gray-500">Corte Almoço × Noite:</span>
             <select value={corte} onChange={(e) => setCorte(Number(e.target.value))} className="rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1">
