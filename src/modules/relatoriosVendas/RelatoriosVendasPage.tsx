@@ -6,7 +6,7 @@
 //   • Faturamento por turno: sai dos docs vendasAltec já sincronizados
 //     (vendasPorHora = faturamento faturado/encerrado por hora), agrupado
 //     em Almoço × Noite por um horário de corte configurável.
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -170,6 +170,21 @@ export function RelatoriosVendasPage() {
   const [dias, setDias] = useState<DiaHora[]>([]);
   const [carregandoTurno, setCarregandoTurno] = useState(false);
   const [corte, setCorte] = useState(17);
+  // Meses que TÊM venda sincronizada (pra marcar em verde no seletor do turno).
+  const [mesesTurno, setMesesTurno] = useState<Map<string, string | undefined>>(new Map());
+  const idxTurnoRef = useRef("");
+  useEffect(() => {
+    if (aba !== "turno" || !activeId || idxTurnoRef.current === activeId) return;
+    idxTurnoRef.current = activeId;
+    (async () => {
+      try {
+        const snap = await getDocs(query(collection(db, "vendasAltec"), where("restaurantId", "==", activeId)));
+        const m = new Map<string, string | undefined>();
+        snap.docs.forEach((d) => { const data = String((d.data() as { data?: string }).data || d.id.split("_").pop() || ""); if (/^\d{4}-\d{2}/.test(data)) m.set(data.slice(0, 7), undefined); });
+        setMesesTurno(m);
+      } catch { /* rules/rede */ }
+    })();
+  }, [aba, activeId]);
 
   useEffect(() => {
     if (aba !== "turno" || !activeId) return;
@@ -368,7 +383,7 @@ export function RelatoriosVendasPage() {
           <div className="flex flex-wrap items-start gap-3 mb-3">
             <div className="flex-1 min-w-[280px]">
               <label className="block text-[11px] text-gray-500 mb-1">Escolha o mês</label>
-              <SeletorMesAno selected={new Set([mesTurno])} onPick={setMesTurno} max={todayYmd().slice(0, 7)} />
+              <SeletorMesAno selected={new Set([mesTurno])} onPick={setMesTurno} extraidos={mesesTurno} rotuloVerde="com vendas" max={todayYmd().slice(0, 7)} />
             </div>
             <div className="pt-6">
               <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">{nomeComp(mesTurno).replace(/^\w/, (c) => c.toUpperCase())}</h2>
@@ -437,7 +452,7 @@ export function RelatoriosVendasPage() {
 // Seletor mês/ano HORIZONTAL, largura toda: ano em setas + 12 meses lado a lado.
 // Multi-seleção (via Set `selected` + `onPick` que alterna). Marca os já
 // extraídos (✓ verde) e bloqueia os futuros. `max` = "YYYY-MM" máximo.
-function SeletorMesAno({ selected, onPick, extraidos, max }: { selected: Set<string>; onPick: (c: string) => void; extraidos?: Map<string, string | undefined>; max: string }) {
+function SeletorMesAno({ selected, onPick, extraidos, max, rotuloVerde = "extraído" }: { selected: Set<string>; onPick: (c: string) => void; extraidos?: Map<string, string | undefined>; max: string; rotuloVerde?: string }) {
   const anoMax = Number(max.slice(0, 4));
   const primeiroSel = [...selected][0];
   const [ano, setAno] = useState(Number((primeiroSel || max).slice(0, 4)) || anoMax);
@@ -451,7 +466,7 @@ function SeletorMesAno({ selected, onPick, extraidos, max }: { selected: Set<str
           className="w-7 h-7 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-300 disabled:opacity-30">›</button>
         {extraidos && (
           <div className="ml-auto flex items-center gap-3 text-[10px] text-gray-400">
-            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800" /> extraído</span>
+            <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800" /> {rotuloVerde}</span>
             <span className="inline-flex items-center gap-1"><span className="w-2.5 h-2.5 rounded-sm bg-indigo-600" /> selecionado</span>
           </div>
         )}
@@ -464,7 +479,7 @@ function SeletorMesAno({ selected, onPick, extraidos, max }: { selected: Set<str
           const sel = selected.has(comp);
           return (
             <button key={comp} type="button" disabled={futuro} onClick={() => onPick(comp)}
-              title={ext ? `extraído em ${dtBR(extraidos?.get(comp))}` : futuro ? "mês futuro" : ""}
+              title={ext ? (extraidos?.get(comp) ? `extraído em ${dtBR(extraidos?.get(comp))}` : rotuloVerde) : futuro ? "mês futuro" : ""}
               className={`relative text-xs py-2 rounded-lg border capitalize transition-colors ${
                 sel ? "border-indigo-600 bg-indigo-600 text-white font-semibold"
                 : futuro ? "border-transparent text-gray-300 dark:text-gray-700 cursor-not-allowed"
