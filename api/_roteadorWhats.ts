@@ -171,89 +171,98 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
   // de sessão já existente (deixaria aguardandoEscolha/agenteId travados).
   const salvarSessao = (agenteId: string | null, aguardando: boolean) =>
     firestoreAtualizar("whatsappAgenteSessoes", sid, { waId: from, agenteId, aguardandoEscolha: aguardando, aguardandoRetomada: false, atualizadoEm: now() }).catch(() => {});
-  // Marca "aguardando decisão continuar-vs-nova" (só multi-agente, após 2h ocioso).
-  const pedirRetomada = () =>
-    firestoreAtualizar("whatsappAgenteSessoes", sid, { waId: from, agenteId: sessao?.agenteId || null, aguardandoEscolha: false, aguardandoRetomada: true, atualizadoEm: now() }).catch(() => {});
-
-  // Ociosidade: > 2h desde a última mensagem da sessão.
+  // Ociosidade: > 2h desde a última mensagem → "desconecta" do último agente e
+  // re-roteia pela mensagem NOVA (sem perguntar continuar/nova).
   const MS_INATIVO = 2 * 60 * 60 * 1000;
   const ultimaAtiv = sessao?.atualizadoEm ? Date.parse(sessao.atualizadoEm as string) : 0;
   const inativoOcioso = ultimaAtiv > 0 && (Date.now() - ultimaAtiv) > MS_INATIVO;
 
-  // Troca por NOME: acha um agente cujo nome distintivo aparece na mensagem
-  // (ex.: "conecta no Sororoca"). Ignora palavras genéricas do nome.
-  const GENERICOS = ["agente", "cardápio", "cardapio", "assistente", "dos", "das", "com", "site", "novo"];
-  const achaPorNome = (): Doc | null => {
-    for (const a of agentes) {
-      const palavras = ((a.nome as string) || "").toLowerCase().split(/\s+/).filter(w => w.length >= 4 && !GENERICOS.includes(w));
-      if (palavras.some(w => low.includes(w))) return a;
-    }
-    return null;
+  // ── Reconhecimento do agente por LINGUAGEM NATURAL (sem exigir verbo) ──────
+  // Pontua cada agente pelas palavras da mensagem: palavras distintivas do NOME
+  // (puba, sororoca, altec, lobozó…) + sinônimos do TIPO (cardápio→menu,
+  // vendas→altec/faturamento…). Vence quem tiver mais acertos, sem empate.
+  const lowN = low.normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const esc = (t: string) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const temToken = (t: string) => new RegExp(`\\b${esc(t)}\\b`).test(lowN);
+  const DROP = new Set(["agente", "assistente", "dos", "das", "com", "novo", "the", "bar", "restaurante"]);
+  const TIPO_SYN: Record<string, string[]> = {
+    cardapio: ["cardapio", "menu", "filipeta", "pdf"],
+    vendas: ["vendas", "venda", "faturamento", "altec", "pdv", "produto", "produtos", "relatorio"],
+    dp: ["dp", "ponto", "folha", "rh"],
+    financeiro: ["financeiro", "caixa", "fechamento", "contas", "conta"],
   };
-  const nomeAlvo = achaPorNome();
-  // Intenção de trocar de agente (linguagem natural), sem confundir com "trocar o preço".
-  const menuIntent = /(menu|lista de agentes|outro (agente|assistente)|(troc|mud)[a-z]* (de )?(agente|assistente)|desconect)/i.test(low)
-    || ["menu", "agentes", "assistentes", "trocar", "troca", "voltar"].includes(low);
-  const switchVerbo = /(fala[r]? com|conect|troc|mud[ao]|quero (o |a )?outro|passa (pro|para)|abre a|abrir a|vai (pro|para))/i.test(low);
-  const querTrocar = menuIntent || (!!nomeAlvo && switchVerbo);
+  const tokensAgente = (a: Doc): string[] => {
+    const nm = String(a.nome || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const ws = nm.split(/\s+/).filter(w => w.length >= 3 && !DROP.has(w));
+    return [...new Set([...ws, ...(TIPO_SYN[String(a.tipo)] || [])])];
+  };
+  const score = (a: Doc) => tokensAgente(a).filter(temToken).length;
+  const ranked = agentes.map(a => ({ a, s: score(a) })).sort((x, y) => y.s - x.s);
+  const clearAlvo: Doc | null = (ranked[0] && ranked[0].s >= 1 && (!ranked[1] || ranked[1].s < ranked[0].s)) ? ranked[0].a : null;
 
-  // ── Retomada após 2h (SÓ multi-agente) ────────────────────────────────────
-  // Quem tem acesso a >1 agente, depois de 2h sem conversa, é perguntado se
-  // quer continuar a última conversa ou iniciar uma nova. "Nova" → menu de
-  // agentes. Não interrompe se a pessoa já mandou uma troca explícita.
-  const agentePrevio = agentes.find(a => a.id === sessao?.agenteId) || null;
-  if (agentes.length > 1 && agentePrevio) {
-    const querContinuar = /^\s*(continuar|continua|continu\w*|1|sim|seguir|mesm[ao]|últim[ao]|ultim[ao])\b/i.test(low);
-    const querNova = /^\s*(nova|novo|iniciar|come[çc]ar|recome\w*|2|menu)\b/i.test(low);
-    if (sessao?.aguardandoRetomada) {
-      if (querContinuar) {
-        await salvarSessao(agentePrevio.id as string, false);
-        await enviarWhats(from, `Beleza, seguindo com *${agentePrevio.nome}* 👍 Pode mandar.`);
-        return;
-      }
-      if (querNova) {
-        await salvarSessao(null, true);
-        await enviarWhats(from, "Novo atendimento. " + menuTexto(agentes));
-        return;
-      }
-      await pedirRetomada();
-      await enviarWhats(from, `Só confirmando: responda *continuar* pra seguir com *${agentePrevio.nome}*, ou *nova* pra começar outra conversa.`);
-      return;
-    }
-    if (inativoOcioso && !sessao?.aguardandoEscolha && !querTrocar) {
-      await pedirRetomada();
-      await enviarWhats(from, `Faz um tempo desde nossa última conversa. Quer *continuar* com *${agentePrevio.nome}* ou iniciar uma *nova*?`);
-      return;
-    }
+  // Sobrou pergunta de verdade (além de só nomear o agente / cumprimentar)?
+  const limpaGenerico = (s: string) => s
+    .replace(/\b(fala[r]?|com|conect\w*|troc\w*|mud\w*|abre|abrir|vai|pro|para|quero|no|na|do|da|de|o|a|agente|assistente|oi|ola|opa|eai|eae|bom|boa|dia|tarde|noite|tudo|bem|blz|beleza|obrigad\w*|valeu|por favor|pf)\b/g, " ")
+    .replace(/[^a-z0-9]+/g, " ").trim();
+  const temPergunta = (a: Doc): boolean => {
+    let resto = lowN;
+    for (const t of tokensAgente(a)) resto = resto.replace(new RegExp(`\\b${esc(t)}\\b`, "g"), " ");
+    return limpaGenerico(resto).length >= 3;
+  };
+  const temSubstancia = limpaGenerico(lowN).length >= 3;
+
+  // Pedido explícito da LISTA de agentes.
+  const querMenu = /^\s*(menu|agentes|assistentes|lista)\s*[?.!]?\s*$/.test(lowN)
+    || /\b(quais|que|lista de|mostr\w*|quero ver|op[cç]\w*)\b[^]*\b(agente|agentes|assistente|assistentes)\b/.test(lowN)
+    || /\b(outro|outra|trocar de|mudar de|muda de)\b[^]*\b(agente|assistente)\b/.test(lowN)
+    || /\bdesconect\w*/.test(lowN);
+
+  const atual = agentes.find(a => a.id === sessao?.agenteId) || null;
+  const apresenta = (a: Doc) => `👋 Aqui é o *${a.nome}*. Pode mandar sua pergunta!`;
+
+  // ── Decisão de roteamento ──────────────────────────────────────────────────
+  if (querMenu) {
+    await salvarSessao((sessao?.agenteId as string) || null, true);
+    await enviarWhats(from, menuTexto(agentes));
+    return;
   }
 
-  // Resolve o agente a usar.
-  let agente: Doc | null = (!querTrocar && sessao?.agenteId && !sessao?.aguardandoEscolha)
-    ? (agentes.find(a => a.id === sessao.agenteId) || null) : null;
+  let agente: Doc | null = null;
+  let prefixo = "";   // frase de reconhecimento colada antes da resposta
 
-  if (!agente) {
-    if (agentes.length === 1) {
-      agente = agentes[0];
-      await salvarSessao(agente.id as string, false);
-    } else if (querTrocar || sessao?.aguardandoEscolha) {
-      // Escolha por número, ou por nome ("Sororoca") — troca direto.
-      const idx = parseInt(low, 10);
-      const escolhido = (Number.isFinite(idx) && idx >= 1 && idx <= agentes.length) ? agentes[idx - 1] : nomeAlvo;
-      if (escolhido) {
-        await salvarSessao(escolhido.id as string, false);
-        await enviarWhats(from, `Pronto, falando com *${escolhido.nome}* agora 👍 Manda sua pergunta.`);
-        return;
-      }
+  if (sessao?.aguardandoEscolha) {
+    // Já mostramos o menu: aceita número OU nome.
+    const idx = parseInt(lowN, 10);
+    const escolhido = (Number.isFinite(idx) && idx >= 1 && idx <= agentes.length) ? agentes[idx - 1] : clearAlvo;
+    if (!escolhido) {
       await salvarSessao((sessao?.agenteId as string) || null, true);
-      await enviarWhats(from, "Qual assistente? " + menuTexto(agentes));
-      return;
-    } else {
-      // Sem sessão e sem intenção clara → mostra o menu.
-      await salvarSessao((sessao?.agenteId as string) || null, true);
-      await enviarWhats(from, menuTexto(agentes));
+      await enviarWhats(from, "Não entendi qual 🙏 " + menuTexto(agentes));
       return;
     }
+    agente = escolhido;
+    if (!temPergunta(escolhido)) { await salvarSessao(escolhido.id as string, false); await enviarWhats(from, apresenta(escolhido)); return; }
+  } else if (agentes.length === 1) {
+    agente = agentes[0];
+  } else if (clearAlvo) {
+    // Nome citado → vai direto pra ele (mesmo sem verbo de troca).
+    agente = clearAlvo;
+    const trocou = clearAlvo.id !== atual?.id;
+    if (!temPergunta(clearAlvo)) { await salvarSessao(clearAlvo.id as string, false); await enviarWhats(from, apresenta(clearAlvo)); return; }
+    if (trocou) prefixo = inativoOcioso ? `Opa, entendi que você quer falar com *${clearAlvo.nome}* 👇` : `*${clearAlvo.nome}* na área 👋`;
+  } else if (atual) {
+    // Sem nome citado → segue no agente atual. Se ficou 2h ocioso e a mensagem
+    // é só um "oi", ele se reapresenta; senão responde direto (conversa fluida).
+    agente = atual;
+    if (inativoOcioso && !temSubstancia) { await salvarSessao(atual.id as string, false); await enviarWhats(from, `Oi! 👋 Seguimos com *${atual.nome}*. Como posso ajudar?`); return; }
+  } else {
+    // Primeiro contato, multi-agente e sem pista → menu.
+    await salvarSessao(null, true);
+    await enviarWhats(from, menuTexto(agentes));
+    return;
   }
+
+  if (!agente) return;
+  await salvarSessao(agente.id as string, false);
 
   // ── MODO TESTE (só master, só agente do Puba por ora) ──────────────────────
   // Sandbox: cardápio vai pra doc "puba__teste"; o real fica intocado. Toda
@@ -316,7 +325,7 @@ export async function atenderWhatsAgente(from: string, textoIn: string, nome?: s
     await enviarWhats(from, "Tive um problema pra responder agora. Tenta de novo daqui a pouco 🙏");
     return;
   }
-  const resposta = ((modoTeste ? "🧪 *MODO TESTE*\n\n" : "") + ((out.resposta || "").trim() || "(sem resposta)"));
+  const resposta = ((modoTeste ? "🧪 *MODO TESTE*\n\n" : "") + (prefixo ? prefixo + "\n\n" : "") + ((out.resposta || "").trim() || "(sem resposta)"));
   await firestoreCriar("agenteMensagens", `am_${rid()}`, {
     agenteId: agente.id, conversaId, restaurantId: null, role: "assistant", texto: resposta, pessoaId: null, canal: "whatsapp", pdfUrl: out.pdfUrl || null, previaUrl: out.previaUrl || null, criadoEm: now(),
   }).catch(() => {});
