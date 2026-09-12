@@ -3,7 +3,6 @@
 // pelo ✎. Recorrente = 1 registro que anda + histórico. Ver
 // [[project_gestor_redesign_2modulos]].
 import { useEffect, useMemo, useRef, useState } from "react";
-import { CalendarClock } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, doc, onSnapshot, query, where, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -239,10 +238,7 @@ export function PrazosPage() {
     <PageContainer className="space-y-4">
       <input ref={laudoRef} type="file" accept="application/pdf,image/*,.pdf,.doc,.docx" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void onLaudoFile(f); e.target.value = ""; }} />
       <header className="flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><CalendarClock size={20} className="text-gray-500 dark:text-gray-400" /> Prazos</h1>
-          <p className="text-sm text-gray-500">{todosRest ? "Todos os restaurantes" : activeRestaurant?.nome || "—"} · o que vence e quando</p>
-        </div>
+        <p className="text-sm text-gray-500 self-center">{todosRest ? "Todos os restaurantes" : activeRestaurant?.nome || "—"}</p>
         <div className="flex items-center gap-2">
           {podeConfig && <button type="button" onClick={() => setShowImoveis(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">🏠 Imóveis</button>}
           {catsGeriveis.length > 0 && <button type="button" onClick={() => setModal({ prazo: null })} className="text-sm font-semibold px-3 py-2 rounded-lg bg-indigo-600 text-white">+ Novo prazo</button>}
