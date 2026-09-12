@@ -2,6 +2,7 @@
 // Templates de checklist (Configurações) · avaliações (preenchimento/relatório)
 // · painel. Nova avaliação usa o template ativo; se houver mais de um, pergunta.
 import { useEffect, useMemo, useState } from "react";
+import { Lock, Settings, Folder, FlaskConical, Zap, Trash2 } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -76,7 +77,7 @@ export function SegurancaPage() {
 
   if (!podeVer) {
     return <div className="max-w-md mx-auto py-20 text-center text-gray-500">
-      <div className="text-4xl mb-3">🔒</div>Você não tem acesso à Segurança Sanitária.
+      <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>Você não tem acesso à Segurança Sanitária.
     </div>;
   }
 
@@ -107,7 +108,7 @@ export function SegurancaPage() {
     <PageContainer className="space-y-5">
       <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="flex items-center gap-2 flex-wrap sm:justify-end sm:shrink-0 ml-auto">
-          {podeConfig && <Button variant="secondary" onClick={() => setConfigAberto(true)}>⚙ Configurações</Button>}
+          {podeConfig && <Button variant="secondary" onClick={() => setConfigAberto(true)}><span className="inline-flex items-center gap-1.5"><Settings size={15} /> Configurações</span></Button>}
           {podePreencher && temModelo && (
             <Button onClick={novaAvaliacao} disabled={busy}>+ Nova avaliação</Button>
           )}
@@ -116,7 +117,7 @@ export function SegurancaPage() {
 
       {podeConfig && !activeRestaurant?.driveRootFolderId && (
         <div className="text-xs rounded-lg px-3 py-2 bg-amber-50 text-amber-800 dark:bg-amber-900/20 dark:text-amber-300">
-          📁 Defina a <b>pasta raiz do restaurante no Drive</b> em <b>Configurações › Google Drive</b>. As fotos vão pra <code>planejamento.app › Segurança Sanitária</code>, organizadas por avaliação. Sem isso, não dá pra anexar fotos.
+          <Folder size={13} className="inline align-[-1px] mr-1" />Defina a <b>pasta raiz do restaurante no Drive</b> em <b>Configurações › Google Drive</b>. As fotos vão pra <code>planejamento.app › Segurança Sanitária</code>, organizadas por avaliação. Sem isso, não dá pra anexar fotos.
         </div>
       )}
       {erro && <div className="text-sm rounded-lg px-3 py-2 bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-400">{erro}</div>}
@@ -124,15 +125,15 @@ export function SegurancaPage() {
       {/* Sem nenhum template */}
       {!temModelo && (
         <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center">
-          <div className="text-4xl mb-3">🧪</div>
+          <div className="flex justify-center mb-3 text-gray-400"><FlaskConical size={40} /></div>
           <h2 className="font-semibold text-gray-900 dark:text-gray-100">Nenhum checklist ainda</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 max-w-sm mx-auto">
             Crie o primeiro template a partir da lista-base (todos os itens da nutricionista) — dá pra editar depois em Configurações.
           </p>
           {podeConfig
             ? <div className="flex items-center justify-center gap-2 mt-4">
-                <Button onClick={() => void semear()} disabled={busy}>{busy ? "Criando…" : "⚡ Criar da lista-base"}</Button>
-                <Button variant="secondary" onClick={() => setConfigAberto(true)}>⚙ Configurações</Button>
+                <Button onClick={() => void semear()} disabled={busy}>{busy ? "Criando…" : <span className="inline-flex items-center gap-1.5"><Zap size={15} /> Criar da lista-base</span>}</Button>
+                <Button variant="secondary" onClick={() => setConfigAberto(true)}><span className="inline-flex items-center gap-1.5"><Settings size={15} /> Configurações</span></Button>
               </div>
             : <p className="text-xs text-gray-400 mt-4">Peça a um administrador para criar o checklist.</p>}
         </div>
@@ -175,7 +176,7 @@ export function SegurancaPage() {
                       </span>
                     : <span className="shrink-0 text-[12px] font-semibold px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">rascunho</span>}
                   {(podeConfig || a.status !== "finalizada") && (
-                    <span onClick={(e) => { e.stopPropagation(); void excluir(a); }} className="shrink-0 text-gray-300 hover:text-rose-500 text-sm px-1" title="Excluir">🗑</span>
+                    <span onClick={(e) => { e.stopPropagation(); void excluir(a); }} className="shrink-0 text-gray-300 hover:text-rose-500 text-sm px-1" title="Excluir"><Trash2 size={15} /></span>
                   )}
                 </button>
               );

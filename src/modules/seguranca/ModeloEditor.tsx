@@ -4,6 +4,7 @@
 // ações), blocos e faixas. Edição em estado local; "Salvar" persiste.
 // Requer permissão `configurar`.
 import { useEffect, useMemo, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
@@ -247,7 +248,7 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
         <section key={b.id} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
           <div className="flex items-center gap-2 mb-2">
             <input className={inp + " font-semibold"} value={b.nome} onChange={(e) => updBloco(b.id, e.target.value)} />
-            <button onClick={() => delBloco(b.id)} className="shrink-0 text-gray-300 hover:text-rose-500 text-sm px-1" title="Excluir bloco">🗑</button>
+            <button onClick={() => delBloco(b.id)} className="shrink-0 text-gray-300 hover:text-rose-500 text-sm px-1" title="Excluir bloco"><Trash2 size={15} /></button>
           </div>
           <div className="space-y-2">
             {itensDoBloco(b.id).map((item) => (
@@ -275,7 +276,7 @@ export function ModeloEditor({ modelo, onClose }: { modelo: SegurancaModelo; onC
                   <button onClick={() => moveItem(item.id, -1)} className="text-gray-400 hover:text-gray-700 text-xs px-1" title="Subir">↑</button>
                   <button onClick={() => moveItem(item.id, 1)} className="text-gray-400 hover:text-gray-700 text-xs px-1" title="Descer">↓</button>
                   <button onClick={() => dupItem(item)} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline px-1" title="Duplicar pergunta">⧉ duplicar</button>
-                  <button onClick={() => delItem(item.id)} className="text-gray-300 hover:text-rose-500 text-sm px-1" title="Excluir item">🗑</button>
+                  <button onClick={() => delItem(item.id)} className="text-gray-300 hover:text-rose-500 text-sm px-1" title="Excluir item"><Trash2 size={15} /></button>
                 </div>
               </div>
             ))}

@@ -4,6 +4,7 @@
 // filtrando, mostra só a resposta daquela área. Grava resposta-a-resposta ao
 // vivo (retoma de onde parou). Responsivo (mobile-first).
 import { useEffect, useMemo, useState } from "react";
+import { TriangleAlert } from "lucide-react";
 import { Button } from "../../core/ui/Button";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import type { SegurancaAvaliacao, SegurancaFoto, SegurancaItem, SegurancaResposta, SegurancaResultadoItem } from "../../core/types";
@@ -127,7 +128,7 @@ export function Preenchimento({ avaliacaoId, autor, onClose }: {
             return (
               <button key={c} type="button" onClick={() => setFiltro(c)}
                 className={`shrink-0 px-3 py-1.5 rounded-full text-[13px] font-medium border transition-colors ${on ? "bg-indigo-600 border-indigo-600 text-white" : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-                {c === "todas" ? "Todas" : c}{nc > 0 && <span className={`ml-1.5 text-[11px] ${on ? "opacity-90" : "text-rose-600 dark:text-rose-400"}`}>{nc}⚠</span>}
+                {c === "todas" ? "Todas" : c}{nc > 0 && <span className={`ml-1.5 text-[11px] ${on ? "opacity-90" : "text-rose-600 dark:text-rose-400"}`}>{nc}<TriangleAlert size={11} className="inline align-[-1px] ml-0.5" /></span>}
               </button>
             );
           })}

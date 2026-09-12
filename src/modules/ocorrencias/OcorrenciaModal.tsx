@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Target, ScrollText, Star, Info, TriangleAlert, Siren, type LucideIcon } from "lucide-react";
 import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -23,6 +24,7 @@ type Props = {
 };
 
 const GRAVIDADES: OcorrenciaGravidade[] = ["elogio", "leve", "media", "grave"];
+const GRAVIDADE_LUCIDE: Record<OcorrenciaGravidade, LucideIcon> = { elogio: Star, leve: Info, media: TriangleAlert, grave: Siren };
 const STATUSES: OcorrenciaStatus[] = ["aberta", "em_apuracao", "resolvida", "arquivada"];
 const CATEGORIAS_SUGERIDAS = ["Atendimento", "Cozinha", "Bar", "Salão", "Financeiro", "Equipamento", "Cliente", "Equipe"];
 
@@ -183,7 +185,7 @@ export function OcorrenciaModal({ ocorrencia, empregados, cargos, restaurantId, 
                     : "border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50"
                 }`}
               >
-                {OCORRENCIA_GRAVIDADE_ICON[g]} {OCORRENCIA_GRAVIDADE_LABEL[g]}
+                {(() => { const Ic = GRAVIDADE_LUCIDE[g]; return <span className="inline-flex items-center gap-1.5"><Ic size={14} /> {OCORRENCIA_GRAVIDADE_LABEL[g]}</span>; })()}
               </button>
             ))}
           </div>
@@ -238,7 +240,7 @@ export function OcorrenciaModal({ ocorrencia, empregados, cargos, restaurantId, 
           {isNew && empSel.length > 0 && (
             <label className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-400 mt-2 cursor-pointer">
               <input type="checkbox" checked={criarEvtTrilha} onChange={(e) => setCriarEvtTrilha(e.target.checked)} />
-              <span>🎯 Criar evento na trilha de cada empregado envolvido</span>
+              <span className="inline-flex items-center gap-1.5"><Target size={13} /> Criar evento na trilha de cada empregado envolvido</span>
             </label>
           )}
         </div>
@@ -281,7 +283,7 @@ export function OcorrenciaModal({ ocorrencia, empregados, cargos, restaurantId, 
         {/* Histórico da ocorrência: quem criou, moveu, virou ação, apagou. */}
         {!isNew && (ocorrencia?.log?.length || 0) > 0 && (
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
-            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2">📜 Histórico</div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-2 inline-flex items-center gap-1.5"><ScrollText size={12} /> Histórico</div>
             <div className="space-y-1.5">
               {[...(ocorrencia?.log || [])].sort((a, b) => (a.em || "").localeCompare(b.em || "")).map(l => (
                 <div key={l.id} className="flex items-start gap-2 text-xs">

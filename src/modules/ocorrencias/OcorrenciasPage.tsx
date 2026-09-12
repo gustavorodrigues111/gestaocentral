@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Lock, ClipboardList, BarChart3, FolderOpen, Siren, Target, Package, CalendarDays, PenLine, User, Armchair, BookOpen, Trash2, CheckSquare, Search, MessagesSquare, Check, Star, Info, TriangleAlert, type LucideIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -11,7 +12,7 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { todayYmd } from "../../core/utils/date";
 import {
-  OCORRENCIA_GRAVIDADE_ICON, OCORRENCIA_GRAVIDADE_LABEL,
+  OCORRENCIA_GRAVIDADE_LABEL,
   OCORRENCIA_STATUS_LABEL,
 } from "../../core/types";
 import type { Cargo, Empregado, Ocorrencia, OcorrenciaGravidade, OcorrenciaStatus, AcaoLog } from "../../core/types";
@@ -24,6 +25,8 @@ const GRAVIDADE_CLS: Record<OcorrenciaGravidade, string> = {
   media:  "border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800",
   grave:  "border-rose-300 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800",
 };
+
+const OCORRENCIA_GRAVIDADE_LUCIDE: Record<OcorrenciaGravidade, LucideIcon> = { elogio: Star, leve: Info, media: TriangleAlert, grave: Siren };
 
 const STATUS_CLS: Record<OcorrenciaStatus, string> = {
   aberta:         "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
@@ -206,7 +209,7 @@ export function OcorrenciasPage() {
   if (!podeVer && !podeCriar) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
@@ -217,7 +220,7 @@ export function OcorrenciasPage() {
       {/* Abas: Registrar (criação) e Kanban (gestão) */}
       {mostrarTabs && (
         <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
-          {([{ k: "registrar", l: "📝 Registrar" }, { k: "kanban", l: "📊 Kanban" }] as const).map(t => (
+          {([{ k: "registrar", l: <span className="inline-flex items-center gap-1.5"><PenLine size={15} /> Registrar</span> }, { k: "kanban", l: <span className="inline-flex items-center gap-1.5"><BarChart3 size={15} /> Kanban</span> }] as const).map(t => (
             <button
               key={t.k}
               type="button"
@@ -257,7 +260,7 @@ export function OcorrenciasPage() {
                     onClick={() => setEditing(o)}
                     className="w-full text-left flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/60 p-3"
                   >
-                    <span>{OCORRENCIA_GRAVIDADE_ICON[o.gravidade]}</span>
+                    {(() => { const Ic = OCORRENCIA_GRAVIDADE_LUCIDE[o.gravidade]; return <Ic size={15} className="shrink-0" />; })()}
                     <span className="flex-1 min-w-0 text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{o.titulo}</span>
                     <span className="text-[11px] text-gray-500 tabular-nums">{new Date(o.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
                     <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${STATUS_CLS[o.status]}`}>{OCORRENCIA_STATUS_LABEL[o.status]}</span>
@@ -307,7 +310,7 @@ export function OcorrenciasPage() {
                   : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
               }`}
             >
-              {v === "kanban" ? "📊 Kanban" : "📋 Lista"}
+              {v === "kanban" ? <span className="inline-flex items-center gap-1.5"><BarChart3 size={13} /> Kanban</span> : <span className="inline-flex items-center gap-1.5"><ClipboardList size={13} /> Lista</span>}
             </button>
           ))}
         </div>
@@ -342,7 +345,7 @@ export function OcorrenciasPage() {
                   : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
               }`}
             >
-              {g === "todas" ? "Todas" : `${OCORRENCIA_GRAVIDADE_ICON[g]} ${OCORRENCIA_GRAVIDADE_LABEL[g]}`}
+              {g === "todas" ? "Todas" : (() => { const Ic = OCORRENCIA_GRAVIDADE_LUCIDE[g]; return <span className="inline-flex items-center gap-1.5"><Ic size={13} /> {OCORRENCIA_GRAVIDADE_LABEL[g]}</span>; })()}
             </button>
           ))}
         </div>
@@ -359,7 +362,7 @@ export function OcorrenciasPage() {
                   : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
               }`}
             >
-              {s === "abertas" ? "📂 Abertas/em apur." : s === "todas" ? "Todas" : OCORRENCIA_STATUS_LABEL[s]}
+              {s === "abertas" ? <span className="inline-flex items-center gap-1.5"><FolderOpen size={13} /> Abertas/em apur.</span> : s === "todas" ? "Todas" : OCORRENCIA_STATUS_LABEL[s]}
             </button>
           ))}
         </div>
@@ -369,7 +372,7 @@ export function OcorrenciasPage() {
         <div className="text-sm text-gray-500">Carregando...</div>
       ) : filtered.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">🚨</div>
+          <div className="flex justify-center mb-3 text-gray-400"><Siren size={40} /></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">
             {search || filtroGrav !== "todas" || filtroStatus !== "abertas"
               ? "Nada encontrado"
@@ -396,7 +399,7 @@ export function OcorrenciasPage() {
               >
                 <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-base">{OCORRENCIA_GRAVIDADE_ICON[o.gravidade]}</span>
+                    {(() => { const Ic = OCORRENCIA_GRAVIDADE_LUCIDE[o.gravidade]; return <Ic size={18} className="shrink-0" />; })()}
                     <h3 className="font-bold text-gray-900 dark:text-gray-100">{o.titulo}</h3>
                     <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${STATUS_CLS[o.status]}`}>
                       {OCORRENCIA_STATUS_LABEL[o.status]}
@@ -406,23 +409,23 @@ export function OcorrenciasPage() {
                         {o.categoria}
                       </span>
                     )}
-                    {o.acaoIdGerada && <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" title="Virou uma tarefa">🎯 virou tarefa</span>}
+                    {o.acaoIdGerada && <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" title="Virou uma tarefa"><span className="inline-flex items-center gap-1"><Target size={11} /> virou tarefa</span></span>}
                   </div>
                   {podeEditar && (
                     <div className="flex gap-1 flex-wrap">
                       {o.status === "aberta" && (
-                        <Button variant="secondary" size="sm" onClick={() => setStatus(o, "em_apuracao")}>📋 Apurar</Button>
+                        <Button variant="secondary" size="sm" onClick={() => setStatus(o, "em_apuracao")}><span className="inline-flex items-center gap-1.5"><ClipboardList size={14} /> Apurar</span></Button>
                       )}
                       {(o.status === "aberta" || o.status === "em_apuracao") && (
                         <Button variant="secondary" size="sm" onClick={() => setEditing(o)}>✓ Resolver</Button>
                       )}
                       {(o.status === "aberta" || o.status === "em_apuracao") && (
-                        <Button variant="secondary" size="sm" onClick={() => setStatus(o, "arquivada")}>📦 Arquivar</Button>
+                        <Button variant="secondary" size="sm" onClick={() => setStatus(o, "arquivada")}><span className="inline-flex items-center gap-1.5"><Package size={14} /> Arquivar</span></Button>
                       )}
                       {(o.status === "resolvida" || o.status === "arquivada") && (
                         <Button variant="secondary" size="sm" onClick={() => setStatus(o, "aberta")}>↻ Reabrir</Button>
                       )}
-                      {!o.acaoIdGerada && <Button variant="secondary" size="sm" onClick={() => setVirarDe(o)}>🎯 Virar tarefa</Button>}
+                      {!o.acaoIdGerada && <Button variant="secondary" size="sm" onClick={() => setVirarDe(o)}><span className="inline-flex items-center gap-1.5"><Target size={14} /> Virar tarefa</span></Button>}
                       <Button variant="secondary" size="sm" onClick={() => setEditing(o)}>Editar</Button>
                       <Button variant="danger" size="sm" onClick={() => excluir(o)}>×</Button>
                     </div>
@@ -435,10 +438,10 @@ export function OcorrenciasPage() {
                   </div>
                 )}
                 <div className="flex items-center gap-3 flex-wrap text-xs text-gray-600 dark:text-gray-400 pt-2 mt-2 border-t border-gray-200 dark:border-gray-800">
-                  <span>📅 {new Date(o.data + "T12:00:00").toLocaleDateString("pt-BR")}{o.hora ? ` ${o.hora}` : ""}</span>
-                  {o.criadaPorNome && <span>✍️ {o.criadaPorNome}</span>}
-                  {empNomes.length > 0 && <span>👤 {empNomes.join(", ")}</span>}
-                  {o.clienteNome && <span>🪑 Cliente: {o.clienteNome}</span>}
+                  <span className="inline-flex items-center gap-1"><CalendarDays size={12} /> {new Date(o.data + "T12:00:00").toLocaleDateString("pt-BR")}{o.hora ? ` ${o.hora}` : ""}</span>
+                  {o.criadaPorNome && <span className="inline-flex items-center gap-1"><PenLine size={12} /> {o.criadaPorNome}</span>}
+                  {empNomes.length > 0 && <span className="inline-flex items-center gap-1"><User size={12} /> {empNomes.join(", ")}</span>}
+                  {o.clienteNome && <span className="inline-flex items-center gap-1"><Armchair size={12} /> Cliente: {o.clienteNome}</span>}
                 </div>
               </div>
             );
@@ -481,7 +484,7 @@ function HistoricoOcorrencias({ historico, onAbrir }: { historico: Ocorrencia[];
   const fmt = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString("pt-BR") : "";
   const Item = ({ o, quem, quando }: { o: Ocorrencia; quem?: string; quando?: string }) => (
     <button type="button" onClick={() => onAbrir(o)} className="w-full text-left flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/60 px-3 py-2 text-sm">
-      <span>{OCORRENCIA_GRAVIDADE_ICON[o.gravidade]}</span>
+      {(() => { const Ic = OCORRENCIA_GRAVIDADE_LUCIDE[o.gravidade]; return <Ic size={15} className="shrink-0" />; })()}
       <span className="flex-1 min-w-0 truncate text-gray-800 dark:text-gray-200">{o.titulo}</span>
       {quem && <span className="text-[11px] text-gray-500 whitespace-nowrap">{quem}</span>}
       {quando && <span className="text-[11px] text-gray-400 tabular-nums whitespace-nowrap">{quando}</span>}
@@ -490,19 +493,19 @@ function HistoricoOcorrencias({ historico, onAbrir }: { historico: Ocorrencia[];
   return (
     <div className="mt-6 rounded-xl border border-gray-200 dark:border-gray-800">
       <button type="button" onClick={() => setAberto(v => !v)} className="w-full flex items-center justify-between gap-2 px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200">
-        <span>📚 Histórico ({historico.length})</span>
+        <span className="inline-flex items-center gap-1.5"><BookOpen size={14} /> Histórico ({historico.length})</span>
         <span className="text-xs text-gray-400">{aberto ? "▲ recolher" : "▼ ver"}</span>
       </button>
       {aberto && (
         <div className="px-3 pb-3 space-y-4 border-t border-gray-100 dark:border-gray-800 pt-3">
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">🗑️ Apagadas ({apagadas.length})</div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5 inline-flex items-center gap-1.5"><Trash2 size={12} /> Apagadas ({apagadas.length})</div>
             {apagadas.length === 0 ? <p className="text-xs text-gray-400 italic">Nenhuma.</p> : (
               <div className="space-y-1.5">{apagadas.map(o => <Item key={o.id} o={o} quem={o.deletadoPorNome ? `apagou: ${o.deletadoPorNome}` : undefined} quando={fmt(o.deletadoEm)} />)}</div>
             )}
           </div>
           <div>
-            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">✅ Resolvidas há +14 dias ({resolvidas.length})</div>
+            <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5 inline-flex items-center gap-1.5"><CheckSquare size={12} /> Resolvidas há +14 dias ({resolvidas.length})</div>
             {resolvidas.length === 0 ? <p className="text-xs text-gray-400 italic">Nenhuma.</p> : (
               <div className="space-y-1.5">{resolvidas.map(o => <Item key={o.id} o={o} quando={fmt(o.resolvidaEm)} />)}</div>
             )}
@@ -515,13 +518,13 @@ function HistoricoOcorrencias({ historico, onAbrir }: { historico: Ocorrencia[];
 
 // ─── KANBAN ───────────────────────────────────────────────────────────────
 
-const KANBAN_COLS_OC: Array<{ id: OcorrenciaStatus; titulo: string; descricao: string; bordaCls: string }> = [
-  { id: "aberta",         titulo: "🚨 Abertas",          descricao: "Recém-registradas",                       bordaCls: "border-t-blue-500" },
-  { id: "em_apuracao",    titulo: "🔍 Em apuração",      descricao: "Alguém apurando",                          bordaCls: "border-t-amber-500" },
-  { id: "gerada_reuniao", titulo: "🗣️ De reunião",        descricao: "Geradas dentro de uma reunião",           bordaCls: "border-t-purple-500" },
-  { id: "puxada_tarefa",  titulo: "✓ Viraram tarefa",   descricao: "Encerradas aqui, agora estão em Tarefas",  bordaCls: "border-t-emerald-500" },
-  { id: "resolvida",      titulo: "✅ Resolvidas",        descricao: "Resolvidas sem virar tarefa",              bordaCls: "border-t-emerald-500" },
-  { id: "arquivada",      titulo: "📦 Arquivadas",       descricao: "Arquivadas",                               bordaCls: "border-t-gray-400" },
+const KANBAN_COLS_OC: Array<{ id: OcorrenciaStatus; titulo: ReactNode; descricao: string; bordaCls: string }> = [
+  { id: "aberta",         titulo: <span className="inline-flex items-center gap-1.5"><Siren size={15} /> Abertas</span>,          descricao: "Recém-registradas",                       bordaCls: "border-t-blue-500" },
+  { id: "em_apuracao",    titulo: <span className="inline-flex items-center gap-1.5"><Search size={15} /> Em apuração</span>,      descricao: "Alguém apurando",                          bordaCls: "border-t-amber-500" },
+  { id: "gerada_reuniao", titulo: <span className="inline-flex items-center gap-1.5"><MessagesSquare size={15} /> De reunião</span>,        descricao: "Geradas dentro de uma reunião",           bordaCls: "border-t-purple-500" },
+  { id: "puxada_tarefa",  titulo: <span className="inline-flex items-center gap-1.5"><Check size={15} /> Viraram tarefa</span>,   descricao: "Encerradas aqui, agora estão em Tarefas",  bordaCls: "border-t-emerald-500" },
+  { id: "resolvida",      titulo: <span className="inline-flex items-center gap-1.5"><CheckSquare size={15} /> Resolvidas</span>,        descricao: "Resolvidas sem virar tarefa",              bordaCls: "border-t-emerald-500" },
+  { id: "arquivada",      titulo: <span className="inline-flex items-center gap-1.5"><Package size={15} /> Arquivadas</span>,       descricao: "Arquivadas",                               bordaCls: "border-t-gray-400" },
 ];
 
 function KanbanOcorrencias({ ocorrencias, loading, podeEditar, onAbrir, onNova, onMover, draggingId, dropTarget, setDraggingId, setDropTarget }: {
@@ -607,7 +610,7 @@ function KanbanOcorrencias({ ocorrencias, loading, podeEditar, onAbrir, onNova, 
                     title={podeEditar ? `${o.titulo} (arrastar pra mover)` : o.titulo}
                   >
                     <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1">
-                      <span>{OCORRENCIA_GRAVIDADE_ICON[o.gravidade]}</span>
+                      {(() => { const Ic = OCORRENCIA_GRAVIDADE_LUCIDE[o.gravidade]; return <Ic size={15} className="shrink-0" />; })()}
                       <span className="flex-1 truncate">{o.titulo}</span>
                     </div>
                     <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-0.5">

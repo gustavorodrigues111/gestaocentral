@@ -5,6 +5,7 @@
 // clique. A partir daí a Segurança só ACOMPANHA o status (quem resolve é o líder,
 // nas Tarefas dele — a ação já cai na Central de Avisos dele).
 import { useEffect, useMemo, useState } from "react";
+import { Target, CalendarDays } from "lucide-react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -460,7 +461,7 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
           </div>
           {podeGerar && semAcao.length > 0 && (
             <Button size="sm" onClick={() => void gerarTodas()} disabled={gerando}>
-              {gerando ? "Gerando…" : `🎯 Gerar ações (${semAcao.length})`}
+              {gerando ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><Target size={14} /> Gerar ações ({semAcao.length})</span>}
             </Button>
           )}
         </div>
@@ -487,7 +488,7 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
                     : podeGerar
                       ? <button type="button" onClick={() => void criarAcao(i)}
                           className="text-[13px] font-medium text-indigo-600 dark:text-indigo-400 hover:underline text-left">
-                          🎯 Virar ação{lideres.length ? ` → ${lideres.map((l) => l.nome).join(", ")}` : ""}
+                          <span className="inline-flex items-center gap-1.5"><Target size={13} /> Virar ação{lideres.length ? ` → ${lideres.map((l) => l.nome).join(", ")}` : ""}</span>
                         </button>
                       : <span className="text-[12px] text-gray-400">Sem ação vinculada.</span>}
                 </div>
@@ -513,7 +514,7 @@ function AcaoStatus({ acao }: { acao: Tarefa }) {
         <span className="text-gray-500 dark:text-gray-400">
           {[acao.responsavelNome || "sem responsável", ...(acao.coResponsaveisNomes || [])].join(", ")}
         </span>
-        {acao.prazo && <span className="text-gray-500 dark:text-gray-400 tabular-nums">📅 {dmy(acao.prazo)}</span>}
+        {acao.prazo && <span className="text-gray-500 dark:text-gray-400 tabular-nums inline-flex items-center gap-1"><CalendarDays size={12} /> {dmy(acao.prazo)}</span>}
       </div>
       {concluida && resolvLog && (
         <div className="text-[12px] text-emerald-700 dark:text-emerald-400">

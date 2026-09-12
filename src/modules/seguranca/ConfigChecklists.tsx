@@ -3,6 +3,7 @@
 // pergunta qual. Criar (em branco ou da lista-base), editar, duplicar, excluir,
 // ativar/desativar.
 import { useState } from "react";
+import { Trash2 } from "lucide-react";
 import { Button } from "../../core/ui/Button";
 import type { SegurancaModelo } from "../../core/types";
 import { criarModeloVazio, criarModeloSemente, duplicarModelo, excluirModelo, salvarModelo } from "./repository";
@@ -87,7 +88,7 @@ export function ConfigChecklists({ rid, modelos, autorId, onEditar, onClose }: {
                 <Button size="sm" variant="secondary" onClick={() => onEditar(m.id)}>Editar</Button>
                 <button onClick={() => void duplicar(m)} disabled={busy} className="text-[12px] text-gray-500 hover:text-indigo-600 inline-flex items-center gap-1 px-1">⧉ Duplicar</button>
                 <div className="flex-1" />
-                <button onClick={() => void excluir(m)} disabled={busy} title="Excluir" className="text-gray-300 hover:text-rose-500 text-sm px-1">🗑</button>
+                <button onClick={() => void excluir(m)} disabled={busy} title="Excluir" className="text-gray-300 hover:text-rose-500 text-sm px-1"><Trash2 size={15} /></button>
               </div>
             </div>
           );

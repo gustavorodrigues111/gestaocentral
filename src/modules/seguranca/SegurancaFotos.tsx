@@ -2,6 +2,7 @@
 // do Drive). Mobile-first: o botão abre a CÂMERA. Miniatura mostrada in-app;
 // clicar abre um modal DENTRO do app. Fotos ANTIGAS (driveId) ainda carregam do Drive.
 import { useEffect, useRef, useState } from "react";
+import { Camera, Image as ImageIcon } from "lucide-react";
 import type { SegurancaFoto } from "../../core/types";
 import { subirFotoSegurancaStorage, removerFotoSegurancaStorage, carregarFotoDataUrl } from "./driveFoto";
 
@@ -54,7 +55,7 @@ export function SegurancaFotos({ rid, pastaLabel, fotos, onChange, disabled }: {
             onChange={(e) => { const f = e.target.files?.[0]; if (f) void upload(f); e.target.value = ""; }} />
           <button type="button" disabled={uploading || !rid} onClick={() => inputRef.current?.click()}
             className="w-16 h-16 rounded-xl border border-dashed border-indigo-400/70 text-indigo-600 dark:text-indigo-300 flex flex-col items-center justify-center gap-0.5 disabled:opacity-50 active:scale-95 transition-transform">
-            <span className="text-xl leading-none">📷</span>
+            <Camera size={20} />
             <span className="text-[10px] font-semibold">{uploading ? "enviando…" : "foto"}</span>
           </button>
         </>
@@ -82,7 +83,7 @@ function useFotoUrl(foto: SegurancaFoto) {
 // Miniatura: mostra a foto (Firebase direto, ou Drive baixado).
 function Miniatura({ foto }: { foto: SegurancaFoto }) {
   const { url, erro } = useFotoUrl(foto);
-  if (erro) return <div className="w-16 h-16 rounded-xl border border-gray-200 dark:border-gray-700 grid place-items-center text-lg bg-gray-50 dark:bg-gray-800 text-gray-400">🖼️</div>;
+  if (erro) return <div className="w-16 h-16 rounded-xl border border-gray-200 dark:border-gray-700 grid place-items-center bg-gray-50 dark:bg-gray-800 text-gray-400"><ImageIcon size={20} /></div>;
   if (!url) return <div className="w-16 h-16 rounded-xl border border-gray-200 dark:border-gray-700 grid place-items-center bg-gray-50 dark:bg-gray-800 animate-pulse text-gray-300 text-xs">…</div>;
   return <img src={url} alt={foto.nome} className="w-16 h-16 rounded-xl object-cover border border-gray-200 dark:border-gray-700" />;
 }
