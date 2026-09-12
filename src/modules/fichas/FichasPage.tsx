@@ -24,6 +24,7 @@ import { ProducaoView } from "./FichaProducao";
 import { CustoCmvView, flatCardapio, type CardItem } from "./FichaCusto";
 import { PlanejamentoView } from "./FichaPlanejamento";
 import type { CardapioEstruturado, FtPlanoProducao } from "../../core/types";
+import { ClipboardList, Eye, FolderOpen, CalendarRange, ChefHat, DollarSign, UtensilsCrossed, Puzzle } from "lucide-react";
 
 // ─── utils ──────────────────────────────────────────────────────────────
 function maskMoeda(raw: string): string {
@@ -202,9 +203,9 @@ export function FichasPage() {
     : modo === "plano" ? (podePlano ? "plano" : "ver")
     : "ver";
   const emCadastro = modoEfetivo === "cadastro";
-  const modosDisp: [("ver" | "cadastro" | "plano"), string][] = [["ver", "📖 Visualização"]];
-  if (podeCadastro) modosDisp.push(["cadastro", "🗂️ Cadastros"]);
-  if (podePlano) modosDisp.push(["plano", "📅 Planejamento"]);
+  const modosDisp: [("ver" | "cadastro" | "plano"), string, typeof Eye][] = [["ver", "Visualização", Eye]];
+  if (podeCadastro) modosDisp.push(["cadastro", "Cadastros", FolderOpen]);
+  if (podePlano) modosDisp.push(["plano", "Planejamento", CalendarRange]);
 
   if (editando) {
     return (
@@ -220,7 +221,7 @@ export function FichasPage() {
     <div className="max-w-5xl mx-auto p-4">
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">📋 Fichas Técnicas</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><ClipboardList size={20} className="text-gray-500 dark:text-gray-400" /> Fichas Técnicas</h1>
           <p className="text-xs text-gray-500">{activeRestaurant?.nome} · produção e custo em tempo real</p>
         </div>
         {emCadastro && (tab === "pratos" || tab === "bases") && podeEditar && (
@@ -247,8 +248,8 @@ export function FichasPage() {
 
       {modosDisp.length > 1 && (
         <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 mb-4">
-          {modosDisp.map(([m, l]) => (
-            <button key={m} type="button" onClick={() => setModo(m)} className={`px-4 py-1.5 text-sm font-medium rounded-md ${modoEfetivo === m ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
+          {modosDisp.map(([m, l, Ico]) => (
+            <button key={m} type="button" onClick={() => setModo(m)} className={`inline-flex items-center gap-1.5 px-4 py-1.5 text-sm font-medium rounded-md ${modoEfetivo === m ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}><Ico size={15} /> {l}</button>
           ))}
         </div>
       )}
@@ -259,8 +260,8 @@ export function FichasPage() {
         <div className="space-y-3">
           {can("fichas", "cardapio") && (
             <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
-              <TabBtn ativo={verModo === "producao"} onClick={() => setVerModo("producao")}>👩‍🍳 Produção</TabBtn>
-              <TabBtn ativo={verModo === "custo"} onClick={() => setVerModo("custo")}>💰 Custo & CMV</TabBtn>
+              <TabBtn ativo={verModo === "producao"} onClick={() => setVerModo("producao")}><ChefHat size={15} /> Produção</TabBtn>
+              <TabBtn ativo={verModo === "custo"} onClick={() => setVerModo("custo")}><DollarSign size={15} /> Custo & CMV</TabBtn>
             </div>
           )}
           {verModo === "custo" && can("fichas", "cardapio")
@@ -269,8 +270,8 @@ export function FichasPage() {
         </div>
       ) : (<>
       <nav className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
-        <TabBtn ativo={tab === "pratos"} onClick={() => irPara("pratos")}>🍽️ Pratos finais ({fichas.filter(f => f.ativo !== false && !f.ehSubficha).length})</TabBtn>
-        <TabBtn ativo={tab === "bases"} onClick={() => irPara("bases")}>🧩 Bases ({fichas.filter(f => f.ativo !== false && f.ehSubficha).length})</TabBtn>
+        <TabBtn ativo={tab === "pratos"} onClick={() => irPara("pratos")}><UtensilsCrossed size={15} /> Pratos finais ({fichas.filter(f => f.ativo !== false && !f.ehSubficha).length})</TabBtn>
+        <TabBtn ativo={tab === "bases"} onClick={() => irPara("bases")}><Puzzle size={15} /> Bases ({fichas.filter(f => f.ativo !== false && f.ehSubficha).length})</TabBtn>
         {podeInsumo && <TabBtn ativo={tab === "insumos"} onClick={() => irPara("insumos")}>Insumos ({insumos.filter(i => i.ativo !== false && !i.ehSubproduto).length})</TabBtn>}
       </nav>
 
@@ -2202,7 +2203,7 @@ function TabBtn({ ativo, onClick, children }: { ativo: boolean; onClick: () => v
   return (
     <button type="button" onClick={onClick}
       className={`flex-1 sm:flex-none px-2 sm:px-4 py-2 text-sm font-medium border-b-2 transition-colors text-center ${ativo ? "border-indigo-600 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"}`}>
-      {children}
+      <span className="inline-flex items-center justify-center gap-1.5">{children}</span>
     </button>
   );
 }
