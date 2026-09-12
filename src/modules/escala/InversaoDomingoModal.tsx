@@ -3,6 +3,10 @@ import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, onSnapshot, qu
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import {
+  ArrowLeftRight, ClipboardList, Repeat, Circle, CalendarDays, Undo2,
+  Trash2, Users, Sparkles, Clock, Ban,
+} from "lucide-react";
 import type { Empregado, EscalaMes, SundaySwap, ScheduleStatus } from "../../core/types";
 import { daysInMonth, fmtAnoMes, pad2, parseYmd, shiftMonth } from "../../core/utils/date";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
@@ -263,16 +267,16 @@ export function InversaoDomingoModal({
   const showConfirm = !!date2 && (modo === "pontual" || (modo === "reciproca" && !!empAId));
 
   return (
-    <Modal title="↔️ Inversão de domingo" onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={<span className="inline-flex items-center gap-1"><ArrowLeftRight size={18}/> Inversão de domingo</span>} onClose={onClose} maxWidth="max-w-lg">
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 -mx-2 px-2">
         <button type="button" onClick={() => setAba("novo")}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${aba === "novo" ? "border-indigo-600 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-800"}`}>
-          ↔️ Nova
+          <span className="inline-flex items-center gap-1"><ArrowLeftRight size={14}/> Nova</span>
         </button>
         <button type="button" onClick={() => setAba("historico")}
           className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${aba === "historico" ? "border-indigo-600 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-800"}`}>
-          📋 Histórico ({swaps.length})
+          <span className="inline-flex items-center gap-1"><ClipboardList size={14}/> Histórico ({swaps.length})</span>
         </button>
       </div>
 
@@ -291,25 +295,25 @@ export function InversaoDomingoModal({
                       <div className="text-sm">
                         <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
                           {ehPontual
-                            ? <>🔄 {s.empANome} <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-semibold">pontual</span></>
-                            : <>↔️ {s.empANome} ↔ {s.empBNome} <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 font-semibold">informal</span></>}
+                            ? <><Repeat size={14}/> {s.empANome} <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-semibold">pontual</span></>
+                            : <><ArrowLeftRight size={14}/> {s.empANome} ↔ {s.empBNome} <span className="text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500 font-semibold">informal</span></>}
                         </div>
                         {ehPontual ? (
                           <>
-                            <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">🟢 <strong>{fmtData(s.date1)}</strong>: trabalha (recebe gorjeta)</div>
-                            <div className="text-xs text-gray-600 dark:text-gray-400">⚪ <strong>{fmtData(s.date2)}</strong>: folga (não recebe)</div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5"><Circle size={10} fill="currentColor" className="inline align-[-1px] mr-1 text-emerald-500"/><strong>{fmtData(s.date1)}</strong>: trabalha (recebe gorjeta)</div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400"><Circle size={10} className="inline align-[-1px] mr-1 text-gray-400"/><strong>{fmtData(s.date2)}</strong>: folga (não recebe)</div>
                           </>
                         ) : (
                           <>
-                            <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">📅 <strong>{fmtData(s.date1)}</strong>: {(s.empANome || "").split(" ")[0]} trabalhou, {(s.empBNome || "").split(" ")[0]} folgou</div>
-                            <div className="text-xs text-gray-600 dark:text-gray-400">↩️ <strong>{fmtData(s.date2)}</strong>: recíproca</div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5"><CalendarDays size={12} className="inline align-[-2px] mr-1"/><strong>{fmtData(s.date1)}</strong>: {(s.empANome || "").split(" ")[0]} trabalhou, {(s.empBNome || "").split(" ")[0]} folgou</div>
+                            <div className="text-xs text-gray-600 dark:text-gray-400"><Undo2 size={12} className="inline align-[-2px] mr-1"/><strong>{fmtData(s.date2)}</strong>: recíproca</div>
                           </>
                         )}
                         {s.motivo && <div className="text-[11px] italic text-gray-500 dark:text-gray-400 mt-1">"{s.motivo}"</div>}
                         <div className="text-[10px] text-gray-400 mt-1">Registrado por {s.criadoPorNome || "?"} em {new Date(s.criadoEm).toLocaleDateString("pt-BR")}</div>
                       </div>
                       {podeExcluir && (
-                        <button type="button" onClick={() => excluirSwap(s)} className="text-gray-400 hover:text-rose-600 text-sm px-1" title={ehPontual ? "Desfazer (reverte a escala)" : "Excluir registro"}>🗑</button>
+                        <button type="button" onClick={() => excluirSwap(s)} className="text-gray-400 hover:text-rose-600 text-sm px-1" title={ehPontual ? "Desfazer (reverte a escala)" : "Excluir registro"}><Trash2 size={14}/></button>
                       )}
                     </div>
                   </div>
@@ -381,14 +385,14 @@ export function InversaoDomingoModal({
               <div className="text-sm font-medium text-gray-800 dark:text-gray-200">Como é a recíproca?</div>
               <button type="button" onClick={() => setModo("reciproca")}
                 className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 p-3 hover:border-indigo-400">
-                <div className="font-semibold text-sm flex items-center gap-2">👥 Troca informal com outra pessoa
+                <div className="font-semibold text-sm flex items-center gap-2"><Users size={15}/> Troca informal com outra pessoa
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 font-bold uppercase">só auditoria</span>
                 </div>
                 <div className="text-xs text-gray-500 mt-0.5">Alguém cobre {primeiro(empBId)} e ela cobre de volta noutro domingo. Gorjeta não muda.</div>
               </button>
               <button type="button" onClick={() => setModo("pontual")}
                 className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 p-3 hover:border-emerald-400">
-                <div className="font-semibold text-sm flex items-center gap-2">🔄 Troca pontual — sem outra pessoa
+                <div className="font-semibold text-sm flex items-center gap-2"><Repeat size={15}/> Troca pontual — sem outra pessoa
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-bold uppercase">gorjeta segue</span>
                 </div>
                 <div className="text-xs text-gray-500 mt-0.5">{primeiro(empBId)} move a própria folga pra outro domingo deste mês. Recebe a gorjeta do dia que trabalhou.</div>
@@ -423,7 +427,7 @@ export function InversaoDomingoModal({
               <div className="text-sm font-medium text-gray-800 dark:text-gray-200">
                 Domingo em que <strong>{primeiro(empAId)}</strong> folga (recíproca):
               </div>
-              <p className="text-[11px] text-gray-500 dark:text-gray-400">Escaneia mês anterior + atual + próximo. ✨ "Perfeito" = {primeiro(empBId)} também trabalha lá.</p>
+              <p className="text-[11px] text-gray-500 dark:text-gray-400">Escaneia mês anterior + atual + próximo. <Sparkles size={11} className="inline align-[-1px]"/> "Perfeito" = {primeiro(empBId)} também trabalha lá.</p>
               {reciprocaCandidatos.length === 0 ? (
                 <p className="text-xs text-gray-500">Nenhuma data encontrada nos próximos 3 meses.</p>
               ) : (
@@ -433,7 +437,7 @@ export function InversaoDomingoModal({
                       className={`w-full text-left px-3 py-2 text-sm border-b border-gray-100 dark:border-gray-800 last:border-0 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 ${c.perfect ? "bg-emerald-50/60 dark:bg-emerald-900/10" : ""}`}>
                       <span className="font-mono">{fmtData(c.date)}</span>
                       <span className="text-[10px] text-gray-500 dark:text-gray-400 ml-2">{c.label}</span>
-                      {c.perfect && <span className="ml-2 text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold">✨ perfeito</span>}
+                      {c.perfect && <span className="ml-2 text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold inline-flex items-center gap-0.5"><Sparkles size={10}/> perfeito</span>}
                     </button>
                   ))}
                 </div>
@@ -467,22 +471,22 @@ export function InversaoDomingoModal({
             <div className="space-y-3">
               {modo === "pontual" ? (
                 <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-3 text-sm">
-                  <div className="font-bold text-emerald-900 dark:text-emerald-100 mb-2">🔄 Troca pontual — {nome(empBId)}</div>
+                  <div className="font-bold text-emerald-900 dark:text-emerald-100 mb-2 inline-flex items-center gap-1"><Repeat size={14}/> Troca pontual — {nome(empBId)}</div>
                   <div className="space-y-1 text-xs text-emerald-800 dark:text-emerald-200">
-                    <div>🟢 <strong>{fmtData(date1)}</strong>: passa a trabalhar → <strong>recebe gorjeta</strong> (era folga)</div>
-                    <div>⚪ <strong>{fmtData(date2)}</strong>: passa a folgar → não recebe (era trabalho)</div>
-                    <div>📋 Grava na escala <strong>prevista</strong> (plano); a gorjeta segue e o ciclo não muda</div>
-                    <div>🕐 Se ela faltar, a Análise de Ponto acusa normal e a falta anula a gorjeta do dia</div>
-                    <div>↩︎ Reversível: desfazer no Histórico restaura os 2 dias</div>
+                    <div><Circle size={10} fill="currentColor" className="inline align-[-1px] mr-1 text-emerald-500"/><strong>{fmtData(date1)}</strong>: passa a trabalhar → <strong>recebe gorjeta</strong> (era folga)</div>
+                    <div><Circle size={10} className="inline align-[-1px] mr-1 text-gray-400"/><strong>{fmtData(date2)}</strong>: passa a folgar → não recebe (era trabalho)</div>
+                    <div><ClipboardList size={12} className="inline align-[-2px] mr-1"/>Grava na escala <strong>prevista</strong> (plano); a gorjeta segue e o ciclo não muda</div>
+                    <div><Clock size={12} className="inline align-[-2px] mr-1"/>Se ela faltar, a Análise de Ponto acusa normal e a falta anula a gorjeta do dia</div>
+                    <div><Undo2 size={12} className="inline align-[-2px] mr-1"/>Reversível: desfazer no Histórico restaura os 2 dias</div>
                   </div>
                 </div>
               ) : (
                 <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 p-3 text-sm">
-                  <div className="font-bold text-indigo-900 dark:text-indigo-100 mb-2">📋 Troca informal</div>
+                  <div className="font-bold text-indigo-900 dark:text-indigo-100 mb-2 inline-flex items-center gap-1"><ClipboardList size={14}/> Troca informal</div>
                   <div className="space-y-1 text-xs text-indigo-800 dark:text-indigo-200">
-                    <div>📅 <strong>{fmtData(date1)}</strong>: {nome(empAId)} (era trab) ↔ {nome(empBId)} (era folga)</div>
-                    <div>↩️ <strong>{fmtData(date2)}</strong>: troca recíproca</div>
-                    <div>🚫 Gorjeta, escala e ponto não mudam</div>
+                    <div><CalendarDays size={12} className="inline align-[-2px] mr-1"/><strong>{fmtData(date1)}</strong>: {nome(empAId)} (era trab) ↔ {nome(empBId)} (era folga)</div>
+                    <div><Undo2 size={12} className="inline align-[-2px] mr-1"/><strong>{fmtData(date2)}</strong>: troca recíproca</div>
+                    <div><Ban size={12} className="inline align-[-2px] mr-1"/>Gorjeta, escala e ponto não mudam</div>
                   </div>
                 </div>
               )}

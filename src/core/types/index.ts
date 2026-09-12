@@ -18,6 +18,7 @@ import {
   PartyPopper, UserRoundMinus, Repeat, Rocket, Banknote, BookOpen,
   ThumbsUp, ThumbsDown, TriangleAlert, Trophy, PenLine, Palmtree,
   Stethoscope, MessagesSquare, HardHat, AlarmClock, CircleDot, CircleX, Pin,
+  ClipboardList, Lock, Coins, CheckSquare,
 } from "lucide-react";
 
 export type PermissoesPerfil = {
@@ -992,6 +993,13 @@ export const ESCALA_FASE_ICON: Record<EscalaFase, string> = {
   prevista_fechada:    "🔒",
   vt_pago:             "💸",
   praticada_fechada:   "✅",
+};
+
+export const ESCALA_FASE_LUCIDE: Record<EscalaFase, LucideIcon> = {
+  em_planejamento:     ClipboardList,
+  prevista_fechada:    Lock,
+  vt_pago:             Coins,
+  praticada_fechada:   CheckSquare,
 };
 
 export function getEscalaFase(escala: { previstaFechadaEm?: string | null; vtPagoEm?: string | null; fechadoEm?: string | null } | null): EscalaFase {

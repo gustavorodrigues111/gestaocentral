@@ -16,7 +16,12 @@ import {
   daysInMonth, dowShort, fmtAnoMes, fmtBR, nomeMes, pad2, parseYmd, shiftMonth, ymd as ymdFromDate,
 } from "../../core/utils/date";
 import type { Area, Cargo, Empregado, EscalaMes, Modalidade, ScheduleStatus, SundaySwap, Unidade, EscalaFase, AjusteEscalaMeta, AtrasoEscalaMeta } from "../../core/types";
-import { AREAS, ESCALA_FASE_LABEL, ESCALA_FASE_ICON, getEscalaFase, AJUSTE_MOTIVO_LABEL } from "../../core/types";
+import { AREAS, ESCALA_FASE_LABEL, ESCALA_FASE_LUCIDE, getEscalaFase, AJUSTE_MOTIVO_LABEL } from "../../core/types";
+import {
+  CalendarDays, ClipboardList, Lock, LockOpen, CheckSquare, PenLine, Palmtree,
+  ArrowLeftRight, FileText, Lightbulb, CircleHelp, SearchX, House, Building2, Zap,
+  Coins, AlarmClock,
+} from "lucide-react";
 import { derivedScheduleForEmpregado, modalidadeDerivadaDia, type DerivedDay } from "../../core/escala/horarios";
 import { modalidadeEfetivaEmpDia, previstaFechadaParaEmp } from "../../core/escala/statusEfetivo";
 import { empregadoAtivoEm } from "../../core/utils/empregado";
@@ -641,7 +646,7 @@ export function EscalaPage() {
     return (
       <SelfServiceRedirect
         restaurantId={rid}
-        icone="📆"
+        icone={<CalendarDays size={36} className="mx-auto text-gray-400"/>}
         titulo="Sua escala está no Meu Portal"
         descricao="Essa tela é a visão de gestão (todo o time). Pra ver sua escala pessoal, vai em Meu Portal."
       />
@@ -721,7 +726,7 @@ export function EscalaPage() {
             fase === "vt_pago"           ? "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" :
             "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
           }`}>
-            {ESCALA_FASE_ICON[fase]} {ESCALA_FASE_LABEL[fase]}
+            {(() => { const Ic = ESCALA_FASE_LUCIDE[fase]; return <Ic size={12} className="inline align-[-2px] mr-1"/>; })()} {ESCALA_FASE_LABEL[fase]}
           </div>
         }
       />
@@ -738,8 +743,8 @@ export function EscalaPage() {
                 : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
             }`}
           >
-            📋 Prevista
-            {previstaFechada && versao !== "prevista" && <span className="ml-1 text-[10px]">🔒</span>}
+            <span className="inline-flex items-center gap-1"><ClipboardList size={13}/> Prevista</span>
+            {previstaFechada && versao !== "prevista" && <Lock size={11} className="inline align-[-1px] ml-1"/>}
           </button>
           <button
             type="button"
@@ -756,7 +761,7 @@ export function EscalaPage() {
                 : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
             }`}
           >
-            ✅ Praticada{!previstaFechada && <span className="ml-1 text-[10px]">🔒</span>}
+            <span className="inline-flex items-center gap-1"><CheckSquare size={13}/> Praticada</span>{!previstaFechada && <Lock size={11} className="inline align-[-1px] ml-1"/>}
           </button>
         </div>
 
@@ -767,7 +772,7 @@ export function EscalaPage() {
             title="A edição da praticada agora é no Fechamento de folha de ponto"
             className="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white"
           >
-            ✏️ Editar no Fechamento de folha →
+            <PenLine size={13}/> Editar no Fechamento de folha →
           </button>
         )}
 
@@ -812,12 +817,12 @@ export function EscalaPage() {
           <div className="hidden md:flex items-center gap-2 flex-wrap">
             {podeEditar && (
               <Button variant="secondary" size="sm" onClick={() => setShowFeriasLote(true)}>
-                🏖️ Marcar férias em lote
+                <span className="inline-flex items-center gap-1"><Palmtree size={14}/> Marcar férias em lote</span>
               </Button>
             )}
             {podeConfig && (
               <Button variant="secondary" size="sm" onClick={() => setShowInversao(true)}>
-                ↔️ Inversão de domingo
+                <span className="inline-flex items-center gap-1"><ArrowLeftRight size={14}/> Inversão de domingo</span>
               </Button>
             )}
             {/* "Copiar Prevista → Praticada" removido — agora é automático
@@ -831,13 +836,13 @@ export function EscalaPage() {
                 onClick={() => setShowExportPDF(true)}
                 title="Exportar PDF da escala (escolhe unidade/área e pré-visualiza)"
               >
-                📄 Exportar PDF
+                <span className="inline-flex items-center gap-1"><FileText size={14}/> Exportar PDF</span>
               </Button>
             )}
             {/* PREVISTA: Fechar / Reabrir prevista — só quando versao === "prevista" */}
             {versao === "prevista" && !previstaFechada && !fechada && podeConfig && (
               <Button size="sm" onClick={fecharPrevista}>
-                🔒 Fechar prevista
+                <span className="inline-flex items-center gap-1"><Lock size={14}/> Fechar prevista</span>
               </Button>
             )}
             {versao === "prevista" && previstaFechada && !fechada && podeConfig && (
@@ -847,7 +852,7 @@ export function EscalaPage() {
                 onClick={reabrirPrevista}
                 title={vtPago ? "VT já pago — só master pode reabrir (cancela o lote VT)" : "Reabrir prevista pra ajustes"}
               >
-                🔓 Reabrir prevista
+                <span className="inline-flex items-center gap-1"><LockOpen size={14}/> Reabrir prevista</span>
               </Button>
             )}
             {/* PRATICADA: o "Encerrar mês" (lock final) agora fica no Análise de
@@ -860,7 +865,7 @@ export function EscalaPage() {
             )}
             {versao === "real" && fechada && podeReabrir && (
               <Button variant="secondary" size="sm" onClick={() => setShowReabrirMes(true)}>
-                🔓 Reabrir mês
+                <span className="inline-flex items-center gap-1"><LockOpen size={14}/> Reabrir mês</span>
               </Button>
             )}
           </div>
@@ -874,7 +879,7 @@ export function EscalaPage() {
 
       {/* Hint de atalhos de teclado — desktop only (sem teclado no mobile) */}
       <div className="hidden md:block text-[11px] text-gray-500 dark:text-gray-400 mb-2">
-        💡 <strong>Click</strong> nos dias pra selecionar · paleta aparece embaixo · use atalhos: <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">T</kbd> trabalho · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">F</kbd> folga · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">V</kbd> férias · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">⌫</kbd> reverter · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">ESC</kbd> fechar
+        <Lightbulb size={12} className="inline align-[-2px] mr-1"/> <strong>Click</strong> nos dias pra selecionar · paleta aparece embaixo · use atalhos: <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">T</kbd> trabalho · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">F</kbd> folga · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">V</kbd> férias · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">⌫</kbd> reverter · <kbd className="px-1 bg-gray-200 dark:bg-gray-700 rounded">ESC</kbd> fechar
       </div>
 
       {/* Legenda — desktop only. Mobile usa o botão "?" abaixo */}
@@ -883,7 +888,7 @@ export function EscalaPage() {
       </div>
       <details className="md:hidden mb-3 text-xs">
         <summary className="cursor-pointer text-gray-500 dark:text-gray-400 select-none inline-flex items-center gap-1 px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800">
-          ❓ Legenda das cores
+          <CircleHelp size={13}/> Legenda das cores
         </summary>
         <div className="mt-2">
           <Legenda />
@@ -894,7 +899,7 @@ export function EscalaPage() {
         <div className="text-sm text-gray-500 mt-6">Carregando...</div>
       ) : empregadosOrdenados.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center mt-6">
-          <div className="text-4xl mb-3">🤷</div>
+          <div className="flex justify-center mb-3"><SearchX size={36} className="text-gray-400"/></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhum empregado neste mês</p>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
             Cadastre empregados em Pessoas (filtro "Empregados") pra começar a montar a escala.
@@ -1063,7 +1068,7 @@ function BannerStatus({
   if (versao === "prevista") {
     if (fechada) {
       return (
-        <PainelExplicativo cor="rose" icone="🔒" titulo="Escala Prevista — mês fechado (read-only)">
+        <PainelExplicativo cor="rose" icone={<Lock size={16}/>} titulo="Escala Prevista — mês fechado (read-only)">
           <p>
             O mês foi encerrado. Tudo travado pra preservar o histórico de gorjetas e VT.
             Pra alterar alguma coisa aqui, é preciso reabrir o mês (botão "🔓 Reabrir mês"
@@ -1074,7 +1079,7 @@ function BannerStatus({
     }
     if (vtPago) {
       return (
-        <PainelExplicativo cor="emerald" icone="💸" titulo="Escala Prevista — lote VT lançado (travada permanentemente)">
+        <PainelExplicativo cor="emerald" icone={<Coins size={16}/>} titulo="Escala Prevista — lote VT lançado (travada permanentemente)">
           <p>
             A prevista foi usada pra criar o lote VT do mês, que <strong>já foi marcado como pago</strong>.
             Por isso ela está travada como prova do que foi pago.
@@ -1089,7 +1094,7 @@ function BannerStatus({
     }
     if (previstaFechada) {
       return (
-        <PainelExplicativo cor="amber" icone="🔒" titulo="Escala Prevista — fechada (fotografia tirada)">
+        <PainelExplicativo cor="amber" icone={<Lock size={16}/>} titulo="Escala Prevista — fechada (fotografia tirada)">
           <p>
             A prevista foi fechada e virou a <strong>base oficial</strong> pro cálculo do VT do mês.
             Agora o botão "💸 Lançar pra pagamento" no menu 🚌 Vale Transporte está liberado.
@@ -1104,7 +1109,7 @@ function BannerStatus({
     }
     if (!isMesFuturo) {
       return (
-        <PainelExplicativo cor="amber" icone="⏰" titulo="Escala Prevista — mês já começou">
+        <PainelExplicativo cor="amber" icone={<AlarmClock size={16}/>} titulo="Escala Prevista — mês já começou">
           <p>
             <strong>O mês atual já está em curso</strong> — a Prevista não pode mais ser editada
             (não-master). Pra registrar o que está acontecendo, clique em <strong>🔒 Fechar prevista</strong>
@@ -1117,7 +1122,7 @@ function BannerStatus({
       );
     }
     return (
-      <PainelExplicativo cor="blue" icone="📋" titulo="Escala Prevista — planejamento do mês">
+      <PainelExplicativo cor="blue" icone={<ClipboardList size={16}/>} titulo="Escala Prevista — planejamento do mês">
         <p>
           É a versão que você monta <strong>antes</strong> do mês acontecer: folgas, escalas de
           trabalho, freelas previstos, férias programadas. A base vem do horário cadastrado de
@@ -1135,7 +1140,7 @@ function BannerStatus({
   // ── PRATICADA ──────────────────────────────────────────────────────────
   if (fechada) {
     return (
-      <PainelExplicativo cor="rose" icone="🔒" titulo="Escala Praticada — registro final do mês">
+      <PainelExplicativo cor="rose" icone={<Lock size={16}/>} titulo="Escala Praticada — registro final do mês">
         <p>
           Versão consolidada do que aconteceu no mês. Read-only, preservada pra histórico de
           gorjetas e VT. Pra editar, é preciso reabrir o mês (só com permissão de reabertura).
@@ -1145,7 +1150,7 @@ function BannerStatus({
   }
   if (!previstaFechada) {
     return (
-      <PainelExplicativo cor="gray" icone="🔒" titulo="Escala Praticada — bloqueada (Prevista aberta)">
+      <PainelExplicativo cor="gray" icone={<Lock size={16}/>} titulo="Escala Praticada — bloqueada (Prevista aberta)">
         <p>
           A Praticada <strong>espelha a Prevista</strong> até ela ser fechada. Nada do que está
           aqui é editável — pra mexer, primeiro feche a Prevista (botão <strong>🔒 Fechar prevista</strong>
@@ -1159,7 +1164,7 @@ function BannerStatus({
     );
   }
   return (
-    <PainelExplicativo cor="emerald" icone="✅" titulo="Escala Praticada — realidade do dia-a-dia">
+    <PainelExplicativo cor="emerald" icone={<CheckSquare size={16}/>} titulo="Escala Praticada — realidade do dia-a-dia">
       <p>
         É a versão da realidade do mês. Nasceu como cópia da Prevista no momento que ela foi
         fechada, e vai sendo ajustada conforme as coisas acontecem: <strong>falta, atestado,
@@ -1171,7 +1176,7 @@ function BannerStatus({
         <strong> 🔒 Encerrar mês</strong> pra consolidar gorjetas e VT.
       </p>
       <p className="text-amber-700 dark:text-amber-300">
-        ✏️ <strong>Aqui a praticada é só leitura.</strong> Os ajustes do dia-a-dia (falta, atestado,
+<PenLine size={12} className="inline align-[-2px] mr-1"/> <strong>Aqui a praticada é só leitura.</strong> Os ajustes do dia-a-dia (falta, atestado,
         troca, hora extra) são feitos no <strong>Fechamento de folha de ponto</strong> (Análise de Ponto),
         que cruza com as batidas da Sólides e sobe pra cá.
       </p>
@@ -1184,7 +1189,7 @@ function PainelExplicativo({
   cor, icone, titulo, children,
 }: {
   cor: "blue" | "amber" | "emerald" | "rose" | "gray";
-  icone: string;
+  icone: React.ReactNode;
   titulo: string;
   children: React.ReactNode;
 }) {
@@ -1476,7 +1481,7 @@ function Grade({
                         title={`Reabrir a previsão de ${e.nome} (voltar a editar a prevista dele)`}
                         className="shrink-0 w-6 h-6 inline-flex items-center justify-center rounded text-gray-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/30 opacity-0 group-hover:opacity-100 transition-opacity"
                       >
-                        <span className="text-sm">🔓</span>
+                        <LockOpen size={14}/>
                       </button>
                     )}
                   </div>
@@ -1622,7 +1627,7 @@ function Celula({
 }) {
   const homeOfficeBadge = modalidade === "home_office" ? (
     <span className="absolute -top-1 -right-1 text-[9px] leading-none px-0.5 rounded bg-amber-500 text-white font-bold border border-amber-600 shadow-sm"
-      style={{ minWidth: "11px", textAlign: "center" }} title="Home office — não paga VT (mantém VR/gorjeta)">🏠</span>
+      style={{ minWidth: "11px", textAlign: "center" }} title="Home office — não paga VT (mantém VR/gorjeta)"><House size={9} className="inline"/></span>
   ) : null;
   // Resolve display
   const displayStatus = override ?? derived?.status;
@@ -1654,7 +1659,7 @@ function Celula({
       style={{ minWidth: "11px", textAlign: "center" }}
       title={`⚡ Ajuste automático via apontamento de ponto${ajuste.motivo ? ` (${AJUSTE_MOTIVO_LABEL[ajuste.motivo]})` : ""}${ajuste.ajustadoPorNome ? ` por ${ajuste.ajustadoPorNome}` : ""}`}
     >
-      ⚡
+      <Zap size={9} className="inline"/>
     </span>
   ) : null;
   // 🕐 Badge de atraso OCULTADO temporariamente — os horários de atraso ainda não
@@ -1816,8 +1821,8 @@ function BulkActionBar({
           {/* Dropdown de unidade — só aparece se multi-unidades */}
           {usaMultiUnidades && unidadesAtivas.length > 0 && (
             <div className="flex items-center gap-1 bg-white dark:bg-gray-800 rounded-lg px-2 py-1 border border-indigo-300 dark:border-indigo-700 shadow-sm">
-              <span className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold">
-                🏢
+              <span className="text-gray-500 dark:text-gray-400">
+                <Building2 size={13}/>
               </span>
               <select
                 value={unidadeOverride}
@@ -1862,12 +1867,12 @@ function BulkActionBar({
             <button type="button" onClick={() => onApplyModalidade("home_office")}
               title="Marcar como home office nos dias selecionados (não paga VT; garante trabalho)"
               className="inline-flex items-center gap-1 pl-2 pr-2 py-1 rounded-lg text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 border border-amber-300 dark:border-amber-700 hover:scale-105 active:scale-95 transition-transform font-bold shadow-sm">
-              🏠 <span className="hidden md:inline whitespace-nowrap">Home office</span>
+              <House size={13}/> <span className="hidden md:inline whitespace-nowrap">Home office</span>
             </button>
             <button type="button" onClick={() => onApplyModalidade(null)}
               title="Voltar pra presencial nos dias selecionados"
               className="inline-flex items-center gap-1 pl-2 pr-2 py-1 rounded-lg text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 hover:bg-gray-100 dark:hover:bg-gray-700 font-medium shadow-sm">
-              🏢 <span className="hidden md:inline whitespace-nowrap">Presencial</span>
+              <Building2 size={13}/> <span className="hidden md:inline whitespace-nowrap">Presencial</span>
             </button>
           </div>
 
@@ -1932,7 +1937,7 @@ function MarcarFeriasLoteModal({
   const statusOpcoes: ScheduleStatus[] = ["ferias", "falta_j", "comp", "folga"];
 
   return (
-    <Modal title="🏖️ Marcar em lote" onClose={onClose} maxWidth="max-w-md">
+    <Modal title={<span className="inline-flex items-center gap-1"><Palmtree size={18}/> Marcar em lote</span>} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Pinta um intervalo de dias com o mesmo status (override). Útil pra férias,
@@ -2341,7 +2346,7 @@ function StatusPickerSheet({
         {/* Header */}
         <div className="px-4 pt-1 pb-3 border-b border-gray-200 dark:border-gray-800">
           <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">{empregadoNome}</h3>
-          <p className="text-xs text-gray-500 dark:text-gray-400">📅 {dataBr}</p>
+          <p className="text-xs text-gray-500 dark:text-gray-400 inline-flex items-center gap-1"><CalendarDays size={12}/> {dataBr}</p>
         </div>
         {/* Lista de opções */}
         <div className="p-2">
@@ -2381,7 +2386,7 @@ function StatusPickerSheet({
             <div className="px-3 pb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">Modalidade (VT)</div>
             <button type="button" onClick={() => onApplyModalidade(modalidadeAtual === "home_office" ? null : "home_office")}
               className={`w-full flex items-center gap-3 px-3 py-3 rounded-lg text-left transition-colors ${modalidadeAtual === "home_office" ? "bg-amber-50 dark:bg-amber-900/30 ring-2 ring-amber-400" : "hover:bg-gray-50 dark:hover:bg-gray-800 active:bg-gray-100"}`}>
-              <span className="inline-flex items-center justify-center w-8 h-8 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-sm flex-shrink-0">🏠</span>
+              <span className="inline-flex items-center justify-center w-8 h-8 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-sm flex-shrink-0"><House size={16}/></span>
               <span className="flex-1 text-sm text-gray-900 dark:text-gray-100">Home office <span className="text-[11px] text-gray-500">— sem VT</span></span>
               {modalidadeAtual === "home_office" && <span className="text-amber-600 dark:text-amber-400 text-sm">✓</span>}
             </button>

@@ -6,13 +6,14 @@
 // Pra módulos puros de gestão (Pessoas, Sites, etc.) que não têm
 // equivalente no Meu Portal, use uma versão simples sem o link.
 
+import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
 
 type Props = {
   /** Restaurante atual — pra link do portal. */
   restaurantId: string;
-  /** Emoji + texto pra identificar o que a pessoa procurava (ex: "💰 Sua gorjeta"). */
-  icone: string;
+  /** Ícone pra identificar o que a pessoa procurava (lucide ou emoji). */
+  icone: ReactNode;
   titulo: string;
   /** Frase explicando o que aquela tela é. */
   descricao: string;
