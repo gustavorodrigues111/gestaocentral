@@ -3,7 +3,6 @@
 // empresa = reembolso). Duas abas: Visualização (Minhas faturas / Outras
 // faturas a reembolsar) e Classificação. Categorias são por entidade.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { CreditCard } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where, writeBatch } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -109,7 +108,6 @@ export function FaturasPage() {
   return (
     <PageContainer>
       <header className="mb-4">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><CreditCard size={20} className="text-gray-500 dark:text-gray-400" /> Faturas</h1>
         <p className="text-xs text-gray-500">{activeRestaurant?.nome} · faturas de cartão, classificação e reembolsos</p>
       </header>
 

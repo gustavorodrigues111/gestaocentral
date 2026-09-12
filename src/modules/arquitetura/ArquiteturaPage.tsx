@@ -3,7 +3,6 @@
 // a mesma do menu do planejamento.app (por área). Substitui o antigo mapa de
 // arquitetura. Rota /arquitetura (mestre).
 import { useEffect, useMemo, useState } from "react";
-import { Notebook } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { MODULES, AREA_INFO, getModule } from "../../config/modules";
@@ -81,10 +80,7 @@ export function ArquiteturaPage() {
   return (
     <PageContainer className="space-y-4">
       <header className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><Notebook size={20} className="text-gray-500 dark:text-gray-400" /> Caderno</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Tudo que foi feito e o que falta, por módulo. <b className="text-rose-600 dark:text-rose-400">{pendentesTotal} pendente(s)</b>.</p>
-        </div>
+        <p className="text-sm text-gray-500 dark:text-gray-400"><b className="text-rose-600 dark:text-rose-400">{pendentesTotal} pendente(s)</b>.</p>
         <div className="flex items-center gap-2 flex-wrap">
           <div className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
             {(["todos", "gustavo", "ia"] as const).map((r) => (

@@ -24,7 +24,7 @@ import { ProducaoView } from "./FichaProducao";
 import { CustoCmvView, flatCardapio, type CardItem } from "./FichaCusto";
 import { PlanejamentoView } from "./FichaPlanejamento";
 import type { CardapioEstruturado, FtPlanoProducao } from "../../core/types";
-import { ClipboardList, Eye, FolderOpen, CalendarRange, ChefHat, DollarSign, UtensilsCrossed, Puzzle } from "lucide-react";
+import { Eye, FolderOpen, CalendarRange, ChefHat, DollarSign, UtensilsCrossed, Puzzle } from "lucide-react";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 // ─── utils ──────────────────────────────────────────────────────────────
@@ -221,10 +221,7 @@ export function FichasPage() {
   return (
     <PageContainer>
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-        <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><ClipboardList size={20} className="text-gray-500 dark:text-gray-400" /> Fichas Técnicas</h1>
-          <p className="text-xs text-gray-500">{activeRestaurant?.nome} · produção e custo em tempo real</p>
-        </div>
+        <p className="text-xs text-gray-500">{activeRestaurant?.nome} · produção e custo em tempo real</p>
         {emCadastro && (tab === "pratos" || tab === "bases") && podeEditar && (
           <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
             {rascunho && (

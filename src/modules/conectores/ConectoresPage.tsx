@@ -2,7 +2,6 @@
 // Mostra o status do último sync por restaurante e permite forçar na hora.
 // Os dados vivem em <tipo>SyncStatus/{rid}, gravados pelos crons api/*-sync.
 import { useEffect, useMemo, useState } from "react";
-import { Plug } from "lucide-react";
 import { collection, onSnapshot, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -125,13 +124,6 @@ export function ConectoresPage() {
 
   return (
     <PageContainer>
-      <div className="mb-4">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Plug size={20} className="text-gray-500 dark:text-gray-400" /> Conectores</h1>
-        <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
-          Plataformas externas que abastecem o app (reservas, vendas…). Sincronizam sozinhas a cada ~15 min; aqui você vê o status e pode forçar na hora.
-        </p>
-      </div>
-
       {restsComConector.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">
           Nenhum conector ativo ainda. Quando um restaurante estiver ligado a uma plataforma (GetIn, Altec…), ele aparece aqui.

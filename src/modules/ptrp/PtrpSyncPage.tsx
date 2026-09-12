@@ -6,7 +6,7 @@
 //  backfill sem abrir o console do Firestore.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { Timer, BarChart3, Scale, Landmark, Settings } from "lucide-react";
+import { BarChart3, Scale, Landmark, Settings } from "lucide-react";
 import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -126,11 +126,6 @@ export function PtrpSyncPage() {
 
   return (
     <PageContainer>
-      <div className="mb-3">
-        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><Timer size={20} className="text-gray-500 dark:text-gray-400" /> Ponto (PTRP)</h1>
-        <p className="text-xs text-gray-500 mt-0.5">Tratamento de ponto — as batidas do Sólides são espelhadas numa coleção imutável (<code>ptrpBatidas</code>), base da apuração.</p>
-      </div>
-
       <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
         {abasPermitidas.map(([v, l, Ico]) => (
           <button key={v} type="button" onClick={() => setAba(v)}

@@ -8,7 +8,6 @@
 // caixa por restaurante e filtrar por tag. Metadados em whatsappContatos/{waId}
 // e catálogo de tags em whatsappTags.
 import { useEffect, useMemo, useRef, useState, type ReactNode, type ChangeEvent, type TouchEvent as RTouchEvent } from "react";
-import { MessageCircle } from "lucide-react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, deleteField, doc, limit, onSnapshot, orderBy, query, setDoc, updateDoc, where, writeBatch, type Query, type QuerySnapshot, type DocumentData } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -1322,13 +1321,11 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     <PageContainer>
       {!embutido && (
         <div className="mb-3">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><MessageCircle size={20} className="text-gray-500 dark:text-gray-400" /> WhatsApp
-            <span className={`text-[11px] font-semibold inline-flex items-center gap-1 ${sincronizando ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
-              {sincronizando
-                ? <><span className="w-2.5 h-2.5 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />conectando…</>
-                : <><span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />AO VIVO</>}
-            </span>
-          </h1>
+          <span className={`text-[11px] font-semibold inline-flex items-center gap-1 ${sincronizando ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>
+            {sincronizando
+              ? <><span className="w-2.5 h-2.5 rounded-full border-2 border-amber-400 border-t-transparent animate-spin" />conectando…</>
+              : <><span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />AO VIVO</>}
+          </span>
           <p className="text-xs text-gray-500">Mensagens recebidas no número da plataforma (número único, não por restaurante).</p>
         </div>
       )}

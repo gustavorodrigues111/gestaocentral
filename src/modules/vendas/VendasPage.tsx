@@ -5,7 +5,6 @@
 // do sistema; externo = nome/contato livre. Cadastros: produtos e clientes por
 // empresa; formas de pagamento globais.
 import { useEffect, useMemo, useState } from "react";
-import { Receipt } from "lucide-react";
 import {
   addDoc, collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where,
 } from "firebase/firestore";
@@ -174,10 +173,7 @@ export function VendasPage() {
   return (
     <PageContainer>
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-        <div className="min-w-0">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Receipt size={20} className="text-gray-500 dark:text-gray-400" /> Vendas</h1>
-          <p className="text-xs text-gray-500">{activeRestaurant?.nome} · registro fora do sistema fiscal (entre empresas, permutas)</p>
-        </div>
+        <p className="text-xs text-gray-500 min-w-0">{activeRestaurant?.nome} · registro fora do sistema fiscal (entre empresas, permutas)</p>
         <div className="flex gap-2">
           {podeCobrar && <Button size="sm" variant="secondary" className="flex-1 sm:flex-none" onClick={() => setCobrando(true)}>📤 Gerar cobrança</Button>}
           {podeLancar && <Button className="flex-1 sm:flex-none" onClick={() => setNovaVenda(true)}>+ Nova venda</Button>}

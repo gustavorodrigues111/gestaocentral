@@ -4,7 +4,6 @@
 //  A página pública proposta.planejamento.app/<slug> lê o doc e renderiza.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { FileText } from "lucide-react";
 import { collection, deleteDoc, doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -50,11 +49,7 @@ export function PropostasPage() {
 
   return (
     <PageContainer>
-      <header className="mb-5 flex items-start justify-between gap-3 flex-wrap">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><FileText size={20} className="text-gray-500 dark:text-gray-400" /> Propostas</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Gerencie as propostas comerciais, prazos e a página pública de cada uma.</p>
-        </div>
+      <header className="mb-5 flex items-start justify-end gap-3 flex-wrap">
         <div className="flex gap-2">
           {!jojoExiste && <Button variant="secondary" onClick={() => void importarJojo()}>⬇ Importar proposta do Jojo</Button>}
           <Button onClick={nova}>＋ Nova proposta</Button>

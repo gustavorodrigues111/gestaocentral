@@ -5,7 +5,7 @@
 // preenchido pra assinatura. PDF exato sai pela skill/LibreOffice (fase seguinte).
 
 import { useEffect, useMemo, useState } from "react";
-import { FileText, Settings, FileSignature, History, Files } from "lucide-react";
+import { Settings, FileSignature, History, Files } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where, doc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -114,13 +114,11 @@ export function DocumentosPage() {
 
   return (
     <PageContainer>
-      <header className="mb-4 flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><FileText size={20} className="text-gray-500 dark:text-gray-400" /> Documentos</h1>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Modelos trabalhistas do escritório, preenchidos com os dados da empresa e do empregado. Saída em DOCX pra assinatura.</p>
-        </div>
-        {podeConfig && <Button variant="secondary" onClick={() => setModo("config")}>⚙️ Configurações</Button>}
-      </header>
+      {podeConfig && (
+        <header className="mb-4 flex items-start justify-end gap-3">
+          <Button variant="secondary" onClick={() => setModo("config")}>⚙️ Configurações</Button>
+        </header>
+      )}
 
       {/* Abas por tipo de documento */}
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
