@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Clock, Star, Cake, List, Tag, TriangleAlert, Phone, Shuffle, Users, Mail, Armchair, CalendarDays, Frown, BarChart3 } from "lucide-react";
 import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -299,10 +300,10 @@ export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeE
       {/* Visões (agenda estilo contatos) */}
       <div className="flex items-center gap-1.5 flex-wrap">
         {([
-          ["recentes", "🕒 Recentes (7d)"],
-          ["frequentes", "⭐ Frequentes"],
-          ["aniversarios", "🎂 Aniversariantes"],
-          ["todos", `🔤 Todos (${clientes.length})`],
+          ["recentes", <span className="inline-flex items-center gap-1.5"><Clock size={13} /> Recentes (7d)</span>],
+          ["frequentes", <span className="inline-flex items-center gap-1.5"><Star size={13} /> Frequentes</span>],
+          ["aniversarios", <span className="inline-flex items-center gap-1.5"><Cake size={13} /> Aniversariantes</span>],
+          ["todos", <span className="inline-flex items-center gap-1.5"><List size={13} /> Todos ({clientes.length})</span>],
         ] as const).map(([v, l]) => (
           <button key={v} type="button" onClick={() => setVista(v)}
             className={`px-3 py-1.5 rounded-full text-xs font-semibold transition-colors ${
@@ -338,7 +339,7 @@ export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeE
                   : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
               }`}
             >
-              🏷️ {t}
+              <span className="inline-flex items-center gap-1.5"><Tag size={12} /> {t}</span>
             </button>
           ))}
         </div>
@@ -347,7 +348,7 @@ export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeE
       {canMesclar && grupoDuplicados.length > 0 && (
         <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl p-3 space-y-2">
           <div className="text-sm font-semibold text-amber-900 dark:text-amber-200 flex items-center gap-2">
-            ⚠ {grupoDuplicados.length} {grupoDuplicados.length === 1 ? "grupo" : "grupos"} de clientes com telefone igual
+            <TriangleAlert size={14} /> {grupoDuplicados.length} {grupoDuplicados.length === 1 ? "grupo" : "grupos"} de clientes com telefone igual
           </div>
           <div className="text-xs text-amber-800 dark:text-amber-300">
             Mescla pra juntar o histórico de reservas num registro só.
@@ -363,7 +364,7 @@ export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeE
                 >
                   <div className="text-xs text-gray-700 dark:text-gray-300 min-w-0">
                     <div className="font-medium text-gray-900 dark:text-gray-100">
-                      📞 {grupo[0]!.telefone}
+                      <Phone size={12} className="inline align-[-2px] mr-1" />{grupo[0]!.telefone}
                     </div>
                     <div className="text-gray-500 mt-0.5">
                       {grupo.map(c => c.nome).join(" · ")}
@@ -375,7 +376,7 @@ export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeE
                     onClick={() => mesclarGrupo(grupo)}
                     disabled={emCurso}
                   >
-                    {emCurso ? "Mesclando..." : `🔀 Mesclar em 1`}
+                    {emCurso ? "Mesclando..." : <span className="inline-flex items-center gap-1.5"><Shuffle size={14} /> Mesclar em 1</span>}
                   </Button>
                 </div>
               );
@@ -386,7 +387,7 @@ export function ClientesTab({ restaurantId, podeConfig, podeEditarCliente, podeE
 
       {visiveis.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">👥</div>
+          <div className="flex justify-center mb-3 text-gray-400"><Users size={40} /></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">
             {vista === "recentes" ? "Ninguém reservou nos últimos 7 dias"
               : vista === "frequentes" ? "Ninguém com reservas no último ano"
@@ -473,34 +474,34 @@ function ClienteCard({ cliente: c, stats, canEditar, podeExcluir, countAno, aniv
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-bold text-gray-900 dark:text-gray-100">{c.nome}</h3>
             {anivHoje && (
-              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300">🎂 Hoje!</span>
+              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300 inline-flex items-center gap-1"><Cake size={11} /> Hoje!</span>
             )}
             {countAno != null && countAno > 0 && (
-              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">⭐ {countAno} no ano</span>
+              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 inline-flex items-center gap-1"><Star size={11} /> {countAno} no ano</span>
             )}
             {anivDestaque && anivTxt && (
-              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300">🎂 {anivTxt}</span>
+              <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300 inline-flex items-center gap-1"><Cake size={11} /> {anivTxt}</span>
             )}
             {(c.tags || []).map(t => (
               <span key={t} className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">{t}</span>
             ))}
           </div>
           <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
-            {c.telefone && <span>📞 {c.telefone}</span>}
-            {c.email && <span>✉️ {c.email}</span>}
-            {!anivDestaque && anivTxt && <span>🎂 {anivTxt}</span>}
+            {c.telefone && <span className="inline-flex items-center gap-1"><Phone size={12} /> {c.telefone}</span>}
+            {c.email && <span className="inline-flex items-center gap-1"><Mail size={12} /> {c.email}</span>}
+            {!anivDestaque && anivTxt && <span className="inline-flex items-center gap-1"><Cake size={12} /> {anivTxt}</span>}
           </div>
-          {c.restricoesAlimentares && <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5">⚠ {c.restricoesAlimentares}</div>}
+          {c.restricoesAlimentares && <div className="text-xs text-amber-700 dark:text-amber-400 mt-0.5 inline-flex items-center gap-1"><TriangleAlert size={12} className="shrink-0" /> {c.restricoesAlimentares}</div>}
           {c.observacoes && <div className="text-xs text-gray-700 dark:text-gray-300 mt-0.5 italic">{c.observacoes}</div>}
           <div className="text-[11px] text-gray-500 mt-1.5 flex gap-3 flex-wrap">
-            {compareceu > 0 && <span>🪑 {compareceu} visita(s)</span>}
-            {total > 0 && <span>📅 {total} reserva(s)</span>}
-            {noShow > 0 && <span className="text-rose-600">😶 {noShow} no-show</span>}
+            {compareceu > 0 && <span className="inline-flex items-center gap-1"><Armchair size={11} /> {compareceu} visita(s)</span>}
+            {total > 0 && <span className="inline-flex items-center gap-1"><CalendarDays size={11} /> {total} reserva(s)</span>}
+            {noShow > 0 && <span className="text-rose-600 inline-flex items-center gap-1"><Frown size={11} /> {noShow} no-show</span>}
             {ultima && <span>· última: {new Date(ultima + "T12:00:00").toLocaleDateString("pt-BR")}</span>}
           </div>
         </div>
         <div className="flex gap-1 flex-wrap">
-          <Button variant="secondary" size="sm" onClick={onHistorico}>📊 Histórico</Button>
+          <Button variant="secondary" size="sm" onClick={onHistorico}><span className="inline-flex items-center gap-1.5"><BarChart3 size={14} /> Histórico</span></Button>
           {canEditar && <Button variant="secondary" size="sm" onClick={onEditar}>Editar</Button>}
           {podeExcluir && <Button variant="danger" size="sm" onClick={onExcluir} title="Exclusão hard (master ou perfil com permissão). Pra LGPD use o fluxo de solicitação de exclusão.">×</Button>}
         </div>

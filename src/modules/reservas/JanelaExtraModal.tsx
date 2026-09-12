@@ -9,6 +9,7 @@
 // da janela de um dia da semana similar (poupa cliques).
 
 import { useEffect, useMemo, useState } from "react";
+import { ClipboardList } from "lucide-react";
 import { addDoc, collection, doc, getDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -156,7 +157,7 @@ export function JanelaExtraModal({
           {diasComJanelas.length > 0 && (
             <details className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
               <summary className="cursor-pointer text-xs font-semibold text-gray-700 dark:text-gray-300">
-                📋 Copiar de um dia padrão (atalho)
+                <ClipboardList size={13} className="inline align-[-2px] mr-1" />Copiar de um dia padrão (atalho)
               </summary>
               <div className="mt-2 space-y-2">
                 {diasComJanelas.map(d => (

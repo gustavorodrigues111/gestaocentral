@@ -1,6 +1,7 @@
 // Modal de cancelamento de reserva — pergunta o MOTIVO (chips + detalhe livre)
 // antes de cancelar. O motivo vira `reserva.motivoCancelamento`.
 import { useState } from "react";
+import { AlarmClock, Users } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import type { Reserva } from "../../core/types";
@@ -36,7 +37,7 @@ export function CancelarReservaModal({ reserva, onClose, onConfirmar }: {
     <Modal title={`Cancelar reserva — ${reserva.clienteNomeSnapshot}`} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
         <p className="text-sm text-gray-600 dark:text-gray-300">
-          {new Date(reserva.data + "T12:00:00").toLocaleDateString("pt-BR")} · ⏰ {reserva.horario} · 👥 {reserva.pessoas}
+          {new Date(reserva.data + "T12:00:00").toLocaleDateString("pt-BR")} · <AlarmClock size={13} className="inline align-[-2px]" /> {reserva.horario} · <Users size={13} className="inline align-[-2px]" /> {reserva.pessoas}
         </p>
         <div>
           <label className="text-[11px] uppercase font-bold text-gray-500">Motivo do cancelamento *</label>

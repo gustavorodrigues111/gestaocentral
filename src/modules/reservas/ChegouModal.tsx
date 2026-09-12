@@ -16,6 +16,7 @@ import { useMemo, useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { Armchair, AlarmClock, Users, Landmark, FileText, TriangleAlert } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -238,17 +239,17 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
   const capacidadeSel = mesasSelecionadas.reduce((s, m) => s + (m.capacidade || 0), 0);
 
   return (
-    <Modal title={`🪑 Cliente chegou — ${reserva.clienteNomeSnapshot || "Reserva"}`} onClose={onClose} maxWidth="max-w-xl">
+    <Modal title={<span className="inline-flex items-center gap-2"><Armchair size={18} /> Cliente chegou — {reserva.clienteNomeSnapshot || "Reserva"}</span>} onClose={onClose} maxWidth="max-w-xl">
       <div className="space-y-4">
         {/* Resumo da reserva — chips horizontais */}
         <div className="flex flex-wrap gap-2 text-sm">
-          <Chip>⏰ {reserva.horario}</Chip>
-          <Chip>👥 {reserva.pessoas} {reserva.pessoas === 1 ? "pessoa" : "pessoas"}</Chip>
-          {reserva.salaoNomeSnapshot && <Chip>🏛️ {reserva.salaoNomeSnapshot}</Chip>}
+          <Chip><span className="inline-flex items-center gap-1"><AlarmClock size={13} /> {reserva.horario}</span></Chip>
+          <Chip><span className="inline-flex items-center gap-1"><Users size={13} /> {reserva.pessoas} {reserva.pessoas === 1 ? "pessoa" : "pessoas"}</span></Chip>
+          {reserva.salaoNomeSnapshot && <Chip><span className="inline-flex items-center gap-1"><Landmark size={13} /> {reserva.salaoNomeSnapshot}</span></Chip>}
           {mesasSelecionadas.length > 0 && (
             <Chip cor="indigo">
               ✓ {mesasSelecionadas.length > 1 ? "Mesas" : "Mesa"} {mesasSelecionadas.map(m => m.nome).join(" + ")}
-              {mesasSelecionadas.length > 1 && <> · 👥 {capacidadeSel}</>}
+              {mesasSelecionadas.length > 1 && <> · <Users size={13} className="inline align-[-2px]" /> {capacidadeSel}</>}
             </Chip>
           )}
         </div>
@@ -266,7 +267,7 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
               <div key={salao.id}>
                 <div className="flex items-center gap-2 mb-2 sticky top-0 bg-white dark:bg-gray-950 py-1 z-10">
                   <div className="text-xs font-bold text-gray-700 dark:text-gray-300">
-                    🏛️ {salao.nome}
+                    <Landmark size={12} className="inline align-[-2px] mr-1" />{salao.nome}
                   </div>
                   {ehDaReserva && (
                     <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
@@ -316,7 +317,7 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
         {/* Nota opcional */}
         <div>
           <label className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 block mb-1">
-            📝 Nota (opcional) — vai pro histórico do cliente
+            <FileText size={13} className="inline align-[-2px] mr-1" />Nota (opcional) — vai pro histórico do cliente
           </label>
           <textarea
             value={nota}
@@ -327,7 +328,7 @@ export function ChegouModal({ reserva, mesas, saloes, reservasDoDia, onClose }: 
           />
           {nota.trim() && !reserva.clienteId && (
             <p className="text-[11px] text-amber-600 mt-1">
-              ⚠ Reserva sem cliente vinculado — a nota não vai poder ser salva.
+              <TriangleAlert size={13} className="inline align-[-2px] mr-1" />Reserva sem cliente vinculado — a nota não vai poder ser salva.
             </p>
           )}
         </div>

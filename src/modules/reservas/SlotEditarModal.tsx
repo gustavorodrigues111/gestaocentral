@@ -12,6 +12,7 @@
 // Pra janela_extra, permite editar também o horário.
 
 import { useState } from "react";
+import { MessageSquare, Palette, Ban, Undo2, Pencil, Trash2, type LucideIcon } from "lucide-react";
 import { addDoc, collection, deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -248,7 +249,7 @@ export function SlotEditarModal({
           )}
           {slot.motivos.length > 0 && (
             <div className={`text-xs italic ${cor.text}`}>
-              💬 {slot.motivos[0]}
+              <MessageSquare size={12} className="inline align-[-2px] mr-1" />{slot.motivos[0]}
             </div>
           )}
         </div>
@@ -346,7 +347,7 @@ export function SlotEditarModal({
               {slot.status === "normal" && (
                 <>
                   <ActionButton
-                    icon="🎨"
+                    icon={Palette}
                     label="Personalizar"
                     desc="Restringir salões ou limitar pax pra esse horário"
                     onClick={() => {
@@ -358,7 +359,7 @@ export function SlotEditarModal({
                     }}
                   />
                   <ActionButton
-                    icon="🚫"
+                    icon={Ban}
                     label="Bloquear este horário"
                     desc="Não aceita reservas nesse slot. Pode desfazer depois."
                     variant="danger"
@@ -370,7 +371,7 @@ export function SlotEditarModal({
 
               {slot.status === "bloqueado" && excecaoAtual && (
                 <ActionButton
-                  icon="↶"
+                  icon={Undo2}
                   label="Desbloquear horário"
                   desc="Volta a aceitar reservas no padrão semanal"
                   onClick={() => removerExcecao("Desbloquear esse horário e voltar pro padrão?")}
@@ -381,7 +382,7 @@ export function SlotEditarModal({
               {slot.status === "personalizado" && excecaoAtual && (
                 <>
                   <ActionButton
-                    icon="✏️"
+                    icon={Pencil}
                     label="Editar personalização"
                     desc="Mudar salões, limite de pax ou motivo"
                     onClick={() => {
@@ -392,7 +393,7 @@ export function SlotEditarModal({
                     }}
                   />
                   <ActionButton
-                    icon="↶"
+                    icon={Undo2}
                     label="Restaurar padrão"
                     desc="Remove a personalização — slot volta ao padrão semanal"
                     onClick={() => removerExcecao("Remover a personalização e voltar pro padrão?")}
@@ -404,7 +405,7 @@ export function SlotEditarModal({
               {slot.status === "extra" && excecaoAtual && (
                 <>
                   <ActionButton
-                    icon="✏️"
+                    icon={Pencil}
                     label="Editar janela extra"
                     desc="Mudar horário, salões, limite de pax ou motivo"
                     onClick={() => {
@@ -416,7 +417,7 @@ export function SlotEditarModal({
                     }}
                   />
                   <ActionButton
-                    icon="🗑️"
+                    icon={Trash2}
                     label="Remover janela extra"
                     desc="Apaga essa janela. Não afeta o padrão semanal."
                     variant="danger"
@@ -456,9 +457,9 @@ export function SlotEditarModal({
 // ─── Botão de ação reutilizável ───
 
 function ActionButton({
-  icon, label, desc, onClick, disabled, variant,
+  icon: Icon, label, desc, onClick, disabled, variant,
 }: {
-  icon: string;
+  icon: LucideIcon;
   label: string;
   desc: string;
   onClick: () => void;
@@ -472,7 +473,7 @@ function ActionButton({
     : "border-gray-200 dark:border-gray-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-300";
   return (
     <button type="button" onClick={onClick} disabled={disabled} className={`${baseCls} ${variantCls}`}>
-      <span className="text-lg flex-shrink-0">{icon}</span>
+      <Icon size={18} className="flex-shrink-0 mt-0.5" />
       <span className="min-w-0 flex-1">
         <span className="block text-sm font-semibold">{label}</span>
         <span className="block text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">{desc}</span>

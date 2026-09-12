@@ -12,6 +12,9 @@
 //
 // Catálogo de ações disponíveis em src/core/auth/actionCatalog.ts.
 
+import type { LucideIcon } from "lucide-react";
+import { Hourglass, Check, Armchair, Frown, X } from "lucide-react";
+
 export type PermissoesPerfil = {
   // Mapa moduleId → actionId → boolean. Ações ausentes = false (negadas).
   // Ações presentes com true = permitidas. Mantemos a estrutura como mapa
@@ -2494,6 +2497,15 @@ export const RESERVA_STATUS_ICON: Record<ReservaStatus, string> = {
   chegou:      "🪑",
   no_show:     "😶",
   cancelada:   "✕",
+};
+// Espelho lucide do mapa acima, pra UI renderizar por componente (o mapa emoji
+// segue usado em PDF/WhatsApp/strings). Ver feedback "emojis de UI → lucide".
+export const RESERVA_STATUS_LUCIDE: Record<ReservaStatus, LucideIcon> = {
+  pendente:    Hourglass,
+  confirmada:  Check,
+  chegou:      Armchair,
+  no_show:     Frown,
+  cancelada:   X,
 };
 
 // Doc PRINCIPAL — sem PII. Read pode ser público (form usa pra contar

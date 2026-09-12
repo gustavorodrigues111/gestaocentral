@@ -8,6 +8,7 @@
 // (click no slot).
 
 import { useState } from "react";
+import { CalendarDays, Ban, MessageSquare, Sparkles } from "lucide-react";
 import { addDoc, collection, deleteDoc, doc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -88,7 +89,7 @@ export function DiaAcoesModal({
       <div className="bg-white dark:bg-gray-900 rounded-lg shadow-2xl max-w-sm w-full overflow-hidden">
         <div className="p-4 border-b border-gray-200 dark:border-gray-800">
           <h2 className="text-base font-bold text-gray-900 dark:text-gray-100">
-            🗓️ Ações do dia
+            <CalendarDays size={16} className="inline align-[-3px] mr-1.5" />Ações do dia
           </h2>
           <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
             {fmtData(data)}
@@ -99,9 +100,9 @@ export function DiaAcoesModal({
           {bloqueioDiaInteiro ? (
             <>
               <div className="rounded-md bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-900 p-3 text-xs text-rose-800 dark:text-rose-300">
-                <div className="font-semibold mb-1">🚫 Dia bloqueado</div>
+                <div className="font-semibold mb-1 inline-flex items-center gap-1.5"><Ban size={13} /> Dia bloqueado</div>
                 {bloqueioDiaInteiro.motivo && (
-                  <div className="italic">💬 {bloqueioDiaInteiro.motivo}</div>
+                  <div className="italic inline-flex items-center gap-1.5"><MessageSquare size={12} className="shrink-0" /> {bloqueioDiaInteiro.motivo}</div>
                 )}
               </div>
               <button
@@ -159,7 +160,7 @@ export function DiaAcoesModal({
                 onClick={() => setMostrandoFormBloqueio(true)}
                 className="w-full px-3 py-2.5 rounded-lg border border-rose-200 dark:border-rose-900 hover:bg-rose-50 dark:hover:bg-rose-900/20 text-sm text-rose-800 dark:text-rose-300 transition-colors flex items-start gap-2"
               >
-                <span className="text-lg leading-none flex-shrink-0">🚫</span>
+                <Ban size={18} className="flex-shrink-0" />
                 <span className="text-left">
                   <span className="block font-semibold">Bloquear dia inteiro</span>
                   <span className="block text-[11px] opacity-80 mt-0.5">
@@ -172,7 +173,7 @@ export function DiaAcoesModal({
                 onClick={() => { onAdicionarJanelaExtra(); onClose(); }}
                 className="w-full px-3 py-2.5 rounded-lg border border-sky-200 dark:border-sky-900 hover:bg-sky-50 dark:hover:bg-sky-900/20 text-sm text-sky-800 dark:text-sky-300 transition-colors flex items-start gap-2"
               >
-                <span className="text-lg leading-none flex-shrink-0">✦</span>
+                <Sparkles size={18} className="flex-shrink-0" />
                 <span className="text-left">
                   <span className="block font-semibold">Adicionar janela extra</span>
                   <span className="block text-[11px] opacity-80 mt-0.5">

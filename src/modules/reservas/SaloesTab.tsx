@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { Landmark, Ruler, Ban, Check, Users, UtensilsCrossed } from "lucide-react";
 import {
   addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where,
 } from "firebase/firestore";
@@ -67,7 +68,7 @@ export function SaloesTab({ restaurantId, podeConfig, pessoaId }: Props) {
 
       {saloes.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">🏛️</div>
+          <div className="flex justify-center mb-3 text-gray-400"><Landmark size={40} /></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhum salão cadastrado</p>
           {podeConfig && (
             <p className="text-sm text-gray-500 mt-2">
@@ -124,7 +125,7 @@ function SalaoCard({
             <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">{salao.descricao}</div>
           )}
           <div className="text-xs text-gray-700 dark:text-gray-300 mt-2 space-y-0.5">
-            <div>📐 <strong>{MODELO_CAPACIDADE_LABEL[salao.modeloCapacidade]}</strong></div>
+            <div className="inline-flex items-center gap-1"><Ruler size={12} /> <strong>{MODELO_CAPACIDADE_LABEL[salao.modeloCapacidade]}</strong></div>
             <div>{desc}</div>
           </div>
           {!salao.ativo && <div className="text-[10px] uppercase text-gray-500 mt-1">Inativo</div>}
@@ -133,7 +134,7 @@ function SalaoCard({
       {podeConfig && (
         <div className="flex gap-1 mt-2 flex-wrap">
           <Button variant="secondary" size="sm" onClick={onEditar}>Editar</Button>
-          <Button variant="secondary" size="sm" onClick={onToggle}>{salao.ativo ? "🚫" : "✓"}</Button>
+          <Button variant="secondary" size="sm" onClick={onToggle} title={salao.ativo ? "Inativar" : "Ativar"}>{salao.ativo ? <Ban size={15} /> : <Check size={15} />}</Button>
           <Button variant="danger" size="sm" onClick={onExcluir}>×</Button>
         </div>
       )}
@@ -142,17 +143,17 @@ function SalaoCard({
 }
 
 // Frase compacta descrevendo a capacidade configurada do salão
-function descrevecapacidade(s: Salao): string {
+function descrevecapacidade(s: Salao): ReactNode {
   if (s.modeloCapacidade === "por_capacidade") {
     const cap = s.capacidadeMaxPax ?? 0;
     const min = s.paxMinPorMesaCap ?? 1;
     const max = s.paxMaxPorMesaCap ?? cap;
-    return `👥 até ${cap} pax · mesas de ${min} a ${max} pax`;
+    return <span className="inline-flex items-center gap-1"><Users size={12} /> até {cap} pax · mesas de {min} a {max} pax</span>;
   }
   const n = s.numMesas ?? 0;
   const min = s.paxMinPorMesa ?? 1;
   const max = s.paxMaxPorMesa ?? min;
-  return `🍽️ ${n} mesa(s) · ${min === max ? `${min}` : `${min}–${max}`} pax cada`;
+  return <span className="inline-flex items-center gap-1"><UtensilsCrossed size={12} /> {n} mesa(s) · {min === max ? `${min}` : `${min}–${max}`} pax cada</span>;
 }
 
 // ─── Modal de criação/edição ──────────────────────────────────────────

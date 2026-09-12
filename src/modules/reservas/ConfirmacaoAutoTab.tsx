@@ -3,6 +3,7 @@
 // manda o template de confirmação sozinho (X horas antes OU num horário fixo),
 // pelo WhatsApp interno, e (Fase 2) a IA lê a resposta e confirma/escala.
 import { useEffect, useState } from "react";
+import { Bot } from "lucide-react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -71,7 +72,7 @@ export function ConfirmacaoAutoTab({ restaurantId, podeConfig }: Props) {
   return (
     <div className="space-y-5 max-w-3xl">
       <div>
-        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">🤖 Confirmação automática</h3>
+        <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1 inline-flex items-center gap-2"><Bot size={16} /> Confirmação automática</h3>
         <p className="text-sm text-gray-600 dark:text-gray-400">
           O sistema manda sozinho o pedido de confirmação (usa o texto da aba <strong>Mensagem de confirmação</strong>) pelo
           WhatsApp interno. A resposta cai no inbox e, com a IA ligada (em breve), a reserva é confirmada automaticamente

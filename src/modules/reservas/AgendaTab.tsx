@@ -13,6 +13,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useMemo, useState } from "react";
+import { CalendarDays, Ban, X, Pencil, Sparkles } from "lucide-react";
 import {
   collection, doc, onSnapshot, query, where,
 } from "firebase/firestore";
@@ -162,7 +163,7 @@ export function AgendaTab({
       {/* Header */}
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-          🗓️ Agenda de Disponibilidade
+          <CalendarDays size={18} className="inline align-[-3px] mr-1.5" />Agenda de Disponibilidade
         </h2>
         <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
           Clica numa janela pra editar · no cabeçalho do dia pra bloquear · no
@@ -372,7 +373,7 @@ function DiaColuna({
             className={`${CHIP_HEIGHT} px-2 py-1.5 rounded-md border border-rose-200 dark:border-rose-900/60 bg-rose-50/50 dark:bg-rose-900/10 text-center flex flex-col items-center justify-center gap-1 hover:bg-rose-100 dark:hover:bg-rose-900/20 transition-colors disabled:opacity-60 disabled:cursor-not-allowed overflow-hidden`}
             title={podeConfig ? "Gerenciar bloqueio do dia" : ""}
           >
-            <span className="text-sm leading-none">🚫</span>
+            <Ban size={14} />
             <span className="text-[10px] uppercase tracking-wider font-bold text-rose-700 dark:text-rose-400 leading-tight line-clamp-2">
               {dia.motivoDiaBloqueado || "Bloqueado"}
             </span>
@@ -459,7 +460,7 @@ function SlotChip({
         </span>
         {slot.status !== "normal" && (
           <span className={`text-[9px] font-bold uppercase ${cor.text} opacity-80`}>
-            {slot.status === "bloqueado" ? "✕" : slot.status === "personalizado" ? "✎" : "✦"}
+            {slot.status === "bloqueado" ? <X size={11} /> : slot.status === "personalizado" ? <Pencil size={11} /> : <Sparkles size={11} />}
           </span>
         )}
       </div>

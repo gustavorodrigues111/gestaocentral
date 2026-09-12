@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Phone, Search, Tag, Users, TriangleAlert } from "lucide-react";
 import { addDoc, collection, doc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -7,7 +8,7 @@ import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { todayYmd } from "../../core/utils/date";
-import { RESERVA_STATUS_ICON, RESERVA_STATUS_LABEL } from "../../core/types";
+import { RESERVA_STATUS_LUCIDE, RESERVA_STATUS_LABEL } from "../../core/types";
 import type { Cliente, Mesa, Reserva, ReservaStatus } from "../../core/types";
 import { reservaMesaIds } from "../../core/reservas/mesas";
 import { ClienteModal } from "./ClienteModal";
@@ -215,7 +216,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
               <div className="flex items-center justify-between gap-2 px-3 py-2 rounded-lg border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20">
                 <div className="flex-1 min-w-0">
                   <div className="font-medium text-indigo-900 dark:text-indigo-200 truncate">{clienteNome}</div>
-                  {clienteTelefone && <div className="text-xs text-indigo-700 dark:text-indigo-400 truncate">📞 {clienteTelefone}</div>}
+                  {clienteTelefone && <div className="text-xs text-indigo-700 dark:text-indigo-400 truncate inline-flex items-center gap-1"><Phone size={11} /> {clienteTelefone}</div>}
                 </div>
                 <Button variant="secondary" size="sm" onClick={limparCliente}>↻ Trocar</Button>
               </div>
@@ -229,7 +230,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
                     onFocus={() => setShowSearch(true)}
                     className="flex-1"
                   />
-                  <Button variant="secondary" onClick={() => setShowSearch(s => !s)}>🔍 Buscar</Button>
+                  <Button variant="secondary" onClick={() => setShowSearch(s => !s)}><span className="inline-flex items-center gap-1.5"><Search size={15} /> Buscar</span></Button>
                   <Button variant="secondary" onClick={() => setNovoClienteOpen(true)}>+ Novo</Button>
                 </div>
                 {!clienteId && (
@@ -259,8 +260,8 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
                       >
                         <div className="text-sm font-medium">{c.nome}</div>
                         <div className="text-[11px] text-gray-500">
-                          {c.telefone && <>📞 {c.telefone}</>}
-                          {c.tags && c.tags.length > 0 && <> · 🏷️ {c.tags.join(", ")}</>}
+                          {c.telefone && <><Phone size={11} className="inline align-[-1px]" /> {c.telefone}</>}
+                          {c.tags && c.tags.length > 0 && <> · <Tag size={11} className="inline align-[-1px]" /> {c.tags.join(", ")}</>}
                         </div>
                       </button>
                     ))}
@@ -285,7 +286,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
               </label>
               {mesaIds.length > 0 && (
                 <span className="text-[11px] text-gray-500">
-                  {mesaIds.length} mesa(s) · capacidade 👥 {capacidadeTotal}
+                  {mesaIds.length} mesa(s) · capacidade <Users size={12} className="inline align-[-2px]" /> {capacidadeTotal}
                 </span>
               )}
             </div>
@@ -308,7 +309,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
                           : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400"
                     }`}
                   >
-                    {m.nome} · 👥{m.capacidade}{ocupada ? " · ocupada" : ""}
+                    {m.nome} · <Users size={12} className="inline align-[-2px]" />{m.capacidade}{ocupada ? " · ocupada" : ""}
                   </button>
                 );
               })}
@@ -321,7 +322,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
             )}
             {!capacidadeOk && (
               <div className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                ⚠ Capacidade somada das mesas ({capacidadeTotal}) é menor que a reserva de {pessoasNum} pessoa(s). Dá pra criar mesmo assim.
+                <TriangleAlert size={13} className="inline align-[-2px] mr-1" />Capacidade somada das mesas ({capacidadeTotal}) é menor que a reserva de {pessoasNum} pessoa(s). Dá pra criar mesmo assim.
               </div>
             )}
           </div>
@@ -359,7 +360,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
                       : "border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50"
                   }`}
                 >
-                  {RESERVA_STATUS_ICON[s]} {RESERVA_STATUS_LABEL[s]}
+                  {(() => { const Ic = RESERVA_STATUS_LUCIDE[s]; return <span className="inline-flex items-center gap-1"><Ic size={12} /> {RESERVA_STATUS_LABEL[s]}</span>; })()}
                 </button>
               ))}
             </div>

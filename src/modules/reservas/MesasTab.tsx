@@ -10,6 +10,7 @@ import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
+import { Zap, Landmark, Armchair, Users, Ban, Check } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type { Mesa, Salao } from "../../core/types";
@@ -82,7 +83,7 @@ export function MesasTab({ restaurantId, podeConfig }: Props) {
         </div>
         {podeConfig && !semSaloesCadastrados && (
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => setBulkOpen(true)}>⚡ Adicionar várias</Button>
+            <Button variant="secondary" onClick={() => setBulkOpen(true)}><span className="inline-flex items-center gap-1.5"><Zap size={15} /> Adicionar várias</span></Button>
             <Button onClick={() => setEditing("new")}>+ Nova mesa</Button>
           </div>
         )}
@@ -90,7 +91,7 @@ export function MesasTab({ restaurantId, podeConfig }: Props) {
 
       {semSaloesCadastrados ? (
         <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900 rounded-xl p-6 text-center">
-          <div className="text-3xl mb-2">🏛️</div>
+          <div className="flex justify-center mb-2 text-amber-400"><Landmark size={32} /></div>
           <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Cadastra um salão primeiro</p>
           <p className="text-xs text-amber-800 dark:text-amber-300 mt-2">
             Mesas pertencem a salões. Vai em <strong>Configurações → Salões</strong> e cadastra pelo menos um salão antes.
@@ -98,7 +99,7 @@ export function MesasTab({ restaurantId, podeConfig }: Props) {
         </div>
       ) : mesas.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">🪑</div>
+          <div className="flex justify-center mb-3 text-gray-400"><Armchair size={40} /></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhuma mesa cadastrada</p>
           {podeConfig && (
             <p className="text-sm text-gray-500 mt-2">
@@ -191,13 +192,13 @@ function GrupoMesas({
           >
             <div className="font-bold text-gray-900 dark:text-gray-100 truncate">{m.nome}</div>
             <div className="text-xs text-gray-600 dark:text-gray-400">
-              👥 {m.capacidade} pax
+              <Users size={12} className="inline align-[-2px] mr-1" />{m.capacidade} pax
             </div>
             {!m.ativa && <div className="text-[10px] uppercase text-gray-500 mt-0.5">Inativa</div>}
             {podeConfig && (
               <div className="flex gap-1 mt-1.5">
                 <Button variant="secondary" size="sm" onClick={() => onEditar(m)}>Editar</Button>
-                <Button variant="secondary" size="sm" onClick={() => onToggleAtiva(m)}>{m.ativa ? "🚫" : "✓"}</Button>
+                <Button variant="secondary" size="sm" onClick={() => onToggleAtiva(m)} title={m.ativa ? "Inativar" : "Ativar"}>{m.ativa ? <Ban size={15} /> : <Check size={15} />}</Button>
                 <Button variant="danger" size="sm" onClick={() => onExcluir(m)}>×</Button>
               </div>
             )}
@@ -384,7 +385,7 @@ function BulkMesasModal({
   const naoConflito = total - conflitos.length;
 
   return (
-    <Modal title="⚡ Adicionar várias mesas" onClose={onClose} maxWidth="max-w-md">
+    <Modal title={<span className="inline-flex items-center gap-2"><Zap size={18} /> Adicionar várias mesas</span>} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
         <p className="text-sm text-gray-600 dark:text-gray-400">
           Cria várias mesas numeradas de uma vez. Útil pra setup inicial — depois você ajusta as exceções (capacidade diferente, nome custom).

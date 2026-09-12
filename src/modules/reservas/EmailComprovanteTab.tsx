@@ -7,6 +7,7 @@
 // Quando quiser editar copy, mexer em src/modules/sites/email/comprovanteReserva.ts.
 
 import { useEffect, useMemo, useState } from "react";
+import { Smartphone, Monitor, TriangleAlert } from "lucide-react";
 import { doc, getDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -88,10 +89,10 @@ export function EmailComprovanteTab({ restaurantId }: Props) {
         </div>
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 p-1 rounded-lg">
           <DeviceBtn ativo={device === "mobile"} onClick={() => setDevice("mobile")}>
-            📱 Mobile
+            <span className="inline-flex items-center gap-1.5"><Smartphone size={13} /> Mobile</span>
           </DeviceBtn>
           <DeviceBtn ativo={device === "desktop"} onClick={() => setDevice("desktop")}>
-            🖥 Desktop
+            <span className="inline-flex items-center gap-1.5"><Monitor size={13} /> Desktop</span>
           </DeviceBtn>
         </div>
       </div>
@@ -101,7 +102,7 @@ export function EmailComprovanteTab({ restaurantId }: Props) {
       )}
       {erro && (
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-200">
-          ⚠ {erro}
+          <span className="inline-flex items-center gap-1.5"><TriangleAlert size={14} className="shrink-0" /> {erro}</span>
         </div>
       )}
 

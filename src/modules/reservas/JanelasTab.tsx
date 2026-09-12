@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Landmark } from "lucide-react";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
@@ -150,7 +151,7 @@ export function JanelasTab({ restaurantId, podeConfig, pessoaId, saloes }: Props
   if (saloes.filter(s => s.ativo).length === 0) {
     return (
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-        <div className="text-4xl mb-3">🏛️</div>
+        <div className="flex justify-center mb-3 text-gray-400"><Landmark size={40} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Cadastre salões primeiro</p>
         <p className="text-sm text-gray-500 mt-2">As janelas de horário precisam ao menos 1 salão ativo.</p>
       </div>

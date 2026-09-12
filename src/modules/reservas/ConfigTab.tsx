@@ -4,6 +4,7 @@
 // é setup, não operação do dia-a-dia.
 
 import { useState } from "react";
+import { Landmark, Armchair, Smartphone, Bot, Mail } from "lucide-react";
 import { SaloesTab } from "./SaloesTab";
 import { MesasTab } from "./MesasTab";
 import { TemplateConfirmacaoTab } from "./TemplateConfirmacaoTab";
@@ -26,19 +27,19 @@ export function ConfigTab({ restaurantId, podeConfig, pessoaId }: Props) {
       {/* Sub-tabs visuais — pills */}
       <div className="flex gap-1 flex-wrap border-b border-gray-200 dark:border-gray-800 pb-2">
         <SubTabButton ativo={sub === "saloes"} onClick={() => setSub("saloes")}>
-          🏛️ Salões
+          <span className="inline-flex items-center gap-1.5"><Landmark size={15} /> Salões</span>
         </SubTabButton>
         <SubTabButton ativo={sub === "mesas"} onClick={() => setSub("mesas")}>
-          🪑 Mesas
+          <span className="inline-flex items-center gap-1.5"><Armchair size={15} /> Mesas</span>
         </SubTabButton>
         <SubTabButton ativo={sub === "template"} onClick={() => setSub("template")}>
-          📱 Mensagem de confirmação
+          <span className="inline-flex items-center gap-1.5"><Smartphone size={15} /> Mensagem de confirmação</span>
         </SubTabButton>
         <SubTabButton ativo={sub === "auto"} onClick={() => setSub("auto")}>
-          🤖 Confirmação automática
+          <span className="inline-flex items-center gap-1.5"><Bot size={15} /> Confirmação automática</span>
         </SubTabButton>
         <SubTabButton ativo={sub === "email"} onClick={() => setSub("email")}>
-          📧 Email de comprovante
+          <span className="inline-flex items-center gap-1.5"><Mail size={15} /> Email de comprovante</span>
         </SubTabButton>
       </div>
 

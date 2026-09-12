@@ -5,6 +5,7 @@
 // com os dados da reserva (nome, data, hora, pax, salão) e aberto no wa.me.
 
 import { useEffect, useMemo, useState } from "react";
+import { Smartphone } from "lucide-react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -138,7 +139,7 @@ export function TemplateConfirmacaoTab({ restaurantId, podeConfig }: Props) {
     <div className="space-y-4 max-w-3xl">
       <div>
         <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 mb-1">
-          📱 Mensagem de confirmação por WhatsApp
+          <Smartphone size={16} className="inline align-[-3px] mr-1.5" />Mensagem de confirmação por WhatsApp
         </h3>
         <p className="text-sm text-gray-600 dark:text-gray-400">
           Texto base que você manda pro cliente antes da reserva pra confirmar a presença.

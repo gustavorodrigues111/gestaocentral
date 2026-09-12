@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CalendarDays, CalendarRange, Users, Settings } from "lucide-react";
+import { CalendarDays, CalendarRange, Users, Settings, Lock, Link as LinkIcon, TriangleAlert, AlarmClock, Ban, CircleHelp, MessageSquare, Armchair, Frown, Tag, PartyPopper, Landmark, Phone, FileText, BarChart3, Smartphone, Plus, Pencil } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -8,7 +8,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { todayYmd } from "../../core/utils/date";
-import { RESERVA_STATUS_ICON, RESERVA_STATUS_LABEL } from "../../core/types";
+import { RESERVA_STATUS_LUCIDE, RESERVA_STATUS_LABEL } from "../../core/types";
 import type { Cliente, ConfiguracaoReservas, Mesa, Reserva, ReservaPII, ReservaStatus, Salao } from "../../core/types";
 import { reservaMesasNomes } from "../../core/reservas/mesas";
 import { ReservaModal } from "./ReservaModal";
@@ -385,7 +385,7 @@ export function ReservasPage() {
   if (!podeVer) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
@@ -400,7 +400,7 @@ export function ReservasPage() {
               className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${getinStatus.erro
                 ? "border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300"
                 : "border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300"}`}>
-              🔗 GetIn · {getinStatus.erro ? "erro na sincronização" : `sincronizado ${haQuantoTempo(getinStatus.atualizadoEm)}`}
+              <LinkIcon size={12} /> GetIn · {getinStatus.erro ? "erro na sincronização" : `sincronizado ${haQuantoTempo(getinStatus.atualizadoEm)}`}
             </span>
             {podeConfig && (
               <button type="button" onClick={() => void forcarSyncGetin()} disabled={forcandoSync}
@@ -454,7 +454,7 @@ export function ReservasPage() {
               <button type="button" onClick={() => setAtencaoOpen(o => !o)}
                 className="w-full px-4 py-3 flex items-center justify-between gap-2 hover:bg-rose-100 dark:hover:bg-rose-950/50 transition-colors">
                 <span className="text-sm font-semibold text-rose-900 dark:text-rose-200 text-left">
-                  ⚠ {precisaAtencaoList.length} reserva(s) precisam de resposta
+                  <TriangleAlert size={14} className="inline align-[-2px] mr-1" />{precisaAtencaoList.length} reserva(s) precisam de resposta
                 </span>
                 <span className="text-xs text-rose-700 dark:text-rose-400">{atencaoOpen ? "▲ recolher" : "▼ ver"}</span>
               </button>
@@ -469,14 +469,14 @@ export function ReservasPage() {
                         <div className="font-medium text-gray-900 dark:text-gray-100">
                           {r.clienteNomeSnapshot || "Cliente"}
                           <span className="text-xs text-gray-500 font-normal ml-2">
-                            📅 {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")} · ⏰ {r.horario} · 👥 {r.pessoas}
-                            {r.confirmacaoIntent === "negativo" ? " · 🚫 disse que não vem" : r.confirmacaoIntent === "duvida" ? " · ❓ resposta ambígua" : ""}
+                            <CalendarDays size={11} className="inline align-[-1px]" /> {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")} · <AlarmClock size={11} className="inline align-[-1px]" /> {r.horario} · <Users size={11} className="inline align-[-1px]" /> {r.pessoas}
+                            {r.confirmacaoIntent === "negativo" ? <> · <Ban size={11} className="inline align-[-1px]" /> disse que não vem</> : r.confirmacaoIntent === "duvida" ? <> · <CircleHelp size={11} className="inline align-[-1px]" /> resposta ambígua</> : null}
                           </span>
                         </div>
                       </div>
                       <div className="flex gap-1 flex-wrap">
                         {podeWhatsapp && r.clienteTelefoneSnapshot && (
-                          <Button variant="secondary" size="sm" onClick={() => void abrirWhatsapp(rid, "reservas", r.clienteTelefoneSnapshot || "", r.clienteNomeSnapshot)}>💬 Abrir conversa</Button>
+                          <Button variant="secondary" size="sm" onClick={() => void abrirWhatsapp(rid, "reservas", r.clienteTelefoneSnapshot || "", r.clienteNomeSnapshot)}><span className="inline-flex items-center gap-1.5"><MessageSquare size={14} /> Abrir conversa</span></Button>
                         )}
                         {podeEditar && <Button variant="secondary" size="sm" onClick={() => setStatus(r, "confirmada")}>✓ Confirmar</Button>}
                         {podeCancelar && <Button variant="secondary" size="sm" onClick={() => setCancelando(r)}>✕ Cancelar</Button>}
@@ -497,7 +497,7 @@ export function ReservasPage() {
                 className="w-full px-4 py-3 flex items-center justify-between gap-2 hover:bg-amber-100 dark:hover:bg-amber-950/50 transition-colors"
               >
                 <span className="text-sm font-semibold text-amber-900 dark:text-amber-200 text-left">
-                  ⚠ {semFechamento.length} reserva(s) sem fechamento de dias anteriores
+                  <TriangleAlert size={14} className="inline align-[-2px] mr-1" />{semFechamento.length} reserva(s) sem fechamento de dias anteriores
                 </span>
                 <span className="text-xs text-amber-700 dark:text-amber-400">
                   {banneOpen ? "▲ recolher" : "▼ ver e fechar"}
@@ -517,14 +517,14 @@ export function ReservasPage() {
                         <div className="font-medium text-gray-900 dark:text-gray-100">
                           {r.clienteNomeSnapshot}
                           <span className="text-xs text-gray-500 font-normal ml-2">
-                            📅 {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")} · ⏰ {r.horario} · 👥 {r.pessoas}
+                            <CalendarDays size={11} className="inline align-[-1px]" /> {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")} · <AlarmClock size={11} className="inline align-[-1px]" /> {r.horario} · <Users size={11} className="inline align-[-1px]" /> {r.pessoas}
                           </span>
                         </div>
                       </div>
                       {(podeChegou || podeEditar || podeCancelar) && (
                         <div className="flex gap-1 flex-wrap">
-                          {podeChegou && <Button variant="secondary" size="sm" onClick={() => setChegouReserva(r)}>🪑 Veio</Button>}
-                          {podeEditar  && <Button variant="secondary" size="sm" onClick={() => setStatus(r, "no_show")}>😶 Não veio</Button>}
+                          {podeChegou && <Button variant="secondary" size="sm" onClick={() => setChegouReserva(r)}><span className="inline-flex items-center gap-1.5"><Armchair size={14} /> Veio</span></Button>}
+                          {podeEditar  && <Button variant="secondary" size="sm" onClick={() => setStatus(r, "no_show")}><span className="inline-flex items-center gap-1.5"><Frown size={14} /> Não veio</span></Button>}
                           {podeCancelar && <Button variant="secondary" size="sm" onClick={() => setCancelando(r)}>✕ Cancelar</Button>}
                         </div>
                       )}
@@ -613,7 +613,7 @@ export function ReservasPage() {
               />
             ) : (
               <Button variant="secondary" size="sm" onClick={() => setDateOpen(true)} title="Ir pra outra data">
-                📅 Ir pra data
+                <span className="inline-flex items-center gap-1.5"><CalendarDays size={15} /> Ir pra data</span>
               </Button>
             )}
           </div>
@@ -631,7 +631,7 @@ export function ReservasPage() {
             <div className="text-sm text-gray-500">Carregando...</div>
           ) : reservasAtivasDoDia.length === 0 ? (
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-              <div className="text-4xl mb-3">📅</div>
+              <div className="flex justify-center mb-3 text-gray-400"><CalendarDays size={40} /></div>
               <p className="text-gray-700 dark:text-gray-300 font-medium">Sem reservas pra esse dia</p>
               {podeCriar && (
                 <p className="text-sm text-gray-500 mt-2">Adicione clicando em "+ Nova reserva"</p>
@@ -642,7 +642,7 @@ export function ReservasPage() {
               {porHorario.map(([h, list]) => (
                 <div key={h}>
                   <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 mb-1">
-                    ⏰ {h} — {list.length} reserva(s)
+                    <AlarmClock size={12} className="inline align-[-2px] mr-1" />{h} — {list.length} reserva(s)
                   </h3>
                   <div className="space-y-1">
                     {list.map(r => (
@@ -836,12 +836,12 @@ export function ReservasPage() {
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-base font-bold text-gray-900 dark:text-gray-100">{reserva.clienteNomeSnapshot}</span>
               <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${STATUS_BADGE_CLS[reserva.status]}`}>
-                {RESERVA_STATUS_ICON[reserva.status]} {RESERVA_STATUS_LABEL[reserva.status]}
+                {(() => { const Ic = RESERVA_STATUS_LUCIDE[reserva.status]; return <span className="inline-flex items-center gap-1"><Ic size={11} /> {RESERVA_STATUS_LABEL[reserva.status]}</span>; })()}
               </span>
               {reserva.precisaAtencao && reserva.status !== "cancelada" && reserva.status !== "chegou" && reserva.status !== "no_show" && (
                 <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"
                   title={reserva.confirmacaoIntent === "negativo" ? "Cliente disse que não vem" : "Resposta ambígua — precisa de um humano"}>
-                  ⚠ precisa responder
+                  <TriangleAlert size={11} className="inline align-[-1px] mr-0.5" />precisa responder
                 </span>
               )}
             </div>
@@ -850,28 +850,28 @@ export function ReservasPage() {
               <div className="flex items-center gap-1 flex-wrap mt-1">
                 {cliente?.tags?.map(t => (
                   <span key={t} className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300">
-                    🏷️ {t}
+                    <Tag size={11} className="inline align-[-1px] mr-1" />{t}
                   </span>
                 ))}
                 {reserva.ocasiao && (
                   <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-pink-100 text-pink-700 dark:bg-pink-900/40 dark:text-pink-300">
-                    🎉 {reserva.ocasiao}
+                    <PartyPopper size={11} className="inline align-[-1px] mr-1" />{reserva.ocasiao}
                   </span>
                 )}
               </div>
             )}
             {/* Meta compacta — ícones menores, gap reduzido pra caber no mobile */}
             <div className="text-xs text-gray-700 dark:text-gray-300 flex items-center gap-2 flex-wrap mt-1">
-              <span>⏰ {reserva.horario}</span>
-              <span>👥 {reserva.pessoas}</span>
-              {reserva.salaoNomeSnapshot && <span>🏛️ {reserva.salaoNomeSnapshot}</span>}
-              {reservaMesasNomes(reserva).length > 0 && <span>🪑 {reservaMesasNomes(reserva).join(" + ")}</span>}
-              {reserva.clienteTelefoneSnapshot && <span>📞 {reserva.clienteTelefoneSnapshot}</span>}
+              <span className="inline-flex items-center gap-1"><AlarmClock size={12} /> {reserva.horario}</span>
+              <span className="inline-flex items-center gap-1"><Users size={12} /> {reserva.pessoas}</span>
+              {reserva.salaoNomeSnapshot && <span className="inline-flex items-center gap-1"><Landmark size={12} /> {reserva.salaoNomeSnapshot}</span>}
+              {reservaMesasNomes(reserva).length > 0 && <span className="inline-flex items-center gap-1"><Armchair size={12} /> {reservaMesasNomes(reserva).join(" + ")}</span>}
+              {reserva.clienteTelefoneSnapshot && <span className="inline-flex items-center gap-1"><Phone size={12} /> {reserva.clienteTelefoneSnapshot}</span>}
             </div>
             {!piiLight && (reserva.observacoes || cliente?.restricoesAlimentares) && (
               <div className="text-xs text-amber-700 dark:text-amber-400 mt-1">
-                {cliente?.restricoesAlimentares && <>⚠ {cliente.restricoesAlimentares}{reserva.observacoes ? " · " : ""}</>}
-                {reserva.observacoes && <>📝 {reserva.observacoes}</>}
+                {cliente?.restricoesAlimentares && <><TriangleAlert size={12} className="inline align-[-2px] mr-1" />{cliente.restricoesAlimentares}{reserva.observacoes ? " · " : ""}</>}
+                {reserva.observacoes && <><FileText size={12} className="inline align-[-2px] mr-1" />{reserva.observacoes}</>}
               </div>
             )}
           </div>
@@ -882,22 +882,22 @@ export function ReservasPage() {
                 <>
                   {temHistorico && (
                     <KebabItem onClick={() => { setHistoricoReserva(reserva); close(); }}>
-                      📊 Histórico do cliente
+                      <BarChart3 size={14} className="inline align-[-2px] mr-1.5" />Histórico do cliente
                     </KebabItem>
                   )}
                   {temWaSecundario && (
                     <KebabItem onClick={() => { onWhatsapp(); close(); }}>
-                      📱 Reenviar WhatsApp
+                      <Smartphone size={14} className="inline align-[-2px] mr-1.5" />Reenviar WhatsApp
                     </KebabItem>
                   )}
                   {temChegouKebab && (
                     <KebabItem onClick={() => { onStatus("chegou"); close(); }}>
-                      🪑 Chegou
+                      <Armchair size={14} className="inline align-[-2px] mr-1.5" />Chegou
                     </KebabItem>
                   )}
                   {podeMostrarNoShow && (
                     <KebabItem onClick={() => { onStatus("no_show"); close(); }}>
-                      😶 No-show
+                      <Frown size={14} className="inline align-[-2px] mr-1.5" />No-show
                     </KebabItem>
                   )}
                   {temCancelar && (
@@ -907,7 +907,7 @@ export function ReservasPage() {
                   )}
                   {temEditarKebab && (
                     <KebabItem onClick={() => { onEditar(); close(); }}>
-                      ✎ Editar
+                      <Pencil size={14} className="inline align-[-2px] mr-1.5" />Editar
                     </KebabItem>
                   )}
                 </>
@@ -921,12 +921,12 @@ export function ReservasPage() {
           <div className="flex items-center gap-1.5 mt-2 flex-wrap">
             {showWhatsAsPrimary && (
               <Button variant="primary" size="sm" onClick={onWhatsapp} title="Abre o WhatsApp interno com a mensagem de confirmação">
-                📱 Confirmar WhatsApp
+                <span className="inline-flex items-center gap-1.5"><Smartphone size={14} /> Confirmar WhatsApp</span>
               </Button>
             )}
             {faltaTelefone && (
               <Button variant="secondary" size="sm" onClick={onEditar} title="Esta reserva não tem telefone — adicione pra poder confirmar por WhatsApp">
-                ➕ Telefone p/ confirmar
+                <span className="inline-flex items-center gap-1.5"><Plus size={14} /> Telefone p/ confirmar</span>
               </Button>
             )}
             {showConfirmouSecondary && (
@@ -936,7 +936,7 @@ export function ReservasPage() {
             )}
             {showChegouAsPrimary && (
               <Button variant="primary" size="sm" onClick={() => onStatus("chegou")}>
-                🪑 Chegou
+                <span className="inline-flex items-center gap-1.5"><Armchair size={14} /> Chegou</span>
               </Button>
             )}
           </div>

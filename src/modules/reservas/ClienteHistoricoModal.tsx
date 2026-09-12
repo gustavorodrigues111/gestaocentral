@@ -12,9 +12,10 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { BarChart3, CalendarDays, AlarmClock, Users, Landmark, Armchair, PartyPopper, FileText } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
-import { RESERVA_STATUS_ICON, RESERVA_STATUS_LABEL } from "../../core/types";
+import { RESERVA_STATUS_LUCIDE, RESERVA_STATUS_LABEL } from "../../core/types";
 import type { Cliente, NotaCliente, Reserva, ReservaStatus } from "../../core/types";
 import { reservaMesasNomes } from "../../core/reservas/mesas";
 import { criarNotaCliente, deletarNotaCliente, ordenarNotasDesc } from "./notasCliente";
@@ -128,7 +129,7 @@ export function ClienteHistoricoModal({ cliente, reservas, mode = "completo", on
     : `Tudo (${stats.total} reservas)`;
 
   return (
-    <Modal title={`📊 Histórico — ${cliente.nome}`} onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={<span className="inline-flex items-center gap-2"><BarChart3 size={18} /> Histórico — {cliente.nome}</span>} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-4">
         {/* Header com toggle modo */}
         <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -195,7 +196,7 @@ export function ClienteHistoricoModal({ cliente, reservas, mode = "completo", on
         {/* Reservas */}
         <div>
           <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-2">
-            📅 Reservas ({reservasFiltradas.length})
+            <CalendarDays size={13} className="inline align-[-2px] mr-1" />Reservas ({reservasFiltradas.length})
           </h3>
           {reservasFiltradas.length === 0 ? (
             <div className="text-sm text-gray-500 italic">
@@ -210,17 +211,17 @@ export function ClienteHistoricoModal({ cliente, reservas, mode = "completo", on
                 >
                   <div className="flex-1 min-w-0">
                     <div className="font-medium">
-                      📅 {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")} · ⏰ {r.horario} · 👥 {r.pessoas}
+                      <CalendarDays size={12} className="inline align-[-2px]" /> {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")} · <AlarmClock size={12} className="inline align-[-2px]" /> {r.horario} · <Users size={12} className="inline align-[-2px]" /> {r.pessoas}
                     </div>
                     <div className="text-xs text-gray-500 dark:text-gray-400">
-                      {r.salaoNomeSnapshot && <>🏛️ {r.salaoNomeSnapshot}</>}
-                      {reservaMesasNomes(r).length > 0 && <> · 🪑 {reservaMesasNomes(r).join(" + ")}</>}
-                      {r.ocasiao && <> · 🎉 {r.ocasiao}</>}
-                      {r.observacoes && <> · 📝 {r.observacoes}</>}
+                      {r.salaoNomeSnapshot && <><Landmark size={11} className="inline align-[-1px]" /> {r.salaoNomeSnapshot}</>}
+                      {reservaMesasNomes(r).length > 0 && <> · <Armchair size={11} className="inline align-[-1px]" /> {reservaMesasNomes(r).join(" + ")}</>}
+                      {r.ocasiao && <> · <PartyPopper size={11} className="inline align-[-1px]" /> {r.ocasiao}</>}
+                      {r.observacoes && <> · <FileText size={11} className="inline align-[-1px]" /> {r.observacoes}</>}
                     </div>
                   </div>
                   <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded whitespace-nowrap ${STATUS_CLS[r.status]}`}>
-                    {RESERVA_STATUS_ICON[r.status]} {RESERVA_STATUS_LABEL[r.status]}
+                    {(() => { const Ic = RESERVA_STATUS_LUCIDE[r.status]; return <span className="inline-flex items-center gap-1"><Ic size={11} /> {RESERVA_STATUS_LABEL[r.status]}</span>; })()}
                   </span>
                 </div>
               ))}
@@ -231,7 +232,7 @@ export function ClienteHistoricoModal({ cliente, reservas, mode = "completo", on
         {/* Notas — log cronológico */}
         <div>
           <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-500 mb-2">
-            📝 Notas ({notasFiltradas.length})
+            <FileText size={13} className="inline align-[-2px] mr-1" />Notas ({notasFiltradas.length})
           </h3>
           <div className="space-y-1 max-h-[200px] overflow-y-auto mb-2">
             {notasFiltradas.length === 0 ? (
