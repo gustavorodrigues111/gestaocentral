@@ -6,7 +6,7 @@
 //  backfill sem abrir o console do Firestore.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { Timer } from "lucide-react";
+import { Timer, BarChart3, Scale, Landmark, Settings } from "lucide-react";
 import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -63,10 +63,10 @@ export function PtrpSyncPage() {
   const [desdeInput, setDesdeInput] = useState("");
   // Top-abas (Conferência · Banco · Configurações); a efetiva é a 1ª válida.
   const abasPermitidas = [
-    ...(podeConferir ? [["conferencia", "📊 Conferência"] as const] : []),
-    ...(podeValidar ? [["validar", "⚖️ Exceções a validar"] as const] : []),
-    ...(podeBanco ? [["banco", "🏦 Banco de horas"] as const] : []),
-    ...(podeConfig ? [["config", "⚙️ Configurações"] as const] : []),
+    ...(podeConferir ? [["conferencia", "Conferência", BarChart3] as const] : []),
+    ...(podeValidar ? [["validar", "Exceções a validar", Scale] as const] : []),
+    ...(podeBanco ? [["banco", "Banco de horas", Landmark] as const] : []),
+    ...(podeConfig ? [["config", "Configurações", Settings] as const] : []),
   ];
   const abaEfetiva = abasPermitidas.some(([v]) => v === aba) ? aba : (abasPermitidas[0]?.[0] || "conferencia");
   // Sub-abas de Configurações (Regras · Sincronização). O mapeamento de motivos
@@ -131,9 +131,9 @@ export function PtrpSyncPage() {
       </div>
 
       <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
-        {abasPermitidas.map(([v, l]) => (
+        {abasPermitidas.map(([v, l, Ico]) => (
           <button key={v} type="button" onClick={() => setAba(v)}
-            className={`px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${abaEfetiva === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
+            className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-semibold -mb-px border-b-2 ${abaEfetiva === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}><Ico size={15} /> {l}</button>
         ))}
       </div>
 

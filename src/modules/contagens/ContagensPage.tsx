@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Pencil, BarChart3, Settings } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, deleteDoc, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -141,20 +142,20 @@ export function ContagensPage() {
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {([
-          ["lancar", "✏️ Lançar contagem"],
-          ["visao",  `📊 Visão atual${alertasMinStock.length > 0 ? ` (${alertasMinStock.length}⚠)` : ""}`],
-          ["config", `⚙️ Config (${insumos.filter(i => i.ativo).length})`],
-        ] as const).map(([id, label]) => (
+          ["lancar", "Lançar contagem", Pencil],
+          ["visao",  `Visão atual${alertasMinStock.length > 0 ? ` (${alertasMinStock.length}⚠)` : ""}`, BarChart3],
+          ["config", `Config (${insumos.filter(i => i.ativo).length})`, Settings],
+        ] as const).map(([id, label, Ico]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+            className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
               tab === id
                 ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
                 : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"
             }`}
           >
-            {label}
+            <Ico size={15} /> {label}
           </button>
         ))}
       </div>

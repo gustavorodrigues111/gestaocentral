@@ -2,7 +2,7 @@
 // F1: kanban com etapas fixas + arrastar. F2: vagas com perguntas próprias +
 // responsável + página pública. F3: transferir, rejeitar c/ motivo, aprovar→admissão.
 import { useEffect, useMemo, useState } from "react";
-import { Target } from "lucide-react";
+import { Target, Kanban, Pin } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where, updateDoc, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -156,9 +156,9 @@ export function ProcessoSeletivoPage() {
       </div>
 
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
-        {([["kanban", "🗂️ Candidaturas"], ["vagas", "📌 Vagas"]] as const).map(([v, l]) => (
+        {([["kanban", "Candidaturas", Kanban], ["vagas", "Vagas", Pin]] as const).map(([v, l, Ico]) => (
           <button key={v} type="button" onClick={() => setAba(v)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${aba === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
+            className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px ${aba === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}><Ico size={15} /> {l}</button>
         ))}
         {aba === "kanban" && podeTriar && <div className="ml-auto pb-1"><Button size="sm" onClick={() => setNovaCand(true)}>➕ Nova candidatura</Button></div>}
       </div>

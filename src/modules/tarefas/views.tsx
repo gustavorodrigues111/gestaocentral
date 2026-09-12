@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo, type ReactNode } from "react";
+import { Inbox, Layers } from "lucide-react";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { doc, writeBatch } from "firebase/firestore";
@@ -46,10 +47,10 @@ export function ProjetosTopBar({
       <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
         <span className={rotulo}>Tarefas</span>
         <button onClick={onAbrirMinhas} className={chip(tabAtual === "minhas")}>
-          📥 Minhas
+          <Inbox size={15} /> Minhas
           {minhasPendentes > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">{minhasPendentes}</span>}
         </button>
-        <button onClick={onAbrirTudo} className={chip(tabAtual === "tudo")}>🗂️ Tudo</button>
+        <button onClick={onAbrirTudo} className={chip(tabAtual === "tudo")}><Layers size={15} /> Tudo</button>
         {projTarefas.map(p => (
           <button key={p.id} onClick={() => onAbrirProjeto(p.id)} className={chip(tabAtual === "projeto" && projetoFiltroAtual === p.id)} title={p.nome}>
             <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.cor || "#6b7280" }} />

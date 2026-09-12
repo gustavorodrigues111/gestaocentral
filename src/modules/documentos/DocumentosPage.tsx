@@ -5,7 +5,7 @@
 // preenchido pra assinatura. PDF exato sai pela skill/LibreOffice (fase seguinte).
 
 import { useEffect, useMemo, useState } from "react";
-import { FileText, Settings } from "lucide-react";
+import { FileText, Settings, FileSignature, History, Files } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where, doc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -123,10 +123,10 @@ export function DocumentosPage() {
 
       {/* Abas por tipo de documento */}
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
-        {([["contratos", "📝 Novos contratos de trabalho"], ["cargos", "⚙️ Cargos p/ contrato"], ["historico", "🗂️ Histórico"], ["outros", "📄 Outros modelos"]] as const).map(([id, lb]) => (
+        {([["contratos", "Novos contratos de trabalho", FileSignature], ["cargos", "Cargos p/ contrato", Settings], ["historico", "Histórico", History], ["outros", "Outros modelos", Files]] as const).map(([id, lb, Ico]) => (
           <button key={id} type="button" onClick={() => setSecao(id)}
-            className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${secao === id ? "border-indigo-600 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"}`}>
-            {lb}
+            className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${secao === id ? "border-indigo-600 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"}`}>
+            <Ico size={15} /> {lb}
           </button>
         ))}
       </div>

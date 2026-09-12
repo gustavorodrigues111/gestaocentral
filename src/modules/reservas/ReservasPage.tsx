@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { CalendarDays, CalendarRange, Users, Settings } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -417,27 +418,27 @@ export function ReservasPage() {
           Clientes só aparece com verCRM; Config só com configurar */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {([
-          ["reservas", "📅 Reservas",     pendentesHoje] as const,
+          ["reservas", "Reservas",     pendentesHoje, CalendarDays] as const,
           ...(podeConfig
-            ? [["agenda",   "🗓️ Agenda",       0] as const]
+            ? [["agenda",   "Agenda",       0, CalendarRange] as const]
             : []),
           ...(podeVerCRM
-            ? [["clientes", `👥 Clientes (${clientes.length})`, 0] as const]
+            ? [["clientes", `Clientes (${clientes.length})`, 0, Users] as const]
             : []),
           ...(podeConfig
-            ? [["config",   "⚙️ Configurações", 0] as const]
+            ? [["config",   "Configurações", 0, Settings] as const]
             : []),
-        ]).map(([id, label, badge]) => (
+        ]).map(([id, label, badge, Ico]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+            className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
               tab === id
                 ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
                 : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"
             }`}
           >
-            {label}
+            <Ico size={15} /> {label}
             <TabBadge count={badge} />
           </button>
         ))}

@@ -2,7 +2,8 @@
 // Abas: 💬 Chat (inbox das conversas) e ⚙️ Configuração (gestão dos números:
 // criar, QR, conectar/reconectar, status, atribuir usuários, regras).
 // O "WhatsApp do sistema" (API oficial, disparos) fica na Central de Avisos.
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { MessageCircle, Settings } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
@@ -24,16 +25,16 @@ export function WhatsappPage() {
 
   const abaEfetiva = aba === "config" && !podeConfig ? "chat" : aba;
 
-  const tabBtn = (v: "chat" | "config", label: string) => (
+  const tabBtn = (v: "chat" | "config", label: ReactNode) => (
     <button type="button" onClick={() => { setAba(v); if (v === "chat") setVoltarLista(n => n + 1); }}
-      className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${abaEfetiva === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{label}</button>
+      className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${abaEfetiva === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{label}</button>
   );
 
   return (
     <div className="max-w-4xl mx-auto">
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 px-2 pt-2">
-        {podeVer && tabBtn("chat", "💬 Chat")}
-        {podeConfig && tabBtn("config", "⚙️ Configuração")}
+        {podeVer && tabBtn("chat", <><MessageCircle size={15} /> Chat</>)}
+        {podeConfig && tabBtn("config", <><Settings size={15} /> Configuração</>)}
       </div>
 
       {/* Mantém o inbox montado ao trocar de aba pra não perder a conversa aberta. */}

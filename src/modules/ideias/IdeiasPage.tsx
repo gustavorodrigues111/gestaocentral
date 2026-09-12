@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Lightbulb, Kanban } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -151,18 +152,18 @@ export function IdeiasPage() {
       {/* Abas: Registrar (criação) e Kanban (gestão) */}
       {mostrarTabs && (
         <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
-          {([{ k: "registrar", l: "💡 Registrar" }, { k: "kanban", l: "📊 Kanban" }] as const).map(t => (
+          {([{ k: "registrar", l: "Registrar", Ico: Lightbulb }, { k: "kanban", l: "Kanban", Ico: Kanban }] as const).map(t => (
             <button
               key={t.k}
               type="button"
               onClick={() => setAba(t.k)}
-              className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
+              className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${
                 abaEfetiva === t.k
                   ? "border-indigo-600 text-indigo-700 dark:text-indigo-300"
                   : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"
               }`}
             >
-              {t.l}
+              <t.Ico size={15} /> {t.l}
             </button>
           ))}
         </div>

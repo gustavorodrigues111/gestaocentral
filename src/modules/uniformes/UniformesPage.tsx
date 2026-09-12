@@ -8,6 +8,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useMemo, useState } from "react";
+import { Users, History, Package, Settings, type LucideIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
 import {
   collection, onSnapshot, query, where,
@@ -28,11 +29,11 @@ import { EntregasTab } from "./EntregasTab";
 
 type TabId = "porEmpregado" | "entregas" | "estoque" | "config";
 
-const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
-  { id: "porEmpregado", label: "Por empregado", icon: "👥" },
-  { id: "entregas",     label: "Histórico",     icon: "🗂️" },
-  { id: "estoque",      label: "Estoque",       icon: "📦" },
-  { id: "config",       label: "Configurações", icon: "⚙️" },
+const TABS_DEF: { id: TabId; label: string; icon: LucideIcon }[] = [
+  { id: "porEmpregado", label: "Por empregado", icon: Users },
+  { id: "entregas",     label: "Histórico",     icon: History },
+  { id: "estoque",      label: "Estoque",       icon: Package },
+  { id: "config",       label: "Configurações", icon: Settings },
 ];
 
 const DIAS_ALERTA_VENCIMENTO = 30;
@@ -106,13 +107,13 @@ export function UniformesPage() {
               key={t.id}
               type="button"
               onClick={() => setTab(t.id)}
-              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
+              className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
                 active
                   ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
                   : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"
               }`}
             >
-              {t.icon} {t.label}
+              <t.icon size={15} /> {t.label}
               <TabBadge count={badges[t.id]} />
             </button>
           );
