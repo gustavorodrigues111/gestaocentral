@@ -6668,7 +6668,10 @@ export type WhatsappContato = {
   finalizadoPor?: string | null;      // pessoaId de quem finalizou
   // Estado POR NÚMERO (o contato é global por telefone, mas finalizar é por caixa).
   // Sobrepõe os campos de topo (legado global). Hoje só finalizado; extensível.
-  estados?: { [numeroId: string]: { finalizadoEm?: string | null; finalizadoPor?: string | null; naoLidaManual?: boolean } };
+  // Estado POR NÚMERO conectado. Um mesmo grupo/contato aparece em vários
+  // números (docs compartilhados); estes campos são decididos por número —
+  // marcar spam / triar / atribuir atendentes num número NÃO vaza pro outro.
+  estados?: { [numeroId: string]: { finalizadoEm?: string | null; finalizadoPor?: string | null; naoLidaManual?: boolean; spam?: boolean; spamPor?: string | null; spamEm?: string | null; triadoEm?: string | null; atendentes?: string[]; atendentesNomes?: string[] } };
   // Spam: contato marcado como spam some das listas ativas e aparece só no
   // filtro "Spam".
   spam?: boolean;

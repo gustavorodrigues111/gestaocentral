@@ -518,15 +518,27 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     return pessoaDaConversa(waId)?.nome || c?.nomeManual || waNome || foneBonito(waId);
   };
 
-  // Responsável de uma conversa: individual = atribuidoA (1); grupo = atendentes (N).
+  // Lê um campo de estado POR NÚMERO (estados[numeroSel]) com fallback pro
+  // campo global legado do contato. Spam, triagem e atendentes de um GRUPO são
+  // decididos por número — o que um número marca não vaza pro outro.
+  type EstadoNum = NonNullable<WhatsappContato["estados"]>[string];
+  const estadoDe = <K extends keyof EstadoNum>(waId: string, key: K, numId: string | null = numeroSel): EstadoNum[K] | undefined => {
+    const c = contatoDe(waId);
+    const e = numId ? c?.estados?.[numId] : undefined;
+    if (e && e[key] !== undefined) return e[key];
+    return (c as unknown as Partial<EstadoNum> | undefined)?.[key];
+  };
+  const atendentesDe = (waId: string): string[] => estadoDe(waId, "atendentes") ?? [];
+
+  // Responsável de uma conversa: individual = atribuidoA (1); grupo = atendentes (N, por número).
   const donoDe = (waId: string): string | null => contatoDe(waId)?.atribuidoA || null;
   const temResponsavel = (waId: string): boolean => {
     const c = contatoDe(waId);
-    return ehGrupoWaId(waId) ? !!(c?.atendentes && c.atendentes.length > 0) : !!c?.atribuidoA;
+    return ehGrupoWaId(waId) ? atendentesDe(waId).length > 0 : !!c?.atribuidoA;
   };
   const souResponsavel = (waId: string): boolean => {
     const c = contatoDe(waId);
-    return ehGrupoWaId(waId) ? (c?.atendentes || []).includes(me?.id || "") : c?.atribuidoA === me?.id;
+    return ehGrupoWaId(waId) ? atendentesDe(waId).includes(me?.id || "") : c?.atribuidoA === me?.id;
   };
   // Finalizado é POR NÚMERO: estados[numeroSel] sobrepõe o legado global de topo.
   const finalizadaDe = (waId: string, numId: string | null = numeroSel): boolean => {
@@ -542,12 +554,12 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     const e = numId ? c?.estados?.[numId] : undefined;
     return !!(e && e.naoLidaManual !== undefined ? e.naoLidaManual : c?.naoLidaManual);
   };
-  const spamDe = (waId: string): boolean => !!contatoDe(waId)?.spam;
+  const spamDe = (waId: string): boolean => !!estadoDe(waId, "spam");
   // Grupo já triado? (definiram atendentes OU marcaram spam) — senão pede ao abrir.
+  // Tudo POR NÚMERO: cada número decide a triagem/atendentes/spam do grupo.
   const triadoDe = (waId: string): boolean => {
     if (!ehGrupoWaId(waId)) return true;
-    const c = contatoDe(waId);
-    return !!(c?.triadoEm || (c?.atendentes && c.atendentes.length > 0) || c?.spam);
+    return !!(estadoDe(waId, "triadoEm") || atendentesDe(waId).length > 0 || estadoDe(waId, "spam"));
   };
   // Respeita o filtro de tag também na tela Início.
   const passaTag = (waId: string) => !filtroTag || (contatos[foneKey(waId)]?.tagIds || []).includes(filtroTag);
@@ -611,7 +623,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         const k = foneKey(waId);
         if (vistos.has(k)) continue;
         const fin = cc.estados?.[numeroSel]?.finalizadoEm;   // finalizada NESTE número
-        if (!fin || cc.spam) continue;
+        if (!fin || spamDe(waId)) continue;
         if (!passaTag(waId) || !passaBusca(waId)) continue;
         vistos.add(k);
         extras.push({ waId, nome: undefined, ultima: { waId, direcao: "out", texto: "— atendimento finalizado —", timestamp: fin } as Msg, naoLidas: 0 });
@@ -709,7 +721,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // ── Writers ──────────────────────────────────────────────────────────────
   // Campos cujo estado é POR NÚMERO (não global). Vão pra estados[numeroId] e o
   // campo de topo legado é limpo, pra não vazar entre caixas.
-  const CAMPOS_POR_NUMERO = new Set(["finalizadoEm", "finalizadoPor", "naoLidaManual"]);
+  const CAMPOS_POR_NUMERO = new Set(["finalizadoEm", "finalizadoPor", "naoLidaManual", "spam", "spamPor", "spamEm", "triadoEm", "atendentes", "atendentesNomes"]);
   async function salvarContato(waId: string, patch: Partial<WhatsappContato>, numeroIdAlvo: string | null = numeroSel) {
     // Doc keyed pela chave normalizada (DDD + 8 últimos) → tags/vínculos casam
     // com/sem o 9º dígito. Guarda o waId cru pra referência.
@@ -962,7 +974,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   // Triagem de grupo: define atendente(s) ou marca spam (some).
   const [triagemGrupo, setTriagemGrupo] = useState<string | null>(null);
   const [triagemIds, setTriagemIds] = useState<string[]>([]);
-  const abrirTriagem = (waId: string) => { setTriagemIds(contatos[foneKey(waId)]?.atendentes || []); setTriagemGrupo(waId); };
+  const abrirTriagem = (waId: string) => { setTriagemIds(atendentesDe(waId)); setTriagemGrupo(waId); };
   async function salvarTriagem(waId: string) {
     if (!triagemIds.length) { alert("Escolha pelo menos um atendente — ou marque como spam."); return; }
     const nomes = triagemIds.map(id => pessoas.find(p => p.id === id)?.nome || "").filter(Boolean);
@@ -1278,7 +1290,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     const grupo = ehGrupoWaId(c.waId) || !!cont?.ehGrupo;
     const cTags = (cont?.tagIds || []).map(id => tagById[id]).filter(Boolean) as WhatsappTag[];
     const naoLida = c.naoLidas > 0 || naoLidaManualDe(c.waId);
-    const atribuido = grupo ? (cont?.atendentesNomes || []).join(", ") : cont?.atribuidoNome;
+    const atribuido = grupo ? (estadoDe(c.waId, "atendentesNomes") ?? []).join(", ") : cont?.atribuidoNome;
     const espera = mostrarEspera && c.ultima.direcao === "in" ? tempoEsperaLabel(agora - new Date(c.ultima.timestamp || 0).getTime()) : null;
     return (
       <ConversaItem key={c.waId} naoLida={naoLida} temDono={temResponsavel(c.waId)}
@@ -1564,7 +1576,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             // Grupo: atendentes (1+) em vez de responsável único. Só no modo COM
             // ATRIBUIÇÃO — em livre, grupo é só lido/não lido (cai na barra enxuta).
             if (!numeroLivre && ehGrupoWaId(sel || "")) {
-              const ats = contatoSel?.atendentesNomes || [];
+              const ats = estadoDe(sel || "", "atendentesNomes") ?? [];
               const fin = finalizadaDe(sel || "");
               return (
                 <div className={`flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 text-xs shrink-0 ${fin ? "bg-gray-100 dark:bg-gray-800/60" : ats.length ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>
