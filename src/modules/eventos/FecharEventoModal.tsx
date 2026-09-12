@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { TriangleAlert } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
@@ -130,7 +131,7 @@ export function FecharEventoModal({
       <div className="space-y-4">
         {semPessoasConfiguradas && (
           <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-900 dark:text-amber-200">
-            ⚠ Nenhuma pessoa comercial configurada. Vá em <strong>Eventos → Comercial</strong> e
+            <TriangleAlert size={14} className="inline align-[-2px] mr-1" />Nenhuma pessoa comercial configurada. Vá em <strong>Eventos → Comercial</strong> e
             selecione quem pode aparecer aqui.
           </div>
         )}
@@ -234,7 +235,7 @@ export function FecharEventoModal({
 
         {erro && (
           <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-2.5 text-sm text-rose-800 dark:text-rose-300">
-            ⚠ {erro}
+            <span className="inline-flex items-center gap-1.5"><TriangleAlert size={14} className="shrink-0" /> {erro}</span>
           </div>
         )}
 

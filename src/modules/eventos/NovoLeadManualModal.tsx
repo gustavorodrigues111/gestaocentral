@@ -5,6 +5,7 @@ import { useState } from "react";
 import { doc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { Briefcase } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -194,7 +195,7 @@ export function NovoLeadManualModal({ rid, onClose, onCreated }: Props) {
             {salvando ? "Criando..." : "Criar lead"}
           </Button>
           <Button variant="primary" onClick={() => void salvar(true)} disabled={salvando}>
-            {salvando ? "Criando..." : "💼 Criar e montar orçamento"}
+            {salvando ? "Criando..." : <span className="inline-flex items-center gap-1.5"><Briefcase size={15} /> Criar e montar orçamento</span>}
           </Button>
         </div>
       </div>

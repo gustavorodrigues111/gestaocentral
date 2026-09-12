@@ -11,6 +11,7 @@ import { useMemo, useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { Pencil } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { parseYmd, pad2 } from "../../core/utils/date";
@@ -143,7 +144,7 @@ export function EditarLeadModal({ lead, meId, meNome, onClose }: Props) {
   const lblCls = "text-[11px] font-semibold text-gray-500 dark:text-gray-400";
 
   return (
-    <Modal title="✏️ Editar lead" onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={<span className="inline-flex items-center gap-2"><Pencil size={18} /> Editar lead</span>} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-4">
         {/* Cliente */}
         <section className="space-y-2">

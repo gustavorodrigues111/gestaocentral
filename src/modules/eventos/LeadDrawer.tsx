@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Pencil, TriangleAlert, CalendarDays, Smartphone, MessageSquare, Mail, Sun, Moon, Clock, Package, Briefcase, FileText, Contact, ClipboardList, Phone, Handshake, Settings, type LucideIcon } from "lucide-react";
 import type { ReactNode, Ref } from "react";
 import { collection, deleteField, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -10,7 +11,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import { parseYmd, pad2 } from "../../core/utils/date";
 import type { CanalTratativa, LeadEvento, LeadEventoStatus, LogMensagemEvento, PacoteEvento, Pessoa } from "../../core/types";
-import { CANAL_TRATATIVA_ICONE, CANAL_TRATATIVA_LABEL } from "../../core/types";
+import { CANAL_TRATATIVA_LABEL } from "../../core/types";
 import { PropostaSection } from "./PropostaSection";
 import { ContratoSection } from "./ContratoSection";
 import { BEOSection } from "./BEOSection";
@@ -82,6 +83,8 @@ type Props = {
 };
 
 // Seção colapsável do card integrado — cabeçalho clicável + badge de status.
+const CANAL_LUCIDE: Partial<Record<CanalTratativa, LucideIcon>> = { whatsapp_wame: MessageSquare, whatsapp_api: MessageSquare, whatsapp: MessageSquare, email: Mail, telefone: Phone, presencial: Handshake, sistema: Settings };
+
 function SecaoColapsavel({ titulo, badge, aberta, onToggle, refWrap, children }: {
   titulo: ReactNode;
   badge?: ReactNode;
@@ -337,7 +340,7 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], foc
           {podeEditar && (
             <div className="flex gap-1 flex-wrap">
               <Button size="sm" variant="secondary" onClick={() => setEditarModalOpen(true)} disabled={salvando}>
-                ✏️ Editar
+                <span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editar</span>
               </Button>
               {lead.status !== "perdido" && (
                 <>
@@ -357,7 +360,7 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], foc
         {temConflitoDia && (temSobreposicao || !lead.conflitoDiaAceito ? (
           <div className="rounded-lg border border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-900/25 p-3">
             <div className="text-sm font-bold text-rose-800 dark:text-rose-200 flex items-center gap-1.5">
-              ⚠ {temSobreposicao ? "Conflito de horário neste dia" : "Já existe evento neste dia"}
+              <TriangleAlert size={14} className="shrink-0" /> {temSobreposicao ? "Conflito de horário neste dia" : "Já existe evento neste dia"}
             </div>
             <div className="text-[12px] text-rose-700 dark:text-rose-300 mt-1">
               {conflitosDoDia.map(o => `${o.cliente.nome} (${o.horaInicio}–${o.horaFim})`).join(", ")}
@@ -376,7 +379,7 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], foc
         ) : (
           <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/15 px-3 py-2">
             <div className="text-[12px] text-amber-800 dark:text-amber-300">
-              🗓️ Mais de um evento neste dia (horários diferentes) — aceito.
+              <CalendarDays size={13} className="inline align-[-2px] mr-1" />Mais de um evento neste dia (horários diferentes) — aceito.
             </div>
           </div>
         ))}
@@ -407,7 +410,7 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], foc
               ) : (
                 <>
                   <span className="font-semibold">{lead.cliente.nome}</span>
-                  {podeEditar && <button type="button" onClick={() => { setNomeDraft(lead.cliente.nome); setEditNome(true); }} title="Corrigir o nome (fica registrado no histórico)" className="text-gray-400 hover:text-indigo-600 text-xs">✎</button>}
+                  {podeEditar && <button type="button" onClick={() => { setNomeDraft(lead.cliente.nome); setEditNome(true); }} title="Corrigir o nome (fica registrado no histórico)" className="text-gray-400 hover:text-indigo-600 text-xs"><Pencil size={12} /></button>}
                 </>
               )}
               <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-300">
@@ -418,19 +421,19 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], foc
               <div className="text-gray-600 dark:text-gray-400">{lead.cliente.razaoSocial}{lead.cliente.cnpj && ` · CNPJ ${lead.cliente.cnpj}`}</div>
             )}
             <div className="flex items-center gap-2 flex-wrap">
-              <span className="text-gray-600 dark:text-gray-400">📱 {lead.cliente.whatsapp}</span>
+              <span className="text-gray-600 dark:text-gray-400 inline-flex items-center gap-1"><Smartphone size={13} /> {lead.cliente.whatsapp}</span>
               {lead.cliente.whatsapp && (
                 <button
                   type="button"
                   onClick={() => void abrirWhatsapp(lead.restaurantId, "eventos", lead.cliente.whatsapp!, lead.cliente.nome, saudacaoWhats)}
                   className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-semibold hover:bg-emerald-200"
                 >
-                  💬 Falar pelo WhatsApp
+                  <span className="inline-flex items-center gap-1.5"><MessageSquare size={13} /> Falar pelo WhatsApp</span>
                 </button>
               )}
             </div>
             {lead.cliente.email && (
-              <div className="text-gray-600 dark:text-gray-400">✉ {lead.cliente.email}</div>
+              <div className="text-gray-600 dark:text-gray-400 inline-flex items-center gap-1"><Mail size={13} /> {lead.cliente.email}</div>
             )}
           </div>
         </div>
@@ -444,7 +447,7 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], foc
               {" · "}
               {lead.horaInicio} – {lead.horaFim}
               {" · "}
-              {lead.slot === "almoco" ? "🌞 Almoço" : lead.slot === "jantar" ? "🌙 Jantar" : "🕒 Dia inteiro"}
+              {lead.slot === "almoco" ? <span className="inline-flex items-center gap-1"><Sun size={13} /> Almoço</span> : lead.slot === "jantar" ? <span className="inline-flex items-center gap-1"><Moon size={13} /> Jantar</span> : <span className="inline-flex items-center gap-1"><Clock size={13} /> Dia inteiro</span>}
             </div>
             <div>{lead.numConvidados} convidados</div>
             <div>
@@ -470,7 +473,7 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], foc
               <span>{lead.decoracao ? "✓" : "✗"} decoração própria</span>
             </div>
             {pacote && (
-              <div className="text-indigo-700 dark:text-indigo-400">📦 {pacote.nome}</div>
+              <div className="text-indigo-700 dark:text-indigo-400 inline-flex items-center gap-1"><Package size={13} /> {pacote.nome}</div>
             )}
             {lead.dataAlternativa && (
               <div className="text-xs text-gray-500">
@@ -525,7 +528,7 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], foc
         {/* Proposta + pagamento — seção colapsável (aberta por padrão) */}
         {me && (
           <SecaoColapsavel
-            titulo="💼 Proposta e pagamento"
+            titulo={<span className="inline-flex items-center gap-1.5"><Briefcase size={15} /> Proposta e pagamento</span>}
             badge={<span className="text-[11px] text-gray-500">{lead.status === "novo" || lead.status === "qualificado" ? "a montar" : "em andamento"}</span>}
             aberta={abertas.has("proposta")} onToggle={() => toggleSec("proposta")} refWrap={propostaRef}
           >
@@ -535,7 +538,7 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], foc
 
         {/* Contrato — colapsável */}
         <SecaoColapsavel
-          titulo="📄 Contrato"
+          titulo={<span className="inline-flex items-center gap-1.5"><FileText size={15} /> Contrato</span>}
           badge={lead.contrato?.pdfUrl ? <span className="text-[11px] text-emerald-600 dark:text-emerald-400">gerado</span> : undefined}
           aberta={abertas.has("contrato")} onToggle={() => toggleSec("contrato")}
         >
@@ -544,7 +547,7 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], foc
 
         {/* Log de tratativas com o cliente — colapsável */}
         <SecaoColapsavel
-          titulo="📇 Tratativas com o cliente"
+          titulo={<span className="inline-flex items-center gap-1.5"><Contact size={15} /> Tratativas com o cliente</span>}
           badge={tratativasOrd.length > 0 ? <span className="text-[11px] text-gray-500">{tratativasOrd.length}</span> : undefined}
           aberta={abertas.has("tratativas")} onToggle={() => toggleSec("tratativas")}
         >
@@ -587,7 +590,7 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], foc
                   <span className="absolute -left-[7px] mt-1 w-3 h-3 rounded-full bg-indigo-400 dark:bg-indigo-500" />
                   <div className="text-sm text-gray-800 dark:text-gray-100 whitespace-pre-wrap">{t.texto}</div>
                   <div className="text-[10px] text-gray-500 mt-0.5 flex items-center gap-1.5 flex-wrap">
-                    <span>{CANAL_TRATATIVA_ICONE[t.canal] || "•"} {CANAL_TRATATIVA_LABEL[t.canal] || t.canal}</span>
+                    <span className="inline-flex items-center gap-1">{(() => { const Ic = CANAL_LUCIDE[t.canal]; return Ic ? <Ic size={11} /> : <span>•</span>; })()} {CANAL_TRATATIVA_LABEL[t.canal] || t.canal}</span>
                     <span>·</span>
                     <span>{t.enviadoEm && new Date(t.enviadoEm).toLocaleString("pt-BR")}</span>
                     {t.enviadoPorNome && <><span>·</span><span>{t.enviadoPorNome}</span></>}
@@ -602,7 +605,7 @@ export function LeadDrawer({ lead, pacotes, podeEditar, conflitosDoDia = [], foc
 
         {/* BEO (PR8) — só faz sentido a partir de "sinal_recebido" — colapsável */}
         {me && (lead.status === "sinal_recebido" || lead.status === "confirmado" || lead.status === "realizado") && (
-          <SecaoColapsavel titulo="📋 BEO — ordem do evento" aberta={abertas.has("beo")} onToggle={() => toggleSec("beo")}>
+          <SecaoColapsavel titulo={<span className="inline-flex items-center gap-1.5"><ClipboardList size={15} /> BEO — ordem do evento</span>} aberta={abertas.has("beo")} onToggle={() => toggleSec("beo")}>
             <BEOSection lead={lead} podeEditar={podeEditar} meId={me.id} meNome={me.nome} />
           </SecaoColapsavel>
         )}

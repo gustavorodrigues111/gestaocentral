@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Sparkles, UtensilsCrossed, Pencil, TriangleAlert, Briefcase, Paperclip, FileText, MessageSquare, ReceiptText } from "lucide-react";
 import { collection, doc, onSnapshot, query, updateDoc, where, getDocs } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -362,7 +363,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
     <div>
       {temPreMontagem && propostas.length === 0 && (
         <div className="mb-2 rounded-md border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-900/15 px-2.5 py-1.5 text-[12px] text-emerald-800 dark:text-emerald-300">
-          ✨ Orçamento <strong>pré-montado</strong> com o que o cliente pediu no site. Revise (desconto, taxa, valores) e clique em <strong>Gerar proposta</strong>.
+          <Sparkles size={13} className="inline align-[-2px] mr-1" />Orçamento <strong>pré-montado</strong> com o que o cliente pediu no site. Revise (desconto, taxa, valores) e clique em <strong>Gerar proposta</strong>.
         </div>
       )}
 
@@ -515,7 +516,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
             {ehLobozoProp && (
               <div className="mt-2 rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-900/10 p-2">
                 <div className="text-[11px] font-bold text-amber-700 dark:text-amber-300 mb-1.5">
-                  🍽️ Puxar do cardápio de eventos do site · {janelaLob === "sex-sab" ? "Sexta/Sábado" : "Domingo a Quinta"}
+                  <UtensilsCrossed size={13} className="inline align-[-2px] mr-1" />Puxar do cardápio de eventos do site · {janelaLob === "sex-sab" ? "Sexta/Sábado" : "Domingo a Quinta"}
                 </div>
                 <div className="flex flex-wrap gap-1.5">
                   {(["sequencia", "aberto"] as const).flatMap((menu) => (["soft", "alcohol"] as const).map((dr) => {
@@ -570,7 +571,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
             <div className="flex items-center justify-between gap-2">
               <span className="text-[11px] uppercase font-bold text-gray-500">Pagamento · <span className="normal-case font-normal text-gray-400">valor e data de cada parcela são livres</span></span>
               {parcelasEdit.length === 0 ? (
-                <button type="button" onClick={() => setParcelasEdit(parcelasDefault(totalFinal))} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">✏️ Editar valores e datas</button>
+                <button type="button" onClick={() => setParcelasEdit(parcelasDefault(totalFinal))} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"><Pencil size={11} /> Editar valores e datas</button>
               ) : (
                 <div className="flex gap-2">
                   <button type="button" onClick={() => setParcelasEdit(parcelasDefault(totalFinal))} className="text-[11px] text-gray-500 hover:underline" title="Recalcula em 50% sinal + 50% saldo">↻ 50/50</button>
@@ -599,7 +600,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
                 {(() => {
                   const soma = Math.round(parcelasEdit.reduce((s, p) => s + (p.valor || 0), 0) * 100) / 100;
                   return Math.abs(soma - totalFinal) > 0.01 ? (
-                    <div className="text-[11px] text-amber-600 dark:text-amber-400">⚠ Soma das parcelas {fmtBRL(soma)} ≠ total {fmtBRL(totalFinal)}</div>
+                    <div className="text-[11px] text-amber-600 dark:text-amber-400 inline-flex items-center gap-1"><TriangleAlert size={11} /> Soma das parcelas {fmtBRL(soma)} ≠ total {fmtBRL(totalFinal)}</div>
                   ) : <div className="text-[11px] text-emerald-600 dark:text-emerald-400">✓ soma bate com o total</div>;
                 })()}
               </div>
@@ -616,7 +617,7 @@ export function PropostaSection({ lead, pacotes, podeEditar, meId, meNome, onAva
                 <Button size="sm" variant="secondary" onClick={() => { setMontando(false); setLinhas([]); setArredondamento(0); setParcelasEdit([]); }}>Cancelar</Button>
               )}
               <Button onClick={gerarProposta} disabled={criando || totalFinal <= 0}>
-                {criando ? "Gerando…" : propostas.length === 0 ? "💼 Gerar proposta v1" : "💼 Gerar nova versão"}
+                {criando ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><Briefcase size={14} /> {propostas.length === 0 ? "Gerar proposta v1" : "Gerar nova versão"}</span>}
               </Button>
             </div>
           </div>
@@ -657,7 +658,7 @@ function RegistrarPagamentoModal({ parcela, onClose, onConfirmar }: {
         <div className="mt-3">
           <div className="text-xs text-gray-500 mb-1">Comprovante (opcional)</div>
           <div className="flex items-center gap-2 flex-wrap">
-            <Button size="sm" variant="secondary" onClick={escolher}>📎 Anexar do Drive</Button>
+            <Button size="sm" variant="secondary" onClick={escolher}><span className="inline-flex items-center gap-1.5"><Paperclip size={14} /> Anexar do Drive</span></Button>
             {comp && <span className="text-xs text-gray-700 dark:text-gray-300 truncate flex-1">✓ {comp.nome}</span>}
           </div>
         </div>
@@ -738,7 +739,7 @@ function PropostaCard({
           {proposta.cardapios.map(c => (
             <a key={c.id} href={c.url} target="_blank" rel="noopener noreferrer"
               className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-xs hover:bg-indigo-100 dark:hover:bg-indigo-900/50">
-              📄 {c.nome}
+              <FileText size={13} /> {c.nome}
             </a>
           ))}
         </div>
@@ -758,7 +759,7 @@ function PropostaCard({
                   <div className="text-[10px] text-emerald-700 dark:text-emerald-400">
                     ✓ paga em {new Date(p.pagaEm).toLocaleDateString("pt-BR")}
                     {p.pagaPorNome && ` por ${p.pagaPorNome}`}
-                    {p.comprovanteUrl && <> · <a href={p.comprovanteUrl} target="_blank" rel="noreferrer" className="underline">📎 comprovante</a></>}
+                    {p.comprovanteUrl && <> · <a href={p.comprovanteUrl} target="_blank" rel="noreferrer" className="underline inline-flex items-center gap-0.5"><Paperclip size={10} /> comprovante</a></>}
                   </div>
                 )}
                 {!paga && p.vencimentoEm && (
@@ -783,16 +784,16 @@ function PropostaCard({
       {destaque && (
         <div className="mt-3 flex gap-2 flex-wrap items-center">
           <Button size="sm" onClick={onEnviar}>
-            💬 {proposta.enviadaEm ? "Reenviar" : "Enviar"} via WhatsApp
+            <span className="inline-flex items-center gap-1.5"><MessageSquare size={14} /> {proposta.enviadaEm ? "Reenviar" : "Enviar"} via WhatsApp</span>
           </Button>
           {podeEditar && (
             <Button size="sm" variant="secondary" onClick={onGerarPdf} disabled={gerandoPdf}>
-              {gerandoPdf ? "Gerando PDF…" : proposta.pdfUrl ? "🧾 Regerar orçamento (PDF)" : "🧾 Gerar orçamento (PDF)"}
+              {gerandoPdf ? "Gerando PDF…" : <span className="inline-flex items-center gap-1.5"><ReceiptText size={14} /> {proposta.pdfUrl ? "Regerar orçamento (PDF)" : "Gerar orçamento (PDF)"}</span>}
             </Button>
           )}
           {proposta.pdfUrl && (
             <a href={proposta.pdfUrl} target="_blank" rel="noopener noreferrer"
-              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">📄 abrir PDF</a>
+              className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"><FileText size={12} /> abrir PDF</a>
           )}
         </div>
       )}

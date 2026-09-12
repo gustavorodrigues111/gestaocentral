@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ClipboardList, TriangleAlert, MessageSquare, Send, FileText, Paperclip } from "lucide-react";
 import type { ReactNode } from "react";
 import { collection, doc, onSnapshot, query, setDoc, where, getDocs } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, uploadBytesResumable, getDownloadURL } from "firebase/storage";
@@ -147,10 +148,10 @@ export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
     return (
       <div>
         <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">
-          📋 BEO
+          <ClipboardList size={13} className="inline align-[-2px] mr-1" />BEO
         </div>
         <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 text-sm text-amber-900 dark:text-amber-200">
-          ⚠ Crie uma proposta primeiro — o BEO consolida dados dela.
+          <TriangleAlert size={14} className="inline align-[-2px] mr-1" />Crie uma proposta primeiro — o BEO consolida dados dela.
         </div>
       </div>
     );
@@ -172,9 +173,9 @@ export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
             {formatarBEOTexto(beoAtual)}
           </pre>
           <div className="flex gap-2 flex-wrap">
-            <Button size="sm" onClick={() => copiarBEOTexto(beoAtual)}>📋 Copiar</Button>
-            <Button size="sm" onClick={() => enviarBEOWhatsApp(beoAtual)}>💬 WhatsApp</Button>
-            <Button size="sm" variant="secondary" onClick={() => setEnviarEquipe(beoAtual)}>📤 Enviar pra equipe</Button>
+            <Button size="sm" onClick={() => copiarBEOTexto(beoAtual)}><span className="inline-flex items-center gap-1.5"><ClipboardList size={14} /> Copiar</span></Button>
+            <Button size="sm" onClick={() => enviarBEOWhatsApp(beoAtual)}><span className="inline-flex items-center gap-1.5"><MessageSquare size={14} /> WhatsApp</span></Button>
+            <Button size="sm" variant="secondary" onClick={() => setEnviarEquipe(beoAtual)}><span className="inline-flex items-center gap-1.5"><Send size={14} /> Enviar pra equipe</span></Button>
           </div>
         </div>
       )}
@@ -263,14 +264,14 @@ export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
             <div className="mt-1 space-y-1">
               {(propostaVigente.cardapios || []).map(c => (
                 <div key={c.id} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-                  <span>📄</span>
+                  <FileText size={13} className="shrink-0 text-gray-400" />
                   <a href={c.url} target="_blank" rel="noreferrer" className="underline truncate">{c.nome}</a>
                   <span className="text-[10px] px-1 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">da proposta</span>
                 </div>
               ))}
               {cardapiosExtra.map(c => (
                 <div key={c.id} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300">
-                  <span>📎</span>
+                  <Paperclip size={13} className="shrink-0 text-gray-400" />
                   <a href={c.url} target="_blank" rel="noreferrer" className="underline truncate">{c.nome}</a>
                   <button
                     type="button"
@@ -298,7 +299,7 @@ export function BEOSection({ lead, podeEditar, meId, meNome }: Props) {
 
           <div className="mt-3">
             <Button onClick={gerarBEO} disabled={gerando}>
-              {gerando ? "Gerando..." : beoAtual ? "📋 Gerar nova versão" : "📋 Gerar BEO"}
+              {gerando ? "Gerando..." : <span className="inline-flex items-center gap-1.5"><ClipboardList size={14} /> {beoAtual ? "Gerar nova versão" : "Gerar BEO"}</span>}
             </Button>
           </div>
         </BeoFormPanel>
@@ -416,7 +417,7 @@ function BeoCardapioUploader({
         disabled={uploading}
         className="px-3 py-1.5 rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700 text-xs text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-500 transition-colors disabled:opacity-60"
       >
-        {uploading ? `Enviando… ${progresso}%` : "📎 Anexar cardápio (PDF)"}
+        {uploading ? `Enviando… ${progresso}%` : <span className="inline-flex items-center gap-1.5"><Paperclip size={13} /> Anexar cardápio (PDF)</span>}
       </button>
       {erro && <div className="mt-1 text-[11px] text-red-600 dark:text-red-400">{erro}</div>}
     </div>
@@ -475,7 +476,7 @@ function EnviarBeoModal({ beo, lead, restaurantNome, meId, meNome, onClose }: {
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !enviando && onClose()}>
       <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5 space-y-3 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">📤 Enviar BEO pra equipe</h3>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Send size={16} /> Enviar BEO pra equipe</h3>
           <button type="button" onClick={() => !enviando && onClose()} className="text-gray-400 hover:text-gray-600">✕</button>
         </div>
         <p className="text-xs text-gray-500">Gera o PDF do BEO e envia pra Central de Avisos de quem você escolher.</p>

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Lock, ClipboardList, Package, Briefcase, Settings } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -50,7 +51,7 @@ export function EventosPage() {
   if (!podeUsar) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
           Peça pro administrador habilitar o módulo Eventos pra você.
@@ -63,13 +64,13 @@ export function EventosPage() {
     <PageContainer className="space-y-4">
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800">
-        <TabButton active={tab === "kanban"} onClick={() => setTab("kanban")}>📋 Kanban<TabBadge count={novosLeads} /></TabButton>
-        <TabButton active={tab === "pacotes"} onClick={() => setTab("pacotes")}>📦 Pacotes</TabButton>
+        <TabButton active={tab === "kanban"} onClick={() => setTab("kanban")}><span className="inline-flex items-center gap-1.5"><ClipboardList size={15} /> Kanban</span><TabBadge count={novosLeads} /></TabButton>
+        <TabButton active={tab === "pacotes"} onClick={() => setTab("pacotes")}><span className="inline-flex items-center gap-1.5"><Package size={15} /> Pacotes</span></TabButton>
         {podeConfigurar && (
-          <TabButton active={tab === "comercial"} onClick={() => setTab("comercial")}>💼 Comercial</TabButton>
+          <TabButton active={tab === "comercial"} onClick={() => setTab("comercial")}><span className="inline-flex items-center gap-1.5"><Briefcase size={15} /> Comercial</span></TabButton>
         )}
         {podeConfigurar && (
-          <TabButton active={tab === "config"} onClick={() => setTab("config")}>⚙️ Configurações</TabButton>
+          <TabButton active={tab === "config"} onClick={() => setTab("config")}><span className="inline-flex items-center gap-1.5"><Settings size={15} /> Configurações</span></TabButton>
         )}
       </div>
 

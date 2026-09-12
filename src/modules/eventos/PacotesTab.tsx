@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { TriangleAlert, Lock, Globe, Plus, FileText } from "lucide-react";
 import { collection, doc, onSnapshot, query, setDoc, where, deleteDoc } from "firebase/firestore";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
@@ -111,7 +112,7 @@ export function PacotesTab({ rid, podeEditar }: Props) {
     return (
       <div className="rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-4 text-sm">
         <p className="font-semibold text-rose-900 dark:text-rose-200 mb-1">
-          ⚠ Regras do Firestore não publicadas
+          <TriangleAlert size={14} className="inline align-[-2px] mr-1" />Regras do Firestore não publicadas
         </p>
         <code className="block mt-2 text-[12px] bg-white dark:bg-gray-900 px-3 py-2 rounded border border-rose-200 dark:border-rose-700 text-rose-900 dark:text-rose-200">
           firebase deploy --only firestore:rules --project gestaocentral
@@ -120,13 +121,13 @@ export function PacotesTab({ rid, podeEditar }: Props) {
     );
   }
   if (erro) {
-    return <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">⚠ {erro}</div>;
+    return <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800 flex items-center gap-1.5"><TriangleAlert size={14} className="shrink-0" /> {erro}</div>;
   }
 
   if (espacosAtivos.length === 0) {
     return (
       <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4 text-sm">
-        <p className="font-semibold text-amber-900 dark:text-amber-200">⚠ Cadastre um espaço primeiro</p>
+        <p className="font-semibold text-amber-900 dark:text-amber-200 inline-flex items-center gap-1.5"><TriangleAlert size={14} /> Cadastre um espaço primeiro</p>
         <p className="text-amber-800 dark:text-amber-300 mt-1 text-[13px]">
           Pacotes precisam estar vinculados a um espaço. Vai em <strong>Configurações</strong> e cadastra o seu primeiro espaço.
         </p>
@@ -210,7 +211,7 @@ function PacoteCard({
               )}
               {pacote.interno && (
                 <span className="text-[10px] uppercase font-semibold px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
-                  🔒 interno
+                  <span className="inline-flex items-center gap-1"><Lock size={11} /> interno</span>
                 </span>
               )}
             </div>
@@ -456,8 +457,8 @@ function PacoteEditor({
             }`}
           >
             {form.interno
-              ? "🔒 Interno — só aparece pra equipe montar proposta"
-              : "🌐 Público — cliente pode escolher no site"}
+              ? <span className="inline-flex items-center gap-1.5"><Lock size={13} /> Interno — só aparece pra equipe montar proposta</span>
+              : <span className="inline-flex items-center gap-1.5"><Globe size={13} /> Público — cliente pode escolher no site</span>}
           </button>
         </div>
       </div>
@@ -576,7 +577,7 @@ function PacoteEditor({
         <div className="mt-2 space-y-1.5">
           {(form.adicionais || []).map(a => (
             <div key={a.id} className="flex items-center gap-2 px-2 py-1.5 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 text-sm">
-              <span className="text-base">➕</span>
+              <Plus size={16} className="text-gray-500 shrink-0" />
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-gray-900 dark:text-gray-100">{a.nome}</div>
                 <div className="text-[11px] text-emerald-700 dark:text-emerald-400">
@@ -685,7 +686,7 @@ function CardapioPdfRow({
 }) {
   return (
     <div className="flex items-center gap-2 px-2 py-1.5 rounded bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800">
-      <span className="text-base">📄</span>
+      <FileText size={16} className="text-gray-500 shrink-0" />
       <input
         value={cardapio.nome}
         onChange={(e) => onNomeChange(e.target.value)}

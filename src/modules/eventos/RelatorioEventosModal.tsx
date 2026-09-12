@@ -3,6 +3,7 @@
 // faturamento, classificação (inbound/outbound), quem fez cada atividade, e a
 // comissão apurada por pessoa.
 import { useEffect, useMemo, useState } from "react";
+import { Download } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import type { LeadEvento } from "../../core/types";
@@ -105,7 +106,7 @@ export function RelatorioEventosModal({
           <Button variant="secondary" onClick={onClose}>Fechar</Button>
           {rel.detalhes.length > 0 && pdfUrl && (
             <a href={pdfUrl} download={`relatorio-eventos-${mesRef}.pdf`}>
-              <Button>⬇ Baixar PDF</Button>
+              <Button><span className="inline-flex items-center gap-1.5"><Download size={15} /> Baixar PDF</span></Button>
             </a>
           )}
         </div>

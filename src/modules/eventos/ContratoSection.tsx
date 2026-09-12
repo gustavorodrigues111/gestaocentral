@@ -1,6 +1,7 @@
 // Seção de CONTRATO do evento — gera o texto (modelo preenchido), permite
 // editar, gera o PDF e (Fase 4) envia pra assinatura no ClickSign.
 import { useEffect, useState } from "react";
+import { TriangleAlert, FileText, ReceiptText, MessageSquare, PenLine } from "lucide-react";
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -141,30 +142,30 @@ export function ContratoSection({ lead, podeEditar }: { lead: LeadEvento; podeEd
 
       {!dadosCasaOk && (
         <div className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-900/15 px-2.5 py-1.5 text-[12px] text-amber-800 dark:text-amber-300">
-          ⚠ Faltam os <strong>dados da empresa</strong> pro contrato — preencha em <strong>Comercial → Dados da empresa</strong>.
+          <TriangleAlert size={13} className="inline align-[-2px] mr-1" />Faltam os <strong>dados da empresa</strong> pro contrato — preencha em <strong>Comercial → Dados da empresa</strong>.
         </div>
       )}
 
       {podeEditar && (
         <div className="flex flex-wrap gap-2 items-center">
           <Button size="sm" variant="secondary" onClick={gerarModelo}>
-            {texto.trim() ? "↻ Regerar do modelo" : "📄 Gerar contrato"}
+            {texto.trim() ? "↻ Regerar do modelo" : <span className="inline-flex items-center gap-1.5"><FileText size={14} /> Gerar contrato</span>}
           </Button>
           {texto.trim() && (
             <Button size="sm" onClick={() => void gerarPdf()} disabled={gerandoPdf}>
-              {gerandoPdf ? "Gerando PDF…" : "🧾 Gerar PDF"}
+              {gerandoPdf ? "Gerando PDF…" : <span className="inline-flex items-center gap-1.5"><ReceiptText size={14} /> Gerar PDF</span>}
             </Button>
           )}
           {pdfUrl && (
             <>
-              <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">📄 abrir PDF</a>
+              <a href={pdfUrl} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"><FileText size={12} /> abrir PDF</a>
               <button type="button" onClick={() => void abrirWhatsapp(lead.restaurantId, "eventos", lead.cliente.whatsapp, lead.cliente.nome, "Segue o contrato do seu evento pra conferência. Qualquer dúvida estou à disposição! 🙌")}
-                className="text-xs text-emerald-700 dark:text-emerald-400 hover:underline">💬 enviar por WhatsApp</button>
+                className="text-xs text-emerald-700 dark:text-emerald-400 hover:underline inline-flex items-center gap-1"><MessageSquare size={12} /> enviar por WhatsApp</button>
             </>
           )}
           {texto.trim() && (
             <Button size="sm" variant="secondary" onClick={() => void enviarClickSign()} disabled={csBusy === "enviar"}>
-              {csBusy === "enviar" ? "Enviando…" : "✍️ Enviar pra assinatura (ClickSign)"}
+              {csBusy === "enviar" ? "Enviando…" : <span className="inline-flex items-center gap-1.5"><PenLine size={14} /> Enviar pra assinatura (ClickSign)</span>}
             </Button>
           )}
         </div>
@@ -172,7 +173,7 @@ export function ContratoSection({ lead, podeEditar }: { lead: LeadEvento; podeEd
 
       {lead.contrato?.clicksignEnvelopeId && (
         <div className="rounded-md border border-indigo-200 dark:border-indigo-800 bg-indigo-50/60 dark:bg-indigo-900/15 px-2.5 py-1.5 text-[12px] flex items-center gap-2 flex-wrap">
-          <span className="text-indigo-800 dark:text-indigo-300">✍️ ClickSign: <strong>{csStatus || "enviado"}</strong>{CLICKSIGN_SANDBOX ? " (sandbox)" : ""}</span>
+          <span className="text-indigo-800 dark:text-indigo-300 inline-flex items-center gap-1"><PenLine size={12} /> ClickSign: <strong>{csStatus || "enviado"}</strong>{CLICKSIGN_SANDBOX ? " (sandbox)" : ""}</span>
           <button type="button" onClick={() => void verificarStatus()} disabled={csBusy === "status"} className="text-indigo-600 dark:text-indigo-400 hover:underline">
             {csBusy === "status" ? "checando…" : "↻ atualizar status"}
           </button>

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { TriangleAlert, FolderKanban, BarChart3, Sun, Moon, Clock } from "lucide-react";
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -163,7 +164,7 @@ export function KanbanTab({ rid, podeEditar }: Props) {
   if (erro === "permission_denied") {
     return (
       <div className="rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-4 text-sm">
-        <p className="font-semibold text-rose-900 dark:text-rose-200 mb-1">⚠ Regras do Firestore não publicadas</p>
+        <p className="font-semibold text-rose-900 dark:text-rose-200 mb-1 inline-flex items-center gap-1.5"><TriangleAlert size={14} /> Regras do Firestore não publicadas</p>
         <p className="text-rose-800 dark:text-rose-300 text-[13px]">Rode no terminal:</p>
         <code className="block mt-2 text-[12px] bg-white dark:bg-gray-900 px-3 py-2 rounded border border-rose-200 dark:border-rose-700 text-rose-900 dark:text-rose-200">
           firebase deploy --only firestore:rules --project gestaocentral
@@ -172,7 +173,7 @@ export function KanbanTab({ rid, podeEditar }: Props) {
     );
   }
   if (erro) {
-    return <div className="rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-4 text-sm text-rose-800 dark:text-rose-300">⚠ {erro}</div>;
+    return <div className="rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-4 text-sm text-rose-800 dark:text-rose-300 flex items-center gap-1.5"><TriangleAlert size={14} className="shrink-0" /> {erro}</div>;
   }
 
   return (
@@ -265,7 +266,7 @@ export function KanbanTab({ rid, podeEditar }: Props) {
 
       {/* Histórico mensal — uma linha por mês; expande com os eventos do mês. */}
       <div className="mt-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
-        <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2">🗂️ Histórico</h3>
+        <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2 inline-flex items-center gap-1.5"><FolderKanban size={15} /> Histórico</h3>
         {mesesEventos.length === 0 ? (
           <p className="text-[12px] text-gray-500 dark:text-gray-400">Nenhum evento ainda.</p>
         ) : (
@@ -289,7 +290,7 @@ export function KanbanTab({ rid, podeEditar }: Props) {
                       onClick={() => setRelatorioMes(ref)}
                       className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline whitespace-nowrap"
                     >
-                      📊 Gerar relatório do mês
+                      <span className="inline-flex items-center gap-1.5"><BarChart3 size={13} /> Gerar relatório do mês</span>
                     </button>
                   </div>
                   {aberto && (
@@ -386,7 +387,7 @@ function LeadCardMini({
       </div>
       <div className="text-[11px] text-gray-600 dark:text-gray-400 mt-1 tabular-nums">
         {pad2(data.getDate())}/{pad2(data.getMonth() + 1)} ·{" "}
-        {lead.slot === "almoco" ? "🌞" : lead.slot === "jantar" ? "🌙" : "🕒"} ·{" "}
+        {lead.slot === "almoco" ? <Sun size={12} className="inline align-[-1px]" /> : lead.slot === "jantar" ? <Moon size={12} className="inline align-[-1px]" /> : <Clock size={12} className="inline align-[-1px]" />} ·{" "}
         {lead.numConvidados} pax
       </div>
       {pacote && <div className="text-[11px] text-indigo-700 dark:text-indigo-400 mt-0.5 truncate">{pacote.nome}</div>}
@@ -398,7 +399,7 @@ function LeadCardMini({
       <div className="flex items-center gap-1 mt-1.5 flex-wrap">
         {conflita && (
           <span className="text-[9px] uppercase font-bold px-1 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300">
-            ⚠ {doDia.length + 1} no dia
+            <TriangleAlert size={10} className="inline align-[-1px] mr-0.5" />{doDia.length + 1} no dia
           </span>
         )}
         {lead.origem === "publico" && (

@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { Lock, Diamond } from "lucide-react";
 import { collection, doc, onSnapshot, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -117,7 +118,7 @@ export function ComercialConfigTab({ rid }: Props) {
   if (!me?.isMaster) {
     return (
       <div className="rounded-xl bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4 text-sm text-amber-900 dark:text-amber-200">
-        🔒 Só master pode editar a lista de pessoas comerciais.
+        <Lock size={14} className="inline align-[-2px] mr-1" />Só master pode editar a lista de pessoas comerciais.
       </div>
     );
   }
@@ -280,7 +281,7 @@ export function ComercialConfigTab({ rid }: Props) {
           {/* INBOUND */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-bold text-gray-800 dark:text-gray-100">🔹 Inbound (cliente procurou)</span>
+              <span className="text-sm font-bold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5"><Diamond size={12} className="fill-sky-500 text-sky-500" /> Inbound (cliente procurou)</span>
               <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">máx {maxInbound.toLocaleString("pt-BR")}%</span>
             </div>
             <div className="space-y-2">
@@ -291,7 +292,7 @@ export function ComercialConfigTab({ rid }: Props) {
           {/* OUTBOUND */}
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-sm font-bold text-gray-800 dark:text-gray-100">🔹 Outbound (captação ativa)</span>
+              <span className="text-sm font-bold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5"><Diamond size={12} className="fill-sky-500 text-sky-500" /> Outbound (captação ativa)</span>
               <span className="text-[11px] font-semibold text-gray-500 dark:text-gray-400">máx {maxOutbound.toLocaleString("pt-BR")}%</span>
             </div>
             <div className="space-y-2">

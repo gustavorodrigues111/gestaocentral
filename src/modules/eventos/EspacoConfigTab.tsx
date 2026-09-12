@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { TriangleAlert } from "lucide-react";
 import { collection, doc, onSnapshot, query, setDoc, where, deleteDoc, getDocs } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -95,7 +96,7 @@ export function EspacoConfigTab({ rid, podeEditar }: Props) {
     return (
       <div className="rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-4 text-sm">
         <p className="font-semibold text-rose-900 dark:text-rose-200 mb-1">
-          ⚠ Regras do Firestore não publicadas
+          <TriangleAlert size={14} className="inline align-[-2px] mr-1" />Regras do Firestore não publicadas
         </p>
         <p className="text-rose-800 dark:text-rose-300 text-[13px]">
           Rode no terminal:
@@ -107,7 +108,7 @@ export function EspacoConfigTab({ rid, podeEditar }: Props) {
     );
   }
   if (erro) {
-    return <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">⚠ {erro}</div>;
+    return <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800 flex items-center gap-1.5"><TriangleAlert size={14} className="shrink-0" /> {erro}</div>;
   }
 
   return (
