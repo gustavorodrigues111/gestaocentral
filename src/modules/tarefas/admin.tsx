@@ -1,4 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
+import { Folder, Bot, Inbox, Lock, Users, Trash2 } from "lucide-react";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { useTodasPessoas, usePessoasAtivasLista } from "../../core/pessoas/PessoasContext";
@@ -66,7 +67,7 @@ export function AdminView({ projetos, subprojetos, pessoaId }: {
               : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
           }`}
         >
-          📁 Projetos
+          <span className="inline-flex items-center gap-1.5"><Folder size={14} /> Projetos</span>
         </button>
         <button
           onClick={() => setAdminTab("automacoes")}
@@ -76,7 +77,7 @@ export function AdminView({ projetos, subprojetos, pessoaId }: {
               : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
           }`}
         >
-          🤖 Automações
+          <span className="inline-flex items-center gap-1.5"><Bot size={14} /> Automações</span>
         </button>
       </div>
 
@@ -91,7 +92,7 @@ export function AdminView({ projetos, subprojetos, pessoaId }: {
           Configuração de áreas e projetos do gestor. Mexa com cuidado — afeta todas as tarefas.
         </p>
         <div className="flex gap-2 flex-wrap sm:flex-nowrap sm:flex-shrink-0">
-          <Button size="sm" variant="ghost" onClick={() => setImportando(true)}>📥 Importar CSV</Button>
+          <Button size="sm" variant="ghost" onClick={() => setImportando(true)}><Inbox size={14} />Importar CSV</Button>
           <Button size="sm" onClick={() => setCriandoProjeto(true)}>+ Nova Área</Button>
         </div>
       </div>
@@ -133,7 +134,7 @@ export function AdminView({ projetos, subprojetos, pessoaId }: {
                         ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
                         : "bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300"
                   }`}>
-                    {isPrivado ? "🔒 Privado" : isAberto ? "👥 Todo escritório" : v}
+                    {isPrivado ? <><Lock size={11} /> Privado</> : isAberto ? <><Users size={11} /> Todo escritório</> : v}
                   </span>
                   {isPrivado && (
                     nomesAutorizados.length === 0 ? (
@@ -151,7 +152,7 @@ export function AdminView({ projetos, subprojetos, pessoaId }: {
               <Button size="sm" variant="ghost" onClick={() => setEditandoId(editandoId === p.id ? null : p.id)}>
                 {editandoId === p.id ? "Fechar" : "Editar"}
               </Button>
-              <Button size="sm" variant="ghost" onClick={() => deletarProjeto(p)}>🗑️</Button>
+              <Button size="sm" variant="ghost" onClick={() => deletarProjeto(p)}><Trash2 size={14} /></Button>
             </div>
 
             {editandoId === p.id && (
@@ -660,7 +661,7 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
             className="mt-0.5"
           />
           <div className="flex-1">
-            <div className="font-medium text-amber-900 dark:text-amber-200">🔒 Bloquear criação manual</div>
+            <div className="inline-flex items-center gap-1.5 font-medium text-amber-900 dark:text-amber-200"><Lock size={14} /> Bloquear criação manual</div>
             <div className="text-[11px] text-amber-800 dark:text-amber-300 mt-0.5">
               Quando ativo, esse projeto não aceita "+ Nova tarefa" no app — só recebe
               tarefas geradas por hooks de outros módulos (Admissão, Exames, etc).

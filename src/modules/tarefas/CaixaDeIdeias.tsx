@@ -4,6 +4,7 @@
 // usuário (chip identificando cada uma) e filtra entre Minhas / De outros.
 // Privadas seguem a mesma regra do Banco (só o dono e o master veem).
 import { useEffect, useMemo, useState } from "react";
+import { Lightbulb, Lock, Building2, User, Users, PenLine, Pencil } from "lucide-react";
 import type { Ideia, IdeiaStatus } from "../../core/types";
 import { ouvirIdeiasVisiveis, backfillVisibilidade } from "../ideias/ideiasData";
 import { IdeiaModal } from "../ideias/IdeiaModal";
@@ -44,7 +45,7 @@ export function CaixaIdeiasFaixa({ rids, ridAtivo, meId, isMaster, restaurants, 
   return (
     <div className="mt-3 rounded-2xl border border-amber-200/80 dark:border-amber-800/50 bg-amber-50/80 dark:bg-amber-900/10 p-3 shadow-[0_0_35px_-8px_rgba(251,191,36,0.55)] dark:shadow-[0_0_35px_-10px_rgba(251,191,36,0.35)]">
       <div className="flex items-center gap-2 flex-wrap mb-2">
-        <span className="text-sm font-bold text-amber-900 dark:text-amber-200">💡 Caixa de ideias</span>
+        <span className="inline-flex items-center gap-1.5 text-sm font-bold text-amber-900 dark:text-amber-200"><Lightbulb size={15} /> Caixa de ideias</span>
         <span className="text-[11px] text-amber-700/70 dark:text-amber-300/60">rascunhos do que fazer — sem prazo nem responsável</span>
         <span className="flex-1" />
         {ridParaNova && <button type="button" onClick={() => setEditing("new")} className="text-xs font-semibold px-2.5 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white">+ Nova ideia</button>}
@@ -67,10 +68,10 @@ export function CaixaIdeiasFaixa({ rids, ridAtivo, meId, isMaster, restaurants, 
               title="Arraste pra um dia do calendário pra virar tarefa"
               className="group relative rounded-lg border border-amber-200/70 dark:border-amber-900/40 bg-white dark:bg-gray-900 p-2 hover:border-amber-400 dark:hover:border-amber-600 transition-colors cursor-grab active:cursor-grabbing">
               <button type="button" onClick={() => setEditing(i)} className="w-full text-left">
-                <div className="text-[12px] font-medium text-gray-900 dark:text-gray-100 line-clamp-2 leading-snug">{i.visibilidade === "privada" && <span title="privada" className="text-indigo-600 dark:text-indigo-400">🔒 </span>}{i.titulo}</div>
+                <div className="text-[12px] font-medium text-gray-900 dark:text-gray-100 line-clamp-2 leading-snug">{i.visibilidade === "privada" && <span title="privada" className="text-indigo-600 dark:text-indigo-400 inline-flex align-[-1px] mr-1"><Lock size={11} /></span>}{i.titulo}</div>
                 {(multiEmpresa || i.categoria) && (
                   <div className="flex items-center gap-1 flex-wrap mt-1">
-                    {multiEmpresa && <span className="text-[9px] px-1 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 truncate max-w-full">🏢 {nomeDe[i.restaurantId] || "—"}</span>}
+                    {multiEmpresa && <span className="inline-flex items-center gap-1 text-[9px] px-1 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 truncate max-w-full"><Building2 size={9} className="shrink-0" /> {nomeDe[i.restaurantId] || "—"}</span>}
                     {i.categoria && <span className="text-[9px] px-1 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">{i.categoria}</span>}
                   </div>
                 )}
@@ -136,13 +137,13 @@ export function CaixaDeIdeias({ rids, ridAtivo, meId, isMaster, restaurants, pod
     <div>
       <button type="button" onClick={onVoltar} className="mb-2 text-[12px] font-medium text-indigo-600 dark:text-indigo-300 hover:underline">← Minhas tarefas</button>
       <div className="mb-3 flex items-baseline gap-2 flex-wrap">
-        <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">💡 Caixa de ideias</h2>
+        <h2 className="inline-flex items-center gap-1.5 text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100"><Lightbulb size={20} /> Caixa de ideias</h2>
         <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">rascunhos do que fazer — ainda sem tarefa, prazo ou responsável</span>
       </div>
 
       <div className="flex items-center gap-2 flex-wrap mb-3">
-        {([["minhas", `🙋 Minhas · ${cont.minhas}`], ["outros", `👥 De outros · ${cont.outros}`], ["todas", `Todas · ${cont.todas}`]] as const).map(([k, l]) => (
-          <button key={k} type="button" onClick={() => setFiltro(k)} className={`text-xs px-3 py-1.5 rounded-full border ${filtro === k ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>{l}</button>
+        {([["minhas", "Minhas", cont.minhas, User], ["outros", "De outros", cont.outros, Users], ["todas", "Todas", cont.todas, null]] as const).map(([k, label, n, Icon]) => (
+          <button key={k} type="button" onClick={() => setFiltro(k)} className={`text-xs px-3 py-1.5 rounded-full border ${filtro === k ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}><span className="inline-flex items-center gap-1">{Icon && <Icon size={12} />}{label} · {n}</span></button>
         ))}
         <div className="flex-1" />
         {ridParaNova && <button type="button" onClick={() => setEditing("new")} className="text-sm font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white">+ Nova ideia</button>}
@@ -166,12 +167,12 @@ export function CaixaDeIdeias({ rids, ridAtivo, meId, isMaster, restaurants, pod
               <div key={i.id} className={`rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 ${consumida ? "opacity-60" : ""}`}>
                 <div className="flex items-start gap-2">
                   <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{i.visibilidade === "privada" && <span title="privada" className="text-indigo-600 dark:text-indigo-400">🔒 </span>}{i.titulo}</div>
+                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{i.visibilidade === "privada" && <span title="privada" className="text-indigo-600 dark:text-indigo-400 inline-flex align-[-2px] mr-1"><Lock size={12} /></span>}{i.titulo}</div>
                     {i.descricao && <p className="text-[13px] text-gray-600 dark:text-gray-300 mt-0.5 whitespace-pre-wrap line-clamp-3">{i.descricao}</p>}
                     <div className="flex items-center gap-1.5 flex-wrap mt-1.5 text-[11px] text-gray-500">
-                      {multiEmpresa && <span className="px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">🏢 {nomeDe[i.restaurantId] || "empresa"}</span>}
+                      {multiEmpresa && <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300"><Building2 size={11} /> {nomeDe[i.restaurantId] || "empresa"}</span>}
                       {i.categoria && <span className="px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">{i.categoria}</span>}
-                      {!minha && i.criadoPorNome && <span>✍️ {i.criadoPorNome}</span>}
+                      {!minha && i.criadoPorNome && <span className="inline-flex items-center gap-1"><PenLine size={11} /> {i.criadoPorNome}</span>}
                       {consumida && <span className="text-amber-600">{i.status === "puxada_tarefa" ? "→ virou tarefa" : "descartada"}</span>}
                       {i.criadoEm && <span>· {new Date(i.criadoEm).toLocaleDateString("pt-BR")}</span>}
                     </div>
@@ -180,7 +181,7 @@ export function CaixaDeIdeias({ rids, ridAtivo, meId, isMaster, restaurants, pod
                 {!consumida && (
                   <div className="flex items-center gap-1.5 flex-wrap pt-2 mt-2 border-t border-gray-100 dark:border-gray-800">
                     <button type="button" onClick={() => onVirarTarefa(i)} className="text-xs font-medium px-2.5 py-1 rounded-lg bg-indigo-600 text-white">→ Virar tarefa</button>
-                    <button type="button" onClick={() => setEditing(i)} className="text-xs px-2 py-1 rounded-lg text-gray-400 hover:text-gray-700" title="Editar ideia">✎</button>
+                    <button type="button" onClick={() => setEditing(i)} className="text-xs px-2 py-1 rounded-lg text-gray-400 hover:text-gray-700" title="Editar ideia"><Pencil size={13} /></button>
                   </div>
                 )}
               </div>

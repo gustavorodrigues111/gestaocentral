@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { Navigate } from "react-router-dom";
-import { Inbox, Layers, Globe, Trash2, Settings, ChevronDown, FolderKanban, Eye } from "lucide-react";
+import { Inbox, Layers, Globe, Trash2, Settings, ChevronDown, FolderKanban, Eye, Search } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
@@ -86,7 +86,7 @@ export function TarefasPage() {
   const filtrar = (ts: Tarefa[]) => { const q = busca.trim().toLowerCase(); return q ? ts.filter(t => (t.titulo || "").toLowerCase().includes(q) || (t.descricao || "").toLowerCase().includes(q)) : ts; };
   const buscaInput = (
     <div className="flex items-center gap-1.5 flex-1 min-w-[160px] max-w-[380px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 py-1.5">
-      <span className="text-gray-400 text-sm">🔍</span>
+      <span className="text-gray-400 inline-flex"><Search size={15} /></span>
       <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar tarefa…" className="flex-1 bg-transparent text-sm outline-none text-gray-800 dark:text-gray-100 placeholder:text-gray-400" />
       {busca && <button type="button" onClick={() => setBusca("")} className="text-gray-400 hover:text-gray-600 text-sm">✕</button>}
     </div>
@@ -445,7 +445,7 @@ export function TarefasPage() {
       {tab === "todas" && isMaster && (
         <div>
           <div className="mb-2.5 flex items-center gap-x-3 gap-y-2 flex-wrap">
-            <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">🌐 Todas as tarefas</h2>
+            <h2 className="inline-flex items-center gap-1.5 text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100"><Globe size={20} /> Todas as tarefas</h2>
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{todasTarefas.length} tarefa(s) · {todasTarefas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
             <button type="button" onClick={() => setTab("minhas")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">← Minhas</button>
             <div className="flex-1" />
