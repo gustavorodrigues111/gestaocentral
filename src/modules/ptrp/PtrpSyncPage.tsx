@@ -48,6 +48,7 @@ export function PtrpSyncPage() {
   const { can } = useCanAcao(activeRestaurant?.id || "");
   const isMaster = !!me?.isMaster;
   const podeConferir = isMaster || can("ponto", "conferir");
+  const podeValidar = isMaster || can("ponto", "validar");
   const podeBanco = isMaster || can("ponto", "banco");
   const podeSincronizar = isMaster || can("ponto", "sincronizar");
   const podeRegras = isMaster || can("ponto", "regras");
@@ -56,12 +57,13 @@ export function PtrpSyncPage() {
   const [loading, setLoading] = useState(true);
   const [rodando, setRodando] = useState<string | null>(null);   // "*" = geral; ou empresaKey
   const [msg, setMsg] = useState("");
-  const [aba, setAba] = useState<"conferencia" | "banco" | "config">("conferencia");
+  const [aba, setAba] = useState<"conferencia" | "validar" | "banco" | "config">("conferencia");
   const [subAba, setSubAba] = useState<"regras" | "sync" | "mapeamento">("regras");
   const [desdeInput, setDesdeInput] = useState("");
   // Top-abas (Conferência · Banco · Configurações); a efetiva é a 1ª válida.
   const abasPermitidas = [
     ...(podeConferir ? [["conferencia", "📊 Conferência"] as const] : []),
+    ...(podeValidar ? [["validar", "⚖️ Exceções a validar"] as const] : []),
     ...(podeBanco ? [["banco", "🏦 Banco de horas"] as const] : []),
     ...(podeConfig ? [["config", "⚙️ Configurações"] as const] : []),
   ];
@@ -133,7 +135,7 @@ export function PtrpSyncPage() {
         ))}
       </div>
 
-      {abaEfetiva === "conferencia" ? <PtrpApuracaoTab /> : abaEfetiva === "banco" ? <PtrpApuracaoTab mode="banco" /> : (
+      {abaEfetiva === "conferencia" ? <PtrpApuracaoTab /> : abaEfetiva === "validar" ? <PtrpApuracaoTab mode="validar" /> : abaEfetiva === "banco" ? <PtrpApuracaoTab mode="banco" /> : (
       <>
       {/* Configurações → sub-abas */}
       <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">

@@ -126,7 +126,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     if (moduleId === "ptrp") {
       if (!modulosAtivos.includes("ptrp")) return false;
       if (pessoa.isMaster) return true;
-      return canAcaoRid("ponto", "conferir") || canAcaoRid("ponto", "banco") || canAcaoRid("ponto", "sincronizar") || canAcaoRid("ponto", "regras");
+      return canAcaoRid("ponto", "conferir") || canAcaoRid("ponto", "banco") || canAcaoRid("ponto", "sincronizar") || canAcaoRid("ponto", "regras") || canAcaoRid("ponto", "validar");
     }
     if (!modulosAtivos.includes(moduleId)) return false;
     if (pessoa.isMaster) return true;

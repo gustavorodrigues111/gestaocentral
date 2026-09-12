@@ -56,7 +56,10 @@ export type PtrpEscalaMes = {
 
 // ─── Ajuste (tratamento) — Portaria 671: a batida original é IMUTÁVEL; todo
 // tratamento é um LANÇAMENTO adicional com tipo/motivo/autor/timestamp. ────────
-export type PtrpAjusteTipo = "inclusao" | "desconsideracao" | "abono" | "atestado" | "folga" | "ferias" | "afastamento";
+export type PtrpAjusteTipo = "inclusao" | "desconsideracao" | "abono" | "atestado" | "folga" | "ferias" | "afastamento"
+  // Validação de exceção pelo líder: "atraso_justificado" abona o atraso (zera no
+  // saldo e some da trilha); "atraso_confirmado" só marca como validado.
+  | "atraso_justificado" | "atraso_confirmado";
 export type PtrpAjuste = {
   id: string;
   empresaKey: string;

@@ -98,7 +98,7 @@ function turnoPrevisto(emp: Empregado, date: string, statusEscala?: string): { k
   return { kind: "trabalho", turno: turnoDoHd() };
 }
 
-export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia" | "banco" | "comparar" } = {}) {
+export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia" | "banco" | "comparar" | "validar" } = {}) {
   const { pessoa: me } = useAuth();
   // Segue o restaurante ATIVO do sistema (seletor global), como a Análise de Ponto.
   const { activeRestaurant } = useRestaurant();
@@ -272,6 +272,11 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       const outs = blocos.map(b => b.dateOut).filter((x): x is number => typeof x === "number");
       const primeiraMs = ins.length ? Math.min(...ins) : null;
       const ultimaMs = outs.length ? Math.max(...outs) : null;
+      // Atraso VALIDADO pelo líder como "não foi atraso" (autorizado) → abona os
+      // minutos (zera no saldo) e some a exceção de atraso da trilha.
+      if (!ehHoje && atrasoMin > 0 && ajustesDia.some(a => a.tipo === "atraso_justificado")) {
+        abonadoMin += atrasoMin; saldoMes += atrasoMin; excecoes = excecoes.filter(e => e !== "atraso"); atrasoMin = 0;
+      }
       linhas.push({ data, bs, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo, ehHoje });
     }
     // Interjornada: descanso entre a última saída de um dia e a 1ª entrada do dia
@@ -599,6 +604,44 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   }, [resultados]);
   const sel = resultados.find(x => x.emp.id === aberto) || null;
 
+  // ── Exceções a validar (líder da área) ──────────────────────────────────────
+  // ptrpValidadores/{empresa} = { mapa: { [area]: pessoaId } } — quem valida cada área.
+  const [validadores, setValidadores] = useState<Record<string, string>>({});
+  useEffect(() => { if (!shortCode) return; return onSnapshot(doc(db, "ptrpValidadores", shortCode), d => setValidadores((d.exists() ? (d.data() as { mapa?: Record<string, string> }).mapa : {}) || {})); }, [shortCode]);
+  const ehMasterLocal = !!me?.isMaster;
+  // Atrasos ainda NÃO validados, filtrados pela(s) área(s) do usuário (master vê tudo).
+  const atrasosAValidar = useMemo(() => {
+    const out: { emp: Empregado; area: string; l: Linha }[] = [];
+    for (const x of resultados) {
+      if (!ehMasterLocal && validadores[x.area] !== me?.id) continue;
+      for (const l of x.r.linhas) {
+        if (l.ehFuturo || l.ehHoje || !l.excecoes.includes("atraso")) continue;
+        if (l.ajustesDia.some(a => a.tipo === "atraso_confirmado" || a.tipo === "atraso_justificado")) continue;
+        out.push({ emp: x.emp, area: x.area, l });
+      }
+    }
+    return out.sort((a, b) => a.emp.nome.localeCompare(b.emp.nome) || a.l.data.localeCompare(b.l.data));
+  }, [resultados, validadores, ehMasterLocal, me?.id]);
+  const areasComEmpregado = useMemo(() => [...new Set(resultados.map(x => x.area))].sort(), [resultados]);
+  const [valBusy, setValBusy] = useState("");
+  async function validarAtraso(emp: Empregado, l: Linha, justificar: boolean) {
+    if (!me) return;
+    let motivo = "";
+    if (justificar) { motivo = (window.prompt("Por que não foi atraso? (ex.: líder pediu pra entrar mais tarde)") || "").trim(); if (!motivo) return; }
+    setValBusy(`${emp.id}_${l.data}`);
+    try {
+      await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({
+        empresaKey: shortCode, colaboradorId: emp.id, cpf: soDig(emp.cpf), data: l.data,
+        tipo: justificar ? "atraso_justificado" : "atraso_confirmado",
+        motivo: justificar ? motivo : "atraso confirmado pelo líder",
+        autor: { id: me.id, nome: me.nome }, criadoEm: new Date().toISOString(), cancelado: false,
+      }));
+    } catch { /* noop */ } finally { setValBusy(""); }
+  }
+  async function setValidadorArea(area: string, pessoaId: string) {
+    await setDoc(doc(db, "ptrpValidadores", shortCode), sanitizeForFirestore({ mapa: { ...validadores, [area]: pessoaId }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
+  }
+
   // Banco de horas: saldo acumulado (Σ movimentos) e extrato por colaborador.
   const saldoAcumPorColab = useMemo(() => { const m = new Map<string, number>(); for (const mv of bancoMovs) m.set(mv.colaboradorId, (m.get(mv.colaboradorId) || 0) + (mv.saldoMinutos || 0)); return m; }, [bancoMovs]);
   const movsPorColab = useMemo(() => { const m = new Map<string, PtrpBancoMov[]>(); for (const mv of bancoMovs) { const a = m.get(mv.colaboradorId) || []; a.push(mv); m.set(mv.colaboradorId, a); } for (const a of m.values()) a.sort((x, y) => x.competencia.localeCompare(y.competencia)); return m; }, [bancoMovs]);
@@ -706,6 +749,57 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
               {comparacao.semCpfApp.length > 0 && <div className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">+ {comparacao.semCpfApp.length} no app sem CPF (não dá pra casar).</div>}
             </div>
             <div className="sm:col-span-2 text-[11px] text-gray-400">✓ {comparacao.ambos} em ambos os cadastros.</div>
+          </div>
+        )}
+      </div>
+      )}
+
+      {mode === "validar" && (
+      <div className="mb-3">
+        <div className="flex items-baseline gap-2 flex-wrap mb-2">
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">⚖️ Exceções a validar · {labelComp(comp)}</span>
+          <span className="text-[11px] text-gray-500">Confirme se cada atraso foi mesmo atraso. <b>"Não foi"</b> (autorizado pelo líder) zera o atraso no saldo e na trilha.</span>
+        </div>
+        {ehMasterLocal && (
+          <details className="mb-3 rounded-lg border border-gray-200 dark:border-gray-800 p-2.5">
+            <summary className="text-[12px] font-semibold text-gray-600 dark:text-gray-300 cursor-pointer">⚙️ Responsáveis por área (quem valida cada área)</summary>
+            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {areasComEmpregado.map(area => (
+                <label key={area} className="flex items-center gap-2 text-[12px]">
+                  <span className="w-28 truncate text-gray-600 dark:text-gray-300" title={area}>{area}</span>
+                  <select value={validadores[area] || ""} onChange={e => void setValidadorArea(area, e.target.value)} className="flex-1 px-2 py-1 text-[12px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+                    <option value="">— ninguém —</option>
+                    {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                  </select>
+                </label>
+              ))}
+            </div>
+          </details>
+        )}
+        {atrasosAValidar.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nenhum atraso a validar {ehMasterLocal ? "no período." : "na sua área neste período."}</div>
+        ) : (
+          <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-x-auto">
+            <table className="w-full text-[12px] min-w-[600px] [&_td]:px-2 [&_td]:py-1.5 [&_th]:px-2">
+              <thead><tr className="text-[10px] uppercase tracking-wide text-gray-400 text-left border-b border-gray-200 dark:border-gray-800">
+                <th className="py-1.5">Empregado</th><th>Área</th><th>Dia</th><th>Previsto</th><th className="text-right">Atraso</th><th className="text-right">Validar</th>
+              </tr></thead>
+              <tbody>
+                {atrasosAValidar.map(({ emp, area, l }) => { const busy = valBusy === `${emp.id}_${l.data}`; return (
+                  <tr key={`${emp.id}_${l.data}`} className="border-b border-gray-50 dark:border-gray-800/40">
+                    <td className="font-medium text-gray-700 dark:text-gray-200">{emp.nome}</td>
+                    <td className="text-gray-500">{area}</td>
+                    <td className="tabular-nums">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
+                    <td className="text-gray-500 tabular-nums">{l.previstoTxt}</td>
+                    <td className="text-right tabular-nums text-rose-600 dark:text-rose-400">{hm(l.atrasoMin)}</td>
+                    <td className="text-right whitespace-nowrap">
+                      <button type="button" disabled={busy} onClick={() => void validarAtraso(emp, l, false)} className="text-[11px] px-2 py-1 rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 mr-1">Foi atraso</button>
+                      <button type="button" disabled={busy} onClick={() => void validarAtraso(emp, l, true)} className="text-[11px] px-2 py-1 rounded border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40">Não foi</button>
+                    </td>
+                  </tr>
+                ); })}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
