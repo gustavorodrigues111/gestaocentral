@@ -12,8 +12,19 @@ export function AppShell({ children }: { children?: ReactNode }) {
   // gigante atrapalha mais do que ajuda na primeira impressão.
   const [sidebarOpen, setSidebarOpen] = useState(() => {
     if (typeof window === "undefined") return true;
-    return window.matchMedia("(min-width: 768px)").matches;
+    const isDesktop = window.matchMedia("(min-width: 768px)").matches;
+    if (!isDesktop) return false; // mobile começa recolhido (drawer)
+    // Desktop: respeita a preferência salva de recolher/expandir o menu.
+    try { const v = localStorage.getItem("sidebarOpen"); if (v !== null) return v === "1"; } catch { /* ignore */ }
+    return true;
   });
+
+  // Persiste a preferência SÓ no desktop (no mobile o toggle é drawer efêmero).
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    if (!window.matchMedia("(min-width: 768px)").matches) return;
+    try { localStorage.setItem("sidebarOpen", sidebarOpen ? "1" : "0"); } catch { /* ignore */ }
+  }, [sidebarOpen]);
 
   // Roda 1x ao montar — aplica mudanças que estavam agendadas pra hoje ou antes
   useEffect(() => {
@@ -37,7 +48,11 @@ export function AppShell({ children }: { children?: ReactNode }) {
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
           <Header onToggleSidebar={() => setSidebarOpen(s => !s)} />
           <main className="flex-1 overflow-auto p-6">
-            {children || <Outlet />}
+            {/* Moldura ÚNICA de conteúdo — mesma largura em todos os módulos.
+                Elástica: cresce quando o menu é recolhido. */}
+            <div className={`mx-auto w-full transition-[max-width] duration-200 ${sidebarOpen ? "max-w-6xl" : "max-w-[100rem]"}`}>
+              {children || <Outlet />}
+            </div>
           </main>
         </div>
       </div>

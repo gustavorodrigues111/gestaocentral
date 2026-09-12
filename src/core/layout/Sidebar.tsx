@@ -160,8 +160,8 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         fixed md:static inset-y-0 left-0 z-40
         w-60 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-800
         flex flex-col
-        transform transition-transform md:transform-none
-        ${open ? "translate-x-0" : "-translate-x-full md:translate-x-0"}
+        transform transition-transform md:transition-[width,transform] md:transform-none
+        ${open ? "translate-x-0 md:w-60" : "-translate-x-full md:translate-x-0 md:w-0 md:overflow-hidden md:border-r-0"}
       `}>
         {/* Topo FIXO: marca + seletor de restaurante (rola só os módulos abaixo) */}
         <div className="flex-none px-3 pt-3 pb-2.5 border-b border-gray-100 dark:border-gray-800">

@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
 import { MODULES } from "../../config/modules";
 import { ModuleIcon } from "../ui/ModuleIcon";
+import { PanelLeft } from "lucide-react";
 import { APP_COMMIT, APP_BUILD_DATE, APP_VERSION_LABEL } from "../version";
 
 // Nome + descrição do módulo atual a partir da rota — mostrado no header
@@ -47,6 +48,14 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
     <header className="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center px-3 sm:px-4 gap-2 sm:gap-4 [overflow-x:clip] relative z-30">
       <button onClick={onToggleSidebar} className="md:hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 flex-shrink-0 text-xl leading-none">
         ☰
+      </button>
+      {/* Recolher / expandir o menu lateral (desktop) — amplia a moldura. */}
+      <button
+        onClick={onToggleSidebar}
+        title="Recolher / expandir o menu"
+        className="hidden md:inline-flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 flex-shrink-0 -ml-1 mr-1 p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
+      >
+        <PanelLeft size={18} />
       </button>
 
       <div className="flex items-baseline gap-2 min-w-0">
