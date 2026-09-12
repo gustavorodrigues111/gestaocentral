@@ -7,6 +7,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
 import { addDoc, collection, onSnapshot, query, where } from "firebase/firestore";
+import { TriangleAlert, Building2, Briefcase, User, PenLine, Clock, FileText, Settings } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -37,14 +38,14 @@ const TRAP: Record<string, string> = {
   "contrato-hibrido": "Híbrido tem que estar escrito, com ajuda de custo/equipamento previstos. Registrar como presencial e deixar em casa gera passivo.",
 };
 
-function Bloco({ icon, titulo, tag, tagCor, children }: { icon: string; titulo: string; tag?: string; tagCor?: "ok" | "ask"; children: React.ReactNode }) {
+function Bloco({ icon, titulo, tag, tagCor, children }: { icon: React.ReactNode; titulo: string; tag?: string; tagCor?: "ok" | "ask"; children: React.ReactNode }) {
   const cor = tagCor === "ask"
     ? "text-amber-700 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300"
     : "text-emerald-700 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-300";
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
       <div className="flex items-center gap-2 px-3.5 py-2 bg-gray-50 dark:bg-gray-900/50 border-b border-gray-200 dark:border-gray-800">
-        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">{icon} {titulo}</span>
+        <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5">{icon} {titulo}</span>
         {tag && <span className={`ml-auto text-[10px] font-semibold uppercase tracking-wide px-2 py-0.5 rounded-full ${cor}`}>{tag}</span>}
       </div>
       <div className="p-3.5">{children}</div>
@@ -324,7 +325,7 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
               <div className="text-[12.5px] text-gray-600 dark:text-gray-300 mt-1.5">{decisao.motivo} <span className="font-mono text-gray-400">· {modelo || decisao.modelo}</span></div>
               {TRAP[modelo || decisao.modelo] && (
                 <div className="flex gap-2 items-start text-[12.5px] text-amber-900 dark:text-amber-200 bg-amber-100/70 dark:bg-amber-900/25 border border-amber-300 dark:border-amber-900/50 rounded-lg px-3 py-2.5 mt-3">
-                  <span>⚠️</span><span>{TRAP[modelo || decisao.modelo]}</span>
+                  <span className="shrink-0"><TriangleAlert size={14} /></span><span>{TRAP[modelo || decisao.modelo]}</span>
                 </div>
               )}
               <div className="mt-4 flex items-center gap-2 flex-wrap">
@@ -347,7 +348,7 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <Bloco icon="🏢" titulo="Empresa" tag={empresaSel ? "atual do sistema" : undefined} tagCor="ok">
+            <Bloco icon={<Building2 size={14} />} titulo="Empresa" tag={empresaSel ? "atual do sistema" : undefined} tagCor="ok">
               {empresaSel ? (
                 <div>
                   <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{empresaSel.nome}</div>
@@ -361,7 +362,7 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
               )}
             </Bloco>
 
-            <Bloco icon="💼" titulo="Cargo" tag={cargoAdmId ? (docCargoOk ? "da admissão · configurado" : "da admissão") : "do catálogo"} tagCor={cargoAdmId && !docCargoOk ? "ask" : "ok"}>
+            <Bloco icon={<Briefcase size={14} />} titulo="Cargo" tag={cargoAdmId ? (docCargoOk ? "da admissão · configurado" : "da admissão") : "do catálogo"} tagCor={cargoAdmId && !docCargoOk ? "ask" : "ok"}>
               {cargoAdmId ? (
                 <div>
                   <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{docCargo?.funcao || cargoApp?.nome || "Cargo da admissão"}</div>
@@ -371,21 +372,21 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
                     </div>
                   ) : (
                     <div className="mt-1.5 text-[12px] text-amber-700 dark:text-amber-300">
-                      Esse cargo ainda não tem dados de contrato (CBO, gorjeta média, atribuições). Configure na aba <strong>⚙️ Cargos p/ contrato</strong> — o contrato sai sem esses campos até lá.
+                      Esse cargo ainda não tem dados de contrato (CBO, gorjeta média, atribuições). Configure na aba <strong className="inline-flex items-center gap-1"><Settings size={12} /> Cargos p/ contrato</strong> — o contrato sai sem esses campos até lá.
                     </div>
                   )}
                   {docCargoOk && docCargoFaltas.length > 0 && (
                     <div className="mt-1.5 text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-2.5 py-1.5">
-                      ⚠ Falta preencher <strong>{docCargoFaltas.join(" e ")}</strong> deste cargo — o contrato sai com esse(s) campo(s) EM BRANCO. Preencha em <strong>⚙️ Cargos p/ contrato</strong>.
+                      <span className="inline-flex items-center gap-1"><TriangleAlert size={12} className="shrink-0" /> Falta preencher <strong>{docCargoFaltas.join(" e ")}</strong> deste cargo</span> — o contrato sai com esse(s) campo(s) EM BRANCO. Preencha em <strong className="inline-flex items-center gap-1"><Settings size={12} /> Cargos p/ contrato</strong>.
                     </div>
                   )}
                   {horarioAdm ? (
                     <div className="mt-1.5 text-[12px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/15 border border-emerald-200 dark:border-emerald-800 rounded-lg px-2.5 py-1.5">
-                      🕐 <strong>Horário (da admissão):</strong> {horarioAdm}
+                      <span className="inline-flex items-center gap-1"><Clock size={12} className="shrink-0" /> <strong>Horário (da admissão):</strong></span> {horarioAdm}
                     </div>
                   ) : horarioFalta ? (
                     <div className="mt-1.5 text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-2.5 py-1.5">
-                      ⚠ Essa admissão não tem <strong>horário de trabalho</strong> cadastrado — o contrato sai sem a jornada. Preencha os horários na <strong>Admissão</strong> desse candidato.
+                      <span className="inline-flex items-center gap-1"><TriangleAlert size={12} className="shrink-0" /> Essa admissão não tem <strong>horário de trabalho</strong> cadastrado</span> — o contrato sai sem a jornada. Preencha os horários na <strong>Admissão</strong> desse candidato.
                     </div>
                   ) : null}
                   <input placeholder="Sobrescrever salário (opcional)" value={salario} onChange={e => setSalario(e.target.value)} className="mt-2 w-full px-3 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
@@ -408,7 +409,7 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
             </Bloco>
           </div>
 
-          <Bloco icon="🧑" titulo="Empregado" tag={admSelNome ? "puxado da admissão" : "da admissão"} tagCor={admSelNome ? "ok" : "ask"}>
+          <Bloco icon={<User size={14} />} titulo="Empregado" tag={admSelNome ? "puxado da admissão" : "da admissão"} tagCor={admSelNome ? "ok" : "ask"}>
             <div className="flex justify-end mb-2">
               <div className="relative">
                 <input value={buscaAdm} onChange={e => setBuscaAdm(e.target.value)} onFocus={() => setBuscaAdm(b => b)} placeholder="🔎 puxar candidato da admissão…"
@@ -437,7 +438,7 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
             </div>
           </Bloco>
 
-          <Bloco icon="📝" titulo="Contrato" tag="confirmar" tagCor="ask">
+          <Bloco icon={<PenLine size={14} />} titulo="Contrato" tag="confirmar" tagCor="ask">
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <Input label="Início" type="date" value={dataInicio} onChange={e => setDataInicio(e.target.value)} />
               <Input label="Cidade" value={cidade} onChange={e => setCidade(e.target.value)} />
@@ -448,7 +449,7 @@ export function ContratosTrabalho({ rid, restaurants }: { rid: string; restauran
 
           {erro && <div className="text-sm text-rose-600">{erro}</div>}
           <div className="flex justify-end gap-2 pt-1">
-            <Button onClick={() => void gerar()} disabled={gerando}>{gerando ? "Gerando…" : "📄 Gerar contrato (DOCX)"}</Button>
+            <Button onClick={() => void gerar()} disabled={gerando}>{gerando ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><FileText size={14} /> Gerar contrato (DOCX)</span>}</Button>
           </div>
         </div>
       )}

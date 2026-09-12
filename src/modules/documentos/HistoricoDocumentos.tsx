@@ -2,6 +2,7 @@
 // partir do input salvo (documentosGerados.dados) — sempre a versão atual.
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { Download } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { fmtBRDateTime } from "../../core/utils/date";
 import { gerarContratoDocx, baixarDocxBase64 } from "./contratoApi";
@@ -66,7 +67,7 @@ export function HistoricoDocumentos({ rid }: { rid: string }) {
               </div>
               <button type="button" onClick={() => void rebaixar(d)} disabled={baixando === d.id}
                 className="text-xs font-semibold px-3 py-2 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 whitespace-nowrap">
-                {baixando === d.id ? "Gerando…" : "⬇ Baixar DOCX"}
+                {baixando === d.id ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><Download size={13} /> Baixar DOCX</span>}
               </button>
             </div>
           ))}

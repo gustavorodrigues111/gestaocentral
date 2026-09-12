@@ -2,7 +2,7 @@
 // F1: kanban com etapas fixas + arrastar. F2: vagas com perguntas próprias +
 // responsável + página pública. F3: transferir, rejeitar c/ motivo, aprovar→admissão.
 import { useEffect, useMemo, useState } from "react";
-import { Kanban, Pin } from "lucide-react";
+import { Kanban, Pin, Plus, UserRound, UserRoundPlus, X, Link, Trash2, Pause, Ban, CircleDot, TriangleAlert, Save, Smartphone, Mail, Target, CalendarDays, Paperclip, MessageSquare, Backpack, ClipboardList } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where, updateDoc, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -156,7 +156,7 @@ export function ProcessoSeletivoPage() {
           <button key={v} type="button" onClick={() => setAba(v)}
             className={`inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium border-b-2 -mb-px ${aba === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}><Ico size={15} /> {l}</button>
         ))}
-        {aba === "kanban" && podeTriar && <div className="ml-auto pb-1"><Button size="sm" onClick={() => setNovaCand(true)}>➕ Nova candidatura</Button></div>}
+        {aba === "kanban" && podeTriar && <div className="ml-auto pb-1"><Button size="sm" onClick={() => setNovaCand(true)}><span className="inline-flex items-center gap-1.5"><Plus size={14} /> Nova candidatura</span></Button></div>}
       </div>
 
       {aba === "kanban" ? (
@@ -180,12 +180,12 @@ export function ProcessoSeletivoPage() {
                     className={`rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-2.5 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors ${arrastando === c.id ? "opacity-50" : ""}`}>
                     <button type="button" onClick={() => setSel(c)} className="w-full text-left">
                       <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{c.nome}</div>
-                      <div className="text-[11px] text-gray-500 truncate">{c.vagaTitulo ? `📌 ${c.vagaTitulo}` : "Banco de talentos"}{c.areaInteresse ? ` · ${c.areaInteresse}` : ""}</div>
-                      {c.responsavelNome && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 truncate mt-0.5">🙋 {c.responsavelNome}</div>}
+                      <div className="text-[11px] text-gray-500 truncate inline-flex items-center gap-1">{c.vagaTitulo ? <><Pin size={11} /> {c.vagaTitulo}</> : "Banco de talentos"}{c.areaInteresse ? ` · ${c.areaInteresse}` : ""}</div>
+                      {c.responsavelNome && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 truncate mt-0.5 inline-flex items-center gap-1"><UserRound size={11} /> {c.responsavelNome}</div>}
                     </button>
                     {col.id === "aprovado" && podeAprovar && (
                       <div className="flex gap-1.5 mt-2">
-                        <button type="button" onClick={() => void mandarParaAdmissao(c)} className="flex-1 text-[11px] font-semibold px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white">🪪 → Admissão</button>
+                        <button type="button" onClick={() => void mandarParaAdmissao(c)} className="flex-1 text-[11px] font-semibold px-2 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white inline-flex items-center justify-center gap-1"><UserRoundPlus size={12} /> → Admissão</button>
                         <button type="button" onClick={() => { const m = prompt("Motivo (opcional):") || ""; void rejeitar(c, m); }} className="text-[11px] font-semibold px-2 py-1 rounded-md border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">Não passou</button>
                       </div>
                     )}
@@ -199,13 +199,13 @@ export function ProcessoSeletivoPage() {
         {/* Histórico: aprovados direcionados pra admissão */}
         {porEtapa.admissao.length > 0 && (
           <details open className="mt-4 rounded-xl border border-emerald-200 dark:border-emerald-900/50">
-            <summary className="cursor-pointer px-4 py-2.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300">🪪 Direcionados pra admissão ({porEtapa.admissao.length})</summary>
+            <summary className="cursor-pointer px-4 py-2.5 text-sm font-semibold text-emerald-700 dark:text-emerald-300"><span className="inline-flex items-center gap-1.5"><UserRoundPlus size={14} /> Direcionados pra admissão ({porEtapa.admissao.length})</span></summary>
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {porEtapa.admissao.map((c) => (
                 <div key={c.id} className="flex items-center gap-3 px-4 py-2.5">
                   <button type="button" onClick={() => setSel(c)} className="flex-1 min-w-0 text-left">
                     <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{c.nome}</div>
-                    <div className="text-[11px] text-gray-400 truncate">{c.vagaTitulo ? `📌 ${c.vagaTitulo}` : "Banco de talentos"}{c.admissaoId ? " · admissão iniciada ✓" : " · aguardando admissão"}</div>
+                    <div className="text-[11px] text-gray-400 truncate inline-flex items-center gap-1">{c.vagaTitulo ? <><Pin size={11} /> {c.vagaTitulo}</> : "Banco de talentos"}{c.admissaoId ? " · admissão iniciada ✓" : " · aguardando admissão"}</div>
                   </button>
                   {podeAprovar && !c.admissaoId && <button type="button" onClick={() => setAdmitir(c)} className="text-xs px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-medium shrink-0">Iniciar admissão</button>}
                 </div>
@@ -217,13 +217,13 @@ export function ProcessoSeletivoPage() {
         {/* Histórico de rejeitados */}
         {porEtapa.rejeitado.length > 0 && (
           <details className="mt-3 rounded-xl border border-gray-200 dark:border-gray-800">
-            <summary className="cursor-pointer px-4 py-2.5 text-sm font-semibold text-gray-600 dark:text-gray-300">❌ Rejeitados ({porEtapa.rejeitado.length})</summary>
+            <summary className="cursor-pointer px-4 py-2.5 text-sm font-semibold text-gray-600 dark:text-gray-300"><span className="inline-flex items-center gap-1.5"><X size={14} /> Rejeitados ({porEtapa.rejeitado.length})</span></summary>
             <div className="divide-y divide-gray-100 dark:divide-gray-800">
               {porEtapa.rejeitado.map((c) => (
                 <div key={c.id} className="flex items-center gap-3 px-4 py-2.5">
                   <button type="button" onClick={() => setSel(c)} className="flex-1 min-w-0 text-left">
                     <div className="text-sm font-medium text-gray-800 dark:text-gray-200 truncate">{c.nome}</div>
-                    <div className="text-[11px] text-gray-400 truncate">{c.vagaTitulo ? `📌 ${c.vagaTitulo}` : "Banco de talentos"}{c.motivoRejeicao ? ` · motivo: ${c.motivoRejeicao}` : ""}</div>
+                    <div className="text-[11px] text-gray-400 truncate inline-flex items-center gap-1">{c.vagaTitulo ? <><Pin size={11} /> {c.vagaTitulo}</> : "Banco de talentos"}{c.motivoRejeicao ? ` · motivo: ${c.motivoRejeicao}` : ""}</div>
                   </button>
                   {podeTriar && <button type="button" onClick={() => void mover(c.id, "nova")} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline shrink-0">↩ Restaurar</button>}
                 </div>
@@ -330,7 +330,7 @@ function NovaCandidaturaModal({ rid, vagas, onClose }: { rid: string; vagas: Vag
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5 space-y-3" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between">
-          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">➕ Nova candidatura</h3>
+          <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Plus size={16} /> Nova candidatura</h3>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
         </div>
         <div><label className={lbl}>Nome *</label><input value={nome} onChange={(e) => setNome(e.target.value)} className={inp} autoFocus /></div>
@@ -361,8 +361,8 @@ function VagasAdmin({ vagas, rid, podeVagas, onNova, onEditar, onExcluir }: {
   return (
     <div className="max-w-3xl">
       <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
-        <a href={linkPublico} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">🔗 Página pública de vagas ↗</a>
-        {podeVagas && <Button size="sm" onClick={onNova}>➕ Nova vaga</Button>}
+        <a href={linkPublico} target="_blank" rel="noreferrer" className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"><Link size={12} /> Página pública de vagas ↗</a>
+        {podeVagas && <Button size="sm" onClick={onNova}><span className="inline-flex items-center gap-1.5"><Plus size={14} /> Nova vaga</span></Button>}
       </div>
       <div className="space-y-2">
         {vagas.length === 0 && <div className="text-sm text-gray-400 py-6 text-center rounded-xl border border-dashed border-gray-300 dark:border-gray-700">Nenhuma vaga ainda.</div>}
@@ -374,11 +374,11 @@ function VagasAdmin({ vagas, rid, podeVagas, onNova, onEditar, onExcluir }: {
                 <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${v.status === "aberta" ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : v.status === "pausada" ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800"}`}>{v.status}</span>
                 {v.publica && <span className="text-[10px] text-gray-400">pública</span>}
               </div>
-              <div className="text-[11px] text-gray-500 mt-0.5">{v.area || "—"}{(v.responsavelNomes?.length ? v.responsavelNomes : (v.responsavelNome ? [v.responsavelNome] : [])).length ? ` · 🙋 ${(v.responsavelNomes?.length ? v.responsavelNomes : [v.responsavelNome]).join(", ")}` : ""}{v.perguntas?.length ? ` · ${v.perguntas.length} pergunta(s)` : ""}</div>
+              <div className="text-[11px] text-gray-500 mt-0.5 inline-flex items-center gap-1 flex-wrap">{v.area || "—"}{(v.responsavelNomes?.length ? v.responsavelNomes : (v.responsavelNome ? [v.responsavelNome] : [])).length ? <> · <UserRound size={11} /> {(v.responsavelNomes?.length ? v.responsavelNomes : [v.responsavelNome]).join(", ")}</> : ""}{v.perguntas?.length ? ` · ${v.perguntas.length} pergunta(s)` : ""}</div>
             </div>
             {podeVagas && <div className="flex gap-1.5 shrink-0">
               <button type="button" onClick={() => onEditar(v)} className="text-xs px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Editar</button>
-              <button type="button" onClick={() => onExcluir(v)} className="text-xs text-gray-400 hover:text-rose-600">🗑️</button>
+              <button type="button" onClick={() => onExcluir(v)} className="text-xs text-gray-400 hover:text-rose-600"><Trash2 size={14} /></button>
             </div>}
           </div>
         ))}
@@ -510,9 +510,9 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, unidades, pessoaId
             <div><label className={lbl}>Área</label><input value={area} onChange={(e) => setArea(e.target.value)} className={inp} placeholder="Salão, Cozinha, Bar…" /></div>
             <div><label className={lbl}>Status</label>
               <div className="flex p-0.5 rounded-lg bg-gray-100 dark:bg-gray-800/60">
-                {([["aberta", "🟢 Aberta"], ["pausada", "⏸ Pausada"], ["encerrada", "⛔ Encerrada"]] as const).map(([v, l]) => (
+                {([["aberta", "Aberta", CircleDot], ["pausada", "Pausada", Pause], ["encerrada", "Encerrada", Ban]] as const).map(([v, l, Ic]) => (
                   <button key={v} type="button" onClick={() => setStatus(v)}
-                    className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-colors ${status === v ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}>{l}</button>
+                    className={`flex-1 text-xs font-semibold py-1.5 rounded-md transition-colors inline-flex items-center justify-center gap-1 ${status === v ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}><Ic size={13} /> {l}</button>
                 ))}
               </div>
             </div>
@@ -672,7 +672,7 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, unidades, pessoaId
                   </div>
                   {dias[0]?.active && <CicloDomingoEditor ciclo={ciclo} onChange={setCiclo} />}
                   {errosClt.length > 0
-                    ? <div className="text-[11px] text-rose-600 dark:text-rose-400">⚠ {errosClt.length} violação(ões) CLT — corrija pra salvar: {errosClt.slice(0, 3).map((e) => e.mensagem).join("; ")}</div>
+                    ? <div className="text-[11px] text-rose-600 dark:text-rose-400 inline-flex items-center gap-1"><TriangleAlert size={12} className="shrink-0" /> {errosClt.length} violação(ões) CLT — corrija pra salvar: {errosClt.slice(0, 3).map((e) => e.mensagem).join("; ")}</div>
                     : <div className="text-[11px] text-emerald-600 dark:text-emerald-400">✓ Horário dentro das regras trabalhistas ({Math.round(validNovo.totalContract / 60 * 10) / 10}h/sem).</div>}
                 </div>
               )}
@@ -686,7 +686,7 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, unidades, pessoaId
                 <div key={p.id} className="rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-2 space-y-1.5">
                   <div className="flex items-center gap-1.5">
                     <input value={p.label} onChange={(e) => setPerg(i, { label: e.target.value })} className={`${inp} flex-1`} placeholder="Pergunta (ex.: Tem experiência?)" />
-                    <button type="button" onClick={() => delPerg(i)} className="text-gray-400 hover:text-rose-600 text-sm shrink-0">🗑️</button>
+                    <button type="button" onClick={() => delPerg(i)} className="text-gray-400 hover:text-rose-600 text-sm shrink-0"><Trash2 size={14} /></button>
                   </div>
                   <div className="flex items-center gap-2">
                     <select value={p.tipo} onChange={(e) => setPerg(i, { tipo: e.target.value as PerguntaVaga["tipo"] })} className={`${inp} flex-1`}>
@@ -699,13 +699,13 @@ function VagaEditor({ vaga, rid, pessoas, cargos, empregados, unidades, pessoaId
                 </div>
               ))}
             </div>
-            <button type="button" onClick={addPerg} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-900">➕ Adicionar pergunta</button>
+            <button type="button" onClick={addPerg} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-900 inline-flex items-center justify-center gap-1.5"><Plus size={13} /> Adicionar pergunta</button>
           </Secao>
         </div>
 
         <div className="sticky bottom-0 flex justify-end gap-2 px-5 py-3 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-800">
           <button type="button" onClick={onClose} className="text-sm px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>
-          <Button onClick={salvar}>💾 Salvar vaga</Button>
+          <Button onClick={salvar}><span className="inline-flex items-center gap-1.5"><Save size={14} /> Salvar vaga</span></Button>
         </div>
       </div>
     </div>
@@ -727,18 +727,18 @@ function CandidatoDrawer({ cand, pessoas, podeTriar, podeTransferir, podeAprovar
         <div className="flex items-start justify-between">
           <div>
             <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{cand.nome}</h2>
-            <p className="text-xs text-gray-500">{cand.vagaTitulo ? `📌 ${cand.vagaTitulo}` : "Candidatura avulsa (banco de talentos)"}</p>
-            {cand.responsavelNome && <p className="text-[11px] text-indigo-500 dark:text-indigo-300">🙋 Responsável: {cand.responsavelNome}</p>}
+            <p className="text-xs text-gray-500 inline-flex items-center gap-1">{cand.vagaTitulo ? <><Pin size={11} /> {cand.vagaTitulo}</> : "Candidatura avulsa (banco de talentos)"}</p>
+            {cand.responsavelNome && <p className="text-[11px] text-indigo-500 dark:text-indigo-300 inline-flex items-center gap-1"><UserRound size={11} /> Responsável: {cand.responsavelNome}</p>}
           </div>
           <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600">✕</button>
         </div>
 
         <div className="space-y-1.5 text-sm">
-          {cand.whatsapp && <div>📱 {cand.whatsapp} <button type="button" onClick={() => void abrirWhatsapp(cand.restaurantId, "empregados", cand.whatsapp, cand.nome, `Oi ${cand.nome.split(" ")[0]}, sobre sua candidatura…`)} className="text-emerald-600 hover:underline ml-1">💬 WhatsApp</button></div>}
-          {cand.email && <div>✉️ {cand.email}</div>}
-          {cand.areaInteresse && <div>🎯 {cand.areaInteresse}</div>}
-          {cand.disponibilidade && <div>🗓️ {cand.disponibilidade}</div>}
-          {(cand.curriculoUrl || cand.curriculoPath) && <div>📎 <CurriculoLink url={cand.curriculoUrl} path={cand.curriculoPath} className="text-blue-600 hover:underline" /></div>}
+          {cand.whatsapp && <div className="inline-flex items-center gap-1"><Smartphone size={13} /> {cand.whatsapp} <button type="button" onClick={() => void abrirWhatsapp(cand.restaurantId, "empregados", cand.whatsapp, cand.nome, `Oi ${cand.nome.split(" ")[0]}, sobre sua candidatura…`)} className="text-emerald-600 hover:underline ml-1 inline-flex items-center gap-1"><MessageSquare size={13} /> WhatsApp</button></div>}
+          {cand.email && <div className="inline-flex items-center gap-1"><Mail size={13} /> {cand.email}</div>}
+          {cand.areaInteresse && <div className="inline-flex items-center gap-1"><Target size={13} /> {cand.areaInteresse}</div>}
+          {cand.disponibilidade && <div className="inline-flex items-center gap-1"><CalendarDays size={13} /> {cand.disponibilidade}</div>}
+          {(cand.curriculoUrl || cand.curriculoPath) && <div className="inline-flex items-center gap-1"><Paperclip size={13} /> <CurriculoLink url={cand.curriculoUrl} path={cand.curriculoPath} className="text-blue-600 hover:underline" /></div>}
         </div>
         {cand.experiencia && <div><div className="text-[11px] font-semibold text-gray-500 uppercase">Experiência</div><p className="text-sm whitespace-pre-wrap text-gray-700 dark:text-gray-200">{cand.experiencia}</p></div>}
         {cand.observacoes && <div><div className="text-[11px] font-semibold text-gray-500 uppercase">Observações do candidato</div><p className="text-sm whitespace-pre-wrap text-gray-700 dark:text-gray-200">{cand.observacoes}</p></div>}
@@ -769,31 +769,31 @@ function CandidatoDrawer({ cand, pessoas, podeTriar, podeTransferir, podeAprovar
               {COLUNAS.filter((c) => c.id !== etapa).map((c) => (
                 <button key={c.id} type="button" onClick={() => onMover(c.id)} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">{c.label}</button>
               ))}
-              {etapa !== "rejeitado" && <button type="button" onClick={() => onMover("rejeitado")} className="text-xs px-2.5 py-1.5 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20">❌ Rejeitar</button>}
+              {etapa !== "rejeitado" && <button type="button" onClick={() => onMover("rejeitado")} className="text-xs px-2.5 py-1.5 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20 inline-flex items-center gap-1"><X size={13} /> Rejeitar</button>}
             </div>
           </div>
         )}
 
         {podeTriar && !cand.freelaPessoaId && (
-          <button type="button" onClick={onCadastrarFreela} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20">🎒 Cadastrar como freela (teste)</button>
+          <button type="button" onClick={onCadastrarFreela} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 inline-flex items-center justify-center gap-1.5"><Backpack size={13} /> Cadastrar como freela (teste)</button>
         )}
         {podeTriar && cand.freelaPessoaId && (
           <div className="space-y-1.5">
             <div className="text-[11px] text-emerald-600 dark:text-emerald-300 font-semibold">✓ Cadastrado como freela</div>
-            <button type="button" onClick={onLancarTurno} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20">📋 Lançar turno de teste</button>
+            <button type="button" onClick={onLancarTurno} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-purple-300 dark:border-purple-700 text-purple-600 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 inline-flex items-center justify-center gap-1.5"><ClipboardList size={13} /> Lançar turno de teste</button>
           </div>
         )}
 
         {podeAprovar && etapa === "aprovado" && (
           <div className="border-t border-gray-200 dark:border-gray-800 pt-3 space-y-2">
-            <Button className="w-full" onClick={onMandarAdmissao}>🪪 Mandar para admissão</Button>
+            <Button className="w-full" onClick={onMandarAdmissao}><span className="inline-flex items-center gap-1.5"><UserRoundPlus size={14} /> Mandar para admissão</span></Button>
             <p className="text-[11px] text-gray-400">Avisa na Central quem tem acesso ao módulo Admissão e joga o candidato pro histórico "Direcionados pra admissão".</p>
             <button type="button" onClick={onIniciarAdmissao} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300">Ou iniciar a admissão agora (pré-preenchida)</button>
           </div>
         )}
         {podeAprovar && etapa === "admissao" && !cand.admissaoId && (
           <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
-            <Button className="w-full" onClick={onIniciarAdmissao}>🪪 Iniciar admissão (pré-preenchida)</Button>
+            <Button className="w-full" onClick={onIniciarAdmissao}><span className="inline-flex items-center gap-1.5"><UserRoundPlus size={14} /> Iniciar admissão (pré-preenchida)</span></Button>
           </div>
         )}
       </div>

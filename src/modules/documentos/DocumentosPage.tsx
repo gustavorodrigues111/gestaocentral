@@ -5,7 +5,7 @@
 // preenchido pra assinatura. PDF exato sai pela skill/LibreOffice (fase seguinte).
 
 import { useEffect, useMemo, useState } from "react";
-import { Settings, FileSignature, History, Files } from "lucide-react";
+import { Settings, FileSignature, History, Files, TriangleAlert, CheckSquare, ReceiptText, Plus, PenLine, FileText, Building2, CalendarDays, User, Pencil, UserRoundPlus, type LucideIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where, doc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -59,7 +59,8 @@ const EMPRESA_ESPECIFICOS: EmpresaCampo[] = [
   { token: "CONTA_EMPRESA", rotulo: "Conta", nota: "idem — carta de conta salário" },
 ];
 
-const ORIGEM_LABEL: Record<string, string> = { empresa: "🏢 Empresa", data: "📅 Data (hoje)", empregado: "🧑 Empregado", especifico: "✏️ Específicos do documento" };
+const ORIGEM_LABEL: Record<string, string> = { empresa: "Empresa", data: "Data (hoje)", empregado: "Empregado", especifico: "Específicos do documento" };
+const ORIGEM_ICONE: Record<string, LucideIcon> = { empresa: Building2, data: CalendarDays, empregado: User, especifico: Pencil };
 const ORIGEM_ORDEM = ["empregado", "especifico", "data", "empresa"];
 
 export function DocumentosPage() {
@@ -116,7 +117,7 @@ export function DocumentosPage() {
     <PageContainer>
       {podeConfig && (
         <header className="mb-4 flex items-start justify-end gap-3">
-          <Button variant="secondary" onClick={() => setModo("config")}>⚙️ Configurações</Button>
+          <Button variant="secondary" onClick={() => setModo("config")}><span className="inline-flex items-center gap-1.5"><Settings size={14} /> Configurações</span></Button>
         </header>
       )}
 
@@ -311,7 +312,7 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
 
         <div className="p-4 space-y-4 overflow-y-auto">
           {modelo.observacoes && (
-            <div className="text-[12px] text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2 leading-snug">⚠️ {modelo.observacoes}</div>
+            <div className="text-[12px] text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2 leading-snug inline-flex items-start gap-1"><TriangleAlert size={13} className="shrink-0 mt-0.5" /> {modelo.observacoes}</div>
           )}
 
           {/* Empresa + empregado */}
@@ -321,7 +322,7 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
               <select value={empresaRid} onChange={e => setEmpresaRid(e.target.value)} disabled={lockEmpresa} className={`${inp} mt-1 ${lockEmpresa ? "opacity-70" : ""}`}>
                 {restaurants.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
               </select>
-              {empresaIncompleta && <div className="text-[11px] text-rose-600 mt-1">Sem dados cadastrais — preencha em ⚙️ Configurações.</div>}
+              {empresaIncompleta && <div className="text-[11px] text-rose-600 mt-1">Sem dados cadastrais — preencha em <span className="inline-flex items-center gap-0.5 align-middle"><Settings size={11} /> Configurações</span>.</div>}
             </div>
             <div className={hideEmpregado ? "hidden" : ""}>
               <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Empregado</label>
@@ -349,7 +350,7 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
           {/* Campos por origem */}
           {grupos.map(([origem, campos]) => (
             <div key={origem}>
-              <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">{ORIGEM_LABEL[origem] || origem}</div>
+              <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5 inline-flex items-center gap-1.5">{(() => { const Ic = ORIGEM_ICONE[origem]; return Ic ? <Ic size={12} /> : null; })()} {ORIGEM_LABEL[origem] || origem}</div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {campos.map(c => (
                   <div key={c.token} className={c.tipo === "textarea" ? "sm:col-span-2" : ""}>
@@ -366,7 +367,7 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
           {/* Opções (marcações do documento) */}
           {marcs.length > 0 && (
             <div>
-              <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">☑️ Opções do documento</div>
+              <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5 inline-flex items-center gap-1.5"><CheckSquare size={12} /> Opções do documento</div>
               <div className="space-y-3">
                 {marcs.map(g => (
                   <div key={g.campo}>
@@ -391,7 +392,7 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
             const linhas = linhasDe(qi, cols);
             return (
               <div key={qi}>
-                <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">🧾 {qd.titulo}</div>
+                <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5 inline-flex items-center gap-1.5"><ReceiptText size={12} /> {qd.titulo}</div>
                 <div className="overflow-x-auto">
                   <div className="space-y-1.5 min-w-[400px]">
                     <div className="flex gap-1.5">
@@ -410,7 +411,7 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
                   </div>
                 </div>
                 {linhas.length < qd.max_linhas && (
-                  <button type="button" onClick={() => addLinha(qi, cols)} className="mt-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:underline">➕ adicionar linha</button>
+                  <button type="button" onClick={() => addLinha(qi, cols)} className="mt-1.5 text-xs text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"><Plus size={12} /> adicionar linha</button>
                 )}
               </div>
             );
@@ -419,7 +420,7 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
           {/* Textos livres */}
           {modelo.texto_livre.length > 0 && (
             <div>
-              <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5">📝 Textos redigidos</div>
+              <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-1.5 inline-flex items-center gap-1.5"><PenLine size={12} /> Textos redigidos</div>
               <div className="space-y-2">
                 {modelo.texto_livre.map(t => (
                   <div key={t.campo}>
@@ -440,7 +441,7 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
 
           {faltando && (
             <div className={`text-[12px] rounded-lg px-3 py-2 ${faltando.length ? "text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-900/20" : "text-emerald-800 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-900/20"}`}>
-              {faltando.length ? <>✅ Documento gerado{onGerado ? "" : " e baixado"}. Campos em branco pra preencher à mão: <b>{faltando.join(", ")}</b>.</> : `✅ Documento gerado${onGerado ? "" : " e baixado"} — nada ficou em branco.`}
+              {faltando.length ? <span className="inline-flex items-center gap-1"><CheckSquare size={13} className="shrink-0" /> Documento gerado{onGerado ? "" : " e baixado"}. Campos em branco pra preencher à mão: <b>{faltando.join(", ")}</b>.</span> : <span className="inline-flex items-center gap-1"><CheckSquare size={13} className="shrink-0" /> Documento gerado{onGerado ? "" : " e baixado"} — nada ficou em branco.</span>}
             </div>
           )}
           {erro && <div className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">{erro}</div>}
@@ -450,7 +451,7 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
           <div className="flex items-center gap-2">
             {faltamMarcacoes && <span className="text-[11px] text-amber-600">Escolha as opções do documento</span>}
             <Button variant="secondary" onClick={onClose}>Fechar</Button>
-            <Button onClick={gerar} disabled={gerando || faltamMarcacoes}>{gerando ? "Gerando…" : "📄 Gerar documento (DOCX)"}</Button>
+            <Button onClick={gerar} disabled={gerando || faltamMarcacoes}>{gerando ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><FileText size={14} /> Gerar documento (DOCX)</span>}</Button>
           </div>
         </div>
       </div>
@@ -523,7 +524,7 @@ function ConfigView({ restaurants, empresas, empresaRid, setEmpresaRid, pessoaId
 
       {/* Dados cadastrais */}
       <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-4">
-        <h2 className="font-bold text-gray-900 dark:text-gray-100 mb-1">🏢 Dados cadastrais da empresa</h2>
+        <h2 className="font-bold text-gray-900 dark:text-gray-100 mb-1 inline-flex items-center gap-1.5"><Building2 size={16} /> Dados cadastrais da empresa</h2>
         <p className="text-xs text-gray-500 mb-3">Usados no preenchimento dos documentos.</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {EMPRESA_ESSENCIAIS.map(({ token, rotulo }) => (
@@ -549,7 +550,7 @@ function ConfigView({ restaurants, empresas, empresaRid, setEmpresaRid, pessoaId
       {/* Documentos disponíveis */}
       <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-4">
         <div className="flex items-center justify-between gap-2 mb-1">
-          <h2 className="font-bold text-gray-900 dark:text-gray-100">📄 Documentos disponíveis nesta empresa</h2>
+          <h2 className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><FileText size={16} /> Documentos disponíveis nesta empresa</h2>
           <div className="text-xs flex gap-2 shrink-0">
             <button type="button" onClick={() => setHabil(new Set(DOCS.map(d => d.id)))} className="text-indigo-600 dark:text-indigo-400 hover:underline">todos</button>
             <button type="button" onClick={() => setHabil(new Set())} className="text-gray-500 hover:underline">nenhum</button>
@@ -581,7 +582,7 @@ function ConfigView({ restaurants, empresas, empresaRid, setEmpresaRid, pessoaId
 
       {/* Mapa: termos da Admissão → modelo de documento */}
       <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-4">
-        <h2 className="font-bold text-gray-900 dark:text-gray-100 mb-1">🪪 Termos da Admissão → modelo</h2>
+        <h2 className="font-bold text-gray-900 dark:text-gray-100 mb-1 inline-flex items-center gap-1.5"><UserRoundPlus size={16} /> Termos da Admissão → modelo</h2>
         <p className="text-xs text-gray-500 mb-3">Qual documento cada termo do "kit de assinatura" da Admissão usa. Assim a Admissão gera o termo já preenchido por este módulo.</p>
         <div className="space-y-2">
           {termos.map(t => (
