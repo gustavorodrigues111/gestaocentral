@@ -16,15 +16,17 @@ import type { Cargo, Empregado, EscalaMes, VRLote, VRLoteEvento, VRLoteLinha, Mu
 import { projetarEmpregadosParaData } from "../../core/utils/empregado";
 import { VR_LOTE_STATUS_LABEL, AREAS } from "../../core/types";
 import { PageContainer } from "../../core/ui/PageContainer";
+import type { LucideIcon } from "lucide-react";
+import { Wine, ChefHat, UtensilsCrossed, SprayCan, Lock, FileText, CheckSquare, Salad, ArrowDown, Pencil } from "lucide-react";
 
 const fmtBR = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-const AREA_ICON: Record<string, string> = {
-  Bar: "🍷",
-  Cozinha: "👨‍🍳",
-  Salão: "🍽",
-  Limpeza: "🧹",
+const AREA_ICON: Record<string, LucideIcon> = {
+  Bar: Wine,
+  Cozinha: ChefHat,
+  Salão: UtensilsCrossed,
+  Limpeza: SprayCan,
 };
 
 function parseMoneyInput(s: string): number {
@@ -366,7 +368,7 @@ export function VRPage() {
   if (!podeVer && !podeConfig) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3"><Lock size={36} className="text-gray-400"/></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
@@ -415,7 +417,7 @@ export function VRPage() {
           )}
           {linhasAPagar.length > 0 && podeConfig && (
             <Button variant="secondary" size="sm" onClick={() => setPdfData({ statusLabel: "A pagar (prévia)", linhas: linhasPdfPreview })} title="Exportar PDF da prévia a pagar">
-              📄 PDF
+              <span className="inline-flex items-center gap-1"><FileText size={14}/> PDF</span>
             </Button>
           )}
         </div>
@@ -426,7 +428,7 @@ export function VRPage() {
         <div className="text-sm text-gray-500 py-6">Carregando…</div>
       ) : linhasAPagar.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 text-center">
-          <div className="text-3xl mb-2">{lotesVisiveis.length > 0 ? "✅" : "🍱"}</div>
+          <div className="flex justify-center mb-2">{lotesVisiveis.length > 0 ? <CheckSquare size={30} className="text-emerald-500"/> : <Salad size={30} className="text-gray-400"/>}</div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">
             {lotesVisiveis.length > 0 ? "Todos já estão em lote — nada pendente a pagar." : "Nenhum empregado com VR ativo neste mês."}
           </p>
@@ -444,8 +446,8 @@ export function VRPage() {
             return (
               <div key={area} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
                 <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-                  <div className="font-bold text-sm text-gray-800 dark:text-gray-200">
-                    {AREA_ICON[area]} {area}
+                  <div className="font-bold text-sm text-gray-800 dark:text-gray-200 inline-flex items-center gap-1">
+                    {(() => { const Ic = AREA_ICON[area]; return Ic ? <Ic size={14}/> : null; })()} {area}
                     <span className="ml-2 text-xs font-normal text-gray-500">({linhasArea.length})</span>
                   </div>
                   <div className="text-sm font-bold tabular-nums text-gray-900 dark:text-gray-100">{fmtBR(subtotal)}</div>
@@ -575,8 +577,8 @@ function LoteCardVR({ lote, isMaster, podeConfig, onMarcarPago, onCancelarRascun
         </div>
       </div>
       <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-        <Button variant="secondary" size="sm" onClick={onExportarCaju} title="Exportar CSV pro Caju">📥 Caju</Button>
-        <Button variant="secondary" size="sm" onClick={onExportarPdf} title="Exportar PDF deste lote">📄 PDF</Button>
+        <Button variant="secondary" size="sm" onClick={onExportarCaju} title="Exportar CSV pro Caju"><span className="inline-flex items-center gap-1"><ArrowDown size={13}/> Caju</span></Button>
+        <Button variant="secondary" size="sm" onClick={onExportarPdf} title="Exportar PDF deste lote"><span className="inline-flex items-center gap-1"><FileText size={13}/> PDF</span></Button>
         {isRascunho && podeConfig && <Button size="sm" onClick={onMarcarPago}>✓ Marcar pago</Button>}
         {isRascunho && podeConfig && <Button variant="danger" size="sm" onClick={onCancelarRascunho} title="Cancela o rascunho e devolve as pessoas pra 'A pagar'">✕ Cancelar</Button>}
         {!isRascunho && isMaster && <Button variant="secondary" size="sm" onClick={onReabrir}>↶ Reabrir</Button>}
@@ -633,7 +635,7 @@ function LinhaVR({ l, onAbrirSheet, recebePeloCaju }: {
       <div className={`${cell} font-bold text-gray-900 dark:text-gray-100 gap-1.5`}>
         {fmtBR(l.total)}
         {onAbrirSheet && (
-          <button type="button" onClick={onAbrirSheet} title="Editar valores" className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm">✏️</button>
+          <button type="button" onClick={onAbrirSheet} title="Editar valores" className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 inline-flex"><Pencil size={14}/></button>
         )}
       </div>
     </div>
@@ -667,7 +669,7 @@ function LinhaVRCard({ l, onAbrirSheet, recebePeloCaju }: {
         <div className="flex items-center gap-1.5 shrink-0">
           <div className="font-bold tabular-nums text-gray-900 dark:text-gray-100">{fmtBR(l.total)}</div>
           {onAbrirSheet && (
-            <button type="button" onClick={onAbrirSheet} className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-base leading-none px-1" title="Editar valores">✏️</button>
+            <button type="button" onClick={onAbrirSheet} className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 leading-none px-1 inline-flex" title="Editar valores"><Pencil size={15}/></button>
           )}
         </div>
       </div>
@@ -715,7 +717,7 @@ function EditLinhaSheetVR({ l, onClose, onAplicar }: {
       <div className="relative w-full md:max-w-md bg-white dark:bg-gray-900 rounded-t-2xl md:rounded-xl shadow-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between shrink-0">
           <div>
-            <div className="font-bold text-gray-900 dark:text-gray-100">✏️ {l.nome}</div>
+            <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1"><Pencil size={14}/> {l.nome}</div>
             <div className="text-[11px] text-gray-500 dark:text-gray-400">{l.cargoNome} · {l.area}</div>
           </div>
           <button onClick={onClose} className="text-gray-400 text-xl px-2">✕</button>

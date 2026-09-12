@@ -8,6 +8,12 @@ import { canConfig, canUse } from "../../core/auth/permissions";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { SelfServiceRedirect } from "../../core/auth/SemPermissaoCard";
 import { Button } from "../../core/ui/Button";
+import type { LucideIcon } from "lucide-react";
+import {
+  Wine, ChefHat, UtensilsCrossed, SprayCan, Bus, FlaskConical, CalendarDays,
+  ClipboardList, TriangleAlert, FileText, CheckSquare, Calculator, Pencil, Scale,
+  Coins, PenLine, ArrowDown,
+} from "lucide-react";
 import { daysInMonth, fmtAnoMes, nomeMes, pad2, parseAnoMes, shiftMonth } from "../../core/utils/date";
 import { baixarCsvCaju, exportarLoteCaju } from "./exportarLoteCaju";
 import { ExportarVTModal } from "./ExportarVTModal";
@@ -36,11 +42,11 @@ import { PageContainer } from "../../core/ui/PageContainer";
 const fmtBR = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-const AREA_ICON: Record<Area, string> = {
-  Bar:     "🍷",
-  Cozinha: "👨‍🍳",
-  Salão:   "🍽",
-  Limpeza: "🧹",
+const AREA_ICON: Record<Area, LucideIcon> = {
+  Bar:     Wine,
+  Cozinha: ChefHat,
+  Salão:   UtensilsCrossed,
+  Limpeza: SprayCan,
 };
 
 function fmtMoneyInput(n: number): string {
@@ -573,7 +579,7 @@ export function VTPage() {
     return (
       <SelfServiceRedirect
         restaurantId={rid}
-        icone="🚌"
+        icone={<Bus size={36} className="mx-auto text-gray-400"/>}
         titulo="Seu VT está no Meu Portal"
         descricao="Essa tela é a visão de gestão (todo o time). Pra ver seu VT pessoal, vai em Meu Portal."
       />
@@ -637,7 +643,7 @@ export function VTPage() {
           <Button variant="secondary" size="sm" onClick={() => navegarMes(1)}>→</Button>
           {isMaster && (
             <Button variant="secondary" size="sm" onClick={() => setShowAuxFixoLote(true)} title="Definir o mesmo auxílio fixo mensal em todos os empregados">
-              🧪 Auxílio fixo em lote
+<span className="inline-flex items-center gap-1"><FlaskConical size={14}/> Auxílio fixo em lote</span>
             </Button>
           )}
         </div>
@@ -654,7 +660,7 @@ export function VTPage() {
               : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
           }`}
         >
-          📅 Mês em edição
+          <span className="inline-flex items-center gap-1"><CalendarDays size={14}/> Mês em edição</span>
         </button>
         <button
           type="button"
@@ -665,7 +671,7 @@ export function VTPage() {
               : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
           }`}
         >
-          📋 Histórico ({lotesHistorico.length})
+          <span className="inline-flex items-center gap-1"><ClipboardList size={14}/> Histórico ({lotesHistorico.length})</span>
         </button>
       </div>
 
@@ -679,7 +685,7 @@ export function VTPage() {
           {/* Aviso quando a prevista ainda não foi fechada */}
           {!previstaFechada && (
             <div className="mb-4 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-900 dark:text-amber-200 flex items-start gap-2">
-              <span className="text-base">⚠️</span>
+              <span className="inline-flex"><TriangleAlert size={16}/></span>
               <div>
                 <strong>Prevista de {nomeMes(mes)}/{ano} ainda não foi fechada.</strong>
                 <div className="mt-1 text-xs">
@@ -709,7 +715,7 @@ export function VTPage() {
               )}
               {linhas.length > 0 && podeConfig && (
                 <Button variant="secondary" size="sm" onClick={() => setPdfData({ statusLabel: "A pagar (prévia)", linhas: linhasPdf })} title="Exportar PDF da prévia a pagar">
-                  📄 PDF
+                  <span className="inline-flex items-center gap-1"><FileText size={14}/> PDF</span>
                 </Button>
               )}
             </div>
@@ -719,7 +725,7 @@ export function VTPage() {
             <div className="text-sm text-gray-500">Carregando...</div>
           ) : linhas.length === 0 ? (
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-6 text-center">
-              <div className="text-3xl mb-2">{lotesVisiveis.length > 0 ? "✅" : "🚌"}</div>
+              <div className="flex justify-center mb-2">{lotesVisiveis.length > 0 ? <CheckSquare size={30} className="text-emerald-500"/> : <Bus size={30} className="text-gray-400"/>}</div>
               <p className="text-gray-700 dark:text-gray-300 font-medium">{lotesVisiveis.length > 0 ? "Todos já estão em lotes — nada pendente a pagar." : "Ninguém com VT ativo neste mês"}</p>
               {lotesVisiveis.length === 0 && (
                 <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Marque empregados como "VT ativo" ou defina "Auxílio fixo mensal" no cadastro.</p>
@@ -733,8 +739,8 @@ export function VTPage() {
                 return (
                   <div key={area} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
                     <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-                      <div className="font-bold text-sm text-gray-800 dark:text-gray-200">
-                        {AREA_ICON[area]} {area}
+                      <div className="font-bold text-sm text-gray-800 dark:text-gray-200 inline-flex items-center gap-1">
+                        {(() => { const Ic = AREA_ICON[area]; return <Ic size={14}/>; })()} {area}
                         <span className="ml-2 text-xs font-normal text-gray-500">({linhasArea.length})</span>
                       </div>
                       <div className="text-sm font-bold tabular-nums text-gray-900 dark:text-gray-100">
@@ -795,7 +801,7 @@ export function VTPage() {
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-bold text-gray-800 dark:text-gray-200">Lotes de {nomeMes(mes)} <span className="font-normal text-gray-400">({lotesVisiveis.length})</span></h3>
               {podeConfig && lotesVisiveis.length > 0 && (
-                <Button variant="secondary" size="sm" onClick={() => setAjusteAberto(true)} title="Lançar só as diferenças (admissões, troca de valor) em relação ao que já foi pago">🧮 Lote de ajuste</Button>
+                <Button variant="secondary" size="sm" onClick={() => setAjusteAberto(true)} title="Lançar só as diferenças (admissões, troca de valor) em relação ao que já foi pago"><span className="inline-flex items-center gap-1"><Calculator size={14}/> Lote de ajuste</span></Button>
               )}
             </div>
             {lotesVisiveis.length === 0 ? (
@@ -953,7 +959,7 @@ function LinhaVT(props: LinhaVTProps) {
       <div className={`px-3 flex items-center flex-wrap gap-x-1.5 gap-y-0.5 min-w-0 font-medium ${l.semBeneficioCadastrado ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>
         {!l.semBeneficioCadastrado && <PagamentoBadge caju={recebePeloCaju} />}
         <span className="truncate">{l.nome}</span>
-        {l.semConfig && <span className="text-[10px] text-amber-700 dark:text-amber-400">⚠ sem config</span>}
+        {l.semConfig && <span className="text-[10px] text-amber-700 dark:text-amber-400 inline-flex items-center gap-1"><TriangleAlert size={10}/> sem config</span>}
         {l.semBeneficioCadastrado && (
           <span className="text-[10px] italic text-gray-500 dark:text-gray-400">— sem vale transporte cadastrado</span>
         )}
@@ -1004,7 +1010,7 @@ function LinhaVT(props: LinhaVTProps) {
       <div className={`${cell} font-bold text-gray-900 dark:text-gray-100 gap-1.5`}>
         {fmtBR(l.total)}
         {props.onAbrirSheet && (
-          <button type="button" onClick={props.onAbrirSheet} title="Editar valores ou lançar ajuste" className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-sm">✏️</button>
+          <button type="button" onClick={props.onAbrirSheet} title="Editar valores ou lançar ajuste" className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 inline-flex"><Pencil size={14}/></button>
         )}
       </div>
     </div>
@@ -1047,7 +1053,7 @@ function LinhaVTCard({ l, onAbrirSheet, unidadeNome, recebePeloCaju }: LinhaVTCa
           <div className="font-medium text-gray-900 dark:text-gray-100 text-sm truncate flex items-center gap-1.5 flex-wrap">
             {!l.semBeneficioCadastrado && <PagamentoBadge caju={recebePeloCaju} />}
             {l.nome}
-            {l.semConfig && <span className="text-[10px] text-amber-700 dark:text-amber-400">⚠ sem config</span>}
+            {l.semConfig && <span className="text-[10px] text-amber-700 dark:text-amber-400 inline-flex items-center gap-1"><TriangleAlert size={10}/> sem config</span>}
             {isParcial && (
               <span className="text-[9px] bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-1.5 py-0.5 rounded uppercase font-bold tracking-wide">
                 {labelParcial}
@@ -1069,10 +1075,10 @@ function LinhaVTCard({ l, onAbrirSheet, unidadeNome, recebePeloCaju }: LinhaVTCa
             <button
               type="button"
               onClick={onAbrirSheet}
-              className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-base leading-none px-1"
+              className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 leading-none px-1 inline-flex"
               title="Editar valores ou lançar ajuste"
             >
-              ✏️
+              <Pencil size={15}/>
             </button>
           )}
         </div>
@@ -1170,8 +1176,8 @@ function EditLinhaSheet(props: EditLinhaSheetProps) {
         {/* Header */}
         <div className="border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between shrink-0">
           <div>
-            <div className="font-bold text-gray-900 dark:text-gray-100">
-              {modo === "valores" ? "✏️ " : "⚖ "}{l.nome}
+            <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1">
+              {modo === "valores" ? <Pencil size={14}/> : <Scale size={14}/>} {l.nome}
             </div>
             <div className="text-[11px] text-gray-500 dark:text-gray-400">
               {l.cargoNome} · {l.area} {modo === "ajuste" && <span className="ml-1">— lançar ajuste sobre lote pago</span>}
@@ -1250,7 +1256,7 @@ function EditLinhaSheet(props: EditLinhaSheetProps) {
           ) : (
             <div className="space-y-3">
               <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg p-2.5">
-                ⚖ Cria um lote separado de <strong>ajuste</strong>. Use pra corrigir uma diferença (faltou descontar, pagar a mais, etc) sobre um lote já pago. Não valida overlap com outros pagamentos.
+<Scale size={13} className="inline align-[-2px] mr-1"/>Cria um lote separado de <strong>ajuste</strong>. Use pra corrigir uma diferença (faltou descontar, pagar a mais, etc) sobre um lote já pago. Não valida overlap com outros pagamentos.
               </div>
 
               <div>
@@ -1461,7 +1467,7 @@ function ConfirmacaoLoteModal(props: ConfirmacaoLoteModalProps) {
         {/* Header */}
         <div className="px-5 pt-4 pb-3 border-b border-gray-200 dark:border-gray-800">
           <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">
-            💸 Lançar pra pagamento
+<span className="inline-flex items-center gap-1"><Coins size={14}/> Lançar pra pagamento</span>
           </h3>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">
             Lote de <strong>{nomeMes(props.mes)} {props.ano}</strong>
@@ -1505,7 +1511,7 @@ function ConfirmacaoLoteModal(props: ConfirmacaoLoteModalProps) {
                 <div className="space-y-1.5">
                   {areasOrdenadas.map(a => (
                     <div key={a} className="flex justify-between text-sm border-b border-gray-100 dark:border-gray-800 pb-1.5 last:border-0">
-                      <span className="text-gray-700 dark:text-gray-300">{AREA_ICON[a]} {a}</span>
+                      <span className="text-gray-700 dark:text-gray-300 inline-flex items-center gap-1">{(() => { const Ic = AREA_ICON[a]; return <Ic size={13}/>; })()} {a}</span>
                       <span className="font-semibold tabular-nums text-gray-900 dark:text-gray-100">{fmtBR(totaisFinais.porArea[a] || 0)}</span>
                     </div>
                   ))}
@@ -1518,14 +1524,14 @@ function ConfirmacaoLoteModal(props: ConfirmacaoLoteModalProps) {
 
               {conflitoModoSimples.length > 0 && (
                 <div className="text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg p-2 mb-2">
-                  ⚠ <strong>Conflito de pagamento duplicado</strong> para: {conflitoModoSimples.join(", ")}.<br />
+                  <TriangleAlert size={12} className="inline align-[-2px] mr-1"/><strong>Conflito de pagamento duplicado</strong> para: {conflitoModoSimples.join(", ")}.<br />
                   Esses empregados já têm lote(s) cobrindo este mês. Use <strong>Customizar lote</strong> pra pagar só o saldo
                   ou exclua-os do lote.
                 </div>
               )}
 
               <div className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 rounded-lg p-2">
-                ⚠ O lote será criado em <strong>rascunho</strong>. Você pode editar valores antes de marcar como pago.
+                <TriangleAlert size={12} className="inline align-[-2px] mr-1"/>O lote será criado em <strong>rascunho</strong>. Você pode editar valores antes de marcar como pago.
                 Depois de pago, só o master pode reabrir.
               </div>
             </>
@@ -1539,8 +1545,8 @@ function ConfirmacaoLoteModal(props: ConfirmacaoLoteModalProps) {
               <div className="space-y-3">
                 {areasOrdenadas.map(area => (
                   <div key={area} className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
-                    <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-                      {AREA_ICON[area]} {area}
+                    <div className="px-3 py-1.5 bg-gray-50 dark:bg-gray-800/50 text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 inline-flex items-center gap-1">
+                      {(() => { const Ic = AREA_ICON[area]; return <Ic size={12}/>; })()} {area}
                     </div>
                     <div className="divide-y divide-gray-100 dark:divide-gray-800">
                       {linhasPorArea[area].map(empId => {
@@ -1614,7 +1620,7 @@ function ConfirmacaoLoteModal(props: ConfirmacaoLoteModalProps) {
 
                                 {temCobertura && (
                                   <div className="mt-1 text-[10px] text-amber-700 dark:text-amber-400">
-                                    ⚠ Já tem pagamento em {cobertos.map(c => `${c.inicio.slice(8)}-${c.fim.slice(8)}/${pad2(props.mes)}`).join(", ")}
+                                    <TriangleAlert size={11} className="inline align-[-1px] mr-1"/>Já tem pagamento em {cobertos.map(c => `${c.inicio.slice(8)}-${c.fim.slice(8)}/${pad2(props.mes)}`).join(", ")}
                                     {" "}({cobertos[0].loteStatus})
                                   </div>
                                 )}
@@ -1650,7 +1656,7 @@ function ConfirmacaoLoteModal(props: ConfirmacaoLoteModalProps) {
 
               {temOverlap && (
                 <div className="mt-2 text-xs text-rose-700 dark:text-rose-300 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg p-2">
-                  ⚠ Existe conflito de overlap em uma ou mais linhas. Ajuste os ranges ou desmarque os empregados em conflito pra liberar o salvamento.
+                  <TriangleAlert size={12} className="inline align-[-2px] mr-1"/>Existe conflito de overlap em uma ou mais linhas. Ajuste os ranges ou desmarque os empregados em conflito pra liberar o salvamento.
                 </div>
               )}
             </>
@@ -1687,7 +1693,7 @@ function HistoricoTab(props: HistoricoTabProps) {
   if (props.lotes.length === 0) {
     return (
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-        <div className="text-4xl mb-3">📋</div>
+        <div className="flex justify-center mb-3"><ClipboardList size={36} className="text-gray-400"/></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem lotes ainda</p>
       </div>
     );
@@ -1710,7 +1716,7 @@ function HistoricoTab(props: HistoricoTabProps) {
               </button>
               {isAjuste && (
                 <span className="text-xs px-2 py-0.5 rounded-full font-bold bg-orange-200 text-orange-900 dark:bg-orange-900/40 dark:text-orange-200">
-                  ⚖ Ajuste
+                  <span className="inline-flex items-center gap-1"><Scale size={11}/> Ajuste</span>
                 </span>
               )}
               <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
@@ -1737,7 +1743,7 @@ function HistoricoTab(props: HistoricoTabProps) {
             </div>
           )}
           <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1.5 flex items-center gap-3 flex-wrap">
-            <span>📝 Criado: {new Date(l.criadoEm).toLocaleDateString("pt-BR")} por {l.criadoPorNome || "?"}</span>
+            <span className="inline-flex items-center gap-1"><PenLine size={12}/> Criado: {new Date(l.criadoEm).toLocaleDateString("pt-BR")} por {l.criadoPorNome || "?"}</span>
             {l.pagoEm && (
               <span>✓ Pago: {new Date(l.pagoEm).toLocaleDateString("pt-BR")} por {l.pagoPorNome || "?"}</span>
             )}
@@ -1811,8 +1817,8 @@ function LoteCard({ lote, isMaster, podeConfig, onMarcarPago, onCancelarRascunho
         </div>
       </div>
       <div className="flex items-center gap-1.5 flex-wrap shrink-0">
-        <Button variant="secondary" size="sm" onClick={onExportarCaju} title="Exportar CSV pro Caju">📥 Caju</Button>
-        <Button variant="secondary" size="sm" onClick={onExportarPdf} title="Exportar PDF deste lote">📄 PDF</Button>
+        <Button variant="secondary" size="sm" onClick={onExportarCaju} title="Exportar CSV pro Caju"><span className="inline-flex items-center gap-1"><ArrowDown size={13}/> Caju</span></Button>
+        <Button variant="secondary" size="sm" onClick={onExportarPdf} title="Exportar PDF deste lote"><span className="inline-flex items-center gap-1"><FileText size={13}/> PDF</span></Button>
         {isRascunho && podeConfig && <Button size="sm" onClick={onMarcarPago}>✓ Marcar pago</Button>}
         {isRascunho && podeConfig && <Button variant="danger" size="sm" onClick={onCancelarRascunho} title="Cancela o rascunho e devolve as pessoas pra 'A pagar'">✕ Cancelar</Button>}
         {!isRascunho && isMaster && <Button variant="secondary" size="sm" onClick={onReabrir}>↶ Reabrir</Button>}

@@ -18,6 +18,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useTodasPessoas } from "../../core/pessoas/PessoasContext";
 import { Button } from "../../core/ui/Button";
+import { Flame, TriangleAlert, CheckSquare, Sprout, Users, Trash2, Paperclip, ArrowUp } from "lucide-react";
 import { pickDriveFile } from "../../core/google/drivePicker";
 import { subirExameNoDrive } from "./driveExames";
 import {
@@ -189,7 +190,7 @@ function CardExame({ exame, onAbrir, forceAtrasado }: {
           <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
             {exame.cargoSnapshot && `${exame.cargoSnapshot} · `}
             Vence: <span className={atrasado ? "text-red-600 font-medium" : ""}>{fmtBR(exame.proximoVencimento)}</span>
-            {atrasado ? ` · ⚠ ${-dias} dia(s) atrasado` : dias === 0 ? " · hoje" : ` · em ${dias} dia(s)`}
+            {atrasado ? <> · <TriangleAlert size={11} className="inline align-[-1px]"/> {-dias} dia(s) atrasado</> : dias === 0 ? " · hoje" : ` · em ${dias} dia(s)`}
             {exame.ultimaRealizacao && ` · última: ${fmtBR(exame.ultimaRealizacao)}`}
           </div>
         </div>
@@ -280,19 +281,19 @@ function ListaPorEmpregado({ empregados, cargos, tipos, exames, onAbrir, onLanca
           Todos ({contagem.todos})
         </Chip>
         <Chip ativo={filtro === "vencidos"} onClick={() => setFiltro("vencidos")} cor="red">
-          🔥 Vencidos {contagem.vencidos > 0 && `(${contagem.vencidos})`}
+<span className="inline-flex items-center gap-1"><Flame size={13}/> Vencidos {contagem.vencidos > 0 && `(${contagem.vencidos})`}</span>
         </Chip>
         <Chip ativo={filtro === "aVencer"} onClick={() => setFiltro("aVencer")}>
           A vencer em 30d {contagem.aVencer > 0 && `(${contagem.aVencer})`}
         </Chip>
         <Chip ativo={filtro === "falta"} onClick={() => setFiltro("falta")} cor="red">
-          ⚠ Sem exame cadastrado {contagem.falta > 0 && `(${contagem.falta})`}
+<span className="inline-flex items-center gap-1"><TriangleAlert size={13}/> Sem exame cadastrado {contagem.falta > 0 && `(${contagem.falta})`}</span>
         </Chip>
       </div>
 
       {totalFalta > 0 && filtro === "todos" && (
         <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-sm text-red-800 dark:text-red-300">
-          ⚠ <strong>{totalFalta}</strong> exame(s) sem prazo cadastrado. Registre a data de realização pra controlar os vencimentos.
+          <TriangleAlert size={13} className="inline align-[-2px] mr-1"/><strong>{totalFalta}</strong> exame(s) sem prazo cadastrado. Registre a data de realização pra controlar os vencimentos.
         </div>
       )}
 
@@ -300,9 +301,9 @@ function ListaPorEmpregado({ empregados, cargos, tipos, exames, onAbrir, onLanca
         <div className="text-center py-12 text-gray-500">Nenhum empregado CLT com cargo e exames exigidos.</div>
       ) : linhas.length === 0 ? (
         <div className="text-center py-12 text-gray-500">
-          {filtro === "vencidos" ? "✅ Nenhum exame vencido."
-            : filtro === "falta" ? "✅ Nenhum exame sem prazo cadastrado."
-            : "✅ Nenhum exame vencendo nos próximos 30 dias."}
+          <span className="inline-flex items-center gap-1"><CheckSquare size={14}/> {filtro === "vencidos" ? "Nenhum exame vencido."
+            : filtro === "falta" ? "Nenhum exame sem prazo cadastrado."
+            : "Nenhum exame vencendo nos próximos 30 dias."}</span>
         </div>
       ) : linhas.map(({ emp, cargo, itens, nFalta, nVencido, nAVencer }) => (
         <div key={emp.id} className={`rounded-xl border overflow-hidden bg-white dark:bg-gray-900 ${(nFalta + nVencido) > 0 ? "border-red-200 dark:border-red-800" : nAVencer > 0 ? "border-amber-200 dark:border-amber-800" : "border-gray-200 dark:border-gray-800"}`}>
@@ -489,10 +490,10 @@ function ConfigTab({ tipos, rid, pessoaId, cargos }: { tipos: ExameTipoConfig[];
         </p>
         <div className="flex gap-2 flex-wrap">
           <Button size="sm" variant="ghost" onClick={semearDefaults} disabled={semeando}>
-            {semeando ? "Criando…" : "🌱 Criar 2 tipos default"}
+            {semeando ? "Criando…" : <span className="inline-flex items-center gap-1"><Sprout size={14}/> Criar 2 tipos default</span>}
           </Button>
           <Button size="sm" variant="ghost" onClick={migrarEmpregados} disabled={migrando} title="Roda pra cada empregado ativo do rest, cria ExameEmpregado nos tipos aplicáveis">
-            {migrando ? "Migrando…" : "👥 Migrar empregados existentes"}
+            {migrando ? "Migrando…" : <span className="inline-flex items-center gap-1"><Users size={14}/> Migrar empregados existentes</span>}
           </Button>
           <Button size="sm" onClick={() => setCriando(true)}>+ Novo Tipo</Button>
         </div>
@@ -516,7 +517,7 @@ function ConfigTab({ tipos, rid, pessoaId, cargos }: { tipos: ExameTipoConfig[];
               </div>
               <div className="flex gap-1">
                 <Button size="sm" variant="ghost" onClick={() => setEditando(t)}>Editar</Button>
-                <Button size="sm" variant="ghost" onClick={() => deletarTipo(t)}>🗑️</Button>
+                <Button size="sm" variant="ghost" onClick={() => deletarTipo(t)}><Trash2 size={14}/></Button>
               </div>
             </div>
           </div>
@@ -842,9 +843,9 @@ function LancarExameModal({ tipos, empregados, onClose, autor, rid, examesExiste
           <div>
             <div className="text-xs text-gray-600 mb-1">Resultado (PDF)</div>
             <div className="flex gap-2 items-center flex-wrap">
-              <Button size="sm" variant="ghost" onClick={escolherArquivo}>📎 Escolher do Drive</Button>
+              <Button size="sm" variant="ghost" onClick={escolherArquivo}><span className="inline-flex items-center gap-1"><Paperclip size={13}/> Escolher do Drive</span></Button>
               <label className={`inline-flex items-center px-3 py-1.5 rounded-md text-xs font-medium cursor-pointer ${subindo ? "opacity-50" : "bg-indigo-600 text-white hover:bg-indigo-700"}`}>
-                {subindo ? "Subindo…" : "⬆️ Subir arquivo"}
+                {subindo ? "Subindo…" : <span className="inline-flex items-center gap-1"><ArrowUp size={13}/> Subir arquivo</span>}
                 <input type="file" className="hidden" disabled={subindo}
                   onChange={(e) => { const f = e.target.files?.[0]; if (f) void subirArquivo(f); e.target.value = ""; }} />
               </label>
@@ -931,7 +932,7 @@ function ExameDetalheModal({ exame, onClose, autor }: {
                   <div key={h.id} className="text-xs bg-gray-50 dark:bg-gray-800/40 p-2 rounded-md">
                     <div className="font-medium text-gray-900 dark:text-gray-100">{fmtBR(h.realizadoEm)}{h.fornecedor && ` · ${h.fornecedor}`}</div>
                     {h.anexoUrl && (
-                      <a href={h.anexoUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">📎 {h.anexoNome || "Resultado"}</a>
+                      <a href={h.anexoUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"><Paperclip size={12}/> {h.anexoNome || "Resultado"}</a>
                     )}
                     {h.observacao && <div className="text-gray-600 dark:text-gray-400 mt-0.5">{h.observacao}</div>}
                     <div className="text-[10px] text-gray-400 mt-0.5">Registrado por {h.registradoPorNome || "—"} em {fmtBRDateTime(h.registradoEm)}</div>
@@ -949,7 +950,7 @@ function ExameDetalheModal({ exame, onClose, autor }: {
                 <Button onClick={() => setDandoBaixa(true)}>✓ Resultado de exame recebido</Button>
               </div>
               <div className="mt-3 pt-2 border-t border-dashed border-gray-200 dark:border-gray-800">
-                <Button variant="ghost" onClick={desativar} title="Use só pra casos manuais (cadastro errado, etc)">🗑️ Desativar exame manualmente</Button>
+                <Button variant="ghost" onClick={desativar} title="Use só pra casos manuais (cadastro errado, etc)"><span className="inline-flex items-center gap-1"><Trash2 size={14}/> Desativar exame manualmente</span></Button>
                 <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
                   Em caso de <b>demissão</b> ou <b>mudança de área</b>, o sistema desativa exames automaticamente quando não se aplicam mais. Use o botão acima só pra correções manuais (cadastro errado, exame fora da rotina, etc).
                 </p>
@@ -1034,7 +1035,7 @@ function BaixaInlineForm({ exame, autor, onDone, onCancel }: {
         </label>
       </div>
       <div className="flex gap-2 items-center">
-        <Button size="sm" variant="ghost" onClick={escolherArquivo}>📎 Anexar resultado</Button>
+        <Button size="sm" variant="ghost" onClick={escolherArquivo}><span className="inline-flex items-center gap-1"><Paperclip size={13}/> Anexar resultado</span></Button>
         {anexoNome && <span className="text-xs text-gray-700 truncate flex-1">{anexoNome}</span>}
       </div>
       <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} placeholder="Observação (opcional)" rows={2} className="exm-input" />
