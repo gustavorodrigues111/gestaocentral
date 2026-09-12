@@ -616,6 +616,10 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       if (!ehMasterLocal && validadores[x.area] !== me?.id) continue;
       for (const l of x.r.linhas) {
         if (l.ehFuturo || l.ehHoje || !l.excecoes.includes("atraso")) continue;
+        // Só sobe pra validar quando o dia está LIMPO: sem correção pendente (do
+        // empregado) e sem batida incompleta/faltando. Enquanto não aprovar a
+        // correção ou o dia estiver ímpar, o atraso ainda não é confiável.
+        if (l.excecoes.some(e => e === "correcao_pendente" || e === "batida_impar" || e === "sem_batida" || e === "falta")) continue;
         if (l.ajustesDia.some(a => a.tipo === "atraso_confirmado" || a.tipo === "atraso_justificado")) continue;
         out.push({ emp: x.emp, area: x.area, l });
       }
