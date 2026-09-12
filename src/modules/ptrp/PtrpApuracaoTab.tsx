@@ -14,6 +14,12 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import type { LucideIcon } from "lucide-react";
+import {
+  CircleOff, X, CalendarX2, Unlink, AlarmClock, Coffee, Hourglass, BedDouble, CircleDot,
+  TriangleAlert, Pencil, Ban, Umbrella, MessageSquare, Settings, Lock, LockOpen,
+  CalendarDays, Signature, Printer, ArrowDown, Search, Scale, PartyPopper, Landmark,
+} from "lucide-react";
 import type { Empregado, HorarioDia, Cargo, EscalaMes, ScheduleStatus } from "../../core/types";
 import { empregadoBatePonto } from "../../core/types";
 import type { ParametrosCCT, PtrpTurno, PtrpAjuste, PtrpAjusteTipo, PtrpBancoMov, PtrpApuracaoColab, PtrpApuracaoDia, PtrpFechamento } from "../../core/ptrp/tipos";
@@ -54,7 +60,7 @@ const hhmmN = (ms?: number | null) => ms == null ? null : hhmm(ms);
 const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
 const EXC_LABEL: Record<string, string> = { sem_batida: "sem batida", falta: "falta", fora_escala: "fora de escala", batida_impar: "batida ímpar", atraso: "atraso", intervalo_curto: "intervalo curto", jornada_longa: "jornada > limite", interjornada: "interjornada < mín.", correcao_pendente: "correção pendente" };
 // Ícone por exceção (tooltip mostra o texto) — evita quebra de linha na coluna.
-const EXC_ICON: Record<string, string> = { sem_batida: "⭕", falta: "❌", fora_escala: "📆", batida_impar: "3️⃣", atraso: "⏰", intervalo_curto: "☕", jornada_longa: "⏳", interjornada: "🛌", correcao_pendente: "🟡" };
+const EXC_LUCIDE: Record<string, LucideIcon> = { sem_batida: CircleOff, falta: X, fora_escala: CalendarX2, batida_impar: Unlink, atraso: AlarmClock, intervalo_curto: Coffee, jornada_longa: Hourglass, interjornada: BedDouble, correcao_pendente: CircleDot };
 // Exceções que o EMPREGADO resolve ajustando a própria marcação (esquecimento /
 // batida ímpar / intervalo não registrado) → cabe pedir correção por WhatsApp.
 const EXC_CORRIGIVEL = new Set(["batida_impar", "sem_batida", "intervalo_curto"]);
@@ -486,9 +492,9 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     <div className="tabular-nums">{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); const pend = correcaoPendente(b) && !(b.punchId && l.decididos.has(b.punchId)); const tratada = !!(b.punchId && inclPunch.has(b.punchId)); const cls = b.excluded || desc ? "line-through text-gray-400" : pend ? "text-amber-600 dark:text-amber-400 underline decoration-dashed decoration-amber-400" : tratada ? "text-indigo-600 dark:text-indigo-300 underline decoration-dotted decoration-indigo-400" : ""; return <span key={i} className={cls} title={desc ? "desconsiderada" : pend ? `correção ${b.status === "REJECTED" ? "rejeitada" : "pendente"} no Sólides — não entra no oficial` : tratada ? "horário tratado (correção)" : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}{pend ? " 🟡" : ""}{tratada ? " ✎" : ""}</span>; }) : <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
     {l.ajustesDia.length > 0 && (
       <div className="mt-1 flex flex-col gap-0.5">
-        {l.ajustesDia.map(a => { const inline = a.tipo === "inclusao" && !!a.punchId && l.bs.some(b => b.punchId === a.punchId); const icon = a.tipo === "inclusao" ? "✎" : a.tipo === "desconsideracao" ? "🚫" : "☂️"; const label = a.motivo?.trim() || (a.tipo === "inclusao" ? "Correção incluída" : a.tipo === "desconsideracao" ? "Batida desconsiderada" : a.tipo); return (
+        {l.ajustesDia.map(a => { const inline = a.tipo === "inclusao" && !!a.punchId && l.bs.some(b => b.punchId === a.punchId); const Icon = a.tipo === "inclusao" ? Pencil : a.tipo === "desconsideracao" ? Ban : Umbrella; const label = a.motivo?.trim() || (a.tipo === "inclusao" ? "Correção incluída" : a.tipo === "desconsideracao" ? "Batida desconsiderada" : a.tipo); return (
           <div key={a.id} className="flex items-center gap-x-1 text-[10.5px] text-indigo-700 dark:text-indigo-300">
-            <span>{icon} {a.tipo === "inclusao" && !inline && a.in ? `${a.in}–${a.out} · ` : ""}{label}</span>
+            <span className="inline-flex items-center gap-1"><Icon size={11}/> {a.tipo === "inclusao" && !inline && a.in ? `${a.in}–${a.out} · ` : ""}{label}</span>
             {a.autor?.nome && <span className="text-indigo-400 dark:text-indigo-500">· por {a.autor.nome}</span>}
             <button type="button" onClick={() => void cancelarAjuste(a)} className="text-rose-400 hover:text-rose-600 ml-0.5" title={a.solidesDecisao ? "Desfazer nos dois lados (Sólides + app)" : "Cancelar tratamento no app"}>✕</button>
           </div>
@@ -496,15 +502,15 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       </div>
     )}
   </>);
-  const renderExcecoes = (l: Linha, incompleta: boolean, suspeito: boolean) => l.ehHoje ? <span className="text-blue-600 dark:text-blue-300 text-[11px] font-bold">HOJE</span> : l.ehFuturo ? <span className="text-blue-500 text-[11px]">a realizar</span> : l.excecoes.length ? <span className="inline-flex flex-wrap items-center gap-1 text-[14px] leading-none">{l.excecoes.map(e => <span key={e} className="cursor-help" title={EXC_LABEL[e] || e}>{EXC_ICON[e] || "⚠️"}</span>)}</span> : incompleta ? <span className="cursor-help text-[14px]" title="Batida sem par (ponto aberto) — precisa corrigir">3️⃣</span> : suspeito ? <span className="cursor-help text-[14px]" title="Só 2 batidas — o padrão é 4 ou 6">✌️</span> : <span className="text-emerald-500 text-[12px]">✓</span>;
+  const renderExcecoes = (l: Linha, incompleta: boolean, suspeito: boolean) => l.ehHoje ? <span className="text-blue-600 dark:text-blue-300 text-[11px] font-bold">HOJE</span> : l.ehFuturo ? <span className="text-blue-500 text-[11px]">a realizar</span> : l.excecoes.length ? <span className="inline-flex flex-wrap items-center gap-1 leading-none">{l.excecoes.map(e => { const Ic = EXC_LUCIDE[e] || TriangleAlert; return <span key={e} className="cursor-help" title={EXC_LABEL[e] || e}><Ic size={14}/></span>; })}</span> : incompleta ? <span className="cursor-help inline-flex" title="Batida sem par (ponto aberto) — precisa corrigir"><Unlink size={14}/></span> : suspeito ? <span className="cursor-help text-[14px]" title="Só 2 batidas — o padrão é 4 ou 6">✌️</span> : <span className="text-emerald-500 text-[12px]">✓</span>;
   const renderAcoes = (l: Linha, pendUndecided: boolean, temCorrigivel: boolean) => { const corrSel = selCorr.has(l.data); return (
     <div className="inline-flex items-center gap-1">
       {pendUndecided && !travado && <>
         <button type="button" disabled={acaoBusy} onClick={() => sel && void decidirCorrecao(sel.emp, l, "APPROVED")} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-emerald-300 dark:border-emerald-800 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40" title="Aprovar correção (Sólides + trilha)">✓</button>
         <button type="button" disabled={acaoBusy} onClick={() => sel && void decidirCorrecao(sel.emp, l, "REPROVED")} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-rose-300 dark:border-rose-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40" title="Reprovar correção">✗</button>
       </>}
-      <button type="button" onClick={() => toggleCorr(l.data)} className={`text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border ${corrSel ? "bg-blue-500 border-blue-500 text-white" : temCorrigivel ? "border-blue-300 dark:border-blue-800 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20" : "border-gray-300 dark:border-gray-700 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}`} title={corrSel ? "Remover do pedido de correção" : "Selecionar p/ pedir correção"}>💬</button>
-      <button type="button" disabled={travado} onClick={() => sel && setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bs })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title={travado ? "Mês fechado" : "Tratar"}>⚙️</button>
+      <button type="button" onClick={() => toggleCorr(l.data)} className={`text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border ${corrSel ? "bg-blue-500 border-blue-500 text-white" : temCorrigivel ? "border-blue-300 dark:border-blue-800 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20" : "border-gray-300 dark:border-gray-700 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}`} title={corrSel ? "Remover do pedido de correção" : "Selecionar p/ pedir correção"}><MessageSquare size={14} className="inline"/></button>
+      <button type="button" disabled={travado} onClick={() => sel && setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bs })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title={travado ? "Mês fechado" : "Tratar"}><Settings size={14} className="inline"/></button>
     </div>
   ); };
 
@@ -731,7 +737,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
           </select>
           <button type="button" onClick={() => setComp(addMes(comp, 1))} disabled={comp >= compAtual()} className="px-2 py-1.5 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title="Próximo mês">›</button>
         </div>
-        {!cct && <span className="text-xs text-amber-600 dark:text-amber-400">⚠ Sem CCT — configure em Regras (extras/noturno não calculam).</span>}
+        {!cct && <span className="text-xs text-amber-600 dark:text-amber-400 inline-flex items-center gap-1"><TriangleAlert size={12}/> Sem CCT — configure em Regras (extras/noturno não calculam).</span>}
       </div>
       )}
 
@@ -739,20 +745,20 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       {/* Fechamento mensal + exportações (espelho PDF / AEJ) */}
       <div className="flex items-center gap-2 flex-wrap mb-2">
         {travado
-          ? <span className="text-[11px] font-bold uppercase px-2 py-1 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" title={fech?.fechadoEm ? `Fechado em ${fmtDataBR(fech.fechadoEm.slice(0, 10))}${fech.fechadoPor ? ` por ${fech.fechadoPor.nome}` : ""}` : ""}>🔒 Mês fechado</span>
+          ? <span className="text-[11px] font-bold uppercase px-2 py-1 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 inline-flex items-center gap-1" title={fech?.fechadoEm ? `Fechado em ${fmtDataBR(fech.fechadoEm.slice(0, 10))}${fech.fechadoPor ? ` por ${fech.fechadoPor.nome}` : ""}` : ""}><Lock size={11}/> Mês fechado</span>
           : fech?.status === "reaberto"
             ? <span className="text-[11px] font-bold uppercase px-2 py-1 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">↻ Reaberto</span>
             : <span className="text-[11px] font-bold uppercase px-2 py-1 rounded bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">Aberto</span>}
         {travado
-          ? <Button size="sm" variant="secondary" disabled={fechBusy} onClick={() => void reabrirMes()}>{fechBusy ? "…" : "🔓 Reabrir mês"}</Button>
-          : <Button size="sm" disabled={fechBusy} onClick={() => void encerrarMes()}>{fechBusy ? "Fechando…" : `🔒 Encerrar ${labelComp(comp)}`}</Button>}
-        {travado && <Button size="sm" variant="secondary" disabled={fechBusy} onClick={() => void gerarPraticada()}>🗓️ Gerar praticada</Button>}
-        {travado && <Button size="sm" onClick={() => setAssModal(true)}>✍️ Enviar para assinatura</Button>}
-        <Button size="sm" variant="secondary" disabled={!!exportBusy} onClick={() => void baixarEspelhosTodos()}>{exportBusy === "espelhos" ? "Gerando…" : "🖨 Espelhos (todos)"}</Button>
-        <Button size="sm" variant="secondary" disabled={!!exportBusy} onClick={() => void baixarAEJ()}>{exportBusy === "aej" ? "Gerando…" : "⬇️ AEJ"}</Button>
+          ? <Button size="sm" variant="secondary" disabled={fechBusy} onClick={() => void reabrirMes()}>{fechBusy ? "…" : <span className="inline-flex items-center gap-1"><LockOpen size={13}/> Reabrir mês</span>}</Button>
+          : <Button size="sm" disabled={fechBusy} onClick={() => void encerrarMes()}>{fechBusy ? "Fechando…" : <span className="inline-flex items-center gap-1"><Lock size={13}/> Encerrar {labelComp(comp)}</span>}</Button>}
+        {travado && <Button size="sm" variant="secondary" disabled={fechBusy} onClick={() => void gerarPraticada()}><span className="inline-flex items-center gap-1"><CalendarDays size={13}/> Gerar praticada</span></Button>}
+        {travado && <Button size="sm" onClick={() => setAssModal(true)}><span className="inline-flex items-center gap-1"><Signature size={13}/> Enviar para assinatura</span></Button>}
+        <Button size="sm" variant="secondary" disabled={!!exportBusy} onClick={() => void baixarEspelhosTodos()}>{exportBusy === "espelhos" ? "Gerando…" : <span className="inline-flex items-center gap-1"><Printer size={13}/> Espelhos (todos)</span>}</Button>
+        <Button size="sm" variant="secondary" disabled={!!exportBusy} onClick={() => void baixarAEJ()}>{exportBusy === "aej" ? "Gerando…" : <span className="inline-flex items-center gap-1"><ArrowDown size={13}/> AEJ</span>}</Button>
       </div>
       <div className="text-[12px] rounded-lg px-3 py-2 mb-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
-        Escolha um colaborador pelo chip. <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ verde</span> = sem exceções · <span className="font-semibold text-amber-700 dark:text-amber-300">● amarelo</span> = tem exceções a tratar · <span className="font-semibold text-gray-400">○ cinza</span> = sem batidas / sem CPF. Previsto vem do cadastro do empregado; prévia — validar contra o Sólides. Na tabela do dia: <span className="text-amber-600 dark:text-amber-400">🟡 tracejado</span> = correção pedida no Sólides ainda não aprovada (não conta) → <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ aprovar</span> / <span className="font-semibold text-rose-600">✗ reprovar</span>; <span className="text-blue-600">💬</span> marca o dia p/ pedir correção — junta vários numa mensagem só (inclusive dias sem erro que você suspeita), e o botão azul no topo monta o WhatsApp (linha do DP). Cor da linha do dia: <span className="px-1 rounded bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300">vermelha</span> = correção necessária (nº ímpar de batidas / falta) · <span className="px-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">amarela</span> = suspeito (só 2 batidas; o padrão é 4 ou 6) · <span className="px-1 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">azul</span> = dia futuro.
+        Escolha um colaborador pelo chip. <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ verde</span> = sem exceções · <span className="font-semibold text-amber-700 dark:text-amber-300">● amarelo</span> = tem exceções a tratar · <span className="font-semibold text-gray-400">○ cinza</span> = sem batidas / sem CPF. Previsto vem do cadastro do empregado; prévia — validar contra o Sólides. Na tabela do dia: <span className="text-amber-600 dark:text-amber-400">🟡 tracejado</span> = correção pedida no Sólides ainda não aprovada (não conta) → <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ aprovar</span> / <span className="font-semibold text-rose-600">✗ reprovar</span>; <span className="text-blue-600"><MessageSquare size={12} className="inline"/></span> marca o dia p/ pedir correção — junta vários numa mensagem só (inclusive dias sem erro que você suspeita), e o botão azul no topo monta o WhatsApp (linha do DP). Cor da linha do dia: <span className="px-1 rounded bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300">vermelha</span> = correção necessária (nº ímpar de batidas / falta) · <span className="px-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">amarela</span> = suspeito (só 2 batidas; o padrão é 4 ou 6) · <span className="px-1 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">azul</span> = dia futuro.
       </div>
       </>)}
 
@@ -761,7 +767,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         <div className="text-[12px] text-gray-500 mb-2">Cruza a equipe CLT ativa do <strong>{activeRestaurant?.nome}</strong> com o cadastro da Sólides (por CPF).</div>
         <button type="button" onClick={() => (mostrarComp && roster ? setMostrarComp(false) : void carregarRoster())} disabled={carregandoRoster}
           className="text-[12px] font-semibold px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800">
-          {carregandoRoster ? "Buscando cadastro da Sólides…" : mostrarComp && roster ? "▲ Ocultar comparação de cadastros" : "🔍 Comparar cadastros (Sólides × app)"}
+          {carregandoRoster ? "Buscando cadastro da Sólides…" : mostrarComp && roster ? "▲ Ocultar comparação de cadastros" : <span className="inline-flex items-center gap-1"><Search size={13}/> Comparar cadastros (Sólides × app)</span>}
         </button>
         {rosterErr && <span className="ml-2 text-[12px] text-rose-600">{rosterErr}</span>}
         {mostrarComp && comparacao && (
@@ -788,11 +794,11 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       {mode === "validar" && (
       <div className="mb-3">
         <div className="flex items-baseline gap-2 flex-wrap mb-2">
-          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">⚖️ Exceções a validar · {labelComp(comp)}</span>
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Scale size={14}/> Exceções a validar · {labelComp(comp)}</span>
           <span className="text-[11px] text-gray-500">Confirme se cada atraso foi mesmo atraso. <b>"Não foi"</b> (autorizado pelo líder) zera o atraso no saldo e na trilha.</span>
         </div>
         {atrasosAValidar.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">🎉 Nenhum atraso a validar {ehMasterLocal ? "no período." : "na sua área neste período."}</div>
+          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500 inline-flex items-center justify-center gap-1 w-full"><PartyPopper size={15}/> Nenhum atraso a validar {ehMasterLocal ? "no período." : "na sua área neste período."}</div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
             {atrasosPorArea.map(({ area, emps }) => { const tot = emps.reduce((s, e) => s + e.linhas.length, 0); return (
@@ -815,7 +821,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                             <div key={l.data} className="flex items-center gap-2 py-1 border-t border-gray-100 dark:border-gray-800/60 text-[12px]">
                               <span className="tabular-nums font-medium text-gray-700 dark:text-gray-200 w-12">{l.data.slice(-2)}/{l.data.slice(5, 7)}</span>
                               <span className="text-gray-400 tabular-nums whitespace-nowrap flex-1">{l.previstoTxt}</span>
-                              <span className="tabular-nums font-semibold text-rose-600 dark:text-rose-400 w-14 text-right">⏰ {hm(l.atrasoMin)}</span>
+                              <span className="tabular-nums font-semibold text-rose-600 dark:text-rose-400 w-14 text-right inline-flex items-center justify-end gap-1"><AlarmClock size={12}/> {hm(l.atrasoMin)}</span>
                               <button type="button" disabled={busy} onClick={() => void validarAtraso(emp, l, false)} className="text-[11px] px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40">Foi atraso</button>
                               <button type="button" disabled={busy} onClick={() => void validarAtraso(emp, l, true)} className="text-[11px] px-2 py-1 rounded-md border border-emerald-400 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 disabled:opacity-40">Não foi</button>
                             </div>
@@ -834,7 +840,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
 
       {mode === "validadores" && (
       <div className="mb-3">
-        <div className="mb-1 text-sm font-semibold text-gray-800 dark:text-gray-100">⚖️ Responsáveis por validar exceções</div>
+        <div className="mb-1 text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Scale size={14}/> Responsáveis por validar exceções</div>
         <p className="text-[11px] text-gray-500 mb-3">Defina o líder que valida os atrasos de cada área. Só ele vê as exceções da área dele na aba <b>Exceções a validar</b>.</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {areasComEmpregado.map(area => (
@@ -854,7 +860,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       {mode === "banco" && (
       <div className="mb-3">
         <div className="flex items-center gap-2 flex-wrap mb-2">
-          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">🏦 Banco de horas / compensação · {labelComp(comp)}</span>
+          <span className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Landmark size={14}/> Banco de horas / compensação · {labelComp(comp)}</span>
           <Button size="sm" variant="secondary" disabled={registrando || !cct} onClick={() => void registrarBanco()}>
             {registrando ? "Registrando…" : `Registrar ${labelComp(comp)} no banco`}
           </Button>
@@ -878,7 +884,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                       <td className="font-medium text-gray-700 dark:text-gray-200 truncate">{emp.nome}{registradoComp(emp.id) && <span className="ml-1 text-[9px] text-emerald-600">✓ registrado</span>}</td>
                       <td className={`text-right tabular-nums font-medium ${r.saldoMes < 0 ? "text-rose-600 dark:text-rose-400" : r.saldoMes > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400"}`}>{r.saldoMes ? hmSigned(Math.round(r.saldoMes)) : "0h00"}</td>
                       <td className={`text-right tabular-nums font-semibold ${acum < 0 ? "text-rose-600 dark:text-rose-400" : acum > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400"}`}>{acum ? hmSigned(acum) : "0h00"}</td>
-                      <td className="text-gray-600 dark:text-gray-300">{vencidos.length > 0 ? <span className="text-rose-600 dark:text-rose-400 font-semibold">⚠ {vencidos.length} vencido(s)</span> : proxVenc ? fmtDataBR(proxVenc) : "—"}</td>
+                      <td className="text-gray-600 dark:text-gray-300">{vencidos.length > 0 ? <span className="text-rose-600 dark:text-rose-400 font-semibold inline-flex items-center gap-1"><TriangleAlert size={11}/> {vencidos.length} vencido(s)</span> : proxVenc ? fmtDataBR(proxVenc) : "—"}</td>
                       <td className="text-[11px] text-gray-500">{movs.length === 0 ? "—" : movs.map(m => <span key={m.id} className={`inline-block mr-1.5 ${movVencido(m) ? "text-rose-500" : ""}`} title={m.vencimento ? `vence ${fmtDataBR(m.vencimento)}` : ""}>{labelComp(m.competencia).slice(0, 3)}: {hmSigned(m.saldoMinutos || 0)}</span>)}</td>
                     </tr>
                   );
@@ -937,7 +943,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
           <div className="mt-3 rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-white dark:bg-gray-900 overflow-hidden">
             <div className="px-3 py-1.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/30 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-500 dark:text-gray-400">
               <span className="font-semibold uppercase tracking-wide text-gray-400">Legenda:</span>
-              {Object.entries(EXC_ICON).map(([k, ic]) => <span key={k} className="inline-flex items-center gap-1"><span className="text-[12px] leading-none">{ic}</span>{EXC_LABEL[k]}</span>)}
+              {Object.entries(EXC_LUCIDE).map(([k, Ic]) => <span key={k} className="inline-flex items-center gap-1"><Ic size={12}/>{EXC_LABEL[k]}</span>)}
               <span className="inline-flex items-center gap-1"><span className="text-[12px] leading-none">✌️</span>2 batidas (conferir)</span>
               <span className="inline-flex items-center gap-1"><span className="text-emerald-500">✓</span>sem exceção</span>
             </div>
@@ -945,13 +951,13 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
               <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{sel.emp.nome} <span className="text-[11px] font-normal text-gray-500">· {sel.area}</span></div>
               <div className="flex items-center gap-2 shrink-0">
                 <span className="text-[11px] text-gray-500">trab. {hm(sel.r.totTrab)}{sel.r.totExtra ? ` · extra ${hm(sel.r.totExtra)}` : ""}{sel.r.totNot ? ` · not. ${hm(sel.r.totNot)}` : ""}</span>
-                <button type="button" disabled={!!exportBusy} onClick={() => void baixarEspelho(sel)} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40" title="Espelho de ponto deste colaborador (PDF)">{exportBusy === "espelho" ? "…" : "🖨 Espelho"}</button>
+                <button type="button" disabled={!!exportBusy} onClick={() => void baixarEspelho(sel)} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40" title="Espelho de ponto deste colaborador (PDF)">{exportBusy === "espelho" ? "…" : <span className="inline-flex items-center gap-1"><Printer size={12}/> Espelho</span>}</button>
               </div>
             </div>
             {acaoMsg && <div className={`px-3 py-1.5 text-[11.5px] border-b border-gray-100 dark:border-gray-800 ${acaoMsg.startsWith("✓") ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{acaoMsg}</div>}
             {selCorr.size > 0 && (
               <div className="px-3 py-2 border-b border-blue-100 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-950/20 flex items-center justify-between gap-2 flex-wrap">
-                <span className="text-[12px] text-blue-800 dark:text-blue-200 font-medium">💬 {selCorr.size} dia(s) selecionado(s) para pedir correção ao empregado</span>
+                <span className="text-[12px] text-blue-800 dark:text-blue-200 font-medium inline-flex items-center gap-1"><MessageSquare size={13}/> {selCorr.size} dia(s) selecionado(s) para pedir correção ao empregado</span>
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={() => setSelCorr(new Set())} className="text-[11px] px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800">Limpar</button>
                   <button type="button" onClick={() => setCorrModal(true)} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-blue-500 text-white hover:bg-blue-600">Montar mensagem →</button>
@@ -1012,7 +1018,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         )}
         {batidasSemCadastro.length > 0 && (
           <div className="mt-3 rounded-xl border border-amber-200 dark:border-amber-900/40 bg-amber-50/40 dark:bg-amber-900/10 p-3 text-[12px] text-amber-800 dark:text-amber-300">
-            ⚠ {batidasSemCadastro.length} pessoa(s) com batida mas <strong>sem empregado cadastrado</strong> neste restaurante (CPF não casou).
+            <TriangleAlert size={13} className="inline align-[-2px] mr-1"/> {batidasSemCadastro.length} pessoa(s) com batida mas <strong>sem empregado cadastrado</strong> neste restaurante (CPF não casou).
           </div>
         )}
         </>
@@ -1027,7 +1033,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
               <span className="text-[11px] text-gray-400">Pré-visualização — role para ver todas as páginas.</span>
               <div className="flex gap-2">
                 <Button variant="secondary" onClick={fecharPreview}>Fechar</Button>
-                <Button onClick={() => void baixarOuCompartilhar(preview.blob, preview.nome, { titulo: preview.titulo })}>⬇️ Baixar / Compartilhar</Button>
+                <Button onClick={() => void baixarOuCompartilhar(preview.blob, preview.nome, { titulo: preview.titulo })}><span className="inline-flex items-center gap-1"><ArrowDown size={14}/> Baixar / Compartilhar</span></Button>
               </div>
             </div>
           </div>
@@ -1057,7 +1063,7 @@ function CorrecaoLoteModal({ emp, qtd, textoInicial, onClose, onEnviar }: { emp:
         <textarea value={texto} onChange={e => setTexto(e.target.value)} rows={12} className="w-full px-2.5 py-1.5 text-[12.5px] leading-relaxed rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 font-mono" />
         <div className="flex justify-end gap-2 pt-1">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={() => onEnviar(texto)} disabled={!texto.trim()}>💬 Abrir no WhatsApp</Button>
+          <Button onClick={() => onEnviar(texto)} disabled={!texto.trim()}><span className="inline-flex items-center gap-1"><MessageSquare size={14}/> Abrir no WhatsApp</span></Button>
         </div>
       </div>
     </Modal>
@@ -1176,11 +1182,11 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
         {!caminho && (
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <button onClick={() => setCaminho("marcacoes")} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10">
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">✏️ Editar marcações</div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Pencil size={14}/> Editar marcações</div>
               <div className="text-[11px] text-gray-500 mt-0.5">Incluir uma esquecida, excluir uma duplicada ou corrigir uma errada.</div>
             </button>
             <button onClick={() => setCaminho("motivo")} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10">
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">☂️ Lançar motivo</div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Umbrella size={14}/> Lançar motivo</div>
               <div className="text-[11px] text-gray-500 mt-0.5">Falta, atestado, folga, férias ou abono — na Sólides e na escala.</div>
             </button>
           </div>
@@ -1192,7 +1198,7 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
             <div className="text-[11px] font-semibold text-gray-500 mb-1">Como vai ficar (ordem cronológica)</div>
             {preview.rows.length === 0 ? <div className="text-[12px] text-gray-400">sem marcações</div> :
               <div className="space-y-0.5">{preview.rows.map((r, i) => <div key={i} className={`text-[12.5px] tabular-nums ${r.novo ? "text-emerald-600 dark:text-emerald-300" : "text-gray-700 dark:text-gray-200"}`}>{r.in}–{r.out}{r.novo ? " (nova)" : ""}</div>)}</div>}
-            <div className="text-[11px] text-gray-500 mt-1">Trabalhado: {String(Math.floor(preview.trabMin / 60)).padStart(2, "0")}h{String(preview.trabMin % 60).padStart(2, "0")}{preview.impar && <span className="text-rose-600 ml-2">⚠ nº ímpar de marcações</span>}</div>
+            <div className="text-[11px] text-gray-500 mt-1">Trabalhado: {String(Math.floor(preview.trabMin / 60)).padStart(2, "0")}h{String(preview.trabMin % 60).padStart(2, "0")}{preview.impar && <span className="text-rose-600 ml-2 inline-flex items-center gap-1"><TriangleAlert size={11}/> nº ímpar de marcações</span>}</div>
           </div>
           {existentes.length > 0 && <div className="flex flex-col gap-1">
             <div className="text-[11px] font-semibold text-gray-500">Marcações existentes (marque pra excluir)</div>
@@ -1244,7 +1250,7 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
               {!diaInteiro && <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-gray-500">De<input type="time" value={ain} onChange={e => setAin(e.target.value)} className={inp} /></label><label className="text-[10px] text-gray-500">Até<input type="time" value={aout} onChange={e => setAout(e.target.value)} className={inp} /></label></div>}
             </div>
           </div>
-          {!solidesEmpId && <div className="text-[11px] text-amber-600">⚠ Sem vínculo Sólides — fica só no app (sincronize antes pra refletir lá).</div>}
+          {!solidesEmpId && <div className="text-[11px] text-amber-600 inline-flex items-center gap-1"><TriangleAlert size={11}/> Sem vínculo Sólides — fica só no app (sincronize antes pra refletir lá).</div>}
           {!diaInteiro && <div className="text-[11px] text-gray-400">Abono parcial entra no saldo do app. Envio parcial à Sólides ainda não disponível — use dia inteiro pra refletir lá.</div>}
         </>)}
 

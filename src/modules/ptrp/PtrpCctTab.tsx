@@ -8,6 +8,7 @@ import { collection, onSnapshot } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
+import { Building2, Pencil, Settings, TriangleAlert } from "lucide-react";
 import type { ParametrosCCT } from "../../core/ptrp/tipos";
 import { PtrpCctEditor } from "./PtrpCctEditor";
 import { PtrpAejConfig } from "./PtrpAejConfig";
@@ -50,12 +51,12 @@ export function PtrpCctTab() {
             return (
               <div key={empresaKey} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3.5">
                 <div className="flex items-center justify-between gap-2 flex-wrap">
-                  <div className="font-semibold text-gray-900 dark:text-gray-100">🏢 {empresaKey}</div>
+                  <div className="font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1"><Building2 size={14}/> {empresaKey}</div>
                   <div className="flex items-center gap-2">
                     {atual
                       ? <span className={`text-[10px] font-bold uppercase px-1.5 py-0.5 rounded ${atual.vigente === false ? "bg-amber-400 text-amber-900" : "bg-emerald-500 text-white"}`}>{atual.vigente === false ? "CCT vencida" : "configurada"}</span>
                       : <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-gray-300 dark:bg-gray-700 text-gray-700 dark:text-gray-200">sem CCT</span>}
-                    <Button size="sm" variant={atual ? "secondary" : "primary"} onClick={() => setEditando({ empresaKey, inicial: atual })}>{atual ? "✏️ Editar" : "⚙️ Configurar"}</Button>
+                    <Button size="sm" variant={atual ? "secondary" : "primary"} onClick={() => setEditando({ empresaKey, inicial: atual })}>{atual ? <span className="inline-flex items-center gap-1"><Pencil size={13}/> Editar</span> : <span className="inline-flex items-center gap-1"><Settings size={13}/> Configurar</span>}</Button>
                   </div>
                 </div>
                 {atual && (
@@ -64,7 +65,7 @@ export function PtrpCctTab() {
                     <div className="text-gray-500 mt-0.5">
                       extra {atual.extras.faixa1Perc}%{atual.extras.faixa2Perc ? `/${atual.extras.faixa2Perc}%` : ""} · noturno {atual.adicionalNoturno.perc}% · {atual.regimeCompensacao === "banco" ? "banco" : "compensação"} {atual.prazoCompensacaoDias}d{atual.enquadramentoPiso ? ` · piso ${atual.enquadramentoPiso}` : ""}
                     </div>
-                    {(atual.pendencias || []).map((pd, i) => <div key={i} className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">⚠ {pd}</div>)}
+                    {(atual.pendencias || []).map((pd, i) => <div key={i} className="mt-1 text-[11px] text-amber-700 dark:text-amber-400 inline-flex items-center gap-1"><TriangleAlert size={11}/> {pd}</div>)}
                   </div>
                 )}
               </div>

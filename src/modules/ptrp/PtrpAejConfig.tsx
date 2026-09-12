@@ -10,6 +10,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
+import { Settings, Building2, TriangleAlert } from "lucide-react";
 import type { Restaurant } from "../../core/types";
 
 export type PtrpDev = { tipoId: "1" | "2"; id: string; nome: string; email: string };
@@ -55,7 +56,7 @@ export function PtrpAejConfig({ empresas }: { empresas: string[] }) {
   return (
     <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/30 dark:bg-indigo-900/10 mb-3">
       <button type="button" onClick={() => setAberto(v => !v)} className="w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-left">
-        <span className="font-semibold text-gray-800 dark:text-gray-100 text-[13px]">⚙️ Configuração do AEJ — empregador · REP · desenvolvedor</span>
+        <span className="font-semibold text-gray-800 dark:text-gray-100 text-[13px] inline-flex items-center gap-1"><Settings size={14}/> Configuração do AEJ — empregador · REP · desenvolvedor</span>
         <span className="text-gray-400 text-xs">{aberto ? "▲" : "▼ abrir"}</span>
       </button>
       {aberto && (
@@ -82,8 +83,8 @@ export function PtrpAejConfig({ empresas }: { empresas: string[] }) {
               {empresas.map(k => { const e = empCfg(k); const r = restPorShort[k]; const rep = e.repNumero ?? REP_PADRAO; return (
                 <div key={k} className="grid grid-cols-1 sm:grid-cols-[1fr_240px] gap-2 items-center rounded-lg border border-gray-200 dark:border-gray-800 p-2">
                   <div className="min-w-0">
-                    <div className="font-semibold text-gray-700 dark:text-gray-200 text-[13px] truncate">🏢 {r?.razaoSocial || r?.nome || k} <span className="text-[11px] font-normal text-gray-400">· {k}</span></div>
-                    {r?.cnpj ? <div className="text-[11px] text-gray-500 tabular-nums">CNPJ {r.cnpj}</div> : <div className="text-[11px] text-amber-600 dark:text-amber-400">⚠ sem CNPJ no cadastro — preencha em Configurações → cadastro do restaurante</div>}
+                    <div className="font-semibold text-gray-700 dark:text-gray-200 text-[13px] truncate inline-flex items-center gap-1"><Building2 size={13}/> {r?.razaoSocial || r?.nome || k} <span className="text-[11px] font-normal text-gray-400">· {k}</span></div>
+                    {r?.cnpj ? <div className="text-[11px] text-gray-500 tabular-nums">CNPJ {r.cnpj}</div> : <div className="text-[11px] text-amber-600 dark:text-amber-400 inline-flex items-center gap-1"><TriangleAlert size={11}/> sem CNPJ no cadastro — preencha em Configurações → cadastro do restaurante</div>}
                   </div>
                   <div className="flex flex-col gap-1"><label className={lbl}>Nº do REP (REP-P)</label><input value={rep} onChange={ev => setEmp(k, { repNumero: ev.target.value, repTipo: e.repTipo || "3" })} className={inp} placeholder={REP_PADRAO} /></div>
                 </div>

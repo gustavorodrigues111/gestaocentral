@@ -10,6 +10,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import { Save } from "lucide-react";
 import type { ParametrosCCT, TipoAbono, FeriadoMunicipal } from "../../core/ptrp/tipos";
 import { cctQuibebe, cctSaoPaulo, cctBelem } from "../../core/ptrp/cctTemplates";
 
@@ -235,7 +236,7 @@ export function PtrpCctEditor({ empresaKey, inicial, onClose }: { empresaKey: st
       </div>
       <div className="flex justify-end gap-2 pt-3 border-t border-gray-100 dark:border-gray-800 mt-2">
         <Button variant="secondary" onClick={onClose} disabled={salvando}>Cancelar</Button>
-        <Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando…" : "💾 Salvar convenção"}</Button>
+        <Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando…" : <span className="inline-flex items-center gap-1"><Save size={14}/> Salvar convenção</span>}</Button>
       </div>
     </Modal>
   );
