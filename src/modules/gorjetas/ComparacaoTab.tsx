@@ -12,11 +12,13 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import type { ReactNode } from "react";
 import type { jsPDF as JsPDFType } from "jspdf";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import { Palmtree, TriangleAlert, Ban, FileText, ArrowDown } from "lucide-react";
 import { nomeMes } from "../../core/utils/date";
 import { getActiveSplitVersion } from "./splitRules";
 // Label "Junho/2026" a partir de "2026-06" (o util nomeMes só dá o nome do mês).
@@ -253,16 +255,16 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
   // claro se a ausência explica queda (mês comparado) ou alta (mês base).
   const AusChips = ({ aus, ym }: { aus: Ausencias; ym: string }) => {
     if (!temAusencia(aus)) return null;
-    const chip = (txt: string, cls: string) => (
+    const chip = (txt: ReactNode, cls: string) => (
       <span className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded ${cls}`}>
         {txt}<span className="font-normal opacity-70">&nbsp;· {mesCurto(ym)}</span>
       </span>
     );
     return (
       <>
-        {aus.ferias > 0 && chip(`🏖 Férias ${aus.ferias}d`, "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200")}
-        {aus.faltaJ > 0 && chip(`⚠ Falta just. ${aus.faltaJ}`, "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200")}
-        {aus.faltaI > 0 && chip(`⛔ Falta injust. ${aus.faltaI}`, "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200")}
+        {aus.ferias > 0 && chip(<><Palmtree size={11} className="mr-1"/>Férias {aus.ferias}d</>, "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200")}
+        {aus.faltaJ > 0 && chip(<><TriangleAlert size={11} className="mr-1"/>Falta just. {aus.faltaJ}</>, "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-200")}
+        {aus.faltaI > 0 && chip(<><Ban size={11} className="mr-1"/>Falta injust. {aus.faltaI}</>, "bg-rose-100 text-rose-800 dark:bg-rose-900/40 dark:text-rose-200")}
       </>
     );
   };
@@ -342,7 +344,7 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
           {linhas.length > 0 && mesA !== mesB && (
             <button type="button" onClick={() => void exportarPDF()} disabled={exportando}
               className="h-9 px-3 text-sm font-semibold rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 whitespace-nowrap">
-              {exportando ? "Gerando…" : "📄 Exportar PDF"}
+              {exportando ? "Gerando…" : <span className="inline-flex items-center gap-1"><FileText size={14}/> Exportar PDF</span>}
             </button>
           )}
         </div>
@@ -462,7 +464,7 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
       )}
 
       {pdfUrl && (
-        <Modal title="📄 Comparação de gorjetas — PDF" onClose={fecharPdf} maxWidth="max-w-4xl">
+        <Modal title={<span className="inline-flex items-center gap-1"><FileText size={18}/> Comparação de gorjetas — PDF</span>} onClose={fecharPdf} maxWidth="max-w-4xl">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
               <span className="text-xs text-gray-500 dark:text-gray-400">{labelMes(comparado)} vs {labelMes(base)}</span>
@@ -473,7 +475,7 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
             </div>
             <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
               <Button variant="secondary" onClick={fecharPdf}>Fechar</Button>
-              <Button onClick={() => pdfDocRef.current?.save(`comparacao-gorjetas-${base}-vs-${comparado}.pdf`)}>⬇️ Baixar PDF</Button>
+              <Button onClick={() => pdfDocRef.current?.save(`comparacao-gorjetas-${base}-vs-${comparado}.pdf`)}><span className="inline-flex items-center gap-1"><ArrowDown size={14}/> Baixar PDF</span></Button>
             </div>
           </div>
         </Modal>

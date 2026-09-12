@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
+import { Wrench, CheckSquare } from "lucide-react";
 import type { Empregado } from "../../core/types";
 
 const RID_PUBA_BELEM = "T671zhYNYCeYDWt9vxTQ";
@@ -40,7 +41,7 @@ export function TransferirUnidadePuba() {
   return (
     <div className="mb-3 rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-900/20">
       <button type="button" onClick={() => setAberto((v) => !v)} className="w-full flex items-center justify-between px-3 py-2 text-sm font-semibold text-amber-800 dark:text-amber-200">
-        <span>🔧 Provisório · transferir Porto Futuro → Cidade Velha ({alvos.length})</span>
+        <span className="inline-flex items-center gap-1"><Wrench size={14}/> Provisório · transferir Porto Futuro → Cidade Velha ({alvos.length})</span>
         <span>{aberto ? "▲" : "▼"}</span>
       </button>
       {aberto && (
@@ -49,14 +50,14 @@ export function TransferirUnidadePuba() {
             Porto Futuro fechou em 01/07. Isto troca a <b>unidade padrão</b> destes {alvos.length} de <b>Porto Futuro → Cidade Velha</b>, pra a gorjeta parar de dividir em 2 bolos. Depois, <b>recalcule/republique a divisão de julho</b>. (Não mexe em junho.)
           </p>
           {alvos.length === 0 ? (
-            <div className="text-sm text-emerald-700 dark:text-emerald-300">✅ Ninguém em Porto Futuro — nada a transferir.</div>
+            <div className="text-sm text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><CheckSquare size={14}/> Ninguém em Porto Futuro — nada a transferir.</div>
           ) : (
             <div className="rounded-lg border border-amber-200 dark:border-amber-800 bg-white dark:bg-gray-900 p-2 text-[12px] text-gray-700 dark:text-gray-200">
               {alvos.map((e) => <div key={e.id} className="py-0.5">• {e.nome}</div>)}
             </div>
           )}
           {feito > 0 ? (
-            <div className="text-sm text-emerald-700 dark:text-emerald-300">✅ {feito} transferido(s) pra Cidade Velha. Agora recalcule/republique a divisão de julho.</div>
+            <div className="text-sm text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><CheckSquare size={14}/> {feito} transferido(s) pra Cidade Velha. Agora recalcule/republique a divisão de julho.</div>
           ) : alvos.length > 0 && (
             <Button onClick={() => void aplicar()} disabled={salvando}>{salvando ? "Transferindo…" : `Transferir ${alvos.length} pra Cidade Velha`}</Button>
           )}

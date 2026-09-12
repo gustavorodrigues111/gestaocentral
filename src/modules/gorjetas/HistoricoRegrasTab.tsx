@@ -5,6 +5,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
+import { FileText, Info } from "lucide-react";
 import { empregadoAtivoEm } from "../../core/utils/empregado";
 import { todayYmd } from "../../core/utils/date";
 import { TIPOS_VINCULO_COM_PESSOA } from "../../core/types";
@@ -80,7 +81,7 @@ export function HistoricoRegrasTab({ rid }: Props) {
                   </div>
                 </div>
                 <Button variant="secondary" size="sm" onClick={() => setGerandoAtaDe(v)}>
-                  📄 Gerar Ata
+                  <span className="inline-flex items-center gap-1"><FileText size={14}/> Gerar Ata</span>
                 </Button>
               </div>
             </div>
@@ -166,10 +167,10 @@ function GerarAtaModal({
   }
 
   return (
-    <Modal title="📄 Gerar Ata de Assembleia" onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={<span className="inline-flex items-center gap-1"><FileText size={18}/> Gerar Ata de Assembleia</span>} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
         <div className="text-xs bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2 text-blue-800 dark:text-blue-300">
-          ℹ️ Selecione os colaboradores que estavam na assembleia (pra assinatura).
+          <Info size={13} className="inline align-[-2px] mr-1"/>Selecione os colaboradores que estavam na assembleia (pra assinatura).
           Lista mostra apenas <strong>registrados/estagiários ativos hoje</strong>.
         </div>
 
@@ -220,7 +221,7 @@ function GerarAtaModal({
         <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button onClick={gerar} disabled={selecionados.size === 0 || gerando}>
-            {gerando ? "Gerando..." : "📄 Baixar PDF da Ata"}
+            {gerando ? "Gerando..." : <span className="inline-flex items-center gap-1"><FileText size={14}/> Baixar PDF da Ata</span>}
           </Button>
         </div>
       </div>

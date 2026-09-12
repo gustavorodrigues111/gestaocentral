@@ -4,6 +4,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import { Minus, Pencil } from "lucide-react";
 import type { DescontoCalc, GorjetaDesconto } from "./descontos";
 import { fimDoMes } from "./descontos";
 
@@ -33,8 +34,8 @@ export function DescontosPanel({ restaurantId, competencia, areas, descontosCalc
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 mb-3">
       <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-          ➖ Descontos da gorjeta {descontosCalc.length > 0 && <span className="text-rose-600 dark:text-rose-400 tabular-nums">· −{fmtBR(total)}</span>}
+        <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1">
+          <Minus size={14}/> Descontos da gorjeta {descontosCalc.length > 0 && <span className="text-rose-600 dark:text-rose-400 tabular-nums">· −{fmtBR(total)}</span>}
         </div>
         {podeEditar && <Button size="sm" variant="secondary" onClick={() => setNovo(true)}>＋ Adicionar desconto</Button>}
       </div>
@@ -47,7 +48,7 @@ export function DescontosPanel({ restaurantId, competencia, areas, descontosCalc
               {dc.desconto.descricao && <span className="text-gray-500 truncate">· {dc.desconto.descricao}</span>}
               {dc.desconto.tipo === "percFreelas" && <span className="text-gray-400">({dc.desconto.perc}% de {fmtBR(dc.valorBase)} em diárias)</span>}
               <span className="text-rose-600 dark:text-rose-400 font-semibold tabular-nums ml-auto">−{fmtBR(dc.valor)}</span>
-              {podeEditar && <button type="button" onClick={() => setEditando(dc.desconto)} className="text-indigo-500 hover:text-indigo-600 text-xs" title="Editar">✏️</button>}
+              {podeEditar && <button type="button" onClick={() => setEditando(dc.desconto)} className="text-indigo-500 hover:text-indigo-600 inline-flex" title="Editar"><Pencil size={13}/></button>}
               {podeEditar && <button type="button" onClick={() => void remover(dc.desconto.id)} className="text-rose-500 hover:text-rose-600 text-xs" title="Remover">✕</button>}
             </div>
           ))}

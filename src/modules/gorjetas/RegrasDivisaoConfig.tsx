@@ -5,6 +5,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { canExcluirPessoa } from "../../core/auth/permissions";  // pra checar isMaster
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
+import { Lock, Pencil, ClipboardList, Lightbulb, TriangleAlert, Repeat, BarChart3, Tag, Check } from "lucide-react";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { logAudit } from "../../core/audit/versionedChange";
 import { todayYmd } from "../../core/utils/date";
@@ -191,7 +192,7 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
   if (!podeConfigurarRegra) {
     return (
       <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-4 text-sm text-amber-800 dark:text-amber-300">
-        🔒 Mudar regras de divisão exige permissão especial <code>gorjetasConfigurarRegra</code>.
+        <Lock size={13} className="inline align-[-2px] mr-1"/>Mudar regras de divisão exige permissão especial <code>gorjetasConfigurarRegra</code>.
         Peça pro master te dar essa permissão em Pessoas → Permissões → Especiais.
       </div>
     );
@@ -215,7 +216,7 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
               : "border-transparent text-gray-500"
           }`}
         >
-          ✏️ Nova versão
+          <span className="inline-flex items-center gap-1"><Pencil size={13}/> Nova versão</span>
         </button>
         <button
           type="button"
@@ -226,7 +227,7 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
               : "border-transparent text-gray-500"
           }`}
         >
-          📋 Histórico ({versions.length})
+          <span className="inline-flex items-center gap-1"><ClipboardList size={13}/> Histórico ({versions.length})</span>
         </button>
       </div>
 
@@ -241,13 +242,13 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
           Modo: {versaoVigente.mode === "global_points" ? "Pontos Globais" : "Por Área + Pontos"}.
           Retenção: {versaoVigente.taxRate}%.
           <div className="mt-1 text-[11px] opacity-80">
-            💡 Pra inativar esta regra, cadastre uma nova abaixo — a atual é encerrada
+            <Lightbulb size={12} className="inline align-[-2px] mr-1"/>Pra inativar esta regra, cadastre uma nova abaixo — a atual é encerrada
             automaticamente no dia anterior à nova vigência (cobertura contínua).
           </div>
         </div>
       ) : (
         <div className="text-xs bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 text-amber-800 dark:text-amber-300">
-          ⚠ <strong>Sem regra cadastrada.</strong> Esta vai ser a primeira regra de divisão
+          <TriangleAlert size={13} className="inline align-[-2px] mr-1"/><strong>Sem regra cadastrada.</strong> Esta vai ser a primeira regra de divisão
           deste restaurante. Datas antes da vigência ficam sem regra (gorjetas lançadas
           nesses dias não vão dividir até que uma regra cubra).
         </div>
@@ -256,7 +257,7 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
       {/* Pré-visualização do "encerrar regra atual" — só com effectiveFrom válido */}
       {versaoVigente && effectiveFrom > versaoVigente.effectiveFrom && (
         <div className="text-xs bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2 text-indigo-800 dark:text-indigo-300">
-          🔄 Ao salvar:
+          <Repeat size={12} className="inline align-[-2px] mr-1"/>Ao salvar:
           <ul className="list-disc ml-5 mt-1 space-y-0.5">
             <li>Regra atual será <strong>encerrada em {(() => {
               const [y, m, d] = effectiveFrom.split("-").map(Number);
@@ -283,7 +284,7 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
                 : "border-gray-200 dark:border-gray-800 hover:bg-gray-50"
             }`}
           >
-            <div className="font-medium">📊 Pontos Globais</div>
+            <div className="font-medium inline-flex items-center gap-1"><BarChart3 size={13}/> Pontos Globais</div>
             <div className="text-xs text-gray-500 mt-1">Líquido inteiro dividido pelos pontos do cargo de quem trabalhou</div>
           </button>
           <button
@@ -295,7 +296,7 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
                 : "border-gray-200 dark:border-gray-800 hover:bg-gray-50"
             }`}
           >
-            <div className="font-medium">🏷️ Por Área + Pontos</div>
+            <div className="font-medium inline-flex items-center gap-1"><Tag size={13}/> Por Área + Pontos</div>
             <div className="text-xs text-gray-500 mt-1">Primeiro divide entre áreas (% configurável); dentro da área por pontos</div>
           </button>
         </div>
@@ -359,7 +360,7 @@ export function RegrasDivisaoConfig({ rid, onClose: _ }: Props) {
               Math.abs(somaFinal - 100) < 0.01 ? "text-emerald-700 dark:text-emerald-300" : "text-rose-700 dark:text-rose-300"
             }`}>
               {somaFinal.toFixed(2)}%
-              {Math.abs(somaFinal - 100) < 0.01 ? " ✓" : " ⚠"}
+              {Math.abs(somaFinal - 100) < 0.01 ? <Check size={12} className="inline align-[-1px] ml-1"/> : <TriangleAlert size={12} className="inline align-[-1px] ml-1"/>}
             </div>
           </div>
         </div>
