@@ -11,15 +11,16 @@ import { APP_COMMIT, APP_BUILD_DATE, APP_VERSION_LABEL } from "../version";
 // Nome + descrição do módulo atual a partir da rota — mostrado no header
 // (o "Planejamento.app" e o seletor de restaurante vivem na sidebar agora).
 function moduloDoPath(pathname: string): { icon: string; label: string; desc?: string } | null {
-  if (pathname === "/arquitetura") return { icon: "📓", label: "Caderno", desc: "Log de tudo que foi feito e o que falta, por módulo" };
-  if (pathname === "/perfis") return { icon: "🛡️", label: "Perfis de Acesso", desc: "Permissões por perfil" };
-  if (pathname.startsWith("/portal/")) return { icon: "👤", label: "Meu Portal" };
+  if (pathname === "/arquitetura") return { icon: "notebook-pen", label: "Caderno", desc: "Log de tudo que foi feito e o que falta, por módulo" };
+  if (pathname === "/perfis") return { icon: "user-round-cog", label: "Perfis de Acesso", desc: "Permissões por perfil" };
+  if (pathname === "/propostas") return { icon: "file-signature", label: "Propostas", desc: "Propostas comerciais" };
+  if (pathname.startsWith("/portal/")) return { icon: "house", label: "Meu Portal" };
   const m = pathname.match(/^\/r\/[^/]+\/(.+)$/);
   if (m) {
     const mod = MODULES.find((x) => x.id === m[1]);
     if (mod) return { icon: mod.icon, label: mod.label, desc: mod.desc };
     // módulos fora do catálogo MODULES (rotas especiais):
-    if (m[1] === "configuracoes") return { icon: "⚙️", label: "Configurações", desc: "Configurações do restaurante" };
+    if (m[1] === "configuracoes") return { icon: "settings", label: "Configurações", desc: "Configurações do restaurante" };
   }
   return null;
 }

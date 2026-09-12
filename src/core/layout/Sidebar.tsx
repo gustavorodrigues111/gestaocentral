@@ -278,22 +278,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                       </div>
                     );
                   })}
-                  {area === "inst" && pessoa?.isMaster && (
-                    <>
-                      <NavLink to="/arquitetura" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-                        <span>📓</span><span className="flex-1 truncate">Caderno</span>
-                        <span className="text-[9px] text-gray-400">master</span>
-                      </NavLink>
-                      <NavLink to="/perfis" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-                        <span>🛡️</span><span className="flex-1 truncate">Perfis de Acesso</span>
-                        <span className="text-[9px] text-gray-400">master</span>
-                      </NavLink>
-                      <NavLink to="/propostas" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-                        <span>📄</span><span className="flex-1 truncate">Propostas</span>
-                        <span className="text-[9px] text-gray-400">master</span>
-                      </NavLink>
-                    </>
-                  )}
                 </div>
                 )}
               </div>
@@ -301,11 +285,13 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           })}
 
 
-          {/* Seção Master — Tarefas + Planner. Respeita modulosAtivos mesmo
-              pro master (ligável/desligável nas Configurações). */}
-          {masterMods.length > 0 && (() => {
+          {/* Seção Master — módulos da área master (Governança de IA) +
+              ferramentas do dono (Caderno, Perfis de Acesso, Propostas). */}
+          {(pessoa?.isMaster || masterMods.length > 0) && (() => {
             const fechada = colapsadas.has("master");
             const info = AREA_INFO.master;
+            const total = masterMods.length + (pessoa?.isMaster ? 3 : 0);
+            const extraCls = ({ isActive }: { isActive: boolean }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`;
             return (
               <div>
                 <button
@@ -317,7 +303,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                 >
                   <span className={`transition-transform leading-none ${fechada ? "-rotate-90" : ""}`}>▾</span>
                   <span className="flex-1 text-left">{info.label}</span>
-                  <span className="opacity-60 font-semibold">{masterMods.length}</span>
+                  <span className="opacity-60 font-semibold">{total}</span>
                 </button>
                 {!fechada && (
                 <div className="space-y-0.5">
@@ -347,6 +333,19 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                       </NavLink>
                     );
                   })}
+                  {pessoa?.isMaster && (
+                    <>
+                      <NavLink to="/arquitetura" onClick={guardedClose} className={extraCls}>
+                        <ModuleIcon name="notebook-pen" size={16} /><span className="flex-1 truncate">Caderno</span>
+                      </NavLink>
+                      <NavLink to="/perfis" onClick={guardedClose} className={extraCls}>
+                        <ModuleIcon name="user-round-cog" size={16} /><span className="flex-1 truncate">Perfis de Acesso</span>
+                      </NavLink>
+                      <NavLink to="/propostas" onClick={guardedClose} className={extraCls}>
+                        <ModuleIcon name="file-signature" size={16} /><span className="flex-1 truncate">Propostas</span>
+                      </NavLink>
+                    </>
+                  )}
                 </div>
                 )}
               </div>
