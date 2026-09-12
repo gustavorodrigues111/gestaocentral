@@ -8,6 +8,7 @@ import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { WhatsappInboxPage, NumerosManager, TagsManager } from "./WhatsappInboxPage";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 export function WhatsappPage() {
   const { pessoa } = useAuth();
@@ -31,7 +32,7 @@ export function WhatsappPage() {
   );
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <PageContainer>
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 px-2 pt-2">
         {podeVer && tabBtn("chat", <><MessageCircle size={15} /> Chat</>)}
         {podeConfig && tabBtn("config", <><Settings size={15} /> Configuração</>)}
@@ -53,6 +54,6 @@ export function WhatsappPage() {
           </section>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

@@ -16,6 +16,7 @@ import { isValidSubdomain } from "../../core/restaurant/subdomain";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { fmtBR } from "../../core/utils/date";
 import { EncerrarUnidadeModal } from "./EncerrarUnidadeModal";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 export function ConfiguracoesPage({ modo }: { modo?: "dados" | "modulos" } = {}) {
   const { pessoa: me } = useAuth();
@@ -117,7 +118,7 @@ export function ConfiguracoesPage({ modo }: { modo?: "dados" | "modulos" } = {})
     : ["minhas", "ops", "dp", "planejamento", "inst"];
 
   return (
-    <div className="max-w-3xl space-y-6">
+    <PageContainer variant="form" className="space-y-6">
       {/* modo "dados" (ou guarda-chuva) → dados da empresa; modo "modulos" → só os módulos ativos */}
       {modo !== "modulos" && (<>
       {/* Dados básicos */}
@@ -302,7 +303,7 @@ export function ConfiguracoesPage({ modo }: { modo?: "dados" | "modulos" } = {})
         </div>
       </section>
       )}
-    </div>
+    </PageContainer>
   );
 }
 

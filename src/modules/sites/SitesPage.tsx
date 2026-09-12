@@ -6,6 +6,7 @@ import { canUse } from "../../core/auth/permissions";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { GeralTab } from "./GeralTab";
 import { PreviewTab } from "./PreviewTab";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type Tab = "geral" | "cardapio" | "preview";
 
@@ -60,7 +61,7 @@ export function SitesPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto py-4 space-y-4">
+    <PageContainer className="space-y-4">
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
         <TabButton active={tab === "geral"} onClick={() => setTab("geral")} disabled={!podeGeral}>
@@ -97,7 +98,7 @@ export function SitesPage() {
       {tab === "preview" && (
         <PreviewTab rid={rid} nomeRestaurante={activeRestaurant.nome} />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

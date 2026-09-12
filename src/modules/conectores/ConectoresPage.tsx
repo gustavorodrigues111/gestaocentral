@@ -9,6 +9,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import type { Restaurant } from "../../core/types";
 import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type Status = { restaurantId?: string; nome?: string; atualizadoEm?: string; ok?: boolean; erro?: string; [k: string]: unknown };
 
@@ -123,7 +124,7 @@ export function ConectoresPage() {
   }
 
   return (
-    <div className="max-w-4xl">
+    <PageContainer>
       <div className="mb-4">
         <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Plug size={20} className="text-gray-500 dark:text-gray-400" /> Conectores</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
@@ -199,7 +200,7 @@ export function ConectoresPage() {
       )}
 
       <AltecConfig restaurants={restaurants} />
-    </div>
+    </PageContainer>
   );
 }
 

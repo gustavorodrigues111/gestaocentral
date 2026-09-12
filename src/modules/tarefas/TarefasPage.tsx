@@ -18,6 +18,7 @@ import { CalendarioView, KanbanView, LixeiraView, MinhasTarefasView, ProjetoView
 import { AdminView } from "./admin";
 import { DetalheModal, NovaTarefaModal, SemPermissaoModal } from "./modais";
 import { CaixaDeIdeias, CaixaIdeiasFaixa } from "./CaixaDeIdeias";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 export function TarefasPage() {
   const { pessoa: pessoaReal } = useAuth();
@@ -296,7 +297,7 @@ export function TarefasPage() {
   );
 
   return (
-    <div className="max-w-[1760px] mx-auto p-3 sm:p-4 xl:px-6">
+    <PageContainer>
 
       {/* Banner "Visualizando como…" — só renderiza quando master ativou
           a impersonação. Indica claramente que o conteúdo abaixo é o que
@@ -573,7 +574,7 @@ export function TarefasPage() {
         )
       )}
 
-    </div>
+    </PageContainer>
   );
 }
 

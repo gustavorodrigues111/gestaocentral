@@ -9,6 +9,7 @@ import { canConfigurar, canVer } from "../../core/auth/permissions";
 import type { Salao } from "../../core/types";
 import { HorariosTab } from "../sites/HorariosTab";
 import { JanelasTab } from "../reservas/JanelasTab";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type Tab = "funcionamento" | "janelas";
 
@@ -55,7 +56,7 @@ export function HorariosPage() {
   }
 
   return (
-    <div className="max-w-5xl">
+    <PageContainer>
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {([
@@ -83,6 +84,6 @@ export function HorariosPage() {
       {tab === "janelas" && me && (
         <JanelasTab restaurantId={rid} podeConfig={podeConfig} pessoaId={me.id} saloes={saloes} />
       )}
-    </div>
+    </PageContainer>
   );
 }

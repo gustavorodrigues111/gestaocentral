@@ -24,6 +24,7 @@ import { ConfigCargos } from "./ConfigCargos";
 import CATALOGO from "./catalogo.json";
 import MARCACOES_JSON from "./marcacoes.json";
 import QUADROS_JSON from "./quadros.json";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type Campo = { token: string; rotulo: string; tipo: string; obrigatorio: boolean; origem: string; ajuda: string };
 type TextoLivre = { campo: string; rotulo: string; apos: string };
@@ -112,7 +113,7 @@ export function DocumentosPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto p-4 sm:p-6">
+    <PageContainer>
       <header className="mb-4 flex items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><FileText size={20} className="text-gray-500 dark:text-gray-400" /> Documentos</h1>
@@ -176,7 +177,7 @@ export function DocumentosPage() {
           empresas={empresas} onClose={() => setSel(null)} />
       )}
       </>)}
-    </div>
+    </PageContainer>
   );
 }
 

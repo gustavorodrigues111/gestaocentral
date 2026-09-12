@@ -23,6 +23,7 @@ import { WhatsappTemplatesTab } from "./WhatsappTemplatesTab";
 import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
 import { PAPEIS_WHATSAPP, type PapelWhatsapp, type WhatsappRoteio } from "../../core/whatsapp/roteios";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; apagadaParaCliente?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean; status?: number; falhou?: boolean; incerto?: boolean; origTimestamp?: string; quotedId?: string | null; quotedTexto?: string | null; quotedAutor?: string | null };
 
@@ -1306,7 +1307,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
   const abaEfetiva = embutido ? "conversas" : tab;
   return (
-    <div className={embutido ? "" : "max-w-4xl"}>
+    <PageContainer>
       {!embutido && (
         <div className="mb-3">
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><MessageCircle size={20} className="text-gray-500 dark:text-gray-400" /> WhatsApp
@@ -2124,7 +2125,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
           </div>
         );
       })()}
-    </div>
+    </PageContainer>
   );
 }
 

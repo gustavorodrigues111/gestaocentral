@@ -28,6 +28,7 @@ import { WhatsappTemplatesTab } from "../whatsapp/WhatsappTemplatesTab";
 import { CentralConfig } from "./CentralConfig";
 import type { FaleDpMensagem, Pessoa } from "../../core/types";
 import { FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE } from "../../core/types";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type AbaCentral = "semana" | "avisos" | "whatsapp" | "historico" | "config";
 
@@ -109,7 +110,7 @@ export function ChatPage() {
   }
 
   return (
-    <div className={`p-4 sm:p-6 mx-auto ${aba === "semana" ? "max-w-6xl" : "max-w-3xl"}`}>
+    <PageContainer variant={aba === "semana" ? "wide" : "form"}>
       <header className="mb-4">
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
           <LayoutDashboard size={20} className="text-gray-500 dark:text-gray-400" /> Minha Central
@@ -262,7 +263,7 @@ export function ChatPage() {
           onClose={() => setMsgAberta(null)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

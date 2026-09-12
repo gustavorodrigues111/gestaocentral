@@ -14,6 +14,7 @@ import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
 import type { AgenteIA, AgenteLog } from "../../core/types";
 import { CATALOGO, DOMINIO_META, type AgenteDominio } from "./catalogo";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const uid = () => `ag_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 const toolsPadrao = (tipo: AgenteDominio): Record<string, boolean> =>
@@ -61,7 +62,7 @@ export function AgentesPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <PageContainer>
       {conversando ? (
         <AgenteChat agente={conversando} pessoaId={pessoa?.id} pessoaNome={pessoa?.nome} onVoltar={() => setConversando(null)} onConfig={() => { setEditando(conversando); setConversando(null); }} />
       ) : (<>
@@ -164,7 +165,7 @@ export function AgentesPage() {
       {editando && (
         <AgenteEditor agente={editando} restaurants={restaurants} onClose={() => setEditando(null)} onSalvar={salvar} onExcluir={excluir} />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

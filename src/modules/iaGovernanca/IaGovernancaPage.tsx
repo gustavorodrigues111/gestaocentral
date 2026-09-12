@@ -16,6 +16,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useDitado } from "../../core/hooks/useDitado";
 import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type DiretrizBloco = { id: string; texto: string; criadoEm: string; criadoPor: string };
 type IaInteracao = {
@@ -159,7 +160,7 @@ export function IaGovernancaPage() {
   );
 
   return (
-    <div className="max-w-4xl mx-auto p-4">
+    <PageContainer>
       <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Shield size={20} className="text-gray-500 dark:text-gray-400" /> Governança de IA</h1>
       <p className="text-xs text-gray-500 mb-4">Módulo exclusivo do master. Diretrizes em blocos do que a IA pode responder, registro das interações e alertas de uso fora do escopo (LGPD).</p>
 
@@ -256,7 +257,7 @@ export function IaGovernancaPage() {
       )}
 
       {replicar && <ReplicarModal blocos={blocos} restaurantes={restaurants.filter(r => r.id !== rid).map(r => ({ id: r.id, nome: r.nome }))} pessoaId={pessoa.id} onClose={() => setReplicar(false)} />}
-    </div>
+    </PageContainer>
   );
 }
 

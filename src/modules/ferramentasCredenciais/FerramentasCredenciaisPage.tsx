@@ -29,6 +29,7 @@ import type {
 import { subscribeToolsByRestaurant, deleteTool } from "./repository";
 import { FerramentaEditorModal } from "./FerramentaEditorModal";
 import { ImportarCsvModal } from "./ImportarCsvModal";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const CATEGORIAS_ORDEM: FerramentaCategoria[] = [
   "delivery", "fornecedores", "operacao", "financeiro", "rh", "infra", "identidade", "restrito",
@@ -125,7 +126,7 @@ export function FerramentasCredenciaisPage() {
   }
 
   return (
-    <div className="p-4 md:p-6 max-w-5xl mx-auto">
+    <PageContainer>
       {/* Header */}
       <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
         {podeGerenciar && (
@@ -236,7 +237,7 @@ export function FerramentasCredenciaisPage() {
           onClose={() => setImportandoCsv(false)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

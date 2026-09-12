@@ -21,6 +21,7 @@ import { transcreverAudio } from "../../core/hooks/transcreverAudio";
 import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
 import { WIKI_AREAS, GUIA_SEED, tipoDeArquivo, TIPO_ICON, type WikiAreaKey, type WikiAreaMeta, type WikiGuia, type WikiDoc } from "../../core/wiki/areas";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
@@ -85,7 +86,7 @@ export function WikiProcessosPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto p-4 sm:p-6">
+    <PageContainer>
       <header className="mb-5">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><BookOpen size={20} className="text-gray-500 dark:text-gray-400" /> Wiki de Processos</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Guia de funcionamento de cada área — e um assistente de IA que responde as dúvidas da equipe a partir do guia.</p>
@@ -143,7 +144,7 @@ export function WikiProcessosPage() {
         <AcervoModal area={acervo} docs={docsDe(acervo.key)} podeEditar={podeEditarArea(acervo.key)}
           pessoaId={pessoa.id} pessoaNome={pessoa.nome} onClose={() => setAcervo(null)} />
       )}
-    </div>
+    </PageContainer>
   );
 }
 
