@@ -58,7 +58,7 @@ export function PtrpSyncPage() {
   const [rodando, setRodando] = useState<string | null>(null);   // "*" = geral; ou empresaKey
   const [msg, setMsg] = useState("");
   const [aba, setAba] = useState<"conferencia" | "validar" | "banco" | "config">("conferencia");
-  const [subAba, setSubAba] = useState<"regras" | "sync" | "mapeamento">("regras");
+  const [subAba, setSubAba] = useState<"regras" | "sync" | "validadores">("regras");
   const [desdeInput, setDesdeInput] = useState("");
   // Top-abas (Conferência · Banco · Configurações); a efetiva é a 1ª válida.
   const abasPermitidas = [
@@ -74,6 +74,7 @@ export function PtrpSyncPage() {
   const subAbas = [
     ...(podeRegras ? [["regras", "📜 Regras"] as const] : []),
     ...(podeSincronizar ? [["sync", "🔄 Sincronização"] as const] : []),
+    ...(podeRegras ? [["validadores", "⚖️ Responsáveis por área"] as const] : []),
   ];
   const subAbaEfetiva = subAbas.some(([v]) => v === subAba) ? subAba : (subAbas[0]?.[0] || "regras");
 
@@ -144,7 +145,7 @@ export function PtrpSyncPage() {
             className={`px-3 py-1.5 text-[13px] font-semibold -mb-px border-b-2 ${subAbaEfetiva === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
         ))}
       </div>
-      {subAbaEfetiva === "regras" ? <PtrpCctTab /> : (
+      {subAbaEfetiva === "regras" ? <PtrpCctTab /> : subAbaEfetiva === "validadores" ? <PtrpApuracaoTab mode="validadores" /> : (
       <>
       <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5 mb-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{activeRestaurant?.nome} · {shortCode || "sem shortCode"}</div>
       <div className="flex items-center gap-2 flex-wrap mb-2">

@@ -98,7 +98,7 @@ function turnoPrevisto(emp: Empregado, date: string, statusEscala?: string): { k
   return { kind: "trabalho", turno: turnoDoHd() };
 }
 
-export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia" | "banco" | "comparar" | "validar" } = {}) {
+export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia" | "banco" | "comparar" | "validar" | "validadores" } = {}) {
   const { pessoa: me } = useAuth();
   // Segue o restaurante ATIVO do sistema (seletor global), como a Análise de Ponto.
   const { activeRestaurant } = useRestaurant();
@@ -773,63 +773,63 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
           <span className="text-sm font-semibold text-gray-800 dark:text-gray-100">⚖️ Exceções a validar · {labelComp(comp)}</span>
           <span className="text-[11px] text-gray-500">Confirme se cada atraso foi mesmo atraso. <b>"Não foi"</b> (autorizado pelo líder) zera o atraso no saldo e na trilha.</span>
         </div>
-        {ehMasterLocal && (
-          <details className="mb-3 rounded-lg border border-gray-200 dark:border-gray-800 p-2.5">
-            <summary className="text-[12px] font-semibold text-gray-600 dark:text-gray-300 cursor-pointer">⚙️ Responsáveis por área (quem valida cada área)</summary>
-            <div className="mt-2 grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {areasComEmpregado.map(area => (
-                <label key={area} className="flex items-center gap-2 text-[12px]">
-                  <span className="w-28 truncate text-gray-600 dark:text-gray-300" title={area}>{area}</span>
-                  <select value={validadores[area] || ""} onChange={e => void setValidadorArea(area, e.target.value)} className="flex-1 px-2 py-1 text-[12px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
-                    <option value="">— ninguém —</option>
-                    {pessoasDoRest.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
-                  </select>
-                </label>
-              ))}
-            </div>
-          </details>
-        )}
         {atrasosAValidar.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nenhum atraso a validar {ehMasterLocal ? "no período." : "na sua área neste período."}</div>
+          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">🎉 Nenhum atraso a validar {ehMasterLocal ? "no período." : "na sua área neste período."}</div>
         ) : (
-          <div className="space-y-3">
-            {atrasosPorArea.map(({ area, emps }) => (
-              <div key={area} className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
-                <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 bg-gray-50 dark:bg-gray-900/60 border-b border-gray-200 dark:border-gray-800">{area} · {emps.length} colaborador{emps.length > 1 ? "es" : ""}</div>
-                <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3 items-start">
+            {atrasosPorArea.map(({ area, emps }) => { const tot = emps.reduce((s, e) => s + e.linhas.length, 0); return (
+              <div key={area} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-2.5">
+                <div className="flex items-center justify-between mb-2 px-1">
+                  <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400">{area}</span>
+                  <span className="text-[10px] font-semibold text-rose-600 dark:text-rose-400 tabular-nums">{tot} atraso{tot > 1 ? "s" : ""}</span>
+                </div>
+                <div className="flex flex-col gap-1.5">
                   {emps.map(({ emp, linhas }) => { const open = expEmp.has(emp.id); return (
-                    <li key={emp.id}>
-                      <button type="button" onClick={() => setExpEmp(s => { const n = new Set(s); if (n.has(emp.id)) n.delete(emp.id); else n.add(emp.id); return n; })} className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-900/40">
+                    <div key={emp.id} className={`rounded-lg border overflow-hidden ${open ? "border-indigo-300 dark:border-indigo-800" : "border-amber-200 dark:border-amber-900/60 bg-amber-50/50 dark:bg-amber-950/15"}`}>
+                      <button type="button" onClick={() => setExpEmp(s => { const n = new Set(s); if (n.has(emp.id)) n.delete(emp.id); else n.add(emp.id); return n; })} className="w-full flex items-center gap-2 px-2.5 py-2 text-left hover:bg-white/60 dark:hover:bg-gray-800/40">
                         <span className="text-gray-400 text-[10px] w-3">{open ? "▾" : "▸"}</span>
-                        <span className="text-sm font-medium text-gray-800 dark:text-gray-100 flex-1 truncate">{emp.nome}</span>
-                        <span className="text-[11px] text-rose-600 dark:text-rose-400">{linhas.length} atraso{linhas.length > 1 ? "s" : ""}</span>
+                        <span className="text-[13px] font-medium text-gray-800 dark:text-gray-100 flex-1 truncate">{emp.nome}</span>
+                        <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 rounded-full px-1.5 py-0.5 tabular-nums">{linhas.length}</span>
                       </button>
                       {open && (
-                        <div className="px-3 pb-2 overflow-x-auto">
-                          <table className="w-full text-[12px] [&_td]:py-1 [&_td]:pr-2">
-                            <tbody>
-                              {linhas.map(l => { const busy = valBusy === `${emp.id}_${l.data}`; return (
-                                <tr key={l.data} className="border-t border-gray-50 dark:border-gray-800/40">
-                                  <td className="tabular-nums w-12">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
-                                  <td className="text-gray-500 tabular-nums whitespace-nowrap">{l.previstoTxt}</td>
-                                  <td className="text-right tabular-nums text-rose-600 dark:text-rose-400 w-14">{hm(l.atrasoMin)}</td>
-                                  <td className="text-right whitespace-nowrap">
-                                    <button type="button" disabled={busy} onClick={() => void validarAtraso(emp, l, false)} className="text-[11px] px-2 py-1 rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 mr-1">Foi atraso</button>
-                                    <button type="button" disabled={busy} onClick={() => void validarAtraso(emp, l, true)} className="text-[11px] px-2 py-1 rounded border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40">Não foi</button>
-                                  </td>
-                                </tr>
-                              ); })}
-                            </tbody>
-                          </table>
+                        <div className="px-2.5 pb-2 pt-0.5 bg-white dark:bg-gray-900 overflow-x-auto">
+                          {linhas.map(l => { const busy = valBusy === `${emp.id}_${l.data}`; return (
+                            <div key={l.data} className="flex items-center gap-2 py-1 border-t border-gray-100 dark:border-gray-800/60 text-[12px]">
+                              <span className="tabular-nums font-medium text-gray-700 dark:text-gray-200 w-12">{l.data.slice(-2)}/{l.data.slice(5, 7)}</span>
+                              <span className="text-gray-400 tabular-nums whitespace-nowrap flex-1">{l.previstoTxt}</span>
+                              <span className="tabular-nums font-semibold text-rose-600 dark:text-rose-400 w-14 text-right">⏰ {hm(l.atrasoMin)}</span>
+                              <button type="button" disabled={busy} onClick={() => void validarAtraso(emp, l, false)} className="text-[11px] px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40">Foi atraso</button>
+                              <button type="button" disabled={busy} onClick={() => void validarAtraso(emp, l, true)} className="text-[11px] px-2 py-1 rounded-md border border-emerald-400 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 disabled:opacity-40">Não foi</button>
+                            </div>
+                          ); })}
                         </div>
                       )}
-                    </li>
+                    </div>
                   ); })}
-                </ul>
+                </div>
               </div>
-            ))}
+            ); })}
           </div>
         )}
+      </div>
+      )}
+
+      {mode === "validadores" && (
+      <div className="mb-3">
+        <div className="mb-1 text-sm font-semibold text-gray-800 dark:text-gray-100">⚖️ Responsáveis por validar exceções</div>
+        <p className="text-[11px] text-gray-500 mb-3">Defina o líder que valida os atrasos de cada área. Só ele vê as exceções da área dele na aba <b>Exceções a validar</b>.</p>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {areasComEmpregado.map(area => (
+            <div key={area} className="flex items-center gap-2 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg px-2.5 py-2">
+              <span className="text-[11px] font-bold uppercase tracking-wide text-gray-500 dark:text-gray-400 w-24 truncate" title={area}>{area}</span>
+              <select value={validadores[area] || ""} onChange={e => void setValidadorArea(area, e.target.value)} className="flex-1 px-2 py-1 text-[12px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
+                <option value="">— ninguém —</option>
+                {pessoasDoRest.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+              </select>
+            </div>
+          ))}
+          {areasComEmpregado.length === 0 && <div className="text-[12px] text-gray-400">Nenhuma área com empregado ativo neste mês.</div>}
+        </div>
       </div>
       )}
 
