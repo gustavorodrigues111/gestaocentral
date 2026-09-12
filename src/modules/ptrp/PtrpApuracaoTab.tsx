@@ -955,6 +955,7 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
   const [ain, setAin] = useState("08:00");
   const [aout, setAout] = useState("12:00");
   const [buscaMotivo, setBuscaMotivo] = useState("");
+  const [statusOpen, setStatusOpen] = useState(false);
   useEffect(() => { fetchMotivosAfastamento(empresaKey).then(setMotivos).catch(() => {}); }, [empresaKey]);
   useEffect(() => onSnapshot(doc(db, "ptrpMotivosMapa", empresaKey), d => setMapa((d.exists() ? (d.data() as { mapa?: Record<string, { status?: string; exibir?: boolean; descricao?: string }> }).mapa : {}) || {})), [empresaKey]);
   const motivosOrd = useMemo(() => {
@@ -1057,7 +1058,19 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-semibold text-gray-500">Status na escala (praticada)</label>
-              <select value={statusEscala} onChange={e => setStatusEscala(e.target.value as ScheduleStatus)} className={inp}>{STATUS_LISTA.map(s => <option key={s} value={s}>{STATUS_INFO[s].label}</option>)}</select>
+              <div className="relative">
+                <button type="button" onClick={() => setStatusOpen(o => !o)} className={`${inp} flex items-center gap-2 text-left`}>
+                  <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[statusEscala].bg} ${STATUS_INFO[statusEscala].text}`}>{STATUS_INFO[statusEscala].short}</span>
+                  <span className="flex-1">{STATUS_INFO[statusEscala].label}</span>
+                  <span className="text-gray-400 text-[10px]">▾</span>
+                </button>
+                {statusOpen && <div className="absolute z-20 mt-1 w-full rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg max-h-56 overflow-y-auto">
+                  {STATUS_LISTA.map(s => <button key={s} type="button" onClick={() => { setStatusEscala(s); setStatusOpen(false); }} className={`flex items-center gap-2 w-full px-2 py-1.5 text-[12.5px] text-left hover:bg-gray-50 dark:hover:bg-gray-800 ${s === statusEscala ? "bg-indigo-50 dark:bg-indigo-900/20" : ""}`}>
+                    <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[s].bg} ${STATUS_INFO[s].text}`}>{STATUS_INFO[s].short}</span>
+                    <span className="text-gray-700 dark:text-gray-200">{STATUS_INFO[s].label}</span>
+                  </button>)}
+                </div>}
+              </div>
               <label className="flex items-center gap-2 text-[12px] mt-1"><input type="checkbox" checked={diaInteiro} onChange={e => setDiaInteiro(e.target.checked)} /> Dia inteiro</label>
               {!diaInteiro && <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-gray-500">De<input type="time" value={ain} onChange={e => setAin(e.target.value)} className={inp} /></label><label className="text-[10px] text-gray-500">Até<input type="time" value={aout} onChange={e => setAout(e.target.value)} className={inp} /></label></div>}
             </div>
