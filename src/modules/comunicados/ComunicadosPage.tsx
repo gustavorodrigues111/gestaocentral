@@ -7,6 +7,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfigurar, canVer } from "../../core/auth/permissions";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
+import { PageContainer } from "../../core/ui/PageContainer";
 import { Input } from "../../core/ui/Input";
 import { todayYmd } from "../../core/utils/date";
 import type { Comunicado, ComunicadoLeitura } from "../../core/types";
@@ -101,7 +102,7 @@ export function ComunicadosPage() {
   }
 
   return (
-    <div className="max-w-4xl">
+    <PageContainer>
       <div className="flex items-start justify-end mb-4 flex-wrap gap-3">
         {podeCriar && (
           <Button onClick={() => setEditing("new")}>+ Novo comunicado</Button>
@@ -200,7 +201,7 @@ export function ComunicadosPage() {
           onClose={() => setEditing(null)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

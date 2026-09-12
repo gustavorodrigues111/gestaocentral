@@ -4,6 +4,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canVer, canAcao } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
+import { PageContainer } from "../../core/ui/PageContainer";
 import { PessoasList } from "./PessoasList";
 import { CargosTab } from "./CargosTab";
 import { AlteracoesTab } from "./AlteracoesTab";
@@ -47,7 +48,7 @@ export function PessoasPage() {
   ];
 
   return (
-    <div className="max-w-5xl">
+    <PageContainer>
       <div className="flex items-start justify-between flex-wrap gap-3 mb-4">
         <div />
         {/* PROVISÓRIO — botão master pra importar horários em lote (migração
@@ -86,6 +87,6 @@ export function PessoasPage() {
           onClose={() => setShowImportHorarios(false)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
