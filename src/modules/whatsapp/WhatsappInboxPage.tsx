@@ -21,7 +21,7 @@ import { Modal } from "../../core/ui/Modal";
 import { WhatsappTemplatesTab } from "./WhatsappTemplatesTab";
 import { AssistenteIaNumero } from "./AssistenteIaNumero";
 import type { Pessoa, WhatsappTag, WhatsappContato, WhatsappNumero, WhatsappResposta, WhatsappRoteamento, Cliente } from "../../core/types";
-import { PAPEIS_WHATSAPP, type PapelWhatsapp, type WhatsappRoteio } from "../../core/whatsapp/roteios";
+import { PAPEIS_WHATSAPP, PAPEL_WHATSAPP_ICON, type PapelWhatsapp, type WhatsappRoteio } from "../../core/whatsapp/roteios";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 type Msg = { id: string; waId: string; nome?: string | null; direcao: "in" | "out"; tipo?: string; texto?: string; timestamp?: string; recebidoEm?: string; lido?: boolean; autorNome?: string | null; numeroId?: string; sistema?: boolean; midia?: string; midiaUrl?: string; midiaNome?: string; mime?: string; messageId?: string; reacao?: string | null; editado?: boolean; apagada?: boolean; apagadaParaCliente?: boolean; ehGrupo?: boolean; autor?: string | null; autorJid?: string | null; viaAparelho?: boolean; status?: number; falhou?: boolean; incerto?: boolean; origTimestamp?: string; quotedId?: string | null; quotedTexto?: string | null; quotedAutor?: string | null };
@@ -2438,16 +2438,18 @@ export function NumerosManager() {
                 <div key={r.id}>
                   <div className="text-[13px] font-semibold text-gray-800 dark:text-gray-100 mb-1.5">{r.nome}</div>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {PAPEIS_WHATSAPP.map(p => (
+                    {PAPEIS_WHATSAPP.map(p => {
+                      const PIcon = PAPEL_WHATSAPP_ICON[p.id];
+                      return (
                       <label key={p.id} className="flex items-center gap-2 text-[13px]">
-                        <span className="w-40 shrink-0 text-gray-600 dark:text-gray-300 truncate" title={p.desc}>{p.icon} {p.label}</span>
+                        <span className="w-40 shrink-0 flex items-center gap-1.5 text-gray-600 dark:text-gray-300 truncate" title={p.desc}><PIcon size={14} className="shrink-0" /> {p.label}</span>
                         <select value={rot[p.id] || ""} onChange={(e) => void setPapel(r.id, p.id, e.target.value)}
                           className="flex-1 min-w-0 text-[13px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5">
                           <option value="">— sem número —</option>
                           {disp.map(n => <option key={n.id} value={n.id}>{n.nome}</option>)}
                         </select>
                       </label>
-                    ))}
+                    ); })}
                   </div>
                 </div>
               );

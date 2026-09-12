@@ -13,8 +13,14 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
 import type { AgenteIA, AgenteLog } from "../../core/types";
-import { CATALOGO, DOMINIO_META, type AgenteDominio } from "./catalogo";
+import { CATALOGO, DOMINIO_META, DOMINIO_ICON, type AgenteDominio } from "./catalogo";
 import { PageContainer } from "../../core/ui/PageContainer";
+
+// Ícone lucide do domínio do agente — substitui o emoji legado nos cards/cabeçalhos.
+function DomIcon({ tipo, size = 20, className }: { tipo: AgenteDominio; size?: number; className?: string }) {
+  const Ic = DOMINIO_ICON[tipo];
+  return <Ic size={size} className={className} />;
+}
 
 const uid = () => `ag_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 const toolsPadrao = (tipo: AgenteDominio): Record<string, boolean> =>
@@ -100,7 +106,7 @@ export function AgentesPage() {
                 const escritas = cat.filter(f => f.tipo === "write" && a.tools?.[f.key]).length;
                 return (
                   <div key={a.id} className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 flex flex-col gap-2.5 shadow-sm">
-                    <div className="w-11 h-11 rounded-xl bg-gray-50 dark:bg-gray-800 grid place-items-center text-2xl">{DOMINIO_META[a.tipo].icon}</div>
+                    <div className="w-11 h-11 rounded-xl bg-gray-50 dark:bg-gray-800 grid place-items-center text-gray-600 dark:text-gray-300"><DomIcon tipo={a.tipo} size={24} /></div>
                     <div className="min-w-0">
                       <div className="text-[15px] font-bold text-gray-900 dark:text-gray-100 flex items-center gap-1.5 truncate">{a.nome}{!a.ativo && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800">pausado</span>}</div>
                       <div className="text-[12px] text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2 min-h-[32px]">{DOMINIO_META[a.tipo].label}</div>
@@ -126,7 +132,7 @@ export function AgentesPage() {
           <div className="flex flex-col gap-1">
             {agentes.sort((a, b) => a.tipo.localeCompare(b.tipo)).map(a => (
               <button key={a.id} type="button" onClick={() => setConfigSel(a.id)} className={`text-left text-sm font-medium px-3 py-2 rounded-lg flex items-center gap-2 ${configSel === a.id ? "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300" : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>
-                {DOMINIO_META[a.tipo].icon} <span className="truncate">{a.nome}</span>
+                <DomIcon tipo={a.tipo} size={16} /> <span className="truncate">{a.nome}</span>
               </button>
             ))}
             <button type="button" onClick={() => novo("cardapio")} className="text-left text-sm font-medium px-3 py-2 rounded-lg text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 mt-1">＋ Subir nova skill</button>
@@ -366,7 +372,7 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
     <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 h-[calc(100vh-140px)] min-h-[420px] flex flex-col overflow-hidden">
         <div className="flex items-center gap-2 px-3 py-2.5 border-b border-gray-100 dark:border-gray-800">
           <button type="button" onClick={onVoltar} className="text-sm font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">← Voltar</button>
-          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5 min-w-0 truncate">{DOMINIO_META[agente.tipo].icon} {agente.nome}</div>
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5 min-w-0 truncate"><DomIcon tipo={agente.tipo} size={16} /> {agente.nome}</div>
           <div className="flex items-center gap-1 ml-auto">
             {msgs.length > 0 && <button type="button" onClick={() => void limparConversa()} title="Limpar conversa" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">🗑</button>}
             <button type="button" onClick={onConfig} title="Configurar" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">⚙</button>
@@ -376,7 +382,7 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
         <div className="flex-1 overflow-y-auto p-4 space-y-3">
           {msgs.length === 0 && (
             <div className="text-center text-xs text-gray-400 py-8">
-              <div className="text-3xl mb-2">{DOMINIO_META[agente.tipo].icon}</div>
+              <div className="flex justify-center mb-2 text-gray-400"><DomIcon tipo={agente.tipo} size={30} /></div>
               Pergunte algo. Ele consulta os dados da plataforma e responde — por enquanto só leitura.
               <div className="mt-2 text-[11px]">Ex: {agente.tipo === "financeiro" ? "“Quais contas fixas vencem em julho?”" : "“Quem está em período de experiência este mês?”"}</div>
             </div>
@@ -477,7 +483,7 @@ function AgenteEditor({ agente, restaurants, onClose, onSalvar, onExcluir, inlin
 
   const conteudo = (<>
         {!inline && <button type="button" onClick={onClose} className="absolute top-3 right-3 w-8 h-8 rounded-full text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">✕</button>}
-        <div className="text-[11px] font-medium text-gray-400 mb-1">{DOMINIO_META[a.tipo].icon} Agente de {DOMINIO_META[a.tipo].label}</div>
+        <div className="text-[11px] font-medium text-gray-400 mb-1 flex items-center gap-1"><DomIcon tipo={a.tipo} size={13} /> Agente de {DOMINIO_META[a.tipo].label}</div>
 
         <label className="block text-xs font-semibold text-gray-500 mb-1">Nome</label>
         <input value={a.nome} onChange={e => setA({ ...a, nome: e.target.value })} className={inp + " mb-3"} />

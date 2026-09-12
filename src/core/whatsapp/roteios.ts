@@ -5,17 +5,23 @@
 // interno já no número certo + conversa com o telefone da pessoa.
 import { useNavigate } from "react-router-dom";
 import { doc, getDoc } from "firebase/firestore";
+import { Users, UtensilsCrossed, PartyPopper, Package, ReceiptText, type LucideIcon } from "lucide-react";
 import { db } from "../firebase/config";
 
 export type PapelWhatsapp = "empregados" | "reservas" | "eventos" | "fornecedores" | "vendas";
 
-export const PAPEIS_WHATSAPP: { id: PapelWhatsapp; label: string; icon: string; desc: string }[] = [
-  { id: "empregados",   label: "Empregados / DP",     icon: "👥", desc: "Admissão, Demissão, Pessoas, Ponto, Escala" },
-  { id: "reservas",     label: "Clientes — Reservas", icon: "🍽️", desc: "Reservas + CRM" },
-  { id: "eventos",      label: "Clientes — Eventos",  icon: "🎉", desc: "Leads e clientes de eventos" },
-  { id: "fornecedores", label: "Fornecedores",        icon: "📦", desc: "Compras" },
-  { id: "vendas",       label: "Cobrança / Vendas",   icon: "🧾", desc: "Vendas e cobranças" },
+export const PAPEIS_WHATSAPP: { id: PapelWhatsapp; label: string; desc: string }[] = [
+  { id: "empregados",   label: "Empregados / DP",     desc: "Admissão, Demissão, Pessoas, Ponto, Escala" },
+  { id: "reservas",     label: "Clientes — Reservas", desc: "Reservas + CRM" },
+  { id: "eventos",      label: "Clientes — Eventos",  desc: "Leads e clientes de eventos" },
+  { id: "fornecedores", label: "Fornecedores",        desc: "Compras" },
+  { id: "vendas",       label: "Cobrança / Vendas",   desc: "Vendas e cobranças" },
 ];
+
+// Ícone lucide por papel (render como <Icone/>). Mapa paralelo — sem JSX no .ts.
+export const PAPEL_WHATSAPP_ICON: Record<PapelWhatsapp, LucideIcon> = {
+  empregados: Users, reservas: UtensilsCrossed, eventos: PartyPopper, fornecedores: Package, vendas: ReceiptText,
+};
 export const PAPEL_WHATSAPP_LABEL: Record<PapelWhatsapp, string> =
   Object.fromEntries(PAPEIS_WHATSAPP.map((p) => [p.id, p.label])) as Record<PapelWhatsapp, string>;
 

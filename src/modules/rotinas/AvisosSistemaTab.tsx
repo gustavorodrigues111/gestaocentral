@@ -5,7 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import type { NotificacaoConfig, NotificacaoDestinatarioModo, Pessoa, ModuleId } from "../../core/types";
-import { AVISO_CATALOGO, type CanalEstado } from "./avisosCatalogo";
+import { AVISO_CATALOGO, AVISO_ICON, type CanalEstado } from "./avisosCatalogo";
 import { salvarNotifConfig } from "./notificacaoRepo";
 
 const DIAS = [{ v: 1, l: "Seg" }, { v: 2, l: "Ter" }, { v: 3, l: "Qua" }, { v: 4, l: "Qui" }, { v: 5, l: "Sex" }, { v: 6, l: "Sáb" }, { v: 0, l: "Dom" }];
@@ -40,10 +40,11 @@ export function AvisosSistemaTab({ rid, pessoas, modulosAtivos, meId, podeGerenc
         const c = cfg(item.tipo);
         const inApp = c.inApp !== false;
         const open = aberto === item.tipo;
+        const IIcon = AVISO_ICON[item.tipo];
         return (
           <div key={item.tipo} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
             <div className="flex items-center gap-3 p-3 flex-wrap">
-              <span className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-gray-800 grid place-items-center text-lg shrink-0">{item.icone}</span>
+              <span className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-gray-800 grid place-items-center text-gray-600 dark:text-gray-300 shrink-0">{IIcon ? <IIcon size={18} /> : null}</span>
               <div className="min-w-0 flex-1">
                 <div className="font-semibold text-gray-900 dark:text-gray-100">{item.label}</div>
                 <div className="text-[11px] text-gray-500 dark:text-gray-400">{item.quando}</div>
