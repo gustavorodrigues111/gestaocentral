@@ -13,7 +13,7 @@
 //  (processarImagem), e dispara o /api/send-email (Resend).
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
-import { Lock, Banknote, ClipboardList, BarChart3, CreditCard, Settings, Download, CheckSquare, Trash2, Camera, Search, Clock, TriangleAlert, Paperclip, ReceiptText, type LucideIcon } from "lucide-react";
+import { Lock, Banknote, ClipboardList, BarChart3, CreditCard, Settings, Download, CheckSquare, Trash2, Camera, Search, Clock, TriangleAlert, Paperclip, ReceiptText, Save, ShoppingBag, Mail, MessageSquare, User, FolderOpen, Pencil, type LucideIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where, deleteField } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -1485,19 +1485,19 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
           <div className="font-semibold text-gray-800 dark:text-gray-100 mb-1">1 · Print dos caixas (Altec)</div>
           <p className="text-[12px] text-gray-500 mb-3">A lista de fechamentos do Altec. Os horários definem o intervalo de cada caixa. Pode <strong>colar (Cmd/Ctrl+V)</strong> o print direto.</p>
-          <Button size="sm" variant="secondary" disabled={lendoPrint} onClick={() => printRef.current?.click()}>{lendoPrint ? "Lendo…" : caixas.length ? `📷 ${caixas.length} caixas · adicionar print` : "📷 Enviar ou colar print"}</Button>
+          <Button size="sm" variant="secondary" disabled={lendoPrint} onClick={() => printRef.current?.click()}>{lendoPrint ? "Lendo…" : caixas.length ? <span className="inline-flex items-center gap-1.5"><Camera size={14} /> {caixas.length} caixas · adicionar print</span> : <span className="inline-flex items-center gap-1.5"><Camera size={14} /> Enviar ou colar print</span>}</Button>
         </div>
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
           <div className="font-semibold text-gray-800 dark:text-gray-100 mb-1">2 · Planilha de vendas (Rede)</div>
           <p className="text-[12px] text-gray-500 mb-3">O relatório de vendas da Rede em Excel (.xlsx).</p>
-          <Button size="sm" variant="secondary" disabled={lendoXlsx} onClick={() => xlsxRef.current?.click()}>{lendoXlsx ? "Lendo…" : txs ? `📊 ${txs.length} vendas · trocar` : "📊 Enviar planilha"}</Button>
+          <Button size="sm" variant="secondary" disabled={lendoXlsx} onClick={() => xlsxRef.current?.click()}>{lendoXlsx ? "Lendo…" : txs ? <span className="inline-flex items-center gap-1.5"><BarChart3 size={14} /> {txs.length} vendas · trocar</span> : <span className="inline-flex items-center gap-1.5"><BarChart3 size={14} /> Enviar planilha</span>}</Button>
           {redeNome && <div className="text-[11px] text-gray-400 mt-1 truncate">{redeNome}</div>}
         </div>
         {temIfood && (
           <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
             <div className="font-semibold text-gray-800 dark:text-gray-100 mb-1">3 · Planilha de pedidos (iFood)</div>
             <p className="text-[12px] text-gray-500 mb-3">O relatório de pedidos do iFood em Excel (.xlsx). Conta só os concluídos.</p>
-            <Button size="sm" variant="secondary" disabled={lendoIfood} onClick={() => ifoodRef.current?.click()}>{lendoIfood ? "Lendo…" : ifood ? `🍔 ${ifood.length} pedidos · trocar` : "🍔 Enviar planilha"}</Button>
+            <Button size="sm" variant="secondary" disabled={lendoIfood} onClick={() => ifoodRef.current?.click()}>{lendoIfood ? "Lendo…" : ifood ? <span className="inline-flex items-center gap-1.5"><ShoppingBag size={14} /> {ifood.length} pedidos · trocar</span> : <span className="inline-flex items-center gap-1.5"><ShoppingBag size={14} /> Enviar planilha</span>}</Button>
             {ifoodNome && <div className="text-[11px] text-gray-400 mt-1 truncate">{ifoodNome}</div>}
           </div>
         )}
@@ -1508,7 +1508,7 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
       {/* Aviso de duplicado no print */}
       {(dups.ids.length > 0 || dups.near.length > 0) && (
         <div className="text-sm text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-900/40 rounded-lg px-3 py-2">
-          ⚠ Possível caixa duplicado no print{dups.ids.length ? ` — nº ${dups.ids.join(", ")} aparece(m) mais de uma vez` : ""}{dups.near.length ? ` — cortes muito próximos (${dups.near.join(", ")})` : ""}. Confira se colou prints sobrepostos.
+          <TriangleAlert size={13} className="inline align-[-2px] mr-1" />Possível caixa duplicado no print{dups.ids.length ? ` — nº ${dups.ids.join(", ")} aparece(m) mais de uma vez` : ""}{dups.near.length ? ` — cortes muito próximos (${dups.near.join(", ")})` : ""}. Confira se colou prints sobrepostos.
         </div>
       )}
 
@@ -1533,7 +1533,7 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
               <div className="text-[12px] text-gray-600 dark:text-gray-300">Leitura pronta: <strong>{visiveis.length}</strong> caixa(s){ocultados > 0 ? ` · ${ocultados} já conciliado(s) ocultado(s)` : ""}{ignorados.length > 0 ? ` · ${ignorados.length} sessão(ões) longa(s) ignorada(s)` : ""}. Confira e salve pra aguardar a conciliação.</div>
               <div className="flex gap-2">
                 <button type="button" onClick={() => { setCaixas([]); setTxs(null); setRedeNome(""); setIfood(null); setIfoodNome(""); }} className="text-[12px] text-gray-500 hover:underline px-1">descartar</button>
-                <Button size="sm" disabled={salvando || visiveis.length === 0} onClick={() => void salvar()}>{salvando ? "Salvando…" : "💾 Salvar na lista"}</Button>
+                <Button size="sm" disabled={salvando || visiveis.length === 0} onClick={() => void salvar()}>{salvando ? "Salvando…" : <span className="inline-flex items-center gap-1.5"><Save size={14} /> Salvar na lista</span>}</Button>
               </div>
             </div>
             {ignorados.length > 0 && (
@@ -1565,7 +1565,7 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
       {/* Histórico de conciliados */}
       {conciliadosSalvos.length > 0 && (
         <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">✅ Conciliados na Altec <span className="text-gray-400 font-normal">({conciliadosSalvos.length})</span></summary>
+          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2"><CheckSquare size={16} /> Conciliados na Altec <span className="text-gray-400 font-normal">({conciliadosSalvos.length})</span></summary>
           <div className="px-3 pb-3 space-y-2">
             {conciliadosSalvos.map((s) => (
               <LinhaCaixa key={s.id} titulo={tituloSalvo(s)} sub={`✓ ${s.conciliadoEm ? fmtDataHora(s.conciliadoEm) : ""}${s.conciliadoPor?.nome ? ` · ${s.conciliadoPor.nome}` : ""}`} g={totaisDe(s)} onClick={() => setModal({ titulo: tituloSalvo(s), sub: janelaSalvo(s), g: totaisDe(s), kind: "conciliado", item: s })} />
@@ -1575,7 +1575,7 @@ function ConciliacaoCartoes({ rid, temIfood, me, podeConfig }: { rid: string; te
       )}
 
       {modal && (
-        <Modal title={`💳 ${modal.titulo}`} onClose={() => setModal(null)} maxWidth="max-w-lg">
+        <Modal title={<span className="inline-flex items-center gap-2"><CreditCard size={18} /> {modal.titulo}</span>} onClose={() => setModal(null)} maxWidth="max-w-lg">
           <div className="space-y-3">
             {modal.sub && <div className="text-[12px] text-gray-400">{modal.sub}</div>}
             <Breakdown g={modal.g} />
@@ -1667,7 +1667,7 @@ function FechamentoConfig({ rid, restaurant, pessoas }: { rid: string; pessoas: 
         <p className="text-sm text-gray-500 dark:text-gray-400">Os anexos são arquivados na pasta-raiz do restaurante, em <code>planejamento.app/Fechamentos/</code> — o app cria subpastas por <strong>dia</strong> e, dentro, por <strong>turno</strong> (almoço/jantar).</p>
         {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
         {restaurant.driveRootFolderId
-          ? <p className="text-sm text-emerald-700 dark:text-emerald-300">📁 {restaurant.driveRootFolderNome || "pasta-raiz configurada"}</p>
+          ? <p className="text-sm text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1.5"><FolderOpen size={14} /> {restaurant.driveRootFolderNome || "pasta-raiz configurada"}</p>
           : <p className="text-sm text-amber-600">Defina a pasta raiz do restaurante em Configurações › Google Drive.</p>}
       </div>
 
@@ -1677,7 +1677,7 @@ function FechamentoConfig({ rid, restaurant, pessoas }: { rid: string; pessoas: 
         <div>
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Enviar por</label>
           <div className="inline-flex rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden">
-            {([["email", "✉️ Só email"], ["whatsapp", "💬 Só WhatsApp"], ["ambos", "Os dois"]] as const).map(([v, l], i) => (
+            {([["email", <span className="inline-flex items-center gap-1.5"><Mail size={13} /> Só email</span>], ["whatsapp", <span className="inline-flex items-center gap-1.5"><MessageSquare size={13} /> Só WhatsApp</span>], ["ambos", "Os dois"]] as [ "email"|"whatsapp"|"ambos", ReactNode ][]).map(([v, l], i) => (
               <button key={v} type="button" onClick={() => void salvarCanal(v)}
                 className={`px-3 py-1.5 text-sm ${i > 0 ? "border-l border-gray-300 dark:border-gray-700" : ""} ${canal === v ? "bg-indigo-600 text-white font-medium" : "bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{l}</button>
             ))}
@@ -1697,8 +1697,8 @@ function FechamentoConfig({ rid, restaurant, pessoas }: { rid: string; pessoas: 
                 <div className="min-w-0 flex-1">
                   <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{p.nome}</div>
                   <div className="text-[11px] text-gray-500 dark:text-gray-400 flex items-center gap-2 flex-wrap">
-                    <span className={p.email ? "" : "text-amber-600 dark:text-amber-400"}>{p.email ? `✉️ ${p.email}` : "sem email"}</span>
-                    <span className={p.whatsapp ? "" : "text-amber-600 dark:text-amber-400"}>{p.whatsapp ? `💬 ${fmtZap(p.whatsapp)}` : "sem WhatsApp"}</span>
+                    <span className={p.email ? "inline-flex items-center gap-1" : "text-amber-600 dark:text-amber-400"}>{p.email ? <><Mail size={11} /> {p.email}</> : "sem email"}</span>
+                    <span className={p.whatsapp ? "inline-flex items-center gap-1" : "text-amber-600 dark:text-amber-400"}>{p.whatsapp ? <><MessageSquare size={11} /> {fmtZap(p.whatsapp)}</> : "sem WhatsApp"}</span>
                   </div>
                 </div>
                 <button type="button" className="text-[11px] text-gray-500 hover:text-rose-600 shrink-0" onClick={() => toggleSocio(p.id)}>remover</button>
@@ -1742,7 +1742,7 @@ function FechamentoConfig({ rid, restaurant, pessoas }: { rid: string; pessoas: 
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
             {comandas.map((s) => (
               <div key={s.numero} className="px-3 py-1.5 text-sm flex items-center gap-2">
-                <span className="flex-1 truncate">📋 {s.nome} <span className="text-gray-400">· comanda {s.numero}</span></span>
+                <span className="flex-1 truncate inline-flex items-center gap-1"><ClipboardList size={12} className="shrink-0" /> {s.nome} <span className="text-gray-400">· comanda {s.numero}</span></span>
                 <button type="button" className="text-[11px] text-gray-500 hover:text-rose-600" onClick={() => void salvarComandas(comandas.filter((x) => x.numero !== s.numero))}>remover</button>
               </div>
             ))}
@@ -1878,8 +1878,8 @@ function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir, onCo
             </button>
             <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-[12px] text-gray-500">
               <div className="flex flex-col gap-0.5 min-w-0">
-                {f.fechadoPor?.nome && <span className="truncate">👤 {f.fechadoPor.nome}</span>}
-                {f.numeroLacre && <span className="tabular-nums">🔒 {f.numeroLacre}</span>}
+                {f.fechadoPor?.nome && <span className="truncate inline-flex items-center gap-1"><User size={11} className="shrink-0" /> {f.fechadoPor.nome}</span>}
+                {f.numeroLacre && <span className="tabular-nums inline-flex items-center gap-1"><Lock size={11} /> {f.numeroLacre}</span>}
                 {f.observacao && <span className="truncate text-gray-400 italic">{f.observacao}</span>}
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
@@ -1918,7 +1918,7 @@ function DetalheFechamentoModal({ f, podeEditar, onClose, onEditar, onConferir }
     <div className="flex justify-between gap-3 py-1 border-b border-gray-100 dark:border-gray-800 text-sm"><span className="text-gray-500 dark:text-gray-400">{k}</span><span className="text-right text-gray-800 dark:text-gray-200 break-all">{v}</span></div>
   ) : null;
   return (
-    <Modal title="💵 Detalhes do fechamento" onClose={onClose} maxWidth="max-w-3xl">
+    <Modal title={<span className="inline-flex items-center gap-2"><Banknote size={18} /> Detalhes do fechamento</span>} onClose={onClose} maxWidth="max-w-3xl">
       <div className="space-y-1">
         {linha("Fechado em", fmtDataHora(f.fechadoEm))}
         {linha("Data / turno", `${fmtData(f.data)} · ${TURNO_CAIXA_LABEL[f.turno]}`)}
@@ -1945,7 +1945,7 @@ function DetalheFechamentoModal({ f, podeEditar, onClose, onEditar, onConferir }
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
             {f.comandas.map((c, i) => (
               <div key={i} className="px-2 py-1 text-[11px] flex items-center gap-2">
-                <span className="flex-1 truncate">📋 {c.nome ? `${c.nome} (${c.numero})` : `Comanda ${c.numero}`}</span>
+                <span className="flex-1 truncate inline-flex items-center gap-1"><ClipboardList size={12} className="shrink-0" /> {c.nome ? `${c.nome} (${c.numero})` : `Comanda ${c.numero}`}</span>
                 <span className="shrink-0 tabular-nums font-medium">{c.valor != null ? fmtBRL(c.valor) : "—"}</span>
               </div>
             ))}
@@ -1973,7 +1973,7 @@ function DetalheFechamentoModal({ f, podeEditar, onClose, onEditar, onConferir }
       )}
       <div className="flex justify-end items-center gap-2 pt-3">
         {f.driveFolderUrl && <a href={f.driveFolderUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">↗ Abrir pasta no Drive</a>}
-        {podeEditar && <Button size="sm" variant="secondary" onClick={() => onEditar(f)}>✏️ Editar</Button>}
+        {podeEditar && <Button size="sm" variant="secondary" onClick={() => onEditar(f)}><span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editar</span></Button>}
         <Button size="sm" variant="secondary" onClick={onClose}>Fechar</Button>
         {onConferir && !f.conferidoEm && (
           <button type="button" onClick={() => { onConferir(f); onClose(); }}
@@ -2032,7 +2032,7 @@ function EditarFechamentoModal({ f, onClose, onSaved }: { f: FechamentoCaixa; on
     finally { setSalvando(false); }
   }
   return (
-    <Modal title="✏️ Editar fechamento" onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={<span className="inline-flex items-center gap-2"><Pencil size={18} /> Editar fechamento</span>} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
         {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
         <p className="text-[11px] text-gray-400">Os anexos no Drive não mudam — aqui você corrige os dados e pode lançar uma maquininha que faltou na foto.</p>
