@@ -24,6 +24,8 @@ import {
 } from "../../core/excecoes/statusSemana";
 import type { ApontamentoEscala, Area, Cargo, Empregado, ExcecaoStatusSemana } from "../../core/types";
 import { AREAS } from "../../core/types";
+import type { LucideIcon } from "lucide-react";
+import { CircleHelp, MapPin, Timer, Construction, Dot, Inbox, X, Lightbulb, Hourglass, Check } from "lucide-react";
 
 type Props = { rid: string };
 
@@ -40,11 +42,11 @@ function fmtDataHora(iso: string): string {
 }
 
 // Labels amigáveis pros ruleIds que afetam escala.
-const REGRA_LABEL: Record<string, { label: string; icon: string }> = {
-  faltaSemAjuste:          { label: "Falta sem ajuste",              icon: "❓" },
-  marcacaoForaDaEscala:    { label: "Marcação fora da escala",       icon: "📍" },
-  atrasoEntrada:           { label: "Atraso na entrada",             icon: "⏱️" },
-  entradaProvavelFaltante: { label: "Entrada provavelmente faltante", icon: "🚧" },
+const REGRA_LABEL: Record<string, { label: string; icon: LucideIcon }> = {
+  faltaSemAjuste:          { label: "Falta sem ajuste",              icon: CircleHelp },
+  marcacaoForaDaEscala:    { label: "Marcação fora da escala",       icon: MapPin },
+  atrasoEntrada:           { label: "Atraso na entrada",             icon: Timer },
+  entradaProvavelFaltante: { label: "Entrada provavelmente faltante", icon: Construction },
 };
 
 export function AjustesEscalaTab({ rid }: Props) {
@@ -142,8 +144,8 @@ export function AjustesEscalaTab({ rid }: Props) {
   }
   if (erro) {
     return (
-      <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 text-sm text-rose-800 dark:text-rose-300">
-        ❌ {erro}
+      <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 text-sm text-rose-800 dark:text-rose-300 inline-flex items-center gap-1">
+        <X size={14}/> {erro}
       </div>
     );
   }
@@ -151,7 +153,7 @@ export function AjustesEscalaTab({ rid }: Props) {
   return (
     <div className="space-y-4">
       <div className="rounded-xl bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 text-xs text-blue-800 dark:text-blue-300">
-        💡 Lista dos ajustes manuais a fazer na <strong>escala praticada</strong> (semanas
+        <Lightbulb size={13} className="inline align-[-2px] mr-1"/> Lista dos ajustes manuais a fazer na <strong>escala praticada</strong> (semanas
         conferidas pelo gerente). Inclui apenas itens que afetam escala — falta sem ajuste,
         marcação em dia de folga, etc. Itens de ponto que não mudam escala (intervalo curto,
         jornada longa) <strong>não entram aqui</strong>. Marque cada item como "✓ Ajustado" depois
@@ -177,7 +179,7 @@ export function AjustesEscalaTab({ rid }: Props) {
 
       {semanasConferidas.length === 0 && (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">📭</div>
+          <div className="flex justify-center mb-3"><Inbox size={36} className="text-gray-400"/></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">
             Nenhuma semana conferida com apontamentos
           </p>
@@ -258,12 +260,12 @@ function SemanaBlock({
         </div>
         <div className="text-[11px]">
           {pendentes === 0 ? (
-            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-semibold">
-              ✓ Tudo ajustado
+            <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300 font-semibold inline-flex items-center gap-1">
+              <Check size={12}/> Tudo ajustado
             </span>
           ) : (
-            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 font-semibold">
-              ⏳ {pendentes} pendente(s)
+            <span className="px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 font-semibold inline-flex items-center gap-1">
+              <Hourglass size={12}/> {pendentes} pendente(s)
             </span>
           )}
         </div>
@@ -277,7 +279,7 @@ function SemanaBlock({
             </div>
             <ol className="space-y-1.5">
               {g.lista.map((a, i) => {
-                const meta = REGRA_LABEL[a.ruleId] || { label: a.ruleId, icon: "•" };
+                const meta = REGRA_LABEL[a.ruleId] || { label: a.ruleId, icon: Dot };
                 const ajustado = a.status === "ajustado";
                 return (
                   <li key={a.id} className="flex items-start gap-2 text-sm">
@@ -291,7 +293,7 @@ function SemanaBlock({
                           : "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"
                       }`}
                     >
-                      {meta.icon} {meta.label}
+                      <meta.icon size={12} /> {meta.label}
                     </span>
                     <div className={`flex-1 min-w-0 ${ajustado ? "opacity-60" : ""}`}>
                       <div className="text-gray-800 dark:text-gray-200">

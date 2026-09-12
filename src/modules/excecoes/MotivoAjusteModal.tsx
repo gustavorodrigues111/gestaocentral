@@ -18,6 +18,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
 import { fmtAnoMes } from "../../core/utils/date";
+import { ClipboardList, Lightbulb } from "lucide-react";
 import {
   AJUSTE_MOTIVO_LABEL,
   AJUSTE_MOTIVO_PARA_STATUS,
@@ -165,8 +166,8 @@ export function MotivoAjusteModal({
   return (
     <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md p-5 max-h-[85vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-        <h3 className="text-base font-bold mb-1 text-gray-900 dark:text-gray-100">
-          📋 Resolver na escala
+        <h3 className="text-base font-bold mb-1 text-gray-900 dark:text-gray-100 inline-flex items-center gap-1">
+          <ClipboardList size={16}/> Resolver na escala
         </h3>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">
           {empregadoNome} · {new Date(data + "T12:00:00").toLocaleDateString("pt-BR")} ({contexto === "ausencia" ? "ausência" : "presença divergente"})
@@ -179,7 +180,7 @@ export function MotivoAjusteModal({
             {/* Contexto do previsto */}
             {previsto && previsto !== "trabalho" && previsto !== "folga" && (
               <div className="text-xs px-3 py-2 rounded-md bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300 mb-3">
-                💡 <strong>Previsto pro dia:</strong> {previsto}
+                <Lightbulb size={13} className="inline align-[-2px] mr-1"/> <strong>Previsto pro dia:</strong> {previsto}
                 <br />
                 <span className="text-[11px]">O motivo correspondente foi pré-selecionado. Você pode trocar se necessário.</span>
               </div>

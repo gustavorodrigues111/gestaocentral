@@ -23,6 +23,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
+import { ArrowDown } from "lucide-react";
 import { pad2 } from "../../core/utils/date";
 import { listarStatusDoRestaurante } from "../../core/excecoes/statusSemana";
 import type { Cargo, Empregado, ExcecaoStatusSemana } from "../../core/types";
@@ -365,7 +366,7 @@ export function ResumoMesTab({ rid }: Props) {
             disabled={linhas.length === 0}
             title="Baixa um CSV com as métricas agregadas (UTF-8 c/ BOM, separador ;)"
           >
-            ⬇ Exportar CSV
+            <span className="inline-flex items-center gap-1"><ArrowDown size={13}/> Exportar CSV</span>
           </Button>
         </div>
         <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-2">
