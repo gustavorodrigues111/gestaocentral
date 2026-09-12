@@ -40,7 +40,7 @@ export type CatalogoAcao = {
 export const CATALOGO: CatalogoModulo[] = [
   {
     id: "reservas",
-    icon: "📅",
+    icon: "calendar-check",
     label: "Reservas + CRM",
     desc: "Reservas do dia, CRM de clientes, salões/mesas, templates",
     area: "operacao",
@@ -62,7 +62,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "horarios",
-    icon: "🕐",
+    icon: "store",
     label: "Horários",
     desc: "Horário regular semanal + exceções (feriados, datas especiais)",
     area: "operacao",
@@ -76,7 +76,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "sites",
-    icon: "🌐",
+    icon: "globe",
     label: "Sites",
     desc: "Site público do restaurante (história, cardápio, contato, tema)",
     area: "operacao",
@@ -92,7 +92,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "cardapio",
-    icon: "📋",
+    icon: "book-open",
     label: "Cardápio",
     desc: "Elaboração dos cardápios (comidas, bebidas, vinhos) — itens, preços, layout do PDF",
     area: "operacao",
@@ -103,7 +103,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "ocorrencias",
-    icon: "🚨",
+    icon: "triangle-alert",
     label: "Ocorrências",
     desc: "Registros de incidentes, problemas, ações corretivas",
     area: "operacao",
@@ -118,7 +118,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "rotinas",
-    icon: "🔁",
+    icon: "repeat",
     label: "Rotinas",
     desc: "Lembretes recorrentes de tarefas do sistema atribuídos a pessoas",
     area: "operacao",
@@ -129,7 +129,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "eventos",
-    icon: "🎉",
+    icon: "party-popper",
     label: "Eventos privados",
     desc: "Pedidos de evento na laje/espaço (em dev)",
     area: "operacao",
@@ -145,7 +145,7 @@ export const CATALOGO: CatalogoModulo[] = [
   // ─── AppMise (em dev) ────────────────────────────────────────────────────
   {
     id: "compras",
-    icon: "🛒",
+    icon: "shopping-cart",
     label: "Compras (AppMise)",
     desc: "Ciclo de abastecimento: contagens → pedidos → recebimento",
     area: "appmise",
@@ -161,7 +161,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "contagens",
-    icon: "📦",
+    icon: "boxes",
     label: "Contagens (AppMise)",
     desc: "Contagem de estoque ciclo a ciclo",
     area: "appmise",
@@ -174,7 +174,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "checklists",
-    icon: "📋",
+    icon: "list-checks",
     label: "Checklists operacionais",
     desc: "Templates de checklist e execuções",
     area: "appmise",
@@ -187,7 +187,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "seguranca",
-    icon: "🧪",
+    icon: "shield-check",
     label: "Segurança Sanitária",
     desc: "Avaliação de boas práticas (nutricionista) → plano de ação",
     area: "operacao",
@@ -202,7 +202,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "recebimento",
-    icon: "🧾",
+    icon: "package-check",
     label: "Recebimento de produtos",
     desc: "Conferência e recebimento de notas fiscais (OCR), arquivamento no Drive",
     area: "appmise",
@@ -216,7 +216,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "estoqueValidade",
-    icon: "🏷️",
+    icon: "calendar-clock",
     label: "Estoques e Validades",
     desc: "Etiquetas de validade e gestão de estoque por lote (entrada por NF, baixa por QR, giro PVPS/PEPS)",
     area: "appmise",
@@ -230,7 +230,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "fechamentoCaixa",
-    icon: "💵",
+    icon: "wallet",
     label: "Fechamento de Caixa",
     desc: "Fechamento de caixa por turno: anexos (comprovante, filipetas, comandas), valores e email aos sócios",
     area: "appmise",
@@ -245,7 +245,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "fichas",
-    icon: "📚",
+    icon: "clipboard-list",
     label: "Fichas técnicas",
     desc: "Custo de pratos, ingredientes, equipamentos",
     area: "appmise",
@@ -260,7 +260,7 @@ export const CATALOGO: CatalogoModulo[] = [
   // ─── TIME ─────────────────────────────────────────────────────────────────
   {
     id: "escala",
-    icon: "📆",
+    icon: "calendar-range",
     label: "Escala",
     desc: "Escala mensal do time, trocas, fechamento",
     area: "time",
@@ -279,7 +279,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "fechamentoEscala",
-    icon: "🔒",
+    icon: "lock",
     label: "Fechamento de escala",
     desc: "Fechar mês de escala (passa a contar pra gorjeta)",
     area: "time",
@@ -291,7 +291,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "gorjetas",
-    icon: "💰",
+    icon: "coins",
     label: "Gorjetas",
     desc: "Cálculo e distribuição de gorjeta",
     area: "time",
@@ -306,7 +306,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "beneficios2",
-    icon: "🎁",
+    icon: "gift",
     label: "Benefícios",
     desc: "Pagamento e ajuste de VT/VR + auxílios por valor diário (novo módulo, substitui VT/VR/Benefícios)",
     area: "time",
@@ -318,7 +318,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "vt",
-    icon: "🚌",
+    icon: "bus",
     label: "VT (Vale Transporte)",
     desc: "Cadastro e pagamento de VT por pessoa",
     area: "time",
@@ -332,7 +332,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "vr",
-    icon: "🍱",
+    icon: "utensils",
     label: "VR (Vale Refeição)",
     desc: "Cadastro e pagamento de VR diário por pessoa (só restaurantes que usam)",
     area: "time",
@@ -344,7 +344,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "freelas",
-    icon: "👤",
+    icon: "user-plus",
     label: "Freelas",
     desc: "Vagas pontuais (cobrir um turno, etc) + ciclo de pagamento",
     area: "time",
@@ -364,7 +364,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "reunioes",
-    icon: "🗣️",
+    icon: "presentation",
     label: "Reuniões",
     desc: "Agenda de reuniões, pautas, atas",
     area: "time",
@@ -379,7 +379,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "trilha",
-    icon: "🎯",
+    icon: "route",
     label: "Trilha do empregado",
     desc: "Histórico cronológico completo do empregado — dados ultra sensíveis (LGPD + trabalhista). Só perfis autorizados.",
     area: "time",
@@ -396,7 +396,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "ideias",
-    icon: "💡",
+    icon: "lightbulb",
     label: "Banco de ideias",
     desc: "Sugestões do time pra melhorar a casa",
     area: "time",
@@ -413,7 +413,7 @@ export const CATALOGO: CatalogoModulo[] = [
 
   {
     id: "planoDeAcao",
-    icon: "✅",
+    icon: "list-todo",
     label: "Tarefas — modo simplificado (operação)",
     desc: "Perfil da operação: abre o item 'Tarefas' na LISTA ENXUTA mobile (concluir com um toque). Quem tem só permissões aqui (e nenhuma em 'Tarefas — modo avançado') abre o item 'Tarefas' no modo SIMPLIFICADO.",
     area: "time",
@@ -429,7 +429,7 @@ export const CATALOGO: CatalogoModulo[] = [
 
   {
     id: "whatsapp",
-    icon: "💬",
+    icon: "messages-square",
     label: "WhatsApp (atendimento)",
     desc: "Atendimento pelos números conectados (device-link). Quem usa cada número se define por número; aqui é o que pode FAZER.",
     area: "gestao",
@@ -445,7 +445,7 @@ export const CATALOGO: CatalogoModulo[] = [
   // ─── GESTÃO ──────────────────────────────────────────────────────────────
   {
     id: "comunicados",
-    icon: "📢",
+    icon: "send",
     label: "Comunicados",
     desc: "Anúncios da gestão pro time",
     area: "gestao",
@@ -459,7 +459,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "processoSeletivo",
-    icon: "🎯",
+    icon: "user-search",
     label: "Processo Seletivo",
     desc: "Vagas + candidaturas (kanban) até aprovar/rejeitar",
     area: "gestao",
@@ -474,7 +474,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "admissao",
-    icon: "👋",
+    icon: "user-round-plus",
     label: "Admissão",
     desc: "Triagem de candidatos + processo de admissão",
     area: "gestao",
@@ -489,7 +489,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "recursos",
-    icon: "🧰",
+    icon: "book-open",
     label: "Recursos",
     desc: "Catálogo de itens emprestáveis (uniforme, ferramenta, etc)",
     area: "gestao",
@@ -501,7 +501,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "excecoes",
-    icon: "⚠️",
+    icon: "clock",
     label: "Exceções (Sólides)",
     desc: "Inconformidades, ajustes de ponto, compatibilidade com Sólides",
     area: "gestao",
@@ -514,7 +514,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "analise-ponto",
-    icon: "📊",
+    icon: "chart-column",
     label: "Análise de Ponto (Sólides)",
     desc: "Relatório de inconsistências de ponto (A Corrigir × A Avaliar) e correções",
     area: "gestao",
@@ -529,7 +529,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "ponto",
-    icon: "⏱️",
+    icon: "fingerprint",
     label: "Ponto (PTRP)",
     desc: "Tratamento de ponto (Portaria 671): conferência/apuração, sincronização das batidas e regras (CCT)",
     area: "gestao",
@@ -543,7 +543,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "prazos",
-    icon: "📅",
+    icon: "alarm-clock",
     label: "Prazos",
     desc: "Agenda única de vencimentos: contas, técnicos, trabalhistas e avulsos, com laudo e agendamento. Acesso granular por categoria.",
     area: "gestao",
@@ -563,7 +563,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "folhas",
-    icon: "🧾",
+    icon: "receipt-text",
     label: "Conferência de Folhas",
     desc: "Auditoria das folhas de pagamento (espelhos do Senador) contra gorjeta, adiantamento e mês anterior",
     area: "gestao",
@@ -576,7 +576,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "pessoas",
-    icon: "👥",
+    icon: "users",
     label: "Pessoas",
     desc: "Cadastro do time, cargos, restaurantes vinculados",
     area: "gestao",
@@ -594,7 +594,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "uniformes",
-    icon: "🦺",
+    icon: "shirt",
     label: "Uniformes & EPIs",
     desc: "Catálogo, estoque, entregas e termos de uniformes e EPIs",
     area: "gestao",
@@ -610,7 +610,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "configuracoes",
-    icon: "⚙️",
+    icon: "settings",
     label: "Configurações gerais",
     desc: "Dados do restaurante, cargos, segurança",
     area: "gestao",
@@ -623,7 +623,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "fechamentoFin",
-    icon: "🧮",
+    icon: "calculator",
     label: "Fechamento Financeiro",
     desc: "Fechamento financeiro mensal — matriz item × empresa (tarefa, prazo, responsável e check por empresa)",
     area: "gestao",
@@ -636,7 +636,7 @@ export const CATALOGO: CatalogoModulo[] = [
   // ─── GESTOR DE TAREFAS + CADASTROS MESTRES ───────────────────────────────
   {
     id: "tarefas",
-    icon: "📋",
+    icon: "list-todo",
     label: "Tarefas — modo avançado (Gestor completo)",
     desc: "Perfil de escritório: abre o Gestor de Tarefas completo (Área > Projeto > Tarefa). Quem tem QUALQUER permissão aqui abre o item 'Tarefas' no modo AVANÇADO. Pra dar o modo simplificado (lista da operação), use o módulo 'Tarefas (simplificado)' em vez deste.",
     area: "gestao",
@@ -653,7 +653,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "wikiProcessos",
-    icon: "📚",
+    icon: "book-marked",
     label: "Wiki de Processos",
     desc: "Guias de funcionamento por área + assistente de IA que responde as dúvidas da equipe",
     area: "gestao",
@@ -670,7 +670,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "documentos",
-    icon: "📄",
+    icon: "file-text",
     label: "Documentos",
     desc: "Fábrica de documentos trabalhistas (advertência, contratos, desligamento, termos…) — gera o DOCX preenchido do escritório",
     area: "time",
@@ -681,7 +681,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "iaGovernanca",
-    icon: "🛡️",
+    icon: "shield-alert",
     label: "Governança de IA",
     desc: "O módulo é só do master. Aqui você concede APENAS quem recebe os alertas de uso fora do escopo (LGPD) na Central de Avisos.",
     area: "gestao",
@@ -691,7 +691,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "fichas",
-    icon: "📋",
+    icon: "clipboard-list",
     label: "Fichas Técnicas",
     desc: "Produção (sem custo), custos/CMV, cadastro e planejamento",
     area: "operacao",
@@ -705,7 +705,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "vendas",
-    icon: "🧾",
+    icon: "receipt",
     label: "Vendas",
     desc: "Registro de vendas fora do sistema fiscal (entre empresas, permutas)",
     area: "gestao",
@@ -719,7 +719,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "faturas",
-    icon: "💳",
+    icon: "credit-card",
     label: "Faturas de Cartão",
     desc: "Subir faturas de cartão, classificar gastos e reembolsos entre empresas",
     area: "gestao",
@@ -731,7 +731,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "exames",
-    icon: "🩺",
+    icon: "stethoscope",
     label: "Exames Médicos",
     desc: "Gestão de exames periódicos dos empregados",
     area: "gestao",
@@ -746,7 +746,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "demissao",
-    icon: "👋",
+    icon: "user-round-minus",
     label: "Demissão",
     desc: "Processo de demissão com kanban + cascata de inativação",
     area: "gestao",
@@ -763,7 +763,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "perfisAcesso",
-    icon: "🛡️",
+    icon: "user-round-cog",
     label: "Perfis de Acesso",
     desc: "Quem mexe nos perfis de acesso em si. Normalmente só master.",
     area: "gestao",
@@ -777,7 +777,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "portalEmpregado",
-    icon: "👤",
+    icon: "house",
     label: "Portal do Empregado",
     desc: "Área pessoal do empregado (acessível em /portal/:rid). Cada ação habilita uma seção. Empregado nasce sem nenhuma — o perfil 'Portal do Empregado' libera o básico (escala, horários, gorjeta).",
     area: "time",
@@ -800,7 +800,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "chat",
-    icon: "💬",
+    icon: "layout-dashboard",
     label: "Chat",
     desc: "Comunicação unificada — chat interno e WhatsApp externo. Linhas separadas (DP, FIN, Compras, restaurantes). Operadores respondem o que cabe na linha; master vê tudo.",
     area: "gestao",
@@ -820,7 +820,7 @@ export const CATALOGO: CatalogoModulo[] = [
   },
   {
     id: "ferramentasCredenciais",
-    icon: "🔑",
+    icon: "key-round",
     label: "Ferramentas e Credenciais",
     desc: "Catálogo de acessos a sistemas externos (iFood, Lalamove, BEES, etc). A permissão pra ENXERGAR cada ferramenta é granular por usuário — quem está no array usuariosAutorizados da ferramenta. Esta permissão só abre o módulo.",
     area: "gestao",
