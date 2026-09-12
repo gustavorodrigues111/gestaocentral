@@ -12,6 +12,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
+import { Lock, FileText, ArrowDown, Coins } from "lucide-react";
 import { MesContextoBanner } from "../../core/ui/MesContextoBanner";
 import { nomeMes, pad2, shiftMonth } from "../../core/utils/date";
 import { projetarEmpregadosParaData } from "../../core/utils/empregado";
@@ -238,7 +239,7 @@ export function BeneficiosPage() {
   if (!podeVer) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3"><Lock size={36} className="text-gray-400"/></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
@@ -272,13 +273,13 @@ export function BeneficiosPage() {
       <div className="flex gap-2 flex-wrap justify-end mb-4">
         <div className="flex gap-2 flex-wrap">
           {linhas.length > 0 && podeConfig && (
-            <Button variant="secondary" size="sm" onClick={() => setShowPDF(true)} title="Exportar PDF (preview)">📄 Exportar PDF</Button>
+            <Button variant="secondary" size="sm" onClick={() => setShowPDF(true)} title="Exportar PDF (preview)"><span className="inline-flex items-center gap-1"><FileText size={14}/> Exportar PDF</span></Button>
           )}
           {loteAtivo && podeConfig && (
-            <Button variant="secondary" size="sm" onClick={exportarCsv} title="CSV único pro Caju">📥 Exportar CSV Caju</Button>
+            <Button variant="secondary" size="sm" onClick={exportarCsv} title="CSV único pro Caju"><span className="inline-flex items-center gap-1"><ArrowDown size={14}/> Exportar CSV Caju</span></Button>
           )}
           {!loteAtivo && podeConfig && linhasPreview.some((l) => l.total > 0) && (
-            <Button onClick={lancar} disabled={salvando}>{salvando ? "Lançando…" : "💸 Lançar pra pagamento"}</Button>
+            <Button onClick={lancar} disabled={salvando}>{salvando ? "Lançando…" : <span className="inline-flex items-center gap-1"><Coins size={14}/> Lançar pra pagamento</span>}</Button>
           )}
           {loteAtivo?.status === "rascunho" && podeConfig && (
             <>

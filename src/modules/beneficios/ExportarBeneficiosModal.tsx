@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { jsPDF as JsPDFType } from "jspdf";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import { FileText, ArrowDown } from "lucide-react";
 import { gerarBeneficiosPDF, type BeneficiosPDFLinha } from "./gerarBeneficiosPDF";
 import { pad2 } from "../../core/utils/date";
 
@@ -60,7 +61,7 @@ export function ExportarBeneficiosModal({ ano, mes, restaurantNome, statusLabel,
   }
 
   return (
-    <Modal title="📄 Exportar Benefícios em PDF" onClose={onClose} maxWidth="max-w-4xl">
+    <Modal title={<span className="inline-flex items-center gap-1"><FileText size={18}/> Exportar Benefícios em PDF</span>} onClose={onClose} maxWidth="max-w-4xl">
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <span className="text-xs text-gray-500 dark:text-gray-400">
@@ -84,7 +85,7 @@ export function ExportarBeneficiosModal({ ano, mes, restaurantNome, statusLabel,
         {erro && <div className="text-xs text-rose-600 dark:text-rose-400">{erro}</div>}
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-          <Button onClick={baixar} disabled={gerando || linhas.length === 0 || !docRef.current}>⬇️ Baixar PDF</Button>
+          <Button onClick={baixar} disabled={gerando || linhas.length === 0 || !docRef.current}><span className="inline-flex items-center gap-1"><ArrowDown size={14}/> Baixar PDF</span></Button>
         </div>
       </div>
     </Modal>

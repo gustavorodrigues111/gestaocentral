@@ -6,6 +6,7 @@ import { addDoc, collection, doc, onSnapshot, updateDoc } from "firebase/firesto
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
+import { TriangleAlert, CheckSquare, UserRoundMinus, Lock, Hourglass } from "lucide-react";
 import { nomeMes, pad2 } from "../../core/utils/date";
 import { apuracaoPraticada, proximaJanela, montarLinhasAjuste, totalAjuste } from "./ajuste";
 import type { Empregado, EscalaMes, Pessoa, BeneficioPagLote, BeneficioAjusteLote, BeneficioAjusteLinha } from "../../core/types";
@@ -102,11 +103,11 @@ export function AjustesTab(props: {
           </div>
           {apur && apur.pendentes.length > 0 ? (
             <div className="text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-2.5 py-2 space-y-1">
-              <div>⚠️ O ajuste vai só até <b>{brDate(ate)}</b> porque o ponto ainda não foi fechado até <b>{brDate(alvo)}</b> para todos.</div>
+              <div><TriangleAlert size={12} className="inline align-[-2px] mr-1"/>O ajuste vai só até <b>{brDate(ate)}</b> porque o ponto ainda não foi fechado até <b>{brDate(alvo)}</b> para todos.</div>
               <div>Falta o DP fechar o ponto de: {apur.pendentes.map((p) => `${p.nome}${p.ultimoDia ? ` (fechado até ${brDate(p.ultimoDia)})` : " (nenhum dia fechado)"}`).join(" · ")}. Depois que fechar, esses dias entram no próximo ajuste.</div>
             </div>
           ) : (
-            <div className="text-[12px] text-emerald-700 dark:text-emerald-300">✅ Ponto fechado até {brDate(alvo)} para todos — pode reconciliar até aí.</div>
+            <div className="text-[12px] text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><CheckSquare size={13}/> Ponto fechado até {brDate(alvo)} para todos — pode reconciliar até aí.</div>
           )}
         </div>
       )}
@@ -130,7 +131,7 @@ export function AjustesTab(props: {
               <tr key={l.empregadoId} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
                 <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
                   {l.empregadoNome}
-                  {l.demissao && <span className="ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded px-1.5 py-0.5">👋 demitido · acerto do mês inteiro</span>}
+                  {l.demissao && <span className="ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded px-1.5 py-0.5 inline-flex items-center gap-1"><UserRoundMinus size={11}/> demitido · acerto do mês inteiro</span>}
                 </td>
                 <td className="text-center px-2 py-2 text-gray-500">{l.diasPrevista}</td>
                 <td className="text-center px-2 py-2 text-gray-500">{l.diasPraticada}</td>
@@ -155,7 +156,7 @@ export function AjustesTab(props: {
       </div>
 
       <div className="flex justify-end">
-        {podeConfig && <Button onClick={() => void confirmar()} disabled={salvando || !ate}>{salvando ? "Fechando…" : "🔒 Fechar ajuste"}</Button>}
+        {podeConfig && <Button onClick={() => void confirmar()} disabled={salvando || !ate}>{salvando ? "Fechando…" : <span className="inline-flex items-center gap-1"><Lock size={14}/> Fechar ajuste</span>}</Button>}
       </div>
 
       {/* Ajustes já fechados deste pagamento */}
@@ -166,7 +167,7 @@ export function AjustesTab(props: {
             {ajustesDoLote.map((a) => (
               <div key={a.id} className="text-xs flex items-center justify-between gap-2 rounded-lg border border-gray-100 dark:border-gray-800 px-3 py-2">
                 <span className={a.status === "cancelado" ? "text-gray-400 line-through" : "text-gray-700 dark:text-gray-200"}>
-                  {brDate(a.janelaDe)}–{brDate(a.janelaAte)} · {a.status === "aplicado" ? "✅ aplicado no pagamento" : a.status === "cancelado" ? "cancelado" : "⏳ pendente (abate no próximo pagamento)"}
+                  {brDate(a.janelaDe)}–{brDate(a.janelaAte)} · {a.status === "aplicado" ? <span className="inline-flex items-center gap-1"><CheckSquare size={12}/> aplicado no pagamento</span> : a.status === "cancelado" ? "cancelado" : <span className="inline-flex items-center gap-1"><Hourglass size={12}/> pendente (abate no próximo pagamento)</span>}
                 </span>
                 <span className="flex items-center gap-2 shrink-0">
                   <span className={`tabular-nums font-semibold ${a.totalAjuste < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmt(a.totalAjuste)}</span>

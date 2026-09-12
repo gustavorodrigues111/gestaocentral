@@ -13,6 +13,10 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
+import {
+  RotateCcw, CheckSquare, TriangleAlert, UserPlus, OctagonAlert, ArrowDown, ArrowUp,
+  Gem, Pencil, Zap, Circle, UserRoundMinus, FileText,
+} from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { nomeMes, pad2, shiftMonth } from "../../core/utils/date";
@@ -246,19 +250,19 @@ export function Beneficios2Page() {
       {/* Pagamento cancelado por engano → oferecer reativar (restaura o que foi pago) */}
       {!loteAtivo && loteCancelado && podeConfig && (
         <div className="rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 mb-3 text-sm text-amber-800 dark:text-amber-200 flex items-center justify-between gap-2 flex-wrap">
-          <span>♻️ Existe um pagamento <b>cancelado</b> deste mês ({fmt(loteCancelado.totalGeral)}). Se ele foi cancelado por engano e o dinheiro já saiu, reative para voltar a valer.</span>
+          <span><RotateCcw size={13} className="inline align-[-2px] mr-1"/>Existe um pagamento <b>cancelado</b> deste mês ({fmt(loteCancelado.totalGeral)}). Se ele foi cancelado por engano e o dinheiro já saiu, reative para voltar a valer.</span>
           <button type="button" onClick={() => void reativarLote()} disabled={salvando} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-amber-600 text-white hover:bg-amber-700 disabled:opacity-60">{salvando ? "Reativando…" : "Reativar pagamento"}</button>
         </div>
       )}
       {/* Status da prevista + do lote */}
       {loteAtivo ? (
         <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3 mb-3 text-sm text-emerald-800 dark:text-emerald-200 flex items-center justify-between gap-2 flex-wrap">
-          <span>✅ Pagamento confirmado em {new Date(loteAtivo.pagoEm || loteAtivo.criadoEm).toLocaleDateString("pt-BR")} — total {fmt(loteAtivo.totalGeral)}.</span>
+          <span className="inline-flex items-center gap-1"><CheckSquare size={14}/> Pagamento confirmado em {new Date(loteAtivo.pagoEm || loteAtivo.criadoEm).toLocaleDateString("pt-BR")} — total {fmt(loteAtivo.totalGeral)}.</span>
           {podeConfig && <button type="button" onClick={() => void cancelarLote()} className="text-xs px-2.5 py-1 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">Cancelar pagamento</button>}
         </div>
       ) : !previstaFechada ? (
         <div className="rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 mb-3 text-sm text-amber-800 dark:text-amber-200">
-          ⚠️ A <b>escala prevista</b> de {nomeMes(mes)} ainda não está fechada. Você pode conferir a prévia, mas só dá pra <b>confirmar o pagamento</b> depois de fechar a prevista.
+          <TriangleAlert size={13} className="inline align-[-2px] mr-1"/>A <b>escala prevista</b> de {nomeMes(mes)} ainda não está fechada. Você pode conferir a prévia, mas só dá pra <b>confirmar o pagamento</b> depois de fechar a prevista.
         </div>
       ) : (
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/40 p-3 mb-3 text-sm text-gray-600 dark:text-gray-300">Prévia em cima da escala prevista (fechada). Confira e confirme.</div>
@@ -267,7 +271,7 @@ export function Beneficios2Page() {
       {/* Fase 2 — já pagou o lote do mês, mas entrou gente depois → paga só os novos */}
       {loteAtivo && previstaFechada && podeConfig && naoPagosLinhas.length > 0 && (
         <div className="rounded-xl border border-indigo-300 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-3 mb-3 text-sm text-indigo-800 dark:text-indigo-200 flex items-center justify-between gap-2 flex-wrap">
-          <span>🆕 <b>{naoPagosLinhas.length}</b> empregado(s) entraram depois e ainda <b>não foram pagos</b> neste mês (total {fmt(totaisDoLote(naoPagosLinhas).totalGeral)}).</span>
+          <span><UserPlus size={13} className="inline align-[-2px] mr-1"/><b>{naoPagosLinhas.length}</b> empregado(s) entraram depois e ainda <b>não foram pagos</b> neste mês (total {fmt(totaisDoLote(naoPagosLinhas).totalGeral)}).</span>
           <button type="button" onClick={() => void confirmarPagamentoNovos()} disabled={salvando} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-60">{salvando ? "Gerando…" : "Gerar pagamento dos novos"}</button>
         </div>
       )}
@@ -275,13 +279,13 @@ export function Beneficios2Page() {
       {/* Bloqueio: precisa fazer o ajuste do mês anterior antes de pagar este */}
       {precisaAjuste && (
         <div className="rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 p-3 mb-3 text-sm text-rose-800 dark:text-rose-200 flex items-center justify-between gap-2 flex-wrap">
-          <span>🛑 Falta fazer o <b>ajuste de {nomeMes(mesAnt.mes)}/{mesAnt.ano}</b> (praticada × prevista) antes de fechar este pagamento. Os descontos entram aqui.</span>
+          <span><OctagonAlert size={13} className="inline align-[-2px] mr-1"/>Falta fazer o <b>ajuste de {nomeMes(mesAnt.mes)}/{mesAnt.ano}</b> (praticada × prevista) antes de fechar este pagamento. Os descontos entram aqui.</span>
           <button type="button" onClick={() => setAba("ajustes")} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700">Ir para Ajustes →</button>
         </div>
       )}
       {!precisaAjuste && temAjuste && (
         <div className="rounded-xl border border-sky-200 dark:border-sky-800 bg-sky-50 dark:bg-sky-900/20 p-3 mb-3 text-sm text-sky-800 dark:text-sky-200">
-          🔻 Este pagamento já inclui os <b>descontos/créditos do ajuste de {nomeMes(mesAnt.mes)}</b> (coluna Ajuste). Ao confirmar, os ajustes pendentes são aplicados.
+          <ArrowDown size={13} className="inline align-[-2px] mr-1"/>Este pagamento já inclui os <b>descontos/créditos do ajuste de {nomeMes(mesAnt.mes)}</b> (coluna Ajuste). Ao confirmar, os ajustes pendentes são aplicados.
         </div>
       )}
 
@@ -312,13 +316,13 @@ export function Beneficios2Page() {
                     {overrides[l.empregadoId] && <span className="text-[9px] px-1 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" title="Valor editado só neste lote">editado</span>}
                     {!loteAtivo && podeConfig && (
                       <button onClick={() => setEditando(l)} title="Editar valores desta linha (só neste lote)"
-                        className="text-gray-300 hover:text-indigo-600 text-xs leading-none">✏️</button>
+                        className="text-gray-300 hover:text-indigo-600 leading-none inline-flex"><Pencil size={13}/></button>
                     )}
                   </div>
                   {l.cargoNome && <div className="text-[11px] text-gray-400">{l.cargoNome}</div>}
                 </td>
                 <td className="text-center px-2 py-2">
-                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${l.forma === "pix" ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300" : "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"}`}>{l.forma === "pix" ? "⚡ Pix" : "🟣 Caju"}</span>
+                  <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full ${l.forma === "pix" ? "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300" : "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300"}`}>{l.forma === "pix" ? <span className="inline-flex items-center gap-1"><Zap size={11}/> Pix</span> : <span className="inline-flex items-center gap-1"><Circle size={11} fill="currentColor"/> Caju</span>}</span>
                 </td>
                 <td className="text-center px-2 py-2 text-gray-600 dark:text-gray-300">{l.diasTrabalhados}</td>
                 <td className="text-right px-3 py-2 tabular-nums">{vtBaseDe(l) > 0 ? fmt(vtBaseDe(l)) : "—"}</td>
@@ -359,16 +363,16 @@ export function Beneficios2Page() {
                     <div className="min-w-0">
                       <div className="font-medium text-sm text-gray-900 dark:text-gray-100 flex items-center gap-1.5 flex-wrap">
                         {l.empregadoNome}
-                        {l.demissao && <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded px-1.5 py-0.5">👋 demissão</span>}
+                        {l.demissao && <span className="text-[10px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded px-1.5 py-0.5 inline-flex items-center gap-1"><UserRoundMinus size={11}/> demissão</span>}
                       </div>
                       <div className="text-[10px] text-gray-400">ref. {l.ref}</div>
                     </div>
                     <div className={`text-sm font-bold tabular-nums shrink-0 ${neg ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmtSigned(l.ajusteTotal)}</div>
                   </div>
                   <div className="mt-1.5 space-y-0.5 text-[12px] text-gray-600 dark:text-gray-300">
-                    {desc.length > 0 && <div>🔻 Descontados ({desc.length}d): {desc.map(brDate).join(", ")}</div>}
-                    {cred.length > 0 && <div>🔺 Adicionados (+{cred.length}d): {cred.map(brDate).join(", ")}</div>}
-                    {aux !== 0 && <div>💠 Auxílio proporcional{l.demissao ? " (÷30, rescisão)" : " (÷dias previstos)"}: {fmtSigned(aux)}</div>}
+                    {desc.length > 0 && <div className="inline-flex items-center gap-1"><ArrowDown size={12}/> Descontados ({desc.length}d): {desc.map(brDate).join(", ")}</div>}
+                    {cred.length > 0 && <div className="inline-flex items-center gap-1"><ArrowUp size={12}/> Adicionados (+{cred.length}d): {cred.map(brDate).join(", ")}</div>}
+                    {aux !== 0 && <div className="inline-flex items-center gap-1"><Gem size={12}/> Auxílio proporcional{l.demissao ? " (÷30, rescisão)" : " (÷dias previstos)"}: {fmtSigned(aux)}</div>}
                     {desc.length === 0 && cred.length === 0 && aux === 0 && <div className="text-gray-400">Sem diferença de dias.</div>}
                   </div>
                 </div>
@@ -380,7 +384,7 @@ export function Beneficios2Page() {
 
       {/* Ações — bloqueadas até fazer o ajuste do mês anterior */}
       <div className="flex flex-wrap gap-2 mt-3 justify-end">
-        {linhas.length > 0 && !precisaAjuste && <Button variant="secondary" onClick={() => void gerarPagamentoPDF({ linhas, restaurantNome: rest?.nome || "", ano, mes, usaVR, totais, ajustes: ajustesDoPagamento })}>📄 Exportar PDF</Button>}
+        {linhas.length > 0 && !precisaAjuste && <Button variant="secondary" onClick={() => void gerarPagamentoPDF({ linhas, restaurantNome: rest?.nome || "", ano, mes, usaVR, totais, ajustes: ajustesDoPagamento })}><span className="inline-flex items-center gap-1"><FileText size={14}/> Exportar PDF</span></Button>}
         {linhas.length > 0 && !precisaAjuste && podeConfig && (
           <select
             value={rest?.beneficiosCajuCategoria || "padrao"}
@@ -394,11 +398,11 @@ export function Beneficios2Page() {
             <option value="alimentacao">Caju: tudo em Alimentação</option>
           </select>
         )}
-        {linhas.length > 0 && !precisaAjuste && <Button variant="secondary" onClick={exportarCaju}>🟣 Exportar Caju (CSV)</Button>}
-        {temPix && !precisaAjuste && <Button variant="secondary" onClick={exportarPix}>⚡ Exportar Pix</Button>}
+        {linhas.length > 0 && !precisaAjuste && <Button variant="secondary" onClick={exportarCaju}><span className="inline-flex items-center gap-1"><Circle size={13} fill="currentColor" className="text-purple-500"/> Exportar Caju (CSV)</span></Button>}
+        {temPix && !precisaAjuste && <Button variant="secondary" onClick={exportarPix}><span className="inline-flex items-center gap-1"><Zap size={14}/> Exportar Pix</span></Button>}
         {!loteAtivo && podeConfig && (
           <Button onClick={() => void confirmarPagamento()} disabled={salvando || !previstaFechada || linhas.length === 0 || precisaAjuste}>
-            {salvando ? "Confirmando…" : "✅ Confirmar pagamento"}
+            {salvando ? "Confirmando…" : <span className="inline-flex items-center gap-1"><CheckSquare size={14}/> Confirmar pagamento</span>}
           </Button>
         )}
       </div>
