@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { addDoc, collection, deleteDoc, doc, updateDoc } from "firebase/firestore";
+import { Contact, Clock, User, Crown, CalendarDays, CreditCard, Zap, UtensilsCrossed, Trash2 } from "lucide-react";
 import { registrarAdmissao, registrarMudancaCargo } from "../trilha/autoEventos";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -561,7 +562,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
                 : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
             }`}
           >
-            📇 Dados
+            <span className="inline-flex items-center gap-1.5"><Contact size={14} /> Dados</span>
           </button>
           <button
             type="button"
@@ -572,7 +573,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
                 : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
             }`}
           >
-            🕒 Horários
+            <span className="inline-flex items-center gap-1.5"><Clock size={14} /> Horários</span>
           </button>
         </div>
       )}
@@ -604,7 +605,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
         )}
         {usaPessoa && (
           <div className="text-xs text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-2">
-            👤 Vinculado à Pessoa: <strong>{pessoa.nome}</strong>{pessoa.email ? ` · ${pessoa.email}` : ""}
+            <span className="inline-flex items-center gap-1"><User size={13} className="shrink-0" /> Vinculado à Pessoa: <strong>{pessoa.nome}</strong>{pessoa.email ? ` · ${pessoa.email}` : ""}</span>
           </div>
         )}
 
@@ -657,7 +658,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
                     setBatePonto(novoBate === cargoDefault ? null : novoBate);
                   }}
                 />
-                <span className="font-medium">🎩 Cargo de confiança</span>
+                <span className="font-medium inline-flex items-center gap-1"><Crown size={14} /> Cargo de confiança</span>
                 <span className="text-xs text-gray-500">(não bate ponto)</span>
               </label>
               <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1 ml-6">
@@ -679,7 +680,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
             <label className="flex items-center gap-2 text-sm">
               <input type="checkbox" checked={freelaMensalista}
                 onChange={(e) => { setFreelaMensalista(e.target.checked); if (e.target.checked) setBatePonto(false); }} />
-              <span className="font-medium">🗓️ Freela mensalista (cobertura)</span>
+              <span className="font-medium inline-flex items-center gap-1"><CalendarDays size={14} /> Freela mensalista (cobertura)</span>
               <span className="text-xs text-gray-500">(entra na escala e na gorjeta só no período)</span>
             </label>
             {freelaMensalista ? (
@@ -838,9 +839,9 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           <div className="pt-1">
             <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Forma de recebimento · Caju ou Pix</label>
             <div className="flex gap-2 mt-1">
-              {([["caju", "🟣 Caju"], ["pix", "⚡ Pix"]] as const).map(([v, lbl]) => (
+              {([["caju", "Caju"], ["pix", "Pix"]] as const).map(([v, lbl]) => (
                 <button key={v} type="button" onClick={() => setFormaBeneficio(v)}
-                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${formaBeneficio === v ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300"}`}>{lbl}</button>
+                  className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${formaBeneficio === v ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300"}`}><span className="inline-flex items-center gap-1">{v === "caju" ? <CreditCard size={13} /> : <Zap size={13} />} {lbl}</span></button>
               ))}
             </div>
             <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
@@ -860,7 +861,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
               <div className="border-t border-gray-200 dark:border-gray-800 pt-3 mt-1">
                 <label className="flex items-center gap-2 text-sm">
                   <input type="checkbox" checked={vrAtivo} onChange={(e) => setVrAtivo(e.target.checked)} />
-                  <span className="font-medium">🍱 Recebe Vale Refeição</span>
+                  <span className="font-medium inline-flex items-center gap-1"><UtensilsCrossed size={14} /> Recebe Vale Refeição</span>
                 </label>
                 {vrAtivo && (
                   <div className="mt-2">
@@ -900,7 +901,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           <div>
             {!isNew && empregado && (
               <Button variant="danger" size="sm" onClick={excluirVinculo} disabled={saving}>
-                🗑 Excluir vínculo
+                <span className="inline-flex items-center gap-1.5"><Trash2 size={14} /> Excluir vínculo</span>
               </Button>
             )}
           </div>

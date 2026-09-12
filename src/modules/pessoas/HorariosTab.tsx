@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { Inbox, ClipboardList, Repeat, Pencil, TriangleAlert, House, Users } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -259,7 +260,7 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
           Limite: <strong>{fmtHHMM(cargaMinMin)} a {fmtHHMM(cargaMaxMin)}</strong> por semana.
         </div>
         <Button variant="secondary" size="sm" onClick={() => setShowImportar(true)}>
-          📥 Importar de outro empregado
+          <span className="inline-flex items-center gap-1.5"><Inbox size={14} /> Importar de outro empregado</span>
         </Button>
       </div>
 
@@ -274,7 +275,7 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
               : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
           }`}
         >
-          📋 Horário único
+          <span className="inline-flex items-center gap-1.5"><ClipboardList size={14} /> Horário único</span>
         </button>
         <button
           type="button"
@@ -285,7 +286,7 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
               : "text-gray-600 dark:text-gray-400 hover:text-gray-900"
           }`}
         >
-          🔄 Alternada A/B
+          <span className="inline-flex items-center gap-1.5"><Repeat size={14} /> Alternada A/B</span>
         </button>
       </div>
 
@@ -293,7 +294,7 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
       {tipo === "alternating" && (
         <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3 space-y-3">
           <div className="text-xs text-blue-800 dark:text-blue-300">
-            🔄 <strong>Escala alternada A/B.</strong> Define qual semana é A; a próxima é B; alterna.
+            <span className="inline-flex items-center gap-1"><Repeat size={13} className="shrink-0" /> <strong>Escala alternada A/B.</strong> Define qual semana é A; a próxima é B; alterna.</span>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <Input
@@ -323,7 +324,7 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
                 editWeek === "A" ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300" : "text-gray-600 dark:text-gray-400"
               }`}
             >
-              ✏️ Editando Semana A {validA.errors.length > 0 && `(${validA.errors.length} erro)`}
+              <span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editando Semana A</span> {validA.errors.length > 0 && `(${validA.errors.length} erro)`}
             </button>
             <button
               type="button"
@@ -332,7 +333,7 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
                 editWeek === "B" ? "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300" : "text-gray-600 dark:text-gray-400"
               }`}
             >
-              ✏️ Editando Semana B {validB.errors.length > 0 && `(${validB.errors.length} erro)`}
+              <span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editando Semana B</span> {validB.errors.length > 0 && `(${validB.errors.length} erro)`}
             </button>
           </div>
         </div>
@@ -393,7 +394,7 @@ export function HorariosTab({ empregado, restaurantId, exigeValidacao }: Props) 
       {errors.length > 0 && (
         <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 space-y-1">
           <div className="text-xs font-bold uppercase tracking-wider text-rose-700 dark:text-rose-400 mb-1">
-            ⚠ Violações CLT — bloqueia salvar
+            <span className="inline-flex items-center gap-1"><TriangleAlert size={12} /> Violações CLT — bloqueia salvar</span>
           </div>
           {tipo === "single" && validSingle.errors.map((er, i) => <ErrorRow key={`s${i}`} er={er} />)}
           {tipo === "alternating" && validA.errors.length > 0 && (
@@ -539,7 +540,7 @@ export function DiasTabela({
         <div className="text-center">Saída</div>
         <div className="text-right">Intervalo</div>
         <div className="text-right">Contratada</div>
-        <div className="text-center" title="Home office neste dia — não paga VT (mantém VR)">🏠</div>
+        <div className="text-center inline-flex items-center justify-center" title="Home office neste dia — não paga VT (mantém VR)"><House size={14} /></div>
         {mostraUnidade && <div className="text-center">Unidade</div>}
         <div className="text-center">Copiar</div>
       </div>
@@ -629,7 +630,7 @@ export function CicloDomingoEditor({
         <input type="checkbox" checked={ativo}
           onChange={(e) => onChange(e.target.checked ? { workCount: 3, offCount: 1, refDate: "" } : null)} />
         <span className="font-medium text-amber-900 dark:text-amber-300">
-          🔁 Folga em ciclo de domingos
+          <span className="inline-flex items-center gap-1.5"><Repeat size={14} /> Folga em ciclo de domingos</span>
         </span>
       </label>
 
@@ -655,7 +656,7 @@ export function CicloDomingoEditor({
                 onChange={(e) => onChange({ ...ciclo!, refDate: e.target.value })}
               />
               {refDate && !refDateValido && (
-                <p className="text-[11px] text-rose-600 mt-1">⚠ A data tem que ser um domingo</p>
+                <p className="text-[11px] text-rose-600 mt-1 inline-flex items-center gap-1"><TriangleAlert size={12} /> A data tem que ser um domingo</p>
               )}
             </div>
           </div>
@@ -694,7 +695,7 @@ function CopiarDeMenu({
   return (
     <div className="relative inline-block">
       <button type="button" onClick={() => setOpen(o => !o)} title="Copiar de outro dia"
-        className="text-xs text-gray-400 hover:text-indigo-600">📋</button>
+        className="text-xs text-gray-400 hover:text-indigo-600"><ClipboardList size={14} /></button>
       {open && (
         <>
           <div className="fixed inset-0 z-10" onClick={() => setOpen(false)} />
@@ -747,7 +748,7 @@ function ImportarHorarioModal({
           <div className="text-sm text-gray-500">Carregando...</div>
         ) : empregados.length === 0 ? (
           <div className="text-center py-6">
-            <div className="text-3xl mb-2">🤷</div>
+            <div className="flex justify-center mb-2 text-gray-400"><Users size={30} /></div>
             <p className="text-sm text-gray-700 dark:text-gray-300">
               Nenhum outro empregado com horário cadastrado.
             </p>

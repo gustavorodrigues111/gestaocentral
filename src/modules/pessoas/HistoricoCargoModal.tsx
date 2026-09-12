@@ -22,6 +22,7 @@ import {
   collection, deleteDoc, doc, getDocs, onSnapshot, query,
   setDoc, updateDoc, where,
 } from "firebase/firestore";
+import { History, Hourglass, X, BookOpen, Trash2, ReceiptText } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
@@ -323,7 +324,7 @@ export function HistoricoCargoModal({ cargo, restaurantId, onClose }: Props) {
   );
 
   return (
-    <Modal title={`📜 Histórico — ${cargo.nome}`} onClose={onClose} maxWidth="max-w-3xl">
+    <Modal title={<span className="inline-flex items-center gap-2"><History size={16} /> Histórico — {cargo.nome}</span>} onClose={onClose} maxWidth="max-w-3xl">
       <div className="space-y-5">
         {err && (
           <div className="rounded-lg border border-rose-200 dark:border-rose-800/40 bg-rose-50 dark:bg-rose-900/20 p-3 text-sm text-rose-700 dark:text-rose-300">
@@ -335,7 +336,7 @@ export function HistoricoCargoModal({ cargo, restaurantId, onClose }: Props) {
         {agendadas.length > 0 && (
           <section>
             <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2">
-              ⏳ Mudanças agendadas (ainda não aplicadas)
+              <span className="inline-flex items-center gap-1.5"><Hourglass size={14} /> Mudanças agendadas (ainda não aplicadas)</span>
             </h3>
             <div className="space-y-2">
               {agendadas.map((ag) => (
@@ -359,7 +360,7 @@ export function HistoricoCargoModal({ cargo, restaurantId, onClose }: Props) {
                       onClick={() => cancelarAgendada(ag)}
                       disabled={busy}
                     >
-                      ❌ Cancelar
+                      <span className="inline-flex items-center gap-1.5"><X size={14} /> Cancelar</span>
                     </Button>
                   </div>
                 </div>
@@ -371,7 +372,7 @@ export function HistoricoCargoModal({ cargo, restaurantId, onClose }: Props) {
         {/* ── Histórico por campo crítico ── */}
         <section>
           <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2">
-            📚 Histórico aplicado
+            <span className="inline-flex items-center gap-1.5"><BookOpen size={14} /> Histórico aplicado</span>
           </h3>
           {loading ? (
             <div className="text-sm text-gray-500">Carregando…</div>
@@ -452,7 +453,7 @@ export function HistoricoCargoModal({ cargo, restaurantId, onClose }: Props) {
                                   className="text-[10px] text-rose-600 dark:text-rose-400 hover:underline disabled:opacity-50"
                                   title="DESTRUTIVO — apaga entrada do histórico"
                                 >
-                                  🗑 Excluir versão
+                                  <span className="inline-flex items-center gap-1"><Trash2 size={12} /> Excluir versão</span>
                                 </button>
                               )}
                             </div>
@@ -471,7 +472,7 @@ export function HistoricoCargoModal({ cargo, restaurantId, onClose }: Props) {
         {auditLogs.length > 0 && (
           <section>
             <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 mb-2">
-              🧾 Trilha de auditoria <span className="text-xs text-gray-500 font-normal">({auditLogs.length})</span>
+              <span className="inline-flex items-center gap-1.5"><ReceiptText size={14} /> Trilha de auditoria</span> <span className="text-xs text-gray-500 font-normal">({auditLogs.length})</span>
             </h3>
             <div className="rounded-lg border border-gray-200 dark:border-gray-800 max-h-64 overflow-y-auto divide-y divide-gray-100 dark:divide-gray-800 text-xs">
               {auditLogs.map(log => (

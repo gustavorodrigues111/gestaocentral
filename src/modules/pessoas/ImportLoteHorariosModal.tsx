@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { useEffect } from "react";
+import { FlaskConical, TriangleAlert } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
@@ -313,7 +314,7 @@ export function ImportLoteHorariosModal({ restaurantId, onClose }: Props) {
   }
 
   return (
-    <Modal title="🧪 Importar lote de horários (provisório)" onClose={onClose} maxWidth="max-w-3xl">
+    <Modal title={<span className="inline-flex items-center gap-2"><FlaskConical size={16} /> Importar lote de horários (provisório)</span>} onClose={onClose} maxWidth="max-w-3xl">
       <div className="space-y-3 text-sm">
         <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
           <p>
@@ -389,7 +390,7 @@ export function ImportLoteHorariosModal({ restaurantId, onClose }: Props) {
                         <strong>{v.item.nome || v.cpfDigits}</strong> · {v.item.type} · validFrom={v.item.validFrom}
                       </span>
                       <span className={emp ? "text-emerald-700" : "text-amber-700"}>
-                        {emp ? `→ ${emp.nome}` : "⚠️ CPF não cadastrado"}
+                        {emp ? `→ ${emp.nome}` : <span className="inline-flex items-center gap-1"><TriangleAlert size={12} /> CPF não cadastrado</span>}
                       </span>
                     </div>
                   );

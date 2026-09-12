@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { collection, deleteDoc, doc, getDocs, query, where } from "firebase/firestore";
+import { Siren } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
@@ -77,7 +78,7 @@ export function ExcluirModal({ pessoa, onClose }: Props) {
     <Modal title={`Excluir definitivamente — ${pessoa.nome}`} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-4">
         <div className="rounded-lg bg-rose-50 dark:bg-rose-900/30 border-2 border-rose-300 dark:border-rose-700 p-3 text-sm text-rose-800 dark:text-rose-200">
-          🚨 <strong>AÇÃO IRREVERSÍVEL.</strong>
+          <span className="inline-flex items-center gap-1"><Siren size={14} className="shrink-0" /> <strong>AÇÃO IRREVERSÍVEL.</strong></span>
           <ul className="list-disc ml-5 mt-1 text-xs space-y-0.5">
             <li>Apaga a Pessoa do sistema</li>
             <li>Apaga {loadingEmps ? "..." : empregados.length} empregado(s) vinculado(s)</li>

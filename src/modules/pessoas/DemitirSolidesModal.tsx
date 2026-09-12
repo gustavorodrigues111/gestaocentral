@@ -5,6 +5,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
+import { TriangleAlert, CalendarDays } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import type { Pessoa } from "../../core/types";
 import { demitirNoSolides } from "../../core/ponto/solidesPontoClient";
@@ -53,7 +54,7 @@ export function DemitirSolidesModal({
           Espelhar a demissão de <strong>{pessoa.nome}</strong> na Sólides. Confirme a data e o motivo.
         </p>
         <p className="text-[11px] text-amber-700 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5">
-          ⚠️ Demissão na Sólides é <strong>irreversível</strong> por aqui (reativar seria manual na plataforma deles).
+          <span className="inline-flex items-center gap-1"><TriangleAlert size={12} className="shrink-0" /> Demissão na Sólides é <strong>irreversível</strong> por aqui (reativar seria manual na plataforma deles).</span>
         </p>
         {erro && <div className="text-xs text-red-700 bg-red-50 border border-red-200 rounded px-2 py-1.5 max-h-40 overflow-auto whitespace-pre-wrap break-all">{erro}</div>}
         <div className="grid grid-cols-2 gap-3">
@@ -77,7 +78,7 @@ export function DemitirSolidesModal({
             className="px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
         </div>
         <p className="text-[11px] text-gray-500 dark:text-gray-400">
-          📅 É o mesmo <strong>último dia trabalhado</strong> que você informou na demissão. A Sólides calcula o desligamento conforme o aviso prévio.
+          <span className="inline-flex items-center gap-1"><CalendarDays size={12} className="shrink-0" /> É o mesmo <strong>último dia trabalhado</strong> que você informou na demissão. A Sólides calcula o desligamento conforme o aviso prévio.</span>
         </p>
         <div className="flex justify-end gap-2 pt-1">
           <button type="button" onClick={onClose} disabled={salvando}

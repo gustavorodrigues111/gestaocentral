@@ -11,6 +11,7 @@
 import { useRef, useState } from "react";
 import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { Inbox, ClipboardList, FolderOpen, Factory, TriangleAlert, CheckSquare } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
@@ -140,12 +141,12 @@ export function ImportCargosModal({ cargosExistentes, restaurantId, onClose }: P
   const podeImportar = (novos + atualizarCount) > 0 && !importing;
 
   return (
-    <Modal title="📥 Importar cargos (CSV)" onClose={onClose} maxWidth="max-w-3xl">
+    <Modal title={<span className="inline-flex items-center gap-2"><Inbox size={16} /> Importar cargos (CSV)</span>} onClose={onClose} maxWidth="max-w-3xl">
       <div className="space-y-3">
         {!resultado && linhas.length === 0 && (
           <>
             <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 p-3 text-sm text-indigo-800 dark:text-indigo-300">
-              📋 Como funciona:
+              <span className="inline-flex items-center gap-1.5"><ClipboardList size={14} /> Como funciona:</span>
               <ol className="list-decimal ml-5 mt-2 text-xs space-y-0.5">
                 <li>No AppTip, aba "Cargos" → botão "📤 Exportar CSV"</li>
                 <li>Aqui, escolhe o arquivo baixado</li>
@@ -159,7 +160,7 @@ export function ImportCargosModal({ cargosExistentes, restaurantId, onClose }: P
             </div>
 
             <div className="border-2 border-dashed border-gray-300 dark:border-gray-700 rounded-xl p-8 text-center">
-              <div className="text-4xl mb-3">📂</div>
+              <div className="flex justify-center mb-3 text-gray-400"><FolderOpen size={40} /></div>
               <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
                 Escolha o arquivo CSV exportado do AppTip
               </p>
@@ -233,10 +234,10 @@ export function ImportCargosModal({ cargosExistentes, restaurantId, onClose }: P
                       <td className="px-2 py-1.5 text-xs">{l.area}</td>
                       <td className="px-2 py-1.5 text-right text-xs">
                         {l.semGorjeta ? "—" : l.pontos}
-                        {l.recebeProducao && <span className="ml-1 text-amber-600">🏭</span>}
+                        {l.recebeProducao && <span className="ml-1 text-amber-600 inline-flex items-center align-middle"><Factory size={12} /></span>}
                       </td>
                       <td className="px-2 py-1.5 text-xs">
-                        {l.acao === "erro" && <span className="text-rose-600">⚠ {l.erro}</span>}
+                        {l.acao === "erro" && <span className="text-rose-600 inline-flex items-center gap-1"><TriangleAlert size={12} /> {l.erro}</span>}
                         {l.acao === "criar" && <span className="text-blue-700 dark:text-blue-400">+ Criar</span>}
                         {l.acao === "atualizar" && (
                           <span className="text-amber-700 dark:text-amber-400">
@@ -273,10 +274,10 @@ export function ImportCargosModal({ cargosExistentes, restaurantId, onClose }: P
 
         {resultado && (
           <div className="text-center py-6">
-            <div className="text-5xl mb-3">✅</div>
+            <div className="flex justify-center mb-3 text-emerald-500"><CheckSquare size={44} /></div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Importação concluída</h3>
             <div className="mt-4 space-y-1 text-sm text-gray-700 dark:text-gray-300">
-              <p>✅ {resultado.criados} cargo(s) criado(s)</p>
+              <p className="inline-flex items-center gap-1"><CheckSquare size={13} /> {resultado.criados} cargo(s) criado(s)</p>
               <p>↻ {resultado.atualizados} cargo(s) atualizado(s)</p>
               <p>— {resultado.pulados} pulado(s)/com erro</p>
             </div>

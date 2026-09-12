@@ -1,19 +1,31 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
+import { Sparkles, Pencil, AlarmClock, Ban, Check, Send, Inbox, Trash2, ClipboardList, type LucideIcon } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import type { AuditLog, Empregado, Pessoa } from "../../core/types";
 
 type Props = { restaurantId: string };
 
-const ACAO_LABEL: Record<AuditLog["acao"], { label: string; icon: string; cls: string }> = {
-  criado:    { label: "Criado",     icon: "✨", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
-  alterado:  { label: "Alterado",   icon: "✏️", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
-  agendado:  { label: "Agendado",   icon: "⏰", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
-  inativado: { label: "Inativado",  icon: "🚫", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" },
-  reativado: { label: "Reativado",  icon: "✓", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
-  demitido:  { label: "Demitido",   icon: "📤", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" },
-  readmitido:{ label: "Readmitido", icon: "📥", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
-  excluido:  { label: "Excluído",   icon: "🗑", cls: "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
+const ACAO_LABEL: Record<AuditLog["acao"], { label: string; cls: string }> = {
+  criado:    { label: "Criado",     cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  alterado:  { label: "Alterado",   cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
+  agendado:  { label: "Agendado",   cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
+  inativado: { label: "Inativado",  cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" },
+  reativado: { label: "Reativado",  cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  demitido:  { label: "Demitido",   cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" },
+  readmitido:{ label: "Readmitido", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  excluido:  { label: "Excluído",   cls: "bg-gray-200 text-gray-700 dark:bg-gray-800 dark:text-gray-300" },
+};
+
+const ACAO_ICON: Record<AuditLog["acao"], LucideIcon> = {
+  criado:     Sparkles,
+  alterado:   Pencil,
+  agendado:   AlarmClock,
+  inativado:  Ban,
+  reativado:  Check,
+  demitido:   Send,
+  readmitido: Inbox,
+  excluido:   Trash2,
 };
 
 const ENTITY_LABEL: Record<string, string> = {
@@ -127,13 +139,14 @@ export function AlteracoesTab({ restaurantId }: Props) {
         <div className="text-sm text-gray-500">Carregando...</div>
       ) : filtered.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">📋</div>
+          <div className="flex justify-center mb-3 text-gray-400"><ClipboardList size={40} /></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhuma alteração no período</p>
         </div>
       ) : (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
           {filtered.map((log, i) => {
             const acao = ACAO_LABEL[log.acao] || ACAO_LABEL.alterado;
+            const AcaoIc = ACAO_ICON[log.acao] || ACAO_ICON.alterado;
             const entLabel = ENTITY_LABEL[log.entityType] || log.entityType;
             const entityName = nameMap[log.entityId] || log.entityId.slice(0, 8);
             const data = log.registradoEm
@@ -147,7 +160,7 @@ export function AlteracoesTab({ restaurantId }: Props) {
               >
                 <div className="flex items-start gap-3">
                   <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${acao.cls}`}>
-                    {acao.icon} {acao.label}
+                    <AcaoIc size={11} /> {acao.label}
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm">

@@ -16,6 +16,7 @@
 
 import { useState } from "react";
 import { doc, updateDoc, deleteField } from "firebase/firestore";
+import { CheckSquare, TriangleAlert, LockOpen } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
@@ -81,7 +82,7 @@ export function LiberarEmailModal({ pessoa, masterId, masterNome, onClose, onFei
 
   if (passo === "feito") {
     return (
-      <Modal title="✅ Email liberado" onClose={() => { onFeito(); }} maxWidth="max-w-lg">
+      <Modal title={<span className="inline-flex items-center gap-2"><CheckSquare size={16} /> Email liberado</span>} onClose={() => { onFeito(); }} maxWidth="max-w-lg">
         <div className="space-y-4">
           <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 p-3 text-sm space-y-1">
             <p className="font-semibold text-emerald-900 dark:text-emerald-200">
@@ -94,7 +95,7 @@ export function LiberarEmailModal({ pessoa, masterId, masterNome, onClose, onFei
 
           <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm space-y-2">
             <p className="font-semibold text-amber-900 dark:text-amber-200">
-              ⚠️ Falta 1 passo manual no Firebase
+              <span className="inline-flex items-center gap-1"><TriangleAlert size={13} /> Falta 1 passo manual no Firebase</span>
             </p>
             <p className="text-amber-800 dark:text-amber-300 text-[13px]">
               O Firebase Auth ainda tem o usuário antigo com esse email. Pra liberar de verdade pra nova pessoa criar conta:
@@ -126,7 +127,7 @@ export function LiberarEmailModal({ pessoa, masterId, masterNome, onClose, onFei
   }
 
   return (
-    <Modal title="🔓 Liberar email" onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={<span className="inline-flex items-center gap-2"><LockOpen size={16} /> Liberar email</span>} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-4">
         <p className="text-sm text-gray-700 dark:text-gray-300">
           Vai liberar o email <strong>{emailOriginal}</strong> de <strong>{pessoa.nome}</strong>.
@@ -142,7 +143,7 @@ export function LiberarEmailModal({ pessoa, masterId, masterNome, onClose, onFei
         </div>
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm">
           <p className="font-semibold text-amber-900 dark:text-amber-200 mb-1">
-            ⚠️ 1 passo manual depois
+            <span className="inline-flex items-center gap-1"><TriangleAlert size={13} /> 1 passo manual depois</span>
           </p>
           <p className="text-amber-800 dark:text-amber-300 text-[13px]">
             Você também precisa apagar o usuário do Firebase Auth (eu te
@@ -152,7 +153,7 @@ export function LiberarEmailModal({ pessoa, masterId, masterNome, onClose, onFei
 
         {erro && (
           <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 text-sm text-rose-800 dark:text-rose-300">
-            ⚠ {erro}
+            <span className="inline-flex items-center gap-1"><TriangleAlert size={13} /> {erro}</span>
           </div>
         )}
 
@@ -161,7 +162,7 @@ export function LiberarEmailModal({ pessoa, masterId, masterNome, onClose, onFei
             Cancelar
           </Button>
           <Button onClick={executar} disabled={executando}>
-            {executando ? "Liberando..." : "🔓 Liberar email agora"}
+            {executando ? "Liberando..." : <span className="inline-flex items-center gap-1.5"><LockOpen size={14} /> Liberar email agora</span>}
           </Button>
         </div>
       </div>

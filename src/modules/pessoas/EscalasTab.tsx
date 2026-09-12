@@ -4,6 +4,7 @@
 // mexe em quem já está vinculado.
 import { useEffect, useMemo, useState } from "react";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { Pencil, Package, Trash2, CalendarDays, TriangleAlert } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -72,9 +73,9 @@ export function EscalasTab({ restaurantId }: { restaurantId: string }) {
         {e.descricao && <div className="text-[11px] text-gray-400 truncate mt-0.5">{e.descricao}</div>}
       </button>
       <div className="flex items-center gap-1.5 shrink-0">
-        <Button size="sm" variant="secondary" onClick={() => setEditar(e)}>✏️ Editar</Button>
-        <Button size="sm" variant="secondary" onClick={() => void arquivar(e, !e.ativo)}>{e.ativo ? "📦 Arquivar" : "↩ Reativar"}</Button>
-        <button type="button" onClick={() => void excluir(e)} title="Excluir" className="text-gray-400 hover:text-rose-600 px-1">🗑</button>
+        <Button size="sm" variant="secondary" onClick={() => setEditar(e)}><span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editar</span></Button>
+        <Button size="sm" variant="secondary" onClick={() => void arquivar(e, !e.ativo)}>{e.ativo ? <span className="inline-flex items-center gap-1.5"><Package size={14} /> Arquivar</span> : "↩ Reativar"}</Button>
+        <button type="button" onClick={() => void excluir(e)} title="Excluir" className="text-gray-400 hover:text-rose-600 px-1"><Trash2 size={14} /></button>
       </div>
     </div>
   );
@@ -95,7 +96,7 @@ export function EscalasTab({ restaurantId }: { restaurantId: string }) {
 
       {arquivadas.length > 0 && (
         <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200">📦 Arquivadas <span className="text-gray-400 font-normal">({arquivadas.length})</span></summary>
+          <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200"><span className="inline-flex items-center gap-1.5"><Package size={14} /> Arquivadas <span className="text-gray-400 font-normal">({arquivadas.length})</span></span></summary>
           <div className="px-3 pb-3 space-y-2">{arquivadas.map((e) => <Card key={e.id} e={e} />)}</div>
         </details>
       )}
@@ -160,7 +161,7 @@ function EscalaModal({ restaurantId, escala, onClose, onSaved }: {
   }
 
   return (
-    <Modal title={escala ? "✏️ Editar escala" : "📆 Nova escala"} onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={escala ? <span className="inline-flex items-center gap-2"><Pencil size={16} /> Editar escala</span> : <span className="inline-flex items-center gap-2"><CalendarDays size={16} /> Nova escala</span>} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-4">
         {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
         <p className="text-[12px] text-gray-500 dark:text-gray-400">Uma escala = um padrão semanal fixo. Pra alternar escalas (inclusive folga de domingo em ciclo), cadastre uma escala por padrão e componha a alternância no cadastro do empregado.</p>
@@ -171,7 +172,7 @@ function EscalaModal({ restaurantId, escala, onClose, onSaved }: {
 
         <DiasGrid days={days} onPatch={patchDia} onLimpar={limparDia} />
         {erros.length > 0 && (
-          <div className="text-[11px] text-amber-700 dark:text-amber-400 space-y-0.5">{erros.map((er, i) => <div key={i}>⚠ {er.mensagem} <span className="opacity-60">({er.artigo})</span></div>)}</div>
+          <div className="text-[11px] text-amber-700 dark:text-amber-400 space-y-0.5">{erros.map((er, i) => <div key={i} className="inline-flex items-center gap-1"><TriangleAlert size={12} className="shrink-0" /> {er.mensagem} <span className="opacity-60">({er.artigo})</span></div>)}</div>
         )}
 
         <div className="flex items-center justify-between pt-1">

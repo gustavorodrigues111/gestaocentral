@@ -9,6 +9,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { Inbox, PartyPopper, Link } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
@@ -86,7 +87,7 @@ export function VincularAdmissaoModal({ restaurantId, onClose }: Props) {
   }
 
   return (
-    <Modal title="📥 Vincular pessoa de admissão" onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={<span className="inline-flex items-center gap-2"><Inbox size={16} /> Vincular pessoa de admissão</span>} onClose={onClose} maxWidth="max-w-lg">
       <div className="p-4 space-y-3">
         <p className="text-xs text-gray-600 dark:text-gray-400">
           Admissões em andamento que ainda não viraram cadastro. "Vincular" cria a
@@ -96,7 +97,7 @@ export function VincularAdmissaoModal({ restaurantId, onClose }: Props) {
           <div className="text-sm text-gray-500 dark:text-gray-400">Carregando…</div>
         ) : pendentes.length === 0 ? (
           <div className="text-sm text-gray-500 dark:text-gray-400 py-4 text-center">
-            Nenhuma admissão pendente de vínculo. 🎉
+            <span className="inline-flex items-center gap-1">Nenhuma admissão pendente de vínculo. <PartyPopper size={14} /></span>
           </div>
         ) : (
           <div className="space-y-2 max-h-[55vh] overflow-y-auto pr-1">
@@ -111,7 +112,7 @@ export function VincularAdmissaoModal({ restaurantId, onClose }: Props) {
                   </div>
                   <div className="text-[11px] text-gray-500 dark:text-gray-400">
                     {cargoNome(adm.cargoId)} · {STATUS_LABEL[adm.status] || adm.status}
-                    {adm.pessoaIdVinculada ? " · 🔗 Pessoa existente" : ""}
+                    {adm.pessoaIdVinculada ? <span className="inline-flex items-center gap-1"> · <Link size={11} /> Pessoa existente</span> : ""}
                   </div>
                 </div>
                 <Button size="sm" onClick={() => vincular(adm)} disabled={vinculandoId !== null}>

@@ -9,6 +9,7 @@
 
 import { useMemo, useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
+import { Link, TriangleAlert, Building2 } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -83,7 +84,7 @@ export function VincularPessoaModal({ restaurantId, onClose }: Props) {
   const restMap = Object.fromEntries(restaurants.map(r => [r.id, r]));
 
   return (
-    <Modal title="🔗 Vincular pessoa existente" onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={<span className="inline-flex items-center gap-2"><Link size={16} /> Vincular pessoa existente</span>} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
         <p className="text-sm text-gray-600 dark:text-gray-400">
           Pessoa já cadastrada em outro restaurante? Busca abaixo e vincula a este.
@@ -124,7 +125,7 @@ export function VincularPessoaModal({ restaurantId, onClose }: Props) {
                       {p.nome}
                       {p.cadastroIncompleto && (
                         <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
-                          ⚠ Cadastro incompleto
+                          <span className="inline-flex items-center gap-1"><TriangleAlert size={11} /> Cadastro incompleto</span>
                         </span>
                       )}
                     </div>
@@ -133,7 +134,7 @@ export function VincularPessoaModal({ restaurantId, onClose }: Props) {
                       {p.email && <> · {p.email}</>}
                     </div>
                     <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
-                      🏢 em {rids.length} restaurante{rids.length !== 1 ? "s" : ""}: <em>{restNomes || "—"}</em>
+                      <span className="inline-flex items-center gap-1"><Building2 size={11} /> em {rids.length} restaurante{rids.length !== 1 ? "s" : ""}:</span> <em>{restNomes || "—"}</em>
                     </div>
                   </div>
                   <Button
@@ -141,7 +142,7 @@ export function VincularPessoaModal({ restaurantId, onClose }: Props) {
                     onClick={() => vincular(p)}
                     disabled={isVinculando}
                   >
-                    {isVinculando ? "..." : "🔗 Vincular"}
+                    {isVinculando ? "..." : <span className="inline-flex items-center gap-1.5"><Link size={14} /> Vincular</span>}
                   </Button>
                 </div>
               );

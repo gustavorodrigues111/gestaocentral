@@ -1,5 +1,6 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { Contact, Handshake, TriangleAlert, User, Lock, KeyRound, Repeat, Eye, CheckSquare, ClipboardList, MessageSquare, UserRoundMinus, Ban, LockOpen, Trash2, Mail, Crown, ShieldCheck, Unlink } from "lucide-react";
 import { db, auth } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { gerarSenhaInicial, provisionarAcesso } from "../../core/auth/provisionar";
@@ -47,9 +48,9 @@ export function PessoaModal({ pessoa, restaurantId, onClose }: Props) {
 
   if (!me) return null;
 
-  const tabs: { id: Tab; label: string; disabled?: boolean }[] = [
-    { id: "identidade", label: "📇 Identidade" },
-    { id: "vinculos",   label: "🤝 Vínculos",   disabled: isNew },
+  const tabs: { id: Tab; label: ReactNode; disabled?: boolean }[] = [
+    { id: "identidade", label: <span className="inline-flex items-center gap-1.5"><Contact size={14} /> Identidade</span> },
+    { id: "vinculos",   label: <span className="inline-flex items-center gap-1.5"><Handshake size={14} /> Vínculos</span>,   disabled: isNew },
     // Tab "🔐 Permissões" removida — atribuição de perfil agora fica no
     // tab Identidade, e checkboxes ver/configurar legados saíram.
   ];
@@ -408,14 +409,14 @@ function TabIdentidade({
 
       {pessoa?.cadastroIncompleto && (
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-300 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
-          ⚠ <strong>Cadastro incompleto</strong> — preencha o CPF pra ativar o vínculo desta pessoa.
+          <span className="inline-flex items-center gap-1"><TriangleAlert size={13} className="shrink-0" /> <strong>Cadastro incompleto</strong></span> — preencha o CPF pra ativar o vínculo desta pessoa.
         </div>
       )}
 
       {duplicada && (
         <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-300 dark:border-blue-800 px-3 py-2 text-sm">
           <div className="font-medium text-blue-900 dark:text-blue-200 mb-1">
-            👤 Essa pessoa já está cadastrada
+            <span className="inline-flex items-center gap-1.5"><User size={14} /> Essa pessoa já está cadastrada</span>
           </div>
           <div className="text-blue-800 dark:text-blue-300 text-xs mb-2">
             <strong>{duplicada.nome}</strong> (CPF {duplicada.cpf}) já existe em{" "}
@@ -523,7 +524,7 @@ function TabIdentidade({
               {/* ── Painel de Acesso (guiado por status) ── */}
               <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3">
                 <div className="flex items-center gap-2 mb-1.5 flex-wrap">
-                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">🔐 Acesso</span>
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 inline-flex items-center gap-1"><Lock size={12} /> Acesso</span>
                   <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${ACESSO_INFO[estadoAcesso].cls}`}>{ACESSO_INFO[estadoAcesso].label}</span>
                 </div>
                 <p className="text-[12.5px] text-gray-500 dark:text-gray-400 mb-2.5">{ACESSO_INFO[estadoAcesso].expl}</p>
@@ -531,7 +532,7 @@ function TabIdentidade({
                 <div className="flex flex-wrap gap-2 items-center">
                   {estadoAcesso === "sem_acesso" && podeConvidar && (
                     <Button size="sm" disabled={convidando} onClick={() => void convidarAcesso()} title="Cria o acesso com uma senha inicial e convida a pessoa pelo WhatsApp" className="!bg-emerald-600 hover:!bg-emerald-700 !border-emerald-600">
-                      {convidando ? "Criando acesso…" : "🔑 Convidar pra acessar"}
+                      {convidando ? "Criando acesso…" : <span className="inline-flex items-center gap-1.5"><KeyRound size={14} /> Convidar pra acessar</span>}
                     </Button>
                   )}
                   {estadoAcesso === "sem_acesso" && !podeConvidar && (
@@ -539,17 +540,17 @@ function TabIdentidade({
                   )}
                   {estadoAcesso === "aguardando" && podeConvidar && (
                     <Button size="sm" disabled={convidando} onClick={() => void convidarAcesso()} title="Recria o acesso com uma nova senha inicial e reenvia por email (Resend)." className="!bg-indigo-600 hover:!bg-indigo-700 !border-indigo-600">
-                      {convidando ? "Reenviando…" : "🔁 Reenviar convite"}
+                      {convidando ? "Reenviando…" : <span className="inline-flex items-center gap-1.5"><Repeat size={14} /> Reenviar convite</span>}
                     </Button>
                   )}
                   {pessoaReal?.isMaster && temLogin && !!pessoa?.email && (estadoAcesso === "aguardando" || estadoAcesso === "pronto") && (
                     <Button size="sm" variant="secondary" disabled={resetLoading} onClick={() => void redefinirSenha()} title="Gera uma senha temporária pra conta existente (travou no 1º acesso, esqueceu a senha). Você testa o login; ela troca no próximo acesso.">
-                      {resetLoading ? "Redefinindo…" : "🔑 Redefinir senha"}
+                      {resetLoading ? "Redefinindo…" : <span className="inline-flex items-center gap-1.5"><KeyRound size={14} /> Redefinir senha</span>}
                     </Button>
                   )}
                   {podeVisualizarComo && pessoa && (
                     <Button size="sm" variant="secondary" onClick={() => { startImpersonate(pessoa.id); onClose(); navigate("/"); }} title="Simulação: entra na tela COMO essa pessoa pra ver o que o perfil dela mostra (não testa login — pra isso use 'Redefinir senha')">
-                      👁️ Ver como
+                      <span className="inline-flex items-center gap-1.5"><Eye size={14} /> Ver como</span>
                     </Button>
                   )}
                 </div>
@@ -558,15 +559,15 @@ function TabIdentidade({
                   <div className={`mt-2.5 rounded-lg border px-3 py-2.5 text-sm ${resetResult.ok ? "border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/30" : "border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30"}`}>
                     {resetResult.ok ? (
                       <div className="space-y-1.5">
-                        <div className="text-emerald-800 dark:text-emerald-300">✅ Senha temporária de <b>{resetResult.email}</b>:</div>
+                        <div className="text-emerald-800 dark:text-emerald-300 inline-flex items-center gap-1"><CheckSquare size={13} /> Senha temporária de <b>{resetResult.email}</b>:</div>
                         <div className="flex items-center gap-2 flex-wrap">
                           <code className="font-mono text-base font-bold px-2.5 py-1 rounded bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-800 tracking-wider">{resetResult.senha}</code>
-                          <button type="button" onClick={() => { void navigator.clipboard?.writeText(resetResult.senha).catch(() => {}); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">📋 copiar</button>
+                          <button type="button" onClick={() => { void navigator.clipboard?.writeText(resetResult.senha).catch(() => {}); }} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"><ClipboardList size={12} /> copiar</button>
                         </div>
                         <p className="text-[12px] text-emerald-700/90 dark:text-emerald-400/90">Teste o login numa aba anônima. A pessoa vai <b>trocar a senha no próximo acesso</b>. Anote agora — não fica salvo.</p>
                       </div>
                     ) : (
-                      <div className="text-rose-700 dark:text-rose-300">⚠ {resetResult.erro}</div>
+                      <div className="text-rose-700 dark:text-rose-300 inline-flex items-center gap-1"><TriangleAlert size={13} /> {resetResult.erro}</div>
                     )}
                     <button type="button" onClick={() => setResetResult(null)} className="text-[11px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-1.5">fechar</button>
                   </div>
@@ -578,7 +579,7 @@ function TabIdentidade({
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500">Situação</span>
                   <Button variant="danger" size="sm" onClick={() => setShowInativar(true)}>
-                    {ehDesligavel ? "👋 Demitir" : "🚫 Inativar pessoa"}
+                    {ehDesligavel ? <span className="inline-flex items-center gap-1.5"><UserRoundMinus size={14} /> Demitir</span> : <span className="inline-flex items-center gap-1.5"><Ban size={14} /> Inativar pessoa</span>}
                   </Button>
                 </div>
               )}
@@ -600,12 +601,12 @@ function TabIdentidade({
                   title="Libera o email dessa pessoa pra outra usar (histórico fica preservado)"
                   className="!bg-amber-600 hover:!bg-amber-700 !border-amber-600"
                 >
-                  🔓 Liberar email
+                  <span className="inline-flex items-center gap-1.5"><LockOpen size={14} /> Liberar email</span>
                 </Button>
               )}
               {podeExcluir && (
                 <Button variant="danger" size="sm" onClick={() => setShowExcluir(true)}>
-                  🗑 Excluir definitivamente
+                  <span className="inline-flex items-center gap-1.5"><Trash2 size={14} /> Excluir definitivamente</span>
                 </Button>
               )}
             </>
@@ -626,7 +627,7 @@ function TabIdentidade({
           </div>
           {convite.waLink && (
             <a href={convite.waLink} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 text-xs font-medium text-emerald-700 dark:text-emerald-400 hover:underline">
-              💬 {convite.enviadoEmail ? "Mandar também pelo WhatsApp" : "Mandar pelo WhatsApp"}
+              <MessageSquare size={14} /> {convite.enviadoEmail ? "Mandar também pelo WhatsApp" : "Mandar pelo WhatsApp"}
             </a>
           )}
           <p className="text-[11px] text-gray-500 dark:text-gray-400">No 1º acesso ela confirma o CPF e cria a própria senha.</p>
@@ -635,7 +636,7 @@ function TabIdentidade({
 
       {isNew && (
         <p className="text-xs text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-2">
-          📩 Basta <strong>nome, email e WhatsApp</strong>. Depois de salvar, use <strong>🔑 Convidar pra acessar</strong> — o sistema cria o acesso com uma senha inicial e você manda pelo WhatsApp. O CPF a pessoa preenche no 1º acesso.
+          <span className="inline-flex items-center gap-1"><Mail size={13} className="shrink-0" /> Basta <strong>nome, email e WhatsApp</strong>.</span> Depois de salvar, use <strong className="inline-flex items-center gap-1"><KeyRound size={12} /> Convidar pra acessar</strong> — o sistema cria o acesso com uma senha inicial e você manda pelo WhatsApp. O CPF a pessoa preenche no 1º acesso.
         </p>
       )}
 
@@ -773,8 +774,8 @@ function TabVinculos({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId: s
                   {empregado.vtAtivo && ` · VT R$ ${empregado.vtValorPassagem ?? 0}/passagem × ${empregado.vtPassagensPorDia ?? 0}`}
                 </div>
                 {empregado.periodos && empregado.periodos.length > 1 && (
-                  <div className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-1">
-                    🔁 Trilha: {empregado.periodos.length} período(s) — readmissão preserva histórico
+                  <div className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-1 inline-flex items-center gap-1">
+                    <Repeat size={11} className="shrink-0" /> Trilha: {empregado.periodos.length} período(s) — readmissão preserva histórico
                   </div>
                 )}
               </div>
@@ -945,7 +946,7 @@ function OutrosRestaurantesVinculados({
             disabled={salvando === v.restaurantId}
             className="text-[10px] px-2 py-1 rounded text-rose-700 dark:text-rose-400 border border-rose-300 dark:border-rose-800 hover:bg-rose-50 dark:hover:bg-rose-900/20"
           >
-            {salvando === v.restaurantId ? "..." : "🔗 Desvincular"}
+            {salvando === v.restaurantId ? "..." : <span className="inline-flex items-center gap-1"><Unlink size={12} /> Desvincular</span>}
           </button>
         </div>
       ))}
@@ -995,7 +996,7 @@ function PerfilAcessoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaur
   if (pessoa.isMaster) {
     return (
       <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/40 dark:bg-emerald-900/10 p-3 text-sm text-emerald-800 dark:text-emerald-300">
-        👑 <strong>Master</strong> — acesso total a tudo, perfil de acesso não se aplica.
+        <span className="inline-flex items-center gap-1"><Crown size={14} className="shrink-0" /> <strong>Master</strong></span> — acesso total a tudo, perfil de acesso não se aplica.
       </div>
     );
   }
@@ -1004,7 +1005,7 @@ function PerfilAcessoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaur
     <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-900/10 p-3 space-y-2">
       <div className="flex items-baseline justify-between gap-2 flex-wrap">
         <div className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">
-          🛡️ Perfil de Acesso
+          <span className="inline-flex items-center gap-1.5"><ShieldCheck size={13} /> Perfil de Acesso</span>
         </div>
         <div className="text-[11px] text-indigo-600 dark:text-indigo-400">
           Sistema novo · gerencie em <Link to="/perfis" className="underline">Perfis de Acesso</Link>
@@ -1029,7 +1030,7 @@ function PerfilAcessoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaur
           ))}
         </select>
       )}
-      {erro && <p className="text-xs text-rose-600">⚠ {erro}</p>}
+      {erro && <p className="text-xs text-rose-600 inline-flex items-center gap-1"><TriangleAlert size={12} /> {erro}</p>}
       <p className="text-[11px] text-gray-600 dark:text-gray-400">
         Atribuir um perfil substitui o sistema antigo (ver/configurar) por
         ações granulares. Telas que ainda não foram migradas continuam usando
@@ -1121,7 +1122,7 @@ function VinculoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId
     <div className="rounded-lg border border-fuchsia-200 dark:border-fuchsia-800 bg-fuchsia-50/40 dark:bg-fuchsia-900/10 p-3 space-y-2">
       <div className="flex items-baseline justify-between gap-2 flex-wrap">
         <div className="text-xs font-bold uppercase tracking-wider text-fuchsia-700 dark:text-fuchsia-300">
-          🤝 Vínculo neste restaurante
+          <span className="inline-flex items-center gap-1.5"><Handshake size={13} /> Vínculo neste restaurante</span>
         </div>
         {!vinculoExplicito && vinculoResolvido && (
           <button type="button" onClick={() => void alterarVinculo(vinculoResolvido)} disabled={salvando}
@@ -1132,7 +1133,7 @@ function VinculoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId
         )}
         {!vinculoExplicito && !vinculoResolvido && (
           <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">
-            ⚠ Sem vínculo — defina
+            <span className="inline-flex items-center gap-1"><TriangleAlert size={12} /> Sem vínculo — defina</span>
           </span>
         )}
       </div>
@@ -1149,7 +1150,7 @@ function VinculoSection({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId
           </option>
         ))}
       </select>
-      {erro && <p className="text-xs text-rose-600">⚠ {erro}</p>}
+      {erro && <p className="text-xs text-rose-600 inline-flex items-center gap-1"><TriangleAlert size={12} /> {erro}</p>}
       <p className="text-[11px] text-gray-600 dark:text-gray-400">
         O vínculo define como a pessoa se comporta neste restaurante — escala, gorjeta, ponto,
         benefícios. Pode variar entre restaurantes (Freela aqui, CLT em outro).

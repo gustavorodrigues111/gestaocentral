@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { collection, doc, getDocs, query, updateDoc, where } from "firebase/firestore";
+import { TriangleAlert } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -148,7 +149,7 @@ export function InativarModal({ pessoa, onClose, onInativada, titulo }: Props) {
     <Modal title={titulo || `Inativar — ${pessoa.nome}`} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-4">
         <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 text-sm text-rose-800 dark:text-rose-300">
-          ⚠ Ao inativar:
+          <span className="inline-flex items-center gap-1"><TriangleAlert size={13} /> Ao inativar:</span>
           <ul className="list-disc ml-5 mt-1 text-xs space-y-0.5">
             <li>Acesso ao sistema bloqueado em até 30 segundos</li>
             <li>Empregados vinculados são demitidos em todos os restaurantes</li>

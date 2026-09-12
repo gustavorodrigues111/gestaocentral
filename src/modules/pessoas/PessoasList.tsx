@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { Link, Users, User, TriangleAlert, Wine, ChefHat, UtensilsCrossed, SprayCan, CircleAlert, CircleCheck, Sparkles, Inbox } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -162,7 +163,7 @@ export function PessoasList({ restaurantId }: Props) {
           <div className="flex gap-2">
             {podeVincular && (
               <Button variant="secondary" onClick={() => setVincularModo("chooser")} title="Vincular de uma admissão ou de pessoa já cadastrada em outro restaurante">
-                🔗 Vincular
+                <span className="inline-flex items-center gap-1.5"><Link size={14} /> Vincular</span>
               </Button>
             )}
             {podeCriar && (
@@ -193,7 +194,7 @@ export function PessoasList({ restaurantId }: Props) {
             // Sair de "equipe" → reseta filtro de área (deixa de fazer sentido)
             if (f !== "equipe") setFiltroArea("todas");
           }}>
-            {f === "todos" ? "Todos" : f === "equipe" ? "👥 Equipe" : "🧑 Só usuários"}
+            {f === "todos" ? "Todos" : f === "equipe" ? <span className="inline-flex items-center gap-1"><Users size={13} /> Equipe</span> : <span className="inline-flex items-center gap-1"><User size={13} /> Só usuários</span>}
           </FilterChip>
         ))}
 
@@ -201,9 +202,9 @@ export function PessoasList({ restaurantId }: Props) {
         {(["todos", "comPendencia", "pronto", "nuncaLogou"] as FiltroAcesso[]).map(f => (
           <FilterChip key={f} active={filtroAcesso === f} onClick={() => setFiltroAcesso(f)}>
             {f === "todos" ? "Todos"
-              : f === "comPendencia" ? "🟡 Com pendência"
-              : f === "pronto" ? "🟢 Pronto"
-              : "🆕 Nunca logou"}
+              : f === "comPendencia" ? <span className="inline-flex items-center gap-1"><CircleAlert size={13} /> Com pendência</span>
+              : f === "pronto" ? <span className="inline-flex items-center gap-1"><CircleCheck size={13} /> Pronto</span>
+              : <span className="inline-flex items-center gap-1"><Sparkles size={13} /> Nunca logou</span>}
           </FilterChip>
         ))}
 
@@ -217,7 +218,7 @@ export function PessoasList({ restaurantId }: Props) {
           </FilterChip>
         ))}
         <FilterChip active={filtroVinculo === "semVinculo"} onClick={() => setFiltroVinculo("semVinculo")}>
-          ⚠ Sem vínculo
+          <span className="inline-flex items-center gap-1"><TriangleAlert size={13} /> Sem vínculo</span>
         </FilterChip>
 
         {/* Filtro de área — só aparece quando filtrando por Equipe */}
@@ -229,7 +230,7 @@ export function PessoasList({ restaurantId }: Props) {
             </FilterChip>
             {AREAS.map(a => (
               <FilterChip key={a} active={filtroArea === a} onClick={() => setFiltroArea(a)}>
-                {a === "Bar" ? "🍸 Bar" : a === "Cozinha" ? "👨‍🍳 Cozinha" : a === "Salão" ? "🍽️ Salão" : "🧹 Limpeza"}
+                {a === "Bar" ? <span className="inline-flex items-center gap-1"><Wine size={13} /> Bar</span> : a === "Cozinha" ? <span className="inline-flex items-center gap-1"><ChefHat size={13} /> Cozinha</span> : a === "Salão" ? <span className="inline-flex items-center gap-1"><UtensilsCrossed size={13} /> Salão</span> : <span className="inline-flex items-center gap-1"><SprayCan size={13} /> Limpeza</span>}
               </FilterChip>
             ))}
           </>
@@ -240,7 +241,7 @@ export function PessoasList({ restaurantId }: Props) {
         <div className="text-sm text-gray-500">Carregando...</div>
       ) : filtered.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">👥</div>
+          <div className="flex justify-center mb-3 text-gray-400"><Users size={40} /></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">
             {search ? "Nenhuma pessoa encontrada" : "Nenhuma pessoa cadastrada"}
           </p>
@@ -300,7 +301,7 @@ export function PessoasList({ restaurantId }: Props) {
                     {!vinculo && p.ativa !== false && (
                       <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
                         title="Sem vínculo definido — abra e defina o vínculo desta pessoa">
-                        ⚠ sem vínculo
+                        <span className="inline-flex items-center gap-1"><TriangleAlert size={11} /> sem vínculo</span>
                       </span>
                     )}
                     {acessoBadges.map(b => (
@@ -314,7 +315,7 @@ export function PessoasList({ restaurantId }: Props) {
                     ))}
                     {emp && cargo && (
                       <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 font-bold">
-                        👥 {cargo.nome}
+                        <span className="inline-flex items-center gap-1"><Users size={11} /> {cargo.nome}</span>
                       </span>
                     )}
                     {emp && cargo && (() => {
@@ -351,7 +352,7 @@ export function PessoasList({ restaurantId }: Props) {
       )}
 
       {vincularModo === "chooser" && (
-        <Modal title="🔗 Vincular pessoa" onClose={() => setVincularModo(null)} maxWidth="max-w-md">
+        <Modal title={<span className="inline-flex items-center gap-2"><Link size={16} /> Vincular pessoa</span>} onClose={() => setVincularModo(null)} maxWidth="max-w-md">
           <div className="p-4 space-y-3">
             <p className="text-xs text-gray-600 dark:text-gray-400">
               De onde você quer trazer a pessoa pra este restaurante?
@@ -362,7 +363,7 @@ export function PessoasList({ restaurantId }: Props) {
               className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-800 p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
             >
               <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                📥 De uma admissão
+                <span className="inline-flex items-center gap-1.5"><Inbox size={14} /> De uma admissão</span>
               </div>
               <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
                 Cria a Pessoa + o Empregado a partir de uma admissão pronta (cargo,
@@ -375,7 +376,7 @@ export function PessoasList({ restaurantId }: Props) {
               className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-800 p-3 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
             >
               <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                🔗 Pessoa existente (outro restaurante)
+                <span className="inline-flex items-center gap-1.5"><Link size={14} /> Pessoa existente (outro restaurante)</span>
               </div>
               <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5">
                 Vincula uma pessoa já cadastrada em outro restaurante a este.

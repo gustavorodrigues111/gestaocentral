@@ -3,6 +3,7 @@
 // direto no doc do empregado (ação imediata, fora do save do formulário).
 import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
+import { Folder, FolderOpen } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
 import { isDriveConnected, createEmployeeFolderTree } from "../../core/google/driveClient";
@@ -58,14 +59,14 @@ export function PastaDriveEmpregado({ empregado, restaurant }: { empregado: Empr
 
   return (
     <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3">
-      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5">📁 Pasta do Drive</div>
+      <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-1.5 inline-flex items-center gap-1.5"><Folder size={12} /> Pasta do Drive</div>
       {!isDriveConnected() ? (
         <p className="text-xs text-amber-600 dark:text-amber-400">
           Conecte o Google Drive (em Admissão → Configurações) pra criar/vincular a pasta do empregado.
         </p>
       ) : temPasta ? (
         <div className="flex items-center gap-2 flex-wrap">
-          <a href={url} target="_blank" rel="noreferrer" className="text-sm text-indigo-600 dark:text-indigo-400 underline">📁 Abrir pasta</a>
+          <a href={url} target="_blank" rel="noreferrer" className="text-sm text-indigo-600 dark:text-indigo-400 underline inline-flex items-center gap-1"><FolderOpen size={14} /> Abrir pasta</a>
           <Button size="sm" variant="secondary" onClick={vincular} disabled={salvando}>{salvando ? "…" : "Trocar pasta"}</Button>
           <span className="text-[11px] text-gray-400">Exames sobem em "Exames Médicos" aqui dentro.</span>
         </div>

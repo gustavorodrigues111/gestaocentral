@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { Inbox, Tag, History, Mail, IdCard, Crown, TriangleAlert, Ban } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { canConfigurar } from "../../core/auth/permissions";
@@ -94,7 +95,7 @@ export function CargosTab({ restaurantId }: Props) {
         {podeConfig && (
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => setImporting(true)} title="Importar cargos via CSV (migração do AppTip)">
-              📥 Importar CSV
+              <span className="inline-flex items-center gap-1.5"><Inbox size={14} /> Importar CSV</span>
             </Button>
             <Button onClick={() => setEditing("new")}>+ Novo cargo</Button>
           </div>
@@ -122,7 +123,7 @@ export function CargosTab({ restaurantId }: Props) {
         <div className="text-sm text-gray-500">Carregando...</div>
       ) : cargos.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">🏷️</div>
+          <div className="flex justify-center mb-3 text-gray-400"><Tag size={40} /></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhum cargo cadastrado</p>
           {podeConfig && (
             <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
@@ -217,7 +218,7 @@ function CargoRow({
       </div>
       <div className="flex items-center gap-2 shrink-0">
         <Button variant="secondary" size="sm" onClick={onShowHistory} title="Histórico de alterações deste cargo">
-          📜 Histórico
+          <span className="inline-flex items-center gap-1.5"><History size={14} /> Histórico</span>
         </Button>
         {podeConfig && (
           <Button variant="secondary" size="sm" onClick={onEdit}>Editar</Button>
@@ -501,8 +502,8 @@ function CargoModal({
             </select>
             <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
               {tipoExigePessoa
-                ? "📧 Exige Pessoa vinculada (login no sistema)"
-                : "🆔 Sem login — só consta na escala/gorjeta"}
+                ? <span className="inline-flex items-center gap-1"><Mail size={12} /> Exige Pessoa vinculada (login no sistema)</span>
+                : <span className="inline-flex items-center gap-1"><IdCard size={12} /> Sem login — só consta na escala/gorjeta</span>}
             </p>
           </div>
         </div>
@@ -588,7 +589,7 @@ function CargoModal({
                     checked={efetivoConfianca}
                     onChange={(e) => setBatePonto(!e.target.checked)}
                   />
-                  <span>🎩 Cargo de confiança <span className="text-xs text-gray-500">(não bate ponto)</span></span>
+                  <span className="inline-flex items-center gap-1"><Crown size={14} /> Cargo de confiança <span className="text-xs text-gray-500">(não bate ponto)</span></span>
                   <span className="text-xs text-gray-400">
                     {batePonto === null
                       ? `(default por vínculo "${tipoVinculo}": ${defaultBate ? "bate" : "não bate"})`
@@ -613,7 +614,7 @@ function CargoModal({
 
         {trocouTipoVinculo && (
           <div className="rounded-lg bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-800 dark:text-amber-300">
-            ⚠️ <strong>Atenção:</strong> {empregadosAtivos} empregado(s) tem esse cargo.
+            <span className="inline-flex items-center gap-1"><TriangleAlert size={13} /> <strong>Atenção:</strong></span> {empregadosAtivos} empregado(s) tem esse cargo.
             Mudar o tipo de vínculo pode exigir migrações (ex: criar/desvincular Pessoa).
             Verifique cada empregado depois.
           </div>
@@ -621,7 +622,7 @@ function CargoModal({
 
         {tentaInativarComEmpregados && (
           <div className="rounded-lg bg-rose-50 dark:bg-rose-900/30 border border-rose-200 dark:border-rose-800 p-3 text-xs text-rose-800 dark:text-rose-300">
-            🚫 <strong>Bloqueado:</strong> {empregadosAtivos} empregado(s) ativo(s) com esse cargo.
+            <span className="inline-flex items-center gap-1"><Ban size={13} /> <strong>Bloqueado:</strong></span> {empregadosAtivos} empregado(s) ativo(s) com esse cargo.
             Migre eles pra outro cargo antes de inativar.
           </div>
         )}

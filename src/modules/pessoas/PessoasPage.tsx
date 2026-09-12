@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useParams } from "react-router-dom";
+import { Lock, FlaskConical, User, Tag, CalendarDays, ClipboardList, type LucideIcon } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canVer, canAcao } from "../../core/auth/permissions";
@@ -34,17 +35,17 @@ export function PessoasPage() {
   if (!podeVer) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
   }
 
-  const tabs: { id: Tab; label: string; icon: string }[] = [
-    { id: "pessoas",    label: "Pessoas",    icon: "👤" },
-    { id: "cargos",     label: "Cargos",     icon: "🏷️" },
-    ...(podeEscalas ? [{ id: "escalas" as Tab, label: "Escalas", icon: "📆" }] : []),
-    { id: "alteracoes", label: "Alterações", icon: "📋" },
+  const tabs: { id: Tab; label: string; icon: LucideIcon }[] = [
+    { id: "pessoas",    label: "Pessoas",    icon: User },
+    { id: "cargos",     label: "Cargos",     icon: Tag },
+    ...(podeEscalas ? [{ id: "escalas" as Tab, label: "Escalas", icon: CalendarDays }] : []),
+    { id: "alteracoes", label: "Alterações", icon: ClipboardList },
   ];
 
   return (
@@ -55,7 +56,7 @@ export function PessoasPage() {
             do AppTip pro Planejamento). Remover quando não precisar mais. */}
         {isMaster && (
           <Button variant="secondary" size="sm" onClick={() => setShowImportHorarios(true)}>
-            🧪 Importar horários (lote)
+            <span className="inline-flex items-center gap-1.5"><FlaskConical size={14} /> Importar horários (lote)</span>
           </Button>
         )}
       </div>
@@ -71,7 +72,7 @@ export function PessoasPage() {
                 : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
             }`}
           >
-            {t.icon} {t.label}
+            <span className="inline-flex items-center gap-1.5"><t.icon size={14} /> {t.label}</span>
           </button>
         ))}
       </div>
