@@ -16,6 +16,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Hourglass, Repeat } from "lucide-react";
 import {
   addDoc, collection, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where,
 } from "firebase/firestore";
@@ -394,7 +395,7 @@ export function CargosSubTab({ rid }: Props) {
             disabled={loading || !shortCode}
             className="text-[11px] uppercase tracking-wider font-semibold px-3 py-1.5 rounded-full transition-colors bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "⏳ comparando…" : "🔄 Comparar agora"}
+            {loading ? <span className="inline-flex items-center gap-1"><Hourglass size={12}/> comparando…</span> : <span className="inline-flex items-center gap-1"><Repeat size={12}/> Comparar agora</span>}
           </button>
         </div>
 

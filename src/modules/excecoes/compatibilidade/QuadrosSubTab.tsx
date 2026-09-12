@@ -11,6 +11,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
+import { Hourglass, Repeat, Search, TriangleAlert, Check } from "lucide-react";
 import { collection, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../../core/firebase/config";
 import { sanitizeForFirestore } from "../../../core/firebase/sanitize";
@@ -403,7 +404,7 @@ export function QuadrosSubTab({ rid }: Props) {
             disabled={loading || empregados.length === 0}
             className="text-[11px] uppercase tracking-wider font-semibold px-3 py-1.5 rounded-full transition-colors bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            {loading ? "⏳ comparando…" : "🔄 Comparar agora"}
+            {loading ? <span className="inline-flex items-center gap-1"><Hourglass size={12}/> comparando…</span> : <span className="inline-flex items-center gap-1"><Repeat size={12}/> Comparar agora</span>}
           </button>
         </div>
 
@@ -636,7 +637,7 @@ function ResultadoCard({
                 className="text-[10px] font-semibold px-2 py-1 rounded-full bg-gray-200 dark:bg-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-300 dark:hover:bg-gray-600"
                 title="Mostra o estado bruto dos quadros do empregado pra diagnóstico"
               >
-                🔍 Inspecionar dados
+                <span className="inline-flex items-center gap-1"><Search size={13}/> Inspecionar dados</span>
               </button>
             </div>
           )}
@@ -789,7 +790,7 @@ function CopiarSolidesParaPlanejamentoModal({
             {temErroClt ? (
               <div className="border border-rose-300 dark:border-rose-700/60 bg-rose-50 dark:bg-rose-900/20 rounded-lg p-3 text-xs">
                 <div className="font-semibold text-rose-800 dark:text-rose-200 mb-1.5">
-                  ⚠ {validacao.errors.length} violação(ões) de CLT detectada(s)
+                  <TriangleAlert size={13} className="inline align-[-2px] mr-1"/> {validacao.errors.length} violação(ões) de CLT detectada(s)
                 </div>
                 <ul className="space-y-1 text-rose-700 dark:text-rose-300 list-disc list-inside">
                   {validacao.errors.map((iss, i) => (
@@ -812,7 +813,7 @@ function CopiarSolidesParaPlanejamentoModal({
               </div>
             ) : (
               <div className="border border-emerald-300 dark:border-emerald-800/60 bg-emerald-50 dark:bg-emerald-900/20 rounded-lg p-3 text-xs text-emerald-800 dark:text-emerald-200">
-                ✓ Quadro está dentro da CLT. Carga contratual semanal: <strong>{fmtHora(validacao.totalContract)}</strong> · {validacao.diasAtivos} dia(s) ativo(s).
+                <Check size={13} className="inline align-[-2px] mr-1"/> Quadro está dentro da CLT. Carga contratual semanal: <strong>{fmtHora(validacao.totalContract)}</strong> · {validacao.diasAtivos} dia(s) ativo(s).
               </div>
             )}
           </div>

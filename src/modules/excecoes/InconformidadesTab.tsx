@@ -76,6 +76,12 @@ import {
   registrarEnvioLote,
   type LoteRascunhoDoc,
 } from "../../core/excecoes/loteRascunho";
+import {
+  Hourglass, Repeat, X, Wrench, Package, BarChart3, Tag, Files, Search,
+  FlaskConical, CalendarDays, ScrollText, TriangleAlert, FileText, CheckSquare,
+  ClipboardList, ArrowDown, Smartphone, MessagesSquare, Building2, MapPin, Moon,
+  Palmtree, Eye, Pencil, MessageSquare, Send, PenLine,
+} from "lucide-react";
 
 // ─── Helpers de data ────────────────────────────────────────────────────────
 
@@ -2249,8 +2255,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             title="Atualizar todas as semanas do mês pela Sólides (1 por vez)"
           >
             {loading
-              ? (progressoMes ? `⏳ ${progressoMes}…` : "⏳ atualizando…")
-              : "🔄 Atualizar"}
+              ? <span className="inline-flex items-center gap-1"><Hourglass size={12}/> {progressoMes ? `${progressoMes}…` : "atualizando…"}</span>
+              : <span className="inline-flex items-center gap-1"><Repeat size={12}/> Atualizar</span>}
           </button>
         </div>
 
@@ -2273,8 +2279,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       </div>
 
       {erro && (
-        <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 text-sm text-rose-800 dark:text-rose-300 mb-4">
-          ❌ {erro}
+        <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 text-sm text-rose-800 dark:text-rose-300 mb-4 inline-flex items-center gap-1">
+          <X size={14}/> {erro}
         </div>
       )}
 
@@ -2288,37 +2294,37 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
       {me?.isMaster && debug && (
         <details className="mb-4 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50">
           <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-gray-700 dark:text-gray-300 select-none">
-            🛠️ Debug API Sólides (só master)
+            <span className="inline-flex items-center gap-1"><Wrench size={13}/> Debug API Sólides (só master)</span>
           </summary>
           <div className="px-3 py-2 text-[11px] space-y-1.5 text-gray-700 dark:text-gray-300 font-mono">
-            <div>📦 <strong>{debug.pages.count}</strong> página(s) consultada(s) — tamanhos: [{debug.pages.sizes.join(", ")}]</div>
-            <div>📊 Total reportado: <strong>{debug.totalElementsReported}</strong> · Raw: <strong>{debug.raw}</strong> · Após dedupe+range: <strong>{debug.dedupedTotal}</strong> · Duplicatas: <strong className={debug.duplicatesRemoved > 0 ? "text-rose-600" : ""}>{debug.duplicatesRemoved}</strong>{typeof debug.outOfRange === "number" && (<> · Fora do range: <strong className={debug.outOfRange > 0 ? "text-amber-600" : ""}>{debug.outOfRange}</strong></>)}</div>
-            <div>🏷️ Flags: excluded={debug.flags.excluded} · edited={debug.flags.edited} · com adjustment={debug.flags.withAdjustment}</div>
+            <div><Package size={11} className="inline align-[-1px] mr-1"/><strong>{debug.pages.count}</strong> página(s) consultada(s) — tamanhos: [{debug.pages.sizes.join(", ")}]</div>
+            <div><BarChart3 size={11} className="inline align-[-1px] mr-1"/>Total reportado: <strong>{debug.totalElementsReported}</strong> · Raw: <strong>{debug.raw}</strong> · Após dedupe+range: <strong>{debug.dedupedTotal}</strong> · Duplicatas: <strong className={debug.duplicatesRemoved > 0 ? "text-rose-600" : ""}>{debug.duplicatesRemoved}</strong>{typeof debug.outOfRange === "number" && (<> · Fora do range: <strong className={debug.outOfRange > 0 ? "text-amber-600" : ""}>{debug.outOfRange}</strong></>)}</div>
+            <div><Tag size={11} className="inline align-[-1px] mr-1"/>Flags: excluded={debug.flags.excluded} · edited={debug.flags.edited} · com adjustment={debug.flags.withAdjustment}</div>
             {debug.responsesMeta && (
-              <div>📑 Respostas da Sólides: {debug.responsesMeta.map((r, i) => (
+              <div><Files size={11} className="inline align-[-1px] mr-1"/>Respostas da Sólides: {debug.responsesMeta.map((r, i) => (
                 <span key={i} className="ml-1">[pedido={r.requested}, number={r.number ?? "—"}, last={String(r.last)}, totalPages={r.totalPages ?? "—"}, size={r.size}]</span>
               ))}</div>
             )}
             {escalaDebug && (
               <div className="mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
-                <div>📊 Empregados: total=<strong>{escalaDebug.totalEmps}</strong> · com schedule=<strong className="text-emerald-700">{escalaDebug.empsComSchedule}</strong> · SEM schedule=<strong className={escalaDebug.empsSemSchedule && escalaDebug.empsSemSchedule > 0 ? "text-rose-600" : ""}>{escalaDebug.empsSemSchedule}</strong></div>
+                <div><BarChart3 size={11} className="inline align-[-1px] mr-1"/>Empregados: total=<strong>{escalaDebug.totalEmps}</strong> · com schedule=<strong className="text-emerald-700">{escalaDebug.empsComSchedule}</strong> · SEM schedule=<strong className={escalaDebug.empsSemSchedule && escalaDebug.empsSemSchedule > 0 ? "text-rose-600" : ""}>{escalaDebug.empsSemSchedule}</strong></div>
                 {escalaDebug.primeiros5SemSchedule && escalaDebug.primeiros5SemSchedule.length > 0 && (
                   <div className="text-[10px] text-gray-500">Primeiros sem schedule: {escalaDebug.primeiros5SemSchedule.join(" · ")}</div>
                 )}
                 {Array.isArray(escalaDebug.errosEndpoint) && (escalaDebug.errosEndpoint as unknown[]).length > 0 && (
-                  <div className="text-[10px] text-rose-600">⚠ Erros endpoint: <pre className="inline whitespace-pre-wrap break-all">{JSON.stringify(escalaDebug.errosEndpoint).slice(0, 500)}</pre></div>
+                  <div className="text-[10px] text-rose-600"><TriangleAlert size={11} className="inline align-[-1px] mr-1"/>Erros endpoint: <pre className="inline whitespace-pre-wrap break-all">{JSON.stringify(escalaDebug.errosEndpoint).slice(0, 500)}</pre></div>
                 )}
                 {escalaDebug.sampleProbe ? (
-                  <div className="text-[10px] mt-1 text-amber-700">🔍 Amostra Sólides: <pre className="inline whitespace-pre-wrap break-all">{JSON.stringify(escalaDebug.sampleProbe)}</pre></div>
+                  <div className="text-[10px] mt-1 text-amber-700"><Search size={11} className="inline align-[-1px] mr-1"/>Amostra Sólides: <pre className="inline whitespace-pre-wrap break-all">{JSON.stringify(escalaDebug.sampleProbe)}</pre></div>
                 ) : null}
                 {typeof escalaDebug.ajustesAplicados === "number" && (
-                  <div className="text-[10px] mt-1 text-emerald-700">🏷️ Ajustes aplicados: <strong>{escalaDebug.ajustesAplicados}</strong></div>
+                  <div className="text-[10px] mt-1 text-emerald-700"><Tag size={11} className="inline align-[-1px] mr-1"/>Ajustes aplicados: <strong>{escalaDebug.ajustesAplicados}</strong></div>
                 )}
                 {escalaDebug.sampleProbeAdj ? (
-                  <div className="text-[10px] mt-1 text-amber-700">🔍 Amostra Ajuste: <pre className="inline whitespace-pre-wrap break-all">{JSON.stringify(escalaDebug.sampleProbeAdj)}</pre></div>
+                  <div className="text-[10px] mt-1 text-amber-700"><Search size={11} className="inline align-[-1px] mr-1"/>Amostra Ajuste: <pre className="inline whitespace-pre-wrap break-all">{JSON.stringify(escalaDebug.sampleProbeAdj)}</pre></div>
                 ) : null}
-                <div className="mt-1">🧪 Allan: empId=<strong>{escalaDebug.allanId || "—"}</strong> · cpf=<strong>{escalaDebug.cpf || "—"}</strong> · sid Sólides=<strong>{escalaDebug.sidEncontrado ?? "—"}</strong> · dateUsed=<strong>{escalaDebug.dateUsedAllan || "—"}</strong></div>
-                <div>📅 Escala final (após merge):</div>
+                <div className="mt-1"><FlaskConical size={11} className="inline align-[-1px] mr-1"/>Allan: empId=<strong>{escalaDebug.allanId || "—"}</strong> · cpf=<strong>{escalaDebug.cpf || "—"}</strong> · sid Sólides=<strong>{escalaDebug.sidEncontrado ?? "—"}</strong> · dateUsed=<strong>{escalaDebug.dateUsedAllan || "—"}</strong></div>
+                <div><CalendarDays size={11} className="inline align-[-1px] mr-1"/>Escala final (após merge):</div>
                 <div className="grid grid-cols-3 md:grid-cols-5 gap-x-3 gap-y-0.5 text-[10px]">
                   {escalaDebug.escala && Object.entries(escalaDebug.escala).sort((a, b) => a[0].localeCompare(b[0])).map(([d, st]) => (
                     <div key={d} className="tabular-nums">
@@ -2326,7 +2332,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                     </div>
                   ))}
                 </div>
-                <div className="mt-1">📜 Quadro raw da Sólides pro Allan: <pre className="inline whitespace-pre-wrap break-all text-[10px]">{JSON.stringify(escalaDebug.quadroSolides)}</pre></div>
+                <div className="mt-1"><ScrollText size={11} className="inline align-[-1px] mr-1"/>Quadro raw da Sólides pro Allan: <pre className="inline whitespace-pre-wrap break-all text-[10px]">{JSON.stringify(escalaDebug.quadroSolides)}</pre></div>
               </div>
             )}
             <div className="mt-2">
@@ -2350,8 +2356,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           {/* ── Aviso de não-casados ── */}
           {displayedResult.unmatched.length > 0 && (
             <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300 mb-4">
-              <strong>
-                ⚠ {displayedResult.unmatched.length} colaborador(es) da Sólides sem empregado correspondente
+              <strong className="inline-flex items-center gap-1">
+                <TriangleAlert size={13}/> {displayedResult.unmatched.length} colaborador(es) da Sólides sem empregado correspondente
                 no Planejamento
               </strong>{" "}
               (CPF não bateu). As marcações deles foram ignoradas:
@@ -2428,7 +2434,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                       : "Gera PDF com pedidos pro empregado + lista pra empresa resolver direto na Sólides"
                   }
                 >
-                  {gerandoPdf ? "⏳ Gerando…" : "📄 Gerar PDF"}
+                  {gerandoPdf ? <span className="inline-flex items-center gap-1"><Hourglass size={12}/> Gerando…</span> : <span className="inline-flex items-center gap-1"><FileText size={12}/> Gerar PDF</span>}
                 </button>
               );
             })()}
@@ -2483,7 +2489,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             coberturaSolides.semQuadro.length > 0
           ) && (
             <div className="mb-3 rounded-xl border border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/20 px-3 py-2.5 text-sm text-amber-900 dark:text-amber-200">
-              <div className="font-semibold mb-1">⚠ Cobertura da Sólides incompleta</div>
+              <div className="font-semibold mb-1 inline-flex items-center gap-1"><TriangleAlert size={13}/> Cobertura da Sólides incompleta</div>
               {coberturaSolides.solidesFalhou && (
                 <div className="text-[12px]">
                   Nenhum quadro veio da Sólides — usando escala do Planejamento pra todos os empregados. Reabrir a semana pode resolver se foi falha pontual de rede.
@@ -2519,7 +2525,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
           {/* ── Lista agrupada por colaborador → data ── */}
           {grupos.length === 0 ? (
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-              <div className="text-4xl mb-3">✅</div>
+              <div className="flex justify-center mb-3"><CheckSquare size={36} className="text-emerald-500"/></div>
               <p className="text-gray-700 dark:text-gray-300 font-medium">
                 Nenhum empregado no período
               </p>
@@ -2546,8 +2552,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             return (
             <div className="space-y-4">
               {totalPendentes > 0 && (
-                <div className="text-[11px] uppercase tracking-wider font-bold text-amber-700 dark:text-amber-400 -mb-2 px-1">
-                  ⚠ Pendentes — {totalPendentes} empregado{totalPendentes === 1 ? "" : "s"}
+                <div className="text-[11px] uppercase tracking-wider font-bold text-amber-700 dark:text-amber-400 -mb-2 px-1 inline-flex items-center gap-1">
+                  <TriangleAlert size={12}/> Pendentes — {totalPendentes} empregado{totalPendentes === 1 ? "" : "s"}
                 </div>
               )}
               {gruposOrdenados.map((grupo, idx) => {
@@ -2624,7 +2630,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
 
       {!displayedResult && !loading && (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">📋</div>
+          <div className="flex justify-center mb-3"><ClipboardList size={36} className="text-gray-400"/></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">
             Escolha o período e clique em "Gerar relatório"
           </p>
@@ -2646,8 +2652,8 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between gap-2">
-              <div className="font-bold text-gray-900 dark:text-gray-100 truncate">
-                📄 Preview — {previewPdf.filename}
+              <div className="font-bold text-gray-900 dark:text-gray-100 truncate inline-flex items-center gap-1">
+                <FileText size={15}/> Preview — {previewPdf.filename}
               </div>
               <div className="flex items-center gap-2 shrink-0">
                 <button
@@ -2655,7 +2661,7 @@ export function InconformidadesTab({ rid, activeRestaurant }: Props) {
                   onClick={baixarPreviewPdf}
                   className="text-xs font-semibold px-3 py-1.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700"
                 >
-                  📥 Baixar PDF
+                  <span className="inline-flex items-center gap-1"><ArrowDown size={13}/> Baixar PDF</span>
                 </button>
                 <button
                   type="button"
@@ -3290,8 +3296,8 @@ function ColaboradorBlock({
         return (
         <div className="mx-4 mt-3 mb-2 p-3 rounded-lg border-2 border-amber-300 dark:border-amber-700/60 bg-amber-50 dark:bg-amber-900/20">
           <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
-            <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm">
-              📦 Lote de ajustes — {totalLote} apontamento(s)
+            <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm inline-flex items-center gap-1">
+              <Package size={14}/> Lote de ajustes — {totalLote} apontamento(s)
               {itensEmpresa.length > 0 && itensEmpregado.length > 0 && (
                 <span className="ml-1 font-normal text-[11px] text-amber-800/80 dark:text-amber-300/80">
                   ({itensEmpregado.length} pro empregado · {itensEmpresa.length} pra empresa)
@@ -3316,7 +3322,7 @@ function ColaboradorBlock({
                     : "Sem WhatsApp cadastrado em Pessoas pra este empregado"
                 }
               >
-                {jaEnviado ? "🔁 Reenviar WhatsApp" : "📱 Enviar por WhatsApp"}
+                {jaEnviado ? <span className="inline-flex items-center gap-1"><Repeat size={12}/> Reenviar WhatsApp</span> : <span className="inline-flex items-center gap-1"><Smartphone size={12}/> Enviar por WhatsApp</span>}
               </button>
               <button
                 type="button"
@@ -3326,7 +3332,7 @@ function ColaboradorBlock({
                   ? "Registrar nova conversa presencial sobre o lote (reenvio)"
                   : "Registrar como alinhado presencialmente (sem enviar WhatsApp)"}
               >
-                {jaEnviado ? "🔁 Reforçar presencialmente" : "🗣 Alinhei presencialmente"}
+                {jaEnviado ? <span className="inline-flex items-center gap-1"><Repeat size={12}/> Reforçar presencialmente</span> : <span className="inline-flex items-center gap-1"><MessagesSquare size={12}/> Alinhei presencialmente</span>}
               </button>
               <button
                 type="button"
@@ -3359,7 +3365,7 @@ function ColaboradorBlock({
           {itensEmpregado.length > 0 && (
             <div className="mb-2">
               <div className="text-[10px] uppercase tracking-wider font-bold text-amber-800 dark:text-amber-300 mb-1 flex items-center gap-1">
-                📦 Empregado vai ajustar ({itensEmpregado.length})
+<Package size={11}/> Empregado vai ajustar ({itensEmpregado.length})
               </div>
               <ul className="text-xs text-amber-900 dark:text-amber-200 space-y-0.5 ml-4">
                 {itensEmpregado.map((a) => {
@@ -3380,7 +3386,7 @@ function ColaboradorBlock({
           {itensEmpresa.length > 0 && (
             <div>
               <div className="text-[10px] uppercase tracking-wider font-bold text-indigo-800 dark:text-indigo-300 mb-1 flex items-center gap-1">
-                🏢 Empresa vai resolver na Sólides ({itensEmpresa.length})
+<Building2 size={11}/> Empresa vai resolver na Sólides ({itensEmpresa.length})
               </div>
               <ul className="text-xs text-indigo-900 dark:text-indigo-200 space-y-0.5 ml-4">
                 {itensEmpresa.map((a) => {
@@ -3458,8 +3464,8 @@ function ColaboradorBlock({
                     {linha.kind === "verde" ? "Sem inconformidade" : "Trabalhou normal"}
                   </span>
                   {batidas && (
-                    <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono tracking-tight ml-2">
-                      📍 {batidas}
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono tracking-tight ml-2 inline-flex items-center gap-1">
+                      <MapPin size={11}/> {batidas}
                     </span>
                   )}
                 </div>
@@ -3484,8 +3490,8 @@ function ColaboradorBlock({
                     Trabalhou (compensado)
                   </span>
                   {batidas && (
-                    <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono tracking-tight ml-2">
-                      📍 {batidas}
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400 font-mono tracking-tight ml-2 inline-flex items-center gap-1">
+                      <MapPin size={11}/> {batidas}
                     </span>
                   )}
                 </div>
@@ -3497,7 +3503,7 @@ function ColaboradorBlock({
                   key={linha.date}
                   className="px-4 py-2 bg-gray-50/60 dark:bg-gray-800/30 flex items-center gap-2 text-sm"
                 >
-                  <span className="text-gray-500 dark:text-gray-400">💤</span>
+                  <span className="text-gray-500 dark:text-gray-400 inline-flex"><Moon size={14}/></span>
                   <span className="font-medium text-gray-600 dark:text-gray-300 tabular-nums">
                     {fmtDataBr(linha.date)}
                   </span>
@@ -3517,7 +3523,7 @@ function ColaboradorBlock({
                   className="px-4 py-2 bg-sky-50/40 dark:bg-sky-900/20 flex items-center gap-2 text-sm"
                   title="Férias / atestado / abono / falta justificada — todos colapsam em 'Ajuste aprovado' por enquanto. Refinaremos em versão futura."
                 >
-                  <span className="text-sky-700 dark:text-sky-400">🏖</span>
+                  <span className="text-sky-700 dark:text-sky-400 inline-flex"><Palmtree size={14}/></span>
                   <span className="font-medium text-gray-700 dark:text-gray-300 tabular-nums">
                     {fmtDataBr(linha.date)}
                   </span>
@@ -3637,7 +3643,7 @@ function ColaboradorBlock({
                         className="ml-auto text-[10px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 hover:bg-indigo-200 dark:hover:bg-indigo-800/60 disabled:opacity-50 disabled:cursor-wait whitespace-nowrap"
                         title="Re-puxa só esse dia desse empregado da Sólides (rápido, sub-segundo). Útil depois que o empregado corrigiu uma batida pra você conferir."
                       >
-                        {carregando ? "⏳ atualizando…" : "🔄 atualizar este dia"}
+                        {carregando ? <span className="inline-flex items-center gap-1"><Hourglass size={11}/> atualizando…</span> : <span className="inline-flex items-center gap-1"><Repeat size={11}/> atualizar este dia</span>}
                       </button>
                     );
                   })()}
@@ -3648,7 +3654,7 @@ function ColaboradorBlock({
                     seguem mostrando o detail antigo em cada linha. */}
                 {batidasDoDia && (
                   <div className="mb-3 px-3 py-1.5 rounded-md bg-gray-50 dark:bg-gray-800/40 border-l-4 border-l-indigo-500 text-xs">
-                    <span className="text-gray-500 dark:text-gray-400 mr-2">📍 Batidas:</span>
+                    <span className="text-gray-500 dark:text-gray-400 mr-2 inline-flex items-center gap-1"><MapPin size={12}/> Batidas:</span>
                     <span className="font-mono text-gray-700 dark:text-gray-300">{batidasDoDia}</span>
                   </div>
                 )}
@@ -3666,7 +3672,7 @@ function ColaboradorBlock({
                           ? "text-amber-700 dark:text-amber-400"
                           : "text-gray-400 dark:text-gray-600"
                       }`}>
-                        🗣️ Alinhamento
+                        <span className="inline-flex items-center gap-1"><MessagesSquare size={12}/> Alinhamento</span>
                       </span>
                       <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">
                         ({excAlinhamento.length})
@@ -3694,7 +3700,7 @@ function ColaboradorBlock({
                           ? "text-rose-700 dark:text-rose-400"
                           : "text-gray-400 dark:text-gray-600"
                       }`}>
-                        ✏️ Ajuste de batida
+                        <span className="inline-flex items-center gap-1"><Pencil size={12}/> Ajuste de batida</span>
                       </span>
                       <span className="text-[10px] text-gray-500 dark:text-gray-400 font-semibold">
                         ({excAjuste.length})
@@ -3798,7 +3804,7 @@ function ColaboradorBlock({
                             className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-emerald-200 text-emerald-900 dark:bg-emerald-800 dark:text-emerald-100 font-bold whitespace-nowrap"
                             title="Corrigido no Sólides — sumiu na próxima atualização"
                           >
-                            ✅ corrigido na Sólides
+<CheckSquare size={11}/> corrigido na Sólides
                           </span>
                         )}
                         {isAguardandoAjuste && (
@@ -3806,7 +3812,7 @@ function ColaboradorBlock({
                             className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200 font-semibold whitespace-nowrap"
                             title="Lote enviado — esperando o empregado ajustar na Sólides. Quando ele ajustar e a próxima atualização detectar que sumiu, vira 'Corrigido no Sólides' automaticamente."
                           >
-                            📦 aguardando ajuste
+<Package size={11}/> aguardando ajuste
                           </span>
                         )}
                         {isEmpresaAjustara && (
@@ -3814,7 +3820,7 @@ function ColaboradorBlock({
                             className="inline-flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200 font-semibold whitespace-nowrap"
                             title="A empresa vai resolver este ponto direto na Sólides (não foi solicitado ao empregado). Quando o ajuste aparecer no próximo report, vira 'Corrigido no Sólides' automaticamente."
                           >
-                            🏢 empresa resolverá
+<Building2 size={11}/> empresa resolverá
                           </span>
                         )}
                         {/* Quem registrou a ação + quando (inline, sempre visível) */}
@@ -3846,7 +3852,7 @@ function ColaboradorBlock({
                                     className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-emerald-600 text-white hover:bg-emerald-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
                                     title="Dar ciência — registra o alinhamento (presencial). Conta como inconformidade real na Trilha do empregado."
                                   >
-                                    {salvando ? "⏳ salvando…" : "👁 Dar ciência"}
+                                    {salvando ? <span className="inline-flex items-center gap-1"><Hourglass size={11}/> salvando…</span> : <span className="inline-flex items-center gap-1"><Eye size={11}/> Dar ciência</span>}
                                   </button>
                                   <button
                                     type="button"
@@ -3859,7 +3865,7 @@ function ColaboradorBlock({
                                         : "Não é inconformidade — combinado/justificado. Não conta na Trilha."
                                     }
                                   >
-                                    {salvando ? "⏳" : `✗ ${e.ruleId === "atrasoEntrada" ? "Não foi atraso" : "Não é inconformidade"}`}
+                                    {salvando ? <Hourglass size={11} className="inline"/> : `✗ ${e.ruleId === "atrasoEntrada" ? "Não foi atraso" : "Não é inconformidade"}`}
                                   </button>
                                 </>
                               );
@@ -3882,7 +3888,7 @@ function ColaboradorBlock({
                                       : "Adicionar ao lote de solicitação de ajuste deste empregado."
                                   }
                                 >
-                                  {estaNoLote ? "↩ Tirar do lote" : "📦 + Lote"}
+                                  {estaNoLote ? "↩ Tirar do lote" : <span className="inline-flex items-center gap-1"><Package size={11}/> + Lote</span>}
                                 </button>
                                 <button
                                   type="button"
@@ -3891,7 +3897,7 @@ function ColaboradorBlock({
                                   className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-indigo-600 text-white hover:bg-indigo-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
                                   title="A empresa vai resolver direto na Sólides — entra no box amarelo do lote (mas é filtrado da mensagem do WhatsApp do empregado)."
                                 >
-                                  {salvando ? "⏳" : "🏢 Empresa resolve"}
+                                  {salvando ? <Hourglass size={11} className="inline"/> : <span className="inline-flex items-center gap-1"><Building2 size={11}/> Empresa resolve</span>}
                                 </button>
                                 <button
                                   type="button"
@@ -3900,7 +3906,7 @@ function ColaboradorBlock({
                                   className="text-[10px] font-semibold px-2 py-0.5 rounded-md bg-gray-600 text-white hover:bg-gray-700 whitespace-nowrap disabled:opacity-50 disabled:cursor-wait"
                                   title="Marcar como falso positivo — não é inconformidade."
                                 >
-                                  {salvando ? "⏳ salvando…" : "✗ Não é inconformidade"}
+                                  {salvando ? <span className="inline-flex items-center gap-1"><Hourglass size={11}/> salvando…</span> : "✗ Não é inconformidade"}
                                 </button>
                               </>
                             );
@@ -3955,7 +3961,7 @@ function ColaboradorBlock({
                             className="text-[10px] text-gray-500 dark:text-gray-400 hover:underline whitespace-nowrap"
                             title="Adicionar nota interna a este apontamento — fica registrada aqui pra contexto"
                           >
-                            💬 + nota
+                            <span className="inline-flex items-center gap-1"><MessageSquare size={11}/> + nota</span>
                           </button>
                         )}
                       </div>
@@ -3989,7 +3995,7 @@ function ColaboradorBlock({
                               key={n.id}
                               className="flex items-start gap-1.5 text-[11px] text-amber-700 dark:text-amber-300 italic leading-snug"
                             >
-                              <span className="shrink-0">💬</span>
+                              <span className="shrink-0 mt-0.5"><MessageSquare size={11}/></span>
                               <span className="flex-1 min-w-0">{n.texto}</span>
                               <span
                                 className="text-[10px] text-gray-400 dark:text-gray-500 not-italic shrink-0"
@@ -4026,8 +4032,8 @@ function ColaboradorBlock({
           trabalharem no mesmo ponto sem se perder). */}
       {notas.length > 0 && (
         <div className="border-t border-gray-200 dark:border-gray-800 bg-amber-50/40 dark:bg-amber-900/10 px-4 py-3">
-          <div className="text-[11px] uppercase tracking-wider font-semibold text-amber-700 dark:text-amber-400 mb-1.5">
-            📋 Log do tratamento ({notas.length}) — interno
+          <div className="text-[11px] uppercase tracking-wider font-semibold text-amber-700 dark:text-amber-400 mb-1.5 inline-flex items-center gap-1">
+            <ClipboardList size={12}/> Log do tratamento ({notas.length}) — interno
           </div>
           <ul className="space-y-1.5">
             {[...notas]
@@ -4035,7 +4041,7 @@ function ColaboradorBlock({
               .map((n) => (
                 <li key={n.id} className="flex items-start gap-2 text-[12px] text-gray-700 dark:text-gray-300">
                   <span className="text-gray-400 dark:text-gray-500 mt-0.5 shrink-0">
-                    {n.origem === "envio_whatsapp" ? "📨" : n.origem === "ciencia" ? "👁" : "✍"}
+                    {n.origem === "envio_whatsapp" ? <Send size={12}/> : n.origem === "ciencia" ? <Eye size={12}/> : <PenLine size={12}/>}
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="whitespace-pre-wrap">{n.texto}</div>
