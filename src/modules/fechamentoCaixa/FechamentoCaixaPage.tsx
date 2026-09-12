@@ -12,7 +12,8 @@
 //  via driveModulo + driveClient), carimba e aplica filtro scanner
 //  (processarImagem), e dispara o /api/send-email (Resend).
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useRef, useState, type ChangeEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
+import { Lock, Banknote, ClipboardList, BarChart3, CreditCard, Settings, Download, CheckSquare, Trash2, Camera, Search, Clock, TriangleAlert, Paperclip, ReceiptText, type LucideIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where, deleteField } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -64,7 +65,7 @@ function medianN(xs: number[]): number {
   return s.length % 2 ? s[m]! : (s[m - 1]! + s[m]!) / 2;
 }
 
-const GRUPO_ICONE: Record<GrupoAnexoFechamento, string> = { comprovante: "🧾", filipeta: "💳", comanda: "📋", dinheiro: "💵", outro: "📎" };
+const GRUPO_LUCIDE: Record<GrupoAnexoFechamento, LucideIcon> = { comprovante: ReceiptText, filipeta: CreditCard, comanda: ClipboardList, dinheiro: Banknote, outro: Paperclip };
 const rotuloComanda = (c: ComandaCadastro) => `${c.nome} (${c.numero})`;
 const digitos = (s: string) => (s || "").replace(/\D/g, "");
 // Número de comanda normalizado pra casar "093" com "93" (tira zeros à esquerda).
@@ -151,15 +152,15 @@ function MaquininhasView({ maquininhas, creditoAltec, debitoAltec, pixAltec, onR
                 <td className="px-2 py-1 max-w-[180px]">
                   {onEdit
                     ? <input value={m.identificador || ""} onChange={(e) => onEdit(i, { identificador: e.target.value || undefined })} placeholder={`Maquininha ${i + 1}`} className="w-full text-[11px] px-1 py-0.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
-                    : <span className="truncate">💳 {m.identificador || `Maquininha ${i + 1}`}</span>}
-                  {dup.has(i) && <span className="ml-1 text-amber-600 dark:text-amber-400 text-[10px]">⚠ dup?</span>}
+                    : <span className="truncate inline-flex items-center gap-1"><CreditCard size={12} className="shrink-0" /> {m.identificador || `Maquininha ${i + 1}`}</span>}
+                  {dup.has(i) && <span className="ml-1 text-amber-600 dark:text-amber-400 text-[10px] inline-flex items-center gap-0.5"><TriangleAlert size={10} /> dup?</span>}
                 </td>
                 {onEdit ? <td className="px-1 py-1 text-right">{numIn(m.credito, (n) => onEdit(i, { credito: n }))}</td> : <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.credito != null ? fmtBRL(m.credito) : "—"}</td>}
                 {onEdit ? <td className="px-1 py-1 text-right">{numIn(m.debito, (n) => onEdit(i, { debito: n }))}</td> : <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.debito != null ? fmtBRL(m.debito) : "—"}</td>}
                 {temPix && (onEdit ? <td className="px-1 py-1 text-right">{numIn(m.pix, (n) => onEdit(i, { pix: n }))}</td> : <td className="px-2 py-1 text-right tabular-nums text-gray-500">{m.pix != null ? fmtBRL(m.pix) : "—"}</td>)}
                 {onEdit
-                  ? <td className={`px-1 py-1 text-right ${mismatch(m) ? "bg-amber-50 dark:bg-amber-950/20" : ""}`} title={mismatch(m) ? "Crédito+Débito+PIX não bate com o total da filipeta" : ""}>{numIn(m.total, (n) => onEdit(i, { total: n }))}{mismatch(m) && <span className="text-amber-600 dark:text-amber-400"> ⚠</span>}</td>
-                  : <td className={`px-2 py-1 text-right tabular-nums font-medium ${mismatch(m) ? "text-amber-600 dark:text-amber-400" : ""}`} title={mismatch(m) ? "Crédito+Débito+PIX não bate com o total da filipeta" : ""}>{fmtBRL(totalMaq(m))}{mismatch(m) && " ⚠"}</td>}
+                  ? <td className={`px-1 py-1 text-right ${mismatch(m) ? "bg-amber-50 dark:bg-amber-950/20" : ""}`} title={mismatch(m) ? "Crédito+Débito+PIX não bate com o total da filipeta" : ""}>{numIn(m.total, (n) => onEdit(i, { total: n }))}{mismatch(m) && <TriangleAlert size={11} className="inline align-[-1px] ml-0.5 text-amber-600 dark:text-amber-400" />}</td>
+                  : <td className={`px-2 py-1 text-right tabular-nums font-medium ${mismatch(m) ? "text-amber-600 dark:text-amber-400" : ""}`} title={mismatch(m) ? "Crédito+Débito+PIX não bate com o total da filipeta" : ""}>{fmtBRL(totalMaq(m))}{mismatch(m) && <TriangleAlert size={11} className="inline align-[-1px] ml-0.5" />}</td>}
                 {onRemove && <td className="px-1 py-1 text-center"><button type="button" className="text-gray-400 hover:text-rose-600" title="Remover" onClick={() => onRemove(i)}>✕</button></td>}
               </tr>
             ))}
@@ -177,15 +178,15 @@ function MaquininhasView({ maquininhas, creditoAltec, debitoAltec, pixAltec, onR
             )}
             {(diffC != null || diffD != null || diffP != null) && !(bate(diffC) && bate(diffD) && bate(diffP)) && (
               <tr className="text-amber-600 dark:text-amber-400 font-medium">
-                <td className="px-2 py-1">⚠ Diferença</td>
+                <td className="px-2 py-1"><span className="inline-flex items-center gap-1"><TriangleAlert size={12} /> Diferença</span></td>
                 {cell(diffC ?? undefined)}{cell(diffD ?? undefined)}{temPix && cell(diffP ?? undefined)}{cell((diffC || 0) + (diffD || 0) + (diffP || 0))}{onRemove && <td />}
               </tr>
             )}
           </tfoot>
         </table>
       </div>
-      {dup.size > 0 && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ {dup.size} maquininha(s) possivelmente duplicada(s){onRemove ? " — remova as repetidas (✕) antes de salvar." : "."}</p>}
-      {algumMismatch && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ Em alguma filipeta, crédito+débito+PIX não bate com o total impresso — confira a leitura.</p>}
+      {dup.size > 0 && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1"><TriangleAlert size={12} className="inline align-[-1px] mr-1" />{dup.size} maquininha(s) possivelmente duplicada(s){onRemove ? " — remova as repetidas (✕) antes de salvar." : "."}</p>}
+      {algumMismatch && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1"><TriangleAlert size={12} className="inline align-[-1px] mr-1" />Em alguma filipeta, crédito+débito+PIX não bate com o total impresso — confira a leitura.</p>}
       {(diffC != null || diffD != null || diffP != null) && bate(diffC) && bate(diffD) && bate(diffP) && dup.size === 0 && !algumMismatch && <p className="text-[11px] text-emerald-600 dark:text-emerald-400 mt-1">✓ Soma das maquininhas bate com o comprovante.</p>}
     </div>
   );
@@ -297,7 +298,7 @@ export function FechamentoCaixaPage() {
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
   if (permLoading) return <div className="text-gray-400 py-12 text-center text-sm">Carregando…</div>;
   if (!temAcesso) {
-    return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-600 dark:text-gray-400">Você não tem acesso ao Fechamento de Caixa.</p></div>;
+    return <div className="max-w-2xl mx-auto py-12 text-center"><div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div><p className="text-gray-600 dark:text-gray-400">Você não tem acesso ao Fechamento de Caixa.</p></div>;
   }
 
   const abas: Array<"novo" | "lista" | "painel" | "comandas" | "conciliacao" | "config"> = [];
@@ -309,7 +310,7 @@ export function FechamentoCaixaPage() {
   if (podeConfig) abas.push("config");
   const abaEfetiva = abas.includes(tab) ? tab : (abas[0] || "novo");
 
-  const TabBtn = ({ k, label }: { k: "novo" | "lista" | "painel" | "comandas" | "conciliacao" | "config"; label: string }) => (
+  const TabBtn = ({ k, label }: { k: "novo" | "lista" | "painel" | "comandas" | "conciliacao" | "config"; label: ReactNode }) => (
     <button type="button" onClick={() => setTab(k)}
       className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === k ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>{label}</button>
   );
@@ -317,12 +318,12 @@ export function FechamentoCaixaPage() {
   return (
     <PageContainer className="space-y-4">
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto overflow-y-hidden whitespace-nowrap">
-        {podeFechar && <TabBtn k="novo" label="💵 Novo fechamento" />}
-        {podeVer && <TabBtn k="lista" label="📋 Fechamentos enviados" />}
-        {podePainel && <TabBtn k="painel" label="📊 Painel" />}
-        {podeVer && <TabBtn k="comandas" label="📋 Cortesias / Comandas" />}
-        {podeVer && <TabBtn k="conciliacao" label="💳 Conciliação de Cartões" />}
-        {podeConfig && <TabBtn k="config" label="⚙️ Configurações" />}
+        {podeFechar && <TabBtn k="novo" label={<span className="inline-flex items-center gap-1.5"><Banknote size={15} /> Novo fechamento</span>} />}
+        {podeVer && <TabBtn k="lista" label={<span className="inline-flex items-center gap-1.5"><ClipboardList size={15} /> Fechamentos enviados</span>} />}
+        {podePainel && <TabBtn k="painel" label={<span className="inline-flex items-center gap-1.5"><BarChart3 size={15} /> Painel</span>} />}
+        {podeVer && <TabBtn k="comandas" label={<span className="inline-flex items-center gap-1.5"><ClipboardList size={15} /> Cortesias / Comandas</span>} />}
+        {podeVer && <TabBtn k="conciliacao" label={<span className="inline-flex items-center gap-1.5"><CreditCard size={15} /> Conciliação de Cartões</span>} />}
+        {podeConfig && <TabBtn k="config" label={<span className="inline-flex items-center gap-1.5"><Settings size={15} /> Configurações</span>} />}
       </div>
 
       {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
@@ -331,7 +332,7 @@ export function FechamentoCaixaPage() {
         <div className="flex flex-col items-center justify-center py-16 gap-4">
           <button type="button" onClick={() => { setErro(""); setNovo(true); }}
             className="flex flex-col items-center justify-center gap-3 w-full max-w-sm py-10 rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20 hover:bg-indigo-100/60 dark:hover:bg-indigo-950/40 transition">
-            <span className="text-5xl">💵</span>
+            <Banknote size={48} className="text-indigo-500" />
             <span className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">Novo fechamento</span>
             <span className="text-xs text-gray-500 dark:text-gray-400">Toque pra fechar o caixa do turno</span>
           </button>
@@ -350,8 +351,8 @@ export function FechamentoCaixaPage() {
         <div className="space-y-3">
           {ativos.length > 0 && (
             <div className="flex justify-end gap-2">
-              <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("xlsx")}>{exportando === "xlsx" ? "Gerando…" : "⬇ XLSX"}</Button>
-              <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("pdf")}>{exportando === "pdf" ? "Gerando…" : "⬇ PDF"}</Button>
+              <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("xlsx")}>{exportando === "xlsx" ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><Download size={14} /> XLSX</span>}</Button>
+              <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("pdf")}>{exportando === "pdf" ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><Download size={14} /> PDF</span>}</Button>
             </div>
           )}
           <FechamentoTabela fechamentos={pendentes} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} onConferir={podeEditar ? conferir : undefined} />
@@ -359,7 +360,7 @@ export function FechamentoCaixaPage() {
           {/* Histórico de conferidos (abaixo da lista, colapsável) */}
           {conferidos.length > 0 && (
             <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 mt-4">
-              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">✅ Conferidos <span className="text-gray-400 font-normal">({conferidos.length})</span> <span className="text-[11px] font-normal text-gray-400">— histórico permanente</span></summary>
+              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2"><CheckSquare size={16} /> Conferidos <span className="text-gray-400 font-normal">({conferidos.length})</span> <span className="text-[11px] font-normal text-gray-400">— histórico permanente</span></summary>
               <div className="px-3 pb-3 space-y-2">
                 {conferidos.map((f) => (
                   <div key={f.id} className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
@@ -384,7 +385,7 @@ export function FechamentoCaixaPage() {
           {/* Histórico de excluídos (abaixo, colapsável, só config) */}
           {podeConfig && excluidos.length > 0 && (
             <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">🗑 Excluídos <span className="text-gray-400 font-normal">({excluidos.length})</span> <span className="text-[11px] font-normal text-gray-400">— somem em 60 dias</span></summary>
+              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2"><Trash2 size={16} /> Excluídos <span className="text-gray-400 font-normal">({excluidos.length})</span> <span className="text-[11px] font-normal text-gray-400">— somem em 60 dias</span></summary>
               <div className="px-3 pb-3 space-y-2">
                 <p className="text-[11px] text-gray-400 px-1">Podem ser <strong>restaurados</strong>. Somem sozinhos depois de <strong>60 dias</strong> (registro apagado; arquivos no Drive permanecem). "Excluir definitivo" apaga na hora e move a pasta do Drive pra "excluídos".</p>
                 {excluidos.map((f) => (
@@ -693,9 +694,9 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
   const inputCls = "w-full px-3 py-2 text-base rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
   if (salvo) {
     return (
-      <Modal title="💵 Novo fechamento" onClose={onSalvo} maxWidth="max-w-lg">
+      <Modal title={<span className="inline-flex items-center gap-2"><Banknote size={18} /> Novo fechamento</span>} onClose={onSalvo} maxWidth="max-w-lg">
         <div className="py-10 flex flex-col items-center text-center gap-3">
-          <div className="text-5xl">{sincronizandoSalvo ? "🕗" : "✅"}</div>
+          <div className="flex justify-center">{sincronizandoSalvo ? <Clock size={48} className="text-amber-500" /> : <CheckSquare size={48} className="text-emerald-500" />}</div>
           <div className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">{sincronizandoSalvo ? "Fechamento salvo!" : "Fechamento registrado!"}</div>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {TURNO_CAIXA_LABEL[turno]} de {fmtData(data)} salvo{anexos.length ? " e arquivado no Drive" : ""}.
@@ -723,7 +724,7 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
   const temComprovante = anexosDe("comprovante").length > 0;
   const podeAvancarComprovante = temComprovante && parseBRL(totalVendas) != null && !lendo;
   return (
-    <Modal title="💵 Fechamento de caixa" onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={<span className="inline-flex items-center gap-2"><Banknote size={18} /> Fechamento de caixa</span>} onClose={onClose} maxWidth="max-w-lg">
       <input ref={compRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexar("comprovante", f); }} />
       <input ref={filiRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexar("filipeta", f); }} />
       <input ref={cmdRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) aoAnexar("comanda", f); }} />
@@ -745,12 +746,12 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
             <p className="text-sm text-gray-600 dark:text-gray-300"><strong>Passo 1.</strong> Tire a foto do <strong>comprovante de fechamento do Altec</strong>. A IA lê o faturamento total — você confirma.</p>
             {!temComprovante ? (
               <button type="button" onClick={() => compRef.current?.click()} className="w-full py-10 rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20 hover:bg-indigo-100/60 dark:hover:bg-indigo-950/40 flex flex-col items-center gap-2 transition">
-                <span className="text-4xl">📷</span><span className="font-semibold text-indigo-700 dark:text-indigo-300">Tirar foto do comprovante</span>
+                <Camera size={36} className="text-indigo-500" /><span className="font-semibold text-indigo-700 dark:text-indigo-300">Tirar foto do comprovante</span>
               </button>
             ) : (
               <div className="space-y-3">
                 {lendo ? (
-                  <div className="text-center text-sm text-indigo-600 dark:text-indigo-300 py-4">🔍 Lendo o faturamento total…</div>
+                  <div className="text-center text-sm text-indigo-600 dark:text-indigo-300 py-4 inline-flex items-center justify-center gap-1 w-full"><Search size={14} /> Lendo o faturamento total…</div>
                 ) : (
                   <div>
                     <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Faturamento total — confira o valor</label>
@@ -772,12 +773,12 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
           <div className="space-y-3">
             <p className="text-sm text-gray-600 dark:text-gray-300"><strong>Passo 2.</strong> Tire foto das <strong>filipetas das maquininhas</strong> (uma ou mais). Só são anexadas — sem digitar valor.</p>
             <button type="button" onClick={() => filiRef.current?.click()} className="w-full py-6 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 flex flex-col items-center gap-1 transition">
-              <span className="text-3xl">📷</span><span className="font-medium text-gray-700 dark:text-gray-200">{anexosDe("filipeta").length ? "Adicionar outra filipeta" : "Tirar foto das filipetas"}</span>
+              <Camera size={30} className="text-gray-500" /><span className="font-medium text-gray-700 dark:text-gray-200">{anexosDe("filipeta").length ? "Adicionar outra filipeta" : "Tirar foto das filipetas"}</span>
             </button>
             {anexosDe("filipeta").length > 0 && (
               <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
                 {anexosDe("filipeta").map((a, i) => (
-                  <div key={i} className="px-2 py-1.5 text-[12px] flex items-center gap-2"><span className="flex-1 truncate">💳 Filipeta {i + 1}</span><button type="button" className="text-gray-400 hover:text-rose-600" onClick={() => removerAnexo(a.file)}>✕</button></div>
+                  <div key={i} className="px-2 py-1.5 text-[12px] flex items-center gap-2"><span className="flex-1 truncate inline-flex items-center gap-1"><CreditCard size={12} className="shrink-0" /> Filipeta {i + 1}</span><button type="button" className="text-gray-400 hover:text-rose-600" onClick={() => removerAnexo(a.file)}>✕</button></div>
                 ))}
               </div>
             )}
@@ -790,14 +791,14 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
           <div className="space-y-3">
             <p className="text-sm text-gray-600 dark:text-gray-300"><strong>Passo 3.</strong> Tire foto das <strong>comandas de cortesia</strong> (uma ou mais fotos). A IA lê o nº da mesa e o valor — confira cada uma.</p>
             <button type="button" onClick={() => cmdRef.current?.click()} className="w-full py-6 rounded-2xl border-2 border-dashed border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 flex flex-col items-center gap-1 transition">
-              <span className="text-3xl">📷</span><span className="font-medium text-gray-700 dark:text-gray-200">{anexosDe("comanda").length ? "Adicionar outra foto" : "Tirar foto das comandas"}</span>
+              <Camera size={30} className="text-gray-500" /><span className="font-medium text-gray-700 dark:text-gray-200">{anexosDe("comanda").length ? "Adicionar outra foto" : "Tirar foto das comandas"}</span>
             </button>
-            {lendoComandas > 0 && <div className="text-center text-[12px] text-indigo-600 dark:text-indigo-300">🔍 Lendo comandas…</div>}
+            {lendoComandas > 0 && <div className="text-center text-[12px] text-indigo-600 dark:text-indigo-300 inline-flex items-center justify-center gap-1 w-full"><Search size={12} /> Lendo comandas…</div>}
             {comandasConsumo.length > 0 && (
               <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
                 {comandasConsumo.map((c, i) => (
                   <div key={i} className="px-2 py-1.5 flex items-center gap-2 text-[12px]">
-                    <span className="flex-1 truncate">📋 {c.nome ? `${c.nome} (${c.numero})` : `Mesa ${c.numero}`}</span>
+                    <span className="flex-1 truncate inline-flex items-center gap-1"><ClipboardList size={12} className="shrink-0" /> {c.nome ? `${c.nome} (${c.numero})` : `Mesa ${c.numero}`}</span>
                     <MoneyInput value={c.valor} onChange={(n) => setComandasConsumo((prev) => prev.map((x, j) => j === i ? { ...x, valor: n } : x))} placeholder="R$"
                       className="w-24 px-2 py-1 text-sm text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
                     <button type="button" className="text-gray-400 hover:text-rose-600" onClick={() => setComandasConsumo((prev) => prev.filter((_, j) => j !== i))}>✕</button>
@@ -809,7 +810,7 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
             {anexosDe("comanda").length > 0 && (
               <div className="text-[11px] space-y-0.5">
                 {anexosDe("comanda").map((a, i) => (
-                  <div key={i} className="flex items-center gap-2 px-1"><span className="flex-1 truncate text-gray-500">📎 {a.rotulo || "❓ não identificada"}</span><button type="button" className="text-indigo-600 hover:underline" onClick={() => setComandaManual(a.file)}>{a.rotulo ? "trocar" : "identificar"}</button><button type="button" className="text-gray-400 hover:text-rose-600" onClick={() => removerAnexo(a.file)}>✕</button></div>
+                  <div key={i} className="flex items-center gap-2 px-1"><span className="flex-1 truncate text-gray-500 inline-flex items-center gap-1"><Paperclip size={12} className="shrink-0" /> {a.rotulo || "❓ não identificada"}</span><button type="button" className="text-indigo-600 hover:underline" onClick={() => setComandaManual(a.file)}>{a.rotulo ? "trocar" : "identificar"}</button><button type="button" className="text-gray-400 hover:text-rose-600" onClick={() => removerAnexo(a.file)}>✕</button></div>
                 ))}
               </div>
             )}
@@ -838,8 +839,8 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
               <span className="text-[11px] uppercase font-bold text-indigo-700 dark:text-indigo-300">Faturamento total</span>
               <input value={totalVendas} onChange={(e) => setTotalVendas(e.target.value)} onBlur={() => setTotalVendas(fmtMilhar)} inputMode="decimal" className="w-36 text-right text-lg font-bold bg-transparent outline-none text-indigo-900 dark:text-indigo-100" />
             </div>
-            <div className="text-[12px] text-gray-500 flex justify-between"><span>💳 Filipetas anexadas</span><span className="font-semibold">{anexosDe("filipeta").length}</span></div>
-            {comandasConsumo.length > 0 && <div className="text-[12px] text-gray-500 flex justify-between"><span>📋 Cortesias ({comandasConsumo.length})</span><span className="tabular-nums font-semibold">{fmtBRL(totalComandas)}</span></div>}
+            <div className="text-[12px] text-gray-500 flex justify-between"><span className="inline-flex items-center gap-1"><CreditCard size={12} /> Filipetas anexadas</span><span className="font-semibold">{anexosDe("filipeta").length}</span></div>
+            {comandasConsumo.length > 0 && <div className="text-[12px] text-gray-500 flex justify-between"><span className="inline-flex items-center gap-1"><ClipboardList size={12} /> Cortesias ({comandasConsumo.length})</span><span className="tabular-nums font-semibold">{fmtBRL(totalComandas)}</span></div>}
             <div>
               <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-0.5">Nº do lacre do malote</label>
               <input value={naoLacrado ? "" : numeroLacre} onChange={(e) => setNumeroLacre(e.target.value)} disabled={naoLacrado} placeholder={naoLacrado ? "—" : "ex: h3141345"} className={`${inputCls} disabled:opacity-50 disabled:bg-gray-100 dark:disabled:bg-gray-800`} />
@@ -877,7 +878,7 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
                 <textarea value={observacao} onChange={(e) => setObservacao(e.target.value)} rows={2} className={inputCls} />
               </div>
             )}
-            {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">⚠ {erro}</div>}
+            {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2 flex items-center gap-1.5"><TriangleAlert size={14} className="shrink-0" /> {erro}</div>}
             <div className="flex justify-between pt-1"><Button variant="secondary" size="sm" disabled={salvando} onClick={() => setEtapa("comandas")}>← Voltar</Button><Button disabled={salvando} onClick={() => void salvar()}>{salvando ? "Fechando…" : "✓ Fechar caixa"}</Button></div>
           </div>
         )}
@@ -892,7 +893,7 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
             <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden ring-4 ring-red-500/30" onClick={(e) => e.stopPropagation()}>
               {/* Banner vermelho grande e pulsante */}
               <div className="bg-red-600 text-white px-5 py-4 flex items-center gap-3 animate-pulse motion-reduce:animate-none">
-                <span className="text-4xl leading-none">⚠️</span>
+                <TriangleAlert size={36} className="shrink-0" />
                 <div>
                   <div className="font-extrabold text-lg leading-tight">Espera! Confira antes de fechar</div>
                   <div className="text-sm text-red-50">Parece ter algo errado na data ou no turno.</div>
@@ -1063,8 +1064,8 @@ function ControleComandas({ fechamentos, restaurantNome }: { fechamentos: Fecham
           <div className="flex-1" />
           {filtradas.length > 0 && (
             <div className="flex gap-2">
-              <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("xlsx")}>{exportando === "xlsx" ? "Gerando…" : "⬇ XLSX"}</Button>
-              <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("pdf")}>{exportando === "pdf" ? "Gerando…" : "⬇ PDF"}</Button>
+              <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("xlsx")}>{exportando === "xlsx" ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><Download size={14} /> XLSX</span>}</Button>
+              <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("pdf")}>{exportando === "pdf" ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><Download size={14} /> PDF</span>}</Button>
             </div>
           )}
         </div>
@@ -1960,7 +1961,7 @@ function DetalheFechamentoModal({ f, podeEditar, onClose, onEditar, onConferir }
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 max-h-60 overflow-auto">
             {f.anexos.map((a, i) => (
               <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
-                <span className="truncate flex-1">{GRUPO_ICONE[a.grupo]} {a.rotulo ? a.rotulo : GRUPO_ANEXO_LABEL[a.grupo]} · {a.nome}</span>
+                <span className="truncate flex-1 inline-flex items-center gap-1">{(() => { const Ic = GRUPO_LUCIDE[a.grupo]; return <Ic size={12} className="shrink-0" />; })()} {a.rotulo ? a.rotulo : GRUPO_ANEXO_LABEL[a.grupo]} · {a.nome}</span>
                 {a.driveUrl && <a href={a.driveUrl} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:underline">abrir ↗</a>}
               </div>
             ))}

@@ -8,8 +8,8 @@
 //   • Painel  → saldo + o que vence (FEFO)
 //  Fluxos manuais primeiro; QR (baixa por scan) e OCR da NF entram como evolução.
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useRef, useState } from "react";
-import { BarChart3, PackageMinus, PackagePlus, FolderOpen } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { BarChart3, PackageMinus, PackagePlus, FolderOpen, MapPin, Tag, Settings, Package, TriangleAlert, Camera, Inbox, Printer, Ruler, Snowflake, Circle, Pencil, Trash2, Hand } from "lucide-react";
 import { useParams } from "react-router-dom";
 import QRCode from "qrcode";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
@@ -193,7 +193,7 @@ export function EstoqueValidadePage() {
       {aba === "cadastro" && (
         <div>
           <div className="flex gap-1.5 mb-4 border-b border-gray-200 dark:border-gray-800 pb-2">
-            {([["locais", "📍 Locais"], ["produtos", "🏷️ Produtos"], ["bases", "⚙️ Bases"]] as const).map(([k, l]) => (
+            {([["locais", <span className="inline-flex items-center gap-1.5"><MapPin size={14} /> Locais</span>], ["produtos", <span className="inline-flex items-center gap-1.5"><Tag size={14} /> Produtos</span>], ["bases", <span className="inline-flex items-center gap-1.5"><Settings size={14} /> Bases</span>]] as const).map(([k, l]) => (
               <button key={k} type="button" onClick={() => setSubCad(k)}
                 className={`px-3 py-1.5 text-sm font-medium rounded-lg ${subCad === k ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{l}</button>
             ))}
@@ -245,9 +245,9 @@ function PainelTab({ produtos, lotes, localNome }: { produtos: ProdutoEtiqueta[]
         ))}
       </div>
 
-      {[["🔴 Vencidos", grupos.vencido], ["🟡 Vence hoje / amanhã", [...grupos.hoje, ...grupos.amanha]], ["🟢 Nesta semana", grupos.semana]].map(([titulo, arr]) => (arr as LoteEstoque[]).length > 0 && (
-        <div key={titulo as string}>
-          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">{titulo as string}</div>
+      {([["vencido", <span className="inline-flex items-center gap-1.5"><Circle size={10} className="fill-rose-500 text-rose-500" /> Vencidos</span>, grupos.vencido], ["hoje", <span className="inline-flex items-center gap-1.5"><Circle size={10} className="fill-amber-500 text-amber-500" /> Vence hoje / amanhã</span>, [...grupos.hoje, ...grupos.amanha]], ["semana", <span className="inline-flex items-center gap-1.5"><Circle size={10} className="fill-emerald-500 text-emerald-500" /> Nesta semana</span>, grupos.semana]] as [string, ReactNode, LoteEstoque[]][]).map(([gkey, titulo, arr]) => (arr as LoteEstoque[]).length > 0 && (
+        <div key={gkey}>
+          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5">{titulo}</div>
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
             {(arr as LoteEstoque[]).map((l) => {
               const d = diasAte(l.validade);
@@ -271,7 +271,7 @@ function PainelTab({ produtos, lotes, localNome }: { produtos: ProdutoEtiqueta[]
       {/* Saldo por produto */}
       {produtos.length > 0 && (
         <div>
-          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 mt-4">📦 Saldo por produto</div>
+          <div className="text-xs font-semibold text-gray-500 dark:text-gray-400 mb-1.5 mt-4 inline-flex items-center gap-1.5"><Package size={13} /> Saldo por produto</div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
             {produtos.filter((p) => p.ativo).map((p) => {
               const saldo = ativos.filter((l) => l.produtoId === p.id).reduce((a, l) => a + l.qtdRestante, 0);
@@ -279,7 +279,7 @@ function PainelTab({ produtos, lotes, localNome }: { produtos: ProdutoEtiqueta[]
               return (
                 <div key={p.id} className="rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-2.5 flex items-center justify-between gap-2 text-sm">
                   <span className="font-medium text-gray-800 dark:text-gray-100 truncate">{p.nome}</span>
-                  <span className={`tabular-nums whitespace-nowrap ${baixo ? "text-rose-600 font-semibold" : "text-gray-500"}`}>{saldo} {p.unidade}{baixo ? " ⚠" : ""}</span>
+                  <span className={`tabular-nums whitespace-nowrap ${baixo ? "text-rose-600 font-semibold" : "text-gray-500"}`}>{saldo} {p.unidade}{baixo && <TriangleAlert size={11} className="inline align-[-1px] ml-0.5" />}</span>
                 </div>
               );
             })}
@@ -332,7 +332,7 @@ function BaixaTab({ produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
         <div>
           <div className="flex gap-2 max-w-2xl">
             <SearchInput value={busca} onChange={setBusca} placeholder="Buscar produto pra dar baixa…" autoFocus />
-            <button type="button" onClick={() => setScan(true)} className="shrink-0 h-11 px-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium text-gray-700 dark:text-gray-200 hover:border-indigo-400 flex items-center gap-1.5">📷 <span className="hidden sm:inline">Ler QR</span></button>
+            <button type="button" onClick={() => setScan(true)} className="shrink-0 h-11 px-4 rounded-xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-medium text-gray-700 dark:text-gray-200 hover:border-indigo-400 flex items-center gap-1.5"><Camera size={16} /> <span className="hidden sm:inline">Ler QR</span></button>
           </div>
           <div className="mt-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
             {(busca.trim() ? achados : produtos.filter((p) => p.ativo).slice().sort((a, b) => a.nome.localeCompare(b.nome))).map((p) => {
@@ -357,7 +357,7 @@ function BaixaTab({ produtos, lotesAtivos, localNome, podeOperar, onBaixa }: {
             <div className="text-sm text-rose-600">Sem estoque ativo deste produto.</div>
           ) : (
             <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-900 p-3 text-sm">
-              <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1">👉 Pegue deste lote (vence antes):</div>
+              <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1 inline-flex items-center gap-1.5"><Hand size={13} /> Pegue deste lote (vence antes):</div>
               <div className="text-gray-800 dark:text-gray-100">Validade <b>{fmtBR(proximo.validade)}</b> · {proximo.qtdRestante} {sel.unidade}{proximo.localId ? <> · em <b>{localNome(proximo.localId)}</b></> : null}</div>
               {fila.length > 1 && <div className="text-[11px] text-gray-500 mt-1">+{fila.length - 1} lote(s) depois deste. Saldo total: {saldo} {sel.unidade}.</div>}
             </div>
@@ -444,7 +444,7 @@ function EntradaTab({ produtos, locais, lotesAtivos, podeOperar, onEntrada, pend
         <div>
           {pendentes.length > 0 && (
             <div className="mb-3">
-              <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1.5">📥 Pendentes do recebimento ({pendentes.length})</div>
+              <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1.5 inline-flex items-center gap-1.5"><Inbox size={13} /> Pendentes do recebimento ({pendentes.length})</div>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-1.5">
                 {pendentes.map((p) => (
                   <div key={p.id} className="rounded-lg border border-indigo-200 dark:border-indigo-900 bg-indigo-50/50 dark:bg-indigo-950/20 p-2.5 flex items-center justify-between gap-2">
@@ -523,7 +523,7 @@ function LocaisTab({ locais, restauranteNome, podeEditar, onNovo, onEditar, onEx
                       {l.paiId && <div className="text-[11px] text-gray-400 truncate">dentro de {locais.find((x) => x.id === l.paiId)?.nome || "—"}</div>}
                       {!l.ativo && <div className="text-[11px] text-gray-400">inativo</div>}
                     </div>
-                    {podeEditar && <div className="flex items-center gap-1 shrink-0"><button type="button" onClick={() => onEditar(l)} className="text-xs px-2 py-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Editar">✎</button><button type="button" onClick={() => onExcluir(l)} className="text-xs px-2 py-1 rounded text-gray-300 hover:text-rose-600" title="Excluir">🗑</button></div>}
+                    {podeEditar && <div className="flex items-center gap-1 shrink-0"><button type="button" onClick={() => onEditar(l)} className="text-xs px-2 py-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Editar"><Pencil size={14} /></button><button type="button" onClick={() => onExcluir(l)} className="text-xs px-2 py-1 rounded text-gray-300 hover:text-rose-600" title="Excluir"><Trash2 size={14} /></button></div>}
                   </div>
                 ))}
               </div>
@@ -562,8 +562,8 @@ function ProdutosTab({ produtos, config, podeEditar, onNovo, onEditar, onExcluir
                 </div>
               </div>
               <div className="flex items-center gap-1 shrink-0">
-                <button type="button" onClick={() => onEtiqueta(p)} className="text-xs px-2 py-1 rounded text-gray-400 hover:text-indigo-600" title="Etiqueta fixa (QR)">🏷️</button>
-                {podeEditar && <><button type="button" onClick={() => onEditar(p)} className="text-xs px-2 py-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Editar">✎</button><button type="button" onClick={() => onExcluir(p)} className="text-xs px-2 py-1 rounded text-gray-300 hover:text-rose-600" title="Excluir">🗑</button></>}
+                <button type="button" onClick={() => onEtiqueta(p)} className="text-xs px-2 py-1 rounded text-gray-400 hover:text-indigo-600" title="Etiqueta fixa (QR)"><Tag size={14} /></button>
+                {podeEditar && <><button type="button" onClick={() => onEditar(p)} className="text-xs px-2 py-1 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200" title="Editar"><Pencil size={14} /></button><button type="button" onClick={() => onExcluir(p)} className="text-xs px-2 py-1 rounded text-gray-300 hover:text-rose-600" title="Excluir"><Trash2 size={14} /></button></>}
               </div>
             </div>
           ))}
@@ -578,19 +578,19 @@ function BasesTab({ config, podeEditar, onSalvar }: { config: EstoqueConfig; pod
   return (
     <div className="space-y-6 max-w-2xl">
       <p className="text-xs text-gray-500">Listas base usadas no cadastro de produtos — nada de campo livre. Adicione o que precisar.</p>
-      <ListaBase titulo="📏 Unidades" itens={config.unidades} podeEditar={podeEditar}
+      <ListaBase titulo={<span className="inline-flex items-center gap-1.5"><Ruler size={14} /> Unidades</span>} itens={config.unidades} podeEditar={podeEditar}
         onAdd={(v) => onSalvar({ unidades: [...config.unidades, v.toUpperCase()] })}
         onRemove={(v) => onSalvar({ unidades: config.unidades.filter((x) => x !== v) })} />
-      <ListaBase titulo="🏷️ Categorias" itens={config.categorias} podeEditar={podeEditar} vazio="Nenhuma categoria ainda."
+      <ListaBase titulo={<span className="inline-flex items-center gap-1.5"><Tag size={14} /> Categorias</span>} itens={config.categorias} podeEditar={podeEditar} vazio="Nenhuma categoria ainda."
         onAdd={(v) => onSalvar({ categorias: [...config.categorias, v] })}
         onRemove={(v) => onSalvar({ categorias: config.categorias.filter((x) => x !== v) })} />
-      <ListaBase titulo="❄️ Métodos de conservação (após aberto)" itens={config.metodos.map((m) => m.label)} podeEditar={podeEditar}
+      <ListaBase titulo={<span className="inline-flex items-center gap-1.5"><Snowflake size={14} /> Métodos de conservação (após aberto)</span>} itens={config.metodos.map((m) => m.label)} podeEditar={podeEditar}
         onAdd={(v) => onSalvar({ metodos: [...config.metodos, { id: slug(v), label: v }] })}
         onRemove={(v) => onSalvar({ metodos: config.metodos.filter((m) => m.label !== v) })} />
     </div>
   );
 }
-function ListaBase({ titulo, itens, podeEditar, vazio, onAdd, onRemove }: { titulo: string; itens: string[]; podeEditar: boolean; vazio?: string; onAdd: (v: string) => void; onRemove: (v: string) => void }) {
+function ListaBase({ titulo, itens, podeEditar, vazio, onAdd, onRemove }: { titulo: ReactNode; itens: string[]; podeEditar: boolean; vazio?: string; onAdd: (v: string) => void; onRemove: (v: string) => void }) {
   const [novo, setNovo] = useState("");
   function add() { const v = novo.trim(); if (!v || itens.some((x) => x.toLowerCase() === v.toLowerCase())) { setNovo(""); return; } onAdd(v); setNovo(""); }
   return (
@@ -737,7 +737,7 @@ function EtiquetaFixaModal({ produto, onClose }: { produto: ProdutoEtiqueta; onC
           <div className="text-[11px] text-gray-500">Leia este QR no app pra dar baixa</div>
         </div>
         <p className="text-xs text-gray-500">Cole no local do estoque. Uma etiqueta fixa por produto — os lotes ficam no sistema.</p>
-        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={onClose}>Fechar</Button><Button onClick={imprimir} disabled={!qr}>🖨️ Imprimir</Button></div>
+        <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800"><Button variant="secondary" onClick={onClose}>Fechar</Button><Button onClick={imprimir} disabled={!qr}><span className="inline-flex items-center gap-1.5"><Printer size={15} /> Imprimir</span></Button></div>
       </div>
     </Modal>
   );
