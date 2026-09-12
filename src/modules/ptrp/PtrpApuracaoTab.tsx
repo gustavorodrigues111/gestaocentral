@@ -26,8 +26,8 @@ import { PtrpAssinaturasModal, type AlvoAssinatura } from "./PtrpAssinaturasModa
 import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horarios";
 import { apurarDia, minutoDoDiaBRT, hhmmToMin, type BatidaBloco, type AjusteDia } from "../../core/ptrp/apuracao";
 import { feriadosDoAno } from "../../core/ptrp/feriados";
-import { fetchRoster, decidirAprovacao, corrigirPontoAtraso, excluirBatida, fetchJustificativas } from "../../core/ponto/solidesPontoClient";
-import type { Justificativa } from "../../core/ponto/solidesPontoClient";
+import { fetchRoster, decidirAprovacao, corrigirPontoAtraso, excluirBatida, fetchJustificativas, fetchMotivosAfastamento, lancarAfastamento } from "../../core/ponto/solidesPontoClient";
+import type { Justificativa, MotivoAfastamento } from "../../core/ponto/solidesPontoClient";
 import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import { useTodasPessoas } from "../../core/pessoas/PessoasContext";
 import type { PontoColaborador } from "../../core/ponto/analise";
@@ -912,126 +912,164 @@ function CorrecaoLoteModal({ emp, qtd, textoInicial, onClose, onEnviar }: { emp:
 }
 
 // Modal de TRATAMENTO (gera ptrpAjustes — nunca edita a batida original).
+// 2 caminhos: (A) Editar marcações (incluir/excluir, cronológico, sempre reflete
+// na Sólides) · (B) Lançar motivo (afastamento/abono: motivo Sólides + status escala).
+const STATUS_LISTA: ScheduleStatus[] = ["trabalho", "falta_j", "falta_i", "folga", "comp", "comp_trab", "ferias", "freela"];
 function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }: { empresaKey: string; emp: Empregado; data: string; bs: BatidaDoc[]; solidesEmpId: string | null; autor: { id: string; nome: string }; onClose: () => void }) {
-  const [sel, setSel] = useState("inclusao");   // "inclusao" | "desconsideracao" | "motivo:<id>"
-  const [motivosMapa, setMotivosMapa] = useState<{ id: number; descricao: string; status: string }[]>([]);
-  useEffect(() => onSnapshot(doc(db, "ptrpMotivosMapa", empresaKey), d => {
-    const m = (d.exists() ? (d.data() as { mapa?: Record<string, { status?: string; exibir?: boolean; descricao?: string }> }).mapa : {}) || {};
-    setMotivosMapa(Object.entries(m).filter(([, v]) => v.exibir).map(([id, v]) => ({ id: Number(id), descricao: v.descricao || `Motivo ${id}`, status: v.status || "" })));
-  }), [empresaKey]);
-  const ehMotivo = sel.startsWith("motivo:");
-  const motivoInfo = ehMotivo ? motivosMapa.find(m => m.id === Number(sel.slice(7))) : null;
-  const tipo: PtrpAjusteTipo = sel === "desconsideracao" ? "desconsideracao" : sel === "inclusao" ? "inclusao" : "abono";
-  const [hin, setHin] = useState("08:00");
-  const [hout, setHout] = useState("17:00");
-  const [punchId, setPunchId] = useState(bs[0]?.punchId || "");
-  const [motivo, setMotivo] = useState("");
-  const [aplicarSolides, setAplicarSolides] = useState(true);
-  const [justs, setJusts] = useState<Justificativa[]>([]);
-  const [justId, setJustId] = useState<number | null>(null);
+  const [caminho, setCaminho] = useState<"" | "marcacoes" | "motivo">("");
   const [salvando, setSalvando] = useState(false);
   const [err, setErr] = useState("");
+  const [obs, setObs] = useState("");
   const inp = "w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
-  // Fase 1: só inclusão/desconsideração refletem na Sólides. Afastamentos = fase 2.
-  const refleteSolides = tipo === "inclusao" || tipo === "desconsideracao";
+  const cpf = (emp.cpf || "").replace(/\D/g, "");
+  const ehPend = (b: BatidaDoc) => b.status === "PENDING" || b.status === "REJECTED";
+  const hhmmLocal = (ms?: number | null) => { if (ms == null) return "—"; const t = minutoDoDiaBRT(ms); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
+  const iso = (hhmm: string) => `${data}T${hhmm}:00.000-0300`;
 
-  useEffect(() => {
-    if (tipo === "inclusao" && aplicarSolides && justs.length === 0) {
-      void fetchJustificativas(empresaKey).then(js => { setJusts(js); if (js[0]) setJustId(js[0].id); }).catch(() => {});
-    }
-  }, [tipo, aplicarSolides, empresaKey, justs.length]);
+  // ── Caminho A: editar marcações ────────────────────────────────────────────
+  const existentes = useMemo(() => bs.filter(b => !b.excluded && !ehPend(b)).map(b => ({ punchId: b.punchId || "", in: hhmmLocal(b.dateIn), out: hhmmLocal(b.dateOut), inMs: b.dateIn ?? null, dateIn: b.dateIn ?? undefined, dateOut: b.dateOut ?? undefined })), [bs]);
+  const [removidos, setRemovidos] = useState<Set<string>>(new Set());
+  const [novos, setNovos] = useState<{ in: string; out: string }[]>([]);
+  const [nin, setNin] = useState("08:00");
+  const [nout, setNout] = useState("17:00");
+  const [justs, setJusts] = useState<Justificativa[]>([]);
+  const [justId, setJustId] = useState<number | null>(null);
+  useEffect(() => { fetchJustificativas(empresaKey).then(js => { setJusts(js); const esq = js.find(j => /esquec/i.test(j.description)); setJustId((esq || js[0])?.id ?? null); }).catch(() => {}); }, [empresaKey]);
+  const preview = useMemo(() => {
+    const toMs = (h: string) => { const [a, b] = h.split(":").map(Number); return (a * 60 + (b || 0)) * 60000; };
+    const rows = [
+      ...existentes.filter(e => !removidos.has(e.punchId)).map(e => ({ in: e.in, out: e.out, sort: e.inMs ?? toMs(e.in), novo: false })),
+      ...novos.map(n => ({ in: n.in, out: n.out, sort: toMs(n.in), novo: true })),
+    ].sort((a, b) => a.sort - b.sort);
+    const marcas = rows.reduce((n, r) => n + (r.in && r.in !== "—" ? 1 : 0) + (r.out && r.out !== "—" ? 1 : 0), 0);
+    const trabMin = rows.reduce((s, r) => { const mi = r.in && r.in !== "—" ? toMs(r.in) : null, mo = r.out && r.out !== "—" ? toMs(r.out) : null; return s + (mi != null && mo != null ? Math.max(0, (mo - mi) / 60000) : 0); }, 0);
+    return { rows, impar: marcas % 2 !== 0, trabMin };
+  }, [existentes, removidos, novos]);
+
+  // ── Caminho B: motivo / afastamento ────────────────────────────────────────
+  const [motivos, setMotivos] = useState<MotivoAfastamento[]>([]);
+  const [mapa, setMapa] = useState<Record<string, { status?: string; exibir?: boolean; descricao?: string }>>({});
+  const [motivoId, setMotivoId] = useState<number | null>(null);
+  const [statusEscala, setStatusEscala] = useState<ScheduleStatus>("falta_j");
+  const [diaInteiro, setDiaInteiro] = useState(true);
+  const [ain, setAin] = useState("08:00");
+  const [aout, setAout] = useState("12:00");
+  const [buscaMotivo, setBuscaMotivo] = useState("");
+  useEffect(() => { fetchMotivosAfastamento(empresaKey).then(setMotivos).catch(() => {}); }, [empresaKey]);
+  useEffect(() => onSnapshot(doc(db, "ptrpMotivosMapa", empresaKey), d => setMapa((d.exists() ? (d.data() as { mapa?: Record<string, { status?: string; exibir?: boolean; descricao?: string }> }).mapa : {}) || {})), [empresaKey]);
+  const motivosOrd = useMemo(() => {
+    const q = buscaMotivo.trim().toLowerCase();
+    return motivos.filter(m => !q || m.description.toLowerCase().includes(q))
+      .sort((a, b) => { const pa = mapa[String(a.id)]?.exibir ? 0 : 1, pb = mapa[String(b.id)]?.exibir ? 0 : 1; return pa !== pb ? pa - pb : a.description.localeCompare(b.description); });
+  }, [motivos, mapa, buscaMotivo]);
+  const escolherMotivo = (id: number) => { setMotivoId(id); const st = mapa[String(id)]?.status; if (st) setStatusEscala(st as ScheduleStatus); };
+  const togglePreferido = (id: number) => { const cur = mapa[String(id)] || {}; const m = motivos.find(x => x.id === id); void setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(id)]: { ...cur, exibir: !cur.exibir, descricao: m?.description || cur.descricao } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {}); };
 
   async function salvar() {
-    if (!ehMotivo && !motivo.trim()) { setErr("Descreva o motivo (obrigatório na trilha)."); return; }
-    if (tipo === "desconsideracao" && !punchId) { setErr("Escolha a batida a desconsiderar."); return; }
-    const aplicar = refleteSolides && aplicarSolides;
-    if (aplicar && !solidesEmpId) { setErr("Sem o vínculo Sólides deste colaborador (nenhuma batida com employeeId no mês). Sincronize, ou desmarque 'aplicar na Sólides'."); return; }
-    if (aplicar && tipo === "inclusao" && !justId) { setErr("Escolha a justificativa (exigida pela Sólides)."); return; }
-    setErr(""); setSalvando(true);
+    setErr("");
     try {
-      // 1) Aplica na Sólides PRIMEIRO (mantém os dois lados consistentes; se falhar, não grava aqui).
-      if (aplicar && tipo === "inclusao") {
-        const iso = (hhmm: string) => `${data}T${hhmm}:00.000-0300`;
-        await corrigirPontoAtraso(empresaKey, { employeeId: Number(solidesEmpId), dataHoraIso: iso(hin), justificativaId: justId! });
-        await corrigirPontoAtraso(empresaKey, { employeeId: Number(solidesEmpId), dataHoraIso: iso(hout), justificativaId: justId! });
-      } else if (aplicar && tipo === "desconsideracao") {
-        const b = bs.find(x => (x.punchId || "") === punchId);
-        if (!b) throw new Error("Batida não encontrada.");
-        const empId = b.employeeId || solidesEmpId;
-        if (!empId) throw new Error("Sem o employeeId da batida.");
-        await excluirBatida(empresaKey, { employeeId: Number(empId), punchId: Number(punchId), dateIn: b.dateIn ?? undefined, dateOut: b.dateOut ?? undefined });
+      if (caminho === "marcacoes") {
+        const rem = existentes.filter(e => removidos.has(e.punchId));
+        if (!rem.length && !novos.length) { setErr("Adicione ou remova ao menos uma marcação."); return; }
+        if (preview.impar) { setErr("Resultado ficou ímpar — toda entrada precisa de uma saída."); return; }
+        if (!solidesEmpId) { setErr("Sem vínculo Sólides deste colaborador no mês — sincronize antes."); return; }
+        if (novos.length && !justId) { setErr("Escolha a justificativa da Sólides."); return; }
+        setSalvando(true);
+        for (const e of rem) {
+          await excluirBatida(empresaKey, { employeeId: Number(solidesEmpId), punchId: Number(e.punchId), dateIn: e.dateIn, dateOut: e.dateOut });
+          await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "desconsideracao", punchId: e.punchId, motivo: obs.trim() || "marcação desconsiderada", autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: true }));
+        }
+        for (const n of novos) {
+          await corrigirPontoAtraso(empresaKey, { employeeId: Number(solidesEmpId), dataHoraIso: iso(n.in), justificativaId: justId! });
+          await corrigirPontoAtraso(empresaKey, { employeeId: Number(solidesEmpId), dataHoraIso: iso(n.out), justificativaId: justId! });
+          await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "inclusao", in: n.in, out: n.out, motivo: obs.trim() || "esquecimento", autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: true }));
+        }
+        onClose();
+      } else if (caminho === "motivo") {
+        if (!motivoId) { setErr("Escolha o motivo da Sólides."); return; }
+        setSalvando(true);
+        const mInfo = motivos.find(m => m.id === motivoId);
+        const abonMin = diaInteiro ? 0 : Math.max(0, hhmmToMin(aout) - hhmmToMin(ain));
+        if (solidesEmpId && diaInteiro) await lancarAfastamento(empresaKey, { employeeId: Number(solidesEmpId), adjustmentReasonId: motivoId, startDate: data, endDate: data, fullDay: true });
+        await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "abono", statusEscala, motivoSolidesId: motivoId, ...(abonMin ? { minutos: abonMin, in: ain, out: aout } : {}), motivo: obs.trim() || (mInfo?.description || ""), autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: !!(solidesEmpId && diaInteiro) }));
+        await setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(motivoId)]: { ...(mapa[String(motivoId)] || {}), status: statusEscala, descricao: mInfo?.description || `Motivo ${motivoId}` } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
+        onClose();
       }
-      // 2) Grava a trilha no app (Portaria 671).
-      const aj: Omit<PtrpAjuste, "id"> = {
-        empresaKey, colaboradorId: emp.id, cpf: (emp.cpf || "").replace(/\D/g, ""), data, tipo,
-        ...(tipo === "inclusao" ? { in: hin, out: hout } : {}),
-        ...(tipo === "desconsideracao" ? { punchId } : {}),
-        ...(ehMotivo && motivoInfo ? { motivoSolidesId: motivoInfo.id, statusEscala: motivoInfo.status || null } : {}),
-        motivo: motivo.trim() || (motivoInfo ? motivoInfo.descricao : ""), autor, criadoEm: new Date().toISOString(), cancelado: false,
-      };
-      await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore(aj));
-      onClose();
-    } catch (e) { setErr((refleteSolides && aplicarSolides ? "Falha ao aplicar na Sólides: " : "Falha ao salvar: ") + (e instanceof Error ? e.message : "erro")); setSalvando(false); }
+    } catch (e) { setErr("Falha ao aplicar na Sólides: " + (e instanceof Error ? e.message : "erro")); setSalvando(false); }
   }
 
-  const hhmmLocal = (ms?: number | null) => { if (ms == null) return "—"; const t = minutoDoDiaBRT(ms); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
-
   return (
-    <Modal title={`Tratar · ${emp.nome} · ${data.slice(-2)}/${data.slice(5, 7)}`} onClose={onClose} maxWidth="max-w-md">
+    <Modal title={`Tratar · ${emp.nome} · ${data.slice(-2)}/${data.slice(5, 7)}`} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
-        <div className="text-[11px] text-gray-500">A batida original é imutável — o tratamento entra como lançamento adicional, com autor e data (Portaria 671).</div>
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Tipo de tratamento</label>
-          <select value={sel} onChange={e => setSel(e.target.value)} className={inp}>
-            <option value="inclusao">➕ Incluir marcação (esquecimento)</option>
-            <option value="desconsideracao">🚫 Desconsiderar uma batida (duplicada/errada)</option>
-            {motivosMapa.length > 0 && <optgroup label="☂️ Abono / Afastamento (motivos da Sólides)">
-              {motivosMapa.map(m => <option key={m.id} value={`motivo:${m.id}`}>{m.descricao}</option>)}
-            </optgroup>}
-          </select>
-          {motivosMapa.length === 0 && <span className="text-[10px] text-amber-600 dark:text-amber-400">Nenhum motivo marcado — configure em Configurações › Mapeamento de motivos pra abonar/afastar.</span>}
-        </div>
-        {tipo === "inclusao" && (
-          <div className="grid grid-cols-2 gap-2">
-            <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Entrada</label><input type="time" value={hin} onChange={e => setHin(e.target.value)} className={inp} /></div>
-            <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Saída</label><input type="time" value={hout} onChange={e => setHout(e.target.value)} className={inp} /></div>
+        <div className="text-[11px] text-gray-500">A batida original é imutável — o tratamento entra como lançamento adicional (Portaria 671) e sempre reflete na Sólides.</div>
+
+        {!caminho && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button onClick={() => setCaminho("marcacoes")} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10">
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">✏️ Editar marcações</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">Incluir uma esquecida, excluir uma duplicada ou corrigir uma errada.</div>
+            </button>
+            <button onClick={() => setCaminho("motivo")} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10">
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">☂️ Lançar motivo</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">Falta, atestado, folga, férias ou abono — na Sólides e na escala.</div>
+            </button>
           </div>
         )}
-        {tipo === "desconsideracao" && (
+
+        {caminho === "marcacoes" && (<>
+          <button onClick={() => setCaminho("")} className="text-[11px] text-gray-400 hover:underline">‹ voltar</button>
+          <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-2.5">
+            <div className="text-[11px] font-semibold text-gray-500 mb-1">Como vai ficar (ordem cronológica)</div>
+            {preview.rows.length === 0 ? <div className="text-[12px] text-gray-400">sem marcações</div> :
+              <div className="space-y-0.5">{preview.rows.map((r, i) => <div key={i} className={`text-[12.5px] tabular-nums ${r.novo ? "text-emerald-600 dark:text-emerald-300" : "text-gray-700 dark:text-gray-200"}`}>{r.in}–{r.out}{r.novo ? " (nova)" : ""}</div>)}</div>}
+            <div className="text-[11px] text-gray-500 mt-1">Trabalhado: {String(Math.floor(preview.trabMin / 60)).padStart(2, "0")}h{String(preview.trabMin % 60).padStart(2, "0")}{preview.impar && <span className="text-rose-600 ml-2">⚠ nº ímpar de marcações</span>}</div>
+          </div>
+          {existentes.length > 0 && <div className="flex flex-col gap-1">
+            <div className="text-[11px] font-semibold text-gray-500">Marcações existentes (marque pra excluir)</div>
+            {existentes.map(e => { const rem = removidos.has(e.punchId); return <label key={e.punchId} className="flex items-center gap-2 text-[12.5px]"><input type="checkbox" checked={rem} onChange={ev => setRemovidos(s => { const n = new Set(s); if (ev.target.checked) n.add(e.punchId); else n.delete(e.punchId); return n; })} /><span className={rem ? "line-through text-gray-400" : ""}>{e.in}–{e.out}</span>{rem && <span className="text-[10px] text-rose-500">será excluída</span>}</label>; })}
+          </div>}
           <div className="flex flex-col gap-1">
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Batida a desconsiderar</label>
-            <select value={punchId} onChange={e => setPunchId(e.target.value)} className={inp}>
-              {bs.length === 0 && <option value="">— sem batidas neste dia —</option>}
-              {bs.map(b => <option key={b.punchId || b.id} value={b.punchId || ""}>{hhmmLocal(b.dateIn)}–{hhmmLocal(b.dateOut)}</option>)}
-            </select>
+            <div className="text-[11px] font-semibold text-gray-500">Adicionar marcação esquecida</div>
+            <div className="grid grid-cols-[1fr_1fr_auto] gap-2 items-end">
+              <label className="text-[10px] text-gray-500">Entrada<input type="time" value={nin} onChange={e => setNin(e.target.value)} className={inp} /></label>
+              <label className="text-[10px] text-gray-500">Saída<input type="time" value={nout} onChange={e => setNout(e.target.value)} className={inp} /></label>
+              <Button size="sm" variant="secondary" onClick={() => setNovos(v => [...v, { in: nin, out: nout }])}>+ add</Button>
+            </div>
+            {novos.length > 0 && <div className="text-[11px] text-gray-500">Adicionadas: {novos.map((n, i) => <span key={i} className="mr-2">{n.in}–{n.out} <button onClick={() => setNovos(v => v.filter((_, k) => k !== i))} className="text-rose-500">✕</button></span>)}</div>}
           </div>
-        )}
-        {refleteSolides ? (
-          <div className="rounded-lg border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/40 dark:bg-indigo-900/10 p-2.5 space-y-2">
-            <label className="flex items-center gap-2 text-[12.5px] text-gray-700 dark:text-gray-200">
-              <input type="checkbox" checked={aplicarSolides} onChange={e => setAplicarSolides(e.target.checked)} />
-              Aplicar também na Sólides {tipo === "inclusao" ? "(registra as marcações lá)" : "(exclui a batida lá)"}
-            </label>
-            {aplicarSolides && !solidesEmpId && <div className="text-[11px] text-amber-700 dark:text-amber-400">⚠ Sem vínculo Sólides deste colaborador no mês — sincronize antes, ou desmarque acima.</div>}
-            {aplicarSolides && tipo === "inclusao" && (
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Justificativa (exigida pela Sólides)</label>
-                <select value={justId ?? ""} onChange={e => setJustId(Number(e.target.value) || null)} className={inp}>
-                  {justs.length === 0 && <option value="">carregando…</option>}
-                  {justs.map(j => <option key={j.id} value={j.id}>{j.description}</option>)}
-                </select>
+          {novos.length > 0 && <label className="flex flex-col gap-1"><span className="text-[11px] font-semibold text-gray-500">Justificativa na Sólides</span>
+            <select value={justId ?? ""} onChange={e => setJustId(Number(e.target.value) || null)} className={inp}>{justs.length === 0 && <option value="">carregando…</option>}{justs.map(j => <option key={j.id} value={j.id}>{j.description}</option>)}</select>
+          </label>}
+        </>)}
+
+        {caminho === "motivo" && (<>
+          <button onClick={() => setCaminho("")} className="text-[11px] text-gray-400 hover:underline">‹ voltar</button>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-gray-500">Motivo na Sólides {motivos.length === 0 && <span className="text-gray-400">(carregando…)</span>}</label>
+              <input value={buscaMotivo} onChange={e => setBuscaMotivo(e.target.value)} placeholder="buscar…" className={`${inp} mb-1`} />
+              <div className="max-h-44 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800">
+                {motivosOrd.map(m => { const pref = mapa[String(m.id)]?.exibir; return <div key={m.id} className={`flex items-center gap-1.5 px-2 py-1 text-[12px] ${motivoId === m.id ? "bg-indigo-50 dark:bg-indigo-900/20" : ""}`}>
+                  <button onClick={() => togglePreferido(m.id)} title="Preferido (aparece no topo)" className={pref ? "text-amber-500" : "text-gray-300 hover:text-amber-400"}>★</button>
+                  <button onClick={() => escolherMotivo(m.id)} className="flex-1 text-left text-gray-700 dark:text-gray-200">{m.description}</button>
+                </div>; })}
               </div>
-            )}
+            </div>
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-gray-500">Status na escala (praticada)</label>
+              <select value={statusEscala} onChange={e => setStatusEscala(e.target.value as ScheduleStatus)} className={inp}>{STATUS_LISTA.map(s => <option key={s} value={s}>{STATUS_INFO[s].label}</option>)}</select>
+              <label className="flex items-center gap-2 text-[12px] mt-1"><input type="checkbox" checked={diaInteiro} onChange={e => setDiaInteiro(e.target.checked)} /> Dia inteiro</label>
+              {!diaInteiro && <div className="grid grid-cols-2 gap-2"><label className="text-[10px] text-gray-500">De<input type="time" value={ain} onChange={e => setAin(e.target.value)} className={inp} /></label><label className="text-[10px] text-gray-500">Até<input type="time" value={aout} onChange={e => setAout(e.target.value)} className={inp} /></label></div>}
+            </div>
           </div>
-        ) : (
-          <div className="text-[11px] rounded-lg border border-indigo-200 dark:border-indigo-900/40 bg-indigo-50/40 dark:bg-indigo-900/10 p-2 text-indigo-800 dark:text-indigo-200">☂️ Motivo <strong>{motivoInfo?.descricao}</strong> (Sólides) → praticada como <strong>{STATUS_INFO[(motivoInfo?.status || "trabalho") as ScheduleStatus]?.label || motivoInfo?.status || "—"}</strong>. Registrado no app por enquanto; envio à Sólides vem na fase 2.</div>
-        )}
-        <div className="flex flex-col gap-1">
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Motivo / justificativa (trilha do app)</label>
-          <textarea value={motivo} onChange={e => setMotivo(e.target.value)} rows={2} placeholder="Ex.: esqueceu de bater a saída; atestado de 1 dia; batida duplicada…" className={inp} />
-        </div>
+          {!solidesEmpId && <div className="text-[11px] text-amber-600">⚠ Sem vínculo Sólides — fica só no app (sincronize antes pra refletir lá).</div>}
+          {!diaInteiro && <div className="text-[11px] text-gray-400">Abono parcial entra no saldo do app. Envio parcial à Sólides ainda não disponível — use dia inteiro pra refletir lá.</div>}
+        </>)}
+
+        {caminho && <label className="flex flex-col gap-1"><span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Observação (trilha do app)</span><textarea value={obs} onChange={e => setObs(e.target.value)} rows={2} placeholder="Ex.: esqueceu de bater a saída; atestado de 1 dia…" className={inp} /></label>}
+
         {err && <div className="text-sm text-rose-600">{err}</div>}
-        <div className="flex justify-end gap-2 pt-1"><Button variant="secondary" onClick={onClose} disabled={salvando}>Cancelar</Button><Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando…" : "Lançar tratamento"}</Button></div>
+        {caminho && <div className="flex justify-end gap-2 pt-1"><Button variant="secondary" onClick={onClose} disabled={salvando}>Cancelar</Button><Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando…" : "Confirmar tratamento"}</Button></div>}
       </div>
     </Modal>
   );
