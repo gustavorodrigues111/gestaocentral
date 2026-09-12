@@ -13,7 +13,11 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { ChangeEvent } from "react";
+import type { ChangeEvent, ReactNode } from "react";
+import {
+  ClipboardList, Folder, FileText, Check, TriangleAlert, Repeat,
+  Signature, BookOpen, Package, HardHat, ArrowUp, Paperclip, Send,
+} from "lucide-react";
 import { collection, doc, getDoc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
@@ -905,7 +909,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
   }
 
   return (
-    <Modal title="📋 Termos a assinar" onClose={onClose} maxWidth="max-w-xl">
+    <Modal title={<span className="inline-flex items-center gap-1"><ClipboardList size={18}/> Termos a assinar</span>} onClose={onClose} maxWidth="max-w-xl">
       <div className="p-4 space-y-3">
         <div className="text-xs text-gray-600 dark:text-gray-400">
           Monte o kit: gere ou suba cada documento <strong>pra assinatura</strong>,
@@ -927,8 +931,8 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         {isDriveConfigured() && (
           <div className="rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/50 dark:bg-indigo-900/10 p-3 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-indigo-900 dark:text-indigo-200">
-                📁 Google Drive
+              <span className="text-sm font-medium text-indigo-900 dark:text-indigo-200 inline-flex items-center gap-1">
+                <Folder size={16}/> Google Drive
               </span>
               {folder && (
                 <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-semibold">
@@ -946,7 +950,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                   </p>
                 ) : (
                   <p className="text-[11px] text-amber-700 dark:text-amber-400">
-                    ⚠ Antes, configure a pasta "Empregados Ativos" desta empresa em{" "}
+                    <TriangleAlert size={12} className="inline align-[-2px] mr-0.5"/> Antes, configure a pasta "Empregados Ativos" desta empresa em{" "}
                     <strong>Admissão → Configurações</strong>.
                   </p>
                 )}
@@ -955,13 +959,13 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                   onClick={criarPasta}
                   disabled={driveBusy !== "" || !activeRestaurant.driveEmpregadosAtivosFolderId}
                 >
-                  {driveBusy === "criando" ? "Criando…" : "📁 Criar pasta do empregado no Drive"}
+                  {driveBusy === "criando" ? "Criando…" : <span className="inline-flex items-center gap-1"><Folder size={14}/> Criar pasta do empregado no Drive</span>}
                 </Button>
               </>
             ) : (
               <div className="flex flex-wrap items-center gap-2">
                 <Button size="sm" variant="secondary" onClick={copiarLink}>
-                  {copiado ? "✓ link copiado" : "📋 Copiar link da pasta"}
+                  {copiado ? <span className="inline-flex items-center gap-1"><Check size={14}/> link copiado</span> : <span className="inline-flex items-center gap-1"><ClipboardList size={14}/> Copiar link da pasta</span>}
                 </Button>
                 <a
                   href={folder.url}
@@ -972,7 +976,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                   ↗ abrir pasta
                 </a>
                 <Button size="sm" variant="secondary" onClick={conferirKit} disabled={driveBusy !== ""}>
-                  {driveBusy === "conferindo" ? "Conferindo…" : "🔄 Conferir kit"}
+                  {driveBusy === "conferindo" ? "Conferindo…" : <span className="inline-flex items-center gap-1"><Repeat size={14}/> Conferir kit</span>}
                 </Button>
               </div>
             )}
@@ -1007,7 +1011,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                     <ul className="space-y-0.5">
                       {arquivosPasta.map((a) => (
                         <li key={a.id} className="truncate">
-                          📄{" "}
+                          <FileText size={12} className="inline align-[-2px] mr-1"/>
                           {a.webViewLink ? (
                             <a
                               href={a.webViewLink}
@@ -1037,8 +1041,8 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
         {isDriveConfigured() && (
           <div className="rounded-lg border border-orange-200 dark:border-orange-900/60 bg-orange-50/50 dark:bg-orange-900/10 p-3 space-y-2">
             <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-orange-900 dark:text-orange-200">
-                ✍️ Clicksign{CLICKSIGN_SANDBOX ? " (sandbox)" : ""}
+              <span className="text-sm font-medium text-orange-900 dark:text-orange-200 inline-flex items-center gap-1">
+                <Signature size={16}/> Clicksign{CLICKSIGN_SANDBOX ? " (sandbox)" : ""}
               </span>
               {clicksignEnvelopeId && (
                 <span className="text-[10px] font-semibold text-orange-700 dark:text-orange-400">
@@ -1054,7 +1058,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                   {CLICKSIGN_SANDBOX && " ⚠ Ambiente SANDBOX — sem validade jurídica."}
                 </p>
                 <Button size="sm" onClick={abrirSelecaoClicksign} disabled={clicksignBusy !== ""}>
-                  {clicksignBusy === "enviando" ? "Carregando…" : "✍️ Enviar pro Clicksign"}
+                  {clicksignBusy === "enviando" ? "Carregando…" : <span className="inline-flex items-center gap-1"><Signature size={14}/> Enviar pro Clicksign</span>}
                 </Button>
               </>
             ) : (
@@ -1063,7 +1067,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                     enviado + permite enviar novos no mesmo lugar. Verificação
                     de status (que baixa PDFs assinados) acontece dentro. */}
                 <Button size="sm" onClick={abrirSelecaoClicksign} disabled={clicksignBusy !== ""}>
-                  {clicksignBusy === "enviando" ? "Carregando…" : "📋 Ver/enviar documentos"}
+                  {clicksignBusy === "enviando" ? "Carregando…" : <span className="inline-flex items-center gap-1"><ClipboardList size={14}/> Ver/enviar documentos</span>}
                 </Button>
               </div>
             )}
@@ -1081,13 +1085,13 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
             {totalAssinados} de {termos.length} assinados
           </span>
           {obrigPendentes > 0 && (
-            <span className="text-amber-700 dark:text-amber-400 font-semibold">
-              ⚠ {obrigPendentes} obrigatório(s) pendente(s)
+            <span className="text-amber-700 dark:text-amber-400 font-semibold inline-flex items-center gap-1">
+              <TriangleAlert size={13}/> {obrigPendentes} obrigatório(s) pendente(s)
             </span>
           )}
           {obrigPendentes === 0 && (
-            <span className="text-emerald-700 dark:text-emerald-400 font-semibold">
-              ✓ Todos obrigatórios assinados
+            <span className="text-emerald-700 dark:text-emerald-400 font-semibold inline-flex items-center gap-1">
+              <Check size={13}/> Todos obrigatórios assinados
             </span>
           )}
         </div>
@@ -1162,8 +1166,8 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                   if (!d) return null;
                   return (
                     <button type="button" onClick={() => setGerarDoc({ termoId: t.id, doc: d })}
-                      className="text-[11px] px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-medium">
-                      📄 Gerar pelo Documentos
+                      className="text-[11px] px-2 py-1 rounded bg-emerald-600 hover:bg-emerald-700 text-white font-medium inline-flex items-center gap-1">
+                      <FileText size={12}/> Gerar pelo Documentos
                     </button>
                   );
                 })()}
@@ -1175,15 +1179,15 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                 {(t.tipoEspecial === "uniforme" || t.tipoEspecial === "epi") && (() => {
                   const tipo: "uniforme" | "epi" = t.tipoEspecial;
                   const entExistente = entregasExistentes[tipo];
-                  const label = carregandoUniformes
+                  const label: ReactNode = carregandoUniformes
                     ? "Carregando catálogo…"
                     : entExistente
                       ? (tipo === "uniforme"
-                          ? `📦 Ver/editar termo de uniformes (${entExistente.itens.length} item(ns))`
-                          : `🦺 Ver/editar termo de EPIs (${entExistente.itens.length} item(ns))`)
+                          ? <span className="inline-flex items-center gap-1"><Package size={13}/> Ver/editar termo de uniformes ({entExistente.itens.length} item(ns))</span>
+                          : <span className="inline-flex items-center gap-1"><HardHat size={13}/> Ver/editar termo de EPIs ({entExistente.itens.length} item(ns))</span>)
                       : (tipo === "uniforme"
-                          ? "📦 Gerar termo de uniformes"
-                          : "🦺 Gerar termo de EPIs");
+                          ? <span className="inline-flex items-center gap-1"><Package size={13}/> Gerar termo de uniformes</span>
+                          : <span className="inline-flex items-center gap-1"><HardHat size={13}/> Gerar termo de EPIs</span>);
                   return (
                     <button
                       type="button"
@@ -1204,7 +1208,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                       disabled={driveBusy !== ""}
                       className="text-[11px] px-2 py-1 rounded bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white font-medium"
                     >
-                      {driveBusy === `up_${t.id}` ? "Subindo…" : "⬆️ Subir pra assinatura"}
+                      {driveBusy === `up_${t.id}` ? "Subindo…" : <span className="inline-flex items-center gap-1"><ArrowUp size={13}/> Subir pra assinatura</span>}
                     </button>
                     {/* Garantia: upload manual de um PDF JÁ assinado (fora do Clicksign) */}
                     <button
@@ -1240,17 +1244,17 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                         Clicksign automático ou se precisa anexar manual. */}
                     {t.linkFileId ? (
                       <span
-                        className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300"
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300 inline-flex items-center gap-1"
                         title="PDF está na pasta 'docs a assinar' do Drive — vai pro Clicksign automaticamente."
                       >
-                        ✓ na pasta
+                        <Check size={11}/> na pasta
                       </span>
                     ) : (
                       <span
-                        className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300"
+                        className="text-[10px] px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-300 inline-flex items-center gap-1"
                         title="Link externo: NÃO está na pasta 'docs a assinar'. Pra ir pro Clicksign, suba o PDF clicando em '⬆️ Subir pra assinatura'."
                       >
-                        ⚠ link externo
+                        <TriangleAlert size={11}/> link externo
                       </span>
                     )}
                   </div>
@@ -1340,7 +1344,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
       {/* Preview do termo gerado — confere antes de subir pro Drive */}
       {previewUpload && (
         <Modal
-          title="📄 Conferir termo antes de subir"
+          title={<span className="inline-flex items-center gap-1"><FileText size={18}/> Conferir termo antes de subir</span>}
           onClose={fecharPreview}
           maxWidth="max-w-3xl"
         >
@@ -1372,7 +1376,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                 Cancelar
               </Button>
               <Button onClick={confirmarUploadPreview} disabled={driveBusy !== ""}>
-                {driveBusy !== "" ? "Subindo…" : "⬆️ Subir pra docs a assinar"}
+                {driveBusy !== "" ? "Subindo…" : <span className="inline-flex items-center gap-1"><ArrowUp size={14}/> Subir pra docs a assinar</span>}
               </Button>
             </div>
           </div>
@@ -1386,7 +1390,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
           não devem voltar. Default: todos marcados. */}
       {selecaoEnvio && (
         <Modal
-          title="📋 Documentos & assinaturas"
+          title={<span className="inline-flex items-center gap-1"><ClipboardList size={18}/> Documentos & assinaturas</span>}
           onClose={() => setSelecaoEnvio(null)}
           maxWidth="max-w-xl"
         >
@@ -1404,7 +1408,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                     disabled={clicksignBusy !== ""}
                     className="text-[10px] text-orange-700 dark:text-orange-300 hover:underline disabled:opacity-50"
                   >
-                    {clicksignBusy === "verificando" ? "Atualizando…" : "🔄 Atualizar status"}
+                    {clicksignBusy === "verificando" ? "Atualizando…" : <span className="inline-flex items-center gap-1"><Repeat size={12}/> Atualizar status</span>}
                   </button>
                 </div>
                 {selecaoEnvio.statusDocsAtivo.size > 0 ? (
@@ -1429,7 +1433,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                 )}
                 {clicksignHistorico.length > 1 && (
                   <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1.5 pt-1.5 border-t border-orange-200/60 dark:border-orange-900/40">
-                    📚 {clicksignHistorico.length} envelopes criados pra esta admissão
+                    <BookOpen size={12} className="inline align-[-2px] mr-1"/> {clicksignHistorico.length} envelopes criados pra esta admissão
                   </div>
                 )}
               </div>
@@ -1524,10 +1528,10 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                         </span>
                         {a.source === "externo" && (
                           <span
-                            className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 whitespace-nowrap"
+                            className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300 whitespace-nowrap inline-flex items-center gap-1"
                             title="Este PDF está em outra pasta do Drive. Vou tentar baixar via API — se a conta conectada tiver permissão de leitura, vai."
                           >
-                            📎 link externo
+                            <Paperclip size={11}/> link externo
                           </span>
                         )}
                         {a.webViewLink && (
@@ -1551,7 +1555,7 @@ export function ChecklistTermosModal({ admissao, pessoa, activeRestaurant, onClo
                         <div className="text-[10px] text-amber-800 dark:text-amber-300 mt-0.5 space-y-0.5 font-mono">
                           {envios.map((envio, idx) => (
                             <div key={envio.envelopeId + envio.enviadoEm} className="truncate" title={`Envelope ${envio.envelopeId}`}>
-                              📨 {envios.length > 1 ? `#${idx + 1} ` : ""}
+                              <Send size={11} className="inline align-[-1px] mr-1"/> {envios.length > 1 ? `#${idx + 1} ` : ""}
                               enviado em {fmtDateTime(envio.enviadoEm)}
                               {" · "}
                               <span className="text-amber-700/80 dark:text-amber-400/80">

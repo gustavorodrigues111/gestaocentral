@@ -14,6 +14,11 @@
 
 import type { LucideIcon } from "lucide-react";
 import { Hourglass, Check, Armchair, Frown, X } from "lucide-react";
+import {
+  PartyPopper, UserRoundMinus, Repeat, Rocket, Banknote, BookOpen,
+  ThumbsUp, ThumbsDown, TriangleAlert, Trophy, PenLine, Palmtree,
+  Stethoscope, MessagesSquare, HardHat, AlarmClock, CircleDot, CircleX, Pin,
+} from "lucide-react";
 
 export type PermissoesPerfil = {
   // Mapa moduleId → actionId → boolean. Ações ausentes = false (negadas).
@@ -2006,6 +2011,32 @@ export const EVENTO_TRILHA_ICON: Record<EventoTrilhaTipo, string> = {
   ponto_falta_i:      "🔴",
   ponto_compensacao:  "🔄",
   outro:              "📌",
+};
+
+// Ícones lucide paralelos ao EVENTO_TRILHA_ICON (usados nos sites de UI —
+// chips, badges, seletor). O mapa de emoji acima permanece pros <option>.
+export const EVENTO_TRILHA_LUCIDE: Record<EventoTrilhaTipo, LucideIcon> = {
+  admissao:           PartyPopper,
+  demissao:           UserRoundMinus,
+  readmissao:         Repeat,
+  mudanca_cargo:      Repeat,
+  promocao:           Rocket,
+  promocao_salarial:  Banknote,
+  treinamento:        BookOpen,
+  feedback_positivo:  ThumbsUp,
+  feedback_negativo:  ThumbsDown,
+  ocorrencia:         TriangleAlert,
+  premiacao:          Trophy,
+  advertencia:        PenLine,
+  ferias:             Palmtree,
+  exame_realizado:    Stethoscope,
+  reuniao_individual: MessagesSquare,
+  entrega_uniforme:   HardHat,
+  ponto_atraso:       AlarmClock,
+  ponto_falta_j:      CircleDot,
+  ponto_falta_i:      CircleX,
+  ponto_compensacao:  Repeat,
+  outro:              Pin,
 };
 
 export type EventoTrilha = {

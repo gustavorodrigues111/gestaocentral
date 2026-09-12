@@ -4,7 +4,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { todayYmd } from "../../core/utils/date";
-import { EVENTO_TRILHA_ICON, EVENTO_TRILHA_LABEL } from "../../core/types";
+import { EVENTO_TRILHA_LUCIDE, EVENTO_TRILHA_LABEL } from "../../core/types";
 import type { Cargo, Empregado, EventoTrilha, EventoTrilhaTipo } from "../../core/types";
 import { editarEvento, registrarEvento } from "./repository";
 
@@ -109,7 +109,7 @@ export function EventoTrilhaModal({ empregadoId, empregados, cargoMap, evento, r
                     : "border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/50"
                 }`}
               >
-                <div className="text-base">{EVENTO_TRILHA_ICON[t]}</div>
+                <div>{(() => { const Ic = EVENTO_TRILHA_LUCIDE[t]; return <Ic size={16}/>; })()}</div>
                 <div className="font-medium leading-tight">{EVENTO_TRILHA_LABEL[t]}</div>
               </button>
             ))}

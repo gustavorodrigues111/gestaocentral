@@ -11,6 +11,10 @@ import { Button } from "../../core/ui/Button";
 import { pickDriveFile } from "../../core/google/drivePicker";
 import { fmtBR } from "../../core/utils/date";
 import {
+  Lock, CalendarDays, CheckSquare, TriangleAlert, Scale, Paperclip,
+  Mail, Stethoscope, MessageSquare,
+} from "lucide-react";
+import {
   ouvirProcessos, iniciarProcesso, cancelarProcesso, atualizarSubtarefa,
   bloquearAcesso, moverColunaProcesso, atualizarProcesso,
 } from "./repository";
@@ -183,12 +187,12 @@ function KanbanView({ processos, onAbrir }: {
                   </div>
                   <div className="text-[10px] text-gray-500 dark:text-gray-400">
                     {DEMISSAO_STATUS_LABEL[p.status]}
-                    {p.acessoBloqueadoEm && <span className="ml-1 text-amber-600">🔒</span>}
+                    {p.acessoBloqueadoEm && <Lock size={11} className="inline align-[-1px] ml-1 text-amber-600"/>}
                   </div>
-                  {p.dataAlvo && <div className="text-[10px] text-gray-500 dark:text-gray-400">📅 {fmtBR(p.dataAlvo)}</div>}
+                  {p.dataAlvo && <div className="text-[10px] text-gray-500 dark:text-gray-400 inline-flex items-center gap-1"><CalendarDays size={11}/> {fmtBR(p.dataAlvo)}</div>}
                   {p.subtarefas && (
-                    <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1">
-                      ☑ {p.subtarefas.filter(s => s.feita).length}/{p.subtarefas.length}
+                    <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 inline-flex items-center gap-1">
+                      <CheckSquare size={11}/> {p.subtarefas.filter(s => s.feita).length}/{p.subtarefas.length}
                     </div>
                   )}
                 </div>
@@ -224,13 +228,13 @@ function ListaView({ processos, onAbrir, histórico }: {
             <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
               {DEMISSAO_INICIATIVA_LABEL[p.iniciativa]} · {DEMISSAO_STATUS_LABEL[p.status]}
               {p.cargoSnapshot && ` · ${p.cargoSnapshot}`}
-              {p.dataAlvo && ` · 📅 ${fmtBR(p.dataAlvo)}`}
-              {p.acessoBloqueadoEm && <span className="ml-1 text-amber-600">🔒 acesso bloqueado</span>}
+              {p.dataAlvo && <> · <CalendarDays size={11} className="inline align-[-1px]"/> {fmtBR(p.dataAlvo)}</>}
+              {p.acessoBloqueadoEm && <span className="ml-1 text-amber-600 inline-flex items-center gap-1"><Lock size={11}/> acesso bloqueado</span>}
             </div>
           </div>
           {p.subtarefas && (
-            <div className="text-[11px] text-gray-500 dark:text-gray-400">
-              ☑ {p.subtarefas.filter(s => s.feita).length}/{p.subtarefas.length}
+            <div className="text-[11px] text-gray-500 dark:text-gray-400 inline-flex items-center gap-1">
+              <CheckSquare size={12}/> {p.subtarefas.filter(s => s.feita).length}/{p.subtarefas.length}
             </div>
           )}
         </div>
@@ -310,7 +314,7 @@ function IniciarDemissaoModal({ empregados, rid, autor, processosAtivos, onClose
               ))}
             </select>
             {jaTemProcesso && (
-              <div className="text-xs text-red-600 mt-1">⚠ Já existe processo em andamento — não dá pra iniciar outro</div>
+              <div className="text-xs text-red-600 mt-1 inline-flex items-center gap-1"><TriangleAlert size={12}/> Já existe processo em andamento — não dá pra iniciar outro</div>
             )}
           </label>
           <label className="block">
@@ -337,7 +341,7 @@ function IniciarDemissaoModal({ empregados, rid, autor, processosAtivos, onClose
           )}
           {(iniciativa === "empregado" || iniciativa === "acordo") && (
             <div className="text-xs p-2 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded text-red-900 dark:text-red-200">
-              ⚠ Acesso do empregado será bloqueado <b>IMEDIATAMENTE</b> ao confirmar.
+              <TriangleAlert size={12} className="inline align-[-2px] mr-0.5"/> Acesso do empregado será bloqueado <b>IMEDIATAMENTE</b> ao confirmar.
             </div>
           )}
           <div className="grid grid-cols-2 gap-2">
@@ -508,9 +512,9 @@ function DetalheDrawer({ proc, autor, onClose }: {
               <span>{DEMISSAO_INICIATIVA_LABEL[proc.iniciativa]}</span>
               <span>·</span>
               <span>{DEMISSAO_STATUS_LABEL[proc.status]}</span>
-              {proc.dataAlvo && <><span>·</span><span>📅 {fmtBR(proc.dataAlvo)}</span></>}
+              {proc.dataAlvo && <><span>·</span><span className="inline-flex items-center gap-1"><CalendarDays size={12}/> {fmtBR(proc.dataAlvo)}</span></>}
               {proc.avisoPrevio && <><span>·</span><span>Aviso: {proc.avisoPrevio}</span></>}
-              {proc.acessoBloqueadoEm && <><span>·</span><span className="text-amber-600 font-medium">🔒 acesso bloqueado em {fmtBR(proc.acessoBloqueadoEm)}</span></>}
+              {proc.acessoBloqueadoEm && <><span>·</span><span className="text-amber-600 font-medium inline-flex items-center gap-1"><Lock size={12}/> acesso bloqueado em {fmtBR(proc.acessoBloqueadoEm)}</span></>}
             </div>
             {proc.motivoIniciacao && <div className="text-xs text-gray-600 dark:text-gray-400 mt-1 italic">{proc.motivoIniciacao}</div>}
           </div>
@@ -524,7 +528,7 @@ function DetalheDrawer({ proc, autor, onClose }: {
               <p className="text-amber-800 dark:text-amber-300 mb-2">
                 Vai bloquear automaticamente quando marcar "Informar demissão pro empregado". Ou bloqueia manualmente agora:
               </p>
-              <Button size="sm" onClick={bloquearManual}>🔒 Bloquear acesso agora</Button>
+              <Button size="sm" onClick={bloquearManual}><span className="inline-flex items-center gap-1"><Lock size={13}/> Bloquear acesso agora</span></Button>
             </div>
           )}
 
@@ -564,20 +568,20 @@ function DetalheDrawer({ proc, autor, onClose }: {
                               {s.nome}
                             </span>
                             <span className="ml-2 inline-flex items-center gap-1">
-                              {s.ehBloqueioAcesso && <span className="text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">🔒 bloqueia ao marcar</span>}
-                              {s.ehDecisaoRealizar && <span className="text-[9px] px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">⚖ decisão</span>}
+                              {s.ehBloqueioAcesso && <span className="text-[9px] px-1 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 inline-flex items-center gap-0.5"><Lock size={9}/> bloqueia ao marcar</span>}
+                              {s.ehDecisaoRealizar && <span className="text-[9px] px-1 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 inline-flex items-center gap-0.5"><Scale size={9}/> decisão</span>}
                               {s.ehInativacaoFinal && <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">✓ finaliza</span>}
                             </span>
-                            {s.link && <a href={s.link} target="_blank" rel="noopener noreferrer" className="block text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline mt-0.5">📎 anexo</a>}
-                            {s.dataInformada && <span className="block text-[11px] text-gray-500">📅 {fmtBR(s.dataInformada)}</span>}
+                            {s.link && <a href={s.link} target="_blank" rel="noopener noreferrer" className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline mt-0.5 inline-flex items-center gap-1"><Paperclip size={11}/> anexo</a>}
+                            {s.dataInformada && <span className="block text-[11px] text-gray-500 inline-flex items-center gap-1"><CalendarDays size={11}/> {fmtBR(s.dataInformada)}</span>}
                             {s.atalho && !s.feita && (
                               <button
                                 onClick={(e) => { e.preventDefault(); abrirAtalho(s); }}
                                 className="mt-1 text-[10px] px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100"
                               >
-                                {s.atalho.tipo === "contato_contabilidade" && "📧 Abrir contato Contabilidade"}
-                                {s.atalho.tipo === "contato_clinica" && "🩺 Abrir contato Clínica"}
-                                {s.atalho.tipo === "whatsapp_empregado" && "💬 WhatsApp pro empregado"}
+                                {s.atalho.tipo === "contato_contabilidade" && <span className="inline-flex items-center gap-1"><Mail size={11}/> Abrir contato Contabilidade</span>}
+                                {s.atalho.tipo === "contato_clinica" && <span className="inline-flex items-center gap-1"><Stethoscope size={11}/> Abrir contato Clínica</span>}
+                                {s.atalho.tipo === "whatsapp_empregado" && <span className="inline-flex items-center gap-1"><MessageSquare size={11}/> WhatsApp pro empregado</span>}
                               </button>
                             )}
                           </span>

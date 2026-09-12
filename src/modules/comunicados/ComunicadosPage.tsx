@@ -11,12 +11,14 @@ import { PageContainer } from "../../core/ui/PageContainer";
 import { Input } from "../../core/ui/Input";
 import { todayYmd } from "../../core/utils/date";
 import type { Comunicado, ComunicadoLeitura } from "../../core/types";
+import type { LucideIcon } from "lucide-react";
+import { Info, TriangleAlert, Siren, Lock, Megaphone, Trash2, CalendarDays, Eye } from "lucide-react";
 import { ComunicadoModal } from "./ComunicadoModal";
 
-const PRIORIDADE_INFO = {
-  info:    { label: "Info",    icon: "ℹ️", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
-  aviso:   { label: "Aviso",   icon: "⚠️", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
-  urgente: { label: "Urgente", icon: "🚨", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" },
+const PRIORIDADE_INFO: Record<string, { label: string; icon: LucideIcon; cls: string }> = {
+  info:    { label: "Info",    icon: Info,          cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
+  aviso:   { label: "Aviso",   icon: TriangleAlert, cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
+  urgente: { label: "Urgente", icon: Siren,         cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" },
 };
 
 export function ComunicadosPage() {
@@ -95,7 +97,7 @@ export function ComunicadosPage() {
   if (!podeVer) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3"><Lock size={36} className="text-gray-400"/></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
@@ -137,7 +139,7 @@ export function ComunicadosPage() {
         <div className="text-sm text-gray-500">Carregando...</div>
       ) : filtered.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">📣</div>
+          <div className="flex justify-center mb-3"><Megaphone size={36} className="text-gray-400"/></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">
             {search ? "Nenhum comunicado encontrado" : "Nenhum comunicado cadastrado"}
           </p>
@@ -163,8 +165,8 @@ export function ComunicadosPage() {
               >
                 <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${prio.cls}`}>
-                      {prio.icon} {prio.label}
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded inline-flex items-center gap-1 ${prio.cls}`}>
+                      <prio.icon size={11}/> {prio.label}
                     </span>
                     <h3 className="font-bold text-gray-900 dark:text-gray-100">{c.titulo}</h3>
                     {inativo && <span className="text-[10px] text-gray-500 uppercase">Inativo</span>}
@@ -173,19 +175,19 @@ export function ComunicadosPage() {
                   {(podeEditar || podeDeletar) && (
                     <div className="flex gap-1">
                       {podeEditar && <Button variant="secondary" size="sm" onClick={() => setEditing(c)}>Editar</Button>}
-                      {podeDeletar && <Button variant="danger" size="sm" onClick={() => excluir(c)}>🗑</Button>}
+                      {podeDeletar && <Button variant="danger" size="sm" onClick={() => excluir(c)}><Trash2 size={14}/></Button>}
                     </div>
                   )}
                 </div>
                 <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap mb-2">{c.corpo}</p>
                 <div className="flex items-center justify-between gap-3 flex-wrap text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-100 dark:border-gray-800">
                   <div>
-                    {c.criadoEm && <>📅 {new Date(c.criadoEm).toLocaleDateString("pt-BR")}</>}
+                    {c.criadoEm && <><CalendarDays size={12} className="inline align-[-2px] mr-1"/> {new Date(c.criadoEm).toLocaleDateString("pt-BR")}</>}
                     {c.validoAte && <> · válido até {new Date(c.validoAte + "T12:00:00").toLocaleDateString("pt-BR")}</>}
                     <> · {destinatariosLabel(c)}</>
                   </div>
-                  <div>
-                    👁 {leituras} leitura{leituras !== 1 ? "s" : ""}
+                  <div className="inline-flex items-center gap-1">
+                    <Eye size={13}/> {leituras} leitura{leituras !== 1 ? "s" : ""}
                   </div>
                 </div>
               </div>

@@ -8,6 +8,7 @@ import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { logAudit } from "../../core/audit/versionedChange";
 import { AREAS } from "../../core/types";
+import { Users, Tag, Target } from "lucide-react";
 import type { Area, Cargo, Comunicado, ComunicadoDestinatarios, ComunicadoPrioridade, Empregado } from "../../core/types";
 
 type Props = {
@@ -189,9 +190,9 @@ export function ComunicadoModal({ comunicado, restaurantId, onClose }: Props) {
             Destinatários
           </label>
           <div className="grid grid-cols-3 gap-2 mb-2">
-            <DestBtn ativo={tipoDest === "todos"} onClick={() => setTipoDest("todos")}>👥 Todos</DestBtn>
-            <DestBtn ativo={tipoDest === "areas"} onClick={() => setTipoDest("areas")}>🏷️ Por área</DestBtn>
-            <DestBtn ativo={tipoDest === "empregados"} onClick={() => setTipoDest("empregados")}>🎯 Específicos</DestBtn>
+            <DestBtn ativo={tipoDest === "todos"} onClick={() => setTipoDest("todos")}><span className="inline-flex items-center gap-1"><Users size={13}/> Todos</span></DestBtn>
+            <DestBtn ativo={tipoDest === "areas"} onClick={() => setTipoDest("areas")}><span className="inline-flex items-center gap-1"><Tag size={13}/> Por área</span></DestBtn>
+            <DestBtn ativo={tipoDest === "empregados"} onClick={() => setTipoDest("empregados")}><span className="inline-flex items-center gap-1"><Target size={13}/> Específicos</span></DestBtn>
           </div>
 
           {tipoDest === "areas" && (

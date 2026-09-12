@@ -7,7 +7,8 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfigurar, canVer } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import { EVENTO_TRILHA_ICON, EVENTO_TRILHA_LABEL } from "../../core/types";
+import { EVENTO_TRILHA_ICON, EVENTO_TRILHA_LABEL, EVENTO_TRILHA_LUCIDE } from "../../core/types";
+import { Lock, Target, Bot, TriangleAlert, User, CalendarDays, Paperclip } from "lucide-react";
 import type { Cargo, Empregado, EventoTrilha, EventoTrilhaTipo } from "../../core/types";
 import { EventoTrilhaModal } from "./EventoTrilhaModal";
 import { anularEvento, registrarVisualizacao } from "./repository";
@@ -138,7 +139,7 @@ export function TrilhaPage() {
   if (!podeVer) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3"><Lock size={36} className="text-gray-400"/></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
@@ -154,7 +155,7 @@ export function TrilhaPage() {
     <PageContainer>
       {/* Aviso permanente: dados sensíveis (LGPD) */}
       <div className="mb-4 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2">
-        <span className="text-base leading-none">🔒</span>
+        <Lock size={16} className="shrink-0 mt-0.5"/>
         <div>
           <strong>Dados sensíveis — uso restrito.</strong> A trilha registra histórico completo do empregado (admissões, demissões, advertências, exames, ferias, ponto e remuneração). Visualizações são auditadas (LGPD). Eventos não podem ser deletados — apenas anulados com motivo.
         </div>
@@ -219,7 +220,7 @@ export function TrilhaPage() {
                     : "bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-200"
                 }`}
               >
-                {EVENTO_TRILHA_ICON[tipo as EventoTrilhaTipo]} {EVENTO_TRILHA_LABEL[tipo as EventoTrilhaTipo]} ({n})
+                {(() => { const Ic = EVENTO_TRILHA_LUCIDE[tipo as EventoTrilhaTipo]; return <Ic size={13} className="inline align-[-2px] mr-1"/>; })()} {EVENTO_TRILHA_LABEL[tipo as EventoTrilhaTipo]} ({n})
               </button>
             ))}
         </div>
@@ -229,7 +230,7 @@ export function TrilhaPage() {
         <div className="text-sm text-gray-500">Carregando...</div>
       ) : filtered.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">🎯</div>
+          <div className="flex justify-center mb-3"><Target size={36} className="text-gray-400"/></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">
             {search || filtroEmp || filtroTipo !== "todos"
               ? "Nenhum evento bate nos filtros"
@@ -258,7 +259,7 @@ export function TrilhaPage() {
               >
                 <div className="flex items-start justify-between gap-3 flex-wrap">
                   <div className="flex items-start gap-3 flex-1">
-                    <span className={`text-2xl ${anulado ? "grayscale" : ""}`}>{EVENTO_TRILHA_ICON[e.tipo]}</span>
+                    {(() => { const Ic = EVENTO_TRILHA_LUCIDE[e.tipo]; return <Ic size={24} className={anulado ? "text-gray-400 mt-0.5" : "text-gray-700 dark:text-gray-300 mt-0.5"}/>; })()}
                     <div className="flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
                         <h3 className={`font-bold ${anulado ? "line-through text-gray-500 dark:text-gray-500" : "text-gray-900 dark:text-gray-100"}`}>{e.titulo}</h3>
@@ -266,20 +267,20 @@ export function TrilhaPage() {
                           {EVENTO_TRILHA_LABEL[e.tipo]}
                         </span>
                         {e.fonte === "auto" && (
-                          <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
-                            🤖 Auto
+                          <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 inline-flex items-center gap-1">
+                            <Bot size={11}/> Auto
                           </span>
                         )}
                         {anulado && (
-                          <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
-                            ⚠ Anulado
+                          <span className="text-[10px] uppercase tracking-wider font-bold px-2 py-0.5 rounded bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 inline-flex items-center gap-1">
+                            <TriangleAlert size={11}/> Anulado
                           </span>
                         )}
                       </div>
                       <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
-                        👤 {emp?.nome || e.empregadoNomeSnapshot || "(empregado removido)"}
+                        <User size={12} className="inline align-[-2px] mr-1"/> {emp?.nome || e.empregadoNomeSnapshot || "(empregado removido)"}
                         {cargoAtual && <> · {cargoAtual.nome} ({cargoAtual.area})</>}
-                        <> · 📅 {new Date(e.data + "T12:00:00").toLocaleDateString("pt-BR")}</>
+                        <> · <CalendarDays size={12} className="inline align-[-2px]"/> {new Date(e.data + "T12:00:00").toLocaleDateString("pt-BR")}</>
                       </div>
                       {e.descricao && (
                         <p className={`text-sm mt-1 whitespace-pre-wrap ${anulado ? "text-gray-500 dark:text-gray-500" : "text-gray-700 dark:text-gray-300"}`}>{e.descricao}</p>
@@ -291,7 +292,7 @@ export function TrilhaPage() {
                           rel="noreferrer"
                           className="inline-flex items-center gap-1 text-xs text-indigo-600 dark:text-indigo-400 hover:underline mt-1"
                         >
-                          📎 {e.anexoNome || "Anexo"}
+                          <Paperclip size={13}/> {e.anexoNome || "Anexo"}
                         </a>
                       )}
                       {anulado && (
