@@ -4,6 +4,7 @@
 // Também permite REGISTRAR manualmente um prato removido antes da lixeira
 // existir (ex.: remoções feitas antes desta funcionalidade).
 import { useEffect, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -104,7 +105,7 @@ export function CardapioArquivados({ rid, podeEditar, meId, cardapios }: {
     <div className="space-y-4">
       <div className="flex items-start justify-between gap-2 flex-wrap">
         <div>
-          <h3 className="font-bold text-gray-900 dark:text-gray-100">🗑️ Pratos arquivados</h3>
+          <h3 className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Trash2 size={16} /> Pratos arquivados</h3>
           <p className="text-[12px] text-gray-500 dark:text-gray-400 max-w-xl">Pratos removidos do cardápio ficam aqui e podem voltar na posição original, com preço e descrição que tinham. Remoções feitas pelo agente entram sozinhas.</p>
         </div>
         {podeEditar && (

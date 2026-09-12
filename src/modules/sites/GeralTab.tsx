@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { TriangleAlert, Search, Monitor, Smartphone } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
@@ -102,14 +103,14 @@ export function GeralTab({
   if (erro === "permission_denied") {
     return (
       <div className="rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-4 text-sm">
-        <p className="font-semibold text-rose-900 dark:text-rose-200 mb-1">⚠ Regras Firestore não publicadas</p>
+        <p className="font-semibold text-rose-900 dark:text-rose-200 mb-1 inline-flex items-center gap-1.5"><TriangleAlert size={14} /> Regras Firestore não publicadas</p>
         <code className="block mt-2 text-[12px] bg-white dark:bg-gray-900 px-3 py-2 rounded border">
           firebase deploy --only firestore:rules --project gestaocentral
         </code>
       </div>
     );
   }
-  if (erro) return <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">⚠ {erro}</div>;
+  if (erro) return <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800 flex items-center gap-1.5"><TriangleAlert size={14} className="shrink-0" /> {erro}</div>;
 
   function atualizar<K extends keyof SiteConfig>(k: K, v: SiteConfig[K]) {
     setForm(f => f ? { ...f, [k]: v } : f);
@@ -297,7 +298,7 @@ export function GeralTab({
               inputMode="numeric"
             />
             {buscandoCep && (
-              <p className="text-[11px] text-indigo-600 mt-1">🔎 buscando endereço...</p>
+              <p className="text-[11px] text-indigo-600 mt-1 inline-flex items-center gap-1"><Search size={11} /> buscando endereço...</p>
             )}
             {cepNaoEncontrado && !buscandoCep && (
               <p className="text-[11px] text-amber-600 mt-1">
@@ -1057,8 +1058,8 @@ function EscalasTextoControl({ tema, onChange, disabled }: {
       {/* Cabeçalho das 2 colunas — só renderiza em viewports onde o grid
           fica lado a lado (sm+). Em mobile cada slider já tem label "Desktop"/"Mobile". */}
       <div className="hidden sm:grid grid-cols-[1fr_1fr] gap-3 pl-1 pt-1">
-        <div className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold">🖥 Desktop</div>
-        <div className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold">📱 Mobile</div>
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold inline-flex items-center gap-1"><Monitor size={11} /> Desktop</div>
+        <div className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold inline-flex items-center gap-1"><Smartphone size={11} /> Mobile</div>
       </div>
       <div className="space-y-3">
         {categorias.map(cat => (
@@ -1072,13 +1073,13 @@ function EscalasTextoControl({ tema, onChange, disabled }: {
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
               <SliderEscalaCompact
-                deviceLabel="🖥 Desktop"
+                deviceLabel={<span className="inline-flex items-center gap-1"><Monitor size={11} /> Desktop</span>}
                 value={cat.dskVal}
                 onChange={(v) => onChange(cat.dskCampo, v)}
                 disabled={disabled}
               />
               <SliderEscalaCompact
-                deviceLabel="📱 Mobile"
+                deviceLabel={<span className="inline-flex items-center gap-1"><Smartphone size={11} /> Mobile</span>}
                 value={cat.mobVal}
                 onChange={(v) => onChange(cat.mobCampo, v)}
                 disabled={disabled}
@@ -1096,7 +1097,7 @@ function EscalasTextoControl({ tema, onChange, disabled }: {
 // quem renderiza é a categoria pai (titulo+descricao) + cabeçalho da
 // coluna (Desktop/Mobile). Aqui só mostra device + slider + %.
 function SliderEscalaCompact({ deviceLabel, value, onChange, disabled }: {
-  deviceLabel: string;
+  deviceLabel: ReactNode;
   value: number;
   onChange: (v: number) => void;
   disabled?: boolean;

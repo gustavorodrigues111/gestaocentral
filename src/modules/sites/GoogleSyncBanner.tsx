@@ -13,6 +13,7 @@
 // dia escalar, dá pra trocar pelo API real sem quebrar essa UX —
 // confirmação automática via PATCH bem-sucedido.
 
+import { TriangleAlert, Link as LinkIcon } from "lucide-react";
 import type { ExcecaoHorarioSite } from "../../core/types";
 
 type Props = {
@@ -49,7 +50,7 @@ export function GoogleSyncBanner({ horarioRegularOk, excecoes, googleBusinessUrl
       role="alert"
     >
       <div className="flex items-start gap-3">
-        <div className="text-2xl shrink-0" aria-hidden>⚠️</div>
+        <div className="shrink-0 text-amber-500" aria-hidden><TriangleAlert size={24} /></div>
         <div className="flex-1 min-w-0">
           <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm sm:text-base">
             Atualize também no Google Business
@@ -77,7 +78,7 @@ export function GoogleSyncBanner({ horarioRegularOk, excecoes, googleBusinessUrl
               rel="noreferrer"
               className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-medium rounded-md bg-amber-600 hover:bg-amber-700 text-white transition-colors"
             >
-              🔗 Abrir Google Business
+              <span className="inline-flex items-center gap-1.5"><LinkIcon size={14} /> Abrir Google Business</span>
             </a>
             <div className="inline-flex items-center text-[11px] sm:text-xs text-amber-700 dark:text-amber-400 px-2">
               Marque a caixinha em cada item após atualizar →

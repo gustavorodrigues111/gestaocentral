@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { TriangleAlert, FileText, Pencil, ClipboardList, Download, Link as LinkIcon } from "lucide-react";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { storage } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -28,14 +29,14 @@ export function CardapioTab({ rid, nomeRestaurante, podeEditar }: Props) {
   if (erro === "permission_denied") {
     return (
       <div className="rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-4 text-sm">
-        <p className="font-semibold text-rose-900 dark:text-rose-200 mb-1">⚠ Regras Firestore não publicadas</p>
+        <p className="font-semibold text-rose-900 dark:text-rose-200 mb-1 inline-flex items-center gap-1.5"><TriangleAlert size={14} /> Regras Firestore não publicadas</p>
         <code className="block mt-2 text-[12px] bg-white dark:bg-gray-900 px-3 py-2 rounded border">
           firebase deploy --only firestore:rules --project gestaocentral
         </code>
       </div>
     );
   }
-  if (erro) return <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">⚠ {erro}</div>;
+  if (erro) return <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800 flex items-center gap-1.5"><TriangleAlert size={14} className="shrink-0" /> {erro}</div>;
 
   const modo = config.cardapioModo === "editor" ? "editor" : "pdf";
   const setModo = (m: "pdf" | "editor") => { if (me) void save({ cardapioModo: m }, me.id); };
@@ -46,11 +47,11 @@ export function CardapioTab({ rid, nomeRestaurante, podeEditar }: Props) {
       <div className="flex gap-2">
         <button type="button" onClick={() => setModo("pdf")} disabled={!podeEditar}
           className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${modo === "pdf" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"} disabled:opacity-60`}>
-          📄 Subir cardápio em PDF
+          <span className="inline-flex items-center gap-1.5"><FileText size={14} /> Subir cardápio em PDF</span>
         </button>
         <button type="button" onClick={() => setModo("editor")} disabled={!podeEditar}
           className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${modo === "editor" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"} disabled:opacity-60`}>
-          ✏️ Editor de cardápio
+          <span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editor de cardápio</span>
         </button>
       </div>
 
@@ -70,7 +71,7 @@ export function CardapioPdfPanel({ rid, config, podeEditar, meId, onSave }: {
   return (
     <div className="space-y-4">
       <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 p-3 text-sm text-indigo-900 dark:text-indigo-200">
-        <p className="font-semibold mb-1">📋 Cardápios em PDF</p>
+        <p className="font-semibold mb-1 inline-flex items-center gap-1.5"><ClipboardList size={14} /> Cardápios em PDF</p>
         <p className="text-[13px] opacity-90">
           Suba 2 versões — português e inglês. <strong>O upload salva automaticamente</strong> —
           não precisa clicar em "salvar". O site público atualiza na hora. Máx {TAMANHO_MAX_MB}MB cada.
@@ -151,10 +152,10 @@ function AtalhosCardapio({ config, podeEditar, onSave }: {
         {base && (
           <button type="button" disabled={gerando === idioma} onClick={() => void gerarQr(idioma, path)}
             className="text-[12px] px-2 py-0.5 rounded border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 disabled:opacity-50">
-            {gerando === idioma ? "gerando…" : "⬇ QR"}
+            {gerando === idioma ? "gerando…" : <span className="inline-flex items-center gap-1"><Download size={12} /> QR</span>}
           </button>
         )}
-        {!temPdf && <span className="text-[11px] text-amber-600 dark:text-amber-400">⚠ sem PDF nesse idioma</span>}
+        {!temPdf && <span className="text-[11px] text-amber-600 dark:text-amber-400 inline-flex items-center gap-1"><TriangleAlert size={11} /> sem PDF nesse idioma</span>}
       </div>
     );
   };
@@ -162,7 +163,7 @@ function AtalhosCardapio({ config, podeEditar, onSave }: {
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-2">
       <div>
-        <h3 className="font-bold text-gray-900 dark:text-gray-100">🔗 Links rápidos do cardápio</h3>
+        <h3 className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><LinkIcon size={16} /> Links rápidos do cardápio</h3>
         <p className="text-[12px] text-gray-500 dark:text-gray-400">
           Atalhos no domínio do site que abrem o PDF direto — ótimos pra QR code na mesa. A palavra é personalizável.
         </p>
@@ -171,7 +172,7 @@ function AtalhosCardapio({ config, podeEditar, onSave }: {
       <Linha idioma="en" bandeira="🇺🇸" label="English" slug={slugEn} setSlug={setSlugEn} temPdf={!!config.cardapioPdfEnUrl} />
       {!host && (
         <p className="text-[11px] text-amber-600 dark:text-amber-400 pt-1">
-          ⚠ Este restaurante ainda não tem domínio próprio ativo — os atalhos passam a funcionar quando o domínio for plugado.
+          <TriangleAlert size={12} className="inline align-[-2px] mr-1" />Este restaurante ainda não tem domínio próprio ativo — os atalhos passam a funcionar quando o domínio for plugado.
         </p>
       )}
     </div>
@@ -331,7 +332,7 @@ function CardapioCard({
         <div className="rounded-lg bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 p-2 text-xs space-y-1">
           <div className="flex items-center gap-2">
             <a href={url} target="_blank" rel="noreferrer" className="text-indigo-600 hover:underline">
-              📄 abrir PDF
+              <span className="inline-flex items-center gap-1"><FileText size={13} /> abrir PDF</span>
             </a>
           </div>
           {atualizadoEm && (
@@ -374,7 +375,7 @@ function CardapioCard({
               ✓ Salvo automaticamente — site público atualizado.
             </p>
           )}
-          {erro && <p className="text-xs text-rose-600">⚠ {erro}</p>}
+          {erro && <p className="text-xs text-rose-600 inline-flex items-center gap-1"><TriangleAlert size={12} /> {erro}</p>}
           {url && !uploading && (
             <button onClick={remover} className="text-xs text-rose-600 hover:underline">
               apagar este PDF

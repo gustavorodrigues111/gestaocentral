@@ -8,6 +8,7 @@
 // caixa por restaurante e filtrar por tag. Metadados em whatsappContatos/{waId}
 // e catálogo de tags em whatsappTags.
 import { useEffect, useMemo, useRef, useState, type ReactNode, type ChangeEvent, type TouchEvent as RTouchEvent } from "react";
+import { Plug, RefreshCw, Smartphone, Bell, Users, Search, CheckSquare, Circle, MessageSquare, Hourglass, Ban, User, Hand, Pencil, Send, Shuffle, Plus, Wrench, Smile, Mic, Zap, Image as ImageIcon, FileText, TriangleAlert, Lock, Tag, SlidersHorizontal, ClipboardList, Bot, Sparkles, Stethoscope, Timer, Power, RotateCcw, Trash2, Check, Save, type LucideIcon } from "lucide-react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, deleteField, doc, limit, onSnapshot, orderBy, query, setDoc, updateDoc, where, writeBatch, type Query, type QuerySnapshot, type DocumentData } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -895,7 +896,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
     try { mr.stop(); } catch { /* ignore */ }
   }
 
-  if (!podeVer && !embutido) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-700 dark:text-gray-300 font-medium">Sem acesso à caixa de entrada do WhatsApp.</p></div>;
+  if (!podeVer && !embutido) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div><p className="text-gray-700 dark:text-gray-300 font-medium">Sem acesso à caixa de entrada do WhatsApp.</p></div>;
 
   // ── @ marcar em grupo ──────────────────────────────────────────────────
   // Participantes do grupo: números do contato (findGroupInfos) + nomes que
@@ -1305,11 +1306,11 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             {cTags.map(t => <span key={t.id} className="inline-block w-2 h-2 rounded-full shrink-0" style={{ background: t.cor || "#6366f1" }} title={t.nome} />)}
           </div>
           <div className={`text-xs truncate ${naoLida ? "text-gray-700 dark:text-gray-200 font-medium" : "text-gray-500"}`}>{c.ultima.direcao === "out" ? "Você: " : ""}{textoMostra(c.ultima)}</div>
-          {!numeroLivre && atribuido && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 truncate">🙋 {atribuido}</div>}
+          {!numeroLivre && atribuido && <div className="text-[10px] text-indigo-500 dark:text-indigo-300 truncate inline-flex items-center gap-1"><Hand size={10} /> {atribuido}</div>}
         </div>
         <div className="flex flex-col items-end gap-1 shrink-0">
           <span className="text-[10px] text-gray-400">{hhmm(c.ultima.timestamp)}</span>
-          {espera && <span className={`text-[10px] font-semibold ${espera.cor}`}>⏱ {espera.txt}</span>}
+          {espera && <span className={`text-[10px] font-semibold ${espera.cor} inline-flex items-center gap-0.5`}><Timer size={10} /> {espera.txt}</span>}
           {naoLida && <span className="min-w-[18px] h-[18px] px-1 inline-flex items-center justify-center text-[10px] font-bold rounded-full bg-rose-500 text-white">{c.naoLidas > 0 ? c.naoLidas : ""}</span>}
         </div>
       </ConversaItem>
@@ -1346,7 +1347,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       {!sel && <div className="px-4 pt-3">
       {desconectado && (
         <div className="rounded-xl border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 p-4 mb-3 flex items-start gap-3">
-          <span className="text-xl leading-none">🔌</span>
+          <Plug size={20} className="text-rose-500" />
           <div className="flex-1 min-w-0">
             <p className="text-sm font-semibold text-rose-700 dark:text-rose-300">Número desconectado{numeroSelObj ? ` — ${numeroSelObj.nome}` : ""}</p>
             <p className="text-xs text-rose-600/90 dark:text-rose-300/80 mt-0.5">
@@ -1356,7 +1357,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             </p>
             {isMaster && (
               <button type="button" onClick={() => setQrRecon({ instancia: numeroSel!, nome: numeroSelObj?.nome || numeroSel! })}
-                className="mt-2 text-xs font-semibold px-3 py-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700">🔄 Reconectar agora</button>
+                className="mt-2 text-xs font-semibold px-3 py-1.5 rounded-lg bg-rose-600 text-white hover:bg-rose-700"><span className="inline-flex items-center gap-1.5"><RefreshCw size={13} /> Reconectar agora</span></button>
             )}
           </div>
         </div>
@@ -1368,7 +1369,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             {numerosVisiveis.map(n => (
               <button key={n.id} type="button" onClick={() => setNumeroSel(n.id)}
                 className={`text-xs font-semibold px-3 py-1.5 rounded-lg border transition-colors ${numeroSel === n.id ? "border-emerald-500 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
-                📱 {n.nome}
+                <span className="inline-flex items-center gap-1.5"><Smartphone size={13} /> {n.nome}</span>
               </button>
             ))}
             <span className={`text-[11px] font-semibold inline-flex items-center gap-1 px-1 ${sincronizando ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}
@@ -1396,11 +1397,11 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                   : notifPerm === "denied"
                   ? "text-[11px] px-2 py-1 rounded-lg text-gray-400 hover:text-gray-600 dark:text-gray-500 dark:hover:text-gray-300"
                   : "text-xs font-semibold px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20"}>
-                🔔 {notifPerm === "granted" ? "Notificações ativas" : notifPerm === "denied" ? "Notificações bloqueadas" : "Ativar notificações"}
+                <span className="inline-flex items-center gap-1.5"><Bell size={14} /> {notifPerm === "granted" ? "Notificações ativas" : notifPerm === "denied" ? "Notificações bloqueadas" : "Ativar notificações"}</span>
               </button>
             )}
             {podeResponder && numeroSel && <div className="ml-auto flex items-center gap-1.5 shrink-0">
-              <button type="button" onClick={() => setNovoGrupo(true)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20">👥 Novo grupo</button>
+              <button type="button" onClick={() => setNovoGrupo(true)} className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"><span className="inline-flex items-center gap-1.5"><Users size={14} /> Novo grupo</span></button>
               <button type="button" onClick={() => setNovaConversa(true)} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">＋ Nova conversa</button>
             </div>}
           </div>
@@ -1442,7 +1443,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
 
           {/* Busca por contato / conversa (número aberto) */}
           <div className="relative mb-2.5">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none text-sm">🔍</span>
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><Search size={14} /></span>
             <input
               value={busca}
               onChange={e => setBusca(e.target.value)}
@@ -1495,7 +1496,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             // 2 colunas: esquerda = De outros (atribuídas a outra pessoa), direita = Finalizadas.
             <div className="grid grid-cols-1 md:grid-cols-2 md:gap-px md:bg-gray-200 md:dark:bg-gray-800 border-t border-gray-200 dark:border-gray-800">
               <div className="bg-white dark:bg-gray-950">
-                <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-100 dark:border-indigo-900/40">👥 De outros ({deOutros.length})</div>
+                <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 border-b border-indigo-100 dark:border-indigo-900/40"><span className="inline-flex items-center gap-1.5"><Users size={12} /> De outros ({deOutros.length})</span></div>
                 {deOutros.length === 0 ? (
                   <div className="px-4 py-6 text-center text-xs text-gray-400">Ninguém atendendo além de você.</div>
                 ) : (
@@ -1503,7 +1504,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 )}
               </div>
               <div className="bg-white dark:bg-gray-950">
-                <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700">✅ Finalizadas ({finalizadasList.length})</div>
+                <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-gray-600 dark:text-gray-300 bg-gray-100 dark:bg-gray-800/40 border-b border-gray-200 dark:border-gray-700"><span className="inline-flex items-center gap-1.5"><CheckSquare size={12} /> Finalizadas ({finalizadasList.length})</span></div>
                 {finalizadasList.length === 0 ? (
                   <div className="px-4 py-6 text-center text-xs text-gray-400">Nenhuma conversa finalizada.</div>
                 ) : (
@@ -1519,7 +1520,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 md:gap-px md:bg-gray-200 md:dark:bg-gray-800 border-t border-gray-200 dark:border-gray-800">
               <div className="bg-white dark:bg-gray-950">
-                <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-900/40">🟡 Sem responsável ainda ({semRespAinda.length})</div>
+                <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-100 dark:border-amber-900/40"><span className="inline-flex items-center gap-1.5"><Circle size={10} className="fill-amber-500 text-amber-500" /> Sem responsável ainda ({semRespAinda.length})</span></div>
                 {semRespAinda.length === 0 ? (
                   <div className="px-4 py-6 text-center text-xs text-gray-400">Ninguém esperando 🎉</div>
                 ) : (
@@ -1530,7 +1531,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 )}
               </div>
               <div className="bg-white dark:bg-gray-950">
-                <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-900/20 border-b border-sky-100 dark:border-sky-900/40">🔵 Minhas ({minhas.length})</div>
+                <div className="px-4 py-2 text-[11px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-900/20 border-b border-sky-100 dark:border-sky-900/40"><span className="inline-flex items-center gap-1.5"><Circle size={10} className="fill-sky-500 text-sky-500" /> Minhas ({minhas.length})</span></div>
                 {minhas.length === 0 ? (
                   <div className="px-4 py-6 text-center text-xs text-gray-400">Você não tem conversas atribuídas.</div>
                 ) : (
@@ -1551,20 +1552,20 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
               <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{nomeSel}</div>
               <div className="text-[11px] text-gray-400 truncate">
                 {ehGrupoWaId(sel || "") ? (
-                  <>👥 Grupo{(contatoSel?.participantes?.length || 0) > 0 ? ` · ${contatoSel!.participantes!.length} participantes` : ""} <InfoBadge texto="Só conseguimos ver quem participa do grupo depois que a pessoa envia uma mensagem. A lista pode estar incompleta." /></>
+                  <><span className="inline-flex items-center gap-1"><Users size={12} /> Grupo</span>{(contatoSel?.participantes?.length || 0) > 0 ? ` · ${contatoSel!.participantes!.length} participantes` : ""} <InfoBadge texto="Só conseguimos ver quem participa do grupo depois que a pessoa envia uma mensagem. A lista pode estar incompleta." /></>
                 ) : (
                   <>{foneBonito(contatoSel?.telefoneManual || sel)}{contatoSel?.telefoneManual && <span className="text-gray-400"> ✎</span>}{!ehTelefoneBR(contatoSel?.telefoneManual || sel || "") && !clienteSel && !pessoaSel && !contatoSel?.nomeManual && <> <InfoBadge texto="Por privacidade do WhatsApp, ainda não temos o número nem o nome desta pessoa. Isso aparece assim que ela te enviar uma mensagem." /></>}</>
                 )}
-                {clienteSel && <span className="text-emerald-600 dark:text-emerald-300"> · 🧑 {clienteSel.nome}</span>}
-                {pessoaSel && <span className="text-indigo-600 dark:text-indigo-300"> · 👤 {pessoaSel.nome}</span>}
-                {!numeroLivre && contatoSel?.atribuidoNome && <span> · 🙋 {contatoSel.atribuidoNome}</span>}
+                {clienteSel && <span className="text-emerald-600 dark:text-emerald-300"> · <User size={12} className="inline align-[-2px]" /> {clienteSel.nome}</span>}
+                {pessoaSel && <span className="text-indigo-600 dark:text-indigo-300"> · <User size={12} className="inline align-[-2px]" /> {pessoaSel.nome}</span>}
+                {!numeroLivre && contatoSel?.atribuidoNome && <span> · <Hand size={12} className="inline align-[-2px]" /> {contatoSel.atribuidoNome}</span>}
               </div>
             </div>
-            {podeResponder && !ehGrupoWaId(sel || "") && <button type="button" onClick={() => setEditarNum(true)} title="Editar contato (nome/número)" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">✏️</button>}
+            {podeResponder && !ehGrupoWaId(sel || "") && <button type="button" onClick={() => setEditarNum(true)} title="Editar contato (nome/número)" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0"><Pencil size={16} /></button>}
             {podeResponder && !numeroLivre && <button type="button" onClick={() => { setTransferWaId(null); setTransferir(true); }} title={contatoSel?.atribuidoA ? "Transferir" : "Atribuir"} className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">↪</button>}
-            {podeResponder && !ehGrupoWaId(sel || "") && <button type="button" onClick={() => setPassarCtx(true)} title="Passar contexto pra alguém externo" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">📤</button>}
-            {podeResponder && !ehGrupoWaId(sel || "") && numerosDestino.length > 0 && <button type="button" onClick={() => setEncaminhar(true)} title="Encaminhar para outro número/setor" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">🔀</button>}
-            <button type="button" onClick={() => marcarNaoLida(sel)} title="Marcar como não lida" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">🔵</button>
+            {podeResponder && !ehGrupoWaId(sel || "") && <button type="button" onClick={() => setPassarCtx(true)} title="Passar contexto pra alguém externo" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0"><Send size={16} /></button>}
+            {podeResponder && !ehGrupoWaId(sel || "") && numerosDestino.length > 0 && <button type="button" onClick={() => setEncaminhar(true)} title="Encaminhar para outro número/setor" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0"><Shuffle size={16} /></button>}
+            <button type="button" onClick={() => marcarNaoLida(sel)} title="Marcar como não lida" className="w-9 h-9 rounded-full text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0"><Circle size={14} className="fill-sky-500 text-sky-500" /></button>
             {podeVincular && <button type="button" onClick={() => setDetalhes(v => !v)} title="Detalhes" className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${detalhes ? "text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30" : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>ⓘ</button>}
           </div>
 
@@ -1578,19 +1579,19 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
               return (
                 <div className={`flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 text-xs shrink-0 ${fin ? "bg-gray-100 dark:bg-gray-800/60" : ats.length ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-amber-50 dark:bg-amber-900/20"}`}>
                   <span className="truncate">
-                    {fin ? <span className="text-gray-600 dark:text-gray-300">✅ Finalizado <span className="text-gray-400">· reabre quando alguém escrever</span></span>
-                      : ats.length ? <span className="text-emerald-700 dark:text-emerald-300">👥 Atende: <b>{ats.join(", ")}</b></span>
-                      : <span className="text-amber-700 dark:text-amber-300">⏳ Sem atendente — defina quem atende esse grupo</span>}
+                    {fin ? <span className="text-gray-600 dark:text-gray-300 inline-flex items-center gap-1"><CheckSquare size={12} /> Finalizado <span className="text-gray-400">· reabre quando alguém escrever</span></span>
+                      : ats.length ? <span className="text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><Users size={12} /> Atende: <b>{ats.join(", ")}</b></span>
+                      : <span className="text-amber-700 dark:text-amber-300 inline-flex items-center gap-1"><Hourglass size={12} /> Sem atendente — defina quem atende esse grupo</span>}
                   </span>
                   {podeResponder && (
                     <div className="ml-auto shrink-0 flex items-center gap-1.5">
                       <button type="button" onClick={() => abrirTriagem(sel!)} className="px-2.5 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300">{ats.length ? "Editar atendentes" : "Definir atendentes"}</button>
                       {!fin
-                        ? <button type="button" onClick={() => void finalizarConversa(sel!)} className="px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300">✅ Finalizar</button>
-                        : <button type="button" onClick={() => void reabrirConversa(sel!)} className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">🔄 Reabrir</button>}
+                        ? <button type="button" onClick={() => void finalizarConversa(sel!)} className="px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300"><span className="inline-flex items-center gap-1"><CheckSquare size={12} /> Finalizar</span></button>
+                        : <button type="button" onClick={() => void reabrirConversa(sel!)} className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"><span className="inline-flex items-center gap-1"><RefreshCw size={12} /> Reabrir</span></button>}
                       {spamDe(sel || "")
                         ? <button type="button" onClick={() => void marcarSpam(sel!)} title="Tirar do spam" className="px-2.5 py-1 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300">↩ Não é spam</button>
-                        : <button type="button" onClick={() => void marcarGrupoSpam(sel!)} className="px-2.5 py-1 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">🚫 Spam</button>}
+                        : <button type="button" onClick={() => void marcarGrupoSpam(sel!)} className="px-2.5 py-1 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300"><span className="inline-flex items-center gap-1"><Ban size={12} /> Spam</span></button>}
                     </div>
                   )}
                 </div>
@@ -1603,11 +1604,11 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             if (numeroLivre && !finalizada) {
               return (
                 <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 text-xs shrink-0 bg-gray-50 dark:bg-gray-800/40">
-                  <span className="truncate text-gray-500 dark:text-gray-400">💬 Quem vê responde · sem responsável fixo</span>
+                  <span className="truncate text-gray-500 dark:text-gray-400 inline-flex items-center gap-1"><MessageSquare size={12} /> Quem vê responde · sem responsável fixo</span>
                   {podeResponder && (
                     <div className="ml-auto shrink-0 flex items-center gap-1.5">
-                      <button type="button" onClick={() => void finalizarConversa(sel)} className="px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300">✅ Finalizar</button>
-                      <button type="button" onClick={() => void marcarSpam(sel)} className={`px-2.5 py-1 rounded-lg border ${spamDe(sel) ? "border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300" : "border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300"}`}>{spamDe(sel) ? "↩ Não é spam" : "🚫 Spam"}</button>
+                      <button type="button" onClick={() => void finalizarConversa(sel)} className="px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300"><span className="inline-flex items-center gap-1"><CheckSquare size={12} /> Finalizar</span></button>
+                      <button type="button" onClick={() => void marcarSpam(sel)} className={`px-2.5 py-1 rounded-lg border ${spamDe(sel) ? "border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300" : "border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300"}`}>{spamDe(sel) ? "↩ Não é spam" : <span className="inline-flex items-center gap-1"><Ban size={12} /> Spam</span>}</button>
                     </div>
                   )}
                 </div>
@@ -1616,10 +1617,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             if (finalizada) {
               return (
                 <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 text-xs shrink-0 bg-gray-100 dark:bg-gray-800/60">
-                  <span className="truncate text-gray-600 dark:text-gray-300">✅ Atendimento finalizado <span className="text-gray-400">· reabre quando o cliente escrever</span></span>
+                  <span className="truncate text-gray-600 dark:text-gray-300 inline-flex items-center gap-1"><CheckSquare size={12} /> Atendimento finalizado <span className="text-gray-400">· reabre quando o cliente escrever</span></span>
                   {podeResponder && (
                     <div className="ml-auto shrink-0">
-                      <button type="button" onClick={() => void reabrirConversa(sel)} className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">🔄 Reabrir</button>
+                      <button type="button" onClick={() => void reabrirConversa(sel)} className="px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"><span className="inline-flex items-center gap-1"><RefreshCw size={12} /> Reabrir</span></button>
                     </div>
                   )}
                 </div>
@@ -1628,9 +1629,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             return (
               <div className={`flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 text-xs shrink-0 ${!dono ? "bg-amber-50 dark:bg-amber-900/20" : minha ? "bg-emerald-50 dark:bg-emerald-900/20" : "bg-gray-50 dark:bg-gray-800/40"}`}>
                 <span className="truncate">
-                  {!dono ? <span className="text-amber-700 dark:text-amber-300">⏳ Pendente — sem responsável</span>
-                    : minha ? <span className="text-emerald-700 dark:text-emerald-300">🙋 Atribuída a <b>você</b></span>
-                    : <span className="text-gray-600 dark:text-gray-300">🙋 Atribuída a <b>{contatoSel?.atribuidoNome}</b></span>}
+                  {!dono ? <span className="text-amber-700 dark:text-amber-300 inline-flex items-center gap-1"><Hourglass size={12} /> Pendente — sem responsável</span>
+                    : minha ? <span className="text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><Hand size={12} /> Atribuída a <b>você</b></span>
+                    : <span className="text-gray-600 dark:text-gray-300 inline-flex items-center gap-1"><Hand size={12} /> Atribuída a <b>{contatoSel?.atribuidoNome}</b></span>}
                 </span>
                 {podeResponder && (
                   <div className="ml-auto shrink-0 flex items-center gap-1.5">
@@ -1641,12 +1642,12 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                         </>
                       : <>
                           <button type="button" onClick={() => void assumirConversa(sel)} className="px-2.5 py-1 rounded-lg bg-emerald-600 text-white font-medium">Assumir</button>
-                          <button type="button" onClick={() => { setTransferWaId(null); setTransferir(true); }} className="px-2.5 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300">{dono ? "↪ Transferir" : "🙋 Atribuir"}</button>
+                          <button type="button" onClick={() => { setTransferWaId(null); setTransferir(true); }} className="px-2.5 py-1 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300">{dono ? "↪ Transferir" : <span className="inline-flex items-center gap-1"><Hand size={12} /> Atribuir</span>}</button>
                         </>}
-                    <button type="button" onClick={() => void finalizarConversa(sel)} className="px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300">✅ Finalizar</button>
+                    <button type="button" onClick={() => void finalizarConversa(sel)} className="px-2.5 py-1 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300"><span className="inline-flex items-center gap-1"><CheckSquare size={12} /> Finalizar</span></button>
                     <button type="button" onClick={() => void marcarSpam(sel)} title={spamDe(sel) ? "Tirar do spam" : "Marcar contato como spam"}
                       className={`px-2.5 py-1 rounded-lg border ${spamDe(sel) ? "border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300" : "border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300"}`}>
-                      {spamDe(sel) ? "↩ Não é spam" : "🚫 Spam"}
+                      {spamDe(sel) ? "↩ Não é spam" : <span className="inline-flex items-center gap-1"><Ban size={12} /> Spam</span>}
                     </button>
                   </div>
                 )}
@@ -1662,7 +1663,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 {clienteSel ? (
                   <div className="mt-1 flex items-center justify-between gap-2 rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50/60 dark:bg-emerald-900/10 px-3 py-2">
                     <div className="min-w-0">
-                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">🧑 {clienteSel.nome}</div>
+                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate inline-flex items-center gap-1"><User size={13} /> {clienteSel.nome}</div>
                       <div className="text-[11px] text-gray-500 truncate">
                         {(clienteSel.tags || []).slice(0, 3).join(", ")}{clienteSel.ultimaVisita ? ` · última visita ${fmtBRcurto(clienteSel.ultimaVisita)}` : ""}{typeof clienteSel.totalReservas === "number" ? ` · ${clienteSel.totalReservas} reservas` : ""}
                       </div>
@@ -1836,7 +1837,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             <div className="border-t border-gray-200 dark:border-gray-800 p-2 relative shrink-0">
               {slashAtivo && (
                 <div className="absolute bottom-full left-2 right-2 mb-1 max-h-56 overflow-y-auto rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg z-10">
-                  <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900">⚡ Respostas rápidas{slashQ ? ` · "${slashQ}"` : ""}</div>
+                  <div className="px-3 py-1.5 text-[11px] font-semibold text-gray-400 border-b border-gray-100 dark:border-gray-800 sticky top-0 bg-white dark:bg-gray-900 flex items-center gap-1.5"><Zap size={12} /> Respostas rápidas{slashQ ? ` · "${slashQ}"` : ""}</div>
                   {respostasFiltradas.length === 0 && (
                     <div className="px-3 py-3 text-sm text-gray-400">{respostasNum.length === 0 ? "Nenhuma resposta cadastrada pra este número. Cadastre em ⚙️ Configuração." : "Nada encontrado."}</div>
                   )}
@@ -1858,9 +1859,9 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
               {/* Menu de anexos */}
               {anexoMenu && !gravando && (
                 <div className="absolute bottom-full left-2 mb-1 w-52 p-1.5 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg z-10">
-                  <button type="button" onClick={() => fileMediaRef.current?.click()} className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-200">🖼️ Foto ou vídeo</button>
-                  <button type="button" onClick={() => fileDocRef.current?.click()} className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-200">📄 Documento</button>
-                  <button type="button" onClick={() => void iniciarGravacao()} className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-200">🎤 Gravar áudio</button>
+                  <button type="button" onClick={() => fileMediaRef.current?.click()} className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-200"><span className="inline-flex items-center gap-2"><ImageIcon size={15} /> Foto ou vídeo</span></button>
+                  <button type="button" onClick={() => fileDocRef.current?.click()} className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-200"><span className="inline-flex items-center gap-2"><FileText size={15} /> Documento</span></button>
+                  <button type="button" onClick={() => void iniciarGravacao()} className="w-full text-left px-3 py-2 rounded-lg text-sm hover:bg-gray-50 dark:hover:bg-gray-800/50 text-gray-700 dark:text-gray-200"><span className="inline-flex items-center gap-2"><Mic size={15} /> Gravar áudio</span></button>
                 </div>
               )}
               <input ref={fileMediaRef} type="file" accept="image/*,video/*" className="hidden" onChange={e => onArquivo(e, false)} />
@@ -1900,12 +1901,12 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 <div className="flex items-end gap-1.5">
                   <button type="button" onClick={() => { setAnexoMenu(v => !v); setEmojiAberto(false); }} disabled={enviandoMidia} className="shrink-0 w-10 h-10 rounded-full text-2xl text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center leading-none" title="Anexar">{enviandoMidia ? "⏳" : "＋"}</button>
                   <div className="flex-1 flex items-end rounded-3xl border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 pl-1 pr-2 min-h-[40px]">
-                    <button type="button" onClick={() => { setEmojiAberto(v => !v); setAnexoMenu(false); }} className="shrink-0 w-9 h-9 text-xl text-gray-500 hover:text-gray-700 flex items-center justify-center leading-none" title="Emojis">😊</button>
+                    <button type="button" onClick={() => { setEmojiAberto(v => !v); setAnexoMenu(false); }} className="shrink-0 w-9 h-9 text-xl text-gray-500 hover:text-gray-700 flex items-center justify-center leading-none" title="Emojis"><Smile size={20} /></button>
                     <textarea ref={taRef} value={resposta} onChange={e => setResposta(e.target.value)} onFocus={() => { setEmojiAberto(false); setAnexoMenu(false); }} rows={1} placeholder="Mensagem" className="flex-1 py-2 text-base leading-snug bg-transparent resize-none overflow-y-auto outline-none border-0" onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey && !slashAtivo) { e.preventDefault(); void responder(); } }} />
                   </div>
                   {resposta.trim()
                     ? <button type="button" onClick={() => { setEmojiAberto(false); void responder(); }} disabled={enviando} className="shrink-0 w-10 h-10 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center text-base" title="Enviar">{enviando ? "…" : "➤"}</button>
-                    : <button type="button" onClick={() => void iniciarGravacao()} disabled={enviandoMidia} className="shrink-0 w-10 h-10 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center text-lg" title="Gravar áudio">🎤</button>}
+                    : <button type="button" onClick={() => void iniciarGravacao()} disabled={enviandoMidia} className="shrink-0 w-10 h-10 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center" title="Gravar áudio"><Mic size={18} /></button>}
                 </div>
               )}
             </div>
@@ -1921,7 +1922,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         onAbrir={(waId, pid) => { setNovaConversa(false); setSel(waId); if (pid) void salvarContato(waId, { pessoaId: pid }); }} />}
       {novoGrupo && <NovoGrupoModal pessoas={pessoas} onCriar={criarGrupo} onClose={() => setNovoGrupo(false)} />}
       {passarCtx && sel && (
-        <Modal title="📤 Passar contexto pra alguém" onClose={() => setPassarCtx(false)} maxWidth="max-w-lg">
+        <Modal title={<span className="inline-flex items-center gap-2"><Send size={18} /> Passar contexto pra alguém</span>} onClose={() => setPassarCtx(false)} maxWidth="max-w-lg">
           <div className="space-y-3">
             <div>
               <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Para quem</label>
@@ -1977,13 +1978,13 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <button type="button" onClick={() => setPassarCtx(false)} className="px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300">Cancelar</button>
-              <button type="button" onClick={() => void enviarPassarCtx()} disabled={pcEnviando || (!pcDest && soDig(pcBusca).length < 8)} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">{pcEnviando ? "Enviando…" : "📤 Enviar contexto"}</button>
+              <button type="button" onClick={() => void enviarPassarCtx()} disabled={pcEnviando || (!pcDest && soDig(pcBusca).length < 8)} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">{pcEnviando ? "Enviando…" : <span className="inline-flex items-center gap-1.5"><Send size={14} /> Enviar contexto</span>}</button>
             </div>
           </div>
         </Modal>
       )}
       {encaminhar && sel && (
-        <Modal title="🔀 Encaminhar para outro número" onClose={() => setEncaminhar(false)} maxWidth="max-w-lg">
+        <Modal title={<span className="inline-flex items-center gap-2"><Shuffle size={18} /> Encaminhar para outro número</span>} onClose={() => setEncaminhar(false)} maxWidth="max-w-lg">
           <div className="space-y-3">
             <p className="text-xs text-gray-500 dark:text-gray-400">A conversa entra na fila do número escolhido (em <b>Sem responsável ainda</b>). O histórico que você escolher chega lá <b>como mensagens</b> (com quem mandou e o horário), não como um aviso. Nada é enviado ao cliente — a outra equipe assume e fala pelo número dela.</p>
             <div>
@@ -1992,7 +1993,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 {numerosDestino.map(n => (
                   <button key={n.id} type="button" onClick={() => { setEncAlvo(n.id); setEncAtendente(null); }}
                     className={`text-left px-3 py-2 rounded-lg border text-sm transition-colors ${encAlvo === n.id ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300" : "border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800/40"}`}>
-                    {encAlvo === n.id ? "● " : "○ "}📱 {n.nome}{n.modo === "livre" ? <span className="text-[10px] text-gray-400"> · livre</span> : ""}
+                    {encAlvo === n.id ? "● " : "○ "}<Smartphone size={12} className="inline align-[-2px]" /> {n.nome}{n.modo === "livre" ? <span className="text-[10px] text-gray-400"> · livre</span> : ""}
                   </button>
                 ))}
               </div>
@@ -2004,7 +2005,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 <div className="mt-1 flex flex-wrap gap-1.5">
                   <button type="button" onClick={() => setEncAtendente(null)}
                     className={`text-xs px-2.5 py-1.5 rounded-lg border transition-colors ${!encAtendente ? "border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/40"}`}>
-                    🟡 Deixar na fila
+                    <Circle size={12} className="inline align-[-2px] mr-1 fill-amber-500 text-amber-500" />Deixar na fila
                   </button>
                   {encAtendentes.map(p => (
                     <button key={p.id} type="button" onClick={() => setEncAtendente(p.id)}
@@ -2080,7 +2081,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
             </div>
             <div className="flex justify-end gap-2 pt-1">
               <button type="button" onClick={() => setEncaminhar(false)} className="px-3 py-2 rounded-lg text-sm text-gray-600 dark:text-gray-300">Cancelar</button>
-              <button type="button" onClick={() => void enviarEncaminhar()} disabled={encEnviando || !encAlvo} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">{encEnviando ? "Encaminhando…" : "🔀 Encaminhar"}</button>
+              <button type="button" onClick={() => void enviarEncaminhar()} disabled={encEnviando || !encAlvo} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 disabled:opacity-50">{encEnviando ? "Encaminhando…" : <span className="inline-flex items-center gap-1.5"><Shuffle size={14} /> Encaminhar</span>}</button>
             </div>
           </div>
         </Modal>
@@ -2104,7 +2105,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         return (
           <div className="fixed inset-0 bg-black/50 z-[210] flex items-center justify-center p-4" onClick={() => setTriagemGrupo(null)}>
             <div onClick={(e) => e.stopPropagation()} className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-full max-w-md p-5">
-              <h3 className="text-base font-bold text-gray-900 dark:text-gray-100">👥 Quem atende esse grupo?</h3>
+              <h3 className="text-base font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Users size={16} /> Quem atende esse grupo?</h3>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5 mb-3 truncate">{nomeConversa(g)}</p>
               <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-2">Escolha <b>1 ou mais</b> atendentes — o grupo aparece em "Minhas" de cada um. Todo grupo precisa de atendente (ou marque como spam).</p>
               <div className="flex flex-wrap gap-1.5 items-center mb-3">
@@ -2125,7 +2126,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
                 {disponiveis.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </select>
               <div className="flex items-center gap-2 mt-5">
-                <button type="button" onClick={() => void marcarGrupoSpam(g)} className="text-sm px-3 py-1.5 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">🚫 É spam</button>
+                <button type="button" onClick={() => void marcarGrupoSpam(g)} className="text-sm px-3 py-1.5 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300"><span className="inline-flex items-center gap-1.5"><Ban size={14} /> É spam</span></button>
                 <div className="flex-1" />
                 <button type="button" onClick={() => setTriagemGrupo(null)} className="text-sm px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>
                 <button type="button" onClick={() => void salvarTriagem(g)} disabled={!triagemIds.length} className="text-sm px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold disabled:opacity-50">✓ Confirmar</button>
@@ -2166,9 +2167,9 @@ function ConversaItem({ naoLida, temDono, onAbrir, onNaoLida, onLida, onTransfer
           não lida no dark mode. */}
       <div className={`absolute inset-y-0 left-0 flex ${dx > 0 || aberto ? "" : "invisible"}`} style={{ width: MAX }}>
         {naoLida
-          ? <button type="button" onClick={() => { onLida(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-gray-500 text-white text-[11px] font-medium"><span className="text-base">✓</span>Lida</button>
-          : <button type="button" onClick={() => { onNaoLida(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-blue-500 text-white text-[11px] font-medium"><span className="text-base">🔵</span>Não lida</button>}
-        {podeResponder && <button type="button" onClick={() => { onTransferir(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-indigo-500 text-white text-[11px] font-medium"><span className="text-base">{temDono ? "↪" : "🙋"}</span>{temDono ? "Transferir" : "Atribuir"}</button>}
+          ? <button type="button" onClick={() => { onLida(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-gray-500 text-white text-[11px] font-medium"><Check size={16} />Lida</button>
+          : <button type="button" onClick={() => { onNaoLida(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-blue-500 text-white text-[11px] font-medium"><Circle size={16} className="fill-white/30" />Não lida</button>}
+        {podeResponder && <button type="button" onClick={() => { onTransferir(); fechar(); }} className="flex-1 flex flex-col items-center justify-center gap-0.5 bg-indigo-500 text-white text-[11px] font-medium"><span className="text-base">{temDono ? "↪" : <Hand size={16} />}</span>{temDono ? "Transferir" : "Atribuir"}</button>}
       </div>
       {/* Linha (frente) — arrasta pra revelar */}
       <button type="button"
@@ -2208,7 +2209,7 @@ function NovoGrupoModal({ pessoas, onCriar, onClose }: { pessoas: Pessoa[]; onCr
   }
   const inp = "w-full text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 dark:text-gray-100";
   return (
-    <Modal onClose={onClose} title="👥 Novo grupo" maxWidth="max-w-md">
+    <Modal onClose={onClose} title={<span className="inline-flex items-center gap-2"><Users size={18} /> Novo grupo</span>} maxWidth="max-w-md">
       <div className="space-y-3">
         <input value={subject} onChange={e => setSubject(e.target.value)} placeholder="Nome do grupo" className={inp} autoFocus />
         <div>
@@ -2239,7 +2240,7 @@ function NovoGrupoModal({ pessoas, onCriar, onClose }: { pessoas: Pessoa[]; onCr
         </div>
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-100 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose} disabled={criando}>Cancelar</Button>
-          <Button onClick={() => void criar()} disabled={criando}>{criando ? "Criando…" : "👥 Criar grupo"}</Button>
+          <Button onClick={() => void criar()} disabled={criando}>{criando ? "Criando…" : <span className="inline-flex items-center gap-1.5"><Users size={15} /> Criar grupo</span>}</Button>
         </div>
       </div>
     </Modal>
@@ -2334,13 +2335,13 @@ async function chamarInstancia(acao: string, instancia: string): Promise<{ ok?: 
   return r.json().catch(() => ({}));
 }
 
-const ESTADO_META: Record<string, { label: string; cls: string }> = {
+const ESTADO_META: Record<string, { label: ReactNode; cls: string }> = {
   open: { label: "Conectado", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" },
   connecting: { label: "Conectando…", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
   close: { label: "Desconectado", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" },
   // "unknown" = a checagem de status NÃO respondeu (ex.: Evolution/rede fora).
   // Mostra âmbar "Sem resposta" em vez de mentir "Conectado" com dado velho.
-  unknown: { label: "⚠ Sem resposta", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
+  unknown: { label: <span className="inline-flex items-center gap-1"><TriangleAlert size={11} /> Sem resposta</span>, cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
 };
 // Gestão dos números (aba Configuração do módulo WhatsApp). Self-contido.
 export function NumerosManager() {
@@ -2423,7 +2424,7 @@ export function NumerosManager() {
     <div>
       <div className="space-y-4">
         {/* Adicionar — só um botão; o resto vai num modal */}
-        <Button className="w-full" onClick={() => { setNome(""); setInstancia(""); setDescricao(""); setAddOpen(true); }}>➕ Adicionar novo número</Button>
+        <Button className="w-full" onClick={() => { setNome(""); setInstancia(""); setDescricao(""); setAddOpen(true); }}><span className="inline-flex items-center gap-1.5"><Plus size={15} /> Adicionar novo número</span></Button>
 
         {/* Números por papel — qual número atende cada tipo em cada restaurante.
             É isso que o botão "Falar pelo WhatsApp" dos módulos usa. */}
@@ -2480,7 +2481,7 @@ export function NumerosManager() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => !salvando && setAddOpen(false)}>
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5 space-y-3" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">➕ Adicionar novo número</h3>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Plus size={16} /> Adicionar novo número</h3>
               <button type="button" onClick={() => !salvando && setAddOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
             </div>
             <p className="text-xs text-gray-500">Cria o número na hora e mostra o <b>QR</b> pra conectar o celular — sem sair daqui.</p>
@@ -2507,12 +2508,12 @@ export function NumerosManager() {
 
 // Card de um número: status colorido, expansível, usuários por chip, botão Salvar.
 // Painel-seção interno do card (título + conteúdo), pra dividir visualmente.
-function SecaoCfg({ icon, titulo, hint, children }: { icon?: string; titulo?: string; hint?: string; children: ReactNode }) {
+function SecaoCfg({ icon: Icon, titulo, hint, children }: { icon?: LucideIcon; titulo?: string; hint?: string; children: ReactNode }) {
   return (
     <section className="rounded-lg border border-gray-200/80 dark:border-gray-800 bg-white/60 dark:bg-gray-900/30 p-3 space-y-2">
       {titulo && (
         <div className="flex items-center gap-1.5">
-          {icon && <span className="text-sm leading-none">{icon}</span>}
+          {Icon && <Icon size={14} className="text-gray-500 shrink-0" />}
           <span className="text-xs font-bold text-gray-700 dark:text-gray-200 uppercase tracking-wide">{titulo}</span>
           {hint && <span className="text-[10px] text-gray-400 normal-case font-normal">· {hint}</span>}
         </div>
@@ -2619,21 +2620,21 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
           <div className="p-3 space-y-2.5">
 
           {/* Conexão */}
-          <SecaoCfg icon="🔌" titulo="Conexão">
+          <SecaoCfg icon={Plug} titulo="Conexão">
             <div className="flex items-center gap-2 flex-wrap">
               <span className={`text-[11px] font-semibold px-2 py-1 rounded-full ${em.cls}`}>{em.label}</span>
               {estado === "open"
                 ? <>
                     <button type="button" onClick={repararConexao} disabled={reparando}
                       className="text-xs px-2.5 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 disabled:opacity-50">
-                      {reparando ? "🔧 Reparando…" : "🔧 Reparar (não envia/recebe?)"}
+                      {reparando ? <span className="inline-flex items-center gap-1.5"><Wrench size={13} /> Reparando…</span> : <span className="inline-flex items-center gap-1.5"><Wrench size={13} /> Reparar (não envia/recebe?)</span>}
                     </button>
-                    <button type="button" onClick={testarEnvio} className="text-xs px-2.5 py-1.5 rounded-lg border border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-300">🩺 Testar envio</button>
-                    <button type="button" onClick={onLogout} className="text-xs px-2.5 py-1.5 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300">⏻ Desconectar</button>
+                    <button type="button" onClick={testarEnvio} className="text-xs px-2.5 py-1.5 rounded-lg border border-sky-300 dark:border-sky-700 text-sky-700 dark:text-sky-300"><span className="inline-flex items-center gap-1.5"><Stethoscope size={13} /> Testar envio</span></button>
+                    <button type="button" onClick={onLogout} className="text-xs px-2.5 py-1.5 rounded-lg border border-rose-300 dark:border-rose-700 text-rose-600 dark:text-rose-300"><span className="inline-flex items-center gap-1.5"><Power size={13} /> Desconectar</span></button>
                   </>
-                : <button type="button" onClick={onQr} className="text-xs px-2.5 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300">{estado === "close" ? "🔄 Reconectar" : "🔌 Conectar"}</button>}
+                : <button type="button" onClick={onQr} className="text-xs px-2.5 py-1.5 rounded-lg border border-emerald-300 dark:border-emerald-700 text-emerald-600 dark:text-emerald-300">{estado === "close" ? <span className="inline-flex items-center gap-1.5"><RefreshCw size={13} /> Reconectar</span> : <span className="inline-flex items-center gap-1.5"><Plug size={13} /> Conectar</span>}</button>}
               {isMaster && (
-                <button type="button" onClick={onRecriar} className="text-xs px-2.5 py-1.5 rounded-lg border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300">♻️ Recriar sessão (master)</button>
+                <button type="button" onClick={onRecriar} className="text-xs px-2.5 py-1.5 rounded-lg border border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300"><span className="inline-flex items-center gap-1.5"><RotateCcw size={13} /> Recriar sessão (master)</span></button>
               )}
             </div>
             <p className="text-[11px] text-gray-400 mt-1.5">Aparece Conectado mas as mensagens não entram/saem? Clique em <b>Reparar</b> — reinicia a conexão (sem novo QR) e reaponta o webhook. Se o envio falha, use <b>Testar envio</b>.</p>
@@ -2644,7 +2645,7 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
           </SecaoCfg>
 
           {/* Identificação */}
-          <SecaoCfg icon="🏷️" titulo="Identificação">
+          <SecaoCfg icon={Tag} titulo="Identificação">
             <div><label className="text-[11px] text-gray-500">Rótulo</label>
               <input value={draft.nome} onChange={e => setDraft(d => ({ ...d, nome: e.target.value }))} className={inp} /></div>
             <div><label className="text-[11px] text-gray-500">Descrição (opcional)</label>
@@ -2655,7 +2656,7 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
           </SecaoCfg>
 
           {/* Acesso: empresas + usuários */}
-          <SecaoCfg icon="🔒" titulo="Acesso" hint="quem enxerga/usa este número">
+          <SecaoCfg icon={Lock} titulo="Acesso" hint="quem enxerga/usa este número">
             <div>
               <label className="text-[11px] text-gray-500">Empresa(s) deste número</label>
               <div className="flex flex-wrap gap-1.5 mt-1">
@@ -2694,7 +2695,7 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
           </SecaoCfg>
 
           {/* Regras */}
-          <SecaoCfg icon="🎛️" titulo="Modo de atendimento">
+          <SecaoCfg icon={SlidersHorizontal} titulo="Modo de atendimento">
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {([
                 ["atribuicao", "Com atribuição", "Conversas têm dono. Tela Início (Sem responsável | Minhas), assumir, transferir. Bom pro escritório."],
@@ -2712,7 +2713,7 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
             </div>
           </SecaoCfg>
 
-          <SecaoCfg icon="📋" titulo="Regras de uso" hint="opcional">
+          <SecaoCfg icon={ClipboardList} titulo="Regras de uso" hint="opcional">
             <textarea value={draft.regras} onChange={e => setDraft(d => ({ ...d, regras: e.target.value }))} rows={2} className={inp} placeholder="Ex.: só responder em horário comercial; confirmar preço antes de fechar…" />
           </SecaoCfg>
 
@@ -2722,18 +2723,18 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
           </SecaoCfg>
 
           {/* Triagem automática por área (bot) */}
-          <SecaoCfg icon="🤖" titulo="Triagem automática" hint="menu de áreas">
+          <SecaoCfg icon={Bot} titulo="Triagem automática" hint="menu de áreas">
             <RoteamentoNumero numero={numero} pessoas={pessoas} />
           </SecaoCfg>
 
           {/* Assistente de IA (concierge) */}
-          <SecaoCfg icon="✨" titulo="Assistente de IA" hint="responde e confirma reservas">
+          <SecaoCfg icon={Sparkles} titulo="Assistente de IA" hint="responde e confirma reservas">
             <AssistenteIaNumero numero={numero} restaurants={restaurants} />
           </SecaoCfg>
 
           {/* Zona de perigo */}
           <div className="flex justify-end pt-0.5">
-            <button type="button" onClick={onExcluir} className="text-xs text-gray-400 hover:text-rose-600">🗑️ Excluir número</button>
+            <button type="button" onClick={onExcluir} className="text-xs text-gray-400 hover:text-rose-600"><span className="inline-flex items-center gap-1.5"><Trash2 size={13} /> Excluir número</span></button>
           </div>
           </div>
 
@@ -2741,7 +2742,7 @@ function NumeroConfigCard({ numero, estado, pessoas, restaurants, onQr, onLogout
           <div className="flex items-center justify-end gap-2 px-3 py-2.5 border-t border-gray-200/70 dark:border-gray-800 bg-white/70 dark:bg-gray-900/50 rounded-b-xl">
             {dirty && <span className="text-[11px] text-amber-600 dark:text-amber-400 mr-auto">● Alterações não salvas</span>}
             {dirty && <button type="button" onClick={cancelar} className="text-xs px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Cancelar</button>}
-            <Button onClick={() => void salvar()} disabled={!dirty || salvando}>{salvando ? "Salvando…" : "💾 Salvar"}</Button>
+            <Button onClick={() => void salvar()} disabled={!dirty || salvando}>{salvando ? "Salvando…" : <span className="inline-flex items-center gap-1.5"><Save size={14} /> Salvar</span>}</Button>
           </div>
         </div>
       )}
@@ -2771,7 +2772,7 @@ function RespostasNumero({ numeroId }: { numeroId: string }) {
   const excluir = async (id: string) => { if (confirm("Excluir esta resposta rápida?")) await deleteDoc(doc(db, "whatsappRespostas", id)); };
   return (
     <div className="space-y-2">
-      <div className="text-[11px] font-semibold text-gray-500 uppercase">⚡ Respostas rápidas ({itens.length})</div>
+      <div className="text-[11px] font-semibold text-gray-500 uppercase inline-flex items-center gap-1.5"><Zap size={12} /> Respostas rápidas ({itens.length})</div>
       <p className="text-[11px] text-gray-400">No chat, digite <b>/</b> pra escolher uma. O atalho ajuda a achar (ex.: <code>/horario</code>).</p>
       <div className="space-y-1.5">
         {itens.length === 0 && <div className="text-xs text-gray-400">Nenhuma ainda.</div>}
@@ -2781,7 +2782,7 @@ function RespostasNumero({ numeroId }: { numeroId: string }) {
               {r.atalho && <div className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">/{r.atalho}</div>}
               <div className="text-sm text-gray-700 dark:text-gray-200 whitespace-pre-wrap break-words">{r.texto}</div>
             </div>
-            <button type="button" onClick={() => void excluir(r.id)} className="text-gray-400 hover:text-rose-600 text-sm shrink-0">🗑️</button>
+            <button type="button" onClick={() => void excluir(r.id)} className="text-gray-400 hover:text-rose-600 text-sm shrink-0"><Trash2 size={14} /></button>
           </div>
         ))}
       </div>
@@ -2795,7 +2796,7 @@ function RespostasNumero({ numeroId }: { numeroId: string }) {
           </div>
         </div>
       ) : (
-        <button type="button" onClick={() => setAddOpen(true)} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">➕ Nova resposta rápida</button>
+        <button type="button" onClick={() => setAddOpen(true)} className="w-full text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50"><span className="inline-flex items-center gap-1.5"><Plus size={13} /> Nova resposta rápida</span></button>
       )}
     </div>
   );
@@ -2846,11 +2847,11 @@ function RoteamentoNumero({ numero, pessoas }: { numero: WhatsappNumero; pessoas
                 <option value="">— atendente —</option>
                 {elegiveis.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
               </select>
-              <button type="button" onClick={() => delOpc(i)} className="text-gray-400 hover:text-rose-600 text-sm shrink-0">🗑️</button>
+              <button type="button" onClick={() => delOpc(i)} className="text-gray-400 hover:text-rose-600 text-sm shrink-0"><Trash2 size={14} /></button>
             </div>
           ))}
         </div>
-        <button type="button" onClick={addOpc} className="mt-1.5 w-full text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">➕ Adicionar área</button>
+        <button type="button" onClick={addOpc} className="mt-1.5 w-full text-xs font-semibold px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50"><span className="inline-flex items-center gap-1.5"><Plus size={13} /> Adicionar área</span></button>
       </div>
       <div>
         <label className="text-[11px] text-gray-500">Confirmação após escolher (use <code>{"{atendente}"}</code>)</label>
@@ -2858,7 +2859,7 @@ function RoteamentoNumero({ numero, pessoas }: { numero: WhatsappNumero; pessoas
       </div>
       <div className="flex items-center justify-end gap-2">
         {dirty && <span className="text-[11px] text-amber-600 dark:text-amber-400 mr-auto">Alterações não salvas</span>}
-        <Button size="sm" onClick={() => void salvar()} disabled={!dirty || salvando}>{salvando ? "Salvando…" : "💾 Salvar triagem"}</Button>
+        <Button size="sm" onClick={() => void salvar()} disabled={!dirty || salvando}>{salvando ? "Salvando…" : <span className="inline-flex items-center gap-1.5"><Save size={14} /> Salvar triagem</span>}</Button>
       </div>
     </div>
   );
@@ -2893,10 +2894,10 @@ function QrModal({ instancia, nome, qrInicial, onClose }: { instancia: string; n
 
   const conectado = estado === "open";
   return (
-    <Modal onClose={onClose} title={`📱 Conectar · ${nome}`} maxWidth="max-w-sm">
+    <Modal onClose={onClose} title={<span className="inline-flex items-center gap-2"><Smartphone size={18} /> Conectar · {nome}</span>} maxWidth="max-w-sm">
       {conectado ? (
         <div className="text-center py-6 space-y-3">
-          <div className="text-5xl">✅</div>
+          <CheckSquare size={48} className="text-emerald-500" />
           <p className="font-medium text-gray-900 dark:text-gray-100">Número conectado!</p>
           <Button onClick={onClose}>Fechar</Button>
         </div>
@@ -2904,7 +2905,7 @@ function QrModal({ instancia, nome, qrInicial, onClose }: { instancia: string; n
         <div className="text-center space-y-3">
           <p className="text-sm text-gray-600 dark:text-gray-300">No celular do número: <b>Aparelhos conectados → Conectar um aparelho</b> e escaneie:</p>
           {qr ? <img src={qr} alt="QR Code" className="mx-auto w-56 h-56 rounded-lg border border-gray-200 dark:border-gray-700 bg-white" />
-            : erro ? <div className="py-10 px-3 text-rose-600 dark:text-rose-400 text-sm">⚠ {erro}</div>
+            : erro ? <div className="py-10 px-3 text-rose-600 dark:text-rose-400 text-sm flex items-center justify-center gap-1.5"><TriangleAlert size={15} className="shrink-0" /> {erro}</div>
             : <div className="py-16 text-gray-400 text-sm">{carregando ? "Gerando QR…" : "Toque em “Gerar novo QR”."}</div>}
           <p className="text-[11px] text-gray-400">O QR expira em ~40s. Se não ler, gere um novo.</p>
           <div className="flex gap-2 justify-center">
@@ -3002,7 +3003,7 @@ function TransferModal({ pessoas, meId, modo = "transferir", onClose, onTransfer
   const verbo = atribuir ? "Atribuir" : "Transferir";
   const lista = useMemo(() => { const q = busca.trim().toLowerCase(); return [...pessoas].sort((a, b) => a.nome.localeCompare(b.nome)).filter(p => (atribuir || p.id !== meId) && (!q || p.nome.toLowerCase().includes(q))); }, [pessoas, busca, meId, atribuir]);
   return (
-    <Modal onClose={onClose} title={`${atribuir ? "🙋" : "↪"} ${verbo} conversa`} maxWidth="max-w-md">
+    <Modal onClose={onClose} title={<span className="inline-flex items-center gap-2">{atribuir ? <Hand size={18} /> : "↪"} {verbo} conversa</span>} maxWidth="max-w-md">
       <div className="space-y-3">
         <p className="text-[11px] text-gray-400">{atribuir ? "Escolha o atendente responsável por esta conversa." : "Quem você escolher assume a conversa."}</p>
         <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar atendente…" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
@@ -3055,13 +3056,13 @@ export function TagsManager() {
           </span>
         ))}
       </div>
-      <Button className="w-full" size="sm" onClick={() => { setNome(""); setDescricao(""); setCor(PALETA[0]!); setOpen(true); }}>➕ Adicionar nova tag</Button>
+      <Button className="w-full" size="sm" onClick={() => { setNome(""); setDescricao(""); setCor(PALETA[0]!); setOpen(true); }}><span className="inline-flex items-center gap-1.5"><Plus size={14} /> Adicionar nova tag</span></Button>
 
       {open && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setOpen(false)}>
           <div className="w-full max-w-md rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-5 space-y-3" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between">
-              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100">🏷 Nova tag</h3>
+              <h3 className="text-base font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Tag size={16} /> Nova tag</h3>
               <button type="button" onClick={() => setOpen(false)} className="text-gray-400 hover:text-gray-600">✕</button>
             </div>
             <div>

@@ -3,7 +3,7 @@
 // com o mesmo editor/designer. O site puxa daqui. Doc: cardapioEstruturado/{rid}
 // = { cardapios: [...], layout (visual compartilhado) }.
 import { useEffect, useRef, useState } from "react";
-import { ClipboardList } from "lucide-react";
+import { ClipboardList, Lock, SquarePen, FileText, Bot, RefreshCw, Sparkles, TriangleAlert, Search, Trash2, Settings } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -148,7 +148,7 @@ export function CardapioPage() {
   const removePdfItem = (id: string) => void salvarPdfItens(itensRef.current.filter(i => i.id !== id));
 
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
-  if (!podeVer) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-600 dark:text-gray-400">Você não tem acesso ao Cardápio.</p></div>;
+  if (!podeVer) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div><p className="text-gray-600 dark:text-gray-400">Você não tem acesso ao Cardápio.</p></div>;
   if (cardapios === null) return <div className="text-gray-400 py-12 text-center text-sm">Carregando…</div>;
 
   const atual = cardapios.find((c) => c.id === sel);
@@ -162,9 +162,9 @@ export function CardapioPage() {
       {siteCfg && (
         <div className="flex gap-2">
           <button type="button" onClick={() => setModoCard("editor")} disabled={!podeEditar}
-            className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${modoCard === "editor" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"} disabled:opacity-60`}>📝 Montar aqui (item a item)</button>
+            className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${modoCard === "editor" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"} disabled:opacity-60`}><span className="inline-flex items-center gap-1.5"><SquarePen size={14} /> Montar aqui (item a item)</span></button>
           <button type="button" onClick={() => setModoCard("pdf")} disabled={!podeEditar}
-            className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${modoCard === "pdf" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"} disabled:opacity-60`}>📄 Subir cardápio em PDF</button>
+            className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${modoCard === "pdf" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"} disabled:opacity-60`}><span className="inline-flex items-center gap-1.5"><FileText size={14} /> Subir cardápio em PDF</span></button>
         </div>
       )}
 
@@ -175,12 +175,12 @@ export function CardapioPage() {
             <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-3">
               <div className="flex items-start justify-between gap-2 flex-wrap">
                 <div>
-                  <h3 className="font-bold text-gray-900 dark:text-gray-100">🤖 Preços pras fichas técnicas</h3>
+                  <h3 className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Bot size={16} /> Preços pras fichas técnicas</h3>
                   <p className="text-[12px] text-gray-500 dark:text-gray-400 max-w-lg">A IA lê o PDF e extrai os itens + preços — usados <strong>só internamente</strong> pra vincular o preço de venda nas fichas técnicas (CMV). Não aparece no site.</p>
                 </div>
-                <button type="button" onClick={() => void extrairPrecos()} disabled={extraindo || !siteCfg.cardapioPdfPtUrl} className="text-sm font-medium px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 shrink-0">{extraindo ? "Lendo o PDF…" : pdfItens.length ? "🔄 Reler PDF (IA)" : "✨ Extrair itens e preços (IA)"}</button>
+                <button type="button" onClick={() => void extrairPrecos()} disabled={extraindo || !siteCfg.cardapioPdfPtUrl} className="text-sm font-medium px-3 py-2 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 shrink-0">{extraindo ? "Lendo o PDF…" : pdfItens.length ? <span className="inline-flex items-center gap-1.5"><RefreshCw size={14} /> Reler PDF (IA)</span> : <span className="inline-flex items-center gap-1.5"><Sparkles size={14} /> Extrair itens e preços (IA)</span>}</button>
               </div>
-              {extraErr && <p className="text-xs text-rose-600">⚠ {extraErr}</p>}
+              {extraErr && <p className="text-xs text-rose-600 inline-flex items-center gap-1"><TriangleAlert size={12} /> {extraErr}</p>}
               {!siteCfg.cardapioPdfPtUrl ? (
                 <p className="text-[12px] text-amber-600 dark:text-amber-400">Suba o PDF (português) acima pra habilitar a extração.</p>
               ) : pdfItens.length === 0 ? (
@@ -192,7 +192,7 @@ export function CardapioPage() {
                     <div className="flex-1" />
                     {pdfItens.length > 8 && (
                       <div className="relative">
-                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 text-xs pointer-events-none">🔎</span>
+                        <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><Search size={13} /></span>
                         <input value={buscaItem} onChange={e => setBuscaItem(e.target.value)} placeholder="filtrar…" className="h-8 w-40 pl-7 pr-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs dark:text-gray-100" />
                       </div>
                     )}
@@ -251,11 +251,11 @@ export function CardapioPage() {
         <span className="flex-1" />
         <button type="button" onClick={() => setSel(ARQUIVADOS)}
           className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${sel === ARQUIVADOS ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
-          🗑️ Arquivados
+          <span className="inline-flex items-center gap-1.5"><Trash2 size={14} /> Arquivados</span>
         </button>
         <button type="button" onClick={() => setSel(CONFIG)}
           className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${sel === CONFIG ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
-          ⚙️ Configurações
+          <span className="inline-flex items-center gap-1.5"><Settings size={14} /> Configurações</span>
         </button>
       </div>
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Lock } from "lucide-react";
 import { CalendarDays, Ticket } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
@@ -49,7 +50,7 @@ export function HorariosPage() {
   if (!podeVer) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );

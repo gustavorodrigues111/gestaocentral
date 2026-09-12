@@ -3,6 +3,7 @@
 // criar, QR, conectar/reconectar, status, atribuir usuários, regras).
 // O "WhatsApp do sistema" (API oficial, disparos) fica na Central de Avisos.
 import { useState, type ReactNode } from "react";
+import { Smartphone, Tag } from "lucide-react";
 import { MessageCircle, Settings } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -43,12 +44,12 @@ export function WhatsappPage() {
       {podeConfig && abaEfetiva === "config" && (
         <div className="space-y-6 px-4 py-4">
           <section>
-            <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1">📱 Números conectados</h2>
+            <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1 inline-flex items-center gap-1.5"><Smartphone size={15} /> Números conectados</h2>
             <p className="text-xs text-gray-500 mb-2">Cada número é um WhatsApp plugado como dispositivo. Abra um card pra configurar acesso, regras e respostas rápidas.</p>
             <NumerosManager />
           </section>
           <section>
-            <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1">🏷 Tags de conversa <span className="text-[11px] font-normal text-gray-400">· valem para todos os números</span></h2>
+            <h2 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-1 inline-flex items-center gap-1.5"><Tag size={15} /> Tags de conversa <span className="text-[11px] font-normal text-gray-400">· valem para todos os números</span></h2>
             <p className="text-xs text-gray-500 mb-2">Etiquetas globais pra organizar as conversas no chat (não são por número).</p>
             <TagsManager />
           </section>

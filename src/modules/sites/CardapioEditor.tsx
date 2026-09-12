@@ -2,6 +2,7 @@
 // + preço). Salva automático (debounce) em /cardapioEstruturado/{rid}. O site
 // renderiza ao vivo quando o modo do cardápio é "editor".
 import { useEffect, useRef, useState } from "react";
+import { Wine, Palette, Bookmark, Globe, Check, TriangleAlert, Trash2, Image as ImageIcon } from "lucide-react";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -239,7 +240,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
           {podeEditar && (
             <label className="text-[12px] text-gray-600 dark:text-gray-300 flex items-center gap-1.5 cursor-pointer whitespace-nowrap" title="Mostra o ícone de garrafa em TODOS os itens deste cardápio (tudo ou nada)">
               <input type="checkbox" checked={mostrarGarrafa} onChange={(e) => void salvarMostrarGarrafa(e.target.checked)} />
-              🍾 Cardápio de vinhos
+              <span className="inline-flex items-center gap-1.5"><Wine size={13} /> Cardápio de vinhos</span>
             </label>
           )}
           <span className="text-[12px] text-emerald-600 dark:text-emerald-400 ml-auto">
@@ -248,7 +249,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
           {podeEditar && (
             <button type="button" onClick={() => setMostrarVisual(true)}
               className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 shrink-0 font-medium">
-              🎨 Ver PDF
+              <span className="inline-flex items-center gap-1.5"><Palette size={14} /> Ver PDF</span>
             </button>
           )}
         </div>
@@ -258,7 +259,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
       {podeEditar && secoes.length > 1 && (
         <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3 space-y-2">
           <div className="flex items-center justify-between gap-2">
-            <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200">🔖 Chips no site</div>
+            <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-200 inline-flex items-center gap-1.5"><Bookmark size={13} /> Chips no site</div>
             <button type="button" onClick={addGrupo} className="text-[12px] text-indigo-600 dark:text-indigo-400 font-medium">+ Juntar seções num chip</button>
           </div>
           <p className="text-[11px] text-gray-400 dark:text-gray-500">No site, o cliente navega o cardápio por chips. Sem configurar nada, <b>cada seção vira um chip</b>. Crie um chip aqui pra <b>juntar duas ou mais seções</b> sob um título só (ex.: Brasa + Acompanhamentos → “Brasa e Acompanhamentos”). Reaproveita os pratos que já existem.</p>
@@ -303,12 +304,12 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
             <button type="button" disabled={traduzindo || emDia} onClick={() => void traduzir()}
               title={emDia ? "Nada mudou no português desde a última tradução" : undefined}
               className="text-[12px] px-3 py-1.5 rounded-lg bg-indigo-600 text-white disabled:opacity-50 shrink-0">
-              {traduzindo ? "traduzindo…" : emDia ? "✓ Tradução atualizada" : "🌐 Traduzir a partir do português"}
+              {traduzindo ? "traduzindo…" : emDia ? <span className="inline-flex items-center gap-1.5"><Check size={13} /> Tradução atualizada</span> : <span className="inline-flex items-center gap-1.5"><Globe size={13} /> Traduzir a partir do português</span>}
             </button>
           </div>
         );
       })()}
-      {erroTrad && <div className="text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5">⚠ {erroTrad}</div>}
+      {erroTrad && <div className="text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5 flex items-center gap-1.5"><TriangleAlert size={13} className="shrink-0" /> {erroTrad}</div>}
 
       {secoes.length === 0 && (
         <div className="text-center py-8 border border-dashed border-gray-300 dark:border-gray-700 rounded-xl space-y-3">
@@ -341,7 +342,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
                   <div className="flex items-center gap-0.5 shrink-0 text-gray-400">
                     <button type="button" title="Subir" onClick={() => moveSecao(si, -1)} className="px-1.5 hover:text-gray-700">↑</button>
                     <button type="button" title="Descer" onClick={() => moveSecao(si, 1)} className="px-1.5 hover:text-gray-700">↓</button>
-                    <button type="button" title="Remover seção" onClick={() => { if (confirm(`Remover a seção "${sec.nome}" e seus pratos?`)) removeSecao(si); }} className="px-1.5 hover:text-rose-600">🗑</button>
+                    <button type="button" title="Remover seção" onClick={() => { if (confirm(`Remover a seção "${sec.nome}" e seus pratos?`)) removeSecao(si); }} className="px-1.5 hover:text-rose-600"><Trash2 size={14} /></button>
                   </div>
                 )}
               </div>
@@ -369,7 +370,7 @@ export function CardapioEditor({ rid, podeEditar, nomeRestaurante, menuId, nomeM
                     {podeEditar && (
                       <button type="button" title="Ícone do item" onClick={() => setIconePrato({ si, pi })}
                         className="shrink-0 w-9 h-9 mt-px flex items-center justify-center rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800">
-                        {p.iconeUrl ? <img src={p.iconeUrl} alt="" className="w-5 h-5 object-contain" /> : p.iconeId ? <IconeCardapioView id={p.iconeId} size={18} /> : <span className="text-gray-300 text-sm">🖼</span>}
+                        {p.iconeUrl ? <img src={p.iconeUrl} alt="" className="w-5 h-5 object-contain" /> : p.iconeId ? <IconeCardapioView id={p.iconeId} size={18} /> : <ImageIcon size={16} className="text-gray-300" />}
                       </button>
                     )}
                     <div className="flex-1 min-w-0 space-y-1.5">

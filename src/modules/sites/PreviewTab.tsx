@@ -3,6 +3,7 @@
 // (desktop/mobile) pra testar responsividade.
 
 import { useState } from "react";
+import { TriangleAlert, Monitor, Smartphone } from "lucide-react";
 import { useSiteConfig } from "./useSiteConfig";
 
 type Props = {
@@ -20,7 +21,7 @@ export function PreviewTab({ rid, nomeRestaurante }: Props) {
   if (erro === "permission_denied") {
     return (
       <div className="rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-4 text-sm">
-        <p className="font-semibold mb-1">⚠ Regras Firestore não publicadas</p>
+        <p className="font-semibold mb-1 inline-flex items-center gap-1.5"><TriangleAlert size={14} /> Regras Firestore não publicadas</p>
         <code className="block mt-2 text-[12px] bg-white dark:bg-gray-900 px-3 py-2 rounded border">
           firebase deploy --only firestore:rules --project gestaocentral
         </code>
@@ -56,20 +57,20 @@ export function PreviewTab({ rid, nomeRestaurante }: Props) {
             onClick={() => setViewport("desktop")}
             className={`px-3 py-1 text-xs rounded ${viewport === "desktop" ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800"}`}
           >
-            🖥️ Desktop
+            <span className="inline-flex items-center gap-1.5"><Monitor size={13} /> Desktop</span>
           </button>
           <button
             onClick={() => setViewport("mobile")}
             className={`px-3 py-1 text-xs rounded ${viewport === "mobile" ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800"}`}
           >
-            📱 Mobile
+            <span className="inline-flex items-center gap-1.5"><Smartphone size={13} /> Mobile</span>
           </button>
         </div>
       </div>
 
       {naoPublicado && (
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-900 dark:text-amber-200">
-          ⚠ Site está marcado como <strong>não publicado</strong>. Você consegue ver o preview aqui,
+          <TriangleAlert size={13} className="inline align-[-2px] mr-1" />Site está marcado como <strong>não publicado</strong>. Você consegue ver o preview aqui,
           mas a URL pública vai retornar "em manutenção" pra qualquer pessoa que tentar abrir.
           Marca como publicado na aba Geral quando estiver pronto.
         </div>

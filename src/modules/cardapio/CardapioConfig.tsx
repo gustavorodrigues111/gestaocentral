@@ -2,6 +2,7 @@
 // (PNG de capa e de miolo) e colunas padrão. Tudo salvo no layout COMPARTILHADO
 // (cardapioEstruturado.layout), valendo pra todos os cardápios do restaurante.
 import { useEffect, useRef, useState } from "react";
+import { TriangleAlert } from "lucide-react";
 import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -106,7 +107,7 @@ export function CardapioConfig({ rid, podeEditar, atualizadoPor }: { rid: string
           <ArteUpload titulo="Miolo (demais páginas)" url={lay.mioloUrl} subindo={subindo === "miolo"} podeEditar={podeEditar}
             onPick={(f) => void subirArte("miolo", f)} onRemover={() => void salvar({ mioloUrl: "" })} />
         </div>
-        {erroArte && <div className="text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5">⚠ {erroArte}</div>}
+        {erroArte && <div className="text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5 flex items-center gap-1.5"><TriangleAlert size={13} className="shrink-0" /> {erroArte}</div>}
       </section>
 
       {/* Colunas */}

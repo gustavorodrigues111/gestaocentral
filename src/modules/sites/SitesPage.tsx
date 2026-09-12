@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Lock, SquarePen, ClipboardList, Eye } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -51,7 +52,7 @@ export function SitesPage() {
   if (!podeUsar) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
           Peça pro administrador habilitar o módulo Sites pra você.
@@ -65,13 +66,13 @@ export function SitesPage() {
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
         <TabButton active={tab === "geral"} onClick={() => setTab("geral")} disabled={!podeGeral}>
-          📝 Geral
+          <span className="inline-flex items-center gap-1.5"><SquarePen size={15} /> Geral</span>
         </TabButton>
         <TabButton active={tab === "cardapio"} onClick={() => setTab("cardapio")} disabled={!podeCardapio}>
-          📋 Cardápio
+          <span className="inline-flex items-center gap-1.5"><ClipboardList size={15} /> Cardápio</span>
         </TabButton>
         <TabButton active={tab === "preview"} onClick={() => setTab("preview")}>
-          👁️ Preview
+          <span className="inline-flex items-center gap-1.5"><Eye size={15} /> Preview</span>
         </TabButton>
       </div>
 
@@ -90,7 +91,7 @@ export function SitesPage() {
       )}
       {tab === "cardapio" && (
         <div className="rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-6 text-center space-y-2">
-          <div className="text-3xl">📋</div>
+          <div className="flex justify-center text-indigo-500"><ClipboardList size={30} /></div>
           <div className="text-sm font-semibold text-indigo-900 dark:text-indigo-200">O cardápio agora é editado no módulo <strong>Cardápio</strong></div>
           <p className="text-[13px] text-indigo-700 dark:text-indigo-300 max-w-md mx-auto">Lá você escolhe entre montar item a item ou subir um PDF — e o site puxa daqui, do mesmo jeito. Abra o módulo <strong>Cardápio</strong> no menu lateral.</p>
         </div>

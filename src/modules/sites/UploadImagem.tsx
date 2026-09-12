@@ -4,6 +4,7 @@
 // Rules já permitem write authed + read público.
 
 import { useRef, useState } from "react";
+import { TriangleAlert } from "lucide-react";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { storage } from "../../core/firebase/config";
 import { Input } from "../../core/ui/Input";
@@ -176,7 +177,7 @@ export function UploadImagem({ rid, tipo, label, descricao, url, onChange, disab
               ✓ Salvo automaticamente — site atualizado.
             </p>
           )}
-          {erro && <p className="text-xs text-rose-600 mt-1">⚠ {erro}</p>}
+          {erro && <p className="text-xs text-rose-600 mt-1 inline-flex items-center gap-1"><TriangleAlert size={12} /> {erro}</p>}
         </div>
       )}
 
@@ -190,7 +191,7 @@ export function UploadImagem({ rid, tipo, label, descricao, url, onChange, disab
             placeholder="https://..."
           />
           <p className="text-[10px] text-amber-600 dark:text-amber-400">
-            ⚠ Use só URLs públicas de imagem (terminam em .png, .jpg, .webp).
+            <TriangleAlert size={11} className="inline align-[-1px] mr-1" />Use só URLs públicas de imagem (terminam em .png, .jpg, .webp).
             Links do Google Drive, Dropbox ou Instagram NÃO funcionam direto —
             prefere subir o arquivo acima.
           </p>

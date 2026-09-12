@@ -3,6 +3,7 @@
 // título da capa, e vê o A4 ao vivo. O PDF é gerado do PRÓPRIO preview
 // (html2canvas → jsPDF) — a fonte sai idêntica à da tela.
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
+import { Palette, Eye, Settings, Ruler, MoveHorizontal, Image as ImageIcon, Frame, Puzzle, AlignLeft, AlignCenter, AlignRight, Send, Download, Save, type LucideIcon } from "lucide-react";
 import { doc, getDoc, updateDoc, setDoc } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { db, storage } from "../../core/firebase/config";
@@ -709,13 +710,13 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
       <div className="bg-white dark:bg-gray-900 rounded-xl w-full max-w-5xl flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
        {/* Alternador de abas — só no mobile */}
        <div className="sm:hidden flex border-b border-gray-200 dark:border-gray-800 shrink-0">
-         <button type="button" onClick={() => setAba("ajustes")} className={`flex-1 py-2.5 text-sm font-semibold ${aba === "ajustes" ? "text-indigo-700 dark:text-indigo-300 border-b-2 border-indigo-600" : "text-gray-500"}`}>🎨 Ajustes</button>
-         <button type="button" onClick={() => setAba("previa")} className={`flex-1 py-2.5 text-sm font-semibold ${aba === "previa" ? "text-indigo-700 dark:text-indigo-300 border-b-2 border-indigo-600" : "text-gray-500"}`}>👁 Prévia</button>
+         <button type="button" onClick={() => setAba("ajustes")} className={`flex-1 py-2.5 text-sm font-semibold ${aba === "ajustes" ? "text-indigo-700 dark:text-indigo-300 border-b-2 border-indigo-600" : "text-gray-500"}`}><span className="inline-flex items-center gap-1.5"><Palette size={14} /> Ajustes</span></button>
+         <button type="button" onClick={() => setAba("previa")} className={`flex-1 py-2.5 text-sm font-semibold ${aba === "previa" ? "text-indigo-700 dark:text-indigo-300 border-b-2 border-indigo-600" : "text-gray-500"}`}><span className="inline-flex items-center gap-1.5"><Eye size={14} /> Prévia</span></button>
        </div>
        <div className="flex flex-1 min-h-0 overflow-hidden">
         {/* Controles */}
         <div className={`w-full sm:w-72 sm:shrink-0 border-r border-gray-200 dark:border-gray-800 p-4 space-y-4 overflow-y-auto ${aba === "ajustes" ? "" : "hidden"} sm:block`}>
-          <h3 className="font-bold text-gray-800 dark:text-gray-100">🎨 Visual do PDF</h3>
+          <h3 className="font-bold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5"><Palette size={16} /> Visual do PDF</h3>
 
           {menuId && (
             <div className={`rounded-lg border p-2.5 ${layoutProprio ? "border-amber-300 bg-amber-50 dark:bg-amber-950/20 dark:border-amber-900/50" : "border-gray-200 dark:border-gray-800"}`}>
@@ -734,10 +735,10 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
           )}
 
           <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/40 rounded-lg px-2.5 py-2">
-            Fontes definidas em <span className="font-semibold">⚙️ Configurações</span> (valem pra todos os cardápios).
+            Fontes definidas em <span className="font-semibold inline-flex items-center gap-1"><Settings size={11} /> Configurações</span> (valem pra todos os cardápios).
           </div>
 
-          <PainelGrupo titulo="Tamanhos & espaçamentos" icone="📏">
+          <PainelGrupo titulo="Tamanhos & espaçamentos" icone={Ruler}>
             <Slider label="Tamanho da seção" k="tamSecao" min={11} max={28} />
             <Slider label="Tamanho do nome do prato" k="tamTitulo" min={9} max={20} />
             <Slider label="Tamanho da descrição" k="tamDescricao" min={6} max={16} />
@@ -750,7 +751,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
             </label>
           </PainelGrupo>
 
-          <PainelGrupo titulo="Alinhamento do texto" icone="↔️">
+          <PainelGrupo titulo="Alinhamento do texto" icone={MoveHorizontal}>
             <p className="text-[11px] text-gray-500 dark:text-gray-400">
               Alinha seções, pratos, descrição e preço.{" "}
               {layoutProprio ? "Vale só para este cardápio." : "Marque \"Formatar este cardápio diferente\" acima pra alinhar só este cardápio."}
@@ -758,7 +759,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
             <div className="flex items-center justify-between gap-2 py-1">
               <span className="text-[13px] text-gray-600 dark:text-gray-300">Padrão do cardápio</span>
               <div className="flex rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
-                {([["left", "⬅ Esq."], ["center", "≡ Centro"], ["right", "Dir. ➡"]] as const).map(([v, lbl]) => (
+                {([["left", <span className="inline-flex items-center gap-1"><AlignLeft size={12} /> Esq.</span>], ["center", <span className="inline-flex items-center gap-1"><AlignCenter size={12} /> Centro</span>], ["right", <span className="inline-flex items-center gap-1"><AlignRight size={12} /> Dir.</span>]] as const).map(([v, lbl]) => (
                   <button key={v} type="button" onClick={() => setCampo("alinhamento", v)}
                     className={`px-2.5 py-1 text-[12px] ${(lay.alinhamento || "left") === v ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>{lbl}</button>
                 ))}
@@ -775,7 +776,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
                       <div className="flex rounded-md overflow-hidden border border-gray-200 dark:border-gray-700 shrink-0">
                         <button type="button" onClick={() => { const n = { ...lay.alinhamentoPorPagina }; delete n[p]; setCampo("alinhamentoPorPagina", n); }}
                           className={`px-2 py-0.5 text-[11px] ${!cur ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>Padrão</button>
-                        {([["left", "⬅"], ["center", "≡"], ["right", "➡"]] as const).map(([v, lbl]) => (
+                        {([["left", <AlignLeft size={12} />], ["center", <AlignCenter size={12} />], ["right", <AlignRight size={12} />]] as const).map(([v, lbl]) => (
                           <button key={v} type="button" onClick={() => setCampo("alinhamentoPorPagina", { ...lay.alinhamentoPorPagina, [p]: v })}
                             className={`px-2.5 py-0.5 text-[12px] ${cur === v ? "bg-indigo-600 text-white" : "text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>{lbl}</button>
                         ))}
@@ -787,7 +788,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
             )}
           </PainelGrupo>
 
-          <PainelGrupo titulo="Cores dos textos" icone="🎨">
+          <PainelGrupo titulo="Cores dos textos" icone={Palette}>
             {([
               ["corSecoes", "Seções e título da capa"],
               ["corPratos", "Nome do prato"],
@@ -805,7 +806,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
             <p className="text-[11px] text-gray-400 pt-1">Padrão: preto. Clique no quadradinho pra escolher outra cor.</p>
           </PainelGrupo>
 
-          <PainelGrupo titulo="Arte de fundo (capa / miolo)" icone="🎨">
+          <PainelGrupo titulo="Arte de fundo (capa / miolo)" icone={Palette}>
             <p className="text-[11px] text-gray-500 dark:text-gray-400">Pro logo e a arte saírem nítidos no PDF, suba imagens grandes (largura ≥ 2500px). A <b>capa</b> é o fundo da página 1; o <b>miolo</b> é o fundo das demais.</p>
             {([["capa", "Capa (página 1)", lay.capaUrl], ["miolo", "Miolo (demais)", lay.mioloUrl]] as const).map(([tipo, label, atual]) => (
               <div key={tipo} className="flex items-center justify-between gap-2">
@@ -822,7 +823,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
           </PainelGrupo>
 
           {!!capaSrc && (
-            <PainelGrupo titulo="Título da capa" icone="🖼️">
+            <PainelGrupo titulo="Título da capa" icone={ImageIcon}>
               <label className="block text-xs font-semibold text-gray-600 dark:text-gray-400">Texto
                 <input value={tCapa} onChange={(e) => { setTCapa(e.target.value); onTituloCapa?.(e.target.value); }} placeholder={(nomeMenu || "").toUpperCase() || "ex: COMIDAS"} className="mt-1 w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
               </label>
@@ -832,7 +833,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
             </PainelGrupo>
           )}
 
-          <PainelGrupo titulo="Margens & colunas" icone="📐">
+          <PainelGrupo titulo="Margens & colunas" icone={Frame}>
             <Slider label="Margem superior" k="margemTopo" min={10} max={120} />
             <Slider label="Margem inferior" k="margemBaixo" min={10} max={120} />
             <Slider label="Espaço entre colunas" k="colGap" min={8} max={90} />
@@ -853,7 +854,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
           </PainelGrupo>
 
           {onSecoes && (
-            <PainelGrupo titulo="Distribuição das seções" icone="🧩">
+            <PainelGrupo titulo="Distribuição das seções" icone={Puzzle}>
               <div className="flex items-center justify-between gap-2">
                 <p className="text-[11px] text-gray-400">Listadas na ordem do layout (página · coluna · de cima pra baixo).</p>
                 <button type="button" onClick={() => distribuirNasMargens()} className="shrink-0 text-[11px] font-semibold px-2 py-1 rounded-md border border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300">↕ Distribuir</button>
@@ -902,8 +903,8 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
              : <span className="text-gray-400">Tudo salvo</span>}
          </span>
          <div className="flex items-center gap-2">
-           <button type="button" disabled={baixando} onClick={() => void baixar()} className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50">{baixando ? "gerando…" : (podeCompartilharArquivo() ? "📤 Enviar PDF" : "⬇ Baixar PDF")}</button>
-           <button type="button" disabled={!dirty || salvando} onClick={() => void salvarLayout()} className="text-[13px] font-semibold px-4 py-1.5 rounded-lg bg-emerald-600 text-white disabled:opacity-50">💾 Salvar</button>
+           <button type="button" disabled={baixando} onClick={() => void baixar()} className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 disabled:opacity-50">{baixando ? "gerando…" : (podeCompartilharArquivo() ? <span className="inline-flex items-center gap-1.5"><Send size={13} /> Enviar PDF</span> : <span className="inline-flex items-center gap-1.5"><Download size={13} /> Baixar PDF</span>)}</button>
+           <button type="button" disabled={!dirty || salvando} onClick={() => void salvarLayout()} className="text-[13px] font-semibold px-4 py-1.5 rounded-lg bg-emerald-600 text-white disabled:opacity-50"><span className="inline-flex items-center gap-1.5"><Save size={14} /> Salvar</span></button>
            <button type="button" onClick={tentarFechar} className="text-[13px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Fechar</button>
          </div>
        </div>
@@ -913,14 +914,14 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
 }
 
 // ─── Grupo colapsável do painel de controles ─────────────────────────────────
-function PainelGrupo({ titulo, icone, defaultOpen = false, children }: { titulo: string; icone?: string; defaultOpen?: boolean; children: ReactNode }) {
+function PainelGrupo({ titulo, icone: Icone, defaultOpen = false, children }: { titulo: string; icone?: LucideIcon; defaultOpen?: boolean; children: ReactNode }) {
   const [open, setOpen] = useState(defaultOpen);
   return (
     <div className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
       <button type="button" onClick={() => setOpen((o) => !o)}
         className="w-full flex items-center justify-between gap-2 px-3 py-2 bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors">
         <span className="text-[12px] font-bold text-gray-700 dark:text-gray-200 flex items-center gap-1.5">
-          {icone && <span>{icone}</span>}{titulo}
+          {Icone && <Icone size={13} />}{titulo}
         </span>
         <span className={`text-gray-400 text-[10px] transition-transform ${open ? "rotate-180" : ""}`}>▼</span>
       </button>

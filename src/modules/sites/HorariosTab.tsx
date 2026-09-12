@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { TriangleAlert, CalendarDays, Scissors, Ticket } from "lucide-react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -135,14 +136,14 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
   if (erro === "permission_denied") {
     return (
       <div className="rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-4 text-sm">
-        <p className="font-semibold text-rose-900 dark:text-rose-200 mb-1">⚠ Regras Firestore não publicadas</p>
+        <p className="font-semibold text-rose-900 dark:text-rose-200 mb-1 inline-flex items-center gap-1.5"><TriangleAlert size={14} /> Regras Firestore não publicadas</p>
         <code className="block mt-2 text-[12px] bg-white dark:bg-gray-900 px-3 py-2 rounded border">
           firebase deploy --only firestore:rules --project gestaocentral
         </code>
       </div>
     );
   }
-  if (erro) return <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">⚠ {erro}</div>;
+  if (erro) return <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800 flex items-center gap-1.5"><TriangleAlert size={14} className="shrink-0" /> {erro}</div>;
 
   function toggleFechado(dia: number) {
     setHorarios(hs => hs.map(h => h.dia === dia ? { ...h, fechado: !h.fechado, turnos: !h.fechado ? [] : (h.turnos.length === 0 ? [{ abre: "19:00", fecha: "23:00" }] : h.turnos) } : h));
@@ -341,7 +342,7 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
       <summary className="cursor-pointer px-3 py-2 list-none">
         <div className="flex items-center justify-between gap-2 flex-wrap">
           <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-            📅 Sugestões de feriados
+            <CalendarDays size={14} className="inline align-[-2px] mr-1" />Sugestões de feriados
           </h3>
           <span className="text-xs text-gray-400">
             {feriadosErro
@@ -358,7 +359,7 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
         </p>
       </summary>
       {feriadosErro ? (
-        <p className="px-3 pb-3 text-xs text-rose-600">⚠ {feriadosErro}</p>
+        <p className="px-3 pb-3 text-xs text-rose-600 inline-flex items-center gap-1"><TriangleAlert size={12} /> {feriadosErro}</p>
       ) : (
         <div className="px-3 pb-3 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
           {feriados.map(f => {
@@ -531,7 +532,7 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
         <summary className="cursor-pointer px-3 py-2 list-none">
           <div className="flex items-center justify-between gap-2 flex-wrap">
             <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-              ✂ Exceções pontuais ({excecoesVisiveis.length})
+              <Scissors size={14} className="inline align-[-2px] mr-1" />Exceções pontuais ({excecoesVisiveis.length})
             </h3>
             <span className="text-xs text-gray-400">▼ expandir / fechar</span>
           </div>
@@ -616,7 +617,7 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
             {hasReservasFeature && saloes.length > 0 && (
               <div className="mt-3 p-3 rounded-lg bg-indigo-50/40 dark:bg-indigo-900/10 border border-indigo-200 dark:border-indigo-800">
                 <div className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 mb-2">
-                  🎫 Reservas nessa data
+                  <Ticket size={13} className="inline align-[-2px] mr-1" />Reservas nessa data
                 </div>
                 <div className="grid grid-cols-1 gap-1.5">
                   {(["padrao", "sem", "custom"] as const).map(modo => {
@@ -757,7 +758,7 @@ export function HorariosTab({ rid, nomeRestaurante, podeEditar }: Props) {
                           </span>
                         ) : (
                           <span className="text-[10px] uppercase font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" title={e.slotsReservaCustom.map(s => s.horario).join(", ")}>
-                            🎫 reservas custom ({e.slotsReservaCustom.length})
+                            <Ticket size={11} className="inline align-[-1px] mr-1" />reservas custom ({e.slotsReservaCustom.length})
                           </span>
                         )
                       )}
