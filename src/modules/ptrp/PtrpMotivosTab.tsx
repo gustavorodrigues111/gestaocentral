@@ -11,6 +11,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
+import { TriangleAlert } from "lucide-react";
 import type { ScheduleStatus } from "../../core/types";
 import { fetchMotivosAfastamento, type MotivoAfastamento } from "../../core/ponto/solidesPontoClient";
 
@@ -67,7 +68,7 @@ export function PtrpMotivosTab() {
   return (
     <div>
       <p className="text-xs text-gray-500 mb-3">Motivos de ajuste/afastamento da <strong>Sólides</strong> ({activeRestaurant?.nome}) — puxados ao vivo. Para cada um: <strong>→ status da escala</strong> (forma a praticada) e <strong>☑ exibir no tratamento do PTRP</strong> (o ⚙️ da Conferência lista só os marcados).</p>
-      {erro && <div className="text-[12px] text-rose-600 mb-2">⚠ {erro}</div>}
+      {erro && <div className="text-[12px] text-rose-600 mb-2 inline-flex items-center gap-1"><TriangleAlert size={12}/> {erro}</div>}
       {loading ? <div className="text-sm text-gray-400 py-8 text-center">Buscando motivos da Sólides…</div> : motivos.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">Nenhum motivo retornado — confira o token da empresa no Sólides.</div>
       ) : (

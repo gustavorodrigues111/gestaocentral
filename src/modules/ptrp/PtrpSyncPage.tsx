@@ -6,7 +6,7 @@
 //  backfill sem abrir o console do Firestore.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, Scale, Landmark, Settings } from "lucide-react";
+import { BarChart3, Scale, Landmark, Settings, ScrollText, Repeat, Building2, Lock, TriangleAlert, Hourglass } from "lucide-react";
 import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -74,9 +74,9 @@ export function PtrpSyncPage() {
   // saiu daqui — agora é feito INLINE no tratamento (⚙️): preferidos (★) + o
   // status da escala é lembrado por motivo. Sem tabela gigante.
   const subAbas = [
-    ...(podeRegras ? [["regras", "📜 Regras"] as const] : []),
-    ...(podeSincronizar ? [["sync", "🔄 Sincronização"] as const] : []),
-    ...(podeRegras ? [["validadores", "⚖️ Responsáveis por área"] as const] : []),
+    ...(podeRegras ? [["regras", <span className="inline-flex items-center gap-1"><ScrollText size={14}/> Regras</span>] as const] : []),
+    ...(podeSincronizar ? [["sync", <span className="inline-flex items-center gap-1"><Repeat size={14}/> Sincronização</span>] as const] : []),
+    ...(podeRegras ? [["validadores", <span className="inline-flex items-center gap-1"><Scale size={14}/> Responsáveis por área</span>] as const] : []),
   ];
   const subAbaEfetiva = subAbas.some(([v]) => v === subAba) ? subAba : (subAbas[0]?.[0] || "regras");
 
@@ -122,7 +122,7 @@ export function PtrpSyncPage() {
     } finally { setRodando(null); }
   }
 
-  if (abasPermitidas.length === 0) return <div className="max-w-3xl mx-auto p-8 text-center text-gray-500">🔒 Sem acesso ao módulo de Ponto. Peça permissão no Perfil de Acesso.</div>;
+  if (abasPermitidas.length === 0) return <div className="max-w-3xl mx-auto p-8 text-center text-gray-500 inline-flex items-center gap-1"><Lock size={15}/> Sem acesso ao módulo de Ponto. Peça permissão no Perfil de Acesso.</div>;
 
   return (
     <PageContainer>
@@ -147,7 +147,7 @@ export function PtrpSyncPage() {
       <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5 mb-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{activeRestaurant?.nome} · {shortCode || "sem shortCode"}</div>
       <div className="flex items-center gap-2 flex-wrap mb-2">
         <Button size="sm" onClick={() => void sincronizar(shortCode ? { empresa: shortCode } : undefined)} disabled={!!rodando}>
-          {rodando ? "Sincronizando…" : "🔄 Sincronizar agora"}
+          {rodando ? "Sincronizando…" : <span className="inline-flex items-center gap-1"><Repeat size={14}/> Sincronizar agora</span>}
         </Button>
         {msg && <span className="text-xs text-gray-600 dark:text-gray-300">{msg}</span>}
       </div>
@@ -158,7 +158,7 @@ export function PtrpSyncPage() {
         <Button size="sm" variant="secondary" disabled={!!rodando || !desdeInput} onClick={() => void sincronizar({ empresa: shortCode, desde: desdeInput })}>Rebuscar</Button>
         <span className="text-gray-400">força puxar tudo a partir dessa data (ex.: início do mês a validar).</span>
       </div>
-      {algumAtrasado && <div className="text-xs text-amber-600 dark:text-amber-400 mb-3">⏳ Backfill em andamento — rode algumas vezes até o cursor chegar em hoje ({fmtD(hoje)}).</div>}
+      {algumAtrasado && <div className="text-xs text-amber-600 dark:text-amber-400 mb-3 inline-flex items-center gap-1"><Hourglass size={12}/> Backfill em andamento — rode algumas vezes até o cursor chegar em hoje ({fmtD(hoje)}).</div>}
 
       {loading ? (
         <div className="text-sm text-gray-400 py-10 text-center">Carregando…</div>
@@ -174,7 +174,7 @@ export function PtrpSyncPage() {
             return (
               <div key={e.id} className={`rounded-xl border p-3.5 ${e.ok === false ? "border-rose-300 dark:border-rose-800 bg-rose-50/40 dark:bg-rose-900/10" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
                 <div className="flex items-center justify-between gap-2">
-                  <div className="font-semibold text-gray-900 dark:text-gray-100">🏢 {e.id}</div>
+                  <div className="font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1"><Building2 size={14}/> {e.id}</div>
                   {e.ok === false
                     ? <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-rose-500 text-white">erro</span>
                     : atrasado
@@ -188,7 +188,7 @@ export function PtrpSyncPage() {
                   <span className="text-gray-500">Última janela</span><span className="text-right tabular-nums">{fmtD(e.ultimaJanela?.desde)}–{fmtD(e.ultimaJanela?.ate)}</span>
                   <span className="text-gray-500">Lidas / novas</span><span className="text-right tabular-nums">{e.lidasUltima ?? 0} / <strong className="text-emerald-600 dark:text-emerald-400">{e.criadasUltima ?? 0}</strong></span>
                 </div>
-                {e.erro && <div className="mt-2 text-[11px] text-rose-600 dark:text-rose-400 break-words">⚠ {e.erro}</div>}
+                {e.erro && <div className="mt-2 text-[11px] text-rose-600 dark:text-rose-400 break-words inline-flex items-start gap-1"><TriangleAlert size={12} className="shrink-0 mt-0.5"/> {e.erro}</div>}
                 <div className="mt-2.5 flex justify-end">
                   <Button size="sm" variant="secondary" onClick={() => void sincronizar({ empresa: e.id, ...(desdeInput ? { desde: desdeInput } : {}) })} disabled={!!rodando}>
                     {rodando === e.id ? "…" : "Sincronizar"}

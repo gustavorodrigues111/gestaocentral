@@ -13,6 +13,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import { Signature, ClipboardList, Folder, PartyPopper, Smartphone, Mail, Send, Circle, CheckSquare, TriangleAlert } from "lucide-react";
 import { gerarEspelhoPDF, type EspelhoMeta } from "../../core/ptrp/espelhoPDF";
 import type { PtrpApuracaoColab } from "../../core/ptrp/tipos";
 import { criarEnvelopeClicksign, statusEnvelopeClicksign, baixarAssinadoClicksign } from "../../core/clicksign/clicksignClient";
@@ -25,10 +26,10 @@ type Reg = { id: string; colaboradorId: string; nome?: string; status?: string; 
 const blobToBase64 = (blob: Blob) => new Promise<string>((res, rej) => { const r = new FileReader(); r.onload = () => res(String(r.result).split(",")[1] || ""); r.onerror = rej; r.readAsDataURL(blob); });
 const b64ToFile = (b64: string, nome: string) => { const bin = atob(b64); const arr = new Uint8Array(bin.length); for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i); return new File([arr], nome, { type: "application/pdf" }); };
 const soDig = (s?: string) => (s || "").replace(/\D/g, "");
-const chip = (st?: string) => st === "assinado" ? { t: "✅ assinado", c: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" }
-  : st === "enviado" ? { t: "📤 enviado", c: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" }
-  : st === "erro" ? { t: "⚠ erro", c: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" }
-  : { t: "⚪ não enviado", c: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" };
+const chip = (st?: string) => st === "assinado" ? { t: <span className="inline-flex items-center gap-1"><CheckSquare size={11}/> assinado</span>, c: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" }
+  : st === "enviado" ? { t: <span className="inline-flex items-center gap-1"><Send size={11}/> enviado</span>, c: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300" }
+  : st === "erro" ? { t: <span className="inline-flex items-center gap-1"><TriangleAlert size={11}/> erro</span>, c: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" }
+  : { t: <span className="inline-flex items-center gap-1"><Circle size={11}/> não enviado</span>, c: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" };
 
 export function PtrpAssinaturasModal({ empresaKey, comp, compLabel, restaurantId, driveFolderInit, alvos, meta, autor, onClose }: { empresaKey: string; comp: string; compLabel: string; restaurantId: string; driveFolderInit: { id?: string; nome?: string }; alvos: AlvoAssinatura[]; meta: EspelhoMeta; autor: { id: string; nome: string }; onClose: () => void }) {
   const [regs, setRegs] = useState<Reg[]>([]);
@@ -123,18 +124,18 @@ export function PtrpAssinaturasModal({ empresaKey, comp, compLabel, restaurantId
   const selecionaveis = alvos.filter(a => regPorColab[a.snap.colaboradorId]?.status !== "assinado");
 
   return (
-    <Modal title={`✍️ Assinatura dos espelhos · ${compLabel}`} onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={<span className="inline-flex items-center gap-1"><Signature size={16}/> Assinatura dos espelhos · {compLabel}</span>} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
         <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800">
           {(["enviar", "status"] as const).map(t => (
-            <button key={t} type="button" onClick={() => setAba(t)} className={`px-3 py-1.5 text-sm font-semibold -mb-px border-b-2 ${aba === t ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700"}`}>{t === "enviar" ? "📤 Enviar" : "📋 Status"}</button>
+            <button key={t} type="button" onClick={() => setAba(t)} className={`inline-flex items-center gap-1 px-3 py-1.5 text-sm font-semibold -mb-px border-b-2 ${aba === t ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700"}`}>{t === "enviar" ? <><Send size={13}/> Enviar</> : <><ClipboardList size={13}/> Status</>}</button>
           ))}
           <div className="flex-1" />
           <button type="button" onClick={() => void atualizarStatus()} disabled={!!busy} className="text-[11px] px-2 self-center text-gray-500 hover:text-gray-700 disabled:opacity-40">{busy === "status" ? "atualizando…" : "↻ atualizar status"}</button>
         </div>
 
         <div className="flex items-center gap-2 flex-wrap text-[11px] text-gray-500 bg-gray-50 dark:bg-gray-800/40 rounded-lg px-2.5 py-1.5">
-          <span>📁 Pasta dos assinados: {pasta.nome ? <strong className="text-gray-700 dark:text-gray-200">{pasta.nome}</strong> : <span className="text-amber-600 dark:text-amber-400">não definida</span>}</span>
+          <span className="inline-flex items-center gap-1"><Folder size={12}/> Pasta dos assinados: {pasta.nome ? <strong className="text-gray-700 dark:text-gray-200">{pasta.nome}</strong> : <span className="text-amber-600 dark:text-amber-400">não definida</span>}</span>
           <button type="button" onClick={() => void escolherPasta()} className="text-emerald-600 dark:text-emerald-400 font-semibold hover:underline">{pasta.id ? "alterar" : "escolher pasta"}</button>
           {pasta.id && <span className="text-gray-400">→ Pontos assinados / {comp}</span>}
           {!isDriveConnected() && <span className="text-amber-600 dark:text-amber-400">· conecte o Drive (Configurações) pra arquivar</span>}
@@ -150,12 +151,12 @@ export function PtrpAssinaturasModal({ empresaKey, comp, compLabel, restaurantId
               </div>
             </div>
             <div className="max-h-[46vh] overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
-              {selecionaveis.length === 0 && <div className="p-4 text-center text-[12px] text-gray-400">Todos já assinaram 🎉</div>}
+              {selecionaveis.length === 0 && <div className="p-4 text-center text-[12px] text-gray-400 inline-flex items-center justify-center gap-1 w-full">Todos já assinaram <PartyPopper size={13}/></div>}
               {selecionaveis.map(a => { const c = a.snap; const st = regPorColab[c.colaboradorId]?.status; const semContato = !a.email && !a.whatsapp; return (
                 <label key={c.colaboradorId} className={`flex items-center gap-2 px-3 py-2 ${semContato ? "opacity-60" : "cursor-pointer"}`}>
                   <input type="checkbox" disabled={semContato} checked={sel.has(c.colaboradorId)} onChange={() => toggle(c.colaboradorId)} />
                   <span className="flex-1 min-w-0"><span className="text-[13px] font-medium text-gray-800 dark:text-gray-100 truncate">{c.nome}</span>
-                    <span className="block text-[10.5px] text-gray-400">{a.whatsapp ? `📱 ${a.whatsapp}` : ""}{a.whatsapp && a.email ? " · " : ""}{a.email ? `✉️ ${a.email}` : ""}{semContato ? "sem WhatsApp nem email no cadastro" : ""}</span>
+                    <span className="block text-[10.5px] text-gray-400">{a.whatsapp ? <span className="inline-flex items-center gap-0.5"><Smartphone size={11}/> {a.whatsapp}</span> : null}{a.whatsapp && a.email ? " · " : ""}{a.email ? <span className="inline-flex items-center gap-0.5"><Mail size={11}/> {a.email}</span> : null}{semContato ? "sem WhatsApp nem email no cadastro" : ""}</span>
                   </span>
                   {st && <span className={`shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded ${chip(st).c}`}>{chip(st).t}</span>}
                 </label>
@@ -164,7 +165,7 @@ export function PtrpAssinaturasModal({ empresaKey, comp, compLabel, restaurantId
             {msg && <div className={`text-[12px] ${msg.startsWith("✓") ? "text-emerald-600" : "text-rose-600"}`}>{msg}</div>}
             <div className="flex justify-end gap-2">
               <Button variant="secondary" onClick={onClose}>Fechar</Button>
-              <Button onClick={() => void enviar()} disabled={!!busy || sel.size === 0}>{busy === "enviar" ? "Enviando…" : `✍️ Enviar (${sel.size})`}</Button>
+              <Button onClick={() => void enviar()} disabled={!!busy || sel.size === 0}>{busy === "enviar" ? "Enviando…" : <span className="inline-flex items-center gap-1"><Signature size={14}/> Enviar ({sel.size})</span>}</Button>
             </div>
           </>
         ) : (
@@ -179,7 +180,7 @@ export function PtrpAssinaturasModal({ empresaKey, comp, compLabel, restaurantId
                       <td className="text-gray-500">{r?.canal || "—"}</td>
                       <td><span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${chip(st).c}`}>{chip(st).t}</span></td>
                       <td className="text-gray-500 tabular-nums">{r?.assinadoEm ? new Date(r.assinadoEm).toLocaleDateString("pt-BR") : "—"}</td>
-                      <td className="text-right whitespace-nowrap">{r?.driveUrl && <a href={r.driveUrl} target="_blank" rel="noreferrer" className="text-[11px] text-emerald-600 hover:underline mr-2">📁 Drive</a>}{r?.signedUrl && <a href={r.signedUrl} target="_blank" rel="noreferrer" className="text-[11px] text-gray-500 hover:underline">assinado</a>}</td>
+                      <td className="text-right whitespace-nowrap">{r?.driveUrl && <a href={r.driveUrl} target="_blank" rel="noreferrer" className="text-[11px] text-emerald-600 hover:underline mr-2 inline-flex items-center gap-1"><Folder size={11}/> Drive</a>}{r?.signedUrl && <a href={r.signedUrl} target="_blank" rel="noreferrer" className="text-[11px] text-gray-500 hover:underline">assinado</a>}</td>
                     </tr>
                   ); })}
                 </tbody>
