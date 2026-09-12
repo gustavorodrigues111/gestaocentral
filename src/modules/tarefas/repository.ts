@@ -185,10 +185,10 @@ export function ouvirTarefasDeUsuario(pessoaId: string, cb: (tarefas: Tarefa[]) 
   // Usa os dados de CADA snapshot direto (com compensação de latência: escrita
   // local aparece na hora, sem esperar o servidor) e mescla. Antes fazia getDocs
   // por listener, o que perdia a compensação — tarefa nova só aparecia no refresh.
-  let resp: Tarefa[] = [], co: Tarefa[] = [], obs: Tarefa[] = [], sub: Tarefa[] = [];
+  let resp: Tarefa[] = [], co: Tarefa[] = [], obs: Tarefa[] = [], sub: Tarefa[] = [], criei: Tarefa[] = [];
   const emitir = () => {
     const map = new Map<string, Tarefa>();
-    [...resp, ...co, ...obs, ...sub].forEach(t => { if (!t.deletadoEm) map.set(t.id, t); });
+    [...resp, ...co, ...obs, ...sub, ...criei].forEach(t => { if (!t.deletadoEm) map.set(t.id, t); });
     cb(Array.from(map.values()));
   };
   const mapa = (s: import("firebase/firestore").QuerySnapshot) => s.docs.map(d => ({ id: d.id, ...d.data() }) as Tarefa);
@@ -196,8 +196,11 @@ export function ouvirTarefasDeUsuario(pessoaId: string, cb: (tarefas: Tarefa[]) 
   const unsubCo = onSnapshot(query(collection(db, COL_TAREFAS), where("coResponsaveis", "array-contains", pessoaId)), s => { co = mapa(s); emitir(); });
   const unsubObs = onSnapshot(query(collection(db, COL_TAREFAS), where("observadoresIds", "array-contains", pessoaId)), s => { obs = mapa(s); emitir(); });
   const unsubSub = onSnapshot(query(collection(db, COL_TAREFAS), where("subtarefaResponsaveisIds", "array-contains", pessoaId)), s => { sub = mapa(s); emitir(); });
+  // FALTAVA: as tarefas que a própria pessoa CRIOU (sem ser responsável) — sem
+  // isso a tarefa sumia pra quem a criou. podeVerTarefa já libera pelo criadoPor.
+  const unsubCriei = onSnapshot(query(collection(db, COL_TAREFAS), where("criadoPor", "==", pessoaId)), s => { criei = mapa(s); emitir(); });
 
-  return () => { unsubResp(); unsubCo(); unsubObs(); unsubSub(); };
+  return () => { unsubResp(); unsubCo(); unsubObs(); unsubSub(); unsubCriei(); };
 }
 
 export function ouvirTarefasDeProjeto(projetoId: string, cb: (tarefas: Tarefa[]) => void): Unsubscribe {
