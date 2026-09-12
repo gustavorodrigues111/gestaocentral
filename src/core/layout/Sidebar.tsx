@@ -11,6 +11,7 @@ import { useAvisos } from "../../modules/chat/useAvisos";
 import { confirmarSaida } from "../nav/unsaved";
 import { ModuleBadge } from "../ui/ModuleBadge";
 import { ModuleIcon } from "../ui/ModuleIcon";
+import { PanelLeftClose } from "lucide-react";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
 import type { ModuleArea, ModuleId } from "../types";
 
@@ -27,7 +28,11 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   // classificação de fatura). Se o usuário cancelar, bloqueia a navegação.
   function guardedClose(e: { preventDefault: () => void }) {
     if (!confirmarSaida()) { e.preventDefault(); return; }
-    onClose();
+    // Só fecha o menu ao navegar no MOBILE (drawer). No desktop o menu só
+    // recolhe/expande pelo botão dedicado — abrir um módulo não o esconde.
+    if (typeof window !== "undefined" && window.matchMedia("(max-width: 767px)").matches) {
+      onClose();
+    }
   }
 
   function changeRestaurant(newRid: string) {
@@ -165,8 +170,18 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
       `}>
         {/* Topo FIXO: marca + seletor de restaurante (rola só os módulos abaixo) */}
         <div className="flex-none px-3 pt-3 pb-2.5 border-b border-gray-100 dark:border-gray-800">
-          <div className="px-1 mb-2 font-bold text-[15px] text-gray-900 dark:text-gray-100 select-none">
-            <span className="text-indigo-600 dark:text-indigo-400">⚡</span> planejamento<span className="text-gray-400 dark:text-gray-500">.app</span>
+          <div className="px-1 mb-2 flex items-center gap-1">
+            <div className="font-bold text-[15px] text-gray-900 dark:text-gray-100 select-none flex-1 truncate">
+              <span className="text-indigo-600 dark:text-indigo-400">⚡</span> planejamento<span className="text-gray-400 dark:text-gray-500">.app</span>
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              title="Recolher o menu"
+              className="hidden md:inline-flex items-center justify-center shrink-0 p-1 rounded-md text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"
+            >
+              <PanelLeftClose size={17} />
+            </button>
           </div>
           {!subdomainLocked && restaurants.length > 0 ? (
             <select
