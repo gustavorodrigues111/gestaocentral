@@ -16,6 +16,7 @@ import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { PtrpCctTab } from "./PtrpCctTab";
 import { PtrpApuracaoTab } from "./PtrpApuracaoTab";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type SyncState = {
   id: string;
@@ -124,7 +125,7 @@ export function PtrpSyncPage() {
   if (abasPermitidas.length === 0) return <div className="max-w-3xl mx-auto p-8 text-center text-gray-500">🔒 Sem acesso ao módulo de Ponto. Peça permissão no Perfil de Acesso.</div>;
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <PageContainer>
       <div className="mb-3">
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><Timer size={20} className="text-gray-500 dark:text-gray-400" /> Ponto (PTRP)</h1>
         <p className="text-xs text-gray-500 mt-0.5">Tratamento de ponto — as batidas do Sólides são espelhadas numa coleção imutável (<code>ptrpBatidas</code>), base da apuração.</p>
@@ -210,6 +211,6 @@ export function PtrpSyncPage() {
       )}
       </>
       )}
-    </div>
+    </PageContainer>
   );
 }

@@ -22,6 +22,7 @@ import type {
 import { DEMISSAO_INICIATIVA_LABEL, DEMISSAO_STATUS_LABEL } from "../../core/types";
 import { getContatoClinica, getContatoContabilidade } from "../../core/admissao/admissaoHelpers";
 import { montarGmailComposeUrl } from "../../core/admissao/exportFicha";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type Tab = "kanban" | "lista" | "concluidos";
 
@@ -74,7 +75,7 @@ export function DemissaoPage() {
   if (!rid) return <div className="text-center py-12 text-gray-500">Selecione um restaurante.</div>;
 
   return (
-    <div className="max-w-7xl mx-auto p-4">
+    <PageContainer>
       <header className="flex items-center justify-between mb-4 gap-2">
         <Button onClick={() => setIniciando(true)}>+ Iniciar Demissão</Button>
       </header>
@@ -111,7 +112,7 @@ export function DemissaoPage() {
           onClose={() => setProcessoSelecionado(null)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

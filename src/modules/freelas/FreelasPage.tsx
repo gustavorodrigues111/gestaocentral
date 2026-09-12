@@ -19,6 +19,7 @@ import { FechamentoTab } from "./FechamentoTab";
 import { HistoricoTab } from "./HistoricoTab";
 import { RetroativoTab } from "./RetroativoTab";
 import { RelatoriosTab } from "./RelatoriosTab";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type TabId = "lancamentos" | "retroativo" | "fechamento" | "relatorios" | "historico";
 
@@ -123,7 +124,7 @@ export function FreelasPage() {
   const totalHistorico = shifts.filter((s) => s.status === "pago" || s.status === "nao_compareceu").length;
 
   return (
-    <div className="max-w-6xl">
+    <PageContainer>
       <div className="mb-4">
         {podeOperar && tab === "lancamentos" && (
           // Mobile: empilhado (grid 2 + full-width). Desktop: toolbar horizontal
@@ -252,6 +253,6 @@ export function FreelasPage() {
           onImported={() => { /* fica aberto pro user ver o log */ }}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }

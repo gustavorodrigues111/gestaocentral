@@ -38,6 +38,7 @@ import { EscalasComparacaoTab } from "./EscalasComparacaoTab";
 import { FechamentoTab } from "./FechamentoTab";
 import { AfastamentoModal } from "./AfastamentoModal";
 import { BatidasDiaModal } from "./BatidasDiaModal";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const soDigitos = (s?: string | null) => (s || "").replace(/\D/g, "");
 
@@ -515,7 +516,7 @@ function AnalisePontoInner() {
   ].filter(Boolean)) as Array<{ id: typeof tab; label: ReactNode }>;
 
   return (
-    <div className="max-w-5xl space-y-4">
+    <PageContainer className="space-y-4">
       {/* Abas */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
         {tabsDisp.map(({ id, label }) => (
@@ -843,7 +844,7 @@ function AnalisePontoInner() {
         />
       )}
       </>}
-    </div>
+    </PageContainer>
   );
 }
 

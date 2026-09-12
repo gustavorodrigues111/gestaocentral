@@ -21,6 +21,7 @@ import { emptyDays, validateWorkScheduleDays, getActiveWorkSchedule } from "../.
 import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, PerguntaVaga, Pessoa, Cargo, Empregado, Unidade, WorkSchedule, HorarioDia, SundayCycle } from "../../core/types";
 import { puxarRemuneracao, type RemuneracaoPuxada } from "./remuneracao";
 import { CurriculoLink } from "../_shared/CurriculoLink";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 // Empregado completo — o cálculo da gorjeta média (calcularDivisaoDia) precisa
 // de cargoId/períodos de TODOS os empregados, não só id+nome.
@@ -147,7 +148,7 @@ export function ProcessoSeletivoPage() {
   if (!podeVer) return <div className="max-w-3xl mx-auto p-8 text-center text-gray-500">Você não tem acesso ao Processo Seletivo.</div>;
 
   return (
-    <div className="max-w-full mx-auto p-4">
+    <PageContainer>
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Target size={20} className="text-gray-500 dark:text-gray-400" /> Processo Seletivo</h1>
@@ -295,7 +296,7 @@ export function ProcessoSeletivoPage() {
       )}
 
       {novaCand && <NovaCandidaturaModal rid={rid} vagas={vagas} onClose={() => setNovaCand(false)} />}
-    </div>
+    </PageContainer>
   );
 }
 

@@ -12,6 +12,7 @@ import { RotinaModal } from "./RotinaModal";
 import { apagarRotina } from "./repository";
 import { recorrenciaLabel, proximaData } from "./rotinasEngine";
 import { subDestinoLabel } from "./subDestinos";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const moduloLabel = (id?: ModuleId) => {
   if (!id) return null;
@@ -81,7 +82,7 @@ export function RotinasPage() {
   }
 
   return (
-    <div className="max-w-5xl">
+    <PageContainer>
       <div className="flex items-center justify-between mb-4 gap-2 flex-wrap">
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Lembretes recorrentes que aparecem na Central de Avisos dos responsáveis no dia devido.
@@ -145,6 +146,6 @@ export function RotinasPage() {
           onClose={() => setEditing(null)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }

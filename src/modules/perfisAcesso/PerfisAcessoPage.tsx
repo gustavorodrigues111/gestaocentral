@@ -19,6 +19,7 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
 import type { AccessProfile, PermissoesPerfil } from "../../core/types";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 export function PerfisAcessoPage() {
   const { pessoa: me } = useAuth();
@@ -107,7 +108,7 @@ export function PerfisAcessoPage() {
 
   // Modo lista
   return (
-    <div className="max-w-4xl mx-auto space-y-4">
+    <PageContainer className="space-y-4">
       <div className="flex items-baseline justify-between gap-2 flex-wrap">
         <div />
         <Button onClick={() => setEditing("new")}>+ Novo perfil</Button>
@@ -119,7 +120,7 @@ export function PerfisAcessoPage() {
         onEditar={(id) => setEditing(id)}
         onDuplicar={duplicarPerfil}
       />
-    </div>
+    </PageContainer>
   );
 }
 

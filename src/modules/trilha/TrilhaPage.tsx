@@ -11,6 +11,7 @@ import { EVENTO_TRILHA_ICON, EVENTO_TRILHA_LABEL } from "../../core/types";
 import type { Cargo, Empregado, EventoTrilha, EventoTrilhaTipo } from "../../core/types";
 import { EventoTrilhaModal } from "./EventoTrilhaModal";
 import { anularEvento, registrarVisualizacao } from "./repository";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const TIPOS_FILTRO: ("todos" | EventoTrilhaTipo)[] = [
   "todos",
@@ -150,7 +151,7 @@ export function TrilhaPage() {
   }, {});
 
   return (
-    <div className="max-w-5xl">
+    <PageContainer>
       {/* Aviso permanente: dados sensíveis (LGPD) */}
       <div className="mb-4 px-3 py-2 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2">
         <span className="text-base leading-none">🔒</span>
@@ -330,6 +331,6 @@ export function TrilhaPage() {
           onClose={() => setEditing(null)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }

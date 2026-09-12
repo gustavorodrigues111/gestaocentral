@@ -18,6 +18,7 @@ import { conferir, findingsReportaveis, blocoA } from "./regras";
 import { linhasPorColaborador } from "./porColaborador";
 import { gorjetaMensalPorCpf } from "./gorjetaMensal";
 import { cpfDigits, type FolhaEspelho, type Finding, type FolhaWhitelistItem, type FolhaTipo, type FolhaConferencia } from "./tipos";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
@@ -163,7 +164,7 @@ export function FolhasPage() {
   if (!podeVer) return <div className="p-6 text-sm text-gray-500">Você não tem acesso à Conferência de Folhas.</div>;
 
   return (
-    <div className="max-w-4xl mx-auto p-4 space-y-4">
+    <PageContainer className="space-y-4">
       <header className="flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Receipt size={20} className="text-gray-500 dark:text-gray-400" /> Conferência de Folhas</h1>
@@ -334,7 +335,7 @@ export function FolhasPage() {
       ) : (
         <WhitelistTab rid={rid || ""} whitelist={whitelist} podeEditar={podeWhitelist} meId={me?.id || ""} />
       )}
-    </div>
+    </PageContainer>
   );
 
   async function silenciarCpf(cpf: string, nome: string) {

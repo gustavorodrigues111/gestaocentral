@@ -24,6 +24,7 @@ import { AdmissoesFinalizadas } from "./AdmissoesFinalizadas";
 import type { Restaurant } from "../../core/types";
 import { canConfigurar } from "../../core/auth/permissions";
 import { TabBadge } from "../../core/ui/TabBadge";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type TabId = "kanban" | "candidaturas" | "finalizadas" | "config";
 
@@ -108,7 +109,7 @@ export function AdmissaoPage() {
   }
 
   return (
-    <div className="max-w-6xl">
+    <PageContainer>
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {TABS_DEF.map((t) => {
           const active = tab === t.id;
@@ -134,6 +135,6 @@ export function AdmissaoPage() {
       {tab === "candidaturas" && <CandidaturasTab rid={rid} podeEditar={podeConfig} />}
       {tab === "finalizadas"  && <AdmissoesFinalizadas rid={rid} />}
       {tab === "config"       && <AdmissaoConfig  rid={rid} activeRestaurant={activeRestaurant} />}
-    </div>
+    </PageContainer>
   );
 }

@@ -18,6 +18,7 @@ import { InconformidadesTab } from "./InconformidadesTab";
 import { CompatibilidadeTab } from "./CompatibilidadeTab";
 import { AjustesEscalaTab } from "./AjustesEscalaTab";
 import { ResumoMesTab } from "./ResumoMesTab";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type TabId = "inconformidades" | "ajustes" | "compatibilidade" | "resumo";
 
@@ -51,7 +52,7 @@ export function RegistrosPontoPage() {
   }
 
   return (
-    <div className="max-w-6xl">
+    <PageContainer>
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {TABS_DEF.map((t) => {
           const active = tab === t.id;
@@ -78,6 +79,6 @@ export function RegistrosPontoPage() {
       {tab === "ajustes" && <AjustesEscalaTab rid={rid} />}
       {tab === "compatibilidade" && <CompatibilidadeTab rid={rid} />}
       {tab === "resumo" && <ResumoMesTab rid={rid} />}
-    </div>
+    </PageContainer>
   );
 }

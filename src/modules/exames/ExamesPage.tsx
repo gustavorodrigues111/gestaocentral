@@ -29,6 +29,7 @@ import type {
 } from "../../core/types";
 import { tipoAplicaAoCargoObj } from "./aplicabilidade";
 import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type Tab = "porEmpregado" | "config";
 
@@ -71,7 +72,7 @@ export function ExamesPage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto p-4">
+    <PageContainer>
       <header className="flex items-center justify-between mb-4 gap-2">
         <div className="flex gap-2">
           <Button onClick={() => setLancandoNovo(true)}>+ Lançar exame</Button>
@@ -120,7 +121,7 @@ export function ExamesPage() {
           prefill={lancarPrefill ? { empregadoId: lancarPrefill.empregado.id, tipoId: lancarPrefill.tipo.id } : undefined}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

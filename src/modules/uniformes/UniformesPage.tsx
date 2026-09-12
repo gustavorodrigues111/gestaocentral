@@ -26,6 +26,7 @@ import { ItensTab } from "./ItensTab";
 import { KitsAreaTab } from "./KitsAreaTab";
 import { PorEmpregadoTab } from "./PorEmpregadoTab";
 import { EntregasTab } from "./EntregasTab";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type TabId = "porEmpregado" | "entregas" | "estoque" | "config";
 
@@ -98,7 +99,7 @@ export function UniformesPage() {
   }
 
   return (
-    <div className="max-w-6xl">
+    <PageContainer>
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {TABS_DEF.map((t) => {
           const active = tab === t.id;
@@ -146,6 +147,6 @@ export function UniformesPage() {
           <KitsAreaTab itens={itens} kits={kits} podeConfig={podeConfig} pessoa={me} restaurantId={rid} />
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
