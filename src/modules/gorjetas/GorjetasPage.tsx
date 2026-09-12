@@ -20,6 +20,7 @@ import { RegrasDivisaoConfig } from "./RegrasDivisaoConfig";
 import { DivisaoMesTab } from "./DivisaoMesTab";
 import { ComparacaoTab } from "./ComparacaoTab";
 import { publicarGorjeta, despublicarGorjeta, pagarGorjeta, desmarcarPagaGorjeta } from "./publicar";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const fmtBR = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -246,7 +247,7 @@ export function GorjetasPage() {
   }
 
   return (
-    <div className="max-w-6xl">
+    <PageContainer>
       {/* ⚠️ PROVISÓRIO — transferir Porto Futuro → Cidade Velha no Puba Belém. Remover depois. */}
       {me?.isMaster && rid === "T671zhYNYCeYDWt9vxTQ" && <TransferirUnidadePuba />}
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
@@ -408,7 +409,7 @@ export function GorjetasPage() {
         />
       )}
 
-    </div>
+    </PageContainer>
   );
 }
 

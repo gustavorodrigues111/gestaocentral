@@ -31,6 +31,7 @@ import {
   type VTLoteLinhaPreview,
   type RangeCoberto,
 } from "./calc";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const fmtBR = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -585,7 +586,7 @@ export function VTPage() {
   const podeLancarLote = previstaFechada && linhasAPagar.length > 0;
 
   return (
-    <div className="max-w-6xl">
+    <PageContainer>
       {/* Header */}
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
         <div>
@@ -909,7 +910,7 @@ export function VTPage() {
           onClose={() => setShowAuxFixoLote(false)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

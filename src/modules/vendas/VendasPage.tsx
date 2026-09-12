@@ -30,6 +30,7 @@ import {
   fmtMoeda, hojeYmd, maskMoeda, montarMensagemCobranca, parseMoeda, proximoNumero,
   recomputarVenda, vendasReciprocasDisponiveis,
 } from "./helpers";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const MAX_COMPROV_MB = 20;
 type Tab = "vendas" | "produtos" | "clientes" | "formas";
@@ -171,7 +172,7 @@ export function VendasPage() {
   const podeConfig = can("vendas", "config");
 
   return (
-    <div className="max-w-6xl mx-auto p-4">
+    <PageContainer>
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Receipt size={20} className="text-gray-500 dark:text-gray-400" /> Vendas</h1>
@@ -262,7 +263,7 @@ export function VendasPage() {
           onClose={() => setPagarVenda(null)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

@@ -14,6 +14,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { ymd, todayYmd } from "../../core/utils/date";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const money = (v: number) => (isFinite(v) ? v : 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const qtdFmt = (v: number) => (Number.isInteger(v) ? String(v) : v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 3 }));
@@ -220,7 +221,7 @@ export function RelatoriosVendasPage() {
   if (!activeId) return <div className="p-6 text-sm text-gray-500">Selecione um restaurante.</div>;
 
   return (
-    <div className="max-w-6xl">
+    <PageContainer>
       <div className="mb-3">
         <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><BarChart3 size={20} className="text-gray-500 dark:text-gray-400" /> Relatórios de Vendas</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
@@ -446,7 +447,7 @@ export function RelatoriosVendasPage() {
           )}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
 

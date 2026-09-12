@@ -22,6 +22,7 @@ import { ClienteHistoricoModal } from "./ClienteHistoricoModal";
 import { montarMensagemConfirmacao } from "./whatsappConfirmacao";
 import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import { authHeader } from "../../core/firebase/idToken";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 // "há 3 min" / "há 2 h" / "agora" — pro badge de sincronização do GetIn.
 function haQuantoTempo(iso?: string): string {
@@ -391,7 +392,7 @@ export function ReservasPage() {
   }
 
   return (
-    <div className="max-w-5xl">
+    <PageContainer>
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
         {getinStatus ? (
           <div className="flex items-center gap-2 text-xs flex-wrap">
@@ -763,7 +764,7 @@ export function ReservasPage() {
           />
         );
       })()}
-    </div>
+    </PageContainer>
   );
 
   // ───────────────── ReservaCard (inline, fecha sobre setStatus) ─────

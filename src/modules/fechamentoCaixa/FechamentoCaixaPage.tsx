@@ -30,6 +30,7 @@ import { authHeader } from "../../core/firebase/idToken";
 import { paraOcrBlock, carimbarImagem } from "../../core/imagem/processarImagem";
 import { exportarFechamentosPDF, exportarFechamentosXLSX, exportarComandasPDF, exportarComandasXLSX } from "./exportFechamentos";
 import { montarPainel, painelEmailHtml, fmtBRLp, fmtDiaCurto } from "./painelFechamento";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 // Timeout p/ awaits que podem pendurar (Drive/rede): em vez de travar o botão
 // em "Fechando…" pra sempre sem erro, rejeita com uma mensagem que diz o passo.
@@ -314,7 +315,7 @@ export function FechamentoCaixaPage() {
   );
 
   return (
-    <div className="max-w-7xl space-y-4">
+    <PageContainer className="space-y-4">
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto overflow-y-hidden whitespace-nowrap">
         {podeFechar && <TabBtn k="novo" label="💵 Novo fechamento" />}
         {podeVer && <TabBtn k="lista" label="📋 Fechamentos enviados" />}
@@ -422,7 +423,7 @@ export function FechamentoCaixaPage() {
           onSalvo={() => setNovo(false)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

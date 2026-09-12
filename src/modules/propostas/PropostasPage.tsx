@@ -14,6 +14,7 @@ import { Input } from "../../core/ui/Input";
 import {
   type Proposta, propostaJojo, propostaStatus, URL_BASE_PROPOSTA,
 } from "./tipos";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const lbl = "text-xs font-semibold text-gray-600 dark:text-gray-400";
 const ta = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
@@ -48,7 +49,7 @@ export function PropostasPage() {
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-4 sm:p-6">
+    <PageContainer>
       <header className="mb-5 flex items-start justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><FileText size={20} className="text-gray-500 dark:text-gray-400" /> Propostas</h1>
@@ -86,7 +87,7 @@ export function PropostasPage() {
           })}
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
 

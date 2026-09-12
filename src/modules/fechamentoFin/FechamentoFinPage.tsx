@@ -24,6 +24,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import type { Pessoa, ModuleId } from "../../core/types";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 // ───────────────────────── Tipos locais do módulo ──────────────────────────
 type LinkTipo = "nenhum" | "externo" | "modulo";
@@ -224,7 +225,7 @@ export function FechamentoFinPage() {
   const semConfig = !config || (config.itens || []).length === 0;
 
   return (
-    <div className="p-4 sm:p-6 max-w-[1400px] mx-auto">
+    <PageContainer>
       {/* Cabeçalho */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
@@ -368,7 +369,7 @@ export function FechamentoFinPage() {
             setEditando(null);
           }} />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

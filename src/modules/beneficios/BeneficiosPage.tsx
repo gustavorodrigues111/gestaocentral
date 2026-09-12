@@ -24,6 +24,7 @@ import type {
   Cargo, Empregado, EscalaMes, MudancaAgendada,
   BeneficiosLote, BeneficiosLoteLinha, BeneficiosLoteEvento, Unidade,
 } from "../../core/types";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const fmtBR = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -247,7 +248,7 @@ export function BeneficiosPage() {
   const areasComLinhas = AREAS.filter((a) => linhas.some((l) => l.area === a));
 
   return (
-    <div className="max-w-6xl">
+    <PageContainer>
       <MesContextoBanner
         ano={ano}
         mes={mes}
@@ -347,7 +348,7 @@ export function BeneficiosPage() {
           onClose={() => setShowPDF(false)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

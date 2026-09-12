@@ -10,6 +10,7 @@ import { PacotesTab } from "./PacotesTab";
 import { KanbanTab } from "./KanbanTab";
 import { ComercialConfigTab } from "./ComercialConfigTab";
 import { TabBadge } from "../../core/ui/TabBadge";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type Tab = "kanban" | "pacotes" | "comercial" | "config";
 
@@ -59,7 +60,7 @@ export function EventosPage() {
   }
 
   return (
-    <div className="max-w-6xl mx-auto py-4 space-y-4">
+    <PageContainer className="space-y-4">
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800">
         <TabButton active={tab === "kanban"} onClick={() => setTab("kanban")}>📋 Kanban<TabBadge count={novosLeads} /></TabButton>
@@ -87,7 +88,7 @@ export function EventosPage() {
       {tab === "config" && podeConfigurar && (
         <EspacoConfigTab rid={rid} podeEditar={podeConfigurar} />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

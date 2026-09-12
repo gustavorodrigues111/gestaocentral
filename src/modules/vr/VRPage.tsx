@@ -15,6 +15,7 @@ import { calcularTotais, montarLinhasLote, recalcularTotal } from "./calc";
 import type { Cargo, Empregado, EscalaMes, VRLote, VRLoteEvento, VRLoteLinha, MudancaAgendada } from "../../core/types";
 import { projetarEmpregadosParaData } from "../../core/utils/empregado";
 import { VR_LOTE_STATUS_LABEL, AREAS } from "../../core/types";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const fmtBR = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -372,7 +373,7 @@ export function VRPage() {
   }
 
   return (
-    <div className="max-w-6xl">
+    <PageContainer>
       {/* Header: unidade + navegação de mês */}
       <div className="flex items-start justify-between gap-3 mb-4 flex-wrap">
         <div className="flex flex-wrap items-center gap-1.5">
@@ -539,7 +540,7 @@ export function VRPage() {
           onClose={() => setPdfData(null)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

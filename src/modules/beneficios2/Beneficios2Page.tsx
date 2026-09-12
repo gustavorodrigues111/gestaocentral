@@ -23,6 +23,7 @@ import { AjustesTab } from "./AjustesTab";
 import { exportarCajuPag, exportarPixPag, baixarCsv } from "./exportar";
 import { gerarPagamentoPDF } from "./gerarPDF";
 import type { Cargo, Empregado, EscalaMes, BeneficioPagLote, BeneficioPagLinha, BeneficioAjusteLote } from "../../core/types";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const fmt = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtSigned = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", signDisplay: "exceptZero" });
@@ -223,7 +224,7 @@ export function Beneficios2Page() {
   const temPix = linhas.some((l) => l.forma === "pix" && l.total > 0);
 
   return (
-    <div className="max-w-5xl mx-auto p-4">
+    <PageContainer>
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Gift size={20} className="text-gray-500 dark:text-gray-400" /> Benefícios <span className="text-[10px] align-middle px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">novo</span></h1>
@@ -449,7 +450,7 @@ export function Beneficios2Page() {
           }}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

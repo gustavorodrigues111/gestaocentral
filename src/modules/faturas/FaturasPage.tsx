@@ -18,6 +18,7 @@ import { Button } from "../../core/ui/Button";
 import { setUnsavedCheck, confirmarSaida } from "../../core/nav/unsaved";
 import { exportarFaturasXLSX, exportarFaturasPDF, exportarReembolsoEmpresaPDF, type ReembolsoItem } from "./exportFaturas";
 import type { CartaoCategoria, CartaoFatura, CartaoLancamento, CartaoRateioParte } from "../../core/types";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type RateioSimples = { empresaId: string; percentual: number };
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -106,7 +107,7 @@ export function FaturasPage() {
   if (!podeVer) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-700 dark:text-gray-300 font-medium">Sem acesso ao módulo Faturas.</p></div>;
 
   return (
-    <div className="max-w-6xl">
+    <PageContainer>
       <header className="mb-4">
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><CreditCard size={20} className="text-gray-500 dark:text-gray-400" /> Faturas</h1>
         <p className="text-xs text-gray-500">{activeRestaurant?.nome} · faturas de cartão, classificação e reembolsos</p>
@@ -124,7 +125,7 @@ export function FaturasPage() {
         <Classificacao rid={rid} meId={me?.id} pixPadrao={activeRestaurant?.cartaoChavePixPadrao} cartoes={activeRestaurant?.cartoesCadastrados || []} empresaPropriaNome={activeRestaurant?.nome || restNome[rid] || ""} outrasEmpresas={outrasEmpresas} catsDe={catsDe} minhas={minhas} faturas={faturas} />
       )}
       {aba === "categorias" && podeCategorias && <Categorias rid={rid} categorias={catsDe(rid)} pixPadrao={activeRestaurant?.cartaoChavePixPadrao || ""} cartoes={activeRestaurant?.cartoesCadastrados || []} outrasEmpresas={outrasEmpresas} />}
-    </div>
+    </PageContainer>
   );
 }
 
