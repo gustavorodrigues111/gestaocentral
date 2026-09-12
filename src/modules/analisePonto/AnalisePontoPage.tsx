@@ -39,6 +39,10 @@ import { FechamentoTab } from "./FechamentoTab";
 import { AfastamentoModal } from "./AfastamentoModal";
 import { BatidasDiaModal } from "./BatidasDiaModal";
 import { PageContainer } from "../../core/ui/PageContainer";
+import {
+  TriangleAlert, Lock, FileText, CalendarDays, Palmtree, Search, Hourglass,
+  Wrench, Eye, PartyPopper, CheckSquare, BarChart3, Timer, Pencil, MessageSquare,
+} from "lucide-react";
 
 const soDigitos = (s?: string | null) => (s || "").replace(/\D/g, "");
 
@@ -177,7 +181,7 @@ class PontoErrorBoundary extends Component<{ children: ReactNode }, { erro: Erro
     if (this.state.erro) {
       return (
         <div className="m-4 p-4 rounded-xl border border-red-300 bg-red-50 dark:bg-red-950/30 text-red-800 dark:text-red-300 text-sm">
-          <div className="font-bold mb-1">⚠️ A Análise de Ponto quebrou nesta tela.</div>
+          <div className="font-bold mb-1 inline-flex items-center gap-1"><TriangleAlert size={15}/> A Análise de Ponto quebrou nesta tela.</div>
           <div className="font-mono text-xs whitespace-pre-wrap break-all">{this.state.erro.message}</div>
           <div className="font-mono text-[10px] mt-2 whitespace-pre-wrap break-all opacity-70">{this.state.erro.stack?.slice(0, 800)}</div>
           <button type="button" onClick={() => this.setState({ erro: null })}
@@ -504,15 +508,15 @@ function AnalisePontoInner() {
   if (!podeVer) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3"><Lock size={36} className="text-gray-400"/></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
   }
 
   const tabsDisp = ([
-    (podeFechar || podeAprovar) ? { id: "fechamento", label: "📄 Fechamento de ponto" } : null,
-    { id: "escalas", label: "🗓️ Escalas (Sólides × planejamento.app)" },
+    (podeFechar || podeAprovar) ? { id: "fechamento", label: <span className="inline-flex items-center gap-1"><FileText size={14}/> Fechamento de ponto</span> } : null,
+    { id: "escalas", label: <span className="inline-flex items-center gap-1"><CalendarDays size={14}/> Escalas (Sólides × planejamento.app)</span> },
   ].filter(Boolean)) as Array<{ id: typeof tab; label: ReactNode }>;
 
   return (
@@ -577,12 +581,12 @@ function AnalisePontoInner() {
               {podeAfastar && (
                 <button type="button" onClick={() => setAfastamento({})}
                   className="h-9 px-3 text-sm font-semibold rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 inline-flex items-center gap-1.5 whitespace-nowrap">
-                  🏖️ Afastamento/férias
+                  <Palmtree size={14}/> Afastamento/férias
                 </button>
               )}
               <button type="button" onClick={() => void analisar()} disabled={carregando}
                 className="h-9 px-5 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white shadow-sm shadow-indigo-200 dark:shadow-none disabled:opacity-50 inline-flex items-center justify-center gap-2 whitespace-nowrap">
-                {carregando ? "Analisando…" : <>🔍 Analisar período</>}
+                {carregando ? "Analisando…" : <><Search size={14}/> Analisar período</>}
               </button>
             </div>
           </div>
@@ -631,7 +635,7 @@ function AnalisePontoInner() {
           {podeAprovar && aprovVisiveis.length > 0 && (
             <section className="bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-900/50 rounded-xl overflow-hidden">
               <header className="px-4 py-2.5 border-b border-blue-100 dark:border-blue-900/50">
-                <div className="font-bold text-sm text-blue-900 dark:text-blue-200">⏳ Aprovações pendentes ({aprovVisiveis.length})</div>
+                <div className="font-bold text-sm text-blue-900 dark:text-blue-200 inline-flex items-center gap-1"><Hourglass size={14}/> Aprovações pendentes ({aprovVisiveis.length})</div>
                 <p className="text-[11px] text-blue-700/80 dark:text-blue-300/70 mt-0.5">
                   O empregado ajustou no app de ponto dele e aguarda sua aprovação. Ao aprovar, o ajuste entra na base e a inconsistência some.
                 </p>
@@ -709,10 +713,10 @@ function AnalisePontoInner() {
             return (
               <section key={cat} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
                 <header className="px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 font-bold text-sm text-gray-900 dark:text-gray-100">
-                  {cat === "CORRIGIR" ? "🔧" : "👀"} {CAT_LABEL[cat]} ({totalCat})
+                  <span className="inline-flex items-center gap-1">{cat === "CORRIGIR" ? <Wrench size={14}/> : <Eye size={14}/>} {CAT_LABEL[cat]} ({totalCat})</span>
                 </header>
                 {grupos.length === 0 ? (
-                  <div className="px-4 py-6 text-center text-sm text-gray-400">Nada nesta categoria 🎉</div>
+                  <div className="px-4 py-6 text-center text-sm text-gray-400 inline-flex items-center justify-center gap-1 w-full">Nada nesta categoria <PartyPopper size={14}/></div>
                 ) : (
                   <div className="divide-y divide-gray-100 dark:divide-gray-800">
                     {grupos.map((g) => (
@@ -737,7 +741,7 @@ function AnalisePontoInner() {
             <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
               <button type="button" onClick={() => setMostrarAvaliados((v) => !v)}
                 className="w-full px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 font-bold text-sm text-gray-700 dark:text-gray-200 flex items-center justify-between">
-                <span>✅ Avaliados — ciente / sem ação ({avaliadosVisiveis.length})</span>
+                <span className="inline-flex items-center gap-1"><CheckSquare size={14}/> Avaliados — ciente / sem ação ({avaliadosVisiveis.length})</span>
                 <span className="text-gray-400">{mostrarAvaliados ? "▲" : "▼"}</span>
               </button>
               {mostrarAvaliados && (
@@ -769,7 +773,7 @@ function AnalisePontoInner() {
                         <div className="shrink-0 flex items-center gap-1.5">
                           <button type="button" onClick={() => setEditObs({ id: a.id, text: a.obs || "" })}
                             className="text-[11px] font-medium px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-400">
-                            {a.obs ? "✏️ observação" : "+ observação"}
+                            {a.obs ? <span className="inline-flex items-center gap-1"><Pencil size={12}/> observação</span> : "+ observação"}
                           </button>
                           <button type="button" onClick={() => void reabrirAvaliacao(a)}
                             className="text-[11px] font-semibold px-2.5 py-1 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
@@ -789,7 +793,7 @@ function AnalisePontoInner() {
             <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
               <button type="button" onClick={() => setMostrarSaldos((v) => !v)}
                 className="w-full px-4 py-2.5 border-b border-gray-100 dark:border-gray-800 font-bold text-sm text-gray-700 dark:text-gray-200 flex items-center justify-between">
-                <span>📊 Saldo de horas do período — todos ({saldosVisiveis.length})</span>
+                <span className="inline-flex items-center gap-1"><BarChart3 size={14}/> Saldo de horas do período — todos ({saldosVisiveis.length})</span>
                 <span className="text-gray-400">{mostrarSaldos ? "▲" : "▼"}</span>
               </button>
               {mostrarSaldos && (
@@ -808,7 +812,7 @@ function AnalisePontoInner() {
           <p className="text-[11px] text-gray-400">
             O saldo de horas vira o badge ao lado do nome (+ vermelho acima · 0 verde · − âmbar abaixo do previsto); passe o mouse pra ver o detalhe.
             O empregado corrige no app de ponto dele; depois você aprova (aba Aprovações).
-            Correção manual só em exceção, na aba 🛠️{podeCorrigir ? "" : " (sem permissão)"}.
+            Correção manual só em exceção, na aba <Wrench size={11} className="inline align-[-1px]"/>{podeCorrigir ? "" : " (sem permissão)"}.
             FALTA depende do roster da Sólides (se a conta não retornar colaboradores, não aparece).
           </p>
         </>
@@ -939,7 +943,7 @@ function GrupoEmp({
         {rel && (
           <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${
             rel.vencido ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300" : "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"}`}>
-            ⏱ {rel.txt}
+            <Timer size={12}/> {rel.txt}
           </span>
         )}
         {podeSolicitar && (
@@ -957,7 +961,7 @@ function GrupoEmp({
               <button type="button" disabled={selecionados.length === 0}
                 onClick={() => onEnviar(selecionados)}
                 className="text-[11px] font-semibold px-2.5 py-1 rounded-md bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-40 disabled:cursor-not-allowed inline-flex items-center gap-1">
-                💬 Enviar p/ correção{selecionados.length > 0 ? ` (${selecionados.length})` : ""}
+                <MessageSquare size={13}/> Enviar p/ correção{selecionados.length > 0 ? ` (${selecionados.length})` : ""}
               </button>
             )}
           </div>
