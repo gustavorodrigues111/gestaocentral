@@ -63,6 +63,17 @@ async function enviarResumo(to: string, nome: string, lista: string, link: strin
   return { ok: false, erro: j.error?.message || `HTTP ${resp.status}` };
 }
 
+// E-mail via o endpoint /api/send-email (Resend).
+async function enviarEmailResumo(to: string, nome: string, lista: string, link: string): Promise<{ ok: boolean; erro?: string }> {
+  try {
+    const resp = await fetch(`${APP_URL}/api/send-email`, {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ to, subject: "Lembrete de rotinas — planejamento.app", html: `<p>Oi ${nome},</p><p>Você tem pendências pra hoje: <b>${lista}</b>.</p><p><a href="${link}">Abrir no planejamento.app</a></p>`, text: `Oi ${nome}, você tem pendências pra hoje: ${lista}. ${link}` }),
+    });
+    return resp.ok ? { ok: true } : { ok: false, erro: `HTTP ${resp.status}` };
+  } catch (e) { return { ok: false, erro: (e as Error)?.message }; }
+}
+
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method !== "GET" && req.method !== "POST") return res.status(405).json({ error: "Method not allowed" });
   const expected = process.env.CRON_SECRET;
@@ -76,15 +87,24 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   const slot = `${iso.slice(11, 13)}:${Number(iso.slice(14, 16)) < 30 ? "00" : "30"}`;
 
   try {
-    // 1) Rotinas ativas, com WhatsApp, que vencem hoje e cujo horário == slot atual.
+    // 1) Rotinas ativas com PUSH (WhatsApp ou E-mail), disparo != "nunca", que
+    //    vencem hoje e cujo horário == slot. (Central é derivada no cliente.)
     const rotinas = (await firestoreListar("rotinas")).filter(r =>
-      r.ativo !== false && r.notificarWhatsapp === true && venceEm((r.recorrencia || {}) as Rec, hoje) && slotDe(String(r.whatsappHora || "")) === slot);
+      r.ativo !== false && r.disparo !== "nunca" && (r.notificarWhatsapp === true || r.notificarEmail === true) &&
+      venceEm((r.recorrencia || {}) as Rec, hoje) && slotDe(String(r.whatsappHora || "")) === slot);
     if (rotinas.length === 0) return res.status(200).json({ ok: true, slot, hoje, rotinas: 0 });
 
     // 2) Suporte: pessoas, empregados (folga) e escalas.
     const pessoas = await firestoreListar("pessoas");
-    const pessoaMap: Record<string, { nome: string; whatsapp?: string; optIn?: boolean }> = {};
-    for (const p of pessoas) pessoaMap[String(p.id)] = { nome: String(p.nome || ""), whatsapp: p.whatsapp ? String(p.whatsapp) : undefined, optIn: p.whatsappOptIn as boolean | undefined };
+    const pessoaMap: Record<string, { nome: string; whatsapp?: string; email?: string; optIn?: boolean }> = {};
+    for (const p of pessoas) pessoaMap[String(p.id)] = { nome: String(p.nome || ""), whatsapp: p.whatsapp ? String(p.whatsapp) : undefined, email: p.email ? String(p.email) : undefined, optIn: p.whatsappOptIn as boolean | undefined };
+    // Pendências por módulo (pra rotinas "com_pendencia"): pendencias/{rid}_{modulo}.
+    const pendCache = new Map<string, { geral: number; porPessoa: Record<string, number> }>();
+    const getPend = async (rid: string, modulo: string) => {
+      const k = `${rid}_${modulo}`;
+      if (!pendCache.has(k)) { const d = await firestoreLer("pendencias", k); pendCache.set(k, { geral: Number((d as { geral?: number })?.geral || 0), porPessoa: ((d as { porPessoa?: Record<string, number> })?.porPessoa || {}) }); }
+      return pendCache.get(k)!;
+    };
 
     const precisaFolga = rotinas.some(r => r.respeitarFolga === true);
     const empByPessoaRest: Record<string, string> = {};   // `${pid}_${rid}` → empregadoId
@@ -103,14 +123,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       return undefined;
     };
 
-    // 3) Agrupa por pessoa (respeitando folga, dedup de conclusão).
-    const porPessoa = new Map<string, { nome: string; whatsapp: string; titulos: string[]; rid: string }>();
+    // 3) Agrupa por pessoa (respeitando folga, dedup de conclusão, pendência).
+    const porPessoa = new Map<string, { nome: string; whatsapp: string; email: string; titulos: string[]; wa: boolean; mail: boolean; rid: string }>();
     for (const r of rotinas) {
       const resp = Array.isArray(r.responsaveis) ? (r.responsaveis as string[]) : [];
       const rid = String(r.restaurantId);
       for (const pid of resp) {
         const pessoa = pessoaMap[pid];
-        if (!pessoa?.whatsapp || pessoa.optIn === false) continue;
+        if (!pessoa) continue;
         // já concluiu hoje?
         if (await firestoreLer("rotinaConclusoes", `${r.id}_${hoje}_${pid}`)) continue;
         // folga?
@@ -118,8 +138,18 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
           const empId = empByPessoaRest[`${pid}_${rid}`];
           if (empId) { const st = statusEscala(rid, empId); if (st && FOLGA.has(st)) continue; }
         }
-        const acc = porPessoa.get(pid) || { nome: pessoa.nome, whatsapp: pessoa.whatsapp, titulos: [], rid };
-        acc.titulos.push(String(r.titulo || "rotina"));
+        let titulo = String(r.titulo || "rotina");
+        // "Só com pendência": conta a pendência do módulo pra essa pessoa; pula se 0.
+        if (r.disparo === "com_pendencia" && r.moduloAlvo) {
+          const pend = await getPend(rid, String(r.moduloAlvo));
+          const n = pend.porPessoa[pid] ?? pend.geral;
+          if (!n) continue;
+          titulo += ` (${n} pendente${n > 1 ? "s" : ""})`;
+        }
+        const acc = porPessoa.get(pid) || { nome: pessoa.nome, whatsapp: pessoa.whatsapp || "", email: pessoa.email || "", titulos: [], wa: false, mail: false, rid };
+        acc.titulos.push(titulo);
+        if (r.notificarWhatsapp === true) acc.wa = true;
+        if (r.notificarEmail === true) acc.mail = true;
         porPessoa.set(pid, acc);
       }
     }
@@ -130,11 +160,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const dedupId = `resumo_${hoje}_${slot.replace(":", "")}_${pid}`;
       if (await firestoreLer("rotinaNotificacoes", dedupId)) { pulados++; continue; }
       const lista = acc.titulos.join(", ");
+      const primeiro = acc.nome.split(" ")[0] || acc.nome;
       const link = `${APP_URL}/r/${acc.rid}/chat`;
-      const r = await enviarResumo(acc.whatsapp, acc.nome.split(" ")[0] || acc.nome, lista, link);
-      await firestoreCriar("rotinaNotificacoes", dedupId, { pessoaId: pid, hoje, slot, titulos: acc.titulos, enviadoEm: new Date().toISOString(), ok: r.ok });
-      await firestoreCriar("whatsappEnvios", dedupId, { direcao: "out", template: TEMPLATE, to: acc.whatsapp, pessoaId: pid, restaurantId: acc.rid, contexto: "rotina_resumo", status: r.ok ? "enviado" : "erro", erro: r.erro || null, messageId: r.id || null, criadoEm: new Date().toISOString() });
-      if (r.ok) enviados++; else erros++;
+      let okAny = false;
+      if (acc.wa && acc.whatsapp && pessoaMap[pid]?.optIn !== false) {
+        const r = await enviarResumo(acc.whatsapp, primeiro, lista, link);
+        await firestoreCriar("whatsappEnvios", dedupId, { direcao: "out", template: TEMPLATE, to: acc.whatsapp, pessoaId: pid, restaurantId: acc.rid, contexto: "rotina_resumo", status: r.ok ? "enviado" : "erro", erro: r.erro || null, messageId: r.id || null, criadoEm: new Date().toISOString() });
+        okAny = okAny || r.ok;
+      }
+      if (acc.mail && acc.email) { const r = await enviarEmailResumo(acc.email, primeiro, lista, link); okAny = okAny || r.ok; }
+      await firestoreCriar("rotinaNotificacoes", dedupId, { pessoaId: pid, hoje, slot, titulos: acc.titulos, canais: { wa: acc.wa, email: acc.mail }, enviadoEm: new Date().toISOString(), ok: okAny });
+      if (okAny) enviados++; else erros++;
     }
 
     return res.status(200).json({ ok: true, slot, hoje, rotinas: rotinas.length, pessoas: porPessoa.size, enviados, pulados, erros });

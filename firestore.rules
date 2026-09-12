@@ -229,6 +229,7 @@ service cloud.firestore {
     match /ptrpEspelhoAssinaturas/{id} { allow read, write: if authed(); }   // coleta de assinaturas dos espelhos (ClickSign)
     match /ptrpMotivosMapa/{id} { allow read, write: if authed(); }   // mapa motivo Sólides ↔ status de escala
     match /ptrpValidadores/{id} { allow read, write: if authed(); }   // responsável por área que valida exceções (atrasos)
+    match /pendencias/{id}      { allow read, write: if authed(); }   // snapshot de pendências por módulo (cron das Rotinas "só com pendência")
     match /agenteMensagens/{id} { allow read, write: if authed(); }
     match /agenteLogs/{id}    { allow read: if authed(); allow create: if authed(); allow update, delete: if false; }
     match /ftCardapio/{id}             { allow read, write: if authed(); }

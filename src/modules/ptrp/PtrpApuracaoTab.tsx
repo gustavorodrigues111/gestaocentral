@@ -641,6 +641,20 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   }, [atrasosAValidar]);
   const [expEmp, setExpEmp] = useState<Set<string>>(new Set());
   const [valBusy, setValBusy] = useState("");
+  // Publica o snapshot de pendências do PTRP (pendencias/{rid}_ptrp) pro cron das
+  // Rotinas ("só com pendência"): geral = correções a aprovar (DP); porPessoa =
+  // atrasos a validar por líder de área. Só do mês corrente, a partir da Conferência.
+  useEffect(() => {
+    if (mode !== "conferencia" || !rid || comp !== compAtual()) return;
+    const porArea: Record<string, number> = {}; let geral = 0;
+    for (const x of resultados) for (const l of x.r.linhas) {
+      if (l.excecoes.includes("correcao_pendente")) geral++;
+      if (!l.ehFuturo && !l.ehHoje && l.excecoes.includes("atraso") && !l.excecoes.some(e => e === "correcao_pendente" || e === "batida_impar" || e === "sem_batida" || e === "falta") && !l.ajustesDia.some(a => a.tipo === "atraso_confirmado" || a.tipo === "atraso_justificado")) porArea[x.area] = (porArea[x.area] || 0) + 1;
+    }
+    const porPessoa: Record<string, number> = {};
+    for (const [area, n] of Object.entries(porArea)) { const v = validadores[area]; if (v) porPessoa[v] = (porPessoa[v] || 0) + n; }
+    void setDoc(doc(db, "pendencias", `${rid}_ptrp`), sanitizeForFirestore({ modulo: "ptrp", restaurantId: rid, geral, porPessoa, porArea, atualizadoEm: new Date().toISOString() })).catch(() => {});
+  }, [mode, rid, comp, resultados, validadores]);
   async function validarAtraso(emp: Empregado, l: Linha, justificar: boolean) {
     if (!me) return;
     let motivo = "";
