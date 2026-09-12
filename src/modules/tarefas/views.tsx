@@ -9,7 +9,7 @@ import { softDeleteTarefa, restaurarTarefa, atualizarTarefa, marcarSubtarefa } f
 import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type Subtarefa, type TarefaStatus, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL } from "../../core/types";
 import { fmtBR } from "../../core/utils/date";
 import { isConfidencial } from "./visibilidade";
-import { AvatarIniciais, EmpresaBadge, FiltroChip, type ViewMode, ViewSwitcher, catDaTarefa, ORIGEM_ICON, ehAreaPrazos, inicioSemanaSeg, mudarStatusComErro } from "./helpers";
+import { AvatarIniciais, EmpresaBadge, FiltroChip, type ViewMode, ViewSwitcher, catDaTarefa, ORIGEM_ICON, AreaIcone, ehAreaPrazos, inicioSemanaSeg, mudarStatusComErro } from "./helpers";
 import { EscolhaRestauranteModal } from "./modais";
 
 // Sidebar lateral (estilo Asana) — atalho "Minhas tarefas" no topo + lista
@@ -51,7 +51,7 @@ export function ProjetosTopBar({
       <div className="relative inline-block">
         <button type="button" onClick={() => setAberto(v => !v)} className={`${chip(true)} min-w-[160px] justify-between`}>
           <span className="inline-flex items-center gap-1.5 min-w-0">
-            {tabAtual === "minhas" ? <Inbox size={15} /> : projSel ? <span className="w-2 h-2 rounded-full shrink-0" style={{ background: projSel.cor || "#6b7280" }} /> : <Layers size={15} />}
+            {tabAtual === "minhas" ? <Inbox size={15} /> : projSel ? <AreaIcone proj={projSel} size={15} /> : <Layers size={15} />}
             <span className="truncate">{atualLabel}</span>
             {tabAtual === "minhas" && minhasPendentes > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">{minhasPendentes}</span>}
           </span>
@@ -69,7 +69,7 @@ export function ProjetosTopBar({
               {projTarefas.length > 0 && <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Áreas / Projetos</div>}
               {projTarefas.map(p => (
                 <button key={p.id} type="button" className={itemCls} onClick={() => { onAbrirProjeto(p.id); setAberto(false); }} title={p.nome}>
-                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.cor || "#6b7280" }} />
+                  <AreaIcone proj={p} size={15} />
                   <span className="truncate">{p.nome}</span>
                 </button>
               ))}
@@ -486,7 +486,7 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
             <span className="truncate">{tarefa.titulo}</span>
           </div>
           <div className="flex items-center gap-2 mt-1 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
-            {projeto && <span style={{ color: cor }}>{projeto.emoji} {projeto.nome}</span>}
+            {projeto && <span style={{ color: cor }} className="inline-flex items-center gap-1"><AreaIcone proj={projeto} size={13} /> {projeto.nome}</span>}
             {sub && <span>· {sub.nome}</span>}
             {tarefa.prazo && (
               <span className={`inline-flex items-center gap-1 ${atrasada ? "text-red-600 dark:text-red-400 font-medium" : ""}`}>
@@ -562,8 +562,8 @@ export function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, t
         ) : (
           <>
             <div className="mb-2.5 flex items-center gap-x-3 gap-y-2 flex-wrap">
-              <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">
-                {proj.emoji} {proj.nome}{subAtual && <span className="text-gray-400 dark:text-gray-500 font-normal"> · {subAtual.nome}</span>}
+              <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2">
+                <AreaIcone proj={proj} size={18} /> {proj.nome}{subAtual && <span className="text-gray-400 dark:text-gray-500 font-normal"> · {subAtual.nome}</span>}
               </h2>
               <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">
                 {tarefasFiltradas.length} tarefa(s) · {ativas(tarefasFiltradas)} ativas
@@ -815,7 +815,7 @@ export function KanbanView({ tarefas, projetos, autor, onAbrir }: {
                       {t.responsavelNome && <AvatarIniciais nome={t.responsavelNome} id={t.responsavelId} size={18} />}
                     </div>
                     <div className="flex items-center gap-1 mt-1 flex-wrap text-[10px] text-gray-500 dark:text-gray-400">
-                      {proj && <span style={{ color: cor }}>{proj.emoji}</span>}
+                      {proj && <AreaIcone proj={proj} size={11} />}
                       {t.prazo && <span className="inline-flex items-center gap-1"><CalendarDays size={11} /> {fmtBR(t.prazo)}</span>}
                       <EmpresaBadge ids={t.restaurantIds} />
                       {(t.subtarefas?.length ?? 0) > 0 && <span className="inline-flex items-center gap-1"><CheckSquare size={11} /> {t.subtarefas?.filter(s => s.feito).length}/{t.subtarefas?.length}</span>}
@@ -1054,7 +1054,7 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
                     </span>
                   )}
                   <span className="inline-flex items-center gap-0.5 px-1.5 py-[1px] rounded-full text-[8px] font-bold uppercase tracking-wide text-white" style={{ background: meta.cor }}>
-                    {OrigIcon ? <OrigIcon size={10} /> : proj?.emoji ? <span>{proj.emoji}</span> : <Folder size={10} />} {meta.label}
+                    {OrigIcon ? <OrigIcon size={10} /> : proj ? <AreaIcone proj={proj} size={10} mono /> : <Folder size={10} />} {meta.label}
                   </span>
                   <EmpresaBadge ids={t.restaurantIds} />
                 </div>

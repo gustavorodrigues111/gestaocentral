@@ -3,10 +3,42 @@ import {
   Building2, CalendarDays, List, KanbanSquare, Lock,
   Banknote, Wrench, Scale, UserRoundMinus, Palmtree, MessagesSquare,
   PartyPopper, Repeat, Package, Smartphone, type LucideIcon,
+  Users, Coins, Landmark, Crown, ChefHat, Briefcase, ShoppingCart,
+  CalendarClock, Megaphone, Truck, Utensils, Wine, Sparkles, Target,
+  Folder, ClipboardList, Bot, ShieldCheck, Store,
 } from "lucide-react";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { mudarStatus, atualizarTarefa, CamposObrigatoriosFaltantesError } from "./repository";
-import { type Tarefa, type TarefaStatus } from "../../core/types";
+import { type Tarefa, type TarefaProjeto, type TarefaStatus } from "../../core/types";
+
+// ── Ícones de ÁREA (lucide) ────────────────────────────────────────────────
+// A área (TarefaProjeto) agora usa ícone lucide (campo `icone`, nome kebab).
+// Paleta curada pro seletor no editor de áreas.
+export const AREA_ICONES: Record<string, LucideIcon> = {
+  users: Users, banknote: Banknote, coins: Coins, landmark: Landmark,
+  crown: Crown, "chef-hat": ChefHat, briefcase: Briefcase,
+  "building-2": Building2, "shopping-cart": ShoppingCart, wrench: Wrench,
+  "calendar-clock": CalendarClock, megaphone: Megaphone, truck: Truck,
+  package: Package, utensils: Utensils, wine: Wine, sparkles: Sparkles,
+  target: Target, folder: Folder, "clipboard-list": ClipboardList,
+  bot: Bot, scale: Scale, "shield-check": ShieldCheck, store: Store,
+};
+// Fallback: áreas antigas (seed) ainda têm emoji — mapeia pro lucide certo,
+// então as 4 áreas atuais já aparecem corretas sem migração de dados.
+const EMOJI_TO_ICONE: Record<string, string> = {
+  "👥": "users", "💰": "banknote", "💵": "banknote", "💸": "coins",
+  "🎩": "landmark", "🍳": "chef-hat", "🍽️": "utensils", "📅": "calendar-clock",
+  "🛠️": "wrench", "🔧": "wrench", "🎉": "sparkles", "📁": "folder",
+  "🤖": "bot", "🚚": "truck", "🛒": "shopping-cart", "🏢": "building-2",
+};
+export function nomeIconeArea(p?: { icone?: string; emoji?: string } | null): string {
+  return p?.icone || (p?.emoji ? EMOJI_TO_ICONE[p.emoji] : "") || "folder";
+}
+export function AreaIcone({ proj, size = 16, className, mono }: { proj?: Pick<TarefaProjeto, "icone" | "emoji" | "cor"> | null; size?: number; className?: string; mono?: boolean }) {
+  const Ic = AREA_ICONES[nomeIconeArea(proj)] || Folder;
+  // mono = herda a cor do texto (ex.: ícone branco dentro de badge colorido).
+  return <Ic size={size} className={className} style={mono ? undefined : { color: proj?.cor }} />;
+}
 
 export async function mudarStatusComErro(id: string, status: TarefaStatus, autor: { id: string; nome: string }) {
   try {

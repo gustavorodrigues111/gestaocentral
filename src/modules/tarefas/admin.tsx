@@ -6,7 +6,7 @@ import { useTodasPessoas, usePessoasAtivasLista } from "../../core/pessoas/Pesso
 import { salvarProjeto, salvarSubprojeto, contarTarefasDoSubprojeto, moverSubprojetoParaProjeto, ouvirAutomacoes, salvarAutomacao, propagarAutomacaoEmAbertas } from "./repository";
 import { MODULES } from "../../config/modules";
 import { type TarefaProjeto, type TarefaSubprojeto, type TarefaVisibilidade, type TarefaTemplate, type TarefaCustomField, type TarefaCustomFieldTipo, type TarefaAutomacao, type ModuloOrigemTarefa, TAREFA_ORIGEM_LABEL, TAREFA_VISIBILIDADE_LABEL, RECORRENCIA_TIPO_LABEL, TAREFA_CUSTOM_FIELD_TIPO_LABEL, MODULOS_ORIGEM_TAREFA } from "../../core/types";
-import { PessoasMultiPicker, UsuariosAutorizadosPicker, ehAreaPrazos } from "./helpers";
+import { PessoasMultiPicker, UsuariosAutorizadosPicker, ehAreaPrazos, AreaIcone, AREA_ICONES, nomeIconeArea } from "./helpers";
 import { ImportadorModal } from "./modais";
 
 export function AdminView({ projetos, subprojetos, pessoaId }: {
@@ -119,8 +119,8 @@ export function AdminView({ projetos, subprojetos, pessoaId }: {
           <div key={p.id} className="mb-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden" style={{ borderLeftWidth: 4, borderLeftColor: p.cor }}>
             <div className="p-3 flex items-start gap-2">
               <div className="flex-1 min-w-0">
-                <div className="font-semibold text-gray-900 dark:text-gray-100">
-                  {p.emoji} {p.nome}
+                <div className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5">
+                  <AreaIcone proj={p} size={16} /> {p.nome}
                 </div>
                 <div className="text-xs text-gray-500 dark:text-gray-400">
                   {p.tipo} · {subs.length} projeto(s)
@@ -394,7 +394,7 @@ function ProjetoForm({ projeto, pessoaId, onClose, isModal }: {
 }) {
   const [f, setF] = useState<Partial<TarefaProjeto>>(projeto ? { ...projeto } : {
     nome: "",
-    emoji: "📁",
+    icone: "folder",
     cor: "#6366f1",
     dono: pessoaId,
     visibilidade: "privado",
@@ -402,6 +402,7 @@ function ProjetoForm({ projeto, pessoaId, onClose, isModal }: {
     ordem: 99,
     ativo: true,
   });
+  const [iconePickerAberto, setIconePickerAberto] = useState(false);
   const pessoasLista = usePessoasAtivasLista();
 
   async function salvar() {
@@ -412,6 +413,7 @@ function ProjetoForm({ projeto, pessoaId, onClose, isModal }: {
       id,
       nome: f.nome,
       emoji: f.emoji,
+      icone: f.icone || nomeIconeArea(f),
       cor: f.cor || "#6366f1",
       dono: f.dono || pessoaId,
       donoNome: f.donoNome,
@@ -434,7 +436,24 @@ function ProjetoForm({ projeto, pessoaId, onClose, isModal }: {
     <div className={`${isModal ? "p-5" : "p-3 bg-gray-50 dark:bg-gray-800/40 border-t border-gray-100 dark:border-gray-800"} space-y-2`}>
       {isModal && <h3 className="font-bold mb-2 text-gray-900 dark:text-gray-100">Nova Área</h3>}
       <div className="grid grid-cols-[80px_1fr] gap-2 text-sm">
-        <input value={f.emoji || ""} onChange={(e) => setF({ ...f, emoji: e.target.value })} placeholder="📁" className="adm-input text-center" maxLength={3} />
+        <div className="relative">
+          <button type="button" onClick={() => setIconePickerAberto(v => !v)} title="Escolher ícone da área" className="adm-input w-full h-full flex items-center justify-center">
+            <AreaIcone proj={{ icone: f.icone, emoji: f.emoji, cor: f.cor || "#6366f1" }} size={18} />
+          </button>
+          {iconePickerAberto && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setIconePickerAberto(false)} />
+              <div className="absolute left-0 top-full mt-1 z-20 w-56 p-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg grid grid-cols-6 gap-1">
+                {Object.entries(AREA_ICONES).map(([nome, Ic]) => (
+                  <button key={nome} type="button" onClick={() => { setF({ ...f, icone: nome }); setIconePickerAberto(false); }}
+                    className={`h-8 flex items-center justify-center rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 ${nomeIconeArea(f) === nome ? "bg-indigo-50 dark:bg-indigo-900/30 ring-1 ring-indigo-400" : ""}`} title={nome}>
+                    <Ic size={17} style={{ color: f.cor || undefined }} />
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
         <input value={f.nome || ""} onChange={(e) => setF({ ...f, nome: e.target.value })} placeholder="Nome da área" className="adm-input" />
       </div>
       <div className="grid grid-cols-[100px_1fr_1fr_1fr] gap-2 text-xs">

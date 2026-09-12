@@ -4763,7 +4763,8 @@ export const TAREFA_PRIORIDADE_LABEL: Record<TarefaPrioridade, string> = {
 export type TarefaProjeto = {
   id: string;
   nome: string;
-  emoji?: string;
+  emoji?: string;               // legado — mantido pra fallback de ícone
+  icone?: string;               // nome do ícone lucide (kebab, ex: "users")
   cor: string;                  // hex
   dono: string;                 // pessoaId
   donoNome?: string;            // snapshot
