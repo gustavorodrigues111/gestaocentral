@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Lock, Lightbulb, ClipboardList, Building2 } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -98,7 +99,7 @@ export function ComprasPage() {
   if (!podeVer) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
@@ -127,10 +128,10 @@ export function ComprasPage() {
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {([
-          ["sugestoes",    `💡 Sugestões${insumosComFalta.length > 0 ? ` (${insumosComFalta.length})` : ""}`],
-          ["pedidos",      `📋 Pedidos (${pedidos.length})`],
-          ["fornecedores", `🏢 Fornecedores (${fornecedores.length})`],
-        ] as const).map(([id, label]) => (
+          ["sugestoes",    <span className="inline-flex items-center gap-1.5"><Lightbulb size={15} /> Sugestões{insumosComFalta.length > 0 ? ` (${insumosComFalta.length})` : ""}</span>],
+          ["pedidos",      <span className="inline-flex items-center gap-1.5"><ClipboardList size={15} /> Pedidos ({pedidos.length})</span>],
+          ["fornecedores", <span className="inline-flex items-center gap-1.5"><Building2 size={15} /> Fornecedores ({fornecedores.length})</span>],
+        ] as [Tab, ReactNode][]).map(([id, label]) => (
           <button
             key={id}
             onClick={() => setTab(id)}
@@ -171,7 +172,7 @@ export function ComprasPage() {
 
       {!fornecedores.length && tab === "sugestoes" && (
         <div className="mt-4 text-sm text-gray-500 italic">
-          💡 Pra criar pedidos automáticos, cadastre fornecedores na aba "Fornecedores" e
+          <Lightbulb size={13} className="inline align-[-2px] mr-1" />Pra criar pedidos automáticos, cadastre fornecedores na aba "Fornecedores" e
           vincule-os aos insumos no módulo Contagens (campo "Fornecedor preferencial").
         </div>
       )}

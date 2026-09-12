@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Building2, Smartphone, Mail, MessageSquare, Ban, Check } from "lucide-react";
 import { addDoc, collection, deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -55,7 +56,7 @@ export function FornecedoresTab({ fornecedores, restaurantId, podeConfig }: Prop
 
       {filtered.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">🏢</div>
+          <div className="flex justify-center mb-3 text-gray-400"><Building2 size={40} /></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">
             {search ? "Nenhum fornecedor encontrado" : "Sem fornecedores"}
           </p>
@@ -74,8 +75,8 @@ export function FornecedoresTab({ fornecedores, restaurantId, podeConfig }: Prop
                     {!f.ativo && <span className="text-[10px] uppercase text-gray-500">Inativo</span>}
                   </div>
                   <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 flex gap-3 flex-wrap">
-                    {f.whatsapp && <span>📱 {f.whatsapp}</span>}
-                    {f.email && <span>✉️ {f.email}</span>}
+                    {f.whatsapp && <span className="inline-flex items-center gap-1"><Smartphone size={12} /> {f.whatsapp}</span>}
+                    {f.email && <span className="inline-flex items-center gap-1"><Mail size={12} /> {f.email}</span>}
                   </div>
                   {f.observacoes && <div className="text-xs text-gray-700 dark:text-gray-300 italic mt-1">{f.observacoes}</div>}
                 </div>
@@ -86,9 +87,9 @@ export function FornecedoresTab({ fornecedores, restaurantId, podeConfig }: Prop
                         variant="secondary"
                         size="sm"
                         onClick={() => void abrirWhatsapp(restaurantId, "fornecedores", f.whatsapp!, f.nome)}
-                      >💬 WhatsApp</Button>
+                      ><span className="inline-flex items-center gap-1.5"><MessageSquare size={14} /> WhatsApp</span></Button>
                     )}
-                    <Button variant="secondary" size="sm" onClick={() => toggleAtivo(f)}>{f.ativo ? "🚫" : "✓"}</Button>
+                    <Button variant="secondary" size="sm" onClick={() => toggleAtivo(f)} title={f.ativo ? "Inativar" : "Ativar"}>{f.ativo ? <Ban size={15} /> : <Check size={15} />}</Button>
                     <Button variant="secondary" size="sm" onClick={() => setEditing(f)}>Editar</Button>
                     <Button variant="danger" size="sm" onClick={() => excluir(f)}>×</Button>
                   </div>

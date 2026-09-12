@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Building2, CalendarDays, Package, Banknote, MessageSquare, Send, TriangleAlert, ClipboardList, FolderOpen, FileText, Check, X, type LucideIcon } from "lucide-react";
 import { deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -7,7 +8,7 @@ import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import {
-  PEDIDO_STATUS_ICON, PEDIDO_STATUS_LABEL, UNIDADES_LABEL,
+  PEDIDO_STATUS_LABEL, UNIDADES_LABEL,
 } from "../../core/types";
 import type { Pedido, PedidoStatus, PedidoItem } from "../../core/types";
 import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
@@ -24,6 +25,15 @@ const STATUS_CLS: Record<PedidoStatus, string> = {
   recebido_ok:  "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
   recebido_div: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
   cancelado:    "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300",
+};
+
+const PEDIDO_STATUS_LUCIDE: Record<PedidoStatus, LucideIcon> = {
+  rascunho:     FileText,
+  aprovado:     Check,
+  enviado:      Send,
+  recebido_ok:  Package,
+  recebido_div: TriangleAlert,
+  cancelado:    X,
 };
 
 export function PedidosTab({ pedidos, podeConfig }: Props) {
@@ -68,14 +78,19 @@ export function PedidosTab({ pedidos, podeConfig }: Props) {
                 : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400 hover:bg-gray-200"
             }`}
           >
-            {f === "abertos" ? "📂 Abertos" : f === "todos" ? "Todos" : `${PEDIDO_STATUS_ICON[f]} ${PEDIDO_STATUS_LABEL[f]}`}
+            {(() => {
+              if (f === "abertos") return <span className="inline-flex items-center gap-1"><FolderOpen size={13} /> Abertos</span>;
+              if (f === "todos") return "Todos";
+              const Ic = PEDIDO_STATUS_LUCIDE[f];
+              return <span className="inline-flex items-center gap-1"><Ic size={13} /> {PEDIDO_STATUS_LABEL[f]}</span>;
+            })()}
           </button>
         ))}
       </div>
 
       {filtered.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">📋</div>
+          <div className="flex justify-center mb-3 text-gray-400"><ClipboardList size={40} /></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">
             {search || filtroStatus !== "abertos" ? "Nenhum pedido encontrado" : "Nenhum pedido aberto"}
           </p>
@@ -194,16 +209,17 @@ function PedidoCard({ pedido, podeConfig, onReceber }: {
       <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h3 className="font-bold text-gray-900 dark:text-gray-100">🏢 {pedido.fornecedorNomeSnapshot}</h3>
-            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${STATUS_CLS[pedido.status]}`}>
-              {PEDIDO_STATUS_ICON[pedido.status]} {PEDIDO_STATUS_LABEL[pedido.status]}
-            </span>
+            <h3 className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Building2 size={16} /> {pedido.fornecedorNomeSnapshot}</h3>
+            {(() => { const Ic = PEDIDO_STATUS_LUCIDE[pedido.status]; return (
+            <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${STATUS_CLS[pedido.status]}`}>
+              <Ic size={11} /> {PEDIDO_STATUS_LABEL[pedido.status]}
+            </span>); })()}
           </div>
           <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 flex gap-3 flex-wrap">
-            <span>📅 {new Date(pedido.criadoEm).toLocaleDateString("pt-BR")}</span>
-            <span>📦 {pedido.itens.length} item(ns)</span>
+            <span className="inline-flex items-center gap-1"><CalendarDays size={12} /> {new Date(pedido.criadoEm).toLocaleDateString("pt-BR")}</span>
+            <span className="inline-flex items-center gap-1"><Package size={12} /> {pedido.itens.length} item(ns)</span>
             {pedido.totalEstimado != null && pedido.totalEstimado > 0 && (
-              <span>💰 R$ {pedido.totalEstimado.toFixed(2)}</span>
+              <span className="inline-flex items-center gap-1"><Banknote size={12} /> R$ {pedido.totalEstimado.toFixed(2)}</span>
             )}
           </div>
         </div>
@@ -212,13 +228,13 @@ function PedidoCard({ pedido, podeConfig, onReceber }: {
             <Button variant="secondary" size="sm" onClick={() => setStatus("aprovado")} disabled={busy}>✓ Aprovar</Button>
           )}
           {podeConfig && (pedido.status === "rascunho" || pedido.status === "aprovado" || pedido.status === "enviado") && pedido.fornecedorWhatsappSnapshot && (
-            <Button variant="secondary" size="sm" onClick={() => void abrirWA()}>💬 Enviar WhatsApp</Button>
+            <Button variant="secondary" size="sm" onClick={() => void abrirWA()}><span className="inline-flex items-center gap-1.5"><MessageSquare size={14} /> Enviar WhatsApp</span></Button>
           )}
           {podeConfig && (pedido.status === "rascunho" || pedido.status === "aprovado") && (
-            <Button variant="secondary" size="sm" onClick={() => setStatus("enviado")} disabled={busy}>📤 Marcar enviado</Button>
+            <Button variant="secondary" size="sm" onClick={() => setStatus("enviado")} disabled={busy}><span className="inline-flex items-center gap-1.5"><Send size={14} /> Marcar enviado</span></Button>
           )}
           {podeConfig && (pedido.status === "enviado" || pedido.status === "aprovado") && (
-            <Button variant="secondary" size="sm" onClick={onReceber}>📦 Receber</Button>
+            <Button variant="secondary" size="sm" onClick={onReceber}><span className="inline-flex items-center gap-1.5"><Package size={14} /> Receber</span></Button>
           )}
           {podeConfig && !isFinal && (
             <Button variant="secondary" size="sm" onClick={() => setStatus("cancelado")} disabled={busy}>✕ Cancelar</Button>
@@ -258,7 +274,7 @@ function PedidoCard({ pedido, podeConfig, onReceber }: {
             <div className="text-xs text-gray-700 dark:text-gray-300 italic mt-2">{pedido.observacaoGeral}</div>
           )}
           {pedido.observacaoRecebimento && (
-            <div className="text-xs text-amber-700 dark:text-amber-400 italic mt-2">📦 {pedido.observacaoRecebimento}</div>
+            <div className="text-xs text-amber-700 dark:text-amber-400 italic mt-2 inline-flex items-center gap-1"><Package size={12} className="shrink-0" /> {pedido.observacaoRecebimento}</div>
           )}
         </div>
       )}
@@ -320,7 +336,7 @@ function ReceberModal({ pedido, onClose }: { pedido: Pedido; onClose: () => void
   }).length;
 
   return (
-    <Modal title={`📦 Receber — ${pedido.fornecedorNomeSnapshot}`} onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={<span className="inline-flex items-center gap-2"><Package size={18} /> Receber — {pedido.fornecedorNomeSnapshot}</span>} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
         <p className="text-sm text-gray-600 dark:text-gray-400">
           Confira o que foi entregue. Se diferente do pedido, ajuste a quantidade.
@@ -380,7 +396,7 @@ function ReceberModal({ pedido, onClose }: { pedido: Pedido; onClose: () => void
 
         {divergencias > 0 ? (
           <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
-            ⚠ <strong>{divergencias}</strong> item(ns) com divergência. Será marcado como "Recebido c/ diff".
+            <span className="inline-flex items-center gap-1"><TriangleAlert size={14} className="shrink-0" /> <strong>{divergencias}</strong> item(ns) com divergência. Será marcado como "Recebido c/ diff".</span>
           </div>
         ) : (
           <div className="rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 px-3 py-2 text-sm text-emerald-800 dark:text-emerald-300">

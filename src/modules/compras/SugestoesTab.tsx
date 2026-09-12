@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Building2, Smartphone, ClipboardList, TriangleAlert } from "lucide-react";
 import { addDoc, collection } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -155,8 +156,8 @@ export function SugestoesTab({
           <div key={fornId} className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
             <div className="flex items-center justify-between gap-2 flex-wrap mb-2">
               <div>
-                <h3 className="font-bold text-gray-900 dark:text-gray-100">🏢 {forn.nome}</h3>
-                {forn.whatsapp && <div className="text-xs text-gray-500">📱 {forn.whatsapp}</div>}
+                <h3 className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Building2 size={16} /> {forn.nome}</h3>
+                {forn.whatsapp && <div className="text-xs text-gray-500 inline-flex items-center gap-1"><Smartphone size={12} /> {forn.whatsapp}</div>}
               </div>
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="text-xs text-gray-600 dark:text-gray-400">
@@ -168,7 +169,7 @@ export function SugestoesTab({
                     onClick={() => gerarPedido(fornId, linhas)}
                     disabled={savingFornId === fornId || itensIncluidos === 0}
                   >
-                    {savingFornId === fornId ? "..." : `📋 Gerar pedido (${itensIncluidos})`}
+                    {savingFornId === fornId ? "..." : <span className="inline-flex items-center gap-1.5"><ClipboardList size={14} /> Gerar pedido ({itensIncluidos})</span>}
                   </Button>
                 )}
               </div>
@@ -229,7 +230,7 @@ export function SugestoesTab({
       {porFornecedor.semFornecedor.length > 0 && (
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3">
           <h3 className="font-bold text-amber-900 dark:text-amber-300 mb-2">
-            ⚠ Insumos sem fornecedor preferencial ({porFornecedor.semFornecedor.length})
+            <span className="inline-flex items-center gap-1.5"><TriangleAlert size={15} /> Insumos sem fornecedor preferencial ({porFornecedor.semFornecedor.length})</span>
           </h3>
           <p className="text-xs text-amber-800 dark:text-amber-400 mb-2">
             Vincule um fornecedor preferencial a cada insumo (no módulo Contagens) pra que apareçam agrupados aqui.
