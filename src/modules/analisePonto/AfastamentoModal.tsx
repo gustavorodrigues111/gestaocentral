@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { addDoc, collection } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
+import { Palmtree, TriangleAlert } from "lucide-react";
 import { fetchMotivosAfastamento, lancarAfastamento, criarAfastamentoNovo, type MotivoAfastamento } from "../../core/ponto/solidesPontoClient";
 import { fetchPunches } from "../../core/excecoes/solidesClient";
 import type { PontoColaborador } from "../../core/ponto/analise";
@@ -133,7 +134,7 @@ export function AfastamentoModal({
   }
 
   return (
-    <Modal title="🏖️ Lançar afastamento / férias" onClose={onClose} maxWidth="max-w-md">
+    <Modal title={<span className="inline-flex items-center gap-1"><Palmtree size={16}/> Lançar afastamento / férias</span>} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
         <p className="text-xs text-gray-500 dark:text-gray-400">
           O período inteiro é lançado de uma vez (a justificativa vale pra todos os dias). Entra como <strong>aprovado</strong> na Sólides.
@@ -167,7 +168,7 @@ export function AfastamentoModal({
           )}
           {motivoBloqueado && (
             <div className="text-[11px] text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded px-2 py-1.5">
-              ⚠ Licenças/afastamentos (maternidade, paternidade, etc.) ainda não estão integrados aqui — lance no <strong>módulo de Afastamentos</strong> da Sólides. <strong>Atestado médico</strong> já funciona por aqui.
+              <TriangleAlert size={12} className="inline align-[-2px] mr-0.5"/> Licenças/afastamentos (maternidade, paternidade, etc.) ainda não estão integrados aqui — lance no <strong>módulo de Afastamentos</strong> da Sólides. <strong>Atestado médico</strong> já funciona por aqui.
             </div>
           )}
         </div>

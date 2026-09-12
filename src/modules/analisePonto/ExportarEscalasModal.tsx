@@ -10,6 +10,7 @@ import { useEffect, useRef, useState } from "react";
 import type { jsPDF as JsPDFType } from "jspdf";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import { FileText, Send, ArrowDown } from "lucide-react";
 import { gerarEscalasPDF, type EscalaPDFLinha } from "./gerarEscalasPDF";
 import { baixarOuCompartilhar, podeCompartilharArquivo } from "../../core/pdf/baixarOuCompartilhar";
 
@@ -68,7 +69,7 @@ export function ExportarEscalasModal({ restaurantNome, fileBase, linhas, onClose
   const pronto = !gerando && linhas.length > 0 && !!docRef.current;
 
   return (
-    <Modal title="📄 Exportar escalas em PDF" onClose={onClose} maxWidth="max-w-4xl">
+    <Modal title={<span className="inline-flex items-center gap-1"><FileText size={18}/> Exportar escalas em PDF</span>} onClose={onClose} maxWidth="max-w-4xl">
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <span className="text-xs text-gray-500 dark:text-gray-400">{linhas.length} colaborador(es)</span>
@@ -92,9 +93,9 @@ export function ExportarEscalasModal({ restaurantNome, fileBase, linhas, onClose
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose}>Fechar</Button>
           {podeCompartilharArquivo(nomeArq) && (
-            <Button variant="secondary" onClick={() => void enviar()} disabled={!pronto}>📤 Enviar</Button>
+            <Button variant="secondary" onClick={() => void enviar()} disabled={!pronto}><span className="inline-flex items-center gap-1"><Send size={14}/> Enviar</span></Button>
           )}
-          <Button onClick={baixar} disabled={!pronto}>⬇️ Baixar PDF</Button>
+          <Button onClick={baixar} disabled={!pronto}><span className="inline-flex items-center gap-1"><ArrowDown size={14}/> Baixar PDF</span></Button>
         </div>
       </div>
     </Modal>

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { addDoc, collection } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
+import { Wrench, Plus } from "lucide-react";
 import { fetchJustificativas, corrigirPontoAtraso, editarBatida, excluirBatida, type Justificativa } from "../../core/ponto/solidesPontoClient";
 import { fetchPunches } from "../../core/excecoes/solidesClient";
 import type { SolidesPunch } from "../../core/excecoes/types";
@@ -143,7 +144,7 @@ export function BatidasDiaModal({
   }
 
   return (
-    <Modal title={`🛠️ Batidas do dia — ${info.colaborador}`} onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={<span className="inline-flex items-center gap-1"><Wrench size={16}/> Batidas do dia — {info.colaborador}</span>} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
         <p className="text-xs text-gray-500 dark:text-gray-400">
           {fmtBR(info.data)}. Edite a hora e clique em <strong>Salvar</strong>, ou <strong>Excluir</strong> o bloco. Grava direto na Sólides.
@@ -192,7 +193,7 @@ export function BatidasDiaModal({
 
         {/* Adicionar batida (lança ponto em atraso; a Sólides decide entrada/saída) */}
         <div className="border-t border-gray-100 dark:border-gray-800 pt-3">
-          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5">➕ Adicionar batida</div>
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1.5 inline-flex items-center gap-1"><Plus size={13}/> Adicionar batida</div>
           <div className="flex items-end gap-2 flex-wrap">
             <div className="flex flex-col gap-1">
               <label className="text-[10px] font-semibold text-gray-500">Hora</label>
