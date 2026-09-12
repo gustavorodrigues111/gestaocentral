@@ -24,6 +24,7 @@ import { fetchScheduleCatalog, fetchRoster } from "../../core/ponto/solidesPonto
 import type { PontoColaborador, PontoEscala } from "../../core/ponto/analise";
 import { type EscalaPDFLinha } from "./gerarEscalasPDF";
 import { ExportarEscalasModal } from "./ExportarEscalasModal";
+import { CalendarDays, FileText, AlarmClock, Timer, Minus, Lock, Repeat, Check, TriangleAlert } from "lucide-react";
 
 const VINCULO_LABEL: Record<TipoVinculo, string> = {
   registrado: "CLT", provisorio: "provisório", estagiario: "estagiário", terceirizado: "terceirizado",
@@ -247,7 +248,7 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
       <div className="text-center py-12">
         <button type="button" onClick={() => void carregar()}
           className="px-4 py-2 text-sm font-semibold rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white">
-          🗓️ Comparar escalas (Sólides × planejamento.app)
+          <span className="inline-flex items-center gap-1"><CalendarDays size={15}/> Comparar escalas (Sólides × planejamento.app)</span>
         </button>
         <p className="text-[11px] text-gray-400 mt-2">Compara a escala cadastrada no Sólides com a do planejamento.app, por colaborador.</p>
       </div>
@@ -325,7 +326,7 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
         )}
         <button type="button" onClick={abrirExportacao} disabled={linhasView.length === 0}
           className="ml-auto px-2.5 py-1 rounded-md bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-semibold">
-          📄 Exportar PDF
+          <span className="inline-flex items-center gap-1"><FileText size={14}/> Exportar PDF</span>
         </button>
         <button type="button" onClick={() => void carregar()} className="text-indigo-600 hover:underline">↻ recarregar</button>
       </div>
@@ -336,9 +337,9 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
 
       {fonte === "comparar" && (
         <div className="flex items-center gap-3 text-[10px] text-gray-400 flex-wrap">
-          <span>⏰ horário diferente</span>
-          <span>⏱ carga diferente</span>
-          <span>➖ escala só num lado</span>
+          <span className="inline-flex items-center gap-1"><AlarmClock size={11}/> horário diferente</span>
+          <span className="inline-flex items-center gap-1"><Timer size={11}/> carga diferente</span>
+          <span className="inline-flex items-center gap-1"><Minus size={11}/> escala só num lado</span>
         </div>
       )}
 
@@ -353,12 +354,12 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{l.r.name}</span>
                 {l.area && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{l.area}</span>}
-                {l.ehConfianca && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300" title="Cargo de confiança — não bate ponto (isento de controle de jornada)">🔒 confiança</span>}
-                {l.ciclico && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300" title="Escala alternante (cíclica) — comparando a semana vigente">🔁 cíclico{l.semanaCiclo ? ` · semana ${l.semanaCiclo}` : ""}</span>}
+                {l.ehConfianca && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 inline-flex items-center gap-1" title="Cargo de confiança — não bate ponto (isento de controle de jornada)"><Lock size={10}/> confiança</span>}
+                {l.ciclico && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 inline-flex items-center gap-1" title="Escala alternante (cíclica) — comparando a semana vigente"><Repeat size={10}/> cíclico{l.semanaCiclo ? ` · semana ${l.semanaCiclo}` : ""}</span>}
                 {fonte === "comparar" && !l.temApp && <span className="text-[10px] text-amber-600 ml-auto">sem empregado vinculado (CPF)</span>}
                 {fonte === "comparar" && l.temApp && (l.bate
-                  ? <span className="text-[11px] text-emerald-600 ml-auto">✓ batem</span>
-                  : <span className="text-[11px] text-red-600 ml-auto">⚠ divergem</span>)}
+                  ? <span className="text-[11px] text-emerald-600 ml-auto inline-flex items-center gap-1"><Check size={12}/> batem</span>
+                  : <span className="text-[11px] text-red-600 ml-auto inline-flex items-center gap-1"><TriangleAlert size={12}/> divergem</span>)}
                 {fonte === "solides" && <span className="text-[11px] text-gray-400 ml-auto">semana {fmtH(l.totalSol)}</span>}
                 {fonte === "app" && (l.temApp
                   ? <span className="text-[11px] text-gray-400 ml-auto">semana {fmtH(l.totalApp)}</span>
@@ -396,9 +397,9 @@ export function EscalasComparacaoTab({ rid, activeRestaurant }: { rid: string; a
                         )}
                         {fonte === "comparar" && (
                           <div className="flex gap-0.5 justify-end text-[11px]">
-                            {destaque && d.soUmLado && <span title="Escala só num lado (o outro está de folga)">➖</span>}
-                            {destaque && d.horarioDiff && <span title="Horário cadastrado diferente entre as fontes">⏰</span>}
-                            {destaque && d.cargaDiff && !d.horarioDiff && <span title="Carga horária do dia diferente">⏱</span>}
+                            {destaque && d.soUmLado && <span className="inline-flex" title="Escala só num lado (o outro está de folga)"><Minus size={12}/></span>}
+                            {destaque && d.horarioDiff && <span className="inline-flex" title="Horário cadastrado diferente entre as fontes"><AlarmClock size={12}/></span>}
+                            {destaque && d.cargaDiff && !d.horarioDiff && <span className="inline-flex" title="Carga horária do dia diferente"><Timer size={12}/></span>}
                           </div>
                         )}
                       </div>

@@ -23,6 +23,10 @@ import { daysInMonth, pad2 } from "../../core/utils/date";
 import { FecharMesModal } from "../escala/FecharMesModal";
 import { BatidasDiaModal } from "./BatidasDiaModal";
 import { AfastamentoModal } from "./AfastamentoModal";
+import {
+  Lock, Umbrella, TriangleAlert, CheckSquare, MessageSquare, Wrench,
+  Repeat, Eye, Siren, Hourglass, User, ClipboardList,
+} from "lucide-react";
 
 const STATUS_OPCOES: Array<{ id: ScheduleStatus; label: string }> = [
   { id: "trabalho", label: "Trabalho" },
@@ -810,7 +814,7 @@ export function FechamentoTab({
         {opts.podeSelecionar && opts.onToggleSel ? (
           <input type="checkbox" checked={opts.selecionado} onChange={opts.onToggleSel} className="w-4 h-4 accent-indigo-600 shrink-0 cursor-pointer" />
         ) : (
-          <span className="w-4 shrink-0 text-center">{opts.fechado ? "🔒" : ""}</span>
+          <span className="w-4 shrink-0 inline-flex justify-center">{opts.fechado ? <Lock size={12}/> : null}</span>
         )}
         {vis && <span className={`shrink-0 inline-flex items-center justify-center w-7 h-6 rounded text-[10px] font-bold ${vis.badge}`}>{vis.short}</span>}
         <span className="w-24 shrink-0 whitespace-nowrap text-gray-600 dark:text-gray-300 tabular-nums">{wd} {dataBR}</span>
@@ -821,7 +825,7 @@ export function FechamentoTab({
           {d.prevista && <span className="ml-2 text-gray-400">· prev: {STATUS_LABEL[d.prevista] || d.prevista}</span>}
         </div>
         {afastLancado && (
-          <span title={afastLancado.detalhe} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">☂️ {afastLancado.motivo} · Sólides ✓</span>
+          <span title={afastLancado.detalhe} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 inline-flex items-center gap-1"><Umbrella size={11}/> {afastLancado.motivo} · Sólides ✓</span>
         )}
         {!afastLancado && inc.estado === "aprovar" && (
           <span title="Ajuste do empregado aguardando aprovação" className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">a aprovar</span>
@@ -833,21 +837,21 @@ export function FechamentoTab({
           <span title={incTitle} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">✓ ciente</span>
         )}
         {!afastLancado && inc.estado === "aberto" && (
-          <span title={incTitle} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">⚠ {incRot}{incExtra}</span>
+          <span title={incTitle} className="shrink-0 text-[10px] font-semibold px-1.5 py-0.5 rounded-full whitespace-nowrap bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 inline-flex items-center gap-1"><TriangleAlert size={11}/> {incRot}{incExtra}</span>
         )}
         {!afastLancado && !opts.fechado && inc.estado === "aprovar" && temEmp && (
           <span className="shrink-0 flex gap-1">
             <button type="button" title="Aprovar ajuste do empregado" disabled={salvando} onClick={() => void decidirDiaDe(solId, col.nome, d.date, "APPROVED")}
-              className="w-7 h-7 rounded-md border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40 text-[13px]">✅</button>
+              className="w-7 h-7 inline-flex items-center justify-center rounded-md border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40"><CheckSquare size={14}/></button>
             <button type="button" title="Reprovar ajuste do empregado" disabled={salvando} onClick={() => void decidirDiaDe(solId, col.nome, d.date, "REPROVED")}
               className="w-7 h-7 rounded-md border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40 text-[13px]">✗</button>
           </span>
         )}
         {!afastLancado && !opts.fechado && inc.estado && inc.estado !== "aprovar" && temEmp && (
           <span className="shrink-0 flex gap-1">
-            <button type="button" title="Solicitar correção ao empregado (WhatsApp)" onClick={() => solicitarDiaDe(col, d.date)} className={btn}>💬</button>
-            <button type="button" title="Corrigir / lançar batida na Sólides" onClick={() => setModalBatidas({ employeeId: solId, colaborador: col.nome, data: d.date })} className={btn}>🔧</button>
-            <button type="button" title="Lançar afastamento / férias" onClick={() => setModalAfast({ employeeId: solId, colaborador: col.nome, data: d.date })} className={btn}>☂️</button>
+            <button type="button" title="Solicitar correção ao empregado (WhatsApp)" onClick={() => solicitarDiaDe(col, d.date)} className={`${btn} inline-flex items-center justify-center`}><MessageSquare size={14}/></button>
+            <button type="button" title="Corrigir / lançar batida na Sólides" onClick={() => setModalBatidas({ employeeId: solId, colaborador: col.nome, data: d.date })} className={`${btn} inline-flex items-center justify-center`}><Wrench size={14}/></button>
+            <button type="button" title="Lançar afastamento / férias" onClick={() => setModalAfast({ employeeId: solId, colaborador: col.nome, data: d.date })} className={`${btn} inline-flex items-center justify-center`}><Umbrella size={14}/></button>
             {inc.estado !== "ciente" && (
               <button type="button" title="Dar ciência (sem ação)" onClick={() => cienciaDiaDe(solId, d.date)} className={btn}>✓</button>
             )}
@@ -999,12 +1003,12 @@ export function FechamentoTab({
           <button type="button" onClick={() => void carregar()} disabled={carregando}
             title="Recarregar batidas, escala e inconsistências do mês"
             className="h-9 px-4 text-sm font-semibold rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-50 whitespace-nowrap">
-            {carregando ? "Atualizando…" : "🔄 Atualizar"}
+            {carregando ? "Atualizando…" : <span className="inline-flex items-center gap-1"><Repeat size={14}/> Atualizar</span>}
           </button>
           {selEmp !== "" && !appOnlySel && (
             <button type="button" onClick={() => void verPdf()} disabled={pdfLoading}
               className="h-9 px-4 text-sm font-semibold rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 disabled:opacity-50 whitespace-nowrap">
-              {pdfLoading ? "Gerando…" : "👁 Visualizar espelho (PDF)"}
+              {pdfLoading ? "Gerando…" : <span className="inline-flex items-center gap-1"><Eye size={14}/> Visualizar espelho (PDF)</span>}
             </button>
           )}
         </div>
@@ -1012,21 +1016,21 @@ export function FechamentoTab({
           Escolha um colaborador pelo chip. <span className="text-emerald-700 dark:text-emerald-300 font-semibold">✓ verde</span> = período fechado · <span className="text-amber-700 dark:text-amber-300 font-semibold">● amarelo</span> = ainda tem dias a fechar · <span className="text-gray-400 font-semibold">○ cinza</span> = sem vínculo no app.
         </p>
         {mesEncerrado ? (
-          <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300">🔒 Mês encerrado — pra fechar/editar dias, reabra no módulo Escala (🔓 Reabrir mês)</div>
+          <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] font-medium px-2.5 py-1 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300"><Lock size={12}/> Mês encerrado — pra fechar/editar dias, reabra no módulo Escala (Reabrir mês)</div>
         ) : previstaFechada && temColabsFechaveis ? (
           pendentesGlobais === 0 ? (
             <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3">
-              <span className="text-sm text-emerald-800 dark:text-emerald-200">✅ Todos os dias do mês estão fechados{mesVencido ? " e o mês já venceu" : ""}. Encerre o mês pra consolidar gorjeta e VT.</span>
+              <span className="text-sm text-emerald-800 dark:text-emerald-200 inline-flex items-center gap-1"><CheckSquare size={14}/> Todos os dias do mês estão fechados{mesVencido ? " e o mês já venceu" : ""}. Encerre o mês pra consolidar gorjeta e VT.</span>
               <div className="flex-1" />
-              {podeEncerrar && <button type="button" onClick={() => setShowEncerrar(true)} className="text-[12px] font-semibold px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white shrink-0">🔒 Encerrar mês</button>}
+              {podeEncerrar && <button type="button" onClick={() => setShowEncerrar(true)} className="text-[12px] font-semibold px-3 py-1.5 rounded-md bg-rose-600 hover:bg-rose-700 text-white shrink-0 inline-flex items-center gap-1"><Lock size={13}/> Encerrar mês</button>}
             </div>
           ) : (
             <div className={`mt-3 flex flex-wrap items-center gap-2 rounded-xl border p-3 ${mesVencido ? "border-rose-200 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20" : "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20"}`}>
               <span className={`text-sm ${mesVencido ? "text-rose-800 dark:text-rose-200" : "text-amber-800 dark:text-amber-200"}`}>
-                {mesVencido ? "🚨 Mês vencido e ainda não encerrado — " : "⏳ "}faltam <strong>{pendentesGlobais} dia(s)</strong> a fechar antes de encerrar o mês.
+                {mesVencido ? <><Siren size={13} className="inline align-[-2px] mr-1"/> Mês vencido e ainda não encerrado — </> : <Hourglass size={13} className="inline align-[-2px] mr-1"/>}faltam <strong>{pendentesGlobais} dia(s)</strong> a fechar antes de encerrar o mês.
               </span>
               <div className="flex-1" />
-              {podeEncerrar && <button type="button" disabled title="Feche todos os dias antes de encerrar o mês" className="text-[12px] font-semibold px-3 py-1.5 rounded-md bg-rose-600 text-white opacity-40 cursor-not-allowed shrink-0">🔒 Encerrar mês</button>}
+              {podeEncerrar && <button type="button" disabled title="Feche todos os dias antes de encerrar o mês" className="text-[12px] font-semibold px-3 py-1.5 rounded-md bg-rose-600 text-white opacity-40 cursor-not-allowed shrink-0 inline-flex items-center gap-1"><Lock size={13}/> Encerrar mês</button>}
             </div>
           )
         ) : null}
@@ -1041,16 +1045,16 @@ export function FechamentoTab({
         <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
           <button type="button" onClick={() => setVisao("colaborador")}
             className={`px-3 py-1.5 text-xs font-semibold rounded-md ${visao === "colaborador" ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}>
-            👤 Por colaborador
+            <span className="inline-flex items-center gap-1"><User size={13}/> Por colaborador</span>
           </button>
           <button type="button" onClick={() => setVisao("pendentes")}
             className={`px-3 py-1.5 text-xs font-semibold rounded-md ${visao === "pendentes" ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}>
-            📋 Dias pendentes de todos
+            <span className="inline-flex items-center gap-1"><ClipboardList size={13}/> Dias pendentes de todos</span>
           </button>
           {podeAprovar && (
             <button type="button" onClick={() => setVisao("aprovacoes")}
               className={`px-3 py-1.5 text-xs font-semibold rounded-md ${visao === "aprovacoes" ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}>
-              ⏳ Aprovações pendentes{aprovacoes.length > 0 ? ` (${aprovacoes.length})` : ""}
+              <span className="inline-flex items-center gap-1"><Hourglass size={13}/> Aprovações pendentes{aprovacoes.length > 0 ? ` (${aprovacoes.length})` : ""}</span>
             </button>
           )}
         </div>
