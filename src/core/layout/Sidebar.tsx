@@ -11,7 +11,7 @@ import { useAvisos } from "../../modules/chat/useAvisos";
 import { confirmarSaida } from "../nav/unsaved";
 import { ModuleBadge } from "../ui/ModuleBadge";
 import { ModuleIcon } from "../ui/ModuleIcon";
-import { PanelLeftClose } from "lucide-react";
+import { PanelLeftClose, Store, ChevronsUpDown, Check, Plus } from "lucide-react";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
 import type { ModuleArea, ModuleId } from "../types";
 
@@ -65,6 +65,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   // então há no máximo um. O Portal (Minhas Informações) fica FIXO nesse
   // restaurante — independente de qual restaurante está ativo no seletor.
   const [empRid, setEmpRid] = useState<string | null>(null);
+  const [restAberto, setRestAberto] = useState(false);
   // Permissões do portal escopadas ao restaurante-empregado (não ao ativo).
   const { can: canPortalEmp } = useCanAcao(empRid || "");
   useEffect(() => {
@@ -185,14 +186,48 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             </button>
           </div>
           {!subdomainLocked && restaurants.length > 0 ? (
-            <select
-              value={activeRestaurant?.id || ""}
-              onChange={(e) => changeRestaurant(e.target.value)}
-              className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 cursor-pointer truncate"
-            >
-              {restaurants.map((r) => (<option key={r.id} value={r.id}>{r.nome}</option>))}
-              {pessoa?.isMaster && <option value="__novo__">＋ Criar novo restaurante…</option>}
-            </select>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setRestAberto(v => !v)}
+                className="w-full flex items-center gap-2 px-2.5 py-1.5 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 hover:bg-gray-50 dark:hover:bg-gray-800"
+              >
+                <Store size={15} className="text-gray-400 shrink-0" />
+                <span className="flex-1 text-left truncate font-medium">{activeRestaurant?.nome || "Selecione…"}</span>
+                <ChevronsUpDown size={15} className="text-gray-400 shrink-0" />
+              </button>
+              {restAberto && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setRestAberto(false)} />
+                  <div className="absolute left-0 right-0 mt-1 z-40 max-h-72 overflow-auto rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1">
+                    {restaurants.map((r) => (
+                      <button
+                        key={r.id}
+                        type="button"
+                        onClick={() => { setRestAberto(false); changeRestaurant(r.id); }}
+                        className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left ${r.id === activeRestaurant?.id ? "bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+                      >
+                        <Store size={15} className="text-gray-400 shrink-0" />
+                        <span className="flex-1 truncate">{r.nome}</span>
+                        {r.id === activeRestaurant?.id && <Check size={15} className="text-indigo-500 shrink-0" />}
+                      </button>
+                    ))}
+                    {pessoa?.isMaster && (
+                      <>
+                        <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
+                        <button
+                          type="button"
+                          onClick={() => { setRestAberto(false); changeRestaurant("__novo__"); }}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-left text-indigo-600 dark:text-indigo-400 hover:bg-gray-50 dark:hover:bg-gray-800"
+                        >
+                          <Plus size={15} className="shrink-0" /> Criar novo restaurante…
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
           ) : (
             activeRestaurant && <div className="px-1 text-sm font-semibold text-gray-700 dark:text-gray-200 truncate">{activeRestaurant.nome}</div>
           )}
