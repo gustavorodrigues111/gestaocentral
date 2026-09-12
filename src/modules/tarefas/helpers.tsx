@@ -1,4 +1,9 @@
 import { useState } from "react";
+import {
+  Building2, CalendarDays, List, KanbanSquare, Lock,
+  Banknote, Wrench, Scale, UserRoundMinus, Palmtree, MessagesSquare,
+  PartyPopper, Repeat, Package, Smartphone, type LucideIcon,
+} from "lucide-react";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { mudarStatus, atualizarTarefa, CamposObrigatoriosFaltantesError } from "./repository";
 import { type Tarefa, type TarefaStatus } from "../../core/types";
@@ -66,16 +71,16 @@ export function EmpresaBadge({ ids, className = "" }: { ids?: string[]; classNam
   const label = nomes.length === 1 ? nomes[0] : `${nomes[0]} +${nomes.length - 1}`;
   return (
     <span title={nomes.join(", ")} className={`inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 text-[10px] font-medium whitespace-nowrap max-w-[120px] ${className}`}>
-      <span className="truncate">🏢 {label}</span>
+      <span className="inline-flex items-center gap-1 truncate"><Building2 size={11} className="shrink-0" /> {label}</span>
     </span>
   );
 }
 
 export function ViewSwitcher({ value, onChange }: { value: ViewMode; onChange: (v: ViewMode) => void }) {
-  const opts: { id: ViewMode; icon: string; label: string }[] = [
-    { id: "calendario", icon: "📅", label: "Calendário" },
-    { id: "lista", icon: "📋", label: "Lista" },
-    { id: "kanban", icon: "📊", label: "Kanban" },
+  const opts: { id: ViewMode; Icon: LucideIcon; label: string }[] = [
+    { id: "calendario", Icon: CalendarDays, label: "Calendário" },
+    { id: "lista", Icon: List, label: "Lista" },
+    { id: "kanban", Icon: KanbanSquare, label: "Kanban" },
   ];
   return (
     <div className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 mb-4">
@@ -89,7 +94,7 @@ export function ViewSwitcher({ value, onChange }: { value: ViewMode; onChange: (
               : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
           }`}
         >
-          <span className="mr-1.5">{o.icon}</span>{o.label}
+          <span className="inline-flex items-center gap-1.5"><o.Icon size={14} />{o.label}</span>
         </button>
       ))}
     </div>
@@ -179,6 +184,23 @@ export function catDaTarefa(origem: string, proj?: { nome?: string; cor?: string
   return TAREFA_CAT_META[origem] || { label: proj?.nome || "Tarefa", cor: proj?.cor || "#6b7280", icon: proj?.emoji || "📁" };
 }
 
+// Ícone lucide por ORIGEM da tarefa (espelha as chaves de TAREFA_CAT_META).
+// Mantido separado do mapa acima (que continua com o campo `icon` emoji intacto)
+// pra render por componente sem mudar a estrutura compartilhada. Sem entrada =
+// tarefa manual/projeto → cai no emoji do projeto ou num Folder no ponto de uso.
+export const ORIGEM_ICON: Record<string, LucideIcon> = {
+  conta_fixa: Banknote,
+  manutencao: Wrench,
+  admissao: Scale,
+  demissao: UserRoundMinus,
+  ferias: Palmtree,
+  reuniao: MessagesSquare,
+  evento: PartyPopper,
+  recorrencia: Repeat,
+  lote_financeiro: Package,
+  portal_empregado: Smartphone,
+};
+
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
@@ -220,7 +242,7 @@ export function UsuariosAutorizadosPicker({ ids, pessoas, excluir, onChange }: {
         const nome = pessoas.find(p => p.id === id)?.nome || "—";
         return (
           <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 text-xs">
-            🔒 {nome}
+            <Lock size={11} className="shrink-0" /> {nome}
             <button onClick={() => onChange(ids.filter(x => x !== id))} className="text-amber-400 hover:text-red-500 ml-1">×</button>
           </span>
         );

@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, type ReactNode } from "react";
-import { Inbox, Layers, ChevronDown, Lock, Pencil } from "lucide-react";
+import { Inbox, Layers, ChevronDown, Lock, Pencil, Flame, Trash2, Check, CalendarDays, CheckSquare, MessageSquare, Bot, PartyPopper, Folder } from "lucide-react";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { doc, writeBatch } from "firebase/firestore";
@@ -9,7 +9,7 @@ import { softDeleteTarefa, restaurarTarefa, atualizarTarefa, marcarSubtarefa } f
 import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type Subtarefa, type TarefaStatus, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL } from "../../core/types";
 import { fmtBR } from "../../core/utils/date";
 import { isConfidencial } from "./visibilidade";
-import { AvatarIniciais, EmpresaBadge, FiltroChip, type ViewMode, ViewSwitcher, catDaTarefa, ehAreaPrazos, inicioSemanaSeg, mudarStatusComErro } from "./helpers";
+import { AvatarIniciais, EmpresaBadge, FiltroChip, type ViewMode, ViewSwitcher, catDaTarefa, ORIGEM_ICON, ehAreaPrazos, inicioSemanaSeg, mudarStatusComErro } from "./helpers";
 import { EscolhaRestauranteModal } from "./modais";
 
 // Sidebar lateral (estilo Asana) — atalho "Minhas tarefas" no topo + lista
@@ -204,7 +204,7 @@ export function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pes
   if (tarefas.length === 0) {
     return (
       <div className="text-center py-12 text-gray-500 dark:text-gray-400">
-        <div className="text-4xl mb-2">📭</div>
+        <div className="flex justify-center mb-2"><Inbox size={40} strokeWidth={1.5} /></div>
         <p>Nenhuma tarefa atribuída a você ainda.</p>
       </div>
     );
@@ -232,7 +232,7 @@ export function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pes
       <div className="flex gap-2 mb-2 text-sm overflow-x-auto pb-1">
         <FiltroChip ativo={filtroStatus === "ativas"} onClick={() => setFiltroStatus("ativas")}>Ativas</FiltroChip>
         <FiltroChip ativo={filtroStatus === "atrasadas"} onClick={() => setFiltroStatus("atrasadas")}>
-          🔥 Atrasadas{atrasadasCount > 0 && ` (${atrasadasCount})`}
+          <span className="inline-flex items-center gap-1"><Flame size={12} /> Atrasadas{atrasadasCount > 0 && ` (${atrasadasCount})`}</span>
         </FiltroChip>
         <FiltroChip ativo={filtroStatus === "hoje"} onClick={() => setFiltroStatus("hoje")}>Hoje</FiltroChip>
         <FiltroChip ativo={filtroStatus === "semana"} onClick={() => setFiltroStatus("semana")}>Próx. 7 dias</FiltroChip>
@@ -428,13 +428,13 @@ function BulkActionsBar({ ids, autor, onDone }: {
         ) : (
           <>
             <Button size="sm" variant="ghost" onClick={() => setTrocandoResp(true)}>Atribuir a…</Button>
-            <Button size="sm" variant="ghost" onClick={() => setAutorizando(true)}>🔒 Autorizar…</Button>
+            <Button size="sm" variant="ghost" onClick={() => setAutorizando(true)}><Lock size={14} />Autorizar…</Button>
           </>
         )}
         <Button size="sm" variant="ghost" onClick={() => mudarStatusBulk("em_andamento")}>Em andamento</Button>
-        <Button size="sm" variant="ghost" onClick={() => mudarStatusBulk("concluida")}>✓ Concluir</Button>
+        <Button size="sm" variant="ghost" onClick={() => mudarStatusBulk("concluida")}><Check size={14} />Concluir</Button>
         <Button size="sm" variant="ghost" onClick={() => mudarStatusBulk("cancelada")}>Cancelar</Button>
-        <Button size="sm" variant="ghost" onClick={excluirBulk}>🗑️ Excluir</Button>
+        <Button size="sm" variant="ghost" onClick={excluirBulk}><Trash2 size={14} />Excluir</Button>
         <div className="flex-1" />
         <Button size="sm" variant="ghost" onClick={onDone}>Fechar</Button>
       </div>
@@ -478,26 +478,26 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
           }`}
           title={concluida ? "Reabrir" : "Marcar como concluída"}
         >
-          {concluida && "✓"}
+          {concluida && <Check size={12} strokeWidth={3} />}
         </button>
         <div className="flex-1 min-w-0">
           <div className={`font-medium text-gray-900 dark:text-gray-100 ${concluida ? "line-through" : ""} flex items-center gap-1.5`}>
-            {confidencial && <span title="Confidencial — só pessoas autorizadas" className="text-amber-600 dark:text-amber-400 text-xs">🔒</span>}
+            {confidencial && <span title="Confidencial — só pessoas autorizadas" className="text-amber-600 dark:text-amber-400 inline-flex"><Lock size={13} /></span>}
             <span className="truncate">{tarefa.titulo}</span>
           </div>
           <div className="flex items-center gap-2 mt-1 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
             {projeto && <span style={{ color: cor }}>{projeto.emoji} {projeto.nome}</span>}
             {sub && <span>· {sub.nome}</span>}
             {tarefa.prazo && (
-              <span className={atrasada ? "text-red-600 dark:text-red-400 font-medium" : ""}>
-                · 📅 {fmtBR(tarefa.prazo)}
+              <span className={`inline-flex items-center gap-1 ${atrasada ? "text-red-600 dark:text-red-400 font-medium" : ""}`}>
+                · <CalendarDays size={12} /> {fmtBR(tarefa.prazo)}
               </span>
             )}
             {subtarefasTotal > 0 && (
-              <span>· ☑️ {subtarefasFeitas}/{subtarefasTotal}</span>
+              <span className="inline-flex items-center gap-1">· <CheckSquare size={12} /> {subtarefasFeitas}/{subtarefasTotal}</span>
             )}
             {(tarefa.comentarios?.length ?? 0) > 0 && (
-              <span>· 💬 {tarefa.comentarios?.length}</span>
+              <span className="inline-flex items-center gap-1">· <MessageSquare size={12} /> {tarefa.comentarios?.length}</span>
             )}
             {tarefa.origem !== "manual" && (
               <span className="px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-[10px]">
@@ -657,13 +657,13 @@ function BannerSubAuto({ sub, restTravadoId }: {
 
   return (
     <div className="mb-4 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-4 flex items-center gap-4">
-      <span className="text-3xl shrink-0 leading-none" aria-hidden>🤖</span>
+      <Bot size={30} className="shrink-0 text-amber-600 dark:text-amber-300" aria-hidden />
       <div className="flex-1 min-w-0 space-y-1">
         <div className="font-semibold text-amber-900 dark:text-amber-200 text-sm flex items-center gap-2 flex-wrap leading-tight">
           Projeto automático
           {restTravado && (
             <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] uppercase tracking-wider font-bold bg-amber-200 dark:bg-amber-800 text-amber-900 dark:text-amber-100">
-              🔒 {restTravado.nome}
+              <Lock size={11} /> {restTravado.nome}
             </span>
           )}
         </div>
@@ -815,9 +815,9 @@ export function KanbanView({ tarefas, projetos, autor, onAbrir }: {
                     </div>
                     <div className="flex items-center gap-1 mt-1 flex-wrap text-[10px] text-gray-500 dark:text-gray-400">
                       {proj && <span style={{ color: cor }}>{proj.emoji}</span>}
-                      {t.prazo && <span>📅 {fmtBR(t.prazo)}</span>}
+                      {t.prazo && <span className="inline-flex items-center gap-1"><CalendarDays size={11} /> {fmtBR(t.prazo)}</span>}
                       <EmpresaBadge ids={t.restaurantIds} />
-                      {(t.subtarefas?.length ?? 0) > 0 && <span>☑️ {t.subtarefas?.filter(s => s.feito).length}/{t.subtarefas?.length}</span>}
+                      {(t.subtarefas?.length ?? 0) > 0 && <span className="inline-flex items-center gap-1"><CheckSquare size={11} /> {t.subtarefas?.filter(s => s.feito).length}/{t.subtarefas?.length}</span>}
                     </div>
                   </div>
                 );
@@ -990,7 +990,7 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
               {Number(data.slice(8, 10))}
               <span className="ml-1 text-[10px] font-normal text-gray-500 dark:text-gray-400">{data.slice(5, 7)}</span>
             </div>
-            {feriadoNome && <div className="text-[9px] text-amber-600 dark:text-amber-400 truncate max-w-[90px]" title={feriadoNome}>🎉 {feriadoNome}</div>}
+            {feriadoNome && <div className="flex items-center gap-1 text-[9px] text-amber-600 dark:text-amber-400 truncate max-w-[90px]" title={feriadoNome}><PartyPopper size={10} className="shrink-0" /> <span className="truncate">{feriadoNome}</span></div>}
           </div>
           {lista.length > 0 && (
             <span className="text-[10px] text-gray-500 dark:text-gray-400">{lista.length}</span>
@@ -1000,6 +1000,7 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
           {lista.map(t => {
             const proj = projetos.find(p => p.id === t.projetoId);
             const meta = catDaTarefa(t.origem, proj);
+            const OrigIcon = ORIGEM_ICON[t.origem];
             // Faixa esquerda = PRIORIDADE (sempre visível; área fica no badge).
             const prioC = t.prioridade === "urgente" ? "#e11d48" : t.prioridade === "alta" ? "#f59e0b" : t.prioridade === "baixa" ? "#94a3b8" : "#cbd5e1";
             const temPrio = !!t.prioridade && t.prioridade !== "normal";
@@ -1052,7 +1053,7 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
                     </span>
                   )}
                   <span className="inline-flex items-center gap-0.5 px-1.5 py-[1px] rounded-full text-[8px] font-bold uppercase tracking-wide text-white" style={{ background: meta.cor }}>
-                    {meta.icon} {meta.label}
+                    {OrigIcon ? <OrigIcon size={10} /> : proj?.emoji ? <span>{proj.emoji}</span> : <Folder size={10} />} {meta.label}
                   </span>
                   <EmpresaBadge ids={t.restaurantIds} />
                 </div>
@@ -1107,7 +1108,7 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {semProprio.length > 0 && (
-            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400">📭 Sem data ({semProprio.length})</span>
+            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400"><Inbox size={13} /> Sem data ({semProprio.length})</span>
           )}
           <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">Fim de semana</span>
           {([["Sáb", mostrarSab, setMostrarSab, sabQtd], ["Dom", mostrarDom, setMostrarDom, domQtd]] as const).map(([lbl, on, set, qtd]) => (
@@ -1131,7 +1132,7 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
       {atrasadas.length > 0 && (
         <details className="mt-4" open>
           <summary className="text-xs font-semibold text-rose-600 dark:text-rose-400 cursor-pointer">
-            🔥 {atrasadas.length} atrasada(s)
+            <span className="inline-flex items-center gap-1"><Flame size={12} /> {atrasadas.length} atrasada(s)</span>
           </summary>
           <div className="mt-2 space-y-1 text-sm">
             {podeArrastar && <div className="text-[10px] text-gray-400 mb-1">Arraste uma atrasada pra um dia da semana pra reagendar.</div>}
@@ -1215,7 +1216,7 @@ export function LixeiraView({ tarefas, projetos, autor }: {
   }
 
   if (tarefas.length === 0) {
-    return <div className="text-center py-12 text-gray-500 dark:text-gray-400">🗑️ Lixeira vazia.</div>;
+    return <div className="flex items-center justify-center gap-1.5 py-12 text-gray-500 dark:text-gray-400"><Trash2 size={16} /> Lixeira vazia.</div>;
   }
   return (
     <div className="space-y-2 pb-20">
@@ -1258,7 +1259,7 @@ export function LixeiraView({ tarefas, projetos, autor }: {
           <div className="flex items-center gap-2 max-w-7xl mx-auto flex-wrap">
             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">{selecionadas.size} selecionada(s)</span>
             <Button size="sm" onClick={restaurarSelecionadas}>↶ Restaurar todas</Button>
-            <Button size="sm" variant="danger" onClick={excluirDefinitivo}>🗑️ Excluir definitivo</Button>
+            <Button size="sm" variant="danger" onClick={excluirDefinitivo}><Trash2 size={14} />Excluir definitivo</Button>
             <div className="flex-1" />
             <Button size="sm" variant="ghost" onClick={() => setSelecionadas(new Set())}>Limpar</Button>
           </div>
