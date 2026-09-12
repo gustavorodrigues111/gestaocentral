@@ -5,6 +5,7 @@
 import { useMemo, useState } from "react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import { Calculator, PartyPopper } from "lucide-react";
 import type { Area, Cargo, Empregado, EscalaMes, VTLote } from "../../core/types";
 import { montarLinhasLote, round2 } from "./calc";
 
@@ -72,12 +73,12 @@ export function LoteAjusteModal({
   }
 
   return (
-    <Modal title="🧮 Criar lote de ajuste" onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={<span className="inline-flex items-center gap-1"><Calculator size={16}/> Criar lote de ajuste</span>} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
         <p className="text-[12px] text-gray-500">Comparação do VT <strong>esperado agora</strong> (recalculado do cadastro + escala, já com admissões) contra o que <strong>já foi lançado</strong> em {mesLabel}. Marque as diferenças que quer incluir no lote.</p>
 
         {diffs.length === 0 ? (
-          <div className="text-center text-sm text-gray-400 py-8">Nenhuma diferença — o que está lançado bate com o esperado. 🎉</div>
+          <div className="text-center text-sm text-gray-400 py-8 inline-flex items-center justify-center gap-1 w-full">Nenhuma diferença — o que está lançado bate com o esperado. <PartyPopper size={14}/></div>
         ) : (
           <>
             <div className="border border-gray-200 dark:border-gray-800 rounded-xl divide-y divide-gray-100 dark:divide-gray-800 max-h-[50vh] overflow-auto">

@@ -18,6 +18,7 @@ import { linhasPorColaborador } from "./porColaborador";
 import { gorjetaMensalPorCpf } from "./gorjetaMensal";
 import { cpfDigits, type FolhaEspelho, type Finding, type FolhaWhitelistItem, type FolhaTipo, type FolhaConferencia } from "./tipos";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { Lock, TriangleAlert, FileText, Check, Users, Banknote, Coins, Landmark } from "lucide-react";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
@@ -198,7 +199,7 @@ export function FolhasPage() {
                   <button key={c.id} type="button" onClick={() => setCompetencia(c.competencia)}
                     className={`text-[11px] px-2 py-0.5 rounded-full border ${ativo ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
                     title={c.status}>
-                    {MESES[parseInt(mes) - 1].slice(0, 3)}/{ano}{c.status === "fechada" ? " 🔒" : c.status === "com_pendencias" ? " ⚠" : ""}
+                    {MESES[parseInt(mes) - 1].slice(0, 3)}/{ano}{c.status === "fechada" ? <Lock size={10} className="inline align-[-1px] ml-1"/> : c.status === "com_pendencias" ? <TriangleAlert size={10} className="inline align-[-1px] ml-1"/> : null}
                   </button>
                 );
               })}
@@ -218,7 +219,7 @@ export function FolhasPage() {
                   <div className="mt-2 flex items-center gap-2">
                     <input ref={tipo === "folha" ? folhaRef : adiantRef} type="file" accept="application/pdf,.pdf" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) void subir(f, tipo); e.target.value = ""; }} />
                     <button type="button" disabled={subindo === tipo} onClick={() => (tipo === "folha" ? folhaRef : adiantRef).current?.click()} className="text-xs px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 disabled:opacity-50">
-                      {subindo === tipo ? "lendo PDF…" : val ? "trocar PDF" : "📄 subir PDF"}
+                      {subindo === tipo ? "lendo PDF…" : val ? "trocar PDF" : <span className="inline-flex items-center gap-1"><FileText size={12}/> subir PDF</span>}
                     </button>
                     {val && <button type="button" onClick={() => void removerEspelho(tipo)} className="text-xs text-gray-400 hover:text-rose-600">remover</button>}
                   </div>
@@ -245,7 +246,7 @@ export function FolhasPage() {
                     <div className="font-medium text-gray-700 dark:text-gray-200 capitalize">{tipo === "folha" ? "Folha mensal" : "Adiantamento"} lido</div>
                     <div className="text-gray-500 mt-0.5">{l.count} colaboradores · Σ líquidos {brl(l.soma)}</div>
                     <div className={l.bate ? "text-emerald-600 dark:text-emerald-400 mt-0.5" : "text-rose-600 dark:text-rose-400 mt-0.5"}>
-                      {l.resumo == null ? "sem RESUMO GERAL no PDF" : l.bate ? `✓ bate com o RESUMO GERAL (${brl(l.resumo)})` : `⚠ RESUMO GERAL diz ${brl(l.resumo)} — parser divergiu`}
+                      {l.resumo == null ? "sem RESUMO GERAL no PDF" : l.bate ? <span className="inline-flex items-center gap-1"><Check size={12}/> bate com o RESUMO GERAL ({brl(l.resumo)})</span> : <span className="inline-flex items-center gap-1"><TriangleAlert size={12}/> RESUMO GERAL diz {brl(l.resumo)} — parser divergiu</span>}
                     </div>
                   </div>
                 );
@@ -263,10 +264,10 @@ export function FolhasPage() {
               )}
               {folha && (
                 <div className="flex items-center gap-3 flex-wrap text-xs text-gray-500">
-                  <span>👥 {resumoFolha?.headcount} ativos</span>
-                  <span>💵 líquido {brl(resumoFolha?.liquido)}</span>
-                  {resumoFolha?.gps ? <span>🏛️ GPS {brl(resumoFolha.gps)}</span> : null}
-                  <span>💸 {Object.keys(porCpf).length} com gorjeta no app</span>
+                  <span className="inline-flex items-center gap-1"><Users size={12}/> {resumoFolha?.headcount} ativos</span>
+                  <span className="inline-flex items-center gap-1"><Banknote size={12}/> líquido {brl(resumoFolha?.liquido)}</span>
+                  {resumoFolha?.gps ? <span className="inline-flex items-center gap-1"><Landmark size={12}/> GPS {brl(resumoFolha.gps)}</span> : null}
+                  <span className="inline-flex items-center gap-1"><Coins size={12}/> {Object.keys(porCpf).length} com gorjeta no app</span>
                 </div>
               )}
 

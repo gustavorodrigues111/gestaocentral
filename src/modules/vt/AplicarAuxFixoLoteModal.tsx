@@ -13,6 +13,7 @@ import { doc, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import { FlaskConical, TriangleAlert } from "lucide-react";
 import { Input } from "../../core/ui/Input";
 import type { Empregado } from "../../core/types";
 
@@ -64,7 +65,7 @@ export function AplicarAuxFixoLoteModal({ restaurantNome, empregados, onClose }:
   }
 
   return (
-    <Modal title="🧪 Auxílio fixo mensal em lote" onClose={onClose} maxWidth="max-w-md">
+    <Modal title={<span className="inline-flex items-center gap-1"><FlaskConical size={16}/> Auxílio fixo mensal em lote</span>} onClose={onClose} maxWidth="max-w-md">
       <div className="p-4 space-y-4">
         <p className="text-xs text-gray-600 dark:text-gray-400">
           Define o mesmo <strong>auxílio fixo mensal</strong> (o campo do cadastro
@@ -92,7 +93,7 @@ export function AplicarAuxFixoLoteModal({ restaurantNome, empregados, onClose }:
         </label>
 
         <p className="text-[11px] text-amber-700 dark:text-amber-400">
-          ⚠ Sobrescreve o auxílio fixo mensal atual de cada empregado selecionado.
+          <TriangleAlert size={12} className="inline align-[-2px] mr-0.5"/> Sobrescreve o auxílio fixo mensal atual de cada empregado selecionado.
           Pra zerar pra alguém depois, edite o cadastro dele.
         </p>
 

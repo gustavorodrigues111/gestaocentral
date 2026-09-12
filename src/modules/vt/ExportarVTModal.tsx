@@ -11,6 +11,7 @@ import { useEffect, useRef, useState } from "react";
 import type { jsPDF as JsPDFType } from "jspdf";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import { FileText, ArrowDown } from "lucide-react";
 import { gerarVTPDF, type VTPDFLinha } from "./gerarVTPDF";
 import { pad2 } from "../../core/utils/date";
 
@@ -72,7 +73,7 @@ export function ExportarVTModal({ ano, mes, restaurantNome, statusLabel, linhas,
   }
 
   return (
-    <Modal title="📄 Exportar VT em PDF" onClose={onClose} maxWidth="max-w-4xl">
+    <Modal title={<span className="inline-flex items-center gap-1"><FileText size={18}/> Exportar VT em PDF</span>} onClose={onClose} maxWidth="max-w-4xl">
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <span className="text-xs text-gray-500 dark:text-gray-400">
@@ -102,7 +103,7 @@ export function ExportarVTModal({ ano, mes, restaurantNome, statusLabel, linhas,
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button onClick={baixar} disabled={gerando || linhas.length === 0 || !docRef.current}>
-            ⬇️ Baixar PDF
+<span className="inline-flex items-center gap-1"><ArrowDown size={14}/> Baixar PDF</span>
           </Button>
         </div>
       </div>
