@@ -128,7 +128,9 @@ export const MODULES: ModuleDef[] = [
   { id: "agentes",     area: "planejamento", subarea: "IA",           label: "Agentes de IA",   icon: "bot", status: "ativo", etapa: "em_desenvolvimento", desc: "Agentes de IA (DP e Financeiro) que consultam e — com confirmação — alteram dados dentro da plataforma. Acesso controlado herdado de Pessoas; futuramente respondem no WhatsApp em números autorizados." },
 
   // ═══ ⚙️ CONFIGURAÇÕES ═══
-  { id: "configuracoes", area: "inst", subarea: "Configuração",       label: "Configurações",   icon: "settings", status: "ativo", desc: "Configurações do restaurante" },
+  // Guarda-chuva antigo — some do menu; agora dividido em "Dados da empresa"
+  // e "Módulos" (links dedicados em Configurações). Rota /configuracoes segue viva.
+  { id: "configuracoes", area: "inst", subarea: "Configuração",       label: "Configurações",   icon: "settings", status: "ativo", desc: "Configurações do restaurante", oculto: true },
   { id: "conectores",  area: "inst", subarea: "Configuração",         label: "Conectores",      icon: "plug", status: "ativo", etapa: "em_desenvolvimento", desc: "Hub de plataformas externas (GetIn, Altec/Riser, iFood…) que abastecem o app: reservas, vendas/faturamento. Status do último sync por restaurante + forçar sync." },
   // ocultos (configurações)
   { id: "recursos",    area: "inst", label: "Biblioteca",     icon: "📚", status: "planejado", etapa: "em_desenvolvimento", desc: "Documentos e wiki interna", oculto: true },

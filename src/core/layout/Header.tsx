@@ -21,6 +21,8 @@ function moduloDoPath(pathname: string): { icon: string; label: string; desc?: s
     if (mod) return { icon: mod.icon, label: mod.label, desc: mod.desc };
     // módulos fora do catálogo MODULES (rotas especiais):
     if (m[1] === "configuracoes") return { icon: "settings", label: "Configurações", desc: "Configurações do restaurante" };
+    if (m[1] === "dadosEmpresa") return { icon: "building-2", label: "Dados da empresa", desc: "Dados básicos, unidades, endereços, jornada, Drive e portal" };
+    if (m[1] === "modulos") return { icon: "layout-grid", label: "Módulos", desc: "Ative ou desative os módulos deste restaurante" };
   }
   return null;
 }

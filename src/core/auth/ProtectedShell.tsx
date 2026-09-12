@@ -103,6 +103,8 @@ function ModuleRouter() {
   switch (moduleId) {
     case "pessoas":       return <PessoasPage key={k} />;
     case "configuracoes": return <ConfiguracoesPage key={k} />;
+    case "dadosEmpresa":  return <ConfiguracoesPage key={k} modo="dados" />;
+    case "modulos":       return <ConfiguracoesPage key={k} modo="modulos" />;
     case "escala":        return <EscalaPage key={k} />;
     case "freelas":       return <FreelasPage key={k} />;
     case "gorjetas":      return <GorjetasPage key={k} />;

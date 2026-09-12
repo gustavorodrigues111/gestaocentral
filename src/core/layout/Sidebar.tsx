@@ -233,7 +233,10 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             // Chat (Central de Avisos) é item de topo — removido dos grupos.
             // (Tarefas migrou pra seção Master.)
             const mods = modulesByArea(area).filter(m => !m.oculto && m.id !== "chat" && visibleModule(m.id));
-            if (mods.length === 0) return null;
+            // Configurações tem links dedicados (Dados da empresa, Módulos, Perfis)
+            // além dos módulos — não colapsa a seção quando só há esses links.
+            const instExtras = area === "inst" && (visibleModule("configuracoes") || pessoa?.isMaster || canAcaoRid("perfisAcesso", "ver"));
+            if (mods.length === 0 && !instExtras) return null;
             const info = AREA_INFO[area];
             const fechada = colapsadas.has(area);
             return (
@@ -285,6 +288,16 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                       </div>
                     );
                   })}
+                  {area === "inst" && visibleModule("configuracoes") && (
+                    <>
+                      <NavLink to={`/r/${rid}/dadosEmpresa`} onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                        <ModuleIcon name="building-2" size={16} /><span className="flex-1 truncate">Dados da empresa</span>
+                      </NavLink>
+                      <NavLink to={`/r/${rid}/modulos`} onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                        <ModuleIcon name="layout-grid" size={16} /><span className="flex-1 truncate">Módulos</span>
+                      </NavLink>
+                    </>
+                  )}
                   {area === "inst" && (pessoa?.isMaster || canAcaoRid("perfisAcesso", "ver")) && (
                     <NavLink to="/perfis" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
                       <ModuleIcon name="user-round-cog" size={16} /><span className="flex-1 truncate">Perfis de Acesso</span>

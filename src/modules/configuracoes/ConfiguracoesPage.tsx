@@ -17,7 +17,7 @@ import { pickDriveFolder } from "../../core/google/drivePicker";
 import { fmtBR } from "../../core/utils/date";
 import { EncerrarUnidadeModal } from "./EncerrarUnidadeModal";
 
-export function ConfiguracoesPage() {
+export function ConfiguracoesPage({ modo }: { modo?: "dados" | "modulos" } = {}) {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
   // URL é source of truth — busca o restaurante pelo rid da rota, não do contexto
@@ -118,6 +118,8 @@ export function ConfiguracoesPage() {
 
   return (
     <div className="max-w-3xl space-y-6">
+      {/* modo "dados" (ou guarda-chuva) → dados da empresa; modo "modulos" → só os módulos ativos */}
+      {modo !== "modulos" && (<>
       {/* Dados básicos */}
       <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
         <h2 className="text-base font-semibold mb-4 text-gray-900 dark:text-gray-100">Dados do restaurante</h2>
@@ -251,8 +253,10 @@ export function ConfiguracoesPage() {
           atual={activeRestaurant.portalEmpregado || {}}
         />
       </section>
+      </>)}
 
-      {/* Módulos ativos */}
+      {modo !== "dados" && (
+      /* Módulos ativos */
       <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
         <h2 className="text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">Módulos ativos</h2>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">Escolha quais módulos esse restaurante usa. Apenas os ativos aparecem pra equipe.</p>
@@ -297,6 +301,7 @@ export function ConfiguracoesPage() {
           })}
         </div>
       </section>
+      )}
     </div>
   );
 }
