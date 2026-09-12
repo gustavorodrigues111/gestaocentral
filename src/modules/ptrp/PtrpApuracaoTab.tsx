@@ -456,8 +456,21 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     const temPendente = l.excecoes.includes("correcao_pendente");
     const precisaCorrecao = !l.ehFuturo && !l.ehHoje && (l.excecoes.includes("falta") || incompleta || (marks > 0 && marks % 2 !== 0));
     const suspeito = !folga && !l.ehFuturo && !l.ehHoje && !incompleta && marks === 2;
-    const rowBg = (l.ehFuturo || l.ehHoje) ? "bg-blue-50/70 dark:bg-blue-950/25" : precisaCorrecao ? "bg-rose-100/70 dark:bg-rose-900/25" : (suspeito || temPendente) ? "bg-amber-50 dark:bg-amber-950/25" : idx % 2 ? "bg-gray-50/40 dark:bg-gray-800/20" : "";
+    // Verde = RESOLVIDO (nada a fazer): folga/freela/afastamento, ou dia com as
+    // batidas completas e correções aprovadas — mesmo que tenha exceção só
+    // informativa (atraso/interjornada). Vermelho = precisa corrigir. Âmbar =
+    // suspeito/pendente. Azul = hoje/futuro.
+    void idx;
+    const rowBg = (l.ehFuturo || l.ehHoje) ? "bg-blue-50/70 dark:bg-blue-950/25" : precisaCorrecao ? "bg-rose-100/70 dark:bg-rose-900/25" : (suspeito || temPendente) ? "bg-amber-50 dark:bg-amber-950/25" : "bg-emerald-50/70 dark:bg-emerald-950/20";
     return { folga, pendUndecided, temCorrigivel, inclPunch, incompleta, suspeito, rowBg };
+  };
+  // Saldo do dia = trabalhado + abonado − previsto (com sinal). + verde · − vermelho · 0 azul.
+  const renderSaldo = (l: Linha) => {
+    if (l.ehFuturo || l.ehHoje) return null;
+    const s = l.trabalhado + l.abonadoMin - l.previstoMin;
+    if (s === 0) return <span className="text-blue-600 dark:text-blue-300 tabular-nums">0</span>;
+    const pos = s > 0;
+    return <span className={`tabular-nums font-medium ${pos ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{pos ? "+" : "−"}{hm(Math.abs(s))}</span>;
   };
   const renderPrevisto = (l: Linha) => (<>
     {l.statusEscala && <span className={`inline-block mr-1 text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[l.statusEscala].bg} ${STATUS_INFO[l.statusEscala].text}`} title={STATUS_INFO[l.statusEscala].label}>{STATUS_INFO[l.statusEscala].short}</span>}
@@ -819,7 +832,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                     <div className="mt-1 text-[12.5px] text-gray-700 dark:text-gray-200">{renderBatidas(l, f.inclPunch)}</div>
                     <div className="mt-1.5 flex items-center gap-3 text-[11.5px]">
                       <span className="text-gray-500">Trab. <strong className="text-gray-700 dark:text-gray-200 tabular-nums">{l.trabalhado ? hm(l.trabalhado) : "—"}</strong></span>
-                      {l.extra > 0 && <span className="text-emerald-600 dark:text-emerald-400 tabular-nums">extra {hm(l.extra)}</span>}
+                      <span className="text-gray-500">Saldo {renderSaldo(l) || <span className="text-gray-300">—</span>}</span>
                       {l.noturno > 0 && <span className="text-indigo-500 tabular-nums">not. {hm(l.noturno)}</span>}
                       <span className="ml-auto">{renderExcecoes(l, f.incompleta, f.suspeito)}</span>
                     </div>
@@ -834,7 +847,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                 <thead>
                   <tr className="text-[10px] uppercase tracking-wide text-gray-400 text-left border-b border-gray-200 dark:border-gray-800">
                     <th className="py-1.5 font-semibold">Dia</th><th className="font-semibold">Previsto</th><th className="font-semibold">Batidas / tratamento</th>
-                    <th className="font-semibold text-right">Trab.</th><th className="font-semibold text-right">Extra</th><th className="font-semibold text-right" title="Adicional noturno — minutos trabalhados na faixa noturna (22h–05h)">Not.</th><th className="font-semibold">Exceções</th><th className="font-semibold text-right">Ação</th>
+                    <th className="font-semibold text-right">Trab.</th><th className="font-semibold text-right" title="Saldo do dia = trabalhado − previsto (+ verde / − vermelho / 0 azul)">Saldo</th><th className="font-semibold text-right" title="Adicional noturno — minutos trabalhados na faixa noturna (22h–05h)">Not.</th><th className="font-semibold">Exceções</th><th className="font-semibold text-right">Ação</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -844,7 +857,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                       <td className={`whitespace-nowrap ${f.folga ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}`}>{renderPrevisto(l)}</td>
                       <td className="text-gray-700 dark:text-gray-200">{renderBatidas(l, f.inclPunch)}</td>
                       <td className="text-right tabular-nums font-medium">{l.trabalhado ? hm(l.trabalhado) : <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
-                      <td className="text-right tabular-nums text-emerald-600 dark:text-emerald-400">{l.extra ? hm(l.extra) : ""}</td>
+                      <td className="text-right">{renderSaldo(l)}</td>
                       <td className="text-right tabular-nums text-indigo-500">{l.noturno ? hm(l.noturno) : ""}</td>
                       <td>{renderExcecoes(l, f.incompleta, f.suspeito)}</td>
                       <td className="text-right whitespace-nowrap">{renderAcoes(l, f.pendUndecided, f.temCorrigivel)}</td>
