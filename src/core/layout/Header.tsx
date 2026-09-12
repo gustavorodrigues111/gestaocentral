@@ -38,7 +38,7 @@ function moduloDoPath(pathname: string): { icon: string; label: string; desc?: s
   return null;
 }
 
-export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
+export function Header({ onToggleSidebar, sidebarOpen = true }: { onToggleSidebar: () => void; sidebarOpen?: boolean }) {
   const { fbUser, pessoa, signOut } = useAuth();
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
@@ -49,14 +49,17 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
       <button onClick={onToggleSidebar} className="md:hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 flex-shrink-0 text-xl leading-none">
         ☰
       </button>
-      {/* Recolher / expandir o menu lateral (desktop) — amplia a moldura. */}
-      <button
-        onClick={onToggleSidebar}
-        title="Recolher / expandir o menu"
-        className="hidden md:inline-flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 flex-shrink-0 -ml-1 mr-1 p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
-      >
-        <PanelLeft size={18} />
-      </button>
+      {/* Expandir o menu (desktop) — só aparece quando o menu está RECOLHIDO;
+          quando aberto, quem recolhe é a setinha ao lado do "planejamento.app". */}
+      {!sidebarOpen && (
+        <button
+          onClick={onToggleSidebar}
+          title="Expandir o menu"
+          className="hidden md:inline-flex items-center justify-center text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 flex-shrink-0 -ml-1 mr-1 p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800"
+        >
+          <PanelLeft size={18} />
+        </button>
+      )}
 
       <div className="flex items-baseline gap-2 min-w-0">
         {modulo ? (

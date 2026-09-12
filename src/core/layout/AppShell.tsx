@@ -46,7 +46,7 @@ export function AppShell({ children }: { children?: ReactNode }) {
       <div className="flex-1 flex min-h-0">
         <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
         <div className="flex-1 flex flex-col min-w-0 min-h-0">
-          <Header onToggleSidebar={() => setSidebarOpen(s => !s)} />
+          <Header onToggleSidebar={() => setSidebarOpen(s => !s)} sidebarOpen={sidebarOpen} />
           <main className="flex-1 overflow-auto p-6">
             {/* Moldura ÚNICA de conteúdo — mesma largura em todos os módulos.
                 Elástica: cresce quando o menu é recolhido. */}
