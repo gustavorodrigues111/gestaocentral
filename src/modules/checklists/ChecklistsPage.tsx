@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
+import { Lock, Inbox, CheckSquare, ClipboardList, BarChart3, AlarmClock, Hourglass, User, CalendarDays } from "lucide-react";
 import { collection, deleteDoc, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -200,7 +201,7 @@ export function ChecklistsPage() {
   if (!podeVer) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
@@ -215,10 +216,10 @@ export function ChecklistsPage() {
     : podeExecutar ? "hoje"
     : podeConfig ? "templates"
     : "historico";
-  const abasDisp: [Tab, string][] = [];
-  if (podeExecutar) abasDisp.push(["hoje", `✅ Checklists do dia (${feitosHoje}/${totalHoje})`]);
-  if (podeConfig) abasDisp.push(["templates", `📋 Templates (${templates.length})`]);
-  if (podeHistorico) abasDisp.push(["historico", `📊 Histórico (${runs.length})`]);
+  const abasDisp: [Tab, ReactNode][] = [];
+  if (podeExecutar) abasDisp.push(["hoje", <span className="inline-flex items-center gap-1.5"><CheckSquare size={15} /> Checklists do dia ({feitosHoje}/{totalHoje})</span>]);
+  if (podeConfig) abasDisp.push(["templates", <span className="inline-flex items-center gap-1.5"><ClipboardList size={15} /> Templates ({templates.length})</span>]);
+  if (podeHistorico) abasDisp.push(["historico", <span className="inline-flex items-center gap-1.5"><BarChart3 size={15} /> Histórico ({runs.length})</span>]);
 
   function abrirRunPraTemplate(t: ChecklistTemplate) {
     const existente = runHojeMap[t.id];
@@ -229,7 +230,7 @@ export function ChecklistsPage() {
     <PageContainer>
       <div className="flex items-start justify-end mb-4 flex-wrap gap-2">
         {podeConfig && abaEfetiva === "templates" && (<>
-          <Button variant="secondary" onClick={() => setImportando(true)}>📥 Importar</Button>
+          <Button variant="secondary" onClick={() => setImportando(true)}><span className="inline-flex items-center gap-1.5"><Inbox size={15} /> Importar</span></Button>
           <Button onClick={() => setEditTemplate("new")}>+ Novo template</Button>
         </>)}
       </div>
@@ -274,7 +275,7 @@ export function ChecklistsPage() {
             <div className="text-sm text-gray-500">Carregando...</div>
           ) : templatesHoje.length === 0 ? (
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-              <div className="text-4xl mb-3">✅</div>
+              <div className="flex justify-center mb-3 text-gray-400"><CheckSquare size={40} /></div>
               <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhum checklist agendado pra hoje</p>
               {podeConfig && (
                 <p className="text-sm text-gray-500 mt-2">Crie templates na aba "Templates" e marque a frequência.</p>
@@ -309,7 +310,7 @@ export function ChecklistsPage() {
                           <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
                             {CHECKLIST_FREQ_LABEL[t.frequencia]}
                           </span>
-                          {t.horarioReferencia && <span className="text-xs text-gray-500">⏰ {t.horarioReferencia}</span>}
+                          {t.horarioReferencia && <span className="text-xs text-gray-500 inline-flex items-center gap-1"><AlarmClock size={12} /> {t.horarioReferencia}</span>}
                         </div>
                         <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
                           {t.itens.length} item(ns) · {t.itens.filter(i => i.obrigatorio).length} obrigatório(s)
@@ -320,7 +321,7 @@ export function ChecklistsPage() {
                           <span className="text-emerald-700 dark:text-emerald-400 font-bold text-sm">✓ Concluído</span>
                         ) : rascunho ? (
                           <div>
-                            <div className="text-amber-700 dark:text-amber-400 font-bold text-sm">⏳ {pct}%</div>
+                            <div className="text-amber-700 dark:text-amber-400 font-bold text-sm inline-flex items-center gap-1"><Hourglass size={13} /> {pct}%</div>
                             <div className="text-[10px] text-gray-500">{run.feitos}/{run.totalItens}</div>
                           </div>
                         ) : (
@@ -330,7 +331,7 @@ export function ChecklistsPage() {
                     </div>
                     {run?.executorNome && (
                       <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200 dark:border-gray-800">
-                        👤 {run.executorNome}
+                        <span className="inline-flex items-center gap-1"><User size={12} /> {run.executorNome}</span>
                         {run.finalizadoEm && <> · ✓ {new Date(run.finalizadoEm).toLocaleString("pt-BR")}</>}
                       </div>
                     )}
@@ -401,7 +402,7 @@ export function ChecklistsPage() {
 
           {templatesFiltered.length === 0 ? (
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-              <div className="text-4xl mb-3">📋</div>
+              <div className="flex justify-center mb-3 text-gray-400"><ClipboardList size={40} /></div>
               <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhum template</p>
               {podeConfig && (
                 <p className="text-sm text-gray-500 mt-2">Crie clicando em "+ Novo template"</p>
@@ -428,7 +429,7 @@ export function ChecklistsPage() {
                       {t.descricao && <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{t.descricao}</p>}
                       <div className="text-xs text-gray-500 mt-1">
                         {t.itens.length} item(ns)
-                        {t.horarioReferencia && <> · ⏰ {t.horarioReferencia}</>}
+                        {t.horarioReferencia && <> · <AlarmClock size={12} className="inline align-[-2px]" /> {t.horarioReferencia}</>}
                       </div>
                     </div>
                     {podeConfig && (
@@ -456,7 +457,7 @@ export function ChecklistsPage() {
 
           {runsFiltered.length === 0 ? (
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-              <div className="text-4xl mb-3">📊</div>
+              <div className="flex justify-center mb-3 text-gray-400"><BarChart3 size={40} /></div>
               <p className="text-gray-700 dark:text-gray-300 font-medium">Sem execuções</p>
             </div>
           ) : (
@@ -481,11 +482,11 @@ export function ChecklistsPage() {
                           {completo ? (
                             <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">✓ Completo</span>
                           ) : (
-                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">⏳ {r.status}</span>
+                            <span className="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"><span className="inline-flex items-center gap-1"><Hourglass size={11} /> {r.status}</span></span>
                           )}
                         </div>
                         <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                          📅 {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")} · 👤 {r.executorNome || exec?.nome || "?"}
+                          <CalendarDays size={12} className="inline align-[-2px]" /> {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")} · <User size={12} className="inline align-[-2px]" /> {r.executorNome || exec?.nome || "?"}
                           <> · {r.feitos}/{r.totalItens} ({Math.round((r.feitos / Math.max(1, r.totalItens)) * 100)}%)</>
                         </div>
                         {r.observacaoGeral && <p className="text-xs text-gray-700 dark:text-gray-300 mt-1 italic">{r.observacaoGeral}</p>}

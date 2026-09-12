@@ -1,6 +1,7 @@
 // Upload de foto compacto pros checklists (foto-guia do template e foto-prova
 // da execução). Sobe pro Storage em checklists/{rid}/... e devolve a URL.
 import { useRef, useState } from "react";
+import { Camera } from "lucide-react";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { storage } from "../../core/firebase/config";
 
@@ -46,7 +47,7 @@ export function FotoUpload({ rid, pathPrefix, url, onChange, disabled, label = "
   return (
     <div className="inline-flex items-center gap-2">
       <input ref={inputRef} type="file" accept="image/*" className="hidden" disabled={disabled || uploading} onChange={(e) => { const f = e.target.files?.[0]; if (f) upload(f); e.target.value = ""; }} />
-      <button type="button" disabled={disabled || uploading} onClick={() => inputRef.current?.click()} className="text-[11px] px-2 py-1 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 hover:border-indigo-400 hover:text-indigo-600 disabled:opacity-50">{uploading ? `enviando… ${prog}%` : `📷 ${label}`}</button>
+      <button type="button" disabled={disabled || uploading} onClick={() => inputRef.current?.click()} className="text-[11px] px-2 py-1 rounded-lg border border-dashed border-gray-300 dark:border-gray-600 text-gray-500 hover:border-indigo-400 hover:text-indigo-600 disabled:opacity-50">{uploading ? `enviando… ${prog}%` : <span className="inline-flex items-center gap-1"><Camera size={12} /> {label}</span>}</button>
       {erro && <span className="text-[10px] text-rose-600">{erro}</span>}
     </div>
   );

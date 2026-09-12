@@ -13,6 +13,7 @@ import type {
   ChecklistRun, ChecklistRunItemResultado, ChecklistRunLog, ChecklistRunStatus,
   ChecklistTemplate, Empregado,
 } from "../../core/types";
+import { ClipboardList, Lightbulb, MessageSquare, ScrollText } from "lucide-react";
 import { FotoUpload } from "./FotoUpload";
 import { itemDoDia, temFreqPorItem } from "./recorrencia";
 
@@ -232,7 +233,7 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
         ) : (<>
           <div className="bg-gray-50 dark:bg-gray-800/50 rounded-xl p-3 space-y-2">
             <div className="flex items-center justify-between gap-2 text-xs">
-              <span className="text-gray-500 truncate">📋 {fmtBR(data)} · iniciado por {executorNome || me?.nome}</span>
+              <span className="text-gray-500 truncate inline-flex items-center gap-1"><ClipboardList size={12} className="shrink-0" /> {fmtBR(data)} · iniciado por {executorNome || me?.nome}</span>
               {!isReadonly && salvoEm && <span className={`shrink-0 ${salvoEm === "salvando" ? "text-gray-400" : "text-emerald-600 dark:text-emerald-400"}`}>{salvoEm === "salvando" ? "salvando…" : "✓ salvo"}</span>}
             </div>
             <div>
@@ -259,7 +260,7 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
                         <span className="text-gray-400 mr-1">{idx + 1}.</span>{item.texto}{item.obrigatorio && <span className="text-rose-500 ml-1">*</span>}
                       </div>
                       {r.feito && r.feitoPorNome && <div className="text-[11px] text-emerald-700 dark:text-emerald-400 mt-0.5">✓ por {r.feitoPorNome}{r.marcadoEm ? ` · ${hhmm(r.marcadoEm)}` : ""}</div>}
-                      {item.descricao && <div className="text-[13px] text-gray-500 dark:text-gray-400 mt-1 whitespace-pre-wrap">💡 {item.descricao}</div>}
+                      {item.descricao && <div className="text-[13px] text-gray-500 dark:text-gray-400 mt-1 whitespace-pre-wrap"><Lightbulb size={12} className="inline align-[-1px] mr-1" />{item.descricao}</div>}
                       {item.fotoGuiaUrl && <a href={item.fotoGuiaUrl} target="_blank" rel="noreferrer" className="inline-block mt-1.5"><img src={item.fotoGuiaUrl} alt="guia" className="w-16 h-16 rounded-xl object-cover border border-gray-200 dark:border-gray-700" title="Foto-guia" /></a>}
                     </div>
                   </label>
@@ -281,9 +282,9 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
                     </div>
                   )}
                   {!isReadonly && !obsVisivel && (
-                    <div className="px-3.5 pb-2.5 pl-14"><button type="button" onClick={() => setObsAbertas(s => new Set(s).add(item.id))} className="text-[11px] text-gray-400 hover:text-indigo-600">💬 observação</button></div>
+                    <div className="px-3.5 pb-2.5 pl-14"><button type="button" onClick={() => setObsAbertas(s => new Set(s).add(item.id))} className="text-[11px] text-gray-400 hover:text-indigo-600 inline-flex items-center gap-1"><MessageSquare size={11} /> observação</button></div>
                   )}
-                  {isReadonly && r.observacao && <div className="px-3.5 pb-3 pl-14 text-sm text-gray-600 dark:text-gray-400 italic">💬 {r.observacao}</div>}
+                  {isReadonly && r.observacao && <div className="px-3.5 pb-3 pl-14 text-sm text-gray-600 dark:text-gray-400 italic"><MessageSquare size={12} className="inline align-[-1px] mr-1" />{r.observacao}</div>}
                 </div>
               );
             })}
@@ -304,7 +305,7 @@ export function ChecklistRunModal({ template, run, empregados, restaurantId, pod
           {/* Log de atividade */}
           {logList.length > 0 && (
             <div className="pt-1">
-              <button type="button" onClick={() => setLogAberto(v => !v)} className="text-xs text-gray-500 hover:text-indigo-600">📜 Atividade ({logList.length}) {logAberto ? "▲" : "▾"}</button>
+              <button type="button" onClick={() => setLogAberto(v => !v)} className="text-xs text-gray-500 hover:text-indigo-600 inline-flex items-center gap-1"><ScrollText size={12} /> Atividade ({logList.length}) {logAberto ? "▲" : "▾"}</button>
               {logAberto && (
                 <div className="mt-1 rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30 p-2 max-h-40 overflow-y-auto space-y-0.5">
                   {[...logList].reverse().map(l => (

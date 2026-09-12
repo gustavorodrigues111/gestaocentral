@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Package, Search, Ruler, Save } from "lucide-react";
 import { addDoc, collection } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -107,7 +108,7 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
   if (insumos.length === 0) {
     return (
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-        <div className="text-4xl mb-3">📦</div>
+        <div className="flex justify-center mb-3 text-gray-400"><Package size={40} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem insumos ativos pra contar</p>
         {podeConfig && (
           <p className="text-sm text-gray-500 mt-2">Cadastre na aba "Config" pra começar.</p>
@@ -127,7 +128,7 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
           onChange={(e) => setData(e.target.value)}
         />
         <Input
-          label="🔍 Buscar"
+          label={<span className="inline-flex items-center gap-1"><Search size={12} /> Buscar</span>}
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="filtra por nome"
@@ -186,7 +187,7 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
                     <div className="flex-1 min-w-[200px]">
                       <div className="font-medium text-gray-900 dark:text-gray-100">{i.nome}</div>
                       <div className="text-xs text-gray-500 mt-0.5 flex gap-3 flex-wrap">
-                        <span>📏 {i.unidade === "outro" ? (i.unidadeOutroLabel || "outro") : UNIDADES_LABEL[i.unidade]}</span>
+                        <span className="inline-flex items-center gap-1"><Ruler size={12} /> {i.unidade === "outro" ? (i.unidadeOutroLabel || "outro") : UNIDADES_LABEL[i.unidade]}</span>
                         {i.minStock != null && i.minStock > 0 && <span>min: {i.minStock}</span>}
                         {ult && (
                           <span>última: <strong>{ult.qty}</strong> em {new Date(ult.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
@@ -241,7 +242,7 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
               Limpar
             </Button>
             <Button onClick={salvarTudo} disabled={saving || totalDigitados === 0}>
-              {saving ? "Salvando..." : `💾 Salvar (${totalDigitados})`}
+              {saving ? "Salvando..." : <span className="inline-flex items-center gap-1.5"><Save size={15} /> Salvar ({totalDigitados})</span>}
             </Button>
           </div>
         </div>

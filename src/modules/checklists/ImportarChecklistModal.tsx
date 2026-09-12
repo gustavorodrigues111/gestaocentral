@@ -11,6 +11,7 @@ import { db, storage } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { authHeader } from "../../core/firebase/idToken";
 import { useAuth } from "../../core/auth/AuthContext";
+import { Inbox, Hourglass, FileText, TriangleAlert, Repeat } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
@@ -121,17 +122,17 @@ export function ImportarChecklistModal({ rid, onClose, onCriado }: {
   }
 
   return (
-    <Modal title="📥 Importar checklist" onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={<span className="inline-flex items-center gap-2"><Inbox size={18} /> Importar checklist</span>} onClose={onClose} maxWidth="max-w-2xl">
       {fase === "upload" ? (
         <div className="space-y-3">
           <p className="text-sm text-gray-600 dark:text-gray-300">Tem um checklist pronto? Suba uma <b>planilha</b> (lida na hora), ou uma <b>foto</b>/<b>PDF</b> (a IA lê e monta pra você). Se houver uma coluna de <b>periodicidade</b> (semanal, quinzenal, dia sim/dia não…), já viro em frequência por item. Você revisa antes de criar.</p>
           <input ref={inputRef} type="file" accept=".xlsx,.xls,.csv,image/*,application/pdf" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) void onFile(f); e.target.value = ""; }} />
           <button type="button" disabled={carregando} onClick={() => inputRef.current?.click()} className="w-full rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-700 p-8 text-center hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10 disabled:opacity-60">
-            <div className="text-3xl mb-1">{carregando ? "⏳" : "📄"}</div>
+            <div className="mb-1 flex justify-center text-indigo-500">{carregando ? <Hourglass size={30} /> : <FileText size={30} />}</div>
             <div className="text-sm font-medium text-indigo-700 dark:text-indigo-300">{carregando ? "Lendo…" : "Escolher arquivo"}</div>
             <div className="text-[11px] text-gray-500 mt-0.5">planilha (.xlsx/.csv) · foto · PDF</div>
           </button>
-          {erro && <p className="text-xs text-rose-600">⚠ {erro}</p>}
+          {erro && <p className="text-xs text-rose-600 inline-flex items-center gap-1"><TriangleAlert size={12} /> {erro}</p>}
         </div>
       ) : (
         <div className="space-y-3">
@@ -150,9 +151,9 @@ export function ImportarChecklistModal({ rid, onClose, onCriado }: {
                 {(it.periodicidade || it.freq) && (
                   <div className="ml-7 flex items-center gap-1.5 flex-wrap">
                     {it.freq ? (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">🔁 {freqItemLabel(it)}</span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800"><Repeat size={11} /> {freqItemLabel(it)}</span>
                     ) : (
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800">⚠ periodicidade não reconhecida</span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"><TriangleAlert size={11} /> periodicidade não reconhecida</span>
                     )}
                     {it.periodicidade && <span className="text-[10px] text-gray-400">no papel: “{it.periodicidade}”</span>}
                     {it.freq && <button type="button" onClick={() => patch(it.key, { freq: undefined, diasSemana: undefined, semanaParidade: undefined, diaDoMes: undefined, intervaloDias: undefined })} className="text-[10px] text-gray-400 hover:text-rose-500 underline">limpar</button>}
@@ -162,7 +163,7 @@ export function ImportarChecklistModal({ rid, onClose, onCriado }: {
             ))}
           </div>
           <button type="button" onClick={() => setItens(s => [...s, { key: uid(), texto: "", obrigatorio: true, descricao: "" }])} className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline">+ adicionar item</button>
-          {erro && <p className="text-xs text-rose-600">⚠ {erro}</p>}
+          {erro && <p className="text-xs text-rose-600 inline-flex items-center gap-1"><TriangleAlert size={12} /> {erro}</p>}
           <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-800">
             <button type="button" onClick={() => { setFase("upload"); setItens([]); setNome(""); setErro(""); }} className="text-xs text-gray-500 hover:text-gray-800">← outro arquivo</button>
             <div className="flex gap-2"><Button variant="secondary" onClick={onClose}>Cancelar</Button><Button onClick={() => void criar()} disabled={salvando}>{salvando ? "Criando…" : "Criar template"}</Button></div>

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { addDoc, collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { Users, User } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
@@ -194,7 +195,7 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
 
         {/* Atribuição — funções (área) + pessoas */}
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-gray-50/50 dark:bg-gray-800/30 p-3 space-y-2.5">
-          <div className="text-xs font-semibold text-gray-700 dark:text-gray-200">👥 Quem é responsável <span className="text-gray-400 font-normal">— vazio = qualquer um com permissão</span></div>
+          <div className="text-xs font-semibold text-gray-700 dark:text-gray-200 inline-flex items-center gap-1.5"><Users size={14} /> Quem é responsável <span className="text-gray-400 font-normal">— vazio = qualquer um com permissão</span></div>
           <div>
             <div className="text-[11px] text-gray-500 mb-1">Funções (área)</div>
             <div className="flex flex-wrap gap-1.5">
@@ -204,7 +205,7 @@ export function ChecklistTemplateModal({ template, restaurantId, onClose }: Prop
           <div>
             <div className="text-[11px] text-gray-500 mb-1">Pessoas específicas <span className="text-gray-400">(cinza = fora · índigo = responsável)</span></div>
             {funcoes.length === 0 ? (
-              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 shadow-sm shadow-rose-200/60 dark:shadow-none">👤 Selecione uma área acima pra escolher as pessoas</div>
+              <div className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-medium border border-rose-300 dark:border-rose-700 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 shadow-sm shadow-rose-200/60 dark:shadow-none"><User size={13} /> Selecione uma área acima pra escolher as pessoas</div>
             ) : pessoasDaArea.length === 0 ? (
               <div className="text-[11px] text-gray-400">Nenhuma pessoa cadastrada {funcoes.length === 1 ? `em ${funcoes[0]}` : "nessas áreas"}.</div>
             ) : (

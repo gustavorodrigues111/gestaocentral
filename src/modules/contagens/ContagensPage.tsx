@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, BarChart3, Settings } from "lucide-react";
+import { Pencil, BarChart3, Settings, Lock, TriangleAlert, Package, Phone } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, deleteDoc, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -118,7 +118,7 @@ export function ContagensPage() {
   if (!podeVer) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
@@ -136,7 +136,7 @@ export function ContagensPage() {
 
       {alertasMinStock.length > 0 && tab !== "config" && (
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-300 mb-3">
-          ⚠ <strong>{alertasMinStock.length}</strong> insumo(s) abaixo do estoque mínimo. Veja na aba "Visão atual".
+          <span className="inline-flex items-center gap-1"><TriangleAlert size={14} className="shrink-0" /> <strong>{alertasMinStock.length}</strong> insumo(s) abaixo do estoque mínimo. Veja na aba "Visão atual".</span>
         </div>
       )}
 
@@ -144,7 +144,7 @@ export function ContagensPage() {
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {([
           ["lancar", "Lançar contagem", Pencil],
-          ["visao",  `Visão atual${alertasMinStock.length > 0 ? ` (${alertasMinStock.length}⚠)` : ""}`, BarChart3],
+          ["visao",  <span className="inline-flex items-center gap-1">Visão atual{alertasMinStock.length > 0 ? <> ({alertasMinStock.length}<TriangleAlert size={11} />)</> : null}</span>, BarChart3],
           ["config", `Config (${insumos.filter(i => i.ativo).length})`, Settings],
         ] as const).map(([id, label, Ico]) => (
           <button
@@ -178,7 +178,7 @@ export function ContagensPage() {
             <div className="text-sm text-gray-500">Carregando...</div>
           ) : insumos.filter(i => i.ativo).length === 0 ? (
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-              <div className="text-4xl mb-3">📦</div>
+              <div className="flex justify-center mb-3 text-gray-400"><Package size={40} /></div>
               <p className="text-gray-700 dark:text-gray-300 font-medium">Sem insumos cadastrados</p>
               {podeConfig && (
                 <p className="text-sm text-gray-500 mt-2">Cadastre na aba "Config" pra começar.</p>
@@ -259,7 +259,7 @@ export function ContagensPage() {
 
           {insumos.length === 0 ? (
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-              <div className="text-4xl mb-3">📦</div>
+              <div className="flex justify-center mb-3 text-gray-400"><Package size={40} /></div>
               <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhum insumo cadastrado</p>
               {podeConfig && (
                 <p className="text-sm text-gray-500 mt-2">Cadastre clicando em "+ Novo insumo"</p>
@@ -293,7 +293,7 @@ export function ContagensPage() {
                                 {i.minStock != null && <span>Mín: <strong>{i.minStock}</strong></span>}
                                 {i.fatorCompra && i.fatorCompra > 1 && <span>Fator compra: <strong>{i.fatorCompra}</strong></span>}
                                 {i.precoEstimado != null && <span>R$ {i.precoEstimado.toFixed(2)}/un</span>}
-                                {forn && <span>📞 {forn.nome}</span>}
+                                {forn && <span className="inline-flex items-center gap-1"><Phone size={12} /> {forn.nome}</span>}
                               </div>
                             </div>
                             {podeConfig && (
