@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Users, Pencil, CalendarDays, AlarmClock, MapPin, CheckSquare, Ban, Trash2, Lightbulb, Siren, Target, ClipboardList } from "lucide-react";
 import { doc, getDoc, updateDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -171,10 +172,10 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
             {/* faixa superior: status + tipo, e (editar / fechar) à direita */}
             <div className="flex items-center gap-2">
               <span className={`shrink-0 text-[11px] font-bold uppercase tracking-wide px-2 py-0.5 rounded-full ${statusPill.cls}`}>{statusPill.txt}</span>
-              <span className="text-[12px] text-gray-400 dark:text-gray-500 truncate min-w-0">👥 {REUNIAO_TIPO_LABEL[reuniao.tipo]}</span>
+              <span className="text-[12px] text-gray-400 dark:text-gray-500 truncate min-w-0 inline-flex items-center gap-1"><Users size={12} className="shrink-0" /> {REUNIAO_TIPO_LABEL[reuniao.tipo]}</span>
               <div className="ml-auto flex items-center gap-1 flex-none">
                 {podeConfig && onEditar && (
-                  <button onClick={onEditar} title="Editar reunião (título, data, participantes)" className="w-8 h-8 grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800">✎</button>
+                  <button onClick={onEditar} title="Editar reunião (título, data, participantes)" className="w-8 h-8 grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"><Pencil size={15} /></button>
                 )}
                 <button onClick={onClose} title="Fechar" className="w-8 h-8 grid place-items-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 text-lg leading-none">×</button>
               </div>
@@ -185,9 +186,9 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
 
             {/* data / hora / local */}
             <div className="flex items-center gap-x-3 gap-y-0.5 flex-wrap mt-1.5 text-[12.5px] text-gray-500 dark:text-gray-400">
-              <span>📅 {new Date(reuniao.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-              {reuniao.horario && <span>⏰ {reuniao.horario}</span>}
-              {reuniao.local && <span>📍 {reuniao.local}</span>}
+              <span className="inline-flex items-center gap-1"><CalendarDays size={12} /> {new Date(reuniao.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+              {reuniao.horario && <span className="inline-flex items-center gap-1"><AlarmClock size={12} /> {reuniao.horario}</span>}
+              {reuniao.local && <span className="inline-flex items-center gap-1"><MapPin size={12} /> {reuniao.local}</span>}
             </div>
 
             {/* ações de status — largura cheia no mobile (de fora a fora), inline no desktop */}
@@ -195,15 +196,15 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
               <div className="flex flex-col sm:flex-row sm:flex-wrap gap-2 mt-3">
                 {isPlanejada && (
                   <>
-                    <button onClick={marcarRealizada} disabled={saving} className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-60">✅ Marcar realizada</button>
-                    <button onClick={cancelarReuniao} disabled={saving} className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-[13px] font-medium border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-800">🚫 Cancelar</button>
+                    <button onClick={marcarRealizada} disabled={saving} className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-[13px] font-semibold bg-emerald-600 hover:bg-emerald-700 text-white disabled:opacity-60"><CheckSquare size={15} /> Marcar realizada</button>
+                    <button onClick={cancelarReuniao} disabled={saving} className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-[13px] font-medium border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-300 dark:hover:border-rose-800"><Ban size={15} /> Cancelar</button>
                   </>
                 )}
                 {(isRealizada || isCancelada) && (
                   <button onClick={reabrirComoPlanejada} disabled={saving} className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-[13px] font-medium border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">↻ Voltar pra planejada</button>
                 )}
                 {isCancelada && me?.isMaster && (
-                  <button onClick={excluirDefinitivo} disabled={saving} className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-[13px] font-medium border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30">🗑 Excluir definitivo</button>
+                  <button onClick={excluirDefinitivo} disabled={saving} className="w-full sm:w-auto inline-flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 rounded-lg text-[13px] font-medium border border-rose-200 dark:border-rose-900 text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/30"><Trash2 size={15} /> Excluir definitivo</button>
                 )}
               </div>
             )}
@@ -253,9 +254,9 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
                       <div className={`text-[14.5px] font-medium ${t.discutido ? "line-through text-gray-400 dark:text-gray-500" : "text-gray-900 dark:text-gray-100"}`}>{t.titulo}</div>
                       {t.descricao && !t.discutido && <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">{t.descricao}</div>}
                       <div className="flex items-center gap-2 mt-1 flex-wrap empty:hidden">
-                        {t.ideiaId && <span className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300">💡 do Banco de Ideias</span>}
-                        {t.ocorrenciaId && <span className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-300">🚨 de Ocorrências</span>}
-                        {virou && <span className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">🎯 Virou tarefa</span>}
+                        {t.ideiaId && <span className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300 inline-flex items-center gap-1"><Lightbulb size={11} /> do Banco de Ideias</span>}
+                        {t.ocorrenciaId && <span className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded bg-rose-50 text-rose-600 dark:bg-rose-900/30 dark:text-rose-300 inline-flex items-center gap-1"><Siren size={11} /> de Ocorrências</span>}
+                        {virou && <span className="text-[10.5px] font-semibold px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 inline-flex items-center gap-1"><Target size={11} /> Virou tarefa</span>}
                       </div>
                       {t.discutido && t.notas && <div className="mt-1.5 text-[12.5px] text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/50 rounded-lg px-3 py-2 border-l-2 border-emerald-300 dark:border-emerald-700 whitespace-pre-wrap">{t.notas}</div>}
                       {podeConfig && resolvendo === t.id && (
@@ -271,7 +272,7 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
                     {podeConfig && resolvendo !== t.id && (
                       <div className="shrink-0">
                         {!t.discutido && !virou && (
-                          <button type="button" onClick={() => setVirarAcaoPauta(t)} className="text-[12px] font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 whitespace-nowrap">🎯 Virar tarefa</button>
+                          <button type="button" onClick={() => setVirarAcaoPauta(t)} className="text-[12px] font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400 whitespace-nowrap inline-flex items-center gap-1.5"><Target size={13} /> Virar tarefa</button>
                         )}
                         {t.discutido && (
                           <button type="button" onClick={() => reabrirTopico(t.id)} className="text-[11.5px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 whitespace-nowrap">↺ reabrir</button>
@@ -290,7 +291,7 @@ export function ReuniaoDetalheModal({ reuniao, restaurantId, podeConfig, onClose
                     className="flex-1 min-w-0 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 shadow-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-500" />
                   <Button onClick={adicionarTopico} disabled={!novoTopico.trim()} className="shrink-0">Adicionar</Button>
                 </div>
-                <Button variant="secondary" onClick={() => setPuxarAberto(true)} className="w-full">📋 Puxar de ideia / ocorrência aberta</Button>
+                <Button variant="secondary" onClick={() => setPuxarAberto(true)} className="w-full"><span className="inline-flex items-center gap-1.5"><ClipboardList size={14} /> Puxar de ideia / ocorrência aberta</span></Button>
               </div>
             )}
 

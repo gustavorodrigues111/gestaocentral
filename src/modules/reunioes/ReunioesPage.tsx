@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { Briefcase, Users, User, MessagesSquare, Clock, MapPin, Pencil, Pin, BarChart3, List, Hand, CalendarDays, ClipboardList, TriangleAlert, BookOpen, CheckSquare, X, type LucideIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -16,11 +17,11 @@ import { ReuniaoEditorModal } from "./ReuniaoEditorModal";
 import { ReuniaoDetalheModal } from "./ReuniaoDetalheModal";
 import { PageContainer } from "../../core/ui/PageContainer";
 
-const TIPO_ICON: Record<ReuniaoTipo, string> = {
-  lideres:    "👔",
-  equipe:     "👥",
-  individual: "🧑",
-  outro:      "🗣️",
+const TIPO_ICON: Record<ReuniaoTipo, LucideIcon> = {
+  lideres:    Briefcase,
+  equipe:     Users,
+  individual: User,
+  outro:      MessagesSquare,
 };
 
 export function ReunioesPage() {
@@ -135,18 +136,18 @@ export function ReunioesPage() {
           <div className="text-xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{Number(r.data.slice(8, 10))}</div>
         </div>
         <div className="flex-1 min-w-0">
-          <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{TIPO_ICON[r.tipo]} {r.titulo}</div>
+          <div className="font-semibold text-gray-900 dark:text-gray-100 truncate inline-flex items-center gap-1.5">{(() => { const Ic = TIPO_ICON[r.tipo]; return <Ic size={14} className="shrink-0" />; })()} {r.titulo}</div>
           <div className="flex gap-3 text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex-wrap items-center">
-            {r.horario && <span>🕐 {r.horario}</span>}
-            <span>👥 {r.participantes?.length || 0}</span>
-            {r.local && <span className="truncate max-w-[140px]">📍 {r.local}</span>}
+            {r.horario && <span className="inline-flex items-center gap-1"><Clock size={12} /> {r.horario}</span>}
+            <span className="inline-flex items-center gap-1"><Users size={12} /> {r.participantes?.length || 0}</span>
+            {r.local && <span className="truncate max-w-[140px] inline-flex items-center gap-1"><MapPin size={12} className="shrink-0" /> {r.local}</span>}
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">{REUNIAO_TIPO_LABEL[r.tipo]}</span>
           </div>
         </div>
         <span className={`text-[11px] font-medium px-2.5 py-1 rounded-full shrink-0 ${b.cls}`}>{b.txt}</span>
         {podeConfig && (
           <div className="flex flex-col gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-            <button type="button" onClick={() => setEditing(r)} title="Editar" className="text-gray-400 hover:text-indigo-600 px-1 text-sm leading-none">✎</button>
+            <button type="button" onClick={() => setEditing(r)} title="Editar" className="text-gray-400 hover:text-indigo-600 px-1 text-sm leading-none"><Pencil size={14} /></button>
             <button type="button" onClick={() => excluir(r)} title="Excluir" className="text-gray-300 hover:text-rose-600 px-1 text-sm leading-none">×</button>
           </div>
         )}
@@ -165,7 +166,7 @@ export function ReunioesPage() {
 
       {acoesPendentes > 0 && (
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-300 mb-3">
-          📌 <strong>{acoesPendentes}</strong> aç{acoesPendentes > 1 ? "ões" : "ão"} pendente{acoesPendentes > 1 ? "s" : ""} de reuniões anteriores.
+          <span className="inline-flex items-center gap-1"><Pin size={14} className="shrink-0" /> <strong>{acoesPendentes}</strong> aç{acoesPendentes > 1 ? "ões" : "ão"} pendente{acoesPendentes > 1 ? "s" : ""} de reuniões anteriores.</span>
         </div>
       )}
 
@@ -188,7 +189,7 @@ export function ReunioesPage() {
                   : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
               }`}
             >
-              {v === "kanban" ? "📊 Kanban" : "☰ Agenda"}
+              {v === "kanban" ? <span className="inline-flex items-center gap-1.5"><BarChart3 size={13} /> Kanban</span> : <span className="inline-flex items-center gap-1.5"><List size={13} /> Agenda</span>}
             </button>
           ))}
         </div>
@@ -197,7 +198,7 @@ export function ReunioesPage() {
             {(["minhas", "todas"] as const).map(d => (
               <button key={d} type="button" onClick={() => setFiltroDono(d)}
                 className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${filtroDono === d ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm" : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"}`}>
-                {d === "minhas" ? "🙋 Minhas" : "Todas"}
+                {d === "minhas" ? <span className="inline-flex items-center gap-1.5"><Hand size={13} /> Minhas</span> : "Todas"}
               </button>
             ))}
           </div>
@@ -220,7 +221,7 @@ export function ReunioesPage() {
         <div className="text-sm text-gray-500">Carregando...</div>
       ) : base.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">🗣️</div>
+          <div className="flex justify-center mb-3 text-gray-400"><MessagesSquare size={40} /></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">{search ? "Nada encontrado" : "Nenhuma reunião"}</p>
           {!search && podeConfig && <p className="text-sm text-gray-500 mt-2">Crie clicando em "+ Nova reunião"</p>}
         </div>
@@ -264,10 +265,10 @@ export function ReunioesPage() {
 
 // ─── KANBAN ───────────────────────────────────────────────────────────────
 
-const KANBAN_COLS_R: Array<{ id: ReuniaoStatus; titulo: string; descricao: string; bordaCls: string }> = [
-  { id: "planejada", titulo: "📅 Planejadas", descricao: "Marcadas pra acontecer",                  bordaCls: "border-t-blue-500" },
-  { id: "realizada", titulo: "✅ Realizadas", descricao: "Já ocorreram (com ata e ações)",          bordaCls: "border-t-emerald-500" },
-  { id: "cancelada", titulo: "✕ Canceladas", descricao: "Não vão acontecer",                       bordaCls: "border-t-gray-400" },
+const KANBAN_COLS_R: Array<{ id: ReuniaoStatus; titulo: ReactNode; descricao: string; bordaCls: string }> = [
+  { id: "planejada", titulo: <span className="inline-flex items-center gap-1.5"><CalendarDays size={15} /> Planejadas</span>, descricao: "Marcadas pra acontecer",                  bordaCls: "border-t-blue-500" },
+  { id: "realizada", titulo: <span className="inline-flex items-center gap-1.5"><CheckSquare size={15} /> Realizadas</span>, descricao: "Já ocorreram (com ata e ações)",          bordaCls: "border-t-emerald-500" },
+  { id: "cancelada", titulo: <span className="inline-flex items-center gap-1.5"><X size={15} /> Canceladas</span>, descricao: "Não vão acontecer",                       bordaCls: "border-t-gray-400" },
 ];
 
 function KanbanReunioes({ reunioes, loading, podeConfig, onAbrir, onNova, draggingId, dropTarget, setDraggingId, setDropTarget }: {
@@ -383,17 +384,17 @@ function KanbanReunioes({ reunioes, loading, podeConfig, onAbrir, onNova, draggi
                     title={podeConfig ? `${r.titulo} (arrastar pra mover)` : r.titulo}
                   >
                     <div className="font-medium text-gray-900 dark:text-gray-100 flex items-center gap-1">
-                      <span>{TIPO_ICON[r.tipo]}</span>
+                      {(() => { const Ic = TIPO_ICON[r.tipo]; return <Ic size={13} className="shrink-0" />; })()}
                       <span className="flex-1 truncate">{r.titulo}</span>
                     </div>
                     <div className={`text-[10px] mt-0.5 ${vencida ? "text-rose-600 dark:text-rose-400 font-medium" : "text-gray-500 dark:text-gray-400"}`}>
-                      📅 {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")}{r.horario && ` ${r.horario}`}
+                      <CalendarDays size={11} className="inline align-[-1px]" /> {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")}{r.horario && ` ${r.horario}`}
                       {vencida && " · vencida"}
                     </div>
                     {(topicosTotal > 0 || acoesPend > 0) && (
                       <div className="text-[10px] text-gray-500 dark:text-gray-400 mt-1 flex items-center gap-2 flex-wrap">
-                        {topicosTotal > 0 && <span>📋 {topicosDisc}/{topicosTotal}</span>}
-                        {acoesPend > 0 && <span className="text-amber-600 dark:text-amber-400">⚠️ {acoesPend} ação</span>}
+                        {topicosTotal > 0 && <span className="inline-flex items-center gap-1"><ClipboardList size={11} /> {topicosDisc}/{topicosTotal}</span>}
+                        {acoesPend > 0 && <span className="text-amber-600 dark:text-amber-400 inline-flex items-center gap-1"><TriangleAlert size={11} /> {acoesPend} ação</span>}
                       </div>
                     )}
                   </button>
@@ -443,7 +444,7 @@ function HistoricoReunioes({ itens, onAbrir }: {
       >
         <span className="flex items-center gap-2">
           <span className={`transition-transform leading-none ${aberto ? "" : "-rotate-90"}`}>▾</span>
-          <span className="font-semibold">📚 Histórico</span>
+          <span className="font-semibold inline-flex items-center gap-1.5"><BookOpen size={14} /> Histórico</span>
           <span className="text-gray-500 dark:text-gray-400">
             ({itens.length} — {nRealizadas} realizadas há +45d, {nCanceladas} canceladas há +14d)
           </span>

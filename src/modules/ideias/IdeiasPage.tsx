@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Lightbulb, Kanban } from "lucide-react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Lightbulb, Kanban, Lock, BarChart3, ClipboardList, CalendarDays, Check, Trash2, Target, MessagesSquare, MessageSquare, PenLine } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -142,7 +142,7 @@ export function IdeiasPage() {
   if (!podeSubmeter && !podeGerenciar) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
@@ -229,7 +229,7 @@ export function IdeiasPage() {
                   : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
               }`}
             >
-              {v === "kanban" ? "📊 Kanban" : "📋 Lista"}
+              {v === "kanban" ? <span className="inline-flex items-center gap-1.5"><BarChart3 size={13} /> Kanban</span> : <span className="inline-flex items-center gap-1.5"><ClipboardList size={13} /> Lista</span>}
             </button>
           ))}
         </div>
@@ -238,10 +238,10 @@ export function IdeiasPage() {
       {view === "lista" && (
         <div className="flex items-center gap-2 mb-4 flex-wrap">
           {([
-            ["abertas",     "💡 Abertas"],
-            ["em_pauta",    "🗓️ Em pauta"],
-            ["discutidas",  "✓ Discutidas"],
-            ["descartadas", "🗑 Descartadas"],
+            ["abertas",     <span className="inline-flex items-center gap-1.5"><Lightbulb size={13} /> Abertas</span>],
+            ["em_pauta",    <span className="inline-flex items-center gap-1.5"><CalendarDays size={13} /> Em pauta</span>],
+            ["discutidas",  <span className="inline-flex items-center gap-1.5"><Check size={13} /> Discutidas</span>],
+            ["descartadas", <span className="inline-flex items-center gap-1.5"><Trash2 size={13} /> Descartadas</span>],
             ["todas",       "Todas"],
           ] as const).map(([f, label]) => (
             <button
@@ -276,7 +276,7 @@ export function IdeiasPage() {
         <div className="text-sm text-gray-500">Carregando...</div>
       ) : filtered.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">💡</div>
+          <div className="flex justify-center mb-3 text-gray-400"><Lightbulb size={40} /></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">
             {search ? "Nenhuma ideia encontrada" : "Sem ideias por aqui"}
           </p>
@@ -305,21 +305,21 @@ export function IdeiasPage() {
                         {i.categoria}
                       </span>
                     )}
-                    {i.acaoIdGerada && <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" title="Virou uma tarefa">🎯 virou tarefa</span>}
+                    {i.acaoIdGerada && <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" title="Virou uma tarefa"><span className="inline-flex items-center gap-1"><Target size={11} /> virou tarefa</span></span>}
                   </div>
                   {(podeModerar || podeExecutar) && (
                     <div className="flex gap-1 flex-wrap">
                       {podeModerar && i.status === "aberta" && (
-                        <Button variant="secondary" size="sm" onClick={() => setLevando(i)}>🗓️ Pra reunião</Button>
+                        <Button variant="secondary" size="sm" onClick={() => setLevando(i)}><span className="inline-flex items-center gap-1.5"><CalendarDays size={14} /> Pra reunião</span></Button>
                       )}
                       {podeModerar && (i.status === "em_pauta" || i.status === "discutida" || i.status === "descartada") && (
                         <Button variant="secondary" size="sm" onClick={() => reabrir(i)}>↻ Reabrir</Button>
                       )}
                       {podeModerar && i.status === "aberta" && (
-                        <Button variant="secondary" size="sm" onClick={() => descartar(i)}>🗑 Descartar</Button>
+                        <Button variant="secondary" size="sm" onClick={() => descartar(i)}><span className="inline-flex items-center gap-1.5"><Trash2 size={14} /> Descartar</span></Button>
                       )}
                       {podeModerar && !i.acaoIdGerada && (
-                        <Button variant="secondary" size="sm" onClick={() => setVirarDe(i)}>🎯 Virar tarefa</Button>
+                        <Button variant="secondary" size="sm" onClick={() => setVirarDe(i)}><span className="inline-flex items-center gap-1.5"><Target size={14} /> Virar tarefa</span></Button>
                       )}
                       {podeModerar && (
                         <Button variant="secondary" size="sm" onClick={() => setEditing(i)}>Editar</Button>
@@ -334,11 +334,11 @@ export function IdeiasPage() {
                   <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap mb-2">{i.descricao}</p>
                 )}
                 <div className="text-xs text-gray-500 dark:text-gray-400 pt-2 border-t border-gray-100 dark:border-gray-800">
-                  {i.visibilidade === "privada" && <span className="text-indigo-600 dark:text-indigo-400 font-medium">🔒 privada · </span>}
-                  📅 {i.criadoEm && new Date(i.criadoEm).toLocaleDateString("pt-BR")}
-                  {i.criadoPorNome && <> · ✍️ {i.criadoPorNome}</>}
+                  {i.visibilidade === "privada" && <span className="text-indigo-600 dark:text-indigo-400 font-medium inline-flex items-center gap-1"><Lock size={11} /> privada · </span>}
+                  <CalendarDays size={12} className="inline align-[-2px]" /> {i.criadoEm && new Date(i.criadoEm).toLocaleDateString("pt-BR")}
+                  {i.criadoPorNome && <> · <PenLine size={12} className="inline align-[-2px]" /> {i.criadoPorNome}</>}
                   {reuniao && (
-                    <> · 🗣️ {reuniao.titulo} ({new Date(reuniao.data + "T12:00:00").toLocaleDateString("pt-BR")})</>
+                    <> · <MessagesSquare size={12} className="inline align-[-2px]" /> {reuniao.titulo} ({new Date(reuniao.data + "T12:00:00").toLocaleDateString("pt-BR")})</>
                   )}
                 </div>
               </div>
@@ -381,12 +381,12 @@ export function IdeiasPage() {
 
 // ─── KANBAN ───────────────────────────────────────────────────────────────
 
-const KANBAN_COLUNAS: Array<{ id: IdeiaStatus; titulo: string; descricao: string; bordaCls: string }> = [
-  { id: "aberta",         titulo: "💡 Novas",            descricao: "Recém-registradas",                       bordaCls: "border-t-blue-500" },
-  { id: "em_discussao",   titulo: "💬 Em discussão",     descricao: "Em pauta entre reuniões",                 bordaCls: "border-t-amber-500" },
-  { id: "gerada_reuniao", titulo: "🗣️ De reunião",        descricao: "Geradas dentro de uma reunião",           bordaCls: "border-t-purple-500" },
-  { id: "puxada_tarefa",  titulo: "✓ Viraram tarefa",   descricao: "Encerradas aqui, agora estão em Tarefas",  bordaCls: "border-t-emerald-500" },
-  { id: "descartada",     titulo: "🗑 Descartadas",      descricao: "Não vão virar nada",                       bordaCls: "border-t-gray-400" },
+const KANBAN_COLUNAS: Array<{ id: IdeiaStatus; titulo: ReactNode; descricao: string; bordaCls: string }> = [
+  { id: "aberta",         titulo: <span className="inline-flex items-center gap-1.5"><Lightbulb size={15} /> Novas</span>,            descricao: "Recém-registradas",                       bordaCls: "border-t-blue-500" },
+  { id: "em_discussao",   titulo: <span className="inline-flex items-center gap-1.5"><MessageSquare size={15} /> Em discussão</span>,     descricao: "Em pauta entre reuniões",                 bordaCls: "border-t-amber-500" },
+  { id: "gerada_reuniao", titulo: <span className="inline-flex items-center gap-1.5"><MessagesSquare size={15} /> De reunião</span>,        descricao: "Geradas dentro de uma reunião",           bordaCls: "border-t-purple-500" },
+  { id: "puxada_tarefa",  titulo: <span className="inline-flex items-center gap-1.5"><Check size={15} /> Viraram tarefa</span>,   descricao: "Encerradas aqui, agora estão em Tarefas",  bordaCls: "border-t-emerald-500" },
+  { id: "descartada",     titulo: <span className="inline-flex items-center gap-1.5"><Trash2 size={15} /> Descartadas</span>,      descricao: "Não vão virar nada",                       bordaCls: "border-t-gray-400" },
 ];
 
 // Normaliza status legados pra coluna kanban correspondente
@@ -478,7 +478,7 @@ function KanbanIdeias({ ideias, loading, podeModerar, onAbrir, onNova, draggingI
                     className={`w-full text-left bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-md p-2 text-xs ${podeModerar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${arrastando ? "opacity-40" : ""} hover:border-indigo-400 transition-colors`}
                     title={podeModerar ? `${i.titulo} (arrastar pra mover)` : i.titulo}
                   >
-                    <div className="font-medium text-gray-900 dark:text-gray-100">{i.visibilidade === "privada" && <span title="privada">🔒 </span>}{i.titulo}</div>
+                    <div className="font-medium text-gray-900 dark:text-gray-100">{i.visibilidade === "privada" && <span title="privada" className="inline-flex align-[-1px] mr-1"><Lock size={11} /></span>}{i.titulo}</div>
                     {i.categoria && (
                       <div className="text-[9px] uppercase tracking-wider text-gray-500 dark:text-gray-400 mt-0.5">{i.categoria}</div>
                     )}

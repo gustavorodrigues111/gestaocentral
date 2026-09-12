@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { CalendarDays } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -60,7 +61,7 @@ export function LevarParaReuniaoModal({ ideia, reunioes, onClose }: Props) {
   const ordenadas = [...reunioes].sort((a, b) => (a.data || "").localeCompare(b.data || ""));
 
   return (
-    <Modal title={`🗓️ Levar pra reunião — ${ideia.titulo}`} onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={<span className="inline-flex items-center gap-2"><CalendarDays size={18} /> Levar pra reunião — {ideia.titulo}</span>} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
         <p className="text-sm text-gray-600 dark:text-gray-400">
           Escolha uma reunião planejada. A ideia vira tópico da pauta e fica linkada.
@@ -90,7 +91,7 @@ export function LevarParaReuniaoModal({ ideia, reunioes, onClose }: Props) {
                 <div className="flex-1 text-sm">
                   <div className="font-medium text-gray-900 dark:text-gray-100">{r.titulo}</div>
                   <div className="text-xs text-gray-500 dark:text-gray-400">
-                    📅 {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")}
+                    <CalendarDays size={12} className="inline align-[-2px]" /> {new Date(r.data + "T12:00:00").toLocaleDateString("pt-BR")}
                     {r.horario && <> · {r.horario}</>}
                     <> · {r.pauta?.length || 0} tópico(s) na pauta</>
                   </div>

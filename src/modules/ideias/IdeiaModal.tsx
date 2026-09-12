@@ -2,6 +2,7 @@ import { useState } from "react";
 import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { Building2, Lock, Globe } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
@@ -96,7 +97,7 @@ export function IdeiaModal({ ideia, restaurantId, podePrivadas = false, empresas
                   <button key={e.id} type="button"
                     onClick={() => setEmpresasSel(on ? empresasSel.filter(x => x !== e.id) : [...empresasSel, e.id])}
                     className={`px-2.5 py-1 text-xs rounded-full border transition-colors ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
-                    🏢 {e.nome}
+                    <span className="inline-flex items-center gap-1.5"><Building2 size={13} /> {e.nome}</span>
                   </button>
                 );
               })}
@@ -144,8 +145,8 @@ export function IdeiaModal({ ideia, restaurantId, podePrivadas = false, empresas
         {podePrivadas && (
           <div className="flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-800 p-2.5">
             <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
-              <button type="button" onClick={() => setPrivada(true)} className={`px-2.5 py-1 text-xs font-medium rounded-md ${privada ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>🔒 Privada</button>
-              <button type="button" onClick={() => setPrivada(false)} className={`px-2.5 py-1 text-xs font-medium rounded-md ${!privada ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>🌐 Pública</button>
+              <button type="button" onClick={() => setPrivada(true)} className={`px-2.5 py-1 text-xs font-medium rounded-md ${privada ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}><span className="inline-flex items-center gap-1.5"><Lock size={12} /> Privada</span></button>
+              <button type="button" onClick={() => setPrivada(false)} className={`px-2.5 py-1 text-xs font-medium rounded-md ${!privada ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}><span className="inline-flex items-center gap-1.5"><Globe size={12} /> Pública</span></button>
             </div>
             <span className="text-[11px] text-gray-500">{privada ? "Só você vê (e o master). Não aparece pro time." : "Todo o time com acesso vê."}</span>
           </div>

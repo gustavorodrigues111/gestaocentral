@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { User, Lightbulb, Siren, ClipboardList } from "lucide-react";
 import { addDoc, collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -251,7 +252,7 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose, onCriada }:
             <div className="flex flex-wrap gap-1.5 mb-2">
               {participantes.map((p, i) => (
                 <span key={i} className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 text-[13px]">
-                  {p.empregadoId ? p.nome : <span>👤 {p.nome} <span className="text-indigo-400 text-[11px]">externo</span></span>}
+                  {p.empregadoId ? p.nome : <span className="inline-flex items-center gap-1"><User size={12} /> {p.nome} <span className="text-indigo-400 text-[11px]">externo</span></span>}
                   <button type="button" onClick={() => removerParticipante(i)} aria-label="remover" className="w-4 h-4 rounded-full flex items-center justify-center hover:bg-indigo-200 dark:hover:bg-indigo-800 text-indigo-500 leading-none">×</button>
                 </span>
               ))}
@@ -305,7 +306,7 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose, onCriada }:
               <div className="space-y-1.5 mb-2">
                 {pautaInicial.map((p, i) => (
                   <div key={p.id} className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-gray-50 dark:bg-gray-800/50 text-sm">
-                    <span className="shrink-0">{p.ideiaId ? "💡" : p.ocorrenciaId ? "🚨" : "📋"}</span>
+                    <span className="shrink-0">{p.ideiaId ? <Lightbulb size={14} /> : p.ocorrenciaId ? <Siren size={14} /> : <ClipboardList size={14} />}</span>
                     <span className="flex-1 min-w-0 truncate text-gray-800 dark:text-gray-200">{p.titulo}</span>
                     <button type="button" onClick={() => removerDaPauta(i)} aria-label="remover" className="text-gray-400 hover:text-rose-600 shrink-0 leading-none">×</button>
                   </div>
@@ -316,7 +317,7 @@ export function ReuniaoEditorModal({ reuniao, restaurantId, onClose, onCriada }:
               <Input value={novoTopico} onChange={(e) => setNovoTopico(e.target.value)} placeholder="Adicionar tópico…" onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addTopicoLivre(); } }} className="flex-1 min-w-0" />
               <Button variant="secondary" onClick={addTopicoLivre} disabled={!novoTopico.trim()} className="shrink-0">+ Tópico</Button>
             </div>
-            <Button variant="secondary" onClick={() => setPuxarAberto(true)} className="w-full">📋 Puxar de ideia / ocorrência aberta</Button>
+            <Button variant="secondary" onClick={() => setPuxarAberto(true)} className="w-full"><span className="inline-flex items-center gap-1.5"><ClipboardList size={14} /> Puxar de ideia / ocorrência aberta</span></Button>
           </div>
         )}
 
