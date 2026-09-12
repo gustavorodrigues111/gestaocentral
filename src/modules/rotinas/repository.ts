@@ -55,6 +55,10 @@ export function pendentesParaPessoa(
   const out: RotinaPendente[] = [];
   for (const r of rotinas) {
     if (!r.ativo) continue;
+    // Respeita os canais: "nunca" não avisa; Central desligada não aparece aqui
+    // (rotinas legadas sem o campo continuam aparecendo — retrocompat).
+    if (r.disparo === "nunca") continue;
+    if (r.notificarCentral === false) continue;
     if (!r.responsaveis?.includes(pessoaId)) continue;
     const due = ultimaDataDevida(r.recorrencia, hoje);
     if (!due) continue;
