@@ -150,23 +150,8 @@ export function PortalPage() {
 
   return (
     <div className="max-w-5xl">
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-800 mb-6 overflow-x-auto">
-        {tabsDisponiveis.map(t => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors whitespace-nowrap ${
-              tab === t.id
-                ? "border-indigo-600 text-indigo-600 dark:text-indigo-400"
-                : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"
-            }`}
-          >
-            {t.icon} {t.label}
-          </button>
-        ))}
-      </div>
-
+      {/* Sem barra de abas: a navegação vem dos módulos de Minhas Informações
+          no menu lateral (cada um é deep-link pra uma seção). */}
       {tab === "escala"      && verEscala      && <MinhaEscalaTab     empregado={empregado} cargo={cargo || null} restaurantId={rid} />}
       {tab === "horarios"    && verHorarios    && <MeusHorariosTab    empregado={empregado} cargo={cargo || null} restaurantId={rid} />}
       {tab === "gorjetas"    && verGorjetas    && <MinhasGorjetasTab  empregado={empregado} restaurantId={rid} />}

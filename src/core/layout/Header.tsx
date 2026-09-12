@@ -14,7 +14,17 @@ function moduloDoPath(pathname: string): { icon: string; label: string; desc?: s
   if (pathname === "/arquitetura") return { icon: "notebook-pen", label: "Caderno", desc: "Log de tudo que foi feito e o que falta, por módulo" };
   if (pathname === "/perfis") return { icon: "user-round-cog", label: "Perfis de Acesso", desc: "Permissões por perfil" };
   if (pathname === "/propostas") return { icon: "file-signature", label: "Propostas", desc: "Propostas comerciais" };
-  if (pathname.startsWith("/portal/")) return { icon: "house", label: "Meu Portal" };
+  if (pathname.startsWith("/portal/")) {
+    const seg = pathname.split("/")[3]; // /portal/:rid/:tab
+    const mapa: Record<string, { icon: string; label: string }> = {
+      escala:      { icon: "calendar-days",  label: "Minha Escala" },
+      horarios:    { icon: "clock",          label: "Meus Horários" },
+      gorjetas:    { icon: "hand-coins",     label: "Minhas Gorjetas" },
+      comunicados: { icon: "megaphone",      label: "Meus Comunicados" },
+      faleDp:      { icon: "message-circle", label: "Fale com DP" },
+    };
+    return mapa[seg] || { icon: "house", label: "Meu Portal" };
+  }
   const m = pathname.match(/^\/r\/[^/]+\/(.+)$/);
   if (m) {
     const mod = MODULES.find((x) => x.id === m[1]);
