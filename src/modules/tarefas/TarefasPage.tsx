@@ -77,7 +77,9 @@ export function TarefasPage() {
   const [projetoFiltro, setProjetoFiltro] = useState<string>("");
   // subFiltro vive aqui (não no ProjetoView) pra a sidebar conseguir mostrar
   // os subprojetos como accordion dentro do próprio projeto selecionado.
-  const [subFiltro, setSubFiltro] = useState<string>("");
+  // subFiltro é MULTI: uma lista de subprojetos selecionados (aditivo). Clicar
+  // num chip adiciona/remove; vazio = mostra a área inteira (todos os subs).
+  const [subFiltro, setSubFiltro] = useState<string[]>([]);
   const [tarefasProjeto, setTarefasProjeto] = useState<Tarefa[]>([]);
   const [lixeira, setLixeira] = useState<Tarefa[]>([]);
   const [todasTarefas, setTodasTarefas] = useState<Tarefa[]>([]);
@@ -335,10 +337,14 @@ export function TarefasPage() {
           onAbrirMinhas={() => setTab("minhas")}
           onAbrirTudo={() => setTab("tudo")}
           onAbrirProjeto={(pid) => {
-            if (tab === "projeto" && projetoFiltro === pid) { setTab("minhas"); setSubFiltro(""); }
-            else { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(""); }
+            if (tab === "projeto" && projetoFiltro === pid) { setTab("minhas"); setSubFiltro([]); }
+            else { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro([]); }
           }}
-          onAbrirSubprojeto={(pid, sid) => { setTab("projeto"); setProjetoFiltro(pid); setSubFiltro(sid); }}
+          onAbrirSubprojeto={(pid, sid) => {
+            setTab("projeto");
+            if (pid !== projetoFiltro) { setProjetoFiltro(pid); setSubFiltro([sid]); }
+            else setSubFiltro(prev => prev.includes(sid) ? prev.filter(x => x !== sid) : [...prev, sid]);
+          }}
         />
 
         <div className="min-w-0">
@@ -475,7 +481,7 @@ export function TarefasPage() {
           <div className="md:hidden mb-3 grid grid-cols-1 gap-2">
             <select
               value={projetoFiltro}
-              onChange={(e) => { setProjetoFiltro(e.target.value); setSubFiltro(""); }}
+              onChange={(e) => { setProjetoFiltro(e.target.value); setSubFiltro([]); }}
               className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
             >
               <option value="">— Escolha uma área —</option>
@@ -485,8 +491,8 @@ export function TarefasPage() {
             </select>
             {projetoFiltro && (
               <select
-                value={subFiltro}
-                onChange={(e) => setSubFiltro(e.target.value)}
+                value={subFiltro[0] || ""}
+                onChange={(e) => setSubFiltro(e.target.value ? [e.target.value] : [])}
                 className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100"
               >
                 <option value="">— Todos os projetos —</option>

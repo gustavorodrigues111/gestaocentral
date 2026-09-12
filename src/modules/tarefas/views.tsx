@@ -25,7 +25,7 @@ export function ProjetosTopBar({
 }: {
   tabAtual: string;
   projetoFiltroAtual: string;
-  subFiltroAtual: string;
+  subFiltroAtual: string[];
   minhasPendentes: number;
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
@@ -82,7 +82,7 @@ export function ProjetosTopBar({
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pl-1">
           {subs.map(s => {
             const ativ = ativas(tarefasProjeto.filter(t => t.subprojetoId === s.id));
-            const sel = subFiltroAtual === s.id;
+            const sel = subFiltroAtual.includes(s.id);
             const auto = !!s.bloqueadoCriacaoManual;
             return (
               <button key={s.id} onClick={() => onAbrirSubprojeto(projetoFiltroAtual, s.id)} title={s.nome}
@@ -528,8 +528,8 @@ export function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, t
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
   projetoFiltro: string;
-  // Vem de cima — a sidebar lateral controla a seleção de subprojeto.
-  subFiltro: string;
+  // Vem de cima — a sidebar lateral controla a seleção (MULTI) de subprojetos.
+  subFiltro: string[];
   tarefas: Tarefa[];
   onAbrir: (id: string) => void;
   view: ViewMode;
@@ -543,12 +543,13 @@ export function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, t
 }) {
   const proj = projetos.find(p => p.id === projetoFiltro);
   const subsDoProj = subprojetos.filter(s => s.projetoId === projetoFiltro);
-  const tarefasFiltradas = subFiltro
-    ? tarefas.filter(t => t.subprojetoId === subFiltro)
+  const tarefasFiltradas = subFiltro.length
+    ? tarefas.filter(t => !!t.subprojetoId && subFiltro.includes(t.subprojetoId))
     : tarefas;
   const ativas = (ts: Tarefa[]) => ts.filter(t => t.status !== "concluida" && t.status !== "cancelada").length;
 
-  const subAtual = subFiltro ? subsDoProj.find(s => s.id === subFiltro) : null;
+  // "Sub atual" só faz sentido quando há exatamente 1 selecionado (título/prefill).
+  const subAtual = subFiltro.length === 1 ? subsDoProj.find(s => s.id === subFiltro[0]) : null;
 
   return (
     <div>
@@ -616,7 +617,7 @@ export function ProjetoView({ projetos, subprojetos, projetoFiltro, subFiltro, t
                   onNovaTarefaNoDia={subBloqueado ? undefined : (prazo) => onNovaTarefa({
                     prazo,
                     projetoId: projetoFiltro,
-                    subprojetoId: subFiltro || undefined,
+                    subprojetoId: subFiltro.length === 1 ? subFiltro[0] : undefined,
                   })}
                 />
               );
@@ -702,14 +703,14 @@ function BannerSubAuto({ sub, restTravadoId }: {
 function ProjetoListaView({ projeto, subprojetos, subFiltro, tarefas, projetos, onAbrir, autor }: {
   projeto: TarefaProjeto;
   subprojetos: TarefaSubprojeto[];
-  subFiltro: string;
+  subFiltro: string[];
   tarefas: Tarefa[];
   projetos: TarefaProjeto[];
   onAbrir: (id: string) => void;
   autor: { id: string; nome: string };
 }) {
-  const subs = subFiltro
-    ? subprojetos.filter(s => s.id === subFiltro)
+  const subs = subFiltro.length
+    ? subprojetos.filter(s => subFiltro.includes(s.id))
     : subprojetos.filter(s => s.projetoId === projeto.id);
 
   return (
