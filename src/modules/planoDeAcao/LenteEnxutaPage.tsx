@@ -15,6 +15,7 @@ import { TAREFA_ORIGEM_LABEL } from "../../core/types";
 import type { Tarefa, Pessoa, TarefaOrigem, TarefaPrioridade } from "../../core/types";
 import { ouvirTarefasDeUsuario, atualizarTarefa, adicionarComentario, criarTarefaOperacional } from "../tarefas/repository";
 import { semOrfasPrazo } from "../tarefas/helpers";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const OPERACIONAL = "proj-operacao-dem";
 const fmtDia = (ymd?: string | null) => { if (!ymd) return ""; const [, m, d] = ymd.split("-"); return `${d}/${m}`; };
@@ -132,7 +133,7 @@ export function LenteEnxutaPage() {
   };
 
   return (
-    <div className="max-w-5xl mx-auto p-3 sm:p-4">
+    <PageContainer>
       <div className="flex items-center justify-between gap-2 mb-3">
         <div>
           <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><ListChecks size={20} className="text-gray-500 dark:text-gray-400" /> Tarefas</h1>
@@ -191,7 +192,7 @@ export function LenteEnxutaPage() {
       )}
 
       {novo && <NovaTarefaEnxuta rid={rid} pessoas={pessoas} podeVerTodas={podeVerTodas} autor={autor} onClose={() => setNovo(false)} />}
-    </div>
+    </PageContainer>
   );
 }
 

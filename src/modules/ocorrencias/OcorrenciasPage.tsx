@@ -16,6 +16,7 @@ import {
 } from "../../core/types";
 import type { Cargo, Empregado, Ocorrencia, OcorrenciaGravidade, OcorrenciaStatus, AcaoLog } from "../../core/types";
 import { OcorrenciaModal } from "./OcorrenciaModal";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const GRAVIDADE_CLS: Record<OcorrenciaGravidade, string> = {
   elogio: "border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-800",
@@ -212,7 +213,7 @@ export function OcorrenciasPage() {
   }
 
   return (
-    <div className="max-w-5xl">
+    <PageContainer>
       {/* Abas: Registrar (criação) e Kanban (gestão) */}
       {mostrarTabs && (
         <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
@@ -468,7 +469,7 @@ export function OcorrenciasPage() {
           onCriada={(acao) => aposVirarAcao(virarDe, acao)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

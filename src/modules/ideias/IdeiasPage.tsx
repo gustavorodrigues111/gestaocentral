@@ -15,6 +15,7 @@ import type { Ideia, IdeiaStatus, Reuniao } from "../../core/types";
 import { IdeiaModal } from "./IdeiaModal";
 import { ouvirIdeiasVisiveis, backfillVisibilidade } from "./ideiasData";
 import { LevarParaReuniaoModal } from "./LevarParaReuniaoModal";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const STATUS_INFO: Record<IdeiaStatus, { label: string; cls: string }> = {
   aberta:         { label: "Nova",                cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
@@ -148,7 +149,7 @@ export function IdeiasPage() {
   }
 
   return (
-    <div className="max-w-4xl">
+    <PageContainer>
       {/* Abas: Registrar (criação) e Kanban (gestão) */}
       {mostrarTabs && (
         <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
@@ -374,7 +375,7 @@ export function IdeiasPage() {
           onClose={() => setLevando(null)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

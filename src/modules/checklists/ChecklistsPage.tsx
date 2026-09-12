@@ -15,6 +15,7 @@ import { ChecklistTemplateModal } from "./ChecklistTemplateModal";
 import { ImportarChecklistModal } from "./ImportarChecklistModal";
 import { ChecklistRunModal } from "./ChecklistRunModal";
 import { itemDoDia, temFreqPorItem } from "./recorrencia";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type Tab = "hoje" | "templates" | "historico";
 
@@ -225,7 +226,7 @@ export function ChecklistsPage() {
   }
 
   return (
-    <div className="max-w-5xl">
+    <PageContainer>
       <div className="flex items-start justify-end mb-4 flex-wrap gap-2">
         {podeConfig && abaEfetiva === "templates" && (<>
           <Button variant="secondary" onClick={() => setImportando(true)}>📥 Importar</Button>
@@ -534,6 +535,6 @@ export function ChecklistsPage() {
           onClose={() => setRunEditor(null)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }

@@ -10,6 +10,7 @@ import type { Contagem, Fornecedor, Insumo, Pedido } from "../../core/types";
 import { FornecedoresTab } from "./FornecedoresTab";
 import { SugestoesTab } from "./SugestoesTab";
 import { PedidosTab } from "./PedidosTab";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type Tab = "sugestoes" | "pedidos" | "fornecedores";
 
@@ -104,7 +105,7 @@ export function ComprasPage() {
   }
 
   return (
-    <div className="max-w-5xl">
+    <PageContainer>
       {/* Stats topo */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
@@ -188,6 +189,6 @@ export function ComprasPage() {
           </Button>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }

@@ -37,6 +37,7 @@ async function subirArquivo(parentId: string, file: File): Promise<{ id: string;
 }
 import { exportarRecebimentosPDF, exportarRecebimentosXLSX } from "./exportRecebimentos";
 import { criarPendentesEntrada } from "../estoqueValidade/entradasPendentes";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 // Chama o leitor de nota (OCR) com TIMEOUT de cliente — sem isto, se o servidor
 // ou a rede pendurar, o spinner "lendo…" gira PRA SEMPRE (usuário fica travado).
@@ -329,7 +330,7 @@ export function RecebimentoPage() {
   );
 
   return (
-    <div className="max-w-7xl space-y-4">
+    <PageContainer className="space-y-4">
       {/* Abas */}
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto overflow-y-hidden whitespace-nowrap">
         {podeReceber && <TabBtn k="receber" label="🧾 Recebimento" />}
@@ -448,7 +449,7 @@ export function RecebimentoPage() {
           onSalvo={() => { setNovo(false); setArquivoInicial(null); }}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 

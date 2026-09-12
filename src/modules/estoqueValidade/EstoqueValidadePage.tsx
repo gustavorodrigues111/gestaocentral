@@ -21,6 +21,7 @@ import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import { type LocalEstoque, type LocalEstoqueTipo, LOCAL_ESTOQUE_TIPO_LABEL } from "../../core/types";
 import { type EntradaPendente } from "./entradasPendentes";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 // ── Tipos locais do módulo (promover pra types/index.ts quando estabilizar) ──
 // Conservação = validade APÓS ABERTO por método (dias). NÃO é a validade do
@@ -176,7 +177,7 @@ export function EstoqueValidadePage() {
   const ABAS = [["painel", "Painel", BarChart3], ["baixa", "Baixa", PackageMinus], ["entrada", "Entrada", PackagePlus], ["cadastro", "Cadastro", FolderOpen]] as const;
 
   return (
-    <div className="max-w-6xl">
+    <PageContainer>
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {ABAS.map(([k, l, Ico]) => (
           <button key={k} type="button" onClick={() => setAba(k)}
@@ -208,7 +209,7 @@ export function EstoqueValidadePage() {
       {localModal && <LocalModal local={localModal.local} locais={locais} onClose={() => setLocalModal(null)} onSalvar={salvarLocal} />}
       {prodModal && <ProdutoModal produto={prodModal.produto} config={config} onClose={() => setProdModal(null)} onSalvar={salvarProduto} />}
       {etiqModal && <EtiquetaFixaModal produto={etiqModal} onClose={() => setEtiqModal(null)} />}
-    </div>
+    </PageContainer>
   );
 }
 

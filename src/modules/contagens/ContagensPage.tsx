@@ -12,6 +12,7 @@ import { UNIDADES_LABEL } from "../../core/types";
 import type { Contagem, Fornecedor, Insumo } from "../../core/types";
 import { InsumoModal } from "./InsumoModal";
 import { LancarContagensTab } from "./LancarContagensTab";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 type Tab = "lancar" | "visao" | "config";
 
@@ -126,7 +127,7 @@ export function ContagensPage() {
   const fornecedorMap = Object.fromEntries(fornecedores.map(f => [f.id, f]));
 
   return (
-    <div className="max-w-5xl">
+    <PageContainer>
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
         {podeConfig && tab === "config" && (
           <Button onClick={() => setEditing("new")}>+ Novo insumo</Button>
@@ -321,6 +322,6 @@ export function ContagensPage() {
           onClose={() => setEditing(null)}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }

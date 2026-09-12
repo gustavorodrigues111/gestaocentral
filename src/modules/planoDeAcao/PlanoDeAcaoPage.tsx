@@ -17,6 +17,7 @@ import { ACAO_STATUS_LABEL } from "../../core/types";
 import type { Acao, FtFicha, FtPlanoProducao, PlanoAcaoStatus, Pessoa } from "../../core/types";
 import { labelUnidade } from "../fichas/unidades";
 import { AcaoModal } from "./AcaoModal";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 const fmtQtd = (n: number) => (n || 0).toFixed(3).replace(/\.?0+$/, "").replace(".", ",");
@@ -137,7 +138,7 @@ export function PlanoDeAcaoPage() {
   };
 
   return (
-    <div className="max-w-5xl">
+    <PageContainer>
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Target size={20} className="text-gray-500 dark:text-gray-400" /> Plano de Ação</h1>
@@ -253,6 +254,6 @@ export function PlanoDeAcaoPage() {
       )}
 
       {editing && <AcaoModal acao={editing === "new" ? null : editing} rid={rid} pessoas={pessoas} meId={me?.id} meNome={me?.nome} readOnly={editing === "new" ? !podeCriar : !podeEditar} onClose={() => setEditing(null)} />}
-    </div>
+    </PageContainer>
   );
 }

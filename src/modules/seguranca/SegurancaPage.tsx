@@ -15,6 +15,7 @@ import { Relatorio } from "./Relatorio";
 import { Painel } from "./Painel";
 import { ModeloEditor } from "./ModeloEditor";
 import { ConfigChecklists } from "./ConfigChecklists";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const dmy = (ymd: string) => (ymd || "").split("-").reverse().join("/");
 
@@ -104,7 +105,7 @@ export function SegurancaPage() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-5">
+    <PageContainer className="space-y-5">
       <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0">
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><FlaskConical size={20} className="text-gray-500 dark:text-gray-400" /> Segurança Sanitária</h1>
@@ -207,7 +208,7 @@ export function SegurancaPage() {
           </div>
         </div>
       )}
-    </div>
+    </PageContainer>
   );
 }
 

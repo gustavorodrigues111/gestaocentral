@@ -22,6 +22,7 @@ import { normalizarNome } from "../fichas/dedup";
 import { authHeader } from "../../core/firebase/idToken";
 import { fmtBRDateTime } from "../../core/utils/date";
 import type { CardapioEstruturado, CardapioLayout, CardapioMenu } from "../../core/types";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const CONFIG = "__config__";
 const ARQUIVADOS = "__arquivados__";
@@ -153,7 +154,7 @@ export function CardapioPage() {
   const atual = cardapios.find((c) => c.id === sel);
 
   return (
-    <div className="max-w-5xl mx-auto py-4 space-y-4">
+    <PageContainer className="space-y-4">
       <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><ClipboardList size={20} className="text-gray-500 dark:text-gray-400" /> Cardápios — {restaurant.nome}</h2>
       <p className="text-[13px] text-gray-500 dark:text-gray-400">Monte aqui os cardápios do restaurante. O site puxa estas informações — atualizou aqui, atualiza lá.</p>
 
@@ -281,6 +282,6 @@ export function CardapioPage() {
         </div>
       ) : null}
       </>)}
-    </div>
+    </PageContainer>
   );
 }

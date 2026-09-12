@@ -15,6 +15,7 @@ import { REUNIAO_TIPO_LABEL } from "../../core/types";
 import type { Reuniao, ReuniaoStatus, ReuniaoTipo } from "../../core/types";
 import { ReuniaoEditorModal } from "./ReuniaoEditorModal";
 import { ReuniaoDetalheModal } from "./ReuniaoDetalheModal";
+import { PageContainer } from "../../core/ui/PageContainer";
 
 const TIPO_ICON: Record<ReuniaoTipo, string> = {
   lideres:    "👔",
@@ -155,7 +156,7 @@ export function ReunioesPage() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto">
+    <PageContainer>
       <div className="flex items-center justify-between mb-4 gap-3">
         <div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><MessagesSquare size={20} className="text-gray-500 dark:text-gray-400" /> Reuniões</h1>
@@ -261,7 +262,7 @@ export function ReunioesPage() {
           onEditar={() => { const r = detalheLive; setDetalhe(null); setEditing(r); }}
         />
       )}
-    </div>
+    </PageContainer>
   );
 }
 
