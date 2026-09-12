@@ -10,6 +10,7 @@
 import { useState } from "react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
+import { CheckSquare, MessagesSquare, UserRound, VenetianMask } from "lucide-react";
 import { enviarFaleDp } from "../faleDp/repository";
 import type { Cargo, Empregado, FaleDpCategoria } from "../../core/types";
 import {
@@ -63,7 +64,7 @@ export function FaleComDPTab({
   if (enviada) {
     return (
       <div className="max-w-xl mx-auto py-10 text-center">
-        <div className="text-4xl mb-3">✅</div>
+        <div className="flex justify-center mb-3"><CheckSquare size={36} className="text-emerald-500"/></div>
         <p className="text-base font-semibold text-gray-900 dark:text-gray-100">Mensagem enviada</p>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           {anonimo
@@ -80,7 +81,7 @@ export function FaleComDPTab({
   return (
     <div className="max-w-xl mx-auto">
       <div className="mb-5">
-        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">🗣️ Fale com o DP</h2>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1"><MessagesSquare size={18}/> Fale com o DP</h2>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           Um canal direto pra falar com a gestão. Escolha o tipo, decida se quer
           se identificar e mande sua mensagem.
@@ -127,7 +128,7 @@ export function FaleComDPTab({
                   : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
               }`}
             >
-              🙋 Me identificar
+              <span className="inline-flex items-center gap-1"><UserRound size={15}/> Me identificar</span>
             </button>
             <button
               type="button"
@@ -138,7 +139,7 @@ export function FaleComDPTab({
                   : "bg-white dark:bg-gray-900 border-gray-200 dark:border-gray-800 hover:bg-gray-50 dark:hover:bg-gray-800"
               }`}
             >
-              🕶️ Anônimo
+              <span className="inline-flex items-center gap-1"><VenetianMask size={15}/> Anônimo</span>
             </button>
           </div>
         </div>

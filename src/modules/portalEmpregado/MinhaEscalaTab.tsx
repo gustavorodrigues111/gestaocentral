@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, doc, getDocs, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
+import { Lock, Hourglass, CheckSquare } from "lucide-react";
 import {
   daysInMonth, fmtAnoMes, nomeMes, pad2, shiftMonth,
 } from "../../core/utils/date";
@@ -180,7 +181,7 @@ export function MinhaEscalaTab({ empregado, cargo, restaurantId }: Props) {
           onDiaClick={abrirSolicitacao}
         />
         <p className="text-[11px] text-gray-400 mt-2 text-center">
-          Cor cheia = dia <strong>fechado</strong> (confirmado) · apagado = ainda <strong>previsto</strong> · 🔒 = gorjeta paga (não muda mais) · ⏳ = ajuste pendente.
+          Cor cheia = dia <strong>fechado</strong> (confirmado) · apagado = ainda <strong>previsto</strong> · <Lock size={11} className="inline align-[-1px]"/> = gorjeta paga (não muda mais) · <Hourglass size={11} className="inline align-[-1px]"/> = ajuste pendente.
           {podeSolicitar && " Toque num dia pra solicitar ajuste."}
         </p>
       </div>
@@ -254,8 +255,8 @@ function CalendarGrid({
     const conteudo = (
       <>
         {/* 🔒 = gorjeta paga (dia travado); ⏳ = pedido pendente */}
-        {paga && <span className="absolute top-0.5 right-0.5 text-[8px] opacity-90 leading-none">🔒</span>}
-        {pend && <span className="absolute top-0.5 left-0.5 text-[9px] leading-none">⏳</span>}
+        {paga && <span className="absolute top-0.5 right-0.5 opacity-90 leading-none"><Lock size={9}/></span>}
+        {pend && <span className="absolute top-0.5 left-0.5 leading-none"><Hourglass size={9}/></span>}
         <div className={`text-[9px] ${info ? "opacity-80" : "text-gray-500"}`}>
           {pad2(d)}{isWeekend && !info ? <span className="text-amber-600">·</span> : null}
         </div>
@@ -281,7 +282,7 @@ function StatusEscalaBanner({ escala }: { escala: EscalaMes | null }) {
   if (escala?.fechadoEm) {
     return (
       <div className="rounded-lg border border-sky-200 dark:border-sky-800/40 bg-sky-50 dark:bg-sky-900/20 p-3 flex items-start gap-2">
-        <span className="text-base shrink-0">🔒</span>
+        <span className="shrink-0 mt-0.5"><Lock size={16}/></span>
         <div className="text-xs text-sky-900 dark:text-sky-200">
           <p className="font-bold">Mês finalizado</p>
           <p className="mt-0.5">
@@ -295,7 +296,7 @@ function StatusEscalaBanner({ escala }: { escala: EscalaMes | null }) {
   if (escala?.previstaFechadaEm) {
     return (
       <div className="rounded-lg border border-emerald-200 dark:border-emerald-800/40 bg-emerald-50 dark:bg-emerald-900/20 p-3 flex items-start gap-2">
-        <span className="text-base shrink-0">✅</span>
+        <span className="shrink-0 mt-0.5"><CheckSquare size={16}/></span>
         <div className="text-xs text-emerald-900 dark:text-emerald-200">
           <p className="font-bold">Escala prevista oficial</p>
           <p className="mt-0.5">
@@ -309,7 +310,7 @@ function StatusEscalaBanner({ escala }: { escala: EscalaMes | null }) {
   }
   return (
     <div className="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/20 p-3 flex items-start gap-2">
-      <span className="text-base shrink-0">⏳</span>
+      <span className="shrink-0 mt-0.5"><Hourglass size={16}/></span>
       <div className="text-xs text-amber-900 dark:text-amber-200">
         <p className="font-bold">Ainda não é a escala prevista oficial</p>
         <p className="mt-0.5">

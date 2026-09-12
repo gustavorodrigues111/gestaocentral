@@ -21,6 +21,7 @@ import { fmtBR, todayYmd } from "../../core/utils/date";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
+import { Clock, CalendarDays, TriangleAlert } from "lucide-react";
 import type { Cargo, Empregado, HorarioDia, SundayCycle, WorkSchedule } from "../../core/types";
 
 const DIA_NOMES = ["Domingo", "Segunda", "Terça", "Quarta", "Quinta", "Sexta", "Sábado"];
@@ -56,7 +57,7 @@ export function MeusHorariosTab({ empregado, cargo, restaurantId }: Props) {
   if (wsOrdenados.length === 0) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-5xl mb-3">🕐</div>
+        <div className="flex justify-center mb-3"><Clock size={44} className="text-gray-400"/></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">
           Sua jornada de trabalho ainda não foi cadastrada
         </p>
@@ -71,7 +72,7 @@ export function MeusHorariosTab({ empregado, cargo, restaurantId }: Props) {
   if (!wsAtual) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-5xl mb-3">📅</div>
+        <div className="flex justify-center mb-3"><CalendarDays size={44} className="text-gray-400"/></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">
           Nenhuma jornada vigente hoje
         </p>
@@ -191,7 +192,7 @@ function SolicitarHorarioModal({ rid, empregado, criadoPor, onClose }: { rid: st
         <p className="text-[13px] text-gray-500 dark:text-gray-400">Descreva como sua jornada real difere da cadastrada (dias, horários, intervalo, folga…). A gestão revisa e corrige no cadastro.</p>
         <textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={4} placeholder="ex: minha folga mudou de segunda pra quarta · entro 10h e não 12h · não faço mais 2h de intervalo…"
           className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
-        {erro && <div className="text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5">⚠ {erro}</div>}
+        {erro && <div className="text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5 inline-flex items-center gap-1"><TriangleAlert size={12}/> {erro}</div>}
         <div className="flex justify-end gap-2">
           <Button variant="secondary" size="sm" disabled={salvando} onClick={onClose}>Cancelar</Button>
           <Button size="sm" disabled={salvando} onClick={() => void enviar()}>{salvando ? "Enviando…" : "Enviar pedido"}</Button>

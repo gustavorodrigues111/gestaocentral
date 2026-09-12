@@ -6,11 +6,13 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { todayYmd } from "../../core/utils/date";
 import { DATA_FUNDACAO } from "../../core/config/fundacao";
 import type { Cargo, Comunicado, ComunicadoLeitura, Empregado } from "../../core/types";
+import type { LucideIcon } from "lucide-react";
+import { Info, TriangleAlert, Siren, Send, Megaphone } from "lucide-react";
 
-const PRIORIDADE_INFO = {
-  info:    { label: "Info",    icon: "ℹ️", cls: "border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800" },
-  aviso:   { label: "Aviso",   icon: "⚠️", cls: "border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800" },
-  urgente: { label: "Urgente", icon: "🚨", cls: "border-rose-300 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800" },
+const PRIORIDADE_INFO: Record<string, { label: string; icon: LucideIcon; cls: string }> = {
+  info:    { label: "Info",    icon: Info,          cls: "border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800" },
+  aviso:   { label: "Aviso",   icon: TriangleAlert, cls: "border-amber-300 bg-amber-50 dark:bg-amber-900/20 dark:border-amber-800" },
+  urgente: { label: "Urgente", icon: Siren,         cls: "border-rose-300 bg-rose-50 dark:bg-rose-900/20 dark:border-rose-800" },
 };
 
 type Props = {
@@ -96,7 +98,7 @@ export function ComunicadosTab({ empregado, cargo, restaurantId }: Props) {
     <div className="space-y-3">
       {naoLidos > 0 && (
         <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 px-3 py-2 text-sm text-indigo-800 dark:text-indigo-300">
-          📨 Você tem <strong>{naoLidos}</strong> comunicado{naoLidos > 1 ? "s" : ""} não lido{naoLidos > 1 ? "s" : ""}.
+          <Send size={13} className="inline align-[-2px] mr-1"/> Você tem <strong>{naoLidos}</strong> comunicado{naoLidos > 1 ? "s" : ""} não lido{naoLidos > 1 ? "s" : ""}.
         </div>
       )}
 
@@ -104,7 +106,7 @@ export function ComunicadosTab({ empregado, cargo, restaurantId }: Props) {
         <div className="text-sm text-gray-500">Carregando...</div>
       ) : visiveis.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">📣</div>
+          <div className="flex justify-center mb-3"><Megaphone size={36} className="text-gray-400"/></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhum comunicado ativo</p>
         </div>
       ) : (
@@ -123,7 +125,7 @@ export function ComunicadosTab({ empregado, cargo, restaurantId }: Props) {
               >
                 <div className="flex items-start justify-between gap-2 mb-2 flex-wrap">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <span className="text-base">{prio.icon}</span>
+                    <span className="inline-flex"><prio.icon size={16}/></span>
                     <h3 className="font-bold text-gray-900 dark:text-gray-100">{c.titulo}</h3>
                     {!lido && (
                       <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-600 text-white font-bold">

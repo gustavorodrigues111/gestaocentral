@@ -3,6 +3,7 @@ import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
+import { Coins } from "lucide-react";
 import {
   daysInMonth, fmtAnoMes, nomeMes, pad2, parseYmd, shiftMonth,
 } from "../../core/utils/date";
@@ -171,7 +172,7 @@ export function MinhasGorjetasTab({ empregado, restaurantId }: Props) {
       {/* Lista de dias */}
       {linhas.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="text-4xl mb-3">💸</div>
+          <div className="flex justify-center mb-3"><Coins size={36} className="text-gray-400"/></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">Sem gorjetas neste mês</p>
           <p className="text-sm text-gray-500 mt-2">
             Quando o restaurante lançar gorjeta dos dias que você trabalhou, aparece aqui.

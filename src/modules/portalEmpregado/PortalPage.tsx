@@ -6,6 +6,8 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import type { Cargo, Empregado } from "../../core/types";
+import type { LucideIcon } from "lucide-react";
+import { CalendarDays, Clock, Coins, Megaphone, MessagesSquare, Lock, SearchX } from "lucide-react";
 import { MinhaEscalaTab } from "./MinhaEscalaTab";
 import { MeusHorariosTab } from "./MeusHorariosTab";
 import { MinhasGorjetasTab } from "./MinhasGorjetasTab";
@@ -67,12 +69,12 @@ export function PortalPage() {
 
   // Tabs disponíveis (filtradas pelas permissões). Cada seção do portal
   // tem ação própria no actionCatalog — master ativa/desativa por perfil.
-  const tabsDisponiveis: { id: Tab; label: string; icon: string }[] = [
-    ...(verEscala      ? [{ id: "escala" as const,      label: "Minha escala",     icon: "📅" }] : []),
-    ...(verHorarios    ? [{ id: "horarios" as const,    label: "Meus horários",    icon: "🕐" }] : []),
-    ...(verGorjetas    ? [{ id: "gorjetas" as const,    label: "Minhas gorjetas",  icon: "💸" }] : []),
-    ...(verComunicados ? [{ id: "comunicados" as const, label: "Comunicados",      icon: "📣" }] : []),
-    ...(verFaleDp      ? [{ id: "faleDp" as const,      label: "Fale com DP",      icon: "🗣️" }] : []),
+  const tabsDisponiveis: { id: Tab; label: string; icon: LucideIcon }[] = [
+    ...(verEscala      ? [{ id: "escala" as const,      label: "Minha escala",     icon: CalendarDays }] : []),
+    ...(verHorarios    ? [{ id: "horarios" as const,    label: "Meus horários",    icon: Clock }] : []),
+    ...(verGorjetas    ? [{ id: "gorjetas" as const,    label: "Minhas gorjetas",  icon: Coins }] : []),
+    ...(verComunicados ? [{ id: "comunicados" as const, label: "Comunicados",      icon: Megaphone }] : []),
+    ...(verFaleDp      ? [{ id: "faleDp" as const,      label: "Fale com DP",      icon: MessagesSquare }] : []),
   ];
 
   // Deep-link: /portal/:rid/:tab abre direto na aba (os módulos de Minhas
@@ -102,7 +104,7 @@ export function PortalPage() {
   if (!podeAcessarPortal) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3"><Lock size={36} className="text-gray-400"/></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">
           Sem acesso ao Portal do Empregado
         </p>
@@ -118,7 +120,7 @@ export function PortalPage() {
   if (!empregado) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🤷</div>
+        <div className="flex justify-center mb-3"><SearchX size={36} className="text-gray-400"/></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">
           Você não é equipe deste restaurante
         </p>
@@ -134,7 +136,7 @@ export function PortalPage() {
   if (tabsDisponiveis.length === 0) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3"><Lock size={36} className="text-gray-400"/></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">
           Portal sem seções liberadas
         </p>

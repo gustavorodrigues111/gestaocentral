@@ -6,6 +6,7 @@ import { addDoc, collection } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
+import { Lock, TriangleAlert } from "lucide-react";
 import type { Empregado, ScheduleStatus } from "../../core/types";
 
 const STATUS_OPCOES: { id: ScheduleStatus; label: string }[] = [
@@ -71,7 +72,7 @@ export function SolicitarAjusteModal({ rid, empregado, criadoPor, data, statusAt
 
         {gorjetaPaga ? (
           <div className="rounded-lg border border-rose-200 dark:border-rose-800/40 bg-rose-50 dark:bg-rose-900/20 p-3 text-[13px] text-rose-900 dark:text-rose-200">
-            🔒 A <strong>gorjeta deste dia já foi paga</strong>, então ele não pode mais ser alterado. Se houver um erro, fale direto com a gestão.
+            <Lock size={13} className="inline align-[-2px] mr-1"/>A <strong>gorjeta deste dia já foi paga</strong>, então ele não pode mais ser alterado. Se houver um erro, fale direto com a gestão.
           </div>
         ) : jaPendente ? (
           <div className="rounded-lg border border-amber-200 dark:border-amber-800/40 bg-amber-50 dark:bg-amber-900/20 p-3 text-[13px] text-amber-900 dark:text-amber-200">
@@ -102,7 +103,7 @@ export function SolicitarAjusteModal({ rid, empregado, criadoPor, data, statusAt
                 className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
             </div>
 
-            {erro &&<div className="text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5">⚠ {erro}</div>}
+            {erro &&<div className="text-[12px] text-rose-700 bg-rose-50 border border-rose-200 rounded-lg px-3 py-1.5 inline-flex items-center gap-1"><TriangleAlert size={12}/> {erro}</div>}
 
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="secondary" size="sm" disabled={salvando} onClick={onClose}>Cancelar</Button>
