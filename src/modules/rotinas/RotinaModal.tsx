@@ -46,7 +46,10 @@ export function RotinaModal({ rid, rotina, pessoas, modulosAtivos, meId, meNome,
   const [responsaveis, setResponsaveis] = useState<string[]>(rotina?.responsaveis || []);
   const [buscaResp, setBuscaResp] = useState("");
   const [rec, setRec] = useState<RotinaRecorrencia>(rotina?.recorrencia || { tipo: "semanal", diasSemana: [2] });
-  const [notificarWa, setNotificarWa] = useState(rotina?.notificarWhatsapp || false);
+  const [disparo, setDisparo] = useState<"sempre" | "com_pendencia" | "nunca">(rotina?.disparo || (rotina && !rotina.notificarWhatsapp && !rotina.notificarCentral && !rotina.notificarEmail ? "sempre" : rotina?.disparo || "sempre"));
+  const [canalCentral, setCanalCentral] = useState(rotina ? (rotina.notificarCentral ?? false) : true);
+  const [canalWa, setCanalWa] = useState(rotina?.notificarWhatsapp || false);
+  const [canalEmail, setCanalEmail] = useState(rotina?.notificarEmail || false);
   const [whatsappHora, setWhatsappHora] = useState(rotina?.whatsappHora || "07:00");
   const [respeitarFolga, setRespeitarFolga] = useState(rotina?.respeitarFolga ?? true);
   const [salvando, setSalvando] = useState(false);
@@ -109,9 +112,12 @@ export function RotinaModal({ rid, rotina, pessoas, modulosAtivos, meId, meNome,
         responsaveis,
         responsaveisNomes: nomes,
         recorrencia: rec,
-        notificarWhatsapp: notificarWa || undefined,
-        whatsappHora: notificarWa ? whatsappHora : undefined,
-        respeitarFolga: notificarWa ? respeitarFolga : undefined,
+        disparo,
+        notificarCentral: disparo !== "nunca" ? canalCentral : undefined,
+        notificarWhatsapp: disparo !== "nunca" ? canalWa : undefined,
+        notificarEmail: disparo !== "nunca" ? canalEmail : undefined,
+        whatsappHora: disparo !== "nunca" && (canalWa || canalEmail || canalCentral) ? whatsappHora : undefined,
+        respeitarFolga: disparo !== "nunca" ? respeitarFolga : undefined,
         ativo: rotina?.ativo ?? true,
         criadoEm: rotina?.criadoEm || now,
         criadoPor: rotina?.criadoPor || meId,
@@ -251,35 +257,40 @@ export function RotinaModal({ rid, rotina, pessoas, modulosAtivos, meId, meNome,
           </div>
         </Secao>
 
-        {/* Aviso por WhatsApp */}
-        <Secao titulo="Aviso por WhatsApp">
-          <label className="flex items-center gap-2 cursor-pointer">
-            <input type="checkbox" checked={notificarWa} onChange={e => setNotificarWa(e.target.checked)} className="accent-emerald-600 w-4 h-4" />
-            <span className="text-sm text-gray-900 dark:text-gray-100">Avisar os responsáveis no WhatsApp no dia que vence</span>
-          </label>
-          {notificarWa && (
-            <div className="mt-3 rounded-lg bg-emerald-50/60 dark:bg-emerald-900/10 border border-emerald-100 dark:border-emerald-900/30 p-3 space-y-3">
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm text-gray-700 dark:text-gray-300">Enviar às</span>
-                <input type="time" step={1800} value={whatsappHora} onChange={e => setWhatsappHora(e.target.value)}
-                  className="px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
-                <span className="text-[11px] text-gray-500">(horário de Brasília, de 30 em 30 min)</span>
+        {/* Como avisar (disparo + canais) */}
+        <Secao titulo="Como avisar">
+          <div className="flex flex-col gap-1.5">
+            <span className="text-[12px] font-semibold text-gray-600 dark:text-gray-300">Quando disparar</span>
+            {([["sempre", "Sempre (venceu, avisa — com ou sem pendência)"], ["com_pendencia", "Só com pendência (avisa só se houver algo pendente no módulo)"], ["nunca", "Nunca (não avisa por canal nenhum)"]] as const).map(([v, label]) => (
+              <label key={v} className="flex items-center gap-2 cursor-pointer text-sm text-gray-800 dark:text-gray-200">
+                <input type="radio" name="disparo" checked={disparo === v} onChange={() => setDisparo(v)} className="accent-indigo-600" />
+                {label}
+              </label>
+            ))}
+          </div>
+          {disparo === "com_pendencia" && !moduloAlvo && <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">⚠ Escolha o módulo acima — a pendência é contada a partir dele. (Sem contador, avisa como "sempre".)</p>}
+          {disparo !== "nunca" && (
+            <div className="mt-3 rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-800 p-3 space-y-3">
+              <div className="flex flex-col gap-1.5">
+                <span className="text-[12px] font-semibold text-gray-600 dark:text-gray-300">Por onde avisar</span>
+                <label className="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" checked={canalCentral} onChange={e => setCanalCentral(e.target.checked)} className="accent-indigo-600 w-4 h-4" /> 🔔 Central de Avisos (no app)</label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" checked={canalWa} onChange={e => setCanalWa(e.target.checked)} className="accent-emerald-600 w-4 h-4" /> 💬 WhatsApp</label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" checked={canalEmail} onChange={e => setCanalEmail(e.target.checked)} className="accent-sky-600 w-4 h-4" /> ✉️ E-mail</label>
               </div>
+              {(canalWa || canalEmail) && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-sm text-gray-700 dark:text-gray-300">Enviar às</span>
+                  <input type="time" step={1800} value={whatsappHora} onChange={e => setWhatsappHora(e.target.value)} className="px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                  <span className="text-[11px] text-gray-500">(Brasília, de 30 em 30 min)</span>
+                </div>
+              )}
               <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={respeitarFolga} onChange={e => setRespeitarFolga(e.target.checked)} className="accent-emerald-600 w-4 h-4" />
+                <input type="checkbox" checked={respeitarFolga} onChange={e => setRespeitarFolga(e.target.checked)} className="accent-indigo-600 w-4 h-4" />
                 <span className="text-sm text-gray-700 dark:text-gray-300">Não avisar quem está de folga/férias na escala do dia</span>
               </label>
-              {(() => {
+              {canalWa && selecionadas.length > 0 && (() => {
                 const semZap = selecionadas.filter(p => !p.whatsapp);
-                const recusaram = selecionadas.filter(p => p.whatsapp && p.whatsappOptIn === false);
-                if (selecionadas.length === 0) return <p className="text-[11px] text-amber-700 dark:text-amber-400">Escolha os responsáveis acima pra eles receberem.</p>;
-                return (
-                  <div className="text-[11px] text-gray-500 dark:text-gray-400 space-y-0.5">
-                    {semZap.length > 0 && <p>⚠ Sem WhatsApp cadastrado (não recebem): {semZap.map(p => p.nome).join(", ")}</p>}
-                    {recusaram.length > 0 && <p>🔕 Recusaram avisos: {recusaram.map(p => p.nome).join(", ")}</p>}
-                    {semZap.length === 0 && recusaram.length === 0 && <p className="text-emerald-700 dark:text-emerald-400">✓ Todos os responsáveis têm WhatsApp e recebem.</p>}
-                  </div>
-                );
+                return semZap.length > 0 ? <p className="text-[11px] text-amber-700 dark:text-amber-400">⚠ Sem WhatsApp (não recebem no zap): {semZap.map(p => p.nome).join(", ")}</p> : null;
               })()}
             </div>
           )}

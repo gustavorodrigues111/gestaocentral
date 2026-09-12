@@ -3754,6 +3754,11 @@ export type Rotina = {
   // Aviso por WhatsApp: no dia em que a rotina vence, o cron manda o template
   // lembrete_rotina pros responsáveis que ainda não concluíram.
   notificarWhatsapp?: boolean;
+  notificarCentral?: boolean;      // aparece na Central de Avisos (default: true)
+  notificarEmail?: boolean;        // dispara e-mail
+  // Condição de disparo dos canais: "sempre" = toda ocorrência; "com_pendencia" =
+  // só quando o módulo alvo tem pendência (ver contadoresPendencia); "nunca" = não avisa.
+  disparo?: "sempre" | "com_pendencia" | "nunca";
   whatsappHora?: string;           // "HH:MM" (horário de Brasília) — quando disparar
   respeitarFolga?: boolean;        // não avisar quem está de folga/férias na escala do dia
   ativo: boolean;
