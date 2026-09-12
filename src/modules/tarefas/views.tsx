@@ -1154,7 +1154,7 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
                   className={`p-2 rounded-md border hover:shadow-sm flex items-center gap-2 bg-white dark:bg-gray-900 border-rose-200 dark:border-rose-900/40 ${arrastavel ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${draggingId === t.id ? "opacity-50" : ""}`}
                   style={{ borderLeftWidth: 3, borderLeftColor: cor }}>
                   {arrastavel && <span className="text-gray-300 dark:text-gray-600 select-none" title="Arraste pra um dia">⠿</span>}
-                  <span style={{ color: cor }}>{proj?.emoji}</span>
+                  {proj && <AreaIcone proj={proj} size={14} />}
                   <span className="flex-1">{t.titulo}</span>
                   <span className="text-[10px] text-rose-600 dark:text-rose-400">{fmtBR(t.prazo)}</span>
                 </div>
@@ -1177,8 +1177,8 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
               const proj = projetos.find(p => p.id === t.projetoId);
               const cor = t.corHerdada || proj?.cor || "#6b7280";
               return (
-                <div key={t.id} onClick={() => onAbrir(t.id)} className="p-2 rounded-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 cursor-pointer hover:shadow-sm" style={{ borderLeftWidth: 3, borderLeftColor: cor }}>
-                  <span style={{ color: cor }}>{proj?.emoji}</span> {t.titulo}
+                <div key={t.id} onClick={() => onAbrir(t.id)} className="p-2 rounded-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 cursor-pointer hover:shadow-sm flex items-center gap-1.5" style={{ borderLeftWidth: 3, borderLeftColor: cor }}>
+                  {proj && <AreaIcone proj={proj} size={14} />} {t.titulo}
                 </div>
               );
             })}
@@ -1244,8 +1244,8 @@ export function LixeiraView({ tarefas, projetos, autor }: {
             />
             <div className="flex-1 min-w-0">
               <div className="font-medium text-gray-900 dark:text-gray-100 line-through">{t.titulo}</div>
-              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                {proj?.emoji} {proj?.nome} · deletada em {fmtBR(t.deletadoEm)}
+              <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 inline-flex items-center gap-1">
+                {proj && <AreaIcone proj={proj} size={12} />} {proj?.nome} · deletada em {fmtBR(t.deletadoEm)}
                 {t.motivoDelete && ` · motivo: ${t.motivoDelete}`}
               </div>
               <div className="mt-2">

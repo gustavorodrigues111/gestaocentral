@@ -19,7 +19,7 @@ import { parseCSV, mapearLinhas, executarImport, detectarOrfas, type LinhaImport
 import { pickDriveFolder, pickDriveFile } from "../../core/google/drivePicker";
 import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal";
 import { DatePickerBR } from "../prazos/campos";
-import { CoRespPicker, FieldRow, PessoasMultiPicker, UsuariosAutorizadosPicker, brParaYmd, mudarStatusComErro, ymdParaBr } from "./helpers";
+import { CoRespPicker, FieldRow, PessoasMultiPicker, UsuariosAutorizadosPicker, brParaYmd, mudarStatusComErro, ymdParaBr, AreaIcone } from "./helpers";
 
 // Modal: lista os restaurantes do user e ao escolher, navega pra
 // /r/{escolhido}/{rota}. Usado pelo banner quando o sub não tem rest
@@ -310,7 +310,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
                   return (
                     <button key={p.id} type="button" onClick={() => setProjetoId(p.id)}
                       className={`px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
-                      {p.emoji} {p.nome}
+                      <span className="inline-flex items-center gap-1"><AreaIcone proj={p} size={13} /> {p.nome}</span>
                     </button>
                   );
                 })}
@@ -778,7 +778,7 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
                   return (
                     <button key={p.id} type="button" onClick={() => { if (!on) trocarProjeto(p.id); }}
                       className={`px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
-                      {p.emoji} {p.nome}
+                      <span className="inline-flex items-center gap-1"><AreaIcone proj={p} size={13} /> {p.nome}</span>
                     </button>
                   );
                 })}
