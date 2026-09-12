@@ -2,6 +2,7 @@
 // Lista perfis (built-in + custom) + editor inline com UI subtrativa.
 
 import { useEffect, useMemo, useState } from "react";
+import { Check } from "lucide-react";
 import { collection, doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -10,7 +11,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { useTodasPessoas } from "../../core/pessoas/PessoasContext";
 import { CATALOGO, type CatalogoModulo } from "../../core/auth/actionCatalog";
-import { SETORES } from "../../core/wiki/setores";
+import { SETORES, SETOR_ICON } from "../../core/wiki/setores";
 import { MODULES, AREA_INFO, getModule } from "../../config/modules";
 import { ModuleIcon } from "../../core/ui/ModuleIcon";
 import type { ModuleArea, Pessoa } from "../../core/types";
@@ -530,11 +531,12 @@ function PerfilEditor({ perfil, isNew, restaurantes, pessoas, perfis, onSalvar, 
         <div className="flex flex-wrap gap-1.5">
           {SETORES.map(s => {
             const on = (form.wikiSetores || []).includes(s.id);
+            const Ic = SETOR_ICON[s.id];
             return (
               <button key={s.id} type="button"
                 onClick={() => setForm(f => { const cur = f.wikiSetores || []; return { ...f, wikiSetores: on ? cur.filter(x => x !== s.id) : [...cur, s.id] }; })}
-                className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${on ? `${s.cls} border-transparent` : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800"}`}>
-                {on ? "✓ " : ""}{s.icon} {s.label}
+                className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${on ? `${s.cls} border-transparent` : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800"}`}>
+                {on ? <Check size={13} /> : null}{Ic ? <Ic size={13} /> : null} {s.label}
               </button>
             );
           })}

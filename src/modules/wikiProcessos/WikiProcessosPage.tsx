@@ -19,10 +19,18 @@ import { useDitado } from "../../core/hooks/useDitado";
 import { transcreverAudio } from "../../core/hooks/transcreverAudio";
 import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
-import { WIKI_AREAS, GUIA_SEED, tipoDeArquivo, TIPO_ICON, type WikiAreaKey, type WikiAreaMeta, type WikiGuia, type WikiDoc } from "../../core/wiki/areas";
+import { Paperclip } from "lucide-react";
+import { WIKI_AREAS, GUIA_SEED, tipoDeArquivo, TIPO_ICON, AREA_ICON, type WikiAreaKey, type WikiAreaMeta, type WikiGuia, type WikiDoc } from "../../core/wiki/areas";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+
+// Ícone lucide da área (colore com a cor de acento da área). Render helper pra
+// substituir o emoji legado nos cards/cabeçalhos da Wiki.
+function AreaIcon({ area, size = 20 }: { area: WikiAreaMeta; size?: number }) {
+  const Ic = AREA_ICON[area.key];
+  return <Ic size={size} style={{ color: area.cor }} className="inline-block shrink-0" />;
+}
 
 // Achata o guia HTML em texto puro pra mandar de contexto pro agente da área.
 function htmlToTexto(html: string): string {
@@ -102,7 +110,7 @@ export function WikiProcessosPage() {
               <div key={a.key} className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 flex flex-col"
                 style={{ borderTopWidth: 3, borderTopColor: a.cor }}>
                 <div className="flex items-start gap-3">
-                  <div className="text-3xl leading-none">{a.emoji}</div>
+                  <div className="leading-none"><AreaIcon area={a} size={30} /></div>
                   <div className="min-w-0 flex-1">
                     <div className="font-bold text-gray-900 dark:text-gray-100">{a.nome}</div>
                     <div className="text-xs text-gray-500 dark:text-gray-400">{a.desc}</div>
@@ -148,7 +156,7 @@ function GuiaViewerModal({ area, html, onClose }: { area: WikiAreaMeta; html: st
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex flex-col" onClick={onClose}>
       <div className="flex items-center justify-between gap-2 px-4 py-2 bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800" onClick={e => e.stopPropagation()}>
-        <div className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">{area.emoji} Guia — {area.nome}</div>
+        <div className="font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2"><AreaIcon area={area} size={18} /> Guia — {area.nome}</div>
         <button type="button" onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none px-2">✕</button>
       </div>
       <iframe
@@ -218,7 +226,7 @@ function AreaChatModal({ area, fonteTexto, nDocs, diretrizes, rid, pessoaId, pes
       <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl flex flex-col max-h-[88vh]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-2 p-4 border-b border-gray-100 dark:border-gray-800">
           <div className="min-w-0">
-            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{area.emoji} Assistente de {area.nome}</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><AreaIcon area={area} size={20} /> Assistente de {area.nome}</h2>
             <div className="text-xs text-gray-500">Respostas a partir do guia{nDocs > 0 ? ` e de ${nDocs} ${nDocs === 1 ? "documento" : "documentos"} do acervo` : " de funcionamento da área"}.</div>
             <div className="text-[10px] text-gray-400 mt-0.5">🔒 LGPD: as interações com a IA são registradas.</div>
           </div>
@@ -311,7 +319,7 @@ function GuiaUploadModal({ area, atual, temSeed, pessoaId, pessoaNome, onClose }
       <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-2 p-4 border-b border-gray-100 dark:border-gray-800">
           <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{area.emoji} Guia — {area.nome}</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><AreaIcon area={area} size={20} /> Guia — {area.nome}</h2>
             <div className="text-xs text-gray-500">Suba o arquivo <b>.html</b> ou cole o HTML. Salva na hora, sem deploy.</div>
           </div>
           <button type="button" onClick={onClose} className="shrink-0 text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
@@ -426,7 +434,7 @@ function AcervoModal({ area, docs, podeEditar, pessoaId, pessoaNome, onClose }: 
       <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl w-full sm:max-w-2xl flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
         <div className="flex items-start justify-between gap-2 p-4 border-b border-gray-100 dark:border-gray-800">
           <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">{area.emoji} Acervo — {area.nome}</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><AreaIcon area={area} size={20} /> Acervo — {area.nome}</h2>
             <div className="text-xs text-gray-500">Documentos de referência que o assistente de {area.nome} consulta (regulamento, convenção, modelos…).</div>
           </div>
           <button type="button" onClick={onClose} className="shrink-0 text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
@@ -438,7 +446,7 @@ function AcervoModal({ area, docs, podeEditar, pessoaId, pessoaNome, onClose }: 
           )}
           {docs.map(d => (
             <div key={d.id} className="flex items-center gap-3 rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2">
-              <div className="text-xl">{TIPO_ICON[d.tipo] || "📎"}</div>
+              <div className="text-gray-500 dark:text-gray-400">{(() => { const Ic = TIPO_ICON[d.tipo] || Paperclip; return <Ic size={20} />; })()}</div>
               <div className="min-w-0 flex-1">
                 <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{d.nome}</div>
                 <div className="text-[11px] text-gray-400">

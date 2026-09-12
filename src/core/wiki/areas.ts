@@ -7,6 +7,7 @@
 // Catálogo FIXO e universal ao grupo (escritório Quibebe atende as operações). Pra
 // adicionar uma área nova, inclua aqui — é o único ponto de verdade.
 
+import { Users, Banknote, Package, PartyPopper, FileText, Globe, Image, Paperclip, type LucideIcon } from "lucide-react";
 import pessoasGuiaSeed from "../../modules/wikiProcessos/guias/pessoas.html?raw";
 
 export type WikiAreaKey = "pessoas" | "financeiro" | "compras" | "eventos";
@@ -14,17 +15,22 @@ export type WikiAreaKey = "pessoas" | "financeiro" | "compras" | "eventos";
 export type WikiAreaMeta = {
   key: WikiAreaKey;
   nome: string;
-  emoji: string;
   cor: string;        // cor de acento do card
   desc: string;       // subtítulo curto do card
 };
 
 export const WIKI_AREAS: WikiAreaMeta[] = [
-  { key: "pessoas",    nome: "Pessoas",    emoji: "👥", cor: "#4F46E5", desc: "DP, RH e ciclo de vida do empregado" },
-  { key: "financeiro", nome: "Financeiro", emoji: "💰", cor: "#10B981", desc: "Contas, fechamento e pagamentos" },
-  { key: "compras",    nome: "Compras",    emoji: "📦", cor: "#F97316", desc: "Abastecimento, fornecedores e estoque" },
-  { key: "eventos",    nome: "Eventos",    emoji: "🎉", cor: "#EC4899", desc: "Captação, propostas e execução de eventos" },
+  { key: "pessoas",    nome: "Pessoas",    cor: "#4F46E5", desc: "DP, RH e ciclo de vida do empregado" },
+  { key: "financeiro", nome: "Financeiro", cor: "#10B981", desc: "Contas, fechamento e pagamentos" },
+  { key: "compras",    nome: "Compras",    cor: "#F97316", desc: "Abastecimento, fornecedores e estoque" },
+  { key: "eventos",    nome: "Eventos",    cor: "#EC4899", desc: "Captação, propostas e execução de eventos" },
 ];
+
+// Ícone lucide por área (render como <Icone/>). Mapa paralelo pra não pôr JSX
+// neste .ts nem carregar emoji na struct.
+export const AREA_ICON: Record<WikiAreaKey, LucideIcon> = {
+  pessoas: Users, financeiro: Banknote, compras: Package, eventos: PartyPopper,
+};
 
 export const areaMeta = (k?: string): WikiAreaMeta | undefined => WIKI_AREAS.find(a => a.key === k);
 
@@ -74,6 +80,7 @@ export function tipoDeArquivo(mime: string, nome: string): WikiDocTipo {
   return "outro";
 }
 
-export const TIPO_ICON: Record<WikiDocTipo, string> = {
-  pdf: "📕", html: "🌐", texto: "📄", imagem: "🖼️", outro: "📎",
+// Ícone lucide por tipo de documento do acervo (render como <Icone/>).
+export const TIPO_ICON: Record<WikiDocTipo, LucideIcon> = {
+  pdf: FileText, html: Globe, texto: FileText, imagem: Image, outro: Paperclip,
 };

@@ -54,8 +54,8 @@ export const MODULES: ModuleDef[] = [
   { id: "horarios",    area: "ops", subarea: "Informações Básicas",   label: "Funcionamento",   icon: "store", status: "ativo", etapa: "beta", desc: "Horário de funcionamento + datas especiais + janelas de reserva" },
 
   // ── ocultos (operação) ───────────────────────────────────────────
-  { id: "temperaturas", area: "ops", label: "Temperaturas",      icon: "🌡️", status: "planejado", etapa: "em_desenvolvimento", desc: "Monitoramento e alertas", oculto: true },
-  { id: "whatsappInbox", area: "ops", label: "WhatsApp (inbox legado)", icon: "💬", status: "ativo", etapa: "em_desenvolvimento", desc: "Caixa de entrada do WhatsApp do planejamento.app — agora dentro da Central de Avisos › WhatsApp", oculto: true },
+  { id: "temperaturas", area: "ops", label: "Temperaturas",      icon: "thermometer", status: "planejado", etapa: "em_desenvolvimento", desc: "Monitoramento e alertas", oculto: true },
+  { id: "whatsappInbox", area: "ops", label: "WhatsApp (inbox legado)", icon: "message-circle", status: "ativo", etapa: "em_desenvolvimento", desc: "Caixa de entrada do WhatsApp do planejamento.app — agora dentro da Central de Avisos › WhatsApp", oculto: true },
 
   // ═══ 👥 PESSOAS & DP ═══
 
@@ -78,23 +78,23 @@ export const MODULES: ModuleDef[] = [
   { id: "escala",      area: "dp", subarea: "Ponto & Jornada",        label: "Escala Mensal",   icon: "calendar-range", status: "ativo", etapa: "beta", desc: "Planejamento de escalas mensais", dependsOn: ["pessoas"] },
   { id: "ptrp",        area: "dp", subarea: "Ponto & Jornada",        label: "Ponto (PTRP)",    icon: "fingerprint", status: "ativo", etapa: "beta", desc: "Programa de Tratamento de Registro de Ponto (Portaria 671): conferência/apuração, banco de horas, sincronização das batidas do Sólides, regras (CCT), espelho de ponto e AEJ.", dependsOn: ["escala", "pessoas"] },
   { id: "analise-ponto", area: "dp", subarea: "Ponto & Jornada",      label: "Análise de Ponto", icon: "chart-column", status: "ativo", etapa: "beta", desc: "Análise de inconsistências de ponto (Sólides) — A Corrigir × A Avaliar, jornada flexível. Substitui Exceções quando estável.", dependsOn: [] },
-  { id: "excecoes",    area: "dp", subarea: "Ponto & Jornada",        label: "Registros de Ponto", icon: "🕐", status: "ativo", etapa: "beta", desc: "Cruzamento de ponto (Sólides) com Planejamento", dependsOn: ["escala", "pessoas"], oculto: true, descontinuado: true },
+  { id: "excecoes",    area: "dp", subarea: "Ponto & Jornada",        label: "Registros de Ponto", icon: "clock", status: "ativo", etapa: "beta", desc: "Cruzamento de ponto (Sólides) com Planejamento", dependsOn: ["escala", "pessoas"], oculto: true, descontinuado: true },
 
   // ── Folha de Pagamento ───────────────────────────────────────────
   { id: "beneficios2", area: "dp", subarea: "Folha de Pagamento",     label: "Benefícios",      icon: "gift", status: "ativo", etapa: "beta", desc: "Módulo único de benefícios: VT + VR + auxílio fixo por lote, valor diário × dias da escala, Caju/Pix. Substitui VT, VR e o Benefícios antigo.", dependsOn: ["pessoas", "escala"] },
   { id: "gorjetas",    area: "dp", subarea: "Folha de Pagamento",     label: "Gorjetas",        icon: "coins", status: "ativo", etapa: "beta", desc: "Lançamento e divisão de gorjetas", dependsOn: ["pessoas", "escala"] },
   { id: "folhas",      area: "dp", subarea: "Folha de Pagamento",     label: "Conferência de Folhas", icon: "receipt-text", status: "ativo", etapa: "em_desenvolvimento", desc: "Agente auditor: sobe os espelhos da folha (Senador), a IA extrai e o motor de regras confere contra gorjeta, adiantamento (verba 953) e integridade. Reporta só os erros (P0/P1/P2), não o que está certo.", dependsOn: ["pessoas", "gorjetas"] },
-  { id: "beneficios",  area: "dp", subarea: "Folha de Pagamento",     label: "Benefícios (antigo)", icon: "🎁", status: "ativo", etapa: "beta", oculto: true, desc: "Legado — substituído pelo módulo Benefícios. Oculto; histórico preservado.", dependsOn: ["pessoas", "escala"] },
-  { id: "vt",          area: "dp", subarea: "Folha de Pagamento",     label: "Vale Transporte", icon: "🚌", status: "ativo", etapa: "beta", oculto: true, desc: "Legado — VT agora vive dentro do módulo Benefícios. Oculto; histórico preservado.", dependsOn: ["pessoas", "escala"] },
-  { id: "vr",          area: "dp", subarea: "Folha de Pagamento",     label: "Vale Refeição",   icon: "🍱", status: "ativo", etapa: "beta", oculto: true, desc: "Legado — VR agora vive dentro do módulo Benefícios. Oculto; histórico preservado.", dependsOn: ["pessoas", "escala"] },
+  { id: "beneficios",  area: "dp", subarea: "Folha de Pagamento",     label: "Benefícios (antigo)", icon: "gift", status: "ativo", etapa: "beta", oculto: true, desc: "Legado — substituído pelo módulo Benefícios. Oculto; histórico preservado.", dependsOn: ["pessoas", "escala"] },
+  { id: "vt",          area: "dp", subarea: "Folha de Pagamento",     label: "Vale Transporte", icon: "bus", status: "ativo", etapa: "beta", oculto: true, desc: "Legado — VT agora vive dentro do módulo Benefícios. Oculto; histórico preservado.", dependsOn: ["pessoas", "escala"] },
+  { id: "vr",          area: "dp", subarea: "Folha de Pagamento",     label: "Vale Refeição",   icon: "utensils", status: "ativo", etapa: "beta", oculto: true, desc: "Legado — VR agora vive dentro do módulo Benefícios. Oculto; histórico preservado.", dependsOn: ["pessoas", "escala"] },
 
   // ── Saúde & Equipamentos ─────────────────────────────────────────
   { id: "exames",      area: "dp", subarea: "Saúde & Equipamentos",   label: "Exames Médicos",  icon: "stethoscope", status: "ativo", etapa: "beta", desc: "Exames periódicos dos empregados (Clínico, Coprocultura) com fluxo de agendamento, acompanhamento e baixa", dependsOn: ["pessoas"] },
   { id: "uniformes",   area: "dp", subarea: "Saúde & Equipamentos",   label: "Uniformes & EPIs", icon: "shirt", status: "ativo", etapa: "beta", desc: "Catálogo, estoque, entregas e termos de uniformes e EPIs", dependsOn: ["pessoas"] },
 
   // ── ocultos (dp) ─────────────────────────────────────────────────
-  { id: "fechamentoEscala", area: "dp", label: "Fechamento Escala", icon: "🔒", status: "planejado", etapa: "em_desenvolvimento", desc: "Não é módulo — já é função dentro da Escala", dependsOn: ["escala", "gorjetas"], oculto: true },
-  { id: "faleDp",      area: "dp", label: "Fale com DP",         icon: "💬", status: "planejado", etapa: "em_desenvolvimento", desc: "Canal anônimo / suporte ao funcionário", dependsOn: ["pessoas"], oculto: true },
+  { id: "fechamentoEscala", area: "dp", label: "Fechamento Escala", icon: "lock", status: "planejado", etapa: "em_desenvolvimento", desc: "Não é módulo — já é função dentro da Escala", dependsOn: ["escala", "gorjetas"], oculto: true },
+  { id: "faleDp",      area: "dp", label: "Fale com DP",         icon: "message-circle", status: "planejado", etapa: "em_desenvolvimento", desc: "Canal anônimo / suporte ao funcionário", dependsOn: ["pessoas"], oculto: true },
 
   // ═══ 💼 ADMINISTRATIVO ═══
 
@@ -133,7 +133,7 @@ export const MODULES: ModuleDef[] = [
   { id: "configuracoes", area: "inst", subarea: "Configuração",       label: "Configurações",   icon: "settings", status: "ativo", desc: "Configurações do restaurante", oculto: true },
   { id: "conectores",  area: "inst", subarea: "Configuração",         label: "Conectores",      icon: "plug", status: "ativo", etapa: "em_desenvolvimento", desc: "Hub de plataformas externas (GetIn, Altec/Riser, iFood…) que abastecem o app: reservas, vendas/faturamento. Status do último sync por restaurante + forçar sync." },
   // ocultos (configurações)
-  { id: "recursos",    area: "inst", label: "Biblioteca",     icon: "📚", status: "planejado", etapa: "em_desenvolvimento", desc: "Documentos e wiki interna", oculto: true },
+  { id: "recursos",    area: "inst", label: "Biblioteca",     icon: "book-open", status: "planejado", etapa: "em_desenvolvimento", desc: "Documentos e wiki interna", oculto: true },
 
   // ═══ 🛡️ MASTER ═══
   { id: "iaGovernanca", area: "master", subarea: "Master",            label: "Governança de IA", icon: "shield-alert", status: "ativo", etapa: "beta", desc: "Diretrizes do que a IA pode responder, registro jurídico das interações e alertas de uso fora do escopo (LGPD). Só master." },
