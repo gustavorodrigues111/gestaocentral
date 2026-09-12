@@ -1,4 +1,4 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import { Navigate } from "react-router-dom";
 import { Inbox, Layers, Globe, Trash2, Settings, ChevronDown, FolderKanban, Eye, Search } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -209,12 +209,13 @@ export function TarefasPage() {
     return () => u();
   }, [tab]);
 
-  // Todas as tarefas (master) — só ouve quando a aba está aberta.
+  // Todas as tarefas — ouve nas abas "Tudo" (todo mundo, filtrado por
+  // visibilidade) e "Todas" (master). Só assina com a aba aberta.
   useEffect(() => {
-    if (tab !== "todas" || !pessoaReal?.isMaster) return;
+    if (tab !== "todas" && tab !== "tudo") return;
     const u = ouvirTodasTarefas((ts) => setTodasTarefas(semOrfasPrazo(ts)));
     return () => u();
-  }, [tab, pessoaReal?.isMaster]);
+  }, [tab]);
 
   // Tarefas do projeto filtrado, restritas ao que a pessoa pode ver.
   const tarefasProjetoVisiveis = useMemo(
@@ -222,15 +223,27 @@ export function TarefasPage() {
     [tarefasProjeto, projetos, pessoa],
   );
 
+  // "Tudo" = tarefas de TODAS as pessoas que eu posso ver (não só as minhas).
+  const todasTarefasVisiveis = useMemo(
+    () => todasTarefas.filter((t) => podeVerTarefa(t, projetos.find((p) => p.id === t.projetoId), pessoa)),
+    [todasTarefas, projetos, pessoa],
+  );
+
   // `isMaster` reflete o USER REAL (não a pessoa impersonada). Permissão de
   // master pra usar AdminView/Lixeira/Ver-como vem da identidade autêntica.
   // Mas `pessoa` usada nos filtros de visibilidade É a impersonada — pra
   // simular o que ela vê.
   const isMaster = !!pessoaReal?.isMaster;
-  const tarefaSelecionada = useMemo(
-    () => [...minhas, ...tarefasProjeto, ...todasTarefas].find(t => t.id === detalheId) || null,
-    [detalheId, minhas, tarefasProjeto, todasTarefas],
-  );
+  // Enquanto o modal de detalhe está aberto, SEGURA a última tarefa conhecida.
+  // Assim, se ela sair do filtro atual (ex.: eu troquei a ÁREA da tarefa dentro
+  // do modal), o modal NÃO fecha — só some da lista quando eu fechar de fato.
+  const detalheHeldRef = useRef<Tarefa | null>(null);
+  const tarefaSelecionada = useMemo(() => {
+    if (!detalheId) { detalheHeldRef.current = null; return null; }
+    const found = [...minhas, ...tarefasProjeto, ...todasTarefas].find(t => t.id === detalheId);
+    if (found) { detalheHeldRef.current = found; return found; }
+    return detalheHeldRef.current?.id === detalheId ? detalheHeldRef.current : null;
+  }, [detalheId, minhas, tarefasProjeto, todasTarefas]);
 
   // Projetos que esta pessoa pode ver na sidebar. Master vê todos;
   // demais veem só os com visibilidade "publico"/"escritorio", os de que
@@ -420,7 +433,7 @@ export function TarefasPage() {
         <div>
           <div className="mb-2.5 flex items-center gap-x-3 gap-y-2 flex-wrap">
             <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Layers size={18} /> Tudo</h2>
-            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">minhas tarefas · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
+            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{todasTarefasVisiveis.length} tarefa(s) · {todasTarefasVisiveis.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
             <div className="flex-1" />
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
           </div>
@@ -429,9 +442,9 @@ export function TarefasPage() {
             <div className="flex-1" />
             {acoesHeader}
           </div>
-          {viewMinhas === "calendario" && <CalendarioView tarefas={filtrar(minhas)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} />}
-          {viewMinhas === "lista" && <MinhasTarefasView tarefas={filtrar(minhas)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />}
-          {viewMinhas === "kanban" && <KanbanView tarefas={filtrar(minhas)} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />}
+          {viewMinhas === "calendario" && <CalendarioView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} />}
+          {viewMinhas === "lista" && <MinhasTarefasView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />}
+          {viewMinhas === "kanban" && <KanbanView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />}
         </div>
       )}
 
