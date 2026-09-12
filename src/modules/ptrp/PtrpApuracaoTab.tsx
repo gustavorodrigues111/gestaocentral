@@ -357,10 +357,14 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       const descByAjuste = !!(b.punchId && l.descPunch.has(b.punchId));
       const aprovadaTratada = pend && decidido && !!(b.punchId && inclusaoPunch.has(b.punchId));   // pendente aprovada → tratada/incluída
       const reprovada = pend && decidido && !aprovadaTratada;                                       // pendente reprovada → desprezada
+      // A solicitação de correção do empregado NÃO entra no espelho/AEJ enquanto
+      // pendente, e nunca se for reprovada — o dia fica sem batida até a aprovação
+      // (Portaria 671: o oficial só reflete o que foi aprovado).
+      if ((pend && !decidido) || reprovada) continue;
       out.push({
         in: hhmmN(b.dateIn), out: hhmmN(b.dateOut), status: b.status || null,
-        pendente: pend && !decidido,
-        desconsiderada: descByAjuste || reprovada,
+        pendente: false,
+        desconsiderada: descByAjuste,
         origem: aprovadaTratada ? "incluida" : "rep",
         punchId: b.punchId || null,
       });
