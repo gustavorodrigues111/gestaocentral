@@ -278,6 +278,11 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                       </div>
                     );
                   })}
+                  {area === "inst" && (pessoa?.isMaster || canAcaoRid("perfisAcesso", "ver")) && (
+                    <NavLink to="/perfis" onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                      <ModuleIcon name="user-round-cog" size={16} /><span className="flex-1 truncate">Perfis de Acesso</span>
+                    </NavLink>
+                  )}
                 </div>
                 )}
               </div>
@@ -290,7 +295,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           {(pessoa?.isMaster || masterMods.length > 0) && (() => {
             const fechada = colapsadas.has("master");
             const info = AREA_INFO.master;
-            const total = masterMods.length + (pessoa?.isMaster ? 3 : 0);
+            const total = masterMods.length + (pessoa?.isMaster ? 2 : 0);
             const extraCls = ({ isActive }: { isActive: boolean }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`;
             return (
               <div>
@@ -337,9 +342,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                     <>
                       <NavLink to="/arquitetura" onClick={guardedClose} className={extraCls}>
                         <ModuleIcon name="notebook-pen" size={16} /><span className="flex-1 truncate">Caderno</span>
-                      </NavLink>
-                      <NavLink to="/perfis" onClick={guardedClose} className={extraCls}>
-                        <ModuleIcon name="user-round-cog" size={16} /><span className="flex-1 truncate">Perfis de Acesso</span>
                       </NavLink>
                       <NavLink to="/propostas" onClick={guardedClose} className={extraCls}>
                         <ModuleIcon name="file-signature" size={16} /><span className="flex-1 truncate">Propostas</span>
