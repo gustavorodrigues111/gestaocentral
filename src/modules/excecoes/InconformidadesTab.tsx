@@ -50,7 +50,7 @@ import {
   generateExceptionsReport,
   type GenerateReportResult,
 } from "../../core/excecoes/generateReport";
-import { RULES_META } from "../../core/excecoes/rules";
+import { RULES_META, RULE_ICON } from "../../core/excecoes/rules";
 import type {
   ExceptionRecord,
   ExceptionSeverity,
@@ -3723,6 +3723,7 @@ function ColaboradorBlock({
               return listaDedup.map((d, i) => {
                 const e = d.first;
                 const meta = RULES_META[e.ruleId];
+                const RuleIco = RULE_ICON[e.ruleId];
                 const sev = SEVERITY_INFO[e.severity];
                 const ap = apontamentosPorChave.get(`${grupo.empregadoId}_${e.date}_${e.ruleId}`);
                 const statusAp = statusEfetivoApontamento(e.ruleId);
@@ -3766,7 +3767,7 @@ function ColaboradorBlock({
                           className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[11px] font-medium whitespace-nowrap shrink-0 ${sev.badge}`}
                           title={meta.descricaoRegra}
                         >
-                          {meta.icon} {meta.label}
+                          {RuleIco ? <RuleIco size={12} /> : null} {meta.label}
                         </span>
                         {d.count > 1 && (
                           <span

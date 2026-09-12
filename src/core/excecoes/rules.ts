@@ -6,6 +6,7 @@
 //  adiciona em ALL_RULES.
 // ════════════════════════════════════════════════════════════════════════════
 
+import { AlarmClock, UtensilsCrossed, Moon, CalendarDays, DoorOpen, CircleHelp, Check, MapPin, Search, Timer, Construction, Building2, Ban, type LucideIcon } from "lucide-react";
 import type {
   DayContext,
   ExceptionRecord,
@@ -18,8 +19,25 @@ export type RuleMeta = {
   id: ExceptionRuleId;
   label: string;
   severity: ExceptionSeverity;
-  icon: string;
   descricaoRegra: string; // explicação da regra (pra UI / tooltip)
+};
+
+// Ícone lucide por regra (render como <Icone/>). Mapa paralelo — sem JSX no .ts.
+export const RULE_ICON: Record<ExceptionRuleId, LucideIcon> = {
+  jornadaAcimaDe10h: AlarmClock,
+  intervaloMenorQueLegal: UtensilsCrossed,
+  interjornadaCurta: Moon,
+  setePlusDiasSemFolga: CalendarDays,
+  pontoAberto: DoorOpen,
+  faltaSemAjuste: CircleHelp,
+  faltaJustificadaSolides: Check,
+  marcacaoForaDaEscala: MapPin,
+  blocoSuspeito: Search,
+  atrasoEntrada: Timer,
+  entradaProvavelFaltante: Construction,
+  batidasImpares: Construction,
+  divergenciaSolidesEscala: Building2,
+  ativoNoSolidesAposDemissao: Ban,
 };
 
 export const RULES_META: Record<ExceptionRuleId, RuleMeta> = {
@@ -27,98 +45,84 @@ export const RULES_META: Record<ExceptionRuleId, RuleMeta> = {
     id: "jornadaAcimaDe10h",
     label: "Jornada acima de 10h",
     severity: "grave",
-    icon: "⏰",
     descricaoRegra: "Total trabalhado no dia ultrapassa 10h (CLT Art. 59).",
   },
   intervaloMenorQueLegal: {
     id: "intervaloMenorQueLegal",
     label: "Intervalo abaixo do legal",
     severity: "grave",
-    icon: "🍽️",
     descricaoRegra: "Jornada acima de 6h com intervalo menor que 55min (CLT Art. 71 — tolerância 5min sobre 60min legais).",
   },
   interjornadaCurta: {
     id: "interjornadaCurta",
     label: "Interjornada curta",
     severity: "grave",
-    icon: "🌙",
     descricaoRegra: "Menos de 11h entre a saída de um dia e a entrada do próximo (CLT Art. 66).",
   },
   setePlusDiasSemFolga: {
     id: "setePlusDiasSemFolga",
     label: "7+ dias sem folga",
     severity: "grave",
-    icon: "📆",
     descricaoRegra: "7 ou mais dias consecutivos com marcação de ponto (CLT Art. 67 / DSR).",
   },
   pontoAberto: {
     id: "pontoAberto",
     label: "Ponto aberto",
     severity: "aviso",
-    icon: "🚪",
     descricaoRegra: "Bloco de trabalho sem saída registrada (ou saída igual à entrada).",
   },
   faltaSemAjuste: {
     id: "faltaSemAjuste",
     label: "Falta sem ajuste",
     severity: "aviso",
-    icon: "❓",
     descricaoRegra: "Dia escalado como trabalho, sem marcação e sem motivo de ajuste.",
   },
   faltaJustificadaSolides: {
     id: "faltaJustificadaSolides",
     label: "Justificado no Sólides",
     severity: "info",
-    icon: "✓",
     descricaoRegra: "Dia escalado como trabalho, sem marcação, MAS o Sólides tem um ajuste aprovado (atestado, óbito, inversão de folga, etc). Não é inconformidade — só dê ciência.",
   },
   marcacaoForaDaEscala: {
     id: "marcacaoForaDaEscala",
     label: "Marcação fora da escala",
     severity: "aviso",
-    icon: "📍",
     descricaoRegra: "Marcação de ponto num dia não escalado pra trabalho, sem motivo de ajuste.",
   },
   blocoSuspeito: {
     id: "blocoSuspeito",
     label: "Bloco suspeito",
     severity: "info",
-    icon: "🔍",
     descricaoRegra: "Bloco de trabalho com duração menor que 10 minutos.",
   },
   atrasoEntrada: {
     id: "atrasoEntrada",
     label: "Atraso na entrada",
     severity: "aviso",
-    icon: "⏱️",
     descricaoRegra: "Primeira entrada do dia mais de 10min após o horário previsto no quadro da Sólides.",
   },
   entradaProvavelFaltante: {
     id: "entradaProvavelFaltante",
     label: "Entrada provavelmente faltante",
     severity: "aviso",
-    icon: "🚧",
     descricaoRegra: "Primeira batida do dia muito depois do horário previsto (>3h). Provavelmente o empregado esqueceu de bater a entrada inicial e o sistema confundiu a batida seguinte com 'entrada'.",
   },
   batidasImpares: {
     id: "batidasImpares",
     label: "Batida faltando",
     severity: "aviso",
-    icon: "🚧",
     descricaoRegra: "Quantidade ímpar de batidas no dia — uma batida (entrada ou saída) está faltando.",
   },
   divergenciaSolidesEscala: {
     id: "divergenciaSolidesEscala",
     label: "Sólides ≠ Planejamento",
     severity: "aviso",
-    icon: "🏢",
     descricaoRegra: "A escala da Sólides difere do Planejamento naquele dia (típico em empregados com escala alternada A/B — a Sólides só aceita uma semana fixa). Empregado cumpriu o combinado no Planejamento, mas a Sólides vai cobrar errado — ajuste manual lá.",
   },
   ativoNoSolidesAposDemissao: {
     id: "ativoNoSolidesAposDemissao",
     label: "Demitido ainda no Sólides",
     severity: "grave",
-    icon: "🚫",
     descricaoRegra: "Pessoa demitida no Planejamento que ainda consta no quadro do Sólides — precisa ser desligada lá, senão continua contando/cobrando. Alerta some sozinho quando o CPF deixar de aparecer no quadro.",
   },
 };
