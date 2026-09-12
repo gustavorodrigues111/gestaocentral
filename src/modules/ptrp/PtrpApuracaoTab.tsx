@@ -223,7 +223,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       const data = `${comp}-${String(d).padStart(2, "0")}`;
       // Ordena as batidas por horário (a correção lançada depois pode vir fora de
       // ordem no armazenamento) — deixa render/marcações/CSV cronológicos.
-      const bs = (dias[data] || []).slice().sort((a, b) => (a.dateIn ?? Infinity) - (b.dateIn ?? Infinity));
+      const bs = reparearDia(dias[data] || []);
       const ajustesDia = ajDias[data] || [];
       const ehFuturo = data > hojeStr;   // dia ainda não aconteceu (BRT)
       const ehHoje = data === hojeStr;   // dia em ANDAMENTO — não acusa erro ainda
@@ -909,6 +909,22 @@ function CorrecaoLoteModal({ emp, qtd, textoInicial, onClose, onEnviar }: { emp:
       </div>
     </Modal>
   );
+}
+
+// Repareia os pontos do dia CRONOLOGICAMENTE: junta todos os horários (a Sólides
+// pode mandar cada batida só com entrada), ordena e forma pares 1º-2º, 3º-4º…
+// (1º=entrada, 2º=saída). Assim 09:36 + 11:52 vira UM par 09:36–11:52 (e não duas
+// entradas soltas). Pendentes/excluídas ficam de fora (têm fluxo próprio).
+function reparearDia(docs: BatidaDoc[]): BatidaDoc[] {
+  const ehPend = (b: BatidaDoc) => b.status === "PENDING" || b.status === "REJECTED";
+  const reais = docs.filter(b => !b.excluded && !ehPend(b));
+  const outros = docs.filter(b => b.excluded || ehPend(b));
+  const ev: { ms: number; src: BatidaDoc }[] = [];
+  for (const b of reais) { if (typeof b.dateIn === "number") ev.push({ ms: b.dateIn, src: b }); if (typeof b.dateOut === "number") ev.push({ ms: b.dateOut, src: b }); }
+  ev.sort((a, z) => a.ms - z.ms);
+  const pares: BatidaDoc[] = [];
+  for (let i = 0; i < ev.length; i += 2) pares.push({ ...ev[i].src, dateIn: ev[i].ms, dateOut: ev[i + 1] ? ev[i + 1].ms : null });
+  return [...pares, ...outros].sort((a, b) => (a.dateIn ?? Infinity) - (b.dateIn ?? Infinity));
 }
 
 // Modal de TRATAMENTO (gera ptrpAjustes — nunca edita a batida original).
