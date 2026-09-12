@@ -183,44 +183,51 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         </div>
 
         <nav className="flex-1 overflow-y-auto p-3 space-y-4">
-          {/* Central de Avisos — tela de abertura UNIVERSAL. Primeiro item,
-              fora dos agrupamentos. Aparece pra todo usuário com restaurante
-              ativo (independe do módulo chat) — é o canal das Rotinas/avisos. */}
-          {rid && (
-            <NavLink
-              to={rid ? `/r/${rid}/chat` : "/"}
-              onClick={guardedClose}
-              className={({ isActive }) => `
-                flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium
-                ${isActive
-                  ? "bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
-                  : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"}
-              `}
-            >
-              <ModuleIcon name="layout-dashboard" size={16} />
-              <span className="flex-1">Dashboard</span>
-              {avisosPendentes > 0 && (
-                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold">
-                  {avisosPendentes > 99 ? "99+" : avisosPendentes}
-                </span>
-              )}
-            </NavLink>
-          )}
-
-          {souEquipe && rid && canAcaoRid("portalEmpregado", "acessar") && (
-            <NavLink
-              to={`/portal/${rid}`}
-              onClick={guardedClose}
-              className={({ isActive }) => `
-                block px-3 py-2 rounded-lg text-sm font-medium
-                ${isActive
-                  ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
-                  : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}
-              `}
-            >
-              👤 Meu Portal
-            </NavLink>
-          )}
+          {/* MINHAS INFORMAÇÕES — área pessoal do usuário. Dashboard (Central
+              de Avisos, UNIVERSAL) + módulos do Portal do Empregado (deep-link
+              pra PortalPage já na aba certa). */}
+          {rid && (() => {
+            const info = AREA_INFO.minhas;
+            const fechada = colapsadas.has("minhas");
+            const itemCls = ({ isActive }: { isActive: boolean }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`;
+            const podePortal = !!(souEquipe && canAcaoRid("portalEmpregado", "acessar"));
+            const portalItens = [
+              { to: `/portal/${rid}/escala`,      icon: "calendar-days",  label: "Minha Escala",     show: podePortal && canAcaoRid("portalEmpregado", "verMinhaEscala") },
+              { to: `/portal/${rid}/horarios`,    icon: "clock",          label: "Meus Horários",    show: podePortal && canAcaoRid("portalEmpregado", "verMeusHorarios") },
+              { to: `/portal/${rid}/gorjetas`,    icon: "hand-coins",     label: "Minhas Gorjetas",  show: podePortal && canAcaoRid("portalEmpregado", "verMinhaGorjeta") },
+              { to: `/portal/${rid}/comunicados`, icon: "megaphone",      label: "Meus Comunicados", show: podePortal && canAcaoRid("portalEmpregado", "verComunicados") },
+              { to: `/portal/${rid}/faleDp`,      icon: "message-circle", label: "Fale com DP",      show: podePortal && canAcaoRid("portalEmpregado", "acessarFaleComDP") },
+            ].filter(p => p.show);
+            const total = 1 + portalItens.length;
+            return (
+              <div className="rounded-xl border p-1.5 mb-2" style={{ borderColor: `${info.color}33`, background: `${info.color}0d`, boxShadow: `0 1px 7px ${info.color}22` }}>
+                <button type="button" onClick={() => toggleArea("minhas")} className="w-full flex items-center gap-1.5 px-1.5 mb-1 text-xs font-extrabold uppercase tracking-wide text-gray-900 dark:text-gray-100 hover:opacity-80" title={fechada ? "Expandir" : "Recolher"}>
+                  <span className={`transition-transform leading-none ${fechada ? "-rotate-90" : ""}`} style={{ color: info.color }}>▾</span>
+                  <span className="flex-1 text-left">{info.label}</span>
+                  <span className="font-bold" style={{ color: info.color }}>{total}</span>
+                </button>
+                {!fechada && (
+                  <div className="space-y-0.5">
+                    <NavLink to={`/r/${rid}/chat`} onClick={guardedClose} className={itemCls}>
+                      <ModuleIcon name="layout-dashboard" size={16} />
+                      <span className="flex-1 truncate">Dashboard</span>
+                      {avisosPendentes > 0 && (
+                        <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold">
+                          {avisosPendentes > 99 ? "99+" : avisosPendentes}
+                        </span>
+                      )}
+                    </NavLink>
+                    {portalItens.map(p => (
+                      <NavLink key={p.to} to={p.to} onClick={guardedClose} className={itemCls}>
+                        <ModuleIcon name={p.icon} size={16} />
+                        <span className="flex-1 truncate">{p.label}</span>
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
           {areas.map(area => {
             // Chat (Central de Avisos) é item de topo — removido dos grupos.

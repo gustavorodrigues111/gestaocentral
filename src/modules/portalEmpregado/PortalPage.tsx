@@ -17,7 +17,7 @@ type Tab = "escala" | "horarios" | "gorjetas" | "comunicados" | "faleDp";
 export function PortalPage() {
   const { pessoa } = useAuth();
   const { restaurants } = useRestaurant();
-  const { rid: ridParam } = useParams<{ rid: string }>();
+  const { rid: ridParam, tab: tabParam } = useParams<{ rid: string; tab: string }>();
   const rid = ridParam || "";
   const restaurant = restaurants.find(r => r.id === rid) || null;
   // useCanAcao resolve perfis built-in + custom corretamente.
@@ -75,8 +75,17 @@ export function PortalPage() {
     ...(verFaleDp      ? [{ id: "faleDp" as const,      label: "Fale com DP",      icon: "🗣️" }] : []),
   ];
 
-  const [tab, setTab] = useState<Tab>(tabsDisponiveis[0]?.id || "escala");
-  // Re-sync se primeira aba mudar (ex: config trocou)
+  // Deep-link: /portal/:rid/:tab abre direto na aba (os módulos de Minhas
+  // Informações no menu apontam pra cá). Sem :tab, cai na 1ª disponível.
+  const TABS_VALIDAS: Tab[] = ["escala", "horarios", "gorjetas", "comunicados", "faleDp"];
+  const tabInicial = (TABS_VALIDAS.includes(tabParam as Tab) ? (tabParam as Tab) : tabsDisponiveis[0]?.id) || "escala";
+  const [tab, setTab] = useState<Tab>(tabInicial);
+  // Segue o param da URL quando muda (clicar em outro módulo do menu).
+  useEffect(() => {
+    if (tabParam && TABS_VALIDAS.includes(tabParam as Tab)) setTab(tabParam as Tab);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tabParam]);
+  // Re-sync se a aba atual não estiver disponível (ex: permissão/config trocou)
   useEffect(() => {
     if (!tabsDisponiveis.find(t => t.id === tab) && tabsDisponiveis[0]) {
       setTab(tabsDisponiveis[0].id);

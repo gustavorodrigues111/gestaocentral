@@ -206,6 +206,7 @@ export function ProtectedShell() {
             <Route path="/ptrp" element={<PtrpSyncPage />} />
             <Route path="/perfis" element={<PerfisAcessoPage />} />
             <Route path="/portal/:rid" element={<PortalPage />} />
+            <Route path="/portal/:rid/:tab" element={<PortalPage />} />
             <Route path="/r/:rid/:moduleId" element={<ModuleRouter />} />
             <Route path="*" element={<Navigate to="/" replace />} />
           </Routes>
