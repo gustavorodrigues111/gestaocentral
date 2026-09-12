@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, type ReactNode } from "react";
-import { Inbox, Layers } from "lucide-react";
+import { Inbox, Layers, ChevronDown, Lock, Pencil } from "lucide-react";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { doc, writeBatch } from "firebase/firestore";
@@ -41,23 +41,41 @@ export function ProjetosTopBar({
   const projTarefas = projetos.filter(p => !ehAreaPrazos(p));
   const subs = tabAtual === "projeto" && projetoFiltroAtual ? subprojetos.filter(s => s.projetoId === projetoFiltroAtual) : [];
   const chip = (active: boolean) => `shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium transition-colors ${active ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`;
-  const rotulo = "shrink-0 w-[70px] text-[11px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500";
+  const [aberto, setAberto] = useState(false);
+  const projSel = tabAtual === "projeto" ? projTarefas.find(p => p.id === projetoFiltroAtual) : null;
+  const atualLabel = tabAtual === "minhas" ? "Minhas" : projSel ? projSel.nome : "Tudo";
+  const itemCls = "w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200";
   return (
     <div className="mb-4 space-y-2">
-      <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-        <span className={rotulo}>Tarefas</span>
-        <button onClick={onAbrirMinhas} className={chip(tabAtual === "minhas")}>
-          <Inbox size={15} /> Minhas
-          {minhasPendentes > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">{minhasPendentes}</span>}
+      {/* Escopo: um único chip com seletor (Tudo por padrão). */}
+      <div className="relative inline-block">
+        <button type="button" onClick={() => setAberto(v => !v)} className={`${chip(true)} min-w-[160px] justify-between`}>
+          <span className="inline-flex items-center gap-1.5 min-w-0">
+            {tabAtual === "minhas" ? <Inbox size={15} /> : projSel ? <span className="w-2 h-2 rounded-full shrink-0" style={{ background: projSel.cor || "#6b7280" }} /> : <Layers size={15} />}
+            <span className="truncate">{atualLabel}</span>
+            {tabAtual === "minhas" && minhasPendentes > 0 && <span className="inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">{minhasPendentes}</span>}
+          </span>
+          <ChevronDown size={15} className="opacity-60 shrink-0" />
         </button>
-        <button onClick={onAbrirTudo} className={chip(tabAtual === "tudo")}><Layers size={15} /> Tudo</button>
-        {projTarefas.map(p => (
-          <button key={p.id} onClick={() => onAbrirProjeto(p.id)} className={chip(tabAtual === "projeto" && projetoFiltroAtual === p.id)} title={p.nome}>
-            <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.cor || "#6b7280" }} />
-            <span>{p.emoji || "📁"}</span>
-            <span className="whitespace-nowrap">{p.nome}</span>
-          </button>
-        ))}
+        {aberto && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setAberto(false)} />
+            <div className="absolute left-0 mt-1 z-20 w-60 max-h-80 overflow-auto rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1">
+              <button type="button" className={itemCls} onClick={() => { onAbrirTudo(); setAberto(false); }}><Layers size={15} /> Tudo</button>
+              <button type="button" className={itemCls} onClick={() => { onAbrirMinhas(); setAberto(false); }}>
+                <Inbox size={15} /> Minhas
+                {minhasPendentes > 0 && <span className="ml-auto inline-flex items-center justify-center min-w-[18px] h-4 px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">{minhasPendentes}</span>}
+              </button>
+              {projTarefas.length > 0 && <div className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Áreas / Projetos</div>}
+              {projTarefas.map(p => (
+                <button key={p.id} type="button" className={itemCls} onClick={() => { onAbrirProjeto(p.id); setAberto(false); }} title={p.nome}>
+                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: p.cor || "#6b7280" }} />
+                  <span className="truncate">{p.nome}</span>
+                </button>
+              ))}
+            </div>
+          </>
+        )}
       </div>
 
       {subs.length > 0 && (
@@ -69,7 +87,7 @@ export function ProjetosTopBar({
             return (
               <button key={s.id} onClick={() => onAbrirSubprojeto(projetoFiltroAtual, s.id)} title={s.nome}
                 className={`shrink-0 inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-xs transition-colors ${sel ? (auto ? "border-rose-400 bg-rose-50 text-rose-700 dark:bg-rose-900/20 dark:text-rose-300" : "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300") : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-                {auto ? "🔒" : "✏️"}<span className="whitespace-nowrap">{s.nome}</span>{ativ > 0 && <span className="text-[10px] opacity-70">{ativ}</span>}
+                {auto ? <Lock size={12} /> : <Pencil size={12} />}<span className="whitespace-nowrap">{s.nome}</span>{ativ > 0 && <span className="text-[10px] opacity-70">{ativ}</span>}
               </button>
             );
           })}

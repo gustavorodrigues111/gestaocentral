@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from "react";
 import { Navigate } from "react-router-dom";
-import { ReuniaoEditorModal } from "../reunioes/ReuniaoEditorModal";
+import { Inbox, Layers, Globe, Trash2, Settings, ChevronDown, FolderKanban, Eye } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
@@ -67,7 +67,7 @@ export function TarefasPage() {
   // mas ao sair e voltar, reseta — é o "home" do gestor. View de projeto
   // continua em "lista" como default (que abre rara — só ao clicar num
   // projeto da sidebar, e aí faz sentido lista).
-  const [tab, setTab] = useState<Tab>("minhas");
+  const [tab, setTab] = useState<Tab>("tudo");
   const [viewMinhas, setViewMinhas] = useState<ViewMode>("calendario");
   const [viewProjeto, setViewProjeto] = useState<ViewMode>("calendario");
 
@@ -95,7 +95,6 @@ export function TarefasPage() {
   // subprojeto pra fluxos diferentes (botão por dia, "+ Nova tarefa" dentro
   // de um projeto, etc.).
   const [novaAberta, setNovaAberta] = useState<{ prazo?: string; projetoId?: string; subprojetoId?: string; titulo?: string; descricao?: string; puxando?: { tipo: "ideia" | "ocorrencia"; id: string; titulo: string } } | null>(null);
-  const [novaReuniao, setNovaReuniao] = useState(false);
   const [detalheId, setDetalheId] = useState<string | null>(null);
 
   // Ouvir projetos + subprojetos.
@@ -277,17 +276,16 @@ export function TarefasPage() {
   // Ações fixas (na linha do seletor de visão): Nova tarefa + Gerenciar (master).
   const acoesHeader = (
     <div className="flex items-center gap-1.5 shrink-0">
-      {ridAtivo && (isMaster || canAcaoRid("reunioes", "criar")) && <button type="button" onClick={() => setNovaReuniao(true)} className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">🗣️ Nova reunião</button>}
       <Button size="sm" onClick={() => setNovaAberta({})}>+ Nova tarefa</Button>
       {isMaster && (
         <div className="relative">
-          <button type="button" onClick={() => setGerenciarMenuAberto((v) => !v)} className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800">⚙ Gerenciar ▾</button>
+          <button type="button" onClick={() => setGerenciarMenuAberto((v) => !v)} className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"><Settings size={13} /> Gerenciar <ChevronDown size={13} /></button>
           {gerenciarMenuAberto && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setGerenciarMenuAberto(false)} />
               <div className="absolute right-0 mt-1 z-20 w-60 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
                 <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Tarefas</div>
-                <button type="button" onClick={() => { setGerenciarMenuAberto(false); setTab("admin"); }} className="w-full text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200">🗂️ Áreas e projetos</button>
+                <button type="button" onClick={() => { setGerenciarMenuAberto(false); setTab("admin"); }} className="w-full flex items-center gap-2 text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"><FolderKanban size={15} /> Áreas e projetos</button>
               </div>
             </>
           )}
@@ -304,7 +302,7 @@ export function TarefasPage() {
           a outra pessoa veria, e dá saída rápida. */}
       {isViewingAs && viewingAsData && (
         <div className="mb-3 flex items-center gap-2 flex-wrap px-3 py-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-800 text-xs text-amber-900 dark:text-amber-200">
-          <span>👁</span>
+          <Eye size={15} className="shrink-0" />
           <span>
             Visualizando como <strong>{viewingAsData.nome}</strong> (sem o bypass de master).
             O que ela enxerga no Gestor de Tarefas é o que aparece aqui.
@@ -351,12 +349,12 @@ export function TarefasPage() {
               é tratado conceitualmente como um pseudo-projeto: a caixa pessoal. */}
           {/* Linha 1: título + Todas/Lixeira … visões (Calendário/Lista/Kanban) à direita */}
           <div className="mb-2.5 flex items-center gap-x-3 gap-y-2 flex-wrap">
-            <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">📥 Minhas tarefas</h2>
+            <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Inbox size={18} /> Minhas tarefas</h2>
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{minhas.length} tarefa(s) · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
             {isMaster && (
               <>
-                <button type="button" onClick={() => setTab("todas")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20">🌐 Todas</button>
-                <button type="button" onClick={() => setTab("lixeira")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">🗑️ Lixeira</button>
+                <button type="button" onClick={() => setTab("todas")} className="inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"><Globe size={13} /> Todas</button>
+                <button type="button" onClick={() => setTab("lixeira")} className="inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><Trash2 size={13} /> Lixeira</button>
               </>
             )}
             <div className="flex-1" />
@@ -415,7 +413,7 @@ export function TarefasPage() {
       {tab === "tudo" && (
         <div>
           <div className="mb-2.5 flex items-center gap-x-3 gap-y-2 flex-wrap">
-            <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100">🗂️ Tudo</h2>
+            <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Layers size={18} /> Tudo</h2>
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">minhas tarefas · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
             <div className="flex-1" />
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
@@ -551,10 +549,6 @@ export function TarefasPage() {
           descricaoInicial={novaAberta.descricao}
           puxandoInicial={novaAberta.puxando || null}
         />
-      )}
-
-      {novaReuniao && ridAtivo && (
-        <ReuniaoEditorModal reuniao={null} restaurantId={ridAtivo} onClose={() => setNovaReuniao(false)} />
       )}
 
         </div> {/* fecha .min-w-0 (área de conteúdo principal) */}
