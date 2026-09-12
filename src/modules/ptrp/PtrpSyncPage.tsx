@@ -15,7 +15,6 @@ import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { PtrpCctTab } from "./PtrpCctTab";
 import { PtrpApuracaoTab } from "./PtrpApuracaoTab";
-import { PtrpMotivosTab } from "./PtrpMotivosTab";
 
 type SyncState = {
   id: string;
@@ -67,11 +66,12 @@ export function PtrpSyncPage() {
     ...(podeConfig ? [["config", "⚙️ Configurações"] as const] : []),
   ];
   const abaEfetiva = abasPermitidas.some(([v]) => v === aba) ? aba : (abasPermitidas[0]?.[0] || "conferencia");
-  // Sub-abas de Configurações (Regras · Sincronização · Mapeamento de motivos).
+  // Sub-abas de Configurações (Regras · Sincronização). O mapeamento de motivos
+  // saiu daqui — agora é feito INLINE no tratamento (⚙️): preferidos (★) + o
+  // status da escala é lembrado por motivo. Sem tabela gigante.
   const subAbas = [
     ...(podeRegras ? [["regras", "📜 Regras"] as const] : []),
     ...(podeSincronizar ? [["sync", "🔄 Sincronização"] as const] : []),
-    ...(podeRegras ? [["mapeamento", "🔀 Mapeamento de motivos"] as const] : []),
   ];
   const subAbaEfetiva = subAbas.some(([v]) => v === subAba) ? subAba : (subAbas[0]?.[0] || "regras");
 
@@ -142,7 +142,7 @@ export function PtrpSyncPage() {
             className={`px-3 py-1.5 text-[13px] font-semibold -mb-px border-b-2 ${subAbaEfetiva === v ? "border-emerald-500 text-emerald-600 dark:text-emerald-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>{l}</button>
         ))}
       </div>
-      {subAbaEfetiva === "regras" ? <PtrpCctTab /> : subAbaEfetiva === "mapeamento" ? <PtrpMotivosTab /> : (
+      {subAbaEfetiva === "regras" ? <PtrpCctTab /> : (
       <>
       <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5 mb-2"><span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />{activeRestaurant?.nome} · {shortCode || "sem shortCode"}</div>
       <div className="flex items-center gap-2 flex-wrap mb-2">
