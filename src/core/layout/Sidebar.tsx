@@ -61,20 +61,21 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     });
   }
 
-  // Pessoa logada é equipe deste restaurante? (tem empregado com pessoaId == ela)
-  const [souEquipe, setSouEquipe] = useState(false);
+  // Restaurante onde a pessoa É EMPREGADA. Ninguém é empregado de 2 empresas,
+  // então há no máximo um. O Portal (Minhas Informações) fica FIXO nesse
+  // restaurante — independente de qual restaurante está ativo no seletor.
+  const [empRid, setEmpRid] = useState<string | null>(null);
+  // Permissões do portal escopadas ao restaurante-empregado (não ao ativo).
+  const { can: canPortalEmp } = useCanAcao(empRid || "");
   useEffect(() => {
-    if (!rid || !pessoa?.id) { setSouEquipe(false); return; }
-    const q = query(
-      collection(db, "empregados"),
-      where("restaurantId", "==", rid),
-      where("pessoaId", "==", pessoa.id),
-    );
+    if (!pessoa?.id) { setEmpRid(null); return; }
+    const q = query(collection(db, "empregados"), where("pessoaId", "==", pessoa.id));
     const unsub = onSnapshot(q, (snap) => {
-      setSouEquipe(snap.docs.length > 0);
+      const d = snap.docs[0]?.data() as { restaurantId?: string } | undefined;
+      setEmpRid(d?.restaurantId || null);
     });
     return () => unsub();
-  }, [rid, pessoa?.id]);
+  }, [pessoa?.id]);
 
   // Contador GLOBAL de tarefas pendentes do usuário (responsável, co-resp,
   // observador ou responsável de alguma subtarefa). Independente do
@@ -205,13 +206,14 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             const info = AREA_INFO.minhas;
             const fechada = colapsadas.has("minhas");
             const itemCls = ({ isActive }: { isActive: boolean }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`;
-            const podePortal = !!(souEquipe && canAcaoRid("portalEmpregado", "acessar"));
-            const portalItens = [
-              { to: `/portal/${rid}/escala`,      icon: "calendar-days",  label: "Minha Escala",     show: podePortal && canAcaoRid("portalEmpregado", "verMinhaEscala") },
-              { to: `/portal/${rid}/horarios`,    icon: "clock",          label: "Meus Horários",    show: podePortal && canAcaoRid("portalEmpregado", "verMeusHorarios") },
-              { to: `/portal/${rid}/gorjetas`,    icon: "hand-coins",     label: "Minhas Gorjetas",  show: podePortal && canAcaoRid("portalEmpregado", "verMinhaGorjeta") },
-              { to: `/portal/${rid}/comunicados`, icon: "megaphone",      label: "Meus Comunicados", show: podePortal && canAcaoRid("portalEmpregado", "verComunicados") },
-              { to: `/portal/${rid}/faleDp`,      icon: "message-circle", label: "Fale com DP",      show: podePortal && canAcaoRid("portalEmpregado", "acessarFaleComDP") },
+            // Portal SEMPRE aponta pro restaurante-empregado (empRid), não pro ativo.
+            const podePortal = !!(empRid && canPortalEmp("portalEmpregado", "acessar"));
+            const portalItens = !empRid ? [] : [
+              { to: `/portal/${empRid}/escala`,      icon: "calendar-days",  label: "Minha Escala",     show: podePortal && canPortalEmp("portalEmpregado", "verMinhaEscala") },
+              { to: `/portal/${empRid}/horarios`,    icon: "clock",          label: "Meus Horários",    show: podePortal && canPortalEmp("portalEmpregado", "verMeusHorarios") },
+              { to: `/portal/${empRid}/gorjetas`,    icon: "hand-coins",     label: "Minhas Gorjetas",  show: podePortal && canPortalEmp("portalEmpregado", "verMinhaGorjeta") },
+              { to: `/portal/${empRid}/comunicados`, icon: "megaphone",      label: "Meus Comunicados", show: podePortal && canPortalEmp("portalEmpregado", "verComunicados") },
+              { to: `/portal/${empRid}/faleDp`,      icon: "message-circle", label: "Fale com DP",      show: podePortal && canPortalEmp("portalEmpregado", "acessarFaleComDP") },
             ].filter(p => p.show);
             const total = 1 + portalItens.length;
             return (

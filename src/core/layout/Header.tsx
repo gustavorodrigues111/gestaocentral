@@ -40,9 +40,15 @@ function moduloDoPath(pathname: string): { icon: string; label: string; desc?: s
 
 export function Header({ onToggleSidebar, sidebarOpen = true }: { onToggleSidebar: () => void; sidebarOpen?: boolean }) {
   const { fbUser, pessoa, signOut } = useAuth();
+  const { restaurants } = useRestaurant();
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
   const modulo = moduloDoPath(location.pathname);
+  // Nas rotas do Portal do Empregado, mostra a EMPRESA da escala/portal ao lado
+  // do título — o portal fica fixo no restaurante-empregado, então deixa claro
+  // de qual empresa é (evita confusão pra quem acessa vários restaurantes).
+  const portalMatch = location.pathname.match(/^\/portal\/([^/]+)/);
+  const portalEmpresa = portalMatch ? restaurants.find(r => r.id === portalMatch[1])?.nome : null;
 
   return (
     <header className="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center px-3 sm:px-4 gap-2 sm:gap-4 [overflow-x:clip] relative z-30">
@@ -64,7 +70,7 @@ export function Header({ onToggleSidebar, sidebarOpen = true }: { onToggleSideba
       <div className="flex items-baseline gap-2 min-w-0">
         {modulo ? (
           <>
-            <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"><ModuleIcon name={modulo.icon} size={18} /> {modulo.label}</span>
+            <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"><ModuleIcon name={modulo.icon} size={18} /> {modulo.label}{portalEmpresa && <span className="text-gray-400 dark:text-gray-500 font-semibold"> · {portalEmpresa}</span>}</span>
             {modulo.desc && <span className="hidden md:inline text-xs text-gray-500 dark:text-gray-400 truncate min-w-0">{modulo.desc}</span>}
           </>
         ) : (
