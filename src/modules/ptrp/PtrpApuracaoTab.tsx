@@ -623,6 +623,19 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     return out.sort((a, b) => a.emp.nome.localeCompare(b.emp.nome) || a.l.data.localeCompare(b.l.data));
   }, [resultados, validadores, ehMasterLocal, me?.id]);
   const areasComEmpregado = useMemo(() => [...new Set(resultados.map(x => x.area))].sort(), [resultados]);
+  // Só as pessoas DESTE restaurante (ativas) podem ser responsáveis de área.
+  const pessoasDoRest = useMemo(() => pessoas.filter(p => (p.restaurantIds || []).includes(rid)).sort((a, b) => a.nome.localeCompare(b.nome)), [pessoas, rid]);
+  // Atrasos agrupados por ÁREA → EMPREGADO (expansível).
+  const atrasosPorArea = useMemo(() => {
+    const areas = new Map<string, Map<string, { emp: Empregado; linhas: Linha[] }>>();
+    for (const it of atrasosAValidar) {
+      const porEmp = areas.get(it.area) || new Map();
+      const cur = porEmp.get(it.emp.id) || { emp: it.emp, linhas: [] };
+      cur.linhas.push(it.l); porEmp.set(it.emp.id, cur); areas.set(it.area, porEmp);
+    }
+    return [...areas.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([area, m]) => ({ area, emps: [...m.values()].sort((a, b) => a.emp.nome.localeCompare(b.emp.nome)) }));
+  }, [atrasosAValidar]);
+  const [expEmp, setExpEmp] = useState<Set<string>>(new Set());
   const [valBusy, setValBusy] = useState("");
   async function validarAtraso(emp: Empregado, l: Linha, justificar: boolean) {
     if (!me) return;
@@ -769,7 +782,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                   <span className="w-28 truncate text-gray-600 dark:text-gray-300" title={area}>{area}</span>
                   <select value={validadores[area] || ""} onChange={e => void setValidadorArea(area, e.target.value)} className="flex-1 px-2 py-1 text-[12px] rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
                     <option value="">— ninguém —</option>
-                    {pessoas.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
+                    {pessoasDoRest.map(p => <option key={p.id} value={p.id}>{p.nome}</option>)}
                   </select>
                 </label>
               ))}
@@ -779,27 +792,42 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         {atrasosAValidar.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nenhum atraso a validar {ehMasterLocal ? "no período." : "na sua área neste período."}</div>
         ) : (
-          <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-x-auto">
-            <table className="w-full text-[12px] min-w-[600px] [&_td]:px-2 [&_td]:py-1.5 [&_th]:px-2">
-              <thead><tr className="text-[10px] uppercase tracking-wide text-gray-400 text-left border-b border-gray-200 dark:border-gray-800">
-                <th className="py-1.5">Empregado</th><th>Área</th><th>Dia</th><th>Previsto</th><th className="text-right">Atraso</th><th className="text-right">Validar</th>
-              </tr></thead>
-              <tbody>
-                {atrasosAValidar.map(({ emp, area, l }) => { const busy = valBusy === `${emp.id}_${l.data}`; return (
-                  <tr key={`${emp.id}_${l.data}`} className="border-b border-gray-50 dark:border-gray-800/40">
-                    <td className="font-medium text-gray-700 dark:text-gray-200">{emp.nome}</td>
-                    <td className="text-gray-500">{area}</td>
-                    <td className="tabular-nums">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
-                    <td className="text-gray-500 tabular-nums">{l.previstoTxt}</td>
-                    <td className="text-right tabular-nums text-rose-600 dark:text-rose-400">{hm(l.atrasoMin)}</td>
-                    <td className="text-right whitespace-nowrap">
-                      <button type="button" disabled={busy} onClick={() => void validarAtraso(emp, l, false)} className="text-[11px] px-2 py-1 rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 mr-1">Foi atraso</button>
-                      <button type="button" disabled={busy} onClick={() => void validarAtraso(emp, l, true)} className="text-[11px] px-2 py-1 rounded border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40">Não foi</button>
-                    </td>
-                  </tr>
-                ); })}
-              </tbody>
-            </table>
+          <div className="space-y-3">
+            {atrasosPorArea.map(({ area, emps }) => (
+              <div key={area} className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+                <div className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500 bg-gray-50 dark:bg-gray-900/60 border-b border-gray-200 dark:border-gray-800">{area} · {emps.length} colaborador{emps.length > 1 ? "es" : ""}</div>
+                <ul className="divide-y divide-gray-100 dark:divide-gray-800">
+                  {emps.map(({ emp, linhas }) => { const open = expEmp.has(emp.id); return (
+                    <li key={emp.id}>
+                      <button type="button" onClick={() => setExpEmp(s => { const n = new Set(s); if (n.has(emp.id)) n.delete(emp.id); else n.add(emp.id); return n; })} className="w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-50 dark:hover:bg-gray-900/40">
+                        <span className="text-gray-400 text-[10px] w-3">{open ? "▾" : "▸"}</span>
+                        <span className="text-sm font-medium text-gray-800 dark:text-gray-100 flex-1 truncate">{emp.nome}</span>
+                        <span className="text-[11px] text-rose-600 dark:text-rose-400">{linhas.length} atraso{linhas.length > 1 ? "s" : ""}</span>
+                      </button>
+                      {open && (
+                        <div className="px-3 pb-2 overflow-x-auto">
+                          <table className="w-full text-[12px] [&_td]:py-1 [&_td]:pr-2">
+                            <tbody>
+                              {linhas.map(l => { const busy = valBusy === `${emp.id}_${l.data}`; return (
+                                <tr key={l.data} className="border-t border-gray-50 dark:border-gray-800/40">
+                                  <td className="tabular-nums w-12">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
+                                  <td className="text-gray-500 tabular-nums whitespace-nowrap">{l.previstoTxt}</td>
+                                  <td className="text-right tabular-nums text-rose-600 dark:text-rose-400 w-14">{hm(l.atrasoMin)}</td>
+                                  <td className="text-right whitespace-nowrap">
+                                    <button type="button" disabled={busy} onClick={() => void validarAtraso(emp, l, false)} className="text-[11px] px-2 py-1 rounded border border-gray-300 dark:border-gray-700 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-40 mr-1">Foi atraso</button>
+                                    <button type="button" disabled={busy} onClick={() => void validarAtraso(emp, l, true)} className="text-[11px] px-2 py-1 rounded border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40">Não foi</button>
+                                  </td>
+                                </tr>
+                              ); })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </li>
+                  ); })}
+                </ul>
+              </div>
+            ))}
           </div>
         )}
       </div>
