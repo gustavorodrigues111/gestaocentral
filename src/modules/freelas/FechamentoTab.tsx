@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Wine, ChefHat, UtensilsCrossed, SprayCan, TriangleAlert, Hourglass, Tag, CheckSquare, CalendarDays, Banknote, Pencil, Gift, BarChart3, FileText, type LucideIcon } from "lucide-react";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -48,11 +49,11 @@ type Props = {
   podeEditar: boolean;
 };
 
-const AREA_ICONE: Record<Area, string> = {
-  Bar:     "🍷",
-  Cozinha: "🍳",
-  Salão:   "🍽️",
-  Limpeza: "🧼",
+const AREA_ICONE: Record<Area, LucideIcon> = {
+  Bar:     Wine,
+  Cozinha: ChefHat,
+  Salão:   UtensilsCrossed,
+  Limpeza: SprayCan,
 };
 
 // Tab Fechamento — EXCLUSIVA do DP. Mesma estrutura visual de Lançamentos:
@@ -499,7 +500,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
       {lotesPendentes.length > 0 && (
         <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3">
           <div className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-2">
-            ⏳ {lotesPendentes.length} lote(s) pendente(s) de pagamento
+            <Hourglass size={13} className="inline align-[-2px] mr-1" />{lotesPendentes.length} lote(s) pendente(s) de pagamento
           </div>
           <div className="space-y-1 text-xs text-amber-700 dark:text-amber-200">
             {lotesPendentes.map((p) => (
@@ -519,7 +520,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
       <section>
         <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
           <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-            🏷️ Aguardando precificação
+            <Tag size={14} className="inline align-[-2px] mr-1" />Aguardando precificação
             <span className="ml-2 text-[11px] text-gray-500 font-normal">
               ({aPrecificar.length} — operacional fechou, falta DP precificar)
             </span>
@@ -531,7 +532,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
               disabled={salvando}
               title="Confirma de uma vez todos os turnos que já têm valor selecionado"
             >
-              ✅ Confirmar {aPrecificarComValor.length} com valor
+              <span className="inline-flex items-center gap-1.5"><CheckSquare size={14} /> Confirmar {aPrecificarComValor.length} com valor</span>
             </Button>
           )}
         </div>
@@ -560,7 +561,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
       <section>
         <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
           <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-            🗓️ Freela mensalistas
+            <CalendarDays size={14} className="inline align-[-2px] mr-1" />Freela mensalistas
             <span className="ml-2 text-[11px] text-gray-500 font-normal">remuneração do mês (proporcional aos dias) + gorjeta</span>
           </h3>
           <div className="inline-flex items-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
@@ -653,7 +654,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
                   )}
                   {podeEditar && (
                     <div className="mt-2 flex justify-end">
-                      <Button size="sm" onClick={() => confirmarMens(l)}>✅ Confirmar</Button>
+                      <Button size="sm" onClick={() => confirmarMens(l)}><span className="inline-flex items-center gap-1.5"><CheckSquare size={14} /> Confirmar</span></Button>
                     </div>
                   )}
                 </div>
@@ -667,7 +668,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
       <section>
         <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
           <h3 className="text-sm font-semibold text-gray-800 dark:text-gray-100">
-            💰 Prontos pra lote
+            <Banknote size={14} className="inline align-[-2px] mr-1" />Prontos pra lote
             <span className="ml-2 text-[11px] text-gray-500 font-normal">
               ({prontosLote.length} · {fmtBR(prontosLote.reduce((a, s) => a + (s.status === "cancelado" ? 0 : (s.totalCalc || 0) + gorjetaInfoDoShift(s).valor), 0))})
             </span>
@@ -682,7 +683,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
         {/* Mensalistas confirmados (entram no lote junto com os turnos) */}
         {confirmados.length > 0 && (
           <div className="mb-3 space-y-1.5">
-            <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-500">🗓️ Mensalistas confirmados</div>
+            <div className="text-[11px] uppercase tracking-wider font-semibold text-gray-500 inline-flex items-center gap-1.5"><CalendarDays size={12} /> Mensalistas confirmados</div>
             {confirmados.map(c => {
               const [cy, cm] = c.competencia.split("-").map(Number);
               return (
@@ -695,7 +696,7 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
                   <span className="text-[11px] text-gray-500">remun {fmtBR(c.remuneracaoProporcional)} · gorj {c.gorjetaModo === "bruto" ? "br" : "líq"} {fmtBR(c.gorjetaAplicada)}{c.desconto > 0 ? ` · −${fmtBR(c.desconto)}` : ""}{c.acrescimo > 0 ? ` · +${fmtBR(c.acrescimo)}` : ""}</span>
                   <span className="ml-auto text-sm font-bold text-emerald-700 dark:text-emerald-400 tabular-nums">{fmtBR(c.total)}</span>
                   {podeEditar && (
-                    <button type="button" onClick={() => editarMens(c)} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">✏️ editar</button>
+                    <button type="button" onClick={() => editarMens(c)} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline"><span className="inline-flex items-center gap-1"><Pencil size={11} /> editar</span></button>
                   )}
                 </div>
               );
@@ -738,11 +739,11 @@ export function FechamentoTab({ restaurantId, restaurant, shifts, pagamentos, po
         {podeEditar && (prontosLote.length > 0 || confirmados.length > 0) && (
           <div className="mt-4 rounded-xl border border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-900/20 p-3">
             <div className="text-sm font-medium text-indigo-900 dark:text-indigo-200 mb-2">
-              💰 {totaisSelec.qtd} turno(s){mensLinhasSel.length > 0 ? ` + ${mensLinhasSel.length} mensalista(s)` : ""} ·{" "}
+              <Banknote size={14} className="inline align-[-2px] mr-1" />{totaisSelec.qtd} turno(s){mensLinhasSel.length > 0 ? ` + ${mensLinhasSel.length} mensalista(s)` : ""} ·{" "}
               <strong>{fmtBR(totaisSelec.total + mensLinhasSel.reduce((a, l) => a + l.total, 0))}</strong>
               {totaisSelec.totalGorjeta > 0 && (
                 <span className="ml-1 font-normal text-indigo-700 dark:text-indigo-300">
-                  (inclui 🎁 {fmtBR(totaisSelec.totalGorjeta)} de gorjeta)
+                  (inclui <Gift size={12} className="inline align-[-1px]" /> {fmtBR(totaisSelec.totalGorjeta)} de gorjeta)
                 </span>
               )}
             </div>
@@ -805,14 +806,14 @@ function AreaGroups({
         a.date.localeCompare(b.date) || a.nomeSnapshot.localeCompare(b.nomeSnapshot),
       );
     }
-    const out: { area: string; nome: string; icone: string; rows: FreelaShift[] }[] = [];
+    const out: { area: string; nome: string; icone: LucideIcon; rows: FreelaShift[] }[] = [];
     for (const a of AREAS) {
       const arr = map.get(a);
       if (arr && arr.length) out.push({ area: a, nome: a, icone: AREA_ICONE[a], rows: arr });
     }
     const sem = map.get("__sem_area__");
     if (sem && sem.length) {
-      out.unshift({ area: "__sem_area__", nome: "Sem área (legado)", icone: "⚠️", rows: sem });
+      out.unshift({ area: "__sem_area__", nome: "Sem área (legado)", icone: TriangleAlert, rows: sem });
     }
     return out;
   }, [shifts]);
@@ -836,7 +837,7 @@ function AreaGroups({
                     disabled={!podeEditar}
                   />
                 )}
-                {g.icone} {g.nome.toUpperCase()}
+                {(() => { const Ic = g.icone; return <Ic size={14} className="inline align-[-2px] mr-1.5" />; })()}{g.nome.toUpperCase()}
               </label>
               <div className="text-[11px] text-gray-500 dark:text-gray-400 tabular-nums">
                 {g.rows.length} turno(s) · {fmtBR(totalGrupo)}
@@ -1027,8 +1028,8 @@ function TarifaPicker({
       {/* Info contextual: último valor pago a esse freela */}
       <div className="text-[11px] text-gray-500 dark:text-gray-400">
         {hist.anteriores === 0
-          ? "📊 1º turno"
-          : <>📊 {hist.anteriores + 1}º turno · último: {hist.ultimoTipo === "diaria" ? "diária " : ""}{fmtBR(hist.ultimoValor || 0)}{hist.ultimoTipo === "hora" ? "/h" : ""}</>
+          ? <><BarChart3 size={12} className="inline align-[-1px] mr-1" />1º turno</>
+          : <><BarChart3 size={12} className="inline align-[-1px] mr-1" />{hist.anteriores + 1}º turno · último: {hist.ultimoTipo === "diaria" ? "diária " : ""}{fmtBR(hist.ultimoValor || 0)}{hist.ultimoTipo === "hora" ? "/h" : ""}</>
         }
       </div>
     </div>
@@ -1056,11 +1057,11 @@ function GorjetaFreelaControl({
   const infoLinha = () => {
     if (!marcado) return null;
     if (info.estado === "congelada")
-      return <span className="text-emerald-700 dark:text-emerald-400">🎁 Gorjeta do dia: <strong>{fmtBR(info.valor)}</strong> (congelada)</span>;
+      return <span className="text-emerald-700 dark:text-emerald-400 inline-flex items-center gap-1"><Gift size={12} /> Gorjeta do dia: <strong>{fmtBR(info.valor)}</strong> (congelada)</span>;
     if (info.estado === "previa")
-      return <span className="text-amber-700 dark:text-amber-400">🎁 Prévia da gorjeta: <strong>{fmtBR(info.valor)}</strong> · congela ao publicar o dia</span>;
+      return <span className="text-amber-700 dark:text-amber-400 inline-flex items-center gap-1"><Gift size={12} /> Prévia da gorjeta: <strong>{fmtBR(info.valor)}</strong> · congela ao publicar o dia</span>;
     if (info.estado === "fora")
-      return <span className="text-rose-600 dark:text-rose-400">⚠ Gorjeta do dia já publicada sem este freela — recalcule no módulo Gorjetas</span>;
+      return <span className="text-rose-600 dark:text-rose-400 inline-flex items-center gap-1"><TriangleAlert size={12} /> Gorjeta do dia já publicada sem este freela — recalcule no módulo Gorjetas</span>;
     return <span className="text-gray-500">Sem gorjeta lançada neste dia ainda</span>;
   };
   return (
@@ -1104,7 +1105,7 @@ function PrecificarRowDesktop({ shift, podeEditar, todosShifts, semPix, onCancel
       <td className="px-2 py-3">
         <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{shift.nomeSnapshot}</div>
         {semPix && (
-          <div className="text-[10px] text-red-600">⚠ sem PIX</div>
+          <div className="text-[10px] text-red-600 inline-flex items-center gap-1"><TriangleAlert size={10} /> sem PIX</div>
         )}
       </td>
       <td className="px-2 py-3 text-xs text-gray-700 dark:text-gray-300">
@@ -1116,7 +1117,7 @@ function PrecificarRowDesktop({ shift, podeEditar, todosShifts, semPix, onCancel
             onClick={() => setEditar(true)}
             className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline mt-0.5"
           >
-            ✏️ editar horário
+            <span className="inline-flex items-center gap-1"><Pencil size={11} /> editar horário</span>
           </button>
         )}
         {editar && (
@@ -1135,13 +1136,13 @@ function PrecificarRowDesktop({ shift, podeEditar, todosShifts, semPix, onCancel
       <td className="px-2 py-3 text-right font-semibold text-gray-900 dark:text-gray-100 tabular-nums">
         {fmtBR(s.total + gorjetaInfo.valor)}
         {gorjetaInfo.valor > 0 && (
-          <div className="text-[10px] font-normal text-gray-500">diária {fmtBR(s.total)} + 🎁 {fmtBR(gorjetaInfo.valor)}</div>
+          <div className="text-[10px] font-normal text-gray-500">diária {fmtBR(s.total)} + <Gift size={10} className="inline align-[-1px]" /> {fmtBR(gorjetaInfo.valor)}</div>
         )}
       </td>
       <td className="px-4 py-3 text-right">
         {podeEditar && (
           <div className="flex flex-col items-end gap-1.5">
-            <Button size="sm" onClick={s.confirmar} disabled={s.saving || !s.valorUnit}>✅ Confirmar</Button>
+            <Button size="sm" onClick={s.confirmar} disabled={s.saving || !s.valorUnit}><span className="inline-flex items-center gap-1.5"><CheckSquare size={14} /> Confirmar</span></Button>
             <button type="button" onClick={onCancelar} className="text-[11px] text-rose-600 dark:text-rose-400 hover:underline" title="Cancelar turno (lançado errado) — fica zerado, só pra registro">
               ✕ Cancelar
             </button>
@@ -1162,12 +1163,12 @@ function PrecificarRowMobile({ shift, podeEditar, todosShifts, semPix, onCancela
         <div className="min-w-0 flex-1">
           <div className="text-[11px] text-gray-500 tabular-nums">{fmtDataCurta(shift.date)}</div>
           <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 break-words">{shift.nomeSnapshot}</div>
-          {semPix && <div className="text-[10px] text-red-600">⚠ sem PIX</div>}
+          {semPix && <div className="text-[10px] text-red-600 inline-flex items-center gap-1"><TriangleAlert size={10} /> sem PIX</div>}
         </div>
         <div className="text-right shrink-0">
           <div className="text-base font-bold text-gray-900 dark:text-gray-100 tabular-nums">{fmtBR(s.total + gorjetaInfo.valor)}</div>
           {gorjetaInfo.valor > 0 && (
-            <div className="text-[10px] text-gray-500">diária {fmtBR(s.total)} + 🎁 {fmtBR(gorjetaInfo.valor)}</div>
+            <div className="text-[10px] text-gray-500">diária {fmtBR(s.total)} + <Gift size={10} className="inline align-[-1px]" /> {fmtBR(gorjetaInfo.valor)}</div>
           )}
         </div>
       </div>
@@ -1175,7 +1176,7 @@ function PrecificarRowMobile({ shift, podeEditar, todosShifts, semPix, onCancela
         <span>{shift.entrada}→{shift.saida}{shift.intervalo ? ` (${shift.intervalo}min)` : ""} · {fmtHoras(horas)}</span>
         {podeEditar && (
           <button type="button" onClick={() => setEditar(true)} className="text-indigo-600 dark:text-indigo-400 hover:underline">
-            ✏️ editar
+            <span className="inline-flex items-center gap-1"><Pencil size={11} /> editar</span>
           </button>
         )}
       </div>
@@ -1192,7 +1193,7 @@ function PrecificarRowMobile({ shift, podeEditar, todosShifts, semPix, onCancela
       <GorjetaFreelaControl shift={shift} cargos={cargos} info={gorjetaInfo} podeEditar={podeEditar} block />
       {podeEditar && (
         <div className="mt-3 space-y-1.5">
-          <Button size="sm" className="w-full" onClick={s.confirmar} disabled={s.saving || !s.valorUnit}>✅ Confirmar</Button>
+          <Button size="sm" className="w-full" onClick={s.confirmar} disabled={s.saving || !s.valorUnit}><span className="inline-flex items-center gap-1.5"><CheckSquare size={14} /> Confirmar</span></Button>
           <button type="button" onClick={onCancelar} className="w-full text-[11px] text-rose-600 dark:text-rose-400 hover:underline" title="Cancelar turno (lançado errado)">
             ✕ Cancelar turno
           </button>
@@ -1246,11 +1247,11 @@ function ProntoLoteRowDesktop({ shift, podeEditar, checked, onToggle, onCancelar
       </td>
       <td className="px-2 py-2 text-xs text-gray-600 dark:text-gray-400">
         {cancelado ? "—" : `${shift.valorTipo === "diaria" ? "diária" : "R$/h"} ${fmtBR(shift.valorUnit || 0)}`}
-        {!cancelado && gorjeta > 0 && <div className="text-[10px] text-emerald-600 dark:text-emerald-400">🎁 gorjeta {fmtBR(gorjeta)}</div>}
+        {!cancelado && gorjeta > 0 && <div className="text-[10px] text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><Gift size={10} /> gorjeta {fmtBR(gorjeta)}</div>}
       </td>
       <td className={`px-2 py-2 text-right font-semibold tabular-nums ${cancelado ? "text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>
         {fmtBR(diaria + (cancelado ? 0 : gorjeta))}
-        {!cancelado && gorjeta > 0 && <div className="text-[10px] font-normal text-gray-500">{fmtBR(diaria)} + 🎁 {fmtBR(gorjeta)}</div>}
+        {!cancelado && gorjeta > 0 && <div className="text-[10px] font-normal text-gray-500">{fmtBR(diaria)} + <Gift size={10} className="inline align-[-1px]" /> {fmtBR(gorjeta)}</div>}
       </td>
       <td className="px-4 py-2 text-right whitespace-nowrap">
         {podeEditar && (
@@ -1285,7 +1286,7 @@ function ProntoLoteRowMobile({ shift, podeEditar, checked, onToggle, onCancelar,
           </div>
           <div className="text-right">
             <div className={`text-sm font-bold tabular-nums ${cancelado ? "text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>{fmtBR(diaria + (cancelado ? 0 : gorjeta))}</div>
-            {!cancelado && gorjeta > 0 && <div className="text-[10px] text-gray-500">{fmtBR(diaria)} + 🎁 {fmtBR(gorjeta)}</div>}
+            {!cancelado && gorjeta > 0 && <div className="text-[10px] text-gray-500">{fmtBR(diaria)} + <Gift size={10} className="inline align-[-1px]" /> {fmtBR(gorjeta)}</div>}
           </div>
         </div>
         <div className="text-xs text-gray-700 dark:text-gray-300">
@@ -1384,10 +1385,10 @@ function LotePendenteRow({ lote, shifts, restaurant, podeEditar }: {
             className="text-[11px] text-indigo-700 dark:text-indigo-400 hover:underline disabled:opacity-50"
             title="Pré-visualizar PDF do lote antes de baixar"
           >
-            📄 PDF
+            <span className="inline-flex items-center gap-1"><FileText size={13} /> PDF</span>
           </button>
           <button type="button" onClick={reabrirTurnos} disabled={salvando} className="text-[11px] text-amber-700 dark:text-amber-400 hover:underline disabled:opacity-50">↩ Reabrir turnos</button>
-          <button type="button" onClick={() => { setDataPag(hojeYmd()); setPagarAberto(true); }} disabled={salvando} className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-50">✅ Marcar pago</button>
+          <button type="button" onClick={() => { setDataPag(hojeYmd()); setPagarAberto(true); }} disabled={salvando} className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 hover:underline disabled:opacity-50"><span className="inline-flex items-center gap-1"><CheckSquare size={13} /> Marcar pago</span></button>
         </div>
       )}
       {previewAberto && restaurant && (
@@ -1399,7 +1400,7 @@ function LotePendenteRow({ lote, shifts, restaurant, podeEditar }: {
         />
       )}
       {pagarAberto && (
-        <Modal title="✅ Marcar lote como pago" onClose={() => !salvando && setPagarAberto(false)} maxWidth="max-w-sm">
+        <Modal title={<span className="inline-flex items-center gap-2"><CheckSquare size={18} /> Marcar lote como pago</span>} onClose={() => !salvando && setPagarAberto(false)} maxWidth="max-w-sm">
           <div className="space-y-4">
             <div className="text-sm text-gray-600 dark:text-gray-300">Lote <strong>{lote.numero}</strong> · {lote.qtdPessoas} pessoa(s) · {lote.qtdShifts} turno(s) · <strong>{fmtBR(lote.totalGeral)}</strong></div>
             <div>

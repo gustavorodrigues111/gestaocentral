@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { TriangleAlert, CheckCircle2 } from "lucide-react";
 import {
   addDoc, arrayUnion, collection, doc, getDocs, limit, query, updateDoc, where,
 } from "firebase/firestore";
@@ -176,7 +177,7 @@ export function CadastroPorCpf({ restaurantId, onConcluido, onCancelar }: Props)
       {busca.tipo === "existe_aqui" && (
         <div className="rounded-lg border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-900/20 p-3 space-y-2">
           <div className="text-sm text-gray-800 dark:text-gray-100">
-            ⚠️ Já cadastrado neste restaurante: <strong>{busca.pessoa.nome}</strong>
+            <TriangleAlert size={14} className="inline align-[-2px] mr-1" />Já cadastrado neste restaurante: <strong>{busca.pessoa.nome}</strong>
           </div>
           <Button size="sm" onClick={() => onConcluido(busca.pessoa)}>
             Selecionar {busca.pessoa.nome}
@@ -187,7 +188,7 @@ export function CadastroPorCpf({ restaurantId, onConcluido, onCancelar }: Props)
       {busca.tipo === "existe_outro" && (
         <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 p-3 space-y-3">
           <div className="text-sm text-gray-800 dark:text-gray-100">
-            ✅ Encontrei <strong>{busca.pessoa.nome}</strong> cadastrad{busca.pessoa.nome.endsWith("a") ? "a" : "o"} em outro restaurante.
+            <CheckCircle2 size={14} className="inline align-[-2px] mr-1" />Encontrei <strong>{busca.pessoa.nome}</strong> cadastrad{busca.pessoa.nome.endsWith("a") ? "a" : "o"} em outro restaurante.
             <div className="text-[11px] text-gray-600 dark:text-gray-400 mt-1">
               Vou vincular este cadastro ao restaurante atual. Confirme/complete os dados:
             </div>

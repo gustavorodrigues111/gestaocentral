@@ -1,3 +1,4 @@
+import { Trash2, Plus } from "lucide-react";
 import type { FreelaIntervalo } from "../../core/types";
 import { IntervaloStepper } from "./IntervaloStepper";
 import { somaIntervalos } from "./helpers";
@@ -68,9 +69,9 @@ export function IntervalosEditor({
                 onClick={() => remover(i)}
                 disabled={disabled}
                 aria-label="Remover intervalo"
-                className="text-[18px] text-gray-400 hover:text-red-600 dark:hover:text-red-400 leading-none p-1 disabled:opacity-30 shrink-0"
+                className="text-gray-400 hover:text-red-600 dark:hover:text-red-400 leading-none p-1 disabled:opacity-30 shrink-0"
               >
-                🗑
+                <Trash2 size={16} />
               </button>
             </div>
           ))}
@@ -86,7 +87,7 @@ export function IntervalosEditor({
           disabled={disabled}
           className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 px-3 py-2 rounded-lg border border-indigo-200 dark:border-indigo-800 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 disabled:opacity-50"
         >
-          ➕ Adicionar intervalo
+          <span className="inline-flex items-center gap-1.5"><Plus size={14} /> Adicionar intervalo</span>
         </button>
         {value.length > 1 && (
           <span className="text-[11px] text-gray-500 dark:text-gray-400">

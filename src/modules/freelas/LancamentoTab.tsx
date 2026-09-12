@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Circle, CalendarDays, CheckSquare, Pause, Pencil, Ban, Trash2 } from "lucide-react";
 import { deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -69,7 +70,7 @@ export function LancamentoTab({
     <div className="space-y-5">
       {/* ── Zona 1: Turnos do dia ─────────────────────────────────────────── */}
       <section>
-        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-2">🟢 Turnos do dia</h3>
+        <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-2 inline-flex items-center gap-1.5"><Circle size={13} className="fill-emerald-400 text-emerald-400" /> Turnos do dia</h3>
         {turnosDoDia.length === 0 ? (
           <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-sm text-gray-500">
             Nenhum turno pra abrir ou fechar hoje.
@@ -86,7 +87,7 @@ export function LancamentoTab({
       {planejados.length > 0 && (
         <section>
           <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5 px-1">
-            📅 Planejados ({planejados.length})
+            <CalendarDays size={13} className="inline align-[-2px] mr-1" />Planejados ({planejados.length})
           </h3>
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-white/60 dark:bg-gray-900/40 divide-y divide-gray-100 dark:divide-gray-800">
             {planejados.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} onAlterar={() => setEditShift(s)} />)}
@@ -103,7 +104,7 @@ export function LancamentoTab({
             className="w-full flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-1.5 px-1 hover:text-gray-600 dark:hover:text-gray-300"
           >
             <span className={`transition-transform ${realizadosOpen ? "" : "-rotate-90"}`}>▾</span>
-            ✅ Realizados ({realizados.length})
+            <CheckSquare size={13} className="inline align-[-2px]" /> Realizados ({realizados.length})
             <span className="font-normal normal-case tracking-normal text-gray-400">aguardando o DP precificar</span>
           </button>
           {realizadosOpen && (
@@ -171,11 +172,11 @@ function textoHorario(s: FreelaShift, zona: Zona): string {
   return `${s.entrada}→${s.saida}${tot ? ` (${tot}min)` : ""} ${fmtHoras(h)}`;
 }
 
-const ZONA_BADGE: Record<Zona, { txt: string; cls: string }> = {
-  planejado_futuro: { txt: "📅 PLANEJADO", cls: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" },
-  abrir:            { txt: "📅 PLANEJADO", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
-  fechar:           { txt: "🟡 ABERTO",    cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
-  realizado:        { txt: "✅ REALIZADO", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
+const ZONA_BADGE: Record<Zona, { txt: ReactNode; cls: string }> = {
+  planejado_futuro: { txt: <span className="inline-flex items-center gap-1"><CalendarDays size={11} /> PLANEJADO</span>, cls: "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400" },
+  abrir:            { txt: <span className="inline-flex items-center gap-1"><CalendarDays size={11} /> PLANEJADO</span>, cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" },
+  fechar:           { txt: <span className="inline-flex items-center gap-1"><Circle size={10} className="fill-amber-500 text-amber-500" /> ABERTO</span>, cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" },
+  realizado:        { txt: <span className="inline-flex items-center gap-1"><CheckSquare size={11} /> REALIZADO</span>, cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" },
   outro:            { txt: "", cls: "" },
 };
 
@@ -223,7 +224,7 @@ function RowTurno({ shift, hoje, podeOperar, onAlterar }: { shift: FreelaShift; 
     <div className={`px-3 py-2.5 border-l-4 ${ZONA_CARD[zona]} ${discreto ? "opacity-80" : ""}`}>
       {/* status */}
       {badge.txt && (
-        <span className={`inline-block text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-semibold whitespace-nowrap ${badge.cls}`}>{badge.txt}</span>
+        <span className={`inline-flex items-center text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded font-semibold whitespace-nowrap ${badge.cls}`}>{badge.txt}</span>
       )}
       {/* nome completo, em destaque */}
       <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 mt-1 break-words">{shift.nomeSnapshot}</div>
@@ -237,25 +238,25 @@ function RowTurno({ shift, hoje, podeOperar, onAlterar }: { shift: FreelaShift; 
       {temAcoes && (
         <div className="grid grid-cols-2 gap-2 mt-2">
           {zona === "abrir" && (
-            <Button size="sm" className="w-full" onClick={() => setModalMode("abrir")} disabled={saving}>🟢 Abrir turno</Button>
+            <Button size="sm" className="w-full" onClick={() => setModalMode("abrir")} disabled={saving}><span className="inline-flex items-center gap-1.5"><Circle size={13} className="fill-emerald-400 text-emerald-400" /> Abrir turno</span></Button>
           )}
           {zona === "fechar" && (
             <>
-              <Button size="sm" variant="secondary" className="w-full" onClick={() => setModalMode("intervalo")} disabled={saving}>⏸️ Intervalo</Button>
-              <Button size="sm" className="w-full" onClick={() => setModalMode("fechar")} disabled={saving}>🔴 Fechar turno</Button>
+              <Button size="sm" variant="secondary" className="w-full" onClick={() => setModalMode("intervalo")} disabled={saving}><span className="inline-flex items-center gap-1.5"><Pause size={14} /> Intervalo</span></Button>
+              <Button size="sm" className="w-full" onClick={() => setModalMode("fechar")} disabled={saving}><span className="inline-flex items-center gap-1.5"><Circle size={13} className="fill-rose-400 text-rose-400" /> Fechar turno</span></Button>
             </>
           )}
           {zona === "realizado" && (
-            <Button size="sm" variant="secondary" className="w-full" onClick={() => setModalMode("editar")} disabled={saving}>✏️ Editar turno</Button>
+            <Button size="sm" variant="secondary" className="w-full" onClick={() => setModalMode("editar")} disabled={saving}><span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editar turno</span></Button>
           )}
           {(zona === "abrir" || zona === "planejado_futuro") && (
-            <Button size="sm" variant="secondary" className="w-full" onClick={onAlterar} disabled={saving}>✏️ Alterar</Button>
+            <Button size="sm" variant="secondary" className="w-full" onClick={onAlterar} disabled={saving}><span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Alterar</span></Button>
           )}
           {(zona === "abrir" || zona === "fechar") && (
-            <Button size="sm" variant="secondary" className="w-full" onClick={naoCompareceu} disabled={saving}>🚫 Não compareceu</Button>
+            <Button size="sm" variant="secondary" className="w-full" onClick={naoCompareceu} disabled={saving}><span className="inline-flex items-center gap-1.5"><Ban size={14} /> Não compareceu</span></Button>
           )}
           {zona !== "realizado" && (
-            <Button size="sm" variant="danger" className="w-full" onClick={excluir} disabled={saving}>🗑 Excluir</Button>
+            <Button size="sm" variant="danger" className="w-full" onClick={excluir} disabled={saving}><span className="inline-flex items-center gap-1.5"><Trash2 size={14} /> Excluir</span></Button>
           )}
         </div>
       )}

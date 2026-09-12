@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { addDoc, collection, getDocs, limit, query, updateDoc, where, doc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { FlaskConical, SkipForward } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { todayYmd, fmtBR as fmtDataBR } from "../../core/utils/date";
@@ -414,7 +415,7 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
   }
 
   return (
-    <Modal title="🧪 Importar lote de freelas (provisório)" onClose={onClose} maxWidth="max-w-3xl">
+    <Modal title={<span className="inline-flex items-center gap-2"><FlaskConical size={18} /> Importar lote de freelas (provisório)</span>} onClose={onClose} maxWidth="max-w-3xl">
       <div className="space-y-3 text-sm">
         <div className="text-xs text-gray-600 dark:text-gray-400 space-y-1">
           <p>
@@ -438,7 +439,7 @@ export function ImportLoteFreelasModal({ restaurantId, onClose, onImported }: Pr
             Áreas válidas: <code>{AREAS.join(", ")}</code> · valorTipo: <code>"hora"</code> ou <code>"diaria"</code>.
           </p>
           <p className="text-amber-700 dark:text-amber-400">
-            ⏭ Proteção anti-duplicação ativa: turnos com mesma pessoa + data
+            <SkipForward size={13} className="inline align-[-2px] mr-1" />Proteção anti-duplicação ativa: turnos com mesma pessoa + data
             que já existem no restaurante são pulados (log mostra).
           </p>
         </div>

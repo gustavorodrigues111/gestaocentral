@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { PenLine, Rewind, Banknote, BarChart3, FolderKanban, Lock, ClipboardList, Circle, FlaskConical, type LucideIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -23,12 +24,12 @@ import { PageContainer } from "../../core/ui/PageContainer";
 
 type TabId = "lancamentos" | "retroativo" | "fechamento" | "relatorios" | "historico";
 
-const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
-  { id: "lancamentos", label: "Lançamentos",    icon: "📝" },
-  { id: "retroativo",  label: "Turnos passados", icon: "⏪" },
-  { id: "fechamento",  label: "Fechamento",     icon: "💰" },
-  { id: "relatorios",  label: "Relatórios",     icon: "📊" },
-  { id: "historico",   label: "Histórico",      icon: "🗂️" },
+const TABS_DEF: { id: TabId; label: string; Icon: LucideIcon }[] = [
+  { id: "lancamentos", label: "Lançamentos",    Icon: PenLine },
+  { id: "retroativo",  label: "Turnos passados", Icon: Rewind },
+  { id: "fechamento",  label: "Fechamento",     Icon: Banknote },
+  { id: "relatorios",  label: "Relatórios",     Icon: BarChart3 },
+  { id: "historico",   label: "Histórico",      Icon: FolderKanban },
 ];
 
 export function FreelasPage() {
@@ -113,7 +114,7 @@ export function FreelasPage() {
   if (!podeOperar && !podeDp && !podeRetro) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
@@ -132,8 +133,8 @@ export function FreelasPage() {
           <div className="mt-3 space-y-2 max-w-md sm:space-y-0 sm:max-w-none sm:flex sm:flex-wrap sm:items-center sm:gap-2">
             {/* Ações principais: Planejar + Abrir lado a lado (no mobile) */}
             <div className="grid grid-cols-2 gap-2 sm:contents">
-              <Button className="w-full sm:w-auto" onClick={() => setShowNovoTurno(true)}>📋 Planejar turno</Button>
-              <Button className="w-full sm:w-auto" onClick={() => setShowAvulsoTurno(true)}>🟢 Abrir turno</Button>
+              <Button className="w-full sm:w-auto" onClick={() => setShowNovoTurno(true)}><span className="inline-flex items-center gap-1.5"><ClipboardList size={15} /> Planejar turno</span></Button>
+              <Button className="w-full sm:w-auto" onClick={() => setShowAvulsoTurno(true)}><span className="inline-flex items-center gap-1.5"><Circle size={13} className="fill-emerald-400 text-emerald-400" /> Abrir turno</span></Button>
             </div>
             {/* Cadastro: largura cheia no mobile. Mesmo tamanho dos principais. */}
             <Button variant="secondary" className="w-full sm:w-auto" onClick={() => setShowCadastro(true)}>
@@ -142,7 +143,7 @@ export function FreelasPage() {
             {/* PROVISÓRIO — importação em lote (master). */}
             {isMaster && (
               <Button variant="secondary" className="w-full sm:w-auto" onClick={() => setShowImportLote(true)}>
-                🧪 Importar lote
+                <span className="inline-flex items-center gap-1.5"><FlaskConical size={15} /> Importar lote</span>
               </Button>
             )}
           </div>
@@ -176,7 +177,7 @@ export function FreelasPage() {
                   : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"
               }`}
             >
-              {t.icon} {t.label}
+              <t.Icon size={15} className="inline align-[-2px] mr-1.5" />{t.label}
               {count > 0 && (
                 <span
                   className={`ml-2 text-[10px] px-1.5 py-0.5 rounded-full font-semibold ${

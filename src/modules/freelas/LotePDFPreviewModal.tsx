@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { Download } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { gerarLotePDF } from "./gerarLotePDF";
@@ -68,7 +69,7 @@ export function LotePDFPreviewModal({ lote, shifts, restaurant, onClose }: Props
           />
           <div className="flex justify-end gap-2 mt-4">
             <Button variant="secondary" onClick={onClose}>Fechar</Button>
-            <Button onClick={baixar}>📥 Baixar PDF</Button>
+            <Button onClick={baixar}><span className="inline-flex items-center gap-1.5"><Download size={15} /> Baixar PDF</span></Button>
           </div>
         </>
       )}

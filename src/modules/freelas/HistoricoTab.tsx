@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Banknote, Ban, FileText, Gift, ReceiptText, Printer } from "lucide-react";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import type {
@@ -48,10 +49,10 @@ export function HistoricoTab({ shifts, pagamentos, restaurant }: Props) {
       <div className="flex items-center justify-between flex-wrap gap-2 mb-4">
         <div className="flex border-b border-gray-200 dark:border-gray-800">
           <SubTabBtn active={sub === "lotes"} onClick={() => setSub("lotes")}>
-            💰 Lotes pagos ({lotesPagos.length})
+            <span className="inline-flex items-center gap-1.5"><Banknote size={14} /> Lotes pagos ({lotesPagos.length})</span>
           </SubTabBtn>
           <SubTabBtn active={sub === "noshows"} onClick={() => setSub("noshows")}>
-            🚫 Não compareceram ({noShows.length})
+            <span className="inline-flex items-center gap-1.5"><Ban size={14} /> Não compareceram ({noShows.length})</span>
           </SubTabBtn>
         </div>
         <select
@@ -164,7 +165,7 @@ function LoteCard({
             {aberto ? "Recolher" : "Detalhes"}
           </Button>
           <Button size="sm" onClick={() => setPreviewAberto(true)}>
-            📄 PDF
+            <span className="inline-flex items-center gap-1.5"><FileText size={14} /> PDF</span>
           </Button>
         </div>
       </div>
@@ -237,7 +238,7 @@ function PessoaLoteRow({
           <span className="block text-sm font-semibold tabular-nums text-gray-800 dark:text-gray-100">{fmtBR(totalPessoa)}</span>
           {gorjeta > 0 && (
             <span className="block text-[10px] text-indigo-600 dark:text-indigo-400 tabular-nums">
-              diária {fmtBR(p.totalValor)} + 🎁 {fmtBR(gorjeta)}
+              diária {fmtBR(p.totalValor)} + <Gift size={11} className="inline align-[-1px]" /> {fmtBR(gorjeta)}
             </span>
           )}
         </span>
@@ -246,7 +247,7 @@ function PessoaLoteRow({
           onClick={() => onRecibo({ tipo: "diarista", nome: p.nome, periodo, turnos, total: totalPessoa, gorjeta: gorjeta || undefined })}
           className="text-[11px] px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 shrink-0"
         >
-          🧾 Recibo
+          <span className="inline-flex items-center gap-1.5"><ReceiptText size={13} /> Recibo</span>
         </button>
       </div>
       {open && (
@@ -298,7 +299,7 @@ function MensalistaLoteRow({
           onClick={() => onRecibo({ tipo: "mensalista", nome: m.nome, periodo: competenciaRange(m.competencia), mensalista: m, total: m.total })}
           className="text-[11px] px-2 py-1 rounded-md border border-gray-200 dark:border-gray-700 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 shrink-0"
         >
-          🧾 Recibo
+          <span className="inline-flex items-center gap-1.5"><ReceiptText size={13} /> Recibo</span>
         </button>
       </div>
       {open && (
@@ -346,7 +347,7 @@ function ReciboModal({ data, onClose }: { data: ReciboData; onClose: () => void 
       />
       <div className="flex justify-end gap-2 mt-4">
         <Button variant="secondary" onClick={onClose}>Fechar</Button>
-        <Button onClick={imprimir}>🖨️ Imprimir</Button>
+        <Button onClick={imprimir}><span className="inline-flex items-center gap-1.5"><Printer size={15} /> Imprimir</span></Button>
       </div>
     </Modal>
   );

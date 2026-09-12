@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { CalendarDays } from "lucide-react";
 import { todayYmd } from "../../core/utils/date";
 
 type Props = {
@@ -136,7 +137,7 @@ export function SeletorSemana({ value, onChange, disabled }: Props) {
           onClick={() => setOutraDataAberta(true)}
           className="text-indigo-600 dark:text-indigo-400 hover:underline"
         >
-          📅 Outra data…
+          <span className="inline-flex items-center gap-1.5"><CalendarDays size={13} /> Outra data…</span>
         </button>
         {value !== hoje && (
           <button

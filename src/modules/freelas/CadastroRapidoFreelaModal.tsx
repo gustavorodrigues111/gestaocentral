@@ -2,6 +2,7 @@ import { useState } from "react";
 import { addDoc, collection, getDocs, limit, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { Backpack } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
@@ -98,7 +99,7 @@ export function CadastroRapidoFreelaModal({ restaurantId, defaults, onSaved, onC
   }
 
   return (
-    <Modal title="🎒 Cadastrar freela" onClose={onClose} maxWidth="max-w-md">
+    <Modal title={<span className="inline-flex items-center gap-2"><Backpack size={18} /> Cadastrar freela</span>} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Cadastro mínimo pra pagar e identificar o freela. Os 4 campos são

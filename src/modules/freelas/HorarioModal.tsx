@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
+import { Circle, Pencil, Pause, Clock } from "lucide-react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
@@ -24,11 +25,11 @@ type Props = {
   onSaved: () => void;
 };
 
-const TITULOS: Record<Mode, string> = {
-  abrir:     "🟢 Abrir turno",
-  fechar:    "🔴 Fechar turno",
-  editar:    "✏️ Editar turno",
-  intervalo: "⏸️ Registrar intervalo",
+const TITULOS: Record<Mode, ReactNode> = {
+  abrir:     <span className="inline-flex items-center gap-1.5"><Circle size={14} className="fill-emerald-400 text-emerald-400" /> Abrir turno</span>,
+  fechar:    <span className="inline-flex items-center gap-1.5"><Circle size={14} className="fill-rose-400 text-rose-400" /> Fechar turno</span>,
+  editar:    <span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editar turno</span>,
+  intervalo: <span className="inline-flex items-center gap-1.5"><Pause size={14} /> Registrar intervalo</span>,
 };
 const BOTOES: Record<Mode, string> = {
   abrir:     "Abrir turno",
@@ -107,12 +108,12 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
   }
 
   return (
-    <Modal title={`${TITULOS[mode]} — ${shift.nomeSnapshot}`} onClose={onClose} maxWidth="max-w-md">
+    <Modal title={<span className="inline-flex items-center gap-2">{TITULOS[mode]} — {shift.nomeSnapshot}</span>} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-4">
         {/* Contexto */}
         {mode === "abrir" && shift.entradaPrevista && (
           <div className="text-xs text-gray-700 dark:text-gray-300 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded p-2">
-            🕒 Chegada prevista no plano: <strong>{shift.entradaPrevista}</strong>. Confirme a hora real que a pessoa chegou.
+            <Clock size={13} className="inline align-[-2px] mr-1" />Chegada prevista no plano: <strong>{shift.entradaPrevista}</strong>. Confirme a hora real que a pessoa chegou.
           </div>
         )}
         {mode === "fechar" && (
@@ -123,7 +124,7 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
         )}
         {mode === "intervalo" && (
           <div className="text-xs text-gray-700 dark:text-gray-300 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded p-2">
-            ⏸️ Registre os intervalos agora. O turno continua <strong>aberto</strong> — você fecha depois com a hora de saída.
+            <Pause size={13} className="inline align-[-2px] mr-1" />Registre os intervalos agora. O turno continua <strong>aberto</strong> — você fecha depois com a hora de saída.
           </div>
         )}
 

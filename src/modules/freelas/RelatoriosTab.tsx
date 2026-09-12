@@ -5,6 +5,7 @@
 //  (com todos os turnos).
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
+import { Download } from "lucide-react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
@@ -199,8 +200,8 @@ export function RelatoriosTab({ restaurantId, restaurantNome, unidades, shifts }
         <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-gray-600 dark:text-gray-400">De</label><input type="date" value={de} max={ate} onChange={e => setDe(e.target.value)} className={inp} /></div>
         <div className="flex flex-col gap-1"><label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Até</label><input type="date" value={ate} min={de} onChange={e => setAte(e.target.value)} className={inp} /></div>
         <div className="flex gap-2 ml-auto">
-          <Button variant="secondary" size="sm" onClick={() => void exportarPDF("resumido")} disabled={exportando || areas.length === 0}>⬇ PDF resumido</Button>
-          <Button size="sm" onClick={() => void exportarPDF("expandido")} disabled={exportando || areas.length === 0}>⬇ PDF expandido</Button>
+          <Button variant="secondary" size="sm" onClick={() => void exportarPDF("resumido")} disabled={exportando || areas.length === 0}><span className="inline-flex items-center gap-1.5"><Download size={14} /> PDF resumido</span></Button>
+          <Button size="sm" onClick={() => void exportarPDF("expandido")} disabled={exportando || areas.length === 0}><span className="inline-flex items-center gap-1.5"><Download size={14} /> PDF expandido</span></Button>
         </div>
       </div>
 

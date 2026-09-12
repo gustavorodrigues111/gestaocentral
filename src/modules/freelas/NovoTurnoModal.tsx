@@ -1,4 +1,5 @@
 import { useMemo, useState } from "react";
+import { Pencil, Circle, Rewind, ClipboardList, User, Backpack, Lightbulb, Save } from "lucide-react";
 import {
   addDoc, collection, deleteField, doc, getDoc, setDoc, updateDoc,
 } from "firebase/firestore";
@@ -209,7 +210,7 @@ export function NovoTurnoModal({
 
   return (
     <Modal
-      title={isEdit ? "✏️ Alterar turno planejado" : (isAvulso ? "🟢 Abrir turno avulso" : isRetro ? "⏪ Lançar turno passado" : "📋 Planejar turno de freela")}
+      title={<span className="inline-flex items-center gap-2">{isEdit ? <><Pencil size={18} /> Alterar turno planejado</> : isAvulso ? <><Circle size={16} className="fill-emerald-400 text-emerald-400" /> Abrir turno avulso</> : isRetro ? <><Rewind size={18} /> Lançar turno passado</> : <><ClipboardList size={18} /> Planejar turno de freela</>}</span>}
       onClose={onClose}
       maxWidth="max-w-lg"
     >
@@ -217,7 +218,7 @@ export function NovoTurnoModal({
         {/* ─── Data ─── (avulso é sempre hoje) */}
         {isAvulso ? (
           <div className="text-[11px] text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded p-2">
-            🟢 Abrindo um turno <strong>agora</strong> (hoje), sem planejamento prévio.
+            <Circle size={13} className="inline align-[-2px] mr-1 fill-emerald-400 text-emerald-400" />Abrindo um turno <strong>agora</strong> (hoje), sem planejamento prévio.
           </div>
         ) : (
           <div className="flex flex-col gap-1">
@@ -226,7 +227,7 @@ export function NovoTurnoModal({
             </label>
             <SeletorSemana value={date} onChange={setDate} />
             {isRetro && (
-              <p className="text-[10px] text-amber-600 dark:text-amber-400">⏪ Lançamento retroativo — escolha um dia já passado.</p>
+              <p className="text-[10px] text-amber-600 dark:text-amber-400"><Rewind size={11} className="inline align-[-1px] mr-1" />Lançamento retroativo — escolha um dia já passado.</p>
             )}
           </div>
         )}
@@ -241,7 +242,7 @@ export function NovoTurnoModal({
           {isEdit && editShift && (
             <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50 px-3 py-2">
               <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                {editShift.empregadoId ? "👨‍💼 " : "🎒 "}{editShift.nomeSnapshot}
+                {editShift.empregadoId ? <User size={14} className="inline align-[-2px] mr-1" /> : <Backpack size={14} className="inline align-[-2px] mr-1" />}{editShift.nomeSnapshot}
               </div>
               <div className="text-[11px] text-gray-500 dark:text-gray-400">
                 {editShift.empregadoId ? "Empregado da casa" : "Freela"} · pra trocar a pessoa, exclua e crie outro turno
@@ -267,7 +268,7 @@ export function NovoTurnoModal({
                       : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/20"
                   }`}
                 >
-                  👨‍💼 Empregado da casa
+                  <span className="inline-flex items-center gap-1.5"><User size={15} /> Empregado da casa</span>
                 </button>
                 <button
                   type="button"
@@ -282,7 +283,7 @@ export function NovoTurnoModal({
                       : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400 hover:bg-indigo-50/30 dark:hover:bg-indigo-900/20"
                   }`}
                 >
-                  🎒 Freela
+                  <span className="inline-flex items-center gap-1.5"><Backpack size={15} /> Freela</span>
                 </button>
               </div>
 
@@ -351,7 +352,7 @@ export function NovoTurnoModal({
             <div className="flex items-center justify-between gap-2 rounded-lg border border-indigo-300 dark:border-indigo-700 bg-indigo-50 dark:bg-indigo-900/20 px-3 py-2">
               <div>
                 <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                  {selecionado.tipo === "empregado" ? "👨‍💼 " : "🎒 "}
+                  {selecionado.tipo === "empregado" ? <User size={14} className="inline align-[-2px] mr-1" /> : <Backpack size={14} className="inline align-[-2px] mr-1" />}
                   {selecionado.tipo === "empregado" ? selecionado.emp.nome : selecionado.pessoa.nome}
                 </div>
                 <div className="text-[11px] text-gray-600 dark:text-gray-400">
@@ -456,7 +457,7 @@ export function NovoTurnoModal({
         </div>
 
         <div className="text-[11px] text-gray-500 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded p-2">
-          💡 Valor (R$/h ou diária) é preenchido pelo <strong>DP</strong> depois.
+          <Lightbulb size={13} className="inline align-[-2px] mr-1" />Valor (R$/h ou diária) é preenchido pelo <strong>DP</strong> depois.
         </div>
 
         {selecionado?.tipo === "empregado" && (
@@ -470,7 +471,7 @@ export function NovoTurnoModal({
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button>
           <Button onClick={salvar} disabled={saving || (!isEdit && !selecionado)}>
-            {saving ? "Salvando…" : (isEdit ? "💾 Salvar" : (isAvulso ? "🟢 Abrir turno" : isRetro ? "⏪ Lançar turno passado" : "📋 Planejar"))}
+            {saving ? "Salvando…" : <span className="inline-flex items-center gap-1.5">{isEdit ? <><Save size={15} /> Salvar</> : isAvulso ? <><Circle size={13} className="fill-emerald-400 text-emerald-400" /> Abrir turno</> : isRetro ? <><Rewind size={15} /> Lançar turno passado</> : <><ClipboardList size={15} /> Planejar</>}</span>}
           </Button>
         </div>
       </div>
