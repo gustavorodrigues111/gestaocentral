@@ -2,6 +2,7 @@
 // F1: kanban com etapas fixas + arrastar. F2: vagas com perguntas próprias +
 // responsável + página pública. F3: transferir, rejeitar c/ motivo, aprovar→admissão.
 import { useEffect, useMemo, useState } from "react";
+import { Target } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where, updateDoc, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -149,7 +150,7 @@ export function ProcessoSeletivoPage() {
     <div className="max-w-full mx-auto p-4">
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">🎯 Processo Seletivo</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Target size={20} className="text-gray-500 dark:text-gray-400" /> Processo Seletivo</h1>
           <p className="text-xs text-gray-500">Vagas e candidaturas em kanban. {cands.length} candidatura(s) · {vagas.length} vaga(s).</p>
         </div>
       </div>

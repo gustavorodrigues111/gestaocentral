@@ -12,6 +12,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useMemo, useState } from "react";
+import { LayoutDashboard } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -111,7 +112,7 @@ export function ChatPage() {
     <div className={`p-4 sm:p-6 mx-auto ${aba === "semana" ? "max-w-6xl" : "max-w-3xl"}`}>
       <header className="mb-4">
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-          🎛️ Minha Central
+          <LayoutDashboard size={20} className="text-gray-500 dark:text-gray-400" /> Minha Central
         </h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
           Tudo que é seu, no dia certo{multiRest ? " — em todos os seus restaurantes" : ""}.

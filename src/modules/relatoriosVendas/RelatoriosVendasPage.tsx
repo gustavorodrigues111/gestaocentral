@@ -7,6 +7,7 @@
 //     (vendasPorHora = faturamento faturado/encerrado por hora), agrupado
 //     em Almoço × Noite por um horário de corte configurável.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { BarChart3 } from "lucide-react";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -221,7 +222,7 @@ export function RelatoriosVendasPage() {
   return (
     <div className="max-w-6xl">
       <div className="mb-3">
-        <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100">📊 Relatórios de Vendas</h1>
+        <h1 className="text-lg font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><BarChart3 size={20} className="text-gray-500 dark:text-gray-400" /> Relatórios de Vendas</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">
           {activeRestaurant?.nome} · direto do PDV Altec/Riser (caixa encerrado). Produtos vendidos e faturamento por turno.
         </p>

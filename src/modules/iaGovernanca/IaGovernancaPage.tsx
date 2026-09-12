@@ -5,6 +5,7 @@
 // Diretrizes por empresa, replicáveis pra outras.
 
 import { useEffect, useState } from "react";
+import { Shield } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where, doc, setDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -159,7 +160,7 @@ export function IaGovernancaPage() {
 
   return (
     <div className="max-w-4xl mx-auto p-4">
-      <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">🛡️ Governança de IA</h1>
+      <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Shield size={20} className="text-gray-500 dark:text-gray-400" /> Governança de IA</h1>
       <p className="text-xs text-gray-500 mb-4">Módulo exclusivo do master. Diretrizes em blocos do que a IA pode responder, registro das interações e alertas de uso fora do escopo (LGPD).</p>
 
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">

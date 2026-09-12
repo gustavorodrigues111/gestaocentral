@@ -2,6 +2,7 @@
 // Templates de checklist (Configurações) · avaliações (preenchimento/relatório)
 // · painel. Nova avaliação usa o template ativo; se houver mais de um, pergunta.
 import { useEffect, useMemo, useState } from "react";
+import { FlaskConical } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -106,7 +107,7 @@ export function SegurancaPage() {
     <div className="max-w-5xl mx-auto space-y-5">
       <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="min-w-0">
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">🧪 Segurança Sanitária</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><FlaskConical size={20} className="text-gray-500 dark:text-gray-400" /> Segurança Sanitária</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-0.5">Avaliação de boas práticas por área. Cada não-conforme vira ação para a operação.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap sm:justify-end sm:shrink-0">

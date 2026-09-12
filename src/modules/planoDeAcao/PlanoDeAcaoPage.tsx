@@ -2,6 +2,7 @@
 // Kanban de gestão, "minhas ações", log de tratativas). Fases seguintes plugam
 // ocorrências/ideias/reuniões e produção derivada.
 import { useEffect, useMemo, useState } from "react";
+import { Target } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -139,7 +140,7 @@ export function PlanoDeAcaoPage() {
     <div className="max-w-5xl">
       <div className="flex items-center justify-between gap-3 mb-4 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">🎯 Plano de Ação</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Target size={20} className="text-gray-500 dark:text-gray-400" /> Plano de Ação</h1>
           <p className="text-xs text-gray-500">{restaurant.nome} · ações com responsável, prazo e status</p>
         </div>
         {podeCriar && <Button onClick={() => setEditing("new")}>+ Nova ação</Button>}

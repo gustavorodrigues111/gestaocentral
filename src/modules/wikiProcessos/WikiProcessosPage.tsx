@@ -7,6 +7,7 @@
 // Editar o guia = subir/colar o HTML (sem deploy). Fonte da IA = texto do guia.
 
 import { useEffect, useState } from "react";
+import { BookOpen } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, doc, setDoc, deleteDoc } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL, deleteObject } from "firebase/storage";
@@ -86,7 +87,7 @@ export function WikiProcessosPage() {
   return (
     <div className="max-w-5xl mx-auto p-4 sm:p-6">
       <header className="mb-5">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">📚 Wiki de Processos</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><BookOpen size={20} className="text-gray-500 dark:text-gray-400" /> Wiki de Processos</h1>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Guia de funcionamento de cada área — e um assistente de IA que responde as dúvidas da equipe a partir do guia.</p>
       </header>
 

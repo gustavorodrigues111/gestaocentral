@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { MessagesSquare } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -157,7 +158,7 @@ export function ReunioesPage() {
     <div className="max-w-4xl mx-auto">
       <div className="flex items-center justify-between mb-4 gap-3">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">🗣️ Reuniões</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><MessagesSquare size={20} className="text-gray-500 dark:text-gray-400" /> Reuniões</h1>
           <p className="text-xs text-gray-500">{restaurant.nome} · agenda do restaurante</p>
         </div>
         {podeConfig && (

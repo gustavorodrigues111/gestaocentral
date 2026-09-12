@@ -3,6 +3,7 @@
 // com o mesmo editor/designer. O site puxa daqui. Doc: cardapioEstruturado/{rid}
 // = { cardapios: [...], layout (visual compartilhado) }.
 import { useEffect, useRef, useState } from "react";
+import { ClipboardList } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { doc, getDoc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -153,7 +154,7 @@ export function CardapioPage() {
 
   return (
     <div className="max-w-5xl mx-auto py-4 space-y-4">
-      <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">📋 Cardápios — {restaurant.nome}</h2>
+      <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><ClipboardList size={20} className="text-gray-500 dark:text-gray-400" /> Cardápios — {restaurant.nome}</h2>
       <p className="text-[13px] text-gray-500 dark:text-gray-400">Monte aqui os cardápios do restaurante. O site puxa estas informações — atualizou aqui, atualiza lá.</p>
 
       {/* Modo: item a item (estruturado) × subir PDF pronto. Grava no SiteConfig. */}

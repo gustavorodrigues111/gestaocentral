@@ -12,6 +12,7 @@
 //  ou, por célula, um arquivo EXTERNO (URL no Drive). Giro do fechamento = manual.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Calculator } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -227,7 +228,7 @@ export function FechamentoFinPage() {
       {/* Cabeçalho */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2">🧮 Fechamento Financeiro</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><Calculator size={20} className="text-gray-500 dark:text-gray-400" /> Fechamento Financeiro</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400">Matriz item × empresa — nasce zerado a cada mês.</p>
         </div>
         {/* Seletor de competência */}

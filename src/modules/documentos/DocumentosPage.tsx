@@ -5,6 +5,7 @@
 // preenchido pra assinatura. PDF exato sai pela skill/LibreOffice (fase seguinte).
 
 import { useEffect, useMemo, useState } from "react";
+import { FileText, Settings } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where, doc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -114,7 +115,7 @@ export function DocumentosPage() {
     <div className="max-w-5xl mx-auto p-4 sm:p-6">
       <header className="mb-4 flex items-start justify-between gap-3">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">📄 Documentos</h1>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><FileText size={20} className="text-gray-500 dark:text-gray-400" /> Documentos</h1>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Modelos trabalhistas do escritório, preenchidos com os dados da empresa e do empregado. Saída em DOCX pra assinatura.</p>
         </div>
         {podeConfig && <Button variant="secondary" onClick={() => setModo("config")}>⚙️ Configurações</Button>}
@@ -511,7 +512,7 @@ function ConfigView({ restaurants, empresas, empresaRid, setEmpresaRid, pessoaId
     <div className="max-w-5xl mx-auto p-4 sm:p-6">
       <header className="mb-4 flex items-center gap-2">
         <button type="button" onClick={onVoltar} className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 text-sm">← Voltar</button>
-        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">⚙️ Configurações — Documentos</h1>
+        <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Settings size={20} className="text-gray-500 dark:text-gray-400" /> Configurações — Documentos</h1>
       </header>
 
       <div className="mb-4">

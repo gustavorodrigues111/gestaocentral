@@ -3,6 +3,7 @@
 // Mostra as tarefas da pessoa (responsável) no restaurante ativo; líder com
 // verTodas vê as da equipe. Concluir com um toque + andamento por comentário.
 import { useEffect, useMemo, useState } from "react";
+import { ListChecks } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -134,7 +135,7 @@ export function LenteEnxutaPage() {
     <div className="max-w-5xl mx-auto p-3 sm:p-4">
       <div className="flex items-center justify-between gap-2 mb-3">
         <div>
-          <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">✅ Tarefas</h1>
+          <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><ListChecks size={20} className="text-gray-500 dark:text-gray-400" /> Tarefas</h1>
           <p className="text-xs text-gray-500">{restaurant.nome} · o que fazer</p>
         </div>
         {podeCriar && <button type="button" onClick={() => setNovo(true)} className="text-sm font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white">+ Nova</button>}

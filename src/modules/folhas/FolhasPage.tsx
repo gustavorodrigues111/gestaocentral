@@ -2,6 +2,7 @@
 // Sobe os espelhos (PDF) → parser (Claude) → motor de regras (código puro) →
 // findings P0/P1/P2. NÃO reporta o que está certo. Ver briefing.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Receipt } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, doc, onSnapshot, query, where, setDoc, deleteDoc } from "firebase/firestore";
 import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
@@ -165,7 +166,7 @@ export function FolhasPage() {
     <div className="max-w-4xl mx-auto p-4 space-y-4">
       <header className="flex items-start justify-between gap-3 flex-wrap">
         <div>
-          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">🧾 Conferência de Folhas</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Receipt size={20} className="text-gray-500 dark:text-gray-400" /> Conferência de Folhas</h1>
           <p className="text-sm text-gray-500">{activeRestaurant?.nome || "—"} · audita a folha do Senador contra gorjeta, adiantamento e integridade.</p>
         </div>
         <div className="flex items-center gap-1.5">
