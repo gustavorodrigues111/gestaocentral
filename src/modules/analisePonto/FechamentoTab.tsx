@@ -25,7 +25,7 @@ import { BatidasDiaModal } from "./BatidasDiaModal";
 import { AfastamentoModal } from "./AfastamentoModal";
 import {
   Lock, Umbrella, TriangleAlert, CheckSquare, MessageSquare, Wrench,
-  Repeat, Eye, Siren, Hourglass, User, ClipboardList,
+  Repeat, Eye, Siren, Hourglass, User, ClipboardList, CalendarDays, Info,
 } from "lucide-react";
 
 const STATUS_OPCOES: Array<{ id: ScheduleStatus; label: string }> = [
@@ -1102,7 +1102,7 @@ export function FechamentoTab({
                         className={`text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors hover:brightness-95 ${cls} ${sel ? "ring-2 ring-indigo-500" : ""}`}
                       >
                         <span className="shrink-0">{st === "fechado" ? "✓" : st === "aberto" ? "●" : "○"}</span>
-                        <span className="truncate flex-1">{c.appOnly ? (c.emp?.freelaMensalista ? "🗓️ " : "📋 ") : naoBatePontoDe(c.emp) ? "🎩 " : ""}{c.nome}</span>
+                        <span className="truncate flex-1 inline-flex items-center gap-1">{c.appOnly ? (c.emp?.freelaMensalista ? <CalendarDays size={12}/> : <ClipboardList size={12}/>) : naoBatePontoDe(c.emp) ? "🎩 " : ""}{c.nome}</span>
                         {c.appOnly && (
                           <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-violet-200 text-violet-800 dark:bg-violet-900 dark:text-violet-200"
                             title="Não bate ponto na Sólides — fecha pela escala prevista">
@@ -1130,7 +1130,7 @@ export function FechamentoTab({
         <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
           {appOnlySel ? (
             <div className="px-4 py-2.5 bg-violet-50 dark:bg-violet-950/30 border-b border-violet-200 dark:border-violet-900/50 text-[12px] text-violet-800 dark:text-violet-200 flex items-start gap-2">
-              <span className="text-base leading-none">📋</span>
+              <span className="leading-none shrink-0 mt-0.5"><ClipboardList size={15}/></span>
               <span><strong>Não bate ponto na Sólides</strong> (ex: freela mensalista). Não há batidas pra cruzar — a sugestão abaixo vem da <strong>escala prevista</strong>. Revise dia a dia, declare se trabalhou e feche pra registrar na praticada (e entrar na gorjeta dos dias trabalhados).</span>
             </div>
           ) : naoBateSel && (
@@ -1165,13 +1165,13 @@ export function FechamentoTab({
                     <button type="button" disabled={diasSelComInconsist.length === 0} onClick={() => solicitarSelecionados()}
                       title="Manda UM WhatsApp com todos os dias selecionados que têm inconsistência"
                       className="text-[11px] font-semibold px-3 py-1.5 rounded-md border border-emerald-300 dark:border-emerald-700 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40 disabled:cursor-not-allowed whitespace-nowrap">
-                      💬 Solicitar correção{diasSelComInconsist.length ? ` (${diasSelComInconsist.length})` : ""}
+                      <span className="inline-flex items-center gap-1"><MessageSquare size={13}/> Solicitar correção{diasSelComInconsist.length ? ` (${diasSelComInconsist.length})` : ""}</span>
                     </button>
-                    {mesEncerrado && <span className="text-[11px] text-amber-600 dark:text-amber-400">🔒 Mês encerrado — reabra na Escala pra fechar dias</span>}
+                    {mesEncerrado && <span className="text-[11px] text-amber-600 dark:text-amber-400 inline-flex items-center gap-1"><Lock size={11}/> Mês encerrado — reabra na Escala pra fechar dias</span>}
                     <button type="button" disabled={selDias.size === 0 || salvando || mesEncerrado} onClick={() => void fecharDias()}
                       title={mesEncerrado ? "Mês já encerrado — reabra no módulo de Escala pra editar a praticada e fechar dias" : selDias.size === 0 ? "Selecione ao menos 1 dia" : "Fechar os dias selecionados"}
                       className="text-[11px] font-semibold px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-40 disabled:cursor-not-allowed">
-                      {salvando ? "Fechando…" : `🔒 Fechar dias${selDias.size ? ` (${selDias.size})` : ""}`}
+                      {salvando ? "Fechando…" : <span className="inline-flex items-center gap-1"><Lock size={13}/> Fechar dias{selDias.size ? ` ()` : ""}</span>}
                     </button>
                   </>
                 )}
@@ -1200,7 +1200,7 @@ export function FechamentoTab({
             <div className="text-center text-sm text-gray-400 py-12">Carregando o mês…</div>
           ) : !previstaFechada ? (
             <div className="p-4 text-sm text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/30">
-              ⚠️ Feche a <strong>prevista</strong> do mês no módulo de Escala pra poder fechar os dias por aqui.
+              <TriangleAlert size={13} className="inline align-[-2px] mr-1"/>Feche a <strong>prevista</strong> do mês no módulo de Escala pra poder fechar os dias por aqui.
             </div>
           ) : totalPendentes === 0 ? (
             <div className="text-center text-sm text-gray-500 dark:text-gray-400 py-12">
@@ -1215,14 +1215,14 @@ export function FechamentoTab({
                 </label>
                 <div className="flex-1" />
                 {mesEncerrado
-                  ? <span className="text-[11px] text-amber-600 dark:text-amber-400">🔒 Mês encerrado — reabra no módulo de Escala pra fechar dias</span>
+                  ? <span className="text-[11px] text-amber-600 dark:text-amber-400 inline-flex items-center gap-1"><Lock size={11}/> Mês encerrado — reabra no módulo de Escala pra fechar dias</span>
                   : pendSel.size === 0
                   ? <span className="text-[11px] text-gray-400">Selecione ao menos 1 dia pra fechar</span>
                   : <span className="text-[11px] text-gray-400">{pendSel.size} selecionado(s)</span>}
                 <button type="button" disabled={pendSel.size === 0 || salvando || mesEncerrado} onClick={() => void fecharPendentesSel()}
                   title={mesEncerrado ? "Mês já encerrado — reabra no módulo de Escala pra editar a praticada e fechar dias" : pendSel.size === 0 ? "Selecione ao menos 1 dia" : "Fechar os dias selecionados"}
                   className="text-[11px] font-semibold px-3 py-1.5 rounded-md bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-40 disabled:cursor-not-allowed">
-                  {salvando ? "Fechando…" : `🔒 Fechar selecionados${pendSel.size ? ` (${pendSel.size})` : ""}`}
+                  {salvando ? "Fechando…" : <span className="inline-flex items-center gap-1"><Lock size={13}/> Fechar selecionados{pendSel.size ? ` (${pendSel.size})` : ""}</span>}
                 </button>
               </header>
               <div className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -1265,7 +1265,7 @@ export function FechamentoTab({
             <div className="p-6 text-sm text-gray-500">Carregando…</div>
           ) : aprovacoes.length === 0 ? (
             <div className="p-8 text-center">
-              <div className="text-4xl mb-2">✅</div>
+              <div className="flex justify-center mb-2"><CheckSquare size={30} className="text-emerald-500"/></div>
               <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Nenhuma aprovação pendente</p>
               <p className="text-xs text-gray-500 mt-1">Ajustes que o empregado faz no app de ponto aparecem aqui pra você aprovar ou reprovar.</p>
             </div>
@@ -1321,10 +1321,10 @@ export function FechamentoTab({
       )}
 
       {pdf && (
-        <Modal title="👁 Espelho de ponto" onClose={fecharPdf} maxWidth="max-w-4xl">
+        <Modal title={<span className="inline-flex items-center gap-1"><Eye size={16}/> Espelho de ponto</span>} onClose={fecharPdf} maxWidth="max-w-4xl">
           <div className="space-y-2">
             <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-[11px] text-amber-800 dark:text-amber-200">
-              ℹ️ Este é o <strong>espelho oficial da Sólides</strong>: ele só cobre até o
+              <Info size={13} className="inline align-[-2px] mr-1"/>Este é o <strong>espelho oficial da Sólides</strong>: ele só cobre até o
               <strong> fechamento da competência da folha</strong> de cada colaborador. Dias mais
               recentes (ainda na competência aberta) entram na próxima folha e podem não aparecer
               aqui — mesmo já tendo batida. Pra conferência do dia-a-dia em tempo real, use a lista

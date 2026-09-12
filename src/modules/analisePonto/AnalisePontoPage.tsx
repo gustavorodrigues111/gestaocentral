@@ -1014,14 +1014,14 @@ function GrupoEmp({
                   <button type="button" onClick={() => onAfastar(o)}
                     className="text-[11px] font-medium px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-400"
                     title="Lançar afastamento (atestado/folga/férias…) neste dia">
-                    🏖️
+                    <Palmtree size={14}/>
                   </button>
                 )}
                 {podeManual && (
                   <button type="button" onClick={() => onCorrigir(o)}
                     className="text-[11px] font-medium px-2 py-0.5 rounded-md border border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 hover:border-gray-400"
                     title="Corrigir manual (batidas do dia)">
-                    🛠️
+                    <Wrench size={14}/>
                   </button>
                 )}
                 {podeSolicitar && (
