@@ -1,4 +1,9 @@
 import { useEffect, useState, useMemo } from "react";
+import {
+  Home, ClipboardList, Lightbulb, Siren, Lock, CircleCheck, Circle, Trash2,
+  Folder, Paperclip, Link, Check, X, Inbox, CalendarDays, Building2,
+  TriangleAlert, User, Settings,
+} from "lucide-react";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { db } from "../../core/firebase/config";
@@ -44,7 +49,7 @@ export function EscolhaRestauranteModal({ restaurants, rota, tituloModulo, onClo
               href={`/r/${r.id}${rota}`}
               className="block w-full px-3 py-2.5 rounded-lg border border-gray-200 dark:border-gray-700 hover:border-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20 text-sm font-medium text-gray-800 dark:text-gray-200 transition-colors"
             >
-              🏠 {r.nome} →
+              <span className="inline-flex items-center gap-1.5"><Home size={14} /> {r.nome} →</span>
             </a>
           ))}
           {restaurants.length === 0 && (
@@ -271,7 +276,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
                 onClick={() => setPuxarAberto(true)}
                 className="text-xs px-2 py-1 rounded-md bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
               >
-                📋 Puxar de Ideia/Ocorrência
+                <span className="inline-flex items-center gap-1"><ClipboardList size={13} /> Puxar de Ideia/Ocorrência</span>
               </button>
             )}
             <button onClick={onClose} className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 text-xl leading-none px-2" title="Fechar">×</button>
@@ -280,7 +285,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
 
         {puxando && (
           <div className="px-5 py-2 bg-emerald-50 dark:bg-emerald-900/20 border-b border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2 shrink-0">
-            {puxando.tipo === "ideia" ? "💡" : "🚨"} Puxado de: <strong>{puxando.titulo}</strong>
+            {puxando.tipo === "ideia" ? <Lightbulb size={14} /> : <Siren size={14} />} Puxado de: <strong>{puxando.titulo}</strong>
             <button type="button" onClick={() => setPuxando(null)} className="ml-auto text-[11px] text-emerald-700 dark:text-emerald-300 hover:underline">desfazer</button>
           </div>
         )}
@@ -352,7 +357,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
               )}
             </FieldRow>
             {projetoAtual && projetoAtual.visibilidade === "privado" && (
-              <p className="text-[11px] text-amber-700 dark:text-amber-400 pl-[172px]">🔒 Área privada — só pessoas autorizadas podem ser responsáveis.</p>
+              <p className="text-[11px] text-amber-700 dark:text-amber-400 pl-[172px]"><span className="inline-flex items-center gap-1"><Lock size={12} /> Área privada — só pessoas autorizadas podem ser responsáveis.</span></p>
             )}
             <FieldRow label="Prazo *">
               <DatePickerBR value={ymdParaBr(prazo)} onChange={(br) => setPrazo(brParaYmd(br))} />
@@ -698,7 +703,7 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
             }`}
             title={isConcluida ? "Reabrir tarefa" : "Marcar como concluída"}
           >
-            <span className="text-base leading-none">{isConcluida ? "✓" : "○"}</span>
+            <span className="inline-flex leading-none">{isConcluida ? <CircleCheck size={16} /> : <Circle size={16} />}</span>
             {isConcluida ? "Concluída" : "Marcar como concluída"}
           </button>
           <div className="flex items-center gap-1">
@@ -713,7 +718,7 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
               className="text-gray-400 hover:text-rose-600 dark:hover:text-rose-400 text-sm px-2 py-1 rounded hover:bg-gray-100 dark:hover:bg-gray-800"
               title="Excluir"
             >
-              🗑️
+              <Trash2 size={16} />
             </button>
             <button
               onClick={onClose}
@@ -728,7 +733,7 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
         {/* ─── Banner confidencial ─────────────────────────────────────── */}
         {isConfidencial(tarefa, projeto) && (
           <div className="px-5 py-2 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 shrink-0">
-            🔒 Esta tarefa é confidencial — só pessoas autorizadas podem ver.
+<Lock size={13} /> Esta tarefa é confidencial — só pessoas autorizadas podem ver.
           </div>
         )}
 
@@ -998,7 +1003,7 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
             <div className="space-y-1">
               {(tarefa.anexos || []).map(a => (
                 <div key={a.id} className="flex items-center gap-2 text-sm">
-                  <span>{a.tipo === "drive-folder" ? "📁" : a.tipo === "drive-file" ? "📎" : "🔗"}</span>
+                  <span className="inline-flex shrink-0 text-gray-500 dark:text-gray-400">{a.tipo === "drive-folder" ? <Folder size={15} /> : a.tipo === "drive-file" ? <Paperclip size={15} /> : <Link size={15} />}</span>
                   <a href={a.url} target="_blank" rel="noopener noreferrer" className="flex-1 text-indigo-600 dark:text-indigo-400 hover:underline truncate">{a.nome}</a>
                   <button onClick={() => removerAnexo(a.id)} className="text-[11px] text-red-500 hover:underline">×</button>
                 </div>
@@ -1021,9 +1026,9 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
               </div>
             ) : (
               <div className="flex gap-2 mt-2 flex-wrap">
-                <Button size="sm" variant="ghost" onClick={() => setAddLink(true)}>🔗 Link</Button>
-                <Button size="sm" variant="ghost" onClick={addAnexoDriveFile}>📎 Arquivo Drive</Button>
-                <Button size="sm" variant="ghost" onClick={addAnexoDrive}>📁 Pasta Drive</Button>
+                <Button size="sm" variant="ghost" onClick={() => setAddLink(true)}><Link size={14} />Link</Button>
+                <Button size="sm" variant="ghost" onClick={addAnexoDriveFile}><Paperclip size={14} />Arquivo Drive</Button>
+                <Button size="sm" variant="ghost" onClick={addAnexoDrive}><Folder size={14} />Pasta Drive</Button>
               </div>
             )}
           </div>
@@ -1051,7 +1056,7 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
                     size="sm"
                     onClick={() => setProrrogarParaEmpregadoId(tarefa.origemRefId!)}
                   >
-                    ✓ Prorrogar contrato
+                    <Check size={14} />Prorrogar contrato
                   </Button>
                 )}
                 <Button
@@ -1068,7 +1073,7 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
                     }
                   }}
                 >
-                  ✗ Não renovar — iniciar demissão
+                  <X size={14} />Não renovar — iniciar demissão
                 </Button>
               </div>
             </div>
@@ -1131,8 +1136,8 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
                     <Button size="sm" onClick={addComentario}>Enviar</Button>
                   </div>
                   {extrairMencoes(novoComentario, pessoasLista).length > 0 && (
-                    <div className="text-[10px] text-emerald-700 dark:text-emerald-300 mt-1">
-                      ✓ Vai mencionar: {extrairMencoes(novoComentario, pessoasLista)
+                    <div className="text-[10px] text-emerald-700 dark:text-emerald-300 mt-1 flex items-center gap-1 flex-wrap">
+                      <Check size={11} /> Vai mencionar: {extrairMencoes(novoComentario, pessoasLista)
                         .map(id => pessoasLista.find(p => p.id === id)?.nome)
                         .filter(Boolean)
                         .join(", ")}
@@ -1355,7 +1360,7 @@ export function ImportadorModal({ projetos, subprojetos, pessoaId, onClose }: {
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden flex flex-col" onClick={(e) => e.stopPropagation()}>
         <header className="p-5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
           <div>
-            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">📥 Importar CSV (Asana)</h2>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100"><span className="inline-flex items-center gap-1.5"><Inbox size={18} /> Importar CSV (Asana)</span></h2>
             <p className="text-xs text-gray-500 dark:text-gray-400">Suporta export padrão do Asana: Name, Notes, Due Date, Assignee, Empresas(s), Parent task, etc.</p>
           </div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-700 text-xl">×</button>
@@ -1363,7 +1368,7 @@ export function ImportadorModal({ projetos, subprojetos, pessoaId, onClose }: {
         <div className="flex-1 overflow-y-auto p-5 space-y-3">
           {resultado ? (
             <div className="text-center py-6">
-              <div className="text-4xl mb-2">✅</div>
+              <div className="flex justify-center mb-2"><CircleCheck size={40} className="text-emerald-500" /></div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-gray-100">Importação concluída</h3>
               <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
                 <b>{resultado.criadas}</b> tarefa(s) criada(s), <b>{resultado.vinculadas}</b> subtarefa(s) vinculada(s).
@@ -1435,11 +1440,11 @@ export function ImportadorModal({ projetos, subprojetos, pessoaId, onClose }: {
                         return (
                           <div key={i}>
                             <div className="font-medium text-gray-800 dark:text-gray-200">
-                              {p.status === "concluida" && "✓ "}{p.titulo}
-                              {p.prazo && <span className="ml-2 text-gray-500">📅 {fmtBR(p.prazo)}</span>}
+                              {p.status === "concluida" && <Check size={12} className="inline mr-1" />}{p.titulo}
+                              {p.prazo && <span className="ml-2 text-gray-500 inline-flex items-center gap-1"><CalendarDays size={12} /> {fmtBR(p.prazo)}</span>}
                               {p.responsavelNome && <span className="ml-2 text-indigo-600 dark:text-indigo-400">{p.responsavelNome}</span>}
-                              {(p.restaurantIds?.length ?? 0) > 0 && <span className="ml-2 text-emerald-600">🏢 {p.restaurantIds?.length}</span>}
-                              {!p.responsavelId && p.assigneeNome && <span className="ml-2 text-amber-500" title="Não bateu com nenhuma pessoa">⚠ {p.assigneeNome}</span>}
+                              {(p.restaurantIds?.length ?? 0) > 0 && <span className="ml-2 text-emerald-600 inline-flex items-center gap-1"><Building2 size={12} /> {p.restaurantIds?.length}</span>}
+                              {!p.responsavelId && p.assigneeNome && <span className="ml-2 text-amber-500 inline-flex items-center gap-1" title="Não bateu com nenhuma pessoa"><TriangleAlert size={12} /> {p.assigneeNome}</span>}
                             </div>
                             {fs.slice(0, 3).map((f, j) => (
                               <div key={j} className="pl-4 text-gray-600 dark:text-gray-400">↳ {f.titulo}</div>
@@ -1455,7 +1460,7 @@ export function ImportadorModal({ projetos, subprojetos, pessoaId, onClose }: {
                   {warnings.length > 0 && (
                     <details className="text-xs">
                       <summary className="cursor-pointer text-amber-700 dark:text-amber-300">
-                        ⚠ {warnings.length} aviso(s) — clique pra ver
+                        <span className="inline-flex items-center gap-1"><TriangleAlert size={12} /> {warnings.length} aviso(s) — clique pra ver</span>
                       </summary>
                       <div className="mt-1 pl-2 max-h-32 overflow-y-auto text-gray-600 dark:text-gray-400">
                         {warnings.slice(0, 30).map((w, i) => <div key={i}>· {w}</div>)}
@@ -1517,7 +1522,7 @@ export function SemPermissaoModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-6 text-center" onClick={(e) => e.stopPropagation()}>
-        <div className="text-4xl mb-2">🔒</div>
+        <div className="flex justify-center mb-2"><Lock size={40} className="text-amber-500" /></div>
         <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-1">Tarefa confidencial</h2>
         <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
           Você não tem permissão pra ver essa tarefa. Peça pro responsável te adicionar como autorizado.
@@ -1728,7 +1733,7 @@ function SubtarefasSection({ tarefa, autor, pessoas, novaSubtarefa, setNovaSubta
                       className="px-1.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-900/50"
                       title="Responsável da subtarefa"
                     >
-                      👤 {st.responsavelNome}
+                      <span className="inline-flex items-center gap-1"><User size={11} /> {st.responsavelNome}</span>
                     </button>
                   )}
                   {temPrazo && (
@@ -1737,7 +1742,7 @@ function SubtarefasSection({ tarefa, autor, pessoas, novaSubtarefa, setNovaSubta
                       className="px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700"
                       title="Prazo da subtarefa"
                     >
-                      📅 {fmtBR(st.prazo)}
+                      <span className="inline-flex items-center gap-1"><CalendarDays size={11} /> {fmtBR(st.prazo)}</span>
                     </button>
                   )}
                 </div>
@@ -1746,7 +1751,7 @@ function SubtarefasSection({ tarefa, autor, pessoas, novaSubtarefa, setNovaSubta
                     onClick={() => setExpandirId(expandido ? null : st.id)}
                     className={`px-1 hover:text-indigo-600 ${expandido ? "text-indigo-600" : ""}`}
                     title="Responsável e prazo"
-                  >⚙</button>
+                  ><Settings size={13} /></button>
                   <button onClick={() => mover(st.id, -1)} disabled={idx === 0} className="px-1 disabled:opacity-30 hover:text-indigo-600" title="Subir">▲</button>
                   <button onClick={() => mover(st.id, 1)} disabled={idx === subs.length - 1} className="px-1 disabled:opacity-30 hover:text-indigo-600" title="Descer">▼</button>
                   <button onClick={() => removerSub(st.id)} className="px-1 text-red-500 hover:text-red-700" title="Remover">×</button>
