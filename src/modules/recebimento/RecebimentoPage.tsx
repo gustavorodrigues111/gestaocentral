@@ -10,7 +10,7 @@
 //  Os lançamentos ficam organizados aqui na tabela (por data/hora de recebimento),
 //  com export PDF/XLSX. OCR (pré-preenche os campos) entra como Fase 2.
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -19,6 +19,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
+import { ReceiptText, CreditCard, Banknote, Zap, ClipboardList, Settings, Download, CheckSquare, Trash2, FileText, TriangleAlert, Package, CalendarDays, Search, Plus, Camera, Image as ImageIcon, Pencil, Calculator, Check, Lock, FolderOpen, Lightbulb, Paperclip, type LucideIcon } from "lucide-react";
 import type { BoletoNota, DuplicataNota, FormaPagamento, ItemNota, RecebimentoNota, TipoDocumento } from "../../core/types";
 import { FORMA_PAGAMENTO_LABEL, TIPO_DOCUMENTO_LABEL, CONTA_FIXA_CATEGORIAS } from "../../core/types";
 import { requestAccessToken } from "../../core/google/driveClient";
@@ -178,7 +179,7 @@ function semanaDe(d: Date): { label: string } {
 }
 
 const FORMAS_PAGAMENTO: FormaPagamento[] = ["boleto", "cartao", "dinheiro", "pix"];
-const FORMA_PAGAMENTO_ICONE: Record<FormaPagamento, string> = { boleto: "🧾", cartao: "💳", dinheiro: "💵", pix: "⚡" };
+const FORMA_PAGAMENTO_LUCIDE: Record<FormaPagamento, LucideIcon> = { boleto: ReceiptText, cartao: CreditCard, dinheiro: Banknote, pix: Zap };
 
 // Seletor de forma de pagamento (chips). Clicar no selecionado limpa (volta a opcional).
 function FormaPagamentoSelector({ value, onChange }: { value?: FormaPagamento; onChange: (v?: FormaPagamento) => void }) {
@@ -188,8 +189,8 @@ function FormaPagamentoSelector({ value, onChange }: { value?: FormaPagamento; o
         const ativo = value === f;
         return (
           <button key={f} type="button" onClick={() => onChange(ativo ? undefined : f)}
-            className={`text-xs font-medium px-3 py-1.5 rounded-lg border ${ativo ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>
-            {FORMA_PAGAMENTO_ICONE[f]} {FORMA_PAGAMENTO_LABEL[f]}
+            className={`inline-flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-lg border ${ativo ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>
+            {(() => { const Ic = FORMA_PAGAMENTO_LUCIDE[f]; return <><Ic size={13} /> {FORMA_PAGAMENTO_LABEL[f]}</>; })()}
           </button>
         );
       })}
@@ -307,7 +308,7 @@ export function RecebimentoPage() {
   if (!temAcesso) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
         <p className="text-gray-600 dark:text-gray-400">Você não tem acesso ao Recebimento.</p>
       </div>
     );
@@ -322,7 +323,7 @@ export function RecebimentoPage() {
 
   const abrirNovo = (arquivo: File | null) => { setErro(""); setArquivoInicial(arquivo); setEscolhendoFonte(false); setNovo(true); };
 
-  const TabBtn = ({ k, label }: { k: "receber" | "notas" | "config"; label: string }) => (
+  const TabBtn = ({ k, label }: { k: "receber" | "notas" | "config"; label: ReactNode }) => (
     <button type="button" onClick={() => setTab(k)}
       className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px ${abaEfetiva === k ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500"}`}>
       {label}
@@ -333,9 +334,9 @@ export function RecebimentoPage() {
     <PageContainer className="space-y-4">
       {/* Abas */}
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 overflow-x-auto overflow-y-hidden whitespace-nowrap">
-        {podeReceber && <TabBtn k="receber" label="🧾 Recebimento" />}
-        {podeVer && <TabBtn k="notas" label="📋 Notas recebidas" />}
-        {podeConfig && <TabBtn k="config" label="⚙️ Configurações" />}
+        {podeReceber && <TabBtn k="receber" label={<span className="inline-flex items-center gap-1.5"><ReceiptText size={15} /> Recebimento</span>} />}
+        {podeVer && <TabBtn k="notas" label={<span className="inline-flex items-center gap-1.5"><ClipboardList size={15} /> Notas recebidas</span>} />}
+        {podeConfig && <TabBtn k="config" label={<span className="inline-flex items-center gap-1.5"><Settings size={15} /> Configurações</span>} />}
       </div>
 
       {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
@@ -345,7 +346,7 @@ export function RecebimentoPage() {
         <div className="flex flex-col items-center justify-center py-16 gap-4">
           <button type="button" onClick={() => { setErro(""); setEscolhendoTipo(true); }}
             className="flex flex-col items-center justify-center gap-3 w-full max-w-sm py-10 rounded-2xl border-2 border-dashed border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20 hover:bg-indigo-100/60 dark:hover:bg-indigo-950/40 transition">
-            <span className="text-5xl">🧾</span>
+            <ReceiptText size={48} className="text-indigo-500" />
             <span className="text-lg font-semibold text-indigo-700 dark:text-indigo-300">Novo recebimento</span>
             <span className="text-xs text-gray-500 dark:text-gray-400">Toque pra dar entrada</span>
           </button>
@@ -359,10 +360,10 @@ export function RecebimentoPage() {
           {ordenadas.length > 0 && (
             <div className="flex justify-end gap-2">
               <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("xlsx")}>
-                {exportando === "xlsx" ? "Gerando…" : "⬇ XLSX"}
+                {exportando === "xlsx" ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><Download size={14} /> XLSX</span>}
               </Button>
               <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("pdf")}>
-                {exportando === "pdf" ? "Gerando…" : "⬇ PDF"}
+                {exportando === "pdf" ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><Download size={14} /> PDF</span>}
               </Button>
             </div>
           )}
@@ -371,7 +372,7 @@ export function RecebimentoPage() {
           {/* Histórico de conferidas (abaixo da lista, colapsável) */}
           {conferidas.length > 0 && (
             <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 mt-4">
-              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">✅ Conferidas <span className="text-gray-400 font-normal">({conferidas.length})</span> <span className="text-[11px] font-normal text-gray-400">— histórico permanente</span></summary>
+              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2"><CheckSquare size={16} /> Conferidas <span className="text-gray-400 font-normal">({conferidas.length})</span> <span className="text-[11px] font-normal text-gray-400">— histórico permanente</span></summary>
               <div className="px-3 pb-3 space-y-2">
                 {conferidas.map((n) => (
                   <div key={n.id} className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
@@ -395,7 +396,7 @@ export function RecebimentoPage() {
           {/* Histórico de excluídos (abaixo, colapsável, só config) */}
           {podeConfig && excluidas.length > 0 && (
             <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
-              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2">🗑 Excluídos <span className="text-gray-400 font-normal">({excluidas.length})</span> <span className="text-[11px] font-normal text-gray-400">— somem em 60 dias</span></summary>
+              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2"><Trash2 size={16} /> Excluídos <span className="text-gray-400 font-normal">({excluidas.length})</span> <span className="text-[11px] font-normal text-gray-400">— somem em 60 dias</span></summary>
               <div className="px-3 pb-3 space-y-2">
                 <p className="text-[11px] text-gray-400 px-1">Podem ser <strong>restaurados</strong>. Somem sozinhos depois de <strong>60 dias</strong> (registro apagado; arquivos no Drive permanecem). "Excluir definitivo" apaga o registro na hora; os arquivos ficam no Drive.</p>
                 {excluidas.map((n) => (
@@ -460,20 +461,20 @@ function EscolhaTipoModal({ onClose, onConfirm }: {
 }) {
   const [tipo, setTipo] = useState<TipoDocumento | null>(null);
   const [categoria, setCategoria] = useState("");
-  const Opcao = ({ icon, label, t }: { icon: string; label: string; t: TipoDocumento }) => (
+  const Opcao = ({ icon: Icon, label, t }: { icon: LucideIcon; label: string; t: TipoDocumento }) => (
     <button type="button" onClick={() => { if (t === "conta_fixa") setTipo("conta_fixa"); else onConfirm(t, ""); }}
       className={`flex flex-col items-center justify-center gap-2 py-6 rounded-2xl border transition ${tipo === t ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-950/30" : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-      <span className="text-3xl">{icon}</span>
+      <Icon size={28} className="text-gray-700 dark:text-gray-200" />
       <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{label}</span>
     </button>
   );
   return (
     <Modal title="O que você vai dar entrada?" onClose={onClose} maxWidth="max-w-sm">
       <div className="grid grid-cols-2 gap-3">
-        <Opcao icon="🧾" label="DANFE" t="nota_fiscal" />
-        <Opcao icon="🧮" label="Cupom fiscal" t="cupom_fiscal" />
-        <Opcao icon="📦" label="Romaneio" t="romaneio" />
-        <Opcao icon="💡" label="Conta fixa" t="conta_fixa" />
+        <Opcao icon={ReceiptText} label="DANFE" t="nota_fiscal" />
+        <Opcao icon={Calculator} label="Cupom fiscal" t="cupom_fiscal" />
+        <Opcao icon={Package} label="Romaneio" t="romaneio" />
+        <Opcao icon={Lightbulb} label="Conta fixa" t="conta_fixa" />
       </div>
       {tipo === "conta_fixa" && (
         <div className="mt-4 space-y-2">
@@ -507,20 +508,20 @@ function EscolhaFonteModal({ titulo, semManual, onClose, onArquivo, onManual }: 
   const camRef = useRef<HTMLInputElement>(null);
   const galRef = useRef<HTMLInputElement>(null);
   const pdfRef = useRef<HTMLInputElement>(null);
-  const Opcao = ({ icon, label, onClick }: { icon: string; label: string; onClick: () => void }) => (
+  const Opcao = ({ icon: Icon, label, onClick }: { icon: LucideIcon; label: string; onClick: () => void }) => (
     <button type="button" onClick={onClick}
       className="flex flex-col items-center justify-center gap-2 py-6 rounded-2xl border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition">
-      <span className="text-3xl">{icon}</span>
+      <Icon size={28} className="text-gray-700 dark:text-gray-200" />
       <span className="text-sm font-medium text-gray-700 dark:text-gray-200">{label}</span>
     </button>
   );
   return (
     <Modal title={titulo || "Como você quer dar entrada?"} onClose={onClose} maxWidth="max-w-sm">
       <div className={`grid ${semManual ? "grid-cols-3" : "grid-cols-2"} gap-3`}>
-        <Opcao icon="📷" label="Câmera" onClick={() => camRef.current?.click()} />
-        <Opcao icon="🖼️" label="Galeria" onClick={() => galRef.current?.click()} />
-        <Opcao icon="📄" label="Arquivo (PDF)" onClick={() => pdfRef.current?.click()} />
-        {!semManual && <Opcao icon="✍️" label="Manual" onClick={() => onManual?.()} />}
+        <Opcao icon={Camera} label="Câmera" onClick={() => camRef.current?.click()} />
+        <Opcao icon={ImageIcon} label="Galeria" onClick={() => galRef.current?.click()} />
+        <Opcao icon={FileText} label="Arquivo (PDF)" onClick={() => pdfRef.current?.click()} />
+        {!semManual && <Opcao icon={Pencil} label="Manual" onClick={() => onManual?.()} />}
       </div>
       <input ref={camRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) onArquivo(f); }} />
       <input ref={galRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) onArquivo(f); }} />
@@ -541,7 +542,7 @@ function RecebimentoConfig({ restaurant }: { restaurant: { nome?: string; driveR
         As notas recebidas são arquivadas na pasta-raiz do restaurante, em <code>planejamento.app/Recebimento/</code>. O sistema cria automaticamente subpastas por semana (segunda→domingo), nomeadas <code>dd.mm.aa a dd.mm.aa</code>.
       </p>
       {restaurant.driveRootFolderId
-        ? <p className="text-sm text-emerald-700 dark:text-emerald-300">📁 {restaurant.driveRootFolderNome || "pasta-raiz configurada"}</p>
+        ? <p className="text-sm text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1.5"><FolderOpen size={14} /> {restaurant.driveRootFolderNome || "pasta-raiz configurada"}</p>
         : <p className="text-sm text-amber-600">Defina a pasta raiz do restaurante em Configurações › Google Drive.</p>}
     </div>
   );
@@ -665,15 +666,15 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, por, onE
               <td className="px-2.5 py-3 text-right tabular-nums font-semibold text-gray-800 dark:text-gray-100 whitespace-nowrap">{fmtBRL(n.valorTotal)}</td>
               <td className="px-2.5 py-3 text-center">
                 {n.conforme
-                  ? <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">✓ Sim</span>
-                  : <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" title={n.divergencia || ""}>⚠ Não</span>}
+                  ? <span className="inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"><Check size={12} /> Sim</span>
+                  : <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" title={n.divergencia || ""}><span className="inline-flex items-center gap-1"><TriangleAlert size={12} /> Não</span></span>}
               </td>
               <td className="px-2.5 py-3 tabular-nums text-gray-500 whitespace-nowrap">
                 {vs.length === 0 ? "—" : (
                   <>{fmtDataBR(vs[0])}{vs.length > 1 && <span className="ml-1.5 text-[10px] text-gray-400" title={`${vs.length} parcelas: ${vs.map(fmtDataBR).join(", ")}`}>+{vs.length - 1}</span>}</>
                 )}
               </td>
-              <td className="px-2.5 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">{n.formaPagamento ? `${FORMA_PAGAMENTO_ICONE[n.formaPagamento]} ${FORMA_PAGAMENTO_LABEL[n.formaPagamento]}` : "—"}</td>
+              <td className="px-2.5 py-3 whitespace-nowrap text-gray-600 dark:text-gray-300">{n.formaPagamento ? (() => { const Ic = FORMA_PAGAMENTO_LUCIDE[n.formaPagamento!]; return <span className="inline-flex items-center gap-1"><Ic size={13} /> {FORMA_PAGAMENTO_LABEL[n.formaPagamento!]}</span>; })() : "—"}</td>
               <td className="px-2.5 py-3 text-center">
                 {n.notaDriveUrl ? (
                   <span className="inline-flex items-center gap-1">
@@ -681,8 +682,8 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, por, onE
                       className="inline-flex items-center justify-center w-7 h-7 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-900/30 transition-colors">
                       <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" /></svg>
                     </a>
-                    {n.notaPaginas && n.notaPaginas.length > 1 && <span className="text-[10px] text-gray-400" title={`${n.notaPaginas.length} páginas`}>📄{n.notaPaginas.length}</span>}
-                    {n.boletos && n.boletos.length > 0 && <span className="text-[10px] text-gray-400" title={`${n.boletos.length} boleto(s) anexado(s)`}>🧾{n.boletos.length}</span>}
+                    {n.notaPaginas && n.notaPaginas.length > 1 && <span className="text-[10px] text-gray-400" title={`${n.notaPaginas.length} páginas`}><FileText size={11} className="inline align-[-1px]" />{n.notaPaginas.length}</span>}
+                    {n.boletos && n.boletos.length > 0 && <span className="text-[10px] text-gray-400" title={`${n.boletos.length} boleto(s) anexado(s)`}><ReceiptText size={11} className="inline align-[-1px]" />{n.boletos.length}</span>}
                   </span>
                 ) : <span className="text-gray-300">—</span>}
               </td>
@@ -692,7 +693,7 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, por, onE
                     {podeEditar && ehRomaneio(n) && (
                       <button type="button" onClick={() => setIncluirDanfe(n)} title="Incluir a DANFE recebida deste romaneio"
                         className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 hover:bg-amber-100 dark:hover:bg-amber-900/50 transition-colors">
-                        📄
+                        <FileText size={16} />
                       </button>
                     )}
                     {onConferir && (
@@ -727,21 +728,21 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, por, onE
             <div className="shrink-0 text-right">
               <div className="font-bold text-gray-800 dark:text-gray-100 tabular-nums">{fmtBRL(n.valorTotal)}</div>
               {n.conforme
-                ? <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300">✓ Conforme</span>
-                : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">⚠ Divergência</span>}
+                ? <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 inline-flex items-center gap-1"><Check size={11} /> Conforme</span>
+                : <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 inline-flex items-center gap-1"><TriangleAlert size={11} /> Divergência</span>}
             </div>
           </button>
           <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-[12px] text-gray-500">
             <div className="flex flex-col gap-0.5 min-w-0">
-              <span className="tabular-nums">📅 emissão {fmtDataBR(n.dataEmissao) || "—"}</span>
-              {vs.length > 0 && <span className="tabular-nums">💳 venc. {fmtDataBR(vs[0])}{vs.length > 1 ? ` +${vs.length - 1}` : ""}</span>}
-              {n.formaPagamento && <span>{FORMA_PAGAMENTO_ICONE[n.formaPagamento]} {FORMA_PAGAMENTO_LABEL[n.formaPagamento]}</span>}
+              <span className="tabular-nums inline-flex items-center gap-1"><CalendarDays size={12} /> emissão {fmtDataBR(n.dataEmissao) || "—"}</span>
+              {vs.length > 0 && <span className="tabular-nums inline-flex items-center gap-1"><CreditCard size={12} /> venc. {fmtDataBR(vs[0])}{vs.length > 1 ? ` +${vs.length - 1}` : ""}</span>}
+              {n.formaPagamento && (() => { const Ic = FORMA_PAGAMENTO_LUCIDE[n.formaPagamento!]; return <span className="inline-flex items-center gap-1"><Ic size={13} /> {FORMA_PAGAMENTO_LABEL[n.formaPagamento!]}</span>; })()}
             </div>
             <div className="flex items-center gap-1.5 shrink-0">
               {podeEditar && ehRomaneio(n) && (
                 <button type="button" onClick={() => setIncluirDanfe(n)} title="Incluir a DANFE recebida deste romaneio"
                   className="inline-flex items-center gap-1 px-3 h-9 rounded-lg text-[13px] font-medium text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/30 active:bg-amber-100 transition-colors">
-                  📄 DANFE
+                  <FileText size={15} /> DANFE
                 </button>
               )}
               {onConferir && (
@@ -785,7 +786,7 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir, onInclu
     </div>
   ) : null;
   return (
-    <Modal title="🧾 Detalhes do recebimento" onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={<span className="inline-flex items-center gap-2"><ReceiptText size={18} /> Detalhes do recebimento</span>} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-1">
         {linha("Recebido em", fmtDataHora(nota.recebidoEm))}
         {nota.tipoDocumento && linha("Tipo", tipoLabelDe(nota))}
@@ -837,7 +838,7 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir, onInclu
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
             {nota.notaPaginas.map((p, i) => (
               <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
-                <span className="truncate flex-1">📄 {p.nome}</span>
+                <span className="truncate flex-1 inline-flex items-center gap-1"><FileText size={12} className="shrink-0" /> {p.nome}</span>
                 {p.driveUrl && <a href={p.driveUrl} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:underline">abrir ↗</a>}
               </div>
             ))}
@@ -850,7 +851,7 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir, onInclu
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
             {nota.comprovantes.map((c, i) => (
               <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
-                <span className="truncate flex-1">🧾 {c.nome}</span>
+                <span className="truncate flex-1 inline-flex items-center gap-1"><ReceiptText size={12} className="shrink-0" /> {c.nome}</span>
                 {c.driveUrl && <a href={c.driveUrl} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:underline">abrir ↗</a>}
               </div>
             ))}
@@ -863,7 +864,7 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir, onInclu
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
             {nota.boletos.map((b, i) => (
               <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
-                <span className="truncate flex-1">🧾 {b.nome}</span>
+                <span className="truncate flex-1 inline-flex items-center gap-1"><ReceiptText size={12} className="shrink-0" /> {b.nome}</span>
                 {b.driveUrl && <a href={b.driveUrl} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:underline">abrir ↗</a>}
               </div>
             ))}
@@ -872,11 +873,11 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir, onInclu
       )}
       {nota.romaneioPaginas && nota.romaneioPaginas.length > 0 && (
         <div className="mt-3">
-          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1">📦 Romaneio original ({nota.romaneioPaginas.length}) <span className="font-normal text-gray-400">— substituído pela DANFE</span></div>
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-400 mb-1 inline-flex items-center gap-1.5"><Package size={13} /> Romaneio original ({nota.romaneioPaginas.length}) <span className="font-normal text-gray-400">— substituído pela DANFE</span></div>
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
             {nota.romaneioPaginas.map((p, i) => (
               <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
-                <span className="truncate flex-1">📦 {p.nome}</span>
+                <span className="truncate flex-1 inline-flex items-center gap-1"><Package size={12} className="shrink-0" /> {p.nome}</span>
                 {p.driveUrl && <a href={p.driveUrl} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:underline">abrir ↗</a>}
               </div>
             ))}
@@ -884,7 +885,7 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir, onInclu
         </div>
       )}
       {nota.romaneioConvertidoEm && (
-        <div className="mt-3 text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2">📄 DANFE incluída em {fmtDataHora(nota.romaneioConvertidoEm)}{nota.romaneioConvertidoPor?.nome ? ` por ${nota.romaneioConvertidoPor.nome}` : ""} — recebido originalmente como romaneio.</div>
+        <div className="mt-3 text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2"><FileText size={12} className="inline align-[-1px] mr-1" />DANFE incluída em {fmtDataHora(nota.romaneioConvertidoEm)}{nota.romaneioConvertidoPor?.nome ? ` por ${nota.romaneioConvertidoPor.nome}` : ""} — recebido originalmente como romaneio.</div>
       )}
       {nota.conferidoEm && (
         <div className="mt-3 text-[12px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/40 rounded-lg px-3 py-2">✓ Conferido em {fmtDataHora(nota.conferidoEm)}{nota.conferidoPor?.nome ? ` por ${nota.conferidoPor.nome}` : ""}</div>
@@ -893,9 +894,9 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir, onInclu
         {nota.notaDriveUrl && <a href={nota.notaDriveUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">↗ Abrir nota no Drive</a>}
         {onIncluirDanfe && nota.tipoDocumento === "romaneio" && (
           <button type="button" onClick={() => onIncluirDanfe(nota)}
-            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40">📄 Incluir DANFE recebida</button>
+            className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40"><span className="inline-flex items-center gap-1.5"><FileText size={13} /> Incluir DANFE recebida</span></button>
         )}
-        {podeEditar && <Button size="sm" variant="secondary" onClick={() => onEditar(nota)}>✏️ Editar</Button>}
+        {podeEditar && <Button size="sm" variant="secondary" onClick={() => onEditar(nota)}><span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editar</span></Button>}
         <Button size="sm" variant="secondary" onClick={onClose}>Fechar</Button>
         {onConferir && !nota.conferidoEm && (
           <button type="button" onClick={() => { onConferir(nota); onClose(); }}
@@ -1034,7 +1035,7 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
 
   const inputCls = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
   return (
-    <Modal title="✏️ Editar recebimento" onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={<span className="inline-flex items-center gap-2"><Pencil size={18} /> Editar recebimento</span>} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
         {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
         <p className="text-[11px] text-gray-400">Os arquivos no Drive (nota, páginas e boletos) não mudam — aqui você corrige só os dados.</p>
@@ -1099,7 +1100,7 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
           </div>
           {dups.length > 1 && <p className="text-[11px] text-gray-500 mt-1">Soma das faturas: <strong>{fmtBRL(somaDuplicatas)}</strong></p>}
           {faturasNaoBatem && (
-            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ A soma das faturas ({fmtBRL(somaDuplicatas)}) não bate com o total da nota ({fmtBRL(totalNum ?? undefined)}).</p>
+            <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1"><TriangleAlert size={12} className="inline align-[-1px] mr-1" />A soma das faturas ({fmtBRL(somaDuplicatas)}) não bate com o total da nota ({fmtBRL(totalNum ?? undefined)}).</p>
           )}
         </div>
 
@@ -1110,7 +1111,7 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
             <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 mb-2">
               {nota.boletos.map((b, i) => (
                 <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
-                  <span className="truncate flex-1">🧾 {b.nome}</span>
+                  <span className="truncate flex-1 inline-flex items-center gap-1"><ReceiptText size={12} className="shrink-0" /> {b.nome}</span>
                   {b.driveUrl && <a href={b.driveUrl} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:underline">abrir ↗</a>}
                 </div>
               ))}
@@ -1120,14 +1121,14 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
             <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 divide-y divide-emerald-100 dark:divide-emerald-900 mb-2">
               {boletosNovos.map((b, i) => (
                 <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
-                  <span className="truncate flex-1">🧾 {b.name} <span className="text-emerald-600">(novo)</span></span>
+                  <span className="truncate flex-1 inline-flex items-center gap-1"><ReceiptText size={12} className="shrink-0" /> {b.name} <span className="text-emerald-600">(novo)</span></span>
                   <button type="button" className="shrink-0 text-gray-400 hover:text-rose-600" onClick={() => setBoletosNovos((prev) => prev.filter((_, j) => j !== i))}>✕</button>
                 </div>
               ))}
             </div>
           )}
-          {lendoBoleto && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mb-1">🔍 Lendo o boleto…</p>}
-          <Button variant="secondary" size="sm" disabled={lendoBoleto} onClick={() => setAddBoleto(true)}>➕ Anexar boleto</Button>
+          {lendoBoleto && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mb-1"><Search size={12} className="inline align-[-1px] mr-1" />Lendo o boleto…</p>}
+          <Button variant="secondary" size="sm" disabled={lendoBoleto} onClick={() => setAddBoleto(true)}><span className="inline-flex items-center gap-1.5"><Plus size={14} /> Anexar boleto</span></Button>
         </div>
 
         {/* Forma de pagamento */}
@@ -1140,8 +1141,8 @@ function EditarRecebimentoModal({ nota, restaurant, onClose, onSaved }: {
         <div>
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Conferência</label>
           <div className="flex gap-2">
-            <button type="button" onClick={() => setConforme(true)} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${conforme ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>✓ Tudo nos conformes</button>
-            <button type="button" onClick={() => setConforme(false)} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${!conforme ? "border-rose-400 bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>⚠ Houve divergência</button>
+            <button type="button" onClick={() => setConforme(true)} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${conforme ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}><span className="inline-flex items-center gap-1.5"><Check size={14} /> Tudo nos conformes</span></button>
+            <button type="button" onClick={() => setConforme(false)} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${!conforme ? "border-rose-400 bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}><span className="inline-flex items-center gap-1.5"><TriangleAlert size={14} /> Houve divergência</span></button>
           </div>
         </div>
         {!conforme && (
@@ -1356,11 +1357,11 @@ function IncluirDanfeModal({ nota, restaurant, por, onClose, onSaved }: {
 
   const inputCls = "w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
   return (
-    <Modal title="📄 Incluir DANFE do romaneio" onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={<span className="inline-flex items-center gap-2"><FileText size={18} /> Incluir DANFE do romaneio</span>} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
         {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
         <div className="text-[12px] text-gray-600 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 rounded-lg px-3 py-2">
-          📦 Romaneio de <strong>{nota.emissor || "fornecedor"}</strong>{nota.valorTotal != null ? ` · ${fmtBRL(nota.valorTotal)}` : ""} · recebido {fmtDataHora(nota.recebidoEm)}.
+          <Package size={13} className="inline align-[-1px] mr-1" />Romaneio de <strong>{nota.emissor || "fornecedor"}</strong>{nota.valorTotal != null ? ` · ${fmtBRL(nota.valorTotal)}` : ""} · recebido {fmtDataHora(nota.recebidoEm)}.
           O romaneio original fica preservado; ao salvar, o recebimento passa a ser a nota fiscal.
         </div>
 
@@ -1368,8 +1369,8 @@ function IncluirDanfeModal({ nota, restaurant, por, onClose, onSaved }: {
         <div>
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Tipo do documento fiscal</label>
           <div className="flex gap-2">
-            <button type="button" onClick={() => setTipoFiscal("nota_fiscal")} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${tipoFiscal === "nota_fiscal" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>🧾 DANFE</button>
-            <button type="button" onClick={() => setTipoFiscal("cupom_fiscal")} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${tipoFiscal === "cupom_fiscal" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>🧮 Cupom fiscal</button>
+            <button type="button" onClick={() => setTipoFiscal("nota_fiscal")} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${tipoFiscal === "nota_fiscal" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}><span className="inline-flex items-center gap-1.5"><ReceiptText size={14} /> DANFE</span></button>
+            <button type="button" onClick={() => setTipoFiscal("cupom_fiscal")} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${tipoFiscal === "cupom_fiscal" ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}><span className="inline-flex items-center gap-1.5"><Calculator size={14} /> Cupom fiscal</span></button>
           </div>
         </div>
 
@@ -1380,16 +1381,16 @@ function IncluirDanfeModal({ nota, restaurant, por, onClose, onSaved }: {
             <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 divide-y divide-emerald-100 dark:divide-emerald-900 mb-2">
               {danfeFiles.map((f, i) => (
                 <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2">
-                  <span className="truncate flex-1">📄 {f.name}</span>
+                  <span className="truncate flex-1 inline-flex items-center gap-1"><FileText size={12} className="shrink-0" /> {f.name}</span>
                   <button type="button" className="shrink-0 text-gray-400 hover:text-rose-600" onClick={() => setDanfeFiles((prev) => prev.filter((_, j) => j !== i))}>✕</button>
                 </div>
               ))}
             </div>
           )}
-          {lendo && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mb-1">🔍 Lendo a DANFE…</p>}
+          {lendo && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mb-1"><Search size={12} className="inline align-[-1px] mr-1" />Lendo a DANFE…</p>}
           {leuOcr && !lendo && <p className="text-[11px] text-emerald-600 dark:text-emerald-300 mb-1">✓ Dados pré-preenchidos pela leitura — confira abaixo.</p>}
-          {ocrErro && <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-1">⚠ {ocrErro} Você pode preencher manualmente.</p>}
-          <Button variant="secondary" size="sm" onClick={() => setAddDanfe(true)}>{danfeFiles.length ? "➕ Adicionar página" : "📷 Anexar DANFE"}</Button>
+          {ocrErro && <p className="text-[11px] text-amber-600 dark:text-amber-400 mb-1"><TriangleAlert size={12} className="inline align-[-1px] mr-1" />{ocrErro} Você pode preencher manualmente.</p>}
+          <Button variant="secondary" size="sm" onClick={() => setAddDanfe(true)}>{danfeFiles.length ? <span className="inline-flex items-center gap-1.5"><Plus size={14} /> Adicionar página</span> : <span className="inline-flex items-center gap-1.5"><Camera size={14} /> Anexar DANFE</span>}</Button>
         </div>
 
         {/* Dados fiscais */}
@@ -1451,7 +1452,7 @@ function IncluirDanfeModal({ nota, restaurant, por, onClose, onSaved }: {
               </div>
             ))}
           </div>
-          {faturasNaoBatem && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ A soma das faturas ({fmtBRL(somaDuplicatas)}) não bate com o total ({fmtBRL(totalNum ?? undefined)}).</p>}
+          {faturasNaoBatem && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1"><TriangleAlert size={12} className="inline align-[-1px] mr-1" />A soma das faturas ({fmtBRL(somaDuplicatas)}) não bate com o total ({fmtBRL(totalNum ?? undefined)}).</p>}
         </div>
 
         {/* Boletos */}
@@ -1460,19 +1461,19 @@ function IncluirDanfeModal({ nota, restaurant, por, onClose, onSaved }: {
           {(nota.boletos && nota.boletos.length > 0) && (
             <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 mb-2">
               {nota.boletos.map((b, i) => (
-                <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2"><span className="truncate flex-1">🧾 {b.nome}</span>{b.driveUrl && <a href={b.driveUrl} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:underline">abrir ↗</a>}</div>
+                <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2"><span className="truncate flex-1 inline-flex items-center gap-1"><ReceiptText size={12} className="shrink-0" /> {b.nome}</span>{b.driveUrl && <a href={b.driveUrl} target="_blank" rel="noreferrer" className="shrink-0 text-indigo-600 hover:underline">abrir ↗</a>}</div>
               ))}
             </div>
           )}
           {boletoFiles.length > 0 && (
             <div className="rounded-lg border border-emerald-200 dark:border-emerald-800 divide-y divide-emerald-100 dark:divide-emerald-900 mb-2">
               {boletoFiles.map((b, i) => (
-                <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2"><span className="truncate flex-1">🧾 {b.name} <span className="text-emerald-600">(novo)</span></span><button type="button" className="shrink-0 text-gray-400 hover:text-rose-600" onClick={() => setBoletoFiles((prev) => prev.filter((_, j) => j !== i))}>✕</button></div>
+                <div key={i} className="px-2 py-1.5 text-[11px] flex items-center gap-2"><span className="truncate flex-1 inline-flex items-center gap-1"><ReceiptText size={12} className="shrink-0" /> {b.name} <span className="text-emerald-600">(novo)</span></span><button type="button" className="shrink-0 text-gray-400 hover:text-rose-600" onClick={() => setBoletoFiles((prev) => prev.filter((_, j) => j !== i))}>✕</button></div>
               ))}
             </div>
           )}
-          {lendoBoleto && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mb-1">🔍 Lendo o boleto…</p>}
-          <Button variant="secondary" size="sm" disabled={lendoBoleto} onClick={() => setAddBoleto(true)}>➕ Anexar boleto</Button>
+          {lendoBoleto && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mb-1"><Search size={12} className="inline align-[-1px] mr-1" />Lendo o boleto…</p>}
+          <Button variant="secondary" size="sm" disabled={lendoBoleto} onClick={() => setAddBoleto(true)}><span className="inline-flex items-center gap-1.5"><Plus size={14} /> Anexar boleto</span></Button>
         </div>
 
         {/* Forma de pagamento */}
@@ -1745,10 +1746,10 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
   const voltar = () => { if (idxPasso > 0) setEtapa(passos[idxPasso - 1]); };
   const avancar = () => { if (idxPasso < passos.length - 1) setEtapa(passos[idxPasso + 1]); };
   return (
-    <Modal title="🧾 Novo recebimento" onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={<span className="inline-flex items-center gap-2"><ReceiptText size={18} /> Novo recebimento</span>} onClose={onClose} maxWidth="max-w-lg">
       {salvo ? (
         <div className="py-10 flex flex-col items-center text-center gap-3">
-          <div className="text-5xl">✅</div>
+          <CheckSquare size={48} className="text-emerald-500" />
           <div className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">Recebimento salvo!</div>
           <p className="text-sm text-gray-500 dark:text-gray-400">Está tudo certo — a nota foi registrada{notaFiles.length ? " e arquivada no Drive" : ""}.</p>
           <Button onClick={onSalvo}>Concluir</Button>
@@ -1766,18 +1767,18 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
             <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 mb-2">
               {notaFiles.map((f, i) => (
                 <div key={i} className="px-2 py-1.5 text-sm flex items-center gap-2">
-                  <span className="truncate flex-1">📎 {notaFiles.length > 1 ? `Página ${i + 1}` : "Nota"} · {f.name}</span>
+                  <span className="truncate flex-1 inline-flex items-center gap-1"><Paperclip size={12} className="shrink-0" /> {notaFiles.length > 1 ? `Página ${i + 1}` : "Nota"} · {f.name}</span>
                   <button type="button" className="text-[11px] text-gray-500 hover:underline" onClick={() => { const restantes = notaFiles.filter((_, j) => j !== i); setNotaFiles(restantes); if (restantes.length) void lerNota(restantes); else { setLeuOcr(false); setOcrErro(""); } }}>remover</button>
                 </div>
               ))}
             </div>
           )}
-          {lendo && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1">🔍 Lendo a nota… os campos vão ser pré-preenchidos.</p>}
+          {lendo && <p className="text-[11px] text-indigo-600 dark:text-indigo-300 mt-1"><Search size={12} className="inline align-[-1px] mr-1" />Lendo a nota… os campos vão ser pré-preenchidos.</p>}
           {leuOcr && !lendo && <p className="text-[11px] text-emerald-600 dark:text-emerald-300 mt-1">✓ Li a nota e pré-preenchi os campos.</p>}
-          {ocrErro && !lendo && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">⚠ Não consegui ler a nota automaticamente ({ocrErro}). Preencha manualmente.</p>}
+          {ocrErro && !lendo && <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1"><TriangleAlert size={12} className="inline align-[-1px] mr-1" />Não consegui ler a nota automaticamente ({ocrErro}). Preencha manualmente.</p>}
           <div className="mt-3 flex flex-col items-center gap-2 py-5 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{notaFiles.length ? "Tem outra folha desta nota?" : "Adicione a 1ª folha da nota"}</p>
-            <Button variant="secondary" size="sm" onClick={() => setAddPagina(true)}>➕ {notaFiles.length ? "Adicionar outra folha" : "Adicionar folha"}</Button>
+            <Button variant="secondary" size="sm" onClick={() => setAddPagina(true)}><span className="inline-flex items-center gap-1.5"><Plus size={14} /> {notaFiles.length ? "Adicionar outra folha" : "Adicionar folha"}</span></Button>
             {notaFiles.length > 0 && <p className="text-[11px] text-gray-400 text-center">Se não tem mais, toque em "Continuar →" abaixo.</p>}
           </div>
         </div>
@@ -1875,7 +1876,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
             </div>
             {faturasNaoBatem && (
               <p className="text-[11px] text-amber-600 dark:text-amber-400 mt-1">
-                ⚠ A soma das faturas ({fmtBRL(somaDuplicatas)}) não bate com o total da nota ({fmtBRL(totalNum ?? undefined)}).
+                <TriangleAlert size={12} className="inline align-[-1px] mr-1" />A soma das faturas ({fmtBRL(somaDuplicatas)}) não bate com o total da nota ({fmtBRL(totalNum ?? undefined)}).
                 Pode ter boleto lido em duplicidade ou parcela faltando — confira antes de salvar.
               </p>
             )}
@@ -1891,7 +1892,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
             <p className="text-sm font-semibold text-gray-700 dark:text-gray-200 mb-2">Recebeu boleto (físico) pra anexar?</p>
             <div className="flex gap-2 justify-center">
               <button type="button" onClick={() => { setRecebeuBoleto(true); setFormaPagamento("boleto"); if (!boletoFiles.length) setAddBoletoWiz(true); }}
-                className={`flex-1 max-w-[160px] text-sm font-medium px-3 py-2.5 rounded-xl border ${recebeuBoleto === true ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>✓ Sim</button>
+                className={`flex-1 max-w-[160px] text-sm font-medium px-3 py-2.5 rounded-xl border ${recebeuBoleto === true ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}><span className="inline-flex items-center gap-1.5"><Check size={14} /> Sim</span></button>
               <button type="button" onClick={() => { setRecebeuBoleto(false); setBoletoFiles([]); }}
                 className={`flex-1 max-w-[160px] text-sm font-medium px-3 py-2.5 rounded-xl border ${recebeuBoleto === false ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>Não</button>
             </div>
@@ -1904,16 +1905,16 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
                 <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
                   {boletoFiles.map((b, i) => (
                     <div key={i} className="px-2 py-1.5 text-sm flex items-center gap-2">
-                      <span className="truncate flex-1">🧾 {boletoFiles.length > 1 ? `Boleto ${i + 1}` : "Boleto"} · {b.name}</span>
+                      <span className="truncate flex-1 inline-flex items-center gap-1"><ReceiptText size={12} className="shrink-0" /> {boletoFiles.length > 1 ? `Boleto ${i + 1}` : "Boleto"} · {b.name}</span>
                       <button type="button" className="text-[11px] text-gray-500 hover:underline" onClick={() => setBoletoFiles((prev) => prev.filter((_, j) => j !== i))}>remover</button>
                     </div>
                   ))}
                 </div>
               )}
-              {lendoBoleto && <p className="text-[11px] text-indigo-600 dark:text-indigo-300">🔍 Lendo o boleto… valor e vencimento entram nas faturas.</p>}
+              {lendoBoleto && <p className="text-[11px] text-indigo-600 dark:text-indigo-300"><Search size={12} className="inline align-[-1px] mr-1" />Lendo o boleto… valor e vencimento entram nas faturas.</p>}
               <div className="flex flex-col items-center gap-2 py-4 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
                 <p className="text-sm font-medium text-gray-700 dark:text-gray-200">{boletoFiles.length ? "Tem outro boleto?" : "Anexe o boleto"}</p>
-                <Button variant="secondary" size="sm" onClick={() => setAddBoletoWiz(true)}>➕ {boletoFiles.length ? "Adicionar outro boleto" : "Adicionar boleto"}</Button>
+                <Button variant="secondary" size="sm" onClick={() => setAddBoletoWiz(true)}><span className="inline-flex items-center gap-1.5"><Plus size={14} /> {boletoFiles.length ? "Adicionar outro boleto" : "Adicionar boleto"}</span></Button>
               </div>
             </>
           )}
@@ -1931,7 +1932,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
                     <div className="rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
                       {comprovanteFiles.map((c, i) => (
                         <div key={i} className="px-2 py-1.5 text-sm flex items-center gap-2">
-                          <span className="truncate flex-1">🧾 Comprovante {comprovanteFiles.length > 1 ? i + 1 : ""} · {c.name}</span>
+                          <span className="truncate flex-1 inline-flex items-center gap-1"><ReceiptText size={12} className="shrink-0" /> Comprovante {comprovanteFiles.length > 1 ? i + 1 : ""} · {c.name}</span>
                           <button type="button" className="text-[11px] text-gray-500 hover:underline" onClick={() => setComprovanteFiles((prev) => prev.filter((_, j) => j !== i))}>remover</button>
                         </div>
                       ))}
@@ -1939,7 +1940,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
                   )}
                   {comprovanteFiles.length > 0 ? (
                     <div className="flex flex-col items-center gap-2 py-3 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
-                      <Button variant="secondary" size="sm" onClick={() => setAddComprovante(true)}>➕ Adicionar outro comprovante</Button>
+                      <Button variant="secondary" size="sm" onClick={() => setAddComprovante(true)}><span className="inline-flex items-center gap-1.5"><Plus size={14} /> Adicionar outro comprovante</span></Button>
                     </div>
                   ) : semComprovante ? (
                     <p className="text-[12px] text-emerald-600 dark:text-emerald-400 text-center py-2">✓ Pago antecipado — sem comprovante. <button type="button" className="underline" onClick={() => setSemComprovante(false)}>mudar</button></p>
@@ -1947,7 +1948,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
                     <div className="flex flex-col items-center gap-2 py-4 border border-dashed border-gray-200 dark:border-gray-800 rounded-xl">
                       <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Tem comprovante do pagamento?</p>
                       <div className="flex gap-2 flex-wrap justify-center">
-                        <Button size="sm" onClick={() => setAddComprovante(true)}>➕ Anexar comprovante</Button>
+                        <Button size="sm" onClick={() => setAddComprovante(true)}><span className="inline-flex items-center gap-1.5"><Plus size={14} /> Anexar comprovante</span></Button>
                         <Button variant="secondary" size="sm" onClick={() => setSemComprovante(true)}>Pago antecipado, sem comprovante</Button>
                       </div>
                     </div>
@@ -1967,8 +1968,8 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
         <div>
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Conferência</label>
           <div className="flex gap-2">
-            <button type="button" onClick={() => setConforme(true)} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${conforme ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>✓ Tudo nos conformes</button>
-            <button type="button" onClick={() => setConforme(false)} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${!conforme ? "border-rose-400 bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}>⚠ Houve divergência</button>
+            <button type="button" onClick={() => setConforme(true)} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${conforme ? "border-emerald-400 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}><span className="inline-flex items-center gap-1.5"><Check size={14} /> Tudo nos conformes</span></button>
+            <button type="button" onClick={() => setConforme(false)} className={`flex-1 text-sm font-medium px-3 py-2 rounded-lg border ${!conforme ? "border-rose-400 bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300" : "border-gray-300 dark:border-gray-700 text-gray-600"}`}><span className="inline-flex items-center gap-1.5"><TriangleAlert size={14} /> Houve divergência</span></button>
           </div>
         </div>
 
@@ -1981,8 +1982,8 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
             </div>
             <div className="flex items-center gap-2 text-sm">
               {fotoDivFile
-                ? <><span className="truncate flex-1">📎 {fotoDivFile.name}</span><button type="button" className="text-[11px] text-gray-500 hover:underline" onClick={() => setFotoDivFile(null)}>remover</button></>
-                : <label className="text-xs font-medium px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800">📷 Foto da divergência (opcional)
+                ? <><span className="truncate flex-1 inline-flex items-center gap-1"><Paperclip size={12} className="shrink-0" /> {fotoDivFile.name}</span><button type="button" className="text-[11px] text-gray-500 hover:underline" onClick={() => setFotoDivFile(null)}>remover</button></>
+                : <label className="text-xs font-medium px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 inline-flex items-center gap-1"><Camera size={13} /> Foto da divergência (opcional)
                     <input type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) setFotoDivFile(f); }} />
                   </label>}
             </div>
@@ -2005,7 +2006,7 @@ function NovoRecebimentoModal({ rid, restaurant, por, arquivoInicial, tipoDocume
           <Button variant="secondary" size="sm" disabled={salvando} onClick={etapa === "paginas" ? onClose : voltar}>
             {etapa === "paginas" ? "Cancelar" : "← Voltar"}
           </Button>
-          {lendoAlgo && <span className="text-[11px] text-indigo-600 dark:text-indigo-300">🔍 Lendo em 2º plano…</span>}
+          {lendoAlgo && <span className="text-[11px] text-indigo-600 dark:text-indigo-300 inline-flex items-center gap-1"><Search size={12} /> Lendo em 2º plano…</span>}
           {etapa === "final" ? (
             <Button size="sm" disabled={salvando} onClick={() => void salvar()}>{salvando ? "Salvando…" : "Salvar recebimento"}</Button>
           ) : (
