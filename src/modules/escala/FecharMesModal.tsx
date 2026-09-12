@@ -5,6 +5,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
+import { Lock, LockOpen, Ban, TriangleAlert, Check as CheckIcon } from "lucide-react";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { logAudit } from "../../core/audit/versionedChange";
 import { fmtAnoMes, nomeMes, pad2 } from "../../core/utils/date";
@@ -127,16 +128,16 @@ export function FecharMesModal({ rid, ano, mes, escala, diasPendentes = 0, onClo
   }
 
   return (
-    <Modal title={`🔒 Encerrar ${nomeMes(mes)} ${ano}`} onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={<span className="inline-flex items-center gap-1"><Lock size={18}/> Encerrar {nomeMes(mes)} {ano}</span>} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-4">
         {diasPendentes > 0 && (
           <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 text-sm text-rose-800 dark:text-rose-200">
-            🚫 Ainda há <strong>{diasPendentes} dia(s)</strong> a fechar na praticada. Feche todos os dias no
+            <Ban size={14} className="inline align-[-2px] mr-0.5"/> Ainda há <strong>{diasPendentes} dia(s)</strong> a fechar na praticada. Feche todos os dias no
             <strong> Análise de Ponto → Fechamento</strong> antes de encerrar o mês.
           </div>
         )}
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-300">
-          ⚠ Encerrar o mês (congela a praticada):
+          <TriangleAlert size={14} className="inline align-[-2px] mr-0.5"/> Encerrar o mês (congela a praticada):
           <ul className="list-disc ml-5 mt-1 text-xs space-y-0.5">
             <li>Escala (Prevista e Real) fica <strong>read-only</strong></li>
             <li>Gorjetas não podem mais ser editadas</li>
@@ -189,7 +190,7 @@ export function FecharMesModal({ rid, ano, mes, escala, diasPendentes = 0, onClo
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button variant="danger" onClick={fechar} disabled={!podeFechar || saving || diasPendentes > 0}
             title={diasPendentes > 0 ? "Feche os dias pendentes no Análise de Ponto antes de encerrar" : undefined}>
-            {saving ? "Encerrando..." : "🔒 Encerrar mês"}
+            {saving ? "Encerrando..." : <span className="inline-flex items-center gap-1"><Lock size={14}/> Encerrar mês</span>}
           </Button>
         </div>
       </div>
@@ -256,10 +257,10 @@ export function ReabrirMesModal({ rid, ano, mes, escala, onClose }: Props) {
   }
 
   return (
-    <Modal title={`🔓 Reabrir ${nomeMes(mes)} ${ano}`} onClose={onClose} maxWidth="max-w-md">
+    <Modal title={<span className="inline-flex items-center gap-1"><LockOpen size={18}/> Reabrir {nomeMes(mes)} {ano}</span>} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-4">
         <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-3 text-sm text-rose-800 dark:text-rose-300">
-          ⚠ Reabrir mês fechado é uma <strong>ação excepcional</strong>. Tudo que registrar a partir
+          <TriangleAlert size={14} className="inline align-[-2px] mr-0.5"/> Reabrir mês fechado é uma <strong>ação excepcional</strong>. Tudo que registrar a partir
           daqui pode afetar gorjetas, VT, divergências. O snapshot do estado fechado vai pro histórico.
         </div>
 
@@ -275,7 +276,7 @@ export function ReabrirMesModal({ rid, ano, mes, escala, onClose }: Props) {
         <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button variant="danger" onClick={reabrir} disabled={saving || !motivo.trim()}>
-            {saving ? "Reabrindo..." : "🔓 Confirmar reabertura"}
+            {saving ? "Reabrindo..." : <span className="inline-flex items-center gap-1"><LockOpen size={14}/> Confirmar reabertura</span>}
           </Button>
         </div>
       </div>
@@ -286,8 +287,8 @@ export function ReabrirMesModal({ rid, ano, mes, escala, onClose }: Props) {
 function Check({ ok, label, hint }: { ok: boolean; label: string; hint?: string }) {
   return (
     <div className="flex items-start gap-2 text-sm">
-      <span className={`text-base flex-shrink-0 ${ok ? "text-emerald-600" : "text-amber-600"}`}>
-        {ok ? "✓" : "⚠"}
+      <span className={`flex-shrink-0 mt-0.5 ${ok ? "text-emerald-600" : "text-amber-600"}`}>
+        {ok ? <CheckIcon size={16}/> : <TriangleAlert size={16}/>}
       </span>
       <div className="flex-1">
         <div className={ok ? "text-gray-700 dark:text-gray-300" : "text-amber-800 dark:text-amber-300"}>

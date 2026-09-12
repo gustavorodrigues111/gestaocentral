@@ -3,6 +3,7 @@ import { collection, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import { BarChart3, Lock, LockOpen, Coins, Bus, Users, History } from "lucide-react";
 import { nomeMes, pad2 } from "../../core/utils/date";
 import type { Cargo, Empregado, EscalaMes, Gorjeta, Restaurant, SplitVersion, VTFolha } from "../../core/types";
 import { calcularDivisaoDia, calcularValorLiquido } from "../gorjetas/calc";
@@ -108,12 +109,12 @@ export function SumarioMesModal({
   }, [divergencias]);
 
   return (
-    <Modal title={`📊 Sumário — ${nomeMes(mes)} ${ano}`} onClose={onClose} maxWidth="max-w-3xl">
+    <Modal title={<span className="inline-flex items-center gap-1"><BarChart3 size={18}/> Sumário — {nomeMes(mes)} {ano}</span>} onClose={onClose} maxWidth="max-w-3xl">
       <div className="space-y-5">
         <div className="text-xs text-gray-500 dark:text-gray-400">
           {restaurant.nome}
           {escala?.fechadoEm && (
-            <> · 🔒 Fechado em {new Date(escala.fechadoEm).toLocaleString("pt-BR")}</>
+            <> · <Lock size={11} className="inline align-[-1px]"/> Fechado em {new Date(escala.fechadoEm).toLocaleString("pt-BR")}</>
           )}
         </div>
 
@@ -123,8 +124,8 @@ export function SumarioMesModal({
           <>
             {/* Gorjetas */}
             <section>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-2">
-                💸 Gorjetas
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-2 inline-flex items-center gap-1">
+                <Coins size={13}/> Gorjetas
               </h3>
               <div className="grid grid-cols-3 gap-2">
                 <Stat label="Bruto" value={fmtBR(totaisGorjeta.bruto)} />
@@ -138,8 +139,8 @@ export function SumarioMesModal({
 
             {/* VT */}
             <section>
-              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-2">
-                🚌 Vale Transporte
+              <h3 className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-2 inline-flex items-center gap-1">
+                <Bus size={13}/> Vale Transporte
               </h3>
               <div className="grid grid-cols-3 gap-2">
                 <Stat label="Total" value={fmtBR(totaisVT.total)} />
@@ -155,8 +156,8 @@ export function SumarioMesModal({
             {/* Divergências VT */}
             {divergencias.length > 0 && (
               <section>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-2">
-                  📊 Divergências VT (Real vs Prevista)
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-2 inline-flex items-center gap-1">
+                  <BarChart3 size={13}/> Divergências VT (Real vs Prevista)
                 </h3>
                 <div className="grid grid-cols-3 gap-2">
                   <Stat label="A receber" value={fmtBR(divTotais.aReceber)} variant="ok" />
@@ -173,8 +174,8 @@ export function SumarioMesModal({
             {/* Top empregados por gorjeta */}
             {linhasGorjeta.length > 0 && (
               <section>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-2">
-                  👥 Distribuição de gorjeta por empregado
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-2 inline-flex items-center gap-1">
+                  <Users size={13}/> Distribuição de gorjeta por empregado
                 </h3>
                 <div className="border border-gray-200 dark:border-gray-800 rounded-lg overflow-hidden bg-white dark:bg-gray-900 max-h-[300px] overflow-y-auto">
                   <div className="grid grid-cols-[1fr_120px_120px] gap-2 px-3 py-1.5 bg-gray-50 dark:bg-gray-800 text-[10px] font-bold uppercase tracking-wider text-gray-600">
@@ -199,13 +200,13 @@ export function SumarioMesModal({
             {/* Histórico (versões anteriores) */}
             {escala?.versoesAnteriores && escala.versoesAnteriores.length > 0 && (
               <section>
-                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-2">
-                  📜 Histórico
+                <h3 className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-2 inline-flex items-center gap-1">
+                  <History size={13}/> Histórico
                 </h3>
                 <div className="space-y-1 text-xs">
                   {escala.versoesAnteriores.map((v, i) => (
                     <div key={i} className="bg-gray-50 dark:bg-gray-800/50 rounded px-2 py-1 text-gray-700 dark:text-gray-300">
-                      {v.motivo === "fechamento" ? "🔒" : "🔓"}{" "}
+                      {v.motivo === "fechamento" ? <Lock size={12} className="inline align-[-2px]"/> : <LockOpen size={12} className="inline align-[-2px]"/>}{" "}
                       <strong>{v.motivo}</strong> em {new Date(v.snapshotEm).toLocaleString("pt-BR")}
                       {v.motivoTexto && ` — "${v.motivoTexto}"`}
                     </div>

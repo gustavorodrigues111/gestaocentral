@@ -7,6 +7,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
+import { Clock, TriangleAlert, Check, Lock } from "lucide-react";
 import type { EscalaMes, EscalaSolicitacao, ScheduleStatus } from "../../core/types";
 
 const LABEL: Record<ScheduleStatus, string> = {
@@ -117,7 +118,7 @@ export function AjustesSolicitadosTab({ rid }: { rid: string }) {
                   <div>
                     <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{s.empregadoNome || "Empregado"}{ehHorario ? "" : ` · ${fmtDia(s.data!)}`}</div>
                     {ehHorario ? (
-                      <div className="text-[12px] text-gray-600 dark:text-gray-300 mt-0.5">🕐 Ajuste de <strong>horário contratual</strong> (jornada)</div>
+                      <div className="text-[12px] text-gray-600 dark:text-gray-300 mt-0.5 inline-flex items-center gap-1"><Clock size={13}/> Ajuste de <strong>horário contratual</strong> (jornada)</div>
                     ) : (
                       <div className="text-[12px] text-gray-600 dark:text-gray-300 mt-0.5">De <strong>{s.statusAtual ? LABEL[s.statusAtual] : "—"}</strong> → <strong className="text-indigo-700 dark:text-indigo-300">{s.statusSolicitado ? LABEL[s.statusSolicitado] : "—"}</strong></div>
                     )}
@@ -127,11 +128,11 @@ export function AjustesSolicitadosTab({ rid }: { rid: string }) {
                 <p className="text-[13px] text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900/50 rounded-lg px-2.5 py-1.5 border border-gray-100 dark:border-gray-800">“{s.motivo}”</p>
                 {guia && (
                   <p className={`text-[12px] rounded-lg px-2.5 py-1.5 ${guia.tom === "warn" ? "bg-amber-100 dark:bg-amber-900/30 text-amber-900 dark:text-amber-200" : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-900 dark:text-emerald-200"}`}>
-                    {guia.tom === "warn" ? "⚠ " : "✓ "}{guia.texto}
+                    {guia.tom === "warn" ? <TriangleAlert size={13} className="inline align-[-2px] mr-1"/> : <Check size={13} className="inline align-[-2px] mr-1"/>}{guia.texto}
                   </p>
                 )}
                 {ehHorario && <p className="text-[11px] text-gray-500 dark:text-gray-400">Corrija a jornada em <strong>Pessoas → Horários</strong> e marque como resolvido.</p>}
-                {s.gorjetaPaga && <p className="text-[11px] text-rose-700 dark:text-rose-300">🔒 Gorjeta desse dia já paga.</p>}
+                {s.gorjetaPaga && <p className="text-[11px] text-rose-700 dark:text-rose-300 inline-flex items-center gap-1"><Lock size={11}/> Gorjeta desse dia já paga.</p>}
                 <div className="flex justify-end gap-2">
                   <Button variant="secondary" size="sm" disabled={processando === s.id} onClick={() => void recusar(s)}>Recusar</Button>
                   <Button size="sm" disabled={processando === s.id} onClick={() => void aprovar(s)}>{processando === s.id ? "…" : ehHorario ? "Marcar resolvido" : "Aprovar e aplicar"}</Button>
