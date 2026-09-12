@@ -152,7 +152,7 @@ export function RotinaModal({ rid, rotina, pessoas, modulosAtivos, meId, meNome,
           <div className="grid sm:grid-cols-2 gap-2">
             <select value={moduloAlvo} onChange={e => setModuloAlvo(e.target.value as ModuleId | "")} className={inputCls}>
               <option value="">— nenhuma (só lembrete) —</option>
-              {modulosDisponiveis.map(m => <option key={m.id} value={m.id}>{m.icon} {m.label}</option>)}
+              {modulosDisponiveis.map(m => <option key={m.id} value={m.id}>{m.label}</option>)}
             </select>
             {subDestinos.length > 0 ? (
               <select value={subAlvo} onChange={e => setSubAlvo(e.target.value)} className={inputCls}>

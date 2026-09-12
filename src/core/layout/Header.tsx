@@ -5,6 +5,7 @@ import { db } from "../firebase/config";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
 import { MODULES } from "../../config/modules";
+import { ModuleIcon } from "../ui/ModuleIcon";
 import { APP_COMMIT, APP_BUILD_DATE, APP_VERSION_LABEL } from "../version";
 
 // Nome + descrição do módulo atual a partir da rota — mostrado no header
@@ -38,7 +39,7 @@ export function Header({ onToggleSidebar }: { onToggleSidebar: () => void }) {
       <div className="flex items-baseline gap-2 min-w-0">
         {modulo ? (
           <>
-            <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap shrink-0">{modulo.icon} {modulo.label}</span>
+            <span className="text-base sm:text-lg font-bold text-gray-900 dark:text-gray-100 whitespace-nowrap shrink-0 inline-flex items-center gap-1.5"><ModuleIcon name={modulo.icon} size={18} /> {modulo.label}</span>
             {modulo.desc && <span className="hidden md:inline text-xs text-gray-500 dark:text-gray-400 truncate min-w-0">{modulo.desc}</span>}
           </>
         ) : (

@@ -60,7 +60,7 @@ export type AccessProfile = {
 
 // ─── TIPOS BASE ───
 
-export type ModuleArea = "ops" | "dp" | "fin" | "planejamento" | "inst" | "master";
+export type ModuleArea = "minhas" | "ops" | "dp" | "planejamento" | "inst" | "master";
 
 export type ModuleId =
   // Operação

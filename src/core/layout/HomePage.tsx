@@ -6,6 +6,7 @@ import { useRestaurant } from "../restaurant/RestaurantContext";
 import { canUse } from "../auth/permissions";
 import { Button } from "../ui/Button";
 import { ModuleBadge } from "../ui/ModuleBadge";
+import { ModuleIcon } from "../ui/ModuleIcon";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
 import type { ModuleArea, ModuleId } from "../types";
 
@@ -60,7 +61,7 @@ export function HomePage() {
     return canUse(pessoa, rid, moduleId);
   }
 
-  const areas: ModuleArea[] = ["planejamento", "ops", "dp", "fin", "inst"];
+  const areas: ModuleArea[] = ["minhas", "ops", "dp", "planejamento", "inst"];
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -100,7 +101,7 @@ export function HomePage() {
                           <ModuleBadge etapa={m.etapa} size="xs" />
                         </div>
                       )}
-                      <div className="text-3xl mb-2">{m.icon}</div>
+                      <div className="mb-2 text-gray-700 dark:text-gray-300"><ModuleIcon name={m.icon} size={28} /></div>
                       <div className="font-semibold text-gray-900 dark:text-gray-100 text-sm">{m.label}</div>
                       {m.desc && <div className="text-xs text-gray-500 dark:text-gray-400 mt-1 line-clamp-2">{m.desc}</div>}
                       {m.status === "em-breve" && (

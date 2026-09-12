@@ -6,6 +6,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { MODULES } from "../../config/modules";
+import { ModuleIcon } from "../../core/ui/ModuleIcon";
 import type { ModuleId } from "../../core/types";
 
 type Props = {
@@ -130,7 +131,7 @@ export function NewRestaurantModal({ onClose, onCreated }: Props) {
                     disabled={disabled}
                     onChange={() => !disabled && toggleModulo(m.id)}
                   />
-                  <span className="text-base">{m.icon}</span>
+                  <ModuleIcon name={m.icon} size={16} />
                   <span className="text-sm text-gray-800 dark:text-gray-200">{m.label}</span>
                   {disabled && (
                     <span className="ml-auto text-[10px] text-gray-400 uppercase">

@@ -20,6 +20,7 @@
     "firebase": "^12.12.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
+    "lucide-react": "^1.45.0",
     "puppeteer-core": "^25.5.0",
     "qrcode": "^1.5.4",
     "react": "^19.2.5",

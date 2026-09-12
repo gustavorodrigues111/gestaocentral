@@ -698,7 +698,7 @@ function SubprojetoForm({ sub, projetoId, pessoaId, projetos, onClose }: {
               >
                 <option value="">— selecione —</option>
                 {opcoesModulos.map(m => (
-                  <option key={m.id} value={m.id}>{m.icon} {m.label}</option>
+                  <option key={m.id} value={m.id}>{m.label}</option>
                 ))}
               </select>
               <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 mt-1">

@@ -9,6 +9,7 @@ import { canConfig } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { AREA_INFO, modulesByArea, getModule } from "../../config/modules";
+import { ModuleIcon } from "../../core/ui/ModuleIcon";
 import { UNIDADE_TIPO_LABEL } from "../../core/types";
 import type { Endereco, ModuleArea, ModuleId, Unidade, UnidadeTipo } from "../../core/types";
 import { isValidSubdomain } from "../../core/restaurant/subdomain";
@@ -112,8 +113,8 @@ export function ConfiguracoesPage() {
 
   // Área "master" (Tarefas + Planner) só aparece pro master ligar/desligar.
   const areas: ModuleArea[] = me?.isMaster
-    ? ["planejamento", "ops", "dp", "fin", "inst", "master"]
-    : ["planejamento", "ops", "dp", "fin", "inst"];
+    ? ["minhas", "ops", "dp", "planejamento", "inst", "master"]
+    : ["minhas", "ops", "dp", "planejamento", "inst"];
 
   return (
     <div className="max-w-3xl space-y-6">
@@ -281,7 +282,7 @@ export function ConfiguracoesPage() {
                           ${disabled ? "opacity-50 cursor-not-allowed" : "cursor-pointer"}
                         `}
                       >
-                        <span className="text-xl">{m.icon}</span>
+                        <ModuleIcon name={m.icon} size={22} />
                         <div className="flex-1 min-w-0">
                           <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{m.label}</div>
                           {disabled && <div className="text-[10px] text-gray-400 uppercase">{m.status === "em-breve" ? "em breve" : "próx. sprints"}</div>}

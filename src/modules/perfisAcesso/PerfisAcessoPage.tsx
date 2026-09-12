@@ -11,7 +11,8 @@ import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { useTodasPessoas } from "../../core/pessoas/PessoasContext";
 import { CATALOGO, type CatalogoModulo } from "../../core/auth/actionCatalog";
 import { SETORES } from "../../core/wiki/setores";
-import { MODULES, AREA_INFO } from "../../config/modules";
+import { MODULES, AREA_INFO, getModule } from "../../config/modules";
+import { ModuleIcon } from "../../core/ui/ModuleIcon";
 import type { ModuleArea, Pessoa } from "../../core/types";
 import { BUILTIN_GERENTE_RESTAURANTE } from "../../core/auth/builtinProfiles";
 import { Button } from "../../core/ui/Button";
@@ -397,7 +398,7 @@ function PerfilEditor({ perfil, isNew, restaurantes, pessoas, perfis, onSalvar, 
 
   // Ordem das áreas IGUAL ao menu/Sidebar (planejamento → ops → dp → fin → inst
   // → master), com bucket final pros só-do-catálogo.
-  const AREA_ORDER: (ModuleArea | "outros")[] = ["planejamento", "ops", "dp", "fin", "inst", "master", "outros"];
+  const AREA_ORDER: (ModuleArea | "outros")[] = ["minhas", "ops", "dp", "planejamento", "inst", "master", "outros"];
   const AREA_LABEL: Record<string, { label: string; color: string }> = {
     ...AREA_INFO,
     outros: { label: "Outros / Sistema", color: "#6b7280" },
@@ -624,7 +625,7 @@ function ModuloEditor({ modulo, permissoes, onToggle, onTodas }: {
         className="w-full px-3 py-2 flex items-center justify-between gap-2 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors text-left"
       >
         <div className="flex items-center gap-2 min-w-0">
-          <span className="text-xl shrink-0">{modulo.icon}</span>
+          <span className="shrink-0"><ModuleIcon name={getModule(modulo.id)?.icon ?? modulo.icon} size={22} /></span>
           <div className="min-w-0">
             <div className="font-medium text-sm">{modulo.label}</div>
             <div className="text-[11px] text-gray-500 dark:text-gray-400 truncate">{modulo.desc}</div>

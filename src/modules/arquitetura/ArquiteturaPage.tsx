@@ -6,10 +6,11 @@ import { useEffect, useMemo, useState } from "react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { MODULES, AREA_INFO, getModule } from "../../config/modules";
+import { ModuleIcon } from "../../core/ui/ModuleIcon";
 import type { CadernoItem, ModuleArea } from "../../core/types";
 import { ouvirCaderno, merge, salvarItem, toggleStatus, excluirItem } from "./cadernoRepo";
 
-const AREA_ORDER: ModuleArea[] = ["planejamento", "ops", "dp", "fin", "inst", "master"];
+const AREA_ORDER: ModuleArea[] = ["minhas", "ops", "dp", "planejamento", "inst", "master"];
 // Ordem dos módulos = ordem do menu (por área, na ordem do array MODULES). "geral" primeiro.
 const MODULO_ORDER: string[] = ["geral", ...AREA_ORDER.flatMap((a) => MODULES.filter((m) => m.area === a).map((m) => m.id))];
 const ordemDe = (id: string) => { const i = MODULO_ORDER.indexOf(id); return i < 0 ? 999 : i; };
@@ -105,7 +106,7 @@ export function ArquiteturaPage() {
         return (
           <section key={mod} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
             <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-100 dark:border-gray-800">
-              <span className="text-base">{meta.icon}</span>
+              <span className="text-base"><ModuleIcon name={meta.icon} size={16} /></span>
               <span className="font-semibold text-sm text-gray-900 dark:text-gray-100">{meta.label}</span>
               <span className="w-2 h-2 rounded-full" style={{ background: cor }} />
               <span className="text-[11px] text-gray-400 tabular-nums">{its.filter((i) => i.status === "pendente").length} pend.</span>
@@ -150,7 +151,7 @@ export function ArquiteturaPage() {
         <div className="mt-3 flex items-center gap-2 flex-wrap">
           <select value={addModulo || ""} onChange={(e) => setAddModulo(e.target.value || null)} className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5">
             <option value="">— módulo —</option>
-            {["geral", ...MODULO_ORDER.filter((m) => m !== "geral")].map((m) => <option key={m} value={m}>{metaModulo(m).icon} {metaModulo(m).label}</option>)}
+            {["geral", ...MODULO_ORDER.filter((m) => m !== "geral")].map((m) => <option key={m} value={m}>{metaModulo(m).label}</option>)}
           </select>
           <input value={addTitulo} onChange={(e) => setAddTitulo(e.target.value)} placeholder="Novo item…" className="flex-1 min-w-[180px] text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 py-1.5" />
           <select value={addResp} onChange={(e) => setAddResp(e.target.value)} className="text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5">

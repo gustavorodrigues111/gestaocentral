@@ -1,5 +1,6 @@
 import { useParams, Link } from "react-router-dom";
 import { getModule } from "../../config/modules";
+import { ModuleIcon } from "../ui/ModuleIcon";
 
 export function ModulePlaceholder() {
   const { moduleId } = useParams<{ moduleId: string }>();
@@ -17,7 +18,7 @@ export function ModulePlaceholder() {
 
   return (
     <div className="max-w-2xl mx-auto py-16 text-center">
-      <div className="text-5xl mb-4">{m.icon}</div>
+      <div className="mb-4 flex justify-center text-gray-700 dark:text-gray-300"><ModuleIcon name={m.icon} size={48} /></div>
       <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100">{m.label}</h2>
       {m.desc && <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">{m.desc}</p>}
       <div className="mt-6 inline-block bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-900 rounded-lg px-4 py-3 text-sm text-amber-900 dark:text-amber-300">

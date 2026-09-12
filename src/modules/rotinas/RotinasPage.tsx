@@ -16,7 +16,7 @@ import { subDestinoLabel } from "./subDestinos";
 const moduloLabel = (id?: ModuleId) => {
   if (!id) return null;
   const m = MODULES.find(x => x.id === id);
-  return m ? `${m.icon} ${m.label}` : id;
+  return m ? m.label : id;
 };
 
 export function RotinasPage() {

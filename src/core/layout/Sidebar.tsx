@@ -10,6 +10,7 @@ import { useCanAcao } from "../auth/useCanAcao";
 import { useAvisos } from "../../modules/chat/useAvisos";
 import { confirmarSaida } from "../nav/unsaved";
 import { ModuleBadge } from "../ui/ModuleBadge";
+import { ModuleIcon } from "../ui/ModuleIcon";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
 import type { ModuleArea, ModuleId } from "../types";
 
@@ -133,7 +134,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     return canUse(pessoa, rid, moduleId);
   }
 
-  const areas: ModuleArea[] = ["planejamento", "ops", "dp", "fin", "inst"];
+  const areas: ModuleArea[] = ["ops", "dp", "planejamento", "inst"];
 
   // Seção Master (Tarefas + Planner): ferramentas pessoais do dono.
   // Diferente das demais áreas, RESPEITA modulosAtivos MESMO pro master —
@@ -143,10 +144,10 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     if (!pessoa?.isMaster) return false;
     return modulosAtivos.includes(moduleId);
   }
-  // Agentes de IA e Governança de IA sobem pra Institucional (badge "master"),
-  // como Caderno/Perfis — não formam mais uma seção Master própria.
-  const NO_INSTITUCIONAL_MASTER = new Set<ModuleId>(["agentes", "iaGovernanca"]);
-  const masterMods = modulesByArea("master").filter(m => !m.oculto && masterModuloLigado(m.id) && !NO_INSTITUCIONAL_MASTER.has(m.id));
+  // Módulos da área "master" (hoje só Governança de IA) formam a seção Master.
+  // Agentes de IA migrou pra Administrativo e Conectores pra Configurações —
+  // renderizam pelas próprias áreas agora, não mais aqui.
+  const masterMods = modulesByArea("master").filter(m => !m.oculto && masterModuloLigado(m.id));
 
   return (
     <>
@@ -196,8 +197,8 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                   : "text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"}
               `}
             >
-              <span>🎛️</span>
-              <span className="flex-1">Minha Central</span>
+              <ModuleIcon name="layout-dashboard" size={16} />
+              <span className="flex-1">Dashboard</span>
               {avisosPendentes > 0 && (
                 <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-rose-600 text-white text-[10px] font-bold">
                   {avisosPendentes > 99 ? "99+" : avisosPendentes}
@@ -268,7 +269,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                             ${m.status !== "ativo" ? "opacity-50" : ""}
                           `}
                         >
-                          <span>{m.icon}</span>
+                          <ModuleIcon name={m.icon} size={16} />
                           <span className="flex-1 truncate">{m.label}</span>
                           {m.etapa && <ModuleBadge etapa={m.etapa} size="xs" />}
                           {m.status === "em-breve" && <span className="text-[9px] text-amber-600 dark:text-amber-400">em breve</span>}
@@ -291,24 +292,6 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                         <span>📄</span><span className="flex-1 truncate">Propostas</span>
                         <span className="text-[9px] text-gray-400">master</span>
                       </NavLink>
-                      {masterModuloLigado("agentes") && (
-                        <NavLink to={rid ? `/r/${rid}/agentes` : "#"} onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-                          <span>🤖</span><span className="flex-1 truncate">Agentes de IA</span>
-                          <span className="text-[9px] text-gray-400">master</span>
-                        </NavLink>
-                      )}
-                      {masterModuloLigado("conectores") && (
-                        <NavLink to={rid ? `/r/${rid}/conectores` : "#"} onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-                          <span>🔌</span><span className="flex-1 truncate">Conectores</span>
-                          <span className="text-[9px] text-gray-400">master</span>
-                        </NavLink>
-                      )}
-                      {masterModuloLigado("iaGovernanca") && (
-                        <NavLink to={rid ? `/r/${rid}/iaGovernanca` : "#"} onClick={guardedClose} className={({ isActive }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
-                          <span>🛡️</span><span className="flex-1 truncate">Governança de IA</span>
-                          <span className="text-[9px] text-gray-400">master</span>
-                        </NavLink>
-                      )}
                     </>
                   )}
                 </div>
@@ -353,7 +336,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
                             : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}
                         `}
                       >
-                        <span>{m.icon}</span>
+                        <ModuleIcon name={m.icon} size={16} />
                         <span className="flex-1 truncate">{m.label}</span>
                         {m.id === "tarefas" && tarefasPendentes > 0 && (
                           <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-indigo-600 text-white text-[10px] font-bold">
