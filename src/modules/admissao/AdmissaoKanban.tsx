@@ -16,6 +16,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { TriangleAlert, Send, ClipboardList, Timer, KeyRound, User, CheckSquare, PenLine, Trash2 } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { gerarCascataAdmissao } from "../tarefas/generator";
@@ -738,7 +739,7 @@ function KanbanCard({
             title={`${atrasos} etapa(s) anterior(es) com pendências`}
             className="text-[10px] px-1 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 font-semibold whitespace-nowrap"
           >
-            ⚠️ {atrasos}
+            <span className="inline-flex items-center gap-1"><TriangleAlert size={11} /> {atrasos}</span>
           </span>
         )}
         {/* ⋯ menu (mover etapa / cancelar) — não-terminal */}
@@ -800,7 +801,7 @@ function KanbanCard({
             <button type="button" onClick={(e) => { e.stopPropagation(); onEnviarLink(); }}
               className={`${btnPrim} bg-emerald-600 hover:bg-emerald-700 text-white`}
               title="Gera o link e abre o WhatsApp pro candidato preencher. Move o card pra 'Aguardando' e inicia o prazo.">
-              📨 Enviar formulário
+              <span className="inline-flex items-center gap-1.5"><Send size={13} /> Enviar formulário</span>
             </button>
           )}
 
@@ -810,7 +811,7 @@ function KanbanCard({
               <button type="button" onClick={(e) => { e.stopPropagation(); onEnviarLink(); }}
                 className="flex-1 px-2 py-1.5 rounded-l-md bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold"
                 title="Reabre o WhatsApp com o link e renova o prazo">
-                📨 Enviar no WhatsApp
+                <span className="inline-flex items-center gap-1.5"><Send size={13} /> Enviar no WhatsApp</span>
               </button>
               <button type="button" onClick={(e) => { e.stopPropagation(); setMenu(menu === "link" ? null : "link"); }}
                 className="px-2 rounded-r-md bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] border-l border-emerald-500/60"
@@ -819,12 +820,12 @@ function KanbanCard({
               </button>
               {menu === "link" && (
                 <div className="absolute z-50 right-0 top-full mt-1 w-56 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg p-1.5">
-                  <button type="button" onClick={(e) => fechaMenu(e, onCopiarLink)} className={itemMenu}>📋 Copiar link</button>
-                  <button type="button" onClick={(e) => fechaMenu(e, () => onEstender(12))} className={itemMenu}>⏱ Estender prazo +12h</button>
+                  <button type="button" onClick={(e) => fechaMenu(e, onCopiarLink)} className={itemMenu}><span className="inline-flex items-center gap-1.5"><ClipboardList size={13} /> Copiar link</span></button>
+                  <button type="button" onClick={(e) => fechaMenu(e, () => onEstender(12))} className={itemMenu}><span className="inline-flex items-center gap-1.5"><Timer size={13} /> Estender prazo +12h</span></button>
                   {(adm.extensoesPrazo?.length ?? 0) > 0 && (
                     <button type="button" onClick={(e) => fechaMenu(e, onDesfazerExtensao)} className={itemMenu}>↩ Desfazer extensão</button>
                   )}
-                  <button type="button" onClick={(e) => fechaMenu(e, onNovoToken)} className={`${itemMenu} !text-rose-600 dark:!text-rose-400`}>🔑 Gerar link novo</button>
+                  <button type="button" onClick={(e) => fechaMenu(e, onNovoToken)} className={`${itemMenu} !text-rose-600 dark:!text-rose-400`}><span className="inline-flex items-center gap-1.5"><KeyRound size={13} /> Gerar link novo</span></button>
                 </div>
               )}
             </div>
@@ -835,12 +836,12 @@ function KanbanCard({
             <button type="button" onClick={(e) => { e.stopPropagation(); onCriarEmpregado(); }}
               className={`${btnPrim} ${adm.status === "formulario_enviado" || adm.status === "a_admitir" ? "mt-1.5 " : ""}bg-indigo-600 hover:bg-indigo-700 text-white`}
               title="Cria Pessoa + Empregado no sistema e dá acesso. A admissão continua no Kanban.">
-              👤 Criar empregado
+              <span className="inline-flex items-center gap-1.5"><User size={13} /> Criar empregado</span>
             </button>
           )}
           {adm.empregadoIdCriado && (
             <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold mt-1.5">
-              👤 empregado criado no sistema ✓
+              <span className="inline-flex items-center gap-1"><User size={11} /> empregado criado no sistema ✓</span>
             </div>
           )}
 
@@ -849,7 +850,7 @@ function KanbanCard({
             <button type="button" onClick={(e) => { e.stopPropagation(); onConcluir(); }}
               className={`${btnPrim} mt-1.5 bg-emerald-600 hover:bg-emerald-700 text-white`}
               title="Encerra e arquiva a admissão (vai pra aba Finalizadas).">
-              ✅ Concluir admissão
+              <span className="inline-flex items-center gap-1.5"><CheckSquare size={13} /> Concluir admissão</span>
             </button>
           )}
 
@@ -857,7 +858,7 @@ function KanbanCard({
           <button type="button" onClick={(e) => { e.stopPropagation(); onAbrirFormulario(); }}
             className={btnGhost}
             title="Abre o formulário do candidato. Se você editar e salvar, assume o preenchimento.">
-            📝 Ver / editar formulário
+            <span className="inline-flex items-center gap-1.5"><PenLine size={13} /> Ver / editar formulário</span>
           </button>
         </div>
       )}
@@ -915,7 +916,7 @@ function KanbanCard({
                 className="text-[10px] text-rose-600 dark:text-rose-400 hover:underline text-left"
                 title="Apaga o card pra sempre (irreversível, só master)"
               >
-                🗑️ excluir definitivamente
+                <span className="inline-flex items-center gap-1"><Trash2 size={12} /> excluir definitivamente</span>
               </button>
             </div>
           )}

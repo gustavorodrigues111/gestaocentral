@@ -13,6 +13,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
+import { FolderKanban, Package, Settings, Lock, type LucideIcon } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -29,10 +30,10 @@ import { PageContainer } from "../../core/ui/PageContainer";
 type TabId = "kanban" | "candidaturas" | "finalizadas" | "config";
 
 // A aba "Candidaturas" saiu daqui — agora fica no módulo Processo Seletivo.
-const TABS_DEF: { id: TabId; label: string; icon: string }[] = [
-  { id: "kanban",       label: "Kanban",        icon: "🗂️" },
-  { id: "finalizadas",  label: "Finalizadas",   icon: "📦" },
-  { id: "config",       label: "Configurações", icon: "⚙️" },
+const TABS_DEF: { id: TabId; label: string; icon: LucideIcon }[] = [
+  { id: "kanban",       label: "Kanban",        icon: FolderKanban },
+  { id: "finalizadas",  label: "Finalizadas",   icon: Package },
+  { id: "config",       label: "Configurações", icon: Settings },
 ];
 
 export function AdmissaoPage() {
@@ -102,7 +103,7 @@ export function AdmissaoPage() {
   if (!podeVer) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
@@ -124,7 +125,7 @@ export function AdmissaoPage() {
                   : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"
               }`}
             >
-              {t.icon} {t.label}
+              <span className="inline-flex items-center gap-1.5"><t.icon size={14} /> {t.label}</span>
               <TabBadge count={badges[t.id]} />
             </button>
           );

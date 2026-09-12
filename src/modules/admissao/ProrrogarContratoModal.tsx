@@ -3,6 +3,7 @@
 // acha o Termo de Prorrogação e envia pro Clicksign (envelope novo só com ele).
 import { useEffect, useState } from "react";
 import { collection, query, where, getDocs, getDoc, doc, updateDoc } from "firebase/firestore";
+import { TriangleAlert, PenLine } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
 
@@ -211,7 +212,7 @@ export function ProrrogarContratoModal({ empregadoId, autor, onClose }: {
               </div>
               {!temPdf && (
                 <div className="text-xs text-amber-800 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded p-3">
-                  ⚠ O Termo de Prorrogação ainda não foi subido pra pasta
+                  <TriangleAlert size={13} className="inline align-[-2px] mr-1" /> O Termo de Prorrogação ainda não foi subido pra pasta
                   "docs a assinar" desta admissão. Abra o checklist de termos
                   da admissão, encontre "Termo de Prorrogação" e clique em
                   "⬆️ Subir pra assinatura". Depois volte aqui.
@@ -240,7 +241,7 @@ export function ProrrogarContratoModal({ empregadoId, autor, onClose }: {
             </Button>
             {estado === "ok" && temPdf && !mensagem.startsWith("✓") && (
               <Button onClick={enviarProrrogacaoPraClicksign} disabled={enviando}>
-                {enviando ? "Enviando…" : "✍️ Enviar pro Clicksign"}
+                {enviando ? "Enviando…" : <span className="inline-flex items-center gap-1.5"><PenLine size={14} /> Enviar pro Clicksign</span>}
               </Button>
             )}
           </div>

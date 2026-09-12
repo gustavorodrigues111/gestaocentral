@@ -4,6 +4,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useState } from "react";
+import { UserRoundPlus, Link, X } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
@@ -176,7 +177,7 @@ export function IniciarAdmissaoModal({ rid, cargos, schemaUsado, defaults, onClo
   }
 
   return (
-    <Modal title="🪪 Iniciar admissão" onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={<span className="inline-flex items-center gap-2"><UserRoundPlus size={16} /> Iniciar admissão</span>} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Preencha os dados básicos do candidato. O resto da ficha será preenchido por ele via link.
@@ -209,7 +210,7 @@ export function IniciarAdmissaoModal({ rid, cargos, schemaUsado, defaults, onClo
         {pessoaIdVinculada && (
           <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-300 dark:border-indigo-800 p-2 flex items-center justify-between gap-2">
             <span className="text-xs text-indigo-900 dark:text-indigo-300">
-              🔗 Vinculado à Pessoa <strong>{pessoaExistente?.nome}</strong>. A admissão vai reusar esse cadastro.
+              <span className="inline-flex items-center gap-1"><Link size={12} /> Vinculado à Pessoa <strong>{pessoaExistente?.nome}</strong>.</span> A admissão vai reusar esse cadastro.
             </span>
             <button
               type="button"
@@ -229,7 +230,7 @@ export function IniciarAdmissaoModal({ rid, cargos, schemaUsado, defaults, onClo
         {emailConflito && (
           <div className="rounded-lg bg-rose-50 dark:bg-rose-900/20 border border-rose-300 dark:border-rose-800 p-2 -mt-2">
             <div className="text-xs text-rose-800 dark:text-rose-300">
-              ❌ Esse e-mail já está cadastrado em outra pessoa: <strong>{emailConflito.nome}</strong>
+              <span className="inline-flex items-center gap-1"><X size={13} className="shrink-0" /> Esse e-mail já está cadastrado em outra pessoa: <strong>{emailConflito.nome}</strong></span>
               {emailConflito.cpf && <> (CPF {emailConflito.cpf})</>}
             </div>
             <div className="text-[10px] text-rose-700/80 dark:text-rose-400/80 mt-0.5">

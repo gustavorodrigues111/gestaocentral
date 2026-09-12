@@ -4,6 +4,7 @@
 //  submeter o form). Reusa o CampoRender com bloqueado=true.
 // ════════════════════════════════════════════════════════════════════════════
 
+import { Eye, BarChart3, Pencil } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import type { Admissao } from "../../core/types";
 import { CampoRender, agruparPorGrupo } from "./AdmissaoPublicaPage";
@@ -36,7 +37,7 @@ export function VerPreenchimentoModal({ admissao, onClose, onEditar }: Props) {
 
   return (
     <Modal
-      title={`👁 Preenchimento do candidato — ${admissao.candidato.nome}`}
+      title={<span className="inline-flex items-center gap-2"><Eye size={16} /> Preenchimento do candidato — {admissao.candidato.nome}</span>}
       onClose={onClose}
       maxWidth="max-w-3xl"
     >
@@ -44,7 +45,7 @@ export function VerPreenchimentoModal({ admissao, onClose, onEditar }: Props) {
         <div className="bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg p-3 text-xs">
           <div className="flex items-center justify-between flex-wrap gap-2">
             <div>
-              📊 <strong>{preenchidos} de {totalCampos}</strong> campos preenchidos
+              <BarChart3 size={13} className="inline align-[-2px] mr-1" /> <strong>{preenchidos} de {totalCampos}</strong> campos preenchidos
               {admissao.preenchidoEm ? (
                 <span className="ml-2 text-emerald-700 dark:text-emerald-400">
                   · ✓ form finalizado em {new Date(admissao.preenchidoEm).toLocaleString("pt-BR")}
@@ -56,7 +57,7 @@ export function VerPreenchimentoModal({ admissao, onClose, onEditar }: Props) {
               )}
               {admissao.dadosRevisadosEm && (
                 <span className="ml-2 text-sky-700 dark:text-sky-400">
-                  · ✏️ revisado em {new Date(admissao.dadosRevisadosEm).toLocaleString("pt-BR")}
+                  · <Pencil size={12} className="inline align-[-2px]" /> revisado em {new Date(admissao.dadosRevisadosEm).toLocaleString("pt-BR")}
                   {admissao.dadosRevisadosPor?.nome ? ` por ${admissao.dadosRevisadosPor.nome}` : ""}
                 </span>
               )}
@@ -68,7 +69,7 @@ export function VerPreenchimentoModal({ admissao, onClose, onEditar }: Props) {
                   onClick={onEditar}
                   className="text-[11px] px-2 py-1 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold"
                 >
-                  ✏️ Conferir e editar
+                  <span className="inline-flex items-center gap-1"><Pencil size={12} /> Conferir e editar</span>
                 </button>
               )}
               <div className="text-indigo-700 dark:text-indigo-400 italic">

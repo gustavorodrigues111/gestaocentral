@@ -8,6 +8,7 @@
 
 import { Fragment, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
+import { Mail, Smartphone, Phone, User, TriangleAlert, Repeat, History, CalendarDays, Landmark, Inbox, Paperclip, Pencil, Send, ClipboardList, Link, Folder, Package, HardHat, FileText, FolderOpen, Upload } from "lucide-react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -70,7 +71,7 @@ function colunaCapturaStatus(col: KanbanColuna, st: string): boolean {
 
 // Gera o label do botão de atalho de contato baseado no canal preferido.
 // Ex: "📧 Abrir Gmail pra Senador Contábil" ou "📞 Ligar pra Triagem".
-function labelContato(rest: Restaurant, tipo: "clinica" | "contabilidade" | "financeiro"): string {
+function labelContato(rest: Restaurant, tipo: "clinica" | "contabilidade" | "financeiro"): React.ReactNode {
   const contato = tipo === "clinica"
     ? rest?.contatosAdmissao?.clinicaExames
     : tipo === "contabilidade"
@@ -81,9 +82,9 @@ function labelContato(rest: Restaurant, tipo: "clinica" | "contabilidade" | "fin
     ?? (tipo === "clinica" ? "telefone" : tipo === "contabilidade" ? "email" : "whatsapp");
   const nomeContato = contato?.nome
     ?? (tipo === "clinica" ? "clínica" : tipo === "contabilidade" ? "contabilidade" : "financeiro");
-  if (canal === "email") return `📧 Abrir Gmail pra ${nomeContato}`;
-  if (canal === "whatsapp") return `📱 Abrir WhatsApp ${nomeContato}`;
-  return `📞 Ligar pra ${nomeContato}`;
+  if (canal === "email") return <span className="inline-flex items-center gap-1.5"><Mail size={14} /> Abrir Gmail pra {nomeContato}</span>;
+  if (canal === "whatsapp") return <span className="inline-flex items-center gap-1.5"><Smartphone size={14} /> Abrir WhatsApp {nomeContato}</span>;
+  return <span className="inline-flex items-center gap-1.5"><Phone size={14} /> Ligar pra {nomeContato}</span>;
 }
 
 type Props = {
@@ -496,7 +497,7 @@ export function SubtarefasDrawer({
             {/* 👤 Empregado no sistema — criar cedo (dá acesso); não encerra a admissão */}
             <div className="rounded-lg border border-indigo-200 dark:border-indigo-900 p-3">
               <div className="text-[11px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 mb-1">
-                👤 Empregado no sistema
+                <span className="inline-flex items-center gap-1.5"><User size={12} /> Empregado no sistema</span>
               </div>
               {admissao.empregadoIdCriado ? (
                 <div className="text-xs text-emerald-700 dark:text-emerald-400">
@@ -516,7 +517,7 @@ export function SubtarefasDrawer({
                     disabled={criandoEmp}
                     className="text-xs font-semibold rounded-lg px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white disabled:opacity-50"
                   >
-                    {criandoEmp ? "Criando…" : "👤 Criar empregado"}
+                    {criandoEmp ? "Criando…" : <span className="inline-flex items-center gap-1.5"><User size={13} /> Criar empregado</span>}
                   </button>
                 </>
               ) : (
@@ -653,7 +654,7 @@ export function SubtarefasDrawer({
             return (
               <details className="rounded-lg border border-gray-200 dark:border-gray-800">
                 <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-gray-500 dark:text-gray-400 select-none">
-                  🕘 Histórico ({hist.length})
+                  <span className="inline-flex items-center gap-1.5"><History size={12} /> Histórico ({hist.length})</span>
                 </summary>
                 <div className="px-3 pb-3 space-y-1.5">
                   {hist.length === 0 && <div className="text-[11px] text-gray-400 italic">Sem eventos ainda.</div>}
@@ -680,7 +681,7 @@ export function SubtarefasDrawer({
                 </div>
               ) : (
                 <div className="text-xs text-amber-700 dark:text-amber-400 mb-2">
-                  ⚠ Faltam <strong>{pendentesObrigAtual.length} obrigatória(s)</strong> em
+                  <TriangleAlert size={12} className="inline align-[-2px] mr-1" /> Faltam <strong>{pendentesObrigAtual.length} obrigatória(s)</strong> em
                   "<strong>{colunaAtual?.nome}</strong>". Marque acima pra liberar o avanço.
                 </div>
               )}
@@ -749,7 +750,7 @@ export function SubtarefasDrawer({
                     }}
                     className="px-3 py-1.5 text-xs rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
                   >
-                    🔁 Sincronizar prazos de experiência
+                    <span className="inline-flex items-center gap-1.5"><Repeat size={13} /> Sincronizar prazos de experiência</span>
                   </button>
                 )}
                 <button
@@ -882,7 +883,7 @@ function SubtarefaRow({
   onAtalhoGerarTermoUniformes: () => void;
   onAtalhoGerarTermoEpis: () => void;
   onAtalhoCriarPastaDrive: () => void;
-  contatoLabel: (tipo: "clinica" | "contabilidade" | "financeiro") => string;
+  contatoLabel: (tipo: "clinica" | "contabilidade" | "financeiro") => React.ReactNode;
 }) {
   const [linkLocal, setLinkLocal] = useState(sub.link || "");
   const [obsLocal, setObsLocal] = useState(sub.observacao || "");
@@ -934,7 +935,7 @@ function SubtarefaRow({
       {sub.pedeDataHora && (
         <div className="mt-2 flex flex-col gap-1 bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 rounded p-2">
           <label className="text-[10px] font-semibold text-gray-600 dark:text-gray-400">
-            📅 Data e horário do exame
+            <span className="inline-flex items-center gap-1"><CalendarDays size={11} /> Data e horário do exame</span>
           </label>
           <input
             type="datetime-local"
@@ -949,7 +950,7 @@ function SubtarefaRow({
       {sub.pedeDadosBancarios && (
         <div className="mt-2 flex flex-col gap-2 bg-gray-50 dark:bg-gray-900/60 border border-gray-200 dark:border-gray-800 rounded p-2">
           <label className="text-[10px] font-semibold text-gray-600 dark:text-gray-400">
-            🏦 Dados da conta Itaú do candidato
+            <span className="inline-flex items-center gap-1"><Landmark size={11} /> Dados da conta Itaú do candidato</span>
           </label>
           <div className="flex items-center gap-3 text-xs">
             <label className="flex items-center gap-1 cursor-pointer select-none">
@@ -1015,7 +1016,7 @@ function SubtarefaRow({
               onClick={onAtalhoBaixarPlanilha}
               className="text-[10px] px-2 py-0.5 rounded border border-indigo-600 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/30"
             >
-              📥 Baixar planilha
+              <span className="inline-flex items-center gap-1"><Inbox size={12} /> Baixar planilha</span>
             </button>
             <button
               type="button"
@@ -1034,7 +1035,7 @@ function SubtarefaRow({
             title={sub.dataAgendada ? "" : "Preencha a data do exame antes"}
             className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white disabled:bg-gray-300 disabled:cursor-not-allowed"
           >
-            📱 Enviar mensagem de instruções
+            <span className="inline-flex items-center gap-1"><Smartphone size={12} /> Enviar mensagem de instruções</span>
           </button>
         )}
         {(sub.atalho?.tipo === "contato_financeiro" || sub.atalho?.tipo === "whatsapp_banco_financeiro") && (
@@ -1054,7 +1055,7 @@ function SubtarefaRow({
             onClick={onAtalhoChecklistDocs}
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
           >
-            📎 Abrir checklist de docs
+            <span className="inline-flex items-center gap-1"><Paperclip size={12} /> Abrir checklist de docs</span>
           </button>
         )}
         {sub.atalho?.tipo === "editar_dados_basicos" && (
@@ -1063,9 +1064,9 @@ function SubtarefaRow({
             onClick={onAtalhoEditarCandidato}
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
           >
-            {sub.id === "st_dados_candidato"
-              ? "✏️ Preencher dados básicos do candidato"
-              : "✏️ Editar dados básicos"}
+            <span className="inline-flex items-center gap-1"><Pencil size={12} /> {sub.id === "st_dados_candidato"
+              ? "Preencher dados básicos do candidato"
+              : "Editar dados básicos"}</span>
           </button>
         )}
         {sub.atalho?.tipo === "editar_dados_finais" && (
@@ -1074,9 +1075,9 @@ function SubtarefaRow({
             onClick={onAtalhoEditarDadosFinais}
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
           >
-            {sub.id === "st_dados_vaga"
-              ? "✏️ Preencher dados da vaga"
-              : "✏️ Editar dados finais"}
+            <span className="inline-flex items-center gap-1"><Pencil size={12} /> {sub.id === "st_dados_vaga"
+              ? "Preencher dados da vaga"
+              : "Editar dados finais"}</span>
           </button>
         )}
         {sub.atalho?.tipo === "enviar_link_form" && (
@@ -1085,7 +1086,7 @@ function SubtarefaRow({
             onClick={onAtalhoEnviarLinkForm}
             className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white"
           >
-            📨 Enviar link do formulário (WhatsApp)
+            <span className="inline-flex items-center gap-1"><Send size={12} /> Enviar link do formulário (WhatsApp)</span>
           </button>
         )}
         {sub.atalho?.tipo === "checklist_termos_assinar" && (
@@ -1094,7 +1095,7 @@ function SubtarefaRow({
             onClick={onAtalhoChecklistTermos}
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
           >
-            📋 Abrir checklist de kit de documentos para assinatura
+            <span className="inline-flex items-center gap-1"><ClipboardList size={12} /> Abrir checklist de kit de documentos para assinatura</span>
           </button>
         )}
         {sub.atalho?.tipo === "abrir_clicksign" && (
@@ -1103,7 +1104,7 @@ function SubtarefaRow({
             onClick={onAtalhoClicksign}
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
           >
-            🔗 Abrir Clicksign
+            <span className="inline-flex items-center gap-1"><Link size={12} /> Abrir Clicksign</span>
           </button>
         )}
         {sub.atalho?.tipo === "criar_pasta_drive" && isDriveConfigured() && (
@@ -1113,7 +1114,7 @@ function SubtarefaRow({
             disabled={salvando}
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 disabled:bg-gray-300 text-white"
           >
-            {salvando ? "Abrindo…" : "📁 Criar/selecionar pasta do empregado"}
+            {salvando ? "Abrindo…" : <span className="inline-flex items-center gap-1"><Folder size={12} /> Criar/selecionar pasta do empregado</span>}
           </button>
         )}
         {sub.atalho?.tipo === "whatsapp_kit_assinatura" && (
@@ -1122,7 +1123,7 @@ function SubtarefaRow({
             onClick={onAtalhoWhatsappKit}
             className="text-[10px] px-2 py-0.5 rounded bg-emerald-600 hover:bg-emerald-700 text-white"
           >
-            📱 Avisar candidato (WhatsApp)
+            <span className="inline-flex items-center gap-1"><Smartphone size={12} /> Avisar candidato (WhatsApp)</span>
           </button>
         )}
         {sub.atalho?.tipo === "gerar_termo_uniformes" && (
@@ -1131,7 +1132,7 @@ function SubtarefaRow({
             onClick={onAtalhoGerarTermoUniformes}
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
           >
-            📦 Gerar termo de uniformes
+            <span className="inline-flex items-center gap-1"><Package size={12} /> Gerar termo de uniformes</span>
           </button>
         )}
         {sub.atalho?.tipo === "gerar_termo_epis" && (
@@ -1140,13 +1141,13 @@ function SubtarefaRow({
             onClick={onAtalhoGerarTermoEpis}
             className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
           >
-            🦺 Gerar termo de EPIs
+            <span className="inline-flex items-center gap-1"><HardHat size={12} /> Gerar termo de EPIs</span>
           </button>
         )}
         {sub.pedeAnexoExame && (
           <span className="inline-flex items-center gap-2 flex-wrap">
             <label className={`text-[10px] font-semibold px-2 py-1 rounded border cursor-pointer whitespace-nowrap border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 ${salvando ? "opacity-50 pointer-events-none" : ""}`}>
-              {salvando ? "enviando…" : sub.link ? "📎 substituir anexo" : "📎 anexar exame (sobe pro Drive)"}
+              {salvando ? "enviando…" : <span className="inline-flex items-center gap-1"><Paperclip size={12} /> {sub.link ? "substituir anexo" : "anexar exame (sobe pro Drive)"}</span>}
               <input type="file" accept="application/pdf,image/*" className="hidden" disabled={salvando}
                 onChange={(e) => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) onAnexarExame(f); }} />
             </label>
@@ -1315,8 +1316,8 @@ function PastaDriveInfo({ admissao }: { admissao: Admissao }) {
     const verbo = modo === "vinculada" ? "vinculada" : modo === "criada" ? "criada" : "definida";
     return (
       <div className="text-[11px] text-gray-600 dark:text-gray-300 flex items-center gap-2 flex-wrap mt-1">
-        <span>
-          📁 Pasta {verbo}
+        <span className="inline-flex items-center gap-1">
+          <Folder size={12} /> Pasta {verbo}
           {admissao.driveFolderPor ? ` por ${admissao.driveFolderPor.nome}` : ""}
           {quando ? ` · ${quando}` : ""}
         </span>
@@ -1330,7 +1331,7 @@ function PastaDriveInfo({ admissao }: { admissao: Admissao }) {
   }
   return (
     <div className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
-      📁 Pasta do empregado ainda não criada — será criada ao subir os documentos
+      <Folder size={12} className="inline align-[-2px] mr-1" /> Pasta do empregado ainda não criada — será criada ao subir os documentos
       pro Drive, ou crie/vincule na subtarefa "Criar pasta do empregado".
     </div>
   );
@@ -1483,7 +1484,7 @@ function DocumentosConferencia({
   return (
     <details className="rounded-lg border border-indigo-200 dark:border-indigo-900">
       <summary className="cursor-pointer px-3 py-2 text-[11px] font-semibold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 select-none">
-        📎 Documentos do candidato ({itens.length})
+        <span className="inline-flex items-center gap-1.5"><Paperclip size={12} /> Documentos do candidato ({itens.length})</span>
       </summary>
       <div className="px-3 pb-3 space-y-2">
         <PastaDriveInfo admissao={admissao} />
@@ -1522,12 +1523,12 @@ function DocumentosConferencia({
                         }}
                         className="text-indigo-600 dark:text-indigo-400 hover:underline truncate flex-1 text-left"
                       >
-                        📄 {a.nome}
+                        <span className="inline-flex items-center gap-1"><FileText size={11} className="shrink-0" /> {a.nome}</span>
                       </button>
                       {a.enviadoPeloDp && <span className="text-[9px] uppercase text-gray-400 shrink-0">DP</span>}
                       {a.driveFileId && (
                         <span className="text-[9px] text-emerald-600 shrink-0" title={a.storageExpurgado ? "No Drive (original removido do Storage)" : "Já está no Drive"}>
-                          {a.storageExpurgado ? "📁 Drive" : "✓ Drive"}
+                          {a.storageExpurgado ? <span className="inline-flex items-center gap-0.5"><FolderOpen size={10} /> Drive</span> : "✓ Drive"}
                         </span>
                       )}
                       {!encerrada && (
@@ -1546,7 +1547,7 @@ function DocumentosConferencia({
               )}
               {!encerrada && (
                 <label className={`inline-flex items-center gap-1 mt-1.5 text-[11px] px-2 py-1 rounded border border-gray-300 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 ${busy === it.docId ? "opacity-50" : ""}`}>
-                  {busy === it.docId ? "Enviando…" : temArquivo ? "+ Anexar outro" : "📎 Anexar (DP)"}
+                  {busy === it.docId ? "Enviando…" : temArquivo ? "+ Anexar outro" : <span className="inline-flex items-center gap-1"><Paperclip size={11} /> Anexar (DP)</span>}
                   <input
                     type="file"
                     accept="application/pdf,image/jpeg,image/png"
@@ -1584,7 +1585,7 @@ function DocumentosConferencia({
                 ? "Enviando pro Drive…"
                 : totalPendente === 0
                   ? "✓ Tudo no Drive"
-                  : `📤 ${jaSubiu ? "Subir " + totalPendente + " novo(s) pro Drive" : "Confirmar e subir " + totalPendente + " pro Drive"}`}
+                  : <span className="inline-flex items-center gap-1.5"><Upload size={13} /> {jaSubiu ? "Subir " + totalPendente + " novo(s) pro Drive" : "Confirmar e subir " + totalPendente + " pro Drive"}</span>}
             </button>
             {admissao.documentos?.subidoDriveEm && (
               <p className="text-[10px] text-gray-500 text-center mt-1">

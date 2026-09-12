@@ -8,6 +8,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useState } from "react";
+import { Phone, MapPin, ClipboardList } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import type { ContatoExterno } from "../../core/types";
@@ -47,7 +48,7 @@ export function ModalLigarContato({ contato, scriptSugerido, onClose, onConfirma
   }
 
   return (
-    <Modal title={`📞 Ligar para ${contato.nome}`} onClose={onClose} maxWidth="max-w-md">
+    <Modal title={<span className="inline-flex items-center gap-2"><Phone size={16} /> Ligar para {contato.nome}</span>} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-4">
         <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3">
           <div className="text-[10px] uppercase tracking-wider font-semibold text-amber-700 dark:text-amber-400">
@@ -58,7 +59,7 @@ export function ModalLigarContato({ contato, scriptSugerido, onClose, onConfirma
           </div>
           {contato.endereco && (
             <div className="text-[11px] text-amber-800 dark:text-amber-300 mt-1">
-              📍 {contato.endereco}
+              <span className="inline-flex items-center gap-1"><MapPin size={12} /> {contato.endereco}</span>
             </div>
           )}
         </div>
@@ -74,17 +75,17 @@ export function ModalLigarContato({ contato, scriptSugerido, onClose, onConfirma
 
         <div className="flex flex-wrap gap-2">
           <Button size="sm" variant="secondary" onClick={copiarNumero} disabled={!contato.telefone}>
-            📋 {copiouNum ? "Copiado!" : "Copiar número"}
+            <span className="inline-flex items-center gap-1.5"><ClipboardList size={14} /> {copiouNum ? "Copiado!" : "Copiar número"}</span>
           </Button>
           <Button size="sm" variant="secondary" onClick={copiarScript}>
-            📋 {copiouScript ? "Copiado!" : "Copiar script"}
+            <span className="inline-flex items-center gap-1.5"><ClipboardList size={14} /> {copiouScript ? "Copiado!" : "Copiar script"}</span>
           </Button>
           {telLink && (
             <a
               href={telLink}
               className="inline-flex items-center justify-center gap-2 rounded-lg font-medium transition-colors bg-emerald-600 hover:bg-emerald-700 text-white border border-emerald-600 text-xs px-2.5 py-1.5"
             >
-              📞 Ligar agora
+              <Phone size={14} /> Ligar agora
             </a>
           )}
         </div>

@@ -11,6 +11,7 @@
 
 import { useMemo, useState } from "react";
 import { doc, setDoc } from "firebase/firestore";
+import { TriangleAlert, Pencil, CheckSquare, Save } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
@@ -114,13 +115,13 @@ export function PreencherFormManualModal({ admissao, onClose, onSaved, modo = "m
       <div className="space-y-3">
         {modo === "manual" ? (
           <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-900 dark:text-amber-300">
-            ⚠ Use só em casos excepcionais — o caminho normal é o candidato
+            <TriangleAlert size={13} className="inline align-[-2px] mr-1" /> Use só em casos excepcionais — o caminho normal é o candidato
             preencher sozinho pelo link. Ao salvar, o doc fica marcado como
             "preenchimento manual por {me?.nome || "—"}" pra distinguir no histórico.
           </div>
         ) : (
           <div className="rounded-lg bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800 p-3 text-xs text-sky-900 dark:text-sky-300">
-            ✏️ O candidato já começou a preencher. Você pode <b>assumir e concluir</b>{" "}
+            <Pencil size={13} className="inline align-[-2px] mr-1" /> O candidato já começou a preencher. Você pode <b>assumir e concluir</b>{" "}
             (termina o preenchimento por ele e marca como preenchido) ou só{" "}
             <b>salvar correções</b> sem concluir. O que o candidato já digitou fica preservado.
           </div>
@@ -168,8 +169,8 @@ export function PreencherFormManualModal({ admissao, onClose, onSaved, modo = "m
             {salvando
               ? "Salvando…"
               : modo === "revisao"
-              ? "✅ Assumir e concluir"
-              : "💾 Salvar e marcar preenchido"}
+              ? <span className="inline-flex items-center gap-1.5"><CheckSquare size={14} /> Assumir e concluir</span>
+              : <span className="inline-flex items-center gap-1.5"><Save size={14} /> Salvar e marcar preenchido</span>}
           </Button>
         </div>
       </div>

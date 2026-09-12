@@ -5,6 +5,7 @@
 //     de o módulo existir) — nesse caso não duplica cadastro.
 import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot } from "firebase/firestore";
+import { Plus, Link } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
@@ -83,7 +84,7 @@ export function ConcluirAdmissaoModal({ candidatoNome, candidatoCpf, onCriarNova
               modo === "nova" ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30" : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
             }`}
           >
-            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">➕ Criar nova pessoa e empregado</div>
+            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Plus size={14} /> Criar nova pessoa e empregado</div>
             <div className="text-[12px] text-gray-500 dark:text-gray-400">Cria o cadastro do zero a partir dos dados da admissão.</div>
           </button>
           <button
@@ -93,7 +94,7 @@ export function ConcluirAdmissaoModal({ candidatoNome, candidatoCpf, onCriarNova
               modo === "vincular" ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30" : "border-gray-200 dark:border-gray-700 hover:border-gray-300"
             }`}
           >
-            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">🔗 Vincular a uma pessoa existente</div>
+            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Link size={14} /> Vincular a uma pessoa existente</div>
             <div className="text-[12px] text-gray-500 dark:text-gray-400">Já cadastrou essa pessoa por fora? Associa e conclui sem duplicar.</div>
           </button>
         </div>

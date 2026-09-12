@@ -11,6 +11,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
+import { Clock, ClipboardList, TriangleAlert, Save } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
@@ -249,7 +250,7 @@ export function PreencherDadosBasicosModal({ admissao, cargos, activeRestaurant,
         {/* Horário */}
         <div className="space-y-2">
           <h3 className="font-bold text-sm text-gray-900 dark:text-gray-100">
-            🕐 Horário de trabalho *
+            <span className="inline-flex items-center gap-1.5"><Clock size={15} /> Horário de trabalho *</span>
           </h3>
           <p className="text-[11px] text-gray-500 dark:text-gray-400">
             Marque os dias ativos e informe entrada, saída e intervalo (min). Dias
@@ -259,7 +260,7 @@ export function PreencherDadosBasicosModal({ admissao, cargos, activeRestaurant,
           {/* Copiar horário de um empregado existente */}
           {empComHorario.length > 0 && (
             <div className="flex items-center gap-2 flex-wrap text-xs bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-700 rounded-lg px-2.5 py-2">
-              <span className="text-gray-500 dark:text-gray-400">📋 Copiar horário de:</span>
+              <span className="text-gray-500 dark:text-gray-400 inline-flex items-center gap-1"><ClipboardList size={12} /> Copiar horário de:</span>
               <select
                 value={copiarDe}
                 onChange={(e) => setCopiarDe(e.target.value)}
@@ -385,7 +386,7 @@ export function PreencherDadosBasicosModal({ admissao, cargos, activeRestaurant,
         {validacao.errors.length > 0 && (
           <div className="rounded-lg border border-rose-300 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-900/20 p-3 space-y-1.5">
             <div className="text-xs font-bold text-rose-800 dark:text-rose-300">
-              ⚠ {validacao.errors.length} violação(ões) CLT — bloqueia salvar:
+              <span className="inline-flex items-center gap-1"><TriangleAlert size={12} /> {validacao.errors.length} violação(ões) CLT — bloqueia salvar:</span>
             </div>
             <ul className="space-y-1">
               {validacao.errors.map((er, i) => (
@@ -409,7 +410,7 @@ export function PreencherDadosBasicosModal({ admissao, cargos, activeRestaurant,
             disabled={salvando || validacao.errors.length > 0}
             title={validacao.errors.length > 0 ? "Resolva as violações CLT antes de salvar" : undefined}
           >
-            {salvando ? "Salvando…" : "💾 Salvar dados básicos"}
+            {salvando ? "Salvando…" : <span className="inline-flex items-center gap-1.5"><Save size={14} /> Salvar dados básicos</span>}
           </Button>
         </div>
       </div>

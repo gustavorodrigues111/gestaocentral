@@ -5,6 +5,7 @@
 
 import { useEffect, useState } from "react";
 import { collection, getDocs, query, where } from "firebase/firestore";
+import { Smartphone, TriangleAlert, Folder, Repeat, PenLine, FileText, Stethoscope, BarChart3, Landmark, Mail, Megaphone, Send, Save, Pin, Wrench, Phone, UserRoundPlus, Paperclip, type LucideIcon } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
@@ -274,7 +275,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
 
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
         <h2 className="font-bold text-sm text-gray-900 dark:text-gray-100">
-          📱 WhatsApp do DP
+          <span className="inline-flex items-center gap-1.5"><Smartphone size={15} /> WhatsApp do DP</span>
         </h2>
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Número que o candidato vê na tela do formulário pra enviar fotos dos documentos
@@ -290,7 +291,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
         />
         {!getWhatsappDP(activeRestaurant) && !whatsappDP && (
           <p className="text-[11px] text-amber-700 dark:text-amber-400">
-            ⚠ Sem WhatsApp cadastrado o candidato não consegue enviar documentos pelo botão do form.
+            <span className="inline-flex items-center gap-1"><TriangleAlert size={12} className="shrink-0" /> Sem WhatsApp cadastrado o candidato não consegue enviar documentos pelo botão do form.</span>
           </p>
         )}
       </div>
@@ -299,7 +300,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
       {(isDriveConfigured() || driveCentral === true) && (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
           <h2 className="font-bold text-sm text-gray-900 dark:text-gray-100">
-            📁 Pasta no Google Drive (admissão)
+            <span className="inline-flex items-center gap-1.5"><Folder size={15} /> Pasta no Google Drive (admissão)</span>
           </h2>
           <p className="text-xs text-gray-500 dark:text-gray-400">
             Aponte a pasta <strong>"Empregados Ativos"</strong> desta empresa no
@@ -314,7 +315,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
             </div>
           ) : (
             <div className="text-[11px] text-amber-700 dark:text-amber-400">
-              ⚠ Nenhuma pasta vinculada — sem isso, não dá pra criar a pasta do
+              <span className="inline-flex items-center gap-1"><TriangleAlert size={12} className="shrink-0" /> Nenhuma pasta vinculada</span> — sem isso, não dá pra criar a pasta do
               empregado no Drive durante a admissão.
             </div>
           )}
@@ -333,7 +334,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
             {driveCentral === true ? (
               <>
                 <Button variant="secondary" onClick={inicializarPastaCentral} disabled={drivePicking}>
-                  {drivePicking ? "Criando…" : driveFolder ? "🔄 Recriar pasta aqui" : "📁 Inicializar pasta central"}
+                  {drivePicking ? "Criando…" : driveFolder ? <span className="inline-flex items-center gap-1.5"><Repeat size={14} /> Recriar pasta aqui</span> : <span className="inline-flex items-center gap-1.5"><Folder size={14} /> Inicializar pasta central</span>}
                 </Button>
                 {driveFolder && (
                   <Button variant="secondary" onClick={moverPastaCentral} disabled={drivePicking || !driveDestino.trim()}>
@@ -346,8 +347,8 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
                 {drivePicking
                   ? "Abrindo seletor…"
                   : driveFolder
-                    ? "🔄 Trocar pasta"
-                    : "📁 Selecionar pasta"}
+                    ? <span className="inline-flex items-center gap-1.5"><Repeat size={14} /> Trocar pasta</span>
+                    : <span className="inline-flex items-center gap-1.5"><Folder size={14} /> Selecionar pasta</span>}
               </Button>
             )}
             {driveMsg && <span className="text-xs">{driveMsg}</span>}
@@ -362,7 +363,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
       {/* Clicksign — signatário fixo da empresa (assina junto com o empregado) */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
         <h2 className="font-bold text-sm text-gray-900 dark:text-gray-100">
-          ✍️ Signatário da empresa (Clicksign)
+          <span className="inline-flex items-center gap-1.5"><PenLine size={15} /> Signatário da empresa (Clicksign)</span>
         </h2>
         <p className="text-xs text-gray-500 dark:text-gray-400">
           Quem assina os contratos de admissão <strong>pela empresa</strong> (sempre o mesmo).
@@ -415,7 +416,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
               onChange={(e) => setClicksignEmpresaNascimento(e.target.value)}
             />
             <p className="text-[10px] text-amber-700 dark:text-amber-400 md:col-span-2">
-              ⚠ Nome, e-mail, CPF e nascimento precisam ser <strong>idênticos</strong> aos do
+              <span className="inline-flex items-center gap-1"><TriangleAlert size={12} className="shrink-0" /> Nome, e-mail, CPF e nascimento precisam ser <strong>idênticos</strong></span> aos do
               Termo de Assinatura Automática assinado no Clicksign — senão o envio falha.
             </p>
           </div>
@@ -427,7 +428,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
       <div className="bg-white dark:bg-gray-900 rounded-xl border border-gray-200 dark:border-gray-800 p-4 space-y-3">
         <div>
           <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">
-            📄 Documentos padrão deste restaurante
+            <span className="inline-flex items-center gap-1.5"><FileText size={15} /> Documentos padrão deste restaurante</span>
           </h3>
           <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
             PDFs que são iguais pra todo empregado. Suba uma vez no Drive
@@ -444,7 +445,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
           />
           {regulamentoInternoUrl && !extractDriveFileId(regulamentoInternoUrl) && (
             <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1">
-              ⚠ Não reconheci o formato do link do Drive. Use o formato
+              <span className="inline-flex items-center gap-1"><TriangleAlert size={12} className="shrink-0" /> Não reconheci o formato do link do Drive.</span> Use o formato
               <code className="ml-1">https://drive.google.com/file/d/.../view</code>.
             </p>
           )}
@@ -456,20 +457,20 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
           e o canal preferido. O atalho da subtarefa correspondente lê o canal
           pra escolher Gmail compose / WhatsApp / modal de telefone. */}
       <EditorContato
-        titulo="🩺 Clínica de exames admissionais"
+        titulo={<span className="inline-flex items-center gap-1.5"><Stethoscope size={15} /> Clínica de exames admissionais</span>}
         sub="Usado pra agendar exames clínico + manipulador. Triagem só agenda por telefone — se sua clínica é diferente, ajusta o canal."
         contato={contatoClinica}
         onChange={setContatoClinica}
         mostrarEndereco
       />
       <EditorContato
-        titulo="📊 Contabilidade"
+        titulo={<span className="inline-flex items-center gap-1.5"><BarChart3 size={15} /> Contabilidade</span>}
         sub="Quem recebe a ficha de admissão XLSX da etapa 'Enviado pra contabilidade'."
         contato={contatoContabilidade}
         onChange={setContatoContabilidade}
       />
       <EditorContato
-        titulo="🏦 Financeiro do escritório (cadastro no banco)"
+        titulo={<span className="inline-flex items-center gap-1.5"><Landmark size={15} /> Financeiro do escritório (cadastro no banco)</span>}
         sub="Quem recebe a solicitação de cadastrar o empregado no banco interno (com os dados Itaú)."
         contato={contatoFinanceiro}
         onChange={setContatoFinanceiro}
@@ -478,7 +479,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
       {/* Templates de mensagem — colapsável pra não ocupar tela toda */}
       <details className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
         <summary className="cursor-pointer px-4 py-3 font-bold text-sm text-gray-900 dark:text-gray-100 select-none">
-          ✉️ Templates de mensagens
+          <span className="inline-flex items-center gap-1.5"><Mail size={15} /> Templates de mensagens</span>
           <span className="ml-2 text-[11px] font-normal text-gray-500 dark:text-gray-400">
             (toque pra expandir — 5 mensagens editáveis)
           </span>
@@ -491,35 +492,35 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
           </p>
           <EditorTemplate
             chave="envioLink"
-            titulo="📨 Envio do link inicial"
+            titulo={<span className="inline-flex items-center gap-1.5"><Send size={14} /> Envio do link inicial</span>}
             sub="WhatsApp pro candidato logo após o RH iniciar a admissão"
             valor={templates.envioLink}
             onChange={(v) => setTemplates((t) => ({ ...t, envioLink: v }))}
           />
           <EditorTemplate
             chave="instrucoesCandidato"
-            titulo="📣 Instruções únicas (3 blocos)"
+            titulo={<span className="inline-flex items-center gap-1.5"><Megaphone size={14} /> Instruções únicas (3 blocos)</span>}
             sub="Mensagem pro candidato sobre exames, conta Itaú e docs"
             valor={templates.instrucoesCandidato}
             onChange={(v) => setTemplates((t) => ({ ...t, instrucoesCandidato: v }))}
           />
           <EditorTemplate
             chave="agendamentoClinica"
-            titulo="🩺 Agendamento com a clínica"
+            titulo={<span className="inline-flex items-center gap-1.5"><Stethoscope size={14} /> Agendamento com a clínica</span>}
             sub="Email/WhatsApp/script telefone pra agendar exames com a clínica"
             valor={templates.agendamentoClinica}
             onChange={(v) => setTemplates((t) => ({ ...t, agendamentoClinica: v }))}
           />
           <EditorTemplate
             chave="envioContabilidade"
-            titulo="📊 Envio pra contabilidade"
+            titulo={<span className="inline-flex items-center gap-1.5"><BarChart3 size={14} /> Envio pra contabilidade</span>}
             sub="Email com a ficha pra contabilidade processar a admissão"
             valor={templates.envioContabilidade}
             onChange={(v) => setTemplates((t) => ({ ...t, envioContabilidade: v }))}
           />
           <EditorTemplate
             chave="solicitacaoBanco"
-            titulo="🏦 Solicitação ao financeiro"
+            titulo={<span className="inline-flex items-center gap-1.5"><Landmark size={14} /> Solicitação ao financeiro</span>}
             sub="WhatsApp/email pra cadastrar o empregado no banco interno"
             valor={templates.solicitacaoBanco}
             onChange={(v) => setTemplates((t) => ({ ...t, solicitacaoBanco: v }))}
@@ -537,7 +538,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
 
       <div className="flex items-center gap-2">
         <Button onClick={salvar} disabled={salvando}>
-          {salvando ? "Salvando…" : "💾 Salvar configurações"}
+          {salvando ? "Salvando…" : <span className="inline-flex items-center gap-1.5"><Save size={14} /> Salvar configurações</span>}
         </Button>
         {msg && <span className="text-xs">{msg}</span>}
       </div>
@@ -548,7 +549,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
 
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-2">
         <h2 className="font-bold text-sm text-gray-900 dark:text-gray-100">
-          📝 Schema do formulário
+          <span className="inline-flex items-center gap-1.5"><PenLine size={15} /> Schema do formulário</span>
         </h2>
         <p className="text-xs text-gray-500 dark:text-gray-400">
           O formulário do candidato usa o template padrão (baseado na ficha Senador Contábil).
@@ -556,14 +557,14 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
           próxima atualização do módulo.
         </p>
         <div className="text-[11px] text-gray-500 dark:text-gray-400 italic">
-          📌 Em desenvolvimento — editor de schema chega na próxima iteração.
+          <span className="inline-flex items-center gap-1"><Pin size={12} /> Em desenvolvimento — editor de schema chega na próxima iteração.</span>
         </div>
       </div>
 
       {me?.isMaster && (
         <div className="bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/50 rounded-xl p-4 space-y-2">
           <h2 className="font-bold text-sm text-amber-900 dark:text-amber-300">
-            🛠 Manutenção (master)
+            <span className="inline-flex items-center gap-1.5"><Wrench size={15} /> Manutenção (master)</span>
           </h2>
           <p className="text-xs text-amber-900/80 dark:text-amber-300/80">
             Apaga o layout customizado do Kanban + template de subtarefas salvos
@@ -572,7 +573,7 @@ export function AdmissaoConfig({ rid, activeRestaurant }: Props) {
             antiga. Nenhuma admissão é afetada.
           </p>
           <Button onClick={resetarLayout} disabled={resetando} variant="secondary">
-            {resetando ? "Resetando…" : "🔄 Resetar layout do Kanban pros defaults"}
+            {resetando ? "Resetando…" : <span className="inline-flex items-center gap-1.5"><Repeat size={14} /> Resetar layout do Kanban pros defaults</span>}
           </Button>
         </div>
       )}
@@ -589,7 +590,7 @@ function EditorContato({
   onChange,
   mostrarEndereco = false,
 }: {
-  titulo: string;
+  titulo: React.ReactNode;
   sub: string;
   contato: ContatoExterno;
   onChange: (c: ContatoExterno) => void;
@@ -598,10 +599,10 @@ function EditorContato({
   function patch(p: Partial<ContatoExterno>) {
     onChange({ ...contato, ...p });
   }
-  const canais: { id: CanalContato; label: string; disponivel: boolean }[] = [
-    { id: "email", label: "📧 Email", disponivel: !!contato.email?.trim() },
-    { id: "whatsapp", label: "📱 WhatsApp", disponivel: !!contato.whatsapp?.trim() },
-    { id: "telefone", label: "📞 Telefone", disponivel: !!contato.telefone?.trim() },
+  const canais: { id: CanalContato; label: string; icon: LucideIcon; disponivel: boolean }[] = [
+    { id: "email", label: "Email", icon: Mail, disponivel: !!contato.email?.trim() },
+    { id: "whatsapp", label: "WhatsApp", icon: Smartphone, disponivel: !!contato.whatsapp?.trim() },
+    { id: "telefone", label: "Telefone", icon: Phone, disponivel: !!contato.telefone?.trim() },
   ];
   return (
     <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 space-y-3">
@@ -665,7 +666,7 @@ function EditorContato({
                   : "border-gray-200 bg-white text-gray-700 hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-300"
               }`}
             >
-              {c.label}
+              <span className="inline-flex items-center gap-1"><c.icon size={13} /> {c.label}</span>
             </button>
           ))}
         </div>
@@ -684,7 +685,7 @@ function EditorTemplate({
   onChange,
 }: {
   chave: TemplateKey;
-  titulo: string;
+  titulo: React.ReactNode;
   sub: string;
   valor: string;
   onChange: (v: string) => void;
@@ -704,7 +705,7 @@ function EditorTemplate({
           disabled={ehDefault}
           className="text-[10px] text-indigo-600 dark:text-indigo-400 hover:underline disabled:text-gray-400 disabled:no-underline disabled:cursor-not-allowed"
         >
-          {ehDefault ? "✓ usando default" : "🔄 restaurar default"}
+          {ehDefault ? "✓ usando default" : <span className="inline-flex items-center gap-1"><Repeat size={11} /> restaurar default</span>}
         </button>
       </div>
       <div className="text-[10px] text-gray-500 dark:text-gray-400">
@@ -746,7 +747,7 @@ function DocumentosPorCargoEditor({ cargos, value, onChange }: {
   return (
     <details className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
       <summary className="cursor-pointer px-4 py-3 font-bold text-sm text-gray-900 dark:text-gray-100 select-none">
-        🪪 Documentos por cargo
+        <span className="inline-flex items-center gap-1.5"><UserRoundPlus size={15} /> Documentos por cargo</span>
         <span className="ml-2 text-[11px] font-normal text-gray-500 dark:text-gray-400">
           ({configurados > 0 ? `${configurados} cargo(s) ajustado(s)` : "todos usam o padrão"} — toque pra editar)
         </span>
@@ -801,7 +802,7 @@ function DocumentosEditor({
   return (
     <details className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl">
       <summary className="cursor-pointer px-4 py-3 font-bold text-sm text-gray-900 dark:text-gray-100 select-none">
-        📎 Documentos pedidos no formulário
+        <span className="inline-flex items-center gap-1.5"><Paperclip size={15} /> Documentos pedidos no formulário</span>
         <span className="ml-2 text-[11px] font-normal text-gray-500 dark:text-gray-400">
           ({ativos} ativos — toque pra editar)
         </span>
@@ -870,7 +871,7 @@ function DocumentosEditor({
             onClick={() => onChange(DOCUMENTOS_ADMISSAO_DEFAULT)}
             className="text-[11px] text-gray-500 hover:underline"
           >
-            🔄 restaurar lista padrão
+            <span className="inline-flex items-center gap-1"><Repeat size={11} /> restaurar lista padrão</span>
           </button>
         </div>
       </div>

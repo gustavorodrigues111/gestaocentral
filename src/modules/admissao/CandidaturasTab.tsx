@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { TriangleAlert, Briefcase, Smartphone, Mail, MessageSquare, FileText } from "lucide-react";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -107,19 +108,19 @@ export function CandidaturasTab({ rid, podeEditar }: Props) {
   if (erro === "permission_denied") {
     return (
       <div className="rounded-xl bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 p-4 text-sm">
-        <p className="font-semibold text-rose-900 dark:text-rose-200 mb-1">⚠ Regras Firestore não publicadas</p>
+        <p className="font-semibold text-rose-900 dark:text-rose-200 mb-1 inline-flex items-center gap-1"><TriangleAlert size={14} /> Regras Firestore não publicadas</p>
         <code className="block mt-2 text-[12px] bg-white dark:bg-gray-900 px-3 py-2 rounded border">
           firebase deploy --only firestore:rules --project gestaocentral
         </code>
       </div>
     );
   }
-  if (erro) return <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">⚠ {erro}</div>;
+  if (erro) return <div className="rounded-xl bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800 inline-flex items-center gap-1"><TriangleAlert size={14} /> {erro}</div>;
 
   return (
     <div className="space-y-4">
       <div className="rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 p-3 text-sm text-indigo-900 dark:text-indigo-200">
-        <p className="font-semibold mb-1">💼 Candidaturas espontâneas</p>
+        <p className="font-semibold mb-1 inline-flex items-center gap-1.5"><Briefcase size={14} /> Candidaturas espontâneas</p>
         <p className="text-[13px] opacity-90">
           Pessoas que se candidataram pelo form público do site. Quando aprovar
           alguém pra admissão formal, move o status — depois cria o processo
@@ -172,7 +173,7 @@ export function CandidaturasTab({ rid, podeEditar }: Props) {
                     Área: <strong>{c.areaInteresse}</strong>
                   </div>
                   <div className="text-[11px] text-gray-500 mt-0.5">
-                    📱 {c.whatsapp} · ✉ {c.email}
+                    <span className="inline-flex items-center gap-1"><Smartphone size={11} /> {c.whatsapp} · <Mail size={11} /> {c.email}</span>
                   </div>
                   {c.responsavelNome && (
                     <div className="text-[11px] text-indigo-700 dark:text-indigo-400 mt-0.5">
@@ -238,8 +239,8 @@ function CandidaturaModal({
           <section>
             <h3 className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1">Contato</h3>
             <div className="text-sm space-y-1">
-              <div>📱 {candidatura.whatsapp} <button type="button" onClick={() => void abrirWhatsapp(candidatura.restaurantId, "empregados", candidatura.whatsapp, candidatura.nome, `Oi ${candidatura.nome.split(" ")[0]}, vi sua candidatura.`)} className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 ml-2">💬 WhatsApp</button></div>
-              <div>✉ {candidatura.email}</div>
+              <div className="inline-flex items-center gap-1"><Smartphone size={13} /> {candidatura.whatsapp} <button type="button" onClick={() => void abrirWhatsapp(candidatura.restaurantId, "empregados", candidatura.whatsapp, candidatura.nome, `Oi ${candidatura.nome.split(" ")[0]}, vi sua candidatura.`)} className="text-xs px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700 ml-2 inline-flex items-center gap-1"><MessageSquare size={12} /> WhatsApp</button></div>
+              <div className="inline-flex items-center gap-1"><Mail size={13} /> {candidatura.email}</div>
             </div>
           </section>
 
@@ -256,7 +257,7 @@ function CandidaturaModal({
               )}
               {(candidatura.curriculoUrl || candidatura.curriculoPath) && (
                 <div>
-                  📄 <CurriculoLink url={candidatura.curriculoUrl} path={candidatura.curriculoPath} label="abrir currículo" className="text-indigo-600 hover:underline" />
+                  <span className="inline-flex items-center gap-1"><FileText size={13} /> <CurriculoLink url={candidatura.curriculoUrl} path={candidatura.curriculoPath} label="abrir currículo" className="text-indigo-600 hover:underline" /></span>
                 </div>
               )}
             </div>
