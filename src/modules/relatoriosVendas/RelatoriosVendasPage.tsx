@@ -7,7 +7,7 @@
 //     (vendasPorHora = faturamento faturado/encerrado por hora), agrupado
 //     em Almoço × Noite por um horário de corte configurável.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CalendarDays, Hourglass, UtensilsCrossed, Moon } from "lucide-react";
+import { CalendarDays, Hourglass, UtensilsCrossed, Moon, TriangleAlert } from "lucide-react";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -283,7 +283,7 @@ export function RelatoriosVendasPage() {
               <Hourglass size={14} className="animate-spin" /> Consultando o Altec (login + relatório) — leva alguns segundos…
             </div>
           )}
-          {erro && <div className="mb-3 rounded-lg border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 p-3 text-sm text-rose-700 dark:text-rose-300">⚠ {erro}</div>}
+          {erro && <div className="mb-3 rounded-lg border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 p-3 text-sm text-rose-700 dark:text-rose-300 inline-flex items-center gap-1.5"><TriangleAlert size={14} /> {erro}</div>}
 
           {/* Lista de meses extraídos */}
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden mb-4">
