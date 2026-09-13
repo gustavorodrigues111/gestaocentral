@@ -837,7 +837,7 @@ export function KanbanView({ tarefas, projetos, autor, onAbrir }: {
 
 // ─── VIEW: Calendário (semana) ─────────────────────────────────────────────
 
-export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia, onIdeiaNoDia }: {
+export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia, onIdeiaNoDia, acoes }: {
   tarefas: Tarefa[];
   projetos: TarefaProjeto[];
   subprojetos?: TarefaSubprojeto[];
@@ -848,6 +848,8 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
   // Arrastou uma ideia (da Caixa de ideias) pra um dia → abre o modal de nova
   // tarefa naquele dia, já com título/descrição da ideia.
   onIdeiaNoDia?: (ideia: { id: string; titulo: string; descricao: string }, prazo: string) => void;
+  // Ações (+ Nova / Gerenciar) — no mobile aparecem na frente do seletor de semana.
+  acoes?: ReactNode;
 }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(hoje));
@@ -936,7 +938,6 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
   const atrasadas = tarefas.filter(t =>
     t.prazo && t.prazo < hoje && t.status !== "concluida" && t.status !== "cancelada"
   );
-  const totalSemana = dias.reduce((acc, d) => acc + (tarefasPorDia.get(d)?.length || 0), 0);
 
   function navegarSemanas(delta: number) {
     const d = new Date(semanaInicio + "T12:00:00");
@@ -1106,23 +1107,33 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
           criação por dia fica no botão tracejado dentro de cada coluna. */}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
         <div className="flex items-center gap-1.5 flex-wrap">
-          <button type="button" onClick={() => navegarSemanas(-1)} title="Semana anterior" className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800">‹</button>
-          <input type="date" value={dias[0]} onChange={e => e.target.value && setSemanaInicio(inicioSemanaSeg(e.target.value))} title="Ir para uma data" className="text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5" />
-          <button type="button" onClick={() => navegarSemanas(1)} title="Próxima semana" className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800">›</button>
+          {acoes && <div className="flex items-center gap-1.5 sm:hidden mr-0.5">{acoes}</div>}
+          {/* Seletor de semana: ‹ [intervalo] › — o intervalo abre um date-picker
+              nativo pra pular pra qualquer data. */}
+          <div className="inline-flex items-center rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
+            <button type="button" onClick={() => navegarSemanas(-1)} title="Semana anterior" className="w-8 h-8 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800">‹</button>
+            <div className="relative">
+              <span className="flex items-center gap-1.5 px-2.5 h-8 text-sm font-semibold text-gray-700 dark:text-gray-200 border-x border-gray-200 dark:border-gray-700 whitespace-nowrap pointer-events-none">
+                <CalendarDays size={13} className="text-gray-400" />
+                {fmtBR(dias[0]).slice(0, 5)} – {fmtBR(dias[6]).slice(0, 5)}
+              </span>
+              <input type="date" value={dias[0]} onChange={e => e.target.value && setSemanaInicio(inicioSemanaSeg(e.target.value))} title="Ir para uma data" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" />
+            </div>
+            <button type="button" onClick={() => navegarSemanas(1)} title="Próxima semana" className="w-8 h-8 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800">›</button>
+          </div>
           {dias[0] !== inicioSemanaSeg(hoje) && <button type="button" onClick={() => setSemanaInicio(inicioSemanaSeg(hoje))} className="text-xs font-semibold text-indigo-600 dark:text-indigo-300 px-2 py-1.5 hover:underline">Hoje</button>}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {semProprio.length > 0 && (
             <span className="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-gray-100 dark:bg-gray-800 text-xs text-gray-600 dark:text-gray-400"><Inbox size={13} /> Sem data ({semProprio.length})</span>
           )}
-          <span className="text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">Fim de semana</span>
+          <span className="hidden sm:inline text-[10px] font-bold uppercase tracking-wide text-gray-400 dark:text-gray-500">Fim de semana</span>
           {([["Sáb", mostrarSab, setMostrarSab, sabQtd], ["Dom", mostrarDom, setMostrarDom, domQtd]] as const).map(([lbl, on, set, qtd]) => (
             <button key={lbl} type="button" onClick={() => set(v => !v)} title={!on && qtd > 0 ? `${qtd} tarefa(s) no ${lbl.toLowerCase()} escondida(s)` : `Mostrar ${lbl.toLowerCase()}`}
               className={`relative inline-flex items-center px-2.5 py-1 rounded-lg border text-xs font-semibold transition-colors ${on ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
               {lbl}{!on && qtd > 0 && <span className="absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full bg-rose-500 border-2 border-white dark:border-gray-900" />}
             </button>
           ))}
-          <span className="text-xs text-gray-500 dark:text-gray-400">{totalSemana} tarefa(s)</span>
         </div>
       </div>
 

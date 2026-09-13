@@ -379,7 +379,8 @@ export function TarefasPage() {
             {buscaInput}
             <div className="flex-1" />
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
-            {acoesHeader}
+            {/* No mobile+calendário o +/engrenagem vão pra frente do seletor de semana (dentro do CalendarioView), então some daqui. */}
+            <div className={viewMinhas === "calendario" ? "hidden sm:block" : "contents"}>{acoesHeader}</div>
           </div>
           {viewMinhas === "calendario" && (
             <>
@@ -391,6 +392,7 @@ export function TarefasPage() {
                 autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }}
                 onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })}
                 onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })}
+                acoes={acoesHeader}
               />
               <CaixaIdeiasFaixa
                 rids={pessoa?.restaurantIds || []}
@@ -431,9 +433,10 @@ export function TarefasPage() {
             {buscaInput}
             <div className="flex-1" />
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
-            {acoesHeader}
+            {/* No mobile+calendário o +/engrenagem vão pra frente do seletor de semana (dentro do CalendarioView), então some daqui. */}
+            <div className={viewMinhas === "calendario" ? "hidden sm:block" : "contents"}>{acoesHeader}</div>
           </div>
-          {viewMinhas === "calendario" && <CalendarioView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} />}
+          {viewMinhas === "calendario" && <CalendarioView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} acoes={acoesHeader} />}
           {viewMinhas === "lista" && <MinhasTarefasView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />}
           {viewMinhas === "kanban" && <KanbanView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />}
         </div>
