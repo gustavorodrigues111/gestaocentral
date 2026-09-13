@@ -18,7 +18,7 @@ import { linhasPorColaborador } from "./porColaborador";
 import { gorjetaMensalPorCpf } from "./gorjetaMensal";
 import { cpfDigits, type FolhaEspelho, type Finding, type FolhaWhitelistItem, type FolhaTipo, type FolhaConferencia } from "./tipos";
 import { PageContainer } from "../../core/ui/PageContainer";
-import { Lock, TriangleAlert, FileText, Check, Users, Banknote, Coins, Landmark } from "lucide-react";
+import { Lock, TriangleAlert, FileText, Check, Users, Banknote, Coins, Landmark, Save } from "lucide-react";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
@@ -323,7 +323,7 @@ export function FolhasPage() {
 
               {podeConferir && (
                 <div className="flex justify-end">
-                  <button type="button" onClick={() => void fecharCompetencia()} className="text-sm font-semibold px-4 py-2 rounded-lg bg-emerald-600 text-white">💾 Salvar competência (baseline)</button>
+                  <button type="button" onClick={() => void fecharCompetencia()} className="text-sm font-semibold px-4 py-2 rounded-lg bg-emerald-600 text-white"><span className="inline-flex items-center gap-1"><Save size={14}/> Salvar competência (baseline)</span></button>
                 </div>
               )}
             </div>

@@ -25,7 +25,7 @@ import { BatidasDiaModal } from "./BatidasDiaModal";
 import { AfastamentoModal } from "./AfastamentoModal";
 import {
   Lock, Umbrella, TriangleAlert, CheckSquare, MessageSquare, Wrench,
-  Repeat, Eye, Siren, Hourglass, User, ClipboardList, CalendarDays, Info,
+  Repeat, Eye, Siren, Hourglass, User, ClipboardList, CalendarDays, Info, ArrowDown,
 } from "lucide-react";
 
 const STATUS_OPCOES: Array<{ id: ScheduleStatus; label: string }> = [
@@ -1340,7 +1340,7 @@ export function FechamentoTab({
               <button type="button" onClick={() => window.open(pdf.url, "_blank")}
                 className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300">↗ Abrir em nova aba</button>
               <a href={pdf.url} download={pdf.nome}
-                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white">⬇ Baixar PDF</a>
+                className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white inline-flex items-center gap-1"><ArrowDown size={13}/> Baixar PDF</a>
             </div>
           </div>
         </Modal>
