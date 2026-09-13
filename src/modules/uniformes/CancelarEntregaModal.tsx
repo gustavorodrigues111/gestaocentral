@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import { X, TriangleAlert } from "lucide-react";
 import type { EntregaUniforme, ItemUniforme, Pessoa } from "../../core/types";
 import { cancelarEntrega } from "../../core/uniformes/uniformesHelpers";
 
@@ -40,10 +41,10 @@ export function CancelarEntregaModal({ entrega, itens, pessoa, onClose }: Props)
   }
 
   return (
-    <Modal title="❌ Cancelar entrega" onClose={onClose} maxWidth="max-w-md">
+    <Modal title={<span className="inline-flex items-center gap-1"><X size={16}/> Cancelar entrega</span>} onClose={onClose} maxWidth="max-w-md">
       <div className="p-4 space-y-4">
         <div className="rounded-lg border border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-900/20 p-3 text-xs text-amber-800 dark:text-amber-300">
-          ⚠ Use cancelar quando a pessoa <strong>não chegou a receber</strong>.
+          <TriangleAlert size={13} className="inline align-[-2px] mr-1"/>Use cancelar quando a pessoa <strong>não chegou a receber</strong>.
           Todos os {totalQtd} item(ns) voltam ao estoque automaticamente.
           Pra registrar devolução parcial/total <em>após</em> recebimento,
           use "registrar devolução" (na entrega).

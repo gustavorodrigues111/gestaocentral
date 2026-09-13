@@ -16,6 +16,7 @@ import { useEffect, useState } from "react";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
+import { Shirt, ShieldCheck, Trash2, RotateCcw } from "lucide-react";
 import type { ItemUniforme, Pessoa, TipoItemUniforme, VariacaoItem } from "../../core/types";
 import {
   ajustarEstoque, atualizarItem, criarItem, novaVariacaoId,
@@ -179,7 +180,7 @@ export function ItemEditarModal({ item, pessoa, restaurantId, onClose }: Props) 
                   : "border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300"
               }`}
             >
-              🦺 Uniforme
+              <span className="inline-flex items-center gap-1"><Shirt size={14}/> Uniforme</span>
             </button>
             <button
               type="button"
@@ -190,7 +191,7 @@ export function ItemEditarModal({ item, pessoa, restaurantId, onClose }: Props) 
                   : "border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300"
               }`}
             >
-              🛡️ EPI
+              <span className="inline-flex items-center gap-1"><ShieldCheck size={14}/> EPI</span>
             </button>
           </div>
         </div>
@@ -305,12 +306,12 @@ export function ItemEditarModal({ item, pessoa, restaurantId, onClose }: Props) 
             item.ativo ? (
               <button type="button" onClick={excluirItem} disabled={salvando}
                 className="text-xs font-medium text-rose-600 dark:text-rose-400 hover:underline mr-auto disabled:opacity-50">
-                🗑️ Excluir item
+<span className="inline-flex items-center gap-1"><Trash2 size={13}/> Excluir item</span>
               </button>
             ) : isMaster ? (
               <button type="button" onClick={reabilitarItem} disabled={salvando}
                 className="text-xs font-medium text-emerald-600 dark:text-emerald-400 hover:underline mr-auto disabled:opacity-50">
-                ♻️ Reabilitar item
+<span className="inline-flex items-center gap-1"><RotateCcw size={13}/> Reabilitar item</span>
               </button>
             ) : <div className="mr-auto" />
           )}

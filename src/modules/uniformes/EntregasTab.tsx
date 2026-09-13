@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
+import { Shirt, ShieldCheck, X } from "lucide-react";
 import type {
   EntregaUniforme, ItemUniforme, KitAreaUniforme, Pessoa, Restaurant, TipoItemUniforme,
 } from "../../core/types";
@@ -80,8 +81,8 @@ export function EntregasTab({
         <div className="flex gap-1">
           {([
             ["todos", "Todos"],
-            ["uniforme", "🦺 Uniformes"],
-            ["epi", "🛡️ EPIs"],
+            ["uniforme", <span className="inline-flex items-center gap-1"><Shirt size={12}/> Uniformes</span>],
+            ["epi", <span className="inline-flex items-center gap-1"><ShieldCheck size={12}/> EPIs</span>],
           ] as const).map(([id, label]) => (
             <button
               key={id}
@@ -217,7 +218,7 @@ function EntregaRow({
                 ? "bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300"
                 : "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300"
             }`}>
-              {entrega.tipo === "epi" ? "🛡️ EPI" : "🦺 Uniforme"}
+              {entrega.tipo === "epi" ? <span className="inline-flex items-center gap-1"><ShieldCheck size={11}/> EPI</span> : <span className="inline-flex items-center gap-1"><Shirt size={11}/> Uniforme</span>}
             </span>
             <span className="text-[10px] text-gray-500">{data}</span>
             {entrega.motivo !== "admissao" && (
@@ -243,7 +244,7 @@ function EntregaRow({
               className="text-[10px] text-gray-500 hover:text-rose-600 hover:underline whitespace-nowrap"
               title="Empregado não chegou a receber — devolve tudo ao estoque"
             >
-              ❌ cancelar entrega
+              <span className="inline-flex items-center gap-1"><X size={11}/> cancelar entrega</span>
             </button>
           </div>
         )}
@@ -256,7 +257,7 @@ function EntregaRow({
         )}
         {entrega.cancelamento && (
           <span className="text-[10px] uppercase tracking-wider font-bold bg-rose-200 dark:bg-rose-800 text-rose-800 dark:text-rose-200 px-1.5 py-0.5 rounded whitespace-nowrap">
-            ❌ cancelada
+            <span className="inline-flex items-center gap-1"><X size={11}/> cancelada</span>
           </span>
         )}
       </div>
@@ -289,7 +290,7 @@ function EntregaRow({
 
       {entrega.cancelamento && (
         <div className="mt-2 pt-2 border-t border-rose-200 dark:border-rose-900 text-[10px] text-rose-700 dark:text-rose-400">
-          ❌ Cancelada em {new Date(entrega.cancelamento.canceladoEm).toLocaleDateString("pt-BR")}
+          <X size={11} className="inline align-[-1px] mr-1"/>Cancelada em {new Date(entrega.cancelamento.canceladoEm).toLocaleDateString("pt-BR")}
           {" "}por {entrega.cancelamento.canceladoPor.nome}
           <div className="italic mt-0.5">"{entrega.cancelamento.motivo}"</div>
         </div>
