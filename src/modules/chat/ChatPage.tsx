@@ -12,7 +12,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import { useEffect, useMemo, useState } from "react";
-import { LayoutDashboard } from "lucide-react";
+import { LayoutDashboard, CalendarDays, Inbox, Megaphone, FolderKanban, Settings, Sparkles, TriangleAlert, House, EyeOff } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -126,11 +126,11 @@ export function ChatPage() {
       {/* Abas */}
       <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {([
-          { k: "semana" as const, label: "🗓️ Minha Semana", n: 0, alerta: false },
-          { k: "avisos" as const, label: "📥 Avisos do sistema", n: inbox.length, alerta: true },
-          ...(podeSistema ? [{ k: "whatsapp" as const, label: "📣 WhatsApp do sistema", n: 0, alerta: false }] : []),
-          { k: "historico" as const, label: "🗂️ Histórico", n: historico.length, alerta: false },
-          ...(podeConfig ? [{ k: "config" as const, label: "⚙️ Configurações", n: 0, alerta: false }] : []),
+          { k: "semana" as const, label: <span className="inline-flex items-center gap-1"><CalendarDays size={14} /> Minha Semana</span>, n: 0, alerta: false },
+          { k: "avisos" as const, label: <span className="inline-flex items-center gap-1"><Inbox size={14} /> Avisos do sistema</span>, n: inbox.length, alerta: true },
+          ...(podeSistema ? [{ k: "whatsapp" as const, label: <span className="inline-flex items-center gap-1"><Megaphone size={14} /> WhatsApp do sistema</span>, n: 0, alerta: false }] : []),
+          { k: "historico" as const, label: <span className="inline-flex items-center gap-1"><FolderKanban size={14} /> Histórico</span>, n: historico.length, alerta: false },
+          ...(podeConfig ? [{ k: "config" as const, label: <span className="inline-flex items-center gap-1"><Settings size={14} /> Configurações</span>, n: 0, alerta: false }] : []),
         ]).map((t) => (
           <button
             key={t.k}
@@ -161,7 +161,7 @@ export function ChatPage() {
       {aba === "avisos" && (
         inbox.length === 0 ? (
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-10 text-center">
-            <div className="text-4xl mb-3">✨</div>
+            <div className="flex justify-center mb-3 text-gray-400"><Sparkles size={36} /></div>
             <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Tudo em dia</p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Nenhum aviso pendente pra você por aqui.</p>
           </div>
@@ -205,7 +205,7 @@ export function ChatPage() {
       {aba === "whatsapp" && podeSistema && (
         <div>
           <div className="mb-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/30 p-3">
-            <div className="text-sm font-semibold text-gray-800 dark:text-gray-100">📣 WhatsApp do sistema (API oficial)</div>
+            <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5"><Megaphone size={15} /> WhatsApp do sistema (API oficial)</div>
             <p className="text-xs text-gray-500 mt-0.5">Número da API da Meta usado pelos <b>disparos automáticos</b> do sistema (lembretes, fechamento, cobranças). O atendimento pelos números conectados fica no módulo <b>WhatsApp</b>.</p>
           </div>
           <WhatsappTemplatesTab podeConfig={podeConfig} />
@@ -226,7 +226,7 @@ export function ChatPage() {
       {aba === "historico" && (
         historico.length === 0 ? (
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-10 text-center">
-            <div className="text-4xl mb-3">🗂️</div>
+            <div className="flex justify-center mb-3 text-gray-400"><FolderKanban size={36} /></div>
             <p className="text-sm font-medium text-gray-700 dark:text-gray-200">Histórico vazio</p>
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">Avisos que você marcar como lidos aparecem aqui, por módulo.</p>
           </div>
@@ -378,7 +378,7 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
         <div className="mb-3 rounded-xl border border-amber-300 dark:border-amber-900/60 bg-amber-50/70 dark:bg-amber-950/20">
           <button onClick={() => setAtrOpen(o => !o)} className="w-full flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase tracking-wide text-amber-700 dark:text-amber-500">
             <span className="inline-block transition-transform text-[9px]" style={{ transform: atrOpen ? "rotate(90deg)" : "none" }}>▶</span>
-            ⚠️ Precisam de atenção
+            <span className="inline-flex items-center gap-1"><TriangleAlert size={13} /> Precisam de atenção</span>
             <span className="ml-0.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-amber-500 text-white text-[10px]">{atrasados.length}</span>
           </button>
           {atrOpen && (
@@ -493,8 +493,8 @@ function SemanaView({ todos, lidosIds, multiRest, onAbrir, marcarLido, concluirR
               <div className="text-[15px] font-bold text-gray-900 dark:text-gray-100">{detalhe.titulo}</div>
               {detalhe.descricao && <div className="text-[13px] text-gray-600 dark:text-gray-300 mt-1.5 leading-relaxed">{detalhe.descricao}</div>}
               <div className="flex items-center gap-2 mt-3 text-[12px] text-gray-500 dark:text-gray-400">
-                <span>🏠 {detalhe.restauranteNome}</span>
-                {detalhe.em && detalhe.em < "9999" && <span>· 📅 {detalhe.em.slice(8, 10)}/{detalhe.em.slice(5, 7)}/{detalhe.em.slice(0, 4)}</span>}
+                <span className="inline-flex items-center gap-1"><House size={12} /> {detalhe.restauranteNome}</span>
+                {detalhe.em && detalhe.em < "9999" && <span className="inline-flex items-center gap-1">· <CalendarDays size={12} /> {detalhe.em.slice(8, 10)}/{detalhe.em.slice(5, 7)}/{detalhe.em.slice(0, 4)}</span>}
               </div>
             </div>
             <div className="flex items-center gap-2 px-4 py-3 border-t border-gray-100 dark:border-gray-800 bg-gray-50 dark:bg-gray-800/40">
@@ -571,8 +571,8 @@ function AvisoCard({
         <div className="flex items-center gap-2 flex-wrap">
           <span className={`text-sm font-semibold ${lido ? "text-gray-500 dark:text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>{a.titulo}</span>
           {multiRest && (
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
-              🏠 {a.restauranteNome}
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-semibold bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
+              <House size={11} /> {a.restauranteNome}
             </span>
           )}
         </div>
@@ -622,12 +622,12 @@ function FaleDpModal({
     <Modal onClose={onClose} title={`${FALE_DP_CATEGORIA_ICONE[msg.categoria]} Fale com DP · ${FALE_DP_CATEGORIA_LABEL[msg.categoria]}`}>
       <div className="space-y-3">
         <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 flex-wrap">
-          <span className="inline-flex items-center px-1.5 py-0.5 rounded font-semibold bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
-            🏠 {restauranteNome}
+          <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-semibold bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
+            <House size={12} /> {restauranteNome}
           </span>
           {msg.anonimo ? (
-            <span className="inline-flex items-center px-1.5 py-0.5 rounded font-semibold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
-              🕶️ Anônimo
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded font-semibold bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">
+              <EyeOff size={12} /> Anônimo
             </span>
           ) : (
             <span className="font-medium text-gray-700 dark:text-gray-200">

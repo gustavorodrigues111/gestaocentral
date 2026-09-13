@@ -7,6 +7,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { MODULES, AREA_INFO, getModule } from "../../config/modules";
 import { ModuleIcon } from "../../core/ui/ModuleIcon";
+import { Bot, User, UserRound, PartyPopper, Pencil, Trash2 } from "lucide-react";
 import type { CadernoItem, ModuleArea } from "../../core/types";
 import { ouvirCaderno, merge, salvarItem, toggleStatus, excluirItem } from "./cadernoRepo";
 import { PageContainer } from "../../core/ui/PageContainer";
@@ -17,7 +18,7 @@ const MODULO_ORDER: string[] = ["geral", ...AREA_ORDER.flatMap((a) => MODULES.fi
 const ordemDe = (id: string) => { const i = MODULO_ORDER.indexOf(id); return i < 0 ? 999 : i; };
 
 function metaModulo(id: string): { label: string; icon: string; area?: ModuleArea } {
-  if (id === "geral") return { label: "Geral / infra", icon: "🗒️" };
+  if (id === "geral") return { label: "Geral / infra", icon: "notebook-pen" };
   const m = getModule(id);
   return m ? { label: m.label, icon: m.icon, area: m.area } : { label: id, icon: "•" };
 }
@@ -25,9 +26,9 @@ function metaModulo(id: string): { label: string; icon: string; area?: ModuleAre
 const uid = () => Math.random().toString(36).slice(2, 11);
 
 function RespBadge({ r }: { r: string }) {
-  if (r === "ia") return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300">🤖 IA</span>;
-  if (r === "gustavo") return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300">🧑 Você</span>;
-  return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300">👤 {r}</span>;
+  if (r === "ia") return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 inline-flex items-center gap-1"><Bot size={12} /> IA</span>;
+  if (r === "gustavo") return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sky-50 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300 inline-flex items-center gap-1"><User size={12} /> Você</span>;
+  return <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300 inline-flex items-center gap-1"><UserRound size={12} /> {r}</span>;
 }
 
 export function ArquiteturaPage() {
@@ -96,7 +97,7 @@ export function ArquiteturaPage() {
         </div>
       </header>
 
-      {grupos.length === 0 && <p className="text-sm text-gray-400 py-10 text-center">Nada por aqui com esse filtro. 🎉</p>}
+      {grupos.length === 0 && <p className="text-sm text-gray-400 py-10 text-center">Nada por aqui com esse filtro. <PartyPopper size={15} className="inline" /></p>}
 
       {grupos.map(({ mod, itens: its }) => {
         const meta = metaModulo(mod);
@@ -122,8 +123,8 @@ export function ArquiteturaPage() {
                       {item.descricao && <div className="text-[12px] text-gray-500 dark:text-gray-400 mt-0.5">{item.descricao}</div>}
                     </div>
                     <button type="button" onClick={() => void ciclarResp(item)} title="Trocar responsável (Você ↔ IA)"><RespBadge r={item.responsavel} /></button>
-                    <button type="button" onClick={() => void editarTitulo(item)} className="text-gray-300 hover:text-gray-600 text-xs px-1" title="Editar">✎</button>
-                    <button type="button" onClick={() => { if (confirm("Excluir este item?")) void excluirItem(item.id); }} className="text-gray-300 hover:text-rose-500 text-xs px-1" title="Excluir">🗑</button>
+                    <button type="button" onClick={() => void editarTitulo(item)} className="text-gray-300 hover:text-gray-600 px-1" title="Editar"><Pencil size={13} /></button>
+                    <button type="button" onClick={() => { if (confirm("Excluir este item?")) void excluirItem(item.id); }} className="text-gray-300 hover:text-rose-500 px-1" title="Excluir"><Trash2 size={13} /></button>
                   </div>
                 );
               })}
