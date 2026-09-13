@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
+import { ShieldCheck, Shirt } from "lucide-react";
 import type { Cargo, ItemUniforme, KitAreaUniforme, Pessoa } from "../../core/types";
 import { salvarKitArea } from "../../core/uniformes/uniformesHelpers";
 
@@ -165,7 +166,7 @@ function KitEditor({
                 <option value="">— item —</option>
                 {itensAtivos.map(i => (
                   <option key={i.id} value={i.id}>
-                    {i.tipo === "epi" ? "🛡️" : "🦺"} {i.nome}
+                    <span className="inline-flex items-center gap-1">{i.tipo === "epi" ? <ShieldCheck size={13}/> : <Shirt size={13}/>} {i.nome}</span>
                   </option>
                 ))}
               </select>

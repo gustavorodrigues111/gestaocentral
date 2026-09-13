@@ -27,6 +27,7 @@ import { KitsAreaTab } from "./KitsAreaTab";
 import { PorEmpregadoTab } from "./PorEmpregadoTab";
 import { EntregasTab } from "./EntregasTab";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { Lock } from "lucide-react";
 
 type TabId = "porEmpregado" | "entregas" | "estoque" | "config";
 
@@ -92,7 +93,7 @@ export function UniformesPage() {
   if (!podeVer) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3"><Lock size={36} className="text-gray-400"/></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );

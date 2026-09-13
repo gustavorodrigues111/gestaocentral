@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Button } from "../../core/ui/Button";
+import { ScrollText, ShieldCheck, Shirt } from "lucide-react";
 import type { ItemUniforme, MovEstoqueUniforme, Pessoa } from "../../core/types";
 import { ajustarEstoque } from "../../core/uniformes/uniformesHelpers";
 import { IntervaloStepper } from "../freelas/IntervaloStepper";
@@ -86,7 +87,7 @@ export function EstoqueTab({ itens, movs, podeConfig, pessoa }: Props) {
           onClick={() => setVerHistorico(v => !v)}
           className="ml-auto text-xs text-indigo-600 dark:text-indigo-400 hover:underline"
         >
-          {verHistorico ? "× fechar histórico" : "📜 ver histórico de movimentações"}
+          {verHistorico ? "× fechar histórico" : <span className="inline-flex items-center gap-1"><ScrollText size={13}/> ver histórico de movimentações</span>}
         </button>
       </div>
 
@@ -111,7 +112,7 @@ export function EstoqueTab({ itens, movs, podeConfig, pessoa }: Props) {
               {linhas.map(l => (
                 <tr key={`${l.item.id}__${l.variacaoId}`} className={l.baixo ? "bg-amber-50/40 dark:bg-amber-900/10" : ""}>
                   <td className="px-3 py-2 border-t border-gray-100 dark:border-gray-800">
-                    <span className="mr-1">{l.item.tipo === "epi" ? "🛡️" : "🦺"}</span>
+                    <span className="mr-1 inline-flex">{l.item.tipo === "epi" ? <ShieldCheck size={13}/> : <Shirt size={13}/>}</span>
                     {l.item.nome}
                   </td>
                   <td className="px-3 py-2 border-t border-gray-100 dark:border-gray-800 text-gray-600 dark:text-gray-400">

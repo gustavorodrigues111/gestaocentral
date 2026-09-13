@@ -7,6 +7,7 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
+import { TriangleAlert, Shirt, ShieldCheck, X } from "lucide-react";
 import type {
   Cargo, Empregado, EntregaUniforme, ItemUniforme, KitAreaUniforme, Pessoa, Restaurant, TipoItemUniforme,
 } from "../../core/types";
@@ -134,7 +135,7 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRes
 
       {filtro === "todos" && totalPend > 0 && (
         <div className="p-3 rounded-xl bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 text-sm text-red-800 dark:text-red-300">
-          ⚠ <strong>{totalPend}</strong> item(ns) abaixo do mínimo do kit.
+          <TriangleAlert size={13} className="inline align-[-2px] mr-1"/><strong>{totalPend}</strong> item(ns) abaixo do mínimo do kit.
         </div>
       )}
 
@@ -155,8 +156,8 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRes
                 : <span className="text-[11px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">em dia</span>)}
               {podeConfig && (
                 <>
-                  <Button size="sm" variant="secondary" onClick={() => setEntregaModal({ pessoaId: emp.pessoaId || undefined, tipo: "uniforme" })}>👕 Uniforme</Button>
-                  <Button size="sm" variant="secondary" onClick={() => setEntregaModal({ pessoaId: emp.pessoaId || undefined, tipo: "epi" })}>🦺 EPI</Button>
+                  <Button size="sm" variant="secondary" onClick={() => setEntregaModal({ pessoaId: emp.pessoaId || undefined, tipo: "uniforme" })}><span className="inline-flex items-center gap-1"><Shirt size={13}/> Uniforme</span></Button>
+                  <Button size="sm" variant="secondary" onClick={() => setEntregaModal({ pessoaId: emp.pessoaId || undefined, tipo: "epi" })}><span className="inline-flex items-center gap-1"><ShieldCheck size={13}/> EPI</span></Button>
                 </>
               )}
             </div>
@@ -206,7 +207,7 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRes
                     <div key={v.entrega.id} className="rounded-lg border border-gray-200 dark:border-gray-800 overflow-hidden">
                       <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-gray-50 dark:bg-gray-800/40">
                         <span className="text-[11px] text-gray-500 dark:text-gray-400">
-                          {v.tipo === "epi" ? "🦺 EPI" : "👕 Uniforme"} · entregue {v.entregueEm ? v.entregueEm.split("-").reverse().join("/") : "—"}
+                          {v.tipo === "epi" ? <span className="inline-flex items-center gap-1"><ShieldCheck size={12}/> EPI</span> : <span className="inline-flex items-center gap-1"><Shirt size={12}/> Uniforme</span>} · entregue {v.entregueEm ? v.entregueEm.split("-").reverse().join("/") : "—"}
                           {v.temRetorno && <span className="ml-1 text-amber-600 dark:text-amber-400">· parcial</span>}
                         </span>
                         {podeConfig && (
@@ -216,7 +217,7 @@ export function PorEmpregadoTab({ itens, kits, entregas, restaurantId, activeRes
                             {!v.temRetorno && (
                               <button type="button" onClick={() => setCancelarEntrega(v.entrega)}
                                 title="Lançamento errado — devolve tudo ao estoque"
-                                className="text-[10px] text-gray-400 hover:text-rose-600 hover:underline whitespace-nowrap">❌ cancelar</button>
+                                className="text-[10px] text-gray-400 hover:text-rose-600 hover:underline whitespace-nowrap inline-flex items-center gap-1"><X size={11}/> cancelar</button>
                             )}
                           </div>
                         )}

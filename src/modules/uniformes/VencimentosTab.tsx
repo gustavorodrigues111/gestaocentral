@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import type { EntregaUniforme } from "../../core/types";
+import type { ReactNode } from "react";
+import { Siren, Hourglass, ShieldCheck, Shirt } from "lucide-react";
 import { itensProximosVencimento } from "../../core/uniformes/uniformesHelpers";
 
 type Props = {
@@ -62,7 +64,7 @@ export function VencimentosTab({ entregas, diasAlerta }: Props) {
 
       {vencidos.length > 0 && (
         <Section
-          titulo="🚨 Já vencidos"
+          titulo={<span className="inline-flex items-center gap-1"><Siren size={14}/> Já vencidos</span>}
           itens={vencidos}
           pessoas={pessoas}
           tom="vermelho"
@@ -70,7 +72,7 @@ export function VencimentosTab({ entregas, diasAlerta }: Props) {
       )}
       {aVencer.length > 0 && (
         <Section
-          titulo={horizonte >= 9999 ? "⏳ A vencer (todos)" : `⏳ Próximos ${horizonte} dias`}
+          titulo={<span className="inline-flex items-center gap-1"><Hourglass size={14}/> {horizonte >= 9999 ? "A vencer (todos)" : `Próximos ${horizonte} dias`}</span>}
           itens={aVencer}
           pessoas={pessoas}
           tom="amber"
@@ -90,7 +92,7 @@ export function VencimentosTab({ entregas, diasAlerta }: Props) {
 function Section({
   titulo, itens, pessoas, tom,
 }: {
-  titulo: string;
+  titulo: ReactNode;
   itens: ReturnType<typeof itensProximosVencimento>;
   pessoas: Map<string, string>;
   tom: "vermelho" | "amber";
@@ -129,7 +131,7 @@ function Section({
                   {item.nome} {item.tamanho && <span className="text-gray-500">· {item.tamanho}</span>}
                   {" "}<span className="text-gray-500">×{item.qtd}</span>
                 </td>
-                <td className="px-3 py-2 text-center">{entrega.tipo === "epi" ? "🛡️" : "🦺"}</td>
+                <td className="px-3 py-2 text-center"><span className="inline-flex">{entrega.tipo === "epi" ? <ShieldCheck size={14}/> : <Shirt size={14}/>}</span></td>
                 <td className="px-3 py-2 text-right tabular-nums">
                   {item.validadeAte
                     ? new Date(item.validadeAte + "T12:00:00").toLocaleDateString("pt-BR")

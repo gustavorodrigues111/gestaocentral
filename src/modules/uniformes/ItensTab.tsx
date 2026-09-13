@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Button } from "../../core/ui/Button";
+import { ShieldCheck, Shirt, TriangleAlert, Pencil } from "lucide-react";
 import type { ItemUniforme, Pessoa } from "../../core/types";
 import { ItemEditarModal } from "./ItemEditarModal";
 
@@ -38,7 +39,7 @@ export function ItensTab({ itens, podeConfig, pessoa, restaurantId }: Props) {
       <div className="flex flex-wrap items-center gap-2">
         <div className="flex gap-1">
           {([
-            ["todos", "Todos"], ["uniforme", "🦺 Uniformes"], ["epi", "🛡️ EPIs"], ["inativos", "Inativos"],
+            ["todos", "Todos"], ["uniforme", <span className="inline-flex items-center gap-1"><Shirt size={12}/> Uniformes</span>], ["epi", <span className="inline-flex items-center gap-1"><ShieldCheck size={12}/> EPIs</span>], ["inativos", "Inativos"],
           ] as const).map(([id, label]) => (
             <button
               key={id}
@@ -119,8 +120,8 @@ function ItemRow({
         : "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/20 opacity-60"
     } p-3 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors`}>
       <div className="flex items-start gap-3">
-        <div className="text-2xl flex-shrink-0">
-          {item.tipo === "epi" ? "🛡️" : "🦺"}
+        <div className="flex-shrink-0">
+          {item.tipo === "epi" ? <ShieldCheck size={22}/> : <Shirt size={22}/>}
         </div>
         <div className="flex-1 min-w-0">
           <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">
@@ -132,7 +133,7 @@ function ItemRow({
             )}
             {algumBaixo && (
               <span className="ml-2 text-[10px] uppercase tracking-wider font-bold bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-300 px-1.5 py-0.5 rounded">
-                ⚠ estoque baixo
+<TriangleAlert size={10} className="inline align-[-1px] mr-0.5"/>estoque baixo
               </span>
             )}
           </div>
@@ -168,7 +169,7 @@ function ItemRow({
               onClick={onEditar}
               className="text-[10px] px-2 py-0.5 rounded bg-indigo-600 hover:bg-indigo-700 text-white"
             >
-              ✏️ editar
+              <span className="inline-flex items-center gap-1"><Pencil size={11}/> editar</span>
             </button>
           </div>
         )}
