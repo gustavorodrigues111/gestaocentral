@@ -18,6 +18,7 @@ import { setUnsavedCheck, confirmarSaida } from "../../core/nav/unsaved";
 import { exportarFaturasXLSX, exportarFaturasPDF, exportarReembolsoEmpresaPDF, type ReembolsoItem } from "./exportFaturas";
 import type { CartaoCategoria, CartaoFatura, CartaoLancamento, CartaoRateioParte } from "../../core/types";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { Lock, Folder, FileText, CreditCard, KeyRound, Hourglass, Sparkles, TriangleAlert, PartyPopper, RotateCw, Trash2, Save, Download, CheckSquare, Square } from "lucide-react";
 
 type RateioSimples = { empresaId: string; percentual: number };
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -103,7 +104,7 @@ export function FaturasPage() {
   const catNome = (id?: string | null) => categorias.find(c => c.id === id)?.nome || "—";
 
   if (!rid) return <div className="text-center py-12 text-gray-500">Selecione uma empresa.</div>;
-  if (!podeVer) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-700 dark:text-gray-300 font-medium">Sem acesso ao módulo Faturas.</p></div>;
+  if (!podeVer) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="flex justify-center mb-3"><Lock size={36} /></div><p className="text-gray-700 dark:text-gray-300 font-medium">Sem acesso ao módulo Faturas.</p></div>;
 
   return (
     <PageContainer>
@@ -256,8 +257,8 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
     return (
       <div>
         <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100">📁 Escolha o mês</h3>
-          {onSubir && <Button size="sm" onClick={onSubir}>📄 Subir novas faturas</Button>}
+          <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Folder size={15} /> Escolha o mês</h3>
+          {onSubir && <Button size="sm" className="inline-flex items-center gap-1" onClick={onSubir}><FileText size={14} /> Subir novas faturas</Button>}
         </div>
         {mesesDisp.length === 0 ? <Vazio texto="Nenhuma fatura ainda. Clique em “Subir novas faturas”." /> : (
           <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
@@ -268,10 +269,10 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
               const totalReemb = outras.filter(l => compDe(l) === m).reduce((s, l) => s + (minhaParte(l)?.valor || 0), 0);
               return (
                 <button key={m} type="button" onClick={() => setMesSel(m)} className="text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 hover:shadow-sm transition-shadow">
-                  <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">📁 {fmtMes(m)}</div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Folder size={14} /> {fmtMes(m)}</div>
                   {(nFat > 0 || totalReemb === 0) && <div className="text-[11px] text-gray-400 mt-0.5">{nFat} fatura(s) · {fmtBRL(totalMes)}</div>}
                   {totalReemb > 0 && <div className="text-[11px] text-violet-500 dark:text-violet-300 mt-0.5">↩ {fmtBRL(totalReemb)} a reembolsar</div>}
-                  {nPend > 0 && <div className="text-[11px] text-amber-600 dark:text-amber-400">⏳ {nPend} pendente(s)</div>}
+                  {nPend > 0 && <div className="text-[11px] text-amber-600 dark:text-amber-400 inline-flex items-center gap-1"><Hourglass size={11} /> {nPend} pendente(s)</div>}
                 </button>
               );
             })}
@@ -289,20 +290,20 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
       <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
         <div className="flex gap-1.5 flex-wrap">
           <SubChip ativo={sub === "minhas"} onClick={() => setSub("minhas")}>Minhas faturas · {fmtBRL(totalMinhas)}</SubChip>
-          {pendentes.length > 0 && <SubChip ativo={sub === "pendentes"} onClick={() => setSub("pendentes")}>⏳ Pendentes · {fmtBRL(totalPendentes)}</SubChip>}
+          {pendentes.length > 0 && <SubChip ativo={sub === "pendentes"} onClick={() => setSub("pendentes")}><span className="inline-flex items-center gap-1"><Hourglass size={12} /> Pendentes · {fmtBRL(totalPendentes)}</span></SubChip>}
           <SubChip ativo={sub === "outras"} onClick={() => setSub("outras")}>A reembolsar a outros · {fmtBRL(totalOutrasPend)}</SubChip>
         </div>
         {exportarLancs.length > 0 && (
           <div className="flex gap-1.5">
-            <button type="button" onClick={() => void exportarFaturasXLSX(exportarLancs, catNome, exportarTitulo)} className="text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">⬇ Excel</button>
-            <button type="button" onClick={() => void exportarFaturasPDF(exportarLancs, catNome, exportarTitulo)} className="text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">⬇ PDF</button>
+            <button type="button" onClick={() => void exportarFaturasXLSX(exportarLancs, catNome, exportarTitulo)} className="text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 inline-flex items-center gap-1"><Download size={12} /> Excel</button>
+            <button type="button" onClick={() => void exportarFaturasPDF(exportarLancs, catNome, exportarTitulo)} className="text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 inline-flex items-center gap-1"><Download size={12} /> PDF</button>
           </div>
         )}
       </div>
       {/* 2. Pastas de mês (competência da fatura) — não mistura meses */}
       {mesesDisp.length > 1 && (
         <div className="flex flex-wrap items-center gap-1.5 mb-3">
-          <span className="text-[11px] text-gray-400 mr-0.5">📁 Mês:</span>
+          <span className="text-[11px] text-gray-400 mr-0.5 inline-flex items-center gap-1"><Folder size={11} /> Mês:</span>
           {mesesDisp.map(c => <SubChip key={c} ativo={c === mesAtivo} onClick={() => setMesSel(c)}>{fmtMes(c)}</SubChip>)}
         </div>
       )}
@@ -316,10 +317,10 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
       )}
 
       {sub === "pendentes" ? (
-        pendentes.length === 0 ? <Vazio texto="Nada pendente neste mês. 🎉" /> : (
+        pendentes.length === 0 ? <Vazio texto={<span className="inline-flex items-center gap-1.5">Nada pendente neste mês. <PartyPopper size={15} /></span>} /> : (
           <>
             <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 p-3 mb-3 text-xs text-amber-800 dark:text-amber-300">
-              ⏳ {pendentes.length} lançamento(s) ainda não classificado(s) · {fmtBRL(totalPendentes)}. Vá em <b>Classificação</b> e marque cada um como <b>"é meu"</b> ou atribua a uma <b>empresa</b> — enquanto pendentes, não entram no total "Minhas".
+              <span className="inline-flex items-baseline gap-1"><Hourglass size={12} className="translate-y-0.5" /> {pendentes.length} lançamento(s)</span> ainda não classificado(s) · {fmtBRL(totalPendentes)}. Vá em <b>Classificação</b> e marque cada um como <b>"é meu"</b> ou atribua a uma <b>empresa</b> — enquanto pendentes, não entram no total "Minhas".
             </div>
             <LancTabela lancs={pendentes} catNome={catNome} />
           </>
@@ -332,7 +333,7 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
               <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 mb-3">
                 <div className="flex items-center justify-between gap-2 mb-1.5">
                   <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">↩ A me reembolsar · <span className="text-violet-600 dark:text-violet-300">{fmtBRL(totalAReceber)}</span></div>
-                  {aReceberPorEmpresa.length > 1 && <button type="button" onClick={() => void exportarTodasEmpresas()} title="Gera um PDF por empresa" className="text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">⬇ 1 PDF por empresa</button>}
+                  {aReceberPorEmpresa.length > 1 && <button type="button" onClick={() => void exportarTodasEmpresas()} title="Gera um PDF por empresa" className="text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 inline-flex items-center gap-1"><Download size={12} /> 1 PDF por empresa</button>}
                 </div>
                 <div className="divide-y divide-gray-100 dark:divide-gray-800">
                   {aReceberPorEmpresa.map(([empId, g]) => {
@@ -348,14 +349,14 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
                           <b className="tabular-nums text-gray-900 dark:text-gray-100">{fmtBRL(g.total)}</b>
                         </span>
                       </button>
-                      <button type="button" onClick={() => void exportarEmpresa(empId)} title={`Exportar PDF do reembolso de ${restNome[empId] || "empresa"}`} className="shrink-0 text-[11px] font-medium px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">⬇ PDF</button>
+                      <button type="button" onClick={() => void exportarEmpresa(empId)} title={`Exportar PDF do reembolso de ${restNome[empId] || "empresa"}`} className="shrink-0 text-[11px] font-medium px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50 inline-flex items-center gap-1"><Download size={12} /> PDF</button>
                       </div>
                       {aberta && (
                         <div className="pl-4 pb-2 space-y-2">
                           {reembolsoDe(empId).map(([card, cg]) => (
                             <div key={card} className="rounded-lg border border-gray-100 dark:border-gray-800 overflow-hidden">
                               <div className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-gray-50 dark:bg-gray-800/40 text-[11px]">
-                                <span className="font-semibold text-gray-600 dark:text-gray-300">💳 {card}</span>
+                                <span className="font-semibold text-gray-600 dark:text-gray-300 inline-flex items-center gap-1"><CreditCard size={12} /> {card}</span>
                                 <span className="tabular-nums text-gray-500">{cg.lancs.length} item(s) · <b className="text-gray-800 dark:text-gray-200">{fmtBRL(cg.total)}</b>{cg.pend > 0 && cg.pend < cg.total ? <span className="text-amber-600"> · pend {fmtBRL(cg.pend)}</span> : ""}</span>
                               </div>
                               <div className="divide-y divide-gray-100 dark:divide-gray-800">
@@ -384,7 +385,7 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
                 return (
                   <>
                     <button type="button" onClick={() => setFaturaAberta(null)} className="mb-2 text-[12px] font-medium text-indigo-600 dark:text-indigo-300 hover:underline">← Faturas de {fmtMes(mesAtivo)}</button>
-                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">📄 {f.cartao || "Cartão"}{f.vencimento ? ` · venc ${fmtVenc(f.vencimento)}` : ""}</div>
+                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 inline-flex items-center gap-1.5"><FileText size={14} /> {f.cartao || "Cartão"}{f.vencimento ? ` · venc ${fmtVenc(f.vencimento)}` : ""}</div>
                     <LancTabela lancs={lancsF} catNome={catNome} restNome={restNome} mostrarReembolso />
                   </>
                 );
@@ -401,7 +402,7 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
                     return (
                       <button key={f.id} type="button" onClick={() => setFaturaAberta(f.id)} className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 flex items-center justify-between gap-3 hover:shadow-sm transition-shadow">
                         <div className="min-w-0">
-                          <div className="text-sm font-medium text-gray-900 dark:text-gray-100">📄 {f.cartao || "Cartão"}{f.vencimento ? <span className="text-xs text-gray-400 font-normal"> · venc {fmtVenc(f.vencimento)}</span> : ""}</div>
+                          <div className="text-sm font-medium text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><FileText size={14} /> {f.cartao || "Cartão"}{f.vencimento ? <span className="text-xs text-gray-400 font-normal"> · venc {fmtVenc(f.vencimento)}</span> : ""}</div>
                           <div className="text-[11px] text-gray-400">{lancsF.length} lançamento(s)</div>
                         </div>
                         <div className="text-right whitespace-nowrap"><b className="tabular-nums text-gray-900 dark:text-gray-100">{fmtBRL(total)}</b> <span className="text-gray-300">›</span></div>
@@ -436,7 +437,7 @@ function Visualizacao({ rid, minhas, outras: outrasRaw, faturas, catNome, restNo
                 <div key={dono} className="rounded-2xl border border-gray-200 dark:border-gray-800 overflow-hidden">
                   <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2.5 bg-gray-50 dark:bg-gray-900/40 border-b border-gray-200 dark:border-gray-800">
                     <div className="min-w-0">
-                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">💳 A pagar pra {donoNome} · {fmtBRL(totalDono)}</div>
+                      <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><CreditCard size={14} /> A pagar pra {donoNome} · {fmtBRL(totalDono)}</div>
                       <div className="flex flex-wrap gap-x-3 gap-y-0.5 text-[11px] text-gray-500 mt-0.5">
                         {pix && <span>Pix: <b className="text-gray-700 dark:text-gray-300 select-all">{pix}</b></span>}
                         {dataPag && <span>Pagar até: <b>{dataPag.split("-").reverse().join("/")}</b></span>}
@@ -747,7 +748,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
     if (l.ignorar) return { key: "__ign", label: "Ignorados", ord: 99 };
     if (l.rateio.length === 1) { const id = l.rateio[0].empresaId; return { key: id, label: nomeEmpresa(id), ord: 10, empId: id }; }
     if (l.rateio.length > 1) return { key: "__rateio", label: "Rateio · múltiplas empresas", ord: 20 };
-    if (l.pendente) return { key: "__pend", label: "⏳ Pendente", ord: 90 };
+    if (l.pendente) return { key: "__pend", label: "Pendente", ord: 90 };
     return { key: "__meu", label: "Meu (sem reembolso)", ord: 1 };
   };
   const gruposLinhas = (() => {
@@ -865,7 +866,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         {!bloqueado && (l.manual
           ? <button type="button" onClick={() => removerLinha(i)} className="ml-2 text-[10px] text-gray-400 hover:text-rose-600 align-middle">✕ remover</button>
           : <button type="button" onClick={() => toggleIgnorar(i)} className="ml-2 text-[10px] text-gray-400 hover:text-rose-600 align-middle">{l.ignorar ? "↩ reincluir" : "✕ ignorar"}</button>)}
-        {l.duvida && !l.ignorar && <div className="text-[10px] text-rose-600 dark:text-rose-400 mt-0.5">⚠ {l.duvidaMotivo || "confira este lançamento"}</div>}
+        {l.duvida && !l.ignorar && <div className="text-[10px] text-rose-600 dark:text-rose-400 mt-0.5 inline-flex items-center gap-1"><TriangleAlert size={11} /> {l.duvidaMotivo || "confira este lançamento"}</div>}
       </td>
       <td className={`px-2 py-1.5 text-right tabular-nums ${l.ignorar ? "line-through text-gray-400" : l.valor < 0 ? "text-emerald-600" : ""}`}>
         {l.manual && !bloqueado
@@ -878,7 +879,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         <>
           <td className="px-2 py-1.5">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <button type="button" disabled={bloqueado} onClick={() => setRateioRow(i)} className={(l.rateio.length === 1 ? empChip(l.rateio[0].empresaId) : chipSelect(l.rateio.length ? "empresa" : l.pendente ? "vazio" : "neutro")) + " pr-2.5" + (bloqueado ? " opacity-70 cursor-default" : "")}>{l.pendente && !l.rateio.length ? "⏳ Pendente" : resumoRateio(l.rateio)}{bloqueado ? "" : " ▾"}</button>
+              <button type="button" disabled={bloqueado} onClick={() => setRateioRow(i)} className={(l.rateio.length === 1 ? empChip(l.rateio[0].empresaId) : chipSelect(l.rateio.length ? "empresa" : l.pendente ? "vazio" : "neutro")) + " pr-2.5 inline-flex items-center gap-1" + (bloqueado ? " opacity-70 cursor-default" : "")}>{l.pendente && !l.rateio.length ? <><Hourglass size={12} /> Pendente</> : resumoRateio(l.rateio)}{bloqueado ? "" : " ▾"}</button>
             </div>
           </td>
           <td className="px-2 py-1.5">
@@ -897,12 +898,12 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
       <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
         <div className="flex flex-wrap items-center gap-3">
           <label className="inline-flex items-center gap-1.5 text-sm px-4 py-2 rounded-lg border border-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 hover:bg-indigo-100 text-indigo-700 dark:text-indigo-300 cursor-pointer font-medium">
-            {subindo ? "Lendo a fatura…" : "📄 Subir PDF da fatura"}
+            {subindo ? "Lendo a fatura…" : <><FileText size={15} /> Subir PDF da fatura</>}
             <input type="file" accept="application/pdf" className="hidden" disabled={subindo} onChange={e => { const f = e.target.files?.[0]; if (f) void subirEExtrair(f); e.currentTarget.value = ""; }} />
           </label>
           <span className="text-xs text-gray-500">A IA lê o PDF e identifica sozinha o cartão, o vencimento e os lançamentos.</span>
         </div>
-        {cartoes.length === 0 && <p className="text-xs text-amber-600 mt-2">⚠️ Cadastre seus cartões na aba <b>Config</b> pra IA saber de qual cartão é cada fatura.</p>}
+        {cartoes.length === 0 && <p className="text-xs text-amber-600 mt-2 inline-flex items-start gap-1"><TriangleAlert size={12} className="shrink-0 mt-0.5" /> <span>Cadastre seus cartões na aba <b>Config</b> pra IA saber de qual cartão é cada fatura.</span></p>}
         {erro && <p className="text-xs text-rose-600 mt-2">{erro}</p>}
       </div>
 
@@ -910,14 +911,14 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
       {!compAtual && !editando ? (
         competencias.length > 0 && (
           <div>
-            <div className="text-[11px] text-gray-400 mb-1.5">📁 Ou abra um mês pra editar/ver as faturas:</div>
+            <div className="text-[11px] text-gray-400 mb-1.5 inline-flex items-center gap-1"><Folder size={11} /> Ou abra um mês pra editar/ver as faturas:</div>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               {competencias.map(c => {
                 const nFat = faturas.filter(f => f.competencia === c).length;
                 return (
                   <button key={c} type="button" onClick={() => { setCompSel(c); const first = faturas.filter(f => f.competencia === c).sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""))[0]; if (first) trocarPara(first); }}
                     className="text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 hover:shadow-sm transition-shadow">
-                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">📁 {compLabel(c)}</div>
+                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Folder size={14} /> {compLabel(c)}</div>
                     <div className="text-[11px] text-gray-400 mt-0.5">{nFat} fatura(s)</div>
                   </button>
                 );
@@ -928,7 +929,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
       ) : (
         <div className="flex flex-wrap items-center gap-1.5">
           <button type="button" onClick={() => { setCompSel("__none__"); limpar(); }} className="text-[12px] font-medium text-indigo-600 dark:text-indigo-300 hover:underline mr-1">← Meses</button>
-          <span className="text-[11px] text-gray-400 mr-0.5">📁 Mês:</span>
+          <span className="text-[11px] text-gray-400 mr-0.5 inline-flex items-center gap-1"><Folder size={11} /> Mês:</span>
           {competencias.map(c => (
             <SubChip key={c} ativo={c === compAtual} onClick={() => { setCompSel(c); const first = faturas.filter(f => f.competencia === c).sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || ""))[0]; if (first) trocarPara(first); else limpar(); }}>{compLabel(c)}</SubChip>
           ))}
@@ -978,13 +979,13 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
                 : <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">rascunho</span>)}
             </div>
             <div className="flex items-center gap-1.5">
-              {arquivoPath && !bloqueado && <Button size="sm" variant="secondary" onClick={() => void relerPDF()} disabled={relendo || salvando || subindo}>{relendo ? "🔄 relendo…" : "🔄 Reler PDF"}</Button>}
-              <Button size="sm" variant={faturaId ? "danger" : "ghost"} onClick={() => void descartar()} disabled={salvando}>{faturaId ? "🗑 Excluir fatura" : "Descartar"}</Button>
+              {arquivoPath && !bloqueado && <Button size="sm" variant="secondary" className="inline-flex items-center gap-1" onClick={() => void relerPDF()} disabled={relendo || salvando || subindo}><RotateCw size={13} /> {relendo ? "relendo…" : "Reler PDF"}</Button>}
+              <Button size="sm" variant={faturaId ? "danger" : "ghost"} className="inline-flex items-center gap-1" onClick={() => void descartar()} disabled={salvando}>{faturaId ? <><Trash2 size={13} /> Excluir fatura</> : "Descartar"}</Button>
               {ehFechada ? (
                 <Button size="sm" onClick={() => void persistir(false)} disabled={salvando}>{salvando ? "…" : "↩ Reabrir pra editar"}</Button>
               ) : (
                 <>
-                  <Button size="sm" variant="secondary" onClick={() => void persistir(false)} disabled={salvando}>{salvando ? "…" : "💾 Salvar rascunho"}</Button>
+                  <Button size="sm" variant="secondary" className="inline-flex items-center gap-1" onClick={() => void persistir(false)} disabled={salvando}>{salvando ? "…" : <><Save size={13} /> Salvar rascunho</>}</Button>
                   <Button size="sm" onClick={() => void persistir(true)} disabled={salvando || (cartoes.length > 0 && !cartao)}>{salvando ? "…" : "✓ Fechar fatura"}</Button>
                 </>
               )}
@@ -1001,17 +1002,17 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
              <span className="text-gray-400 uppercase text-[10px] font-semibold tracking-wide">Destino do gasto</span>
              <span className="text-gray-500" title="O que sobra como gasto seu (sem reembolso de outra empresa).">Meu: <b className="text-gray-800 dark:text-gray-200">{fmtBRL(valMeu)}</b></span>
              {valReembolso > 0.005 && <span className="text-violet-600 dark:text-violet-300" title="Parte atribuída a outra(s) empresa(s) — vira reembolso a receber.">A reembolsar: <b>{fmtBRL(valReembolso)}</b></span>}
-             {qtdPendentes > 0 && <span className="text-amber-600" title="Lançamentos que ainda não foram decididos como 'meu' ou 'reembolso'.">⏳ Pendente: <b>{fmtBRL(valPendente)}</b> ({qtdPendentes})</span>}
-             {emDuvida > 0 && <span className="text-rose-600">⚠ {emDuvida} em dúvida</span>}
+             {qtdPendentes > 0 && <span className="text-amber-600 inline-flex items-center gap-1" title="Lançamentos que ainda não foram decididos como 'meu' ou 'reembolso'."><Hourglass size={12} /> Pendente: <b>{fmtBRL(valPendente)}</b> ({qtdPendentes})</span>}
+             {emDuvida > 0 && <span className="text-rose-600 inline-flex items-center gap-1"><TriangleAlert size={12} /> {emDuvida} em dúvida</span>}
              {naoClassificados > 0 && <span className="text-amber-600">{naoClassificados} sem categoria</span>}
            </div>
           </div>
           {bloqueado
-            ? <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1">🔒 Fatura <b>publicada</b> — clique <b>Reabrir pra editar</b> pra mexer nos lançamentos.</p>
-            : <p className="text-[11px] text-gray-500 flex items-center gap-1">✨ A fatura é toda sua. A IA já marcou os itens a <b className="text-violet-600 dark:text-violet-300">reembolsar</b> por outra empresa e a <b className="text-indigo-600 dark:text-indigo-300">categoria</b> — clique nas pílulas pra ajustar.</p>}
+            ? <p className="text-[11px] text-emerald-700 dark:text-emerald-400 flex items-center gap-1"><Lock size={12} className="shrink-0" /> Fatura <b>publicada</b> — clique <b>Reabrir pra editar</b> pra mexer nos lançamentos.</p>
+            : <p className="text-[11px] text-gray-500 flex items-center gap-1"><Sparkles size={12} className="shrink-0" /> A fatura é toda sua. A IA já marcou os itens a <b className="text-violet-600 dark:text-violet-300">reembolsar</b> por outra empresa e a <b className="text-indigo-600 dark:text-indigo-300">categoria</b> — clique nas pílulas pra ajustar.</p>}
           {!bloqueado && naoBate && diff != null && (
             <div className="rounded-lg border border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 px-3 py-2.5 flex items-start gap-2 text-[12px] text-rose-800 dark:text-rose-200">
-              <span className="text-base leading-none">⚠️</span>
+              <span className="leading-none shrink-0"><TriangleAlert size={16} /></span>
               <div className="flex-1">
                 <b>A soma dos lançamentos não bate com o Total da fatura.</b>{" "}
                 {diff < 0
@@ -1023,7 +1024,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
             </div>
           )}
           <div className="flex items-center justify-end mb-1.5">
-            <button type="button" onClick={() => setAgrupar(v => !v)} className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border ${agrupar ? "border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300 dark:border-indigo-700" : "border-gray-200 text-gray-500 dark:border-gray-700"}`}>{agrupar ? "☑" : "☐"} Agrupar por empresa</button>
+            <button type="button" onClick={() => setAgrupar(v => !v)} className={`text-[11px] font-medium px-2.5 py-1 rounded-lg border inline-flex items-center gap-1 ${agrupar ? "border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300 dark:border-indigo-700" : "border-gray-200 text-gray-500 dark:border-gray-700"}`}>{agrupar ? <CheckSquare size={13} /> : <Square size={13} />} Agrupar por empresa</button>
           </div>
           <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
             <table className="w-full min-w-[640px] text-sm">
@@ -1168,7 +1169,7 @@ function Categorias({ rid, categorias, pixPadrao, cartoes, outrasEmpresas }: { r
     <div className="max-w-lg space-y-5">
       {/* Cartões cadastrados — a IA casa cada fatura com um deles */}
       <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-2.5">
-        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">💳 Meus cartões</div>
+        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><CreditCard size={15} /> Meus cartões</div>
         <p className="text-xs text-gray-500">Cadastre os cartões cujas faturas você sobe aqui. Ao subir um PDF, a IA identifica sozinha de qual cartão é.</p>
         {cartoes.length > 0 && (
           <div className="flex flex-wrap gap-1.5">
@@ -1188,7 +1189,7 @@ function Categorias({ rid, categorias, pixPadrao, cartoes, outrasEmpresas }: { r
       </div>
 
       <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 space-y-2">
-        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">🔑 Chave Pix pra receber reembolsos</div>
+        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><KeyRound size={15} /> Chave Pix pra receber reembolsos</div>
         <p className="text-xs text-gray-500">Quando você atribui um gasto a outra empresa, essa chave vai junto pra ela te pagar.</p>
         <div className="flex gap-2">
           <input value={pix} onChange={e => setPix(e.target.value)} placeholder="CPF, e-mail, telefone ou chave aleatória"
@@ -1235,6 +1236,6 @@ function Categorias({ rid, categorias, pixPadrao, cartoes, outrasEmpresas }: { r
 function SubChip({ ativo, onClick, children }: { ativo: boolean; onClick: () => void; children: React.ReactNode }) {
   return <button type="button" onClick={onClick} className={`text-xs font-medium px-3 py-1.5 rounded-full border transition-colors ${ativo ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>{children}</button>;
 }
-function Vazio({ texto }: { texto: string }) {
+function Vazio({ texto }: { texto: React.ReactNode }) {
   return <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">{texto}</div>;
 }
