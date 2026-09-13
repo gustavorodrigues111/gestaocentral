@@ -11,7 +11,7 @@ import { useAvisos } from "../../modules/chat/useAvisos";
 import { confirmarSaida } from "../nav/unsaved";
 import { ModuleBadge } from "../ui/ModuleBadge";
 import { ModuleIcon } from "../ui/ModuleIcon";
-import { PanelLeftClose, Store, ChevronsUpDown, Check, Plus } from "lucide-react";
+import { PanelLeftClose, Store, ChevronsUpDown, Check, Plus, Compass } from "lucide-react";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
 import type { ModuleArea, ModuleId } from "../types";
 
@@ -434,7 +434,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
               onClick={guardedClose}
               className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-[11px] text-gray-500 dark:text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"
             >
-              <span>🧭</span>
+              <Compass size={15} />
               <span className="flex-1 truncate">Catálogo de módulos</span>
             </NavLink>
           </div>

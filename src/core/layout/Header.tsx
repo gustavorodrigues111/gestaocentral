@@ -6,7 +6,7 @@ import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
 import { MODULES } from "../../config/modules";
 import { ModuleIcon } from "../ui/ModuleIcon";
-import { PanelLeft } from "lucide-react";
+import { PanelLeft, Menu, RotateCw, Mail } from "lucide-react";
 import { APP_COMMIT, APP_BUILD_DATE, APP_VERSION_LABEL } from "../version";
 
 // Nome + descrição do módulo atual a partir da rota — mostrado no header
@@ -52,8 +52,8 @@ export function Header({ onToggleSidebar, sidebarOpen = true }: { onToggleSideba
 
   return (
     <header className="h-14 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex items-center px-3 sm:px-4 gap-2 sm:gap-4 [overflow-x:clip] relative z-30">
-      <button onClick={onToggleSidebar} className="md:hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 flex-shrink-0 text-xl leading-none">
-        ☰
+      <button onClick={onToggleSidebar} className="md:hidden text-gray-600 dark:text-gray-300 hover:text-gray-900 flex-shrink-0 leading-none" aria-label="Abrir menu">
+        <Menu size={22} />
       </button>
       {/* Expandir o menu (desktop) — só aparece quando o menu está RECOLHIDO;
           quando aberto, quem recolhe é a setinha ao lado do "planejamento.app". */}
@@ -143,9 +143,9 @@ export function Header({ onToggleSidebar, sidebarOpen = true }: { onToggleSideba
                     setMenuOpen(false);
                     window.location.reload();
                   }}
-                  className="mt-2 w-full text-left text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline"
+                  className="mt-2 w-full text-left text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"
                 >
-                  ↻ Atualizar agora
+                  <RotateCw size={12} /> Atualizar agora
                 </button>
               </div>
               <button
@@ -195,7 +195,7 @@ function NovosRestaurantesBadge({ pessoaId, novosRids }: {
         className="relative px-2 py-1.5 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 text-amber-600 dark:text-amber-400"
         title={`${novos.length} restaurante(s) novo(s)`}
       >
-        📨
+        <Mail size={18} />
         <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] px-1 bg-rose-600 text-white text-[10px] font-bold rounded-full flex items-center justify-center">
           {novos.length}
         </span>
@@ -204,8 +204,8 @@ function NovosRestaurantesBadge({ pessoaId, novosRids }: {
         <>
           <div className="fixed inset-0 z-10" onClick={() => setAberto(false)} />
           <div className="absolute right-0 top-full mt-1 w-80 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg shadow-lg z-20 p-3">
-            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2">
-              📨 Você foi adicionada a {novos.length} restaurante(s)
+            <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-2 inline-flex items-center gap-1.5">
+              <Mail size={15} /> Você foi adicionada a {novos.length} restaurante(s)
             </div>
             <div className="space-y-2 max-h-[300px] overflow-y-auto">
               {novos.map(r => (

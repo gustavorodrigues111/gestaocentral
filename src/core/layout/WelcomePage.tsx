@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { House } from "lucide-react";
 import { Button } from "../ui/Button";
 import { isValidSubdomain } from "../restaurant/subdomain";
 
@@ -24,7 +25,7 @@ export function WelcomePage() {
     <div className="min-h-screen flex flex-col items-center justify-center px-4 bg-gradient-to-br from-gray-50 to-indigo-50 dark:from-gray-950 dark:to-indigo-950">
       <div className="w-full max-w-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-8 shadow-sm">
         <div className="text-center mb-6">
-          <div className="text-4xl mb-3">🏠</div>
+          <div className="flex justify-center mb-3 text-indigo-500"><House size={40} /></div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">planejamento.app</h1>
           <p className="text-sm text-gray-600 dark:text-gray-400 mt-2">
             Gestão de restaurantes simplificada

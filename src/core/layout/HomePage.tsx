@@ -7,6 +7,7 @@ import { canUse } from "../auth/permissions";
 import { Button } from "../ui/Button";
 import { ModuleBadge } from "../ui/ModuleBadge";
 import { ModuleIcon } from "../ui/ModuleIcon";
+import { House } from "lucide-react";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
 import type { ModuleArea, ModuleId } from "../types";
 
@@ -28,7 +29,7 @@ export function HomePage() {
   if (!activeRestaurant) {
     return (
       <div className="max-w-2xl mx-auto py-16 text-center">
-        <div className="text-5xl mb-4">🏠</div>
+        <div className="flex justify-center mb-4 text-gray-400"><House size={48} /></div>
         <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2">
           {isMaster ? "Nenhum restaurante cadastrado ainda" : "Nenhum restaurante"}
         </h2>
