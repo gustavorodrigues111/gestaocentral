@@ -3,6 +3,7 @@ import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import { Search, Users, Backpack, Gift, CalendarDays } from "lucide-react";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type { Unidade } from "../../core/types";
 import { aplicarEncerramento, contarImpacto, type ImpactoEncerramento } from "./encerrarUnidade";
@@ -84,17 +85,17 @@ export function EncerrarUnidadeModal({ rid, unidade, unidades, onClose, onDone }
 
         <div>
           <Button variant="secondary" size="sm" onClick={() => void calcular()} disabled={carregando || !corte}>
-            {carregando ? "Calculando…" : "🔎 Calcular impacto"}
+            {carregando ? "Calculando…" : <span className="inline-flex items-center gap-1"><Search size={14} /> Calcular impacto</span>}
           </Button>
         </div>
 
         {impacto && (
           <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-3 text-[12.5px] text-gray-700 dark:text-gray-200 space-y-1">
             <div className="font-semibold text-gray-900 dark:text-gray-100">A partir de {corte} vão migrar:</div>
-            <div>👥 <strong>{impacto.empregados.length}</strong> empregado(s) vinculado(s){impacto.empregados.length > 0 ? `: ${impacto.empregados.map((e) => e.nome).join(", ")}` : ""}</div>
-            <div>🎒 <strong>{impacto.turnos}</strong> turno(s) de freela após a data</div>
-            <div>🎁 <strong>{impacto.gorjetas}</strong> gorjeta(s) após a data</div>
-            <div>📅 <strong>{impacto.escalaCelulas}</strong> dia(s) de escala com essa unidade após a data</div>
+            <div className="flex items-center gap-1.5"><Users size={14} className="shrink-0" /> <span><strong>{impacto.empregados.length}</strong> empregado(s) vinculado(s){impacto.empregados.length > 0 ? `: ${impacto.empregados.map((e) => e.nome).join(", ")}` : ""}</span></div>
+            <div className="flex items-center gap-1.5"><Backpack size={14} className="shrink-0" /> <span><strong>{impacto.turnos}</strong> turno(s) de freela após a data</span></div>
+            <div className="flex items-center gap-1.5"><Gift size={14} className="shrink-0" /> <span><strong>{impacto.gorjetas}</strong> gorjeta(s) após a data</span></div>
+            <div className="flex items-center gap-1.5"><CalendarDays size={14} className="shrink-0" /> <span><strong>{impacto.escalaCelulas}</strong> dia(s) de escala com essa unidade após a data</span></div>
             {impacto.empregados.length + impacto.turnos + impacto.gorjetas + impacto.escalaCelulas === 0 && (
               <div className="text-gray-500 italic">Nada após a data — só marca a unidade como encerrada.</div>
             )}

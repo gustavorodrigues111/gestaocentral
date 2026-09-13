@@ -2,7 +2,7 @@
 // Lista perfis (built-in + custom) + editor inline com UI subtrativa.
 
 import { useEffect, useMemo, useState } from "react";
-import { Check } from "lucide-react";
+import { Check, Lock, TriangleAlert, MapPin, Trash2, Link as LinkIcon, BookOpen } from "lucide-react";
 import { collection, doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -55,7 +55,7 @@ export function PerfisAcessoPage() {
   if (!me.isMaster) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3"><Lock size={36} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">
           Só master gerencia Perfis de Acesso
         </p>
@@ -67,7 +67,7 @@ export function PerfisAcessoPage() {
     return <div className="text-sm text-gray-500 py-8 text-center">Carregando perfis...</div>;
   }
   if (erro) {
-    return <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800">⚠ {erro}</div>;
+    return <div className="rounded-lg bg-rose-50 border border-rose-200 p-3 text-sm text-rose-800 inline-flex items-center gap-1.5"><TriangleAlert size={14} /> {erro}</div>;
   }
 
   // Modo de edição
@@ -175,8 +175,8 @@ function CardPerfil({ perfil, tipoLabel, escopo, onEditar, onDuplicar }: {
           <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 line-clamp-2">{perfil.descricao}</div>
         )}
         <div className="text-[11px] text-gray-400 mt-1 flex gap-2 flex-wrap">
-          {tipoLabel && <><span className="text-indigo-500/80 dark:text-indigo-400/80">🔒 {tipoLabel}</span><span>·</span></>}
-          <span>📍 {escopo}</span>
+          {tipoLabel && <><span className="text-indigo-500/80 dark:text-indigo-400/80 inline-flex items-center gap-1"><Lock size={11} /> {tipoLabel}</span><span>·</span></>}
+          <span className="inline-flex items-center gap-1"><MapPin size={11} /> {escopo}</span>
           <span>·</span>
           <span>{totalAcoes} ações habilitadas</span>
         </div>
@@ -418,9 +418,9 @@ function PerfilEditor({ perfil, isNew, restaurantes, pessoas, perfis, onSalvar, 
             {onDeletar && (
               <button
                 onClick={onDeletar}
-                className="text-xs px-3 py-1.5 rounded-md text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20"
+                className="text-xs px-3 py-1.5 rounded-md text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/20 inline-flex items-center gap-1"
               >
-                🗑 Apagar perfil
+                <Trash2 size={13} /> Apagar perfil
               </button>
             )}
             <Button onClick={salvar} disabled={salvando}>
@@ -428,7 +428,7 @@ function PerfilEditor({ perfil, isNew, restaurantes, pessoas, perfis, onSalvar, 
             </Button>
           </div>
         </div>
-        {erro && <p className="text-xs text-rose-600 mt-2">⚠ {erro}</p>}
+        {erro && <p className="text-xs text-rose-600 mt-2 inline-flex items-center gap-1"><TriangleAlert size={12} /> {erro}</p>}
       </div>
 
       {/* Nome + descrição + escopo */}
@@ -524,7 +524,7 @@ function PerfilEditor({ perfil, isNew, restaurantes, pessoas, perfis, onSalvar, 
           É responsável pelas etapas marcadas com esses setores (vira "minhas
           etapas"). Vale pra qualquer perfil, inclusive de empregado. */}
       <div className="rounded-lg border border-sky-200 dark:border-sky-800 bg-sky-50/40 dark:bg-sky-900/10 p-3 space-y-2">
-        <div className="text-xs font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300">🔗 Setores da Wiki que este perfil representa</div>
+        <div className="text-xs font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300 inline-flex items-center gap-1.5"><LinkIcon size={13} /> Setores da Wiki que este perfil representa</div>
         <p className="text-[11px] text-gray-500 dark:text-gray-400">
           Quem tiver este perfil vira responsável, na Wiki, pelas etapas marcadas com o(s) setor(es) abaixo (aparece o nome dele e entra em “minhas etapas”). Deixe vazio se este perfil não responde por nenhuma etapa.
         </p>
@@ -585,7 +585,7 @@ function WikiCategoriasEditor({ restauranteId, selecionadas, onChange }: {
 
   return (
     <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-900/10 p-3 space-y-2">
-      <div className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300">📚 Wiki — categorias visíveis</div>
+      <div className="text-xs font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 inline-flex items-center gap-1.5"><BookOpen size={13} /> Wiki — categorias visíveis</div>
       <p className="text-[11px] text-gray-500 dark:text-gray-400">
         Deixe <b>vazio</b> pra este perfil acessar <b>todas</b> as categorias. Marque categorias específicas pra limitar o que ele vê e onde pode cadastrar.
       </p>
@@ -668,7 +668,7 @@ function ModuloEditor({ modulo, permissoes, onToggle, onTodas }: {
                       <span
                         className="ml-1.5 text-amber-600 dark:text-amber-400"
                         title="Ação sensível — envolve LGPD, dados pessoais, financeiro ou atos terminais"
-                      >🔒</span>
+                      ><Lock size={12} /></span>
                     )}
                   </div>
                 </label>

@@ -6,6 +6,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { ClipboardList, FolderKanban, Trash2, Copy, TriangleAlert, Download, FileText, Lock, EyeOff, Plus, Mic, Square, ArrowLeftRight } from "lucide-react";
 import { collection, onSnapshot, query, where, doc, setDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -25,9 +26,9 @@ type IaInteracao = {
 };
 const uid = () => `${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 const SEV_META: Record<string, { label: string; cls: string }> = {
-  alta: { label: "🔴 Alta", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" },
-  media: { label: "🟠 Média", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
-  baixa: { label: "🟡 Baixa", cls: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" },
+  alta: { label: "Alta", cls: "bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300" },
+  media: { label: "Média", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
+  baixa: { label: "Baixa", cls: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300" },
 };
 // String derivada (o endpoint da IA e o cliente da Wiki consomem `diretrizes`).
 const juntarBlocos = (bs: DiretrizBloco[]) => bs.map(b => `- ${b.texto}`).join("\n");
@@ -151,7 +152,7 @@ export function IaGovernancaPage() {
     finally { setPurgando(false); }
   }
 
-  const tabBtn = (val: "diretrizes" | "registros", label: string, badge?: number) => (
+  const tabBtn = (val: "diretrizes" | "registros", label: React.ReactNode, badge?: number) => (
     <button type="button" onClick={() => setAba(val)}
       className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px transition-colors flex items-center gap-1.5 ${aba === val ? "border-indigo-500 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"}`}>
       {label}{badge ? <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">{badge}</span> : null}
@@ -162,8 +163,8 @@ export function IaGovernancaPage() {
     <PageContainer>
 
       <div className="flex items-center gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
-        {tabBtn("diretrizes", "📋 Diretrizes")}
-        {tabBtn("registros", "🗂️ Registros", nFora)}
+        {tabBtn("diretrizes", <span className="inline-flex items-center gap-1"><ClipboardList size={14} /> Diretrizes</span>)}
+        {tabBtn("registros", <span className="inline-flex items-center gap-1"><FolderKanban size={14} /> Registros</span>, nFora)}
       </div>
 
       {aba === "diretrizes" ? (
@@ -179,7 +180,7 @@ export function IaGovernancaPage() {
                 <div key={b.id} className="flex items-start gap-3 p-3 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
                   <span className="shrink-0 w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 text-xs font-bold flex items-center justify-center">{i + 1}</span>
                   <div className="flex-1 min-w-0 text-sm text-gray-800 dark:text-gray-200 whitespace-pre-wrap leading-relaxed">{b.texto}</div>
-                  <button type="button" onClick={() => { if (confirm("Remover esta diretriz?")) removeBloco(b.id); }} className="shrink-0 text-gray-400 hover:text-rose-600 text-sm">🗑️</button>
+                  <button type="button" onClick={() => { if (confirm("Remover esta diretriz?")) removeBloco(b.id); }} className="shrink-0 text-gray-400 hover:text-rose-600"><Trash2 size={15} /></button>
                 </div>
               ))}
             </div>
@@ -190,7 +191,7 @@ export function IaGovernancaPage() {
 
           {/* Replicar */}
           <div className="flex justify-end pt-1">
-            <Button variant="secondary" onClick={() => setReplicar(true)} disabled={!carregou || blocos.length === 0}>📑 Copiar diretrizes para outras empresas</Button>
+            <Button variant="secondary" className="inline-flex items-center gap-1" onClick={() => setReplicar(true)} disabled={!carregou || blocos.length === 0}><Copy size={14} /> Copiar diretrizes para outras empresas</Button>
           </div>
         </div>
       ) : (
@@ -199,15 +200,15 @@ export function IaGovernancaPage() {
             <div className="text-sm text-gray-500">{interacoes.length} interaç{interacoes.length === 1 ? "ão" : "ões"} registrada{interacoes.length === 1 ? "" : "s"}{nFora > 0 ? ` · ${nFora} fora do escopo` : ""}</div>
             <div className="flex gap-1.5 ml-auto items-center">
               <Chip active={filtro === "todas"} onClick={() => setFiltro("todas")}>Todas</Chip>
-              <Chip active={filtro === "fora"} onClick={() => setFiltro("fora")}>⚠️ Fora do escopo</Chip>
-              <button type="button" onClick={exportarCSV} disabled={registrosVis.length === 0} className="text-xs font-medium px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40">⬇️ CSV</button>
-              <button type="button" onClick={exportarPDF} disabled={registrosVis.length === 0} className="text-xs font-medium px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40">📄 PDF</button>
+              <Chip active={filtro === "fora"} onClick={() => setFiltro("fora")}><span className="inline-flex items-center gap-1"><TriangleAlert size={12} /> Fora do escopo</span></Chip>
+              <button type="button" onClick={exportarCSV} disabled={registrosVis.length === 0} className="text-xs font-medium px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 inline-flex items-center gap-1"><Download size={12} /> CSV</button>
+              <button type="button" onClick={exportarPDF} disabled={registrosVis.length === 0} className="text-xs font-medium px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40 inline-flex items-center gap-1"><FileText size={12} /> PDF</button>
             </div>
           </div>
 
           {/* Retenção / LGPD */}
           <div className="flex items-center gap-2 flex-wrap text-xs text-gray-500 rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2">
-            <span>🔒 Retenção:</span>
+            <span className="inline-flex items-center gap-1"><Lock size={12} /> Retenção:</span>
             <select value={retencaoDias} onChange={e => salvarRetencao(Number(e.target.value))} className="px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100">
               <option value={0}>Manter tudo</option>
               <option value={90}>90 dias</option>
@@ -215,8 +216,8 @@ export function IaGovernancaPage() {
               <option value={365}>1 ano</option>
               <option value={730}>2 anos</option>
             </select>
-            {retencaoDias > 0 && <button type="button" onClick={anonimizarAntigos} disabled={purgando} className="text-indigo-600 hover:underline disabled:opacity-40">🕶️ Anonimizar antigos</button>}
-            {retencaoDias > 0 && <button type="button" onClick={purgarAntigos} disabled={purgando} className="text-rose-600 hover:underline disabled:opacity-40">{purgando ? "Processando…" : `🧹 Expurgar > ${retencaoDias} dias`}</button>}
+            {retencaoDias > 0 && <button type="button" onClick={anonimizarAntigos} disabled={purgando} className="text-indigo-600 hover:underline disabled:opacity-40 inline-flex items-center gap-1"><EyeOff size={12} /> Anonimizar antigos</button>}
+            {retencaoDias > 0 && <button type="button" onClick={purgarAntigos} disabled={purgando} className="text-rose-600 hover:underline disabled:opacity-40 inline-flex items-center gap-1">{purgando ? "Processando…" : <><Trash2 size={12} /> Expurgar &gt; {retencaoDias} dias</>}</button>}
             <span className="text-[11px] text-gray-400 w-full">LGPD: <b>anonimizar</b> mantém pergunta/resposta e remove o nome; <b>expurgar</b> apaga o registro. Ações manuais sobre o que passou do período.</span>
           </div>
           {registrosVis.length === 0 ? (
@@ -227,9 +228,9 @@ export function IaGovernancaPage() {
                 <div key={i.id} className={`rounded-xl border p-3 ${i.foraDeEscopo ? "border-rose-200 dark:border-rose-800 bg-rose-50/50 dark:bg-rose-900/10" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900"}`}>
                   <button type="button" onClick={() => setAberta(aberta === i.id ? null : i.id)} className="w-full text-left">
                     <div className="flex items-center gap-2 flex-wrap">
-                      {i.foraDeEscopo && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">⚠️ Fora do escopo</span>}
+                      {i.foraDeEscopo && <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 inline-flex items-center gap-1"><TriangleAlert size={11} /> Fora do escopo</span>}
                       {i.foraDeEscopo && i.severidade && <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${(SEV_META[i.severidade] || SEV_META.baixa).cls}`}>{(SEV_META[i.severidade] || SEV_META.baixa).label}</span>}
-                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{i.anonimizado ? <span className="italic text-gray-400">🕶️ Anonimizado</span> : (i.pessoaNome || "—")}</span>
+                      <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{i.anonimizado ? <span className="italic text-gray-400 inline-flex items-center gap-1"><EyeOff size={12} /> Anonimizado</span> : (i.pessoaNome || "—")}</span>
                       <span className="text-[11px] text-gray-400">{i.moduleLabel || "IA"} · {fmtBR((i.createdAt || "").slice(0, 10))}</span>
                     </div>
                     <div className="text-sm text-gray-700 dark:text-gray-300 mt-1 line-clamp-2">“{i.pergunta}”</div>
@@ -241,7 +242,7 @@ export function IaGovernancaPage() {
                       <div className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap">{i.resposta || "—"}</div>
                       {!i.anonimizado && (
                         <div className="flex justify-end mt-2">
-                          <button type="button" onClick={() => { if (confirm("Anonimizar este registro? Remove o nome da pessoa, mantém pergunta/resposta.")) anonimizar([i.id]); }} className="text-[11px] text-indigo-600 hover:underline">🕶️ Anonimizar este registro</button>
+                          <button type="button" onClick={() => { if (confirm("Anonimizar este registro? Remove o nome da pessoa, mantém pergunta/resposta.")) anonimizar([i.id]); }} className="text-[11px] text-indigo-600 hover:underline inline-flex items-center gap-1"><EyeOff size={12} /> Anonimizar este registro</button>
                         </div>
                       )}
                     </div>
@@ -298,10 +299,10 @@ function AdicionarDiretriz({ existentes, onAdd }: { existentes: string[]; onAdd:
 
   return (
     <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-900/10 p-3 space-y-2">
-      <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300">➕ Nova diretriz</div>
+      <div className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 inline-flex items-center gap-1"><Plus size={13} /> Nova diretriz</div>
       <div className="flex gap-2 items-start">
         <button type="button" onClick={micToggle} disabled={checando} title={dit.gravando ? "Parar" : "Ditar por voz"}
-          className={`shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center text-lg ${dit.gravando ? "border-rose-400 bg-rose-50 dark:bg-rose-900/20 text-rose-600" : "border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-white dark:hover:bg-gray-800"}`}>{dit.gravando ? "⏹️" : "🎙️"}</button>
+          className={`shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center ${dit.gravando ? "border-rose-400 bg-rose-50 dark:bg-rose-900/20 text-rose-600" : "border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-white dark:hover:bg-gray-800"}`}>{dit.gravando ? <Square size={18} /> : <Mic size={18} />}</button>
         <textarea value={valor} onChange={e => { setTexto(e.target.value); if (dit.gravando) dit.parar(); }} rows={2} disabled={checando}
           placeholder="Ex.: A IA não pode dar orientação jurídica que não esteja documentada."
           className="flex-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
@@ -310,7 +311,7 @@ function AdicionarDiretriz({ existentes, onAdd }: { existentes: string[]; onAdd:
       {(erro || dit.erroMic) && <div className="text-[11px] text-rose-600">{erro || dit.erroMic}</div>}
       {aviso && (
         <div className={`rounded-lg px-3 py-2 text-sm ${aviso.veredito === "contradiz" ? "bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800" : "bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800"}`}>
-          <div className="font-semibold mb-0.5">{aviso.veredito === "contradiz" ? "⚠️ Contradiz uma diretriz existente" : "↔️ Parece redundante"}</div>
+          <div className="font-semibold mb-0.5 inline-flex items-center gap-1">{aviso.veredito === "contradiz" ? <><TriangleAlert size={13} /> Contradiz uma diretriz existente</> : <><ArrowLeftRight size={13} /> Parece redundante</>}</div>
           <div className="text-[13px]">{aviso.explicacao}</div>
           <div className="flex gap-2 justify-end mt-2">
             <button type="button" onClick={() => setAviso(null)} className="text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-600">Revisar texto</button>
@@ -358,7 +359,7 @@ function ReplicarModal({ blocos, restaurantes, pessoaId, onClose }: {
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-md p-5 max-h-[92vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">📑 Copiar diretrizes</h2>
+        <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Copy size={17} /> Copiar diretrizes</h2>
         <p className="text-xs text-gray-500 mt-1 mb-3">Os {blocos.length} blocos atuais vão substituir as diretrizes das empresas marcadas.</p>
         {restaurantes.length === 0 ? (
           <div className="text-sm text-gray-500 py-4 text-center">Você não tem outras empresas pra copiar.</div>

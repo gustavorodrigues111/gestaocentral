@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
+import { Lock, Globe, Lightbulb, Settings, Pencil, Building2, MapPin, Cloud, CalendarDays, Coins, Megaphone, Square, Store, ChefHat, type LucideIcon } from "lucide-react";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -57,7 +58,7 @@ export function ConfiguracoesPage({ modo }: { modo?: "dados" | "modulos" } = {})
   if (!podeConfig) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3"><Lock size={36} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
         <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Você não tem acesso pra editar configurações deste restaurante.</p>
       </div>
@@ -133,8 +134,8 @@ export function ConfiguracoesPage({ modo }: { modo?: "dados" | "modulos" } = {})
 
         {/* Subdomain — porta de entrada brandada */}
         <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
-          <label className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 block mb-2">
-            🌐 Subdomínio público
+          <label className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-2 inline-flex items-center gap-1.5">
+            <Globe size={13} /> Subdomínio público
           </label>
           <div className="flex items-center gap-2">
             <Input
@@ -170,15 +171,15 @@ export function ConfiguracoesPage({ modo }: { modo?: "dados" | "modulos" } = {})
           </label>
         </div>
 
-        <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
-          💡 Configurações específicas (gorjetas, VT, etc.) ficam dentro de cada módulo — clica no ⚙️ no canto superior direito.
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-3 inline-flex items-start gap-1.5">
+          <Lightbulb size={13} className="shrink-0 mt-0.5" /> <span>Configurações específicas (gorjetas, VT, etc.) ficam dentro de cada módulo — clica no <Settings size={12} className="inline" /> no canto superior direito.</span>
         </p>
         {err && <div className="text-sm text-rose-600 mt-2">{err}</div>}
         <div className="flex items-center gap-3 mt-4">
           {!editData ? (
             <>
-              <Button variant="secondary" onClick={() => { setSavedAt(""); setEditData(true); }}>✏️ Editar</Button>
-              <span className="text-xs text-gray-400 flex items-center gap-1">🔒 Dados protegidos — clique em Editar pra alterar</span>
+              <Button variant="secondary" className="inline-flex items-center gap-1" onClick={() => { setSavedAt(""); setEditData(true); }}><Pencil size={14} /> Editar</Button>
+              <span className="text-xs text-gray-400 flex items-center gap-1"><Lock size={12} /> Dados protegidos — clique em Editar pra alterar</span>
             </>
           ) : (
             <>
@@ -192,7 +193,7 @@ export function ConfiguracoesPage({ modo }: { modo?: "dados" | "modulos" } = {})
 
       {/* Unidades */}
       <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
-        <h2 className="text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">🏢 Unidades</h2>
+        <h2 className="text-base font-semibold mb-1 text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Building2 size={17} /> Unidades</h2>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
           Use múltiplas unidades quando seu restaurante tem mais de um endereço
           (matriz + filial, ou casa principal + cozinha de produção).
@@ -209,7 +210,7 @@ export function ConfiguracoesPage({ modo }: { modo?: "dados" | "modulos" } = {})
 
       {/* Endereços — cadastro compartilhado (Contas Fixas + Manutenções) */}
       <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
-        <h2 className="text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">📍 Endereços</h2>
+        <h2 className="text-base font-semibold mb-1 text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><MapPin size={17} /> Endereços</h2>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
           Endereços físicos desta empresa. Usados pelos módulos de <b>Contas Fixas</b> e
           <b> Manutenções/Licenças</b> (cada item amarra a um endereço). Um endereço encerrado
@@ -233,7 +234,7 @@ export function ConfiguracoesPage({ modo }: { modo?: "dados" | "modulos" } = {})
 
       {/* Google Drive — pasta raiz única do restaurante */}
       <section className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-5">
-        <h2 className="text-base font-semibold mb-1 text-gray-900 dark:text-gray-100">☁️ Google Drive</h2>
+        <h2 className="text-base font-semibold mb-1 text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Cloud size={17} /> Google Drive</h2>
         <p className="text-xs text-gray-500 dark:text-gray-400 mb-4">
           Escolha <b>uma pasta do seu Drive</b> para este restaurante. O sistema cria uma
           pasta <code>planejamento.app</code> dentro dela e organiza tudo por módulo
@@ -349,10 +350,10 @@ function DriveRaizForm({ rid, atualId, atualNome, podeConfig }: {
 
 type PortalConfig = NonNullable<ReturnType<() => { escala?: boolean; gorjetas?: boolean; comunicados?: boolean }>>;
 
-const ITENS_PORTAL: { key: keyof PortalConfig; icon: string; label: string; desc: string }[] = [
-  { key: "escala",      icon: "📅", label: "Minha escala",     desc: "Empregado vê só os dias dele no mês" },
-  { key: "gorjetas",    icon: "💸", label: "Minhas gorjetas",  desc: "Extrato de gorjetas recebidas" },
-  { key: "comunicados", icon: "📣", label: "Comunicados",      desc: "Avisos e comunicados do restaurante" },
+const ITENS_PORTAL: { key: keyof PortalConfig; icon: LucideIcon; label: string; desc: string }[] = [
+  { key: "escala",      icon: CalendarDays, label: "Minha escala",     desc: "Empregado vê só os dias dele no mês" },
+  { key: "gorjetas",    icon: Coins,        label: "Minhas gorjetas",  desc: "Extrato de gorjetas recebidas" },
+  { key: "comunicados", icon: Megaphone,    label: "Comunicados",      desc: "Avisos e comunicados do restaurante" },
 ];
 
 function PortalEmpregadoToggles({ rid, atual }: { rid: string; atual: PortalConfig }) {
@@ -398,7 +399,7 @@ function PortalEmpregadoToggles({ rid, atual }: { rid: string; atual: PortalConf
               ${isSaving ? "opacity-60 cursor-wait" : "cursor-pointer"}
             `}
           >
-            <span className="text-xl">{item.icon}</span>
+            <span className="text-gray-600 dark:text-gray-300"><item.icon size={20} /></span>
             <div className="flex-1 min-w-0">
               <div className="text-sm font-medium text-gray-900 dark:text-gray-100">
                 {item.label}
@@ -689,18 +690,18 @@ function UnidadesForm({ rid, atual }: {
                 </label>
                 <div className="col-span-1 flex items-center justify-end gap-1">
                   {u.encerradaEm ? (
-                    <span className="text-[10px] text-amber-700 dark:text-amber-400 whitespace-nowrap" title={`Encerrada em ${fmtBR(u.encerradaEm)}`}>
-                      ⏹ {fmtBR(u.encerradaEm)}
+                    <span className="text-[10px] text-amber-700 dark:text-amber-400 whitespace-nowrap inline-flex items-center gap-1" title={`Encerrada em ${fmtBR(u.encerradaEm)}`}>
+                      <Square size={10} /> {fmtBR(u.encerradaEm)}
                     </span>
                   ) : (
                     <>
                       <button
                         type="button"
                         onClick={() => setEncerrandoId(u.id)}
-                        className="text-amber-600 hover:text-amber-700 text-sm"
+                        className="text-amber-600 hover:text-amber-700"
                         title="Encerrar unidade (com data de corte)"
                       >
-                        ⏹
+                        <Square size={15} />
                       </button>
                       <button
                         type="button"
@@ -722,8 +723,8 @@ function UnidadesForm({ rid, atual }: {
           </Button>
 
           <p className="text-[11px] text-gray-500 dark:text-gray-400 italic mt-2">
-            🏪 <strong>Atendimento</strong> arrecada gorjeta dos clientes (ex: Matriz, Filial).<br />
-            🍳 <strong>Produção</strong> só prepara — não arrecada. Empregados que trabalham
+            <span className="inline-flex items-center gap-1"><Store size={12} /> <strong>Atendimento</strong></span> arrecada gorjeta dos clientes (ex: Matriz, Filial).<br />
+            <span className="inline-flex items-center gap-1"><ChefHat size={12} /> <strong>Produção</strong></span> só prepara — não arrecada. Empregados que trabalham
             aqui e têm cargo com "recebe produção" entram na divisão de gorjeta de todas
             as unidades de atendimento daquele dia.
           </p>
