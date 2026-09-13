@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { Navigate } from "react-router-dom";
-import { Globe, Trash2, Settings, ChevronDown, FolderKanban, Eye, Search } from "lucide-react";
+import { Globe, Trash2, Settings, ChevronDown, FolderKanban, Eye, Search, Plus } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
@@ -291,10 +291,10 @@ export function TarefasPage() {
   // Ações fixas (na linha do seletor de visão): Nova tarefa + Gerenciar (master).
   const acoesHeader = (
     <div className="flex items-center gap-1.5 shrink-0">
-      <Button size="sm" onClick={() => setNovaAberta({})}>+ Nova tarefa</Button>
+      <Button size="sm" onClick={() => setNovaAberta({})} title="Nova tarefa"><span className="sm:hidden inline-flex"><Plus size={16} /></span><span className="hidden sm:inline">+ Nova tarefa</span></Button>
       {isMaster && (
         <div className="relative">
-          <button type="button" onClick={() => setGerenciarMenuAberto((v) => !v)} className="inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"><Settings size={13} /> Gerenciar <ChevronDown size={13} /></button>
+          <button type="button" onClick={() => setGerenciarMenuAberto((v) => !v)} title="Gerenciar" className="inline-flex items-center gap-1 text-xs font-medium px-2 sm:px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"><Settings size={14} /><span className="hidden sm:inline"> Gerenciar </span><ChevronDown size={13} className="hidden sm:inline" /></button>
           {gerenciarMenuAberto && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setGerenciarMenuAberto(false)} />

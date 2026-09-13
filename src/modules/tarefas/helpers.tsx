@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Building2, CalendarDays, List, KanbanSquare, Lock,
+  Building2, CalendarDays, List, KanbanSquare, Lock, ChevronDown,
   Banknote, Wrench, Scale, UserRoundMinus, Palmtree, MessagesSquare,
   PartyPopper, Repeat, Package, Smartphone, type LucideIcon,
   Users, Coins, Landmark, Crown, ChefHat, Briefcase, ShoppingCart,
@@ -114,22 +114,45 @@ export function ViewSwitcher({ value, onChange }: { value: ViewMode; onChange: (
     { id: "lista", Icon: List, label: "Lista" },
     { id: "kanban", Icon: KanbanSquare, label: "Kanban" },
   ];
+  const atual = opts.find(o => o.id === value) || opts[0];
+  const [aberto, setAberto] = useState(false);
   return (
-    <div className="inline-flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5 mb-4">
-      {opts.map(o => (
-        <button
-          key={o.id}
-          onClick={() => onChange(o.id)}
-          className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
-            value === o.id
-              ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm"
-              : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
-          }`}
-        >
-          <span className="inline-flex items-center gap-1.5"><o.Icon size={14} />{o.label}</span>
+    <>
+      {/* Desktop: segmentado */}
+      <div className="hidden sm:inline-flex bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+        {opts.map(o => (
+          <button
+            key={o.id}
+            onClick={() => onChange(o.id)}
+            className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors ${
+              value === o.id
+                ? "bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 shadow-sm"
+                : "text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200"
+            }`}
+          >
+            <span className="inline-flex items-center gap-1.5"><o.Icon size={14} />{o.label}</span>
+          </button>
+        ))}
+      </div>
+      {/* Mobile: chip com seletor (dropdown) */}
+      <div className="relative sm:hidden">
+        <button type="button" onClick={() => setAberto(v => !v)} className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-sm text-gray-700 dark:text-gray-200 bg-white dark:bg-gray-900">
+          <atual.Icon size={15} /><span>{atual.label}</span><ChevronDown size={14} className="opacity-60" />
         </button>
-      ))}
-    </div>
+        {aberto && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setAberto(false)} />
+            <div className="absolute right-0 mt-1 z-20 w-40 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1">
+              {opts.map(o => (
+                <button key={o.id} type="button" onClick={() => { onChange(o.id); setAberto(false); }} className={`w-full flex items-center gap-2 px-3 py-2 text-sm text-left ${value === o.id ? "bg-gray-50 dark:bg-gray-800 font-medium text-gray-900 dark:text-gray-100" : "text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+                  <o.Icon size={15} /> {o.label}
+                </button>
+              ))}
+            </div>
+          </>
+        )}
+      </div>
+    </>
   );
 }
 
