@@ -10,6 +10,7 @@ import { criarTarefaOperacional } from "../tarefas/repository";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
+import { Target } from "lucide-react";
 
 // O que o modal devolve ao chamador (a origem registra a tratativa de volta).
 export type ItemCriado = { id: string; titulo: string; responsavelNome?: string };
@@ -76,7 +77,7 @@ export function VirarAcaoModal({ rid, meId, meNome, origem, tituloInicial, descr
   }
 
   return (
-    <Modal title={`🎯 Virar ${rotulo} · de ${ORIGEM_TXT[origem.tipo]}`} onClose={onClose} maxWidth="max-w-xl">
+    <Modal title={<span className="inline-flex items-center gap-1.5"><Target size={16} /> Virar {rotulo} · de {ORIGEM_TXT[origem.tipo]}</span>} onClose={onClose} maxWidth="max-w-xl">
       <div className="space-y-3">
         <Input label={`Título da ${rotulo} *`} value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="O que precisa ser feito" />
         <div className="flex flex-col gap-1">

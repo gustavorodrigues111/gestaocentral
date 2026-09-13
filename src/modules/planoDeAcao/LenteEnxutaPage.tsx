@@ -15,11 +15,12 @@ import type { Tarefa, Pessoa, TarefaOrigem, TarefaPrioridade } from "../../core/
 import { ouvirTarefasDeUsuario, atualizarTarefa, adicionarComentario, criarTarefaOperacional } from "../tarefas/repository";
 import { semOrfasPrazo } from "../tarefas/helpers";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { Siren, Lightbulb, MessagesSquare, FlaskConical, Repeat, TriangleAlert, CalendarDays, CheckSquare, Square, User, MessageSquare, UserRound, Users, PartyPopper, Sun, type LucideIcon } from "lucide-react";
 
 const OPERACIONAL = "proj-operacao-dem";
 const fmtDia = (ymd?: string | null) => { if (!ymd) return ""; const [, m, d] = ymd.split("-"); return `${d}/${m}`; };
 const STRIP: Record<TarefaPrioridade, string> = { urgente: "bg-rose-500", alta: "bg-rose-500", normal: "bg-amber-500", baixa: "bg-gray-300 dark:bg-gray-600" };
-const ORIGEM_ICONE: Partial<Record<TarefaOrigem, string>> = { ocorrencia: "🚨", ideia: "💡", reuniao: "🗣️", avaliacao_sanitaria: "🧪", recorrencia: "🔁" };
+const ORIGEM_ICONE: Partial<Record<TarefaOrigem, LucideIcon>> = { ocorrencia: Siren, ideia: Lightbulb, reuniao: MessagesSquare, avaliacao_sanitaria: FlaskConical, recorrencia: Repeat };
 
 export function LenteEnxutaPage() {
   const { pessoa: me } = useAuth();
@@ -89,7 +90,7 @@ export function LenteEnxutaPage() {
   const prazoBadge = (t: Tarefa) => {
     if (!t.prazo || t.status === "concluida") return null;
     const atrasada = t.prazo < hoje, ehHoje = t.prazo === hoje;
-    return <span className={`text-[11px] px-1.5 py-0.5 rounded ${atrasada ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" : ehHoje ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800"}`}>{atrasada ? "⚠ atrasada" : ehHoje ? "vence hoje" : `📅 ${fmtDia(t.prazo)}`}</span>;
+    return <span className={`text-[11px] px-1.5 py-0.5 rounded ${atrasada ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" : ehHoje ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800"}`}>{atrasada ? <span className="inline-flex items-center gap-1"><TriangleAlert size={11} /> atrasada</span> : ehHoje ? "vence hoje" : <span className="inline-flex items-center gap-1"><CalendarDays size={11} /> {fmtDia(t.prazo)}</span>}</span>;
   };
 
   if (!restaurant) return <div className="text-gray-500 p-4">Selecione um restaurante.</div>;
@@ -106,14 +107,14 @@ export function LenteEnxutaPage() {
         <div className={`w-1 shrink-0 ${feita ? "bg-emerald-500" : STRIP[t.prioridade] || "bg-gray-300"}`} />
         <div className="flex-1 min-w-0 p-3">
           <div className="flex gap-2.5 items-start">
-            <button type="button" disabled={!podeConcluir(t)} onClick={() => void concluir(t, !feita)} className={`text-xl leading-none mt-0.5 shrink-0 ${feita ? "text-emerald-500" : "text-gray-300 dark:text-gray-600 hover:text-emerald-500"} disabled:opacity-40`} title={feita ? "Reabrir" : "Concluir"}>{feita ? "☑" : "☐"}</button>
+            <button type="button" disabled={!podeConcluir(t)} onClick={() => void concluir(t, !feita)} className={`leading-none mt-0.5 shrink-0 ${feita ? "text-emerald-500" : "text-gray-300 dark:text-gray-600 hover:text-emerald-500"} disabled:opacity-40`} title={feita ? "Reabrir" : "Concluir"}>{feita ? <CheckSquare size={22} /> : <Square size={22} />}</button>
             <div className="flex-1 min-w-0">
               <div className={`text-[14px] leading-snug ${feita ? "line-through text-gray-400" : "text-gray-900 dark:text-gray-100"}`}>{t.titulo}</div>
               <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-                {t.origem && t.origem !== "manual" && <span className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">{ORIGEM_ICONE[t.origem] || ""} {TAREFA_ORIGEM_LABEL[t.origem]}</span>}
+                {t.origem && t.origem !== "manual" && <span className="text-[11px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 inline-flex items-center gap-1">{(() => { const Ic = ORIGEM_ICONE[t.origem]; return Ic ? <Ic size={11} /> : null; })()} {TAREFA_ORIGEM_LABEL[t.origem]}</span>}
                 {prazoBadge(t)}
-                {escopo === "equipe" && t.responsavelNome && <span className="text-[11px] text-gray-500">👤 {t.responsavelNome}</span>}
-                <button type="button" onClick={() => setExpandido(aberto ? null : t.id)} className="text-[11px] text-gray-400 hover:text-indigo-600">💬 {coments.length}</button>
+                {escopo === "equipe" && t.responsavelNome && <span className="text-[11px] text-gray-500 inline-flex items-center gap-1"><User size={11} /> {t.responsavelNome}</span>}
+                <button type="button" onClick={() => setExpandido(aberto ? null : t.id)} className="text-[11px] text-gray-400 hover:text-indigo-600 inline-flex items-center gap-1"><MessageSquare size={11} /> {coments.length}</button>
               </div>
               {aberto && (
                 <div className="mt-2.5 pt-2.5 border-t border-gray-100 dark:border-gray-800 space-y-2">
@@ -141,7 +142,7 @@ export function LenteEnxutaPage() {
       {podeVerTodas && (
         <div className="flex justify-center mb-3">
           <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
-            {([["minhas", "🙋 Minhas"], ["equipe", "👥 Da equipe"]] as const).map(([k, l]) => (
+            {([["minhas", <span className="inline-flex items-center gap-1"><UserRound size={14} /> Minhas</span>], ["equipe", <span className="inline-flex items-center gap-1"><Users size={14} /> Da equipe</span>]] as const).map(([k, l]) => (
               <button key={k} type="button" onClick={() => setEscopo(k)} className={`px-3 py-1 text-sm font-medium rounded-md ${escopo === k ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
             ))}
           </div>
@@ -156,18 +157,18 @@ export function LenteEnxutaPage() {
       )}
 
       {abertas.length === 0 ? (
-        <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500">Nada pra fazer aqui. 🎉</div>
+        <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center text-sm text-gray-500 inline-flex items-center justify-center gap-1.5 w-full">Nada pra fazer aqui. <PartyPopper size={16} /></div>
       ) : (
         <div className="space-y-4">
           {grupos.atrasadas.length > 0 && (
             <div>
-              <div className="text-xs font-semibold text-rose-600 dark:text-rose-400 mb-2">⚠ Atrasadas · {grupos.atrasadas.length}</div>
+              <div className="text-xs font-semibold text-rose-600 dark:text-rose-400 mb-2 inline-flex items-center gap-1"><TriangleAlert size={13} /> Atrasadas · {grupos.atrasadas.length}</div>
               <div className="grid gap-2 lg:grid-cols-2 items-start">{grupos.atrasadas.map(t => <Card key={t.id} t={t} />)}</div>
             </div>
           )}
           {grupos.hojeL.length > 0 && (
             <div>
-              <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">☀ Hoje · {grupos.hojeL.length}</div>
+              <div className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2 inline-flex items-center gap-1"><Sun size={13} /> Hoje · {grupos.hojeL.length}</div>
               <div className="grid gap-2 lg:grid-cols-2 items-start">{grupos.hojeL.map(t => <Card key={t.id} t={t} />)}</div>
             </div>
           )}

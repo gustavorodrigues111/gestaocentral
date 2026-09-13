@@ -10,6 +10,7 @@ import { ACAO_STATUS_LABEL } from "../../core/types";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
+import { Target, Siren, Lightbulb, MessagesSquare, PenLine, FlaskConical, type LucideIcon } from "lucide-react";
 
 const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 const fmtDT = (iso: string) => { const d = new Date(iso); return isNaN(d.getTime()) ? "" : d.toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }); };
@@ -18,7 +19,8 @@ const PRIOS: [AcaoPrioridade, string, string][] = [
   ["media", "Média", "text-amber-600 dark:text-amber-400"],
   ["alta", "Alta", "text-rose-600 dark:text-rose-400"],
 ];
-const ORIGEM_LABEL: Record<string, string> = { ocorrencia: "🚨 de ocorrência", ideia: "💡 de ideia", reuniao: "🗣️ de reunião", avulsa: "✍️ avulsa", avaliacao_sanitaria: "🧪 de avaliação sanitária" };
+const ORIGEM_LABEL: Record<string, string> = { ocorrencia: "de ocorrência", ideia: "de ideia", reuniao: "de reunião", avulsa: "avulsa", avaliacao_sanitaria: "de avaliação sanitária" };
+const ORIGEM_ICON: Record<string, LucideIcon> = { ocorrencia: Siren, ideia: Lightbulb, reuniao: MessagesSquare, avulsa: PenLine, avaliacao_sanitaria: FlaskConical };
 
 export function AcaoModal({ acao, rid, pessoas, meId, meNome, readOnly = false, onClose }: {
   acao: Acao | null; rid: string; pessoas: Pessoa[]; meId?: string; meNome?: string; readOnly?: boolean; onClose: () => void;
@@ -67,12 +69,12 @@ export function AcaoModal({ acao, rid, pessoas, meId, meNome, readOnly = false, 
   }
 
   return (
-    <Modal title={novo ? "🎯 Nova ação" : "🎯 Ação"} onClose={onClose} maxWidth="max-w-2xl">
+    <Modal title={<span className="inline-flex items-center gap-1.5"><Target size={16} /> {novo ? "Nova ação" : "Ação"}</span>} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
        <fieldset disabled={readOnly} className="space-y-3 border-0 p-0 m-0 min-w-0 disabled:opacity-95">
         {!novo && acao && (
           <div className="flex items-center gap-2 flex-wrap text-[11px] text-gray-500">
-            <span className="px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">{ORIGEM_LABEL[acao.origem?.tipo || "avulsa"]}</span>
+            <span className="px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 inline-flex items-center gap-1">{(() => { const Ic = ORIGEM_ICON[acao.origem?.tipo || "avulsa"] || PenLine; return <Ic size={11} />; })()} {ORIGEM_LABEL[acao.origem?.tipo || "avulsa"]}</span>
             {acao.criadoPorNome && <span>criada por {acao.criadoPorNome}</span>}
             {acao.criadoEm && <span>· {fmtDT(acao.criadoEm)}</span>}
           </div>

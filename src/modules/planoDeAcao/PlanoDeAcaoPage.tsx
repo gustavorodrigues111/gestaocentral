@@ -2,7 +2,6 @@
 // Kanban de gestão, "minhas ações", log de tratativas). Fases seguintes plugam
 // ocorrências/ideias/reuniões e produção derivada.
 import { useEffect, useMemo, useState } from "react";
-import { Target } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -18,17 +17,18 @@ import type { Acao, FtFicha, FtPlanoProducao, PlanoAcaoStatus, Pessoa } from "..
 import { labelUnidade } from "../fichas/unidades";
 import { AcaoModal } from "./AcaoModal";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { Target, Wrench, CheckSquare, Ban, Lock, TriangleAlert, CalendarDays, UserRound, BarChart3, ChefHat, User, type LucideIcon } from "lucide-react";
 
 const uid = (p: string) => `${p}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 const fmtQtd = (n: number) => (n || 0).toFixed(3).replace(/\.?0+$/, "").replace(".", ",");
 const PRIO_BORDA: Record<string, string> = { alta: "border-rose-500", media: "border-amber-500", baixa: "border-gray-400" };
 const fmtDia = (ymd?: string | null) => { if (!ymd) return ""; const d = new Date(ymd + "T12:00:00"); return isNaN(d.getTime()) ? "" : d.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" }); };
 
-const COLS: Array<{ id: PlanoAcaoStatus; titulo: string; borda: string }> = [
-  { id: "aberta", titulo: "🎯 Abertas", borda: "border-t-blue-500" },
-  { id: "em_andamento", titulo: "🔧 Em andamento", borda: "border-t-amber-500" },
-  { id: "concluida", titulo: "✅ Concluídas", borda: "border-t-emerald-500" },
-  { id: "cancelada", titulo: "🚫 Canceladas", borda: "border-t-gray-400" },
+const COLS: Array<{ id: PlanoAcaoStatus; titulo: string; icon: LucideIcon; borda: string }> = [
+  { id: "aberta", titulo: "Abertas", icon: Target, borda: "border-t-blue-500" },
+  { id: "em_andamento", titulo: "Em andamento", icon: Wrench, borda: "border-t-amber-500" },
+  { id: "concluida", titulo: "Concluídas", icon: CheckSquare, borda: "border-t-emerald-500" },
+  { id: "cancelada", titulo: "Canceladas", icon: Ban, borda: "border-t-gray-400" },
 ];
 
 export function PlanoDeAcaoPage() {
@@ -123,7 +123,7 @@ export function PlanoDeAcaoPage() {
 
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
   if (loadingPerfis && !isMaster) return <div className="text-sm text-gray-500 py-12 text-center">Carregando permissões…</div>;
-  if (!podeGerenciar && !podeCriar) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="text-4xl mb-3">🔒</div><p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p></div>;
+  if (!podeGerenciar && !podeCriar) return <div className="max-w-2xl mx-auto py-12 text-center"><div className="flex justify-center mb-3"><Lock size={36} /></div><p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p></div>;
 
   const mostrarKanban = podeKanban && podeVerMinhas; // precisa poder ver algo
   const mostrarTabs = mostrarKanban;                 // "minhas" sempre; "kanban" pra quem tem o quadro
@@ -134,7 +134,7 @@ export function PlanoDeAcaoPage() {
     if (!a.prazo || a.status === "concluida" || a.status === "cancelada") return null;
     const atrasada = a.prazo < today;
     const hoje = a.prazo === today;
-    return <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${atrasada ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" : hoje ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800"}`}>{atrasada ? "⚠ atrasada" : hoje ? "vence hoje" : `📅 ${fmtDia(a.prazo)}`}</span>;
+    return <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded ${atrasada ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-300" : hoje ? "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800"}`}>{atrasada ? <span className="inline-flex items-center gap-1"><TriangleAlert size={11} /> atrasada</span> : hoje ? "vence hoje" : <span className="inline-flex items-center gap-1"><CalendarDays size={11} /> {fmtDia(a.prazo)}</span>}</span>;
   };
 
   return (
@@ -149,7 +149,7 @@ export function PlanoDeAcaoPage() {
 
       {mostrarTabs && (
         <div className="flex items-center gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">
-          {([{ k: "minhas", l: `🙋 Minhas ações${minhasAbertas + minhasProducoes.length ? ` (${minhasAbertas + minhasProducoes.length})` : ""}` }, { k: "kanban", l: podeVerTodas ? "📊 Todas (Kanban)" : "📊 Kanban (minhas)" }] as const).map(t => (
+          {([{ k: "minhas", l: <span className="inline-flex items-center gap-1"><UserRound size={14} /> Minhas ações{minhasAbertas + minhasProducoes.length ? ` (${minhasAbertas + minhasProducoes.length})` : ""}</span> }, { k: "kanban", l: <span className="inline-flex items-center gap-1"><BarChart3 size={14} /> {podeVerTodas ? "Todas (Kanban)" : "Kanban (minhas)"}</span> }] as const).map(t => (
             <button key={t.k} type="button" onClick={() => setAba(t.k)} className={`px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${abaEfetiva === t.k ? "border-indigo-600 text-indigo-700 dark:text-indigo-300" : "border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-200"}`}>{t.l}</button>
           ))}
         </div>
@@ -165,14 +165,14 @@ export function PlanoDeAcaoPage() {
               <>
                 {minhasProducoes.length > 0 && (
                   <div>
-                    <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">🍳 Produções atribuídas a você ({minhasProducoes.length})</div>
+                    <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5 inline-flex items-center gap-1"><ChefHat size={13} /> Produções atribuídas a você ({minhasProducoes.length})</div>
                     <div className="space-y-2">
                       {minhasProducoes.map(({ plano, item, ficha }) => {
                         const un = ficha?.ehSubficha ? labelUnidade(ficha.rendimento.unidade) : "porções";
                         return (
                           <div key={item.id} className="flex items-center gap-3 rounded-xl border-l-4 border-amber-500 border-y border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
                             <div className="min-w-0 flex-1">
-                              <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">🍳 {ficha ? ficha.nome.toUpperCase() : "(ficha)"} <span className="text-gray-400 font-normal">· {fmtQtd(item.qtd)} {un}</span></div>
+                              <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate inline-flex items-center gap-1"><ChefHat size={14} className="shrink-0" /> {ficha ? ficha.nome.toUpperCase() : "(ficha)"} <span className="text-gray-400 font-normal">· {fmtQtd(item.qtd)} {un}</span></div>
                               <div className="text-[11px] text-gray-500 mt-0.5">{plano.nome || "Produção"}{plano.data ? ` · ${new Date(plano.data + "T12:00:00").toLocaleDateString("pt-BR")}` : ""}</div>
                             </div>
                             <Button size="sm" onClick={() => void marcarProduzido(plano, item.id)}>✓ Produzi</Button>
@@ -184,7 +184,7 @@ export function PlanoDeAcaoPage() {
                 )}
                 {minhas.length > 0 && (
                   <div>
-                    {minhasProducoes.length > 0 && <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5">🎯 Ações</div>}
+                    {minhasProducoes.length > 0 && <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 mb-1.5 inline-flex items-center gap-1"><Target size={13} /> Ações</div>}
                     <div className="space-y-2">
                       {minhas.map(a => (
                         <button key={a.id} type="button" onClick={() => setEditing(a)} className={`w-full text-left flex items-center gap-3 rounded-xl border-l-4 ${PRIO_BORDA[a.prioridade || "media"]} border-y border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:bg-gray-50 dark:hover:bg-gray-800/40 p-3 ${a.status === "concluida" || a.status === "cancelada" ? "opacity-60" : ""}`}>
@@ -222,7 +222,7 @@ export function PlanoDeAcaoPage() {
                     onDrop={podeEditar ? e => { e.preventDefault(); const id = e.dataTransfer.getData("text/plain"); setDropTarget(null); setDraggingId(null); const a = acoes.find(x => x.id === id); if (a) void moverPara(a, col.id); } : undefined}
                     className={`bg-gray-50 dark:bg-gray-900/40 rounded-lg p-2 min-h-[300px] border-t-4 ${col.borda} transition-colors ${alvo ? "ring-2 ring-indigo-400 bg-indigo-50 dark:bg-indigo-900/30" : ""}`}>
                     <div className="mb-2 pb-1.5 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between">
-                      <span className="font-bold text-xs text-gray-900 dark:text-gray-100">{col.titulo}</span>
+                      <span className="font-bold text-xs text-gray-900 dark:text-gray-100 inline-flex items-center gap-1"><col.icon size={13} /> {col.titulo}</span>
                       <span className="text-[10px] text-gray-500">{lista.length}</span>
                     </div>
                     <div className="flex flex-col gap-1.5">
@@ -235,7 +235,7 @@ export function PlanoDeAcaoPage() {
                           className={`w-full text-left bg-white dark:bg-gray-900 border-l-4 ${PRIO_BORDA[a.prioridade || "media"]} border-y border-r border-gray-200 dark:border-gray-800 rounded-md p-2 text-xs ${podeEditar ? "cursor-grab active:cursor-grabbing" : "cursor-pointer"} ${draggingId === a.id ? "opacity-40" : ""} hover:border-indigo-400 transition-colors`}>
                           <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{a.titulo}</div>
                           <div className="text-[10px] text-gray-500 mt-1 flex items-center gap-1.5 flex-wrap">
-                            {a.responsavelNome ? <span>👤 {a.responsavelNome}</span> : <span className="text-gray-400">sem responsável</span>}
+                            {a.responsavelNome ? <span className="inline-flex items-center gap-1"><User size={11} /> {a.responsavelNome}</span> : <span className="text-gray-400">sem responsável</span>}
                             {prazoBadge(a)}
                           </div>
                         </button>
