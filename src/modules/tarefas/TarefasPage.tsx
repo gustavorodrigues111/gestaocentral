@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import { Navigate } from "react-router-dom";
-import { Inbox, Layers, Globe, Trash2, Settings, ChevronDown, FolderKanban, Eye, Search } from "lucide-react";
+import { Globe, Trash2, Settings, ChevronDown, FolderKanban, Eye, Search } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
@@ -300,6 +300,8 @@ export function TarefasPage() {
               <div className="fixed inset-0 z-10" onClick={() => setGerenciarMenuAberto(false)} />
               <div className="absolute right-0 mt-1 z-20 w-60 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
                 <div className="px-3 pt-1.5 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400 dark:text-gray-500">Tarefas</div>
+                <button type="button" onClick={() => { setGerenciarMenuAberto(false); setTab("todas"); }} className="w-full flex items-center gap-2 text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"><Globe size={15} /> Todas as tarefas</button>
+                <button type="button" onClick={() => { setGerenciarMenuAberto(false); setTab("lixeira"); }} className="w-full flex items-center gap-2 text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"><Trash2 size={15} /> Lixeira</button>
                 <button type="button" onClick={() => { setGerenciarMenuAberto(false); setTab("admin"); }} className="w-full flex items-center gap-2 text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"><FolderKanban size={15} /> Áreas e projetos</button>
               </div>
             </>
@@ -344,6 +346,12 @@ export function TarefasPage() {
           projetoFiltroAtual={tab === "projeto" ? projetoFiltro : ""}
           subFiltroAtual={subFiltro}
           minhasPendentes={minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length}
+          resumo={(() => {
+            const arr = tab === "minhas" ? minhas : tab === "tudo" ? todasTarefasVisiveis : tab === "projeto" ? tarefasProjetoVisiveis : null;
+            if (!arr) return undefined;
+            const ativas = arr.filter(t => t.status !== "concluida" && t.status !== "cancelada").length;
+            return `${arr.length} tarefa(s) · ${ativas} ativas`;
+          })()}
           projetos={projetosVisiveis}
           subprojetos={subprojetosVisiveis}
           tarefasProjeto={tarefasProjeto}
@@ -366,23 +374,11 @@ export function TarefasPage() {
         <div>
           {/* Título igual ao do ProjetoView, pra padronizar — "Minhas tarefas"
               é tratado conceitualmente como um pseudo-projeto: a caixa pessoal. */}
-          {/* Linha 1: título + Todas/Lixeira … visões (Calendário/Lista/Kanban) à direita */}
-          <div className="mb-2.5 flex items-center gap-x-3 gap-y-2 flex-wrap">
-            <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Inbox size={18} /> Minhas tarefas</h2>
-            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{minhas.length} tarefa(s) · {minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
-            {isMaster && (
-              <>
-                <button type="button" onClick={() => setTab("todas")} className="inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"><Globe size={13} /> Todas</button>
-                <button type="button" onClick={() => setTab("lixeira")} className="inline-flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"><Trash2 size={13} /> Lixeira</button>
-              </>
-            )}
-            <div className="flex-1" />
-            <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
-          </div>
-          {/* Linha 2: busca à esquerda … Nova reunião/Nova tarefa/Gerenciar à direita */}
+          {/* Uma linha só: busca … Calendário/Lista/Kanban + Nova tarefa + Gerenciar */}
           <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
             {buscaInput}
             <div className="flex-1" />
+            <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
             {acoesHeader}
           </div>
           {viewMinhas === "calendario" && (
@@ -431,15 +427,10 @@ export function TarefasPage() {
 
       {tab === "tudo" && (
         <div>
-          <div className="mb-2.5 flex items-center gap-x-3 gap-y-2 flex-wrap">
-            <h2 className="text-base sm:text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Layers size={18} /> Tudo</h2>
-            <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{todasTarefasVisiveis.length} tarefa(s) · {todasTarefasVisiveis.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
-            <div className="flex-1" />
-            <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
-          </div>
           <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
             {buscaInput}
             <div className="flex-1" />
+            <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
             {acoesHeader}
           </div>
           {viewMinhas === "calendario" && <CalendarioView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} />}

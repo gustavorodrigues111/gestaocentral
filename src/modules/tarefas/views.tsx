@@ -19,7 +19,7 @@ import { EscolhaRestauranteModal } from "./modais";
 // largura pro calendário/kanban. "Minhas tarefas" + projetos como chips; os
 // subprojetos do projeto ativo aparecem numa 2ª linha.
 export function ProjetosTopBar({
-  tabAtual, projetoFiltroAtual, subFiltroAtual, minhasPendentes,
+  tabAtual, projetoFiltroAtual, subFiltroAtual, minhasPendentes, resumo,
   projetos, subprojetos, tarefasProjeto,
   onAbrirMinhas, onAbrirTudo, onAbrirProjeto, onAbrirSubprojeto,
 }: {
@@ -27,6 +27,7 @@ export function ProjetosTopBar({
   projetoFiltroAtual: string;
   subFiltroAtual: string[];
   minhasPendentes: number;
+  resumo?: ReactNode;
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
   tarefasProjeto: Tarefa[];
@@ -47,7 +48,8 @@ export function ProjetosTopBar({
   const itemCls = "w-full flex items-center gap-2 px-3 py-2 text-sm text-left hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200";
   return (
     <div className="mb-4 space-y-2">
-      {/* Escopo: um único chip com seletor (Tudo por padrão). */}
+      {/* Escopo: chip único com seletor + contagem do escopo ao lado. */}
+      <div className="flex items-center gap-3 flex-wrap">
       <div className="relative inline-block">
         <button type="button" onClick={() => setAberto(v => !v)} className={`${chip(true)} min-w-[160px] justify-between`}>
           <span className="inline-flex items-center gap-1.5 min-w-0">
@@ -76,6 +78,8 @@ export function ProjetosTopBar({
             </div>
           </>
         )}
+      </div>
+        {resumo && <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{resumo}</span>}
       </div>
 
       {subs.length > 0 && (
