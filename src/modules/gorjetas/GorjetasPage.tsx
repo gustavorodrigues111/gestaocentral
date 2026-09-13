@@ -10,6 +10,10 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { MesContextoBanner } from "../../core/ui/MesContextoBanner";
 import { ModuleConfigButton } from "../../core/ui/ModuleConfigButton";
+import {
+  Lock, Banknote, CalendarDays, BarChart3, TrendingUp, ArrowUp, Megaphone,
+  Coins, TriangleAlert, Pencil,
+} from "lucide-react";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import {
   daysInMonth, dowShort, fmtAnoMes, fmtBR as fmtDataBR, pad2, parseYmd, shiftMonth,
@@ -217,7 +221,7 @@ export function GorjetasPage() {
   if (!podeUsar) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3"><Lock size={36} className="text-gray-400"/></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
@@ -228,7 +232,7 @@ export function GorjetasPage() {
   if (!podeVerTime) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center space-y-3">
-        <div className="text-4xl">💰</div>
+        <div className="flex justify-center"><Banknote size={36} className="text-gray-400"/></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">
           Sua gorjeta está no Meu Portal
         </p>
@@ -292,7 +296,7 @@ export function GorjetasPage() {
         </div>
 
         <div className="flex items-center gap-2 flex-wrap">
-          <ModuleConfigButton title="⚙️ Regras de divisão de gorjeta" disabled={!podeConfig}>
+          <ModuleConfigButton title="Regras de divisão de gorjeta" disabled={!podeConfig}>
             <RegrasDivisaoConfig
               rid={rid}
               onClose={() => { /* fechado pelo Modal */ }}
@@ -314,7 +318,7 @@ export function GorjetasPage() {
               : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"
           }`}
         >
-          📅 Lançamentos
+          <span className="inline-flex items-center gap-1"><CalendarDays size={14}/> Lançamentos</span>
         </button>
         <button
           type="button"
@@ -325,7 +329,7 @@ export function GorjetasPage() {
               : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"
           }`}
         >
-          📊 Divisão do mês
+          <span className="inline-flex items-center gap-1"><BarChart3 size={14}/> Divisão do mês</span>
         </button>
         <button
           type="button"
@@ -336,7 +340,7 @@ export function GorjetasPage() {
               : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"
           }`}
         >
-          📈 Comparação
+          <span className="inline-flex items-center gap-1"><TrendingUp size={14}/> Comparação</span>
         </button>
       </div>
 
@@ -683,12 +687,12 @@ function ListaDiasInline({
           </label>
           <button type="button" onClick={() => setShowImport(true)}
             title="Colar uma tabela de datas + valores pra lançar vários dias de uma vez (na unidade escolhida)"
-            className="text-[13px] font-semibold px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800">⬆️ Importar em lote</button>
+            className="text-[13px] font-semibold px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800"><span className="inline-flex items-center gap-1"><ArrowUp size={14}/> Importar em lote</span></button>
           <span className="flex-1" />
           <button type="button" disabled={sel.size === 0} onClick={() => void publicarSelecionados()}
-            className="text-[13px] font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white disabled:opacity-40">📢 Publicar</button>
+            className="text-[13px] font-semibold px-3 py-1.5 rounded-lg bg-emerald-600 text-white disabled:opacity-40"><span className="inline-flex items-center gap-1"><Megaphone size={14}/> Publicar</span></button>
           <button type="button" disabled={sel.size === 0} onClick={() => void pagarSelecionados()}
-            className="text-[13px] font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white disabled:opacity-40">💸 Pagar</button>
+            className="text-[13px] font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white disabled:opacity-40"><span className="inline-flex items-center gap-1"><Coins size={14}/> Pagar</span></button>
           {sel.size > 0 && <button type="button" onClick={() => setSel(new Set())} className="text-[12px] text-gray-500 hover:underline">limpar</button>}
         </div>
       )}
@@ -764,7 +768,7 @@ function ListaDiasInline({
                 <div className="flex items-center gap-2 min-w-0">
                   {semRegra ? (
                     <span className="text-xs text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-2 py-1 rounded">
-                      ⚠ Sem regra cadastrada — cadastre nas Configurações pra dividir esse dia
+                      <TriangleAlert size={12} className="inline align-[-2px] mr-1"/>Sem regra cadastrada — cadastre nas Configurações pra dividir esse dia
                     </span>
                   ) : isSemGorjeta ? (
                     <span className="text-xs text-gray-500 italic">— Sem gorjeta hoje —</span>
@@ -794,7 +798,7 @@ function ListaDiasInline({
                 <div className="flex items-center gap-1">
                   {g?.paga && (
                     <button type="button" onClick={() => podeEditar && void togglePaga(date, u.id)} title={podeEditar ? "Desmarcar pagamento" : "Gorjeta paga"}
-                      className="px-2 py-1 text-xs rounded border bg-indigo-100 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 font-semibold">💸 Paga</button>
+                      className="px-2 py-1 text-xs rounded border bg-indigo-100 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 font-semibold"><span className="inline-flex items-center gap-1"><Coins size={12}/> Paga</span></button>
                   )}
                   {podeEditar && !semRegra && (
                     <button
@@ -821,7 +825,7 @@ function ListaDiasInline({
                           : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"
                       }`}
                     >
-                      {isPublicada ? "📢 Publicada" : "Publicar"}
+                      {isPublicada ? <span className="inline-flex items-center gap-1"><Megaphone size={12}/> Publicada</span> : "Publicar"}
                     </button>
                   )}
                 </div>
@@ -863,17 +867,17 @@ function ListaDiasInline({
                       <button
                         type="button"
                         onClick={() => setEditingMobile({ date, unidadeId: u.id })}
-                        className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 text-base leading-none px-1"
+                        className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 leading-none px-1 inline-flex"
                         title="Editar"
                       >
-                        ✏️
+                        <Pencil size={15}/>
                       </button>
                     )}
                   </div>
                 </div>
                 {semRegra ? (
                   <div className="mt-1 text-[11px] text-amber-700 dark:text-amber-400">
-                    ⚠ Sem regra cadastrada — cadastre nas Configurações
+                    <TriangleAlert size={12} className="inline align-[-2px] mr-1"/>Sem regra cadastrada — cadastre nas Configurações
                   </div>
                 ) : hasValor && splitVersion ? (
                   <div className="mt-1 flex items-center gap-2 flex-wrap text-[11px]">
@@ -882,11 +886,11 @@ function ListaDiasInline({
                     </span>
                     {isPublicada && (
                       <span className="bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded text-[10px] font-semibold">
-                        📢 publicada
+                        <span className="inline-flex items-center gap-1"><Megaphone size={11}/> publicada</span>
                       </span>
                     )}
                     {g?.paga && (
-                      <button type="button" onClick={() => podeEditar && void togglePaga(date, u.id)} className="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded text-[10px] font-semibold">💸 paga</button>
+                      <button type="button" onClick={() => podeEditar && void togglePaga(date, u.id)} className="bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 px-1.5 py-0.5 rounded text-[10px] font-semibold"><span className="inline-flex items-center gap-1"><Coins size={11}/> paga</span></button>
                     )}
                   </div>
                 ) : null}
@@ -1013,7 +1017,7 @@ function ImportarLoteGorjetasModal({
       <div className="absolute inset-0 bg-black/40" />
       <div className="relative w-full max-w-lg bg-white dark:bg-gray-900 rounded-xl shadow-2xl max-h-[88vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
         <div className="border-b border-gray-200 dark:border-gray-800 px-4 py-3 flex items-center justify-between shrink-0">
-          <div className="font-bold text-gray-900 dark:text-gray-100">⬆️ Importar gorjetas em lote</div>
+          <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1"><ArrowUp size={16}/> Importar gorjetas em lote</div>
           <button onClick={onClose} className="text-gray-400 text-xl px-2">✕</button>
         </div>
 
@@ -1053,7 +1057,7 @@ function ImportarLoteGorjetasModal({
           )}
           {ignoradas.length > 0 && (
             <div className="rounded-lg border border-amber-200 dark:border-amber-800/50 bg-amber-50 dark:bg-amber-900/20 p-2.5 text-[11px] text-amber-800 dark:text-amber-200">
-              ⚠ {ignoradas.length} linha(s) ignorada(s) (sem valor válido): {ignoradas.slice(0, 4).join(" · ")}{ignoradas.length > 4 ? "…" : ""}
+              <TriangleAlert size={12} className="inline align-[-2px] mr-1"/>{ignoradas.length} linha(s) ignorada(s) (sem valor válido): {ignoradas.slice(0, 4).join(" · ")}{ignoradas.length > 4 ? "…" : ""}
             </div>
           )}
         </div>
@@ -1167,7 +1171,7 @@ function EditDiaSheet({
                   : "border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"
               }`}
             >
-              {publicada ? "📢 Publicada — toque pra despublicar" : "Publicar pra empregados verem"}
+              {publicada ? <span className="inline-flex items-center gap-1"><Megaphone size={13}/> Publicada — toque pra despublicar</span> : "Publicar pra empregados verem"}
             </button>
           )}
         </div>

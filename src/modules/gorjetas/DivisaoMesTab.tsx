@@ -2,6 +2,7 @@ import { Fragment, useEffect, useMemo, useState } from "react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
+import { Coins, TriangleAlert, Repeat, FileText, FileSpreadsheet, Lightbulb, User, CalendarDays } from "lucide-react";
 import type { Area, Cargo, DivisaoItem, Empregado, EscalaMes, FreelaShift, Gorjeta, SplitVersion, Unidade } from "../../core/types";
 import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
 import { getActiveSplitVersion } from "./splitRules";
@@ -577,7 +578,7 @@ export function DivisaoMesTab({
   if (gorjetas.length === 0) {
     return (
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-        <div className="text-4xl mb-3">💸</div>
+        <div className="flex justify-center mb-3"><Coins size={36} className="text-gray-400"/></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem gorjetas neste mês</p>
         <p className="text-sm text-gray-500 mt-2">Volta na aba Lançamentos pra cadastrar.</p>
       </div>
@@ -593,7 +594,7 @@ export function DivisaoMesTab({
           e a divisão junto. Fechar/encerrar o mês no Análise de Ponto primeiro. */}
       {!escala?.fechadoEm && (
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-800 dark:text-amber-200">
-          ⚠ O ponto de {nomeMes(mes)}/{ano} <strong>ainda não está encerrado</strong>. Como a praticada pode mudar, a divisão da gorjeta pode variar. Feche os dias e <strong>encerre o mês no Análise de Ponto → Fechamento</strong> antes de fechar a gorjeta.
+          <TriangleAlert size={13} className="inline align-[-2px] mr-1"/>O ponto de {nomeMes(mes)}/{ano} <strong>ainda não está encerrado</strong>. Como a praticada pode mudar, a divisão da gorjeta pode variar. Feche os dias e <strong>encerre o mês no Análise de Ponto → Fechamento</strong> antes de fechar a gorjeta.
         </div>
       )}
 
@@ -603,7 +604,7 @@ export function DivisaoMesTab({
         <div className="sticky top-0 z-10 rounded-lg bg-rose-50 dark:bg-rose-900/30 border-2 border-rose-300 dark:border-rose-700 p-3 shadow-md">
           <div className="flex items-start justify-between gap-3 flex-wrap">
             <div className="flex items-start gap-2 flex-1 min-w-0">
-              <span className="text-xl shrink-0">⚠</span>
+              <span className="shrink-0"><TriangleAlert size={20}/></span>
               <div className="text-sm">
                 <p className="font-bold text-rose-900 dark:text-rose-100">
                   A escala foi alterada após esta divisão ser publicada
@@ -622,7 +623,7 @@ export function DivisaoMesTab({
               disabled={recalculando}
               className="shrink-0"
             >
-              {recalculando ? "Recalculando..." : "🔄 Recalcular divisão"}
+              {recalculando ? "Recalculando..." : <span className="inline-flex items-center gap-1"><Repeat size={14}/> Recalcular divisão</span>}
             </Button>
           </div>
         </div>
@@ -653,14 +654,14 @@ export function DivisaoMesTab({
               disabled={recalculando}
               title="Recalcula as gorjetas publicadas com a escala atual. Use depois de alterar a praticada."
             >
-              {recalculando ? "Recalculando..." : "🔄 Recalcular divisão"}
+              {recalculando ? "Recalculando..." : <span className="inline-flex items-center gap-1"><Repeat size={14}/> Recalcular divisão</span>}
             </Button>
           )}
           <Button variant="secondary" size="sm" onClick={() => setPdfModalOpen(true)} disabled={linhas.length === 0}>
-            📄 Gerar PDF
+            <span className="inline-flex items-center gap-1"><FileText size={14}/> Gerar PDF</span>
           </Button>
           <Button variant="secondary" size="sm" onClick={exportar} disabled={exportando}>
-            {exportando ? "Gerando..." : "📊 Exportar planilha (XLSX)"}
+            {exportando ? "Gerando..." : <span className="inline-flex items-center gap-1"><FileSpreadsheet size={14}/> Exportar planilha (XLSX)</span>}
           </Button>
         </div>
       </div>
@@ -669,7 +670,7 @@ export function DivisaoMesTab({
           precisa estar marcado como "Recebe produção" pra entrar na divisão */}
       {tipoUnidadeFiltro === "producao" && linhas.length > 0 && linhas.every(l => l.liquido === 0) && (
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-900 dark:text-amber-200 flex items-start gap-2">
-          <span className="text-base">💡</span>
+          <span className="shrink-0 mt-0.5"><Lightbulb size={15}/></span>
           <div>
             Nenhum empregado desta unidade recebeu gorjeta neste mês. Pra que
             empregados de uma unidade de PRODUÇÃO dividam gorjeta das unidades
@@ -694,7 +695,7 @@ export function DivisaoMesTab({
       {/* Tabela de divisão (cabeçalho com 1 col extra pro chevron expand/collapse) */}
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
         <div className="text-[11px] text-gray-500 dark:text-gray-400 px-3 py-2 border-b border-gray-100 dark:border-gray-800 bg-gray-50/40 dark:bg-gray-800/30">
-          💡 Click em qualquer empregado pra ver o dia-a-dia do recebimento.
+          <Lightbulb size={12} className="inline align-[-2px] mr-1"/>Click em qualquer empregado pra ver o dia-a-dia do recebimento.
         </div>
         {/* Desktop: tabela com 6 colunas */}
         <div className="hidden md:grid grid-cols-[24px_1fr_60px_120px_110px_120px] gap-2 px-3 py-2 text-xs font-bold uppercase tracking-wider text-gray-500 bg-gray-50 dark:bg-gray-800/50 border-b border-gray-100 dark:border-gray-800">
@@ -795,7 +796,7 @@ export function DivisaoMesTab({
                   {l.freelasDetalhe.map((f) => (
                     <div key={f.nome}>
                       <div className="text-[11px] font-bold text-indigo-700 dark:text-indigo-300 mb-1 flex items-center justify-between gap-2">
-                        <span className="truncate">👤 {f.nome} — {f.dias.length} dia(s)</span>
+                        <span className="truncate inline-flex items-center gap-1"><User size={12}/> {f.nome} — {f.dias.length} dia(s)</span>
                         <span className="tabular-nums text-emerald-700 dark:text-emerald-300 shrink-0">{fmtBR(f.liquido)}</span>
                       </div>
                       <div className="rounded border border-indigo-100 dark:border-indigo-900/40 bg-white dark:bg-gray-900 overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
@@ -844,7 +845,7 @@ export function DivisaoMesTab({
               {isExpanded && !l.ehGrupoFreela && !l.ehDesconto && l.dias.length > 0 && (
                 <div className="bg-indigo-50/30 dark:bg-indigo-900/10 border-t border-indigo-100 dark:border-indigo-900/40 px-3 py-2">
                   <div className="text-[10px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 mb-1.5">
-                    📅 Detalhamento de {l.nome.split(" ")[0]} — {l.dias.length} dia(s)
+                    <span className="inline-flex items-center gap-1"><CalendarDays size={12}/> Detalhamento de {l.nome.split(" ")[0]} — {l.dias.length} dia(s)</span>
                   </div>
                   {/* Desktop: tabela 5 colunas */}
                   <div className="hidden md:block rounded border border-indigo-100 dark:border-indigo-900/40 bg-white dark:bg-gray-900 overflow-hidden">
@@ -921,7 +922,7 @@ export function DivisaoMesTab({
       {Math.abs(totais.liquido - totais.distribuido) > 0.05 && (
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-900 dark:text-amber-200">
           <div className="font-bold text-amber-900 dark:text-amber-100 mb-2 flex items-center justify-between gap-3 flex-wrap">
-            <span>⚠ Diferença de <span className="tabular-nums">{fmtBR(Math.abs(totais.liquido - totais.distribuido))}</span> entre o líquido do mês e a soma distribuída</span>
+            <span className="inline-flex items-center gap-1"><TriangleAlert size={13} className="shrink-0"/> Diferença de <span className="tabular-nums">{fmtBR(Math.abs(totais.liquido - totais.distribuido))}</span> entre o líquido do mês e a soma distribuída</span>
             {discrepanciaDetalhe.arredondamentoCentavos > 0.005 && (
               <Button
                 variant="secondary"
@@ -930,7 +931,7 @@ export function DivisaoMesTab({
                 disabled={recalculando}
                 className="shrink-0"
               >
-                {recalculando ? "Recalculando..." : "🔄 Recalcular divisão"}
+                {recalculando ? "Recalculando..." : <span className="inline-flex items-center gap-1"><Repeat size={14}/> Recalcular divisão</span>}
               </Button>
             )}
           </div>
