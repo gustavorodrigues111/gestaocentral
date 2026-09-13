@@ -30,6 +30,7 @@ import {
   recomputarVenda, vendasReciprocasDisponiveis,
 } from "./helpers";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { Send, Search, Repeat, Banknote, Hourglass, MessageSquare, Pencil, Trash2, Paperclip, Package, Building2, User, CreditCard } from "lucide-react";
 
 const MAX_COMPROV_MB = 20;
 type Tab = "vendas" | "produtos" | "clientes" | "formas";
@@ -175,7 +176,7 @@ export function VendasPage() {
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <p className="text-xs text-gray-500 min-w-0">{activeRestaurant?.nome} · registro fora do sistema fiscal (entre empresas, permutas)</p>
         <div className="flex gap-2">
-          {podeCobrar && <Button size="sm" variant="secondary" className="flex-1 sm:flex-none" onClick={() => setCobrando(true)}>📤 Gerar cobrança</Button>}
+          {podeCobrar && <Button size="sm" variant="secondary" className="flex-1 sm:flex-none inline-flex items-center gap-1" onClick={() => setCobrando(true)}><Send size={14} /> Gerar cobrança</Button>}
           {podeLancar && <Button className="flex-1 sm:flex-none" onClick={() => setNovaVenda(true)}>+ Nova venda</Button>}
         </div>
       </header>
@@ -206,7 +207,7 @@ export function VendasPage() {
               <Seg ativo={filtro === "quitada"} onClick={() => setFiltro("quitada")}>Quitadas ({cont.quitada})</Seg>
             </div>
             <div className="flex items-center gap-2 px-3 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-sm w-full sm:w-auto sm:min-w-[200px]">
-              <span className="text-gray-400 text-sm">🔎</span>
+              <span className="text-gray-400"><Search size={14} /></span>
               <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar cliente ou nº…" className="w-full py-2 bg-transparent text-sm outline-none dark:text-gray-100" />
             </div>
           </div>
@@ -319,7 +320,7 @@ function VendaRow({ venda: v, empresaNome, podeQuitar, podeLancar, podeCobrar, o
                 <div className="space-y-0.5">
                   {v.pagamentos.map((p, i) => (
                     <div key={i} className="flex items-center gap-2 text-xs text-gray-600 dark:text-gray-300 py-0.5">
-                      <span className="shrink-0">{p.tipo === "permuta" ? "🔄" : "💵"}</span>
+                      <span className="shrink-0">{p.tipo === "permuta" ? <Repeat size={13} /> : <Banknote size={13} />}</span>
                       <span className="flex-1 min-w-0 truncate">
                         {p.tipo === "permuta"
                           ? `Permuta${p.permutaVendaNumero ? ` · ${p.permutaVendaNumero}${p.permutaEmpresaNome ? ` (${p.permutaEmpresaNome})` : ""}` : p.permutaDescricao ? ` · ${p.permutaDescricao}` : ""}`
@@ -333,7 +334,7 @@ function VendaRow({ venda: v, empresaNome, podeQuitar, podeLancar, podeCobrar, o
                   ))}
                   {v.status !== "quitada" && (
                     <div className="flex items-center gap-2 text-xs text-gray-500 pt-0.5">
-                      <span className="shrink-0">⏳</span><span className="flex-1">Saldo a receber</span>
+                      <span className="shrink-0"><Hourglass size={13} /></span><span className="flex-1">Saldo a receber</span>
                       <span className="tabular-nums font-semibold text-gray-800 dark:text-gray-100">{fmtMoeda(v.saldo)}</span>
                     </div>
                   )}
@@ -343,10 +344,10 @@ function VendaRow({ venda: v, empresaNome, podeQuitar, podeLancar, podeCobrar, o
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {v.status !== "quitada" && podeQuitar && <Button size="sm" onClick={onPagar}>💰 Registrar pagamento</Button>}
-            {v.status !== "quitada" && podeCobrar && <Button size="sm" variant="secondary" onClick={onCobrar}>💬 Cobrar no WhatsApp</Button>}
-            {podeLancar && <Button size="sm" variant="ghost" onClick={onEditar}>✏️ Editar</Button>}
-            {podeLancar && <Button size="sm" variant="ghost" onClick={onExcluir}>🗑️ Excluir</Button>}
+            {v.status !== "quitada" && podeQuitar && <Button size="sm" className="inline-flex items-center gap-1" onClick={onPagar}><Banknote size={14} /> Registrar pagamento</Button>}
+            {v.status !== "quitada" && podeCobrar && <Button size="sm" variant="secondary" className="inline-flex items-center gap-1" onClick={onCobrar}><MessageSquare size={14} /> Cobrar no WhatsApp</Button>}
+            {podeLancar && <Button size="sm" variant="ghost" className="inline-flex items-center gap-1" onClick={onEditar}><Pencil size={14} /> Editar</Button>}
+            {podeLancar && <Button size="sm" variant="ghost" className="inline-flex items-center gap-1" onClick={onExcluir}><Trash2 size={14} /> Excluir</Button>}
           </div>
           {v.clienteTipo === "interna" && <div className="text-[10px] text-gray-400">Empresa vendedora: {empresaNome(v.restaurantId)}</div>}
         </div>
@@ -583,8 +584,8 @@ function PagamentoModal({ venda, formas, vendasRecebidas, empresaNome, meId, meN
               <label className="text-xs text-gray-500">Comprovante (opcional)</label>
               <div className="mt-0.5 flex items-center gap-2">
                 <input type="file" accept="image/*,application/pdf" className="hidden" id="comp-input" onChange={e => { const f = e.target.files?.[0]; if (f) uploadComprovante(f); }} />
-                <label htmlFor="comp-input" className="px-3 py-1.5 rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700 text-xs text-indigo-700 dark:text-indigo-300 cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-900/20">
-                  {subindo ? "Enviando…" : comprovante ? `✓ ${comprovante.nome}` : "📎 Anexar comprovante"}
+                <label htmlFor="comp-input" className="px-3 py-1.5 rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700 text-xs text-indigo-700 dark:text-indigo-300 cursor-pointer hover:bg-indigo-50 dark:hover:bg-indigo-900/20 inline-flex items-center gap-1">
+                  {subindo ? "Enviando…" : comprovante ? `✓ ${comprovante.nome}` : <><Paperclip size={13} /> Anexar comprovante</>}
                 </label>
                 {comprovante && <button type="button" onClick={() => setComprovante(null)} className="text-red-500 text-xs">remover</button>}
               </div>
@@ -720,7 +721,7 @@ function CobrancaModal({ rid, empresaNome, vendas, clientes, meId, meNome, onClo
           <span className="text-sm text-gray-500">Total: <strong className="text-gray-800 dark:text-gray-200">{fmtMoeda(totalSel)}</strong></span>
           <div className="flex gap-2">
             <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-            <Button onClick={gerar} disabled={enviando || selecionadas.length === 0}>📤 Abrir WhatsApp</Button>
+            <Button onClick={gerar} disabled={enviando || selecionadas.length === 0} className="inline-flex items-center gap-1"><Send size={14} /> Abrir WhatsApp</Button>
           </div>
         </div>
       </div>
@@ -754,7 +755,7 @@ function CadastroProdutos({ rid, produtos }: { rid: string; produtos: VendaProdu
       </FormCard>
       <ListaCard vazio={ativos.length === 0} vazioTexto="Nenhum produto cadastrado.">
         {ativos.map(p => (
-          <ItemLinha key={p.id} emoji="📦" titulo={p.nome} sub={p.unidade || undefined}
+          <ItemLinha key={p.id} emoji={<Package size={18} />} titulo={p.nome} sub={p.unidade || undefined}
             direita={p.precoPadrao ? <span className="text-gray-600 dark:text-gray-300 font-medium tabular-nums">{fmtMoeda(p.precoPadrao)}</span> : null}
             onExcluir={() => updateDoc(doc(db, "vendasProdutos", p.id), { ativo: false })} />
         ))}
@@ -801,14 +802,14 @@ function CadastroClientes({ rid, clientes, restaurants }: { rid: string; cliente
             <Input label="Nome" value={nome} onChange={e => setNome(e.target.value)} placeholder="ex: Fulano / Empresa X" />
           )}
           {tipo === "interna"
-            ? <div className="text-[11px] text-gray-500 dark:text-gray-400 self-end pb-2.5">💬 Cobrança vai pela Central de Avisos da empresa — sem WhatsApp.</div>
+            ? <div className="text-[11px] text-gray-500 dark:text-gray-400 self-end pb-2.5 inline-flex items-center gap-1"><MessageSquare size={12} /> Cobrança vai pela Central de Avisos da empresa — sem WhatsApp.</div>
             : <Input label="WhatsApp" value={whats} onChange={e => setWhats(e.target.value)} placeholder="(91) 90000-0000" />}
           <Button onClick={add}>+ Adicionar</Button>
         </div>
       </FormCard>
       <ListaCard vazio={ativos.length === 0} vazioTexto="Nenhum cliente cadastrado.">
         {ativos.map(c => (
-          <ItemLinha key={c.id} emoji={c.tipo === "interna" ? "🏢" : "👤"}
+          <ItemLinha key={c.id} emoji={c.tipo === "interna" ? <Building2 size={18} /> : <User size={18} />}
             titulo={c.nome} badge={c.tipo === "interna" ? "interna" : undefined}
             sub={c.whatsapp || undefined}
             onExcluir={() => updateDoc(doc(db, "vendasClientes", c.id), { ativo: false })} />
@@ -837,7 +838,7 @@ function CadastroFormas({ formas }: { formas: VendaFormaPagamento[] }) {
       </FormCard>
       <ListaCard vazio={ativas.length === 0} vazioTexto="Nenhuma forma cadastrada.">
         {ativas.map(f => (
-          <ItemLinha key={f.id} emoji="💳" titulo={f.nome}
+          <ItemLinha key={f.id} emoji={<CreditCard size={18} />} titulo={f.nome}
             onExcluir={() => deleteDoc(doc(db, "vendasFormasPagamento", f.id))} />
         ))}
       </ListaCard>
@@ -866,7 +867,7 @@ function ListaCard({ vazio, vazioTexto, children }: { vazio: boolean; vazioTexto
 }
 // Linha de item na lista de cadastros.
 function ItemLinha({ emoji, titulo, sub, badge, direita, onExcluir }: {
-  emoji: string; titulo: string; sub?: string; badge?: string; direita?: React.ReactNode; onExcluir: () => void;
+  emoji: React.ReactNode; titulo: string; sub?: string; badge?: string; direita?: React.ReactNode; onExcluir: () => void;
 }) {
   return (
     <div className="flex items-center gap-3 px-4 py-3 hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors group">

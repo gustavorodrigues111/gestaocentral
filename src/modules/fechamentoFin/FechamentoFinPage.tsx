@@ -21,6 +21,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
+import { Link as LinkIcon, MessageSquare, Calculator } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import type { Pessoa, ModuleId } from "../../core/types";
 import { PageContainer } from "../../core/ui/PageContainer";
@@ -336,7 +337,7 @@ export function FechamentoFinPage() {
                             <span className="text-sm text-gray-900 dark:text-gray-100">{it.titulo}</span>
                             {it.geral && <span className="ml-2 text-[10px] px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-500">geral</span>}
                             {it.linkTipo === "modulo" && <span className="ml-2 text-[10px] text-indigo-600 dark:text-indigo-400">↗ {moduloLabel(it.modulo)}</span>}
-                            {it.linkTipo === "externo" && <span className="ml-2 text-[10px] text-gray-500">🔗 arquivo</span>}
+                            {it.linkTipo === "externo" && <span className="ml-2 text-[10px] text-gray-500 inline-flex items-center gap-1"><LinkIcon size={11} /> arquivo</span>}
                           </button>
                           <span className="text-xs text-gray-500 whitespace-nowrap">{resumoPrazo(it.prazoRef) || it.prazo || "—"}</span>
                           <span className="text-xs whitespace-nowrap"><RespLabel it={it} pessoaNome={pessoaNome} /></span>
@@ -429,14 +430,14 @@ function SecaoRows({ secao, empresas, cel, aplicaNa, podeOperar, toggleCheck, se
                       )}
                       {it.linkTipo === "externo" && (
                         c.url
-                          ? <a href={c.url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-gray-500 hover:underline" title={c.url}>🔗</a>
+                          ? <a href={c.url} target="_blank" rel="noopener noreferrer" className="inline-flex items-center text-gray-500 hover:underline" title={c.url}><LinkIcon size={12} /></a>
                           : podeOperar && <button className="text-[10px] text-gray-300 hover:text-gray-500" title="Anexar link do arquivo"
                               onClick={() => { const v = prompt(`Link do arquivo (${it.titulo} · ${e.nome}):`, ""); if (v != null) setUrl(it.id, e.id, v); }}>+link</button>
                       )}
                       {podeOperar && (
                         <button className="text-[10px] text-gray-300 hover:text-gray-500" title={c.obs ? `Obs: ${c.obs}` : "Observação"}
                           onClick={() => { const v = prompt(`Observação (${it.titulo} · ${e.nome}):`, c.obs || ""); if (v != null) setObs(it.id, e.id, v); }}>
-                          {c.obs ? "💬" : "·"}
+                          {c.obs ? <MessageSquare size={12} className="inline" /> : "·"}
                         </button>
                       )}
                     </div>
@@ -477,7 +478,7 @@ function Check({ on, podeOperar, onClick }: { on: boolean; podeOperar: boolean; 
 function EmptyState({ podeConfig, onSeed, onZero }: { podeConfig: boolean; onSeed: () => void; onZero: () => void }) {
   return (
     <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center">
-      <div className="text-4xl mb-2">🧮</div>
+      <div className="flex justify-center mb-2 text-gray-400"><Calculator size={40} /></div>
       <h3 className="font-semibold text-gray-900 dark:text-gray-100">Ainda não há itens de fechamento</h3>
       <p className="text-sm text-gray-500 dark:text-gray-400 mt-1 mb-4">Comece pelo modelo sugerido (você edita tudo depois) ou monte do zero.</p>
       {podeConfig ? (

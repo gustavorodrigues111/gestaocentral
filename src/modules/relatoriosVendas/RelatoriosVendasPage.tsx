@@ -6,7 +6,8 @@
 //   • Faturamento por turno: sai dos docs vendasAltec já sincronizados
 //     (vendasPorHora = faturamento faturado/encerrado por hora), agrupado
 //     em Almoço × Noite por um horário de corte configurável.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { CalendarDays, Hourglass, UtensilsCrossed, Moon } from "lucide-react";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -252,8 +253,8 @@ export function RelatoriosVendasPage() {
           </div>
 
           <div className="mb-3 text-xs">
-            <button onClick={() => void salvarProAgente()} disabled={backfill === "rodando"} className="font-medium text-sky-700 dark:text-sky-300 hover:underline disabled:opacity-50">
-              {backfill === "rodando" ? "⏳ extraindo 12 meses…" : "⤓ Extrair últimos 12 meses de uma vez (pro agente de IA)"}
+            <button onClick={() => void salvarProAgente()} disabled={backfill === "rodando"} className="inline-flex items-center gap-1 font-medium text-sky-700 dark:text-sky-300 hover:underline disabled:opacity-50">
+              {backfill === "rodando" ? <><Hourglass size={12} /> extraindo 12 meses…</> : "⤓ Extrair últimos 12 meses de uma vez (pro agente de IA)"}
             </button>
             {backfill && backfill !== "rodando" && <span className="ml-2 text-gray-500">{backfill}</span>}
           </div>
@@ -279,7 +280,7 @@ export function RelatoriosVendasPage() {
 
           {carregando && (
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-6 text-sm text-gray-500 flex items-center gap-2">
-              <span className="animate-spin">⏳</span> Consultando o Altec (login + relatório) — leva alguns segundos…
+              <Hourglass size={14} className="animate-spin" /> Consultando o Altec (login + relatório) — leva alguns segundos…
             </div>
           )}
           {erro && <div className="mb-3 rounded-lg border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 p-3 text-sm text-rose-700 dark:text-rose-300">⚠ {erro}</div>}
@@ -298,7 +299,7 @@ export function RelatoriosVendasPage() {
                 {meses.map((m) => (
                   <li key={m.comp} className={`flex items-center gap-3 px-3 py-2.5 ${selecionado === m.comp ? "bg-indigo-50/60 dark:bg-indigo-950/20" : "hover:bg-gray-50 dark:hover:bg-gray-900/40"}`}>
                     <button onClick={() => void abrirMes(m.comp)} className="flex-1 text-left">
-                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100">📅 {nomeComp(m.comp).replace(/^\w/, (c) => c.toUpperCase())}</div>
+                      <div className="text-sm font-medium text-gray-900 dark:text-gray-100 inline-flex items-center gap-1"><CalendarDays size={14} /> {nomeComp(m.comp).replace(/^\w/, (c) => c.toUpperCase())}</div>
                       <div className="text-[11px] text-gray-500">
                         {m.totalProdutos} produtos · {money(m.totalFatBruto)} · extraído em {dtBR(m.geradoEm) || "—"}
                       </div>
@@ -407,8 +408,8 @@ export function RelatoriosVendasPage() {
           ) : (
             <>
               <div className="grid grid-cols-3 gap-2 mb-3">
-                <Card titulo="🍽 Almoço" valor={money(turno.tot.almoco)} sub={turno.tot.total ? `${((turno.tot.almoco / turno.tot.total) * 100).toFixed(0)}%` : ""} />
-                <Card titulo="🌙 Noite" valor={money(turno.tot.noite)} sub={turno.tot.total ? `${((turno.tot.noite / turno.tot.total) * 100).toFixed(0)}%` : ""} />
+                <Card titulo={<span className="inline-flex items-center gap-1"><UtensilsCrossed size={12} /> Almoço</span>} valor={money(turno.tot.almoco)} sub={turno.tot.total ? `${((turno.tot.almoco / turno.tot.total) * 100).toFixed(0)}%` : ""} />
+                <Card titulo={<span className="inline-flex items-center gap-1"><Moon size={12} /> Noite</span>} valor={money(turno.tot.noite)} sub={turno.tot.total ? `${((turno.tot.noite / turno.tot.total) * 100).toFixed(0)}%` : ""} />
                 <Card titulo="Total" valor={money(turno.tot.total)} sub={`${dias.length} dias`} />
               </div>
               <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
@@ -416,8 +417,8 @@ export function RelatoriosVendasPage() {
                   <thead className="bg-gray-50 dark:bg-gray-900/60 text-gray-600 dark:text-gray-300 text-xs">
                     <tr>
                       <th className="px-2 py-1.5 text-left">Dia</th>
-                      <th className="px-2 py-1.5 text-right">🍽 Almoço</th>
-                      <th className="px-2 py-1.5 text-right">🌙 Noite</th>
+                      <th className="px-2 py-1.5 text-right"><span className="inline-flex items-center gap-1 justify-end"><UtensilsCrossed size={12} /> Almoço</span></th>
+                      <th className="px-2 py-1.5 text-right"><span className="inline-flex items-center gap-1 justify-end"><Moon size={12} /> Noite</span></th>
                       <th className="px-2 py-1.5 text-right">Total</th>
                     </tr>
                   </thead>
@@ -495,7 +496,7 @@ function SeletorMesAno({ selected, onPick, extraidos, max, rotuloVerde = "extra�
   );
 }
 
-function Card({ titulo, valor, sub }: { titulo: string; valor: string; sub?: string }) {
+function Card({ titulo, valor, sub }: { titulo: ReactNode; valor: string; sub?: string }) {
   return (
     <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
       <div className="text-[11px] uppercase tracking-wide text-gray-500">{titulo}</div>

@@ -9,6 +9,7 @@ import type { Restaurant } from "../../core/types";
 import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { UtensilsCrossed, BarChart3, RotateCw, TriangleAlert, Hourglass, Bot, Settings, Plug, type LucideIcon } from "lucide-react";
 
 type Status = { restaurantId?: string; nome?: string; atualizadoEm?: string; ok?: boolean; erro?: string; [k: string]: unknown };
 
@@ -27,11 +28,16 @@ function haQuando(iso?: string): string {
 const money = (v: unknown) => (typeof v === "number" ? v : 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 const CONECTORES = [
-  { tipo: "getin", nome: "GetIn (Reservas)", icon: "🍽️", statusCol: "getinSyncStatus", endpoint: "/api/getin-sync",
+  { tipo: "getin", nome: "GetIn (Reservas)", statusCol: "getinSyncStatus", endpoint: "/api/getin-sync",
     resumo: (s: Status) => `${Number(s.total || 0)} reservas` },
-  { tipo: "altec", nome: "Altec / Riser (Vendas)", icon: "📊", statusCol: "altecSyncStatus", endpoint: "/api/altec-sync",
+  { tipo: "altec", nome: "Altec / Riser (Vendas)", statusCol: "altecSyncStatus", endpoint: "/api/altec-sync",
     resumo: (s: Status) => `hoje ${money(s.faturamentoHoje)}` },
 ] as const;
+
+const CONECTOR_ICON: Record<string, LucideIcon> = {
+  getin: UtensilsCrossed,
+  altec: BarChart3,
+};
 
 export function ConectoresPage() {
   const { restaurants } = useRestaurant();
@@ -138,17 +144,18 @@ export function ConectoresPage() {
                   const s = statusPorCol[c.statusCol]?.[r.id];
                   if (!s) return null;
                   const chave = `${c.tipo}_${r.id}`;
+                  const Ic = CONECTOR_ICON[c.tipo] || Plug;
                   return (
                     <div key={c.tipo} className={`rounded-lg border p-3 ${s.erro ? "border-rose-200 dark:border-rose-900 bg-rose-50/60 dark:bg-rose-950/20" : "border-emerald-200 dark:border-emerald-900 bg-emerald-50/50 dark:bg-emerald-950/20"}`}>
                       <div className="flex items-center justify-between gap-2">
-                        <span className="text-sm font-medium text-gray-800 dark:text-gray-100">{c.icon} {c.nome}</span>
+                        <span className="text-sm font-medium text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5"><Ic size={16} /> {c.nome}</span>
                         <Button size="sm" variant="secondary" disabled={forcando === chave} onClick={() => void forcar(c.tipo, c.endpoint, r.id)}>
-                          {forcando === chave ? "…" : "↻"}
+                          {forcando === chave ? "…" : <RotateCw size={14} />}
                         </Button>
                       </div>
                       <div className="text-[12px] mt-1.5">
                         {s.erro ? (
-                          <span className="text-rose-700 dark:text-rose-300" title={s.erro}>⚠ erro na sincronização</span>
+                          <span className="text-rose-700 dark:text-rose-300 inline-flex items-center gap-1" title={s.erro}><TriangleAlert size={13} /> erro na sincronização</span>
                         ) : (
                           <span className="text-emerald-700 dark:text-emerald-300">✓ sincronizado {haQuando(s.atualizadoEm)}</span>
                         )}
@@ -162,7 +169,7 @@ export function ConectoresPage() {
                             onClick={() => void puxarHistorico(r.id)}
                             className="text-[12px] font-medium text-sky-700 dark:text-sky-300 hover:underline disabled:opacity-50 disabled:no-underline"
                           >
-                            {backfill?.rid === r.id && backfill.rodando ? "⏳ puxando histórico…" : "⤓ Puxar histórico completo"}
+                            {backfill?.rid === r.id && backfill.rodando ? <span className="inline-flex items-center gap-1"><Hourglass size={12} /> puxando histórico…</span> : "⤓ Puxar histórico completo"}
                           </button>
                           {backfill?.rid === r.id && (
                             <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{backfill.msg}</div>
@@ -174,7 +181,7 @@ export function ConectoresPage() {
                               onClick={() => void puxarSnapshots(r.id)}
                               className="text-[12px] font-medium text-emerald-700 dark:text-emerald-300 hover:underline disabled:opacity-50 disabled:no-underline"
                             >
-                              {snap?.rid === r.id && snap.rodando ? "⏳ salvando…" : "🤖 Salvar 12 meses de produtos pro agente"}
+                              {snap?.rid === r.id && snap.rodando ? <span className="inline-flex items-center gap-1"><Hourglass size={12} /> salvando…</span> : <span className="inline-flex items-center gap-1"><Bot size={12} /> Salvar 12 meses de produtos pro agente</span>}
                             </button>
                             {snap?.rid === r.id && !snap.rodando && (
                               <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">{snap.msg}</div>
@@ -232,7 +239,7 @@ function AltecConfig({ restaurants }: { restaurants: Restaurant[] }) {
   return (
     <div className="mt-6 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
       <button onClick={() => setAberto((v) => !v)} className="w-full flex items-center justify-between p-4 text-left">
-        <span className="font-semibold text-gray-900 dark:text-gray-100">⚙️ Configurar Altec (por empresa)</span>
+        <span className="font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Settings size={16} /> Configurar Altec (por empresa)</span>
         <span className="text-gray-400">{aberto ? "▲" : "▼"}</span>
       </button>
       {aberto && (
