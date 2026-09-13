@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { House } from "lucide-react";
 import { Link } from "react-router-dom";
 import { sendPasswordResetEmail } from "firebase/auth";
 import { auth } from "../firebase/config";
@@ -63,7 +64,7 @@ export function LoginScreen() {
     <div className="min-h-screen flex items-center justify-center px-4 bg-gray-50 dark:bg-gray-950">
       <form onSubmit={handleSubmit} className="w-full max-w-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-8 shadow-sm">
         <div className="text-center mb-6">
-          <div className="text-3xl mb-2">🏠</div>
+          <div className="flex justify-center mb-2 text-indigo-500"><House size={30} /></div>
           {subdomain ? (
             <>
               <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">

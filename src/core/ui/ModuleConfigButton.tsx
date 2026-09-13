@@ -1,4 +1,5 @@
 import { useState, type ReactNode } from "react";
+import { Settings } from "lucide-react";
 import { Modal } from "./Modal";
 
 /**
@@ -33,7 +34,7 @@ export function ModuleConfigButton({
         title={disabled ? "Sem permissão" : title}
         aria-label={title}
       >
-        ⚙️
+        <Settings size={18} />
       </button>
       {open && (
         <Modal title={title} onClose={() => setOpen(false)} maxWidth="max-w-lg">

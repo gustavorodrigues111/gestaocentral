@@ -8,6 +8,7 @@
 // Desktop (sm+): expande na lateral, mostra "você é X (master)" inline.
 
 import { useState } from "react";
+import { Eye, TriangleAlert } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 
@@ -40,7 +41,7 @@ export function ImpersonationBanner() {
       role="alert"
     >
       <div className="max-w-screen-2xl mx-auto px-2 sm:px-4 py-1 sm:py-1.5 flex items-center gap-2">
-        <span className="text-base sm:text-lg shrink-0" aria-hidden>👁️</span>
+        <span className="shrink-0" aria-hidden><Eye size={18} /></span>
 
         {/* Linha principal: nome + (desktop) "você é X" inline */}
         <div className="text-[12px] sm:text-sm min-w-0 flex-1 truncate">
@@ -76,11 +77,11 @@ export function ImpersonationBanner() {
       {(expandido || typeof window === "undefined") && (
         <div className="sm:hidden max-w-screen-2xl mx-auto px-2 pb-1.5 text-[10px] opacity-95 leading-snug">
           <div>Você é <strong>{pessoaReal.nome}</strong> (master)</div>
-          <div>⚠ Ações ficam registradas em seu nome (auth real)</div>
+          <div className="inline-flex items-center gap-1"><TriangleAlert size={11} /> Ações ficam registradas em seu nome (auth real)</div>
         </div>
       )}
-      <div className="hidden sm:block max-w-screen-2xl mx-auto px-4 pb-1 text-[11px] opacity-90">
-        ⚠ Ações que você fizer ainda são registradas em seu nome (auth real).
+      <div className="hidden sm:flex items-center gap-1 max-w-screen-2xl mx-auto px-4 pb-1 text-[11px] opacity-90">
+        <TriangleAlert size={12} /> Ações que você fizer ainda são registradas em seu nome (auth real).
       </div>
     </div>
   );

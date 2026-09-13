@@ -1,4 +1,5 @@
 import { useState, type FormEvent } from "react";
+import { KeyRound } from "lucide-react";
 import { Link } from "react-router-dom";
 import { collection, query, where, limit, getDocs } from "firebase/firestore";
 import { auth, db } from "../firebase/config";
@@ -76,7 +77,7 @@ export function SignupScreen() {
         className="w-full max-w-sm bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-8 shadow-sm"
       >
         <div className="text-center mb-6">
-          <div className="text-3xl mb-2">🔐</div>
+          <div className="flex justify-center mb-2 text-indigo-500"><KeyRound size={30} /></div>
           <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100">Primeiro acesso</h1>
           {subdomain && (
             <p className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">

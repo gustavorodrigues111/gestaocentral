@@ -9,6 +9,7 @@
 // Suspense e o usuário vê o splash bege por ~200-400ms até carregar.
 
 import { useEffect } from "react";
+import { Lock, CircleHelp } from "lucide-react";
 import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { useTelemetria } from "../telemetry/useTelemetria";
@@ -178,7 +179,7 @@ export function ProtectedShell() {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 text-center">
         <div>
-          <div className="text-4xl mb-3">🔒</div>
+          <div className="flex justify-center mb-3 text-gray-400"><Lock size={36} /></div>
           <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Conta não vinculada</h2>
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2 max-w-sm">
             Sua conta {fbUser.email} foi autenticada, mas não tem registro de Pessoa no sistema.
@@ -242,7 +243,7 @@ function SubdomainGuard({ children }: { children: React.ReactNode }) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 text-center bg-gray-50 dark:bg-gray-950">
         <div className="max-w-md bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-2xl p-8 shadow-sm">
-          <div className="text-5xl mb-3">{enderecoErrado ? "🤔" : "🔒"}</div>
+          <div className="flex justify-center mb-3 text-gray-400">{enderecoErrado ? <CircleHelp size={48} /> : <Lock size={48} />}</div>
           <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 mb-2">
             {enderecoErrado
               ? "Endereço não encontrado"

@@ -9,19 +9,20 @@
 // ════════════════════════════════════════════════════════════════════════════
 
 import type { ReactNode } from "react";
+import { TriangleAlert, PenLine, CheckSquare } from "lucide-react";
 import { nomeMes } from "../utils/date";
 
 type Versao = "prevista" | "real";
 
 const REL = {
   atual:   { label: "Mês atual",                bar: "border-emerald-300 dark:border-emerald-800 bg-white dark:bg-gray-900",         chip: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" },
-  passado: { label: "⚠ Mês passado",            bar: "border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/15",      chip: "bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-100" },
+  passado: { label: <span className="inline-flex items-center gap-1"><TriangleAlert size={11} /> Mês passado</span>, bar: "border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/15",      chip: "bg-amber-200 text-amber-900 dark:bg-amber-800/60 dark:text-amber-100" },
   futuro:  { label: "Mês futuro · planejamento", bar: "border-sky-300 dark:border-sky-800 bg-sky-50/60 dark:bg-sky-900/10",            chip: "bg-sky-100 text-sky-800 dark:bg-sky-900/40 dark:text-sky-300" },
 } as const;
 
 const VER = {
-  prevista: { label: "📝 Prevista",  chip: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
-  real:     { label: "✅ Praticada", chip: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" },
+  prevista: { label: <span className="inline-flex items-center gap-1"><PenLine size={11} /> Prevista</span>,  chip: "bg-blue-100 text-blue-800 dark:bg-blue-900/40 dark:text-blue-300" },
+  real:     { label: <span className="inline-flex items-center gap-1"><CheckSquare size={11} /> Praticada</span>, chip: "bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300" },
 } as const;
 
 // Tinta de fundo bem suave pra grade, por versão (usada na Escala).

@@ -7,6 +7,7 @@
 // equivalente no Meu Portal, use uma versão simples sem o link.
 
 import type { ReactNode } from "react";
+import { Lock } from "lucide-react";
 import { Link } from "react-router-dom";
 
 type Props = {
@@ -39,7 +40,7 @@ export function SelfServiceRedirect({ restaurantId, icone, titulo, descricao }: 
 export function SemPermissaoCard() {
   return (
     <div className="max-w-2xl mx-auto py-12 text-center">
-      <div className="text-4xl mb-3">🔒</div>
+      <div className="flex justify-center mb-3 text-gray-400"><Lock size={36} /></div>
       <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
     </div>
   );

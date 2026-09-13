@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { TriangleAlert, CalendarDays } from "lucide-react";
 import { Modal } from "./Modal";
 import { Input } from "./Input";
 import { Button } from "./Button";
@@ -83,13 +84,13 @@ export function VigenciaModal({ titulo, changes, impacto, onConfirm, onClose }: 
           />
           <div className="text-[11px] mt-1 space-y-1">
             {isPast && (
-              <div className="text-amber-700 dark:text-amber-400">
-                ⚠ Vigência retroativa — pode afetar gorjetas/VT já fechados.
+              <div className="text-amber-700 dark:text-amber-400 inline-flex items-center gap-1">
+                <TriangleAlert size={13} /> Vigência retroativa — pode afetar gorjetas/VT já fechados.
               </div>
             )}
             {isFuture && (
-              <div className="text-blue-700 dark:text-blue-400">
-                📅 Vigência futura — a mudança fica AGENDADA. O sistema aplica no dia {vigencia}.
+              <div className="text-blue-700 dark:text-blue-400 inline-flex items-center gap-1">
+                <CalendarDays size={13} /> Vigência futura — a mudança fica AGENDADA. O sistema aplica no dia {vigencia}.
               </div>
             )}
             {!isPast && !isFuture && (
@@ -114,8 +115,8 @@ export function VigenciaModal({ titulo, changes, impacto, onConfirm, onClose }: 
 
         {/* Aviso de impacto (opcional, vindo do caller) */}
         {impacto && (
-          <div className="rounded-lg bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-800 dark:text-amber-300">
-            ⚠ {impacto}
+          <div className="rounded-lg bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-800 p-3 text-xs text-amber-800 dark:text-amber-300 inline-flex items-center gap-1">
+            <TriangleAlert size={13} className="shrink-0" /> {impacto}
           </div>
         )}
 
