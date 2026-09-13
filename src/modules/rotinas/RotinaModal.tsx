@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
+import { Repeat, TriangleAlert, Bell, MessageSquare, Mail } from "lucide-react";
 import { MODULES } from "../../config/modules";
 import type { ModuleId, Pessoa, Rotina, RotinaRecorrencia } from "../../core/types";
 import { salvarRotina } from "./repository";
@@ -226,8 +227,8 @@ export function RotinaModal({ rid, rotina, pessoas, modulosAtivos, meId, meNome,
                   className="px-2 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
               </div>
             )}
-            <div className="text-[11px] text-indigo-700 dark:text-indigo-300 mt-2 font-medium">
-              🔁 {recorrenciaLabel(rec)}{proxima && ` · próxima: ${proxima.split("-").reverse().join("/")}`}
+            <div className="text-[11px] text-indigo-700 dark:text-indigo-300 mt-2 font-medium inline-flex items-center gap-1">
+              <Repeat size={12} /> {recorrenciaLabel(rec)}{proxima && ` · próxima: ${proxima.split("-").reverse().join("/")}`}
             </div>
           </div>
         </Secao>
@@ -268,14 +269,14 @@ export function RotinaModal({ rid, rotina, pessoas, modulosAtivos, meId, meNome,
               </label>
             ))}
           </div>
-          {disparo === "com_pendencia" && !moduloAlvo && <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400">⚠ Escolha o módulo acima — a pendência é contada a partir dele. (Sem contador, avisa como "sempre".)</p>}
+          {disparo === "com_pendencia" && !moduloAlvo && <p className="mt-1.5 text-[11px] text-amber-700 dark:text-amber-400 inline-flex items-start gap-1"><TriangleAlert size={12} className="shrink-0 mt-0.5" /> <span>Escolha o módulo acima — a pendência é contada a partir dele. (Sem contador, avisa como "sempre".)</span></p>}
           {disparo !== "nunca" && (
             <div className="mt-3 rounded-lg bg-gray-50 dark:bg-gray-900/40 border border-gray-200 dark:border-gray-800 p-3 space-y-3">
               <div className="flex flex-col gap-1.5">
                 <span className="text-[12px] font-semibold text-gray-600 dark:text-gray-300">Por onde avisar</span>
-                <label className="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" checked={canalCentral} onChange={e => setCanalCentral(e.target.checked)} className="accent-indigo-600 w-4 h-4" /> 🔔 Central de Avisos (no app)</label>
-                <label className="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" checked={canalWa} onChange={e => setCanalWa(e.target.checked)} className="accent-emerald-600 w-4 h-4" /> 💬 WhatsApp</label>
-                <label className="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" checked={canalEmail} onChange={e => setCanalEmail(e.target.checked)} className="accent-sky-600 w-4 h-4" /> ✉️ E-mail</label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" checked={canalCentral} onChange={e => setCanalCentral(e.target.checked)} className="accent-indigo-600 w-4 h-4" /> <span className="inline-flex items-center gap-1"><Bell size={14} /> Central de Avisos (no app)</span></label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" checked={canalWa} onChange={e => setCanalWa(e.target.checked)} className="accent-emerald-600 w-4 h-4" /> <span className="inline-flex items-center gap-1"><MessageSquare size={14} /> WhatsApp</span></label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm"><input type="checkbox" checked={canalEmail} onChange={e => setCanalEmail(e.target.checked)} className="accent-sky-600 w-4 h-4" /> <span className="inline-flex items-center gap-1"><Mail size={14} /> E-mail</span></label>
               </div>
               {(canalWa || canalEmail) && (
                 <div className="flex items-center gap-2 flex-wrap">
@@ -290,7 +291,7 @@ export function RotinaModal({ rid, rotina, pessoas, modulosAtivos, meId, meNome,
               </label>
               {canalWa && selecionadas.length > 0 && (() => {
                 const semZap = selecionadas.filter(p => !p.whatsapp);
-                return semZap.length > 0 ? <p className="text-[11px] text-amber-700 dark:text-amber-400">⚠ Sem WhatsApp (não recebem no zap): {semZap.map(p => p.nome).join(", ")}</p> : null;
+                return semZap.length > 0 ? <p className="text-[11px] text-amber-700 dark:text-amber-400 inline-flex items-start gap-1"><TriangleAlert size={12} className="shrink-0 mt-0.5" /> <span>Sem WhatsApp (não recebem no zap): {semZap.map(p => p.nome).join(", ")}</span></p> : null;
               })()}
             </div>
           )}

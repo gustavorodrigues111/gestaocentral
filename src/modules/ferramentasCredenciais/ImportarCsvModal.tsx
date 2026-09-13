@@ -12,6 +12,7 @@
 import { useState, useMemo } from "react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import { Upload, TriangleAlert } from "lucide-react";
 import { parseToolsCsv, gerarTemplateCsv, type LinhaImportada } from "./importCsv";
 import { createTool } from "./repository";
 
@@ -71,7 +72,7 @@ export function ImportarCsvModal({ rid, pessoaId, onClose }: Props) {
   }
 
   return (
-    <Modal title="📤 Importar ferramentas via CSV" onClose={onClose} maxWidth="max-w-3xl">
+    <Modal title={<span className="inline-flex items-center gap-1.5"><Upload size={16} /> Importar ferramentas via CSV</span>} onClose={onClose} maxWidth="max-w-3xl">
       <div className="space-y-3">
         {!resultado ? (
           <>
@@ -87,8 +88,8 @@ export function ImportarCsvModal({ rid, pessoaId, onClose }: Props) {
               <p className="mt-1">
                 <strong>Tags:</strong> separadas por <code className="font-mono">|</code> (pipe). Ex: <code className="font-mono">motoboy|entrega|chamar</code>
               </p>
-              <p className="mt-1 text-blue-700 dark:text-blue-300">
-                ⚠ Senha NÃO entra no CSV — só link do Bitwarden. Atribuição de usuários é feita depois manualmente.
+              <p className="mt-1 text-blue-700 dark:text-blue-300 inline-flex items-start gap-1.5">
+                <TriangleAlert size={13} className="shrink-0 mt-0.5" /> <span>Senha NÃO entra no CSV — só link do Bitwarden. Atribuição de usuários é feita depois manualmente.</span>
               </p>
             </div>
 
@@ -96,8 +97,8 @@ export function ImportarCsvModal({ rid, pessoaId, onClose }: Props) {
               <Button size="sm" variant="secondary" onClick={baixarTemplate}>
                 ↓ Baixar template CSV
               </Button>
-              <label className="text-xs px-3 py-1.5 rounded border border-gray-300 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800">
-                📁 Subir arquivo .csv
+              <label className="text-xs px-3 py-1.5 rounded border border-gray-300 dark:border-gray-700 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 inline-flex items-center gap-1.5">
+                <Upload size={13} /> Subir arquivo .csv
                 <input
                   type="file"
                   accept=".csv,text/csv"

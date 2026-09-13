@@ -16,6 +16,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
+import { Upload, KeyRound, Package, MapPin, Lock } from "lucide-react";
 import {
   FERRAMENTA_CATEGORIA_LABEL,
   FERRAMENTA_METODO_LABEL,
@@ -145,8 +146,8 @@ export function FerramentasCredenciaisPage() {
             </div>
             {modo === "gerenciar" && (
               <>
-                <Button size="sm" variant="secondary" onClick={() => setImportandoCsv(true)}>
-                  📤 Importar CSV
+                <Button size="sm" variant="secondary" className="inline-flex items-center gap-1" onClick={() => setImportandoCsv(true)}>
+                  <Upload size={14} /> Importar CSV
                 </Button>
                 <Button size="sm" onClick={() => setEditando("nova")}>+ Nova</Button>
               </>
@@ -180,13 +181,13 @@ export function FerramentasCredenciaisPage() {
         <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-gray-500">
           {modo === "minhas" ? (
             <>
-              <div className="text-4xl mb-3">🔑</div>
+              <div className="flex justify-center mb-3"><KeyRound size={36} /></div>
               <p className="font-medium">Você ainda não tem ferramentas atribuídas.</p>
               <p className="text-xs mt-2">Peça ao seu gestor pra cadastrar seus acessos.</p>
             </>
           ) : (
             <>
-              <div className="text-4xl mb-3">📦</div>
+              <div className="flex justify-center mb-3"><Package size={36} /></div>
               <p className="font-medium">Nenhuma ferramenta cadastrada.</p>
               <p className="text-xs mt-2">Clique em "Seed Lobozó" pra começar, ou "+ Nova" pra criar do zero.</p>
             </>
@@ -355,13 +356,13 @@ function AcaoFerramenta({
     case "fisico":
       return (
         <div className="text-xs text-gray-600 dark:text-gray-400 flex items-center gap-1.5">
-          📍 {tool.localFisico || "Local físico não especificado."}
+          <MapPin size={13} className="shrink-0" /> {tool.localFisico || "Local físico não especificado."}
         </div>
       );
     case "restrito":
       return (
-        <div className="text-xs text-gray-600 dark:text-gray-400">
-          🔒 Acesso restrito — fale com{" "}
+        <div className="text-xs text-gray-600 dark:text-gray-400 inline-flex items-center gap-1.5 flex-wrap">
+          <Lock size={13} className="shrink-0" /> Acesso restrito — fale com{" "}
           <strong>{tool.responsavel ? (pessoasMap[tool.responsavel] || tool.responsavel) : "o responsável"}</strong>.
         </div>
       );

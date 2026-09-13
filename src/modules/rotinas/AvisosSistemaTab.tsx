@@ -2,6 +2,7 @@
 // (avisosCatalogo) e deixa configurar canais (in-app / email / WhatsApp),
 // destinatários, horário, dias e "respeitar folga" por tipo × restaurante.
 import { useEffect, useMemo, useState } from "react";
+import { Settings } from "lucide-react";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import type { NotificacaoConfig, NotificacaoDestinatarioModo, Pessoa, ModuleId } from "../../core/types";
@@ -53,7 +54,7 @@ export function AvisosSistemaTab({ rid, pessoas, modulosAtivos, meId, podeGerenc
                 <Canal ativo={inApp} live label="in-app" onClick={() => set(item.tipo, { inApp: !inApp })} disabled={!podeGerenciar} />
                 <Canal ativo={!!c.email} estado={item.email} label="email" onClick={() => set(item.tipo, { email: !c.email })} disabled={!podeGerenciar} />
                 <Canal ativo={!!c.whatsapp} estado={item.whatsapp} label="whats" onClick={() => set(item.tipo, { whatsapp: !c.whatsapp })} disabled={!podeGerenciar} />
-                <button type="button" onClick={() => setAberto(open ? null : item.tipo)} className={`text-xs px-2 py-1.5 rounded-lg border ${open ? "border-indigo-400 text-indigo-600 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"}`}>⚙</button>
+                <button type="button" onClick={() => setAberto(open ? null : item.tipo)} className={`text-xs px-2 py-1.5 rounded-lg border ${open ? "border-indigo-400 text-indigo-600 dark:text-indigo-300" : "border-gray-200 dark:border-gray-800 text-gray-500"}`} aria-label="Configurar"><Settings size={13} /></button>
               </div>
             </div>
             {open && <ConfigDrawer c={c} pessoas={pessoas} onSet={patch => set(item.tipo, patch)} podeGerenciar={podeGerenciar} />}

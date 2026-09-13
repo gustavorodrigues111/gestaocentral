@@ -6,6 +6,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
+import { Lock, Repeat, CalendarDays, ArrowRight, User } from "lucide-react";
 import { MODULES } from "../../config/modules";
 import type { ModuleId, Pessoa, Rotina } from "../../core/types";
 import { RotinaModal } from "./RotinaModal";
@@ -75,7 +76,7 @@ export function RotinasPage() {
   if (!podeVer) {
     return (
       <div className="max-w-2xl mx-auto py-12 text-center">
-        <div className="text-4xl mb-3">🔒</div>
+        <div className="flex justify-center mb-3"><Lock size={36} /></div>
         <p className="text-gray-700 dark:text-gray-300 font-medium">Sem permissão</p>
       </div>
     );
@@ -94,7 +95,7 @@ export function RotinasPage() {
         <div className="text-sm text-gray-500">Carregando…</div>
       ) : rotinas.length === 0 ? (
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-8 text-center">
-          <div className="text-4xl mb-3">🔁</div>
+          <div className="flex justify-center mb-3"><Repeat size={36} /></div>
           <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhuma rotina ainda</p>
           {podeGerenciar && <p className="text-sm text-gray-500 mt-1">Crie a primeira em "+ Nova rotina".</p>}
         </div>
@@ -113,12 +114,12 @@ export function RotinasPage() {
                     </div>
                     {r.descricao && <p className="text-sm text-gray-600 dark:text-gray-400 mt-0.5">{r.descricao}</p>}
                     <div className="text-xs text-gray-500 dark:text-gray-400 mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5">
-                      <span>🔁 {recorrenciaLabel(r.recorrencia)}</span>
-                      {prox && <span>📅 próxima: {prox.split("-").reverse().join("/")}</span>}
+                      <span className="inline-flex items-center gap-1"><Repeat size={12} /> {recorrenciaLabel(r.recorrencia)}</span>
+                      {prox && <span className="inline-flex items-center gap-1"><CalendarDays size={12} /> próxima: {prox.split("-").reverse().join("/")}</span>}
                       {moduloLabel(r.moduloAlvo) && (
-                        <span>➡️ {moduloLabel(r.moduloAlvo)}{subDestinoLabel(r.moduloAlvo, r.subAlvo) ? ` › ${subDestinoLabel(r.moduloAlvo, r.subAlvo)}` : ""}</span>
+                        <span className="inline-flex items-center gap-1"><ArrowRight size={12} /> {moduloLabel(r.moduloAlvo)}{subDestinoLabel(r.moduloAlvo, r.subAlvo) ? ` › ${subDestinoLabel(r.moduloAlvo, r.subAlvo)}` : ""}</span>
                       )}
-                      <span>👤 {nomes}</span>
+                      <span className="inline-flex items-center gap-1"><User size={12} /> {nomes}</span>
                     </div>
                   </div>
                   {podeGerenciar && (
