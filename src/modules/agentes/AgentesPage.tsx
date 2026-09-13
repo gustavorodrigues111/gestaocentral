@@ -14,6 +14,7 @@ import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
 import type { AgenteIA, AgenteLog } from "../../core/types";
 import { CATALOGO, DOMINIO_META, DOMINIO_ICON, type AgenteDominio } from "./catalogo";
+import { Bot, MessageSquare, Settings, UtensilsCrossed, Trash2, Smartphone, Search, Link as LinkIcon, FileText, Image as ImageIcon, Paperclip, Mic, Square, Upload, Pencil, Building2 } from "lucide-react";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 // Ícone lucide do domínio do agente — substitui o emoji legado nos cards/cabeçalhos.
@@ -83,18 +84,18 @@ export function AgentesPage() {
           <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
             <p className="text-xs text-gray-500 max-w-lg">Agentes consultam dados da plataforma e — com <b>confirmação</b> — alteram. O acesso de cada um herda as permissões de quem fala com ele. O chat e a resposta no WhatsApp chegam no próximo passo.</p>
             <div className="flex gap-1.5">
-              <Button size="sm" variant="secondary" onClick={() => novo("dp")}>🧑‍💼 Novo DP</Button>
-              <Button size="sm" variant="secondary" onClick={() => novo("financeiro")}>💰 Novo Financeiro</Button>
-              <Button size="sm" variant="secondary" onClick={() => novo("vendas")}>📊 Novo Altec</Button>
-              <Button size="sm" variant="secondary" onClick={() => novo("cardapio")}>🍽️ Novo Cardápio (Puba)</Button>
-              <Button size="sm" variant="secondary" onClick={() => novo("cardapio_site")}>🍽️ Novo Cardápio (site)</Button>
-              <Button size="sm" variant="secondary" onClick={() => novo("cardapio_lobozo")}>🍽️ Novo Cardápio (Lobozó)</Button>
+              <Button size="sm" variant="secondary" className="inline-flex items-center gap-1" onClick={() => novo("dp")}><DomIcon tipo="dp" size={14} /> Novo DP</Button>
+              <Button size="sm" variant="secondary" className="inline-flex items-center gap-1" onClick={() => novo("financeiro")}><DomIcon tipo="financeiro" size={14} /> Novo Financeiro</Button>
+              <Button size="sm" variant="secondary" className="inline-flex items-center gap-1" onClick={() => novo("vendas")}><DomIcon tipo="vendas" size={14} /> Novo Altec</Button>
+              <Button size="sm" variant="secondary" className="inline-flex items-center gap-1" onClick={() => novo("cardapio")}><DomIcon tipo="cardapio" size={14} /> Novo Cardápio (Puba)</Button>
+              <Button size="sm" variant="secondary" className="inline-flex items-center gap-1" onClick={() => novo("cardapio_site")}><DomIcon tipo="cardapio_site" size={14} /> Novo Cardápio (site)</Button>
+              <Button size="sm" variant="secondary" className="inline-flex items-center gap-1" onClick={() => novo("cardapio_lobozo")}><DomIcon tipo="cardapio_lobozo" size={14} /> Novo Cardápio (Lobozó)</Button>
             </div>
           </div>
 
           {agentes.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center">
-              <div className="text-4xl mb-2">🤖</div>
+              <div className="flex justify-center mb-2 text-gray-400"><Bot size={40} /></div>
               <p className="text-sm text-gray-500 mb-3">Nenhum agente ainda. Crie os dois padrão (DP + Financeiro) pra começar.</p>
               <Button onClick={() => void seed()}>Criar agentes padrão</Button>
             </div>
@@ -117,9 +118,9 @@ export function AgentesPage() {
                     </div>
                     <div className="flex items-center gap-1.5 mt-1">
                       {a.ativo
-                        ? <Button size="sm" onClick={() => setConversando(a)} className="flex-1">💬 Conversar</Button>
-                        : <span className="flex-1 text-[11px] text-gray-400 self-center">pausado — ative em ⚙</span>}
-                      <button type="button" onClick={() => setEditando(a)} title="Configurar" className="w-9 h-9 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0">⚙</button>
+                        ? <Button size="sm" onClick={() => setConversando(a)} className="flex-1 inline-flex items-center justify-center gap-1"><MessageSquare size={14} /> Conversar</Button>
+                        : <span className="flex-1 text-[11px] text-gray-400 self-center inline-flex items-center gap-1">pausado — ative em <Settings size={12} /></span>}
+                      <button type="button" onClick={() => setEditando(a)} title="Configurar" className="w-9 h-9 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0"><Settings size={16} /></button>
                     </div>
                   </div>
                 );
@@ -211,7 +212,7 @@ function CardapioPreview({ e }: { e: CardEstado }) {
   return (
     <div className="mt-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden text-gray-800 dark:text-gray-100">
       <div className="px-3 py-1.5 bg-[#2048CE] text-white text-[11px] font-bold flex items-center justify-between">
-        <span>🍽️ Prévia do cardápio{e.versao != null ? ` · v${e.versao}` : ""}</span><span className="opacity-80">atualiza na hora</span>
+        <span className="inline-flex items-center gap-1"><UtensilsCrossed size={13} /> Prévia do cardápio{e.versao != null ? ` · v${e.versao}` : ""}</span><span className="opacity-80">atualiza na hora</span>
       </div>
       <div className="p-3 max-h-72 overflow-y-auto space-y-2.5">
         {paginas.map(([lbl, secs]) => (secs && secs.length > 0) && (
@@ -374,8 +375,8 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
           <button type="button" onClick={onVoltar} className="text-sm font-semibold px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800">← Voltar</button>
           <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-1.5 min-w-0 truncate"><DomIcon tipo={agente.tipo} size={16} /> {agente.nome}</div>
           <div className="flex items-center gap-1 ml-auto">
-            {msgs.length > 0 && <button type="button" onClick={() => void limparConversa()} title="Limpar conversa" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">🗑</button>}
-            <button type="button" onClick={onConfig} title="Configurar" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center">⚙</button>
+            {msgs.length > 0 && <button type="button" onClick={() => void limparConversa()} title="Limpar conversa" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center"><Trash2 size={16} /></button>}
+            <button type="button" onClick={onConfig} title="Configurar" className="w-8 h-8 rounded-lg text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center"><Settings size={16} /></button>
           </div>
         </div>
 
@@ -391,21 +392,21 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
             <div key={m.id} className={`flex flex-col ${m.role === "user" ? "items-end" : "items-start"}`}>
               {m.canal === "whatsapp" && (
                 <div className="text-[10px] text-emerald-600 dark:text-emerald-400 mb-0.5 px-1 flex items-center gap-1">
-                  <span>📱 WhatsApp</span>{m.pessoaNome && <span className="text-gray-400">· {m.pessoaNome}</span>}
+                  <span className="inline-flex items-center gap-1"><Smartphone size={11} /> WhatsApp</span>{m.pessoaNome && <span className="text-gray-400">· {m.pessoaNome}</span>}
                 </div>
               )}
               <div className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm whitespace-pre-wrap ${m.role === "user" ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800 text-gray-800 dark:text-gray-200"}`}>
                 {renderRico(m.texto)}
                 {m.tools && m.tools.length > 0 && (
                   <div className="mt-1.5 flex flex-wrap gap-1">
-                    {m.tools.map((t, k) => <span key={k} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200/70 dark:bg-gray-700/70 text-gray-500 dark:text-gray-400">🔎 {t.tool} · {t.resumo}</span>)}
+                    {m.tools.map((t, k) => <span key={k} className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-200/70 dark:bg-gray-700/70 text-gray-500 dark:text-gray-400 inline-flex items-center gap-1"><Search size={10} /> {t.tool} · {t.resumo}</span>)}
                   </div>
                 )}
               </div>
               {m.cardapio && <div className="w-full max-w-[92%]"><CardapioPreview e={m.cardapio} /></div>}
               {m.previaUrl && (
                 <a href={m.previaUrl} target="_blank" rel="noreferrer" className="mt-1.5 inline-flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800">
-                  <span className="w-8 h-9 rounded bg-amber-500 text-white grid place-items-center text-sm">🔗</span>
+                  <span className="w-8 h-9 rounded bg-amber-500 text-white grid place-items-center"><LinkIcon size={15} /></span>
                   <span className="text-[13px] font-semibold text-gray-800 dark:text-gray-100">Abrir prévia (HTML) ↗</span>
                 </a>
               )}
@@ -425,7 +426,7 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
         <div className="p-3 border-t border-gray-100 dark:border-gray-800">
           {anexo && (
             <div className="mb-2 flex items-center gap-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/60 px-2.5 py-1.5 w-fit max-w-full">
-              <span className="text-lg shrink-0">{anexo.isPdf ? "📄" : "🖼️"}</span>
+              <span className="shrink-0 text-gray-500">{anexo.isPdf ? <FileText size={18} /> : <ImageIcon size={18} />}</span>
               <span className="text-xs text-gray-700 dark:text-gray-200 truncate max-w-[220px]">{anexo.nome}</span>
               <button type="button" onClick={() => setAnexo(null)} title="Remover anexo" className="text-gray-400 hover:text-gray-600 text-xs shrink-0">✕</button>
             </div>
@@ -433,11 +434,11 @@ function AgenteChat({ agente, pessoaId, pessoaNome, onVoltar, onConfig }: { agen
           <div className="flex items-end gap-2">
             <input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) void escolherAnexo(f); e.target.value = ""; }} />
             <button type="button" onClick={() => fileRef.current?.click()} disabled={enviando}
-              title="Anexar imagem ou PDF" className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">📎</button>
+              title="Anexar imagem ou PDF" className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50"><Paperclip size={16} /></button>
             <button type="button" onClick={() => void toggleGravar()} disabled={enviando || transcrevendo}
               title={gravando ? "Parar e transcrever" : "Gravar áudio"}
               className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 border ${gravando ? "bg-rose-600 border-rose-600 text-white animate-pulse" : "border-gray-200 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800"} disabled:opacity-50`}>
-              {transcrevendo ? "…" : gravando ? "⏹" : "🎤"}
+              {transcrevendo ? "…" : gravando ? <Square size={16} /> : <Mic size={16} />}
             </button>
             <textarea value={texto} onChange={e => setTexto(e.target.value)} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void enviar(); } }} rows={1}
               placeholder={gravando ? "Gravando… fale e clique ⏹" : transcrevendo ? "Transcrevendo o áudio…" : anexo ? "Descreva o que quer com o anexo…" : "Escreva, anexe ou grave um áudio…"}
@@ -491,11 +492,11 @@ function AgenteEditor({ agente, restaurants, onClose, onSalvar, onExcluir, inlin
         <label className="block text-xs font-semibold text-gray-500 mb-1">Instruções (persona)</label>
         <textarea value={a.systemPrompt || ""} onChange={e => setA({ ...a, systemPrompt: e.target.value })} rows={4} className={inp + " mb-2 resize-y"} />
         <label className="flex items-center gap-2 text-xs text-indigo-600 dark:text-indigo-300 mb-3 cursor-pointer w-fit">
-          <span className="px-2.5 py-1 rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700">⬆︎ Subir/atualizar skill (SKILL.md)</span>
+          <span className="px-2.5 py-1 rounded-lg border border-dashed border-indigo-300 dark:border-indigo-700 inline-flex items-center gap-1"><Upload size={13} /> Subir/atualizar skill (SKILL.md)</span>
           <input type="file" accept=".md,.txt,text/markdown,text/plain" className="hidden" onChange={e => { const f = e.target.files?.[0]; if (f) void subirSkill(f); e.target.value = ""; }} />
         </label>
 
-        <div className="text-xs font-semibold text-gray-500 mb-1.5">🔎 Ferramentas de leitura</div>
+        <div className="text-xs font-semibold text-gray-500 mb-1.5 inline-flex items-center gap-1"><Search size={13} /> Ferramentas de leitura</div>
         <div className="space-y-1 mb-3">
           {reads.map(f => (
             <label key={f.key} className="flex items-start gap-2 text-sm cursor-pointer">
@@ -505,7 +506,7 @@ function AgenteEditor({ agente, restaurants, onClose, onSalvar, onExcluir, inlin
           ))}
         </div>
 
-        <div className="text-xs font-semibold text-gray-500 mb-1.5">✏️ Ferramentas de escrita <span className="text-[10px] font-normal text-amber-600">(sempre pedem confirmação)</span></div>
+        <div className="text-xs font-semibold text-gray-500 mb-1.5 inline-flex items-center gap-1"><Pencil size={13} /> Ferramentas de escrita <span className="text-[10px] font-normal text-amber-600">(sempre pedem confirmação)</span></div>
         <div className="space-y-1 mb-3">
           {writes.map(f => (
             <label key={f.key} className="flex items-start gap-2 text-sm cursor-pointer">
@@ -515,7 +516,7 @@ function AgenteEditor({ agente, restaurants, onClose, onSalvar, onExcluir, inlin
           ))}
         </div>
 
-        <div className="text-xs font-semibold text-gray-500 mb-1.5">🏢 Entidades no escopo</div>
+        <div className="text-xs font-semibold text-gray-500 mb-1.5 inline-flex items-center gap-1"><Building2 size={13} /> Entidades no escopo</div>
         <div className="flex flex-wrap gap-1.5 mb-3">
           <button type="button" onClick={() => setA({ ...a, entidades: "todas" })} className={`text-xs px-2.5 py-1 rounded-full border ${todas ? "border-indigo-300 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300" : "border-gray-200 text-gray-500 dark:border-gray-700"}`}>Todas</button>
           {restaurants.map(r => (
@@ -528,12 +529,12 @@ function AgenteEditor({ agente, restaurants, onClose, onSalvar, onExcluir, inlin
           <span className="text-gray-700 dark:text-gray-300">Agente ativo</span>
         </label>
 
-        <div className="text-xs font-semibold text-gray-500 mb-1.5">📱 WhatsApp — números autorizados</div>
+        <div className="text-xs font-semibold text-gray-500 mb-1.5 inline-flex items-center gap-1"><Smartphone size={13} /> WhatsApp — números autorizados</div>
         <p className="text-[11px] text-gray-400 mb-2">Quem pode falar com este agente pelo número da API oficial. Sem número aqui, o agente atende só no chat do app. Se a pessoa tiver mais de um agente liberado, o WhatsApp mostra um menu pra escolher.</p>
         <div className="flex flex-wrap gap-1.5 mb-2">
           {(a.numerosWhatsapp || []).map((n, i) => (
             <span key={n + i} className="inline-flex items-center gap-1 text-xs px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-900/25 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
-              📱 {n}
+              <Smartphone size={11} /> {n}
               <button type="button" onClick={() => setA(p => ({ ...p, numerosWhatsapp: (p.numerosWhatsapp || []).filter((_, k) => k !== i) }))} className="text-emerald-500 hover:text-emerald-700" title="Remover">✕</button>
             </span>
           ))}

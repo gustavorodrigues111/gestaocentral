@@ -19,7 +19,7 @@ import { useDitado } from "../../core/hooks/useDitado";
 import { transcreverAudio } from "../../core/hooks/transcreverAudio";
 import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
-import { Paperclip } from "lucide-react";
+import { Paperclip, BookOpen, Bot, Upload, Lock, MessageSquare, Mic, Square, Download, Trash2, PenLine } from "lucide-react";
 import { WIKI_AREAS, GUIA_SEED, tipoDeArquivo, TIPO_ICON, AREA_ICON, type WikiAreaKey, type WikiAreaMeta, type WikiGuia, type WikiDoc } from "../../core/wiki/areas";
 import { PageContainer } from "../../core/ui/PageContainer";
 
@@ -120,13 +120,13 @@ export function WikiProcessosPage() {
                   {temGuia
                     ? <>Guia publicado{g?.atualizadoEm ? ` · atualizado ${fmtBR(g.atualizadoEm)}` : semente ? " · modelo inicial" : ""}</>
                     : <span className="text-amber-600 dark:text-amber-400">Guia ainda não publicado</span>}
-                  {nDocs > 0 && <> · 📎 {nDocs} {nDocs === 1 ? "documento" : "documentos"} no acervo</>}
+                  {nDocs > 0 && <> · <span className="inline-flex items-center gap-1"><Paperclip size={12} /> {nDocs} {nDocs === 1 ? "documento" : "documentos"} no acervo</span></>}
                 </div>
                 <div className="flex flex-wrap gap-2 mt-3">
-                  <Button variant="secondary" onClick={() => setVerGuia(a)} disabled={!temGuia}>📖 Abrir guia</Button>
-                  <Button variant="secondary" onClick={() => setChat(a)} disabled={!temFonte}>🤖 Pergunte à IA</Button>
-                  <Button variant="ghost" onClick={() => setAcervo(a)}>📎 Acervo{nDocs > 0 ? ` (${nDocs})` : ""}</Button>
-                  {podeEditarArea(a.key) && <Button variant="ghost" onClick={() => setEditar(a)}>⬆️ {temGuia ? "Atualizar guia" : "Publicar guia"}</Button>}
+                  <Button variant="secondary" className="inline-flex items-center gap-1" onClick={() => setVerGuia(a)} disabled={!temGuia}><BookOpen size={14} /> Abrir guia</Button>
+                  <Button variant="secondary" className="inline-flex items-center gap-1" onClick={() => setChat(a)} disabled={!temFonte}><Bot size={14} /> Pergunte à IA</Button>
+                  <Button variant="ghost" className="inline-flex items-center gap-1" onClick={() => setAcervo(a)}><Paperclip size={14} /> Acervo{nDocs > 0 ? ` (${nDocs})` : ""}</Button>
+                  {podeEditarArea(a.key) && <Button variant="ghost" className="inline-flex items-center gap-1" onClick={() => setEditar(a)}><Upload size={14} /> {temGuia ? "Atualizar guia" : "Publicar guia"}</Button>}
                 </div>
               </div>
             );
@@ -228,7 +228,7 @@ function AreaChatModal({ area, fonteTexto, nDocs, diretrizes, rid, pessoaId, pes
           <div className="min-w-0">
             <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100 flex items-center gap-2"><AreaIcon area={area} size={20} /> Assistente de {area.nome}</h2>
             <div className="text-xs text-gray-500">Respostas a partir do guia{nDocs > 0 ? ` e de ${nDocs} ${nDocs === 1 ? "documento" : "documentos"} do acervo` : " de funcionamento da área"}.</div>
-            <div className="text-[10px] text-gray-400 mt-0.5">🔒 LGPD: as interações com a IA são registradas.</div>
+            <div className="text-[10px] text-gray-400 mt-0.5 inline-flex items-center gap-1"><Lock size={10} /> LGPD: as interações com a IA são registradas.</div>
           </div>
           <button type="button" onClick={onClose} className="shrink-0 text-gray-400 hover:text-gray-600 text-xl leading-none">✕</button>
         </div>
@@ -236,7 +236,7 @@ function AreaChatModal({ area, fonteTexto, nDocs, diretrizes, rid, pessoaId, pes
         <div className="flex-1 overflow-y-auto p-4 space-y-3 min-h-[180px]">
           {msgs.length === 0 && (
             <div className="text-center text-gray-500 dark:text-gray-400 py-6">
-              <div className="text-3xl mb-2">💬</div>
+              <div className="flex justify-center mb-2 text-gray-400"><MessageSquare size={30} /></div>
               <p className="text-sm">Pergunte qualquer coisa sobre os processos de {area.nome}.</p>
             </div>
           )}
@@ -257,9 +257,9 @@ function AreaChatModal({ area, fonteTexto, nDocs, diretrizes, rid, pessoaId, pes
         </div>
         <div className="p-3 pt-1 flex gap-2 items-center">
           <button type="button" onClick={micToggle} disabled={carregando || transcrevendo} title={dit.gravando ? "Parar" : "Perguntar por voz"}
-            className={`shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center text-lg ${dit.gravando ? "border-rose-400 bg-rose-50 dark:bg-rose-900/20 text-rose-600" : "border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{dit.gravando ? "⏹️" : "🎙️"}</button>
+            className={`shrink-0 w-10 h-10 rounded-xl border flex items-center justify-center ${dit.gravando ? "border-rose-400 bg-rose-50 dark:bg-rose-900/20 text-rose-600" : "border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{dit.gravando ? <Square size={18} /> : <Mic size={18} />}</button>
           <label title="Enviar arquivo de áudio (ex.: WhatsApp)" className={`shrink-0 w-10 h-10 rounded-xl border border-gray-300 dark:border-gray-700 flex items-center justify-center text-lg cursor-pointer text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800 ${carregando || transcrevendo ? "opacity-40 pointer-events-none" : ""}`}>
-            {transcrevendo ? "…" : "📎"}
+            {transcrevendo ? "…" : <Paperclip size={18} />}
             <input type="file" accept="audio/*" className="hidden" onChange={async e => { const file = e.target.files?.[0]; e.currentTarget.value = ""; if (!file) return; setTranscrevendo(true); setErro(""); try { const t = await transcreverAudio(file); if (t) setPergunta(p => (p ? p + " " : "") + t); else setErro("Não consegui entender o áudio."); } catch (err) { setErro(err instanceof Error ? err.message : "Falha ao transcrever."); } finally { setTranscrevendo(false); } }} />
           </label>
           <input value={valorInput} onChange={e => { setPergunta(e.target.value); if (dit.gravando) dit.parar(); }} onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); enviar(); } }}
@@ -327,7 +327,7 @@ function GuiaUploadModal({ area, atual, temSeed, pessoaId, pessoaNome, onClose }
 
         <div className="p-4 space-y-3 overflow-y-auto">
           <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-dashed border-gray-300 dark:border-gray-700 cursor-pointer text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-            📎 Escolher arquivo .html
+            <Paperclip size={14} /> Escolher arquivo .html
             <input type="file" accept=".html,text/html" className="hidden" onChange={e => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) void lerArquivo(f); }} />
           </label>
           {html && <div className="text-[11px] text-gray-400">{Math.round(html.length / 1024)} KB carregados.</div>}
@@ -453,15 +453,15 @@ function AcervoModal({ area, docs, podeEditar, pessoaId, pessoaNome, onClose }: 
                   {d.tamanho ? `${Math.round(d.tamanho / 1024)} KB · ` : ""}{d.texto ? "na IA" : <span className="text-amber-600">só download (sem texto na IA)</span>}{d.atualizadoEm ? ` · ${fmtBR(d.atualizadoEm)}` : ""}
                 </div>
               </div>
-              {d.url && <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline shrink-0">⬇️ baixar</a>}
-              {podeEditar && <button type="button" onClick={() => void remover(d)} className="text-gray-400 hover:text-rose-600 text-sm shrink-0" title="Remover">🗑️</button>}
+              {d.url && <a href={d.url} target="_blank" rel="noopener noreferrer" className="text-xs text-indigo-600 dark:text-indigo-400 hover:underline shrink-0 inline-flex items-center gap-1"><Download size={12} /> baixar</a>}
+              {podeEditar && <button type="button" onClick={() => void remover(d)} className="text-gray-400 hover:text-rose-600 shrink-0" title="Remover"><Trash2 size={14} /></button>}
             </div>
           ))}
 
           {podeEditar && addModo === "arquivo" && (
             <div className="rounded-lg border border-dashed border-gray-300 dark:border-gray-700 p-3 space-y-2 mt-2">
               <label className="inline-flex items-center gap-2 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 cursor-pointer text-sm text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">
-                📎 Escolher arquivo
+                <Paperclip size={14} /> Escolher arquivo
                 <input type="file" accept=".pdf,.html,.htm,.txt,.md,.png,.jpg,.jpeg,.webp,image/*,application/pdf" className="hidden"
                   onChange={e => { const f = e.target.files?.[0]; e.currentTarget.value = ""; if (f) { setFile(f); setNome(f.name); setErro(""); } }} />
               </label>
@@ -491,8 +491,8 @@ function AcervoModal({ area, docs, podeEditar, pessoaId, pessoaNome, onClose }: 
 
         {podeEditar && !addModo && (
           <div className="p-4 border-t border-gray-100 dark:border-gray-800 flex gap-2 justify-end">
-            <Button variant="secondary" onClick={() => { setErro(""); setAddModo("texto"); }}>✍️ Colar texto</Button>
-            <Button onClick={() => { setErro(""); setAddModo("arquivo"); }}>📎 Subir arquivo</Button>
+            <Button variant="secondary" className="inline-flex items-center gap-1" onClick={() => { setErro(""); setAddModo("texto"); }}><PenLine size={14} /> Colar texto</Button>
+            <Button className="inline-flex items-center gap-1" onClick={() => { setErro(""); setAddModo("arquivo"); }}><Upload size={14} /> Subir arquivo</Button>
           </div>
         )}
       </div>
