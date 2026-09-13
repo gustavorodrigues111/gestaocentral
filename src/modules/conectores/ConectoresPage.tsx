@@ -40,7 +40,7 @@ const CONECTOR_ICON: Record<string, LucideIcon> = {
 };
 
 export function ConectoresPage() {
-  const { restaurants } = useRestaurant();
+  const { restaurants, activeId } = useRestaurant();
   const [statusPorCol, setStatusPorCol] = useState<Record<string, Record<string, Status>>>({});
   const [forcando, setForcando] = useState<string>("");   // `${tipo}_${rid}`
   const [backfill, setBackfill] = useState<{ rid: string; msg: string; rodando: boolean } | null>(null);
@@ -76,12 +76,12 @@ export function ConectoresPage() {
     return () => unsubs.forEach((u) => u());
   }, []);
 
-  // Restaurantes que TÊM algum conector (aparece status pra ele em alguma coleção).
+  // Conectores do restaurante ATIVO (o do seletor) — não de todos.
   const restsComConector = useMemo(() => {
     const ids = new Set<string>();
     for (const c of CONECTORES) for (const rid of Object.keys(statusPorCol[c.statusCol] || {})) ids.add(rid);
-    return restaurants.filter((r) => ids.has(r.id)).sort((a, b) => a.nome.localeCompare(b.nome));
-  }, [restaurants, statusPorCol]);
+    return restaurants.filter((r) => r.id === activeId && ids.has(r.id)).sort((a, b) => a.nome.localeCompare(b.nome));
+  }, [restaurants, statusPorCol, activeId]);
 
   async function forcar(tipo: string, endpoint: string, rid: string) {
     const chave = `${tipo}_${rid}`;
@@ -198,7 +198,7 @@ export function ConectoresPage() {
         </div>
       )}
 
-      <AltecConfig restaurants={restaurants} />
+      <AltecConfig restaurants={restaurants.filter((r) => r.id === activeId)} />
     </PageContainer>
   );
 }

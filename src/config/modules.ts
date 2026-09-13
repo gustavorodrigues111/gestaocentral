@@ -141,10 +141,10 @@ export const MODULES: ModuleDef[] = [
 
 export const AREA_INFO = {
   minhas: { label: "Minhas Informações",   color: "#0d9488", icon: "house",     desc: "Sua área pessoal: painel, escala, gorjetas e comunicados" },
-  ops:  { label: "Operação",               color: "#d4a017", icon: "chef-hat",  desc: "Quem toca o restaurante no dia a dia" },
-  dp:   { label: "Pessoas & DP",           color: "#3b82f6", icon: "users",     desc: "RH, admissão, escala e desenvolvimento" },
-  planejamento: { label: "Administrativo", color: "#0ea5e9", icon: "briefcase", desc: "Tarefas, prazos, financeiro, vendas, compras e IA" },
-  inst: { label: "Configurações",          color: "#8b5cf6", icon: "settings",  desc: "Dados da empresa, módulos, perfis e conectores" },
+  ops:  { label: "Operação",               color: "#ea580c", icon: "chef-hat",  desc: "Quem toca o restaurante no dia a dia" },
+  dp:   { label: "Pessoas & DP",           color: "#2563eb", icon: "users",     desc: "RH, admissão, escala e desenvolvimento" },
+  planejamento: { label: "Administrativo", color: "#7c3aed", icon: "briefcase", desc: "Tarefas, prazos, financeiro, vendas, compras e IA" },
+  inst: { label: "Configurações",          color: "#475569", icon: "settings",  desc: "Dados da empresa, módulos, perfis e conectores" },
   master: { label: "Master",               color: "#6b7280", icon: "crown",     desc: "Ferramentas pessoais do dono — ligue/desligue quando quiser" },
 } as const;
 

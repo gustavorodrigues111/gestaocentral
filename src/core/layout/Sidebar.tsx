@@ -370,11 +370,11 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             const total = masterMods.length + (pessoa?.isMaster ? 2 : 0);
             const extraCls = ({ isActive }: { isActive: boolean }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`;
             return (
-              <div>
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-1.5 mb-2">
                 <button
                   type="button"
                   onClick={() => toggleArea("master")}
-                  className="w-full flex items-center gap-1 px-3 mb-1 text-[10px] font-bold uppercase tracking-wider hover:opacity-80"
+                  className="w-full flex items-center gap-1.5 px-1.5 mb-1 text-[10px] font-bold uppercase tracking-wider hover:opacity-80"
                   style={{ color: info.color }}
                   title={fechada ? "Expandir" : "Recolher"}
                 >
