@@ -9,6 +9,7 @@ import { PRAZO_TIPO_LABEL, PRAZO_SUBTIPO_TRAB_LABEL } from "../../core/types";
 import { resumoRecorrencia } from "./recorrencia";
 import { ANTECEDENCIA_PADRAO } from "./logic";
 import { Stepper, DatePickerBR } from "./campos";
+import { Banknote, Wrench, Scale, Flag, House, FileText, CalendarDays, Pencil, TriangleAlert, Repeat, type LucideIcon } from "lucide-react";
 
 const ymdToBr = (ymd?: string) => { if (!ymd) return ""; const [a, m, d] = ymd.split("-"); return `${d}/${m}/${a}`; };
 const brToYmd = (br: string) => { const [d, m, a] = br.split("/"); return (d && m && a) ? `${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}` : ""; };
@@ -17,7 +18,7 @@ const uid = () => `prazo_${Date.now()}_${Math.random().toString(36).slice(2, 7)}
 const inp = "w-full h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
 const chip = (on: boolean) => `px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500"}`;
 
-const TIPOS: Array<{ v: PrazoTipo; icon: string }> = [{ v: "conta", icon: "💰" }, { v: "tecnico", icon: "🛠️" }, { v: "trabalhista", icon: "🧑‍⚖️" }, { v: "avulso", icon: "🚩" }];
+const TIPOS: Array<{ v: PrazoTipo; icon: LucideIcon }> = [{ v: "conta", icon: Banknote }, { v: "tecnico", icon: Wrench }, { v: "trabalhista", icon: Scale }, { v: "avulso", icon: Flag }];
 
 export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsaveisPorCat, imoveis, onGerenciarImoveis, onClose, onSalvar, modoInicial }: {
   rid: string; prazo: Prazo | null; tiposPermitidos: PrazoTipo[]; empregados: Empregado[]; responsaveisPorCat: Record<PrazoTipo, Pessoa[]>; imoveis: Imovel[];
@@ -125,18 +126,18 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
             {d.empregadoNome && <DetRow label="Empregado">{d.empregadoNome}</DetRow>}
             {d.subtipoTrab && <DetRow label="Tipo">{PRAZO_SUBTIPO_TRAB_LABEL[d.subtipoTrab]}</DetRow>}
           </>)}
-          {imovelSel && <DetRow label="Imóvel">🏠 {imovelSel.apelido}</DetRow>}
+          {imovelSel && <DetRow label="Imóvel"><span className="inline-flex items-center gap-1"><House size={13} /> {imovelSel.apelido}</span></DetRow>}
           {prazo.laudo?.driveUrl ? (
-            <DetRow label="Laudo"><a href={prazo.laudo.driveUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline">📄 {prazo.laudo.nome || "abrir laudo"} ↗</a></DetRow>
+            <DetRow label="Laudo"><a href={prazo.laudo.driveUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"><FileText size={13} /> {prazo.laudo.nome || "abrir laudo"} ↗</a></DetRow>
           ) : prazo.exigeLaudo ? (
             <DetRow label="Laudo"><span className="text-amber-600 dark:text-amber-400">exige laudo — pendente</span></DetRow>
           ) : null}
-          {prazo.agendamento?.data && <DetRow label="Agendado">📅 {ymdToBr(prazo.agendamento.data)}</DetRow>}
-          <DetRow label="Status">{prazo.status === "resolvido" ? "✓ Resolvido" : prazo.status === "agendado" ? "📅 Agendado" : "Aberto"}</DetRow>
+          {prazo.agendamento?.data && <DetRow label="Agendado"><span className="inline-flex items-center gap-1"><CalendarDays size={13} /> {ymdToBr(prazo.agendamento.data)}</span></DetRow>}
+          <DetRow label="Status">{prazo.status === "resolvido" ? "✓ Resolvido" : prazo.status === "agendado" ? <span className="inline-flex items-center gap-1"><CalendarDays size={13} /> Agendado</span> : "Aberto"}</DetRow>
         </div>
         <div className="flex justify-end gap-2 pt-3 mt-2 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose}>Fechar</Button>
-          <Button onClick={() => setModo("editar")}>✎ Editar</Button>
+          <Button onClick={() => setModo("editar")} className="inline-flex items-center gap-1"><Pencil size={14} /> Editar</Button>
         </div>
       </Modal>
     );
@@ -147,9 +148,9 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
       <div className="space-y-3">
         {/* Tipo */}
         <div className="flex gap-1.5">
-          {TIPOS.filter(({ v }) => tiposDisponiveis.includes(v)).map(({ v, icon }) => (
+          {TIPOS.filter(({ v }) => tiposDisponiveis.includes(v)).map(({ v, icon: Ic }) => (
             <button key={v} type="button" onClick={() => trocarTipo(v)} disabled={editando} style={{ height: 66 }} className={`flex-1 flex flex-col items-center justify-center gap-1.5 text-xs rounded-lg border box-border ${tipo === v ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"} ${editando ? "opacity-90 cursor-default" : ""}`}>
-              <span style={{ height: 22, fontSize: 20 }} className="flex items-center justify-center leading-none">{icon}</span>
+              <span style={{ height: 22 }} className="flex items-center justify-center leading-none"><Ic size={20} /></span>
               <span className="leading-none">{PRAZO_TIPO_LABEL[v]}</span>
             </button>
           ))}
@@ -224,7 +225,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
             <div className="flex flex-wrap gap-1.5">
               <button type="button" onClick={() => setImovelId("")} className={chip(imovelId === "")}>Nenhum</button>
               {imoveis.map((im) => (
-                <button key={im.id} type="button" onClick={() => setImovelId(im.id)} className={chip(imovelId === im.id)}>🏠 {im.apelido}</button>
+                <button key={im.id} type="button" onClick={() => setImovelId(im.id)} className={`${chip(imovelId === im.id)} inline-flex items-center gap-1`}><House size={12} /> {im.apelido}</button>
               ))}
               <button type="button" onClick={onGerenciarImoveis} className="px-3 py-1.5 text-xs rounded-full border border-dashed border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400">+ Imóvel</button>
             </div>
@@ -232,7 +233,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
         )}
 
         {erro && <p className="text-sm text-rose-600">{erro}</p>}
-        {editando && rec && <p className="text-[11px] text-amber-600 dark:text-amber-400">⚠ Mudanças valem só pras próximas ocorrências — o histórico não muda.</p>}
+        {editando && rec && <p className="text-[11px] text-amber-600 dark:text-amber-400 inline-flex items-start gap-1"><TriangleAlert size={12} className="shrink-0 mt-0.5" /> <span>Mudanças valem só pras próximas ocorrências — o histórico não muda.</span></p>}
 
         <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
@@ -328,7 +329,7 @@ export function RecorrenciaEditor({ rec, onChange }: { rec: PrazoRecorrencia | n
             </div>
           )}
 
-          <div className="text-xs text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5 bg-indigo-100/60 dark:bg-indigo-900/30 rounded-lg px-2.5 py-2 font-medium">🔁 {resumoRecorrencia(r)}</div>
+          <div className="text-xs text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5 bg-indigo-100/60 dark:bg-indigo-900/30 rounded-lg px-2.5 py-2 font-medium"><Repeat size={13} /> {resumoRecorrencia(r)}</div>
         </div>
       )}
     </div>

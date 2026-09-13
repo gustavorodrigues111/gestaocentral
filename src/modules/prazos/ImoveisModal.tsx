@@ -5,6 +5,7 @@ import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
+import { House } from "lucide-react";
 import type { Imovel, ImovelEndereco } from "../../core/types";
 import { enderecoResumo } from "../../core/types";
 
@@ -31,14 +32,14 @@ export function ImoveisModal({ rid, restauranteNome, imoveis, meId, onClose }: {
   const set = (k: keyof ImovelEndereco, v: string) => setEnd((e) => ({ ...e, [k]: v }));
 
   return (
-    <Modal title={`🏠 Imóveis · ${restauranteNome}`} onClose={onClose} maxWidth="max-w-lg">
+    <Modal title={<span className="inline-flex items-center gap-1.5"><House size={16} /> Imóveis · {restauranteNome}</span>} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
         <p className="text-xs text-gray-500">Prédios/endereços desta empresa. Prazos técnicos (AVCB, dedetização, extintores…) e o aluguel apontam pra um imóvel.</p>
         {imoveis.length > 0 && (
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
             {imoveis.map((im) => (
               <div key={im.id} className="p-2.5 flex items-start gap-2">
-                <span className="text-base">🏠</span>
+                <span className="text-gray-500"><House size={16} /></span>
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{im.apelido}</div>
                   {enderecoResumo(im.endereco) && <div className="text-xs text-gray-500">{enderecoResumo(im.endereco)}</div>}

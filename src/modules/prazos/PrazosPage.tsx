@@ -25,16 +25,27 @@ import { DatePickerBR } from "./campos";
 import { PrazoModal } from "./PrazoModal";
 import { ImoveisModal } from "./ImoveisModal";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { Banknote, Wrench, Scale, Flag, House, CalendarDays, TriangleAlert, FileText, Clock, Repeat, Paperclip, Pencil, Trash2, List, type LucideIcon } from "lucide-react";
 
 const brl = (n?: number | null) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const ymdToBr = (ymd?: string) => { if (!ymd) return ""; const [a, m, d] = ymd.split("-"); return `${d}/${m}/${a}`; };
 
-const TIPO_META: Record<PrazoTipo, { icon: string; cls: string }> = {
-  conta: { icon: "💰", cls: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
-  tecnico: { icon: "🛠️", cls: "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" },
-  trabalhista: { icon: "🧑‍⚖️", cls: "bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" },
-  avulso: { icon: "🚩", cls: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" },
+const TIPO_META: Record<PrazoTipo, { cls: string }> = {
+  conta: { cls: "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300" },
+  tecnico: { cls: "bg-indigo-50 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300" },
+  trabalhista: { cls: "bg-violet-50 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300" },
+  avulso: { cls: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300" },
 };
+const TIPO_ICON: Record<PrazoTipo, LucideIcon> = {
+  conta: Banknote,
+  tecnico: Wrench,
+  trabalhista: Scale,
+  avulso: Flag,
+};
+function TipoIcon({ tipo, size = 12 }: { tipo: PrazoTipo; size?: number }) {
+  const Ic = TIPO_ICON[tipo];
+  return <Ic size={size} className="inline shrink-0" />;
+}
 const TODAS_CATS: PrazoTipo[] = ["conta", "tecnico", "trabalhista", "avulso"];
 // tipo → sufixo da ação de permissão (verConta, gerirTecnico, …).
 const SUF_CAT: Record<PrazoTipo, string> = { conta: "Conta", tecnico: "Tecnico", trabalhista: "Trabalhista", avulso: "Avulso" };
@@ -240,7 +251,7 @@ export function PrazosPage() {
       <header className="flex items-start justify-between gap-3 flex-wrap">
         <p className="text-sm text-gray-500 self-center">{todosRest ? "Todos os restaurantes" : activeRestaurant?.nome || "—"}</p>
         <div className="flex items-center gap-2">
-          {podeConfig && <button type="button" onClick={() => setShowImoveis(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">🏠 Imóveis</button>}
+          {podeConfig && <button type="button" onClick={() => setShowImoveis(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 inline-flex items-center gap-1"><House size={13} /> Imóveis</button>}
           {catsGeriveis.length > 0 && <button type="button" onClick={() => setModal({ prazo: null })} className="text-sm font-semibold px-3 py-2 rounded-lg bg-indigo-600 text-white">+ Novo prazo</button>}
         </div>
       </header>
@@ -249,12 +260,12 @@ export function PrazosPage() {
       <div className="flex items-center gap-2 flex-wrap">
         {(["todos", ...catsVisiveis] as const).map((t) => (
           <button key={t} type="button" onClick={() => setTipoFiltro(t)} className={`text-xs px-3 py-1.5 rounded-full border ${tipoFiltro === t ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
-            {t === "todos" ? "Todos" : `${TIPO_META[t].icon} ${PRAZO_TIPO_LABEL[t]}`} <span className="opacity-60">{contagem[t]}</span>
+            {t === "todos" ? "Todos" : <span className="inline-flex items-center gap-1"><TipoIcon tipo={t} /> {PRAZO_TIPO_LABEL[t]}</span>} <span className="opacity-60">{contagem[t]}</span>
           </button>
         ))}
         <span className="w-px h-5 bg-gray-200 dark:bg-gray-700 mx-0.5" />
         <button type="button" onClick={() => { setTipoFiltro("agendados"); setAba("agenda"); }} className={`text-xs px-3 py-1.5 rounded-full border ${tipoFiltro === "agendados" ? "border-sky-500 bg-sky-50 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 font-medium" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
-          📅 Agendados <span className="opacity-60">{contagem.agendados}</span>
+          <span className="inline-flex items-center gap-1"><CalendarDays size={12} /> Agendados</span> <span className="opacity-60">{contagem.agendados}</span>
         </button>
         <div className="flex-1" />
         {podeTodasEmpresas && <label className="text-xs text-gray-500 flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={todosRest} onChange={(e) => setTodosRest(e.target.checked)} /> todas as empresas</label>}
@@ -268,7 +279,7 @@ export function PrazosPage() {
           className="text-xs px-2.5 py-1.5 mb-1.5 w-40 sm:w-48 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/30" />
         {aba === "agenda" && (
           <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 mb-1.5 ml-2">
-            {([["calendario", "📅 Calendário"], ["lista", "☰ Lista"]] as const).map(([k, l]) => (
+            {([["calendario", <span className="inline-flex items-center gap-1"><CalendarDays size={12} /> Calendário</span>], ["lista", <span className="inline-flex items-center gap-1"><List size={12} /> Lista</span>]] as const).map(([k, l]) => (
               <button key={k} type="button" onClick={() => setVisao(k)} className={`px-2.5 py-1 text-xs font-medium rounded-md ${visao === k ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{l}</button>
             ))}
           </div>
@@ -281,8 +292,8 @@ export function PrazosPage() {
         <div className="space-y-4">
           {atrasados.length > 0 && (
             <button type="button" onClick={() => setDiaSel("__atrasados__")}
-              className={`w-full text-left text-sm px-3 py-2 rounded-lg border ${diaSel === "__atrasados__" ? "border-rose-500 bg-rose-50 dark:bg-rose-900/30" : "border-rose-200 dark:border-rose-900/40 bg-rose-50/50 dark:bg-rose-900/10"} text-rose-700 dark:text-rose-300 font-medium`}>
-              ⚠ {atrasados.length} {atrasados.length === 1 ? "prazo atrasado" : "prazos atrasados"} — clique pra ver
+              className={`w-full text-left text-sm px-3 py-2 rounded-lg border inline-flex items-center gap-1.5 ${diaSel === "__atrasados__" ? "border-rose-500 bg-rose-50 dark:bg-rose-900/30" : "border-rose-200 dark:border-rose-900/40 bg-rose-50/50 dark:bg-rose-900/10"} text-rose-700 dark:text-rose-300 font-medium`}>
+              <TriangleAlert size={14} className="shrink-0" /> {atrasados.length} {atrasados.length === 1 ? "prazo atrasado" : "prazos atrasados"} — clique pra ver
             </button>
           )}
           <PrazoCalendario prazos={visiveis} hoje={hoje} diaSel={diaSel} onSelDia={setDiaSel} onAbrirPrazo={(p) => { if (podeGerirCat(p.tipo)) setModal({ prazo: p, modo: "ver" }); }} />
@@ -311,7 +322,7 @@ export function PrazosPage() {
           {visiveis.map((p) => (
             <div key={p.id} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
               <div className="flex items-center gap-2 flex-wrap">
-                <span className={`text-[10px] px-2 py-0.5 rounded-full ${TIPO_META[p.tipo].cls}`}>{TIPO_META[p.tipo].icon} {PRAZO_TIPO_LABEL[p.tipo]}</span>
+                <span className={`text-[10px] px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${TIPO_META[p.tipo].cls}`}><TipoIcon tipo={p.tipo} size={11} /> {PRAZO_TIPO_LABEL[p.tipo]}</span>
                 <span className="text-sm font-medium text-gray-900 dark:text-gray-100">{p.titulo}</span>
                 <span className="text-xs text-gray-400 ml-auto">resolvido</span>
               </div>
@@ -320,7 +331,7 @@ export function PrazosPage() {
                   {(p.historico || []).slice().reverse().map((h, i) => (
                     <div key={i} className="flex items-center gap-2">
                       <span>{ymdToBr(h.vencimento)}</span>
-                      {h.laudo?.driveUrl ? <a href={h.laudo.driveUrl} target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400">📄 {h.laudo.nome}</a> : h.laudo ? <span>📄 {h.laudo.nome}</span> : <span className="text-gray-400">sem laudo</span>}
+                      {h.laudo?.driveUrl ? <a href={h.laudo.driveUrl} target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1"><FileText size={12} /> {h.laudo.nome}</a> : h.laudo ? <span className="inline-flex items-center gap-1"><FileText size={12} /> {h.laudo.nome}</span> : <span className="text-gray-400">sem laudo</span>}
                     </div>
                   ))}
                 </div>
@@ -372,22 +383,22 @@ function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, imovelNome, o
         ) : (
           <span className="text-sm font-semibold text-gray-900 dark:text-gray-100">{p.titulo}</span>
         )}
-        <span className={`text-xs ml-auto whitespace-nowrap ${vencido ? "text-rose-600" : "text-gray-500"}`}>🕐 {vencido ? "venceu" : "vence"} {ymdToBr(p.vencimento)}{ehFimDeSemana(p.vencimento) ? <span className="text-amber-600 dark:text-amber-400"> ({diaSemanaCurto(p.vencimento)})</span> : null}</span>
+        <span className={`text-xs ml-auto whitespace-nowrap inline-flex items-center gap-1 ${vencido ? "text-rose-600" : "text-gray-500"}`}><Clock size={12} className="shrink-0" /> {vencido ? "venceu" : "vence"} {ymdToBr(p.vencimento)}{ehFimDeSemana(p.vencimento) ? <span className="text-amber-600 dark:text-amber-400"> ({diaSemanaCurto(p.vencimento)})</span> : null}</span>
       </div>
       <div className="flex items-center gap-1.5 flex-wrap text-xs">
-        <span className={`text-[10px] px-2 py-0.5 rounded-full ${TIPO_META[p.tipo].cls}`}>{TIPO_META[p.tipo].icon} {PRAZO_TIPO_LABEL[p.tipo]}</span>
+        <span className={`text-[10px] px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${TIPO_META[p.tipo].cls}`}><TipoIcon tipo={p.tipo} size={11} /> {PRAZO_TIPO_LABEL[p.tipo]}</span>
         {mostrarEmpresa && <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{restNome(p.restaurantIds)}</span>}
-        {imovelNome && <span className="text-gray-500">🏠 {imovelNome}</span>}
-        {p.exigeLaudo && !p.laudo && <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">📄 exige laudo</span>}
-        {p.laudo && <span className="text-[10px] text-emerald-600 dark:text-emerald-400">📄 laudo ok</span>}
-        {p.recorrencia && <span className="text-gray-400">🔁 {resumoRecorrencia(p.recorrencia)}</span>}
+        {imovelNome && <span className="text-gray-500 inline-flex items-center gap-1"><House size={12} /> {imovelNome}</span>}
+        {p.exigeLaudo && !p.laudo && <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 inline-flex items-center gap-1"><FileText size={11} /> exige laudo</span>}
+        {p.laudo && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><FileText size={11} /> laudo ok</span>}
+        {p.recorrencia && <span className="text-gray-400 inline-flex items-center gap-1"><Repeat size={12} /> {resumoRecorrencia(p.recorrencia)}</span>}
         {p.responsavelNome && <span className="text-gray-500">· {p.responsavelNome}</span>}
         {p.dados?.valor != null && <span className="text-gray-500">· {brl(p.dados.valor)}</span>}
         {p.dados?.subtipoTrab && <span className="text-gray-500">· {PRAZO_SUBTIPO_TRAB_LABEL[p.dados.subtipoTrab]}</span>}
-        {p.precisaRevisao && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300">⚠ revisar</span>}
+        {p.precisaRevisao && <span className="text-[10px] px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 inline-flex items-center gap-1"><TriangleAlert size={11} /> revisar</span>}
       </div>
       {p.status === "agendado" && p.agendamento && (
-        <div className="text-xs text-sky-600 dark:text-sky-400">📅 agendado para {ymdToBr(p.agendamento.data)}</div>
+        <div className="text-xs text-sky-600 dark:text-sky-400 inline-flex items-center gap-1"><CalendarDays size={12} /> agendado para {ymdToBr(p.agendamento.data)}</div>
       )}
       {podeGerir && (agendando ? (
         <div className="flex items-center gap-2 flex-wrap bg-gray-50 dark:bg-gray-800/50 rounded-lg p-2">
@@ -404,10 +415,10 @@ function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, imovelNome, o
             ? <button type="button" onClick={onRealizar} className="text-xs px-2.5 py-1 rounded-lg bg-indigo-600 text-white">✓ {rotuloRealizar}</button>
             : p.status === "agendado"
             ? <><button type="button" onClick={onRealizar} className="text-xs px-2.5 py-1 rounded-lg bg-indigo-600 text-white">✓ {rotuloRealizar}</button><button type="button" onClick={onAbrirAg} className="text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">Reagendar</button><button type="button" onClick={onRemoverAg} className="text-xs text-gray-400">desagendar</button></>
-            : <><button type="button" onClick={onAbrirAg} className="text-xs px-2.5 py-1 rounded-lg bg-indigo-600 text-white">📅 Agendar</button><button type="button" onClick={onRealizar} className="text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">✓ {rotuloRealizar}</button></>}
-          {p.exigeLaudo && <button type="button" onClick={onLaudo} className="text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">📎 Laudo</button>}
-          <button type="button" onClick={onEditar} className="text-xs px-2 py-1 rounded-lg text-gray-400 hover:text-gray-700" title="Editar definição">✎</button>
-          <button type="button" onClick={onExcluir} className="text-xs px-2 py-1 rounded-lg text-gray-300 hover:text-rose-600">🗑</button>
+            : <><button type="button" onClick={onAbrirAg} className="text-xs px-2.5 py-1 rounded-lg bg-indigo-600 text-white inline-flex items-center gap-1"><CalendarDays size={12} /> Agendar</button><button type="button" onClick={onRealizar} className="text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300">✓ {rotuloRealizar}</button></>}
+          {p.exigeLaudo && <button type="button" onClick={onLaudo} className="text-xs px-2.5 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 inline-flex items-center gap-1"><Paperclip size={12} /> Laudo</button>}
+          <button type="button" onClick={onEditar} className="text-xs px-2 py-1 rounded-lg text-gray-400 hover:text-gray-700" title="Editar definição"><Pencil size={13} /></button>
+          <button type="button" onClick={onExcluir} className="text-xs px-2 py-1 rounded-lg text-gray-300 hover:text-rose-600"><Trash2 size={13} /></button>
         </div>
       ))}
     </div>

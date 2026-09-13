@@ -1,6 +1,7 @@
 // Campos reutilizáveis do módulo Prazos: stepper −/+ arredondado e seletor de
 // data BR com calendário popover (nada de <input type=date> US).
 import { useEffect, useMemo, useRef, useState } from "react";
+import { CalendarDays } from "lucide-react";
 
 export function Stepper({ value, onChange, min = 0, max = 999, sufixo }: { value: number; onChange: (n: number) => void; min?: number; max?: number; sufixo?: string }) {
   return (
@@ -45,7 +46,7 @@ export function DatePickerBR({ value, onChange, placeholder = "dd/mm/aaaa" }: { 
     <div ref={wrap} className="relative">
       <div className="flex items-center h-9 px-2.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" onClick={() => setOpen(true)}>
         <input value={value} onChange={(e) => onChange(e.target.value)} placeholder={placeholder} inputMode="numeric" className="flex-1 min-w-0 bg-transparent text-sm outline-none dark:text-gray-100" />
-        <button type="button" onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }} className="text-gray-400 hover:text-gray-600 ml-1">📅</button>
+        <button type="button" onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }} className="text-gray-400 hover:text-gray-600 ml-1" aria-label="Abrir calendário"><CalendarDays size={16} /></button>
       </div>
       {open && (
         <div className="absolute z-50 mt-1 left-0 w-64 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl shadow-lg p-3">
