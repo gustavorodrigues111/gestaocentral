@@ -7,7 +7,7 @@
 //     (vendasPorHora = faturamento faturado/encerrado por hora), agrupado
 //     em Almoço × Noite por um horário de corte configurável.
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CalendarDays, Hourglass, UtensilsCrossed, Moon, TriangleAlert } from "lucide-react";
+import { CalendarDays, Hourglass, UtensilsCrossed, Moon, TriangleAlert, ChevronRight, Download } from "lucide-react";
 import { collection, doc, getDoc, getDocs, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -38,7 +38,6 @@ type Produto = { id: string; produto: string; categoria: string; qtd: number; fa
 type Meta = { totalProdutos: number; totalQtd: number; totalFatBruto: number; totalFatLiquido: number; geradoEm?: string };
 type MesExtraido = { comp: string; geradoEm?: string; totalProdutos: number; totalQtd: number; totalFatBruto: number; totalFatLiquido: number };
 type DiaHora = { data: string; fat: number; porHora: number[] };
-type Ordem = { col: keyof Produto; dir: 1 | -1 };
 
 export function RelatoriosVendasPage() {
   const { activeId, activeRestaurant } = useRestaurant();
@@ -56,8 +55,8 @@ export function RelatoriosVendasPage() {
   const [erro, setErro] = useState("");
   const [confirmar, setConfirmar] = useState<string[]>([]); // comps aguardando sobrescrever
   const [busca, setBusca] = useState("");
-  const [catSel, setCatSel] = useState("");
-  const [ordem, setOrdem] = useState<Ordem>({ col: "fatBruto", dir: -1 });
+  const [catsAbertas, setCatsAbertas] = useState<Set<string>>(new Set()); // categorias expandidas no acordeão
+  const toggleCat = (c: string) => setCatsAbertas((s) => { const n = new Set(s); if (n.has(c)) n.delete(c); else n.add(c); return n; });
   const [backfill, setBackfill] = useState("");
 
   // Lista os meses já extraídos (snapshots) do restaurante.
@@ -78,10 +77,29 @@ export function RelatoriosVendasPage() {
   }
   useEffect(() => { if (aba === "produtos" && activeId) void carregarLista(activeId); }, [aba, activeId]);
 
+  // Ao ENTRAR no módulo: abre o mês corrente automaticamente e, se ele estiver
+  // defasado (> 30 min) ou nunca extraído, atualiza do PDV até agora. Roda uma
+  // vez por restaurante (por montagem) — "conectou, está atualizado".
+  const autoDoneRef = useRef("");
+  useEffect(() => {
+    if (aba !== "produtos" || !activeId || carregandoLista || carregando) return;
+    if (autoDoneRef.current === activeId) return;
+    autoDoneRef.current = activeId;
+    const cur = todayYmd().slice(0, 7);
+    const curEntry = meses.find((m) => m.comp === cur);
+    const stale = !curEntry || !curEntry.geradoEm || (Date.now() - new Date(curEntry.geradoEm).getTime() > 30 * 60 * 1000);
+    if (stale) {
+      void (async () => { await extrair([cur], true); await carregarLista(activeId); })();
+    } else if (!selecionado) {
+      void abrirMes(cur);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [meses, aba, activeId, carregandoLista]);
+
   // Abre um mês já extraído (mostra a tabela).
   async function abrirMes(comp: string) {
     if (!activeId) return;
-    setErro(""); setBusca(""); setCatSel("");
+    setErro(""); setBusca(""); setCatsAbertas(new Set());
     const s = await getDoc(doc(db, "vendasProdutoAltec", `${activeId}_${comp}`)).catch(() => null);
     if (!s || !s.exists()) { setErro("não consegui abrir esse mês salvo"); return; }
     const d = s.data() as { produtos?: Produto[] } & Partial<Meta>;
@@ -107,7 +125,7 @@ export function RelatoriosVendasPage() {
         if (!r.ok) { setErro((j as { error?: string }).error || `HTTP ${r.status}`); return; }
         setProdutos(((j as { produtos?: Produto[] }).produtos) || []);
         setMeta((j as { meta?: Meta }).meta || null);
-        setSelecionado(alvo[0]); setBusca(""); setCatSel("");
+        setSelecionado(alvo[0]); setBusca(""); setCatsAbertas(new Set());
       } else {
         // Vários meses: um login só no backend (comps=), depois abre o mais recente.
         setProgresso(`Extraindo ${alvo.length} meses (login + relatórios)…`);
@@ -141,19 +159,23 @@ export function RelatoriosVendasPage() {
   }
 
   const extraidosMap = useMemo(() => new Map(meses.map((m) => [m.comp, m.geradoEm] as const)), [meses]);
-  const categorias = useMemo(() => [...new Set(produtos.map((p) => p.categoria))].sort(), [produtos]);
   const produtosVis = useMemo(() => {
     const b = busca.trim().toLowerCase();
-    const arr = produtos.filter((p) => (!catSel || p.categoria === catSel) && (!b || p.produto.toLowerCase().includes(b)));
-    return [...arr].sort((a, z) => {
-      const va = a[ordem.col], vz = z[ordem.col];
-      if (typeof va === "number" && typeof vz === "number") return (va - vz) * ordem.dir;
-      return String(va).localeCompare(String(vz)) * ordem.dir;
-    });
-  }, [produtos, busca, catSel, ordem]);
-  const totVis = useMemo(() => produtosVis.reduce((s, p) => ({ qtd: s.qtd + p.qtd, bruto: s.bruto + p.fatBruto, liq: s.liq + p.fatLiquido }), { qtd: 0, bruto: 0, liq: 0 }), [produtosVis]);
+    const arr = produtos.filter((p) => (!b || p.produto.toLowerCase().includes(b)));
+    return [...arr].sort((a, z) => z.fatBruto - a.fatBruto);
+  }, [produtos, busca]);
+  // Resumo por categoria (recolhido por padrão; expande os produtos ao clicar).
+  // Ordenado por faturamento bruto (categorias que mais vendem no topo).
+  const resumoCategorias = useMemo(() => {
+    const m = new Map<string, { categoria: string; qtd: number; bruto: number; liq: number; pct: number; produtos: Produto[] }>();
+    for (const p of produtosVis) {
+      let e = m.get(p.categoria);
+      if (!e) { e = { categoria: p.categoria, qtd: 0, bruto: 0, liq: 0, pct: 0, produtos: [] }; m.set(p.categoria, e); }
+      e.qtd += p.qtd; e.bruto += p.fatBruto; e.liq += p.fatLiquido; e.pct += p.pctTotal; e.produtos.push(p);
+    }
+    return [...m.values()].sort((a, z) => z.bruto - a.bruto);
+  }, [produtosVis]);
 
-  const toggleOrdem = (col: keyof Produto) => setOrdem((o) => (o.col === col ? { col, dir: (o.dir === 1 ? -1 : 1) } : { col, dir: -1 }));
   function exportarCSV() {
     const linhas = [["ID", "Produto", "Categoria", "Qtd", "Fat Bruto", "Fat Liquido", "% Total", "Curva"]];
     for (const p of produtosVis) linhas.push([p.id, p.produto, p.categoria, String(p.qtd).replace(".", ","), p.fatBruto.toFixed(2).replace(".", ","), p.fatLiquido.toFixed(2).replace(".", ","), p.pctTotal.toFixed(2).replace(".", ","), p.curva]);
@@ -161,12 +183,6 @@ export function RelatoriosVendasPage() {
     const url = URL.createObjectURL(new Blob(["﻿" + csv], { type: "text/csv;charset=utf-8" }));
     const a = document.createElement("a"); a.href = url; a.download = `vendas-produto_${selecionado || "mes"}.csv`; a.click(); URL.revokeObjectURL(url);
   }
-  const setC = (col: keyof Produto, label: string, cls = "text-right") => (
-    <th className={`px-2 py-1.5 ${cls} cursor-pointer select-none whitespace-nowrap`} onClick={() => toggleOrdem(col)}>
-      {label}{ordem.col === col ? (ordem.dir === -1 ? " ↓" : " ↑") : ""}
-    </th>
-  );
-
   // ── Turno (lê vendasAltec já sincronizado) — mesmo seletor de mês ──────────
   const [mesTurno, setMesTurno] = useState(todayYmd().slice(0, 7));
   const [dias, setDias] = useState<DiaHora[]>([]);
@@ -285,6 +301,80 @@ export function RelatoriosVendasPage() {
           )}
           {erro && <div className="mb-3 rounded-lg border border-rose-200 dark:border-rose-900 bg-rose-50 dark:bg-rose-950/30 p-3 text-sm text-rose-700 dark:text-rose-300 inline-flex items-center gap-1.5"><TriangleAlert size={14} /> {erro}</div>}
 
+          {/* Relatório do mês — abre EM CIMA; começa pelo resumo por CATEGORIA
+              (recolhido) e cada categoria expande os produtos ao clicar. */}
+          {selecionado && meta && (
+            <div className="mb-4">
+              <div className="flex items-center justify-between gap-2 mb-2">
+                <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">{nomeComp(selecionado).replace(/^\w/, (c) => c.toUpperCase())}</h2>
+                <span className="text-[11px] text-gray-400">extraído em {dtBR(meta.geradoEm) || "—"}</span>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+                <Card titulo="Produtos" valor={String(meta.totalProdutos)} />
+                <Card titulo="Itens vendidos" valor={qtdFmt(meta.totalQtd)} />
+                <Card titulo="Fat. Bruto" valor={money(meta.totalFatBruto)} />
+                <Card titulo="Fat. Líquido" valor={money(meta.totalFatLiquido)} />
+              </div>
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto…" className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 py-1.5 flex-1 min-w-[160px]" />
+                <button onClick={() => setCatsAbertas((s) => s.size ? new Set() : new Set(resumoCategorias.map((c) => c.categoria)))} className="text-xs text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:underline whitespace-nowrap">{catsAbertas.size ? "recolher todas" : "expandir todas"}</button>
+                <Button size="sm" variant="secondary" onClick={exportarCSV}><span className="inline-flex items-center gap-1"><Download size={13} /> CSV</span></Button>
+              </div>
+              {/* Cabeçalho das colunas do resumo (só rótulo) */}
+              <div className="hidden sm:flex items-center gap-2 px-3 pb-1 text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                <span className="w-[15px]" /><span className="flex-1">Categoria</span>
+                <span className="w-16 text-right">Produtos</span><span className="w-14 text-right">Qtd</span>
+                <span className="w-24 text-right">Fat. Bruto</span><span className="w-12 text-right">%</span>
+              </div>
+              <div className="space-y-2">
+                {resumoCategorias.length === 0 && <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-6 text-center text-sm text-gray-400">Nenhum produto.</div>}
+                {resumoCategorias.map((cat) => {
+                  const aberta = catsAbertas.has(cat.categoria) || !!busca.trim();
+                  return (
+                    <div key={cat.categoria} className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden">
+                      <button onClick={() => toggleCat(cat.categoria)} className="w-full flex items-center gap-2 px-3 py-2.5 bg-gray-50 dark:bg-gray-900/60 hover:bg-gray-100 dark:hover:bg-gray-900 text-left">
+                        <ChevronRight size={15} className={`shrink-0 text-gray-400 transition-transform ${aberta ? "rotate-90" : ""}`} />
+                        <span className="font-medium text-sm text-gray-900 dark:text-gray-100 flex-1 truncate">{cat.categoria}</span>
+                        <span className="text-[11px] text-gray-400 w-16 text-right hidden sm:inline">{cat.produtos.length}</span>
+                        <span className="text-xs tabular-nums text-gray-500 w-14 text-right">{qtdFmt(cat.qtd)}</span>
+                        <span className="text-sm tabular-nums font-semibold text-gray-800 dark:text-gray-100 w-24 text-right">{money(cat.bruto)}</span>
+                        <span className="text-[11px] tabular-nums text-gray-400 w-12 text-right">{cat.pct.toFixed(1)}%</span>
+                      </button>
+                      {aberta && (
+                        <div className="overflow-x-auto border-t border-gray-100 dark:border-gray-800">
+                          <table className="w-full text-sm">
+                            <thead className="bg-white dark:bg-gray-900 text-gray-500 dark:text-gray-400 text-xs">
+                              <tr>
+                                <th className="px-2 py-1.5 text-left font-medium">Produto</th>
+                                <th className="px-2 py-1.5 text-right font-medium">Qtd</th>
+                                <th className="px-2 py-1.5 text-right font-medium">Fat. Bruto</th>
+                                <th className="px-2 py-1.5 text-right font-medium">Fat. Líquido</th>
+                                <th className="px-2 py-1.5 text-right font-medium">% Total</th>
+                                <th className="px-2 py-1.5 text-center font-medium">Curva</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {cat.produtos.map((p) => (
+                                <tr key={p.id} className="border-t border-gray-100 dark:border-gray-800/70">
+                                  <td className="px-2 py-1.5">{p.produto}</td>
+                                  <td className="px-2 py-1.5 text-right tabular-nums">{qtdFmt(p.qtd)}</td>
+                                  <td className="px-2 py-1.5 text-right tabular-nums">{money(p.fatBruto)}</td>
+                                  <td className="px-2 py-1.5 text-right tabular-nums">{money(p.fatLiquido)}</td>
+                                  <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{p.pctTotal.toFixed(2)}%</td>
+                                  <td className="px-2 py-1.5 text-center"><span className={`inline-block w-5 rounded text-xs font-bold ${p.curva === "A" ? "text-emerald-600" : p.curva === "B" ? "text-amber-600" : "text-gray-400"}`}>{p.curva}</span></td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
           {/* Lista de meses extraídos */}
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden mb-4">
             <div className="px-3 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 bg-gray-50 dark:bg-gray-900/60 border-b border-gray-200 dark:border-gray-800">
@@ -311,72 +401,6 @@ export function RelatoriosVendasPage() {
               </ul>
             )}
           </div>
-
-          {/* Tabela do mês selecionado */}
-          {selecionado && meta && (
-            <>
-              <div className="flex items-center justify-between gap-2 mb-2">
-                <h2 className="text-sm font-semibold text-gray-800 dark:text-gray-100">{nomeComp(selecionado).replace(/^\w/, (c) => c.toUpperCase())}</h2>
-                <span className="text-[11px] text-gray-400">extraído em {dtBR(meta.geradoEm) || "—"}</span>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
-                <Card titulo="Produtos" valor={String(meta.totalProdutos)} />
-                <Card titulo="Itens vendidos" valor={qtdFmt(meta.totalQtd)} />
-                <Card titulo="Fat. Bruto" valor={money(meta.totalFatBruto)} />
-                <Card titulo="Fat. Líquido" valor={money(meta.totalFatLiquido)} />
-              </div>
-              <div className="flex flex-wrap items-center gap-2 mb-2">
-                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto…" className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 py-1.5 flex-1 min-w-[160px]" />
-                <select value={catSel} onChange={(e) => setCatSel(e.target.value)} className="text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5">
-                  <option value="">Todas categorias</option>
-                  {categorias.map((c) => <option key={c} value={c}>{c}</option>)}
-                </select>
-                <Button size="sm" variant="secondary" onClick={exportarCSV}>⤓ CSV</Button>
-              </div>
-              <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
-                <table className="w-full text-sm">
-                  <thead className="bg-gray-50 dark:bg-gray-900/60 text-gray-600 dark:text-gray-300 text-xs">
-                    <tr>
-                      {setC("produto", "Produto", "text-left")}
-                      {setC("categoria", "Categoria", "text-left")}
-                      {setC("qtd", "Qtd")}
-                      {setC("fatBruto", "Fat. Bruto")}
-                      {setC("fatLiquido", "Fat. Líquido")}
-                      {setC("pctTotal", "% Total")}
-                      {setC("curva", "Curva", "text-center")}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {produtosVis.map((p) => (
-                      <tr key={p.id} className="border-t border-gray-100 dark:border-gray-800/70 hover:bg-gray-50 dark:hover:bg-gray-900/40">
-                        <td className="px-2 py-1.5">{p.produto}</td>
-                        <td className="px-2 py-1.5 text-gray-500">{p.categoria}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{qtdFmt(p.qtd)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{money(p.fatBruto)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{money(p.fatLiquido)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums text-gray-500">{p.pctTotal.toFixed(2)}%</td>
-                        <td className="px-2 py-1.5 text-center">
-                          <span className={`inline-block w-5 rounded text-xs font-bold ${p.curva === "A" ? "text-emerald-600" : p.curva === "B" ? "text-amber-600" : "text-gray-400"}`}>{p.curva}</span>
-                        </td>
-                      </tr>
-                    ))}
-                    {produtosVis.length === 0 && <tr><td colSpan={7} className="px-2 py-6 text-center text-gray-400">Nenhum produto.</td></tr>}
-                  </tbody>
-                  {produtosVis.length > 0 && (
-                    <tfoot className="bg-gray-50 dark:bg-gray-900/60 font-semibold text-gray-700 dark:text-gray-200 border-t-2 border-gray-200 dark:border-gray-700">
-                      <tr>
-                        <td className="px-2 py-1.5" colSpan={2}>Total ({produtosVis.length})</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{qtdFmt(totVis.qtd)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{money(totVis.bruto)}</td>
-                        <td className="px-2 py-1.5 text-right tabular-nums">{money(totVis.liq)}</td>
-                        <td colSpan={2}></td>
-                      </tr>
-                    </tfoot>
-                  )}
-                </table>
-              </div>
-            </>
-          )}
         </div>
       ) : (
         // ── TURNO ──────────────────────────────────────────────────────────
