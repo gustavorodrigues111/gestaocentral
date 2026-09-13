@@ -687,6 +687,12 @@ service cloud.firestore {
       allow read, write: if authed();
     }
 
+    // ── /usuarioPrefs ── preferências por usuário (id = pessoaId) ─────────
+    // Ex.: { favoritos: [moduleId] } — atalhos fixados no menu. Não sensível.
+    match /usuarioPrefs/{id} {
+      allow read, write: if authed();
+    }
+
     // ── Catch-all: nega coleções não listadas (whitelist) ────────────────
     match /{coll}/{doc} {
       allow read, write: if false;

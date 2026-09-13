@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { NavLink, useNavigate, useLocation } from "react-router-dom";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
 import { db } from "../firebase/config";
-import { AREA_INFO, modulesByArea } from "../../config/modules";
+import { AREA_INFO, MODULES, modulesByArea, getModule } from "../../config/modules";
 import { useAuth } from "../auth/AuthContext";
 import { useRestaurant } from "../restaurant/RestaurantContext";
 import { canUse } from "../auth/permissions";
@@ -11,7 +11,7 @@ import { useAvisos } from "../../modules/chat/useAvisos";
 import { confirmarSaida } from "../nav/unsaved";
 import { ModuleBadge } from "../ui/ModuleBadge";
 import { ModuleIcon } from "../ui/ModuleIcon";
-import { PanelLeftClose, Store, ChevronsUpDown, Check, Plus, Compass } from "lucide-react";
+import { PanelLeftClose, Store, ChevronsUpDown, Check, Plus, Compass, Star, X } from "lucide-react";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
 import type { ModuleArea, ModuleId } from "../types";
 
@@ -46,6 +46,25 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   // useCanAcao já lê perfis built-in + custom do Firestore — usa esse hook
   // em vez de canAcao() solto pra perfis custom funcionarem.
   const { can: canAcaoRid } = useCanAcao(rid || "");
+
+  // Favoritos POR USUÁRIO — módulos que a pessoa fixa no topo do menu.
+  // Doc usuarioPrefs/{pessoaId} = { favoritos: moduleId[] } (mesmo padrão do avisosLidos).
+  const [favoritos, setFavoritos] = useState<string[]>([]);
+  const [favPicker, setFavPicker] = useState(false);
+  useEffect(() => {
+    if (!pessoa?.id) { setFavoritos([]); return; }
+    const unsub = onSnapshot(doc(db, "usuarioPrefs", pessoa.id), (snap) => {
+      const f = (snap.data() as { favoritos?: string[] } | undefined)?.favoritos;
+      setFavoritos(Array.isArray(f) ? f : []);
+    }, () => { /* rules/rede */ });
+    return () => unsub();
+  }, [pessoa?.id]);
+  async function toggleFavorito(id: string) {
+    if (!pessoa?.id) return;
+    const novos = favoritos.includes(id) ? favoritos.filter((x) => x !== id) : [...favoritos, id];
+    setFavoritos(novos);
+    try { await setDoc(doc(db, "usuarioPrefs", pessoa.id), { favoritos: novos }, { merge: true }); } catch { /* rules/rede */ }
+  }
 
   // Seções (grupos) colapsáveis — accordion. Persiste no localStorage.
   const [colapsadas, setColapsadas] = useState<Set<string>>(() => {
@@ -234,6 +253,53 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
         </div>
 
         <nav className="flex-1 overflow-y-auto p-3 space-y-4">
+          {/* FAVORITOS — atalhos POR USUÁRIO, fixados no topo do menu. */}
+          {rid && (() => {
+            const favMods = favoritos.flatMap((id) => { const m = getModule(id); return m && !m.oculto && visibleModule(m.id) ? [m] : []; });
+            const disponiveis = MODULES.filter((m) => !m.oculto && visibleModule(m.id));
+            const itemCls = ({ isActive }: { isActive: boolean }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`;
+            if (disponiveis.length === 0 && favMods.length === 0) return null;
+            return (
+              <div>
+                <div className="flex items-center gap-1 px-1.5 mb-1">
+                  <Star size={12} className="text-amber-500 shrink-0" />
+                  <span className="flex-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Favoritos</span>
+                  <button type="button" onClick={() => setFavPicker((v) => !v)} className="text-[10px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-0.5">
+                    {favPicker ? <><X size={11} /> Fechar</> : <><Plus size={11} /> Adicionar</>}
+                  </button>
+                </div>
+                {favMods.length > 0 && (
+                  <div className="space-y-0.5 mb-1">
+                    {favMods.map((m) => (
+                      <NavLink key={m.id} to={`/r/${rid}/${m.id}`} onClick={guardedClose} className={itemCls}>
+                        <ModuleIcon name={m.icon} size={16} />
+                        <span className="flex-1 truncate">{m.label}</span>
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+                {favPicker && (
+                  <div className="mb-2 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-1 max-h-64 overflow-auto">
+                    <div className="px-2 py-1 text-[10px] text-gray-400">Marque os módulos pra fixar aqui</div>
+                    {disponiveis.map((m) => {
+                      const on = favoritos.includes(m.id);
+                      return (
+                        <button key={m.id} type="button" onClick={() => void toggleFavorito(m.id)} className="w-full flex items-center gap-2 px-2 py-1.5 rounded-lg text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800">
+                          <ModuleIcon name={m.icon} size={15} />
+                          <span className="flex-1 truncate">{m.label}</span>
+                          <Star size={14} className={on ? "text-amber-500 fill-amber-500" : "text-gray-300 dark:text-gray-600"} />
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {favMods.length === 0 && !favPicker && (
+                  <button type="button" onClick={() => setFavPicker(true)} className="w-full text-left px-3 py-1.5 text-xs text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">Fixe seus módulos mais usados aqui.</button>
+                )}
+              </div>
+            );
+          })()}
+
           {/* MINHAS INFORMAÇÕES — área pessoal do usuário. Dashboard (Central
               de Avisos, UNIVERSAL) + módulos do Portal do Empregado (deep-link
               pra PortalPage já na aba certa). */}
