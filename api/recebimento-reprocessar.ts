@@ -50,34 +50,41 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const chk = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=${apiKey}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken }) });
     if (!chk.ok) { res.status(401).json({ error: "sessão inválida" }); return; }
 
+    const force = !!body.force;   // reprocessa mesmo notas já com emissor (sobrescreve)
     const notaIds: string[] = Array.isArray(body.notaIds) ? body.notaIds.map(String).slice(0, 500) : [];
     if (notaIds.length === 0) { res.status(200).json({ processados: 0, restantes: 0 }); return; }
 
     const inicio = Date.now();
     const driveToken = await getCentralAccessToken();
+    // Motivos p/ o cliente saber POR QUE algo não foi preenchido:
     let processados = 0, atualizados = 0, idx = 0;
+    let semArquivo = 0, baixaFalhou = 0, ocrFalhou = 0, nadaNovo = 0;
     for (; idx < notaIds.length; idx++) {
       if (Date.now() - inicio > 52000) break;   // deixa margem pro timeout de 60s
       const nota = await firestoreLer("recebimentos", notaIds[idx]) as Record<string, unknown> | null;
-      if (!nota || nota.excluidoEm || nota.emissor) continue;   // já preenchido/excluído
+      if (!nota || nota.excluidoEm) continue;   // inexistente/excluída
+      // "completa" = tem emissor + valor + data. Reprocessa se falta algum (ou force).
+      const completa = !!nota.emissor && nota.valorTotal != null && !!nota.dataEmissao;
+      if (!force && completa) continue;
       const paginas = nota.notaPaginas as Array<{ driveFileId?: string }> | undefined;
       const fileId = (nota.notaDriveFileId as string) || paginas?.[0]?.driveFileId;
-      if (!fileId) continue;
+      if (!fileId) { semArquivo++; continue; }   // não tem imagem/PDF salvo pra reler
       processados++;
       try {
         const base64 = await downloadFileBase64(String(fileId), driveToken);
         const pdf = String(nota.notaNome || "").toLowerCase().endsWith(".pdf");
         const oj = await ocr(base64, pdf, key);
-        if (!oj) continue;
+        if (!oj) { ocrFalhou++; continue; }   // a IA não devolveu JSON legível
         const patch: Record<string, unknown> = {};
-        if (!nota.emissor && oj.emissor) patch.emissor = oj.emissor;
-        if (!nota.cnpjEmissor && oj.cnpjEmissor) patch.cnpjEmissor = oj.cnpjEmissor;
-        if (nota.valorTotal == null && typeof oj.valorTotal === "number") patch.valorTotal = oj.valorTotal;
-        if (!nota.dataEmissao && oj.dataEmissao) patch.dataEmissao = oj.dataEmissao;
+        if ((force || !nota.emissor) && oj.emissor) patch.emissor = oj.emissor;
+        if ((force || !nota.cnpjEmissor) && oj.cnpjEmissor) patch.cnpjEmissor = oj.cnpjEmissor;
+        if ((force || nota.valorTotal == null) && typeof oj.valorTotal === "number") patch.valorTotal = oj.valorTotal;
+        if ((force || !nota.dataEmissao) && oj.dataEmissao) patch.dataEmissao = oj.dataEmissao;
         if (Object.keys(patch).length) { await firestoreAtualizar("recebimentos", notaIds[idx], patch); atualizados++; }
-      } catch { /* segue pra próxima */ }
+        else nadaNovo++;   // leu o arquivo mas não achou os campos que faltavam
+      } catch { baixaFalhou++; }   // falha ao baixar do Drive / ler o arquivo
     }
-    res.status(200).json({ processados, atualizados, restantes: Math.max(0, notaIds.length - idx) });
+    res.status(200).json({ processados, atualizados, restantes: Math.max(0, notaIds.length - idx), semArquivo, baixaFalhou, ocrFalhou, nadaNovo });
   } catch (e) {
     res.status(500).json({ error: e instanceof Error ? e.message : "erro" });
   }

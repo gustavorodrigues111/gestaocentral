@@ -19,7 +19,7 @@ import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
-import { ReceiptText, CreditCard, Banknote, Zap, ClipboardList, Settings, Download, CheckSquare, Trash2, FileText, TriangleAlert, Package, CalendarDays, Search, Plus, Camera, Image as ImageIcon, Pencil, Calculator, Check, Lock, FolderOpen, Lightbulb, Paperclip, type LucideIcon } from "lucide-react";
+import { ReceiptText, CreditCard, Banknote, Zap, ClipboardList, Settings, Download, CheckSquare, Trash2, FileText, TriangleAlert, Package, CalendarDays, Search, Plus, Camera, Image as ImageIcon, Pencil, Calculator, Check, Lock, FolderOpen, Lightbulb, Paperclip, Sparkles, SlidersHorizontal, type LucideIcon } from "lucide-react";
 import type { BoletoNota, DuplicataNota, FormaPagamento, ItemNota, RecebimentoNota, TipoDocumento } from "../../core/types";
 import { FORMA_PAGAMENTO_LABEL, TIPO_DOCUMENTO_LABEL, CONTA_FIXA_CATEGORIAS } from "../../core/types";
 import { requestAccessToken } from "../../core/google/driveClient";
@@ -223,6 +223,9 @@ export function RecebimentoPage() {
   const [padronizando, setPadronizando] = useState(false);
   const [buscaNota, setBuscaNota] = useState("");
   const [filtroConf, setFiltroConf] = useState<"todas" | "conforme" | "divergente">("todas");
+  const [filtroTipo, setFiltroTipo] = useState<"" | TipoDocumento>("");
+  const [filtroPag, setFiltroPag] = useState<"" | FormaPagamento>("");
+  const [filtroAberto, setFiltroAberto] = useState(false);
   const [reproc, setReproc] = useState<{ feitos: number; total: number } | null>(null);
   const [detalheHist, setDetalheHist] = useState<RecebimentoNota | null>(null);
   const [notas, setNotas] = useState<RecebimentoNota[]>([]);
@@ -249,39 +252,56 @@ export function RecebimentoPage() {
     [notas],
   );
   const ordenadas = useMemo(() => ordenadasTodas.filter((n) => !n.excluidoEm), [ordenadasTodas]);      // não-excluídas (export)
-  const semEmissor = useMemo(() => ordenadas.filter((n) => !n.emissor), [ordenadas]);
+  // Notas INCOMPLETAS (falta emissor, data OU valor) que TÊM arquivo salvo pra
+  // reler — só essas o OCR consegue preencher. Sem arquivo → editar na mão.
+  const temArquivoNota = (n: RecebimentoNota) => !!(n.notaDriveFileId || n.notaPaginas?.length);
+  const incompletas = useMemo(
+    () => ordenadas.filter((n) => (!n.emissor || n.valorTotal == null || !n.dataEmissao) && temArquivoNota(n)),
+    [ordenadas],
+  );
 
-  // Reprocessa o OCR das notas sem emissor NO SERVIDOR (segundo plano). Dispara e
+  // Reprocessa o OCR das notas incompletas NO SERVIDOR (segundo plano). Dispara e
   // pode sair da tela — a função continua rodando e as notas atualizam ao vivo.
-  async function reprocessarSemEmissor() {
-    if (semEmissor.length === 0) { setErro("Nenhuma nota sem emissor."); return; }
-    if (!window.confirm(`Reprocessar o OCR de ${semEmissor.length} nota(s) sem emissor em segundo plano?\n\nPode sair da tela — elas vão sendo preenchidas sozinhas.`)) return;
-    setErro(""); setReproc({ feitos: 0, total: semEmissor.length });
+  async function reprocessarIncompletas() {
+    if (incompletas.length === 0) { setErro("Nenhuma nota incompleta com arquivo pra reler."); return; }
+    if (!window.confirm(`Reprocessar o OCR de ${incompletas.length} nota(s) incompleta(s) (sem emissor, data ou valor) em segundo plano?\n\nPode sair da tela — elas vão sendo preenchidas sozinhas.`)) return;
+    setErro(""); setReproc({ feitos: 0, total: incompletas.length });
     try {
-      const r = await fetch("/api/recebimento-reprocessar", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ notaIds: semEmissor.map((n) => n.id) }) });
-      const j = await r.json().catch(() => ({})) as { atualizados?: number; restantes?: number; error?: string };
-      if (!r.ok) setErro(j.error || "Falha ao iniciar o reprocessamento.");
-      else if ((j.restantes ?? 0) > 0) setErro(`Preencheu ${j.atualizados ?? 0} nota(s). Faltaram ${j.restantes} (limite de tempo) — clique de novo pra continuar.`);
-      else setErro(`Pronto — ${j.atualizados ?? 0} nota(s) preenchida(s).`);
+      const r = await fetch("/api/recebimento-reprocessar", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ notaIds: incompletas.map((n) => n.id) }) });
+      const j = await r.json().catch(() => ({})) as { atualizados?: number; restantes?: number; error?: string; semArquivo?: number; baixaFalhou?: number; ocrFalhou?: number; nadaNovo?: number };
+      if (!r.ok) { setErro(j.error || "Falha ao iniciar o reprocessamento."); return; }
+      const partes: string[] = [];
+      if (j.semArquivo) partes.push(`${j.semArquivo} sem imagem salva pra reler`);
+      if (j.ocrFalhou) partes.push(`${j.ocrFalhou} a IA não conseguiu ler`);
+      if (j.baixaFalhou) partes.push(`${j.baixaFalhou} falha ao baixar do Drive`);
+      if (j.nadaNovo) partes.push(`${j.nadaNovo} sem campos novos na nota`);
+      const motivo = partes.length ? ` (${partes.join(", ")})` : "";
+      if ((j.restantes ?? 0) > 0) setErro(`Preencheu ${j.atualizados ?? 0}. Faltaram ${j.restantes} por limite de tempo — clique de novo${motivo}.`);
+      else setErro(`Pronto — preencheu ${j.atualizados ?? 0} nota(s)${motivo}.`);
     } catch { setErro("O reprocessamento foi disparado no servidor; as notas atualizam sozinhas."); }
     finally { setReproc(null); }
   }
   const pendentes = useMemo(() => ordenadas.filter((n) => !n.conferidoEm), [ordenadas]);               // a conferir (lista principal)
-  // Busca (emissor/produto/valor/NF) + filtro de conformidade — aplica na lista.
-  const pendentesFiltradas = useMemo(() => {
+  // Busca (emissor/produto/valor/NF) + filtros (conformidade, tipo, pagamento).
+  const passaFiltro = useMemo(() => {
     const q = buscaNota.trim().toLowerCase();
-    return pendentes.filter((n) => {
+    return (n: RecebimentoNota) => {
       if (filtroConf === "conforme" && !n.conforme) return false;
       if (filtroConf === "divergente" && n.conforme) return false;
+      if (filtroTipo && n.tipoDocumento !== filtroTipo) return false;
+      if (filtroPag && n.formaPagamento !== filtroPag) return false;
       if (!q) return true;
       return (n.emissor || "").toLowerCase().includes(q)
         || (n.numeroNota || "").toLowerCase().includes(q)
         || fmtBRL(n.valorTotal).toLowerCase().includes(q)
         || String(n.valorTotal ?? "").includes(q.replace(",", "."))
         || (n.itens || []).some((it) => (it.descricao || "").toLowerCase().includes(q));
-    });
-  }, [pendentes, buscaNota, filtroConf]);
+    };
+  }, [buscaNota, filtroConf, filtroTipo, filtroPag]);
+  const pendentesFiltradas = useMemo(() => pendentes.filter(passaFiltro), [pendentes, passaFiltro]);
+  const filtrando = !!(buscaNota.trim() || filtroConf !== "todas" || filtroTipo || filtroPag);
   const conferidas = useMemo(() => ordenadas.filter((n) => n.conferidoEm).sort((a, b) => (b.conferidoEm || "").localeCompare(a.conferidoEm || "")), [ordenadas]);
+  const conferidasFiltradas = useMemo(() => conferidas.filter(passaFiltro), [conferidas, passaFiltro]);
   const excluidas = useMemo(() => ordenadasTodas.filter((n) => n.excluidoEm).sort((a, b) => (b.excluidoEm || "").localeCompare(a.excluidoEm || "")), [ordenadasTodas]);
   const purgandoRef = useRef<Set<string>>(new Set());
 
@@ -375,7 +395,7 @@ export function RecebimentoPage() {
         {podeConfig && <TabBtn k="config" label={<span className="inline-flex items-center gap-1.5"><Settings size={15} /> Configurações</span>} />}
         {podeConfig && abaEfetiva === "notas" && (
           <div className="ml-auto shrink-0 flex items-center gap-3 px-2">
-            {semEmissor.length > 0 && <button type="button" disabled={!!reproc} onClick={() => void reprocessarSemEmissor()} className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline disabled:opacity-60">{reproc ? "Reprocessando (pode sair da tela)…" : `Reprocessar sem emissor (${semEmissor.length})`}</button>}
+            {incompletas.length > 0 && <button type="button" disabled={!!reproc} onClick={() => void reprocessarIncompletas()} className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline disabled:opacity-60">{reproc ? "Reprocessando (pode sair da tela)…" : `Reprocessar incompletas (${incompletas.length})`}</button>}
             <button type="button" onClick={() => setPadronizando(true)} className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">Padronizar fornecedores</button>
           </div>
         )}
@@ -409,10 +429,41 @@ export function RecebimentoPage() {
                 placeholder="🔍 Buscar por fornecedor, produto, valor ou NF…"
                 className="flex-1 min-w-[220px] px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
               />
-              <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
-                {([["todas", "Todas"], ["conforme", "Conformes"], ["divergente", "Divergentes"]] as const).map(([k, lbl]) => (
-                  <button key={k} type="button" onClick={() => setFiltroConf(k)} className={`px-2.5 py-1 text-xs font-medium rounded-md ${filtroConf === k ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{lbl}</button>
-                ))}
+              <div className="relative">
+                <button type="button" onClick={() => setFiltroAberto((v) => !v)} className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm rounded-lg border ${filtrando ? "border-indigo-400 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>
+                  <SlidersHorizontal size={14} /> Filtros
+                  {(() => { const nAtivos = (filtroConf !== "todas" ? 1 : 0) + (filtroTipo ? 1 : 0) + (filtroPag ? 1 : 0); return nAtivos > 0 ? <span className="text-[10px] font-bold bg-indigo-500 text-white rounded-full w-4 h-4 grid place-items-center">{nAtivos}</span> : null; })()}
+                </button>
+                {filtroAberto && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setFiltroAberto(false)} />
+                    <div className="absolute right-0 mt-1 z-20 w-64 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg p-3 space-y-3">
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1">Status</div>
+                        <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5 w-full">
+                          {([["todas", "Todas"], ["conforme", "Conformes"], ["divergente", "Divergentes"]] as const).map(([k, lbl]) => (
+                            <button key={k} type="button" onClick={() => setFiltroConf(k)} className={`flex-1 px-1.5 py-1 text-[11px] font-medium rounded-md ${filtroConf === k ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{lbl}</button>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1">Tipo de documento</div>
+                        <select value={filtroTipo} onChange={(e) => setFiltroTipo(e.target.value as "" | TipoDocumento)} className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200">
+                          <option value="">Todos</option>
+                          {(Object.keys(TIPO_DOCUMENTO_LABEL) as TipoDocumento[]).map((t) => <option key={t} value={t}>{TIPO_DOCUMENTO_LABEL[t]}</option>)}
+                        </select>
+                      </div>
+                      <div>
+                        <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1">Forma de pagamento</div>
+                        <select value={filtroPag} onChange={(e) => setFiltroPag(e.target.value as "" | FormaPagamento)} className="w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-700 dark:text-gray-200">
+                          <option value="">Todas</option>
+                          {(Object.keys(FORMA_PAGAMENTO_LABEL) as FormaPagamento[]).map((p) => <option key={p} value={p}>{FORMA_PAGAMENTO_LABEL[p]}</option>)}
+                        </select>
+                      </div>
+                      {filtrando && <button type="button" onClick={() => { setFiltroConf("todas"); setFiltroTipo(""); setFiltroPag(""); setBuscaNota(""); }} className="text-[11px] text-indigo-600 dark:text-indigo-400 hover:underline">Limpar filtros</button>}
+                    </div>
+                  </>
+                )}
               </div>
               <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("xlsx")}>
                 {exportando === "xlsx" ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><Download size={14} /> XLSX</span>}
@@ -422,15 +473,15 @@ export function RecebimentoPage() {
               </Button>
             </div>
           )}
-          {(buscaNota.trim() || filtroConf !== "todas") && <div className="text-[11px] text-gray-400">{pendentesFiltradas.length} de {pendentes.length} nota(s) a conferir</div>}
+          {filtrando && <div className="text-[11px] text-gray-400">{pendentesFiltradas.length} de {pendentes.length} nota(s) a conferir{conferidas.length > 0 ? ` · ${conferidasFiltradas.length} conferida(s)` : ""}</div>}
           <RecebimentoTabela notas={pendentesFiltradas} restaurant={restaurant} podeEditar={podeEditar} podeConfig={podeConfig} por={{ id: me?.id || "", nome: me?.nome || "?" }} onExcluir={excluir} onConferir={podeEditar ? conferir : undefined} />
 
           {/* Histórico de conferidas (abaixo da lista, colapsável) */}
           {conferidas.length > 0 && (
-            <details className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 mt-4">
-              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2"><CheckSquare size={16} /> Conferidas <span className="text-gray-400 font-normal">({conferidas.length})</span> <span className="text-[11px] font-normal text-gray-400">— histórico permanente</span></summary>
+            <details open={filtrando} className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 mt-4">
+              <summary className="cursor-pointer select-none px-4 py-3 text-sm font-semibold text-gray-700 dark:text-gray-200 flex items-center gap-2"><CheckSquare size={16} /> Conferidas <span className="text-gray-400 font-normal">({filtrando ? `${conferidasFiltradas.length} de ${conferidas.length}` : conferidas.length})</span> <span className="text-[11px] font-normal text-gray-400">— histórico permanente</span></summary>
               <div className="px-3 pb-3 space-y-2">
-                {conferidas.map((n) => (
+                {conferidasFiltradas.map((n) => (
                   <div key={n.id} className="bg-gray-50 dark:bg-gray-800/40 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3">
                     <div className="min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
@@ -835,6 +886,24 @@ function RecebimentoTabela({ notas, restaurant, podeEditar, podeConfig, por, onE
 
 // ─── Modal: detalhes de um recebimento ──────────────────────────────────────
 function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir, onIncluirDanfe }: { nota: RecebimentoNota; podeEditar: boolean; onClose: () => void; onEditar: (n: RecebimentoNota) => void; onConferir?: (n: RecebimentoNota) => void; onIncluirDanfe?: (n: RecebimentoNota) => void }) {
+  const [repro, setRepro] = useState(false);
+  const [reproMsg, setReproMsg] = useState("");
+  const temArquivo = !!(nota.notaDriveFileId || nota.notaPaginas?.length);
+  async function reprocessar() {
+    if (!window.confirm("Reprocessar esta nota pela IA? Relê o arquivo e sobrescreve emissor, valor e data.")) return;
+    setRepro(true); setReproMsg("");
+    try {
+      const r = await fetch("/api/recebimento-reprocessar", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ notaIds: [nota.id], force: true }) });
+      const j = await r.json().catch(() => ({})) as { atualizados?: number; semArquivo?: number; ocrFalhou?: number; baixaFalhou?: number; nadaNovo?: number; error?: string };
+      if (!r.ok) setReproMsg(j.error || "Falha no reprocessamento.");
+      else if (j.atualizados) setReproMsg("✓ Nota atualizada — feche e reabra pra ver os campos novos.");
+      else if (j.semArquivo) setReproMsg("Esta nota não tem imagem/PDF salvo pra reler — edite na mão.");
+      else if (j.ocrFalhou) setReproMsg("A IA não conseguiu ler o arquivo desta nota.");
+      else if (j.baixaFalhou) setReproMsg("Falha ao baixar o arquivo do Drive.");
+      else setReproMsg("Releu o arquivo, mas não achou emissor/valor/data pra preencher.");
+    } catch { setReproMsg("Disparado no servidor — os campos atualizam sozinhos."); }
+    setRepro(false);
+  }
   const linha = (label: string, valor?: string | number | null) => (valor != null && valor !== "") ? (
     <div className="flex justify-between gap-3 py-1 border-b border-gray-100 dark:border-gray-800 text-sm">
       <span className="text-gray-500 dark:text-gray-400">{label}</span>
@@ -946,12 +1015,14 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir, onInclu
       {nota.conferidoEm && (
         <div className="mt-3 text-[12px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/40 rounded-lg px-3 py-2">✓ Conferido em {fmtDataHora(nota.conferidoEm)}{nota.conferidoPor?.nome ? ` por ${nota.conferidoPor.nome}` : ""}</div>
       )}
+      {reproMsg && <div className="mt-3 text-[12px] text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">{reproMsg}</div>}
       <div className="flex justify-end items-center gap-2 pt-3 flex-wrap">
         {nota.notaDriveUrl && <a href={nota.notaDriveUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">↗ Abrir nota no Drive</a>}
         {onIncluirDanfe && nota.tipoDocumento === "romaneio" && (
           <button type="button" onClick={() => onIncluirDanfe(nota)}
             className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100 dark:hover:bg-amber-900/40"><span className="inline-flex items-center gap-1.5"><FileText size={13} /> Incluir DANFE recebida</span></button>
         )}
+        {podeEditar && temArquivo && <Button size="sm" variant="secondary" disabled={repro} onClick={() => void reprocessar()}><span className="inline-flex items-center gap-1.5"><Sparkles size={14} /> {repro ? "Reprocessando…" : "Reprocessar (IA)"}</span></Button>}
         {podeEditar && <Button size="sm" variant="secondary" onClick={() => onEditar(nota)}><span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editar</span></Button>}
         <Button size="sm" variant="secondary" onClick={onClose}>Fechar</Button>
         {onConferir && !nota.conferidoEm && (
