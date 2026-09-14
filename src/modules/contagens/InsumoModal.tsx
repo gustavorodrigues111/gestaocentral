@@ -35,6 +35,8 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
 
   const [nome, setNome] = useState(base?.nome || "");
   const [categoria, setCategoria] = useState(base?.categoria || "");
+  const [catCustom, setCatCustom] = useState<boolean>(!!base?.categoria && !CATEGORIAS_SUGERIDAS.includes(base.categoria));
+  const fieldCls = "w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
   const [unidade, setUnidade] = useState<UnidadeMedida>(base?.unidade || "un");
   const [unidadeOutro, setUnidadeOutro] = useState(base?.unidadeOutroLabel || "");
   const [minStock, setMinStock] = useState(base?.minStock != null ? String(base.minStock) : "");
@@ -93,9 +95,9 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
     setSaving(true);
     try {
       const now = new Date().toISOString();
-      const min = minStock.trim() ? parseFloat(minStock) : undefined;
+      const min = minStock.trim() ? parseFloat(minStock.replace(",", ".")) : undefined;
       const fator = fatorCompra.trim() ? parseFloat(fatorCompra) : undefined;
-      const preco = precoEstimado.trim() ? parseFloat(precoEstimado) : undefined;
+      const preco = precoEstimado.trim() ? parseFloat(precoEstimado.replace(",", ".")) : undefined;
 
       // Resolve o fornecedor preferencial pelo NOME: casa com um existente ou cria.
       let fornPrefId: string | null = null;
@@ -196,9 +198,9 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
               <button
                 key={c}
                 type="button"
-                onClick={() => setCategoria(c === categoria ? "" : c)}
+                onClick={() => { setCategoria(c === categoria ? "" : c); setCatCustom(false); }}
                 className={`px-1 py-1 text-[11px] rounded-lg border text-center truncate transition-colors ${
-                  categoria === c
+                  categoria === c && !catCustom
                     ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium"
                     : "border-gray-200 dark:border-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50"
                 }`}
@@ -206,8 +208,15 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
                 {c}
               </button>
             ))}
+            <button
+              type="button"
+              onClick={() => { setCatCustom(true); if (CATEGORIAS_SUGERIDAS.includes(categoria)) setCategoria(""); }}
+              className={`px-1 py-1 text-[11px] rounded-lg border border-dashed text-center transition-colors ${catCustom ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}
+            >
+              + Nova
+            </button>
           </div>
-          <Input value={categoria} onChange={(e) => setCategoria(e.target.value)} placeholder="ou digite outra" />
+          {catCustom && <Input value={categoria} onChange={(e) => setCategoria(e.target.value)} placeholder="nome da nova categoria" autoFocus />}
         </div>
 
         <div className="grid grid-cols-2 gap-3">
@@ -230,28 +239,18 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
             />
           )}
           {unidade !== "outro" && (
-            <Input
-              label="Estoque mínimo"
-              type="number"
-              min={0}
-              step="any"
-              value={minStock}
-              onChange={(e) => setMinStock(e.target.value)}
-              placeholder="0 = sem alerta"
-            />
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Estoque mínimo</label>
+              <input inputMode="decimal" value={minStock} onChange={(e) => setMinStock(e.target.value.replace(/[^\d.,]/g, ""))} placeholder="0 = sem alerta" className={fieldCls} />
+            </div>
           )}
         </div>
 
         {unidade === "outro" && (
-          <Input
-            label="Estoque mínimo"
-            type="number"
-            min={0}
-            step="any"
-            value={minStock}
-            onChange={(e) => setMinStock(e.target.value)}
-            placeholder="0 = sem alerta"
-          />
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Estoque mínimo</label>
+            <input inputMode="decimal" value={minStock} onChange={(e) => setMinStock(e.target.value.replace(/[^\d.,]/g, ""))} placeholder="0 = sem alerta" className={fieldCls} />
+          </div>
         )}
 
         <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
@@ -272,25 +271,19 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
               <p className="text-[10px] text-gray-400 mt-1">Escolhe um existente ou digita um novo — ele é criado ao salvar.</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
-              <Input
-                label="Fator de compra"
-                type="number"
-                min={1}
-                step="any"
-                value={fatorCompra}
-                onChange={(e) => setFatorCompra(e.target.value)}
-                placeholder="ex: 6 (cx de 6 garrafas)"
-              />
-              <Input
-                label="Preço estimado (R$/un)"
-                type="number"
-                min={0}
-                step="0.01"
-                value={precoEstimado}
-                onChange={(e) => setPrecoEstimado(e.target.value)}
-                placeholder="0,00"
-              />
+              <div>
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Fator de compra <span className="text-gray-400 font-normal">(un/pacote)</span></label>
+                <input inputMode="numeric" value={fatorCompra} onChange={(e) => setFatorCompra(e.target.value.replace(/[^\d]/g, ""))} placeholder="ex: 24" className={fieldCls} />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Preço por unidade</label>
+                <div className="mt-1 flex items-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden focus-within:border-indigo-400">
+                  <span className="px-2.5 py-2 text-sm text-gray-400 bg-gray-50 dark:bg-gray-800">R$</span>
+                  <input inputMode="decimal" value={precoEstimado} onChange={(e) => setPrecoEstimado(e.target.value.replace(/[^\d.,]/g, ""))} placeholder="0,00" className="flex-1 px-2 py-2 text-sm bg-transparent outline-none text-gray-900 dark:text-gray-100 text-right tabular-nums" />
+                </div>
+              </div>
             </div>
+            {(() => { const f = parseInt(fatorCompra) || 1; const p = parseFloat(precoEstimado.replace(",", ".")); if (f > 1 && !isNaN(p)) return <p className="text-[11px] text-gray-500 dark:text-gray-400 text-right">Pacote de {f} un = <strong>R$ {(p * f).toFixed(2)}</strong> · unidade R$ {p.toFixed(2)}</p>; return null; })()}
           </div>
         </div>
 
