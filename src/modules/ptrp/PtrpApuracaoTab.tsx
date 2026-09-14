@@ -34,8 +34,9 @@ import { PtrpAssinaturasModal, type AlvoAssinatura } from "./PtrpAssinaturasModa
 import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horarios";
 import { apurarDia, minutoDoDiaBRT, hhmmToMin, type BatidaBloco, type AjusteDia } from "../../core/ptrp/apuracao";
 import { feriadosDoAno } from "../../core/ptrp/feriados";
-import { fetchRoster, decidirAprovacao, corrigirPontoAtraso, excluirBatida, fetchJustificativas, fetchMotivosAfastamento, lancarAfastamento, fetchAprovacoesPendentes } from "../../core/ponto/solidesPontoClient";
-import type { Justificativa, MotivoAfastamento, AprovacaoPendente } from "../../core/ponto/solidesPontoClient";
+import { fetchRoster, decidirAprovacao, corrigirPontoAtraso, excluirBatida, fetchJustificativas, fetchMotivosAfastamento, lancarAfastamento } from "../../core/ponto/solidesPontoClient";
+import type { Justificativa, MotivoAfastamento } from "../../core/ponto/solidesPontoClient";
+import { fetchPunches } from "../../core/excecoes/solidesClient";
 import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import { useTodasPessoas } from "../../core/pessoas/PessoasContext";
 import type { PontoColaborador } from "../../core/ponto/analise";
@@ -51,6 +52,9 @@ type BatidaDoc = { id: string; empresaKey: string; punchId?: string; employeeId?
 // O espelho legal do Sólides só conta APPROVED — espelhamos isso: PENDING/REJECTED
 // não somam horas, mas ficam VISÍVEIS na conferência (correção a aprovar).
 const correcaoPendente = (b: BatidaDoc) => b.status === "PENDING" || b.status === "REJECTED";
+
+// Correção pendente derivada do feed de batidas (mesma regra da Análise de Ponto).
+type PendItem = { punchId: number; employeeId: number; cpf?: string; date: string; dateIn?: number; dateOut?: number };
 
 const compAtual = () => new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 7);
 const hm = (min: number) => min <= 0 ? "0h00" : `${Math.floor(min / 60)}h${String(Math.round(min % 60)).padStart(2, "0")}`;
@@ -129,7 +133,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const [mostrarComp, setMostrarComp] = useState(false);
   const [acaoBusy, setAcaoBusy] = useState(false);
   const [acaoMsg, setAcaoMsg] = useState("");
-  const [aprovacoesPend, setAprovacoesPend] = useState<AprovacaoPendente[]>([]);
+  const [aprovacoesPend, setAprovacoesPend] = useState<PendItem[]>([]);
   const [pendErr, setPendErr] = useState("");
   const [selCorr, setSelCorr] = useState<Set<string>>(new Set());   // dias marcados p/ pedir correção (lote)
   const [corrModal, setCorrModal] = useState(false);
@@ -182,9 +186,18 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     if (!shortCode || !comp) { setAprovacoesPend([]); return; }
     try {
       const ini = `${comp}-01`, fim = `${comp}-${String(diasDoMes).padStart(2, "0")}`;
-      setAprovacoesPend(await fetchAprovacoesPendentes(shortCode, ini, fim));
+      const { punches } = await fetchPunches(ini, fim, shortCode, true);
+      // Mesma regra da Análise: PENDING com ajuste/edição = correção a aprovar.
+      const pend: PendItem[] = punches
+        .filter(p => String(p.status || "").toUpperCase() === "PENDING" && (p.adjustmentReason != null || p.edited === true))
+        .map(p => ({
+          punchId: p.id, employeeId: p.employeeId, cpf: (p.employee?.cpf || "").replace(/\D/g, "") || undefined,
+          date: p.date || "", dateIn: typeof p.dateIn === "number" ? p.dateIn : undefined,
+          dateOut: (typeof p.dateOut === "number" && p.dateOut > p.dateIn) ? p.dateOut : undefined,
+        }));
+      setAprovacoesPend(pend);
       setPendErr("");
-    } catch (e) { setPendErr(e instanceof Error ? e.message : "Falha ao buscar aprovações pendentes da Sólides."); }
+    } catch (e) { setPendErr(e instanceof Error ? e.message : "Falha ao buscar correções pendentes da Sólides."); }
   }
   useEffect(() => { void carregarPendentes(); }, [shortCode, comp]);   // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -252,8 +265,8 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     for (const ap of aprovacoesPend) {
       const pid = String(ap.punchId);
       if (idsReais.has(pid)) continue;                       // já veio pelo espelho
-      const cpf = eidToCpf.get(String(ap.employeeId));
-      if (!cpf) continue;                                    // sem casar CPF no mês
+      const cpf = ap.cpf || eidToCpf.get(String(ap.employeeId));
+      if (!cpf) continue;                                    // sem casar CPF
       const date = ap.date || (ap.dateIn ? ymdDeMs(ap.dateIn) : "");
       if (!date || date < ini || date > fim) continue;
       out.push({ id: `pend_${pid}`, empresaKey: shortCode, punchId: pid, employeeId: String(ap.employeeId), cpf, date, dateIn: ap.dateIn ?? null, dateOut: ap.dateOut ?? null, status: "PENDING" });
