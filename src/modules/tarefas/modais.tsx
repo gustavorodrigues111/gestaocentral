@@ -21,6 +21,15 @@ import { PuxarIdeiaOcorrenciaModal } from "../_shared/PuxarIdeiaOcorrenciaModal"
 import { DatePickerBR } from "../prazos/campos";
 import { CoRespPicker, FieldRow, PessoasMultiPicker, UsuariosAutorizadosPicker, brParaYmd, mudarStatusComErro, ymdParaBr, AreaIcone } from "./helpers";
 
+// Renderiza um texto transformando URLs (http/https) em links clicáveis. O
+// stopPropagation evita que o clique no link dispare a edição do campo em volta.
+function TextoComLinks({ texto }: { texto: string }) {
+  const partes = texto.split(/(https?:\/\/[^\s]+)/g);
+  return <>{partes.map((p, i) => /^https?:\/\//.test(p)
+    ? <a key={i} href={p} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-indigo-600 dark:text-indigo-400 underline break-all hover:text-indigo-700 dark:hover:text-indigo-300">{p}</a>
+    : <span key={i}>{p}</span>)}</>;
+}
+
 // Modal: lista os restaurantes do user e ao escolher, navega pra
 // /r/{escolhido}/{rota}. Usado pelo banner quando o sub não tem rest
 // travado e o user precisa decidir qual unidade abrir.
@@ -978,7 +987,7 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
                 className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap cursor-text hover:bg-gray-50 dark:hover:bg-gray-800/50 rounded p-1 -m-1 min-h-[1.5rem]"
                 title="Clique pra editar"
               >
-                {tarefa.descricao || <span className="text-gray-400 italic">+ Adicionar descrição</span>}
+                {tarefa.descricao ? <TextoComLinks texto={tarefa.descricao} /> : <span className="text-gray-400 italic">+ Adicionar descrição</span>}
               </div>
             )}
           </div>
