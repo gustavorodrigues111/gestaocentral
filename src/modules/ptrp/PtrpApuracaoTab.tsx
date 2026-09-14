@@ -1110,6 +1110,7 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
   const [caminho, setCaminho] = useState<"" | "marcacoes" | "motivo">("");
   const [salvando, setSalvando] = useState(false);
   const [err, setErr] = useState("");
+  const [aviso, setAviso] = useState("");
   const [obs, setObs] = useState("");
   const inp = "w-full px-2.5 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
   const cpf = (emp.cpf || "").replace(/\D/g, "");
@@ -1167,7 +1168,7 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
   const togglePreferido = (id: number) => { const cur = mapa[String(id)] || {}; const m = motivos.find(x => x.id === id); void setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(id)]: { ...cur, exibir: !cur.exibir, descricao: m?.description || cur.descricao } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {}); };
 
   async function salvar() {
-    setErr("");
+    setErr(""); setAviso("");
     try {
       if (caminho === "marcacoes") {
         const rem = existentes.filter(e => removidos.has(e.punchId));
@@ -1196,7 +1197,7 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
         }
         if (solidesFalhas > 0) {
           setSalvando(false);
-          setErr(`${solidesFalhas} marcação(ões) foram desconsideradas na apuração (o ponto no app já está corrigido), mas a Sólides recusou excluir — geralmente uma batida "aberta" (só entrada) ou já alterada lá. Você pode fechar.`);
+          setAviso(`Pronto — o ponto no app já está corrigido. ${solidesFalhas} marcação(ões) foram desconsideradas na apuração, mas a Sólides não excluiu a batida original (geralmente uma batida "aberta", só entrada, ou já alterada lá) — se precisar, remova também direto no painel da Sólides. Pode fechar.`);
           return;
         }
         onClose();
@@ -1296,6 +1297,7 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
         {caminho && <label className="flex flex-col gap-1"><span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Observação (trilha do app)</span><textarea value={obs} onChange={e => setObs(e.target.value)} rows={2} placeholder="Ex.: esqueceu de bater a saída; atestado de 1 dia…" className={inp} /></label>}
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
+        {aviso && <div className="text-[13px] rounded-lg px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">{aviso}</div>}
         {caminho && <div className="flex justify-end gap-2 pt-1"><Button variant="secondary" onClick={onClose} disabled={salvando}>Cancelar</Button><Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando…" : "Confirmar tratamento"}</Button></div>}
       </div>
     </Modal>
