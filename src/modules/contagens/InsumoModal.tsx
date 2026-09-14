@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Sparkles } from "lucide-react";
+import { useState, type ReactNode } from "react";
+import { Sparkles, Pencil, Trash2 } from "lucide-react";
 import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
 import { db, auth } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -16,6 +16,7 @@ type Props = {
   restaurantId: string;
   // Pré-preenchimento ao criar (ex.: sugestão vinda do Recebimento).
   preset?: Partial<Insumo> | null;
+  onExcluir?: (insumo: Insumo) => void;   // excluir de dentro do modo "ver"
   onClose: () => void;
 };
 
@@ -25,17 +26,32 @@ const CATEGORIAS_SUGERIDAS = [
   "Mercearia", "Limpeza", "Descartáveis", "Outros",
 ];
 
-export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onClose }: Props) {
+export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcluir, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !insumo;
   const base = insumo ?? preset ?? null;   // ao criar, usa o preset da sugestão
+  // Abre em modo VER quando é um insumo existente; editar entra pelo botão.
+  const [modo, setModo] = useState<"ver" | "editar">(insumo ? "ver" : "editar");
 
   const [nome, setNome] = useState(base?.nome || "");
   const [categoria, setCategoria] = useState(base?.categoria || "");
   const [unidade, setUnidade] = useState<UnidadeMedida>(base?.unidade || "un");
   const [unidadeOutro, setUnidadeOutro] = useState(base?.unidadeOutroLabel || "");
   const [minStock, setMinStock] = useState(base?.minStock != null ? String(base.minStock) : "");
-  const [fornecedorId, setFornecedorId] = useState<string>(base?.fornecedorPreferredId || "");
+  // Fornecedor por NOME (combobox) — funciona mesmo antes de o fornecedor virar
+  // cadastro; é criado/casado ao salvar. Default = primário do preset/insumo.
+  const nomePrefInicial = (() => {
+    const prim = base?.fornecedores?.find((f) => f.primario) || base?.fornecedores?.[0];
+    if (prim?.nome) return prim.nome;
+    if (base?.fornecedorPreferredId) return fornecedores.find((f) => f.id === base.fornecedorPreferredId)?.nome || "";
+    return "";
+  })();
+  const [fornecedorNome, setFornecedorNome] = useState<string>(nomePrefInicial);
+  const fornOpcoes = (() => {
+    const set = new Set<string>(fornecedores.map((f) => f.nome));
+    for (const f of (base?.fornecedores || [])) if (f.nome) set.add(f.nome);
+    return [...set].sort((a, b) => a.localeCompare(b));
+  })();
   const [fatorCompra, setFatorCompra] = useState(base?.fatorCompra != null ? String(base.fatorCompra) : "");
   const [precoEstimado, setPrecoEstimado] = useState(base?.precoEstimado != null ? String(base.precoEstimado) : "");
   const [ativo, setAtivo] = useState(insumo?.ativo ?? true);
@@ -52,11 +68,19 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onClos
     try {
       const idToken = await auth.currentUser?.getIdToken();
       const r = await fetch("/api/contagens-ia", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken, produtos: [{ chave: nome, nome, unidadeAtual: unidade }], jaCadastrados: [] }) });
-      const j = await r.json() as { itens?: Array<{ categoria?: string; unidade?: string }> };
+      const j = await r.json() as { itens?: Array<{ nomeLimpo?: string; qtdPorPacote?: number; categoria?: string; unidade?: string }> };
       const it = j?.itens?.[0];
       if (it) {
+        if (it.nomeLimpo?.trim()) setNome(it.nomeLimpo.trim());
         if (it.categoria) setCategoria(it.categoria);
         if (it.unidade && (UNIDADES_LISTA as string[]).includes(it.unidade)) setUnidade(it.unidade as UnidadeMedida);
+        // Pacote → fator de compra + preço unitário (divide o preço do pacote uma vez).
+        if (it.qtdPorPacote && it.qtdPorPacote > 1) {
+          const novo = Math.round(it.qtdPorPacote);
+          const fatorAntes = parseFloat(fatorCompra) || 1;
+          setFatorCompra(String(novo));
+          if (fatorAntes <= 1) { const p = parseFloat(precoEstimado); if (!isNaN(p)) setPrecoEstimado((p / novo).toFixed(2)); }
+        }
       }
     } catch { /* silencioso */ } finally { setRevisandoIa(false); }
   }
@@ -73,6 +97,16 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onClos
       const fator = fatorCompra.trim() ? parseFloat(fatorCompra) : undefined;
       const preco = precoEstimado.trim() ? parseFloat(precoEstimado) : undefined;
 
+      // Resolve o fornecedor preferencial pelo NOME: casa com um existente ou cria.
+      let fornPrefId: string | null = null;
+      const fn = fornecedorNome.trim();
+      if (fn) {
+        const nf = fn.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
+        const existente = fornecedores.find((f) => f.nome.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase() === nf);
+        if (existente) fornPrefId = existente.id;
+        else { const ref = await addDoc(collection(db, "fornecedores"), sanitizeForFirestore({ restaurantId, nome: fn, ativo: true, criadoEm: now, criadoPor: me.id })); fornPrefId = ref.id; }
+      }
+
       const payload: Omit<Insumo, "id"> = {
         restaurantId,
         nome: nome.trim(),
@@ -83,7 +117,7 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onClos
         // aliases + fornecedores (multi-fornecedor) vêm do preset/insumo e passam direto.
         aliases: base?.aliases,
         fornecedores: base?.fornecedores,
-        fornecedorPreferredId: fornecedorId || null,
+        fornecedorPreferredId: fornPrefId,
         fatorCompra: fator !== undefined && !isNaN(fator) && fator > 0 ? fator : undefined,
         precoEstimado: preco !== undefined && !isNaN(preco) ? preco : undefined,
         ativo,
@@ -106,6 +140,39 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onClos
     }
   }
 
+  // ── Modo VER — detalhes read-only + Editar/Excluir dentro do modal ──
+  if (modo === "ver" && insumo) {
+    const unidLabel = insumo.unidade === "outro" ? (insumo.unidadeOutroLabel || "outro") : UNIDADES_LABEL[insumo.unidade];
+    const fornLista = (insumo.fornecedores && insumo.fornecedores.length ? insumo.fornecedores.map((f) => f.nome) : []);
+    const fornPref = insumo.fornecedorPreferredId ? fornecedores.find((f) => f.id === insumo.fornecedorPreferredId)?.nome : null;
+    const Row = ({ label, children }: { label: string; children: ReactNode }) => (
+      <div className="flex items-start justify-between gap-3 py-1.5 border-b border-gray-100 dark:border-gray-800 last:border-0">
+        <span className="text-xs text-gray-500 dark:text-gray-400">{label}</span>
+        <span className="text-sm text-gray-900 dark:text-gray-100 text-right">{children}</span>
+      </div>
+    );
+    return (
+      <Modal title={insumo.nome} onClose={onClose} maxWidth="max-w-lg">
+        <div className="space-y-1">
+          <Row label="Categoria">{insumo.categoria || "—"}</Row>
+          <Row label="Unidade (contagem)">{unidLabel}</Row>
+          {insumo.fatorCompra && insumo.fatorCompra > 1 && <Row label="Pacote de compra">{insumo.fatorCompra} un</Row>}
+          <Row label="Estoque mínimo">{insumo.minStock != null ? insumo.minStock : "—"}</Row>
+          <Row label="Preço estimado">{insumo.precoEstimado != null ? `R$ ${insumo.precoEstimado.toFixed(2)}/un${insumo.fatorCompra && insumo.fatorCompra > 1 ? ` · pacote R$ ${(insumo.precoEstimado * insumo.fatorCompra).toFixed(2)}` : ""}` : "—"}</Row>
+          <Row label="Fornecedor(es)">{fornLista.length ? fornLista.join(", ") : (fornPref || "—")}</Row>
+          {insumo.aliases && insumo.aliases.length > 0 && <Row label="Reconhece na nota como"><span className="text-[11px] text-gray-500">{insumo.aliases.length} nome(s)</span></Row>}
+          <Row label="Status">{insumo.ativo ? "Ativo" : "Inativo"}</Row>
+        </div>
+        <div className="flex items-center gap-2 pt-4 mt-2 border-t border-gray-200 dark:border-gray-800">
+          {onExcluir && <Button variant="danger" onClick={() => { onExcluir(insumo); onClose(); }}><span className="inline-flex items-center gap-1.5"><Trash2 size={14} /> Excluir</span></Button>}
+          <div className="flex-1" />
+          <Button variant="secondary" onClick={onClose}>Fechar</Button>
+          <Button onClick={() => setModo("editar")}><span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editar</span></Button>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Modal title={isNew ? "+ Novo insumo" : `Editar — ${insumo.nome}`} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
@@ -124,16 +191,16 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onClos
               <Sparkles size={10} /> {revisandoIa ? "reavaliando…" : "Reavaliar pela IA"}
             </button>
           </div>
-          <div className="flex flex-wrap gap-1 mt-1 mb-1">
+          <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 mt-1.5 mb-1.5">
             {CATEGORIAS_SUGERIDAS.map(c => (
               <button
                 key={c}
                 type="button"
                 onClick={() => setCategoria(c === categoria ? "" : c)}
-                className={`px-2 py-1 text-xs rounded-full border transition-colors ${
+                className={`px-1 py-1 text-[11px] rounded-lg border text-center truncate transition-colors ${
                   categoria === c
-                    ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300"
-                    : "border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-50"
+                    ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium"
+                    : "border-gray-200 dark:border-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50"
                 }`}
               >
                 {c}
@@ -194,17 +261,15 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onClos
           <div className="space-y-2">
             <div>
               <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Fornecedor preferencial</label>
-              <select
-                value={fornecedorId}
-                onChange={(e) => setFornecedorId(e.target.value)}
-                className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
-              >
-                <option value="">— sem fornecedor preferencial —</option>
-                {fornecedores.map(f => <option key={f.id} value={f.id}>{f.nome}</option>)}
-              </select>
-              {fornecedores.length === 0 && (
-                <p className="text-[10px] text-gray-500 mt-1">Cadastre fornecedores no módulo Compras pra escolher aqui.</p>
-              )}
+              <input
+                list="forn-modal-sug"
+                value={fornecedorNome}
+                onChange={(e) => setFornecedorNome(e.target.value)}
+                placeholder="escolher ou digitar fornecedor…"
+                className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100"
+              />
+              <datalist id="forn-modal-sug">{fornOpcoes.map((n) => <option key={n} value={n} />)}</datalist>
+              <p className="text-[10px] text-gray-400 mt-1">Escolhe um existente ou digita um novo — ele é criado ao salvar.</p>
             </div>
             <div className="grid grid-cols-2 gap-3">
               <Input

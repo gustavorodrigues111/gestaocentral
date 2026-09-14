@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, BarChart3, Settings, Lock, TriangleAlert, Package, Phone, Plus, Sparkles, Truck, Link2, Loader2, Layers, EyeOff, RotateCcw } from "lucide-react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { Pencil, BarChart3, Settings, Lock, TriangleAlert, Package, Plus, Sparkles, Truck, Link2, Loader2, Layers, EyeOff, RotateCcw } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db, auth } from "../../core/firebase/config";
@@ -554,49 +554,42 @@ export function ContagensPage() {
               )}
             </div>
           ) : (
-            <div className="space-y-3">
-              {insumosConfigPorCat.map(([cat, list]) => (
-                <div key={cat}>
-                  <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 mb-1">
-                    {cat} <span className="text-gray-400 font-normal">({list.length})</span>
-                  </h3>
-                  <div className="space-y-1">
-                    {list.map(i => {
-                      const forn = i.fornecedorPreferredId ? fornecedorMap[i.fornecedorPreferredId] : null;
-                      return (
-                        <div
-                          key={i.id}
-                          className={`bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-lg p-3 ${!i.ativo ? "opacity-60" : ""}`}
-                        >
-                          <div className="flex items-start justify-between gap-2 flex-wrap">
-                            <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <h4 className="font-medium text-gray-900 dark:text-gray-100">{i.nome}</h4>
-                                <span className="text-[10px] uppercase px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">
-                                  {i.unidade === "outro" ? (i.unidadeOutroLabel || "outro") : UNIDADES_LABEL[i.unidade]}
-                                </span>
-                                {!i.ativo && <span className="text-[10px] uppercase text-gray-500">Inativo</span>}
-                              </div>
-                              <div className="text-xs text-gray-500 mt-0.5 flex gap-3 flex-wrap">
-                                {i.minStock != null && <span>Mín: <strong>{i.minStock}</strong></span>}
-                                {i.fatorCompra && i.fatorCompra > 1 && <span>Fator compra: <strong>{i.fatorCompra}</strong></span>}
-                                {i.precoEstimado != null && <span>R$ {i.precoEstimado.toFixed(2)}/un</span>}
-                                {forn && <span className="inline-flex items-center gap-1"><Phone size={12} /> {forn.nome}</span>}
-                              </div>
-                            </div>
-                            {podeConfig && (
-                              <div className="flex gap-1">
-                                <Button variant="secondary" size="sm" onClick={() => setEditing(i)}>Editar</Button>
-                                <Button variant="danger" size="sm" onClick={() => excluirInsumo(i)}>×</Button>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              ))}
+            <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+              <table className="w-full text-[13px] min-w-[560px]">
+                <thead>
+                  <tr className="text-[10px] uppercase tracking-wide text-gray-400 border-b border-gray-200 dark:border-gray-800 text-left">
+                    <th className="px-3 py-1.5 font-semibold">Produto</th>
+                    <th className="px-2 py-1.5 font-semibold w-24">Unidade</th>
+                    <th className="px-2 py-1.5 font-semibold w-24 text-right">R$/un</th>
+                    <th className="px-2 py-1.5 font-semibold w-52">Fornecedor</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {insumosConfigPorCat.map(([cat, list]) => (
+                    <Fragment key={cat}>
+                      <tr className="bg-gray-50 dark:bg-gray-800/40">
+                        <td colSpan={4} className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">{cat} <span className="font-normal text-gray-400">({list.length})</span></td>
+                      </tr>
+                      {list.map(i => {
+                        const forn = i.fornecedorPreferredId ? fornecedorMap[i.fornecedorPreferredId] : null;
+                        const fornNome = (i.fornecedores && i.fornecedores.length) ? (i.fornecedores.find(f => f.primario)?.nome || i.fornecedores[0].nome) : forn?.nome;
+                        return (
+                          <tr key={i.id} onClick={() => setEditing(i)} className={`border-b border-gray-50 dark:border-gray-800/40 cursor-pointer hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10 ${!i.ativo ? "opacity-50" : ""}`}>
+                            <td className="px-3 py-1.5">
+                              <span className="font-medium text-gray-900 dark:text-gray-100">{i.nome}</span>
+                              {i.fatorCompra && i.fatorCompra > 1 && <span className="ml-1.5 text-[10px] text-gray-400">pct {i.fatorCompra}</span>}
+                              {!i.ativo && <span className="ml-1.5 text-[10px] uppercase text-gray-400">inativo</span>}
+                            </td>
+                            <td className="px-2 py-1.5 text-gray-500 uppercase">{i.unidade === "outro" ? (i.unidadeOutroLabel || "outro") : UNIDADES_LABEL[i.unidade]}</td>
+                            <td className="px-2 py-1.5 text-right tabular-nums text-gray-600 dark:text-gray-300">{i.precoEstimado != null ? i.precoEstimado.toFixed(2) : "—"}</td>
+                            <td className="px-2 py-1.5 text-gray-600 dark:text-gray-300 truncate max-w-[220px]">{fornNome || "—"}</td>
+                          </tr>
+                        );
+                      })}
+                    </Fragment>
+                  ))}
+                </tbody>
+              </table>
             </div>
           )}
         </div>
@@ -608,6 +601,7 @@ export function ContagensPage() {
           preset={editing === "new" ? preset : null}
           fornecedores={fornecedores.filter(f => f.ativo)}
           restaurantId={rid}
+          onExcluir={excluirInsumo}
           onClose={() => { setEditing(null); setPreset(null); }}
         />
       )}
