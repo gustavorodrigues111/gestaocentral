@@ -46,6 +46,7 @@ export function ContagensPage() {
   const [sugeridosView, setSugeridosView] = useState<"lista" | "tabela">("tabela");
   const [iaMapa, setIaMapa] = useState<Record<string, IaInfo>>({});
   const iaEmAndamento = useRef(false);
+  const [reavaliando, setReavaliando] = useState(false);
   const [mesclando, setMesclando] = useState(false);
   const [ignorados, setIgnorados] = useState<Set<string>>(new Set());
 
@@ -96,25 +97,24 @@ export function ContagensPage() {
     return () => unsub();
   }, [rid, podeConfig]);
 
-  // Cache PERSISTIDO da leitura da IA (insumosIaCache/{rid}) — roda uma vez por
-  // produto e fica salvo; nas próximas aberturas já vem "analisado". Carrega 1x.
+  // Cache da leitura da IA (insumosIaCache/{rid}) — FONTE ÚNICA do iaMapa via
+  // onSnapshot. Assim tanto a análise do cliente quanto o "Reavaliar todos" do
+  // servidor aparecem ao vivo, sem loop de escrita.
   useEffect(() => {
-    if (!rid || !podeConfig) return;
-    getDoc(doc(db, "insumosIaCache", rid)).then((snap) => {
+    if (!rid || !podeConfig) { setIaMapa({}); return; }
+    return onSnapshot(doc(db, "insumosIaCache", rid), (snap) => {
       const arr = (snap.data() as { itens?: Array<{ chave: string } & IaInfo> } | undefined)?.itens;
-      if (Array.isArray(arr)) setIaMapa((prev) => { const n = { ...prev }; for (const it of arr) { const { chave, ...info } = it; if (chave) n[chave] = info; } return n; });
-    }).catch(() => {});
+      const m: Record<string, IaInfo> = {};
+      if (Array.isArray(arr)) for (const it of arr) { const { chave, ...info } = it; if (chave) m[chave] = info; }
+      setIaMapa(m);
+    }, () => {});
   }, [rid, podeConfig]);
-
-  // Salva o cache da IA (debounce) sempre que muda — persiste as leituras.
-  useEffect(() => {
-    if (!rid || !podeConfig || Object.keys(iaMapa).length === 0) return;
-    const t = setTimeout(() => {
-      const itens = Object.entries(iaMapa).map(([chave, info]) => ({ chave, ...info }));
-      void setDoc(doc(db, "insumosIaCache", rid), sanitizeForFirestore({ restaurantId: rid, itens, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
-    }, 800);
-    return () => clearTimeout(t);
-  }, [iaMapa, rid, podeConfig]);
+  // Grava/mescla um lote de leituras no cache (o onSnapshot devolve pro iaMapa).
+  async function gravarIaCache(novo: Record<string, IaInfo>) {
+    if (!rid) return;
+    const itens = Object.entries(novo).map(([chave, info]) => ({ chave, ...info }));
+    await setDoc(doc(db, "insumosIaCache", rid), sanitizeForFirestore({ restaurantId: rid, itens, atualizadoEm: new Date().toISOString() }), { merge: true });
+  }
 
   // Produtos IGNORADOS (o user escolheu não cadastrar) — persistido por restaurante.
   useEffect(() => {
@@ -154,14 +154,12 @@ export function ContagensPage() {
           jaCadastrados: insumos.map(i => ({ id: i.id, nome: i.nome, aliases: i.aliases || [] })),
         }) });
         const j = await r.json() as { itens?: Array<{ chave: string; nomeLimpo?: string; qtdPorPacote?: number; categoria?: string; unidade?: string; grupo?: string; matchInsumoId?: string | null }> };
-        setIaMapa(prev => {
-          const n = { ...prev };
-          for (const s of lote) n[s.chave] = n[s.chave] || {};   // marca o lote como analisado (mata o loop)
-          if (Array.isArray(j.itens)) for (const it of j.itens) if (it?.chave) n[it.chave] = { nomeLimpo: it.nomeLimpo, qtdPorPacote: it.qtdPorPacote, categoria: it.categoria, unidade: it.unidade as UnidadeMedida, grupo: it.grupo, matchInsumoId: it.matchInsumoId ?? null };
-          return n;
-        });
+        const n = { ...iaMapa };
+        for (const s of lote) n[s.chave] = n[s.chave] || {};   // marca o lote como analisado (mata o loop)
+        if (Array.isArray(j.itens)) for (const it of j.itens) if (it?.chave) n[it.chave] = { nomeLimpo: it.nomeLimpo, qtdPorPacote: it.qtdPorPacote, categoria: it.categoria, unidade: it.unidade as UnidadeMedida, grupo: it.grupo, matchInsumoId: it.matchInsumoId ?? null };
+        await gravarIaCache(n);   // grava no cache; o onSnapshot devolve pro iaMapa
       } catch {
-        setIaMapa(prev => { const n = { ...prev }; for (const s of lote) n[s.chave] = n[s.chave] || {}; return n; });   // erro: não re-tenta o mesmo lote em loop
+        const n = { ...iaMapa }; for (const s of lote) n[s.chave] = n[s.chave] || {}; await gravarIaCache(n).catch(() => {});   // erro: marca pra não repetir o lote
       } finally { iaEmAndamento.current = false; }
     })();
   }, [sugestoesAbertas, sugestoesNovas, podeConfig, insumos, iaMapa]);
@@ -231,6 +229,24 @@ export function ContagensPage() {
       aliases: g.aliases, fornecedores: lista,
     });
     setEditing("new");
+  }
+
+  // Reavalia TODAS as sugestões pela IA no SERVIDOR (segundo plano) — reprocessa
+  // com os critérios atuais (nome limpo, pacote…). Pode sair da tela.
+  async function reavaliarTodos() {
+    if (sugestoesNovas.length === 0) return;
+    if (!window.confirm(`Reavaliar ${sugestoesNovas.length} sugestões pela IA em segundo plano?\n\nPode sair da tela — o resultado aparece sozinho.`)) return;
+    setReavaliando(true);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      const r = await fetch("/api/contagens-ia-lote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        idToken, rid,
+        produtos: sugestoesNovas.map(s => ({ chave: s.chave, nome: s.nome, unidadeAtual: s.unidade })),
+        jaCadastrados: insumos.map(i => ({ id: i.id, nome: i.nome, aliases: i.aliases || [] })),
+      }) });
+      const j = await r.json().catch(() => ({})) as { restantes?: number };
+      if ((j.restantes ?? 0) > 0) window.alert(`Reavaliou parte. Faltaram ${j.restantes} (limite de tempo) — clique de novo pra continuar.`);
+    } catch { /* roda no servidor mesmo assim */ } finally { setReavaliando(false); }
   }
 
   // Ignora um grupo (não quero cadastrar) — some das sugestões (dá pra restaurar).
@@ -494,7 +510,8 @@ export function ContagensPage() {
                     {iaPendentes > 0
                       ? <span className="text-[11px] text-amber-700/80 inline-flex items-center gap-1"><Sparkles size={11} /> IA analisando categoria, unidade e repetidos… (faltam {iaPendentes})</span>
                       : <span className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80 inline-flex items-center gap-1"><Sparkles size={11} /> analisado pela IA</span>}
-                    <div className="ml-auto inline-flex rounded-lg bg-white/70 dark:bg-gray-800/70 border border-amber-200 dark:border-amber-800 p-0.5">
+                    <button type="button" disabled={reavaliando} onClick={() => void reavaliarTodos()} className="ml-auto text-[11px] font-medium text-amber-700 dark:text-amber-300 hover:underline inline-flex items-center gap-1 disabled:opacity-60"><RotateCcw size={11} /> {reavaliando ? "Reavaliando (pode sair)…" : "Reavaliar todos"}</button>
+                    <div className="inline-flex rounded-lg bg-white/70 dark:bg-gray-800/70 border border-amber-200 dark:border-amber-800 p-0.5">
                       <button type="button" onClick={() => setSugeridosView("tabela")} className={`px-2 py-0.5 text-[11px] font-medium rounded-md ${sugeridosView === "tabela" ? "bg-amber-500 text-white" : "text-amber-700 dark:text-amber-300"}`}>Tabela</button>
                       <button type="button" onClick={() => setSugeridosView("lista")} className={`px-2 py-0.5 text-[11px] font-medium rounded-md ${sugeridosView === "lista" ? "bg-amber-500 text-white" : "text-amber-700 dark:text-amber-300"}`}>Lista</button>
                     </div>
