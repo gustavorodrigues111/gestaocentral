@@ -1,17 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, BarChart3, Settings, Lock, TriangleAlert, Package, Phone } from "lucide-react";
+import { Pencil, BarChart3, Settings, Lock, TriangleAlert, Package, Phone, Plus, Sparkles, Truck } from "lucide-react";
 import { useParams } from "react-router-dom";
-import { collection, deleteDoc, doc, onSnapshot, query, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfigurar, canVer } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { UNIDADES_LABEL } from "../../core/types";
-import type { Contagem, Fornecedor, Insumo } from "../../core/types";
+import type { Contagem, Fornecedor, Insumo, RecebimentoNota } from "../../core/types";
 import { InsumoModal } from "./InsumoModal";
 import { LancarContagensTab } from "./LancarContagensTab";
+import { agruparSugestoes, normalizar, type SugestaoInsumo } from "./sugestoesRecebimento";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 type Tab = "lancar" | "visao" | "config";
@@ -32,7 +34,11 @@ export function ContagensPage() {
   const [loading, setLoading] = useState(true);
 
   const [editing, setEditing] = useState<Insumo | "new" | null>(null);
+  const [preset, setPreset] = useState<Partial<Insumo> | null>(null);
   const [searchConfig, setSearchConfig] = useState("");
+  const [recebimentos, setRecebimentos] = useState<RecebimentoNota[]>([]);
+  const [soRecorrentes, setSoRecorrentes] = useState(true);
+  const [sugestoesAbertas, setSugestoesAbertas] = useState(false);
 
   useEffect(() => {
     if (!rid) return;
@@ -69,6 +75,47 @@ export function ContagensPage() {
     });
     return () => unsub();
   }, [rid]);
+
+  // Notas de recebimento — só quem configura (pra sugerir insumos). Leitura
+  // pontual só quando pode configurar, pra não pesar em quem só lança contagem.
+  useEffect(() => {
+    if (!rid || !podeConfig) { setRecebimentos([]); return; }
+    const q = query(collection(db, "recebimentos"), where("restaurantId", "==", rid));
+    const unsub = onSnapshot(q, (snap) => {
+      setRecebimentos(snap.docs.map(d => ({ id: d.id, ...d.data() }) as RecebimentoNota).filter(n => !n.excluidoEm));
+    }, () => setRecebimentos([]));
+    return () => unsub();
+  }, [rid, podeConfig]);
+
+  // Sugestões agrupadas do recebimento (não cadastradas + filtro de recorrência).
+  const sugestoes = useMemo(() => agruparSugestoes(recebimentos, insumos, fornecedores), [recebimentos, insumos, fornecedores]);
+  const sugestoesNovas = useMemo(() => sugestoes.filter(s => !s.jaCadastrado && (!soRecorrentes || s.ocorrencias >= 2)), [sugestoes, soRecorrentes]);
+
+  // Casa um fornecedor pelo nome (normalizado) ou cria um novo; devolve o id.
+  async function garantirFornecedor(nome: string): Promise<string | undefined> {
+    const alvo = normalizar(nome);
+    if (!alvo) return undefined;
+    const existente = fornecedores.find(f => normalizar(f.nome) === alvo);
+    if (existente) return existente.id;
+    if (!me) return undefined;
+    const ref = await addDoc(collection(db, "fornecedores"), sanitizeForFirestore({
+      restaurantId: rid, nome: nome.trim(), ativo: true, criadoEm: new Date().toISOString(), criadoPor: me.id,
+    }));
+    return ref.id;
+  }
+
+  // Abre o InsumoModal já preenchido a partir de uma sugestão do recebimento.
+  async function cadastrarDaSugestao(s: SugestaoInsumo) {
+    const forId = s.fornecedores[0]?.nome ? await garantirFornecedor(s.fornecedores[0].nome) : undefined;
+    setPreset({
+      nome: s.nome,
+      unidade: s.unidade,
+      unidadeOutroLabel: s.unidadeOutroLabel,
+      precoEstimado: s.precoEstimado,
+      fornecedorPreferredId: forId || null,
+    });
+    setEditing("new");
+  }
 
   // Última contagem por insumo (mais recente)
   const ultimaContagem = useMemo(() => {
@@ -128,12 +175,6 @@ export function ContagensPage() {
 
   return (
     <PageContainer>
-      <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
-        {podeConfig && tab === "config" && (
-          <Button onClick={() => setEditing("new")}>+ Novo insumo</Button>
-        )}
-      </div>
-
       {alertasMinStock.length > 0 && tab !== "config" && (
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-300 mb-3">
           <span className="inline-flex items-center gap-1"><TriangleAlert size={14} className="shrink-0" /> <strong>{alertasMinStock.length}</strong> insumo(s) abaixo do estoque mínimo. Veja na aba "Visão atual".</span>
@@ -160,6 +201,13 @@ export function ContagensPage() {
           </button>
         ))}
       </div>
+
+      {/* Explicação curta da aba ativa — desfaz a confusão entre elas. */}
+      <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2 mb-4">
+        {tab === "lancar" && "Conte o estoque: percorra os insumos e digite a quantidade que tem hoje."}
+        {tab === "visao" && "Resultado da última contagem de cada insumo, com alerta de quem está abaixo do mínimo."}
+        {tab === "config" && "Cadastro dos insumos (nome, categoria, unidade, estoque mínimo, fornecedor). É a base pra contar."}
+      </p>
 
       {/* TAB LANÇAR */}
       {tab === "lancar" && (
@@ -257,12 +305,56 @@ export function ContagensPage() {
             onChange={(e) => setSearchConfig(e.target.value)}
           />
 
+          {/* Novo insumo — agora é o 1º item da lista (saiu do topo da página). */}
+          {podeConfig && (
+            <button
+              type="button"
+              onClick={() => { setPreset(null); setEditing("new"); }}
+              className="w-full inline-flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-indigo-300 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 py-2.5 text-sm font-semibold hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+            >
+              <Plus size={16} /> Novo insumo
+            </button>
+          )}
+
+          {/* Sugeridos do recebimento — produtos das notas ainda não cadastrados. */}
+          {podeConfig && sugestoesNovas.length > 0 && (
+            <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-900/10 overflow-hidden">
+              <button type="button" onClick={() => setSugestoesAbertas(v => !v)} className="w-full flex items-center gap-2 px-3 py-2 text-left">
+                <Sparkles size={15} className="text-amber-500 shrink-0" />
+                <span className="text-sm font-semibold text-amber-900 dark:text-amber-200">Sugeridos do recebimento ({sugestoesNovas.length})</span>
+                <span className="ml-auto text-xs font-medium text-amber-700 dark:text-amber-400">{sugestoesAbertas ? "ocultar" : "ver"}</span>
+              </button>
+              {sugestoesAbertas && (
+                <div className="px-3 pb-3 space-y-2">
+                  <label className="flex items-center gap-1.5 text-xs text-amber-800 dark:text-amber-300 cursor-pointer">
+                    <input type="checkbox" checked={soRecorrentes} onChange={e => setSoRecorrentes(e.target.checked)} /> só recorrentes (2+ notas)
+                  </label>
+                  {sugestoesNovas.map(s => (
+                    <div key={s.chave} className="rounded-lg border border-amber-200/70 dark:border-amber-900/40 bg-white dark:bg-gray-900 p-2.5 flex items-center gap-2 flex-wrap">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{s.nome}</div>
+                        <div className="text-[11px] text-gray-500 flex gap-2 flex-wrap mt-0.5">
+                          <span className="uppercase">{s.unidade === "outro" ? (s.unidadeOutroLabel || "outro") : UNIDADES_LABEL[s.unidade]}</span>
+                          <span>{s.ocorrencias} nota(s)</span>
+                          {s.precoEstimado != null && <span>R$ {s.precoEstimado.toFixed(2)}/un</span>}
+                          {s.fornecedores[0] && <span className="inline-flex items-center gap-1"><Truck size={11} /> {s.fornecedores[0].nome}{s.fornecedores.length > 1 ? ` +${s.fornecedores.length - 1}` : ""}</span>}
+                        </div>
+                      </div>
+                      <Button size="sm" onClick={() => void cadastrarDaSugestao(s)}><span className="inline-flex items-center gap-1"><Plus size={13} /> Cadastrar</span></Button>
+                    </div>
+                  ))}
+                  <p className="text-[10px] text-amber-700/70 dark:text-amber-400/60">Categoria e estoque mínimo não vêm da nota — você completa ao cadastrar. Fornecedor primário = o mais frequente nas notas.</p>
+                </div>
+              )}
+            </div>
+          )}
+
           {insumos.length === 0 ? (
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
               <div className="flex justify-center mb-3 text-gray-400"><Package size={40} /></div>
               <p className="text-gray-700 dark:text-gray-300 font-medium">Nenhum insumo cadastrado</p>
               {podeConfig && (
-                <p className="text-sm text-gray-500 mt-2">Cadastre clicando em "+ Novo insumo"</p>
+                <p className="text-sm text-gray-500 mt-2">Use o botão <strong>+ Novo insumo</strong> acima{sugestoesNovas.length > 0 ? " — ou puxe dos sugeridos do recebimento" : ""}.</p>
               )}
             </div>
           ) : (
@@ -317,9 +409,10 @@ export function ContagensPage() {
       {editing && (
         <InsumoModal
           insumo={editing === "new" ? null : editing}
+          preset={editing === "new" ? preset : null}
           fornecedores={fornecedores.filter(f => f.ativo)}
           restaurantId={rid}
-          onClose={() => setEditing(null)}
+          onClose={() => { setEditing(null); setPreset(null); }}
         />
       )}
     </PageContainer>

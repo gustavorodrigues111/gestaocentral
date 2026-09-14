@@ -13,6 +13,8 @@ type Props = {
   insumo: Insumo | null;
   fornecedores: Fornecedor[];
   restaurantId: string;
+  // Pré-preenchimento ao criar (ex.: sugestão vinda do Recebimento).
+  preset?: Partial<Insumo> | null;
   onClose: () => void;
 };
 
@@ -22,18 +24,19 @@ const CATEGORIAS_SUGERIDAS = [
   "Mercearia", "Limpeza", "Descartáveis", "Outros",
 ];
 
-export function InsumoModal({ insumo, fornecedores, restaurantId, onClose }: Props) {
+export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !insumo;
+  const base = insumo ?? preset ?? null;   // ao criar, usa o preset da sugestão
 
-  const [nome, setNome] = useState(insumo?.nome || "");
-  const [categoria, setCategoria] = useState(insumo?.categoria || "");
-  const [unidade, setUnidade] = useState<UnidadeMedida>(insumo?.unidade || "un");
-  const [unidadeOutro, setUnidadeOutro] = useState(insumo?.unidadeOutroLabel || "");
-  const [minStock, setMinStock] = useState(insumo?.minStock != null ? String(insumo.minStock) : "");
-  const [fornecedorId, setFornecedorId] = useState<string>(insumo?.fornecedorPreferredId || "");
-  const [fatorCompra, setFatorCompra] = useState(insumo?.fatorCompra != null ? String(insumo.fatorCompra) : "");
-  const [precoEstimado, setPrecoEstimado] = useState(insumo?.precoEstimado != null ? String(insumo.precoEstimado) : "");
+  const [nome, setNome] = useState(base?.nome || "");
+  const [categoria, setCategoria] = useState(base?.categoria || "");
+  const [unidade, setUnidade] = useState<UnidadeMedida>(base?.unidade || "un");
+  const [unidadeOutro, setUnidadeOutro] = useState(base?.unidadeOutroLabel || "");
+  const [minStock, setMinStock] = useState(base?.minStock != null ? String(base.minStock) : "");
+  const [fornecedorId, setFornecedorId] = useState<string>(base?.fornecedorPreferredId || "");
+  const [fatorCompra, setFatorCompra] = useState(base?.fatorCompra != null ? String(base.fatorCompra) : "");
+  const [precoEstimado, setPrecoEstimado] = useState(base?.precoEstimado != null ? String(base.precoEstimado) : "");
   const [ativo, setAtivo] = useState(insumo?.ativo ?? true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
