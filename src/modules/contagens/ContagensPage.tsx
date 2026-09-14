@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Pencil, BarChart3, Settings, Lock, TriangleAlert, Package, Phone, Plus, Sparkles, Truck, Link2, Loader2, Layers } from "lucide-react";
 import { useParams } from "react-router-dom";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db, auth } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -92,6 +92,26 @@ export function ContagensPage() {
     }, () => setRecebimentos([]));
     return () => unsub();
   }, [rid, podeConfig]);
+
+  // Cache PERSISTIDO da leitura da IA (insumosIaCache/{rid}) — roda uma vez por
+  // produto e fica salvo; nas próximas aberturas já vem "analisado". Carrega 1x.
+  useEffect(() => {
+    if (!rid || !podeConfig) return;
+    getDoc(doc(db, "insumosIaCache", rid)).then((snap) => {
+      const arr = (snap.data() as { itens?: Array<{ chave: string } & IaInfo> } | undefined)?.itens;
+      if (Array.isArray(arr)) setIaMapa((prev) => { const n = { ...prev }; for (const it of arr) { const { chave, ...info } = it; if (chave) n[chave] = info; } return n; });
+    }).catch(() => {});
+  }, [rid, podeConfig]);
+
+  // Salva o cache da IA (debounce) sempre que muda — persiste as leituras.
+  useEffect(() => {
+    if (!rid || !podeConfig || Object.keys(iaMapa).length === 0) return;
+    const t = setTimeout(() => {
+      const itens = Object.entries(iaMapa).map(([chave, info]) => ({ chave, ...info }));
+      void setDoc(doc(db, "insumosIaCache", rid), sanitizeForFirestore({ restaurantId: rid, itens, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
+    }, 800);
+    return () => clearTimeout(t);
+  }, [iaMapa, rid, podeConfig]);
 
   // Sugestões agrupadas do recebimento (não cadastradas + filtro de recorrência).
   // agruparSugestoes já ignora o que casa por NOME ou por ALIAS de insumo.

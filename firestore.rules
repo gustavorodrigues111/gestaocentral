@@ -693,6 +693,12 @@ service cloud.firestore {
       allow read, write: if authed();
     }
 
+    // ── /insumosIaCache ── cache da leitura da IA dos sugeridos (id = rid) ──
+    // Categoria/unidade/grupo por produto. Não sensível; config de Contagens.
+    match /insumosIaCache/{id} {
+      allow read, write: if authed();
+    }
+
     // ── /hostedPages ── HTMLs avulsos hospedados (módulo Páginas) ─────────
     // Escrita só master (gerencia pelo app). Leitura liberada pra authed()
     // porque a serverless (api/hosted-page) lê via service account (usuário

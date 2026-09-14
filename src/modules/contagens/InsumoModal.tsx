@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Sparkles } from "lucide-react";
 import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
 import { db, auth } from "../../core/firebase/config";
@@ -43,27 +43,23 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onClos
   const [err, setErr] = useState("");
   const [revisandoIa, setRevisandoIa] = useState(false);
 
-  // Revisão final da IA no produto específico — só ao CRIAR a partir de uma
-  // sugestão do recebimento (preset). Confirma/ajusta categoria e unidade.
-  useEffect(() => {
-    if (!isNew || !preset?.nome) return;
-    let vivo = true;
+  // Reavaliação sob demanda: reroda a IA neste produto pra confirmar/ajustar
+  // categoria e unidade. Não roda sozinho — a leitura já vem do cache das
+  // sugestões; isto é o botão "Reavaliar pela IA" pra uma revisão final.
+  async function reavaliarIa() {
+    if (!nome.trim()) return;
     setRevisandoIa(true);
-    (async () => {
-      try {
-        const idToken = await auth.currentUser?.getIdToken();
-        const r = await fetch("/api/contagens-ia", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken, produtos: [{ chave: preset.nome, nome: preset.nome, unidadeAtual: unidade }], jaCadastrados: [] }) });
-        const j = await r.json() as { itens?: Array<{ categoria?: string; unidade?: string }> };
-        const it = j?.itens?.[0];
-        if (vivo && it) {
-          if (it.categoria) setCategoria((c) => c || it.categoria!);
-          if (it.unidade && (UNIDADES_LISTA as string[]).includes(it.unidade)) setUnidade(it.unidade as UnidadeMedida);
-        }
-      } catch { /* silencioso */ } finally { if (vivo) setRevisandoIa(false); }
-    })();
-    return () => { vivo = false; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      const r = await fetch("/api/contagens-ia", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken, produtos: [{ chave: nome, nome, unidadeAtual: unidade }], jaCadastrados: [] }) });
+      const j = await r.json() as { itens?: Array<{ categoria?: string; unidade?: string }> };
+      const it = j?.itens?.[0];
+      if (it) {
+        if (it.categoria) setCategoria(it.categoria);
+        if (it.unidade && (UNIDADES_LISTA as string[]).includes(it.unidade)) setUnidade(it.unidade as UnidadeMedida);
+      }
+    } catch { /* silencioso */ } finally { setRevisandoIa(false); }
+  }
 
   async function salvar() {
     if (!nome.trim()) { setErr("Nome obrigatório"); return; }
@@ -122,7 +118,12 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onClos
         />
 
         <div>
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 inline-flex items-center gap-1.5">Categoria {revisandoIa && <span className="text-[10px] font-normal text-amber-600 dark:text-amber-400 inline-flex items-center gap-1"><Sparkles size={10} /> revisando com IA…</span>}</label>
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Categoria</label>
+            <button type="button" onClick={() => void reavaliarIa()} disabled={revisandoIa} className="text-[10px] font-medium text-amber-600 dark:text-amber-400 hover:underline inline-flex items-center gap-1 disabled:opacity-60">
+              <Sparkles size={10} /> {revisandoIa ? "reavaliando…" : "Reavaliar pela IA"}
+            </button>
+          </div>
           <div className="flex flex-wrap gap-1 mt-1 mb-1">
             {CATEGORIAS_SUGERIDAS.map(c => (
               <button
