@@ -160,7 +160,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
     return canUse(pessoa, rid, moduleId);
   }
 
-  const areas: ModuleArea[] = ["ops", "dp", "planejamento", "inst"];
+  const areas: ModuleArea[] = ["planejamento", "dp", "ops", "inst"];
 
   // Seção Master (Tarefas + Planner): ferramentas pessoais do dono.
   // Diferente das demais áreas, RESPEITA modulosAtivos MESMO pro master —
@@ -260,7 +260,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             const itemCls = ({ isActive }: { isActive: boolean }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`;
             if (disponiveis.length === 0 && favMods.length === 0) return null;
             return (
-              <div>
+              <div className="rounded-2xl border border-amber-200/80 dark:border-amber-800/50 bg-amber-50/70 dark:bg-amber-900/10 p-2">
                 <div className="flex items-center gap-1 px-1.5 mb-1">
                   <Star size={12} className="text-amber-500 shrink-0" />
                   <span className="flex-1 text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Favoritos</span>
