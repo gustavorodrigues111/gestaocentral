@@ -221,6 +221,8 @@ export function RecebimentoPage() {
 
   const [tab, setTab] = useState<"receber" | "notas" | "config">("receber");
   const [padronizando, setPadronizando] = useState(false);
+  const [buscaNota, setBuscaNota] = useState("");
+  const [filtroConf, setFiltroConf] = useState<"todas" | "conforme" | "divergente">("todas");
   const [reproc, setReproc] = useState<{ feitos: number; total: number } | null>(null);
   const [detalheHist, setDetalheHist] = useState<RecebimentoNota | null>(null);
   const [notas, setNotas] = useState<RecebimentoNota[]>([]);
@@ -265,6 +267,20 @@ export function RecebimentoPage() {
     finally { setReproc(null); }
   }
   const pendentes = useMemo(() => ordenadas.filter((n) => !n.conferidoEm), [ordenadas]);               // a conferir (lista principal)
+  // Busca (emissor/produto/valor/NF) + filtro de conformidade — aplica na lista.
+  const pendentesFiltradas = useMemo(() => {
+    const q = buscaNota.trim().toLowerCase();
+    return pendentes.filter((n) => {
+      if (filtroConf === "conforme" && !n.conforme) return false;
+      if (filtroConf === "divergente" && n.conforme) return false;
+      if (!q) return true;
+      return (n.emissor || "").toLowerCase().includes(q)
+        || (n.numeroNota || "").toLowerCase().includes(q)
+        || fmtBRL(n.valorTotal).toLowerCase().includes(q)
+        || String(n.valorTotal ?? "").includes(q.replace(",", "."))
+        || (n.itens || []).some((it) => (it.descricao || "").toLowerCase().includes(q));
+    });
+  }, [pendentes, buscaNota, filtroConf]);
   const conferidas = useMemo(() => ordenadas.filter((n) => n.conferidoEm).sort((a, b) => (b.conferidoEm || "").localeCompare(a.conferidoEm || "")), [ordenadas]);
   const excluidas = useMemo(() => ordenadasTodas.filter((n) => n.excluidoEm).sort((a, b) => (b.excluidoEm || "").localeCompare(a.excluidoEm || "")), [ordenadasTodas]);
   const purgandoRef = useRef<Set<string>>(new Set());
@@ -386,7 +402,18 @@ export function RecebimentoPage() {
       {abaEfetiva === "notas" && podeVer && (
         <div className="space-y-3">
           {ordenadas.length > 0 && (
-            <div className="flex justify-end gap-2">
+            <div className="flex items-center gap-2 flex-wrap">
+              <input
+                value={buscaNota}
+                onChange={(e) => setBuscaNota(e.target.value)}
+                placeholder="🔍 Buscar por fornecedor, produto, valor ou NF…"
+                className="flex-1 min-w-[220px] px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100"
+              />
+              <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+                {([["todas", "Todas"], ["conforme", "Conformes"], ["divergente", "Divergentes"]] as const).map(([k, lbl]) => (
+                  <button key={k} type="button" onClick={() => setFiltroConf(k)} className={`px-2.5 py-1 text-xs font-medium rounded-md ${filtroConf === k ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{lbl}</button>
+                ))}
+              </div>
               <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("xlsx")}>
                 {exportando === "xlsx" ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><Download size={14} /> XLSX</span>}
               </Button>
@@ -395,7 +422,8 @@ export function RecebimentoPage() {
               </Button>
             </div>
           )}
-          <RecebimentoTabela notas={pendentes} restaurant={restaurant} podeEditar={podeEditar} podeConfig={podeConfig} por={{ id: me?.id || "", nome: me?.nome || "?" }} onExcluir={excluir} onConferir={podeEditar ? conferir : undefined} />
+          {(buscaNota.trim() || filtroConf !== "todas") && <div className="text-[11px] text-gray-400">{pendentesFiltradas.length} de {pendentes.length} nota(s) a conferir</div>}
+          <RecebimentoTabela notas={pendentesFiltradas} restaurant={restaurant} podeEditar={podeEditar} podeConfig={podeConfig} por={{ id: me?.id || "", nome: me?.nome || "?" }} onExcluir={excluir} onConferir={podeEditar ? conferir : undefined} />
 
           {/* Histórico de conferidas (abaixo da lista, colapsável) */}
           {conferidas.length > 0 && (
