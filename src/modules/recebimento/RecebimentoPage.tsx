@@ -249,36 +249,20 @@ export function RecebimentoPage() {
   const ordenadas = useMemo(() => ordenadasTodas.filter((n) => !n.excluidoEm), [ordenadasTodas]);      // não-excluídas (export)
   const semEmissor = useMemo(() => ordenadas.filter((n) => !n.emissor), [ordenadas]);
 
-  // Reprocessa o OCR de uma nota (baixa o arquivo do Drive e relê). Só preenche
-  // campos VAZIOS (não sobrescreve o que já foi confirmado). Devolve true se mudou.
-  async function reprocessarUmaOcr(n: RecebimentoNota): Promise<boolean> {
-    const fileId = n.notaDriveFileId || n.notaPaginas?.[0]?.driveFileId;
-    if (!fileId) return false;
-    const dl = await fetch("/api/drive-recebimento", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ action: "download", fileId }) });
-    const dj = await dl.json().catch(() => ({})) as { base64?: string };
-    if (!dl.ok || !dj.base64) return false;
-    const nome = (n.notaNome || "").toLowerCase();
-    const mediaType = nome.endsWith(".pdf") ? "application/pdf" : nome.endsWith(".png") ? "image/png" : "image/jpeg";
-    const oc = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ data: dj.base64, mediaType }) });
-    const oj = await oc.json().catch(() => ({})) as { emissor?: string; cnpjEmissor?: string; valorTotal?: number; dataEmissao?: string };
-    if (!oc.ok) return false;
-    const patch: Record<string, unknown> = {};
-    if (!n.emissor && oj.emissor) patch.emissor = oj.emissor;
-    if (!n.cnpjEmissor && oj.cnpjEmissor) patch.cnpjEmissor = oj.cnpjEmissor;
-    if (n.valorTotal == null && typeof oj.valorTotal === "number") patch.valorTotal = oj.valorTotal;
-    if (!n.dataEmissao && oj.dataEmissao) patch.dataEmissao = oj.dataEmissao;
-    if (Object.keys(patch).length === 0) return false;
-    await updateDoc(doc(db, "recebimentos", n.id), patch);
-    return true;
-  }
+  // Reprocessa o OCR das notas sem emissor NO SERVIDOR (segundo plano). Dispara e
+  // pode sair da tela — a função continua rodando e as notas atualizam ao vivo.
   async function reprocessarSemEmissor() {
     if (semEmissor.length === 0) { setErro("Nenhuma nota sem emissor."); return; }
-    if (!window.confirm(`Reprocessar o OCR de ${semEmissor.length} nota(s) sem emissor? (só preenche o que estiver vazio)`)) return;
+    if (!window.confirm(`Reprocessar o OCR de ${semEmissor.length} nota(s) sem emissor em segundo plano?\n\nPode sair da tela — elas vão sendo preenchidas sozinhas.`)) return;
     setErro(""); setReproc({ feitos: 0, total: semEmissor.length });
-    let ok = 0;
-    for (let i = 0; i < semEmissor.length; i++) { try { if (await reprocessarUmaOcr(semEmissor[i])) ok++; } catch { /* segue */ } setReproc({ feitos: i + 1, total: semEmissor.length }); }
-    setReproc(null);
-    setErro(`Reprocessado: ${ok} de ${semEmissor.length} nota(s) atualizada(s).`);
+    try {
+      const r = await fetch("/api/recebimento-reprocessar", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ notaIds: semEmissor.map((n) => n.id) }) });
+      const j = await r.json().catch(() => ({})) as { atualizados?: number; restantes?: number; error?: string };
+      if (!r.ok) setErro(j.error || "Falha ao iniciar o reprocessamento.");
+      else if ((j.restantes ?? 0) > 0) setErro(`Preencheu ${j.atualizados ?? 0} nota(s). Faltaram ${j.restantes} (limite de tempo) — clique de novo pra continuar.`);
+      else setErro(`Pronto — ${j.atualizados ?? 0} nota(s) preenchida(s).`);
+    } catch { setErro("O reprocessamento foi disparado no servidor; as notas atualizam sozinhas."); }
+    finally { setReproc(null); }
   }
   const pendentes = useMemo(() => ordenadas.filter((n) => !n.conferidoEm), [ordenadas]);               // a conferir (lista principal)
   const conferidas = useMemo(() => ordenadas.filter((n) => n.conferidoEm).sort((a, b) => (b.conferidoEm || "").localeCompare(a.conferidoEm || "")), [ordenadas]);
@@ -375,7 +359,7 @@ export function RecebimentoPage() {
         {podeConfig && <TabBtn k="config" label={<span className="inline-flex items-center gap-1.5"><Settings size={15} /> Configurações</span>} />}
         {podeConfig && abaEfetiva === "notas" && (
           <div className="ml-auto shrink-0 flex items-center gap-3 px-2">
-            {semEmissor.length > 0 && <button type="button" disabled={!!reproc} onClick={() => void reprocessarSemEmissor()} className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline disabled:opacity-60">{reproc ? `Reprocessando… ${reproc.feitos}/${reproc.total}` : `Reprocessar sem emissor (${semEmissor.length})`}</button>}
+            {semEmissor.length > 0 && <button type="button" disabled={!!reproc} onClick={() => void reprocessarSemEmissor()} className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline disabled:opacity-60">{reproc ? "Reprocessando (pode sair da tela)…" : `Reprocessar sem emissor (${semEmissor.length})`}</button>}
             <button type="button" onClick={() => setPadronizando(true)} className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">Padronizar fornecedores</button>
           </div>
         )}
