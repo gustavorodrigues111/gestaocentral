@@ -9,6 +9,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { addDoc, collection, doc, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { authHeader } from "../../core/firebase/idToken";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -19,7 +20,7 @@ import {
   CircleOff, X, CalendarX2, Unlink, AlarmClock, Coffee, Hourglass, BedDouble, CircleDot,
   TriangleAlert, Pencil, Ban, Umbrella, MessageSquare, Settings, Lock, LockOpen,
   CalendarDays, Signature, Printer, ArrowDown, Search, Scale, PartyPopper, Landmark,
-  HelpCircle, ChevronDown, Eye, Crown,
+  HelpCircle, ChevronDown, Eye, Crown, RotateCw,
 } from "lucide-react";
 import type { Empregado, HorarioDia, Cargo, EscalaMes, ScheduleStatus } from "../../core/types";
 import { empregadoBatePonto } from "../../core/types";
@@ -150,6 +151,26 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     finally { setCarregandoRoster(false); }
   }
   useEffect(() => { setRoster(null); setMostrarComp(false); setRosterErr(""); }, [shortCode]);
+
+  // Sincroniza a Sólides SOB DEMANDA (não espera o cron de 15 min): re-varre o
+  // mês visível inteiro (desde dia 01) e traz batidas/correções novas pro espelho
+  // imutável. O onSnapshot em ptrpBatidas atualiza a tabela sozinho quando chega.
+  const [sincBusy, setSincBusy] = useState(false);
+  const [sincMsg, setSincMsg] = useState("");
+  async function sincronizarSolides() {
+    if (!shortCode) { setSincMsg("Empresa sem shortCode."); return; }
+    setSincBusy(true); setSincMsg("");
+    try {
+      const r = await fetch(`/api/ptrp-punch-sync?empresa=${encodeURIComponent(shortCode)}&desde=${comp}-01`, { method: "GET", headers: { ...(await authHeader()) } });
+      const j = await r.json().catch(() => ({})) as { ok?: boolean; error?: string; resultado?: Record<string, { lidas?: number; criadas?: number; erro?: string }> };
+      if (!r.ok || j.error) { setSincMsg(j.error || `Falha (HTTP ${r.status}).`); return; }
+      const res = j.resultado?.[shortCode];
+      if (res?.erro) { setSincMsg(`Falha: ${res.erro}`); return; }
+      const criadas = res?.criadas ?? 0;
+      setSincMsg(criadas > 0 ? `✓ ${criadas} batida(s) nova(s) trazida(s) da Sólides — a tabela atualiza sozinha.` : `✓ Sincronizado — nenhuma batida nova na Sólides desde a última vez (correção pendente só entra depois de aprovada).`);
+    } catch (e) { setSincMsg(e instanceof Error ? e.message : "Falha na sincronização."); }
+    finally { setSincBusy(false); }
+  }
 
   useEffect(() => onSnapshot(collection(db, "parametrosCCT"), s => setCcts(s.docs.map(d => ({ id: d.id, ...d.data() }) as ParametrosCCT))), []);
   useEffect(() => {
@@ -771,7 +792,9 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         {travado && <Button size="sm" onClick={() => setAssModal(true)}><span className="inline-flex items-center gap-1"><Signature size={13}/> Enviar para assinatura</span></Button>}
         <Button size="sm" variant="secondary" disabled={!!exportBusy} onClick={() => void baixarEspelhosTodos()}>{exportBusy === "espelhos" ? "Gerando…" : <span className="inline-flex items-center gap-1"><Printer size={13}/> Espelhos (todos)</span>}</Button>
         <Button size="sm" variant="secondary" disabled={!!exportBusy} onClick={() => void baixarAEJ()}>{exportBusy === "aej" ? "Gerando…" : <span className="inline-flex items-center gap-1"><ArrowDown size={13}/> AEJ</span>}</Button>
+        <Button size="sm" variant="secondary" disabled={sincBusy} onClick={() => void sincronizarSolides()} title={`Buscar batidas/correções novas da Sólides agora (mês ${labelComp(comp)}), sem esperar o sync automático`}>{sincBusy ? "Sincronizando…" : <span className="inline-flex items-center gap-1"><RotateCw size={13}/> Sincronizar Sólides</span>}</Button>
       </div>
+      {sincMsg && <div className="mb-2 text-[12px] text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">{sincMsg}</div>}
       {/* Legenda recolhida: some da visão permanente e abre só quando quiser. */}
       <details className="group mb-2 rounded-lg border border-gray-200 dark:border-gray-800">
         <summary className="flex items-center gap-1.5 cursor-pointer select-none list-none px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
