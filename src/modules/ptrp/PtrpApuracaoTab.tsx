@@ -200,7 +200,12 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         }));
       setAprovacoesPend(pend);
       setPendErr("");
-    } catch (e) { setPendErr(e instanceof Error ? e.message : "Falha ao buscar correções pendentes da Sólides."); }
+    } catch (e) {
+      // Recurso ADITIVO: se a Sólides recusar a consulta (404/timeout), não quebra
+      // a tela — o PTRP segue com o espelho imutável. Guarda a causa só como nota.
+      setAprovacoesPend([]);
+      setPendErr(e instanceof Error ? e.message : "");
+    }
   }
   useEffect(() => { void carregarPendentes(); }, [shortCode, comp]);   // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -850,7 +855,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       </div>
       {sincMsg && <div className="mb-2 text-[12px] text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">{sincMsg}</div>}
       {pendentesSinteticas.length > 0 && <div className="mb-2 text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2 inline-flex items-center gap-1.5"><TriangleAlert size={13}/> {pendentesSinteticas.length} correção(ões) a aprovar na Sólides aparecem tracejadas (🟡) — use ✓ / ✗ no dia pra decidir.</div>}
-      {pendErr && <div className="mb-2 text-[12px] text-rose-600 dark:text-rose-400">{pendErr}</div>}
+      {pendErr && <div className="mb-2 text-[11px] text-gray-400 dark:text-gray-500">Correções pendentes indisponíveis agora ({pendErr.replace(/\s+/g, " ").slice(0, 80)}). A apuração segue normal.</div>}
       {/* Legenda recolhida: some da visão permanente e abre só quando quiser. */}
       <details className="group mb-2 rounded-lg border border-gray-200 dark:border-gray-800">
         <summary className="flex items-center gap-1.5 cursor-pointer select-none list-none px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
