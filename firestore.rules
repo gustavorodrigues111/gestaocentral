@@ -693,12 +693,14 @@ service cloud.firestore {
       allow read, write: if authed();
     }
 
-    // ── /hostedPages ── HTMLs avulsos hospedados (módulo Páginas, master) ──
-    // Só o master gerencia pelo app. A leitura PÚBLICA (pages) é feita pelo
-    // servidor (api/hosted-page, service account) que valida o acesso lá —
-    // por isso o cliente comum não lê aqui (o HTML privado nunca vaza).
+    // ── /hostedPages ── HTMLs avulsos hospedados (módulo Páginas) ─────────
+    // Escrita só master (gerencia pelo app). Leitura liberada pra authed()
+    // porque a serverless (api/hosted-page) lê via service account (usuário
+    // autenticado) pra servir as páginas — é ela que valida o acesso público/
+    // privado. O visitante do /pages NÃO acessa o Firestore direto (usa a API).
     match /hostedPages/{id} {
-      allow read, write: if isMaster();
+      allow read:  if authed();
+      allow write: if isMaster();
     }
 
     // ── Catch-all: nega coleções não listadas (whitelist) ────────────────
