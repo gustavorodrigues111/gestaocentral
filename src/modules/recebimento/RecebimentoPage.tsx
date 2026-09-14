@@ -37,6 +37,7 @@ async function subirArquivo(parentId: string, file: File): Promise<{ id: string;
   return { id: s.id, name: s.name, ...(s.webViewLink ? { webViewLink: s.webViewLink } : {}) };
 }
 import { exportarRecebimentosPDF, exportarRecebimentosXLSX } from "./exportRecebimentos";
+import { PadronizarFornecedoresModal } from "./PadronizarFornecedoresModal";
 import { criarPendentesEntrada } from "../estoqueValidade/entradasPendentes";
 import { PageContainer } from "../../core/ui/PageContainer";
 
@@ -219,6 +220,7 @@ export function RecebimentoPage() {
   const temAcesso = canModulo("recebimento");
 
   const [tab, setTab] = useState<"receber" | "notas" | "config">("receber");
+  const [padronizando, setPadronizando] = useState(false);
   const [detalheHist, setDetalheHist] = useState<RecebimentoNota | null>(null);
   const [notas, setNotas] = useState<RecebimentoNota[]>([]);
   const [novo, setNovo] = useState(false);
@@ -337,9 +339,14 @@ export function RecebimentoPage() {
         {podeReceber && <TabBtn k="receber" label={<span className="inline-flex items-center gap-1.5"><ReceiptText size={15} /> Recebimento</span>} />}
         {podeVer && <TabBtn k="notas" label={<span className="inline-flex items-center gap-1.5"><ClipboardList size={15} /> Notas recebidas</span>} />}
         {podeConfig && <TabBtn k="config" label={<span className="inline-flex items-center gap-1.5"><Settings size={15} /> Configurações</span>} />}
+        {podeConfig && abaEfetiva === "notas" && (
+          <button type="button" onClick={() => setPadronizando(true)} className="ml-auto shrink-0 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline px-2">Padronizar fornecedores</button>
+        )}
       </div>
 
       {erro && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{erro}</div>}
+
+      {padronizando && <PadronizarFornecedoresModal recebimentos={notas} onClose={() => setPadronizando(false)} />}
 
       {/* Aba Recebimento — botão grande "Novo recebimento" */}
       {abaEfetiva === "receber" && podeReceber && (
