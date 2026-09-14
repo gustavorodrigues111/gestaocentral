@@ -60,6 +60,9 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onClos
         unidade,
         unidadeOutroLabel: unidade === "outro" ? unidadeOutro.trim() : undefined,
         minStock: min !== undefined && !isNaN(min) ? min : undefined,
+        // aliases + fornecedores (multi-fornecedor) vêm do preset/insumo e passam direto.
+        aliases: base?.aliases,
+        fornecedores: base?.fornecedores,
         fornecedorPreferredId: fornecedorId || null,
         fatorCompra: fator !== undefined && !isNaN(fator) && fator > 0 ? fator : undefined,
         precoEstimado: preco !== undefined && !isNaN(preco) ? preco : undefined,

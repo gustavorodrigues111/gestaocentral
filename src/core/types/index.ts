@@ -2728,6 +2728,10 @@ export const UNIDADES_LISTA: UnidadeMedida[] = [
   "un", "kg", "g", "L", "ml", "cx", "pct", "fardo", "garrafa", "lata", "outro",
 ];
 
+// Um fornecedor que abastece o insumo (multi-fornecedor). Vem do cruzamento com
+// o Recebimento: produtos de fornecedores diferentes podem apontar pro MESMO insumo.
+export type InsumoFornecedor = { nome: string; fornecedorId?: string | null; preco?: number; primario?: boolean };
+
 export type Insumo = {
   id: string;
   restaurantId: string;
@@ -2736,7 +2740,12 @@ export type Insumo = {
   unidade: UnidadeMedida;
   unidadeOutroLabel?: string;         // se unidade === "outro"
   minStock?: number;                  // estoque mínimo (gera alerta + sugestão)
-  // Fornecedor preferencial pra reposição
+  // Nomes de nota (normalizados) que apontam pra este insumo — usado pra não
+  // sugerir de novo o mesmo produto e pra casar recebimento → insumo.
+  aliases?: string[];
+  // Fornecedores que abastecem (multi-fornecedor, do cruzamento com Recebimento).
+  fornecedores?: InsumoFornecedor[];
+  // Fornecedor preferencial pra reposição (= primário da lista acima)
   fornecedorPreferredId?: string | null;
   // Quanto comprar de cada vez (múltiplo). Ex: vinho vem caixa de 6 → fator=6
   fatorCompra?: number;

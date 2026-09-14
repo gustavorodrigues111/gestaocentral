@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { Pencil, BarChart3, Settings, Lock, TriangleAlert, Package, Phone, Plus, Sparkles, Truck } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Pencil, BarChart3, Settings, Lock, TriangleAlert, Package, Phone, Plus, Sparkles, Truck, Link2, Loader2, Layers } from "lucide-react";
 import { useParams } from "react-router-dom";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, query, where } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { db, auth } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -10,11 +10,14 @@ import { canConfigurar, canVer } from "../../core/auth/permissions";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { UNIDADES_LABEL } from "../../core/types";
-import type { Contagem, Fornecedor, Insumo, RecebimentoNota } from "../../core/types";
+import type { Contagem, Fornecedor, Insumo, InsumoFornecedor, RecebimentoNota, UnidadeMedida } from "../../core/types";
 import { InsumoModal } from "./InsumoModal";
 import { LancarContagensTab } from "./LancarContagensTab";
-import { agruparSugestoes, normalizar, type SugestaoInsumo } from "./sugestoesRecebimento";
+import { agruparSugestoes, normalizar, tituloCaso, type SugestaoInsumo } from "./sugestoesRecebimento";
+import { MesclarInsumosModal } from "./MesclarInsumosModal";
 import { PageContainer } from "../../core/ui/PageContainer";
+
+type IaInfo = { categoria?: string; unidade?: UnidadeMedida; grupo?: string; matchInsumoId?: string | null };
 
 type Tab = "lancar" | "visao" | "config";
 
@@ -39,6 +42,10 @@ export function ContagensPage() {
   const [recebimentos, setRecebimentos] = useState<RecebimentoNota[]>([]);
   const [soRecorrentes, setSoRecorrentes] = useState(true);
   const [sugestoesAbertas, setSugestoesAbertas] = useState(false);
+  const [iaMapa, setIaMapa] = useState<Record<string, IaInfo>>({});
+  const [iaCarregando, setIaCarregando] = useState(false);
+  const iaEmAndamento = useRef(false);
+  const [mesclando, setMesclando] = useState(false);
 
   useEffect(() => {
     if (!rid) return;
@@ -88,8 +95,53 @@ export function ContagensPage() {
   }, [rid, podeConfig]);
 
   // Sugestões agrupadas do recebimento (não cadastradas + filtro de recorrência).
+  // agruparSugestoes já ignora o que casa por NOME ou por ALIAS de insumo.
   const sugestoes = useMemo(() => agruparSugestoes(recebimentos, insumos, fornecedores), [recebimentos, insumos, fornecedores]);
   const sugestoesNovas = useMemo(() => sugestoes.filter(s => !s.jaCadastrado && (!soRecorrentes || s.ocorrencias >= 2)), [sugestoes, soRecorrentes]);
+
+  // IA: ao abrir os Sugeridos, enriquece (categoria, unidade, agrupa repetidos de
+  // nomes diferentes, casa com insumo já existente). Incremental: só o que falta.
+  useEffect(() => {
+    if (!sugestoesAbertas || !podeConfig) return;
+    const faltando = sugestoesNovas.filter(s => !iaMapa[s.chave]);
+    if (faltando.length === 0 || iaEmAndamento.current) return;
+    iaEmAndamento.current = true; setIaCarregando(true);
+    (async () => {
+      try {
+        const idToken = await auth.currentUser?.getIdToken();
+        const r = await fetch("/api/contagens-ia", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+          idToken,
+          produtos: faltando.slice(0, 200).map(s => ({ chave: s.chave, nome: s.nome, unidadeAtual: s.unidade })),
+          jaCadastrados: insumos.map(i => ({ id: i.id, nome: i.nome, aliases: i.aliases || [] })),
+        }) });
+        const j = await r.json() as { itens?: Array<{ chave: string; categoria?: string; unidade?: string; grupo?: string; matchInsumoId?: string | null }> };
+        if (Array.isArray(j.itens)) setIaMapa(prev => { const n = { ...prev }; for (const it of j.itens!) if (it?.chave) n[it.chave] = { categoria: it.categoria, unidade: it.unidade as UnidadeMedida, grupo: it.grupo, matchInsumoId: it.matchInsumoId ?? null }; return n; });
+      } catch { /* silencioso */ } finally { iaEmAndamento.current = false; setIaCarregando(false); }
+    })();
+  }, [sugestoesAbertas, sugestoesNovas, podeConfig, insumos, iaMapa]);
+
+  // Agrupa as sugestões por "grupo" da IA (nomes diferentes = mesmo produto) e
+  // consolida fornecedores + aliases de cada grupo.
+  const gruposSugeridos = useMemo(() => {
+    const map = new Map<string, SugestaoInsumo[]>();
+    for (const s of sugestoesNovas) { const g = iaMapa[s.chave]?.grupo || s.chave; const arr = map.get(g); if (arr) arr.push(s); else map.set(g, [s]); }
+    const grupos = [...map.entries()].map(([grupo, membros]) => {
+      const principal = membros.slice().sort((a, b) => b.ocorrencias - a.ocorrencias)[0];
+      const ia = iaMapa[principal.chave] || {};
+      const fm = new Map<string, { nome: string; count: number }>();
+      for (const m of membros) for (const f of m.fornecedores) { const k = normalizar(f.nome); const e = fm.get(k) || { nome: f.nome, count: 0 }; e.count += f.count; fm.set(k, e); }
+      const fornecedores = [...fm.values()].sort((a, b) => b.count - a.count);
+      const matchInsumoId = membros.map(m => iaMapa[m.chave]?.matchInsumoId).find(Boolean) || null;
+      return {
+        grupo, membros, nome: principal.nome,
+        categoria: ia.categoria, unidade: (ia.unidade as UnidadeMedida) || principal.unidade, unidadeOutroLabel: principal.unidadeOutroLabel,
+        precoEstimado: principal.precoEstimado, matchInsumoId, fornecedores,
+        aliases: membros.map(m => m.chave), ocorrencias: Math.max(...membros.map(m => m.ocorrencias)),
+      };
+    });
+    return grupos.sort((a, b) => b.ocorrencias - a.ocorrencias || a.nome.localeCompare(b.nome));
+  }, [sugestoesNovas, iaMapa]);
+  type GrupoSugerido = typeof gruposSugeridos[number];
 
   // Casa um fornecedor pelo nome (normalizado) ou cria um novo; devolve o id.
   async function garantirFornecedor(nome: string): Promise<string | undefined> {
@@ -99,20 +151,35 @@ export function ContagensPage() {
     if (existente) return existente.id;
     if (!me) return undefined;
     const ref = await addDoc(collection(db, "fornecedores"), sanitizeForFirestore({
-      restaurantId: rid, nome: nome.trim(), ativo: true, criadoEm: new Date().toISOString(), criadoPor: me.id,
+      restaurantId: rid, nome: tituloCaso(nome), ativo: true, criadoEm: new Date().toISOString(), criadoPor: me.id,
     }));
     return ref.id;
   }
 
-  // Abre o InsumoModal já preenchido a partir de uma sugestão do recebimento.
-  async function cadastrarDaSugestao(s: SugestaoInsumo) {
-    const forId = s.fornecedores[0]?.nome ? await garantirFornecedor(s.fornecedores[0].nome) : undefined;
+  async function montarFornecedores(fs: { nome: string; count: number; preco?: number }[]): Promise<{ lista: InsumoFornecedor[]; primeiroId?: string }> {
+    const lista: InsumoFornecedor[] = []; let primeiroId: string | undefined;
+    for (let i = 0; i < fs.length; i++) { const id = await garantirFornecedor(fs[i].nome); if (i === 0) primeiroId = id; lista.push({ nome: tituloCaso(fs[i].nome), fornecedorId: id || null, primario: i === 0 }); }
+    return { lista, primeiroId };
+  }
+
+  // Cadastra um GRUPO: cria 1 insumo com todos os aliases + fornecedores, ou
+  // vincula a um insumo existente ("pode ser aquele" da IA).
+  async function cadastrarGrupo(g: GrupoSugerido) {
+    const { lista, primeiroId } = await montarFornecedores(g.fornecedores);
+    if (g.matchInsumoId) {
+      const alvo = insumos.find(i => i.id === g.matchInsumoId);
+      if (alvo && confirm(`A IA acha que é o mesmo insumo já cadastrado "${alvo.nome}". Vincular a ele? (os fornecedores e nomes deste grupo passam a apontar pra ele)`)) {
+        const aliases = Array.from(new Set([...(alvo.aliases || []), ...g.aliases, normalizar(alvo.nome)]));
+        const fornMap = new Map<string, InsumoFornecedor>();
+        for (const f of [...(alvo.fornecedores || []), ...lista]) fornMap.set(normalizar(f.nome), f);
+        await updateDoc(doc(db, "insumos", alvo.id), sanitizeForFirestore({ aliases, fornecedores: [...fornMap.values()], atualizadoEm: new Date().toISOString() }));
+        return;
+      }
+    }
     setPreset({
-      nome: s.nome,
-      unidade: s.unidade,
-      unidadeOutroLabel: s.unidadeOutroLabel,
-      precoEstimado: s.precoEstimado,
-      fornecedorPreferredId: forId || null,
+      nome: g.nome, categoria: g.categoria, unidade: g.unidade, unidadeOutroLabel: g.unidadeOutroLabel,
+      precoEstimado: g.precoEstimado, fornecedorPreferredId: primeiroId || null,
+      aliases: g.aliases, fornecedores: lista,
     });
     setEditing("new");
   }
@@ -321,31 +388,51 @@ export function ContagensPage() {
             <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/60 dark:bg-amber-900/10 overflow-hidden">
               <button type="button" onClick={() => setSugestoesAbertas(v => !v)} className="w-full flex items-center gap-2 px-3 py-2 text-left">
                 <Sparkles size={15} className="text-amber-500 shrink-0" />
-                <span className="text-sm font-semibold text-amber-900 dark:text-amber-200">Sugeridos do recebimento ({sugestoesNovas.length})</span>
+                <span className="text-sm font-semibold text-amber-900 dark:text-amber-200">Sugeridos do recebimento ({gruposSugeridos.length})</span>
+                {iaCarregando && <Loader2 size={13} className="animate-spin text-amber-500" />}
                 <span className="ml-auto text-xs font-medium text-amber-700 dark:text-amber-400">{sugestoesAbertas ? "ocultar" : "ver"}</span>
               </button>
               {sugestoesAbertas && (
                 <div className="px-3 pb-3 space-y-2">
-                  <label className="flex items-center gap-1.5 text-xs text-amber-800 dark:text-amber-300 cursor-pointer">
-                    <input type="checkbox" checked={soRecorrentes} onChange={e => setSoRecorrentes(e.target.checked)} /> só recorrentes (2+ notas)
-                  </label>
-                  {sugestoesNovas.map(s => (
-                    <div key={s.chave} className="rounded-lg border border-amber-200/70 dark:border-amber-900/40 bg-white dark:bg-gray-900 p-2.5 flex items-center gap-2 flex-wrap">
-                      <div className="min-w-0 flex-1">
-                        <div className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{s.nome}</div>
-                        <div className="text-[11px] text-gray-500 flex gap-2 flex-wrap mt-0.5">
-                          <span className="uppercase">{s.unidade === "outro" ? (s.unidadeOutroLabel || "outro") : UNIDADES_LABEL[s.unidade]}</span>
-                          <span>{s.ocorrencias} nota(s)</span>
-                          {s.precoEstimado != null && <span>R$ {s.precoEstimado.toFixed(2)}/un</span>}
-                          {s.fornecedores[0] && <span className="inline-flex items-center gap-1"><Truck size={11} /> {s.fornecedores[0].nome}{s.fornecedores.length > 1 ? ` +${s.fornecedores.length - 1}` : ""}</span>}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <label className="flex items-center gap-1.5 text-xs text-amber-800 dark:text-amber-300 cursor-pointer">
+                      <input type="checkbox" checked={soRecorrentes} onChange={e => setSoRecorrentes(e.target.checked)} /> só recorrentes (2+ notas)
+                    </label>
+                    {iaCarregando && <span className="text-[11px] text-amber-700/80 inline-flex items-center gap-1"><Sparkles size={11} /> IA analisando categoria, unidade e repetidos…</span>}
+                  </div>
+                  {gruposSugeridos.map(g => {
+                    const alvo = g.matchInsumoId ? insumos.find(i => i.id === g.matchInsumoId) : null;
+                    return (
+                      <div key={g.grupo} className="rounded-lg border border-amber-200/70 dark:border-amber-900/40 bg-white dark:bg-gray-900 p-2.5 flex items-center gap-2 flex-wrap">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <span className="text-sm font-medium text-gray-900 dark:text-gray-100 truncate">{g.nome}</span>
+                            {g.categoria && <span className="text-[10px] uppercase px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">{g.categoria}</span>}
+                            {g.membros.length > 1 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300 inline-flex items-center gap-1" title={g.membros.map(m => m.nome).join(" · ")}><Layers size={10} /> {g.membros.length} nomes</span>}
+                          </div>
+                          <div className="text-[11px] text-gray-500 flex gap-2 flex-wrap mt-0.5">
+                            <span className="uppercase">{g.unidade === "outro" ? (g.unidadeOutroLabel || "outro") : UNIDADES_LABEL[g.unidade]}</span>
+                            <span>{g.ocorrencias} nota(s)</span>
+                            {g.precoEstimado != null && <span>R$ {g.precoEstimado.toFixed(2)}/un</span>}
+                            {g.fornecedores[0] && <span className="inline-flex items-center gap-1"><Truck size={11} /> {tituloCaso(g.fornecedores[0].nome)}{g.fornecedores.length > 1 ? ` +${g.fornecedores.length - 1}` : ""}</span>}
+                          </div>
+                          {alvo && <div className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-0.5 inline-flex items-center gap-1"><Link2 size={11} /> pode ser: <strong>{alvo.nome}</strong></div>}
                         </div>
+                        <Button size="sm" variant={alvo ? "secondary" : undefined} onClick={() => void cadastrarGrupo(g)}>
+                          {alvo ? <span className="inline-flex items-center gap-1"><Link2 size={13} /> Vincular</span> : <span className="inline-flex items-center gap-1"><Plus size={13} /> Cadastrar</span>}
+                        </Button>
                       </div>
-                      <Button size="sm" onClick={() => void cadastrarDaSugestao(s)}><span className="inline-flex items-center gap-1"><Plus size={13} /> Cadastrar</span></Button>
-                    </div>
-                  ))}
-                  <p className="text-[10px] text-amber-700/70 dark:text-amber-400/60">Categoria e estoque mínimo não vêm da nota — você completa ao cadastrar. Fornecedor primário = o mais frequente nas notas.</p>
+                    );
+                  })}
+                  <p className="text-[10px] text-amber-700/70 dark:text-amber-400/60">A IA sugere categoria e unidade, junta nomes diferentes do mesmo produto e avisa quando pode ser um insumo já cadastrado (vincula fornecedores de fontes diferentes num só). Estoque mínimo você completa.</p>
                 </div>
               )}
+            </div>
+          )}
+
+          {podeConfig && insumos.length >= 2 && (
+            <div className="flex justify-end">
+              <button type="button" onClick={() => setMesclando(true)} className="text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 inline-flex items-center gap-1"><Layers size={13} /> Mesclar duplicados</button>
             </div>
           )}
 
@@ -415,6 +502,8 @@ export function ContagensPage() {
           onClose={() => { setEditing(null); setPreset(null); }}
         />
       )}
+
+      {mesclando && <MesclarInsumosModal insumos={insumos} onClose={() => setMesclando(false)} />}
     </PageContainer>
   );
 }

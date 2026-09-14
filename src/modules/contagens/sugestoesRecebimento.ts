@@ -70,7 +70,11 @@ export function agruparSugestoes(
   insumos: Insumo[],
   fornecedores: Fornecedor[],
 ): SugestaoInsumo[] {
-  const cadastrados = new Set(insumos.map((i) => normalizar(i.nome)));
+  // Já cadastrado = casa pelo NOME do insumo OU por um dos ALIASES (nomes de
+  // nota vinculados a ele) — assim produtos de fornecedores diferentes já
+  // linkados não voltam a ser sugeridos.
+  const cadastrados = new Set<string>();
+  for (const i of insumos) { cadastrados.add(normalizar(i.nome)); for (const a of (i.aliases || [])) cadastrados.add(normalizar(a)); }
   const fornPorNome = new Map(fornecedores.map((f) => [normalizar(f.nome), f.id]));
 
   type Acc = {
