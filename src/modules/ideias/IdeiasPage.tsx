@@ -355,6 +355,8 @@ export function IdeiasPage() {
           restaurantId={rid}
           podePrivadas={podePrivadas}
           onClose={() => setEditing(null)}
+          onVirarTarefa={podeModerar && editing !== "new" ? () => { const i = editing; setEditing(null); setVirarDe(i); } : undefined}
+          onExcluir={podeModerar && editing !== "new" ? () => { const i = editing; setEditing(null); void excluir(i); } : undefined}
         />
       )}
       {virarDe && (

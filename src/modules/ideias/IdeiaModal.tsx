@@ -2,7 +2,7 @@ import { useState } from "react";
 import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
-import { Building2, Lock, Globe } from "lucide-react";
+import { Building2, Lock, Globe, Target, Trash2 } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
@@ -17,11 +17,14 @@ type Props = {
   // empresa(s) ao criar. Se escolher várias, cria 1 ideia por empresa.
   empresas?: { id: string; nome: string }[];
   onClose: () => void;
+  // Ações sobre uma ideia EXISTENTE (não aparecem ao criar). O pai executa e fecha.
+  onVirarTarefa?: () => void;
+  onExcluir?: () => void;
 };
 
 const CATEGORIAS_SUGERIDAS = ["Operação", "Cardápio", "Cultura", "Atendimento", "Custos", "Treinamento", "Outro"];
 
-export function IdeiaModal({ ideia, restaurantId, podePrivadas = false, empresas, onClose }: Props) {
+export function IdeiaModal({ ideia, restaurantId, podePrivadas = false, empresas, onClose, onVirarTarefa, onExcluir }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !ideia;
   const comSeletor = !!empresas && isNew;   // seletor de empresa só ao criar no contexto transversal
@@ -154,7 +157,15 @@ export function IdeiaModal({ ideia, restaurantId, podePrivadas = false, empresas
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
 
-        <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
+        <div className="flex items-center gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
+          {/* Ações sobre a ideia existente — à esquerda; salvar/cancelar à direita. */}
+          {!isNew && onVirarTarefa && !ideia.acaoIdGerada && (
+            <Button variant="secondary" onClick={onVirarTarefa}><span className="inline-flex items-center gap-1.5"><Target size={14} /> Virar tarefa</span></Button>
+          )}
+          {!isNew && onExcluir && (
+            <Button variant="danger" onClick={onExcluir}><span className="inline-flex items-center gap-1.5"><Trash2 size={14} /> Excluir</span></Button>
+          )}
+          <div className="flex-1" />
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button onClick={salvar} disabled={saving}>
             {saving ? "Salvando..." : isNew ? "Criar" : "Salvar"}

@@ -6,7 +6,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Lightbulb, Lock, Building2, User, Users, PenLine, Pencil } from "lucide-react";
 import type { Ideia, IdeiaStatus } from "../../core/types";
-import { ouvirIdeiasVisiveis, backfillVisibilidade } from "../ideias/ideiasData";
+import { ouvirIdeiasVisiveis, backfillVisibilidade, excluirIdeia } from "../ideias/ideiasData";
 import { IdeiaModal } from "../ideias/IdeiaModal";
 
 // Status que ainda são "rascunho/backlog" (não puxadas nem descartadas).
@@ -83,7 +83,9 @@ export function CaixaIdeiasFaixa({ rids, ridAtivo, meId, isMaster, restaurants, 
       )}
 
       {editing && (
-        <IdeiaModal ideia={editing === "new" ? null : editing} restaurantId={editing === "new" ? ridParaNova : editing.restaurantId} podePrivadas={podePrivadas} empresas={restaurants.filter(r => rids.includes(r.id))} onClose={() => setEditing(null)} />
+        <IdeiaModal ideia={editing === "new" ? null : editing} restaurantId={editing === "new" ? ridParaNova : editing.restaurantId} podePrivadas={podePrivadas} empresas={restaurants.filter(r => rids.includes(r.id))} onClose={() => setEditing(null)}
+          onVirarTarefa={editing !== "new" ? () => { const i = editing; setEditing(null); onVirarTarefa(i); } : undefined}
+          onExcluir={editing !== "new" ? () => { const i = editing; if (confirm(`Excluir "${i.titulo}"?`)) { void excluirIdeia(i.id); setEditing(null); } } : undefined} />
       )}
     </div>
   );
@@ -197,6 +199,8 @@ export function CaixaDeIdeias({ rids, ridAtivo, meId, isMaster, restaurants, pod
           podePrivadas={podePrivadas}
           empresas={restaurants.filter(r => rids.includes(r.id))}
           onClose={() => setEditing(null)}
+          onVirarTarefa={editing !== "new" ? () => { const i = editing; setEditing(null); onVirarTarefa(i); } : undefined}
+          onExcluir={editing !== "new" ? () => { const i = editing; if (confirm(`Excluir "${i.titulo}"?`)) { void excluirIdeia(i.id); setEditing(null); } } : undefined}
         />
       )}
     </div>

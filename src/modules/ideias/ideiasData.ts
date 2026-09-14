@@ -4,9 +4,14 @@
 //   • master: 1 listener por bloco de empresas (vê tudo) via restaurantId `in`
 //   • demais: público POR empresa (== + ==) + "as minhas" (criadoPor ==)
 // Depois filtra pra manter só as empresas pedidas e deduplica por id.
-import { collection, onSnapshot, query, where, updateDoc, doc, type Query, type DocumentData, type Unsubscribe } from "firebase/firestore";
+import { collection, onSnapshot, query, where, updateDoc, deleteDoc, doc, type Query, type DocumentData, type Unsubscribe } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import type { Ideia } from "../../core/types";
+
+// Exclui uma ideia de vez (usado pela Caixa de Ideias e pelo Banco).
+export async function excluirIdeia(id: string): Promise<void> {
+  await deleteDoc(doc(db, "ideias", id));
+}
 
 const chunk = <T,>(a: T[], n: number): T[][] => { const o: T[][] = []; for (let i = 0; i < a.length; i += n) o.push(a.slice(i, i + n)); return o; };
 

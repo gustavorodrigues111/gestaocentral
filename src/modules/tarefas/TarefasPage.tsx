@@ -67,7 +67,7 @@ export function TarefasPage() {
   // mas ao sair e voltar, reseta — é o "home" do gestor. View de projeto
   // continua em "lista" como default (que abre rara — só ao clicar num
   // projeto da sidebar, e aí faz sentido lista).
-  const [tab, setTab] = useState<Tab>("tudo");
+  const [tab, setTab] = useState<Tab>("minhas");
   const [viewMinhas, setViewMinhas] = useState<ViewMode>("calendario");
   const [viewProjeto, setViewProjeto] = useState<ViewMode>("calendario");
 
