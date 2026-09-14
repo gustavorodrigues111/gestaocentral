@@ -295,7 +295,12 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       const consecutivo = (Date.parse(atu.data) - Date.parse(ant.data)) === 86_400_000;
       if (consecutivo && !atu.ehHoje && !atu.ehFuturo && ant.ultimaMs != null && atu.primeiraMs != null && (atu.primeiraMs - ant.ultimaMs) < minInter && !atu.excecoes.includes("interjornada")) atu.excecoes.push("interjornada");
     }
-    return { linhas, temCpf: !!cpf, saldoMes, totTrab: linhas.reduce((s, l) => s + l.trabalhado, 0), totExtra: linhas.reduce((s, l) => s + l.extra, 0), totNot: linhas.reduce((s, l) => s + l.noturno, 0), exc: linhas.reduce((s, l) => s + l.excecoes.length, 0) };
+    // Apurados = dias já fechados (do dia 01 até ONTEM). Hoje e futuros não
+    // entram no saldo — por isso o previsto/trabalhado do saldo também é só até ontem.
+    const apurados = linhas.filter(l => !l.ehHoje && !l.ehFuturo);
+    const prevAteOntem = apurados.reduce((s, l) => s + l.previstoMin, 0);
+    const trabAteOntem = apurados.reduce((s, l) => s + l.trabalhado + l.abonadoMin, 0);
+    return { linhas, temCpf: !!cpf, saldoMes, prevAteOntem, trabAteOntem, totTrab: linhas.reduce((s, l) => s + l.trabalhado, 0), totExtra: linhas.reduce((s, l) => s + l.extra, 0), totNot: linhas.reduce((s, l) => s + l.noturno, 0), exc: linhas.reduce((s, l) => s + l.excecoes.length, 0) };
   }
 
   // Aprovar/Reprovar a correção pendente: grava a decisão na Sólides (PUT status,
@@ -879,7 +884,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
           <div className="mt-2 rounded-xl border border-gray-200 dark:border-gray-800 overflow-x-auto">
             <table className="w-full text-[12px] min-w-[560px] [&_td]:px-2 [&_td]:py-1.5 [&_th]:px-2">
               <thead><tr className="text-[10px] uppercase tracking-wide text-gray-400 text-left border-b border-gray-200 dark:border-gray-800">
-                <th className="py-1.5 font-semibold">Colaborador</th><th className="font-semibold text-right">Saldo {labelComp(comp)}</th><th className="font-semibold text-right">Saldo acumulado</th><th className="font-semibold">Próx. vencimento</th><th className="font-semibold">Extrato</th>
+                <th className="py-1.5 font-semibold">Colaborador</th><th className="font-semibold text-right">Saldo {labelComp(comp)} <span className="normal-case font-normal text-gray-300">(até ontem)</span></th><th className="font-semibold text-right">Saldo acumulado</th><th className="font-semibold">Próx. vencimento</th><th className="font-semibold">Extrato</th>
               </tr></thead>
               <tbody>
                 {resultados.filter(x => !naoBatePonto(x.emp)).map(({ emp, r }) => {
@@ -891,7 +896,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                   return (
                     <tr key={emp.id} className="border-b border-gray-50 dark:border-gray-800/40">
                       <td className="font-medium text-gray-700 dark:text-gray-200 truncate">{emp.nome}{registradoComp(emp.id) && <span className="ml-1 text-[9px] text-emerald-600">✓ registrado</span>}</td>
-                      <td className={`text-right tabular-nums font-medium ${r.saldoMes < 0 ? "text-rose-600 dark:text-rose-400" : r.saldoMes > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400"}`}>{r.saldoMes ? hmSigned(Math.round(r.saldoMes)) : "0h00"}</td>
+                      <td title={`Do dia 01 até ontem — previsto ${hm(r.prevAteOntem)} · trabalhado+abonado ${hm(r.trabAteOntem)}`} className={`text-right tabular-nums font-medium ${r.saldoMes < 0 ? "text-rose-600 dark:text-rose-400" : r.saldoMes > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400"}`}>{r.saldoMes ? hmSigned(Math.round(r.saldoMes)) : "0h00"}</td>
                       <td className={`text-right tabular-nums font-semibold ${acum < 0 ? "text-rose-600 dark:text-rose-400" : acum > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400"}`}>{acum ? hmSigned(acum) : "0h00"}</td>
                       <td className="text-gray-600 dark:text-gray-300">{vencidos.length > 0 ? <span className="text-rose-600 dark:text-rose-400 font-semibold inline-flex items-center gap-1"><TriangleAlert size={11}/> {vencidos.length} vencido(s)</span> : proxVenc ? fmtDataBR(proxVenc) : "—"}</td>
                       <td className="text-[11px] text-gray-500">{movs.length === 0 ? "—" : movs.map(m => <span key={m.id} className={`inline-block mr-1.5 ${movVencido(m) ? "text-rose-500" : ""}`} title={m.vencimento ? `vence ${fmtDataBR(m.vencimento)}` : ""}>{labelComp(m.competencia).slice(0, 3)}: {hmSigned(m.saldoMinutos || 0)}</span>)}</td>
@@ -900,7 +905,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                 })}
               </tbody>
             </table>
-            <div className="px-3 py-2 text-[10px] text-gray-400 border-t border-gray-100 dark:border-gray-800">Saldo do mês = trabalhado + abonado − previsto. "Registrar no banco" grava o saldo do mês com vencimento = fim da competência + {cct?.prazoCompensacaoDias || 90} dias (prazo da CCT). Crédito vencido (não compensado no prazo) deve ser pago como extra.</div>
+            <div className="px-3 py-2 text-[10px] text-gray-400 border-t border-gray-100 dark:border-gray-800">Saldo do mês = trabalhado + abonado − previsto, apurado <b>do dia 01 até ontem</b> (hoje e dias futuros não entram). O <b>previsto</b> vem da escala/horário cadastrado no vínculo do empregado. Passe o mouse no saldo pra ver previsto × trabalhado. "Registrar no banco" grava o saldo com vencimento = fim da competência + {cct?.prazoCompensacaoDias || 90} dias (prazo da CCT). Crédito vencido (não compensado no prazo) deve ser pago como extra.</div>
           </div>
         )}
       </div>
