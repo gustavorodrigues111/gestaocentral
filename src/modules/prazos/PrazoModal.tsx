@@ -14,6 +14,17 @@ import { Banknote, Wrench, Scale, Flag, House, FileText, CalendarDays, Pencil, T
 const ymdToBr = (ymd?: string) => { if (!ymd) return ""; const [a, m, d] = ymd.split("-"); return `${d}/${m}/${a}`; };
 const brToYmd = (br: string) => { const [d, m, a] = br.split("/"); return (d && m && a) ? `${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}` : ""; };
 const DOW = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+// Próxima data (dd/mm/aaaa) — a partir de HOJE — que caia num dos dias da semana
+// (0=Dom..6=Sáb). Usada pra sugerir o 1º vencimento de um prazo semanal.
+function proximaDataSemana(dias: number[]): string {
+  if (!dias?.length) return "";
+  const base = new Date(); base.setHours(12, 0, 0, 0);
+  for (let i = 0; i <= 7; i++) {
+    const d = new Date(base); d.setDate(base.getDate() + i);
+    if (dias.includes(d.getDay())) return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  }
+  return "";
+}
 const uid = () => `prazo_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 const inp = "w-full h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
 const chip = (on: boolean) => `px-3 py-1.5 text-xs font-medium rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500"}`;
@@ -36,8 +47,19 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
   const [titulo, setTitulo] = useState(prazo?.titulo || "");
   const [venc, setVenc] = useState(ymdToBr(prazo?.vencimento) || "");
   const [respId, setRespId] = useState(prazo?.responsavelId || "");
-  const [antec, setAntec] = useState<number>(prazo?.antecedenciaDias ?? ANTECEDENCIA_PADRAO[prazo?.tipo || "conta"]);
+  const [antec, setAntec] = useState<number>(prazo?.antecedenciaDias || ANTECEDENCIA_PADRAO[prazo?.tipo || "conta"]);
+  // Por praxe, prazo novo começa SEM aviso. Ao editar, respeita o que já tinha.
+  const [avisar, setAvisar] = useState<boolean>((prazo?.antecedenciaDias ?? 0) > 0);
   const [rec, setRec] = useState<PrazoRecorrencia | null>(prazo?.recorrencia ?? null);
+  // Ao escolher recorrência semanal, sugere a próxima data que cai no dia (se o
+  // campo "Começa em" ainda estiver vazio) — assim "toda terça" já vem com a 1ª.
+  const aoMudarRec = (r: PrazoRecorrencia | null) => {
+    setRec(r);
+    if (r && r.unidade === "semana" && r.diasSemana?.length && !venc.trim()) {
+      const s = proximaDataSemana(r.diasSemana);
+      if (s) setVenc(s);
+    }
+  };
   const [exigeLaudo, setExigeLaudo] = useState<boolean>(prazo?.exigeLaudo ?? (prazo?.tipo === "tecnico"));
   const [permiteAg, setPermiteAg] = useState<boolean>(prazo?.permiteAgendamento ?? (prazo?.tipo === "tecnico"));
   const [dados, setDados] = useState<NonNullable<Prazo["dados"]>>(prazo?.dados || {});
@@ -63,7 +85,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
   async function salvar() {
     const vy = brToYmd(venc);
     if (!titulo.trim()) return setErro("Dê um título.");
-    if (!vy) return setErro("Vencimento inválido (dd/mm/aaaa).");
+    if (!vy) return setErro(rec ? "Escolha a partir de quando começa (dd/mm/aaaa)." : "Vencimento inválido (dd/mm/aaaa).");
     setSalvando(true); setErro("");
     try {
       const resp = pessoas.find((p) => p.id === respId);
@@ -75,7 +97,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
         link: link.trim() || null,
         imovelId: imovelId || null,
         responsavelId: respId || null, responsavelNome: resp?.nome || null,
-        antecedenciaDias: antec,
+        antecedenciaDias: avisar ? antec : 0,
         recorrencia: rec,
         exigeLaudo,
         permiteAgendamento: permiteAg,
@@ -105,7 +127,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
           </div>
           <DetRow label="Vencimento"><span className="font-medium">{ymdToBr(prazo.vencimento)}</span></DetRow>
           <DetRow label="Responsável">{prazo.responsavelNome || "—"}</DetRow>
-          <DetRow label="Avisar">{prazo.antecedenciaDias ?? 0} dia(s) antes</DetRow>
+          <DetRow label="Avisar">{(prazo.antecedenciaDias ?? 0) > 0 ? `${prazo.antecedenciaDias} dia(s) antes` : "Não avisa"}</DetRow>
           <DetRow label="Repetição">{prazo.recorrencia ? resumoRecorrencia(prazo.recorrencia) : "Não repete"}</DetRow>
           {prazo.link && <DetRow label="Link"><a href={prazo.link} target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline break-all">{prazo.link} ↗</a></DetRow>}
           {prazo.tipo === "conta" && (<>
@@ -160,20 +182,26 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
 
         <div><label className="text-xs text-gray-500 block mb-1">Link <span className="text-gray-400">(opcional)</span></label><input value={link} onChange={(e) => setLink(e.target.value)} placeholder="https://… (contrato, boleto, Drive)" className={inp} /></div>
 
+        {/* Repetição vem ANTES do vencimento: se repete, o "vencimento" é só a
+            data de início (1ª ocorrência). */}
+        <RecorrenciaEditor rec={rec} onChange={aoMudarRec} />
+
         <div className="grid grid-cols-2 gap-2">
-          <div><label className="text-xs text-gray-500 block mb-1">Vencimento</label><DatePickerBR value={venc} onChange={setVenc} /></div>
+          <div><label className="text-xs text-gray-500 block mb-1">{rec ? "Começa em" : "Vencimento"} {rec && <span className="text-gray-400">(1ª)</span>}</label><DatePickerBR value={venc} onChange={setVenc} /></div>
           <div><label className="text-xs text-gray-500 block mb-1">Responsável</label>
             <select value={respId} onChange={(e) => setRespId(e.target.value)} className={inp}><option value="">—</option>{pessoas.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}</select>
           </div>
         </div>
 
-        <div className="flex items-center justify-center gap-2.5 text-sm text-gray-600 dark:text-gray-300 py-1">
-          <span>Avisar</span>
-          <Stepper value={antec} onChange={setAntec} min={0} max={365} />
-          <span>dias antes do vencimento</span>
+        {/* Aviso: por praxe começa desligado. Ligou → escolhe quantos dias antes. */}
+        <div className="flex items-center justify-center gap-2.5 text-sm text-gray-600 dark:text-gray-300 py-1 flex-wrap">
+          <span>Avisar?</span>
+          <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+            <button type="button" onClick={() => setAvisar(false)} className={`px-2.5 py-1 text-xs font-medium rounded-md ${!avisar ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>Não</button>
+            <button type="button" onClick={() => { setAvisar(true); if (!antec) setAntec(ANTECEDENCIA_PADRAO[tipo]); }} className={`px-2.5 py-1 text-xs font-medium rounded-md ${avisar ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>Sim</button>
+          </div>
+          {avisar && <><Stepper value={antec} onChange={setAntec} min={1} max={365} /><span>dias antes</span></>}
         </div>
-
-        <RecorrenciaEditor rec={rec} onChange={setRec} />
 
         {/* Extras por tipo */}
         <div className="border-t border-gray-100 dark:border-gray-800 pt-3">
