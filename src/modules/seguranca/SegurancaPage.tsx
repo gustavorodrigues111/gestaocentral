@@ -147,7 +147,7 @@ export function SegurancaPage() {
       {temModelo && aba === "planoacao" && <PlanoAcaoTab rid={rid} autor={autor} podeGerar={podeGerar} />}
 
       {temModelo && aba === "config" && podeConfig && (
-        <ConfigChecklists rid={rid} modelos={modelos} autorId={me?.id} onEditar={(id) => setEditandoId(id)} onClose={() => setAba("avaliacoes")} />
+        <ConfigChecklists rid={rid} modelos={modelos} autorId={me?.id} onEditar={(id) => setEditandoId(id)} />
       )}
 
       {temModelo && aba === "avaliacoes" && (

@@ -8,12 +8,11 @@ import { Button } from "../../core/ui/Button";
 import type { SegurancaModelo } from "../../core/types";
 import { criarModeloVazio, criarModeloSemente, duplicarModelo, excluirModelo, salvarModelo } from "./repository";
 
-export function ConfigChecklists({ rid, modelos, autorId, onEditar, onClose }: {
+export function ConfigChecklists({ rid, modelos, autorId, onEditar }: {
   rid: string;
   modelos: SegurancaModelo[];
   autorId?: string;
   onEditar: (id: string) => void;
-  onClose: () => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [erro, setErro] = useState("");
@@ -48,9 +47,6 @@ export function ConfigChecklists({ rid, modelos, autorId, onEditar, onClose }: {
   return (
     <div className="space-y-4 pb-6">
       <div className="space-y-3">
-        <button onClick={onClose} className="text-gray-500 hover:text-gray-900 dark:hover:text-gray-100 text-sm inline-flex items-center gap-1">
-          <span className="text-base leading-none">←</span> Voltar
-        </button>
         <div>
           <h1 className="text-lg font-bold text-gray-900 dark:text-gray-100">Configurações · Checklists</h1>
           <p className="text-xs text-gray-500 dark:text-gray-400">Modelos de checklist. Uma nova avaliação usa o ativo — se houver mais de um, o app pergunta qual.</p>

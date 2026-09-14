@@ -81,7 +81,7 @@ function useFotoUrl(foto: SegurancaFoto) {
 }
 
 // Miniatura: mostra a foto (Firebase direto, ou Drive baixado).
-function Miniatura({ foto }: { foto: SegurancaFoto }) {
+export function Miniatura({ foto }: { foto: SegurancaFoto }) {
   const { url, erro } = useFotoUrl(foto);
   if (erro) return <div className="w-16 h-16 rounded-xl border border-gray-200 dark:border-gray-700 grid place-items-center bg-gray-50 dark:bg-gray-800 text-gray-400"><ImageIcon size={20} /></div>;
   if (!url) return <div className="w-16 h-16 rounded-xl border border-gray-200 dark:border-gray-700 grid place-items-center bg-gray-50 dark:bg-gray-800 animate-pulse text-gray-300 text-xs">…</div>;
@@ -89,7 +89,7 @@ function Miniatura({ foto }: { foto: SegurancaFoto }) {
 }
 
 // Modal in-app da foto (não sai do planejamento.app).
-function FotoModal({ foto, onClose }: { foto: SegurancaFoto; onClose: () => void }) {
+export function FotoModal({ foto, onClose }: { foto: SegurancaFoto; onClose: () => void }) {
   const { url, erro } = useFotoUrl(foto);
   return (
     <div className="fixed inset-0 z-[70] bg-black/75 flex items-center justify-center p-4" onClick={onClose}>
