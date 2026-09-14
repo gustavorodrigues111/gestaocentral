@@ -218,7 +218,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     return m;
   }, [ajustes]);
 
-  type Linha = { data: string; bs: BatidaDoc[]; bsRaw: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean; ehFuturo: boolean; ehHoje: boolean };
+  type Linha = { data: string; bs: BatidaDoc[]; bsRaw: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean; ehFuturo: boolean; ehHoje: boolean; pendenteCorrecao: boolean };
   function apurarColab(emp: Empregado) {
     const cpf = soDig(emp.cpf);
     const dias = batidasPorCpf[cpf] || {};
@@ -249,6 +249,11 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       // Só a batida EFETIVA (aprovada) entra na apuração — espelha o oficial.
       // A correção pendente é preservada em `bs` (aparece na linha), mas não soma.
       const blocos: BatidaBloco[] = bs.filter(b => !b.excluded && !correcaoPendente(b) && !(b.punchId && descPunch.has(b.punchId))).map(b => ({ dateIn: b.dateIn as number, dateOut: (b.dateOut ?? null) as number | null }));
+      // Batida ABERTA (entrada sem a saída pareada) = dia PENDENTE: não dá pra
+      // apurar o saldo até completar a batida. O dia fica "pendente" e conta
+      // ZERO no banco de horas (não distorce o mês por esquecimento de batida).
+      const temBatidaAberta = blocos.some(b => b.dateIn != null && b.dateOut == null);
+      const pendenteCorrecao = !ehFuturo && !ehHoje && temBatidaAberta;
       // Inclusões e abonos entram como lançamento no motor.
       const ajMotor: AjusteDia[] = [];
       for (const a of ajustesDia) {
@@ -269,7 +274,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         trabalhado = ap.minutosTrabalhados; extra = ap.minutosExtras; noturno = ap.noturnoMin;
         excecoes = ehHoje ? [] : ap.excecoes;   // HOJE em andamento → sem erro (falta/ponto aberto só a partir de amanhã)
         previstoMin = ap.minutosPrevistos; atrasoMin = ap.atrasoMin; abonadoMin = ap.abonadoMin;
-        if (!ehHoje) saldoMes += ap.minutosTrabalhados + ap.abonadoMin - ap.minutosPrevistos;   // hoje ainda não entra no saldo
+        if (!ehHoje && !pendenteCorrecao) saldoMes += ap.minutosTrabalhados + ap.abonadoMin - ap.minutosPrevistos;   // hoje/pendente não entram no saldo
       } else {
         trabalhado = blocos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
       }
@@ -284,10 +289,10 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       const ultimaMs = outs.length ? Math.max(...outs) : null;
       // Atraso VALIDADO pelo líder como "não foi atraso" (autorizado) → abona os
       // minutos (zera no saldo) e some a exceção de atraso da trilha.
-      if (!ehHoje && atrasoMin > 0 && ajustesDia.some(a => a.tipo === "atraso_justificado")) {
+      if (!ehHoje && !pendenteCorrecao && atrasoMin > 0 && ajustesDia.some(a => a.tipo === "atraso_justificado")) {
         abonadoMin += atrasoMin; saldoMes += atrasoMin; excecoes = excecoes.filter(e => e !== "atraso"); atrasoMin = 0;
       }
-      linhas.push({ data, bs, bsRaw, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo, ehHoje });
+      linhas.push({ data, bs, bsRaw, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo, ehHoje, pendenteCorrecao });
     }
     // Interjornada: descanso entre a última saída de um dia e a 1ª entrada do dia
     // seguinte (calendário) < mínimo da CCT → exceção no dia seguinte.
@@ -299,7 +304,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     }
     // Apurados = dias já fechados (do dia 01 até ONTEM). Hoje e futuros não
     // entram no saldo — por isso o previsto/trabalhado do saldo também é só até ontem.
-    const apurados = linhas.filter(l => !l.ehHoje && !l.ehFuturo);
+    const apurados = linhas.filter(l => !l.ehHoje && !l.ehFuturo && !l.pendenteCorrecao);
     const prevAteOntem = apurados.reduce((s, l) => s + l.previstoMin, 0);
     const trabAteOntem = apurados.reduce((s, l) => s + l.trabalhado + l.abonadoMin, 0);
     return { linhas, temCpf: !!cpf, saldoMes, prevAteOntem, trabAteOntem, totTrab: linhas.reduce((s, l) => s + l.trabalhado, 0), totExtra: linhas.reduce((s, l) => s + l.extra, 0), totNot: linhas.reduce((s, l) => s + l.noturno, 0), exc: linhas.reduce((s, l) => s + l.excecoes.length, 0) };
@@ -487,6 +492,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   // Saldo do dia = trabalhado + abonado − previsto (com sinal). + verde · − vermelho · 0 azul.
   const renderSaldo = (l: Linha) => {
     if (l.ehFuturo || l.ehHoje) return null;
+    if (l.pendenteCorrecao) return <span className="text-amber-600 dark:text-amber-400 text-[11px] font-semibold" title="Batida aberta (falta a saída) — o saldo fica pendente e conta zero no banco até a correção">pendente</span>;
     const s = l.trabalhado + l.abonadoMin - l.previstoMin;
     if (s === 0) return <span className="text-blue-600 dark:text-blue-300 tabular-nums">0</span>;
     const pos = s > 0;
@@ -1009,7 +1015,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                 <thead>
                   <tr className="text-[10px] uppercase tracking-wide text-gray-400 text-left border-b border-gray-200 dark:border-gray-800">
                     <th className="py-1.5 font-semibold">Dia</th><th className="font-semibold">Previsto</th><th className="font-semibold">Batidas / tratamento</th>
-                    <th className="font-semibold text-right">Trab.</th><th className="font-semibold text-right" title="Saldo do dia = trabalhado − previsto (+ verde / − vermelho / 0 azul)">Saldo</th><th className="font-semibold text-right" title="Adicional noturno — minutos trabalhados na faixa noturna (22h–05h)">Not.</th><th className="font-semibold">Exceções</th><th className="font-semibold text-right">Ação</th>
+                    <th className="font-semibold text-right">Trab.</th><th className="font-semibold text-right" title="Saldo do dia = trabalhado + abonado − previsto (+ verde / − vermelho / 0 azul). Dia com batida aberta fica 'pendente' e conta zero no banco até a correção.">Saldo</th><th className="font-semibold text-right" title="Adicional noturno — minutos trabalhados na faixa noturna (22h–05h)">Not.</th><th className="font-semibold">Exceções</th><th className="font-semibold text-right">Ação</th>
                   </tr>
                 </thead>
                 <tbody>
