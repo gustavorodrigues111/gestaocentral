@@ -34,8 +34,8 @@ import { PtrpAssinaturasModal, type AlvoAssinatura } from "./PtrpAssinaturasModa
 import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horarios";
 import { apurarDia, minutoDoDiaBRT, hhmmToMin, type BatidaBloco, type AjusteDia } from "../../core/ptrp/apuracao";
 import { feriadosDoAno } from "../../core/ptrp/feriados";
-import { fetchRoster, decidirAprovacao, corrigirPontoAtraso, excluirBatida, fetchJustificativas, fetchMotivosAfastamento, lancarAfastamento } from "../../core/ponto/solidesPontoClient";
-import type { Justificativa, MotivoAfastamento } from "../../core/ponto/solidesPontoClient";
+import { fetchRoster, decidirAprovacao, corrigirPontoAtraso, excluirBatida, fetchJustificativas, fetchMotivosAfastamento, lancarAfastamento, fetchAprovacoesPendentes } from "../../core/ponto/solidesPontoClient";
+import type { Justificativa, MotivoAfastamento, AprovacaoPendente } from "../../core/ponto/solidesPontoClient";
 import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 import { useTodasPessoas } from "../../core/pessoas/PessoasContext";
 import type { PontoColaborador } from "../../core/ponto/analise";
@@ -129,6 +129,8 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const [mostrarComp, setMostrarComp] = useState(false);
   const [acaoBusy, setAcaoBusy] = useState(false);
   const [acaoMsg, setAcaoMsg] = useState("");
+  const [aprovacoesPend, setAprovacoesPend] = useState<AprovacaoPendente[]>([]);
+  const [pendErr, setPendErr] = useState("");
   const [selCorr, setSelCorr] = useState<Set<string>>(new Set());   // dias marcados p/ pedir correção (lote)
   const [corrModal, setCorrModal] = useState(false);
   const [ptrpCfg, setPtrpCfg] = useState<ParametrosPTRP>({});        // config AEJ (empregador/REP/desenvolvedor)
@@ -169,8 +171,22 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       const criadas = res?.criadas ?? 0;
       setSincMsg(criadas > 0 ? `✓ ${criadas} batida(s) nova(s) trazida(s) da Sólides — a tabela atualiza sozinha.` : `✓ Sincronizado — nenhuma batida nova na Sólides desde a última vez (correção pendente só entra depois de aprovada).`);
     } catch (e) { setSincMsg(e instanceof Error ? e.message : "Falha na sincronização."); }
-    finally { setSincBusy(false); }
+    finally { setSincBusy(false); void carregarPendentes(); }
   }
+
+  // Correções AINDA NÃO aprovadas na Sólides (a Sólides só materializa a batida
+  // no feed depois de aprovada; até lá elas vivem só na fila de aprovação). Puxa
+  // o mês e injeta como batida PENDING sintética — a UI de correção pendente
+  // (tracejado + ✓/✗) acende sem depender do espelho imutável.
+  async function carregarPendentes() {
+    if (!shortCode || !comp) { setAprovacoesPend([]); return; }
+    try {
+      const ini = `${comp}-01`, fim = `${comp}-${String(diasDoMes).padStart(2, "0")}`;
+      setAprovacoesPend(await fetchAprovacoesPendentes(shortCode, ini, fim));
+      setPendErr("");
+    } catch (e) { setPendErr(e instanceof Error ? e.message : "Falha ao buscar aprovações pendentes da Sólides."); }
+  }
+  useEffect(() => { void carregarPendentes(); }, [shortCode, comp]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => onSnapshot(collection(db, "parametrosCCT"), s => setCcts(s.docs.map(d => ({ id: d.id, ...d.data() }) as ParametrosCCT))), []);
   useEffect(() => {
@@ -224,14 +240,36 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   // demitidos/inativos e freela mensalista (não bate ponto).
   const empVis = useMemo(() => empregados.filter(e => e.estaAtivo && !e.freelaMensalista).sort((a, b) => a.nome.localeCompare(b.nome)), [empregados]);
 
-  // Batidas por CPF → dia.
+  // employeeId (Sólides) → CPF, das batidas reais — pra casar as aprovações pendentes.
+  const eidToCpf = useMemo(() => { const m = new Map<string, string>(); for (const b of batidas) { const c = soDig(b.cpf); if (c && b.employeeId) m.set(String(b.employeeId), c); } return m; }, [batidas]);
+  // Aprovações pendentes → BatidaDoc sintética PENDING (id "pend_"). Só as que
+  // ainda não estão no espelho e cujo CPF a gente consegue casar pelas batidas do mês.
+  const ymdDeMs = (ms: number) => new Date(ms - 3 * 3600_000).toISOString().slice(0, 10);
+  const pendentesSinteticas = useMemo<BatidaDoc[]>(() => {
+    const idsReais = new Set(batidas.map(b => b.punchId).filter(Boolean) as string[]);
+    const ini = `${comp}-01`, fim = `${comp}-${String(diasDoMes).padStart(2, "0")}`;
+    const out: BatidaDoc[] = [];
+    for (const ap of aprovacoesPend) {
+      const pid = String(ap.punchId);
+      if (idsReais.has(pid)) continue;                       // já veio pelo espelho
+      const cpf = eidToCpf.get(String(ap.employeeId));
+      if (!cpf) continue;                                    // sem casar CPF no mês
+      const date = ap.date || (ap.dateIn ? ymdDeMs(ap.dateIn) : "");
+      if (!date || date < ini || date > fim) continue;
+      out.push({ id: `pend_${pid}`, empresaKey: shortCode, punchId: pid, employeeId: String(ap.employeeId), cpf, date, dateIn: ap.dateIn ?? null, dateOut: ap.dateOut ?? null, status: "PENDING" });
+    }
+    return out;
+  }, [aprovacoesPend, eidToCpf, batidas, shortCode, comp, diasDoMes]);
+  const batidasEfetivas = useMemo(() => [...batidas, ...pendentesSinteticas], [batidas, pendentesSinteticas]);
+
+  // Batidas por CPF → dia (reais + correções pendentes sintéticas).
   const batidasPorCpf = useMemo(() => {
     const m: Record<string, Record<string, BatidaDoc[]>> = {};
-    for (const b of batidas) { const c = soDig(b.cpf); if (!c) continue; (m[c] = m[c] || {}); (m[c][b.date || ""] = m[c][b.date || ""] || []).push(b); }
+    for (const b of batidasEfetivas) { const c = soDig(b.cpf); if (!c) continue; (m[c] = m[c] || {}); (m[c][b.date || ""] = m[c][b.date || ""] || []).push(b); }
     return m;
-  }, [batidas]);
+  }, [batidasEfetivas]);
   // employeeId do Sólides por CPF (das batidas) — pra aplicar correções lá.
-  const empIdPorCpf = useMemo(() => { const m = new Map<string, string>(); for (const b of batidas) { const c = soDig(b.cpf); if (c && b.employeeId && !m.has(c)) m.set(c, String(b.employeeId)); } return m; }, [batidas]);
+  const empIdPorCpf = useMemo(() => { const m = new Map<string, string>(); for (const b of batidasEfetivas) { const c = soDig(b.cpf); if (c && b.employeeId && !m.has(c)) m.set(c, String(b.employeeId)); } return m; }, [batidasEfetivas]);
   // Ajustes (não cancelados) por CPF → dia.
   const ajustesPorCpf = useMemo(() => {
     const m: Record<string, Record<string, PtrpAjuste[]>> = {};
@@ -357,7 +395,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       }
       setAcaoMsg(`✓ Correção de ${diaBR} ${status === "APPROVED" ? "aprovada" : "reprovada"}.`);
     } catch (e) { setAcaoMsg("Falha ao decidir: " + (e instanceof Error ? e.message : "erro")); }
-    finally { setAcaoBusy(false); }
+    finally { setAcaoBusy(false); void carregarPendentes(); }
   }
 
   // Marca/desmarca um dia p/ o pedido de correção em LOTE (qualquer dia serve —
@@ -795,6 +833,8 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         <Button size="sm" variant="secondary" disabled={sincBusy} onClick={() => void sincronizarSolides()} title={`Buscar batidas/correções novas da Sólides agora (mês ${labelComp(comp)}), sem esperar o sync automático`}>{sincBusy ? "Sincronizando…" : <span className="inline-flex items-center gap-1"><RotateCw size={13}/> Sincronizar Sólides</span>}</Button>
       </div>
       {sincMsg && <div className="mb-2 text-[12px] text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">{sincMsg}</div>}
+      {pendentesSinteticas.length > 0 && <div className="mb-2 text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2 inline-flex items-center gap-1.5"><TriangleAlert size={13}/> {pendentesSinteticas.length} correção(ões) a aprovar na Sólides aparecem tracejadas (🟡) — use ✓ / ✗ no dia pra decidir.</div>}
+      {pendErr && <div className="mb-2 text-[12px] text-rose-600 dark:text-rose-400">{pendErr}</div>}
       {/* Legenda recolhida: some da visão permanente e abre só quando quiser. */}
       <details className="group mb-2 rounded-lg border border-gray-200 dark:border-gray-800">
         <summary className="flex items-center gap-1.5 cursor-pointer select-none list-none px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
