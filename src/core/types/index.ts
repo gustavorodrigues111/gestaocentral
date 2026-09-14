@@ -131,7 +131,31 @@ export type ModuleId =
   // meus exames, meu VT, fale com DP). NÃO é item de sidebar (sidebar tem
   // o link "Meu Portal" separado); existe só pra o sistema de perfis decidir
   // o que cada empregado vê dentro da PortalPage.
-  | "portalEmpregado";
+  | "portalEmpregado"
+  // Páginas — hospedagem de HTMLs avulsos com slug próprio (pages.planejamento.app/…),
+  // público ou privado (allowlist de e-mail e/ou senha da página). Só master.
+  | "paginas";
+
+// ─── PÁGINAS HOSPEDADAS ───
+// HTML avulso subido pelo master e servido em pages.planejamento.app/<slug>.
+// Acesso validado no servidor (api/hosted-page): público, allowlist de e-mail
+// (token Firebase) e/ou senha da página (hash). Coleção `hostedPages`.
+export type HostedPageVisibilidade = "publico" | "privado";
+export type HostedPage = {
+  id: string;
+  slug: string;                       // parte após a barra; [a-z0-9-]
+  titulo: string;
+  html: string;                       // conteúdo (Firestore, até ~900KB)
+  visibilidade: HostedPageVisibilidade;
+  emailsAutorizados?: string[];       // privado: e-mails liberados (minúsculo)
+  senhaHash?: string | null;          // privado: sha256(slug + ":" + senha), opcional
+  ativo: boolean;                     // desativado → "página indisponível"
+  tamanhoBytes?: number;              // tamanho do html (info)
+  criadoEm: string;
+  criadoPor: string;
+  criadoPorNome?: string;
+  atualizadoEm: string;
+};
 
 // ─── PLANO DE AÇÃO ───
 // A Ação é a unidade executável do sistema. Nasce avulsa, ou a partir de uma

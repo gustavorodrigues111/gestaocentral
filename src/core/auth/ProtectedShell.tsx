@@ -56,6 +56,7 @@ import { TarefasPage } from "../../modules/tarefas/TarefasPage";
 import { WikiProcessosPage } from "../../modules/wikiProcessos/WikiProcessosPage";
 import { DocumentosPage } from "../../modules/documentos/DocumentosPage";
 import { IaGovernancaPage } from "../../modules/iaGovernanca/IaGovernancaPage";
+import { PaginasPage } from "../../modules/paginas/PaginasPage";
 import { WhatsappPage } from "../../modules/whatsapp/WhatsappPage";
 import { VendasPage } from "../../modules/vendas/VendasPage";
 import { RelatoriosVendasPage } from "../../modules/relatoriosVendas/RelatoriosVendasPage";
@@ -138,6 +139,7 @@ function ModuleRouter() {
     case "wikiProcessos": return <WikiProcessosPage key={k} />;
     case "documentos": return <DocumentosPage key={k} />;
     case "iaGovernanca": return <IaGovernancaPage key={k} />;
+    case "paginas":       return <PaginasPage key={k} />;
     case "whatsapp": return <WhatsappPage key={k} />;
     case "vendas":        return <VendasPage key={k} />;
     case "relatoriosVendas": return <RelatoriosVendasPage key={k} />;

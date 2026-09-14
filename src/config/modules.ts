@@ -133,6 +133,7 @@ export const MODULES: ModuleDef[] = [
 
   // ═══ 🛡️ MASTER ═══
   { id: "iaGovernanca", area: "master", subarea: "Master",            label: "Governança de IA", icon: "shield-alert", status: "ativo", etapa: "beta", desc: "Diretrizes do que a IA pode responder, registro jurídico das interações e alertas de uso fora do escopo (LGPD). Só master." },
+  { id: "paginas",      area: "master", subarea: "Master",            label: "Páginas", icon: "globe", status: "ativo", etapa: "beta", desc: "Hospedagem de HTMLs avulsos com slug próprio (pages.planejamento.app/…): público ou privado (allowlist de e-mail e/ou senha da página). Sobe, lista, ativa/desativa e apaga. Só master." },
 ];
 
 export const AREA_INFO = {

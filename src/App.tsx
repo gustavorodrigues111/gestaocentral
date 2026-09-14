@@ -1,5 +1,5 @@
 import { lazy, Suspense } from "react";
-import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "./core/auth/AuthContext";
 import { SignupScreen } from "./core/auth/SignupScreen";
 import { WelcomePage } from "./core/layout/WelcomePage";
@@ -17,12 +17,18 @@ import { CardapioRedirect } from "./modules/sites/CardapioRedirect";
 import { getSlugFromHost } from "./modules/sites/shared/customDomain";
 import { SitePreviewPage } from "./modules/sites/SitePreviewPage";
 import { CardapioPdfPrintPage } from "./modules/sites/CardapioPdfPrintPage";
+import { HostedPagePublic } from "./modules/paginas/HostedPagePublic";
 
 // ProtectedShell (admin) carregado sob demanda — não vai no bundle do
 // site público. Quando o cliente final acessa lobozo.com.br, esse chunk
 // nem é baixado, economizando ~600KB de JS. O Suspense fallback (splash
 // bege) só aparece pra quem cai no admin/login.
 const ProtectedShell = lazy(() => import("./core/auth/ProtectedShell"));
+
+function HostedPageRoute() {
+  const { slug } = useParams<{ slug: string }>();
+  return <HostedPagePublic slug={slug || ""} />;
+}
 
 function PublicSignup() {
   const { fbUser, loading } = useAuth();
@@ -65,6 +71,8 @@ function App() {
           <Route path="/cardapio-pdf/:rid" element={<CardapioPdfPrintPage />} />
           <Route path="/site/:slug" element={<SitePublicaPage />} />
           <Route path="/site-preview/:rid" element={<SitePreviewPage />} />
+          {/* Páginas hospedadas (HTML avulso do master) — planejamento.app/pages/<slug> */}
+          <Route path="/pages/:slug" element={<HostedPageRoute />} />
           <Route path="*" element={<RootOrShell />} />
         </Routes>
       </AuthProvider>
