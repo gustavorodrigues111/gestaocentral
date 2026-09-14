@@ -19,7 +19,7 @@ import {
   CircleOff, X, CalendarX2, Unlink, AlarmClock, Coffee, Hourglass, BedDouble, CircleDot,
   TriangleAlert, Pencil, Ban, Umbrella, MessageSquare, Settings, Lock, LockOpen,
   CalendarDays, Signature, Printer, ArrowDown, Search, Scale, PartyPopper, Landmark,
-  HelpCircle, ChevronDown,
+  HelpCircle, ChevronDown, Eye, Crown,
 } from "lucide-react";
 import type { Empregado, HorarioDia, Cargo, EscalaMes, ScheduleStatus } from "../../core/types";
 import { empregadoBatePonto } from "../../core/types";
@@ -511,7 +511,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       </div>
     )}
   </>);
-  const renderExcecoes = (l: Linha, incompleta: boolean, suspeito: boolean) => l.ehHoje ? <span className="text-blue-600 dark:text-blue-300 text-[11px] font-bold">HOJE</span> : l.ehFuturo ? <span className="text-blue-500 text-[11px]">a realizar</span> : l.excecoes.length ? <span className="inline-flex flex-wrap items-center gap-1 leading-none">{l.excecoes.map(e => { const Ic = EXC_LUCIDE[e] || TriangleAlert; return <span key={e} className="cursor-help" title={EXC_LABEL[e] || e}><Ic size={14}/></span>; })}</span> : incompleta ? <span className="cursor-help inline-flex" title="Batida sem par (ponto aberto) — precisa corrigir"><Unlink size={14}/></span> : suspeito ? <span className="cursor-help text-[14px]" title="Só 2 batidas — o padrão é 4 ou 6">✌️</span> : <span className="text-emerald-500 text-[12px]">✓</span>;
+  const renderExcecoes = (l: Linha, incompleta: boolean, suspeito: boolean) => l.ehHoje ? <span className="text-blue-600 dark:text-blue-300 text-[11px] font-bold">HOJE</span> : l.ehFuturo ? <span className="text-blue-500 text-[11px]">a realizar</span> : l.excecoes.length ? <span className="inline-flex flex-wrap items-center gap-1 leading-none">{l.excecoes.map(e => { const Ic = EXC_LUCIDE[e] || TriangleAlert; return <span key={e} className="cursor-help" title={EXC_LABEL[e] || e}><Ic size={14}/></span>; })}</span> : incompleta ? <span className="cursor-help inline-flex" title="Batida sem par (ponto aberto) — precisa corrigir"><Unlink size={14}/></span> : suspeito ? <span className="cursor-help inline-flex text-amber-600 dark:text-amber-400" title="Só 2 batidas — o padrão é 4 ou 6 (conferir)"><Eye size={14}/></span> : <span className="text-emerald-500 text-[12px]">✓</span>;
   const renderAcoes = (l: Linha, pendUndecided: boolean, temCorrigivel: boolean) => { const corrSel = selCorr.has(l.data); return (
     <div className="inline-flex items-center gap-1">
       {pendUndecided && !travado && <>
@@ -942,7 +942,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                         title={naoBate ? "Cargo de confiança — não bate ponto" : semCpf ? "Sem CPF no cadastro do app — não dá pra cruzar com a Sólides" : st === "exc" ? `${r.exc} exceção(ões)` : "Sem exceções"}
                         className={`text-left text-xs px-2 py-1.5 rounded-lg border flex items-center gap-1.5 transition-colors hover:brightness-95 ${cls} ${selado ? "ring-2 ring-indigo-500" : ""}`}>
                         <span className="shrink-0">{st === "ok" ? "✓" : st === "exc" ? "●" : "○"}</span>
-                        <span className="truncate flex-1">{naoBate ? "🎩 " : ""}{emp.nome}</span>
+                        <span className="truncate flex-1 inline-flex items-center gap-1">{naoBate && <Crown size={12} className="shrink-0 text-violet-500 dark:text-violet-300"/>}{emp.nome}</span>
                         {!naoBate && !semCpf && r.exc > 0 && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-amber-200 text-amber-900 dark:bg-amber-900 dark:text-amber-200 tabular-nums">{r.exc}</span>}
                         {naoBate && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-violet-200 text-violet-800 dark:bg-violet-900 dark:text-violet-200">S/ PONTO</span>}
                         {semCpf && <span className="shrink-0 text-[9px] font-bold px-1 rounded bg-gray-300 text-gray-700 dark:bg-gray-700 dark:text-gray-200">SEM CPF</span>}
@@ -960,7 +960,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
             <div className="px-3 py-1.5 border-b border-gray-100 dark:border-gray-800 bg-gray-50/60 dark:bg-gray-800/30 flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-gray-500 dark:text-gray-400">
               <span className="font-semibold uppercase tracking-wide text-gray-400">Legenda:</span>
               {Object.entries(EXC_LUCIDE).map(([k, Ic]) => <span key={k} className="inline-flex items-center gap-1"><Ic size={12}/>{EXC_LABEL[k]}</span>)}
-              <span className="inline-flex items-center gap-1"><span className="text-[12px] leading-none">✌️</span>2 batidas (conferir)</span>
+              <span className="inline-flex items-center gap-1"><Eye size={12} className="text-amber-600 dark:text-amber-400"/>2 batidas (conferir)</span>
               <span className="inline-flex items-center gap-1"><span className="text-emerald-500">✓</span>sem exceção</span>
             </div>
             <div className="px-3 py-2 border-b border-gray-100 dark:border-gray-800 flex items-center justify-between gap-2">
