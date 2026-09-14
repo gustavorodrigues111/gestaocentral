@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, type ReactNode } from "react";
-import { Inbox, Layers, ChevronDown, Lock, Pencil, Flame, Trash2, Check, CalendarDays, CheckSquare, MessageSquare, Bot, PartyPopper, Folder } from "lucide-react";
+import { Inbox, Layers, ChevronDown, Lock, Pencil, Flame, Trash2, Check, CalendarDays, CheckSquare, MessageSquare, Bot, PartyPopper, Folder, SlidersHorizontal } from "lucide-react";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { doc, writeBatch } from "firebase/firestore";
@@ -216,34 +216,30 @@ export function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pes
 
   return (
     <div>
-      {/* Linha 1: busca + toggle de filtros avançados */}
-      <div className="flex gap-2 mb-2">
-        <input
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="🔍 Buscar título, descrição ou campos custom…"
-          className="flex-1 px-3 py-1.5 text-sm rounded-md border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
-        />
-        <Button size="sm" variant="ghost" onClick={() => setMostrarFiltros(s => !s)}>
-          {mostrarFiltros ? "Ocultar filtros" : "Filtros"}
-        </Button>
+      {/* Chips de status/prazo + toggle de filtros avançados.
+          A busca por texto já vive no cabeçalho global (buscaInput), então
+          não repetimos um campo de busca aqui. Chips têm shrink-0 (via
+          FiltroChip) e a faixa rola na horizontal em vez de deformar. */}
+      <div className="flex items-center gap-2 mb-2">
+        <div className="flex gap-1.5 text-sm overflow-x-auto pb-1 -mb-1 flex-1">
+          <FiltroChip ativo={filtroStatus === "ativas"} onClick={() => setFiltroStatus("ativas")}>Ativas</FiltroChip>
+          <FiltroChip ativo={filtroStatus === "atrasadas"} onClick={() => setFiltroStatus("atrasadas")}>
+            <span className="inline-flex items-center gap-1"><Flame size={12} /> Atrasadas{atrasadasCount > 0 && ` (${atrasadasCount})`}</span>
+          </FiltroChip>
+          <FiltroChip ativo={filtroStatus === "hoje"} onClick={() => setFiltroStatus("hoje")}>Hoje</FiltroChip>
+          <FiltroChip ativo={filtroStatus === "semana"} onClick={() => setFiltroStatus("semana")}>Próx. 7 dias</FiltroChip>
+          <FiltroChip ativo={filtroStatus === "a_fazer"} onClick={() => setFiltroStatus("a_fazer")}>A fazer</FiltroChip>
+          <FiltroChip ativo={filtroStatus === "em_andamento"} onClick={() => setFiltroStatus("em_andamento")}>Em andamento</FiltroChip>
+          <FiltroChip ativo={filtroStatus === "concluida"} onClick={() => setFiltroStatus("concluida")}>Concluídas</FiltroChip>
+          <FiltroChip ativo={filtroStatus === "todos"} onClick={() => setFiltroStatus("todos")}>Todas</FiltroChip>
+        </div>
+        <button type="button" onClick={() => setMostrarFiltros(s => !s)} title="Filtros avançados"
+          className={`shrink-0 inline-flex items-center gap-1 text-xs font-medium px-2.5 py-1.5 rounded-lg border transition-colors ${mostrarFiltros || filtroProjeto || filtroEmpresa ? "border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-900/25 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>
+          <SlidersHorizontal size={13} /><span className="hidden sm:inline">Filtros</span>
+        </button>
         {algumFiltroAtivo && (
-          <Button size="sm" variant="ghost" onClick={limparFiltros}>Limpar</Button>
+          <button type="button" onClick={limparFiltros} title="Limpar filtros" className="shrink-0 text-xs font-medium text-gray-500 dark:text-gray-400 hover:underline px-1">Limpar</button>
         )}
-      </div>
-
-      {/* Linha 2: chips de status/prazo */}
-      <div className="flex gap-2 mb-2 text-sm overflow-x-auto pb-1">
-        <FiltroChip ativo={filtroStatus === "ativas"} onClick={() => setFiltroStatus("ativas")}>Ativas</FiltroChip>
-        <FiltroChip ativo={filtroStatus === "atrasadas"} onClick={() => setFiltroStatus("atrasadas")}>
-          <span className="inline-flex items-center gap-1"><Flame size={12} /> Atrasadas{atrasadasCount > 0 && ` (${atrasadasCount})`}</span>
-        </FiltroChip>
-        <FiltroChip ativo={filtroStatus === "hoje"} onClick={() => setFiltroStatus("hoje")}>Hoje</FiltroChip>
-        <FiltroChip ativo={filtroStatus === "semana"} onClick={() => setFiltroStatus("semana")}>Próx. 7 dias</FiltroChip>
-        <FiltroChip ativo={filtroStatus === "a_fazer"} onClick={() => setFiltroStatus("a_fazer")}>A fazer</FiltroChip>
-        <FiltroChip ativo={filtroStatus === "em_andamento"} onClick={() => setFiltroStatus("em_andamento")}>Em andamento</FiltroChip>
-        <FiltroChip ativo={filtroStatus === "concluida"} onClick={() => setFiltroStatus("concluida")}>Concluídas</FiltroChip>
-        <FiltroChip ativo={filtroStatus === "todos"} onClick={() => setFiltroStatus("todos")}>Todas</FiltroChip>
       </div>
 
       {/* Linha 3: filtros avançados (toggle) */}
