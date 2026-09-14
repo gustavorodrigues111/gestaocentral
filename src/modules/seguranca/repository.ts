@@ -9,10 +9,11 @@ import {
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type {
-  SegurancaModelo, SegurancaAvaliacao, SegurancaResultadoItem, SegurancaItem, SegurancaFaixa,
+  SegurancaModelo, SegurancaAvaliacao, SegurancaResultadoItem, SegurancaItem, SegurancaFaixa, SegLider,
 } from "../../core/types";
 import { segurancaFaixaDe, segResParse } from "../../core/types";
 import { SEED_BLOCOS, SEED_ITENS, SEED_FAIXAS, SEED_AREAS } from "./seed";
+import { criarTarefaOperacional } from "../tarefas/repository";
 
 const COL_MODELOS = "segurancaModelos";
 const COL_AVALIACOES = "segurancaAvaliacoes";
@@ -121,6 +122,35 @@ export async function salvarResultado(avaliacaoId: string, key: string, r: Segur
 }
 export async function limparResultado(avaliacaoId: string, key: string): Promise<void> {
   await updateDoc(doc(db, COL_AVALIACOES, avaliacaoId), { [`resultado.${key}`]: deleteField() });
+}
+
+// Vira uma inconformidade em AÇÃO operacional, já atribuída aos líderes da área
+// (1º = responsável, demais = co-responsáveis), prazo = hoje. Grava o acaoId de
+// volta no resultado da avaliação. Compartilhado entre o Relatório e a aba
+// Plano de Ação. Retorna false se não houver líder.
+export async function criarAcaoSanitaria(params: {
+  av: SegurancaAvaliacao;
+  key: string;
+  texto: string;
+  observacao?: string;
+  lideres: SegLider[];
+  autor: { id: string; nome: string };
+}): Promise<boolean> {
+  const { av, key, texto, observacao, lideres, autor } = params;
+  if (!lideres.length) return false;
+  const [primeiro, ...resto] = lideres;
+  const hoje = new Date().toISOString().slice(0, 10);
+  const id = await criarTarefaOperacional({
+    rid: av.restaurantId, titulo: texto, descricao: observacao || "",
+    origem: "avaliacao_sanitaria", origemRefId: `${av.id}:${key}`, origemRefLabel: texto,
+    prioridade: "normal", prazo: hoje,
+    responsavelId: primeiro.id, responsavelNome: primeiro.nome,
+    coResponsaveis: resto.map((l) => l.id), coResponsaveisNomes: resto.map((l) => l.nome),
+    criadoPor: autor.id, criadoPorNome: autor.nome,
+  });
+  const cur = av.resultado?.[key];
+  if (cur) await salvarResultado(av.id, key, { ...cur, acaoId: id });
+  return true;
 }
 
 // Cálculo puro da nota: % de conformes entre as respostas PONTUÁVEIS. Cada

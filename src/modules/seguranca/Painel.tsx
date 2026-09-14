@@ -9,7 +9,7 @@ import { ouvirAvaliacoes } from "./repository";
 
 const dmy = (ymd?: string | null) => (ymd || "").split("-").reverse().join("/");
 
-export function Painel({ rid }: { rid: string }) {
+export function Painel({ rid, compacto }: { rid: string; compacto?: boolean }) {
   const [avaliacoes, setAvaliacoes] = useState<SegurancaAvaliacao[]>([]);
   const [acoes, setAcoes] = useState<Tarefa[]>([]);
 
@@ -57,34 +57,34 @@ export function Painel({ rid }: { rid: string }) {
   const maxArea = Math.max(1, ...ncPorArea.map((x) => x.n));
 
   return (
-    <div className="space-y-5">
+    <div className={compacto ? "space-y-3" : "space-y-5"}>
       {/* KPIs */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <Kpi label="Última nota" value={ultimaNota == null ? "—" : `${ultimaNota}%`} />
-        <Kpi label="Média (finalizadas)" value={media == null ? "—" : `${media}%`} />
-        <Kpi label="Ações abertas" value={String(abertas)} tone={abertas > 0 ? "warn" : "ok"} />
-        <Kpi label="Taxa de resolução" value={taxaResolucao == null ? "—" : `${taxaResolucao}%`} tone="ok" />
+        <Kpi label="Última nota" value={ultimaNota == null ? "—" : `${ultimaNota}%`} compacto={compacto} />
+        <Kpi label="Média (finalizadas)" value={media == null ? "—" : `${media}%`} compacto={compacto} />
+        <Kpi label="Ações abertas" value={String(abertas)} tone={abertas > 0 ? "warn" : "ok"} compacto={compacto} />
+        <Kpi label="Taxa de resolução" value={taxaResolucao == null ? "—" : `${taxaResolucao}%`} tone="ok" compacto={compacto} />
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className={`grid grid-cols-1 md:grid-cols-2 ${compacto ? "gap-3" : "gap-4"}`}>
         {/* Evolução da nota */}
-        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">Evolução da nota</div>
+        <div className={`rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 ${compacto ? "p-3" : "p-4"}`}>
+          <div className={`text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 ${compacto ? "mb-2" : "mb-3"}`}>Evolução da nota</div>
           {finalizadas.length < 2
             ? <p className="text-sm text-gray-400 py-6 text-center">{finalizadas.length === 0 ? "Nenhuma avaliação finalizada ainda." : "Uma avaliação só — o gráfico aparece a partir de duas."}</p>
-            : <LineChart pontos={finalizadas.map((a) => ({ x: dmy(a.data), y: a.score || 0 }))} />}
+            : <LineChart pontos={finalizadas.map((a) => ({ x: dmy(a.data), y: a.score || 0 }))} altura={compacto ? 120 : 160} />}
         </div>
 
         {/* NC por área acumulado */}
-        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-3">Não-conformes por área (acumulado)</div>
+        <div className={`rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 ${compacto ? "p-3" : "p-4"}`}>
+          <div className={`text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 ${compacto ? "mb-2" : "mb-3"}`}>Não-conformes por área (acumulado)</div>
           {ncPorArea.every((x) => x.n === 0)
             ? <p className="text-sm text-gray-400 py-6 text-center">Nenhuma inconformidade registrada.</p>
-            : <div className="space-y-2 pt-1">
+            : <div className={compacto ? "space-y-1.5 pt-0.5" : "space-y-2 pt-1"}>
                 {ncPorArea.map((x) => (
                   <div key={x.area} className="flex items-center gap-2">
                     <span className="w-24 shrink-0 text-[12px] text-gray-600 dark:text-gray-300 truncate">{x.area}</span>
-                    <div className="flex-1 h-4 rounded bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                    <div className={`flex-1 rounded bg-gray-100 dark:bg-gray-800 overflow-hidden ${compacto ? "h-3" : "h-4"}`}>
                       <div className="h-full rounded" style={{ width: `${(x.n / maxArea) * 100}%`, background: segAreaCor(x.area).dot }} />
                     </div>
                     <span className="w-6 shrink-0 text-right text-[12px] font-semibold tabular-nums text-gray-700 dark:text-gray-200">{x.n}</span>
@@ -97,19 +97,19 @@ export function Painel({ rid }: { rid: string }) {
   );
 }
 
-function Kpi({ label, value, tone }: { label: string; value: string; tone?: "ok" | "warn" }) {
+function Kpi({ label, value, tone, compacto }: { label: string; value: string; tone?: "ok" | "warn"; compacto?: boolean }) {
   const color = tone === "warn" ? "text-amber-600 dark:text-amber-400" : tone === "ok" ? "text-emerald-600 dark:text-emerald-400" : "text-gray-900 dark:text-gray-100";
   return (
-    <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4">
+    <div className={`rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 ${compacto ? "p-3" : "p-4"}`}>
       <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{label}</div>
-      <div className={`text-2xl font-extrabold tabular-nums mt-1 ${color}`}>{value}</div>
+      <div className={`font-extrabold tabular-nums mt-0.5 ${compacto ? "text-xl" : "text-2xl mt-1"} ${color}`}>{value}</div>
     </div>
   );
 }
 
 // Line chart SVG (0-100 no eixo Y). Último ponto destacado. Sem lib externa.
-function LineChart({ pontos }: { pontos: { x: string; y: number }[] }) {
-  const W = 320, H = 160, PAD_L = 26, PAD_B = 20, PAD_T = 8, PAD_R = 8;
+function LineChart({ pontos, altura = 160 }: { pontos: { x: string; y: number }[]; altura?: number }) {
+  const W = 320, H = altura, PAD_L = 26, PAD_B = 20, PAD_T = 8, PAD_R = 8;
   const plotW = W - PAD_L - PAD_R, plotH = H - PAD_T - PAD_B;
   const n = pontos.length;
   const px = (i: number) => PAD_L + (n === 1 ? plotW / 2 : (i / (n - 1)) * plotW);

@@ -13,6 +13,7 @@ import { ouvirModelos, ouvirAvaliacoes, criarModeloSemente, criarAvaliacao, excl
 import { Preenchimento } from "./Preenchimento";
 import { Relatorio } from "./Relatorio";
 import { Painel } from "./Painel";
+import { PlanoAcaoTab } from "./PlanoAcaoTab";
 import { ModeloEditor } from "./ModeloEditor";
 import { ConfigChecklists } from "./ConfigChecklists";
 import { PageContainer } from "../../core/ui/PageContainer";
@@ -28,16 +29,17 @@ export function SegurancaPage() {
   const { can } = useCanAcao(rid);
   const podePreencher = isMaster || can("seguranca", "preencher");
   const podeConfig = isMaster || can("seguranca", "configurar");
+  const podeGerar = isMaster || can("seguranca", "resolverAcoes");
   const podeVer = isMaster || can("seguranca", "ver") || podePreencher;
 
   const [modelos, setModelos] = useState<SegurancaModelo[]>([]);
   const [avaliacoes, setAvaliacoes] = useState<SegurancaAvaliacao[]>([]);
-  const [aba, setAba] = useState<"avaliacoes" | "painel">("avaliacoes");
+  const [aba, setAba] = useState<"avaliacoes" | "planoacao" | "config">("avaliacoes");
+  const [verTodas, setVerTodas] = useState(false);
 
   // Navegação por sub-view (tudo inline, shell intacto).
   const [abertaId, setAbertaId] = useState<string | null>(null);
   const [modoAberto, setModoAberto] = useState<"preenchimento" | "relatorio">("preenchimento");
-  const [configAberto, setConfigAberto] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
   const [pickerAberto, setPickerAberto] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -96,19 +98,10 @@ export function SegurancaPage() {
     if (m) return <div className="max-w-5xl mx-auto"><ModeloEditor modelo={m} onClose={() => setEditandoId(null)} /></div>;
     setEditandoId(null);
   }
-  if (configAberto) {
-    return (
-      <div className="max-w-5xl mx-auto">
-        <ConfigChecklists rid={rid} modelos={modelos} autorId={me?.id} onEditar={(id) => setEditandoId(id)} onClose={() => setConfigAberto(false)} />
-      </div>
-    );
-  }
-
   return (
     <PageContainer className="space-y-5">
       <header className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div className="flex items-center gap-2 flex-wrap sm:justify-end sm:shrink-0 ml-auto">
-          {podeConfig && <Button variant="secondary" onClick={() => setConfigAberto(true)}><span className="inline-flex items-center gap-1.5"><Settings size={15} /> Configurações</span></Button>}
           {podePreencher && temModelo && (
             <Button onClick={novaAvaliacao} disabled={busy}>+ Nova avaliação</Button>
           )}
@@ -133,16 +126,16 @@ export function SegurancaPage() {
           {podeConfig
             ? <div className="flex items-center justify-center gap-2 mt-4">
                 <Button onClick={() => void semear()} disabled={busy}>{busy ? "Criando…" : <span className="inline-flex items-center gap-1.5"><Zap size={15} /> Criar da lista-base</span>}</Button>
-                <Button variant="secondary" onClick={() => setConfigAberto(true)}><span className="inline-flex items-center gap-1.5"><Settings size={15} /> Configurações</span></Button>
+                <Button variant="secondary" onClick={() => setAba("config")}><span className="inline-flex items-center gap-1.5"><Settings size={15} /> Configurações</span></Button>
               </div>
             : <p className="text-xs text-gray-400 mt-4">Peça a um administrador para criar o checklist.</p>}
         </div>
       )}
 
-      {/* Abas */}
+      {/* Abas: Avaliações (painel + histórico) · Plano de ação · Configurações */}
       {temModelo && (
         <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800">
-          {([["avaliacoes", "Avaliações"], ["painel", "Painel"]] as const).map(([k, lbl]) => (
+          {([["avaliacoes", "Avaliações"], ["planoacao", "Plano de ação"], ...(podeConfig ? [["config", "Configurações"] as const] : [])] as const).map(([k, lbl]) => (
             <button key={k} type="button" onClick={() => setAba(k)}
               className={`px-4 py-2 text-sm font-medium -mb-px border-b-2 transition-colors ${aba === k ? "border-indigo-600 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200"}`}>
               {lbl}
@@ -151,14 +144,22 @@ export function SegurancaPage() {
         </div>
       )}
 
-      {temModelo && aba === "painel" && <Painel rid={rid} />}
+      {temModelo && aba === "planoacao" && <PlanoAcaoTab rid={rid} autor={autor} podeGerar={podeGerar} />}
+
+      {temModelo && aba === "config" && podeConfig && (
+        <ConfigChecklists rid={rid} modelos={modelos} autorId={me?.id} onEditar={(id) => setEditandoId(id)} onClose={() => setAba("avaliacoes")} />
+      )}
 
       {temModelo && aba === "avaliacoes" && (
-        <section>
+        <section className="space-y-5">
+          {/* Resumo (painel compacto) no topo — some a aba Painel separada. */}
+          <Painel rid={rid} compacto />
+
+          <div>
           <div className="text-[11px] font-bold uppercase tracking-wider text-gray-400 dark:text-gray-500 mb-2">Histórico de avaliações</div>
           {avaliacoes.length === 0 && <p className="text-sm text-gray-400 py-8 text-center">Nenhuma avaliação ainda. Toque em “Nova avaliação” para começar.</p>}
           <div className="space-y-2">
-            {avaliacoes.map((a) => {
+            {(verTodas ? avaliacoes : avaliacoes.slice(0, 5)).map((a) => {
               const nc = ncDe(a);
               const final = a.status === "finalizada";
               return (
@@ -181,6 +182,12 @@ export function SegurancaPage() {
                 </button>
               );
             })}
+          </div>
+          {avaliacoes.length > 5 && (
+            <button type="button" onClick={() => setVerTodas((v) => !v)} className="mt-3 text-sm font-medium text-indigo-600 dark:text-indigo-400 hover:underline">
+              {verTodas ? "Ver menos" : `Ver mais (${avaliacoes.length - 5})`}
+            </button>
+          )}
           </div>
         </section>
       )}

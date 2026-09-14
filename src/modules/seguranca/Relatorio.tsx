@@ -13,15 +13,13 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import type {
   Tarefa, TarefaStatus,
-  SegurancaAvaliacao, SegurancaResultadoItem,
+  SegurancaAvaliacao, SegurancaResultadoItem, SegurancaModelo, SegLider,
 } from "../../core/types";
 import { TAREFA_STATUS_LABEL, segAreaCor, segurancaFaixaDe, segResParse, segLideresDe } from "../../core/types";
-import { ouvirAvaliacao, salvarResultado, calcularScore, reabrirAvaliacao } from "./repository";
-import { criarTarefaOperacional } from "../tarefas/repository";
+import { ouvirAvaliacao, ouvirModelos, calcularScore, reabrirAvaliacao, criarAcaoSanitaria } from "./repository";
 import { SegurancaFotos } from "./SegurancaFotos";
 
 const dmy = (ymd?: string | null) => (ymd || "").split("-").reverse().join("/");
-const hojeYmd = () => new Date().toISOString().slice(0, 10);
 
 const STATUS_PILL: Record<TarefaStatus, string> = {
   a_fazer: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
@@ -45,12 +43,14 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
   const isMaster = !!me?.isMaster;
   const [av, setAv] = useState<SegurancaAvaliacao | null>(null);
   const [acoes, setAcoes] = useState<Tarefa[]>([]);
+  const [modelos, setModelos] = useState<SegurancaModelo[]>([]);
   const [gerando, setGerando] = useState(false);
   const [exportando, setExportando] = useState(false);
 
   useEffect(() => ouvirAvaliacao(avaliacaoId, setAv), [avaliacaoId]);
 
   const rid = av?.restaurantId || "";
+  useEffect(() => { if (rid) return ouvirModelos(rid, setModelos); }, [rid]);
   const { can } = useCanAcao(rid);
   const podePreencher = isMaster || can("seguranca", "preencher");
   const podeGerar = isMaster || can("seguranca", "resolverAcoes");
@@ -73,7 +73,18 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
   ), [av?.areasSnapshot, itens]);
   const itemById = useMemo(() => new Map(itens.map((i) => [i.id, i])), [itens]);
   const blocoById = useMemo(() => new Map(blocos.map((b) => [b.id, b])), [blocos]);
-  const responsaveisArea = av?.responsaveisAreaSnapshot || {};
+  // Líderes por área: usa o snapshot da avaliação, mas cai pro modelo ATUAL
+  // quando a área não tinha líder no snapshot (líder definido depois da
+  // avaliação ser criada — era o bug do "área sem líder" mesmo já tendo líder).
+  const responsaveisArea = useMemo(() => {
+    const snap = (av?.responsaveisAreaSnapshot || {}) as Record<string, SegLider[]>;
+    const live = (modelos.find((m) => m.id === av?.modeloId)?.responsaveisArea || {}) as Record<string, SegLider[]>;
+    const merged: Record<string, SegLider[]> = { ...live };
+    for (const [area, lst] of Object.entries(snap)) {
+      if (Array.isArray(lst) && lst.length) merged[area] = lst;
+    }
+    return merged;
+  }, [av?.responsaveisAreaSnapshot, av?.modeloId, modelos]);
 
   // Nota: usa a persistida se finalizada; senão recompute.
   const calc = useMemo(() => calcularScore(av?.resultado || {}, itens), [av?.resultado, itens]);
@@ -142,18 +153,7 @@ export function Relatorio({ avaliacaoId, autor, onClose, onVerPreenchimento }: {
       alert(`A área "${inc.area || "—"}" não tem líder definido. Defina o(s) líder(es) no ⚙ Checklist antes de gerar a ação.`);
       return false;
     }
-    const [primeiro, ...resto] = lideres;
-    const id = await criarTarefaOperacional({
-      rid, titulo: inc.texto, descricao: inc.r.observacao || "",
-      origem: "avaliacao_sanitaria", origemRefId: `${av.id}:${inc.key}`, origemRefLabel: inc.texto,
-      prioridade: "normal", prazo: hojeYmd(),
-      responsavelId: primeiro.id, responsavelNome: primeiro.nome,
-      coResponsaveis: resto.map((l) => l.id), coResponsaveisNomes: resto.map((l) => l.nome),
-      criadoPor: autor.id, criadoPorNome: autor.nome,
-    });
-    const cur = av.resultado?.[inc.key];
-    if (cur) await salvarResultado(av.id, inc.key, { ...cur, acaoId: id });
-    return true;
+    return criarAcaoSanitaria({ av, key: inc.key, texto: inc.texto, observacao: inc.r.observacao || "", lideres, autor });
   }
 
   async function gerarTodas() {
