@@ -24,9 +24,6 @@ import { ConfiguracoesPage } from "../../modules/configuracoes/ConfiguracoesPage
 import { EscalaPage } from "../../modules/escala/EscalaPage";
 import { FreelasPage } from "../../modules/freelas/FreelasPage";
 import { GorjetasPage } from "../../modules/gorjetas/GorjetasPage";
-import { VTPage } from "../../modules/vt/VTPage";
-import { VRPage } from "../../modules/vr/VRPage";
-import { BeneficiosPage } from "../../modules/beneficios/BeneficiosPage";
 import { Beneficios2Page } from "../../modules/beneficios2/Beneficios2Page";
 import { ComunicadosPage } from "../../modules/comunicados/ComunicadosPage";
 import { IdeiasPage } from "../../modules/ideias/IdeiasPage";
@@ -34,7 +31,6 @@ import { ReunioesPage } from "../../modules/reunioes/ReunioesPage";
 import { TrilhaPage } from "../../modules/trilha/TrilhaPage";
 import { OcorrenciasPage } from "../../modules/ocorrencias/OcorrenciasPage";
 import { LenteEnxutaPage } from "../../modules/planoDeAcao/LenteEnxutaPage";
-import { WhatsappInboxPage } from "../../modules/whatsapp/WhatsappInboxPage";
 import { RotinasPage } from "../../modules/rotinas/RotinasPage";
 import { ChecklistsPage } from "../../modules/checklists/ChecklistsPage";
 import { ReservasPage } from "../../modules/reservas/ReservasPage";
@@ -109,9 +105,6 @@ function ModuleRouter() {
     case "escala":        return <EscalaPage key={k} />;
     case "freelas":       return <FreelasPage key={k} />;
     case "gorjetas":      return <GorjetasPage key={k} />;
-    case "vt":            return <VTPage key={k} />;
-    case "vr":            return <VRPage key={k} />;
-    case "beneficios":    return <BeneficiosPage key={k} />;
     case "beneficios2":   return <Beneficios2Page key={k} />;
     case "comunicados":   return <ComunicadosPage key={k} />;
     case "ideias":        return <IdeiasPage key={k} />;
@@ -119,7 +112,6 @@ function ModuleRouter() {
     case "trilha":        return <TrilhaPage key={k} />;
     case "ocorrencias":   return <OcorrenciasPage key={k} />;
     case "planoDeAcao":   return <LenteEnxutaPage key={k} />;
-    case "whatsappInbox": return <WhatsappInboxPage key={k} />;
     case "rotinas":       return <RotinasPage key={k} />;
     case "checklists":    return <ChecklistsPage key={k} />;
     case "reservas":      return <ReservasPage key={k} />;

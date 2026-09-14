@@ -317,32 +317,6 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
-    id: "vt",
-    icon: "bus",
-    label: "VT (Vale Transporte)",
-    desc: "Cadastro e pagamento de VT por pessoa",
-    area: "time",
-    acoes: [
-      { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
-      { id: "verProprio",  label: "Ver seu VT (já no self-service?)" },
-      { id: "verTime",     label: "Ver VT de todos", sensivel: true },
-      { id: "configurar",  label: "Configurar VT por pessoa (valor, dias)" },
-      { id: "registrarPg", label: "Registrar pagamento mensal", sensivel: true },
-    ],
-  },
-  {
-    id: "vr",
-    icon: "utensils",
-    label: "VR (Vale Refeição)",
-    desc: "Cadastro e pagamento de VR diário por pessoa (só restaurantes que usam)",
-    area: "time",
-    acoes: [
-      { id: "receberAvisos",   label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
-      { id: "ver",         label: "Ver VR de todos", sensivel: true },
-      { id: "configurar",  label: "Lançar lote, marcar pago, exportar pra Caju", sensivel: true },
-    ],
-  },
-  {
     id: "freelas",
     icon: "user-plus",
     label: "Freelas",
