@@ -80,6 +80,39 @@ function maisFrequente<T extends string>(m: Map<T, number>): T | undefined {
   return melhor;
 }
 
+// Distância de Levenshtein (edições) entre dois textos normalizados.
+function levenshtein(a: string, b: string): number {
+  const m = a.length, n = b.length;
+  if (!m) return n; if (!n) return m;
+  let prev = Array.from({ length: n + 1 }, (_, i) => i);
+  for (let i = 1; i <= m; i++) {
+    const cur = [i];
+    for (let j = 1; j <= n; j++) cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    prev = cur;
+  }
+  return prev[n];
+}
+
+// Junta fornecedores com nomes quase iguais (erro de digitação) — ex.:
+// "Benedito Braulio Sobrinho" vs "...Sorrinho". Mantém a grafia MAIS FREQUENTE.
+export function mesclarFornecedoresSimilares(fs: FornecedorSugerido[]): FornecedorSugerido[] {
+  const ordenados = fs.slice().sort((a, b) => b.count - a.count);
+  const out: FornecedorSugerido[] = [];
+  for (const f of ordenados) {
+    const na = normalizar(f.nome);
+    const alvo = out.find((o) => {
+      const nb = normalizar(o.nome);
+      if (na === nb) return true;
+      const dist = levenshtein(na, nb);
+      const lim = Math.max(na.length, nb.length);
+      return lim >= 6 && dist <= 2 && dist / lim <= 0.2;   // ~1-2 letras trocadas
+    });
+    if (alvo) { alvo.count += f.count; if (!alvo.fornecedorId && f.fornecedorId) alvo.fornecedorId = f.fornecedorId; }
+    else out.push({ ...f });
+  }
+  return out;
+}
+
 export function agruparSugestoes(
   notas: RecebimentoNota[],
   insumos: Insumo[],
@@ -132,9 +165,9 @@ export function agruparSugestoes(
   for (const g of grupos.values()) {
     const nome = tituloCaso(maisFrequente(g.nomes) || g.chave);
     const un = mapearUnidade(maisFrequente(g.unidades));
-    const fornecedores: FornecedorSugerido[] = [...g.fornecedores.entries()]
+    const fornecedores = mesclarFornecedoresSimilares([...g.fornecedores.entries()]
       .sort((a, b) => b[1] - a[1])
-      .map(([norm, count]) => ({ nome: tituloCaso(g.fornecedorLabel.get(norm) || norm), count, fornecedorId: fornPorNome.get(norm) }));
+      .map(([norm, count]) => ({ nome: tituloCaso(g.fornecedorLabel.get(norm) || norm), count, fornecedorId: fornPorNome.get(norm) })));
     out.push({
       chave: g.chave,
       nome,

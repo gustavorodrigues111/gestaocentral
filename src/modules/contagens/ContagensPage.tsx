@@ -216,6 +216,14 @@ export function ContagensPage() {
     setEditing("new");
   }
 
+  // Abre o InsumoModal a partir de um grupo (botão "abrir" da tabela) — sem
+  // criar fornecedores ainda; só pré-preenche pra ver/editar tudo.
+  function abrirGrupoNoModal(g: GrupoSugerido) {
+    const fornList: InsumoFornecedor[] = g.fornecedores.map((f, i) => ({ nome: tituloCaso(f.nome), fornecedorId: fornecedores.find(x => normalizar(x.nome) === normalizar(f.nome))?.id || null, primario: i === 0 }));
+    setPreset({ nome: g.nome, categoria: g.categoria, unidade: g.unidade, unidadeOutroLabel: g.unidadeOutroLabel, precoEstimado: g.precoEstimado, aliases: g.aliases, fornecedores: fornList, fornecedorPreferredId: fornList[0]?.fornecedorId || null });
+    setEditing("new");
+  }
+
   // Cadastro em LOTE (tabela): cria os insumos selecionados de uma vez, com os
   // valores editados. Fornecedor primário = o escolhido na linha.
   async function cadastrarLote(items: { g: GrupoSugerido; e: EdicaoGrupo }[]) {
@@ -465,7 +473,7 @@ export function ContagensPage() {
                       <button type="button" onClick={() => setSugeridosView("lista")} className={`px-2 py-0.5 text-[11px] font-medium rounded-md ${sugeridosView === "lista" ? "bg-amber-500 text-white" : "text-amber-700 dark:text-amber-300"}`}>Lista</button>
                     </div>
                   </div>
-                  {sugeridosView === "tabela" && <SugeridosTabela grupos={gruposSugeridos} onCadastrar={cadastrarLote} />}
+                  {sugeridosView === "tabela" && <SugeridosTabela grupos={gruposSugeridos} fornecedoresNomes={fornecedores.map(f => f.nome)} onCadastrar={cadastrarLote} onAbrir={abrirGrupoNoModal} />}
                   {sugeridosView === "lista" && gruposSugeridos.map(g => {
                     const alvo = g.matchInsumoId ? insumos.find(i => i.id === g.matchInsumoId) : null;
                     return (
