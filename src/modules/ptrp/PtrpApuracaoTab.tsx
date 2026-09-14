@@ -19,6 +19,7 @@ import {
   CircleOff, X, CalendarX2, Unlink, AlarmClock, Coffee, Hourglass, BedDouble, CircleDot,
   TriangleAlert, Pencil, Ban, Umbrella, MessageSquare, Settings, Lock, LockOpen,
   CalendarDays, Signature, Printer, ArrowDown, Search, Scale, PartyPopper, Landmark,
+  HelpCircle, ChevronDown,
 } from "lucide-react";
 import type { Empregado, HorarioDia, Cargo, EscalaMes, ScheduleStatus } from "../../core/types";
 import { empregadoBatePonto } from "../../core/types";
@@ -757,9 +758,16 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         <Button size="sm" variant="secondary" disabled={!!exportBusy} onClick={() => void baixarEspelhosTodos()}>{exportBusy === "espelhos" ? "Gerando…" : <span className="inline-flex items-center gap-1"><Printer size={13}/> Espelhos (todos)</span>}</Button>
         <Button size="sm" variant="secondary" disabled={!!exportBusy} onClick={() => void baixarAEJ()}>{exportBusy === "aej" ? "Gerando…" : <span className="inline-flex items-center gap-1"><ArrowDown size={13}/> AEJ</span>}</Button>
       </div>
-      <div className="text-[12px] rounded-lg px-3 py-2 mb-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">
+      {/* Legenda recolhida: some da visão permanente e abre só quando quiser. */}
+      <details className="group mb-2 rounded-lg border border-gray-200 dark:border-gray-800">
+        <summary className="flex items-center gap-1.5 cursor-pointer select-none list-none px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
+          <HelpCircle size={13} /> Como ler esta tela (legenda)
+          <ChevronDown size={13} className="ml-auto transition-transform group-open:rotate-180" />
+        </summary>
+        <div className="text-[12px] px-3 pb-2.5 pt-0.5 border-t border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300 leading-relaxed">
         Escolha um colaborador pelo chip. <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ verde</span> = sem exceções · <span className="font-semibold text-amber-700 dark:text-amber-300">● amarelo</span> = tem exceções a tratar · <span className="font-semibold text-gray-400">○ cinza</span> = sem batidas / sem CPF. Previsto vem do cadastro do empregado; prévia — validar contra o Sólides. Na tabela do dia: <span className="text-amber-600 dark:text-amber-400">🟡 tracejado</span> = correção pedida no Sólides ainda não aprovada (não conta) → <span className="font-semibold text-emerald-700 dark:text-emerald-300">✓ aprovar</span> / <span className="font-semibold text-rose-600">✗ reprovar</span>; <span className="text-blue-600"><MessageSquare size={12} className="inline"/></span> marca o dia p/ pedir correção — junta vários numa mensagem só (inclusive dias sem erro que você suspeita), e o botão azul no topo monta o WhatsApp (linha do DP). Cor da linha do dia: <span className="px-1 rounded bg-rose-100 text-rose-800 dark:bg-rose-900/30 dark:text-rose-300">vermelha</span> = correção necessária (nº ímpar de batidas / falta) · <span className="px-1 rounded bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300">amarela</span> = suspeito (só 2 batidas; o padrão é 4 ou 6) · <span className="px-1 rounded bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300">azul</span> = dia futuro.
-      </div>
+        </div>
+      </details>
       </>)}
 
       {mode === "comparar" && (
