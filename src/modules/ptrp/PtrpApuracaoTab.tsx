@@ -230,17 +230,19 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       const data = `${comp}-${String(d).padStart(2, "0")}`;
       // Ordena as batidas por horário (a correção lançada depois pode vir fora de
       // ordem no armazenamento) — deixa render/marcações/CSV cronológicos.
-      const bs = reparearDia(dias[data] || []);
       const bsRaw = dias[data] || [];   // registros crus da Sólides (p/ excluir individualmente no modal)
       const ajustesDia = ajDias[data] || [];
+      // Desconsideração: remove a batida referida ANTES de reparear/apurar — assim
+      // os horários que sobram são remontados cronologicamente (igual ao preview do
+      // modal). Imutável: a batida original continua na Sólides, só é ignorada aqui.
+      const descPunch = new Set(ajustesDia.filter(a => a.tipo === "desconsideracao" && a.punchId).map(a => a.punchId as string));
+      const bs = reparearDia(bsRaw.filter(b => !(b.punchId && descPunch.has(b.punchId))));
       const ehFuturo = data > hojeStr;   // dia ainda não aconteceu (BRT)
       const ehHoje = data === hojeStr;   // dia em ANDAMENTO — não acusa erro ainda
       const statusEscala = escala ? (escala.real?.[emp.id]?.[data] ?? escala.prevista?.[emp.id]?.[data]) : undefined;
       const prev = turnoPrevisto(emp, data, statusEscala);
       // Mostra TODOS os dias do mês — inclusive folgas, dias sem batida e FUTUROS
       // (estes só com o previsto, sem virar falta e fora do saldo).
-      // Desconsideração: remove a batida referida ANTES de apurar (imutável — só ignora).
-      const descPunch = new Set(ajustesDia.filter(a => a.tipo === "desconsideracao" && a.punchId).map(a => a.punchId as string));
       // Batidas pendentes já DECIDIDAS (aprovada→inclusão / reprovada→desconsideração
       // carregam o punchId) — deixam de contar como "correção pendente".
       const decididos = new Set<string>([...descPunch, ...ajustesDia.filter(a => a.tipo === "inclusao" && a.punchId).map(a => a.punchId as string)]);
@@ -1174,14 +1176,28 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
         if (!solidesEmpId) { setErr("Sem vínculo Sólides deste colaborador no mês — sincronize antes."); return; }
         if (novos.length && !justId) { setErr("Escolha a justificativa da Sólides."); return; }
         setSalvando(true);
+        // Exclui na Sólides quando possível; SEMPRE registra a desconsideração
+        // (ignora a batida na apuração pelo punchId). Batidas "abertas" (só entrada,
+        // sem saída) a Sólides às vezes recusa ("Punch not found") — nesse caso a
+        // apuração já fica corrigida no app e avisamos que a Sólides não excluiu.
+        let solidesFalhas = 0;
         for (const e of rem) {
-          await excluirBatida(empresaKey, { employeeId: Number(solidesEmpId), punchId: Number(e.punchId), dateIn: e.dateIn, dateOut: e.dateOut });
-          await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "desconsideracao", punchId: e.punchId, motivo: obs.trim() || "marcação desconsiderada", autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: true }));
+          let okSolides = false;
+          try {
+            await excluirBatida(empresaKey, { employeeId: Number(solidesEmpId), punchId: Number(e.punchId), dateIn: e.dateIn, dateOut: e.dateOut });
+            okSolides = true;
+          } catch { solidesFalhas++; }
+          await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "desconsideracao", punchId: e.punchId, motivo: obs.trim() || "marcação desconsiderada", autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: okSolides }));
         }
         for (const n of novos) {
           await corrigirPontoAtraso(empresaKey, { employeeId: Number(solidesEmpId), dataHoraIso: iso(n.in), justificativaId: justId! });
           await corrigirPontoAtraso(empresaKey, { employeeId: Number(solidesEmpId), dataHoraIso: iso(n.out), justificativaId: justId! });
           await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "inclusao", in: n.in, out: n.out, motivo: obs.trim() || "esquecimento", autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: true }));
+        }
+        if (solidesFalhas > 0) {
+          setSalvando(false);
+          setErr(`${solidesFalhas} marcação(ões) foram desconsideradas na apuração (o ponto no app já está corrigido), mas a Sólides recusou excluir — geralmente uma batida "aberta" (só entrada) ou já alterada lá. Você pode fechar.`);
+          return;
         }
         onClose();
       } else if (caminho === "motivo") {
