@@ -185,7 +185,10 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   async function carregarPendentes() {
     if (!shortCode || !comp) { setAprovacoesPend([]); return; }
     try {
-      const ini = `${comp}-01`, fim = `${comp}-${String(diasDoMes).padStart(2, "0")}`;
+      const hojeStr = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+      const fimMes = `${comp}-${String(diasDoMes).padStart(2, "0")}`;
+      const ini = `${comp}-01`, fim = fimMes < hojeStr ? fimMes : hojeStr;   // não pede dia futuro (Sólides 404)
+      if (ini > fim) { setAprovacoesPend([]); setPendErr(""); return; }        // mês futuro: nada a buscar
       const { punches } = await fetchPunches(ini, fim, shortCode, true);
       // Mesma regra da Análise: PENDING com ajuste/edição = correção a aprovar.
       const pend: PendItem[] = punches
