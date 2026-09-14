@@ -29,12 +29,8 @@ const PAGE_SIZE = 200;
 const MAX_PAGES = 50;          // 50×200 = 10k batidas por janela por empresa
 const REQ_TIMEOUT_MS = 20_000;
 const STEP_DIAS = 10;          // avanço do cursor por execução (backfill em passos)
-const OVERLAP_DIAS = 2;        // durante o backfill, re-varre os últimos dias já cobertos
+const OVERLAP_DIAS = 2;        // re-varre os últimos dias (pega batida atrasada)
 const BACKFILL_DIAS = 45;      // 1ª execução: quanto puxar pra trás (≈1,5 fechamento)
-const REVISITA_DIAS = 40;      // em regime estável, janela rolante re-varrida SEMPRE (mês
-                               // aberto + anterior) — pega correção atrasada de dias antigos
-                               // sem depender do "Rebuscar" manual. create-only → só grava
-                               // punchId novo (batida já espelhada dá 409 e não é tocada).
 
 // Data BRT (Sólides/Brasil = America/Sao_Paulo, UTC-3 sem horário de verão).
 const ymdBRT = (ms: number): string => new Date(ms - 3 * 3600_000).toISOString().slice(0, 10);
@@ -124,18 +120,11 @@ async function gravarBatidas(empresaKey: string, batidas: Punch[]): Promise<numb
 async function sincronizarEmpresa(empresaKey: string, token: string, desdeOverride?: string, ateOverride?: string): Promise<Record<string, unknown>> {
   const estado = await firestoreLer("ptrpSyncState", empresaKey) as { cursor?: string; primeiroDia?: string } | null;
   const hoje = hojeBRT();
-  // Em backfill enquanto o cursor não alcançou hoje: avança em passos re-varrendo
-  // um overlap curto. Alcançou hoje → regime estável: re-varre SEMPRE uma janela
-  // rolante (mês aberto + anterior) pra pegar correção atrasada de dias antigos.
-  const emBackfill = !!(estado?.cursor && estado.cursor < hoje);
-  // Sem cursor → backfill inicial (BACKFILL_DIAS). "desde" manual tem prioridade.
-  const baseDesde = desdeOverride
-    || (emBackfill ? somaDias(estado!.cursor!, -OVERLAP_DIAS)
-      : estado?.cursor ? somaDias(hoje, -REVISITA_DIAS)
-      : somaDias(hoje, -BACKFILL_DIAS));
-  // "desde" manual → busca até HOJE (rebusca cheia do período escolhido). Backfill
-  // automático → avança em passos. Regime estável → até HOJE (janela rolante).
-  const ate = minYmd(ateOverride || (desdeOverride ? hoje : (emBackfill ? somaDias(estado!.cursor!, STEP_DIAS) : hoje)), hoje);
+  // Sem cursor → backfill inicial. Com cursor → janela [cursor-overlap, cursor+step].
+  const baseDesde = desdeOverride || (estado?.cursor ? somaDias(estado.cursor, -OVERLAP_DIAS) : somaDias(hoje, -BACKFILL_DIAS));
+  // "desde" manual → busca até HOJE (rebusca cheia do período escolhido pelo
+  // usuário). Automático → avança em passos (backfill) ou fica na janela recente.
+  const ate = minYmd(ateOverride || (desdeOverride ? hoje : (estado?.cursor ? somaDias(estado.cursor, STEP_DIAS) : hoje)), hoje);
   const desde = minYmd(baseDesde, ate);
 
   const batidas = await buscarBatidas(token, desde, ate);
