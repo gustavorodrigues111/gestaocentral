@@ -34,7 +34,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const system = `Você organiza um cadastro de insumos de restaurante a partir de nomes de produtos de notas fiscais (texto cru, abreviado, às vezes com marca/peso). Para CADA produto recebido, devolva:
 - "categoria": UMA de ${JSON.stringify(CATEGORIAS)}.
-- "unidade": a unidade de compra mais provável, UMA de ${JSON.stringify(UNIDADES)} (ex.: carne/hortifruti costuma ser "kg"; bebida em garrafa "garrafa"; refrigerante lata "lata"; caixa "cx"). Se não souber, "un".
+- "unidade": a unidade de compra mais provável, UMA de ${JSON.stringify(UNIDADES)}. IMPORTANTE: a unidade que veio da nota costuma ser um CÓDIGO interno errado ou abreviação (ex.: "FC", "BD", "PC", "CX", "UND") — NÃO confie nela; decida pela NATUREZA do produto. Carnes/aves/peixes/frios (bacon, orelha, pé, linguiça, costela) e hortifrúti são quase sempre "kg". Óleo/azeite em balde/lata → "L" ou "lata". Bebida em garrafa → "garrafa"; refrigerante em lata → "lata". Caixa → "cx". Se realmente não der pra saber, "un".
 - "grupo": um rótulo curto e ESTÁVEL (ex.: "coca-cola-2l") que agrupa nomes DIFERENTES que são o MESMO produto (ex.: "COCA COLA 2L", "REFRI COCA-COLA 2LT" → mesmo grupo). Produtos únicos recebem um grupo próprio.
 - "matchInsumoId": se o produto for claramente o MESMO que um insumo já cadastrado (lista fornecida), devolva o id dele; senão null.
 Responda SÓ com JSON: {"itens":[{"chave","categoria","unidade","grupo","matchInsumoId"}]}. Use a "chave" exatamente como recebida. Não invente produtos.`;

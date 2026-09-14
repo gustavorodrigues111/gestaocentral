@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Sparkles } from "lucide-react";
 import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
+import { db, auth } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
@@ -40,6 +41,29 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onClos
   const [ativo, setAtivo] = useState(insumo?.ativo ?? true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [revisandoIa, setRevisandoIa] = useState(false);
+
+  // Revisão final da IA no produto específico — só ao CRIAR a partir de uma
+  // sugestão do recebimento (preset). Confirma/ajusta categoria e unidade.
+  useEffect(() => {
+    if (!isNew || !preset?.nome) return;
+    let vivo = true;
+    setRevisandoIa(true);
+    (async () => {
+      try {
+        const idToken = await auth.currentUser?.getIdToken();
+        const r = await fetch("/api/contagens-ia", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken, produtos: [{ chave: preset.nome, nome: preset.nome, unidadeAtual: unidade }], jaCadastrados: [] }) });
+        const j = await r.json() as { itens?: Array<{ categoria?: string; unidade?: string }> };
+        const it = j?.itens?.[0];
+        if (vivo && it) {
+          if (it.categoria) setCategoria((c) => c || it.categoria!);
+          if (it.unidade && (UNIDADES_LISTA as string[]).includes(it.unidade)) setUnidade(it.unidade as UnidadeMedida);
+        }
+      } catch { /* silencioso */ } finally { if (vivo) setRevisandoIa(false); }
+    })();
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function salvar() {
     if (!nome.trim()) { setErr("Nome obrigatório"); return; }
@@ -98,7 +122,7 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onClos
         />
 
         <div>
-          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Categoria</label>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 inline-flex items-center gap-1.5">Categoria {revisandoIa && <span className="text-[10px] font-normal text-amber-600 dark:text-amber-400 inline-flex items-center gap-1"><Sparkles size={10} /> revisando com IA…</span>}</label>
           <div className="flex flex-wrap gap-1 mt-1 mb-1">
             {CATEGORIAS_SUGERIDAS.map(c => (
               <button

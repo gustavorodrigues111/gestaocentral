@@ -43,7 +43,6 @@ export function ContagensPage() {
   const [soRecorrentes, setSoRecorrentes] = useState(true);
   const [sugestoesAbertas, setSugestoesAbertas] = useState(false);
   const [iaMapa, setIaMapa] = useState<Record<string, IaInfo>>({});
-  const [iaCarregando, setIaCarregando] = useState(false);
   const iaEmAndamento = useRef(false);
   const [mesclando, setMesclando] = useState(false);
 
@@ -105,18 +104,29 @@ export function ContagensPage() {
     if (!sugestoesAbertas || !podeConfig) return;
     const faltando = sugestoesNovas.filter(s => !iaMapa[s.chave]);
     if (faltando.length === 0 || iaEmAndamento.current) return;
-    iaEmAndamento.current = true; setIaCarregando(true);
+    // Fatia em LOTES de 40 — evita estourar o limite de tokens da IA (que cortava
+    // o JSON e travava). Cada lote marca TODAS as suas chaves como analisadas
+    // (mesmo as que a IA não devolver), então o efeito encadeia lote a lote e para.
+    const lote = faltando.slice(0, 40);
+    iaEmAndamento.current = true;
     (async () => {
       try {
         const idToken = await auth.currentUser?.getIdToken();
         const r = await fetch("/api/contagens-ia", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
           idToken,
-          produtos: faltando.slice(0, 200).map(s => ({ chave: s.chave, nome: s.nome, unidadeAtual: s.unidade })),
+          produtos: lote.map(s => ({ chave: s.chave, nome: s.nome, unidadeAtual: s.unidade })),
           jaCadastrados: insumos.map(i => ({ id: i.id, nome: i.nome, aliases: i.aliases || [] })),
         }) });
         const j = await r.json() as { itens?: Array<{ chave: string; categoria?: string; unidade?: string; grupo?: string; matchInsumoId?: string | null }> };
-        if (Array.isArray(j.itens)) setIaMapa(prev => { const n = { ...prev }; for (const it of j.itens!) if (it?.chave) n[it.chave] = { categoria: it.categoria, unidade: it.unidade as UnidadeMedida, grupo: it.grupo, matchInsumoId: it.matchInsumoId ?? null }; return n; });
-      } catch { /* silencioso */ } finally { iaEmAndamento.current = false; setIaCarregando(false); }
+        setIaMapa(prev => {
+          const n = { ...prev };
+          for (const s of lote) n[s.chave] = n[s.chave] || {};   // marca o lote como analisado (mata o loop)
+          if (Array.isArray(j.itens)) for (const it of j.itens) if (it?.chave) n[it.chave] = { categoria: it.categoria, unidade: it.unidade as UnidadeMedida, grupo: it.grupo, matchInsumoId: it.matchInsumoId ?? null };
+          return n;
+        });
+      } catch {
+        setIaMapa(prev => { const n = { ...prev }; for (const s of lote) n[s.chave] = n[s.chave] || {}; return n; });   // erro: não re-tenta o mesmo lote em loop
+      } finally { iaEmAndamento.current = false; }
     })();
   }, [sugestoesAbertas, sugestoesNovas, podeConfig, insumos, iaMapa]);
 
@@ -142,6 +152,7 @@ export function ContagensPage() {
     return grupos.sort((a, b) => b.ocorrencias - a.ocorrencias || a.nome.localeCompare(b.nome));
   }, [sugestoesNovas, iaMapa]);
   type GrupoSugerido = typeof gruposSugeridos[number];
+  const iaPendentes = useMemo(() => sugestoesNovas.filter(s => !iaMapa[s.chave]).length, [sugestoesNovas, iaMapa]);
 
   // Casa um fornecedor pelo nome (normalizado) ou cria um novo; devolve o id.
   async function garantirFornecedor(nome: string): Promise<string | undefined> {
@@ -389,7 +400,7 @@ export function ContagensPage() {
               <button type="button" onClick={() => setSugestoesAbertas(v => !v)} className="w-full flex items-center gap-2 px-3 py-2 text-left">
                 <Sparkles size={15} className="text-amber-500 shrink-0" />
                 <span className="text-sm font-semibold text-amber-900 dark:text-amber-200">Sugeridos do recebimento ({gruposSugeridos.length})</span>
-                {iaCarregando && <Loader2 size={13} className="animate-spin text-amber-500" />}
+                {iaPendentes > 0 && <Loader2 size={13} className="animate-spin text-amber-500" />}
                 <span className="ml-auto text-xs font-medium text-amber-700 dark:text-amber-400">{sugestoesAbertas ? "ocultar" : "ver"}</span>
               </button>
               {sugestoesAbertas && (
@@ -398,7 +409,9 @@ export function ContagensPage() {
                     <label className="flex items-center gap-1.5 text-xs text-amber-800 dark:text-amber-300 cursor-pointer">
                       <input type="checkbox" checked={soRecorrentes} onChange={e => setSoRecorrentes(e.target.checked)} /> só recorrentes (2+ notas)
                     </label>
-                    {iaCarregando && <span className="text-[11px] text-amber-700/80 inline-flex items-center gap-1"><Sparkles size={11} /> IA analisando categoria, unidade e repetidos…</span>}
+                    {iaPendentes > 0
+                      ? <span className="text-[11px] text-amber-700/80 inline-flex items-center gap-1"><Sparkles size={11} /> IA analisando categoria, unidade e repetidos… (faltam {iaPendentes})</span>
+                      : <span className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80 inline-flex items-center gap-1"><Sparkles size={11} /> analisado pela IA</span>}
                   </div>
                   {gruposSugeridos.map(g => {
                     const alvo = g.matchInsumoId ? insumos.find(i => i.id === g.matchInsumoId) : null;
