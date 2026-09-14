@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, BarChart3, Settings, Lock, TriangleAlert, Package, Phone, Plus, Sparkles, Truck, Link2, Loader2, Layers } from "lucide-react";
+import { Pencil, BarChart3, Settings, Lock, TriangleAlert, Package, Phone, Plus, Sparkles, Truck, Link2, Loader2, Layers, EyeOff, RotateCcw } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db, auth } from "../../core/firebase/config";
@@ -18,7 +18,7 @@ import { MesclarInsumosModal } from "./MesclarInsumosModal";
 import { SugeridosTabela, type EdicaoGrupo } from "./SugeridosTabela";
 import { PageContainer } from "../../core/ui/PageContainer";
 
-type IaInfo = { categoria?: string; unidade?: UnidadeMedida; grupo?: string; matchInsumoId?: string | null };
+type IaInfo = { nomeLimpo?: string; qtdPorPacote?: number; categoria?: string; unidade?: UnidadeMedida; grupo?: string; matchInsumoId?: string | null };
 
 type Tab = "lancar" | "visao" | "config";
 
@@ -47,6 +47,7 @@ export function ContagensPage() {
   const [iaMapa, setIaMapa] = useState<Record<string, IaInfo>>({});
   const iaEmAndamento = useRef(false);
   const [mesclando, setMesclando] = useState(false);
+  const [ignorados, setIgnorados] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!rid) return;
@@ -115,10 +116,23 @@ export function ContagensPage() {
     return () => clearTimeout(t);
   }, [iaMapa, rid, podeConfig]);
 
-  // Sugestões agrupadas do recebimento (não cadastradas + filtro de recorrência).
+  // Produtos IGNORADOS (o user escolheu não cadastrar) — persistido por restaurante.
+  useEffect(() => {
+    if (!rid || !podeConfig) return;
+    getDoc(doc(db, "insumosIgnorados", rid)).then((snap) => {
+      const arr = (snap.data() as { chaves?: string[] } | undefined)?.chaves;
+      if (Array.isArray(arr)) setIgnorados(new Set(arr));
+    }).catch(() => {});
+  }, [rid, podeConfig]);
+  function salvarIgnorados(set: Set<string>) {
+    setIgnorados(set);
+    if (rid) void setDoc(doc(db, "insumosIgnorados", rid), sanitizeForFirestore({ restaurantId: rid, chaves: [...set], atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
+  }
+
+  // Sugestões agrupadas do recebimento (não cadastradas + não ignoradas + filtro).
   // agruparSugestoes já ignora o que casa por NOME ou por ALIAS de insumo.
   const sugestoes = useMemo(() => agruparSugestoes(recebimentos, insumos, fornecedores), [recebimentos, insumos, fornecedores]);
-  const sugestoesNovas = useMemo(() => sugestoes.filter(s => !s.jaCadastrado && (!soRecorrentes || s.ocorrencias >= 2)), [sugestoes, soRecorrentes]);
+  const sugestoesNovas = useMemo(() => sugestoes.filter(s => !s.jaCadastrado && !ignorados.has(s.chave) && (!soRecorrentes || s.ocorrencias >= 2)), [sugestoes, soRecorrentes, ignorados]);
 
   // IA: ao abrir os Sugeridos, enriquece (categoria, unidade, agrupa repetidos de
   // nomes diferentes, casa com insumo já existente). Incremental: só o que falta.
@@ -139,11 +153,11 @@ export function ContagensPage() {
           produtos: lote.map(s => ({ chave: s.chave, nome: s.nome, unidadeAtual: s.unidade })),
           jaCadastrados: insumos.map(i => ({ id: i.id, nome: i.nome, aliases: i.aliases || [] })),
         }) });
-        const j = await r.json() as { itens?: Array<{ chave: string; categoria?: string; unidade?: string; grupo?: string; matchInsumoId?: string | null }> };
+        const j = await r.json() as { itens?: Array<{ chave: string; nomeLimpo?: string; qtdPorPacote?: number; categoria?: string; unidade?: string; grupo?: string; matchInsumoId?: string | null }> };
         setIaMapa(prev => {
           const n = { ...prev };
           for (const s of lote) n[s.chave] = n[s.chave] || {};   // marca o lote como analisado (mata o loop)
-          if (Array.isArray(j.itens)) for (const it of j.itens) if (it?.chave) n[it.chave] = { categoria: it.categoria, unidade: it.unidade as UnidadeMedida, grupo: it.grupo, matchInsumoId: it.matchInsumoId ?? null };
+          if (Array.isArray(j.itens)) for (const it of j.itens) if (it?.chave) n[it.chave] = { nomeLimpo: it.nomeLimpo, qtdPorPacote: it.qtdPorPacote, categoria: it.categoria, unidade: it.unidade as UnidadeMedida, grupo: it.grupo, matchInsumoId: it.matchInsumoId ?? null };
           return n;
         });
       } catch {
@@ -164,10 +178,11 @@ export function ContagensPage() {
       for (const m of membros) for (const f of m.fornecedores) { const k = normalizar(f.nome); const e = fm.get(k) || { nome: f.nome, count: 0 }; e.count += f.count; fm.set(k, e); }
       const fornecedores = [...fm.values()].sort((a, b) => b.count - a.count);
       const matchInsumoId = membros.map(m => iaMapa[m.chave]?.matchInsumoId).find(Boolean) || null;
+      const fator = ia.qtdPorPacote && ia.qtdPorPacote > 1 ? Math.round(ia.qtdPorPacote) : 1;
       return {
-        grupo, membros, nome: principal.nome,
+        grupo, membros, nome: ia.nomeLimpo?.trim() || principal.nome,
         categoria: ia.categoria, unidade: (ia.unidade as UnidadeMedida) || principal.unidade, unidadeOutroLabel: principal.unidadeOutroLabel,
-        precoEstimado: principal.precoEstimado, matchInsumoId, fornecedores,
+        precoEstimado: principal.precoEstimado, fator, matchInsumoId, fornecedores,
         aliases: membros.map(m => m.chave), ocorrencias: Math.max(...membros.map(m => m.ocorrencias)),
       } as GrupoSugerido;
     });
@@ -208,19 +223,29 @@ export function ContagensPage() {
         return;
       }
     }
+    const fator = g.fator && g.fator > 1 ? g.fator : undefined;
+    const precoUnit = g.precoEstimado != null && fator ? g.precoEstimado / fator : g.precoEstimado;
     setPreset({
       nome: g.nome, categoria: g.categoria, unidade: g.unidade, unidadeOutroLabel: g.unidadeOutroLabel,
-      precoEstimado: g.precoEstimado, fornecedorPreferredId: primeiroId || null,
+      precoEstimado: precoUnit, fatorCompra: fator, fornecedorPreferredId: primeiroId || null,
       aliases: g.aliases, fornecedores: lista,
     });
     setEditing("new");
   }
 
+  // Ignora um grupo (não quero cadastrar) — some das sugestões (dá pra restaurar).
+  function ignorarGrupo(g: GrupoSugerido) {
+    const n = new Set(ignorados); for (const a of g.aliases) n.add(a); salvarIgnorados(n);
+  }
+  function restaurarIgnorados() { salvarIgnorados(new Set()); }
+
   // Abre o InsumoModal a partir de um grupo (botão "abrir" da tabela) — sem
   // criar fornecedores ainda; só pré-preenche pra ver/editar tudo.
   function abrirGrupoNoModal(g: GrupoSugerido) {
     const fornList: InsumoFornecedor[] = g.fornecedores.map((f, i) => ({ nome: tituloCaso(f.nome), fornecedorId: fornecedores.find(x => normalizar(x.nome) === normalizar(f.nome))?.id || null, primario: i === 0 }));
-    setPreset({ nome: g.nome, categoria: g.categoria, unidade: g.unidade, unidadeOutroLabel: g.unidadeOutroLabel, precoEstimado: g.precoEstimado, aliases: g.aliases, fornecedores: fornList, fornecedorPreferredId: fornList[0]?.fornecedorId || null });
+    const fator = g.fator && g.fator > 1 ? g.fator : undefined;
+    const precoUnit = g.precoEstimado != null && fator ? g.precoEstimado / fator : g.precoEstimado;
+    setPreset({ nome: g.nome, categoria: g.categoria, unidade: g.unidade, unidadeOutroLabel: g.unidadeOutroLabel, precoEstimado: precoUnit, fatorCompra: fator, aliases: g.aliases, fornecedores: fornList, fornecedorPreferredId: fornList[0]?.fornecedorId || null });
     setEditing("new");
   }
 
@@ -242,6 +267,7 @@ export function ContagensPage() {
         categoria: e.categoria.trim() || undefined,
         unidade: e.unidade,
         precoEstimado: e.preco,
+        fatorCompra: e.fator && e.fator > 1 ? e.fator : undefined,
         aliases: g.aliases,
         fornecedores: lista,
         fornecedorPreferredId: primeiroId || null,
@@ -473,7 +499,13 @@ export function ContagensPage() {
                       <button type="button" onClick={() => setSugeridosView("lista")} className={`px-2 py-0.5 text-[11px] font-medium rounded-md ${sugeridosView === "lista" ? "bg-amber-500 text-white" : "text-amber-700 dark:text-amber-300"}`}>Lista</button>
                     </div>
                   </div>
-                  {sugeridosView === "tabela" && <SugeridosTabela grupos={gruposSugeridos} fornecedoresNomes={fornecedores.map(f => f.nome)} onCadastrar={cadastrarLote} onAbrir={abrirGrupoNoModal} />}
+                  {ignorados.size > 0 && (
+                    <div className="text-[11px] text-gray-400 flex items-center gap-1.5">
+                      <EyeOff size={11} /> {ignorados.size} ignorado(s)
+                      <button type="button" onClick={restaurarIgnorados} className="text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-0.5"><RotateCcw size={10} /> restaurar</button>
+                    </div>
+                  )}
+                  {sugeridosView === "tabela" && <SugeridosTabela grupos={gruposSugeridos} fornecedoresNomes={fornecedores.map(f => f.nome)} onCadastrar={cadastrarLote} onAbrir={abrirGrupoNoModal} onIgnorar={ignorarGrupo} />}
                   {sugeridosView === "lista" && gruposSugeridos.map(g => {
                     const alvo = g.matchInsumoId ? insumos.find(i => i.id === g.matchInsumoId) : null;
                     return (
@@ -492,9 +524,12 @@ export function ContagensPage() {
                           </div>
                           {alvo && <div className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-0.5 inline-flex items-center gap-1"><Link2 size={11} /> pode ser: <strong>{alvo.nome}</strong></div>}
                         </div>
-                        <Button size="sm" variant={alvo ? "secondary" : undefined} onClick={() => void cadastrarGrupo(g)}>
-                          {alvo ? <span className="inline-flex items-center gap-1"><Link2 size={13} /> Vincular</span> : <span className="inline-flex items-center gap-1"><Plus size={13} /> Cadastrar</span>}
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button size="sm" variant={alvo ? "secondary" : undefined} onClick={() => void cadastrarGrupo(g)}>
+                            {alvo ? <span className="inline-flex items-center gap-1"><Link2 size={13} /> Vincular</span> : <span className="inline-flex items-center gap-1"><Plus size={13} /> Cadastrar</span>}
+                          </Button>
+                          <button type="button" onClick={() => ignorarGrupo(g)} title="Ignorar (não cadastrar)" className="text-gray-300 hover:text-rose-500 p-1"><EyeOff size={15} /></button>
+                        </div>
                       </div>
                     );
                   })}

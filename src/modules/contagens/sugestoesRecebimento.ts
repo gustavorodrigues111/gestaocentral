@@ -66,7 +66,8 @@ export type GrupoSugerido = {
   categoria?: string;
   unidade: UnidadeMedida;
   unidadeOutroLabel?: string;
-  precoEstimado?: number;
+  precoEstimado?: number;         // preço do PACOTE (como vem na nota)
+  fator?: number;                 // unidades por pacote (fator de compra); 1 = avulso
   matchInsumoId?: string | null;
   fornecedores: { nome: string; count: number }[];
   aliases: string[];

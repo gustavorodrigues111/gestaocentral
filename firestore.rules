@@ -699,6 +699,11 @@ service cloud.firestore {
       allow read, write: if authed();
     }
 
+    // ── /insumosIgnorados ── produtos que o user optou por NÃO cadastrar (id=rid) ──
+    match /insumosIgnorados/{id} {
+      allow read, write: if authed();
+    }
+
     // ── /hostedPages ── HTMLs avulsos hospedados (módulo Páginas) ─────────
     // Escrita só master (gerencia pelo app). Leitura liberada pra authed()
     // porque a serverless (api/hosted-page) lê via service account (usuário
