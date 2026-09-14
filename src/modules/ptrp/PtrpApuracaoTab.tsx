@@ -218,7 +218,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     return m;
   }, [ajustes]);
 
-  type Linha = { data: string; bs: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean; ehFuturo: boolean; ehHoje: boolean };
+  type Linha = { data: string; bs: BatidaDoc[]; bsRaw: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean; ehFuturo: boolean; ehHoje: boolean };
   function apurarColab(emp: Empregado) {
     const cpf = soDig(emp.cpf);
     const dias = batidasPorCpf[cpf] || {};
@@ -231,6 +231,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       // Ordena as batidas por horário (a correção lançada depois pode vir fora de
       // ordem no armazenamento) — deixa render/marcações/CSV cronológicos.
       const bs = reparearDia(dias[data] || []);
+      const bsRaw = dias[data] || [];   // registros crus da Sólides (p/ excluir individualmente no modal)
       const ajustesDia = ajDias[data] || [];
       const ehFuturo = data > hojeStr;   // dia ainda não aconteceu (BRT)
       const ehHoje = data === hojeStr;   // dia em ANDAMENTO — não acusa erro ainda
@@ -284,7 +285,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       if (!ehHoje && atrasoMin > 0 && ajustesDia.some(a => a.tipo === "atraso_justificado")) {
         abonadoMin += atrasoMin; saldoMes += atrasoMin; excecoes = excecoes.filter(e => e !== "atraso"); atrasoMin = 0;
       }
-      linhas.push({ data, bs, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo, ehHoje });
+      linhas.push({ data, bs, bsRaw, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo, ehHoje });
     }
     // Interjornada: descanso entre a última saída de um dia e a 1ª entrada do dia
     // seguinte (calendário) < mínimo da CCT → exceção no dia seguinte.
@@ -511,7 +512,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         <button type="button" disabled={acaoBusy} onClick={() => sel && void decidirCorrecao(sel.emp, l, "REPROVED")} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-rose-300 dark:border-rose-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40" title="Reprovar correção">✗</button>
       </>}
       <button type="button" onClick={() => toggleCorr(l.data)} className={`text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border ${corrSel ? "bg-blue-500 border-blue-500 text-white" : temCorrigivel ? "border-blue-300 dark:border-blue-800 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20" : "border-gray-300 dark:border-gray-700 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}`} title={corrSel ? "Remover do pedido de correção" : "Selecionar p/ pedir correção"}><MessageSquare size={14} className="inline"/></button>
-      <button type="button" disabled={travado} onClick={() => sel && setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bs })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title={travado ? "Mês fechado" : "Tratar"}><Settings size={14} className="inline"/></button>
+      <button type="button" disabled={travado} onClick={() => sel && setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bsRaw })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title={travado ? "Mês fechado" : "Tratar"}><Settings size={14} className="inline"/></button>
     </div>
   ); };
 
@@ -1118,15 +1119,24 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
   const [justs, setJusts] = useState<Justificativa[]>([]);
   const [justId, setJustId] = useState<number | null>(null);
   useEffect(() => { fetchJustificativas(empresaKey).then(js => { setJusts(js); const esq = js.find(j => /esquec/i.test(j.description)); setJustId((esq || js[0])?.id ?? null); }).catch(() => {}); }, [empresaKey]);
+  // Repareia CRONOLOGICAMENTE os horários que sobram (registros não removidos) +
+  // os novos — igual à apuração (reparearDia). Assim dá pra excluir UMA batida
+  // avulsa e ver o resultado remontado (1º=entrada, 2º=saída), sem precisar
+  // mexer de duas em duas.
   const preview = useMemo(() => {
-    const toMs = (h: string) => { const [a, b] = h.split(":").map(Number); return (a * 60 + (b || 0)) * 60000; };
-    const rows = [
-      ...existentes.filter(e => !removidos.has(e.punchId)).map(e => ({ in: e.in, out: e.out, sort: e.inMs ?? toMs(e.in), novo: false })),
-      ...novos.map(n => ({ in: n.in, out: n.out, sort: toMs(n.in), novo: true })),
-    ].sort((a, b) => a.sort - b.sort);
-    const marcas = rows.reduce((n, r) => n + (r.in && r.in !== "—" ? 1 : 0) + (r.out && r.out !== "—" ? 1 : 0), 0);
-    const trabMin = rows.reduce((s, r) => { const mi = r.in && r.in !== "—" ? toMs(r.in) : null, mo = r.out && r.out !== "—" ? toMs(r.out) : null; return s + (mi != null && mo != null ? Math.max(0, (mo - mi) / 60000) : 0); }, 0);
-    return { rows, impar: marcas % 2 !== 0, trabMin };
+    const fmt = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+    const ev: { m: number; novo: boolean }[] = [];
+    for (const e of existentes) {
+      if (removidos.has(e.punchId)) continue;
+      if (e.dateIn != null) ev.push({ m: minutoDoDiaBRT(e.dateIn), novo: false });
+      if (e.dateOut != null) ev.push({ m: minutoDoDiaBRT(e.dateOut), novo: false });
+    }
+    for (const n of novos) { ev.push({ m: hhmmToMin(n.in), novo: true }); ev.push({ m: hhmmToMin(n.out), novo: true }); }
+    ev.sort((a, b) => a.m - b.m);
+    const rows: { in: string; out: string; novo: boolean }[] = [];
+    for (let i = 0; i < ev.length; i += 2) rows.push({ in: fmt(ev[i].m), out: ev[i + 1] != null ? fmt(ev[i + 1].m) : "—", novo: ev[i].novo || (ev[i + 1]?.novo ?? false) });
+    const trabMin = rows.reduce((s, r) => s + (r.out !== "—" ? Math.max(0, hhmmToMin(r.out) - hhmmToMin(r.in)) : 0), 0);
+    return { rows, impar: ev.length % 2 !== 0, trabMin };
   }, [existentes, removidos, novos]);
 
   // ── Caminho B: motivo / afastamento ────────────────────────────────────────
@@ -1209,7 +1219,7 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
             <div className="text-[11px] text-gray-500 mt-1">Trabalhado: {String(Math.floor(preview.trabMin / 60)).padStart(2, "0")}h{String(preview.trabMin % 60).padStart(2, "0")}{preview.impar && <span className="text-rose-600 ml-2 inline-flex items-center gap-1"><TriangleAlert size={11}/> nº ímpar de marcações</span>}</div>
           </div>
           {existentes.length > 0 && <div className="flex flex-col gap-1">
-            <div className="text-[11px] font-semibold text-gray-500">Marcações existentes (marque pra excluir)</div>
+            <div className="text-[11px] font-semibold text-gray-500">Marcações registradas na Sólides <span className="font-normal text-gray-400">— marque pra excluir (uma a uma)</span></div>
             {existentes.map(e => { const rem = removidos.has(e.punchId); return <label key={e.punchId} className="flex items-center gap-2 text-[12.5px]"><input type="checkbox" checked={rem} onChange={ev => setRemovidos(s => { const n = new Set(s); if (ev.target.checked) n.add(e.punchId); else n.delete(e.punchId); return n; })} /><span className={rem ? "line-through text-gray-400" : ""}>{e.in}–{e.out}</span>{rem && <span className="text-[10px] text-rose-500">será excluída</span>}</label>; })}
           </div>}
           <div className="flex flex-col gap-1">
