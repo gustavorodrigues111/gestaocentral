@@ -221,6 +221,7 @@ export function RecebimentoPage() {
 
   const [tab, setTab] = useState<"receber" | "notas" | "config">("receber");
   const [padronizando, setPadronizando] = useState(false);
+  const [reproc, setReproc] = useState<{ feitos: number; total: number } | null>(null);
   const [detalheHist, setDetalheHist] = useState<RecebimentoNota | null>(null);
   const [notas, setNotas] = useState<RecebimentoNota[]>([]);
   const [novo, setNovo] = useState(false);
@@ -246,6 +247,39 @@ export function RecebimentoPage() {
     [notas],
   );
   const ordenadas = useMemo(() => ordenadasTodas.filter((n) => !n.excluidoEm), [ordenadasTodas]);      // não-excluídas (export)
+  const semEmissor = useMemo(() => ordenadas.filter((n) => !n.emissor), [ordenadas]);
+
+  // Reprocessa o OCR de uma nota (baixa o arquivo do Drive e relê). Só preenche
+  // campos VAZIOS (não sobrescreve o que já foi confirmado). Devolve true se mudou.
+  async function reprocessarUmaOcr(n: RecebimentoNota): Promise<boolean> {
+    const fileId = n.notaDriveFileId || n.notaPaginas?.[0]?.driveFileId;
+    if (!fileId) return false;
+    const dl = await fetch("/api/drive-recebimento", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ action: "download", fileId }) });
+    const dj = await dl.json().catch(() => ({})) as { base64?: string };
+    if (!dl.ok || !dj.base64) return false;
+    const nome = (n.notaNome || "").toLowerCase();
+    const mediaType = nome.endsWith(".pdf") ? "application/pdf" : nome.endsWith(".png") ? "image/png" : "image/jpeg";
+    const oc = await fetch("/api/ocr-nota", { method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) }, body: JSON.stringify({ data: dj.base64, mediaType }) });
+    const oj = await oc.json().catch(() => ({})) as { emissor?: string; cnpjEmissor?: string; valorTotal?: number; dataEmissao?: string };
+    if (!oc.ok) return false;
+    const patch: Record<string, unknown> = {};
+    if (!n.emissor && oj.emissor) patch.emissor = oj.emissor;
+    if (!n.cnpjEmissor && oj.cnpjEmissor) patch.cnpjEmissor = oj.cnpjEmissor;
+    if (n.valorTotal == null && typeof oj.valorTotal === "number") patch.valorTotal = oj.valorTotal;
+    if (!n.dataEmissao && oj.dataEmissao) patch.dataEmissao = oj.dataEmissao;
+    if (Object.keys(patch).length === 0) return false;
+    await updateDoc(doc(db, "recebimentos", n.id), patch);
+    return true;
+  }
+  async function reprocessarSemEmissor() {
+    if (semEmissor.length === 0) { setErro("Nenhuma nota sem emissor."); return; }
+    if (!window.confirm(`Reprocessar o OCR de ${semEmissor.length} nota(s) sem emissor? (só preenche o que estiver vazio)`)) return;
+    setErro(""); setReproc({ feitos: 0, total: semEmissor.length });
+    let ok = 0;
+    for (let i = 0; i < semEmissor.length; i++) { try { if (await reprocessarUmaOcr(semEmissor[i])) ok++; } catch { /* segue */ } setReproc({ feitos: i + 1, total: semEmissor.length }); }
+    setReproc(null);
+    setErro(`Reprocessado: ${ok} de ${semEmissor.length} nota(s) atualizada(s).`);
+  }
   const pendentes = useMemo(() => ordenadas.filter((n) => !n.conferidoEm), [ordenadas]);               // a conferir (lista principal)
   const conferidas = useMemo(() => ordenadas.filter((n) => n.conferidoEm).sort((a, b) => (b.conferidoEm || "").localeCompare(a.conferidoEm || "")), [ordenadas]);
   const excluidas = useMemo(() => ordenadasTodas.filter((n) => n.excluidoEm).sort((a, b) => (b.excluidoEm || "").localeCompare(a.excluidoEm || "")), [ordenadasTodas]);
@@ -340,7 +374,10 @@ export function RecebimentoPage() {
         {podeVer && <TabBtn k="notas" label={<span className="inline-flex items-center gap-1.5"><ClipboardList size={15} /> Notas recebidas</span>} />}
         {podeConfig && <TabBtn k="config" label={<span className="inline-flex items-center gap-1.5"><Settings size={15} /> Configurações</span>} />}
         {podeConfig && abaEfetiva === "notas" && (
-          <button type="button" onClick={() => setPadronizando(true)} className="ml-auto shrink-0 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline px-2">Padronizar fornecedores</button>
+          <div className="ml-auto shrink-0 flex items-center gap-3 px-2">
+            {semEmissor.length > 0 && <button type="button" disabled={!!reproc} onClick={() => void reprocessarSemEmissor()} className="text-xs font-medium text-amber-600 dark:text-amber-400 hover:underline disabled:opacity-60">{reproc ? `Reprocessando… ${reproc.feitos}/${reproc.total}` : `Reprocessar sem emissor (${semEmissor.length})`}</button>}
+            <button type="button" onClick={() => setPadronizando(true)} className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline">Padronizar fornecedores</button>
+          </div>
         )}
       </div>
 
