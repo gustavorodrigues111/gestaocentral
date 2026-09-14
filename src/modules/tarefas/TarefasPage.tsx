@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo, useRef } from "react";
-import { Navigate } from "react-router-dom";
+import { Navigate, useNavigate } from "react-router-dom";
 import { Globe, Trash2, Settings, ChevronDown, FolderKanban, Eye, Search, Plus } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
@@ -11,7 +11,9 @@ import { Button } from "../../core/ui/Button";
 import { collection, doc, getDoc, getDocs } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { ouvirProjetos, ouvirSubprojetos, ouvirTarefasDeUsuario, ouvirTarefasDeProjeto, ouvirLixeira, ouvirTodasTarefas, migrarGruposParaPrivadoLegado, aposentarCaixaPessoal, limparSubprojetosPrazos, reorganizarGestorTarefas } from "./repository";
-import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type AccessProfile, type Pessoa } from "../../core/types";
+import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type AccessProfile, type Pessoa, type Prazo, type PrazoTipo } from "../../core/types";
+import { usePrazos } from "../prazos/usePrazos";
+import { ListaPrazos } from "./ListaPrazos";
 import { podeVerTarefa, podeVerProjeto } from "./visibilidade";
 import { type Tab, type ViewMode, ViewSwitcher, ehAreaPrazos, semOrfasPrazo } from "./helpers";
 import { CalendarioView, KanbanView, LixeiraView, MinhasTarefasView, ProjetoView, ProjetosTopBar } from "./views";
@@ -70,6 +72,30 @@ export function TarefasPage() {
   const [tab, setTab] = useState<Tab>("minhas");
   const [viewMinhas, setViewMinhas] = useState<ViewMode>("calendario");
   const [viewProjeto, setViewProjeto] = useState<ViewMode>("calendario");
+
+  // ── Prazos dentro do módulo "Tarefas e Prazos" ───────────────────────
+  // Coleção separada (prazos é dono da sua máquina: laudo/agendamento/histórico);
+  // aqui só LEMOS e mostramos junto. Filtro: só tarefas · só prazos · ambos.
+  const navigate = useNavigate();
+  const isMasterTP = !!pessoa?.isMaster;
+  const meRestsTP = useMemo(() => (pessoa?.restaurantIds || []).filter(Boolean).slice(0, 10), [pessoa?.restaurantIds]);
+  const prazos = usePrazos(ridAtivo || undefined, { isMaster: isMasterTP, meRests: meRestsTP, todasEmpresas: false });
+  const [filtroTipo, setFiltroTipo] = useState<"tarefas" | "prazos" | "ambos">("tarefas");
+  const SUF_PRAZO: Record<PrazoTipo, string> = { conta: "Conta", tecnico: "Tecnico", trabalhista: "Trabalhista", avulso: "Avulso" };
+  const podeVerTipoPrazo = (t: PrazoTipo) => isMasterTP || canAcaoRid("prazos", `ver${SUF_PRAZO[t]}`);
+  const prazosMinhas = useMemo(() => prazos.filter((p) => p.responsavelId === pessoa?.id), [prazos, pessoa?.id]);
+  // Controle segmentado (Tarefas · Prazos · Ambos) — aparece só na visão LISTA
+  // (nesta fase os prazos ainda não entram no calendário/kanban).
+  const filtroTipoCtrl = (
+    <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
+      {([["tarefas", "Tarefas"], ["prazos", "Prazos"], ["ambos", "Ambos"]] as const).map(([k, lbl]) => (
+        <button key={k} type="button" onClick={() => setFiltroTipo(k)} className={`px-2.5 py-1 text-xs font-medium rounded-md ${filtroTipo === k ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{lbl}</button>
+      ))}
+    </div>
+  );
+  const renderPrazos = (lista: Prazo[]) => (
+    <ListaPrazos prazos={lista} restaurants={restaurants} podeVerTipo={podeVerTipoPrazo} onAbrir={() => navigate(`/r/${ridAtivo}/prazos`)} />
+  );
 
   const [projetos, setProjetos] = useState<TarefaProjeto[]>([]);
   const [subprojetos, setSubprojetos] = useState<TarefaSubprojeto[]>([]);
@@ -378,6 +404,7 @@ export function TarefasPage() {
           <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
             {buscaInput}
             <div className="flex-1" />
+            {viewMinhas === "lista" && <div className="[&>div]:!mb-0">{filtroTipoCtrl}</div>}
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
             {/* No mobile+calendário o +/engrenagem vão pra frente do seletor de semana (dentro do CalendarioView), então some daqui. */}
             <div className={viewMinhas === "calendario" ? "hidden sm:block" : "contents"}>{acoesHeader}</div>
@@ -407,14 +434,19 @@ export function TarefasPage() {
             </>
           )}
           {viewMinhas === "lista" && (
-            <MinhasTarefasView
-              tarefas={filtrar(minhas)}
-              projetos={projetos}
-              subprojetos={subprojetos}
-              onAbrir={setDetalheId}
-              pessoaId={pessoa?.id || ""}
-              pessoaNome={pessoa?.nome || ""}
-            />
+            <div className="space-y-4">
+              {filtroTipo !== "prazos" && (
+                <MinhasTarefasView
+                  tarefas={filtrar(minhas)}
+                  projetos={projetos}
+                  subprojetos={subprojetos}
+                  onAbrir={setDetalheId}
+                  pessoaId={pessoa?.id || ""}
+                  pessoaNome={pessoa?.nome || ""}
+                />
+              )}
+              {filtroTipo !== "tarefas" && renderPrazos(prazosMinhas)}
+            </div>
           )}
           {viewMinhas === "kanban" && (
             <KanbanView
@@ -432,12 +464,18 @@ export function TarefasPage() {
           <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
             {buscaInput}
             <div className="flex-1" />
+            {viewMinhas === "lista" && <div className="[&>div]:!mb-0">{filtroTipoCtrl}</div>}
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
             {/* No mobile+calendário o +/engrenagem vão pra frente do seletor de semana (dentro do CalendarioView), então some daqui. */}
             <div className={viewMinhas === "calendario" ? "hidden sm:block" : "contents"}>{acoesHeader}</div>
           </div>
           {viewMinhas === "calendario" && <CalendarioView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} acoes={acoesHeader} />}
-          {viewMinhas === "lista" && <MinhasTarefasView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />}
+          {viewMinhas === "lista" && (
+            <div className="space-y-4">
+              {filtroTipo !== "prazos" && <MinhasTarefasView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />}
+              {filtroTipo !== "tarefas" && renderPrazos(prazos)}
+            </div>
+          )}
           {viewMinhas === "kanban" && <KanbanView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />}
         </div>
       )}
@@ -462,6 +500,7 @@ export function TarefasPage() {
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{todasTarefas.length} tarefa(s) · {todasTarefas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
             <button type="button" onClick={() => setTab("minhas")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">← Minhas</button>
             <div className="flex-1" />
+            {viewMinhas === "lista" && <div className="[&>div]:!mb-0">{filtroTipoCtrl}</div>}
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
           </div>
           <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
