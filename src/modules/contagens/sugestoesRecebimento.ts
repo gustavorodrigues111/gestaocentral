@@ -10,6 +10,19 @@ export function normalizar(s?: string | null): string {
   return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
 }
 
+// Primeira maiúscula, resto minúsculo (por palavra). Conectores curtos ficam
+// minúsculos (exceto a 1ª palavra). Preserva tokens com dígito (ex.: "2L").
+const CONECTORES = new Set(["de", "da", "do", "das", "dos", "e", "com", "sem", "para", "pra", "a", "o"]);
+export function tituloCaso(s?: string | null): string {
+  const palavras = (s || "").trim().replace(/\s+/g, " ").toLowerCase().split(" ");
+  return palavras.map((p, i) => {
+    if (!p) return p;
+    if (/\d/.test(p)) return p.toUpperCase();          // "2l" → "2L", "500ml" fica maiúsculo
+    if (i > 0 && CONECTORES.has(p)) return p;           // conector no meio fica minúsculo
+    return p.charAt(0).toUpperCase() + p.slice(1);
+  }).join(" ");
+}
+
 // Mapeia a unidade (texto livre da nota) pra unidade padrão do insumo.
 const UNIT_MAP: Record<string, UnidadeMedida> = {
   UN: "un", UND: "un", UNID: "un", UNIDADE: "un", PC: "un", PECA: "un",
@@ -98,11 +111,11 @@ export function agruparSugestoes(
 
   const out: SugestaoInsumo[] = [];
   for (const g of grupos.values()) {
-    const nome = maisFrequente(g.nomes) || g.chave;
+    const nome = tituloCaso(maisFrequente(g.nomes) || g.chave);
     const un = mapearUnidade(maisFrequente(g.unidades));
     const fornecedores: FornecedorSugerido[] = [...g.fornecedores.entries()]
       .sort((a, b) => b[1] - a[1])
-      .map(([norm, count]) => ({ nome: g.fornecedorLabel.get(norm) || norm, count, fornecedorId: fornPorNome.get(norm) }));
+      .map(([norm, count]) => ({ nome: tituloCaso(g.fornecedorLabel.get(norm) || norm), count, fornecedorId: fornPorNome.get(norm) }));
     out.push({
       chave: g.chave,
       nome,
