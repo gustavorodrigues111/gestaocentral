@@ -58,6 +58,21 @@ export type SugestaoInsumo = {
   jaCadastrado: boolean;         // já existe insumo com esse nome normalizado
 };
 
+// Grupo consolidado (após a IA juntar nomes iguais) — usado na tabela de lote.
+export type GrupoSugerido = {
+  grupo: string;
+  membros: SugestaoInsumo[];
+  nome: string;
+  categoria?: string;
+  unidade: UnidadeMedida;
+  unidadeOutroLabel?: string;
+  precoEstimado?: number;
+  matchInsumoId?: string | null;
+  fornecedores: { nome: string; count: number }[];
+  aliases: string[];
+  ocorrencias: number;
+};
+
 // modaMap: dado um mapa nome→contagem, devolve a chave mais frequente.
 function maisFrequente<T extends string>(m: Map<T, number>): T | undefined {
   let melhor: T | undefined; let max = -1;

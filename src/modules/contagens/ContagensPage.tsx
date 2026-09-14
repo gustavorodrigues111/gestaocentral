@@ -13,8 +13,9 @@ import { UNIDADES_LABEL } from "../../core/types";
 import type { Contagem, Fornecedor, Insumo, InsumoFornecedor, RecebimentoNota, UnidadeMedida } from "../../core/types";
 import { InsumoModal } from "./InsumoModal";
 import { LancarContagensTab } from "./LancarContagensTab";
-import { agruparSugestoes, normalizar, tituloCaso, type SugestaoInsumo } from "./sugestoesRecebimento";
+import { agruparSugestoes, normalizar, tituloCaso, type SugestaoInsumo, type GrupoSugerido } from "./sugestoesRecebimento";
 import { MesclarInsumosModal } from "./MesclarInsumosModal";
+import { SugeridosTabela, type EdicaoGrupo } from "./SugeridosTabela";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 type IaInfo = { categoria?: string; unidade?: UnidadeMedida; grupo?: string; matchInsumoId?: string | null };
@@ -42,6 +43,7 @@ export function ContagensPage() {
   const [recebimentos, setRecebimentos] = useState<RecebimentoNota[]>([]);
   const [soRecorrentes, setSoRecorrentes] = useState(true);
   const [sugestoesAbertas, setSugestoesAbertas] = useState(false);
+  const [sugeridosView, setSugeridosView] = useState<"lista" | "tabela">("tabela");
   const [iaMapa, setIaMapa] = useState<Record<string, IaInfo>>({});
   const iaEmAndamento = useRef(false);
   const [mesclando, setMesclando] = useState(false);
@@ -167,11 +169,10 @@ export function ContagensPage() {
         categoria: ia.categoria, unidade: (ia.unidade as UnidadeMedida) || principal.unidade, unidadeOutroLabel: principal.unidadeOutroLabel,
         precoEstimado: principal.precoEstimado, matchInsumoId, fornecedores,
         aliases: membros.map(m => m.chave), ocorrencias: Math.max(...membros.map(m => m.ocorrencias)),
-      };
+      } as GrupoSugerido;
     });
     return grupos.sort((a, b) => b.ocorrencias - a.ocorrencias || a.nome.localeCompare(b.nome));
   }, [sugestoesNovas, iaMapa]);
-  type GrupoSugerido = typeof gruposSugeridos[number];
   const iaPendentes = useMemo(() => sugestoesNovas.filter(s => !iaMapa[s.chave]).length, [sugestoesNovas, iaMapa]);
 
   // Casa um fornecedor pelo nome (normalizado) ou cria um novo; devolve o id.
@@ -213,6 +214,33 @@ export function ContagensPage() {
       aliases: g.aliases, fornecedores: lista,
     });
     setEditing("new");
+  }
+
+  // Cadastro em LOTE (tabela): cria os insumos selecionados de uma vez, com os
+  // valores editados. Fornecedor primário = o escolhido na linha.
+  async function cadastrarLote(items: { g: GrupoSugerido; e: EdicaoGrupo }[]) {
+    if (!me) return;
+    for (const { g, e } of items) {
+      const primeiro = e.fornecedorNome || g.fornecedores[0]?.nome || "";
+      const ordenados = [
+        ...(primeiro ? [{ nome: primeiro, count: 999 }] : []),
+        ...g.fornecedores.filter(f => normalizar(f.nome) !== normalizar(primeiro)),
+      ];
+      const { lista, primeiroId } = await montarFornecedores(ordenados);
+      const now = new Date().toISOString();
+      await addDoc(collection(db, "insumos"), sanitizeForFirestore({
+        restaurantId: rid,
+        nome: e.nome.trim() || g.nome,
+        categoria: e.categoria.trim() || undefined,
+        unidade: e.unidade,
+        precoEstimado: e.preco,
+        aliases: g.aliases,
+        fornecedores: lista,
+        fornecedorPreferredId: primeiroId || null,
+        ativo: true,
+        criadoEm: now, criadoPor: me.id, atualizadoEm: now,
+      }));
+    }
   }
 
   // Última contagem por insumo (mais recente)
@@ -432,8 +460,13 @@ export function ContagensPage() {
                     {iaPendentes > 0
                       ? <span className="text-[11px] text-amber-700/80 inline-flex items-center gap-1"><Sparkles size={11} /> IA analisando categoria, unidade e repetidos… (faltam {iaPendentes})</span>
                       : <span className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80 inline-flex items-center gap-1"><Sparkles size={11} /> analisado pela IA</span>}
+                    <div className="ml-auto inline-flex rounded-lg bg-white/70 dark:bg-gray-800/70 border border-amber-200 dark:border-amber-800 p-0.5">
+                      <button type="button" onClick={() => setSugeridosView("tabela")} className={`px-2 py-0.5 text-[11px] font-medium rounded-md ${sugeridosView === "tabela" ? "bg-amber-500 text-white" : "text-amber-700 dark:text-amber-300"}`}>Tabela</button>
+                      <button type="button" onClick={() => setSugeridosView("lista")} className={`px-2 py-0.5 text-[11px] font-medium rounded-md ${sugeridosView === "lista" ? "bg-amber-500 text-white" : "text-amber-700 dark:text-amber-300"}`}>Lista</button>
+                    </div>
                   </div>
-                  {gruposSugeridos.map(g => {
+                  {sugeridosView === "tabela" && <SugeridosTabela grupos={gruposSugeridos} onCadastrar={cadastrarLote} />}
+                  {sugeridosView === "lista" && gruposSugeridos.map(g => {
                     const alvo = g.matchInsumoId ? insumos.find(i => i.id === g.matchInsumoId) : null;
                     return (
                       <div key={g.grupo} className="rounded-lg border border-amber-200/70 dark:border-amber-900/40 bg-white dark:bg-gray-900 p-2.5 flex items-center gap-2 flex-wrap">
