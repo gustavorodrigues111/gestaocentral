@@ -30,6 +30,8 @@ type Props = {
   // Ao JUNTAR produtos de fornecedores diferentes: opções de preço/pacote pra
   // escolher qual prevalece (uma por fornecedor/grupo).
   opcoesPreco?: OpcaoPreco[];
+  // Unidades "outro" já usadas (ex.: "bandeja") — viram opções no seletor.
+  unidadesCustom?: string[];
   // Pré-preenchimento ao criar (ex.: sugestão vinda do Recebimento).
   preset?: Partial<Insumo> | null;
   onExcluir?: (insumo: Insumo) => void;   // excluir de dentro do modo "ver"
@@ -42,7 +44,7 @@ const CATEGORIAS_SUGERIDAS = [
   "Mercearia", "Limpeza", "Descartáveis", "Outros",
 ];
 
-export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExistentes, autoReavaliar, nomesOriginais, onVerNota, opcoesPreco, preset, onExcluir, onClose }: Props) {
+export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExistentes, autoReavaliar, nomesOriginais, onVerNota, opcoesPreco, unidadesCustom, preset, onExcluir, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !insumo;
   const base = insumo ?? preset ?? null;   // ao criar, usa o preset da sugestão
@@ -102,6 +104,10 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [revisandoIa, setRevisandoIa] = useState(false);
+  // Unidades "outro" já usadas (ex.: bandeja) → viram opções. Valor da opção custom = "outro::<label>".
+  const unidCustomList = [...new Set((unidadesCustom || []).map(s => s.trim()).filter(Boolean))];
+  const selUnidVal = unidade === "outro" && unidadeOutro.trim() && unidCustomList.some(c => c.toLowerCase() === unidadeOutro.trim().toLowerCase()) ? `outro::${unidadeOutro.trim()}` : unidade;
+  const mostrarDescricaoOutro = selUnidVal === "outro";   // "+ Nova unidade" escolhida → pede o texto
   // Ao juntar fornecedores diferentes: qual opção de preço/pacote prevalece.
   const [opcaoSel, setOpcaoSel] = useState(0);
   function aplicarOpcao(i: number) {
@@ -322,24 +328,26 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Unidade *</label>
             <div className="relative mt-1">
               <select
-                value={unidade}
-                onChange={(e) => setUnidade(e.target.value as UnidadeMedida)}
+                value={selUnidVal}
+                onChange={(e) => { const v = e.target.value; if (v.startsWith("outro::")) { setUnidade("outro"); setUnidadeOutro(v.slice(7)); } else if (v === "outro") { setUnidade("outro"); setUnidadeOutro(""); } else setUnidade(v as UnidadeMedida); }}
                 className="appearance-none w-full px-3 py-2 pr-9 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 cursor-pointer focus:outline-none focus:border-indigo-400"
               >
-                {UNIDADES_LISTA.map(u => <option key={u} value={u}>{UNIDADES_LABEL[u]}</option>)}
+                {UNIDADES_LISTA.filter(u => u !== "outro").map(u => <option key={u} value={u}>{UNIDADES_LABEL[u]}</option>)}
+                {unidCustomList.map(c => <option key={"c:" + c} value={`outro::${c}`}>{c}</option>)}
+                <option value="outro">+ Nova unidade…</option>
               </select>
               <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
             </div>
           </div>
-          {unidade === "outro" && (
+          {mostrarDescricaoOutro && (
             <Input
-              label="Descrição da unidade *"
+              label="Nome da nova unidade *"
               value={unidadeOutro}
               onChange={(e) => setUnidadeOutro(e.target.value)}
               placeholder="ex: bandeja, dúzia"
             />
           )}
-          {unidade !== "outro" && (
+          {!mostrarDescricaoOutro && (
             <div>
               <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Estoque mínimo</label>
               <input inputMode="decimal" value={minStock} onChange={(e) => setMinStock(e.target.value.replace(/[^\d.,]/g, ""))} placeholder="0 = sem alerta" className={fieldCls} />
@@ -347,7 +355,7 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
           )}
         </div>
 
-        {unidade === "outro" && (
+        {mostrarDescricaoOutro && (
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Estoque mínimo</label>
             <input inputMode="decimal" value={minStock} onChange={(e) => setMinStock(e.target.value.replace(/[^\d.,]/g, ""))} placeholder="0 = sem alerta" className={fieldCls} />

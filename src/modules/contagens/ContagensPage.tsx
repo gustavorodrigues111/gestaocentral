@@ -233,6 +233,8 @@ export function ContagensPage() {
     return grupos.sort((a, b) => b.ocorrencias - a.ocorrencias || a.nome.localeCompare(b.nome));
   }, [sugestoesNovas, iaMapa]);
   const iaPendentes = useMemo(() => sugestoesNovas.filter(s => !iaMapa[s.chave]).length, [sugestoesNovas, iaMapa]);
+  // Unidades "outro" já usadas nos insumos (ex.: "bandeja") — viram opções nos seletores.
+  const unidadesCustom = useMemo(() => [...new Set(insumos.filter(i => i.unidade === "outro" && i.unidadeOutroLabel).map(i => (i.unidadeOutroLabel as string).trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR")), [insumos]);
 
   // Possíveis DUPLICATAS entre as sugestões: nomes quase iguais (erro de grafia,
   // ex.: "Mecoto" vs "Mocotó") que a IA NÃO agrupou. Só aponta — juntar é opção
@@ -400,6 +402,7 @@ export function ContagensPage() {
         nome: e.nome.trim() || g.nome,
         categoria: e.categoria.trim() || undefined,
         unidade: e.unidade,
+        unidadeOutroLabel: e.unidade === "outro" ? (e.unidadeOutroLabel || undefined) : undefined,
         precoEstimado: e.preco,
         fatorCompra: e.fator && e.fator > 1 ? e.fator : undefined,
         aliases: g.aliases,
@@ -661,7 +664,7 @@ export function ContagensPage() {
                       <p className="text-[10px] text-rose-600/70 dark:text-rose-400/70">Nomes muito parecidos que talvez sejam o mesmo produto. Ao juntar, a IA escolhe o nome certo e as grafias viram apelidos.</p>
                     </div>
                   )}
-                  {sugeridosView === "tabela" && <SugeridosTabela grupos={gruposSugeridos} fornecedoresNomes={fornecedores.map(f => f.nome)} onCadastrar={cadastrarLote} onAbrir={abrirGrupoNoModal} onIgnorar={ignorarGrupo} onJuntar={juntarGrupos} onReavaliar={reavaliarSelecionados} reavaliando={reavaliando} />}
+                  {sugeridosView === "tabela" && <SugeridosTabela grupos={gruposSugeridos} fornecedoresNomes={fornecedores.map(f => f.nome)} unidadesCustom={unidadesCustom} onCadastrar={cadastrarLote} onAbrir={abrirGrupoNoModal} onIgnorar={ignorarGrupo} onJuntar={juntarGrupos} onReavaliar={reavaliarSelecionados} reavaliando={reavaliando} />}
                   {sugeridosView === "lista" && gruposSugeridos.map(g => {
                     const alvo = g.matchInsumoId ? insumos.find(i => i.id === g.matchInsumoId) : null;
                     return (
@@ -762,6 +765,7 @@ export function ContagensPage() {
           nomesOriginais={presetNomesOrig}
           onVerNota={abrirNotaDaGrafia}
           opcoesPreco={presetOpcoes}
+          unidadesCustom={unidadesCustom}
           onExcluir={excluirInsumo}
           onClose={() => { setEditing(null); setPreset(null); setAutoReav(false); setPresetNomesOrig(undefined); setPresetOpcoes(undefined); }}
         />
