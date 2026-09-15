@@ -189,8 +189,10 @@ export function PrazosPage() {
     const [d, m, a] = (dataBr || "").split("/");
     if (!d || !m || !a) { setErro("Data inválida (dd/mm/aaaa)."); return; }
     const em = new Date(`${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}T12:00:00`).toISOString();
-    const atualizado = resolverPrazo(p, { em, por: me?.id, porNome: me?.nome });
-    await setDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ ...atualizado, atualizadoEm: new Date().toISOString() }), { merge: true });
+    const { arquivado, proximo } = resolverPrazo(p, { em, por: me?.id, porNome: me?.nome });
+    const now = new Date().toISOString();
+    await setDoc(doc(db, "prazos", arquivado.id), sanitizeForFirestore({ ...arquivado, atualizadoEm: now }), { merge: true });
+    if (proximo) await setDoc(doc(db, "prazos", proximo.id), sanitizeForFirestore({ ...proximo, atualizadoEm: now }), { merge: true });
     setResolvendo(null);
   }
   async function agendar(p: Prazo) {

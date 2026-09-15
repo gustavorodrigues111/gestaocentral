@@ -99,16 +99,18 @@ export function TarefasPage() {
   const laudoInputRef = useRef<HTMLInputElement | null>(null);
   const laudoAlvo = useRef<Prazo | null>(null);
   // Concluir prazo direto da lista. Se exige laudo e não tem → abre o seletor de
-  // arquivo pra anexar o laudo primeiro. Recorrente → resolverPrazo avança sozinho.
+  // arquivo pra anexar o laudo primeiro. Recorrente → arquiva o atual e nasce um novo.
   const resolverPrazoDireto = async (p: Prazo) => {
     if (!podeResolver(p)) {   // exige laudo e não tem → anexar antes
       if (!activeRest?.driveRootFolderId) { abrirPrazo(p); return; }
       laudoAlvo.current = p; laudoInputRef.current?.click(); return;
     }
     if (!window.confirm(`Concluir "${p.titulo}" com data de hoje?`)) return;
-    const atualizado = resolverPrazo(p, { em: hojeYmd(), por: pessoa?.id || null, porNome: pessoa?.nome || null });
+    const { arquivado, proximo } = resolverPrazo(p, { em: hojeYmd(), por: pessoa?.id || null, porNome: pessoa?.nome || null });
+    const now = new Date().toISOString();
     try {
-      await setDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ ...atualizado, atualizadoEm: new Date().toISOString() }), { merge: true });
+      await setDoc(doc(db, "prazos", arquivado.id), sanitizeForFirestore({ ...arquivado, atualizadoEm: now }), { merge: true });
+      if (proximo) await setDoc(doc(db, "prazos", proximo.id), sanitizeForFirestore({ ...proximo, atualizadoEm: now }), { merge: true });
     } catch (e) { alert("Falha ao concluir: " + (e instanceof Error ? e.message : "erro")); }
   };
   // Upload de laudo no Drive (mesmo fluxo do módulo Prazos) — dispara pelo concluir.

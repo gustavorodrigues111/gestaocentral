@@ -43,24 +43,42 @@ export function podeResolver(p: Pick<Prazo, "exigeLaudo" | "laudo">): boolean {
   return !p.exigeLaudo || !!p.laudo;
 }
 
-// Resolve ("Realizado"/"Pago"): arquiva a ocorrência atual no histórico e, se
-// recorrente, AVANÇA o vencimento pro próximo (volta a "aberto"); senão fecha.
-export function resolverPrazo(p: Prazo, ctx: { em: string; por?: string | null; porNome?: string | null }): Prazo {
-  const ocorrencia = {
-    vencimento: p.vencimento,
+// Resolve ("Realizado"/"Pago"): o doc atual vira "resolvido" (fica em Concluídas)
+// e, se recorrente, NASCE um novo doc pra próxima ocorrência (igual tarefas) —
+// em vez de reabrir o mesmo. Retorna { arquivado, proximo }. `proximo` = null
+// quando não é recorrente (ou a série acabou). O caller grava os dois.
+export function resolverPrazo(
+  p: Prazo,
+  ctx: { em: string; por?: string | null; porNome?: string | null },
+): { arquivado: Prazo; proximo: Prazo | null } {
+  const arquivado: Prazo = {
+    ...p,
+    status: "resolvido",
     resolvidoEm: ctx.em,
     resolvidoPor: ctx.por ?? null,
     resolvidoPorNome: ctx.porNome ?? null,
-    agendamento: p.agendamento ?? null,
-    laudo: p.laudo ?? null,
-    valor: p.dados?.valor ?? null,
   };
-  const historico = [...(p.historico || []), ocorrencia];
-  if (p.recorrencia) {
-    const prox = proximoVencimento(p.recorrencia, p.vencimento);
-    return { ...p, historico, vencimento: prox || p.vencimento, status: "aberto", agendamento: null, laudo: null, precisaRevisao: false, revisaoMotivo: null };
-  }
-  return { ...p, historico, status: "resolvido" };
+  if (!p.recorrencia) return { arquivado, proximo: null };
+  const prox = proximoVencimento(p.recorrencia, p.vencimento);
+  if (!prox) return { arquivado, proximo: null };
+  const maeId = p.recorrenciaMaeId || p.id;
+  const proximo: Prazo = {
+    ...p,
+    id: `${maeId}__${prox}`,          // id determinístico → não duplica se repetir
+    recorrenciaMaeId: maeId,
+    vencimento: prox,
+    status: "aberto",
+    agendamento: null,
+    laudo: null,
+    historico: [],
+    precisaRevisao: false,
+    revisaoMotivo: null,
+    resolvidoEm: null,
+    resolvidoPor: null,
+    resolvidoPorNome: null,
+    criadoEm: new Date().toISOString(),
+  };
+  return { arquivado, proximo };
 }
 
 export type GrupoAgenda = "vencido" | "semana" | "proximo" | "futuro";

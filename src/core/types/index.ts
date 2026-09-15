@@ -6689,7 +6689,13 @@ export type Prazo = {
   origem?: { modulo: string; refId: string } | null;
   precisaRevisao?: boolean;             // selo "revisar" quando o fato de origem mudou
   revisaoMotivo?: string | null;
-  historico?: PrazoOcorrenciaHist[];    // ocorrências realizadas (auditável)
+  historico?: PrazoOcorrenciaHist[];    // legado: ocorrências realizadas no doc que "girava"
+  // Recorrência agora cria UM doc por ocorrência (igual tarefas): ao concluir, o
+  // doc atual vira "resolvido" (fica em Concluídas) e nasce um novo pra próxima.
+  recorrenciaMaeId?: string;            // id da 1ª ocorrência (mãe) da série
+  resolvidoEm?: string | null;          // data em que esta ocorrência foi concluída
+  resolvidoPor?: string | null;
+  resolvidoPorNome?: string | null;
   notas?: string;
   criadoEm: string;
   criadoPor?: string | null;
