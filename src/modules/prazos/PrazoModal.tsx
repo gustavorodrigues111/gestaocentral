@@ -124,7 +124,8 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
     const imovelSel = imoveis.find((im) => im.id === prazo.imovelId);
     const d = prazo.dados || {};
     return (
-      <Modal title="Detalhes do prazo" onClose={onClose} maxWidth="max-w-xl">
+      <Modal title="Detalhes do prazo" onClose={onClose} maxWidth="max-w-xl"
+        headerAction={<button type="button" onClick={() => setModo("editar")} title="Editar" className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 p-1"><Pencil size={16} /></button>}>
         <div className="space-y-1">
           <div className="flex items-center gap-2 mb-2">
             <span className="text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">{PRAZO_TIPO_LABEL[prazo.tipo]}</span>
@@ -168,7 +169,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
           const ehExp = prazo.tipo === "trabalhista" && (prazo.dados?.subtipoTrab === "exp45" || prazo.dados?.subtipoTrab === "exp90");
           if (!podeGerir || !emAberto) return null;
           return (
-            <div className="flex flex-wrap gap-2 pt-3 mt-2 border-t border-gray-200 dark:border-gray-800">
+            <div className="flex items-center gap-2 pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
               {ehExp && onRenovarExp ? (
                 <>
                   <Button onClick={() => { onRenovarExp(prazo, true); onClose(); }} className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700"><Check size={14} /> Renovar</Button>
@@ -183,10 +184,6 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
             </div>
           );
         })()}
-        <div className="flex justify-end gap-2 pt-3 mt-2 border-t border-gray-200 dark:border-gray-800">
-          <Button variant="secondary" onClick={onClose}>Fechar</Button>
-          <Button onClick={() => setModo("editar")} className="inline-flex items-center gap-1"><Pencil size={14} /> Editar</Button>
-        </div>
       </Modal>
     );
   }
