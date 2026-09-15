@@ -82,7 +82,6 @@ export function TarefasPage() {
   const prazos = usePrazos(ridAtivo || undefined, { isMaster: isMasterTP, meRests: meRestsTP, todasEmpresas: false });
   const [filtroTipo, setFiltroTipo] = useState<"tarefas" | "prazos" | "ambos">("ambos");
   const SUF_PRAZO: Record<PrazoTipo, string> = { conta: "Conta", tecnico: "Tecnico", trabalhista: "Trabalhista", avulso: "Avulso" };
-  const podeVerTipoPrazo = (t: PrazoTipo) => isMasterTP || canAcaoRid("prazos", `ver${SUF_PRAZO[t]}`);
   const podeCriarPrazo = isMasterTP || (["conta", "tecnico", "trabalhista", "avulso"] as PrazoTipo[]).some((t) => canAcaoRid("prazos", `gerir${SUF_PRAZO[t]}`));
   const prazosMinhas = useMemo(() => prazos.filter((p) => p.responsavelId === pessoa?.id), [prazos, pessoa?.id]);
   // Abrir/criar prazo no MODAL inline (mesmo módulo). null = criar novo.
@@ -92,6 +91,26 @@ export function TarefasPage() {
 
   const [projetos, setProjetos] = useState<TarefaProjeto[]>([]);
   const [subprojetos, setSubprojetos] = useState<TarefaSubprojeto[]>([]);
+
+  // Categoria do prazo → ÁREA (projeto de tarefas de mesmo nome). A visibilidade
+  // do prazo HERDA a da área: NÃO-sensível (Operação/Diretoria) segue a
+  // visibilidade do projeto; SENSÍVEL (Financeiro/Pessoas) só via master/dono/
+  // autorizado — nunca por "escritório/público" (não vaza valor/PIX/trabalhista).
+  // A permissão antiga (verConta…) continua valendo como fallback → ninguém perde.
+  const AREA_DE: Record<PrazoTipo, string> = { conta: "Financeiro", tecnico: "Operação", trabalhista: "Pessoas", avulso: "Diretoria" };
+  const SENSIVEL_PRAZO: Record<PrazoTipo, boolean> = { conta: true, trabalhista: true, tecnico: false, avulso: false };
+  const normNome = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+  const projetoDaArea = (t: PrazoTipo) => projetos.find((p) => normNome(p.nome) === normNome(AREA_DE[t]));
+  const podeVerTipoPrazo = (t: PrazoTipo): boolean => {
+    if (isMasterTP) return true;
+    if (canAcaoRid("prazos", `ver${SUF_PRAZO[t]}`)) return true;   // permissão antiga (fallback)
+    const proj = projetoDaArea(t);
+    if (!proj) return false;
+    if (SENSIVEL_PRAZO[t]) return proj.dono === pessoa?.id || (proj.usuariosAutorizados || []).includes(pessoa?.id || "");
+    return podeVerProjeto(proj, pessoa);
+  };
+  const prazosVis = useMemo(() => prazos.filter((p) => podeVerTipoPrazo(p.tipo)), [prazos, projetos, pessoa, isMasterTP]);            // eslint-disable-line react-hooks/exhaustive-deps
+  const prazosMinhasVis = useMemo(() => prazosMinhas.filter((p) => podeVerTipoPrazo(p.tipo)), [prazosMinhas, projetos, pessoa, isMasterTP]); // eslint-disable-line react-hooks/exhaustive-deps
   const [minhas, setMinhas] = useState<Tarefa[]>([]);
   const [projetoFiltro, setProjetoFiltro] = useState<string>("");
   // subFiltro vive aqui (não no ProjetoView) pra a sidebar conseguir mostrar
@@ -418,7 +437,7 @@ export function TarefasPage() {
             <>
               <CalendarioView
                 tarefas={filtroTipo === "prazos" ? [] : filtrar(minhas)}
-                prazos={filtroTipo === "tarefas" ? [] : prazosMinhas}
+                prazos={filtroTipo === "tarefas" ? [] : prazosMinhasVis}
                 onAbrirPrazo={abrirPrazo}
                 projetos={projetos}
                 subprojetos={subprojetos}
@@ -443,7 +462,7 @@ export function TarefasPage() {
           {viewMinhas === "lista" && (
             <ListaUnificada
               tarefas={filtroTipo === "prazos" ? [] : filtrar(minhas)}
-              prazos={filtroTipo === "tarefas" ? [] : prazosMinhas}
+              prazos={filtroTipo === "tarefas" ? [] : prazosMinhasVis}
               projetos={projetos}
               restaurants={restaurants}
               podeVerTipo={podeVerTipoPrazo}
@@ -471,11 +490,11 @@ export function TarefasPage() {
             {/* No mobile+calendário o +/engrenagem vão pra frente do seletor de semana (dentro do CalendarioView), então some daqui. */}
             <div className={viewMinhas === "calendario" ? "hidden sm:block" : "contents"}>{acoesHeader}</div>
           </div>
-          {viewMinhas === "calendario" && <CalendarioView tarefas={filtroTipo === "prazos" ? [] : filtrar(todasTarefasVisiveis)} prazos={filtroTipo === "tarefas" ? [] : prazos} onAbrirPrazo={abrirPrazo} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} acoes={acoesHeader} />}
+          {viewMinhas === "calendario" && <CalendarioView tarefas={filtroTipo === "prazos" ? [] : filtrar(todasTarefasVisiveis)} prazos={filtroTipo === "tarefas" ? [] : prazosVis} onAbrirPrazo={abrirPrazo} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} acoes={acoesHeader} />}
           {viewMinhas === "lista" && (
             <ListaUnificada
               tarefas={filtroTipo === "prazos" ? [] : filtrar(todasTarefasVisiveis)}
-              prazos={filtroTipo === "tarefas" ? [] : prazos}
+              prazos={filtroTipo === "tarefas" ? [] : prazosVis}
               projetos={projetos}
               restaurants={restaurants}
               podeVerTipo={podeVerTipoPrazo}

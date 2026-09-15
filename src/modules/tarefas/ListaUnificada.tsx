@@ -8,16 +8,16 @@ import { useMemo, useState } from "react";
 import { AlarmClock } from "lucide-react";
 import type { Tarefa, TarefaProjeto, Prazo, PrazoTipo, Restaurant } from "../../core/types";
 import { PRAZO_TIPO_LABEL } from "../../core/types";
-import { ymdExibicao, diaSemanaCurto, hojeYmd } from "../prazos/logic";
+import { ymdExibicao, diaSemanaCurto, hojeYmd, PRAZO_COR_HEX } from "../prazos/logic";
 
 type Bucket = "atrasado" | "hoje" | "semana" | "depois" | "semdata";
 const BUCKET_LABEL: Record<Bucket, string> = { atrasado: "Atrasados", hoje: "Hoje", semana: "Próximos 7 dias", depois: "Mais pra frente", semdata: "Sem data" };
 const BUCKET_ORDEM: Bucket[] = ["atrasado", "hoje", "semana", "depois", "semdata"];
 const TIPO_COR: Record<PrazoTipo, string> = {
-  conta: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
-  tecnico: "bg-sky-100 text-sky-700 dark:bg-sky-900/30 dark:text-sky-300",
-  trabalhista: "bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300",
-  avulso: "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300",
+  conta: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",       // Financeiro
+  tecnico: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",         // Operação
+  trabalhista: "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-300",     // Pessoas
+  avulso: "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300",          // Diretoria
 };
 const brl = (n?: number) => (typeof n === "number" ? n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "");
 const somaDias = (ymd: string, n: number) => { const [y, m, d] = ymd.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
@@ -71,7 +71,7 @@ export function ListaUnificada({ tarefas, prazos, projetos, restaurants, podeVer
         chip: PRAZO_TIPO_LABEL[p.tipo], chipCls: TIPO_COR[p.tipo],
         empresas: (p.restaurantIds || []).map(nomeEmpresa).filter(Boolean),
         valor: p.tipo === "conta" ? p.dados?.valor : undefined,
-        prioCor: "#f59e0b",
+        prioCor: PRAZO_COR_HEX[p.tipo],
         open: () => onAbrirPrazo(p),
       });
     }
@@ -129,7 +129,7 @@ export function ListaUnificada({ tarefas, prazos, projetos, restaurants, podeVer
         className={`w-full text-left px-3 py-2 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/60 ${i.concluido ? "opacity-60" : ""}`}
         style={{ borderLeft: `4px solid ${i.prioCor}` }}>
         {i.tipo === "prazo"
-          ? <AlarmClock size={15} className="text-amber-500 shrink-0" />
+          ? <AlarmClock size={15} className="shrink-0" style={{ color: i.prioCor }} />
           : <span className="w-[15px] h-[15px] rounded-full shrink-0" style={{ background: i.prioCor }} />}
         <div className="min-w-0 flex-1">
           <div className={`text-sm text-gray-800 dark:text-gray-100 truncate ${i.concluido ? "line-through" : ""}`}>{i.titulo}</div>

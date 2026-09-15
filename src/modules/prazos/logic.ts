@@ -7,6 +7,10 @@ import { proximoVencimento } from "./recorrencia";
 // (tarefa de hoje cairia em "atrasado"). Brasil sem horário de verão.
 export const hojeYmd = (): string => new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
 
+// Cor por categoria/área do prazo (hex), pra pintar chips/faixas igual à cor da
+// área-projeto: Financeiro verde · Operação laranja · Pessoas amarelo · Diretoria índigo.
+export const PRAZO_COR_HEX: Record<PrazoTipo, string> = { conta: "#059669", tecnico: "#ea580c", trabalhista: "#ca8a04", avulso: "#6366f1" };
+
 // Fim de semana? (0=dom, 6=sáb)
 export function ehFimDeSemana(ymd: string): boolean {
   const dow = new Date(ymd + "T12:00:00").getDay();

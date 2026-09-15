@@ -111,6 +111,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
         criadoPor: prazo?.criadoPor ?? null,
       };
       await onSalvar(p);
+      onClose();   // sucesso → fecha (antes ficava travado em "Salvando…")
     } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao salvar."); setSalvando(false); }
   }
 

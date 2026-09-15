@@ -8,7 +8,7 @@ import { usePessoasAtivasLista } from "../../core/pessoas/PessoasContext";
 import { softDeleteTarefa, restaurarTarefa, atualizarTarefa, marcarSubtarefa } from "./repository";
 import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type Subtarefa, type TarefaStatus, type Prazo, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL, PRAZO_TIPO_LABEL } from "../../core/types";
 import { fmtBR } from "../../core/utils/date";
-import { ymdExibicao } from "../prazos/logic";
+import { ymdExibicao, PRAZO_COR_HEX } from "../prazos/logic";
 import { isConfidencial } from "./visibilidade";
 import { AvatarIniciais, EmpresaBadge, FiltroChip, type ViewMode, ViewSwitcher, catDaTarefa, ORIGEM_ICON, AreaIcone, ehAreaPrazos, inicioSemanaSeg, mudarStatusComErro } from "./helpers";
 import { EscolhaRestauranteModal } from "./modais";
@@ -1039,19 +1039,22 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
           )}
         </div>
         <div className="space-y-1 flex-1 overflow-y-auto">
-          {(prazosPorDia.get(data) || []).map(p => (
+          {(prazosPorDia.get(data) || []).map(p => {
+            const corPz = PRAZO_COR_HEX[p.tipo];
+            return (
             <button
               key={"pz-" + p.id}
               type="button"
               onClick={() => onAbrirPrazo?.(p)}
-              className="w-full text-left text-[11px] px-2 py-1.5 rounded-md border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/15 text-amber-900 dark:text-amber-200 hover:shadow-sm transition-shadow cursor-pointer"
-              style={{ borderLeftWidth: 4, borderLeftColor: "#f59e0b" }}
+              className="w-full text-left text-[11px] px-2 py-1.5 rounded-md border hover:shadow-sm transition-shadow cursor-pointer"
+              style={{ borderColor: corPz + "55", borderLeft: `4px solid ${corPz}`, background: corPz + "14", color: corPz }}
               title={`Prazo: ${p.titulo}`}
             >
               <div className="flex items-start gap-1 font-medium leading-snug line-clamp-2"><AlarmClock size={11} className="shrink-0 mt-[1px]" /> <span>{p.titulo}</span></div>
               <div className="text-[8px] uppercase tracking-wide opacity-70 mt-0.5 ml-[14px]">{PRAZO_TIPO_LABEL[p.tipo]}</div>
             </button>
-          ))}
+            );
+          })}
           {lista.map(t => {
             const proj = projetos.find(p => p.id === t.projetoId);
             const meta = catDaTarefa(t.origem, proj);
