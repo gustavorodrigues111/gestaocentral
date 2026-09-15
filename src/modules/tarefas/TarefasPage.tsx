@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo, useRef } from "react";
-import { Navigate, useNavigate } from "react-router-dom";
-import { Globe, Trash2, Settings, ChevronDown, FolderKanban, Eye, Search, Plus } from "lucide-react";
+import { Navigate } from "react-router-dom";
+import { Globe, Trash2, Settings, ChevronDown, FolderKanban, Eye, Search, Plus, AlarmClock, ListTodo } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
@@ -14,6 +14,7 @@ import { ouvirProjetos, ouvirSubprojetos, ouvirTarefasDeUsuario, ouvirTarefasDeP
 import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type AccessProfile, type Pessoa, type Prazo, type PrazoTipo } from "../../core/types";
 import { usePrazos } from "../prazos/usePrazos";
 import { ListaPrazos } from "./ListaPrazos";
+import { PrazoInline } from "./PrazoInline";
 import { podeVerTarefa, podeVerProjeto } from "./visibilidade";
 import { type Tab, type ViewMode, ViewSwitcher, ehAreaPrazos, semOrfasPrazo } from "./helpers";
 import { CalendarioView, KanbanView, LixeiraView, MinhasTarefasView, ProjetoView, ProjetosTopBar } from "./views";
@@ -76,14 +77,18 @@ export function TarefasPage() {
   // ── Prazos dentro do módulo "Tarefas e Prazos" ───────────────────────
   // Coleção separada (prazos é dono da sua máquina: laudo/agendamento/histórico);
   // aqui só LEMOS e mostramos junto. Filtro: só tarefas · só prazos · ambos.
-  const navigate = useNavigate();
   const isMasterTP = !!pessoa?.isMaster;
   const meRestsTP = useMemo(() => (pessoa?.restaurantIds || []).filter(Boolean).slice(0, 10), [pessoa?.restaurantIds]);
   const prazos = usePrazos(ridAtivo || undefined, { isMaster: isMasterTP, meRests: meRestsTP, todasEmpresas: false });
   const [filtroTipo, setFiltroTipo] = useState<"tarefas" | "prazos" | "ambos">("ambos");
   const SUF_PRAZO: Record<PrazoTipo, string> = { conta: "Conta", tecnico: "Tecnico", trabalhista: "Trabalhista", avulso: "Avulso" };
   const podeVerTipoPrazo = (t: PrazoTipo) => isMasterTP || canAcaoRid("prazos", `ver${SUF_PRAZO[t]}`);
+  const podeCriarPrazo = isMasterTP || (["conta", "tecnico", "trabalhista", "avulso"] as PrazoTipo[]).some((t) => canAcaoRid("prazos", `gerir${SUF_PRAZO[t]}`));
   const prazosMinhas = useMemo(() => prazos.filter((p) => p.responsavelId === pessoa?.id), [prazos, pessoa?.id]);
+  // Abrir/criar prazo no MODAL inline (mesmo módulo). null = criar novo.
+  const [prazoModal, setPrazoModal] = useState<{ prazo: Prazo | null; modo?: "ver" | "editar" } | null>(null);
+  const [novoMenuAberto, setNovoMenuAberto] = useState(false);
+  const abrirPrazo = (p: Prazo) => setPrazoModal({ prazo: p, modo: "ver" });
   // Controle segmentado (Tarefas · Prazos · Ambos) — aparece só na visão LISTA
   // (nesta fase os prazos ainda não entram no calendário/kanban).
   const filtroTipoCtrl = (
@@ -94,7 +99,7 @@ export function TarefasPage() {
     </div>
   );
   const renderPrazos = (lista: Prazo[]) => (
-    <ListaPrazos prazos={lista} restaurants={restaurants} podeVerTipo={podeVerTipoPrazo} onAbrir={() => navigate(`/r/${ridAtivo}/prazos`)} />
+    <ListaPrazos prazos={lista} restaurants={restaurants} podeVerTipo={podeVerTipoPrazo} onAbrir={abrirPrazo} />
   );
 
   const [projetos, setProjetos] = useState<TarefaProjeto[]>([]);
@@ -317,7 +322,18 @@ export function TarefasPage() {
   // Ações fixas (na linha do seletor de visão): Nova tarefa + Gerenciar (master).
   const acoesHeader = (
     <div className="flex items-center gap-1.5 shrink-0">
-      <Button size="sm" onClick={() => setNovaAberta({})} title="Nova tarefa"><span className="sm:hidden inline-flex"><Plus size={16} /></span><span className="hidden sm:inline">+ Nova tarefa</span></Button>
+      <div className="relative">
+        <Button size="sm" onClick={() => setNovoMenuAberto((v) => !v)} title="Novo"><span className="sm:hidden inline-flex"><Plus size={16} /></span><span className="hidden sm:inline-flex items-center gap-1">+ Novo <ChevronDown size={13} /></span></Button>
+        {novoMenuAberto && (
+          <>
+            <div className="fixed inset-0 z-10" onClick={() => setNovoMenuAberto(false)} />
+            <div className="absolute right-0 mt-1 z-20 w-44 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1 text-sm">
+              <button type="button" onClick={() => { setNovoMenuAberto(false); setNovaAberta({}); }} className="w-full flex items-center gap-2 text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"><ListTodo size={15} /> Nova tarefa</button>
+              {podeCriarPrazo && <button type="button" onClick={() => { setNovoMenuAberto(false); setPrazoModal({ prazo: null }); }} className="w-full flex items-center gap-2 text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"><AlarmClock size={15} /> Novo prazo</button>}
+            </div>
+          </>
+        )}
+      </div>
       {isMaster && (
         <div className="relative">
           <button type="button" onClick={() => setGerenciarMenuAberto((v) => !v)} title="Gerenciar" className="inline-flex items-center gap-1 text-xs font-medium px-2 sm:px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"><Settings size={14} /><span className="hidden sm:inline"> Gerenciar </span><ChevronDown size={13} className="hidden sm:inline" /></button>
@@ -414,7 +430,7 @@ export function TarefasPage() {
               <CalendarioView
                 tarefas={filtroTipo === "prazos" ? [] : filtrar(minhas)}
                 prazos={filtroTipo === "tarefas" ? [] : prazosMinhas}
-                onAbrirPrazo={() => navigate(`/r/${ridAtivo}/prazos`)}
+                onAbrirPrazo={abrirPrazo}
                 projetos={projetos}
                 subprojetos={subprojetos}
                 onAbrir={setDetalheId}
@@ -471,7 +487,7 @@ export function TarefasPage() {
             {/* No mobile+calendário o +/engrenagem vão pra frente do seletor de semana (dentro do CalendarioView), então some daqui. */}
             <div className={viewMinhas === "calendario" ? "hidden sm:block" : "contents"}>{acoesHeader}</div>
           </div>
-          {viewMinhas === "calendario" && <CalendarioView tarefas={filtroTipo === "prazos" ? [] : filtrar(todasTarefasVisiveis)} prazos={filtroTipo === "tarefas" ? [] : prazos} onAbrirPrazo={() => navigate(`/r/${ridAtivo}/prazos`)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} acoes={acoesHeader} />}
+          {viewMinhas === "calendario" && <CalendarioView tarefas={filtroTipo === "prazos" ? [] : filtrar(todasTarefasVisiveis)} prazos={filtroTipo === "tarefas" ? [] : prazos} onAbrirPrazo={abrirPrazo} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} acoes={acoesHeader} />}
           {viewMinhas === "lista" && (
             <div className="space-y-4">
               {filtroTipo !== "prazos" && <MinhasTarefasView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />}
@@ -621,6 +637,8 @@ export function TarefasPage() {
           <SemPermissaoModal onClose={() => setDetalheId(null)} />
         )
       )}
+
+      {prazoModal && <PrazoInline rid={ridAtivo || ""} prazo={prazoModal.prazo} modo={prazoModal.modo} onClose={() => setPrazoModal(null)} />}
 
     </PageContainer>
   );
