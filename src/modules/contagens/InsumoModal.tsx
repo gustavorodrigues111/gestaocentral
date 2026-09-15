@@ -14,6 +14,8 @@ type Props = {
   insumo: Insumo | null;
   fornecedores: Fornecedor[];
   restaurantId: string;
+  // Categorias já usadas em outros insumos — entram nos chips junto das sugeridas.
+  categoriasExistentes?: string[];
   // Pré-preenchimento ao criar (ex.: sugestão vinda do Recebimento).
   preset?: Partial<Insumo> | null;
   onExcluir?: (insumo: Insumo) => void;   // excluir de dentro do modo "ver"
@@ -26,16 +28,25 @@ const CATEGORIAS_SUGERIDAS = [
   "Mercearia", "Limpeza", "Descartáveis", "Outros",
 ];
 
-export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcluir, onClose }: Props) {
+export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExistentes, preset, onExcluir, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !insumo;
   const base = insumo ?? preset ?? null;   // ao criar, usa o preset da sugestão
+  // Chips de categoria = sugeridas fixas + as já usadas em outros insumos (dedup).
+  const catsChips = (() => {
+    const norm = (s: string) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const vistos = new Set(CATEGORIAS_SUGERIDAS.map(norm));
+    const extras = (categoriasExistentes || []).filter(c => { const k = norm(c); if (vistos.has(k)) return false; vistos.add(k); return true; });
+    // "Outros" sempre por último.
+    const semOutros = CATEGORIAS_SUGERIDAS.filter(c => c !== "Outros");
+    return [...semOutros, ...extras, "Outros"];
+  })();
   // Abre em modo VER quando é um insumo existente; editar entra pelo botão.
   const [modo, setModo] = useState<"ver" | "editar">(insumo ? "ver" : "editar");
 
   const [nome, setNome] = useState(base?.nome || "");
   const [categoria, setCategoria] = useState(base?.categoria || "");
-  const [catCustom, setCatCustom] = useState<boolean>(!!base?.categoria && !CATEGORIAS_SUGERIDAS.includes(base.categoria));
+  const [catCustom, setCatCustom] = useState<boolean>(!!base?.categoria && !catsChips.includes(base.categoria));
   const fieldCls = "w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none";
   const [unidade, setUnidade] = useState<UnidadeMedida>(base?.unidade || "un");
   const [unidadeOutro, setUnidadeOutro] = useState(base?.unidadeOutroLabel || "");
@@ -223,7 +234,7 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
             </button>
           </div>
           <div className="grid grid-cols-3 sm:grid-cols-4 gap-1.5 mt-1.5 mb-1.5">
-            {CATEGORIAS_SUGERIDAS.map(c => (
+            {catsChips.map(c => (
               <button
                 key={c}
                 type="button"
@@ -239,7 +250,7 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
             ))}
             <button
               type="button"
-              onClick={() => { setCatCustom(true); if (CATEGORIAS_SUGERIDAS.includes(categoria)) setCategoria(""); }}
+              onClick={() => { setCatCustom(true); if (catsChips.includes(categoria)) setCategoria(""); }}
               className={`px-1 py-1 text-[11px] rounded-lg border border-dashed text-center transition-colors ${catCustom ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium" : "border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}
             >
               + Nova

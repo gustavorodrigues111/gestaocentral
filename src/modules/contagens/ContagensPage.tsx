@@ -618,6 +618,7 @@ export function ContagensPage() {
           preset={editing === "new" ? preset : null}
           fornecedores={fornecedores.filter(f => f.ativo)}
           restaurantId={rid}
+          categoriasExistentes={[...new Set(insumos.map(i => (i.categoria || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"))}
           onExcluir={excluirInsumo}
           onClose={() => { setEditing(null); setPreset(null); }}
         />
