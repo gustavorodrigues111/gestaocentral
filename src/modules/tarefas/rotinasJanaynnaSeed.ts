@@ -5,7 +5,7 @@
 //  origemRefId/ids determinísticos e pula o que já existe. Depois de rodar uma
 //  vez, o botão que chama isto é removido.
 // ════════════════════════════════════════════════════════════════════════════
-import { collection, doc, getDoc, getDocs, query, setDoc, where } from "firebase/firestore";
+import { collection, doc, getDoc, getDocs, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type { Prazo, PrazoRecorrencia, Tarefa, TarefaProjeto, Restaurant, Pessoa } from "../../core/types";
@@ -27,19 +27,19 @@ type Item = { nome: string; area: "Financeiro" | "Operação"; rec: PrazoRecorre
 const PRAZOS: Item[] = [
   { nome: "Aluguel — Patizal 35 (Peixaria)", area: "Financeiro", rec: mensalDia(25), empresas: ["Sororoca"], endereco: "Patizal" },
   { nome: "Pagar VT e VR", area: "Financeiro", rec: mensalDia(30), empresas: ["Lobozó", "Sororoca", "Puba", "Quibebe"] },
-  { nome: "Pagar ESTAFF (freelas pelo app)", area: "Financeiro", rec: semanal([3]), empresas: ["Escritório"] },
+  { nome: "Pagar ESTAFF (freelas pelo app)", area: "Financeiro", rec: semanal([3]), empresas: ["Quibebe"] },
 ];
 
 const TAREFAS: Item[] = [
   { nome: "Fechar pagamentos de freelancers", area: "Financeiro", rec: semanal([2]), empresas: ["Puba", "Lobozó", "Sororoca"] },
   { nome: "Baixar CF-es de entrada (WhatsApp)", area: "Financeiro", rec: mensalDia(28), empresas: ["Lobozó", "Sororoca", "Puba", "Quibebe"] },
   { nome: "Contagem de vinhos", area: "Operação", rec: mensalDia(28), empresas: ["Lobozó", "Sororoca", "Puba"] },
-  { nome: "Enviar documentos contábeis/fiscais (Senador)", area: "Financeiro", rec: mensalPrimeiroDiaUtil(), empresas: ["Escritório"] },
-  { nome: "Lançar DDAs da semana seguinte no banco", area: "Financeiro", rec: semanal([5]), empresas: ["Escritório"] },
-  { nome: "Separar notas impressas do contas a pagar", area: "Financeiro", rec: semanal([4]), empresas: ["Escritório"] },
-  { nome: "Contas a pagar da semana", area: "Financeiro", rec: semanal([1]), empresas: ["Escritório"] },
-  { nome: "Conferir pagamentos (17h)", area: "Financeiro", rec: semanal([1, 2, 3, 4, 5]), empresas: ["Escritório"] },
-  { nome: "Conferir fechamento de caixa", area: "Financeiro", rec: semanal([2, 3]), empresas: ["Escritório"] },
+  { nome: "Enviar documentos contábeis/fiscais (Senador)", area: "Financeiro", rec: mensalPrimeiroDiaUtil(), empresas: ["Quibebe"] },
+  { nome: "Lançar DDAs da semana seguinte no banco", area: "Financeiro", rec: semanal([5]), empresas: ["Quibebe"] },
+  { nome: "Separar notas impressas do contas a pagar", area: "Financeiro", rec: semanal([4]), empresas: ["Quibebe"] },
+  { nome: "Contas a pagar da semana", area: "Financeiro", rec: semanal([1]), empresas: ["Quibebe"] },
+  { nome: "Conferir pagamentos (17h)", area: "Financeiro", rec: semanal([1, 2, 3, 4, 5]), empresas: ["Quibebe"] },
+  { nome: "Conferir fechamento de caixa", area: "Financeiro", rec: semanal([2, 3]), empresas: ["Quibebe"] },
   { nome: "Receber romaneios de peixe (CEASA)", area: "Operação", rec: mensalPrimeiroDiaUtil(), empresas: ["Sororoca"] },
 ];
 
@@ -74,7 +74,6 @@ export async function semearRotinasJanaynna(ctx: SeedCtx): Promise<{ prazos: num
   for (const it of PRAZOS) {
     const id = `seed_jana_${slug(it.nome)}`;
     const ref = doc(db, "prazos", id);
-    if ((await getDoc(ref)).exists()) continue;   // idempotente
     const restaurantIds = empresasIds(it.empresas);
     // Endereço (só o aluguel): busca por apelido na empresa dona.
     let enderecoId: string | null = null;
@@ -83,6 +82,10 @@ export async function semearRotinasJanaynna(ctx: SeedCtx): Promise<{ prazos: num
       const e = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as { id: string; apelido?: string; ativo?: boolean }).find((x) => x.ativo !== false && norm(x.apelido || "").includes(norm(it.endereco!)));
       enderecoId = e?.id || null;
       if (!enderecoId) avisos.push(`Endereço "${it.endereco}" não achado — vincule à mão no aluguel.`);
+    }
+    if ((await getDoc(ref)).exists()) {   // já existe → corrige só empresa/endereço
+      await setDoc(ref, sanitizeForFirestore({ restaurantIds, ...(enderecoId ? { enderecoId } : {}), atualizadoEm: now }), { merge: true });
+      nP++; continue;
     }
     const prazo: Prazo = {
       id,
@@ -109,9 +112,13 @@ export async function semearRotinasJanaynna(ctx: SeedCtx): Promise<{ prazos: num
   // ── TAREFAS ──
   for (const it of TAREFAS) {
     const refId = `seed_jana_${slug(it.nome)}`;
-    // idempotente: pula se já existe tarefa com este origemRefId
+    const restaurantIds = empresasIds(it.empresas);
+    // já existe → corrige só a empresa (não recria)
     const existe = await getDocs(query(collection(db, "tarefas"), where("origemRefId", "==", refId)));
-    if (!existe.empty) continue;
+    if (!existe.empty) {
+      for (const dd of existe.docs) await updateDoc(doc(db, "tarefas", dd.id), sanitizeForFirestore({ restaurantIds, atualizadoEm: now }));
+      nT++; continue;
+    }
     const pjId = projId(it.area);
     if (!pjId) { avisos.push(`Área/projeto "${it.area}" não encontrado — "${it.nome}" não foi criada.`); continue; }
     const t: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm"> = {
@@ -120,7 +127,7 @@ export async function semearRotinasJanaynna(ctx: SeedCtx): Promise<{ prazos: num
       subprojetoId: "",
       responsavelId: respId,
       responsavelNome: respNome,
-      restaurantIds: empresasIds(it.empresas),
+      restaurantIds,
       prazo: primeira(it.rec),
       status: "a_fazer",
       prioridade: "normal",
