@@ -119,7 +119,7 @@ export function MinhasTarefasView({ tarefas, projetos, subprojetos, onAbrir, pes
   const [modoSelecao, setModoSelecao] = useState(false);
   const [selecionadas, setSelecionadas] = useState<Set<string>>(new Set());
 
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);   // BRT (UTC-3)
   const daquiSeteDias = (() => { const d = new Date(); d.setDate(d.getDate() + 7); return d.toISOString().slice(0, 10); })();
 
   const filtradas = useMemo(() => {
@@ -454,7 +454,7 @@ function TarefaCard({ tarefa, projetos, subprojetos, onAbrir, autor }: {
   const sub = subprojetos.find(s => s.id === tarefa.subprojetoId);
   const cor = tarefa.corHerdada || projeto?.cor || "#6b7280";
   const concluida = tarefa.status === "concluida";
-  const atrasada = tarefa.prazo && tarefa.prazo < new Date().toISOString().slice(0, 10) && !concluida;
+  const atrasada = tarefa.prazo && tarefa.prazo < new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10) && !concluida;
   const subtarefasFeitas = (tarefa.subtarefas || []).filter(s => s.feito).length;
   const subtarefasTotal = (tarefa.subtarefas || []).length;
   const confidencial = isConfidencial(tarefa, projeto);
@@ -851,7 +851,7 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
   prazos?: Prazo[];
   onAbrirPrazo?: (p: Prazo) => void;
 }) {
-  const hoje = new Date().toISOString().slice(0, 10);
+  const hoje = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);   // BRT (UTC-3)
   const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(hoje));
   // Fim de semana opt-in por dia (Sáb / Dom separados). Lembra a escolha por usuário.
   const [mostrarSab, setMostrarSab] = useState<boolean>(() => { try { return localStorage.getItem("tarefas_cal_sab") === "1"; } catch { return false; } });

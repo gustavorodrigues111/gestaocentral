@@ -2,7 +2,10 @@
 import type { Prazo, PrazoTipo } from "../../core/types";
 import { proximoVencimento } from "./recorrencia";
 
-export const hojeYmd = (): string => new Date().toISOString().slice(0, 10);
+// Data de HOJE em horário de Brasília (UTC-3). NÃO usar toISOString() puro: à
+// noite (após 21h BRT) o UTC já virou o dia seguinte e "hoje" sairia errado
+// (tarefa de hoje cairia em "atrasado"). Brasil sem horário de verão.
+export const hojeYmd = (): string => new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
 
 // Fim de semana? (0=dom, 6=sáb)
 export function ehFimDeSemana(ymd: string): boolean {
