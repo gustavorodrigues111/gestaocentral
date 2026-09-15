@@ -12,6 +12,13 @@ import { criarTarefa, softDeleteTarefa, marcarSubtarefa, adicionarComentario, at
 import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type TarefaStatus, type TarefaPrioridade, type TarefaAnexo, type Subtarefa, type Restaurant, type Endereco, type PrazoRecorrencia, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL } from "../../core/types";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 
+// Estilo de chip selecionável (empresa/endereço) — igual à seleção de projeto.
+function chipCls(on: boolean): string {
+  return `px-2.5 py-1 text-xs rounded-full border transition-colors ${on
+    ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300 font-medium"
+    : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-gray-300 dark:hover:border-gray-600"}`;
+}
+
 // Seletor de ENDEREÇO da empresa (fonte única `enderecos`) — reusado nos modais.
 // Lista os endereços das empresas selecionadas na tarefa. Opcional (Nenhum).
 function EnderecoPicker({ restaurantIds, value, onChange }: { restaurantIds: string[]; value: string; onChange: (id: string) => void }) {
@@ -451,13 +458,17 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
             {/* Empresa(s) + Endereço — visíveis direto (Tarefas e Prazos é multi-restaurante). */}
             {restaurantes.length > 0 && (
               <FieldRow label="Empresa(s)">
-                <div className="flex flex-wrap gap-2 py-1">
-                  {restaurantes.map(r => (
-                    <label key={r.id} className="flex items-center gap-1 text-xs cursor-pointer">
-                      <input type="checkbox" checked={restaurantIds.includes(r.id)} onChange={(e) => { if (e.target.checked) setRestaurantIds([...restaurantIds, r.id]); else setRestaurantIds(restaurantIds.filter(id => id !== r.id)); }} />
-                      {r.nome}
-                    </label>
-                  ))}
+                <div className="flex flex-wrap gap-1.5 py-1">
+                  {restaurantes.map(r => {
+                    const on = restaurantIds.includes(r.id);
+                    return (
+                      <button key={r.id} type="button"
+                        onClick={() => setRestaurantIds(on ? restaurantIds.filter(id => id !== r.id) : [...restaurantIds, r.id])}
+                        className={chipCls(on)}>
+                        {r.nome}
+                      </button>
+                    );
+                  })}
                 </div>
               </FieldRow>
             )}
@@ -562,6 +573,10 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
 
   const [novaSubtarefa, setNovaSubtarefa] = useState("");
   const [novoComentario, setNovoComentario] = useState("");
+  // Empresa(s): estado local otimista — reflete o clique na hora (o salvarCampo
+  // grava no Firestore em background; sem isso, o chip só "acende" depois do round-trip).
+  const [restIdsLocal, setRestIdsLocal] = useState<string[]>(tarefa.restaurantIds || []);
+  useEffect(() => { setRestIdsLocal(tarefa.restaurantIds || []); }, [tarefa.restaurantIds]);
   const [detMais, setDetMais] = useState(false);
   const [addLink, setAddLink] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
@@ -918,31 +933,28 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
             </FieldRow>
             {/* Empresa(s) + Endereço — visíveis direto (Tarefas e Prazos é multi-restaurante). */}
             <FieldRow label="Empresa(s)">
-              <div className="flex flex-wrap gap-2 py-1">
+              <div className="flex flex-wrap gap-1.5 py-1">
                 {restaurants.map(r => {
-                  const sel = (tarefa.restaurantIds || []).includes(r.id);
+                  const sel = restIdsLocal.includes(r.id);
                   return (
-                    <label key={r.id} className="flex items-center gap-1 text-xs cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={sel}
-                        onChange={(e) => {
-                          const cur = tarefa.restaurantIds || [];
-                          const novo = e.target.checked ? [...cur, r.id] : cur.filter(x => x !== r.id);
-                          salvarCampo("restaurantIds", novo, "empresa(s)");
-                        }}
-                      />
+                    <button key={r.id} type="button"
+                      onClick={() => {
+                        const novo = sel ? restIdsLocal.filter(x => x !== r.id) : [...restIdsLocal, r.id];
+                        setRestIdsLocal(novo);                       // otimista
+                        salvarCampo("restaurantIds", novo, "empresa(s)");
+                      }}
+                      className={chipCls(sel)}>
                       {r.nome}
-                    </label>
+                    </button>
                   );
                 })}
                 {restaurants.length === 0 && <span className="text-xs text-gray-400">—</span>}
               </div>
             </FieldRow>
-            {(tarefa.restaurantIds || []).length > 0 && (
+            {restIdsLocal.length > 0 && (
               <FieldRow label="Endereço (opcional)">
                 <EnderecoPicker
-                  restaurantIds={tarefa.restaurantIds || []}
+                  restaurantIds={restIdsLocal}
                   value={tarefa.enderecoId || ""}
                   onChange={(id) => salvarCampo("enderecoId", id || undefined, "endereço")}
                 />
