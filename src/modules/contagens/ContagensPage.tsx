@@ -299,6 +299,22 @@ export function ContagensPage() {
     } catch { /* roda no servidor mesmo assim */ } finally { setReavaliando(false); }
   }
 
+  // Reavalia pela IA SÓ os grupos selecionados (membros de cada um). Mesmo
+  // endpoint/cache — o resultado aparece ao vivo via onSnapshot.
+  async function reavaliarSelecionados(grupos: GrupoSugerido[]) {
+    const produtos = grupos.flatMap(g => g.membros.map(m => ({ chave: m.chave, nome: m.nome, unidadeAtual: m.unidade })));
+    if (produtos.length === 0) return;
+    setReavaliando(true);
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      await fetch("/api/contagens-ia-lote", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({
+        idToken, rid,
+        produtos,
+        jaCadastrados: insumos.map(i => ({ id: i.id, nome: i.nome, aliases: i.aliases || [] })),
+      }) });
+    } catch { /* roda no servidor mesmo assim */ } finally { setReavaliando(false); }
+  }
+
   // Ignora um grupo (não quero cadastrar) — some das sugestões (dá pra restaurar).
   function ignorarGrupo(g: GrupoSugerido) {
     const n = new Set(ignorados); for (const a of g.aliases) n.add(a); salvarIgnorados(n);
@@ -617,7 +633,7 @@ export function ContagensPage() {
                       <p className="text-[10px] text-rose-600/70 dark:text-rose-400/70">Nomes muito parecidos que talvez sejam o mesmo produto. Ao juntar, a IA escolhe o nome certo e as grafias viram apelidos.</p>
                     </div>
                   )}
-                  {sugeridosView === "tabela" && <SugeridosTabela grupos={gruposSugeridos} fornecedoresNomes={fornecedores.map(f => f.nome)} onCadastrar={cadastrarLote} onAbrir={abrirGrupoNoModal} onIgnorar={ignorarGrupo} onJuntar={juntarGrupos} />}
+                  {sugeridosView === "tabela" && <SugeridosTabela grupos={gruposSugeridos} fornecedoresNomes={fornecedores.map(f => f.nome)} onCadastrar={cadastrarLote} onAbrir={abrirGrupoNoModal} onIgnorar={ignorarGrupo} onJuntar={juntarGrupos} onReavaliar={reavaliarSelecionados} reavaliando={reavaliando} />}
                   {sugeridosView === "lista" && gruposSugeridos.map(g => {
                     const alvo = g.matchInsumoId ? insumos.find(i => i.id === g.matchInsumoId) : null;
                     return (
