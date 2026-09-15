@@ -16,7 +16,7 @@
 //    → 4xx/5xx { error: string }
 //
 //  Faz paginação automática (segue até `last: true`) contra:
-//    GET https://api.tangerino.com.br/api/punch/
+//    GET https://apis.tangerino.com.br/punch/
 //
 //  Obs: a pasta /api NÃO entra no tsconfig do projeto (include = ["src"]); a
 //  Vercel compila esta function com o runtime Node próprio dela. Por isso os
@@ -24,7 +24,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { requireUser, AuthError } from "./_auth.js";
 
-const PUNCH_API = "https://api.tangerino.com.br/api/punch/";
+const PUNCH_API = "https://apis.tangerino.com.br/punch/";
 const PAGE_SIZE = 200;
 const MAX_PAGES = 50; // trava de segurança (50 × 200 = 10k marcações por restaurante por período)
 const REQ_TIMEOUT_MS = 20_000;

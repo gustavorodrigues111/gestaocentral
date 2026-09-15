@@ -14,7 +14,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { requireUser, AuthError } from "./_auth.js";
 
-const PUNCH = "https://api.tangerino.com.br/api/punch";
+const PUNCH = "https://apis.tangerino.com.br/punch";
 const REQ_TIMEOUT_MS = 20_000;
 
 type VercelReq = {

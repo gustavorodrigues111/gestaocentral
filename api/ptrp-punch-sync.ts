@@ -24,7 +24,7 @@ import { requireUser } from "./_auth.js";
 
 export const config = { maxDuration: 300 };
 
-const PUNCH_API = "https://api.tangerino.com.br/api/punch/";
+const PUNCH_API = "https://apis.tangerino.com.br/punch/";
 const PAGE_SIZE = 200;
 const MAX_PAGES = 50;          // 50×200 = 10k batidas por janela por empresa
 const REQ_TIMEOUT_MS = 20_000;

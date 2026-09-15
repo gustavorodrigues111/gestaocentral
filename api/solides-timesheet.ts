@@ -10,7 +10,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { requireUser, AuthError } from "./_auth.js";
 
-const REPORT = "https://api.tangerino.com.br/api/report";
+const REPORT = "https://apis.tangerino.com.br/report";
 const REQ_TIMEOUT_MS = 30_000; // gerar PDF pode demorar
 
 type VercelReq = { method?: string; query: Record<string, string | string[] | undefined>; headers?: Record<string, string | string[] | undefined> };
