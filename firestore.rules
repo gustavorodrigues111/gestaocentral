@@ -713,6 +713,12 @@ service cloud.firestore {
       allow read, write: if authed();
     }
 
+    // ── /insumosNaoDuplicatas ── pares marcados como "produtos diferentes" (id=rid) ──
+    // Some do aviso de possíveis duplicatas dos sugeridos. Não sensível.
+    match /insumosNaoDuplicatas/{id} {
+      allow read, write: if authed();
+    }
+
     // ── /hostedPages ── HTMLs avulsos hospedados (módulo Páginas) ─────────
     // Escrita só master (gerencia pelo app). Leitura liberada pra authed()
     // porque a serverless (api/hosted-page) lê via service account (usuário
