@@ -55,7 +55,22 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
     return [...set].sort((a, b) => a.localeCompare(b));
   })();
   const [fatorCompra, setFatorCompra] = useState(base?.fatorCompra != null ? String(base.fatorCompra) : "");
+  // precoEstimado = preço UNITÁRIO (é o que fica salvo, usado nas fichas/CMV).
   const [precoEstimado, setPrecoEstimado] = useState(base?.precoEstimado != null ? String(base.precoEstimado) : "");
+  // "Comprado em pacote": entra o preço do PACOTE (como vem do recebimento) e a
+  // qtd por pacote → o unitário é o pacote ÷ qtd. precoPacote é só de entrada.
+  const [ehPacote, setEhPacote] = useState<boolean>((base?.fatorCompra ?? 1) > 1);
+  const [precoPacote, setPrecoPacote] = useState(
+    base?.precoEstimado != null && (base?.fatorCompra ?? 1) > 1
+      ? (base.precoEstimado * (base.fatorCompra as number)).toFixed(2)
+      : ""
+  );
+  // Unitário derivado no modo pacote (preço do pacote ÷ qtd por pacote).
+  const unitDoPacote = (() => {
+    const f = parseInt(fatorCompra) || 0;
+    const pp = parseFloat(precoPacote.replace(",", "."));
+    return ehPacote && f > 0 && !isNaN(pp) ? pp / f : null;
+  })();
   const [ativo, setAtivo] = useState(insumo?.ativo ?? true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -76,12 +91,13 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
         if (it.nomeLimpo?.trim()) setNome(it.nomeLimpo.trim());
         if (it.categoria) setCategoria(it.categoria);
         if (it.unidade && (UNIDADES_LISTA as string[]).includes(it.unidade)) setUnidade(it.unidade as UnidadeMedida);
-        // Pacote → fator de compra + preço unitário (divide o preço do pacote uma vez).
+        // Pacote → marca "é pacote" + qtd por pacote; o unitário sai da divisão.
         if (it.qtdPorPacote && it.qtdPorPacote > 1) {
           const novo = Math.round(it.qtdPorPacote);
-          const fatorAntes = parseFloat(fatorCompra) || 1;
+          setEhPacote(true);
           setFatorCompra(String(novo));
-          if (fatorAntes <= 1) { const p = parseFloat(precoEstimado); if (!isNaN(p)) setPrecoEstimado((p / novo).toFixed(2)); }
+          // Semeia o preço do pacote com o valor carregado (que vem como preço do pacote).
+          if (!precoPacote.trim() && precoEstimado.trim()) setPrecoPacote(precoEstimado);
         }
       }
     } catch { /* silencioso */ } finally { setRevisandoIa(false); }
@@ -96,8 +112,13 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
     try {
       const now = new Date().toISOString();
       const min = minStock.trim() ? parseFloat(minStock.replace(",", ".")) : undefined;
-      const fator = fatorCompra.trim() ? parseFloat(fatorCompra) : undefined;
-      const preco = precoEstimado.trim() ? parseFloat(precoEstimado.replace(",", ".")) : undefined;
+      // Modo pacote: fator = qtd/pacote; unitário = preço do pacote ÷ fator.
+      // Modo avulso: sem fator; preço é o unitário digitado direto.
+      const fatorNum = ehPacote ? (parseInt(fatorCompra) || 0) : 0;
+      const fator = ehPacote && fatorNum > 1 ? fatorNum : undefined;
+      const preco = ehPacote
+        ? (unitDoPacote != null ? Math.round(unitDoPacote * 100) / 100 : undefined)
+        : (precoEstimado.trim() ? parseFloat(precoEstimado.replace(",", ".")) : undefined);
 
       // Resolve o fornecedor preferencial pelo NOME: casa com um existente ou cria.
       let fornPrefId: string | null = null;
@@ -270,11 +291,33 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
               <datalist id="forn-modal-sug">{fornOpcoes.map((n) => <option key={n} value={n} />)}</datalist>
               <p className="text-[10px] text-gray-400 mt-1">Escolhe um existente ou digita um novo — ele é criado ao salvar.</p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Fator de compra <span className="text-gray-400 font-normal">(un/pacote)</span></label>
-                <input inputMode="numeric" value={fatorCompra} onChange={(e) => setFatorCompra(e.target.value.replace(/[^\d]/g, ""))} placeholder="ex: 24" className={fieldCls} />
-              </div>
+            <label className="flex items-center gap-2 text-sm cursor-pointer">
+              <input type="checkbox" checked={ehPacote} onChange={(e) => setEhPacote(e.target.checked)} />
+              <span className="font-medium">Comprado em pacote</span>
+              <span className="text-xs text-gray-500">(fardo/caixa com várias unidades)</span>
+            </label>
+
+            {ehPacote ? (
+              <>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Unidades por pacote</label>
+                    <input inputMode="numeric" value={fatorCompra} onChange={(e) => setFatorCompra(e.target.value.replace(/[^\d]/g, ""))} placeholder="ex: 24" className={fieldCls} />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Preço do pacote</label>
+                    <div className="mt-1 flex items-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden focus-within:border-indigo-400">
+                      <span className="px-2.5 py-2 text-sm text-gray-400 bg-gray-50 dark:bg-gray-800">R$</span>
+                      <input inputMode="decimal" value={precoPacote} onChange={(e) => setPrecoPacote(e.target.value.replace(/[^\d.,]/g, ""))} placeholder="0,00" className="flex-1 px-2 py-2 text-sm bg-transparent outline-none text-gray-900 dark:text-gray-100 text-right tabular-nums" />
+                    </div>
+                  </div>
+                </div>
+                <div className="rounded-lg bg-indigo-50/60 dark:bg-indigo-900/20 border border-indigo-100 dark:border-indigo-900 px-3 py-2 flex items-center justify-between text-sm">
+                  <span className="text-gray-600 dark:text-gray-300">Preço unitário {(parseInt(fatorCompra) || 0) > 0 && <span className="text-[11px] text-gray-400">(pacote ÷ {parseInt(fatorCompra)})</span>}</span>
+                  <strong className="text-indigo-700 dark:text-indigo-300 tabular-nums">{unitDoPacote != null ? `R$ ${unitDoPacote.toFixed(2)}` : "—"}</strong>
+                </div>
+              </>
+            ) : (
               <div>
                 <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Preço por unidade</label>
                 <div className="mt-1 flex items-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden focus-within:border-indigo-400">
@@ -282,8 +325,7 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
                   <input inputMode="decimal" value={precoEstimado} onChange={(e) => setPrecoEstimado(e.target.value.replace(/[^\d.,]/g, ""))} placeholder="0,00" className="flex-1 px-2 py-2 text-sm bg-transparent outline-none text-gray-900 dark:text-gray-100 text-right tabular-nums" />
                 </div>
               </div>
-            </div>
-            {(() => { const f = parseInt(fatorCompra) || 1; const p = parseFloat(precoEstimado.replace(",", ".")); if (f > 1 && !isNaN(p)) return <p className="text-[11px] text-gray-500 dark:text-gray-400 text-right">Pacote de {f} un = <strong>R$ {(p * f).toFixed(2)}</strong> · unidade R$ {p.toFixed(2)}</p>; return null; })()}
+            )}
           </div>
         </div>
 
