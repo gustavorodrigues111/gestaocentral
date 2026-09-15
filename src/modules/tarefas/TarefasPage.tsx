@@ -13,7 +13,7 @@ import { db } from "../../core/firebase/config";
 import { ouvirProjetos, ouvirSubprojetos, ouvirTarefasDeUsuario, ouvirTarefasDeProjeto, ouvirLixeira, ouvirTodasTarefas, migrarGruposParaPrivadoLegado, aposentarCaixaPessoal, limparSubprojetosPrazos, reorganizarGestorTarefas } from "./repository";
 import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type AccessProfile, type Pessoa, type Prazo, type PrazoTipo } from "../../core/types";
 import { usePrazos } from "../prazos/usePrazos";
-import { ListaPrazos } from "./ListaPrazos";
+import { ListaUnificada } from "./ListaUnificada";
 import { PrazoInline } from "./PrazoInline";
 import { podeVerTarefa, podeVerProjeto } from "./visibilidade";
 import { type Tab, type ViewMode, ViewSwitcher, ehAreaPrazos, semOrfasPrazo } from "./helpers";
@@ -97,9 +97,6 @@ export function TarefasPage() {
         <button key={k} type="button" onClick={() => setFiltroTipo(k)} className={`px-2.5 py-1 text-xs font-medium rounded-md ${filtroTipo === k ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{lbl}</button>
       ))}
     </div>
-  );
-  const renderPrazos = (lista: Prazo[]) => (
-    <ListaPrazos prazos={lista} restaurants={restaurants} podeVerTipo={podeVerTipoPrazo} onAbrir={abrirPrazo} />
   );
 
   const [projetos, setProjetos] = useState<TarefaProjeto[]>([]);
@@ -452,19 +449,15 @@ export function TarefasPage() {
             </>
           )}
           {viewMinhas === "lista" && (
-            <div className="space-y-4">
-              {filtroTipo !== "prazos" && (
-                <MinhasTarefasView
-                  tarefas={filtrar(minhas)}
-                  projetos={projetos}
-                  subprojetos={subprojetos}
-                  onAbrir={setDetalheId}
-                  pessoaId={pessoa?.id || ""}
-                  pessoaNome={pessoa?.nome || ""}
-                />
-              )}
-              {filtroTipo !== "tarefas" && renderPrazos(prazosMinhas)}
-            </div>
+            <ListaUnificada
+              tarefas={filtroTipo === "prazos" ? [] : filtrar(minhas)}
+              prazos={filtroTipo === "tarefas" ? [] : prazosMinhas}
+              projetos={projetos}
+              restaurants={restaurants}
+              podeVerTipo={podeVerTipoPrazo}
+              onAbrirTarefa={setDetalheId}
+              onAbrirPrazo={abrirPrazo}
+            />
           )}
           {viewMinhas === "kanban" && (
             <KanbanView
@@ -489,10 +482,15 @@ export function TarefasPage() {
           </div>
           {viewMinhas === "calendario" && <CalendarioView tarefas={filtroTipo === "prazos" ? [] : filtrar(todasTarefasVisiveis)} prazos={filtroTipo === "tarefas" ? [] : prazos} onAbrirPrazo={abrirPrazo} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} acoes={acoesHeader} />}
           {viewMinhas === "lista" && (
-            <div className="space-y-4">
-              {filtroTipo !== "prazos" && <MinhasTarefasView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />}
-              {filtroTipo !== "tarefas" && renderPrazos(prazos)}
-            </div>
+            <ListaUnificada
+              tarefas={filtroTipo === "prazos" ? [] : filtrar(todasTarefasVisiveis)}
+              prazos={filtroTipo === "tarefas" ? [] : prazos}
+              projetos={projetos}
+              restaurants={restaurants}
+              podeVerTipo={podeVerTipoPrazo}
+              onAbrirTarefa={setDetalheId}
+              onAbrirPrazo={abrirPrazo}
+            />
           )}
           {viewMinhas === "kanban" && <KanbanView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />}
         </div>
