@@ -1,5 +1,5 @@
 import { useEffect, useState, useMemo } from "react";
-import { Folder, Bot, Inbox, Lock, Users, Trash2 } from "lucide-react";
+import { Folder, Bot, Inbox, Lock, Users, Trash2, ChevronLeft } from "lucide-react";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { useTodasPessoas, usePessoasAtivasLista } from "../../core/pessoas/PessoasContext";
@@ -9,10 +9,11 @@ import { type TarefaProjeto, type TarefaSubprojeto, type TarefaVisibilidade, typ
 import { PessoasMultiPicker, UsuariosAutorizadosPicker, ehAreaPrazos, AreaIcone, AREA_ICONES, nomeIconeArea } from "./helpers";
 import { ImportadorModal } from "./modais";
 
-export function AdminView({ projetos, subprojetos, pessoaId }: {
+export function AdminView({ projetos, subprojetos, pessoaId, onVoltar }: {
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
   pessoaId: string;
+  onVoltar?: () => void;
 }) {
   const [criandoProjeto, setCriandoProjeto] = useState(false);
   const [editandoId, setEditandoId] = useState<string | null>(null);
@@ -57,6 +58,11 @@ export function AdminView({ projetos, subprojetos, pessoaId }: {
 
   return (
     <div>
+      {onVoltar && (
+        <button type="button" onClick={onVoltar} className="inline-flex items-center gap-1 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 mb-3">
+          <ChevronLeft size={16} /> Voltar
+        </button>
+      )}
       {/* Sub-tabs: separa CRUD de projetos da config de automações */}
       <div className="flex gap-1 mb-3 border-b border-gray-200 dark:border-gray-800">
         <button

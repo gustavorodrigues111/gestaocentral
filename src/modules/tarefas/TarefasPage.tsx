@@ -672,6 +672,7 @@ export function TarefasPage() {
           projetos={projetos}
           subprojetos={subprojetos}
           pessoaId={pessoa?.id || ""}
+          onVoltar={() => setTab("minhas")}
         />
       )}
 
