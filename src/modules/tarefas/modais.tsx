@@ -9,7 +9,29 @@ import { Button } from "../../core/ui/Button";
 import { db } from "../../core/firebase/config";
 import { useTodasPessoas, usePessoasAtivasLista } from "../../core/pessoas/PessoasContext";
 import { criarTarefa, softDeleteTarefa, marcarSubtarefa, adicionarComentario, atualizarTarefa } from "./repository";
-import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type TarefaStatus, type TarefaPrioridade, type TarefaVisibilidade, type TarefaAnexo, type Subtarefa, type Restaurant, type PrazoRecorrencia, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL, TAREFA_VISIBILIDADE_LABEL } from "../../core/types";
+import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type TarefaStatus, type TarefaPrioridade, type TarefaVisibilidade, type TarefaAnexo, type Subtarefa, type Restaurant, type Endereco, type PrazoRecorrencia, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL, TAREFA_VISIBILIDADE_LABEL } from "../../core/types";
+import { collection, onSnapshot, query, where } from "firebase/firestore";
+
+// Seletor de ENDEREÇO da empresa (fonte única `enderecos`) — reusado nos modais.
+// Lista os endereços das empresas selecionadas na tarefa. Opcional (Nenhum).
+function EnderecoPicker({ restaurantIds, value, onChange }: { restaurantIds: string[]; value: string; onChange: (id: string) => void }) {
+  const [enderecos, setEnderecos] = useState<Endereco[]>([]);
+  const ids = restaurantIds.filter(Boolean).slice(0, 10);
+  useEffect(() => {
+    if (!ids.length) { setEnderecos([]); return; }
+    return onSnapshot(query(collection(db, "enderecos"), where("restaurantId", "in", ids)), s => setEnderecos(s.docs.map(d => ({ id: d.id, ...d.data() }) as Endereco).filter(e => e.ativo !== false)), () => setEnderecos([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [ids.join(",")]);
+  if (!restaurantIds.length) return <span className="text-[11px] text-gray-400">Escolha uma empresa primeiro</span>;
+  const chip = (on: boolean) => `px-2.5 py-1 text-xs rounded-full border ${on ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`;
+  return (
+    <div className="flex flex-wrap gap-1.5 py-1">
+      <button type="button" onClick={() => onChange("")} className={chip(!value)}>Nenhum</button>
+      {enderecos.map(e => <button key={e.id} type="button" onClick={() => onChange(e.id)} className={chip(value === e.id)}>{e.apelido}</button>)}
+      {enderecos.length === 0 && <span className="text-[11px] text-gray-400">Sem endereços nessa empresa — cadastre em Configurações › Dados da empresa.</span>}
+    </div>
+  );
+}
 import { RecorrenciaEditor } from "../prazos/PrazoModal";
 import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
@@ -99,6 +121,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
   const [prazo, setPrazo] = useState(prazoInicial || "");
   const [prioridade, setPrioridade] = useState<TarefaPrioridade>("normal");
   const [restaurantIds, setRestaurantIds] = useState<string[]>([]);
+  const [enderecoId, setEnderecoId] = useState("");
   const [usarTemplate, setUsarTemplate] = useState(true);
   const [puxando, setPuxando] = useState<{ tipo: "ideia" | "ocorrencia"; id: string; titulo: string } | null>(puxandoInicial || null);
   const [puxarAberto, setPuxarAberto] = useState(false);
@@ -222,6 +245,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
         ? observadoresIds.map(id => pessoasLista.find(p => p.id === id)?.nome || "").filter(Boolean)
         : undefined,
       restaurantIds: restaurantIds.length ? restaurantIds : undefined,
+      enderecoId: enderecoId || undefined,
       prazo: (prazo || maxPrazoChecklist) || null,
       status: "a_fazer" as const,
       prioridade,
@@ -450,6 +474,11 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
                       </label>
                     ))}
                   </div>
+                </FieldRow>
+              )}
+              {restaurantIds.length > 0 && (
+                <FieldRow label="Endereço (opcional)">
+                  <EnderecoPicker restaurantIds={restaurantIds} value={enderecoId} onChange={setEnderecoId} />
                 </FieldRow>
               )}
             </>)}
@@ -920,6 +949,15 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
                 {restaurants.length === 0 && <span className="text-xs text-gray-400">—</span>}
               </div>
             </FieldRow>
+            {(tarefa.restaurantIds || []).length > 0 && (
+              <FieldRow label="Endereço (opcional)">
+                <EnderecoPicker
+                  restaurantIds={tarefa.restaurantIds || []}
+                  value={tarefa.enderecoId || ""}
+                  onChange={(id) => salvarCampo("enderecoId", id || undefined, "endereço")}
+                />
+              </FieldRow>
+            )}
             <FieldRow label="Visibilidade">
               <div className="space-y-1.5">
                 <select

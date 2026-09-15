@@ -5052,6 +5052,7 @@ export type Tarefa = {
   // tarefa em "Minhas Tarefas" do responsável de qualquer subtarefa.
   subtarefaResponsaveisIds?: string[];
   restaurantIds?: string[];     // empresa(s) — multi-select opcional
+  enderecoId?: string | null;   // endereço da empresa (coleção `enderecos`) — opcional
   prazo?: string | null;
   ordemDia?: number;                  // ordem manual dentro do dia (arrasto vertical no calendário)
   inicio?: string | null;

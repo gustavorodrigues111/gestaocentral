@@ -86,7 +86,9 @@ export function TarefasPage() {
   // aqui só LEMOS e mostramos junto. Filtro: só tarefas · só prazos · ambos.
   const isMasterTP = !!pessoa?.isMaster;
   const meRestsTP = useMemo(() => (pessoa?.restaurantIds || []).filter(Boolean).slice(0, 10), [pessoa?.restaurantIds]);
-  const prazos = usePrazos(ridAtivo || undefined, { isMaster: isMasterTP, meRests: meRestsTP, todasEmpresas: false });
+  // Módulo "todos os restaurantes": prazos de TODAS as empresas que a pessoa
+  // acessa (não só a logada). Cada item mostra/edita a empresa pelo chip.
+  const prazos = usePrazos(ridAtivo || undefined, { isMaster: isMasterTP, meRests: meRestsTP, todasEmpresas: true });
   const [filtroTipo, setFiltroTipo] = useState<"tarefas" | "prazos" | "ambos">("ambos");
   const SUF_PRAZO: Record<PrazoTipo, string> = { conta: "Conta", tecnico: "Tecnico", trabalhista: "Trabalhista", avulso: "Avulso" };
   const podeCriarPrazo = isMasterTP || (["conta", "tecnico", "trabalhista", "avulso"] as PrazoTipo[]).some((t) => canAcaoRid("prazos", `gerir${SUF_PRAZO[t]}`));
