@@ -10,6 +10,9 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { UNIDADES_LABEL, UNIDADES_LISTA } from "../../core/types";
 import type { Fornecedor, Insumo, UnidadeMedida } from "../../core/types";
 
+// Opção de preço/pacote de UM fornecedor, ao juntar produtos diferentes.
+export type OpcaoPreco = { fornecedor: string; precoPacote?: number; fator: number; unidade: UnidadeMedida };
+
 type Props = {
   insumo: Insumo | null;
   fornecedores: Fornecedor[];
@@ -24,6 +27,9 @@ type Props = {
   nomesOriginais?: string[];
   // Clicar numa grafia → abre a última nota onde ela aparece (anexo + itens).
   onVerNota?: (grafia: string) => void;
+  // Ao JUNTAR produtos de fornecedores diferentes: opções de preço/pacote pra
+  // escolher qual prevalece (uma por fornecedor/grupo).
+  opcoesPreco?: OpcaoPreco[];
   // Pré-preenchimento ao criar (ex.: sugestão vinda do Recebimento).
   preset?: Partial<Insumo> | null;
   onExcluir?: (insumo: Insumo) => void;   // excluir de dentro do modo "ver"
@@ -36,7 +42,7 @@ const CATEGORIAS_SUGERIDAS = [
   "Mercearia", "Limpeza", "Descartáveis", "Outros",
 ];
 
-export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExistentes, autoReavaliar, nomesOriginais, onVerNota, preset, onExcluir, onClose }: Props) {
+export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExistentes, autoReavaliar, nomesOriginais, onVerNota, opcoesPreco, preset, onExcluir, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !insumo;
   const base = insumo ?? preset ?? null;   // ao criar, usa o preset da sugestão
@@ -96,6 +102,16 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [revisandoIa, setRevisandoIa] = useState(false);
+  // Ao juntar fornecedores diferentes: qual opção de preço/pacote prevalece.
+  const [opcaoSel, setOpcaoSel] = useState(0);
+  function aplicarOpcao(i: number) {
+    const o = opcoesPreco?.[i]; if (!o) return;
+    setOpcaoSel(i);
+    const precoStr = o.precoPacote != null ? o.precoPacote.toFixed(2).replace(".", ",") : "";
+    if (o.fator > 1) { setEhPacote(true); setFatorCompra(String(o.fator)); setPrecoPacote(precoStr); }
+    else { setEhPacote(false); setPrecoEstimado(precoStr); }
+    if (o.fornecedor) setFornecedorNome(o.fornecedor);
+  }
 
   // Reavaliação sob demanda: reroda a IA neste produto pra confirmar/ajustar
   // categoria e unidade. Não roda sozinho — a leitura já vem do cache das
@@ -355,6 +371,24 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
               <datalist id="forn-modal-sug">{fornOpcoes.map((n) => <option key={n} value={n} />)}</datalist>
               <p className="text-[10px] text-gray-400 mt-1">Escolhe um existente ou digita um novo — ele é criado ao salvar.</p>
             </div>
+
+            {(opcoesPreco?.length ?? 0) > 1 && (
+              <div className="rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-900/15 p-2.5 space-y-1.5">
+                <div className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">Qual preço prevalece? (fornecedores diferentes)</div>
+                <div className="space-y-1">
+                  {opcoesPreco!.map((o, i) => (
+                    <label key={i} className="flex items-center gap-2 text-[13px] cursor-pointer">
+                      <input type="radio" name="opcaoPreco" checked={opcaoSel === i} onChange={() => aplicarOpcao(i)} />
+                      <span className="text-gray-800 dark:text-gray-100">
+                        <b>{o.fornecedor || "—"}</b> · {o.precoPacote != null ? `R$ ${o.precoPacote.toFixed(2).replace(".", ",")}` : "sem preço"}
+                        {o.fator > 1 ? <span className="text-gray-500"> — pacote {o.fator}× (unid. R$ {o.precoPacote != null ? (o.precoPacote / o.fator).toFixed(2).replace(".", ",") : "—"})</span> : <span className="text-gray-500"> — avulso</span>}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
             <label className="flex items-center gap-2 text-sm cursor-pointer">
               <input type="checkbox" checked={ehPacote} onChange={(e) => {
                 const on = e.target.checked;

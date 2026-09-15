@@ -11,7 +11,7 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { UNIDADES_LABEL } from "../../core/types";
 import type { Contagem, Fornecedor, Insumo, InsumoFornecedor, RecebimentoNota, UnidadeMedida } from "../../core/types";
-import { InsumoModal } from "./InsumoModal";
+import { InsumoModal, type OpcaoPreco } from "./InsumoModal";
 import { LancarContagensTab } from "./LancarContagensTab";
 import { agruparSugestoes, normalizar, tituloCaso, levenshtein, type SugestaoInsumo, type GrupoSugerido } from "./sugestoesRecebimento";
 import { MesclarInsumosModal } from "./MesclarInsumosModal";
@@ -44,6 +44,8 @@ export function ContagensPage() {
   const [autoReav, setAutoReav] = useState(false);
   // Nomes ORIGINAIS das notas do produto sugerido (grafias) — pra comparar no modal.
   const [presetNomesOrig, setPresetNomesOrig] = useState<string[] | undefined>(undefined);
+  // Ao juntar: opções de preço/pacote por fornecedor (o usuário escolhe qual usar).
+  const [presetOpcoes, setPresetOpcoes] = useState<OpcaoPreco[] | undefined>(undefined);
   // Nota aberta ao clicar numa grafia (última onde o produto aparece).
   const [notaView, setNotaView] = useState<{ nota: RecebimentoNota; grafia: string } | null>(null);
   // Última nota (recebimento) que contém a grafia — casa por descrição normalizada.
@@ -348,6 +350,7 @@ export function ContagensPage() {
     const precoUnit = g.precoEstimado != null && fator ? g.precoEstimado / fator : g.precoEstimado;
     setPreset({ nome: g.nome, categoria: g.categoria, unidade: g.unidade, unidadeOutroLabel: g.unidadeOutroLabel, precoEstimado: precoUnit, fatorCompra: fator, aliases: g.aliases, fornecedores: fornList, fornecedorPreferredId: fornList[0]?.fornecedorId || null });
     setPresetNomesOrig(grafiasDe([g]));
+    setPresetOpcoes(undefined);
     setAutoReav(false);
     setEditing("new");
   }
@@ -372,6 +375,10 @@ export function ContagensPage() {
     const precoUnit = dom.precoEstimado != null && fator ? dom.precoEstimado / fator : dom.precoEstimado;
     setPreset({ nome: dom.nome, categoria: dom.categoria, unidade: dom.unidade, unidadeOutroLabel: dom.unidadeOutroLabel, precoEstimado: precoUnit, fatorCompra: fator, aliases, fornecedores: fornList, fornecedorPreferredId: fornList[0]?.fornecedorId || null });
     setPresetNomesOrig(grafiasDe(grupos));   // todas as grafias dos grupos unidos
+    // Opções de preço/pacote por fornecedor — o usuário escolhe no modal qual prevalece.
+    setPresetOpcoes([...grupos]
+      .sort((a, b) => b.ocorrencias - a.ocorrencias)
+      .map(g => ({ fornecedor: tituloCaso(g.fornecedores[0]?.nome || ""), precoPacote: g.precoEstimado, fator: g.fator && g.fator > 1 ? g.fator : 1, unidade: g.unidade })));
     setAutoReav(true);   // ao juntar, a IA decide nome/categoria/unidade do produto unido
     setEditing("new");
   }
@@ -596,7 +603,7 @@ export function ContagensPage() {
           {podeConfig && (
             <button
               type="button"
-              onClick={() => { setPreset(null); setAutoReav(false); setPresetNomesOrig(undefined); setEditing("new"); }}
+              onClick={() => { setPreset(null); setAutoReav(false); setPresetNomesOrig(undefined); setPresetOpcoes(undefined); setEditing("new"); }}
               className="w-full inline-flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-indigo-300 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 py-2.5 text-sm font-semibold hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
             >
               <Plus size={16} /> Novo insumo
@@ -754,8 +761,9 @@ export function ContagensPage() {
           autoReavaliar={autoReav}
           nomesOriginais={presetNomesOrig}
           onVerNota={abrirNotaDaGrafia}
+          opcoesPreco={presetOpcoes}
           onExcluir={excluirInsumo}
-          onClose={() => { setEditing(null); setPreset(null); setAutoReav(false); setPresetNomesOrig(undefined); }}
+          onClose={() => { setEditing(null); setPreset(null); setAutoReav(false); setPresetNomesOrig(undefined); setPresetOpcoes(undefined); }}
         />
       )}
 
