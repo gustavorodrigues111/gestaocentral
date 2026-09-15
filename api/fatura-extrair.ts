@@ -11,7 +11,7 @@ export const config = { maxDuration: 300 };
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const MODEL = "claude-opus-4-8";
 const DOWNLOAD_TIMEOUT_MS = 30_000;   // baixar o PDF do Storage — se travar aqui, é rede, não a IA
-const IA_TIMEOUT_MS = 285_000;        // leitura+classificação pela IA (fatura grande com vários cartões pode passar de 1min)
+const IA_TIMEOUT_MS = 140_000;        // por chamada — cabe 2 (leitura + reconciliação) dentro do maxDuration de 300s
 
 type VercelReq = { method?: string; headers?: Record<string, string | string[] | undefined>; body?: unknown };
 type VercelRes = { status: (code: number) => VercelRes; json: (body: unknown) => void };
@@ -54,6 +54,16 @@ function montarPrompt(cartoes: string[], empresaPropria: string, empresas: strin
   "\nResponda SOMENTE um objeto JSON (sem texto antes/depois): { \"cartao\": \"...\"|null, \"vencimento\": \"YYYY-MM-DD\"|null, \"totalFatura\": number|null, \"lancamentos\": [ { \"data\": \"DD/MM\", \"descricao\": \"...\", \"valor\": number, \"parcela\": \"XX/YY\"|null, \"destino\": \"propria\"|\"<nome empresa>\", \"categoria\": \"<nome>\"|null, \"duvida\": true|false, \"duvidaMotivo\": \"<motivo>\"|null } ] }";
 }
 
+// Prompt da 2ª passada: a soma ficou abaixo do total → a IA pulou lançamentos.
+// Manda o que já achou (pra não repetir) e pede SÓ o que faltou.
+function montarPromptReconc(jaTem: Array<{ data: string; descricao: string; valor?: number }>, total: number, gap: number, empresaPropria: string, empresas: string[], categorias: string[]): string {
+  const propria = empresaPropria || "a própria entidade";
+  return "Esta é a MESMA fatura de cartão que você acabou de ler. Você JÁ extraiu estes lançamentos (NÃO repita NENHUM deles): " + JSON.stringify(jaTem.slice(0, 400)) +
+  ".\nA soma deles dá R$ " + (total - gap).toFixed(2) + ", mas o TOTAL de despesas da fatura é R$ " + total.toFixed(2) + " — ou seja, FALTAM R$ " + gap.toFixed(2) + ". Você PULOU lançamentos. Quase sempre é: a seção 'Despesas'/'à vista' (compras não parceladas), a CONTINUAÇÃO de uma seção na PÁGINA SEGUINTE, ou um cartão adicional numa grade compacta.\n" +
+  "Releia o PDF INTEIRO, com atenção redobrada às seções que você pode ter pulado, e devolva SOMENTE os lançamentos que FALTARAM (os que NÃO estão na lista acima). Mesmas regras: data 'DD/MM'; descricao (nome da loja, SEM a parcela grudada); valor (número, ponto decimal; estorno/crédito NEGATIVO); parcela ('XX/YY'|null); destino ('propria' pra " + propria + (empresas.length ? "', ou o nome exato de: " + JSON.stringify(empresas) : "'") + "); categoria (" + (categorias.length ? "uma de " + JSON.stringify(categorias) + " ou null" : "null") + "); duvida. NÃO inclua subtotais ('VALOR TOTAL', 'Total desta fatura', 'Total Despesas/Débitos'), nem o pagamento da própria fatura. Se REALMENTE não faltar nada, devolva lancamentos vazio.\n" +
+  "Responda SOMENTE JSON: { \"lancamentos\": [ { \"data\": \"DD/MM\", \"descricao\": \"...\", \"valor\": number, \"parcela\": \"XX/YY\"|null, \"destino\": \"propria\"|\"<empresa>\", \"categoria\": \"<nome>\"|null, \"duvida\": true|false, \"duvidaMotivo\": \"<motivo>\"|null } ] }";
+}
+
 export default async function handler(req: VercelReq, res: VercelRes): Promise<void> {
   try { await requireUser(req); } catch (e) {
     res.status(e instanceof AuthError ? e.status : 401).json({ error: e instanceof Error ? e.message : "Não autorizado." });
@@ -91,31 +101,54 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
     res.status(502).json({ error: msg }); return;
   } finally { clearTimeout(dlTimer); }
 
-  // Leitura+classificação pela IA: teto longo (fatura grande com vários cartões pode passar de 1min).
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), IA_TIMEOUT_MS);
+  // Uma chamada à IA (PDF + prompt) → JSON cru. Timeout próprio por chamada.
+  type LancRaw = { data?: string; descricao?: string; valor?: number; parcela?: string | null; destino?: string | null; categoria?: string | null; duvida?: boolean; duvidaMotivo?: string | null };
+  async function chamarIA(promptText: string): Promise<{ cartao?: string | null; vencimento?: string | null; totalFatura?: number | null; lancamentos?: LancRaw[] }> {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), IA_TIMEOUT_MS);
+    try {
+      const resp = await fetch(ANTHROPIC_URL, {
+        method: "POST",
+        headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
+        body: JSON.stringify({ model: MODEL, max_tokens: 16000, messages: [{ role: "user", content: [
+          { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } },
+          { type: "text", text: promptText },
+        ] }] }),
+        signal: ctrl.signal,
+      });
+      const txt = await resp.text();
+      if (!resp.ok) throw new Error(`Claude retornou HTTP ${resp.status}. ${txt.slice(0, 300)}`);
+      const json = JSON.parse(txt) as { content?: Array<{ type?: string; text?: string }> };
+      const textOut = (json.content || []).filter((b) => b.type === "text").map((b) => b.text || "").join("");
+      const m = textOut.match(/\{[\s\S]*\}/);
+      if (!m) throw new Error("A IA não retornou JSON.");
+      return JSON.parse(m[0]);
+    } finally { clearTimeout(timer); }
+  }
+  const chaveLanc = (l: LancRaw) => `${String(l.descricao || "").toLowerCase().trim()}|${Number(l.valor)}|${String(l.data || "")}`;
+
   try {
-    const payload = {
-      model: MODEL,
-      max_tokens: 16000,
-      messages: [{ role: "user", content: [
-        { type: "document", source: { type: "base64", media_type: "application/pdf", data: b64 } },
-        { type: "text", text: montarPrompt(cartoes, empresaPropria, empresas, categorias, historico) },
-      ] }],
-    };
-    const resp = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: { "x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: ctrl.signal,
-    });
-    const txt = await resp.text();
-    if (!resp.ok) { res.status(502).json({ error: `Claude retornou HTTP ${resp.status}. ${txt.slice(0, 300)}` }); return; }
-    const json = JSON.parse(txt) as { content?: Array<{ type?: string; text?: string }> };
-    const textOut = (json.content || []).filter((b) => b.type === "text").map((b) => b.text || "").join("");
-    const m = textOut.match(/\{[\s\S]*\}/);
-    if (!m) { res.status(502).json({ error: "A IA não retornou JSON." }); return; }
-    const parsed = JSON.parse(m[0]) as { cartao?: string | null; vencimento?: string | null; totalFatura?: number | null; lancamentos?: Array<{ data?: string; descricao?: string; valor?: number; parcela?: string | null; destino?: string | null; categoria?: string | null; duvida?: boolean; duvidaMotivo?: string | null }> };
+    const parsed = await chamarIA(montarPrompt(cartoes, empresaPropria, empresas, categorias, historico));
+    const lancRaw: LancRaw[] = Array.isArray(parsed.lancamentos) ? parsed.lancamentos : [];
+    const total = typeof parsed.totalFatura === "number" ? parsed.totalFatura : null;
+
+    // 2ª passada — RECONCILIAÇÃO: se a soma dos gastos ficou bem abaixo do total,
+    // a IA pulou alguma seção (quase sempre 'Despesas'/'à vista' ou continuação de
+    // página). Pede SÓ o que faltou, sem repetir. Best-effort (se falhar, segue).
+    if (total && total > 0) {
+      const somaPos = lancRaw.filter((l) => typeof l.valor === "number" && (l.valor as number) > 0).reduce((s, l) => s + (l.valor as number), 0);
+      const gap = total - somaPos;
+      if (gap > 50 && gap > total * 0.05) {
+        try {
+          const jaTem = lancRaw.filter((l) => l && l.descricao).map((l) => ({ data: l.data || "", descricao: String(l.descricao), valor: l.valor }));
+          const parsed2 = await chamarIA(montarPromptReconc(jaTem, total, gap, empresaPropria, empresas, categorias));
+          const novos: LancRaw[] = Array.isArray(parsed2.lancamentos) ? parsed2.lancamentos : [];
+          const existentes = new Set(lancRaw.map(chaveLanc));
+          for (const n of novos) { if (n && n.descricao && typeof n.valor === "number" && !existentes.has(chaveLanc(n))) { lancRaw.push(n); existentes.add(chaveLanc(n)); } }
+        } catch { /* reconciliação é best-effort */ }
+      }
+    }
+    parsed.lancamentos = lancRaw;
     // Resolve destino/categoria sugeridos contra as listas cadastradas (case-insensitive).
     const acharEmpresa = (nome?: string | null) => (nome && nome.toLowerCase() !== "propria" && nome.toLowerCase() !== "minha") ? (empresas.find((e) => e.toLowerCase() === String(nome).toLowerCase().trim()) || null) : null;
     const acharCategoria = (nome?: string | null) => nome ? (categorias.find((c) => c.toLowerCase() === String(nome).toLowerCase().trim()) || null) : null;
