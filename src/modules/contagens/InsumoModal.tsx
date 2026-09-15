@@ -22,6 +22,8 @@ type Props = {
   // Nomes ORIGINAIS das notas (grafias antes da limpeza da IA) — pra comparar e
   // reavaliar do original. O 1º é o mais frequente (usado no "reavaliar do original").
   nomesOriginais?: string[];
+  // Clicar numa grafia → abre a última nota onde ela aparece (anexo + itens).
+  onVerNota?: (grafia: string) => void;
   // Pré-preenchimento ao criar (ex.: sugestão vinda do Recebimento).
   preset?: Partial<Insumo> | null;
   onExcluir?: (insumo: Insumo) => void;   // excluir de dentro do modo "ver"
@@ -34,7 +36,7 @@ const CATEGORIAS_SUGERIDAS = [
   "Mercearia", "Limpeza", "Descartáveis", "Outros",
 ];
 
-export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExistentes, autoReavaliar, nomesOriginais, preset, onExcluir, onClose }: Props) {
+export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExistentes, autoReavaliar, nomesOriginais, onVerNota, preset, onExcluir, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !insumo;
   const base = insumo ?? preset ?? null;   // ao criar, usa o preset da sugestão
@@ -246,7 +248,14 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
               <div className="flex items-start justify-between gap-2 flex-wrap">
                 <span className="text-[11px] text-amber-800 dark:text-amber-300">
                   {nomesOriginais!.length > 1 ? `Nomes na nota (${nomesOriginais!.length}):` : "Original da nota:"}{" "}
-                  {nomesOriginais!.map((o, i) => <b key={i}>{i > 0 ? " · " : ""}{o}</b>)}
+                  {nomesOriginais!.map((o, i) => (
+                    <span key={i}>
+                      {i > 0 ? " · " : ""}
+                      {onVerNota
+                        ? <button type="button" onClick={() => onVerNota(o)} title="Ver a última nota onde aparece (anexo + itens)" className="font-semibold underline decoration-dotted hover:text-indigo-600 dark:hover:text-indigo-400">{o}</button>
+                        : <b>{o}</b>}
+                    </span>
+                  ))}
                 </span>
                 {difere && (
                   <div className="inline-flex items-center gap-2 shrink-0">

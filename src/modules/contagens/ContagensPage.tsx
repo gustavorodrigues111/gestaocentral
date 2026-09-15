@@ -15,6 +15,7 @@ import { InsumoModal } from "./InsumoModal";
 import { LancarContagensTab } from "./LancarContagensTab";
 import { agruparSugestoes, normalizar, tituloCaso, levenshtein, type SugestaoInsumo, type GrupoSugerido } from "./sugestoesRecebimento";
 import { MesclarInsumosModal } from "./MesclarInsumosModal";
+import { NotaViewModal } from "./NotaViewModal";
 import { SugeridosTabela, type EdicaoGrupo } from "./SugeridosTabela";
 import { PageContainer } from "../../core/ui/PageContainer";
 
@@ -43,6 +44,16 @@ export function ContagensPage() {
   const [autoReav, setAutoReav] = useState(false);
   // Nomes ORIGINAIS das notas do produto sugerido (grafias) — pra comparar no modal.
   const [presetNomesOrig, setPresetNomesOrig] = useState<string[] | undefined>(undefined);
+  // Nota aberta ao clicar numa grafia (última onde o produto aparece).
+  const [notaView, setNotaView] = useState<{ nota: RecebimentoNota; grafia: string } | null>(null);
+  // Última nota (recebimento) que contém a grafia — casa por descrição normalizada.
+  function abrirNotaDaGrafia(grafia: string) {
+    const alvo = normalizar(grafia);
+    const cand = recebimentos
+      .filter(n => (n.itens || []).some(it => normalizar(it.descricao || "") === alvo))
+      .sort((a, b) => (b.recebidoEm || "").localeCompare(a.recebidoEm || ""));
+    if (cand[0]) setNotaView({ nota: cand[0], grafia });
+  }
   // Grafias originais de um grupo, mais frequente primeiro (dedup por nome).
   const grafiasDe = (gs: GrupoSugerido[]): string[] => {
     const seen = new Set<string>(); const out: { nome: string; oc: number }[] = [];
@@ -742,12 +753,14 @@ export function ContagensPage() {
           categoriasExistentes={[...new Set(insumos.map(i => (i.categoria || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"))}
           autoReavaliar={autoReav}
           nomesOriginais={presetNomesOrig}
+          onVerNota={abrirNotaDaGrafia}
           onExcluir={excluirInsumo}
           onClose={() => { setEditing(null); setPreset(null); setAutoReav(false); setPresetNomesOrig(undefined); }}
         />
       )}
 
       {mesclando && <MesclarInsumosModal insumos={insumos} onClose={() => setMesclando(false)} />}
+      {notaView && <NotaViewModal nota={notaView.nota} grafia={notaView.grafia} onClose={() => setNotaView(null)} />}
     </PageContainer>
   );
 }
