@@ -22,11 +22,14 @@ import { ImoveisModal } from "../prazos/ImoveisModal";
 const TODAS_CATS: PrazoTipo[] = ["conta", "tecnico", "trabalhista", "avulso"];
 const SUF_CAT: Record<PrazoTipo, string> = { conta: "Conta", tecnico: "Tecnico", trabalhista: "Trabalhista", avulso: "Avulso" };
 
-export function PrazoInline({ rid, prazo, modo, onClose }: {
+export function PrazoInline({ rid, prazo, modo, onClose, onResolver, onAgendar, onRenovarExp }: {
   rid: string;
   prazo: Prazo | null;          // null = criar novo
   modo?: "ver" | "editar";
   onClose: () => void;
+  onResolver?: (p: Prazo) => void;
+  onAgendar?: (p: Prazo) => void;
+  onRenovarExp?: (p: Prazo, renovar: boolean) => void;
 }) {
   const { pessoa: me } = useAuth();
   const { can } = useCanAcao(rid);
@@ -76,6 +79,9 @@ export function PrazoInline({ rid, prazo, modo, onClose }: {
         onGerenciarImoveis={() => setShowImoveis(true)}
         onClose={onClose}
         onSalvar={salvarPrazo}
+        onResolver={onResolver}
+        onAgendar={onAgendar}
+        onRenovarExp={onRenovarExp}
       />
       {showImoveis && <ImoveisModal rid={rid} restauranteNome={activeRestaurant?.nome || ""} imoveis={imoveis} meId={me?.id || ""} onClose={() => setShowImoveis(false)} />}
     </>

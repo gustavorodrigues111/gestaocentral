@@ -128,6 +128,22 @@ export function TarefasPage() {
       alert("Laudo anexado. Clique em concluir de novo pra fechar o prazo.");
     } catch (e) { alert("Falha ao subir o laudo: " + (e instanceof Error ? e.message : "erro")); }
   };
+  // Experiência (45/90 dias): renovar = conclui só este marco (mantém o próximo);
+  // não renovar = encerra os DOIS prazos de experiência do empregado.
+  const decidirExperiencia = async (p: Prazo, renovar: boolean) => {
+    const empId = p.dados?.empregadoId;
+    const msg = renovar
+      ? `Renovar a experiência?\n\n"${p.titulo}"\nConclui este marco e mantém o próximo prazo em aberto.`
+      : `NÃO renovar a experiência?\n\n"${p.titulo}"\nEncerra os DOIS prazos (45 e 90 dias) deste empregado.`;
+    if (!window.confirm(msg)) return;
+    const now = new Date().toISOString();
+    const marcar = async (id: string) => { try { await updateDoc(doc(db, "prazos", id), sanitizeForFirestore({ status: "resolvido", resolvidoEm: hojeYmd(), resolvidoPor: pessoa?.id || null, resolvidoPorNome: pessoa?.nome || null, atualizadoEm: now })); } catch { /* doc ausente, ignora */ } };
+    await marcar(p.id);
+    if (!renovar && empId) {
+      const outroId = `prazo_trab_${empId}_${p.dados?.subtipoTrab === "exp45" ? "exp90" : "exp45"}`;
+      if (outroId !== p.id) await marcar(outroId);
+    }
+  };
   // Agendar a data de EXECUÇÃO (planejamento) — distinta do vencimento.
   const agendarPrazoDireto = async (p: Prazo) => {
     const atual = p.agendamento?.data || p.vencimento || "";
@@ -701,7 +717,7 @@ export function TarefasPage() {
         )
       )}
 
-      {prazoModal && <PrazoInline rid={ridAtivo || ""} prazo={prazoModal.prazo} modo={prazoModal.modo} onClose={() => setPrazoModal(null)} />}
+      {prazoModal && <PrazoInline rid={ridAtivo || ""} prazo={prazoModal.prazo} modo={prazoModal.modo} onClose={() => setPrazoModal(null)} onResolver={(p) => void resolverPrazoDireto(p)} onAgendar={(p) => void agendarPrazoDireto(p)} onRenovarExp={(p, r) => void decidirExperiencia(p, r)} />}
       <input ref={laudoInputRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void onLaudoEscolhido(f); }} />
 
     </PageContainer>

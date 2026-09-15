@@ -9,7 +9,7 @@ import { PRAZO_TIPO_LABEL, PRAZO_SUBTIPO_TRAB_LABEL } from "../../core/types";
 import { resumoRecorrencia } from "./recorrencia";
 import { ANTECEDENCIA_PADRAO } from "./logic";
 import { Stepper, DatePickerBR } from "./campos";
-import { Banknote, Wrench, Scale, Flag, House, FileText, CalendarDays, Pencil, TriangleAlert, Repeat, type LucideIcon } from "lucide-react";
+import { Banknote, Wrench, Scale, Flag, House, FileText, CalendarDays, Pencil, TriangleAlert, Repeat, Check, type LucideIcon } from "lucide-react";
 
 const ymdToBr = (ymd?: string) => { if (!ymd) return ""; const [a, m, d] = ymd.split("-"); return `${d}/${m}/${a}`; };
 const brToYmd = (br: string) => { const [d, m, a] = br.split("/"); return (d && m && a) ? `${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}` : ""; };
@@ -31,10 +31,14 @@ const chip = (on: boolean) => `px-3 py-1.5 text-xs font-medium rounded-full bord
 
 const TIPOS: Array<{ v: PrazoTipo; icon: LucideIcon }> = [{ v: "conta", icon: Banknote }, { v: "tecnico", icon: Wrench }, { v: "trabalhista", icon: Scale }, { v: "avulso", icon: Flag }];
 
-export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsaveisPorCat, imoveis, onGerenciarImoveis, onClose, onSalvar, modoInicial }: {
+export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsaveisPorCat, imoveis, onGerenciarImoveis, onClose, onSalvar, modoInicial, onResolver, onAgendar, onRenovarExp }: {
   rid: string; prazo: Prazo | null; tiposPermitidos: PrazoTipo[]; empregados: Empregado[]; responsaveisPorCat: Record<PrazoTipo, Pessoa[]>; imoveis: Imovel[];
   onGerenciarImoveis: () => void; onClose: () => void; onSalvar: (p: Prazo) => Promise<void>;
   modoInicial?: "ver" | "editar";
+  // Ações dentro do modo "ver" (opcionais — quem hospeda o modal implementa).
+  onResolver?: (p: Prazo) => void;                    // concluir / marcar pago
+  onAgendar?: (p: Prazo) => void;                     // agendar data de execução
+  onRenovarExp?: (p: Prazo, renovar: boolean) => void; // experiência: renovar × não renovar
 }) {
   const editando = !!prazo;
   // Prazo existente abre em modo LEITURA (detalhes) — edita só ao clicar Editar.
@@ -158,6 +162,27 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
           {prazo.agendamento?.data && <DetRow label="Agendado"><span className="inline-flex items-center gap-1"><CalendarDays size={13} /> {ymdToBr(prazo.agendamento.data)}</span></DetRow>}
           <DetRow label="Status">{prazo.status === "resolvido" ? "✓ Resolvido" : prazo.status === "agendado" ? <span className="inline-flex items-center gap-1"><CalendarDays size={13} /> Agendado</span> : "Aberto"}</DetRow>
         </div>
+        {(() => {
+          const podeGerir = tiposPermitidos.includes(prazo.tipo);
+          const emAberto = prazo.status !== "resolvido";
+          const ehExp = prazo.tipo === "trabalhista" && (prazo.dados?.subtipoTrab === "exp45" || prazo.dados?.subtipoTrab === "exp90");
+          if (!podeGerir || !emAberto) return null;
+          return (
+            <div className="flex flex-wrap gap-2 pt-3 mt-2 border-t border-gray-200 dark:border-gray-800">
+              {ehExp && onRenovarExp ? (
+                <>
+                  <Button onClick={() => { onRenovarExp(prazo, true); onClose(); }} className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700"><Check size={14} /> Renovar</Button>
+                  <Button variant="secondary" onClick={() => { onRenovarExp(prazo, false); onClose(); }} className="inline-flex items-center gap-1 text-rose-600 border-rose-300 dark:border-rose-800"><Flag size={14} /> Não renovar</Button>
+                </>
+              ) : (
+                <>
+                  {onResolver && <Button onClick={() => { onResolver(prazo); onClose(); }} className="inline-flex items-center gap-1 bg-emerald-600 hover:bg-emerald-700"><Check size={14} /> {prazo.tipo === "conta" ? "Marcar como pago" : "Concluir"}</Button>}
+                  {onAgendar && prazo.permiteAgendamento && <Button variant="secondary" onClick={() => { onAgendar(prazo); onClose(); }} className="inline-flex items-center gap-1"><CalendarDays size={14} /> Agendar</Button>}
+                </>
+              )}
+            </div>
+          );
+        })()}
         <div className="flex justify-end gap-2 pt-3 mt-2 border-t border-gray-200 dark:border-gray-800">
           <Button variant="secondary" onClick={onClose}>Fechar</Button>
           <Button onClick={() => setModo("editar")} className="inline-flex items-center gap-1"><Pencil size={14} /> Editar</Button>
