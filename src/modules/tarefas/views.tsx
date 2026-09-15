@@ -23,6 +23,7 @@ export function ProjetosTopBar({
   tabAtual, projetoFiltroAtual, subFiltroAtual, minhasPendentes, resumo,
   projetos, subprojetos, tarefasProjeto,
   onAbrirMinhas, onAbrirTudo, onAbrirProjeto, onAbrirSubprojeto,
+  filtroTipo, onFiltroTipo,
 }: {
   tabAtual: string;
   projetoFiltroAtual: string;
@@ -36,7 +37,12 @@ export function ProjetosTopBar({
   onAbrirTudo: () => void;
   onAbrirProjeto: (id: string) => void;
   onAbrirSubprojeto: (projetoId: string, subId: string) => void;
+  // Seletor Tarefas · Prazos · Ambos (pill teal, ao lado do escopo "Minhas").
+  filtroTipo?: "tarefas" | "prazos" | "ambos";
+  onFiltroTipo?: (v: "tarefas" | "prazos" | "ambos") => void;
 }) {
+  const [tipoAberto, setTipoAberto] = useState(false);
+  const TIPO_LABEL: Record<"tarefas" | "prazos" | "ambos", string> = { tarefas: "Tarefas", prazos: "Prazos", ambos: "Ambos" };
   const ativas = (ts: Tarefa[]) => ts.filter(t => t.status !== "concluida" && t.status !== "cancelada").length;
   // A área "Prazos" já sai filtrada na fonte (módulo Prazos dedicado); mantém
   // defesa-em-profundidade caso projetos venha de outra origem.
@@ -80,6 +86,24 @@ export function ProjetosTopBar({
           </>
         )}
       </div>
+        {onFiltroTipo && filtroTipo && (tabAtual === "minhas" || tabAtual === "tudo") && (
+          <div className="relative inline-block">
+            <button type="button" onClick={() => setTipoAberto((v) => !v)} className="shrink-0 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-sm font-medium border-teal-500 bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300 min-w-[120px] justify-between">
+              <span className="inline-flex items-center gap-1.5"><SlidersHorizontal size={14} /> {TIPO_LABEL[filtroTipo]}</span>
+              <ChevronDown size={15} className="opacity-60 shrink-0" />
+            </button>
+            {tipoAberto && (
+              <>
+                <div className="fixed inset-0 z-10" onClick={() => setTipoAberto(false)} />
+                <div className="absolute left-0 mt-1 z-20 w-40 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1">
+                  {(["ambos", "tarefas", "prazos"] as const).map((k) => (
+                    <button key={k} type="button" className={itemCls} onClick={() => { onFiltroTipo(k); setTipoAberto(false); }}>{TIPO_LABEL[k]}</button>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
         {resumo && <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{resumo}</span>}
       </div>
 

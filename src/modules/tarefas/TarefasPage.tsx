@@ -89,15 +89,6 @@ export function TarefasPage() {
   const [prazoModal, setPrazoModal] = useState<{ prazo: Prazo | null; modo?: "ver" | "editar" } | null>(null);
   const [novoMenuAberto, setNovoMenuAberto] = useState(false);
   const abrirPrazo = (p: Prazo) => setPrazoModal({ prazo: p, modo: "ver" });
-  // Controle segmentado (Tarefas · Prazos · Ambos) — aparece só na visão LISTA
-  // (nesta fase os prazos ainda não entram no calendário/kanban).
-  const filtroTipoCtrl = (
-    <div className="inline-flex rounded-lg bg-gray-100 dark:bg-gray-800 p-0.5">
-      {([["tarefas", "Tarefas"], ["prazos", "Prazos"], ["ambos", "Ambos"]] as const).map(([k, lbl]) => (
-        <button key={k} type="button" onClick={() => setFiltroTipo(k)} className={`px-2.5 py-1 text-xs font-medium rounded-md ${filtroTipo === k ? "bg-white dark:bg-gray-900 text-indigo-700 dark:text-indigo-300 shadow-sm" : "text-gray-500"}`}>{lbl}</button>
-      ))}
-    </div>
-  );
 
   const [projetos, setProjetos] = useState<TarefaProjeto[]>([]);
   const [subprojetos, setSubprojetos] = useState<TarefaSubprojeto[]>([]);
@@ -382,6 +373,8 @@ export function TarefasPage() {
       <div>
         <ProjetosTopBar
           tabAtual={tab}
+          filtroTipo={filtroTipo}
+          onFiltroTipo={setFiltroTipo}
           projetoFiltroAtual={tab === "projeto" ? projetoFiltro : ""}
           subFiltroAtual={subFiltro}
           minhasPendentes={minhas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length}
@@ -417,7 +410,6 @@ export function TarefasPage() {
           <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
             {buscaInput}
             <div className="flex-1" />
-            <div className="[&>div]:!mb-0">{filtroTipoCtrl}</div>
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
             {/* No mobile+calendário o +/engrenagem vão pra frente do seletor de semana (dentro do CalendarioView), então some daqui. */}
             <div className={viewMinhas === "calendario" ? "hidden sm:block" : "contents"}>{acoesHeader}</div>
@@ -475,7 +467,6 @@ export function TarefasPage() {
           <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
             {buscaInput}
             <div className="flex-1" />
-            <div className="[&>div]:!mb-0">{filtroTipoCtrl}</div>
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
             {/* No mobile+calendário o +/engrenagem vão pra frente do seletor de semana (dentro do CalendarioView), então some daqui. */}
             <div className={viewMinhas === "calendario" ? "hidden sm:block" : "contents"}>{acoesHeader}</div>
@@ -516,7 +507,6 @@ export function TarefasPage() {
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{todasTarefas.length} tarefa(s) · {todasTarefas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
             <button type="button" onClick={() => setTab("minhas")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">← Minhas</button>
             <div className="flex-1" />
-            <div className="[&>div]:!mb-0">{filtroTipoCtrl}</div>
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
           </div>
           <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
