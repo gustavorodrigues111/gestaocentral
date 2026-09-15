@@ -5086,6 +5086,15 @@ export type Tarefa = {
   // este campo sempre que mexer em visibilidadeOverride ou projetoId.
   // Rules consultam só este campo (sem precisar de get() do projeto).
   visibilidadeEfetiva?: TarefaVisibilidade;
+  // Confidencialidade explícita (novo modelo). undefined/false = NÃO confidencial:
+  // todos os membros da área (projeto) veem. true = só responsável, co-resp,
+  // observadores e usuariosAutorizados veem (o criador só se for um deles).
+  // Docs antigos sem este campo caem na visibilidade legada (privado/escritório).
+  confidencial?: boolean;
+  // DENORMALIZAÇÃO pras Firestore rules: UIDs de auth que podem LER esta tarefa.
+  // Resolve pessoaId→uidVinculado no write (rules não conseguem mapear lista).
+  // Aditivo: a rule libera se uid ∈ visiveisUid OU pelas condições legadas.
+  visiveisUid?: string[];
   // Marcador opcional: tarefa é uma decisão de Experiência. Ativa o
   // botão "Não renovar — iniciar demissão" no DetalheModal.
   ehDecisaoExperiencia?: "1a" | "2a";

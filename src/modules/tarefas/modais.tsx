@@ -9,7 +9,7 @@ import { Button } from "../../core/ui/Button";
 import { db } from "../../core/firebase/config";
 import { useTodasPessoas, usePessoasAtivasLista } from "../../core/pessoas/PessoasContext";
 import { criarTarefa, softDeleteTarefa, marcarSubtarefa, adicionarComentario, atualizarTarefa } from "./repository";
-import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type TarefaStatus, type TarefaPrioridade, type TarefaVisibilidade, type TarefaAnexo, type Subtarefa, type Restaurant, type Endereco, type PrazoRecorrencia, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL, TAREFA_VISIBILIDADE_LABEL } from "../../core/types";
+import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type TarefaStatus, type TarefaPrioridade, type TarefaAnexo, type Subtarefa, type Restaurant, type Endereco, type PrazoRecorrencia, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL } from "../../core/types";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 
 // Seletor de ENDEREÇO da empresa (fonte única `enderecos`) — reusado nos modais.
@@ -122,6 +122,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
   const [prioridade, setPrioridade] = useState<TarefaPrioridade>("normal");
   const [restaurantIds, setRestaurantIds] = useState<string[]>([]);
   const [enderecoId, setEnderecoId] = useState("");
+  const [confidencial, setConfidencial] = useState(false);
   const [usarTemplate, setUsarTemplate] = useState(true);
   const [puxando, setPuxando] = useState<{ tipo: "ideia" | "ocorrencia"; id: string; titulo: string } | null>(puxandoInicial || null);
   const [puxarAberto, setPuxarAberto] = useState(false);
@@ -251,9 +252,10 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
       prioridade,
       origem: puxando ? ("manual" as const) : ("manual" as const),
       corHerdada: cor,
+      confidencial,
       // Visibilidade que a modal já conhece — evita leitura de rede na criação
       // (era a causa do atraso de segundos pra a tarefa aparecer).
-      visibilidadeEfetiva: projetoAtual?.visibilidade,
+      visibilidadeEfetiva: confidencial ? "privado" : projetoAtual?.visibilidade,
       subtarefas: subtarefasFinal,
       subtarefaResponsaveisIds: subRespIds.length ? subRespIds : undefined,
       recorrencia: rec || undefined,
@@ -481,6 +483,16 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
                   <EnderecoPicker restaurantIds={restaurantIds} value={enderecoId} onChange={setEnderecoId} />
                 </FieldRow>
               )}
+              <FieldRow label="Confidencial">
+                <label className="flex items-center gap-2 text-sm cursor-pointer py-1">
+                  <input type="checkbox" checked={confidencial} onChange={(e) => setConfidencial(e.target.checked)} />
+                  <span className="text-gray-600 dark:text-gray-300">
+                    {confidencial
+                      ? "Só responsável, co-responsáveis e autorizados veem."
+                      : "Todos os membros da área veem (padrão)."}
+                  </span>
+                </label>
+              </FieldRow>
             </>)}
           </div>
         </div>
@@ -958,21 +970,20 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
                 />
               </FieldRow>
             )}
-            <FieldRow label="Visibilidade">
+            <FieldRow label="Confidencial">
               <div className="space-y-1.5">
-                <select
-                  value={tarefa.visibilidadeOverride || ""}
-                  onChange={(e) => {
-                    const v = e.target.value as TarefaVisibilidade | "";
-                    salvarCampo("visibilidadeOverride", (v || undefined) as Tarefa["visibilidadeOverride"], "visibilidade");
-                  }}
-                  className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-2 py-1 text-sm cursor-pointer w-full"
-                >
-                  <option value="">— A mesma da área ({projeto && TAREFA_VISIBILIDADE_LABEL[projeto.visibilidade]}) —</option>
-                  {(Object.keys(TAREFA_VISIBILIDADE_LABEL) as TarefaVisibilidade[]).map(v =>
-                    <option key={v} value={v}>{TAREFA_VISIBILIDADE_LABEL[v]}</option>
-                  )}
-                </select>
+                <label className="flex items-center gap-2 text-sm cursor-pointer py-1">
+                  <input
+                    type="checkbox"
+                    checked={isConfidencial(tarefa, projeto)}
+                    onChange={(e) => salvarCampo("confidencial", e.target.checked, "confidencialidade")}
+                  />
+                  <span className="text-gray-600 dark:text-gray-300">
+                    {isConfidencial(tarefa, projeto)
+                      ? "Só responsável, co-responsáveis e autorizados veem."
+                      : "Todos os membros da área veem (padrão)."}
+                  </span>
+                </label>
                 <UsuariosAutorizadosPicker
                   ids={tarefa.usuariosAutorizados || []}
                   pessoas={pessoasLista}

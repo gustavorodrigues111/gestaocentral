@@ -40,7 +40,7 @@ export function podeVerTarefa(
 ): boolean {
   if (!pessoa) return false;
   if (pessoa.isMaster) return true;
-  if (tarefa.criadoPor === pessoa.id) return true;
+  // Pessoas explicitamente nomeadas SEMPRE veem — mesmo confidencial.
   if (tarefa.responsavelId === pessoa.id) return true;
   if ((tarefa.coResponsaveis || []).includes(pessoa.id)) return true;
   if ((tarefa.observadoresIds || []).includes(pessoa.id)) return true;
@@ -48,16 +48,24 @@ export function podeVerTarefa(
   if ((tarefa.subtarefaResponsaveisIds || []).includes(pessoa.id)) return true;
   if ((tarefa.subtarefas || []).some(s => s.responsavelId === pessoa.id)) return true;
   if ((tarefa.usuariosAutorizados || []).includes(pessoa.id)) return true;
-  if (projeto && (projeto.usuariosAutorizados || []).includes(pessoa.id)) return true;
 
-  const v = visibilidadeEfetiva(tarefa, projeto);
-  if (v === "publico" || v === "escritorio") return true;
-  // "privado" e qualquer valor legado (grupo_*) — só passa pelas regras acima
+  // NÃO confidencial: criador + todos os membros da área veem.
+  if (!isConfidencial(tarefa, projeto)) {
+    if (tarefa.criadoPor === pessoa.id) return true;
+    if (projeto && podeVerProjeto(projeto, pessoa)) return true;
+    const v = visibilidadeEfetiva(tarefa, projeto);
+    if (v === "publico" || v === "escritorio") return true;
+  }
+  // Confidencial: só quem passou pelas regras de pessoa nomeada acima.
   return false;
 }
 
-// Confidencial = visibilidade restritiva OU lista explícita de autorizados.
+// Confidencial (novo modelo): flag explícita `confidencial`. Docs antigos sem a
+// flag caem na visibilidade legada — privado/grupo_* = confidencial.
 export function isConfidencial(tarefa: Tarefa, projeto?: TarefaProjeto): boolean {
+  if (tarefa.confidencial === true) return true;
+  if (tarefa.confidencial === false) return false;
+  // Legado (sem a flag): lista explícita de autorizados OU visibilidade restrita.
   if ((tarefa.usuariosAutorizados || []).length > 0) return true;
   if (projeto && (projeto.usuariosAutorizados || []).length > 0) return true;
   const v = visibilidadeEfetiva(tarefa, projeto);

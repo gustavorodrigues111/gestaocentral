@@ -306,22 +306,26 @@ service cloud.firestore {
     // app).
     function tarefaPodeLer() {
       let d = resource.data;
+      // NÃO confidencial: campo ausente (docs antigos) OU explicitamente false.
+      let naoConf = d.confidencial != true;
       return isMaster()
-        || request.auth.uid == d.criadoPor
+        // Novo modelo: UIDs denormalizados (já resolvidos via uidVinculado no write).
+        // Aditivo — cobre confidencial (só nomeados) e não-confidencial (+membros da área).
+        || (d.visiveisUid is list && request.auth.uid in d.visiveisUid)
+        // Pessoas nomeadas — sempre (mesmo confidencial); funciona quando pessoaId == uid.
         || request.auth.uid == d.responsavelId
         || (d.coResponsaveis is list && request.auth.uid in d.coResponsaveis)
         || (d.observadoresIds is list && request.auth.uid in d.observadoresIds)
         || (d.subtarefaResponsaveisIds is list && request.auth.uid in d.subtarefaResponsaveisIds)
         || (d.usuariosAutorizados is list && request.auth.uid in d.usuariosAutorizados)
-        || d.visibilidadeEfetiva == "publico"
-        || d.visibilidadeEfetiva == "escritorio"
-        // O id da pessoa pode ser um auto-id (≠ auth.uid). Nesses casos a pessoa
-        // guarda o uidVinculado; resolve responsável/criador pelo doc da pessoa.
-        // Só é avaliado em tarefa confidencial onde as condições acima falharam.
+        // Responsável via uidVinculado (pessoa com auto-id ≠ uid) — sempre.
         || (d.responsavelId is string && d.responsavelId != "" && exists(/databases/$(database)/documents/pessoas/$(d.responsavelId)) && get(/databases/$(database)/documents/pessoas/$(d.responsavelId)).data.uidVinculado == request.auth.uid)
-        || (d.criadoPor is string && d.criadoPor != "" && exists(/databases/$(database)/documents/pessoas/$(d.criadoPor)) && get(/databases/$(database)/documents/pessoas/$(d.criadoPor)).data.uidVinculado == request.auth.uid);
-      // Docs antigos sem visibilidadeEfetiva ou com "grupo_*" legado:
-      // tratados como privados — só passam pelas condições acima.
+        // Criador e visibilidade aberta: SÓ quando NÃO confidencial (docs antigos incluídos).
+        || (naoConf && request.auth.uid == d.criadoPor)
+        || (naoConf && (d.visibilidadeEfetiva == "publico" || d.visibilidadeEfetiva == "escritorio"))
+        || (naoConf && d.criadoPor is string && d.criadoPor != "" && exists(/databases/$(database)/documents/pessoas/$(d.criadoPor)) && get(/databases/$(database)/documents/pessoas/$(d.criadoPor)).data.uidVinculado == request.auth.uid);
+      // Docs antigos (sem visiveisUid/confidencial): naoConf=true → mantêm o
+      // comportamento anterior (criador + escritório/público + nomeados). Sem exposição nova.
     }
     match /tarefaProjetos/{id}      { allow read, write: if authed(); allow delete: if isMaster(); }
     match /tarefaSubprojetos/{id}   { allow read, write: if authed(); allow delete: if isMaster(); }

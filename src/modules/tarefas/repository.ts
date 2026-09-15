@@ -36,7 +36,35 @@ export function ouvirProjetos(cb: (projetos: TarefaProjeto[]) => void): Unsubscr
 }
 
 export async function salvarProjeto(p: TarefaProjeto): Promise<void> {
+  // Detecta mudança na composição da área (membros/visibilidade) pra propagar
+  // visiveisUid nas tarefas NÃO confidenciais deste projeto (que enxergam por
+  // membro da área). Leitura só do doc anterior — barato.
+  let mudouMembros = true;
+  try {
+    const antes = await getDoc(doc(db, COL_PROJETOS, p.id));
+    if (antes.exists()) {
+      const a = antes.data() as TarefaProjeto;
+      const setEq = (x: string[] = [], y: string[] = []) => x.length === y.length && [...x].sort().join("|") === [...y].sort().join("|");
+      mudouMembros = a.dono !== p.dono
+        || a.visibilidade !== p.visibilidade
+        || !setEq(a.usuariosAutorizados, p.usuariosAutorizados);
+    }
+  } catch { /* segue e propaga por segurança */ }
   await setDoc(doc(db, COL_PROJETOS, p.id), sanitizeForFirestore(p));
+  if (mudouMembros) { try { await refanoutVisibilidadeProjeto(p.id); } catch { /* best-effort */ } }
+}
+
+// Recalcula visiveisUid/visibilidadeEfetiva das tarefas vivas NÃO confidenciais
+// de um projeto — chamado quando a composição da área muda.
+async function refanoutVisibilidadeProjeto(projetoId: string): Promise<void> {
+  const snap = await getDocs(query(collection(db, COL_TAREFAS), where("projetoId", "==", projetoId)));
+  await Promise.all(snap.docs.map(async d => {
+    const t = { id: d.id, ...d.data() } as Tarefa;
+    if (t.deletadoEm || t.confidencial === true) return; // confidencial não depende da área
+    const visiveisUid = await computarVisiveisUid(t, projetoId);
+    const visEfetiva = t.visibilidadeOverride || await resolverVisibilidadeProjeto(projetoId);
+    await updateDoc(doc(db, COL_TAREFAS, d.id), sanitizeForFirestore({ visiveisUid, visibilidadeEfetiva: visEfetiva }));
+  }));
 }
 
 // ─── SUBPROJETOS ──────────────────────────────────────────────────────────
@@ -175,6 +203,61 @@ export async function reorganizarGestorTarefas(pessoaId: string): Promise<{
   return { destravados, apagados, eventos };
 }
 
+// ─── CONFIDENCIALIDADE / visiveisUid ────────────────────────────────────────
+//
+// Denormaliza no doc da tarefa os UIDs de auth que podem LÊ-la, pras Firestore
+// rules (que não conseguem mapear pessoaId→uidVinculado numa lista). Aditivo:
+// a rule libera por `uid in visiveisUid` OU pelas condições legadas.
+//
+//   - NÃO confidencial: nomeados + criador + membros da área (dono + área.usuariosAutorizados).
+//   - Confidencial: só nomeados (responsável, co-resp, observadores, subtarefa-resp, autorizados).
+//                   O criador NÃO entra (a não ser que seja um dos nomeados).
+
+// Resolve cada pessoaId pro seu uid de auth. Inclui o próprio id (pode já ser
+// o uid) + o uidVinculado do doc da pessoa. Best-effort: falha de leitura de
+// uma pessoa não derruba o cálculo.
+async function uidsDePessoas(ids: (string | undefined | null)[]): Promise<string[]> {
+  const uniq = [...new Set(ids.filter((x): x is string => !!x))];
+  const out = new Set<string>();
+  await Promise.all(uniq.map(async id => {
+    out.add(id);
+    try {
+      const s = await getDoc(doc(db, "pessoas", id));
+      const uv = s.exists() ? (s.data() as { uidVinculado?: string }).uidVinculado : null;
+      if (uv) out.add(uv);
+    } catch { /* segue sem o uidVinculado dessa pessoa */ }
+  }));
+  return [...out];
+}
+
+// Coleta os pessoaIds relevantes e resolve pra UIDs. `confidencial` explícito.
+async function computarVisiveisUid(
+  t: Pick<Tarefa, "responsavelId" | "coResponsaveis" | "observadoresIds" | "subtarefaResponsaveisIds" | "usuariosAutorizados" | "subtarefas" | "criadoPor" | "confidencial">,
+  projetoId: string,
+): Promise<string[]> {
+  const ids: (string | undefined | null)[] = [
+    t.responsavelId,
+    ...(t.coResponsaveis || []),
+    ...(t.observadoresIds || []),
+    ...(t.subtarefaResponsaveisIds || []),
+    ...(t.usuariosAutorizados || []),
+    ...(t.subtarefas || []).map(s => s.responsavelId),
+  ];
+  if (t.confidencial !== true) {
+    // NÃO confidencial: soma criador + membros da área.
+    ids.push(t.criadoPor);
+    try {
+      const p = await getDoc(doc(db, COL_PROJETOS, projetoId));
+      if (p.exists()) {
+        const pd = p.data() as TarefaProjeto;
+        ids.push(pd.dono);
+        (pd.usuariosAutorizados || []).forEach(x => ids.push(x));
+      }
+    } catch { /* área não carregou — visiveisUid fica só com nomeados; visibilidadeEfetiva cobre "escritório" */ }
+  }
+  return uidsDePessoas(ids);
+}
+
 // ─── TAREFAS ──────────────────────────────────────────────────────────────
 
 export function ouvirTarefasDeUsuario(pessoaId: string, cb: (tarefas: Tarefa[]) => void): Unsubscribe {
@@ -237,12 +320,16 @@ export async function getTarefa(id: string): Promise<Tarefa | null> {
 
 export async function criarTarefa(t: Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm">): Promise<string> {
   const now = new Date().toISOString();
-  // Denormaliza visibilidadeEfetiva pra rules: override > a que o chamador já
-  // resolveu (evita leitura de rede no caminho da criação) > busca do projeto.
-  const visEfetiva = t.visibilidadeOverride || t.visibilidadeEfetiva || await resolverVisibilidadeProjeto(t.projetoId);
+  // Denormaliza visibilidadeEfetiva pra rules: confidencial força "privado";
+  // senão override > a que o chamador já resolveu > busca do projeto.
+  const visEfetiva = t.confidencial === true
+    ? "privado"
+    : (t.visibilidadeOverride || t.visibilidadeEfetiva || await resolverVisibilidadeProjeto(t.projetoId));
+  const visiveisUid = await computarVisiveisUid(t, t.projetoId);
   const ref = await addDoc(collection(db, COL_TAREFAS), sanitizeForFirestore({
     ...t,
     visibilidadeEfetiva: visEfetiva,
+    visiveisUid,
     criadoEm: now,
     atualizadoEm: now,
     log: [
@@ -317,11 +404,18 @@ export async function atualizarTarefa(id: string, patch: Partial<Tarefa>, autor:
   const snap = await getDoc(ref);
   if (!snap.exists()) return;
   const atual = snap.data() as Tarefa;
-  // Se mudou projetoId ou visibilidadeOverride, recalcula visibilidadeEfetiva
-  if ("projetoId" in patch || "visibilidadeOverride" in patch) {
-    const projetoIdFinal = patch.projetoId || atual.projetoId;
-    const overrideFinal = patch.visibilidadeOverride ?? atual.visibilidadeOverride;
-    patch.visibilidadeEfetiva = overrideFinal || await resolverVisibilidadeProjeto(projetoIdFinal);
+  const merged = { ...atual, ...patch } as Tarefa;
+  const projetoIdFinal = patch.projetoId || atual.projetoId;
+  // Se mudou projetoId, visibilidadeOverride ou confidencial, recalcula visibilidadeEfetiva.
+  if ("projetoId" in patch || "visibilidadeOverride" in patch || "confidencial" in patch) {
+    patch.visibilidadeEfetiva = merged.confidencial === true
+      ? "privado"
+      : (merged.visibilidadeOverride || await resolverVisibilidadeProjeto(projetoIdFinal));
+  }
+  // Recalcula visiveisUid quando muda qualquer coisa que afete quem enxerga.
+  const CAMPOS_VISIB: (keyof Tarefa)[] = ["confidencial", "responsavelId", "coResponsaveis", "observadoresIds", "subtarefaResponsaveisIds", "usuariosAutorizados", "subtarefas", "projetoId", "criadoPor"];
+  if (CAMPOS_VISIB.some(k => k in patch)) {
+    patch.visiveisUid = await computarVisiveisUid(merged, projetoIdFinal);
   }
   const newLog: TarefaLogEntry[] = [
     ...(atual.log || []),
