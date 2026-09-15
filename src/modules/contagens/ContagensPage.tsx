@@ -265,6 +265,28 @@ export function ContagensPage() {
     setEditing("new");
   }
 
+  // Junta VÁRIOS grupos de sugestão que são o MESMO produto (a IA não agrupou —
+  // ex.: "Mecoto" vs "Mocotó"). Une aliases (todas as grafias das notas viram
+  // apelidos) + fornecedores, e abre o modal pra você confirmar o nome correto.
+  // Ao salvar UM insumo com todos os aliases, as notas futuras de qualquer
+  // grafia casam com ele — não voltam como duplicata na sugestão.
+  function juntarGrupos(grupos: GrupoSugerido[]) {
+    if (grupos.length < 2) return;
+    const dom = [...grupos].sort((a, b) => b.ocorrencias - a.ocorrencias)[0]; // dominante = mais notas
+    const fornMap = new Map<string, { nome: string; count: number }>();
+    for (const g of grupos) for (const f of g.fornecedores) {
+      const k = normalizar(f.nome); const cur = fornMap.get(k);
+      if (cur) cur.count += f.count; else fornMap.set(k, { nome: f.nome, count: f.count });
+    }
+    const fornOrd = [...fornMap.values()].sort((a, b) => b.count - a.count);
+    const fornList: InsumoFornecedor[] = fornOrd.map((f, i) => ({ nome: tituloCaso(f.nome), fornecedorId: fornecedores.find(x => normalizar(x.nome) === normalizar(f.nome))?.id || null, primario: i === 0 }));
+    const aliases = Array.from(new Set(grupos.flatMap(g => g.aliases)));
+    const fator = dom.fator && dom.fator > 1 ? dom.fator : undefined;
+    const precoUnit = dom.precoEstimado != null && fator ? dom.precoEstimado / fator : dom.precoEstimado;
+    setPreset({ nome: dom.nome, categoria: dom.categoria, unidade: dom.unidade, unidadeOutroLabel: dom.unidadeOutroLabel, precoEstimado: precoUnit, fatorCompra: fator, aliases, fornecedores: fornList, fornecedorPreferredId: fornList[0]?.fornecedorId || null });
+    setEditing("new");
+  }
+
   // Cadastro em LOTE (tabela): cria os insumos selecionados de uma vez, com os
   // valores editados. Fornecedor primário = o escolhido na linha.
   async function cadastrarLote(items: { g: GrupoSugerido; e: EdicaoGrupo }[]) {
@@ -522,7 +544,7 @@ export function ContagensPage() {
                       <button type="button" onClick={restaurarIgnorados} className="text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-0.5"><RotateCcw size={10} /> restaurar</button>
                     </div>
                   )}
-                  {sugeridosView === "tabela" && <SugeridosTabela grupos={gruposSugeridos} fornecedoresNomes={fornecedores.map(f => f.nome)} onCadastrar={cadastrarLote} onAbrir={abrirGrupoNoModal} onIgnorar={ignorarGrupo} />}
+                  {sugeridosView === "tabela" && <SugeridosTabela grupos={gruposSugeridos} fornecedoresNomes={fornecedores.map(f => f.nome)} onCadastrar={cadastrarLote} onAbrir={abrirGrupoNoModal} onIgnorar={ignorarGrupo} onJuntar={juntarGrupos} />}
                   {sugeridosView === "lista" && gruposSugeridos.map(g => {
                     const alvo = g.matchInsumoId ? insumos.find(i => i.id === g.matchInsumoId) : null;
                     return (
