@@ -182,10 +182,9 @@ export function FreelasPage() {
           const active = tab === t.id;
           const count =
             t.id === "lancamentos" ? totalAbertos :
-            t.id === "retroativo"  ? 0 :
             t.id === "fechamento"  ? totalPendentes :
-            t.id === "relatorios"  ? 0 :
-                                     totalHistorico;
+            t.id === "historico"   ? totalHistorico :
+                                     0;   // retroativo, relatórios, config: sem badge
           return (
             <button
               key={t.id}

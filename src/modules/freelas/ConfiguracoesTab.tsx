@@ -22,7 +22,9 @@ export function ConfiguracoesTab({ cortes, podeEditar, onSave }: {
   useEffect(() => { setDraft(cortes); }, [cortes]);
 
   const set = (id: string, patch: Partial<FreelasCortePagamento>) => setDraft(d => d.map(c => c.id === id ? { ...c, ...patch } : c));
-  const selCls = "px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100";
+  // Altura FIXA (h-9) igual em todos os campos — select e TimeInput alinhados.
+  const campoCls = "h-9 px-2.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 focus:outline-none focus:border-indigo-400";
+  const selCls = `${campoCls} cursor-pointer`;
 
   async function salvar() {
     setSalvando(true);
@@ -49,7 +51,7 @@ export function ConfiguracoesTab({ cortes, podeEditar, onSave }: {
               <select disabled={!podeEditar} value={c.corteDiaSemana} onChange={e => set(c.id, { corteDiaSemana: Number(e.target.value) })} className={selCls}>
                 {DIAS_SEMANA_CAP.map((d, i) => <option key={i} value={i}>{d}</option>)}
               </select>
-              <div className="w-24"><TimeInput value={c.corteHora} onChange={(v) => set(c.id, { corteHora: v })} placeholder="HH:MM" /></div>
+              <TimeInput value={c.corteHora} onChange={(v) => set(c.id, { corteHora: v })} placeholder="HH:MM" className={`${campoCls} w-20 text-center`} />
               <span className="text-gray-500">→ pago</span>
               <select disabled={!podeEditar} value={c.pagamentoDiaSemana} onChange={e => set(c.id, { pagamentoDiaSemana: Number(e.target.value) })} className={selCls}>
                 {DIAS_SEMANA_CAP.map((d, i) => <option key={i} value={i}>{d}</option>)}
@@ -67,7 +69,7 @@ export function ConfiguracoesTab({ cortes, podeEditar, onSave }: {
             <button type="button" onClick={() => setDraft(d => [...d, novoCorte()])} className="text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"><Plus size={13} /> Adicionar linha</button>
             <div className="flex-1" />
             {savedAt && <span className="text-xs text-emerald-600">✓ Salvo às {savedAt}</span>}
-            <Button size="sm" onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button>
+            <Button size="sm" onClick={() => void salvar()} disabled={salvando || JSON.stringify(draft) === JSON.stringify(cortes)}>{salvando ? "Salvando…" : "Salvar"}</Button>
           </div>
         )}
       </div>
