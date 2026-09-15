@@ -51,6 +51,9 @@ export function ContagensPage() {
   const [reavaliando, setReavaliando] = useState(false);
   const [mesclando, setMesclando] = useState(false);
   const [ignorados, setIgnorados] = useState<Set<string>>(new Set());
+  // Pares que o usuário marcou como "produtos diferentes" — não voltam no aviso
+  // de possíveis duplicatas. Chave = nomes normalizados dos 2 grupos, ordenados.
+  const [naoDuplicatas, setNaoDuplicatas] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (!rid) return;
@@ -131,6 +134,26 @@ export function ContagensPage() {
     if (rid) void setDoc(doc(db, "insumosIgnorados", rid), sanitizeForFirestore({ restaurantId: rid, chaves: [...set], atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
   }
 
+  // Pares "não é o mesmo produto" — persistido por restaurante.
+  useEffect(() => {
+    if (!rid || !podeConfig) return;
+    getDoc(doc(db, "insumosNaoDuplicatas", rid)).then((snap) => {
+      const arr = (snap.data() as { pares?: string[] } | undefined)?.pares;
+      if (Array.isArray(arr)) setNaoDuplicatas(new Set(arr));
+    }).catch(() => {});
+  }, [rid, podeConfig]);
+  function salvarNaoDuplicatas(set: Set<string>) {
+    setNaoDuplicatas(set);
+    if (rid) void setDoc(doc(db, "insumosNaoDuplicatas", rid), sanitizeForFirestore({ restaurantId: rid, pares: [...set], atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
+  }
+  const parKey = (a: string, b: string) => [normalizar(a), normalizar(b)].sort().join("||");
+  // Marca todos os pares de um cluster como "diferentes" (some do aviso).
+  function marcarDiferentes(cluster: GrupoSugerido[]) {
+    const n = new Set(naoDuplicatas);
+    for (let i = 0; i < cluster.length; i++) for (let j = i + 1; j < cluster.length; j++) n.add(parKey(cluster[i].nome, cluster[j].nome));
+    salvarNaoDuplicatas(n);
+  }
+
   // Sugestões agrupadas do recebimento (não cadastradas + não ignoradas + filtro).
   // agruparSugestoes já ignora o que casa por NOME ou por ALIAS de insumo.
   const sugestoes = useMemo(() => agruparSugestoes(recebimentos, insumos, fornecedores), [recebimentos, insumos, fornecedores]);
@@ -204,6 +227,7 @@ export function ContagensPage() {
         const a = norm[i], b = norm[j];
         const lim = Math.max(a.length, b.length);
         if (lim < 5) continue;                       // nomes muito curtos = ruído
+        if (naoDuplicatas.has([a, b].sort().join("||"))) continue;   // marcado como "diferentes"
         const d = levenshtein(a, b);
         if (d >= 1 && d <= 2 && d / lim <= 0.25) parent[find(i)] = find(j);  // 1-2 letras
       }
@@ -212,7 +236,7 @@ export function ContagensPage() {
     gs.forEach((g, i) => { const r = find(i); const arr = clusters.get(r); if (arr) arr.push(g); else clusters.set(r, [g]); });
     return [...clusters.values()].filter(c => c.length >= 2)
       .sort((a, b) => b.reduce((s, g) => s + g.ocorrencias, 0) - a.reduce((s, g) => s + g.ocorrencias, 0));
-  }, [gruposSugeridos]);
+  }, [gruposSugeridos, naoDuplicatas]);
 
   // Casa um fornecedor pelo nome (normalizado) ou cria um novo; devolve o id.
   async function garantirFornecedor(nome: string): Promise<string | undefined> {
@@ -572,13 +596,22 @@ export function ContagensPage() {
                       <button type="button" onClick={restaurarIgnorados} className="text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-0.5"><RotateCcw size={10} /> restaurar</button>
                     </div>
                   )}
+                  {naoDuplicatas.size > 0 && (
+                    <div className="text-[11px] text-gray-400 flex items-center gap-1.5">
+                      <GitMerge size={11} /> {naoDuplicatas.size} par(es) marcado(s) como diferentes
+                      <button type="button" onClick={() => salvarNaoDuplicatas(new Set())} className="text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-0.5"><RotateCcw size={10} /> restaurar</button>
+                    </div>
+                  )}
                   {duplicatasProvaveis.length > 0 && (
                     <div className="rounded-lg border border-rose-200 dark:border-rose-900/50 bg-rose-50/70 dark:bg-rose-900/10 p-2.5 space-y-1.5">
                       <div className="text-[11px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300 inline-flex items-center gap-1"><GitMerge size={12} /> Possíveis duplicatas ({duplicatasProvaveis.length})</div>
                       {duplicatasProvaveis.map((cluster, i) => (
                         <div key={i} className="flex items-center justify-between gap-2 flex-wrap text-[13px] bg-white dark:bg-gray-900 rounded-md border border-rose-100 dark:border-rose-900/40 px-2.5 py-1.5">
                           <span className="text-gray-800 dark:text-gray-100">{cluster.map(g => g.nome).join("  ≈  ")}</span>
-                          <button type="button" onClick={() => juntarGrupos(cluster)} className="text-[11px] font-semibold px-2 py-1 rounded-md bg-rose-600 text-white hover:bg-rose-700 inline-flex items-center gap-1"><GitMerge size={11} /> Juntar</button>
+                          <div className="inline-flex items-center gap-1.5">
+                            <button type="button" onClick={() => marcarDiferentes(cluster)} className="text-[11px] font-medium px-2 py-1 rounded-md border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">São diferentes</button>
+                            <button type="button" onClick={() => juntarGrupos(cluster)} className="text-[11px] font-semibold px-2 py-1 rounded-md bg-rose-600 text-white hover:bg-rose-700 inline-flex items-center gap-1"><GitMerge size={11} /> Juntar</button>
+                          </div>
                         </div>
                       ))}
                       <p className="text-[10px] text-rose-600/70 dark:text-rose-400/70">Nomes muito parecidos que talvez sejam o mesmo produto. Ao juntar, a IA escolhe o nome certo e as grafias viram apelidos.</p>
