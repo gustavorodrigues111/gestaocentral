@@ -1,6 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, query, updateDoc, where } from "firebase/firestore";
-import { Contact, Handshake, TriangleAlert, User, Lock, KeyRound, Repeat, Eye, CheckSquare, ClipboardList, MessageSquare, UserRoundMinus, Ban, LockOpen, Trash2, Mail, Crown, ShieldCheck, Unlink, Pencil } from "lucide-react";
+import { Contact, Handshake, TriangleAlert, User, Lock, KeyRound, Repeat, Eye, CheckSquare, ClipboardList, MessageSquare, UserRoundMinus, Ban, LockOpen, Trash2, Mail, Crown, ShieldCheck, Unlink, Pencil, Clock, MapPin, CalendarDays } from "lucide-react";
+import { getActiveWorkSchedule, WEEKDAYS } from "../../core/escala/horarios";
+import type { WorkSchedule, HorarioDia } from "../../core/types";
 import { db, auth } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { gerarSenhaInicial, provisionarAcesso } from "../../core/auth/provisionar";
@@ -785,9 +787,11 @@ function TabIdentidade({
 // ════════════════════════════════════════════════════════════════
 
 function TabVinculos({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId: string }) {
+  const { restaurants } = useRestaurant();
   const [empregado, setEmpregado] = useState<Empregado | null>(null);
   const [cargos, setCargos] = useState<Cargo[]>([]);
-  const [showEmpModal, setShowEmpModal] = useState(false);
+  // null = fechado; senão abre o EmpregadoModal na aba pedida (lápis por seção).
+  const [empModalTab, setEmpModalTab] = useState<"dados" | "horarios" | null>(null);
 
   // Empregado vinculado a essa pessoa neste restaurante
   useEffect(() => {
@@ -816,74 +820,133 @@ function TabVinculos({ pessoa, restaurantId }: { pessoa: Pessoa; restaurantId: s
 
   const cargoMap = Object.fromEntries(cargos.map(c => [c.id, c]));
   const cargo = empregado ? cargoMap[empregado.cargoId] : null;
+  const unidades = restaurants.find(r => r.id === restaurantId)?.unidades || [];
+  const unidadeNome = empregado?.unidadePadraoId ? (unidades.find(u => u.id === empregado.unidadePadraoId)?.nome || "—") : "—";
 
   return (
     <div className="space-y-3">
       <p className="text-xs text-gray-500 dark:text-gray-400">
-        Vínculo de equipe = essa pessoa é empregada em algum restaurante. Aparece na escala, gorjeta, VT.
+        Vínculo de equipe = essa pessoa é empregada em algum restaurante. Aparece na escala, gorjeta, benefícios.
       </p>
 
-      <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
-        <div className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-2">
-          Restaurante atual
+      {!empregado ? (
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 text-center py-6">
+          <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
+            {pessoa.nome} <strong>não é empregada</strong> deste restaurante.
+          </p>
+          <Button onClick={() => setEmpModalTab("dados")}>+ Vincular como empregado</Button>
         </div>
-        {!empregado ? (
-          <div className="text-center py-4">
-            <p className="text-sm text-gray-700 dark:text-gray-300 mb-3">
-              {pessoa.nome} <strong>não é empregada</strong> deste restaurante.
-            </p>
-            <Button onClick={() => setShowEmpModal(true)}>+ Vincular como empregado</Button>
+      ) : (<>
+        {/* ── Seção DADOS (ficha read-only + lápis) ── */}
+        <SecaoFicha titulo="Dados do vínculo" icone={<Contact size={13} />} onEditar={() => setEmpModalTab("dados")}>
+          <div className="grid grid-cols-2 gap-x-4 gap-y-2.5">
+            <LinhaDado label="Cargo">
+              {cargo?.nome || "—"}
+              {cargo && <span className="ml-1.5 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 font-bold">{TIPO_VINCULO_LABEL[cargo.tipoVinculo].split(" ")[0]}</span>}
+            </LinhaDado>
+            <LinhaDado label="Unidade padrão"><span className="inline-flex items-center gap-1"><MapPin size={12} className="text-gray-400" /> {unidadeNome}</span></LinhaDado>
+            <LinhaDado label="Admissão">{empregado.admissaoAtual ? fmtBR(empregado.admissaoAtual) : "—"}</LinhaDado>
+            <LinhaDado label="Vale Transporte">
+              {empregado.vtAtivo
+                ? `R$ ${(empregado.vtValorDiario ?? 0).toFixed(2)}/dia${(empregado.vtAuxilioFixoMensal ?? 0) > 0 ? ` + R$ ${(empregado.vtAuxilioFixoMensal ?? 0).toFixed(2)}/mês` : ""} · ${empregado.formaBeneficio === "pix" ? "Pix" : "Caju"}`
+                : "Não recebe"}
+            </LinhaDado>
+            {empregado.empCode && <LinhaDado label="Código interno">{empregado.empCode}</LinhaDado>}
+            {empregado.codigoContabil && <LinhaDado label="Código contábil">{empregado.codigoContabil}</LinhaDado>}
+            {empregado.emergenciaNome && <LinhaDado label="Contato emergência">{empregado.emergenciaNome}{empregado.emergenciaTelefone ? ` · ${empregado.emergenciaTelefone}` : ""}</LinhaDado>}
           </div>
-        ) : (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between gap-3">
-              <div className="flex-1 min-w-0">
-                <div className="font-medium text-gray-900 dark:text-gray-100">
-                  {cargo?.nome || "Cargo desconhecido"}
-                  {cargo && (
-                    <span className="ml-2 text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 font-bold">
-                      {TIPO_VINCULO_LABEL[cargo.tipoVinculo].split(" ")[0]}
-                    </span>
-                  )}
-                </div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  Admissão: {empregado.admissaoAtual ? fmtBR(empregado.admissaoAtual) : "—"}
-                  {empregado.vtAtivo && ` · VT R$ ${empregado.vtValorPassagem ?? 0}/passagem × ${empregado.vtPassagensPorDia ?? 0}`}
-                </div>
-                {empregado.periodos && empregado.periodos.length > 1 && (
-                  <div className="text-[10px] text-indigo-600 dark:text-indigo-400 mt-1 inline-flex items-center gap-1">
-                    <Repeat size={11} className="shrink-0" /> Trilha: {empregado.periodos.length} período(s) — readmissão preserva histórico
-                  </div>
-                )}
-              </div>
-              <Button variant="secondary" size="sm" onClick={() => setShowEmpModal(true)}>
-                Editar
-              </Button>
-            </div>
+          <div className="flex flex-wrap gap-1.5 mt-2.5">
+            {empregado.freelaMensalista && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-300 inline-flex items-center gap-1"><CalendarDays size={11} /> Freela mensalista (cobertura)</span>}
+            {empregado.batePonto === false && !empregado.freelaMensalista && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 inline-flex items-center gap-1"><Crown size={11} /> Cargo de confiança (não bate ponto)</span>}
+            {empregado.periodos && empregado.periodos.length > 1 && <span className="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300 inline-flex items-center gap-1"><Repeat size={11} /> {empregado.periodos.length} períodos (trilha)</span>}
           </div>
-        )}
-      </div>
+        </SecaoFicha>
 
-      {/* Outros restaurantes vinculados a essa Pessoa — útil pra desvincular
-          empresas onde a pessoa não trabalha mais (ex: demitida e foi pra
-          outra empresa do grupo). Não mexe no histórico do Empregado, só
-          remove o restaurantId de pessoa.restaurantIds. */}
+        {/* ── Seção HORÁRIOS (read-only + lápis) ── */}
+        <SecaoFicha titulo="Horários" icone={<Clock size={13} />} onEditar={() => setEmpModalTab("horarios")}>
+          <HorarioResumo empregado={empregado} />
+        </SecaoFicha>
+      </>)}
+
+      {/* Outros restaurantes vinculados a essa Pessoa — desvincular quando a
+          pessoa não trabalha mais lá (histórico do Empregado preservado). */}
       <OutrosRestaurantesVinculados
         pessoa={pessoa}
         restauranteAtualId={restaurantId}
       />
 
-      {showEmpModal && (
+      {empModalTab && (
         <EmpregadoModal
           empregado={empregado}
           pessoa={pessoa}
           restaurantId={restaurantId}
           cargos={cargos}
-          onClose={() => setShowEmpModal(false)}
+          initialTab={empModalTab}
+          onClose={() => setEmpModalTab(null)}
         />
       )}
     </div>
   );
+}
+
+// Seção da ficha do vínculo: título + lápis de editar + conteúdo read-only.
+function SecaoFicha({ titulo, icone, onEditar, children }: { titulo: string; icone: ReactNode; onEditar: () => void; children: ReactNode }) {
+  return (
+    <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4">
+      <div className="flex items-center justify-between gap-2 mb-2.5">
+        <div className="text-xs font-bold uppercase tracking-wider text-gray-500 inline-flex items-center gap-1.5">{icone} {titulo}</div>
+        <button type="button" onClick={onEditar} title="Editar" className="p-1 rounded-lg text-gray-400 hover:text-indigo-600 hover:bg-gray-100 dark:hover:bg-gray-800"><Pencil size={14} /></button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+function LinhaDado({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{label}</div>
+      <div className="text-sm text-gray-900 dark:text-gray-100 mt-0.5 break-words">{children || <span className="text-gray-400">—</span>}</div>
+    </div>
+  );
+}
+
+// Resumo read-only do horário ATIVO do empregado (vigência atual).
+function HorarioResumo({ empregado }: { empregado: Empregado }) {
+  const hoje = new Date().toISOString().slice(0, 10);
+  const ws = getActiveWorkSchedule(empregado.workSchedules, hoje);
+  if (!ws) return <p className="text-sm text-gray-400">Sem horário cadastrado.</p>;
+
+  const linhaDia = (idx: number, dia: HorarioDia | undefined) => {
+    const short = WEEKDAYS.find(w => w.idx === idx)?.short || String(idx);
+    if (!dia?.active) return <div key={idx} className="flex justify-between text-sm py-0.5"><span className="text-gray-500 dark:text-gray-400">{short}</span><span className="text-gray-400">folga</span></div>;
+    const intervalo = dia.break ? ` · int ${Math.round(dia.break)}min` : "";
+    return (
+      <div key={idx} className="flex justify-between text-sm py-0.5">
+        <span className="text-gray-600 dark:text-gray-300">{short}</span>
+        <span className="text-gray-900 dark:text-gray-100 tabular-nums">{dia.in || "—"}–{dia.out || "—"}<span className="text-gray-400 text-xs">{intervalo}</span></span>
+      </div>
+    );
+  };
+
+  const semana = (days: WorkSchedule["days"]) => (
+    <div className="divide-y divide-gray-100 dark:divide-gray-800">
+      {WEEKDAYS.map(w => linhaDia(w.idx, days?.[w.idx]))}
+    </div>
+  );
+
+  if (ws.type === "alternating" && ws.weeks) {
+    return (
+      <div className="space-y-3">
+        <div className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1"><Repeat size={12} /> Escala alternada (A / B)</div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div><div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Semana A</div>{semana(ws.weeks.A.days)}</div>
+          <div><div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1">Semana B</div>{semana(ws.weeks.B.days)}</div>
+        </div>
+      </div>
+    );
+  }
+  return semana(ws.days);
 }
 
 

@@ -23,9 +23,10 @@ type Props = {
   cargos: Cargo[];
   onClose: () => void;
   onSaved?: (empregadoId: string) => void;
+  initialTab?: "dados" | "horarios";
 };
 
-export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId, cargos, onClose, onSaved }: Props) {
+export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId, cargos, onClose, onSaved, initialTab }: Props) {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
   const restaurant = restaurants.find(r => r.id === restaurantId);
@@ -111,7 +112,7 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
 
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
-  const [tab, setTab] = useState<"dados" | "horarios">("dados");
+  const [tab, setTab] = useState<"dados" | "horarios">(initialTab ?? "dados");
   const [pendingVigencia, setPendingVigencia] = useState<{
     changes: ChangedField[];
     nonVersionedUpdates: Record<string, unknown>;
