@@ -82,7 +82,7 @@ function maisFrequente<T extends string>(m: Map<T, number>): T | undefined {
 }
 
 // Distância de Levenshtein (edições) entre dois textos normalizados.
-function levenshtein(a: string, b: string): number {
+export function levenshtein(a: string, b: string): number {
   const m = a.length, n = b.length;
   if (!m) return n; if (!n) return m;
   let prev = Array.from({ length: n + 1 }, (_, i) => i);

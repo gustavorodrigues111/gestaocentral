@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, BarChart3, Settings, Lock, TriangleAlert, Package, Plus, Sparkles, Truck, Link2, Loader2, Layers, EyeOff, RotateCcw } from "lucide-react";
+import { Pencil, BarChart3, Settings, Lock, TriangleAlert, Package, Plus, Sparkles, Truck, Link2, Loader2, Layers, EyeOff, RotateCcw, GitMerge } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db, auth } from "../../core/firebase/config";
@@ -13,7 +13,7 @@ import { UNIDADES_LABEL } from "../../core/types";
 import type { Contagem, Fornecedor, Insumo, InsumoFornecedor, RecebimentoNota, UnidadeMedida } from "../../core/types";
 import { InsumoModal } from "./InsumoModal";
 import { LancarContagensTab } from "./LancarContagensTab";
-import { agruparSugestoes, normalizar, tituloCaso, type SugestaoInsumo, type GrupoSugerido } from "./sugestoesRecebimento";
+import { agruparSugestoes, normalizar, tituloCaso, levenshtein, type SugestaoInsumo, type GrupoSugerido } from "./sugestoesRecebimento";
 import { MesclarInsumosModal } from "./MesclarInsumosModal";
 import { SugeridosTabela, type EdicaoGrupo } from "./SugeridosTabela";
 import { PageContainer } from "../../core/ui/PageContainer";
@@ -189,6 +189,30 @@ export function ContagensPage() {
     return grupos.sort((a, b) => b.ocorrencias - a.ocorrencias || a.nome.localeCompare(b.nome));
   }, [sugestoesNovas, iaMapa]);
   const iaPendentes = useMemo(() => sugestoesNovas.filter(s => !iaMapa[s.chave]).length, [sugestoesNovas, iaMapa]);
+
+  // Possíveis DUPLICATAS entre as sugestões: nomes quase iguais (erro de grafia,
+  // ex.: "Mecoto" vs "Mocotó") que a IA NÃO agrupou. Só aponta — juntar é opção
+  // do usuário. Clusteriza por distância de edição pequena (1-2 letras).
+  const duplicatasProvaveis = useMemo(() => {
+    const gs = gruposSugeridos;
+    if (gs.length < 2) return [] as GrupoSugerido[][];
+    const norm = gs.map(g => normalizar(g.nome));
+    const parent = gs.map((_, i) => i);
+    const find = (x: number): number => { while (parent[x] !== x) { parent[x] = parent[parent[x]]; x = parent[x]; } return x; };
+    for (let i = 0; i < gs.length; i++) {
+      for (let j = i + 1; j < gs.length; j++) {
+        const a = norm[i], b = norm[j];
+        const lim = Math.max(a.length, b.length);
+        if (lim < 5) continue;                       // nomes muito curtos = ruído
+        const d = levenshtein(a, b);
+        if (d >= 1 && d <= 2 && d / lim <= 0.25) parent[find(i)] = find(j);  // 1-2 letras
+      }
+    }
+    const clusters = new Map<number, GrupoSugerido[]>();
+    gs.forEach((g, i) => { const r = find(i); const arr = clusters.get(r); if (arr) arr.push(g); else clusters.set(r, [g]); });
+    return [...clusters.values()].filter(c => c.length >= 2)
+      .sort((a, b) => b.reduce((s, g) => s + g.ocorrencias, 0) - a.reduce((s, g) => s + g.ocorrencias, 0));
+  }, [gruposSugeridos]);
 
   // Casa um fornecedor pelo nome (normalizado) ou cria um novo; devolve o id.
   async function garantirFornecedor(nome: string): Promise<string | undefined> {
@@ -546,6 +570,18 @@ export function ContagensPage() {
                     <div className="text-[11px] text-gray-400 flex items-center gap-1.5">
                       <EyeOff size={11} /> {ignorados.size} ignorado(s)
                       <button type="button" onClick={restaurarIgnorados} className="text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-0.5"><RotateCcw size={10} /> restaurar</button>
+                    </div>
+                  )}
+                  {duplicatasProvaveis.length > 0 && (
+                    <div className="rounded-lg border border-rose-200 dark:border-rose-900/50 bg-rose-50/70 dark:bg-rose-900/10 p-2.5 space-y-1.5">
+                      <div className="text-[11px] font-bold uppercase tracking-wider text-rose-700 dark:text-rose-300 inline-flex items-center gap-1"><GitMerge size={12} /> Possíveis duplicatas ({duplicatasProvaveis.length})</div>
+                      {duplicatasProvaveis.map((cluster, i) => (
+                        <div key={i} className="flex items-center justify-between gap-2 flex-wrap text-[13px] bg-white dark:bg-gray-900 rounded-md border border-rose-100 dark:border-rose-900/40 px-2.5 py-1.5">
+                          <span className="text-gray-800 dark:text-gray-100">{cluster.map(g => g.nome).join("  ≈  ")}</span>
+                          <button type="button" onClick={() => juntarGrupos(cluster)} className="text-[11px] font-semibold px-2 py-1 rounded-md bg-rose-600 text-white hover:bg-rose-700 inline-flex items-center gap-1"><GitMerge size={11} /> Juntar</button>
+                        </div>
+                      ))}
+                      <p className="text-[10px] text-rose-600/70 dark:text-rose-400/70">Nomes muito parecidos que talvez sejam o mesmo produto. Ao juntar, a IA escolhe o nome certo e as grafias viram apelidos.</p>
                     </div>
                   )}
                   {sugeridosView === "tabela" && <SugeridosTabela grupos={gruposSugeridos} fornecedoresNomes={fornecedores.map(f => f.nome)} onCadastrar={cadastrarLote} onAbrir={abrirGrupoNoModal} onIgnorar={ignorarGrupo} onJuntar={juntarGrupos} />}
