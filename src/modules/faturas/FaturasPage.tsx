@@ -696,12 +696,14 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         return { data: l.data, descricao: l.descricao, valor: l.valor, parcela: l.parcela, rateio, categoriaId, ignorar, pendente, duvida: l.duvida ? true : undefined, duvidaMotivo: l.duvida && l.duvidaMotivo ? l.duvidaMotivo : undefined };
       });
       // Rede de segurança: se a MESMA compra parcelada veio em várias parcelas do
-      // mesmo total (ex: '08/10' E '09/10' E '10/10'), é o cronograma FUTURO
-      // incluído por engano. Mantém só a menor parcela (a do mês) e pré-ignora o
-      // resto — reversível (a linha fica visível como "ignorado").
+      // mesmo total E MESMO VALOR (ex: '08/10' R$100 · '09/10' R$100 · '10/10' R$100),
+      // é o cronograma FUTURO incluído por engano. Mantém só a menor parcela e
+      // pré-ignora o resto — reversível. O VALOR no critério é essencial: sem ele,
+      // compras DIFERENTES do mesmo lugar (ex: 3 LEROY MERLIN 03/04, com valores
+      // distintos) eram tratadas como duplicata e sumiam da fatura.
       const parcInfo = (l: Extraido) => { const src = l.parcela || (l.descricao.match(/\b(\d{1,2}\/\d{1,2})\s*$/)?.[1] || ""); const m = src.match(/^(\d+)\s*\/\s*(\d+)$/); return m ? { n: parseInt(m[1], 10), tot: m[2] } : null; };
       const grupos = new Map<string, number[]>();
-      novas.forEach((l, idx) => { const p = parcInfo(l); if (!p) return; const key = normNome(l.descricao) + "|" + p.tot; const arr = grupos.get(key) || []; arr.push(idx); grupos.set(key, arr); });
+      novas.forEach((l, idx) => { const p = parcInfo(l); if (!p) return; const key = normNome(l.descricao) + "|" + p.tot + "|" + l.valor.toFixed(2); const arr = grupos.get(key) || []; arr.push(idx); grupos.set(key, arr); });
       grupos.forEach(idxs => {
         if (idxs.length < 2) return;
         const minN = Math.min(...idxs.map(i => parcInfo(novas[i])!.n));
