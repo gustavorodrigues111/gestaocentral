@@ -84,12 +84,6 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   const [cpfProvisorio, setCpfProvisorio] = useState(empregado?.cpf || "");
   // VT
   const [vtAtivo, setVtAtivo] = useState(empregado?.vtAtivo ?? false);
-  const [vtPassagensPorDia, setVtPassagensPorDia] = useState<string>(
-    empregado?.vtPassagensPorDia ? String(empregado.vtPassagensPorDia) : ""
-  );
-  const [vtValorPassagem, setVtValorPassagem] = useState<string>(
-    empregado?.vtValorPassagem ? String(empregado.vtValorPassagem) : ""
-  );
   const [vtAuxilioFixoMensal, setVtAuxilioFixoMensal] = useState<string>(
     empregado?.vtAuxilioFixoMensal ? String(empregado.vtAuxilioFixoMensal) : ""
   );
@@ -103,8 +97,14 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
     empregado?.vrAuxilioFixoMensal ? String(empregado.vrAuxilioFixoMensal) : ""
   );
   // Benefícios (módulo novo): VT valor diário único + forma de recebimento (Caju/Pix).
+  // Campo canônico do VT. Pra registros antigos (só passagens/dia × valor), pré-preenche
+  // com o valor calculado — ao salvar, migra o registro pro novo modelo.
   const [vtValorDiario, setVtValorDiario] = useState<string>(
-    empregado?.vtValorDiario != null ? String(empregado.vtValorDiario) : ""
+    empregado?.vtValorDiario != null
+      ? String(empregado.vtValorDiario)
+      : (empregado?.vtAtivo && (empregado.vtPassagensPorDia ?? 0) * (empregado.vtValorPassagem ?? 0) > 0
+          ? String((empregado.vtPassagensPorDia ?? 0) * (empregado.vtValorPassagem ?? 0))
+          : "")
   );
   const [formaBeneficio, setFormaBeneficio] = useState<"caju" | "pix">(empregado?.formaBeneficio ?? "caju");
   const [chavePix, setChavePix] = useState<string>(empregado?.chavePix ?? "");
@@ -148,28 +148,6 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
         valorDepois: novoVtAtivo ? "Sim" : "Não",
         rawValorAntes: empregado.vtAtivo ?? false,
         rawValorDepois: novoVtAtivo,
-      });
-    }
-    const novoVtPassagens = vtAtivo ? parseFloat(vtPassagensPorDia) : 0;
-    if (vtAtivo && (empregado.vtPassagensPorDia ?? 0) !== novoVtPassagens) {
-      criticas.push({
-        campo: "vtPassagensPorDia",
-        label: "VT passagens/dia",
-        valorAntes: String(empregado.vtPassagensPorDia ?? 0),
-        valorDepois: String(novoVtPassagens),
-        rawValorAntes: empregado.vtPassagensPorDia ?? 0,
-        rawValorDepois: novoVtPassagens,
-      });
-    }
-    const novoVtValor = vtAtivo ? parseFloat(vtValorPassagem) : 0;
-    if (vtAtivo && (empregado.vtValorPassagem ?? 0) !== novoVtValor) {
-      criticas.push({
-        campo: "vtValorPassagem",
-        label: "VT valor passagem",
-        valorAntes: `R$ ${(empregado.vtValorPassagem ?? 0).toFixed(2)}`,
-        valorDepois: `R$ ${novoVtValor.toFixed(2)}`,
-        rawValorAntes: empregado.vtValorPassagem ?? 0,
-        rawValorDepois: novoVtValor,
       });
     }
     const novoAuxFixo = parseFloat(vtAuxilioFixoMensal) || 0;
@@ -287,11 +265,8 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
       return;
     }
     if (vtAtivo) {
-      if (!vtPassagensPorDia || parseFloat(vtPassagensPorDia) <= 0) {
-        setErr("VT ativo exige passagens/dia"); return;
-      }
-      if (!vtValorPassagem || parseFloat(vtValorPassagem) <= 0) {
-        setErr("VT ativo exige valor da passagem"); return;
+      if (!vtValorDiario || parseFloat(vtValorDiario) <= 0) {
+        setErr("VT ativo exige o valor por dia"); return;
       }
     }
     if (usaVR && vrAtivo) {
@@ -328,10 +303,6 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
           admissaoAtual: (freelaMensalista || !demissaoPeriodo()) ? admissao : null,
           demitidoEm: freelaMensalista ? null : demissaoPeriodo(),
           vtAtivo: !!vtAtivo,
-          ...(vtAtivo ? {
-            vtPassagensPorDia: parseFloat(vtPassagensPorDia),
-            vtValorPassagem: parseFloat(vtValorPassagem),
-          } : {}),
           ...((parseFloat(vtAuxilioFixoMensal) || 0) > 0 ? {
             vtAuxilioFixoMensal: parseFloat(vtAuxilioFixoMensal),
           } : {}),
@@ -787,34 +758,16 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
               <span className="font-medium">Recebe Vale Transporte</span>
             </label>
             {vtAtivo && (
-              <div className="grid grid-cols-2 gap-3 mt-2">
-                <Input
-                  label="Passagens/dia *"
-                  type="number" min="0" step="1"
-                  value={vtPassagensPorDia}
-                  onChange={(e) => setVtPassagensPorDia(e.target.value)}
-                  placeholder="ex: 2"
-                />
-                <Input
-                  label="Valor passagem (R$) *"
-                  type="number" min="0" step="0.01"
-                  value={vtValorPassagem}
-                  onChange={(e) => setVtValorPassagem(e.target.value)}
-                  placeholder="ex: 5.00"
-                />
-              </div>
-            )}
-            {vtAtivo && (
               <div className="mt-2">
                 <Input
-                  label="VT — valor diário (R$) · novo Benefícios"
+                  label="VT — valor por dia (R$) *"
                   type="number" min="0" step="0.01"
                   value={vtValorDiario}
                   onChange={(e) => setVtValorDiario(e.target.value)}
                   placeholder="ex: 10,00"
                 />
                 <p className="text-[11px] text-gray-500 dark:text-gray-400 mt-1">
-                  Valor por dia trabalhado usado no <b>módulo novo de Benefícios</b>. Se vazio, ele usa passagens/dia × valor da passagem.
+                  Valor de VT por dia trabalhado (módulo de Benefícios).
                 </p>
               </div>
             )}
