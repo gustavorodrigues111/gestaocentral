@@ -9,7 +9,7 @@ import { Button } from "../../core/ui/Button";
 import { db } from "../../core/firebase/config";
 import { useTodasPessoas, usePessoasAtivasLista } from "../../core/pessoas/PessoasContext";
 import { criarTarefa, softDeleteTarefa, marcarSubtarefa, adicionarComentario, atualizarTarefa } from "./repository";
-import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type TarefaStatus, type TarefaPrioridade, type TarefaAnexo, type Subtarefa, type Restaurant, type Endereco, type PrazoRecorrencia, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL } from "../../core/types";
+import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type TarefaStatus, type TarefaPrioridade, type TarefaAnexo, type Subtarefa, type Restaurant, type Endereco, type PrazoRecorrencia, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL } from "../../core/types";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 
 // Estilo de chip selecionável (empresa/endereço) — igual à seleção de projeto.
@@ -712,11 +712,20 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
     }, autor, { acao: "editada", campo: "anexos", detalhe: "Anexo removido" });
   }
 
-  const isConcluida = tarefa.status === "concluida";
-  // Toggle do botão "Marcar como concluída". Volta pra "a_fazer" se já concluída.
+  // Concluir OTIMISTA: reflete no clique (o servidor confirma via snapshot). Sem
+  // isso, o botão só mudava depois do round-trip → parecia "não marcar".
+  const [concluidaOtim, setConcluidaOtim] = useState<boolean | null>(null);
+  const [concluirBusy, setConcluirBusy] = useState(false);
+  useEffect(() => { setConcluidaOtim(null); }, [tarefa.status]);  // reseta quando o servidor confirma
+  const isConcluida = concluidaOtim ?? (tarefa.status === "concluida");
   async function toggleConcluida() {
+    if (concluirBusy) return;
     const novo: TarefaStatus = isConcluida ? "a_fazer" : "concluida";
-    await mudarStatusComErro(tarefa.id, novo, autor);
+    setConcluidaOtim(novo === "concluida");   // instantâneo
+    setConcluirBusy(true);
+    try { const ok = await mudarStatusComErro(tarefa.id, novo, autor); if (!ok) setConcluidaOtim(null); }
+    catch { setConcluidaOtim(null); }         // reverte se falhar
+    finally { setConcluirBusy(false); }
   }
 
   // Tab de atividade no fim do drawer — comentários ou log (atividade)
@@ -763,7 +772,8 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
         <div className="px-5 py-3 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between gap-3 shrink-0">
           <button
             onClick={toggleConcluida}
-            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors ${
+            disabled={concluirBusy}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium border transition-colors disabled:opacity-70 ${
               isConcluida
                 ? "bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700"
                 : "bg-white dark:bg-gray-900 border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-emerald-50 hover:border-emerald-300 dark:hover:bg-emerald-900/20"
@@ -894,17 +904,6 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
                 value={ymdParaBr(tarefa.prazo || "")}
                 onChange={(br) => salvarCampo("prazo", brParaYmd(br) || null, "prazo")}
               />
-            </FieldRow>
-            <FieldRow label="Status">
-              <select
-                value={tarefa.status}
-                onChange={(e) => mudarStatusComErro(tarefa.id, e.target.value as TarefaStatus, autor)}
-                className="bg-transparent border border-transparent hover:border-gray-300 dark:hover:border-gray-700 rounded px-2 py-1 text-sm cursor-pointer w-full"
-              >
-                {(Object.keys(TAREFA_STATUS_LABEL) as TarefaStatus[]).map(s =>
-                  <option key={s} value={s}>{TAREFA_STATUS_LABEL[s]}</option>
-                )}
-              </select>
             </FieldRow>
             <FieldRow label="Prioridade">
               <select

@@ -40,13 +40,15 @@ export function AreaIcone({ proj, size = 16, className, mono }: { proj?: Pick<Ta
   return <Ic size={size} className={className} style={mono ? undefined : { color: proj?.cor }} />;
 }
 
-export async function mudarStatusComErro(id: string, status: TarefaStatus, autor: { id: string; nome: string }) {
+// Retorna true se o status foi aplicado; false se bloqueado por campos obrigatórios.
+export async function mudarStatusComErro(id: string, status: TarefaStatus, autor: { id: string; nome: string }): Promise<boolean> {
   try {
     await mudarStatus(id, status, autor);
+    return true;
   } catch (e) {
     if (e instanceof CamposObrigatoriosFaltantesError) {
       alert(`Não dá pra concluir — campos obrigatórios faltando:\n\n• ${e.faltantes.join("\n• ")}`);
-      return;
+      return false;
     }
     throw e;
   }
