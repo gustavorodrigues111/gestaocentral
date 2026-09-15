@@ -3082,6 +3082,22 @@ export type FreelaPagamento = {
   formaPagamento?: string;
 };
 
+// ─── FREELAS — CONFIG POR RESTAURANTE (datas de corte de pagamento) ──────────
+// Linha de corte: turno ENCERRADO até {corteDiaSemana} {corteHora} é pago em
+// {pagamentoDiaSemana}. diaSemana: 0=Dom .. 6=Sáb. Pode ter 1+ linhas.
+export type FreelasCortePagamento = {
+  id: string;
+  corteDiaSemana: number;          // 0..6
+  corteHora: string;               // "HH:MM"
+  pagamentoDiaSemana: number;      // 0..6
+};
+export type FreelasConfig = {
+  restaurantId: string;
+  cortesPagamento?: FreelasCortePagamento[];
+  atualizadoEm?: string;
+  atualizadoPor?: string;
+};
+
 // ─── EXCEÇÕES — STATUS DA SEMANA ────────────────────────────────────────────
 // Workflow de tratamento das exceções de ponto. 1 doc por (restaurante, semana).
 //

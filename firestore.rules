@@ -182,6 +182,7 @@ service cloud.firestore {
     match /cardapioArquivados/{id}  { allow read, write: if authed(); }
     match /freelaShifts/{id}        { allow read, write: if authed(); }
     match /freelaPagamentos/{id}    { allow read, write: if authed(); }
+    match /freelasConfig/{rid}      { allow read, write: if authed(); }   // datas de corte de pagamento (id=rid)
     match /freelaMensalistaConfirmado/{id} { allow read, write: if authed(); }
     match /vendas/{id}                 { allow read, write: if authed(); }
     match /vendasProdutos/{id}         { allow read, write: if authed(); }

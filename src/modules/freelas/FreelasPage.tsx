@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
-import { PenLine, Rewind, Banknote, BarChart3, FolderKanban, Lock, ClipboardList, Circle, FlaskConical, type LucideIcon } from "lucide-react";
+import { PenLine, Rewind, Banknote, BarChart3, FolderKanban, Lock, ClipboardList, Circle, FlaskConical, Settings, type LucideIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
-import { collection, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -11,6 +12,8 @@ import type {
   Empregado,
   FreelaPagamento,
   FreelaShift,
+  FreelasConfig,
+  FreelasCortePagamento,
   Pessoa,
 } from "../../core/types";
 import { CadastroRapidoFreelaModal } from "./CadastroRapidoFreelaModal";
@@ -20,9 +23,10 @@ import { FechamentoTab } from "./FechamentoTab";
 import { HistoricoTab } from "./HistoricoTab";
 import { RetroativoTab } from "./RetroativoTab";
 import { RelatoriosTab } from "./RelatoriosTab";
+import { ConfiguracoesTab } from "./ConfiguracoesTab";
 import { PageContainer } from "../../core/ui/PageContainer";
 
-type TabId = "lancamentos" | "retroativo" | "fechamento" | "relatorios" | "historico";
+type TabId = "lancamentos" | "retroativo" | "fechamento" | "relatorios" | "historico" | "config";
 
 const TABS_DEF: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: "lancamentos", label: "Lançamentos",    Icon: PenLine },
@@ -30,6 +34,7 @@ const TABS_DEF: { id: TabId; label: string; Icon: LucideIcon }[] = [
   { id: "fechamento",  label: "Fechamento",     Icon: Banknote },
   { id: "relatorios",  label: "Relatórios",     Icon: BarChart3 },
   { id: "historico",   label: "Histórico",      Icon: FolderKanban },
+  { id: "config",      label: "Configurações",  Icon: Settings },
 ];
 
 export function FreelasPage() {
@@ -56,7 +61,7 @@ export function FreelasPage() {
     const out: TabId[] = [];
     if (podeOperar) out.push("lancamentos");
     if (podeRetro)  out.push("retroativo");
-    if (podeDp)     out.push("fechamento", "relatorios", "historico");
+    if (podeDp)     out.push("fechamento", "relatorios", "historico", "config");
     return out;
   }, [podeOperar, podeRetro, podeDp]);
 
@@ -77,6 +82,21 @@ export function FreelasPage() {
   const [pagamentos, setPagamentos] = useState<FreelaPagamento[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  const [cortes, setCortes] = useState<FreelasCortePagamento[]>([]);
+
+  // Config do módulo (datas de corte de pagamento) — doc por restaurante.
+  useEffect(() => {
+    if (!rid) return;
+    return onSnapshot(doc(db, "freelasConfig", rid), (snap) => {
+      setCortes(((snap.data() as FreelasConfig | undefined)?.cortesPagamento) || []);
+    }, () => setCortes([]));
+  }, [rid]);
+  async function salvarCortes(novos: FreelasCortePagamento[]) {
+    if (!rid) return;
+    await setDoc(doc(db, "freelasConfig", rid), sanitizeForFirestore({
+      restaurantId: rid, cortesPagamento: novos, atualizadoEm: new Date().toISOString(), atualizadoPor: me?.id,
+    }), { merge: true });
+  }
 
   useEffect(() => {
     if (!rid) return;
@@ -201,11 +221,15 @@ export function FreelasPage() {
           empregados={empregados}
           pessoas={pessoas}
           podeOperar={podeOperar}
+          cortes={cortes}
           showNovo={showNovoTurno}
           onCloseNovo={() => setShowNovoTurno(false)}
           showAvulso={showAvulsoTurno}
           onCloseAvulso={() => setShowAvulsoTurno(false)}
         />
+      )}
+      {tab === "config" && podeDp && (
+        <ConfiguracoesTab cortes={cortes} podeEditar={podeDp} onSave={salvarCortes} />
       )}
       {tab === "retroativo" && podeRetro && (
         <RetroativoTab

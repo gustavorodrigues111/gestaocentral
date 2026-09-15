@@ -6,9 +6,10 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { TimeInput } from "../../core/ui/TimeInput";
-import type { FreelaIntervalo, FreelaShift } from "../../core/types";
+import type { FreelaIntervalo, FreelaShift, FreelasCortePagamento } from "../../core/types";
 import { calcHoras, calcTotal, fmtHoras, somaIntervalos } from "./helpers";
 import { IntervalosEditor } from "./IntervalosEditor";
+import { proximoPagamento, fmtDataBR, DIAS_SEMANA_CAP } from "./cortePagamento";
 
 // Execução do turno por BOTÃO (conceito fixo, separado do planejamento):
 //   abrir     → confirma a ENTRADA real (chegada). Vira aberto.
@@ -22,6 +23,7 @@ type Mode = "abrir" | "fechar" | "editar" | "intervalo";
 type Props = {
   shift: FreelaShift;
   mode: Mode;
+  cortes?: FreelasCortePagamento[];
   onClose: () => void;
   onSaved: () => void;
 };
@@ -39,8 +41,10 @@ const BOTOES: Record<Mode, string> = {
   intervalo: "Salvar intervalo",
 };
 
-export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
+export function HorarioModal({ shift, mode, cortes, onClose, onSaved }: Props) {
   const { pessoa: me } = useAuth();
+  // Prévia da data de pagamento se fechar agora (informativo — não bloqueia).
+  const previsaoPagamento = mode === "fechar" ? proximoPagamento(new Date().toISOString(), cortes) : null;
   // Pré-preenche os reais a partir do que já existe e, na falta, do previsto.
   const [data, setData] = useState(shift.date || "");
   const [entrada, setEntrada] = useState(shift.entrada || shift.entradaPrevista || "");
@@ -129,6 +133,11 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
           <div className="text-xs text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-800/50 border border-gray-200 dark:border-gray-700 rounded p-2">
             {shift.entrada && <>Turno aberto às <strong>{shift.entrada}</strong>. </>}
             Confirme a saída e os intervalos realizados pra fechar.
+          </div>
+        )}
+        {previsaoPagamento && (
+          <div className="text-xs text-indigo-800 dark:text-indigo-200 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded p-2">
+            <Clock size={13} className="inline align-[-2px] mr-1" />Fechando agora, este turno é pago em <strong>{DIAS_SEMANA_CAP[previsaoPagamento.pagamento.getDay()]}, {fmtDataBR(previsaoPagamento.pagamento)}</strong>.
           </div>
         )}
         {mode === "intervalo" && (

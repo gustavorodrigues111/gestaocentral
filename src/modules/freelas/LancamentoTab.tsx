@@ -1,14 +1,15 @@
 import { useState, type ReactNode } from "react";
-import { Circle, CalendarDays, CheckSquare, Pause, Pencil, Ban, Trash2 } from "lucide-react";
+import { Circle, CalendarDays, CheckSquare, Pause, Pencil, Ban, Trash2, CalendarClock } from "lucide-react";
 import { deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
-import { type Empregado, type FreelaShift, type Pessoa } from "../../core/types";
+import { type Empregado, type FreelaShift, type FreelasCortePagamento, type Pessoa } from "../../core/types";
 import { todayYmd } from "../../core/utils/date";
 import { NovoTurnoModal } from "./NovoTurnoModal";
 import { HorarioModal } from "./HorarioModal";
 import { calcHoras, fmtHoras, intervaloTotalDoShift, somaIntervalos } from "./helpers";
+import { DIAS_SEMANA_CAP } from "./cortePagamento";
 
 type Props = {
   restaurantId: string;
@@ -16,6 +17,7 @@ type Props = {
   empregados: Empregado[];
   pessoas: Pessoa[];
   podeOperar: boolean;
+  cortes?: FreelasCortePagamento[];
   // "Planejar turnos" e "Abrir turno" vêm do header da página (FreelasPage).
   showNovo?: boolean;
   onCloseNovo?: () => void;
@@ -35,7 +37,7 @@ function zonaDoShift(s: FreelaShift, hoje: string): Zona {
 }
 
 export function LancamentoTab({
-  restaurantId, shifts, empregados, pessoas, podeOperar,
+  restaurantId, shifts, empregados, pessoas, podeOperar, cortes,
   showNovo: showNovoExt, onCloseNovo,
   showAvulso: showAvulsoExt, onCloseAvulso,
 }: Props) {
@@ -68,6 +70,18 @@ export function LancamentoTab({
 
   return (
     <div className="space-y-5">
+      {/* Banner fixo das datas de corte de pagamento (config do módulo). */}
+      {(cortes?.length ?? 0) > 0 && (
+        <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/60 dark:bg-indigo-900/15 px-3 py-2.5">
+          <div className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 inline-flex items-center gap-1 mb-1"><CalendarClock size={12} /> Datas de pagamento</div>
+          <ul className="text-[13px] text-gray-700 dark:text-gray-200 space-y-0.5">
+            {cortes!.map(c => (
+              <li key={c.id}>Turnos <b>encerrados até {DIAS_SEMANA_CAP[c.corteDiaSemana]} {c.corteHora}</b> → pagos na <b>{DIAS_SEMANA_CAP[c.pagamentoDiaSemana]}</b>.</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       {/* ── Zona 1: Turnos do dia ─────────────────────────────────────────── */}
       <section>
         <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100 mb-2 inline-flex items-center gap-1.5"><Circle size={13} className="fill-emerald-400 text-emerald-400" /> Turnos do dia</h3>
@@ -78,7 +92,7 @@ export function LancamentoTab({
           </div>
         ) : (
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
-            {turnosDoDia.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} onAlterar={() => setEditShift(s)} />)}
+            {turnosDoDia.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} cortes={cortes} onAlterar={() => setEditShift(s)} />)}
           </div>
         )}
       </section>
@@ -90,7 +104,7 @@ export function LancamentoTab({
             <CalendarDays size={13} className="inline align-[-2px] mr-1" />Planejados ({planejados.length})
           </h3>
           <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-white/60 dark:bg-gray-900/40 divide-y divide-gray-100 dark:divide-gray-800">
-            {planejados.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} onAlterar={() => setEditShift(s)} />)}
+            {planejados.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} cortes={cortes} onAlterar={() => setEditShift(s)} />)}
           </div>
         </section>
       )}
@@ -109,7 +123,7 @@ export function LancamentoTab({
           </button>
           {realizadosOpen && (
             <div className="rounded-xl border border-gray-200 dark:border-gray-800 overflow-hidden bg-white dark:bg-gray-900 divide-y divide-gray-100 dark:divide-gray-800">
-              {realizados.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} onAlterar={() => setEditShift(s)} />)}
+              {realizados.map((s) => <RowTurno key={s.id} shift={s} hoje={hoje} podeOperar={podeOperar} cortes={cortes} onAlterar={() => setEditShift(s)} />)}
             </div>
           )}
         </section>
@@ -190,7 +204,7 @@ const ZONA_CARD: Record<Zona, string> = {
 };
 
 // ── Linha de turno (display + ações por zona) ───────────────────────────────
-function RowTurno({ shift, hoje, podeOperar, onAlterar }: { shift: FreelaShift; hoje: string; podeOperar: boolean; onAlterar: () => void }) {
+function RowTurno({ shift, hoje, podeOperar, cortes, onAlterar }: { shift: FreelaShift; hoje: string; podeOperar: boolean; cortes?: FreelasCortePagamento[]; onAlterar: () => void }) {
   const { pessoa: me } = useAuth();
   const [modalMode, setModalMode] = useState<"abrir" | "fechar" | "editar" | "intervalo" | null>(null);
   const [saving, setSaving] = useState(false);
@@ -265,7 +279,7 @@ function RowTurno({ shift, hoje, podeOperar, onAlterar }: { shift: FreelaShift; 
       <div className="text-xs text-gray-600 dark:text-gray-300 mt-1.5">{textoHorario(shift, zona)}</div>
 
       {modalMode && (
-        <HorarioModal shift={shift} mode={modalMode} onClose={() => setModalMode(null)} onSaved={() => setModalMode(null)} />
+        <HorarioModal shift={shift} mode={modalMode} cortes={cortes} onClose={() => setModalMode(null)} onSaved={() => setModalMode(null)} />
       )}
     </div>
   );
