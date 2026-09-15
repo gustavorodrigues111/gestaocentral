@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { Sparkles, Pencil, Trash2, ChevronDown } from "lucide-react";
 import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
 import { db, auth } from "../../core/firebase/config";
@@ -16,6 +16,9 @@ type Props = {
   restaurantId: string;
   // Categorias já usadas em outros insumos — entram nos chips junto das sugeridas.
   categoriasExistentes?: string[];
+  // Reavaliar pela IA automaticamente ao abrir (usado no "Juntar" de sugestões,
+  // pra a IA escolher nome/categoria/unidade mais adequados do produto unido).
+  autoReavaliar?: boolean;
   // Pré-preenchimento ao criar (ex.: sugestão vinda do Recebimento).
   preset?: Partial<Insumo> | null;
   onExcluir?: (insumo: Insumo) => void;   // excluir de dentro do modo "ver"
@@ -28,7 +31,7 @@ const CATEGORIAS_SUGERIDAS = [
   "Mercearia", "Limpeza", "Descartáveis", "Outros",
 ];
 
-export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExistentes, preset, onExcluir, onClose }: Props) {
+export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExistentes, autoReavaliar, preset, onExcluir, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !insumo;
   const base = insumo ?? preset ?? null;   // ao criar, usa o preset da sugestão
@@ -121,6 +124,12 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
       }
     } catch { /* silencioso */ } finally { setRevisandoIa(false); }
   }
+
+  // Junção de sugestões: reavalia pela IA 1x ao abrir (nome/categoria/unidade do produto unido).
+  useEffect(() => {
+    if (autoReavaliar && isNew && nome.trim()) void reavaliarIa();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function salvar() {
     if (!nome.trim()) { setErr("Nome obrigatório"); return; }
