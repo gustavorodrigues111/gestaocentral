@@ -22,8 +22,6 @@ import { requestAccessToken } from "../../core/google/driveClient";
 import { uploadFileToFolder } from "../../core/google/driveShared";
 import { centralConfigured } from "../../core/google/driveCentral";
 import { ensureModuloFolder } from "../../core/google/driveModulo";
-import { useTodasPessoas } from "../../core/pessoas/PessoasContext";
-import { semearRotinasJanaynna } from "./rotinasJanaynnaSeed";
 import { podeVerTarefa, podeVerProjeto } from "./visibilidade";
 import { type Tab, type ViewMode, ViewSwitcher, ehAreaPrazos, semOrfasPrazo } from "./helpers";
 import { CalendarioView, KanbanView, LixeiraView, MinhasTarefasView, ProjetoView, ProjetosTopBar } from "./views";
@@ -96,18 +94,6 @@ export function TarefasPage() {
   // Abrir/criar prazo no MODAL inline (mesmo módulo). null = criar novo.
   const [prazoModal, setPrazoModal] = useState<{ prazo: Prazo | null; modo?: "ver" | "editar" } | null>(null);
   const [novoMenuAberto, setNovoMenuAberto] = useState(false);
-  // Seed provisório das rotinas da Janaynna (removido depois de rodar 1×).
-  const pessoasTodas = useTodasPessoas();
-  const [semeando, setSemeando] = useState(false);
-  const rodarSeedJanaynna = async () => {
-    if (!window.confirm("Criar as rotinas financeiras da Janaynna (3 prazos + 10 tarefas recorrentes)?")) return;
-    setSemeando(true);
-    try {
-      const r = await semearRotinasJanaynna({ restaurants, projetos, pessoas: pessoasTodas, criadoPor: pessoa?.id || "", criadoPorNome: pessoa?.nome || "" });
-      alert(`✓ Seed: ${r.prazos} prazo(s) + ${r.tarefas} tarefa(s) criados.${r.avisos.length ? `\n\nAvisos:\n- ${r.avisos.join("\n- ")}` : ""}`);
-    } catch (e) { alert("Falha no seed: " + (e instanceof Error ? e.message : "erro")); }
-    setSemeando(false);
-  };
   const abrirPrazo = (p: Prazo) => setPrazoModal({ prazo: p, modo: "ver" });
   const activeRest = restaurants.find((r) => r.id === ridAtivo);
   const laudoInputRef = useRef<HTMLInputElement | null>(null);
@@ -434,8 +420,6 @@ export function TarefasPage() {
                 <button type="button" onClick={() => { setGerenciarMenuAberto(false); setTab("todas"); }} className="w-full flex items-center gap-2 text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"><Globe size={15} /> Todas as tarefas</button>
                 <button type="button" onClick={() => { setGerenciarMenuAberto(false); setTab("lixeira"); }} className="w-full flex items-center gap-2 text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"><Trash2 size={15} /> Lixeira</button>
                 <button type="button" onClick={() => { setGerenciarMenuAberto(false); setTab("admin"); }} className="w-full flex items-center gap-2 text-left px-3 py-2 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-200"><FolderKanban size={15} /> Áreas e projetos</button>
-                <div className="border-t border-gray-100 dark:border-gray-800 my-1" />
-                <button type="button" disabled={semeando} onClick={() => { setGerenciarMenuAberto(false); void rodarSeedJanaynna(); }} className="w-full flex items-center gap-2 text-left px-3 py-2 hover:bg-amber-50 dark:hover:bg-amber-900/20 text-amber-700 dark:text-amber-300 disabled:opacity-60"><Plus size={15} /> {semeando ? "Criando…" : "Seed rotinas Janaynna (provisório)"}</button>
               </div>
             </>
           )}
