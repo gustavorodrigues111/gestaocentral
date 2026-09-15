@@ -1,13 +1,14 @@
 import { useEffect, useState, useMemo, type ReactNode } from "react";
-import { Inbox, Layers, ChevronDown, Lock, Pencil, Flame, Trash2, Check, CalendarDays, CheckSquare, MessageSquare, Bot, PartyPopper, Folder, SlidersHorizontal } from "lucide-react";
+import { Inbox, Layers, ChevronDown, Lock, Pencil, Flame, Trash2, Check, CalendarDays, CheckSquare, MessageSquare, Bot, PartyPopper, Folder, SlidersHorizontal, AlarmClock } from "lucide-react";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { Button } from "../../core/ui/Button";
 import { doc, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { usePessoasAtivasLista } from "../../core/pessoas/PessoasContext";
 import { softDeleteTarefa, restaurarTarefa, atualizarTarefa, marcarSubtarefa } from "./repository";
-import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type Subtarefa, type TarefaStatus, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL } from "../../core/types";
+import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type Subtarefa, type TarefaStatus, type Prazo, TAREFA_STATUS_LABEL, TAREFA_PRIORIDADE_LABEL, TAREFA_ORIGEM_LABEL, PRAZO_TIPO_LABEL } from "../../core/types";
 import { fmtBR } from "../../core/utils/date";
+import { ymdExibicao } from "../prazos/logic";
 import { isConfidencial } from "./visibilidade";
 import { AvatarIniciais, EmpresaBadge, FiltroChip, type ViewMode, ViewSwitcher, catDaTarefa, ORIGEM_ICON, AreaIcone, ehAreaPrazos, inicioSemanaSeg, mudarStatusComErro } from "./helpers";
 import { EscolhaRestauranteModal } from "./modais";
@@ -833,7 +834,7 @@ export function KanbanView({ tarefas, projetos, autor, onAbrir }: {
 
 // ─── VIEW: Calendário (semana) ─────────────────────────────────────────────
 
-export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia, onIdeiaNoDia, acoes }: {
+export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefaNoDia, onIdeiaNoDia, acoes, prazos, onAbrirPrazo }: {
   tarefas: Tarefa[];
   projetos: TarefaProjeto[];
   subprojetos?: TarefaSubprojeto[];
@@ -846,6 +847,9 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
   onIdeiaNoDia?: (ideia: { id: string; titulo: string; descricao: string }, prazo: string) => void;
   // Ações (+ Nova / Gerenciar) — no mobile aparecem na frente do seletor de semana.
   acoes?: ReactNode;
+  // Prazos (coleção separada) mostrados junto no calendário — read-only aqui.
+  prazos?: Prazo[];
+  onAbrirPrazo?: (p: Prazo) => void;
 }) {
   const hoje = new Date().toISOString().slice(0, 10);
   const [semanaInicio, setSemanaInicio] = useState<string>(() => inicioSemanaSeg(hoje));
@@ -914,6 +918,18 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
   tarefasPorDia.forEach(arr => arr.sort((a, b) =>
     (a.ordemDia ?? 1e9) - (b.ordemDia ?? 1e9) || (a.titulo || "").localeCompare(b.titulo || "")
   ));
+
+  // Prazos do dia — pelo vencimento EXIBIDO (fim de semana desloca pra sexta).
+  const prazosPorDia = new Map<string, Prazo[]>();
+  (prazos || []).forEach(p => {
+    if (p.status === "resolvido" || !p.vencimento) return;
+    const dia = ymdExibicao(p.vencimento);
+    if (!dias.includes(dia)) return;
+    const arr = prazosPorDia.get(dia) || [];
+    arr.push(p);
+    prazosPorDia.set(dia, arr);
+  });
+  prazosPorDia.forEach(arr => arr.sort((a, b) => (a.vencimento || "").localeCompare(b.vencimento || "")));
 
   // Subtarefas datadas do RESPONSÁVEL (o viewer) viram itens no dia delas — cada
   // uma abre a tarefa-mãe. Só as do próprio usuário (as dos outros ficam na mãe).
@@ -999,6 +1015,19 @@ export function CalendarioView({ tarefas, projetos, onAbrir, autor, onNovaTarefa
           )}
         </div>
         <div className="space-y-1 flex-1 overflow-y-auto">
+          {(prazosPorDia.get(data) || []).map(p => (
+            <button
+              key={"pz-" + p.id}
+              type="button"
+              onClick={() => onAbrirPrazo?.(p)}
+              className="w-full text-left text-[11px] px-2 py-1.5 rounded-md border border-amber-200 dark:border-amber-900/40 bg-amber-50 dark:bg-amber-900/15 text-amber-900 dark:text-amber-200 hover:shadow-sm transition-shadow cursor-pointer"
+              style={{ borderLeftWidth: 4, borderLeftColor: "#f59e0b" }}
+              title={`Prazo: ${p.titulo}`}
+            >
+              <div className="flex items-start gap-1 font-medium leading-snug line-clamp-2"><AlarmClock size={11} className="shrink-0 mt-[1px]" /> <span>{p.titulo}</span></div>
+              <div className="text-[8px] uppercase tracking-wide opacity-70 mt-0.5 ml-[14px]">{PRAZO_TIPO_LABEL[p.tipo]}</div>
+            </button>
+          ))}
           {lista.map(t => {
             const proj = projetos.find(p => p.id === t.projetoId);
             const meta = catDaTarefa(t.origem, proj);

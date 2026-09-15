@@ -80,7 +80,7 @@ export function TarefasPage() {
   const isMasterTP = !!pessoa?.isMaster;
   const meRestsTP = useMemo(() => (pessoa?.restaurantIds || []).filter(Boolean).slice(0, 10), [pessoa?.restaurantIds]);
   const prazos = usePrazos(ridAtivo || undefined, { isMaster: isMasterTP, meRests: meRestsTP, todasEmpresas: false });
-  const [filtroTipo, setFiltroTipo] = useState<"tarefas" | "prazos" | "ambos">("tarefas");
+  const [filtroTipo, setFiltroTipo] = useState<"tarefas" | "prazos" | "ambos">("ambos");
   const SUF_PRAZO: Record<PrazoTipo, string> = { conta: "Conta", tecnico: "Tecnico", trabalhista: "Trabalhista", avulso: "Avulso" };
   const podeVerTipoPrazo = (t: PrazoTipo) => isMasterTP || canAcaoRid("prazos", `ver${SUF_PRAZO[t]}`);
   const prazosMinhas = useMemo(() => prazos.filter((p) => p.responsavelId === pessoa?.id), [prazos, pessoa?.id]);
@@ -404,7 +404,7 @@ export function TarefasPage() {
           <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
             {buscaInput}
             <div className="flex-1" />
-            {viewMinhas === "lista" && <div className="[&>div]:!mb-0">{filtroTipoCtrl}</div>}
+            <div className="[&>div]:!mb-0">{filtroTipoCtrl}</div>
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
             {/* No mobile+calendário o +/engrenagem vão pra frente do seletor de semana (dentro do CalendarioView), então some daqui. */}
             <div className={viewMinhas === "calendario" ? "hidden sm:block" : "contents"}>{acoesHeader}</div>
@@ -412,7 +412,9 @@ export function TarefasPage() {
           {viewMinhas === "calendario" && (
             <>
               <CalendarioView
-                tarefas={filtrar(minhas)}
+                tarefas={filtroTipo === "prazos" ? [] : filtrar(minhas)}
+                prazos={filtroTipo === "tarefas" ? [] : prazosMinhas}
+                onAbrirPrazo={() => navigate(`/r/${ridAtivo}/prazos`)}
                 projetos={projetos}
                 subprojetos={subprojetos}
                 onAbrir={setDetalheId}
@@ -464,12 +466,12 @@ export function TarefasPage() {
           <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">
             {buscaInput}
             <div className="flex-1" />
-            {viewMinhas === "lista" && <div className="[&>div]:!mb-0">{filtroTipoCtrl}</div>}
+            <div className="[&>div]:!mb-0">{filtroTipoCtrl}</div>
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
             {/* No mobile+calendário o +/engrenagem vão pra frente do seletor de semana (dentro do CalendarioView), então some daqui. */}
             <div className={viewMinhas === "calendario" ? "hidden sm:block" : "contents"}>{acoesHeader}</div>
           </div>
-          {viewMinhas === "calendario" && <CalendarioView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} acoes={acoesHeader} />}
+          {viewMinhas === "calendario" && <CalendarioView tarefas={filtroTipo === "prazos" ? [] : filtrar(todasTarefasVisiveis)} prazos={filtroTipo === "tarefas" ? [] : prazos} onAbrirPrazo={() => navigate(`/r/${ridAtivo}/prazos`)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} acoes={acoesHeader} />}
           {viewMinhas === "lista" && (
             <div className="space-y-4">
               {filtroTipo !== "prazos" && <MinhasTarefasView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} pessoaId={pessoa?.id || ""} pessoaNome={pessoa?.nome || ""} />}
@@ -500,7 +502,7 @@ export function TarefasPage() {
             <span className="text-xs sm:text-sm text-gray-500 dark:text-gray-400">{todasTarefas.length} tarefa(s) · {todasTarefas.filter(t => t.status !== "concluida" && t.status !== "cancelada").length} ativas</span>
             <button type="button" onClick={() => setTab("minhas")} className="text-xs font-medium px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">← Minhas</button>
             <div className="flex-1" />
-            {viewMinhas === "lista" && <div className="[&>div]:!mb-0">{filtroTipoCtrl}</div>}
+            <div className="[&>div]:!mb-0">{filtroTipoCtrl}</div>
             <div className="[&>div]:!mb-0"><ViewSwitcher value={viewMinhas} onChange={setViewMinhas} /></div>
           </div>
           <div className="mb-4 flex items-center gap-x-3 gap-y-2 flex-wrap">

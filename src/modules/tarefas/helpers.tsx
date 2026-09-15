@@ -1,6 +1,6 @@
 import { useState } from "react";
 import {
-  Building2, CalendarDays, List, KanbanSquare, Lock, ChevronDown,
+  Building2, CalendarDays, List, Lock, ChevronDown,
   Banknote, Wrench, Scale, UserRoundMinus, Palmtree, MessagesSquare,
   PartyPopper, Repeat, Package, Smartphone, type LucideIcon,
   Users, Coins, Landmark, Crown, ChefHat, Briefcase, ShoppingCart,
@@ -109,10 +109,10 @@ export function EmpresaBadge({ ids, className = "" }: { ids?: string[]; classNam
 }
 
 export function ViewSwitcher({ value, onChange }: { value: ViewMode; onChange: (v: ViewMode) => void }) {
+  // Kanban aposentado da UI (não era usado) — só Calendário e Lista.
   const opts: { id: ViewMode; Icon: LucideIcon; label: string }[] = [
     { id: "calendario", Icon: CalendarDays, label: "Calendário" },
     { id: "lista", Icon: List, label: "Lista" },
-    { id: "kanban", Icon: KanbanSquare, label: "Kanban" },
   ];
   const atual = opts.find(o => o.id === value) || opts[0];
   const [aberto, setAberto] = useState(false);
