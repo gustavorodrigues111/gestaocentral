@@ -16,8 +16,12 @@ import { usePrazos } from "../prazos/usePrazos";
 import { ListaUnificada } from "./ListaUnificada";
 import { PrazoInline } from "./PrazoInline";
 import { resolverPrazo, podeResolver, hojeYmd } from "../prazos/logic";
-import { setDoc } from "firebase/firestore";
+import { setDoc, updateDoc } from "firebase/firestore";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { requestAccessToken } from "../../core/google/driveClient";
+import { uploadFileToFolder } from "../../core/google/driveShared";
+import { centralConfigured } from "../../core/google/driveCentral";
+import { ensureModuloFolder } from "../../core/google/driveModulo";
 import { podeVerTarefa, podeVerProjeto } from "./visibilidade";
 import { type Tab, type ViewMode, ViewSwitcher, ehAreaPrazos, semOrfasPrazo } from "./helpers";
 import { CalendarioView, KanbanView, LixeiraView, MinhasTarefasView, ProjetoView, ProjetosTopBar } from "./views";
@@ -91,15 +95,48 @@ export function TarefasPage() {
   const [prazoModal, setPrazoModal] = useState<{ prazo: Prazo | null; modo?: "ver" | "editar" } | null>(null);
   const [novoMenuAberto, setNovoMenuAberto] = useState(false);
   const abrirPrazo = (p: Prazo) => setPrazoModal({ prazo: p, modo: "ver" });
-  // Concluir prazo direto da lista. Se exige laudo e não tem → abre o modal
-  // (lá anexa o laudo). Recorrente → resolverPrazo avança o vencimento sozinho.
+  const activeRest = restaurants.find((r) => r.id === ridAtivo);
+  const laudoInputRef = useRef<HTMLInputElement | null>(null);
+  const laudoAlvo = useRef<Prazo | null>(null);
+  // Concluir prazo direto da lista. Se exige laudo e não tem → abre o seletor de
+  // arquivo pra anexar o laudo primeiro. Recorrente → resolverPrazo avança sozinho.
   const resolverPrazoDireto = async (p: Prazo) => {
-    if (!podeResolver(p)) { abrirPrazo(p); return; }
+    if (!podeResolver(p)) {   // exige laudo e não tem → anexar antes
+      if (!activeRest?.driveRootFolderId) { abrirPrazo(p); return; }
+      laudoAlvo.current = p; laudoInputRef.current?.click(); return;
+    }
     if (!window.confirm(`Concluir "${p.titulo}" com data de hoje?`)) return;
     const atualizado = resolverPrazo(p, { em: hojeYmd(), por: pessoa?.id || null, porNome: pessoa?.nome || null });
     try {
       await setDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ ...atualizado, atualizadoEm: new Date().toISOString() }), { merge: true });
     } catch (e) { alert("Falha ao concluir: " + (e instanceof Error ? e.message : "erro")); }
+  };
+  // Upload de laudo no Drive (mesmo fluxo do módulo Prazos) — dispara pelo concluir.
+  const onLaudoEscolhido = async (file: File) => {
+    const p = laudoAlvo.current; const rootId = activeRest?.driveRootFolderId;
+    if (!p || !rootId) return;
+    try {
+      const ext = file.name.split(".").pop() || "pdf";
+      const nome = `laudo-${p.titulo.toLowerCase().replace(/[^\w]+/g, "-").slice(0, 40)}-${p.vencimento.replace(/-/g, "")}.${ext}`;
+      const renomeado = new File([file], nome, { type: file.type });
+      if (!(await centralConfigured())) await requestAccessToken();
+      const folderId = await ensureModuloFolder(rootId, "Prazos");
+      const up = await uploadFileToFolder(folderId, renomeado);
+      await updateDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ laudo: { driveFileId: up.id, driveUrl: (up as { webViewLink?: string }).webViewLink || null, nome, anexadoEm: new Date().toISOString(), anexadoPor: pessoa?.id || null, anexadoPorNome: pessoa?.nome || null }, atualizadoEm: new Date().toISOString() }));
+      alert("Laudo anexado. Clique em concluir de novo pra fechar o prazo.");
+    } catch (e) { alert("Falha ao subir o laudo: " + (e instanceof Error ? e.message : "erro")); }
+  };
+  // Agendar a data de EXECUÇÃO (planejamento) — distinta do vencimento.
+  const agendarPrazoDireto = async (p: Prazo) => {
+    const atual = p.agendamento?.data || p.vencimento || "";
+    const s = window.prompt(`Agendar execução de "${p.titulo}" (dd/mm/aaaa):`, atual ? atual.split("-").reverse().join("/") : "");
+    if (!s) return;
+    const [d, m, a] = s.split("/");
+    const ymd = a && m && d ? `${a}-${m.padStart(2, "0")}-${d.padStart(2, "0")}` : "";
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) { alert("Data inválida — use dd/mm/aaaa."); return; }
+    try {
+      await updateDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ status: "agendado", agendamento: { data: ymd, agendadoEm: new Date().toISOString(), agendadoPor: pessoa?.id || null }, atualizadoEm: new Date().toISOString() }));
+    } catch (e) { alert("Falha ao agendar: " + (e instanceof Error ? e.message : "erro")); }
   };
 
   const [projetos, setProjetos] = useState<TarefaProjeto[]>([]);
@@ -482,6 +519,7 @@ export function TarefasPage() {
               onAbrirTarefa={setDetalheId}
               onAbrirPrazo={abrirPrazo}
               onResolver={(p) => void resolverPrazoDireto(p)}
+              onAgendar={(p) => void agendarPrazoDireto(p)}
             />
           )}
           {viewMinhas === "kanban" && (
@@ -515,6 +553,7 @@ export function TarefasPage() {
               onAbrirTarefa={setDetalheId}
               onAbrirPrazo={abrirPrazo}
               onResolver={(p) => void resolverPrazoDireto(p)}
+              onAgendar={(p) => void agendarPrazoDireto(p)}
             />
           )}
           {viewMinhas === "kanban" && <KanbanView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />}
@@ -661,6 +700,7 @@ export function TarefasPage() {
       )}
 
       {prazoModal && <PrazoInline rid={ridAtivo || ""} prazo={prazoModal.prazo} modo={prazoModal.modo} onClose={() => setPrazoModal(null)} />}
+      <input ref={laudoInputRef} type="file" accept="application/pdf,image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ""; if (f) void onLaudoEscolhido(f); }} />
 
     </PageContainer>
   );

@@ -5,7 +5,7 @@
 //  Atrasados · Hoje · Próx. 7 dias. Cada linha abre o item no seu modal.
 // ════════════════════════════════════════════════════════════════════════════
 import { useMemo, useState } from "react";
-import { AlarmClock, Check } from "lucide-react";
+import { AlarmClock, Check, CalendarClock } from "lucide-react";
 import type { Tarefa, TarefaProjeto, Prazo, PrazoTipo, Restaurant } from "../../core/types";
 import { PRAZO_TIPO_LABEL } from "../../core/types";
 import { ymdExibicao, diaSemanaCurto, hojeYmd, PRAZO_COR_HEX } from "../prazos/logic";
@@ -31,12 +31,13 @@ type Norm = {
   prioCor: string;              // cor da faixa esquerda
   open: () => void;
   resolver?: () => void;        // concluir (só prazo, quando em aberto)
+  agendar?: () => void;         // agendar execução (só prazo com permiteAgendamento)
 };
 
 type Filtro = "afazer" | "concluidas" | "atrasado" | "hoje" | "semana";
 const PRIO_COR: Record<string, string> = { urgente: "#e11d48", alta: "#f59e0b", baixa: "#94a3b8", normal: "#cbd5e1" };
 
-export function ListaUnificada({ tarefas, prazos, projetos, restaurants, podeVerTipo, onAbrirTarefa, onAbrirPrazo, onResolver }: {
+export function ListaUnificada({ tarefas, prazos, projetos, restaurants, podeVerTipo, onAbrirTarefa, onAbrirPrazo, onResolver, onAgendar }: {
   tarefas: Tarefa[];
   prazos: Prazo[];
   projetos: TarefaProjeto[];
@@ -45,6 +46,7 @@ export function ListaUnificada({ tarefas, prazos, projetos, restaurants, podeVer
   onAbrirTarefa: (id: string) => void;
   onAbrirPrazo: (p: Prazo) => void;
   onResolver?: (p: Prazo) => void;
+  onAgendar?: (p: Prazo) => void;
 }) {
   const hoje = hojeYmd();
   const [filtro, setFiltro] = useState<Filtro>("afazer");
@@ -76,6 +78,7 @@ export function ListaUnificada({ tarefas, prazos, projetos, restaurants, podeVer
         prioCor: PRAZO_COR_HEX[p.tipo],
         open: () => onAbrirPrazo(p),
         resolver: onResolver && p.status !== "resolvido" ? () => onResolver(p) : undefined,
+        agendar: onAgendar && p.permiteAgendamento && p.status !== "resolvido" ? () => onAgendar(p) : undefined,
       });
     }
     return out;
@@ -147,6 +150,10 @@ export function ListaUnificada({ tarefas, prazos, projetos, restaurants, podeVer
             {i.empresas.slice(0, 3).join(" · ")}
           </div>
         </div>
+        {i.agendar && (
+          <span role="button" tabIndex={0} title="Agendar execução" onClick={(e) => { e.stopPropagation(); i.agendar?.(); }}
+            className="shrink-0 text-gray-400 hover:text-indigo-500"><CalendarClock size={15} /></span>
+        )}
         {i.valor != null && <span className="text-xs tabular-nums text-gray-600 dark:text-gray-300 shrink-0">{brl(i.valor)}</span>}
         {i.data && <span className="text-xs tabular-nums text-gray-500 dark:text-gray-400 shrink-0 text-right">{i.data.slice(8, 10)}/{i.data.slice(5, 7)} <span className="text-gray-400">{diaSemanaCurto(i.data)}</span>{desloc && <span className="text-amber-500"> ↩</span>}</span>}
       </button>

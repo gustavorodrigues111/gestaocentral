@@ -96,7 +96,7 @@ export const MODULES: ModuleDef[] = [
 
   // ── Tarefas e Prazos ─────────────────────────────────────────────
   { id: "tarefas",     area: "planejamento", subarea: "Tarefas e Prazos", label: "Tarefas e Prazos", icon: "list-todo", status: "ativo", etapa: "beta", desc: "Tarefas e Prazos juntos: rotinas, demandas e o que vence (contas, técnicos, trabalhistas). Lista e calendário unificados, caixa por usuário, cascatas dos cadastros mestres" },
-  { id: "prazos",      area: "planejamento", subarea: "Tarefas e Prazos", label: "Prazos", icon: "alarm-clock", status: "ativo", etapa: "beta", desc: "Agenda única do que vence: contas, técnicos (com laudo no Drive), trabalhistas e avulsos. Recorrência flexível, agendamento e histórico de realizados. Fonte única — substitui Contas Fixas, Manutenções e Prazos Trabalhistas.", dependsOn: ["pessoas"] },
+  { id: "prazos",      area: "planejamento", subarea: "Tarefas e Prazos", label: "Prazos", icon: "alarm-clock", status: "ativo", etapa: "beta", desc: "Agenda única do que vence: contas, técnicos (com laudo no Drive), trabalhistas e avulsos. Recorrência flexível, agendamento e histórico de realizados. Fonte única — substitui Contas Fixas, Manutenções e Prazos Trabalhistas.", dependsOn: ["pessoas"], oculto: true },
   // Modo SIMPLIFICADO do item "Tarefas" (perfil planoDeAcao) — segue oculto do menu.
   { id: "planoDeAcao", area: "planejamento", subarea: "Tarefas e Prazos", label: "Tarefas (simplificado)", icon: "list-checks", status: "ativo", etapa: "beta", desc: "Modo simplificado do Gestor de Tarefas — a lista simples e mobile de quem executa na operação. É o que abre no item 'Tarefas' pra quem tem este perfil. Concluir com um toque + andamento; líder vê as da equipe.", dependsOn: ["pessoas"], oculto: true },
 
