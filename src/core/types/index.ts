@@ -6571,7 +6571,10 @@ export type FalhaLog = {
 export type PrazoTipo = "conta" | "tecnico" | "trabalhista" | "avulso";
 export type PrazoStatus = "aberto" | "agendado" | "resolvido";
 export type PrazoSubtipoTrab = "exp45" | "exp90" | "exame" | "uniforme";
-export const PRAZO_TIPO_LABEL: Record<PrazoTipo, string> = { conta: "Conta", tecnico: "Técnico", trabalhista: "Trabalhista", avulso: "Avulso" };
+// Categorias de prazo = mesmas ÁREAS das tarefas (Financeiro/Operação/Pessoas/
+// Diretoria). Os ids internos (conta/tecnico/trabalhista/avulso) seguem iguais —
+// só o rótulo mudou, então nada de permissão/dado precisou migrar.
+export const PRAZO_TIPO_LABEL: Record<PrazoTipo, string> = { conta: "Financeiro", tecnico: "Operação", trabalhista: "Pessoas", avulso: "Diretoria" };
 export const PRAZO_SUBTIPO_TRAB_LABEL: Record<PrazoSubtipoTrab, string> = { exp45: "Fim de experiência (45 dias)", exp90: "Fim de experiência (90 dias)", exame: "Exame periódico", uniforme: "Entrega de uniforme" };
 
 // Imóvel — cadastro compartilhado (aluguel, manutenções, prazos técnicos apontam
