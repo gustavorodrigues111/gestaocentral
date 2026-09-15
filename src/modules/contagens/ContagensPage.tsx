@@ -41,6 +41,14 @@ export function ContagensPage() {
   const [preset, setPreset] = useState<Partial<Insumo> | null>(null);
   // Abrir o modal já reavaliando pela IA (só no "Juntar" de sugestões).
   const [autoReav, setAutoReav] = useState(false);
+  // Nomes ORIGINAIS das notas do produto sugerido (grafias) — pra comparar no modal.
+  const [presetNomesOrig, setPresetNomesOrig] = useState<string[] | undefined>(undefined);
+  // Grafias originais de um grupo, mais frequente primeiro (dedup por nome).
+  const grafiasDe = (gs: GrupoSugerido[]): string[] => {
+    const seen = new Set<string>(); const out: { nome: string; oc: number }[] = [];
+    for (const g of gs) for (const m of g.membros) { const k = m.nome.trim().toLowerCase(); if (seen.has(k)) continue; seen.add(k); out.push({ nome: m.nome, oc: m.ocorrencias }); }
+    return out.sort((a, b) => b.oc - a.oc).map(x => x.nome);
+  };
   const [searchConfig, setSearchConfig] = useState("");
   const [recebimentos, setRecebimentos] = useState<RecebimentoNota[]>([]);
   const [soRecorrentes, setSoRecorrentes] = useState(true);
@@ -328,6 +336,7 @@ export function ContagensPage() {
     const fator = g.fator && g.fator > 1 ? g.fator : undefined;
     const precoUnit = g.precoEstimado != null && fator ? g.precoEstimado / fator : g.precoEstimado;
     setPreset({ nome: g.nome, categoria: g.categoria, unidade: g.unidade, unidadeOutroLabel: g.unidadeOutroLabel, precoEstimado: precoUnit, fatorCompra: fator, aliases: g.aliases, fornecedores: fornList, fornecedorPreferredId: fornList[0]?.fornecedorId || null });
+    setPresetNomesOrig(grafiasDe([g]));
     setAutoReav(false);
     setEditing("new");
   }
@@ -351,6 +360,7 @@ export function ContagensPage() {
     const fator = dom.fator && dom.fator > 1 ? dom.fator : undefined;
     const precoUnit = dom.precoEstimado != null && fator ? dom.precoEstimado / fator : dom.precoEstimado;
     setPreset({ nome: dom.nome, categoria: dom.categoria, unidade: dom.unidade, unidadeOutroLabel: dom.unidadeOutroLabel, precoEstimado: precoUnit, fatorCompra: fator, aliases, fornecedores: fornList, fornecedorPreferredId: fornList[0]?.fornecedorId || null });
+    setPresetNomesOrig(grafiasDe(grupos));   // todas as grafias dos grupos unidos
     setAutoReav(true);   // ao juntar, a IA decide nome/categoria/unidade do produto unido
     setEditing("new");
   }
@@ -575,7 +585,7 @@ export function ContagensPage() {
           {podeConfig && (
             <button
               type="button"
-              onClick={() => { setPreset(null); setAutoReav(false); setEditing("new"); }}
+              onClick={() => { setPreset(null); setAutoReav(false); setPresetNomesOrig(undefined); setEditing("new"); }}
               className="w-full inline-flex items-center justify-center gap-2 rounded-lg border-2 border-dashed border-indigo-300 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 py-2.5 text-sm font-semibold hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
             >
               <Plus size={16} /> Novo insumo
@@ -731,8 +741,9 @@ export function ContagensPage() {
           restaurantId={rid}
           categoriasExistentes={[...new Set(insumos.map(i => (i.categoria || "").trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, "pt-BR"))}
           autoReavaliar={autoReav}
+          nomesOriginais={presetNomesOrig}
           onExcluir={excluirInsumo}
-          onClose={() => { setEditing(null); setPreset(null); setAutoReav(false); }}
+          onClose={() => { setEditing(null); setPreset(null); setAutoReav(false); setPresetNomesOrig(undefined); }}
         />
       )}
 

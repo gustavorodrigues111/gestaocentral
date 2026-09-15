@@ -19,6 +19,9 @@ type Props = {
   // Reavaliar pela IA automaticamente ao abrir (usado no "Juntar" de sugestões,
   // pra a IA escolher nome/categoria/unidade mais adequados do produto unido).
   autoReavaliar?: boolean;
+  // Nomes ORIGINAIS das notas (grafias antes da limpeza da IA) — pra comparar e
+  // reavaliar do original. O 1º é o mais frequente (usado no "reavaliar do original").
+  nomesOriginais?: string[];
   // Pré-preenchimento ao criar (ex.: sugestão vinda do Recebimento).
   preset?: Partial<Insumo> | null;
   onExcluir?: (insumo: Insumo) => void;   // excluir de dentro do modo "ver"
@@ -31,7 +34,7 @@ const CATEGORIAS_SUGERIDAS = [
   "Mercearia", "Limpeza", "Descartáveis", "Outros",
 ];
 
-export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExistentes, autoReavaliar, preset, onExcluir, onClose }: Props) {
+export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExistentes, autoReavaliar, nomesOriginais, preset, onExcluir, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !insumo;
   const base = insumo ?? preset ?? null;   // ao criar, usa o preset da sugestão
@@ -95,12 +98,13 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
   // Reavaliação sob demanda: reroda a IA neste produto pra confirmar/ajustar
   // categoria e unidade. Não roda sozinho — a leitura já vem do cache das
   // sugestões; isto é o botão "Reavaliar pela IA" pra uma revisão final.
-  async function reavaliarIa() {
-    if (!nome.trim()) return;
+  async function reavaliarIa(sourceName?: string) {
+    const alvo = (sourceName ?? nome).trim();
+    if (!alvo) return;
     setRevisandoIa(true);
     try {
       const idToken = await auth.currentUser?.getIdToken();
-      const r = await fetch("/api/contagens-ia", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken, produtos: [{ chave: nome, nome, unidadeAtual: unidade }], jaCadastrados: [] }) });
+      const r = await fetch("/api/contagens-ia", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken, produtos: [{ chave: alvo, nome: alvo, unidadeAtual: unidade }], jaCadastrados: [] }) });
       const j = await r.json() as { itens?: Array<{ nomeLimpo?: string; qtdPorPacote?: number; categoria?: string; unidade?: string }> };
       const it = j?.itens?.[0];
       if (it) {
@@ -234,6 +238,26 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
           placeholder="ex: Vinho Malbec, Detergente, Filé Mignon"
           autoFocus
         />
+        {isNew && (nomesOriginais?.length ?? 0) > 0 && (() => {
+          const orig0 = nomesOriginais![0];
+          const difere = orig0.trim().toLowerCase() !== nome.trim().toLowerCase() || nomesOriginais!.length > 1;
+          return (
+            <div className="-mt-1.5 bg-amber-50/60 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-900/40 rounded-md px-2.5 py-1.5 space-y-1">
+              <div className="flex items-start justify-between gap-2 flex-wrap">
+                <span className="text-[11px] text-amber-800 dark:text-amber-300">
+                  {nomesOriginais!.length > 1 ? `Nomes na nota (${nomesOriginais!.length}):` : "Original da nota:"}{" "}
+                  {nomesOriginais!.map((o, i) => <b key={i}>{i > 0 ? " · " : ""}{o}</b>)}
+                </span>
+                {difere && (
+                  <div className="inline-flex items-center gap-2 shrink-0">
+                    <button type="button" onClick={() => setNome(orig0)} className="text-[11px] text-amber-700 dark:text-amber-300 hover:underline">usar original</button>
+                    <button type="button" disabled={revisandoIa} onClick={() => void reavaliarIa(orig0)} className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1 disabled:opacity-60"><Sparkles size={11} /> reavaliar do original</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        })()}
 
         <div>
           <div className="flex items-center justify-between">
@@ -323,7 +347,15 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
               <p className="text-[10px] text-gray-400 mt-1">Escolhe um existente ou digita um novo — ele é criado ao salvar.</p>
             </div>
             <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={ehPacote} onChange={(e) => setEhPacote(e.target.checked)} />
+              <input type="checkbox" checked={ehPacote} onChange={(e) => {
+                const on = e.target.checked;
+                // Carrega o "preço visível" entre os modos: ao marcar, o preço da
+                // unidade vira preço do pacote; ao desmarcar, o preço do pacote vira
+                // o preço da unidade única (sem divisão). Corrige o preço dividido "preso".
+                if (on) { if (precoEstimado.trim() && !precoPacote.trim()) setPrecoPacote(precoEstimado); }
+                else { if (precoPacote.trim()) setPrecoEstimado(precoPacote); }
+                setEhPacote(on);
+              }} />
               <span className="font-medium">Comprado em pacote</span>
               <span className="text-xs text-gray-500">(fardo/caixa com várias unidades)</span>
             </label>
