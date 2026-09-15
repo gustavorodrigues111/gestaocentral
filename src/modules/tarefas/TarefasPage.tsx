@@ -15,6 +15,9 @@ import { type Tarefa, type TarefaProjeto, type TarefaSubprojeto, type AccessProf
 import { usePrazos } from "../prazos/usePrazos";
 import { ListaUnificada } from "./ListaUnificada";
 import { PrazoInline } from "./PrazoInline";
+import { resolverPrazo, podeResolver, hojeYmd } from "../prazos/logic";
+import { setDoc } from "firebase/firestore";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { podeVerTarefa, podeVerProjeto } from "./visibilidade";
 import { type Tab, type ViewMode, ViewSwitcher, ehAreaPrazos, semOrfasPrazo } from "./helpers";
 import { CalendarioView, KanbanView, LixeiraView, MinhasTarefasView, ProjetoView, ProjetosTopBar } from "./views";
@@ -88,6 +91,16 @@ export function TarefasPage() {
   const [prazoModal, setPrazoModal] = useState<{ prazo: Prazo | null; modo?: "ver" | "editar" } | null>(null);
   const [novoMenuAberto, setNovoMenuAberto] = useState(false);
   const abrirPrazo = (p: Prazo) => setPrazoModal({ prazo: p, modo: "ver" });
+  // Concluir prazo direto da lista. Se exige laudo e não tem → abre o modal
+  // (lá anexa o laudo). Recorrente → resolverPrazo avança o vencimento sozinho.
+  const resolverPrazoDireto = async (p: Prazo) => {
+    if (!podeResolver(p)) { abrirPrazo(p); return; }
+    if (!window.confirm(`Concluir "${p.titulo}" com data de hoje?`)) return;
+    const atualizado = resolverPrazo(p, { em: hojeYmd(), por: pessoa?.id || null, porNome: pessoa?.nome || null });
+    try {
+      await setDoc(doc(db, "prazos", p.id), sanitizeForFirestore({ ...atualizado, atualizadoEm: new Date().toISOString() }), { merge: true });
+    } catch (e) { alert("Falha ao concluir: " + (e instanceof Error ? e.message : "erro")); }
+  };
 
   const [projetos, setProjetos] = useState<TarefaProjeto[]>([]);
   const [subprojetos, setSubprojetos] = useState<TarefaSubprojeto[]>([]);
@@ -468,6 +481,7 @@ export function TarefasPage() {
               podeVerTipo={podeVerTipoPrazo}
               onAbrirTarefa={setDetalheId}
               onAbrirPrazo={abrirPrazo}
+              onResolver={(p) => void resolverPrazoDireto(p)}
             />
           )}
           {viewMinhas === "kanban" && (
@@ -500,6 +514,7 @@ export function TarefasPage() {
               podeVerTipo={podeVerTipoPrazo}
               onAbrirTarefa={setDetalheId}
               onAbrirPrazo={abrirPrazo}
+              onResolver={(p) => void resolverPrazoDireto(p)}
             />
           )}
           {viewMinhas === "kanban" && <KanbanView tarefas={filtrar(todasTarefasVisiveis)} projetos={projetos} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onAbrir={setDetalheId} />}

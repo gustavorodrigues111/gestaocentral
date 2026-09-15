@@ -5,7 +5,7 @@
 //  Atrasados · Hoje · Próx. 7 dias. Cada linha abre o item no seu modal.
 // ════════════════════════════════════════════════════════════════════════════
 import { useMemo, useState } from "react";
-import { AlarmClock } from "lucide-react";
+import { AlarmClock, Check } from "lucide-react";
 import type { Tarefa, TarefaProjeto, Prazo, PrazoTipo, Restaurant } from "../../core/types";
 import { PRAZO_TIPO_LABEL } from "../../core/types";
 import { ymdExibicao, diaSemanaCurto, hojeYmd, PRAZO_COR_HEX } from "../prazos/logic";
@@ -30,12 +30,13 @@ type Norm = {
   empresas: string[]; valor?: number;
   prioCor: string;              // cor da faixa esquerda
   open: () => void;
+  resolver?: () => void;        // concluir (só prazo, quando em aberto)
 };
 
 type Filtro = "afazer" | "concluidas" | "atrasado" | "hoje" | "semana";
 const PRIO_COR: Record<string, string> = { urgente: "#e11d48", alta: "#f59e0b", baixa: "#94a3b8", normal: "#cbd5e1" };
 
-export function ListaUnificada({ tarefas, prazos, projetos, restaurants, podeVerTipo, onAbrirTarefa, onAbrirPrazo }: {
+export function ListaUnificada({ tarefas, prazos, projetos, restaurants, podeVerTipo, onAbrirTarefa, onAbrirPrazo, onResolver }: {
   tarefas: Tarefa[];
   prazos: Prazo[];
   projetos: TarefaProjeto[];
@@ -43,6 +44,7 @@ export function ListaUnificada({ tarefas, prazos, projetos, restaurants, podeVer
   podeVerTipo: (t: PrazoTipo) => boolean;
   onAbrirTarefa: (id: string) => void;
   onAbrirPrazo: (p: Prazo) => void;
+  onResolver?: (p: Prazo) => void;
 }) {
   const hoje = hojeYmd();
   const [filtro, setFiltro] = useState<Filtro>("afazer");
@@ -73,6 +75,7 @@ export function ListaUnificada({ tarefas, prazos, projetos, restaurants, podeVer
         valor: p.tipo === "conta" ? p.dados?.valor : undefined,
         prioCor: PRAZO_COR_HEX[p.tipo],
         open: () => onAbrirPrazo(p),
+        resolver: onResolver && p.status !== "resolvido" ? () => onResolver(p) : undefined,
       });
     }
     return out;
@@ -128,6 +131,12 @@ export function ListaUnificada({ tarefas, prazos, projetos, restaurants, podeVer
       <button key={i.key} type="button" onClick={i.open}
         className={`w-full text-left px-3 py-2 flex items-center gap-3 hover:bg-gray-50 dark:hover:bg-gray-800/60 ${i.concluido ? "opacity-60" : ""}`}
         style={{ borderLeft: `4px solid ${i.prioCor}` }}>
+        {i.resolver && (
+          <span role="button" tabIndex={0} title="Concluir" onClick={(e) => { e.stopPropagation(); i.resolver?.(); }}
+            className="shrink-0 w-5 h-5 rounded-full border-2 border-gray-300 dark:border-gray-600 grid place-items-center text-transparent hover:border-emerald-500 hover:text-emerald-500">
+            <Check size={12} />
+          </span>
+        )}
         {i.tipo === "prazo"
           ? <AlarmClock size={15} className="shrink-0" style={{ color: i.prioCor }} />
           : <span className="w-[15px] h-[15px] rounded-full shrink-0" style={{ background: i.prioCor }} />}
