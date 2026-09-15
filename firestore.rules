@@ -314,7 +314,12 @@ service cloud.firestore {
         || (d.subtarefaResponsaveisIds is list && request.auth.uid in d.subtarefaResponsaveisIds)
         || (d.usuariosAutorizados is list && request.auth.uid in d.usuariosAutorizados)
         || d.visibilidadeEfetiva == "publico"
-        || d.visibilidadeEfetiva == "escritorio";
+        || d.visibilidadeEfetiva == "escritorio"
+        // O id da pessoa pode ser um auto-id (≠ auth.uid). Nesses casos a pessoa
+        // guarda o uidVinculado; resolve responsável/criador pelo doc da pessoa.
+        // Só é avaliado em tarefa confidencial onde as condições acima falharam.
+        || (d.responsavelId is string && d.responsavelId != "" && exists(/databases/$(database)/documents/pessoas/$(d.responsavelId)) && get(/databases/$(database)/documents/pessoas/$(d.responsavelId)).data.uidVinculado == request.auth.uid)
+        || (d.criadoPor is string && d.criadoPor != "" && exists(/databases/$(database)/documents/pessoas/$(d.criadoPor)) && get(/databases/$(database)/documents/pessoas/$(d.criadoPor)).data.uidVinculado == request.auth.uid);
       // Docs antigos sem visibilidadeEfetiva ou com "grupo_*" legado:
       // tratados como privados — só passam pelas condições acima.
     }
