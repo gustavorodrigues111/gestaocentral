@@ -448,10 +448,29 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
               )}
             </div>
 
+            {/* Empresa(s) + Endereço — visíveis direto (Tarefas e Prazos é multi-restaurante). */}
+            {restaurantes.length > 0 && (
+              <FieldRow label="Empresa(s)">
+                <div className="flex flex-wrap gap-2 py-1">
+                  {restaurantes.map(r => (
+                    <label key={r.id} className="flex items-center gap-1 text-xs cursor-pointer">
+                      <input type="checkbox" checked={restaurantIds.includes(r.id)} onChange={(e) => { if (e.target.checked) setRestaurantIds([...restaurantIds, r.id]); else setRestaurantIds(restaurantIds.filter(id => id !== r.id)); }} />
+                      {r.nome}
+                    </label>
+                  ))}
+                </div>
+              </FieldRow>
+            )}
+            {restaurantIds.length > 0 && (
+              <FieldRow label="Endereço (opcional)">
+                <EnderecoPicker restaurantIds={restaurantIds} value={enderecoId} onChange={setEnderecoId} />
+              </FieldRow>
+            )}
+
             {/* ── Mais opções (recolhido) ── */}
             <button type="button" onClick={() => setMaisOpcoes(v => !v)} className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 pt-1">
               <span className={`transition-transform ${maisOpcoes ? "rotate-90" : ""}`}>▸</span> Mais opções
-              <span className="text-gray-400">— descrição, co-responsáveis, observadores{restaurantes.length > 0 ? ", empresas" : ""}</span>
+              <span className="text-gray-400">— descrição, co-responsáveis, observadores</span>
             </button>
             {maisOpcoes && (<>
               <FieldRow label="Descrição">
@@ -466,23 +485,6 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
               <FieldRow label="Observadores">
                 <PessoasMultiPicker value={observadoresIds} onChange={setObservadoresIds} pessoas={responsaveisElegiveis} excluir={[responsavelId, ...coResponsaveisIds]} placeholder={!projetoId ? "Escolha uma área primeiro" : "+ adicionar"} />
               </FieldRow>
-              {restaurantes.length > 0 && (
-                <FieldRow label="Empresa(s)">
-                  <div className="flex flex-wrap gap-2 py-1">
-                    {restaurantes.map(r => (
-                      <label key={r.id} className="flex items-center gap-1 text-xs cursor-pointer">
-                        <input type="checkbox" checked={restaurantIds.includes(r.id)} onChange={(e) => { if (e.target.checked) setRestaurantIds([...restaurantIds, r.id]); else setRestaurantIds(restaurantIds.filter(id => id !== r.id)); }} />
-                        {r.nome}
-                      </label>
-                    ))}
-                  </div>
-                </FieldRow>
-              )}
-              {restaurantIds.length > 0 && (
-                <FieldRow label="Endereço (opcional)">
-                  <EnderecoPicker restaurantIds={restaurantIds} value={enderecoId} onChange={setEnderecoId} />
-                </FieldRow>
-              )}
               <FieldRow label="Confidencial">
                 <label className="flex items-center gap-2 text-sm cursor-pointer py-1">
                   <input type="checkbox" checked={confidencial} onChange={(e) => setConfidencial(e.target.checked)} />
@@ -914,31 +916,7 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
                 )}
               </div>
             </FieldRow>
-            <button
-              type="button"
-              onClick={() => setDetMais(v => !v)}
-              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 pt-1"
-            >
-              <span className={`transition-transform ${detMais ? "rotate-90" : ""}`}>▸</span> Mais opções
-              <span className="text-gray-400">— co-responsáveis, observadores, empresas, visibilidade</span>
-            </button>
-            {detMais && (<>
-            <FieldRow label="Co-responsáveis">
-              <CoRespPicker tarefa={tarefa} pessoas={pessoasLista} autor={autor} />
-            </FieldRow>
-            <FieldRow label="Observadores">
-              <PessoasMultiPicker
-                value={tarefa.observadoresIds || []}
-                onChange={(ids) => {
-                  const nomes = ids.map(id => pessoasLista.find(p => p.id === id)?.nome || "").filter(Boolean);
-                  salvarCampo("observadoresIds", ids.length ? ids : undefined, "observadores");
-                  salvarCampo("observadoresNomes", ids.length ? nomes : undefined);
-                }}
-                pessoas={pessoasLista}
-                excluir={[tarefa.responsavelId, ...(tarefa.coResponsaveis || [])]}
-                placeholder="+ adicionar"
-              />
-            </FieldRow>
+            {/* Empresa(s) + Endereço — visíveis direto (Tarefas e Prazos é multi-restaurante). */}
             <FieldRow label="Empresa(s)">
               <div className="flex flex-wrap gap-2 py-1">
                 {restaurants.map(r => {
@@ -970,6 +948,31 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
                 />
               </FieldRow>
             )}
+            <button
+              type="button"
+              onClick={() => setDetMais(v => !v)}
+              className="flex items-center gap-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 pt-1"
+            >
+              <span className={`transition-transform ${detMais ? "rotate-90" : ""}`}>▸</span> Mais opções
+              <span className="text-gray-400">— co-responsáveis, observadores, confidencial</span>
+            </button>
+            {detMais && (<>
+            <FieldRow label="Co-responsáveis">
+              <CoRespPicker tarefa={tarefa} pessoas={pessoasLista} autor={autor} />
+            </FieldRow>
+            <FieldRow label="Observadores">
+              <PessoasMultiPicker
+                value={tarefa.observadoresIds || []}
+                onChange={(ids) => {
+                  const nomes = ids.map(id => pessoasLista.find(p => p.id === id)?.nome || "").filter(Boolean);
+                  salvarCampo("observadoresIds", ids.length ? ids : undefined, "observadores");
+                  salvarCampo("observadoresNomes", ids.length ? nomes : undefined);
+                }}
+                pessoas={pessoasLista}
+                excluir={[tarefa.responsavelId, ...(tarefa.coResponsaveis || [])]}
+                placeholder="+ adicionar"
+              />
+            </FieldRow>
             <FieldRow label="Confidencial">
               <div className="space-y-1.5">
                 <label className="flex items-center gap-2 text-sm cursor-pointer py-1">

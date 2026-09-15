@@ -1,6 +1,6 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { addDoc, collection, deleteDoc, doc, getDoc, getDocs, limit, onSnapshot, query, updateDoc, where } from "firebase/firestore";
-import { Contact, Handshake, TriangleAlert, User, Lock, KeyRound, Repeat, Eye, CheckSquare, ClipboardList, MessageSquare, UserRoundMinus, Ban, LockOpen, Trash2, Mail, Crown, ShieldCheck, Unlink } from "lucide-react";
+import { Contact, Handshake, TriangleAlert, User, Lock, KeyRound, Repeat, Eye, CheckSquare, ClipboardList, MessageSquare, UserRoundMinus, Ban, LockOpen, Trash2, Mail, Crown, ShieldCheck, Unlink, Pencil } from "lucide-react";
 import { db, auth } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { gerarSenhaInicial, provisionarAcesso } from "../../core/auth/provisionar";
@@ -45,6 +45,9 @@ export function PessoaModal({ pessoa, restaurantId, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !pessoa;
   const [tab, setTab] = useState<Tab>("identidade");
+  // Abre em modo EXIBIÇÃO (ficha). Editar só ao clicar na caneta do topo.
+  // Nova pessoa já entra em edição. Padrão de UI a estender pros demais módulos.
+  const [modo, setModo] = useState<"ver" | "editar">(isNew ? "editar" : "ver");
 
   if (!me) return null;
 
@@ -55,11 +58,24 @@ export function PessoaModal({ pessoa, restaurantId, onClose }: Props) {
     // tab Identidade, e checkboxes ver/configurar legados saíram.
   ];
 
+  // Caneta (editar) / olho (voltar pra ficha) — só na aba Identidade de pessoa existente.
+  const headerAction = !isNew && tab === "identidade" ? (
+    <button
+      type="button"
+      onClick={() => setModo(m => (m === "ver" ? "editar" : "ver"))}
+      title={modo === "ver" ? "Editar" : "Ver ficha"}
+      className="p-1.5 rounded-lg text-gray-500 hover:text-indigo-600 hover:bg-gray-100 dark:hover:bg-gray-800"
+    >
+      {modo === "ver" ? <Pencil size={16} /> : <Eye size={16} />}
+    </button>
+  ) : undefined;
+
   return (
     <Modal
-      title={isNew ? "+ Nova pessoa" : `Editar — ${pessoa.nome}`}
+      title={isNew ? "+ Nova pessoa" : (modo === "ver" ? pessoa.nome : `Editar — ${pessoa.nome}`)}
       onClose={onClose}
       maxWidth="max-w-2xl"
+      headerAction={headerAction}
     >
       <div className="flex border-b border-gray-200 dark:border-gray-800 -mx-6 -mt-2 px-6 mb-4">
         {tabs.map(t => (
@@ -86,9 +102,70 @@ export function PessoaModal({ pessoa, restaurantId, onClose }: Props) {
         </p>
       )}
 
-      {tab === "identidade" && <TabIdentidade pessoa={pessoa} restaurantId={restaurantId} onCreated={onClose} onClose={onClose} />}
+      {tab === "identidade" && pessoa && modo === "ver"
+        ? <FichaIdentidade pessoa={pessoa} restaurantId={restaurantId} onEditar={() => setModo("editar")} />
+        : tab === "identidade" && <TabIdentidade pessoa={pessoa} restaurantId={restaurantId} onCreated={onClose} onClose={onClose} />}
       {tab === "vinculos"   && pessoa && <TabVinculos pessoa={pessoa} restaurantId={restaurantId} />}
     </Modal>
+  );
+}
+
+// ════════════════════════════════════════════════════════════════
+// FICHA (modo exibição) — read-only. Editar via caneta no topo.
+// ════════════════════════════════════════════════════════════════
+
+function fmtCpf(cpf?: string | null): string {
+  const d = (cpf || "").replace(/\D/g, "");
+  if (d.length !== 11) return cpf || "—";
+  return `${d.slice(0, 3)}.${d.slice(3, 6)}.${d.slice(6, 9)}-${d.slice(9)}`;
+}
+
+function CampoFicha({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <div className="text-[11px] font-semibold uppercase tracking-wider text-gray-400 dark:text-gray-500">{label}</div>
+      <div className="text-sm text-gray-900 dark:text-gray-100 mt-0.5 break-words">{children || <span className="text-gray-400">—</span>}</div>
+    </div>
+  );
+}
+
+function FichaIdentidade({ pessoa, restaurantId, onEditar }: { pessoa: Pessoa; restaurantId: string; onEditar: () => void }) {
+  const { perfis } = useAccessProfiles();
+  const isInativa = pessoa.ativa === false;
+  const vinc = pessoa.vinculos?.[restaurantId] as VinculoLogico | undefined;
+  const temLogin = pessoaTemLogin(pessoa);
+  const perfilNome = perfis.find(p => p.id === pessoa.profileIds?.[restaurantId])?.nome || null;
+  const acesso: { label: string; cls: string } = pessoa.isMaster
+    ? { label: "Master", cls: "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300" }
+    : !temLogin ? { label: "Sem login", cls: "bg-slate-200 text-slate-600 dark:bg-slate-800 dark:text-slate-400" }
+    : !pessoa.acessoProvisionadoEm ? { label: "Sem acesso ainda", cls: "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300" }
+    : (pessoa as unknown as { uidVinculado?: string }).uidVinculado && !pessoa.mustTrocarSenha
+      ? { label: "Pronto", cls: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" }
+      : { label: "Aguardando 1º acesso", cls: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300" };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {vinc && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full inline-flex items-center gap-1 bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300">{VINCULO_LOGICO_ICONE[vinc]} {VINCULO_LOGICO_LABEL[vinc]}</span>}
+        <span className={`text-[11px] font-bold px-2 py-0.5 rounded-full ${acesso.cls}`}>{acesso.label}</span>
+        {isInativa && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-200 text-gray-600 dark:bg-gray-800 dark:text-gray-400">○ Inativa</span>}
+        {pessoa.cadastroIncompleto && <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 inline-flex items-center gap-1"><TriangleAlert size={11} /> Cadastro incompleto</span>}
+      </div>
+
+      <div className="grid grid-cols-2 gap-x-4 gap-y-3">
+        <CampoFicha label="Nome completo">{pessoa.nome}</CampoFicha>
+        <CampoFicha label="Email (login)">{pessoa.email}</CampoFicha>
+        <CampoFicha label="CPF">{fmtCpf(pessoa.cpf)}</CampoFicha>
+        <CampoFicha label="WhatsApp">{pessoa.whatsapp}</CampoFicha>
+        <CampoFicha label="Chave PIX">{pessoa.pix}</CampoFicha>
+        <CampoFicha label="Login no sistema">{temLogin ? "Sim" : "Não"}</CampoFicha>
+        {!pessoa.isMaster && <CampoFicha label="Perfil de acesso">{perfilNome}</CampoFicha>}
+      </div>
+
+      <div className="flex justify-end pt-3 border-t border-gray-200 dark:border-gray-800">
+        <Button variant="secondary" onClick={onEditar}><span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editar</span></Button>
+      </div>
+    </div>
   );
 }
 
