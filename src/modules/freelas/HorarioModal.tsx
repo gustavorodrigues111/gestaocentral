@@ -2,6 +2,7 @@ import { useState, type ReactNode } from "react";
 import { Circle, Pencil, Pause, Clock } from "lucide-react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import { TimeInput } from "../../core/ui/TimeInput";
@@ -39,6 +40,7 @@ const BOTOES: Record<Mode, string> = {
 };
 
 export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
+  const { pessoa: me } = useAuth();
   // Pré-preenche os reais a partir do que já existe e, na falta, do previsto.
   const [data, setData] = useState(shift.date || "");
   const [entrada, setEntrada] = useState(shift.entrada || shift.entradaPrevista || "");
@@ -96,6 +98,13 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
         updates.intervalo = intervaloTotal;
         updates.horas = horas;
         if (shift.valorUnit) updates.totalCalc = total;
+        // Auditoria do ENCERRAMENTO: quem fechou o turno e quando (no sistema).
+        // Só grava no "fechar" (não sobrescreve no "editar", que é correção).
+        if (mode === "fechar" && me) {
+          updates.encerradoEm = now;
+          updates.encerradoPor = me.id;
+          updates.encerradoPorNome = me.nome;
+        }
       }
 
       await updateDoc(doc(db, "freelaShifts", shift.id), updates);
@@ -191,6 +200,15 @@ export function HorarioModal({ shift, mode, onClose, onSaved }: Props) {
         )}
 
         {err && <div className="text-xs text-red-600 dark:text-red-400">{err}</div>}
+
+        {/* Auditoria — quem lançou/encerrou e quando (no sistema). Ajuda a resolver
+            disputa de "lancei antes". Retroativo fica marcado. */}
+        {(shift.lancadoPorNome || shift.encerradoPorNome) && (
+          <div className="text-[11px] text-gray-400 dark:text-gray-500 border-t border-gray-100 dark:border-gray-800 pt-2 space-y-0.5">
+            {shift.lancadoPorNome && <div>Lançado por <b className="text-gray-500 dark:text-gray-400">{shift.lancadoPorNome}</b>{shift.lancadoEm ? ` · ${new Date(shift.lancadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}{shift.lancadoRetroativo ? " · retroativo" : ""}</div>}
+            {shift.encerradoPorNome && <div>Encerrado por <b className="text-gray-500 dark:text-gray-400">{shift.encerradoPorNome}</b>{shift.encerradoEm ? ` · ${new Date(shift.encerradoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", year: "2-digit", hour: "2-digit", minute: "2-digit" })}` : ""}</div>}
+          </div>
+        )}
 
         <div className="flex justify-end gap-2 pt-2">
           <Button variant="secondary" onClick={onClose} disabled={saving}>Cancelar</Button>

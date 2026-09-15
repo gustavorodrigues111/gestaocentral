@@ -2990,8 +2990,9 @@ export type FreelaShift = {
   lancadoPor: string;              // pessoaId
   lancadoPorNome: string;
   lancadoEm: string;               // ISO
+  lancadoRetroativo?: boolean;     // criado pela aba "Turnos passados" (data no passado)
   confirmadoEm?: string; confirmadoPor?: string;
-  encerradoEm?: string; encerradoPor?: string;
+  encerradoEm?: string; encerradoPor?: string; encerradoPorNome?: string;  // quem fechou o turno (registrou saída)
   noShowEm?: string; noShowPor?: string;
   pagoEm?: string;
   updatedAt: string;

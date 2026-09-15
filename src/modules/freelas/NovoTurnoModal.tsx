@@ -191,6 +191,7 @@ export function NovoTurnoModal({
         lancadoPor: me.id,
         lancadoPorNome: me.nome,
         lancadoEm: now,
+        ...(isRetro ? { lancadoRetroativo: true } : {}),
         updatedAt: now,
       };
       console.log("[NovoTurno] payload pronto, gravando...", payload);
