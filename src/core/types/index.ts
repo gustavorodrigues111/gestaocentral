@@ -6667,7 +6667,8 @@ export type Prazo = {
   tipo: PrazoTipo;
   link?: string | null;                 // URL opcional (contrato, boleto, Drive…) — todos os tipos
   vencimento: string;                   // YYYY-MM-DD — a ocorrência da vez
-  imovelId?: string | null;             // imóvel a que o prazo se refere (técnicos/aluguel)
+  imovelId?: string | null;             // legado — antes apontava pra coleção `imoveis` (aposentada)
+  enderecoId?: string | null;           // endereço da empresa (coleção `enderecos`) — fonte única
   responsavelId?: string | null;
   responsavelNome?: string | null;
   antecedenciaDias?: number;            // avisa/aparece X dias antes do vencimento

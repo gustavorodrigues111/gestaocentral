@@ -1,9 +1,9 @@
 // ════════════════════════════════════════════════════════════════════════════
 //  PrazoInline — hospeda o PrazoModal DENTRO do módulo "Tarefas e Prazos".
-//  Reúne as dependências que o modal precisa (empregados, imóveis, responsáveis
-//  por categoria, salvar) sem inchar o TarefasPage. Grava na coleção `prazos`
-//  (prazos segue dono da sua máquina — laudo/agendamento/histórico). Mesma
-//  lógica de salvar/permissão do PrazosPage.tsx.
+//  Reúne as dependências que o modal precisa (empregados, endereços da empresa,
+//  responsáveis por categoria, salvar) sem inchar o TarefasPage. Grava na coleção
+//  `prazos`. Endereço vem da fonte única `enderecos` (Configurações), igual
+//  Contas Fixas/Manutenções — não há mais cadastro separado de imóveis.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
 import { collection, doc, onSnapshot, query, setDoc, where } from "firebase/firestore";
@@ -14,10 +14,8 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useAccessProfiles } from "../../core/auth/useAccessProfiles";
 import { canAcao } from "../../core/auth/permissions";
 import { useTodasPessoas } from "../../core/pessoas/PessoasContext";
-import { useRestaurant } from "../../core/restaurant/RestaurantContext";
-import type { Prazo, PrazoTipo, Empregado, Imovel, Pessoa } from "../../core/types";
+import type { Prazo, PrazoTipo, Empregado, Endereco, Pessoa } from "../../core/types";
 import { PrazoModal } from "../prazos/PrazoModal";
-import { ImoveisModal } from "../prazos/ImoveisModal";
 
 const TODAS_CATS: PrazoTipo[] = ["conta", "tecnico", "trabalhista", "avulso"];
 const SUF_CAT: Record<PrazoTipo, string> = { conta: "Conta", tecnico: "Tecnico", trabalhista: "Trabalhista", avulso: "Avulso" };
@@ -34,17 +32,15 @@ export function PrazoInline({ rid, prazo, modo, onClose, onResolver, onAgendar, 
   const { pessoa: me } = useAuth();
   const { can } = useCanAcao(rid);
   const { perfis } = useAccessProfiles();
-  const { activeRestaurant } = useRestaurant();
   const pessoas = useTodasPessoas();
   const isMaster = !!me?.isMaster;
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
-  const [imoveis, setImoveis] = useState<Imovel[]>([]);
-  const [showImoveis, setShowImoveis] = useState(false);
+  const [enderecos, setEnderecos] = useState<Endereco[]>([]);
 
   useEffect(() => {
     if (!rid) return;
     const u1 = onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)), (s) => setEmpregados(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado)), () => setEmpregados([]));
-    const u2 = onSnapshot(query(collection(db, "imoveis"), where("restaurantId", "==", rid)), (s) => setImoveis(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Imovel).filter((im) => !im.deletadoEm)), () => setImoveis([]));
+    const u2 = onSnapshot(query(collection(db, "enderecos"), where("restaurantId", "==", rid)), (s) => setEnderecos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Endereco).filter((e) => e.ativo !== false)), () => setEnderecos([]));
     return () => { u1(); u2(); };
   }, [rid]);
 
@@ -67,23 +63,19 @@ export function PrazoInline({ rid, prazo, modo, onClose, onResolver, onAgendar, 
   }
 
   return (
-    <>
-      <PrazoModal
-        rid={rid}
-        prazo={prazo}
-        modoInicial={modo}
-        tiposPermitidos={catsGeriveis}
-        empregados={empregados}
-        responsaveisPorCat={responsaveisPorCat}
-        imoveis={imoveis}
-        onGerenciarImoveis={() => setShowImoveis(true)}
-        onClose={onClose}
-        onSalvar={salvarPrazo}
-        onResolver={onResolver}
-        onAgendar={onAgendar}
-        onRenovarExp={onRenovarExp}
-      />
-      {showImoveis && <ImoveisModal rid={rid} restauranteNome={activeRestaurant?.nome || ""} imoveis={imoveis} meId={me?.id || ""} onClose={() => setShowImoveis(false)} />}
-    </>
+    <PrazoModal
+      rid={rid}
+      prazo={prazo}
+      modoInicial={modo}
+      tiposPermitidos={catsGeriveis}
+      empregados={empregados}
+      responsaveisPorCat={responsaveisPorCat}
+      enderecos={enderecos}
+      onClose={onClose}
+      onSalvar={salvarPrazo}
+      onResolver={onResolver}
+      onAgendar={onAgendar}
+      onRenovarExp={onRenovarExp}
+    />
   );
 }

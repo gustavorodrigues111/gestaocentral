@@ -17,13 +17,12 @@ import { requestAccessToken } from "../../core/google/driveClient";
 import { uploadFileToFolder } from "../../core/google/driveShared";
 import { centralConfigured } from "../../core/google/driveCentral";
 import { ensureModuloFolder } from "../../core/google/driveModulo";
-import type { Prazo, PrazoTipo, Empregado, Pessoa, Imovel } from "../../core/types";
+import type { Prazo, PrazoTipo, Empregado, Pessoa, Endereco } from "../../core/types";
 import { PRAZO_TIPO_LABEL, PRAZO_SUBTIPO_TRAB_LABEL } from "../../core/types";
 import { resumoRecorrencia } from "./recorrencia";
 import { resolverPrazo, podeResolver, grupoAgenda, diasAte, hojeYmd, ymdExibicao, ehFimDeSemana, diaSemanaCurto } from "./logic";
 import { DatePickerBR } from "./campos";
 import { PrazoModal } from "./PrazoModal";
-import { ImoveisModal } from "./ImoveisModal";
 import { PageContainer } from "../../core/ui/PageContainer";
 import { Banknote, Wrench, Scale, Flag, House, CalendarDays, TriangleAlert, FileText, Clock, Repeat, Paperclip, Pencil, Trash2, List, type LucideIcon } from "lucide-react";
 
@@ -63,7 +62,6 @@ export function PrazosPage() {
   const catsVisiveis = TODAS_CATS.filter(podeVerCat);
   const catsGeriveis = TODAS_CATS.filter(podeGerirCat);
   const podeVer = catsVisiveis.length > 0;
-  const podeConfig = isMaster || can("prazos", "configurar");
   // "Todas as empresas": master sempre; usuário normal precisa da permissão —
   // e aí vê só as empresas que ELE tem acesso (não literalmente todas).
   const podeTodasEmpresas = isMaster || can("prazos", "verTodasEmpresas");
@@ -72,8 +70,7 @@ export function PrazosPage() {
   const [prazos, setPrazos] = useState<Prazo[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const pessoas = useTodasPessoas();
-  const [imoveis, setImoveis] = useState<Imovel[]>([]);
-  const [showImoveis, setShowImoveis] = useState(false);
+  const [enderecos, setEnderecos] = useState<Endereco[]>([]);
   const [tipoFiltro, setTipoFiltro] = useState<PrazoTipo | "todos" | "agendados">("todos");
   const [aba, setAba] = useState<"agenda" | "resolvidos">("agenda");
   const [visao, setVisao] = useState<"calendario" | "lista">("calendario");
@@ -101,10 +98,10 @@ export function PrazosPage() {
         : query(collection(db, "prazos"), where("restaurantIds", "array-contains-any", meRests.length ? meRests : [rid]));
     const u1 = onSnapshot(qy, (s) => setPrazos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Prazo).filter((p) => !p.deletadoEm)), () => setPrazos([]));
     const u2 = onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)), (s) => setEmpregados(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado)), () => setEmpregados([]));
-    const u4 = onSnapshot(query(collection(db, "imoveis"), where("restaurantId", "==", rid)), (s) => setImoveis(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Imovel).filter((im) => !im.deletadoEm)), () => setImoveis([]));
+    const u4 = onSnapshot(query(collection(db, "enderecos"), where("restaurantId", "==", rid)), (s) => setEnderecos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Endereco).filter((e) => e.ativo !== false)), () => setEnderecos([]));
     return () => { u1(); u2(); u4(); };
   }, [rid, todosRest, isMaster, meRests]);
-  const imovelNome = (id?: string | null) => imoveis.find((im) => im.id === id)?.apelido || "";
+  const enderecoNome = (id?: string | null) => enderecos.find((e) => e.id === id)?.apelido || "";
   // Responsáveis possíveis POR CATEGORIA = quem acessa (vê/gere) aquele tipo nesta empresa.
   const responsaveisPorCat = useMemo(() => {
     const base = pessoas.filter((pp) => (pp.restaurantIds || []).includes(rid || ""));
@@ -238,7 +235,7 @@ export function PrazosPage() {
   const GRUPO_LABEL: Record<string, { label: string; danger?: boolean }> = { vencido: { label: "Vencidos", danger: true }, semana: { label: "Esta semana" }, proximo: { label: "Próximos" }, futuro: { label: "Mais pra frente" } };
 
   const renderCard = (p: Prazo) => (
-    <PrazoCard key={p.id} p={p} hoje={hoje} podeGerir={podeGerirCat(p.tipo)} mostrarEmpresa={todosRest} restNome={restNome} imovelNome={imovelNome(p.imovelId)}
+    <PrazoCard key={p.id} p={p} hoje={hoje} podeGerir={podeGerirCat(p.tipo)} mostrarEmpresa={todosRest} restNome={restNome} enderecoNome={enderecoNome(p.enderecoId)}
       onAbrir={() => setModal({ prazo: p, modo: "ver" })} onEditar={() => setModal({ prazo: p, modo: "editar" })} onRealizar={() => abrirResolver(p)} onExcluir={() => void excluir(p)}
       onLaudo={() => pedirLaudo(p)} onRemoverAg={() => void removerAgendamento(p)}
       agendando={agendando === p.id} dataAg={dataAg} setDataAg={setDataAg}
@@ -253,7 +250,6 @@ export function PrazosPage() {
       <header className="flex items-start justify-between gap-3 flex-wrap">
         <p className="text-sm text-gray-500 self-center">{todosRest ? "Todos os restaurantes" : activeRestaurant?.nome || "—"}</p>
         <div className="flex items-center gap-2">
-          {podeConfig && <button type="button" onClick={() => setShowImoveis(true)} className="text-xs px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 inline-flex items-center gap-1"><House size={13} /> Imóveis</button>}
           {catsGeriveis.length > 0 && <button type="button" onClick={() => setModal({ prazo: null })} className="text-sm font-semibold px-3 py-2 rounded-lg bg-indigo-600 text-white">+ Novo prazo</button>}
         </div>
       </header>
@@ -344,9 +340,8 @@ export function PrazosPage() {
       )}
 
       {modal && (
-        <PrazoModal rid={rid || ""} prazo={modal.prazo} modoInicial={modal.modo} tiposPermitidos={catsGeriveis} empregados={empregados} responsaveisPorCat={responsaveisPorCat} imoveis={imoveis} onGerenciarImoveis={() => setShowImoveis(true)} onClose={() => setModal(null)} onSalvar={salvarPrazo} />
+        <PrazoModal rid={rid || ""} prazo={modal.prazo} modoInicial={modal.modo} tiposPermitidos={catsGeriveis} empregados={empregados} responsaveisPorCat={responsaveisPorCat} enderecos={enderecos} onClose={() => setModal(null)} onSalvar={salvarPrazo} />
       )}
-      {showImoveis && <ImoveisModal rid={rid || ""} restauranteNome={activeRestaurant?.nome || ""} imoveis={imoveis} meId={me?.id || ""} onClose={() => setShowImoveis(false)} />}
 
       {resolvendo && (
         <div className="fixed inset-0 bg-black/50 z-[200] flex items-center justify-center p-4" onClick={() => setResolvendo(null)}>
@@ -367,8 +362,8 @@ export function PrazosPage() {
 }
 
 // ── Card do prazo na agenda ──
-function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, imovelNome, onAbrir, onEditar, onRealizar, onExcluir, onLaudo, onRemoverAg, agendando, dataAg, setDataAg, onAbrirAg, onCancelarAg, onConfirmarAg }: {
-  p: Prazo; hoje: string; podeGerir: boolean; mostrarEmpresa: boolean; restNome: (ids: string[]) => string; imovelNome: string;
+function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, enderecoNome, onAbrir, onEditar, onRealizar, onExcluir, onLaudo, onRemoverAg, agendando, dataAg, setDataAg, onAbrirAg, onCancelarAg, onConfirmarAg }: {
+  p: Prazo; hoje: string; podeGerir: boolean; mostrarEmpresa: boolean; restNome: (ids: string[]) => string; enderecoNome: string;
   onAbrir: () => void; onEditar: () => void; onRealizar: () => void; onExcluir: () => void; onLaudo: () => void; onRemoverAg: () => void;
   agendando: boolean; dataAg: string; setDataAg: (v: string) => void; onAbrirAg: () => void; onCancelarAg: () => void; onConfirmarAg: () => void;
 }) {
@@ -390,7 +385,7 @@ function PrazoCard({ p, hoje, podeGerir, mostrarEmpresa, restNome, imovelNome, o
       <div className="flex items-center gap-1.5 flex-wrap text-xs">
         <span className={`text-[10px] px-2 py-0.5 rounded-full inline-flex items-center gap-1 ${TIPO_META[p.tipo].cls}`}><TipoIcon tipo={p.tipo} size={11} /> {PRAZO_TIPO_LABEL[p.tipo]}</span>
         {mostrarEmpresa && <span className="text-[10px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500">{restNome(p.restaurantIds)}</span>}
-        {imovelNome && <span className="text-gray-500 inline-flex items-center gap-1"><House size={12} /> {imovelNome}</span>}
+        {enderecoNome && <span className="text-gray-500 inline-flex items-center gap-1"><House size={12} /> {enderecoNome}</span>}
         {p.exigeLaudo && !p.laudo && <span className="text-[10px] px-2 py-0.5 rounded-full bg-rose-50 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 inline-flex items-center gap-1"><FileText size={11} /> exige laudo</span>}
         {p.laudo && <span className="text-[10px] text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><FileText size={11} /> laudo ok</span>}
         {p.recorrencia && <span className="text-gray-400 inline-flex items-center gap-1"><Repeat size={12} /> {resumoRecorrencia(p.recorrencia)}</span>}

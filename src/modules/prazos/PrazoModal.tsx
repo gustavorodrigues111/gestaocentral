@@ -4,7 +4,7 @@
 import { useMemo, useState, type ReactNode } from "react";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
-import type { Prazo, PrazoTipo, PrazoRecorrencia, PrazoSubtipoTrab, Empregado, Pessoa, Imovel } from "../../core/types";
+import type { Prazo, PrazoTipo, PrazoRecorrencia, PrazoSubtipoTrab, Empregado, Pessoa, Endereco } from "../../core/types";
 import { PRAZO_TIPO_LABEL, PRAZO_SUBTIPO_TRAB_LABEL } from "../../core/types";
 import { resumoRecorrencia } from "./recorrencia";
 import { ANTECEDENCIA_PADRAO } from "./logic";
@@ -31,9 +31,9 @@ const chip = (on: boolean) => `px-3 py-1.5 text-xs font-medium rounded-full bord
 
 const TIPOS: Array<{ v: PrazoTipo; icon: LucideIcon }> = [{ v: "conta", icon: Banknote }, { v: "tecnico", icon: Wrench }, { v: "trabalhista", icon: Scale }, { v: "avulso", icon: Flag }];
 
-export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsaveisPorCat, imoveis, onGerenciarImoveis, onClose, onSalvar, modoInicial, onResolver, onAgendar, onRenovarExp }: {
-  rid: string; prazo: Prazo | null; tiposPermitidos: PrazoTipo[]; empregados: Empregado[]; responsaveisPorCat: Record<PrazoTipo, Pessoa[]>; imoveis: Imovel[];
-  onGerenciarImoveis: () => void; onClose: () => void; onSalvar: (p: Prazo) => Promise<void>;
+export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsaveisPorCat, enderecos, onClose, onSalvar, modoInicial, onResolver, onAgendar, onRenovarExp }: {
+  rid: string; prazo: Prazo | null; tiposPermitidos: PrazoTipo[]; empregados: Empregado[]; responsaveisPorCat: Record<PrazoTipo, Pessoa[]>; enderecos: Endereco[];
+  onClose: () => void; onSalvar: (p: Prazo) => Promise<void>;
   modoInicial?: "ver" | "editar";
   // Ações dentro do modo "ver" (opcionais — quem hospeda o modal implementa).
   onResolver?: (p: Prazo) => void;                    // concluir / marcar pago
@@ -67,7 +67,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
   const [exigeLaudo, setExigeLaudo] = useState<boolean>(prazo?.exigeLaudo ?? (prazo?.tipo === "tecnico"));
   const [permiteAg, setPermiteAg] = useState<boolean>(prazo?.permiteAgendamento ?? (prazo?.tipo === "tecnico"));
   const [dados, setDados] = useState<NonNullable<Prazo["dados"]>>(prazo?.dados || {});
-  const [imovelId, setImovelId] = useState<string>(prazo?.imovelId || "");
+  const [enderecoId, setEnderecoId] = useState<string>(prazo?.enderecoId || "");
   const [link, setLink] = useState(prazo?.link || "");
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
@@ -99,7 +99,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
         restaurantIds: [rid],
         titulo: titulo.trim(), tipo, vencimento: vy,
         link: link.trim() || null,
-        imovelId: imovelId || null,
+        enderecoId: enderecoId || null,
         responsavelId: respId || null, responsavelNome: resp?.nome || null,
         antecedenciaDias: avisar ? antec : 0,
         recorrencia: rec,
@@ -121,7 +121,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
 
   // ── Modo LEITURA: detalhes do prazo, com campos clicáveis (PIX, laudo) ──
   if (modo === "ver" && prazo) {
-    const imovelSel = imoveis.find((im) => im.id === prazo.imovelId);
+    const imovelSel = enderecos.find((e) => e.id === prazo.enderecoId);
     const d = prazo.dados || {};
     return (
       <Modal title="Detalhes do prazo" onClose={onClose} maxWidth="max-w-xl"
@@ -154,7 +154,7 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
             {d.empregadoNome && <DetRow label="Empregado">{d.empregadoNome}</DetRow>}
             {d.subtipoTrab && <DetRow label="Tipo">{PRAZO_SUBTIPO_TRAB_LABEL[d.subtipoTrab]}</DetRow>}
           </>)}
-          {imovelSel && <DetRow label="Imóvel"><span className="inline-flex items-center gap-1"><House size={13} /> {imovelSel.apelido}</span></DetRow>}
+          {imovelSel && <DetRow label="Endereço"><span className="inline-flex items-center gap-1"><House size={13} /> {imovelSel.apelido}</span></DetRow>}
           {prazo.laudo?.driveUrl ? (
             <DetRow label="Laudo"><a href={prazo.laudo.driveUrl} target="_blank" rel="noopener noreferrer" className="text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"><FileText size={13} /> {prazo.laudo.nome || "abrir laudo"} ↗</a></DetRow>
           ) : prazo.exigeLaudo ? (
@@ -269,17 +269,19 @@ export function PrazoModal({ rid, prazo, tiposPermitidos, empregados, responsave
           <input type="checkbox" checked={permiteAg} onChange={(e) => setPermiteAg(e.target.checked)} /> Permite agendar data de execução
         </label>
 
-        {/* Imóvel (opcional) — pros técnicos e aluguel. Cada imóvel é de 1 empresa. */}
+        {/* Endereço (opcional) — pros técnicos e aluguel. Fonte única: os endereços
+            da empresa (Configurações › Dados da empresa), mesmos usados por Contas
+            Fixas e Manutenções. */}
         {(tipo === "tecnico" || tipo === "conta") && (
           <div>
-            <label className="text-xs text-gray-500 block mb-1">Imóvel <span className="text-gray-400">(opcional)</span></label>
+            <label className="text-xs text-gray-500 block mb-1">Endereço <span className="text-gray-400">(opcional)</span></label>
             <div className="flex flex-wrap gap-1.5">
-              <button type="button" onClick={() => setImovelId("")} className={chip(imovelId === "")}>Nenhum</button>
-              {imoveis.map((im) => (
-                <button key={im.id} type="button" onClick={() => setImovelId(im.id)} className={`${chip(imovelId === im.id)} inline-flex items-center gap-1`}><House size={12} /> {im.apelido}</button>
+              <button type="button" onClick={() => setEnderecoId("")} className={chip(enderecoId === "")}>Nenhum</button>
+              {enderecos.map((e) => (
+                <button key={e.id} type="button" onClick={() => setEnderecoId(e.id)} className={`${chip(enderecoId === e.id)} inline-flex items-center gap-1`}><House size={12} /> {e.apelido}</button>
               ))}
-              <button type="button" onClick={onGerenciarImoveis} className="px-3 py-1.5 text-xs rounded-full border border-dashed border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-400">+ Imóvel</button>
             </div>
+            {enderecos.length === 0 && <p className="text-[11px] text-gray-400 mt-1">Nenhum endereço cadastrado — adicione em Configurações › Dados da empresa › Endereços.</p>}
           </div>
         )}
 
