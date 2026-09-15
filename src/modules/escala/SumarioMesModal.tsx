@@ -8,7 +8,7 @@ import { nomeMes, pad2 } from "../../core/utils/date";
 import type { Cargo, Empregado, EscalaMes, Gorjeta, Restaurant, SplitVersion, VTFolha } from "../../core/types";
 import { calcularDivisaoDia, calcularValorLiquido } from "../gorjetas/calc";
 import { getActiveSplitVersion } from "../gorjetas/splitRules";
-import { calcularDivergenciasVT } from "../vt/calc";
+import { calcularDivergenciasVT } from "../../core/beneficios/vtHelpers";
 
 const fmtBR = (n: number) =>
   n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });

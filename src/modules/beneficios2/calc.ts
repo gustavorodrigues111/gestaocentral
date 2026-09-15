@@ -7,7 +7,7 @@
 //  Funções PURAS (testáveis) — nada de Firestore aqui.
 // ════════════════════════════════════════════════════════════════════════════
 import type { Empregado, Cargo, EscalaMes, BeneficioPagLinha, ScheduleStatus } from "../../core/types";
-import { contarDiasTrabalhados, round2 } from "../vt/calc";
+import { contarDiasTrabalhados, round2 } from "../../core/beneficios/vtHelpers";
 import { derivedScheduleForEmpregado } from "../../core/escala/horarios";
 import { statusEfetivoEmpMes, modalidadeEfetivaEmpDia } from "../../core/escala/statusEfetivo";
 import { empregadoAtivoEm } from "../../core/utils/empregado";

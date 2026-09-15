@@ -25,7 +25,6 @@ import { ajustePorEmpregadoPendente } from "./ajuste";
 import { AjustesTab } from "./AjustesTab";
 import { exportarCajuPag, exportarPixPag, baixarCsv } from "./exportar";
 import { gerarPagamentoPDF } from "./gerarPDF";
-import { migrarVtValorDiario } from "./migrarVt";
 import type { Cargo, Empregado, EscalaMes, BeneficioPagLote, BeneficioPagLinha, BeneficioAjusteLote } from "../../core/types";
 import { PageContainer } from "../../core/ui/PageContainer";
 
@@ -64,21 +63,6 @@ export function Beneficios2Page() {
   const [overrides, setOverrides] = useState<Record<string, LinhaOverride>>({});
   const [editando, setEditando] = useState<BeneficioPagLinha | null>(null);
   useEffect(() => { setOverrides({}); }, [ano, mes]);   // zera ao trocar de mês
-
-  // Migração 1x do VT legado (passagens×valor → valor diário). Master, global.
-  const [migrandoVt, setMigrandoVt] = useState(false);
-  async function rodarMigracaoVt() {
-    if (!confirm("Migrar o VT antigo (passagens/dia × valor) para o campo 'valor por dia' em TODAS as empresas?\n\nÉ seguro e idempotente — só preenche quem ainda não tem valor por dia. Não altera quem já foi migrado.")) return;
-    setMigrandoVt(true);
-    try {
-      const r = await migrarVtValorDiario();
-      alert(`Migração concluída:\n\n• ${r.migrados} empregado(s) migrados agora\n• ${r.jaOk} já tinham valor por dia\n• ${r.semBase} com VT ativo mas sem base pra calcular (revisar no cadastro)\n• ${r.semVt} sem VT\n\nTotal varrido: ${r.total}.`);
-    } catch (e) {
-      alert("Erro na migração: " + (e instanceof Error ? e.message : "?"));
-    } finally {
-      setMigrandoVt(false);
-    }
-  }
 
   useEffect(() => { if (!rid) return; return onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)), (s) => setEmpregados(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Empregado))); }, [rid]);
   useEffect(() => { if (!rid) return; return onSnapshot(query(collection(db, "cargos"), where("restaurantId", "==", rid)), (s) => setCargos(s.docs.map((d) => ({ id: d.id, ...d.data() }) as Cargo))); }, [rid]);
@@ -246,22 +230,13 @@ export function Beneficios2Page() {
     <PageContainer>
       <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
         <p className="text-xs text-gray-500 min-w-0">{rest?.nome} · Pagamento (escala prevista)</p>
-        <div className="flex items-center gap-2">
-          {isMaster && (
-            <button type="button" onClick={() => void rodarMigracaoVt()} disabled={migrandoVt}
-              title="Migração 1x: preenche o 'valor por dia' do VT a partir do modelo antigo (passagens × valor), em todas as empresas. Idempotente."
-              className="text-[11px] font-medium px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-60">
-              {migrandoVt ? "Migrando VT…" : "Migrar VT antigo"}
-            </button>
-          )}
-          {aba === "pagamento" && (
-            <div className="flex items-center gap-1">
-              <button type="button" onClick={() => irMes(-1)} className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300">◀</button>
-              <div className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-sm font-semibold text-gray-800 dark:text-gray-100 min-w-[130px] text-center">{nomeMes(mes)} {ano}</div>
-              <button type="button" onClick={() => irMes(1)} className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300">▶</button>
-            </div>
-          )}
-        </div>
+        {aba === "pagamento" && (
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => irMes(-1)} className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300">◀</button>
+            <div className="px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-800 text-sm font-semibold text-gray-800 dark:text-gray-100 min-w-[130px] text-center">{nomeMes(mes)} {ano}</div>
+            <button type="button" onClick={() => irMes(1)} className="w-8 h-8 rounded-lg border border-gray-200 dark:border-gray-800 text-gray-600 dark:text-gray-300">▶</button>
+          </div>
+        )}
       </header>
 
       {/* Abas */}

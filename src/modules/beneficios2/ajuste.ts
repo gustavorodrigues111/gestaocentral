@@ -5,7 +5,7 @@
 //  Pagamento do mês seguinte. Cursor = último dia apurado PARA TODOS.
 // ════════════════════════════════════════════════════════════════════════════
 import type { Empregado, EscalaMes, BeneficioPagLote, BeneficioAjusteLote, BeneficioAjusteLinha } from "../../core/types";
-import { contarDiasTrabalhadosNoRange, round2 } from "../vt/calc";
+import { contarDiasTrabalhadosNoRange, round2 } from "../../core/beneficios/vtHelpers";
 import { statusEfetivoEmpMes } from "../../core/escala/statusEfetivo";
 import { vtDiarioDe, ativoNoMes, diasPrevistosMesCheio, contarDiasVtPresencialRange, contarDiasVrRange } from "./calc";
 import { empregadoAtivoEm } from "../../core/utils/empregado";
