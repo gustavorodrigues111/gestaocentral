@@ -25,11 +25,10 @@ export function ativoNoMes(emp: Empregado, ano: number, mes: number): boolean {
   return false;
 }
 
-// VT diário do empregado: usa vtValorDiario; se ausente, cai no legado
-// passagens/dia × valor da passagem (retrocompat durante a transição).
+// VT diário do empregado — campo canônico `vtValorDiario` (migração 1x já
+// preencheu os registros antigos; admissão e cadastro sempre gravam este campo).
 export function vtDiarioDe(e: Empregado): number {
-  if (e.vtValorDiario != null) return e.vtValorDiario;
-  return round2((e.vtPassagensPorDia ?? 0) * (e.vtValorPassagem ?? 0));
+  return e.vtValorDiario ?? 0;
 }
 
 // Divisor da proporcionalidade do AUXÍLIO fixo mensal: quantos dias a pessoa

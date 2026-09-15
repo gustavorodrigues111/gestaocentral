@@ -1692,6 +1692,7 @@ type VTFromAdmissao = {
   vtAtivo?: boolean;
   vtPassagensPorDia?: number;
   vtValorPassagem?: number;
+  vtValorDiario?: number;   // canônico (Benefícios) — passagens × valor
   vtRecebePeloCaju?: boolean;
 };
 
@@ -1721,6 +1722,7 @@ function construirVTDaAdmissao(dados: Record<string, unknown>): VTFromAdmissao {
       vtAtivo: true,
       vtPassagensPorDia: qtdeTotal,
       vtValorPassagem: trechos[0].tarifa,
+      vtValorDiario: Math.round(qtdeTotal * trechos[0].tarifa * 100) / 100,
       vtRecebePeloCaju: true,
     };
   }
@@ -1730,6 +1732,7 @@ function construirVTDaAdmissao(dados: Record<string, unknown>): VTFromAdmissao {
     vtAtivo: true,
     vtPassagensPorDia: 1,
     vtValorPassagem: Math.round(totalDiario * 100) / 100,
+    vtValorDiario: Math.round(totalDiario * 100) / 100,
     vtRecebePeloCaju: true,
   };
 }
