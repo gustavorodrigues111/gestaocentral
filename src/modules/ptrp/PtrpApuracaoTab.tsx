@@ -263,16 +263,19 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
 
   // employeeId (Sólides) → CPF, das batidas reais — pra casar as aprovações pendentes.
   const eidToCpf = useMemo(() => { const m = new Map<string, string>(); for (const b of batidas) { const c = soDig(b.cpf); if (c && b.employeeId) m.set(String(b.employeeId), c); } return m; }, [batidas]);
-  // Aprovações pendentes → BatidaDoc sintética PENDING (id "pend_"). Só as que
-  // ainda não estão no espelho e cujo CPF a gente consegue casar pelas batidas do mês.
+  // Aprovações pendentes → BatidaDoc sintética PENDING (id "pend_"). Inclui até
+  // as que TÊM o mesmo punchId de uma batida já espelhada: como o sync é
+  // create-only, o espelho não reflete a mudança de status (a batida virou
+  // PENDING depois de sincronizada) — então a pendente ENTRA e substitui a versão
+  // velha em batidasEfetivas. Só pula as que já aparecem como PENDING no espelho.
   const ymdDeMs = (ms: number) => new Date(ms - 3 * 3600_000).toISOString().slice(0, 10);
   const pendentesSinteticas = useMemo<BatidaDoc[]>(() => {
-    const idsReais = new Set(batidas.map(b => b.punchId).filter(Boolean) as string[]);
+    const jaPendenteNoEspelho = new Set(batidas.filter(correcaoPendente).map(b => b.punchId).filter(Boolean) as string[]);
     const ini = `${comp}-01`, fim = `${comp}-${String(diasDoMes).padStart(2, "0")}`;
     const out: BatidaDoc[] = [];
     for (const ap of aprovacoesPend) {
       const pid = String(ap.punchId);
-      if (idsReais.has(pid)) continue;                       // já veio pelo espelho
+      if (jaPendenteNoEspelho.has(pid)) continue;            // já aparece pendente pelo espelho
       const cpf = ap.cpf || eidToCpf.get(String(ap.employeeId));
       if (!cpf) continue;                                    // sem casar CPF
       const date = ap.date || (ap.dateIn ? ymdDeMs(ap.dateIn) : "");
@@ -281,7 +284,15 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     }
     return out;
   }, [aprovacoesPend, eidToCpf, batidas, shortCode, comp, diasDoMes]);
-  const batidasEfetivas = useMemo(() => [...batidas, ...pendentesSinteticas], [batidas, pendentesSinteticas]);
+  // Espelho + pendentes: se a pendente tem o MESMO punchId de uma batida do
+  // espelho (edição não refletida no create-only), a pendente SUBSTITUI a velha.
+  const batidasEfetivas = useMemo(() => {
+    const overridePorPunch = new Map(pendentesSinteticas.filter(p => p.punchId).map(p => [p.punchId as string, p]));
+    const base = batidas.map(b => (b.punchId && overridePorPunch.has(b.punchId)) ? overridePorPunch.get(b.punchId)! : b);
+    const idsBase = new Set(batidas.map(b => b.punchId).filter(Boolean) as string[]);
+    const novos = pendentesSinteticas.filter(p => !p.punchId || !idsBase.has(p.punchId));
+    return [...base, ...novos];
+  }, [batidas, pendentesSinteticas]);
 
   // Batidas por CPF → dia (reais + correções pendentes sintéticas).
   const batidasPorCpf = useMemo(() => {
