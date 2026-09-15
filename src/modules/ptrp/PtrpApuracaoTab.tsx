@@ -133,7 +133,10 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const [mostrarComp, setMostrarComp] = useState(false);
   const [acaoBusy, setAcaoBusy] = useState(false);
   const [acaoMsg, setAcaoMsg] = useState("");
-  const [aprovacoesPend, setAprovacoesPend] = useState<PendItem[]>([]);
+  // Dias com correção pendente → o dia INTEIRO ao vivo (cada marcação com seu
+  // status real), chaveado por `${cpf}|${date}`. Substitui o dia do espelho pra
+  // o PTRP ficar idêntico à Análise (que lê ao vivo).
+  const [liveCorrigidos, setLiveCorrigidos] = useState<Record<string, BatidaDoc[]>>({});
   const [pendErr, setPendErr] = useState("");
   const [selCorr, setSelCorr] = useState<Set<string>>(new Set());   // dias marcados p/ pedir correção (lote)
   const [corrModal, setCorrModal] = useState(false);
@@ -183,12 +186,12 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   // o mês e injeta como batida PENDING sintética — a UI de correção pendente
   // (tracejado + ✓/✗) acende sem depender do espelho imutável.
   async function carregarPendentes() {
-    if (!shortCode || !comp) { setAprovacoesPend([]); return; }
+    if (!shortCode || !comp) { setLiveCorrigidos({}); return; }
     try {
       const hojeStr = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
       const fimMes = `${comp}-${String(diasDoMes).padStart(2, "0")}`;
       const ini = `${comp}-01`, fim = fimMes < hojeStr ? fimMes : hojeStr;   // não pede dia futuro (Sólides 404)
-      if (ini > fim) { setAprovacoesPend([]); setPendErr(""); return; }        // mês futuro: nada a buscar
+      if (ini > fim) { setLiveCorrigidos({}); setPendErr(""); return; }        // mês futuro: nada a buscar
       const { punches } = await fetchPunches(ini, fim, shortCode, true);
       // Mesma regra da Análise: PENDING com ajuste/edição = correção a aprovar.
       const pend: PendItem[] = punches
@@ -198,12 +201,32 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
           date: p.date || "", dateIn: typeof p.dateIn === "number" ? p.dateIn : undefined,
           dateOut: (typeof p.dateOut === "number" && p.dateOut > p.dateIn) ? p.dateOut : undefined,
         }));
-      setAprovacoesPend(pend);
+      // Dias que têm ao menos uma pendência → guarda o dia INTEIRO ao vivo (todas
+      // as marcações, com o status real: aprovada conta, PENDING fica tracejada).
+      const ymd = (ms: number) => new Date(ms - 3 * 3600_000).toISOString().slice(0, 10);
+      const diasPend = new Set(pend.filter(p => p.cpf && p.date).map(p => `${p.cpf}|${p.date}`));
+      const corr: Record<string, BatidaDoc[]> = {};
+      for (const p of punches) {
+        const cpf = (p.employee?.cpf || "").replace(/\D/g, "");
+        const date = p.date || (typeof p.dateIn === "number" ? ymd(p.dateIn) : "");
+        if (!cpf || !date) continue;
+        const key = `${cpf}|${date}`;
+        if (!diasPend.has(key)) continue;
+        (corr[key] = corr[key] || []).push({
+          id: `live_${p.id}`, empresaKey: shortCode, punchId: String(p.id),
+          employeeId: p.employeeId != null ? String(p.employeeId) : null, cpf, date,
+          dateIn: typeof p.dateIn === "number" ? p.dateIn : null,
+          dateOut: (typeof p.dateOut === "number" && p.dateOut > p.dateIn) ? p.dateOut : null,
+          status: String(p.status || "").toUpperCase() === "PENDING" ? "PENDING" : null,
+          edited: p.edited === true,
+        });
+      }
+      setLiveCorrigidos(corr);
       setPendErr("");
     } catch (e) {
       // Recurso ADITIVO: se a Sólides recusar a consulta (404/timeout), não quebra
       // a tela — o PTRP segue com o espelho imutável. Guarda a causa só como nota.
-      setAprovacoesPend([]);
+      setLiveCorrigidos({});
       setPendErr(e instanceof Error ? e.message : "");
     }
   }
@@ -261,47 +284,20 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   // demitidos/inativos e freela mensalista (não bate ponto).
   const empVis = useMemo(() => empregados.filter(e => e.estaAtivo && !e.freelaMensalista).sort((a, b) => a.nome.localeCompare(b.nome)), [empregados]);
 
-  // employeeId (Sólides) → CPF, das batidas reais — pra casar as aprovações pendentes.
-  const eidToCpf = useMemo(() => { const m = new Map<string, string>(); for (const b of batidas) { const c = soDig(b.cpf); if (c && b.employeeId) m.set(String(b.employeeId), c); } return m; }, [batidas]);
-  // Aprovações pendentes → BatidaDoc sintética PENDING (id "pend_"). Inclui até
-  // as que TÊM o mesmo punchId de uma batida já espelhada: como o sync é
-  // create-only, o espelho não reflete a mudança de status (a batida virou
-  // PENDING depois de sincronizada) — então a pendente ENTRA e substitui a versão
-  // velha em batidasEfetivas. Só pula as que já aparecem como PENDING no espelho.
-  const ymdDeMs = (ms: number) => new Date(ms - 3 * 3600_000).toISOString().slice(0, 10);
-  const pendentesSinteticas = useMemo<BatidaDoc[]>(() => {
-    const jaPendenteNoEspelho = new Set(batidas.filter(correcaoPendente).map(b => b.punchId).filter(Boolean) as string[]);
-    const ini = `${comp}-01`, fim = `${comp}-${String(diasDoMes).padStart(2, "0")}`;
-    const out: BatidaDoc[] = [];
-    for (const ap of aprovacoesPend) {
-      const pid = String(ap.punchId);
-      if (jaPendenteNoEspelho.has(pid)) continue;            // já aparece pendente pelo espelho
-      const cpf = ap.cpf || eidToCpf.get(String(ap.employeeId));
-      if (!cpf) continue;                                    // sem casar CPF
-      const date = ap.date || (ap.dateIn ? ymdDeMs(ap.dateIn) : "");
-      if (!date || date < ini || date > fim) continue;
-      out.push({ id: `pend_${pid}`, empresaKey: shortCode, punchId: pid, employeeId: String(ap.employeeId), cpf, date, dateIn: ap.dateIn ?? null, dateOut: ap.dateOut ?? null, status: "PENDING" });
-    }
-    return out;
-  }, [aprovacoesPend, eidToCpf, batidas, shortCode, comp, diasDoMes]);
-  // Espelho + pendentes: se a pendente tem o MESMO punchId de uma batida do
-  // espelho (edição não refletida no create-only), a pendente SUBSTITUI a velha.
-  const batidasEfetivas = useMemo(() => {
-    const overridePorPunch = new Map(pendentesSinteticas.filter(p => p.punchId).map(p => [p.punchId as string, p]));
-    const base = batidas.map(b => (b.punchId && overridePorPunch.has(b.punchId)) ? overridePorPunch.get(b.punchId)! : b);
-    const idsBase = new Set(batidas.map(b => b.punchId).filter(Boolean) as string[]);
-    const novos = pendentesSinteticas.filter(p => !p.punchId || !idsBase.has(p.punchId));
-    return [...base, ...novos];
-  }, [batidas, pendentesSinteticas]);
+  // Nº de correções pendentes (pra o aviso no topo).
+  const qtdPendentes = useMemo(() => Object.values(liveCorrigidos).reduce((s, arr) => s + arr.filter(correcaoPendente).length, 0), [liveCorrigidos]);
 
-  // Batidas por CPF → dia (reais + correções pendentes sintéticas).
+  // Batidas por CPF → dia. O dia que tem correção pendente é SUBSTITUÍDO pelo ao
+  // vivo (todas as marcações, com status real) — assim o PTRP fica idêntico à
+  // Análise (que lê ao vivo), em vez de misturar espelho velho + só a pendente.
   const batidasPorCpf = useMemo(() => {
     const m: Record<string, Record<string, BatidaDoc[]>> = {};
-    for (const b of batidasEfetivas) { const c = soDig(b.cpf); if (!c) continue; (m[c] = m[c] || {}); (m[c][b.date || ""] = m[c][b.date || ""] || []).push(b); }
+    for (const b of batidas) { const c = soDig(b.cpf); if (!c) continue; (m[c] = m[c] || {}); (m[c][b.date || ""] = m[c][b.date || ""] || []).push(b); }
+    for (const [key, arr] of Object.entries(liveCorrigidos)) { const i = key.indexOf("|"); const cpf = key.slice(0, i), date = key.slice(i + 1); (m[cpf] = m[cpf] || {})[date] = arr; }
     return m;
-  }, [batidasEfetivas]);
-  // employeeId do Sólides por CPF (das batidas) — pra aplicar correções lá.
-  const empIdPorCpf = useMemo(() => { const m = new Map<string, string>(); for (const b of batidasEfetivas) { const c = soDig(b.cpf); if (c && b.employeeId && !m.has(c)) m.set(c, String(b.employeeId)); } return m; }, [batidasEfetivas]);
+  }, [batidas, liveCorrigidos]);
+  // employeeId do Sólides por CPF (espelho + dias ao vivo) — pra aplicar correções lá.
+  const empIdPorCpf = useMemo(() => { const m = new Map<string, string>(); const all = [...batidas, ...Object.values(liveCorrigidos).flat()]; for (const b of all) { const c = soDig(b.cpf); if (c && b.employeeId && !m.has(c)) m.set(c, String(b.employeeId)); } return m; }, [batidas, liveCorrigidos]);
   // Ajustes (não cancelados) por CPF → dia.
   const ajustesPorCpf = useMemo(() => {
     const m: Record<string, Record<string, PtrpAjuste[]>> = {};
@@ -865,7 +861,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         <Button size="sm" variant="secondary" disabled={sincBusy} onClick={() => void sincronizarSolides()} title={`Buscar batidas/correções novas da Sólides agora (mês ${labelComp(comp)}), sem esperar o sync automático`}>{sincBusy ? "Sincronizando…" : <span className="inline-flex items-center gap-1"><RotateCw size={13}/> Sincronizar Sólides</span>}</Button>
       </div>
       {sincMsg && <div className="mb-2 text-[12px] text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">{sincMsg}</div>}
-      {pendentesSinteticas.length > 0 && <div className="mb-2 text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2 inline-flex items-center gap-1.5"><TriangleAlert size={13}/> {pendentesSinteticas.length} correção(ões) a aprovar na Sólides aparecem tracejadas (🟡) — use ✓ / ✗ no dia pra decidir.</div>}
+      {qtdPendentes > 0 && <div className="mb-2 text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2 inline-flex items-center gap-1.5"><TriangleAlert size={13}/> {qtdPendentes} correção(ões) a aprovar na Sólides aparecem tracejadas (🟡) — use ✓ / ✗ no dia pra decidir.</div>}
       {pendErr && <div className="mb-2 text-[11px] text-gray-400 dark:text-gray-500">Correções pendentes indisponíveis agora ({pendErr.replace(/\s+/g, " ").slice(0, 80)}). A apuração segue normal.</div>}
       {/* Legenda recolhida: some da visão permanente e abre só quando quiser. */}
       <details className="group mb-2 rounded-lg border border-gray-200 dark:border-gray-800">
