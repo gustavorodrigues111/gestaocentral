@@ -16,9 +16,9 @@ const UNIDADES = ["un", "kg", "g", "L", "ml", "cx", "pct", "fardo", "garrafa", "
 
 const SYSTEM = `Você organiza um cadastro de insumos de restaurante a partir de nomes de produtos de notas fiscais (texto cru, abreviado, às vezes com marca/peso). Para CADA produto recebido, devolva:
 - "nomeLimpo": o nome da UNIDADE INDIVIDUAL, limpo e funcional, Primeira Maiúscula, expandindo abreviações — SEM a quantidade do pacote no nome. GFA→"Garrafa", LN/LT/LATA→"Lata", PET→"Pet"; "0,330"/"330"→"330ml", "2,5KG"→"2,5kg"; remova códigos/SKUs e siglas-lixo ("01050004","DESC","DES","PBR","4X6UNPBR"). Mantenha MARCA+variação+tamanho+embalagem individual. Ex.: "Cerv Heineken 0,0% 0,330GFA Desc 4X6UNPBR" → "Cerveja Heineken 0,0% 330ml Garrafa".
-- "qtdPorPacote": quando é comprado em pacote/fardo/caixa com várias unidades INDIVIDUAIS, o número de unidades por pacote (ex.: "4X6UN"→24; "12UN"→12; "pct com 24 Un"→24). É o "fator de compra". Se é por PESO (kg) ou avulso, 1.
+- "qtdPorPacote": quando é comprado em pacote/fardo/caixa com várias unidades INDIVIDUAIS, o número de unidades por pacote (ex.: "4X6UN"→24; "12UN"→12; "pct com 24 Un"→24). TAMBÉM quando o nome traz peso do pacote E da unidade: DIVIDA — "Amora Polpa 100G Pct 1.02KG" = 1020÷100 ≈ 10 → 10; "Filé 5KG cx 500g"→10. É o "fator de compra". Só 1 quando for peso a granel puro ou avulso de verdade.
 - "categoria": UMA de ${JSON.stringify(CATEGORIAS)}.
-- "unidade": a unidade de compra mais provável, UMA de ${JSON.stringify(UNIDADES)}. NÃO confie no código de unidade da nota (FC, BD, PC…) — decida pela natureza do produto (carne/hortifruti→kg; garrafa→garrafa; lata→lata; caixa→cx). Se não der, "un".
+- "unidade": a unidade da UNIDADE INDIVIDUAL (a de dentro), UMA de ${JSON.stringify(UNIDADES)}. NUNCA "pacote"/"caixa"/"fardo" (isso é qtdPorPacote). Ex.: "Amora Polpa 100G Pct 1.02KG" → "un", qtdPorPacote 10. NÃO confie no código de unidade da nota (FC, BD, PC…) — decida pela natureza (carne/hortifruti a granel→kg; garrafa→garrafa; lata→lata). Se não der, "un".
 - "grupo": rótulo curto e ESTÁVEL que agrupa nomes DIFERENTES do MESMO produto (ex.: "coca-cola-2l"). Únicos recebem grupo próprio.
 - "matchInsumoId": se for claramente o MESMO que um insumo já cadastrado, o id dele; senão null.
 Responda SÓ com JSON: {"itens":[{"chave","nomeLimpo","qtdPorPacote","categoria","unidade","grupo","matchInsumoId"}]}. Use a "chave" exatamente como recebida.`;
@@ -31,9 +31,17 @@ async function analisar(produtos: Array<{ chave: string; nome: string; unidadeAt
   if (!r.ok) return [];
   const j = await r.json() as { content?: Array<{ text?: string }> };
   const texto = (j.content || []).map((c) => c.text || "").join("");
+  // Parse resiliente: se um lote truncar (JSON incompleto), NÃO derruba o run
+  // inteiro — devolve [] e o próximo lote segue. Antes, um JSON.parse com erro
+  // abortava tudo e as sugestões daquele lote (ex.: "Peito Frango") não mudavam.
   const m = texto.match(/\{[\s\S]*\}/);
-  const parsed = m ? JSON.parse(m[0]) : { itens: [] };
-  return Array.isArray(parsed.itens) ? parsed.itens : [];
+  if (!m) return [];
+  try {
+    const parsed = JSON.parse(m[0]);
+    return Array.isArray(parsed.itens) ? parsed.itens : [];
+  } catch {
+    return [];
+  }
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -55,9 +63,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const inicio = Date.now();
     let analisados = 0, idx = 0;
-    for (; idx < produtos.length; idx += 40) {
+    for (; idx < produtos.length; idx += 20) {
       if (Date.now() - inicio > 50000) break;
-      const lote = produtos.slice(idx, idx + 40);
+      const lote = produtos.slice(idx, idx + 20);
       const itens = await analisar(lote, jaCadastrados, key);
       // Mescla no cache do restaurante (por chave) e grava — o cliente vê ao vivo.
       const atual = await firestoreLer("insumosIaCache", rid) as { itens?: Item[] } | null;

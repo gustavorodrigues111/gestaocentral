@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from "react";
-import { Sparkles, Pencil, Trash2 } from "lucide-react";
+import { Sparkles, Pencil, Trash2, ChevronDown } from "lucide-react";
 import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
 import { db, auth } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -55,14 +55,16 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
     return [...set].sort((a, b) => a.localeCompare(b));
   })();
   const [fatorCompra, setFatorCompra] = useState(base?.fatorCompra != null ? String(base.fatorCompra) : "");
+  // Preço sempre com 2 casas (vírgula): "25" → "25,00".
+  const fmtPreco2 = (v: string) => { const n = parseFloat(v.replace(",", ".")); return isNaN(n) ? v : n.toFixed(2).replace(".", ","); };
   // precoEstimado = preço UNITÁRIO (é o que fica salvo, usado nas fichas/CMV).
-  const [precoEstimado, setPrecoEstimado] = useState(base?.precoEstimado != null ? String(base.precoEstimado) : "");
+  const [precoEstimado, setPrecoEstimado] = useState(base?.precoEstimado != null ? base.precoEstimado.toFixed(2).replace(".", ",") : "");
   // "Comprado em pacote": entra o preço do PACOTE (como vem do recebimento) e a
   // qtd por pacote → o unitário é o pacote ÷ qtd. precoPacote é só de entrada.
   const [ehPacote, setEhPacote] = useState<boolean>((base?.fatorCompra ?? 1) > 1);
   const [precoPacote, setPrecoPacote] = useState(
     base?.precoEstimado != null && (base?.fatorCompra ?? 1) > 1
-      ? (base.precoEstimado * (base.fatorCompra as number)).toFixed(2)
+      ? (base.precoEstimado * (base.fatorCompra as number)).toFixed(2).replace(".", ",")
       : ""
   );
   // Unitário derivado no modo pacote (preço do pacote ÷ qtd por pacote).
@@ -90,13 +92,19 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
       if (it) {
         if (it.nomeLimpo?.trim()) setNome(it.nomeLimpo.trim());
         if (it.categoria) setCategoria(it.categoria);
-        if (it.unidade && (UNIDADES_LISTA as string[]).includes(it.unidade)) setUnidade(it.unidade as UnidadeMedida);
-        // Pacote → marca "é pacote" + qtd por pacote; o unitário sai da divisão.
-        if (it.qtdPorPacote && it.qtdPorPacote > 1) {
-          const novo = Math.round(it.qtdPorPacote);
+        const ehPct = !!(it.qtdPorPacote && it.qtdPorPacote > 1);
+        const pacoteLike = (u: string) => u === "pct" || u === "cx" || u === "fardo";
+        // Unidade = a de DENTRO do pacote; nunca "pacote/caixa/fardo" quando é pacote.
+        if (it.unidade && (UNIDADES_LISTA as string[]).includes(it.unidade)) {
+          setUnidade(ehPct && pacoteLike(it.unidade) ? "un" : (it.unidade as UnidadeMedida));
+        } else if (ehPct && pacoteLike(unidade)) {
+          setUnidade("un");
+        }
+        // Pacote → marca "comprado em pacote" + qtd por pacote; o unitário sai da divisão.
+        if (ehPct) {
           setEhPacote(true);
-          setFatorCompra(String(novo));
-          // Semeia o preço do pacote com o valor carregado (que vem como preço do pacote).
+          setFatorCompra(String(Math.round(it.qtdPorPacote as number)));
+          // Semeia o preço do PACOTE com o valor carregado (que vem como preço do pacote).
           if (!precoPacote.trim() && precoEstimado.trim()) setPrecoPacote(precoEstimado);
         }
       }
@@ -243,13 +251,16 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
         <div className="grid grid-cols-2 gap-3">
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Unidade *</label>
-            <select
-              value={unidade}
-              onChange={(e) => setUnidade(e.target.value as UnidadeMedida)}
-              className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
-            >
-              {UNIDADES_LISTA.map(u => <option key={u} value={u}>{UNIDADES_LABEL[u]}</option>)}
-            </select>
+            <div className="relative mt-1">
+              <select
+                value={unidade}
+                onChange={(e) => setUnidade(e.target.value as UnidadeMedida)}
+                className="appearance-none w-full px-3 py-2 pr-9 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 cursor-pointer focus:outline-none focus:border-indigo-400"
+              >
+                {UNIDADES_LISTA.map(u => <option key={u} value={u}>{UNIDADES_LABEL[u]}</option>)}
+              </select>
+              <ChevronDown size={16} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            </div>
           </div>
           {unidade === "outro" && (
             <Input
@@ -308,7 +319,7 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
                     <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Preço do pacote</label>
                     <div className="mt-1 flex items-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden focus-within:border-indigo-400">
                       <span className="px-2.5 py-2 text-sm text-gray-400 bg-gray-50 dark:bg-gray-800">R$</span>
-                      <input inputMode="decimal" value={precoPacote} onChange={(e) => setPrecoPacote(e.target.value.replace(/[^\d.,]/g, ""))} placeholder="0,00" className="flex-1 px-2 py-2 text-sm bg-transparent outline-none text-gray-900 dark:text-gray-100 text-right tabular-nums" />
+                      <input inputMode="decimal" value={precoPacote} onChange={(e) => setPrecoPacote(e.target.value.replace(/[^\d.,]/g, ""))} onBlur={() => setPrecoPacote(fmtPreco2)} placeholder="0,00" className="flex-1 px-2 py-2 text-sm bg-transparent outline-none text-gray-900 dark:text-gray-100 text-right tabular-nums" />
                     </div>
                   </div>
                 </div>
@@ -322,7 +333,7 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, preset, onExcl
                 <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Preço por unidade</label>
                 <div className="mt-1 flex items-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 overflow-hidden focus-within:border-indigo-400">
                   <span className="px-2.5 py-2 text-sm text-gray-400 bg-gray-50 dark:bg-gray-800">R$</span>
-                  <input inputMode="decimal" value={precoEstimado} onChange={(e) => setPrecoEstimado(e.target.value.replace(/[^\d.,]/g, ""))} placeholder="0,00" className="flex-1 px-2 py-2 text-sm bg-transparent outline-none text-gray-900 dark:text-gray-100 text-right tabular-nums" />
+                  <input inputMode="decimal" value={precoEstimado} onChange={(e) => setPrecoEstimado(e.target.value.replace(/[^\d.,]/g, ""))} onBlur={() => setPrecoEstimado(fmtPreco2)} placeholder="0,00" className="flex-1 px-2 py-2 text-sm bg-transparent outline-none text-gray-900 dark:text-gray-100 text-right tabular-nums" />
                 </div>
               </div>
             )}
