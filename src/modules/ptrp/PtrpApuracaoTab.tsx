@@ -55,7 +55,6 @@ type BatidaDoc = { id: string; empresaKey: string; punchId?: string; employeeId?
 const correcaoPendente = (b: BatidaDoc) => b.status === "PENDING" || b.status === "REJECTED";
 
 // Correção pendente derivada do feed de batidas (mesma regra da Análise de Ponto).
-type PendItem = { punchId: number; employeeId: number; cpf?: string; date: string; dateIn?: number; dateOut?: number };
 
 const compAtual = () => new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 7);
 const hm = (min: number) => min <= 0 ? "0h00" : `${Math.floor(min / 60)}h${String(Math.round(min % 60)).padStart(2, "0")}`;
@@ -137,7 +136,10 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   // Dias com correção pendente → o dia INTEIRO ao vivo (cada marcação com seu
   // status real), chaveado por `${cpf}|${date}`. Substitui o dia do espelho pra
   // o PTRP ficar idêntico à Análise (que lê ao vivo).
+  // Batidas do mês lidas AO VIVO da Sólides (por cpf|dia). Fonte PRIMÁRIA da
+  // apuração — o espelho ptrpBatidas vira só fallback quando a Sólides cai.
   const [liveCorrigidos, setLiveCorrigidos] = useState<Record<string, BatidaDoc[]>>({});
+  const [liveMesOk, setLiveMesOk] = useState(false);   // o mês inteiro veio ao vivo?
   const [pendErr, setPendErr] = useState("");
   const [selCorr, setSelCorr] = useState<Set<string>>(new Set());   // dias marcados p/ pedir correção (lote)
   const [corrModal, setCorrModal] = useState(false);
@@ -187,47 +189,42 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   // o mês e injeta como batida PENDING sintética — a UI de correção pendente
   // (tracejado + ✓/✗) acende sem depender do espelho imutável.
   async function carregarPendentes() {
-    if (!shortCode || !comp) { setLiveCorrigidos({}); return; }
+    if (!shortCode || !comp) { setLiveCorrigidos({}); setLiveMesOk(false); return; }
     try {
       const hojeStr = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
       const fimMes = `${comp}-${String(diasDoMes).padStart(2, "0")}`;
       const ini = `${comp}-01`, fim = fimMes < hojeStr ? fimMes : hojeStr;   // não pede dia futuro (Sólides 404)
-      if (ini > fim) { setLiveCorrigidos({}); setPendErr(""); return; }        // mês futuro: nada a buscar
+      if (ini > fim) { setLiveCorrigidos({}); setLiveMesOk(false); setPendErr(""); return; }   // mês futuro: nada a buscar
       const { punches } = await fetchPunches(ini, fim, shortCode, true);
-      // Mesma regra da Análise: PENDING com ajuste/edição = correção a aprovar.
-      const pend: PendItem[] = punches
-        .filter(p => String(p.status || "").toUpperCase() === "PENDING" && (p.adjustmentReason != null || p.edited === true))
-        .map(p => ({
-          punchId: p.id, employeeId: p.employeeId, cpf: (p.employee?.cpf || "").replace(/\D/g, "") || undefined,
-          date: p.date || "", dateIn: typeof p.dateIn === "number" ? p.dateIn : undefined,
-          dateOut: (typeof p.dateOut === "number" && p.dateOut > p.dateIn) ? p.dateOut : undefined,
-        }));
-      // Dias que têm ao menos uma pendência → guarda o dia INTEIRO ao vivo (todas
+      // Fonte da verdade = Sólides. Lê o MÊS INTEIRO ao vivo (todos os dias, todas
       // as marcações, com o status real: aprovada conta, PENDING fica tracejada).
+      // Assim o PTRP fica idêntico à Análise e some a divergência do espelho velho.
       const ymd = (ms: number) => new Date(ms - 3 * 3600_000).toISOString().slice(0, 10);
-      const diasPend = new Set(pend.filter(p => p.cpf && p.date).map(p => `${p.cpf}|${p.date}`));
       const corr: Record<string, BatidaDoc[]> = {};
       for (const p of punches) {
         const cpf = (p.employee?.cpf || "").replace(/\D/g, "");
         const date = p.date || (typeof p.dateIn === "number" ? ymd(p.dateIn) : "");
         if (!cpf || !date) continue;
         const key = `${cpf}|${date}`;
-        if (!diasPend.has(key)) continue;
+        const st = String(p.status || "").toUpperCase();
         (corr[key] = corr[key] || []).push({
           id: `live_${p.id}`, empresaKey: shortCode, punchId: String(p.id),
           employeeId: p.employeeId != null ? String(p.employeeId) : null, cpf, date,
           dateIn: typeof p.dateIn === "number" ? p.dateIn : null,
           dateOut: (typeof p.dateOut === "number" && p.dateOut > p.dateIn) ? p.dateOut : null,
-          status: String(p.status || "").toUpperCase() === "PENDING" ? "PENDING" : null,
+          status: st === "PENDING" ? "PENDING" : st === "REJECTED" ? "REJECTED" : null,
+          excluded: p.excluded === true,
           edited: p.edited === true,
         });
       }
       setLiveCorrigidos(corr);
+      setLiveMesOk(true);
       setPendErr("");
     } catch (e) {
-      // Recurso ADITIVO: se a Sólides recusar a consulta (404/timeout), não quebra
-      // a tela — o PTRP segue com o espelho imutável. Guarda a causa só como nota.
+      // Se a Sólides recusar/estourar (404/timeout), NÃO quebra a tela: cai pro
+      // espelho ptrpBatidas (última sincronização) e registra a causa na nota.
       setLiveCorrigidos({});
+      setLiveMesOk(false);
       setPendErr(e instanceof Error ? e.message : "");
     }
   }
@@ -288,15 +285,19 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   // Nº de correções pendentes (pra o aviso no topo).
   const qtdPendentes = useMemo(() => Object.values(liveCorrigidos).reduce((s, arr) => s + arr.filter(correcaoPendente).length, 0), [liveCorrigidos]);
 
-  // Batidas por CPF → dia. O dia que tem correção pendente é SUBSTITUÍDO pelo ao
-  // vivo (todas as marcações, com status real) — assim o PTRP fica idêntico à
-  // Análise (que lê ao vivo), em vez de misturar espelho velho + só a pendente.
+  // Batidas por CPF → dia. FONTE PRIMÁRIA = ao vivo da Sólides (mês inteiro): a
+  // apuração fica idêntica à Análise e some a divergência do espelho congelado.
+  // Se o ao vivo falhou (timeout/404), cai pro espelho ptrpBatidas da última
+  // sincronização — a tela nunca fica em branco.
   const batidasPorCpf = useMemo(() => {
     const m: Record<string, Record<string, BatidaDoc[]>> = {};
-    for (const b of batidas) { const c = soDig(b.cpf); if (!c) continue; (m[c] = m[c] || {}); (m[c][b.date || ""] = m[c][b.date || ""] || []).push(b); }
-    for (const [key, arr] of Object.entries(liveCorrigidos)) { const i = key.indexOf("|"); const cpf = key.slice(0, i), date = key.slice(i + 1); (m[cpf] = m[cpf] || {})[date] = arr; }
+    if (liveMesOk) {
+      for (const [key, arr] of Object.entries(liveCorrigidos)) { const i = key.indexOf("|"); const cpf = key.slice(0, i), date = key.slice(i + 1); if (!cpf || !date) continue; (m[cpf] = m[cpf] || {})[date] = arr; }
+    } else {
+      for (const b of batidas) { const c = soDig(b.cpf); if (!c) continue; (m[c] = m[c] || {}); (m[c][b.date || ""] = m[c][b.date || ""] || []).push(b); }
+    }
     return m;
-  }, [batidas, liveCorrigidos]);
+  }, [batidas, liveCorrigidos, liveMesOk]);
   // employeeId do Sólides por CPF (espelho + dias ao vivo) — pra aplicar correções lá.
   const empIdPorCpf = useMemo(() => { const m = new Map<string, string>(); const all = [...batidas, ...Object.values(liveCorrigidos).flat()]; for (const b of all) { const c = soDig(b.cpf); if (c && b.employeeId && !m.has(c)) m.set(c, String(b.employeeId)); } return m; }, [batidas, liveCorrigidos]);
   // Ajustes (não cancelados) por CPF → dia.
@@ -866,7 +867,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       </div>
       {sincMsg && <div className="mb-2 text-[12px] text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">{sincMsg}</div>}
       {qtdPendentes > 0 && <div className="mb-2 text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2 inline-flex items-center gap-1.5"><TriangleAlert size={13}/> {qtdPendentes} correção(ões) a aprovar na Sólides aparecem tracejadas (🟡) — use ✓ / ✗ no dia pra decidir.</div>}
-      {pendErr && <div className="mb-2 text-[11px] text-gray-400 dark:text-gray-500">Correções pendentes indisponíveis agora ({pendErr.replace(/\s+/g, " ").slice(0, 80)}). A apuração segue normal.</div>}
+      {pendErr && <div className="mb-2 text-[11px] text-amber-600 dark:text-amber-400">Leitura ao vivo da Sólides indisponível agora ({pendErr.replace(/\s+/g, " ").slice(0, 80)}) — mostrando o espelho da última sincronização, que pode estar desatualizado. Tente novamente em instantes.</div>}
       {/* Legenda recolhida: some da visão permanente e abre só quando quiser. */}
       <details className="group mb-2 rounded-lg border border-gray-200 dark:border-gray-800">
         <summary className="flex items-center gap-1.5 cursor-pointer select-none list-none px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
