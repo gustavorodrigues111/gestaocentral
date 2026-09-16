@@ -2707,6 +2707,12 @@ export type Fornecedor = {
   whatsapp?: string;                  // só dígitos pra link wa.me
   email?: string;
   observacoes?: string;
+  // Dados de pedido/compra (opcionais, estruturados)
+  cnpj?: string;
+  nomeVendedor?: string;              // contato/vendedor
+  prazoEntrega?: string;             // ex.: "2 dias úteis"
+  formaPedido?: string;              // como fazer o pedido: WhatsApp, e-mail, site, vendedor...
+  pedidoMinimo?: string;             // ex.: "R$ 300" ou "10 caixas"
   ativo: boolean;
   criadoEm: string;
   criadoPor: string;

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Lock, Lightbulb, ClipboardList, Building2 } from "lucide-react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -144,6 +144,11 @@ export function ComprasPage() {
             {label}
           </button>
         ))}
+        {canVer(me, rid, "contagens") && (
+          <Link to={`/r/${rid}/contagens`} className="ml-auto self-center px-3 py-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1 whitespace-nowrap">
+            ← Ir para Contagens
+          </Link>
+        )}
       </div>
 
       {tab === "sugestoes" && (

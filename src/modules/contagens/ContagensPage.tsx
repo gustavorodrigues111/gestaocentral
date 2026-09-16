@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { Pencil, BarChart3, Lock, TriangleAlert, Package, Plus, Sparkles, Truck, Link2, Loader2, Layers, EyeOff, RotateCcw, GitMerge } from "lucide-react";
-import { useParams } from "react-router-dom";
+import { useParams, Link } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db, auth } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -497,6 +497,11 @@ export function ContagensPage() {
             <Ico size={15} /> {label}
           </button>
         ))}
+        {canVer(me, rid, "compras") && (
+          <Link to={`/r/${rid}/compras`} className="ml-auto self-center px-3 py-1 text-xs font-medium text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1 whitespace-nowrap">
+            <Truck size={13} /> Ir para Compras →
+          </Link>
+        )}
       </div>
 
       {/* Explicação curta da aba ativa — desfaz a confusão entre elas. */}

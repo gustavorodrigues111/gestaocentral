@@ -165,7 +165,16 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
                   <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 flex gap-3 flex-wrap">
                     {f.whatsapp && <span className="inline-flex items-center gap-1"><Smartphone size={12} /> {f.whatsapp}</span>}
                     {f.email && <span className="inline-flex items-center gap-1"><Mail size={12} /> {f.email}</span>}
+                    {f.nomeVendedor && <span>👤 {f.nomeVendedor}</span>}
+                    {f.cnpj && <span>CNPJ {f.cnpj}</span>}
                   </div>
+                  {(f.prazoEntrega || f.formaPedido || f.pedidoMinimo) && (
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 flex gap-3 flex-wrap">
+                      {f.prazoEntrega && <span>⏱ Entrega: {f.prazoEntrega}</span>}
+                      {f.formaPedido && <span>📝 Pedido: {f.formaPedido}</span>}
+                      {f.pedidoMinimo && <span>📦 Mín.: {f.pedidoMinimo}</span>}
+                    </div>
+                  )}
                   {f.observacoes && <div className="text-xs text-gray-700 dark:text-gray-300 italic mt-1">{f.observacoes}</div>}
                 </div>
                 {podeConfig && (
@@ -220,6 +229,11 @@ function FornecedorModal({
   const [nome, setNome] = useState(fornecedor?.nome || "");
   const [whatsapp, setWhatsapp] = useState(fornecedor?.whatsapp || "");
   const [email, setEmail] = useState(fornecedor?.email || "");
+  const [cnpj, setCnpj] = useState(fornecedor?.cnpj || "");
+  const [nomeVendedor, setNomeVendedor] = useState(fornecedor?.nomeVendedor || "");
+  const [prazoEntrega, setPrazoEntrega] = useState(fornecedor?.prazoEntrega || "");
+  const [formaPedido, setFormaPedido] = useState(fornecedor?.formaPedido || "");
+  const [pedidoMinimo, setPedidoMinimo] = useState(fornecedor?.pedidoMinimo || "");
   const [observacoes, setObservacoes] = useState(fornecedor?.observacoes || "");
   const [ativo, setAtivo] = useState(fornecedor?.ativo ?? true);
   const [saving, setSaving] = useState(false);
@@ -242,6 +256,11 @@ function FornecedorModal({
         nome: nomeLimpo,
         whatsapp: whatsapp.trim() || undefined,
         email: email.trim() || undefined,
+        cnpj: cnpj.trim() || undefined,
+        nomeVendedor: nomeVendedor.trim() ? tituloCaso(nomeVendedor.trim()) : undefined,
+        prazoEntrega: prazoEntrega.trim() || undefined,
+        formaPedido: formaPedido.trim() || undefined,
+        pedidoMinimo: pedidoMinimo.trim() || undefined,
         observacoes: observacoes.trim() || undefined,
         ativo,
         criadoEm: fornecedor?.criadoEm || now,
@@ -286,6 +305,13 @@ function FornecedorModal({
           value={email}
           onChange={(e) => setEmail(e.target.value)}
         />
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <Input label="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} placeholder="00.000.000/0000-00" />
+          <Input label="Vendedor (contato)" value={nomeVendedor} onChange={(e) => setNomeVendedor(e.target.value)} placeholder="ex: João" />
+          <Input label="Prazo de entrega" value={prazoEntrega} onChange={(e) => setPrazoEntrega(e.target.value)} placeholder="ex: 2 dias úteis" />
+          <Input label="Como fazer o pedido" value={formaPedido} onChange={(e) => setFormaPedido(e.target.value)} placeholder="ex: WhatsApp, e-mail, site" />
+          <Input label="Pedido mínimo" value={pedidoMinimo} onChange={(e) => setPedidoMinimo(e.target.value)} placeholder="ex: R$ 300 ou 10 cx" />
+        </div>
         <div>
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Observações</label>
           <textarea
