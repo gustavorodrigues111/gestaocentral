@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Pencil, BarChart3, Settings, Lock, TriangleAlert, Package, Plus, Sparkles, Truck, Link2, Loader2, Layers, EyeOff, RotateCcw, GitMerge } from "lucide-react";
+import { Pencil, BarChart3, Lock, TriangleAlert, Package, Plus, Sparkles, Truck, Link2, Loader2, Layers, EyeOff, RotateCcw, GitMerge } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db, auth } from "../../core/firebase/config";
@@ -483,7 +483,7 @@ export function ContagensPage() {
         {([
           ["lancar", "Lançar contagem", Pencil],
           ["visao",  <span className="inline-flex items-center gap-1">Visão atual{alertasMinStock.length > 0 ? <> ({alertasMinStock.length}<TriangleAlert size={11} />)</> : null}</span>, BarChart3],
-          ["config", `Config (${insumos.filter(i => i.ativo).length})`, Settings],
+          ["config", `Insumos (${insumos.filter(i => i.ativo).length})`, Package],
         ] as const).map(([id, label, Ico]) => (
           <button
             key={id}
@@ -526,7 +526,7 @@ export function ContagensPage() {
               <div className="flex justify-center mb-3 text-gray-400"><Package size={40} /></div>
               <p className="text-gray-700 dark:text-gray-300 font-medium">Sem insumos cadastrados</p>
               {podeConfig && (
-                <p className="text-sm text-gray-500 mt-2">Cadastre na aba "Config" pra começar.</p>
+                <p className="text-sm text-gray-500 mt-2">Cadastre na aba "Insumos" pra começar.</p>
               )}
             </div>
           ) : (
