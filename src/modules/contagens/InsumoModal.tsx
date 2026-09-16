@@ -7,6 +7,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { tituloCaso } from "./sugestoesRecebimento";
 import { UNIDADES_LABEL, UNIDADES_LISTA } from "../../core/types";
 import type { Fornecedor, Insumo, UnidadeMedida } from "../../core/types";
 
@@ -183,7 +184,7 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
         const nf = fn.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase();
         const existente = fornecedores.find((f) => f.nome.normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase() === nf);
         if (existente) fornPrefId = existente.id;
-        else { const ref = await addDoc(collection(db, "fornecedores"), sanitizeForFirestore({ restaurantId, nome: fn, ativo: true, criadoEm: now, criadoPor: me.id })); fornPrefId = ref.id; }
+        else { const ref = await addDoc(collection(db, "fornecedores"), sanitizeForFirestore({ restaurantId, nome: tituloCaso(fn), ativo: true, criadoEm: now, criadoPor: me.id })); fornPrefId = ref.id; }
       }
 
       const payload: Omit<Insumo, "id"> = {

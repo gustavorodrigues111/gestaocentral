@@ -165,6 +165,7 @@ export function ComprasPage() {
       {tab === "fornecedores" && (
         <FornecedoresTab
           fornecedores={fornecedores}
+          insumos={insumos}
           restaurantId={rid}
           podeConfig={podeConfig}
         />
