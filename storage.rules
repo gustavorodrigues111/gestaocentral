@@ -176,6 +176,13 @@ service firebase.storage {
       allow write: if request.auth != null && request.resource.size < 30 * 1024 * 1024;
     }
 
+    // PTRP: evidências de tratamento de ponto (print de WhatsApp, atestado…)
+    // anexadas a um ptrpAjuste. Path: ptrp-evidencias/{empresaKey}/{file=**}
+    match /ptrp-evidencias/{empresaKey}/{file=**} {
+      allow read: if request.auth != null;
+      allow write: if request.auth != null && request.resource.size < 20 * 1024 * 1024;
+    }
+
     // Catch-all: nega o que não tá listado
     match /{allPaths=**} {
       allow read, write: if false;

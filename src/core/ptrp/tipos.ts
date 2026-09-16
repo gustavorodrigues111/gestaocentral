@@ -60,6 +60,15 @@ export type PtrpAjusteTipo = "inclusao" | "desconsideracao" | "abono" | "atestad
   // Validação de exceção pelo líder: "atraso_justificado" abona o atraso (zera no
   // saldo e some da trilha); "atraso_confirmado" só marca como validado.
   | "atraso_justificado" | "atraso_confirmado";
+// Evidência anexada a um tratamento (arquivo no Storage ou link externo).
+export type PtrpEvidencia = {
+  tipo: "arquivo" | "link";
+  url: string;
+  nome: string;
+  adicionadoEm?: string;
+  adicionadoPor?: string | null;
+};
+
 export type PtrpAjuste = {
   id: string;
   empresaKey: string;
@@ -74,6 +83,9 @@ export type PtrpAjuste = {
   motivoSolidesId?: number | null;   // motivo de ajuste/afastamento da Sólides (do mapeamento)
   statusEscala?: string | null;      // ScheduleStatus que este tratamento imprime na praticada
   motivo: string;
+  // Evidência(s) opcional(is) que respaldam o tratamento (print de WhatsApp do
+  // empregado informando o horário esquecido, atestado, etc.). Respaldo jurídico.
+  evidencias?: PtrpEvidencia[];
   autor?: { id: string; nome: string };
   criadoEm?: string;
   // Tratamento que reflete uma DECISÃO tomada na Sólides (aprovar/reprovar

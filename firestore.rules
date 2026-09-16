@@ -183,6 +183,7 @@ service cloud.firestore {
     match /freelaShifts/{id}        { allow read, write: if authed(); }
     match /freelaPagamentos/{id}    { allow read, write: if authed(); }
     match /freelasConfig/{rid}      { allow read, write: if authed(); }   // datas de corte de pagamento (id=rid)
+    match /paginasEstado/{id}       { allow read, write: if authed(); }   // estado compartilhado de páginas hospedadas (checklist em tempo real)
     match /freelaMensalistaConfirmado/{id} { allow read, write: if authed(); }
     match /vendas/{id}                 { allow read, write: if authed(); }
     match /vendasProdutos/{id}         { allow read, write: if authed(); }
@@ -214,9 +215,14 @@ service cloud.firestore {
     match /cartaoLancamentos/{id}      { allow read, write: if authed(); }
     // Agentes de IA: config só master edita; conversas authed; logs append-only.
     match /agentesIA/{id}     { allow read: if authed(); allow create, update, delete: if isMaster(); }
-    // PTRP (tratamento de ponto). Batidas do registrador (Sólides) = IMUTÁVEIS:
-    // só a rotina de sync cria; NINGUÉM atualiza/apaga (Portaria 671/2021).
-    match /ptrpBatidas/{id}     { allow read: if authed(); allow create: if authed(); allow update, delete: if false; }
+    // PTRP (tratamento de ponto). A garantia legal/fiscal está na SÓLIDES
+    // (registrador): batidas originais + solicitações de correção do empregado.
+    // `ptrpBatidas` é o ESPELHO pra a camada de tratamento — re-derivável via
+    // re-sync. create+update authed pra o sync refletir o estado atual do Sólides
+    // (saída preenchida depois, correção) guardando a versão anterior em
+    // historico[]. delete PROIBIDO: batida nunca é apagada. Tratamento humano =
+    // ptrpAjustes (auditável, com autor/motivo/evidência), nunca edição da crua.
+    match /ptrpBatidas/{id}     { allow read: if authed(); allow create, update: if authed(); allow delete: if false; }
     match /ptrpSyncState/{id}   { allow read, write: if authed(); }
     match /ptrpColaboradores/{id} { allow read, write: if authed(); }
     match /ptrpTurnos/{id}      { allow read, write: if authed(); }

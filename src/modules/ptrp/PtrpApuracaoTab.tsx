@@ -8,7 +8,8 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
 import { addDoc, collection, doc, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
+import { db, storage } from "../../core/firebase/config";
+import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { authHeader } from "../../core/firebase/idToken";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -24,7 +25,7 @@ import {
 } from "lucide-react";
 import type { Empregado, HorarioDia, Cargo, EscalaMes, ScheduleStatus } from "../../core/types";
 import { empregadoBatePonto } from "../../core/types";
-import type { ParametrosCCT, PtrpTurno, PtrpAjuste, PtrpAjusteTipo, PtrpBancoMov, PtrpApuracaoColab, PtrpApuracaoDia, PtrpFechamento } from "../../core/ptrp/tipos";
+import type { ParametrosCCT, PtrpTurno, PtrpAjuste, PtrpAjusteTipo, PtrpBancoMov, PtrpApuracaoColab, PtrpApuracaoDia, PtrpFechamento, PtrpEvidencia } from "../../core/ptrp/tipos";
 import { cctVigenteEm } from "../../core/ptrp/tipos";
 import { gerarEspelhoPDF } from "../../core/ptrp/espelhoPDF";
 import { gerarAEJ } from "../../core/ptrp/aej";
@@ -598,6 +599,9 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
           <div key={a.id} className="flex items-center gap-x-1 text-[10.5px] text-indigo-700 dark:text-indigo-300">
             <span className="inline-flex items-center gap-1"><Icon size={11}/> {a.tipo === "inclusao" && !inline && a.in ? `${a.in}–${a.out} · ` : ""}{label}</span>
             {a.autor?.nome && <span className="text-indigo-400 dark:text-indigo-500">· por {a.autor.nome}</span>}
+            {(a.evidencias || []).map((ev, i) => (
+              <a key={i} href={ev.url} target="_blank" rel="noreferrer" onClick={e => e.stopPropagation()} className="text-teal-600 dark:text-teal-400 hover:underline" title={ev.nome}>{ev.tipo === "arquivo" ? "📎" : "🔗"}</a>
+            ))}
             <button type="button" onClick={() => void cancelarAjuste(a)} className="text-rose-400 hover:text-rose-600 ml-0.5" title={a.solidesDecisao ? "Desfazer nos dois lados (Sólides + app)" : "Cancelar tratamento no app"}>✕</button>
           </div>
         ); })}
@@ -1265,6 +1269,33 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
   const escolherMotivo = (id: number) => { setMotivoId(id); const st = mapa[String(id)]?.status; if (st) setStatusEscala(st as ScheduleStatus); };
   const togglePreferido = (id: number) => { const cur = mapa[String(id)] || {}; const m = motivos.find(x => x.id === id); void setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(id)]: { ...cur, exibir: !cur.exibir, descricao: m?.description || cur.descricao } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {}); };
 
+  // ── Evidência opcional (respaldo jurídico do tratamento) ────────────────────
+  const [evidencias, setEvidencias] = useState<PtrpEvidencia[]>([]);
+  const [subindoEvid, setSubindoEvid] = useState(false);
+  const [linkEvid, setLinkEvid] = useState("");
+  async function subirEvidencia(file: File | null) {
+    if (!file) return;
+    setSubindoEvid(true); setErr("");
+    try {
+      const ext = (file.name.split(".").pop() || "bin").toLowerCase().replace(/[^a-z0-9]/g, "");
+      const rid = Math.random().toString(36).slice(2, 10);
+      const path = `ptrp-evidencias/${empresaKey}/${data}_${cpf}_${rid}.${ext}`;
+      const task = uploadBytesResumable(storageRef(storage, path), file, { customMetadata: { cpf, data, autor: autor.id } });
+      await task;
+      const url = await getDownloadURL(task.snapshot.ref);
+      setEvidencias(prev => [...prev, { tipo: "arquivo", url, nome: file.name.slice(0, 120), adicionadoEm: new Date().toISOString(), adicionadoPor: autor.id }]);
+    } catch (e) {
+      setErr("Falha ao subir evidência: " + (e instanceof Error ? e.message : "erro"));
+    } finally { setSubindoEvid(false); }
+  }
+  function addLinkEvidencia() {
+    let u = linkEvid.trim(); if (!u) return;
+    if (!/^https?:\/\//i.test(u)) u = "https://" + u;
+    setEvidencias(prev => [...prev, { tipo: "link", url: u, nome: u.replace(/^https?:\/\//, "").slice(0, 80), adicionadoEm: new Date().toISOString(), adicionadoPor: autor.id }]);
+    setLinkEvid("");
+  }
+  const evidPayload = evidencias.length ? { evidencias } : {};
+
   async function salvar() {
     setErr(""); setAviso("");
     try {
@@ -1286,12 +1317,12 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
             await excluirBatida(empresaKey, { employeeId: Number(solidesEmpId), punchId: Number(e.punchId), dateIn: e.dateIn, dateOut: e.dateOut });
             okSolides = true;
           } catch { solidesFalhas++; }
-          await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "desconsideracao", punchId: e.punchId, motivo: obs.trim() || "marcação desconsiderada", autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: okSolides }));
+          await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "desconsideracao", punchId: e.punchId, motivo: obs.trim() || "marcação desconsiderada", ...evidPayload, autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: okSolides }));
         }
         for (const n of novos) {
           await corrigirPontoAtraso(empresaKey, { employeeId: Number(solidesEmpId), dataHoraIso: iso(n.in), justificativaId: justId! });
           await corrigirPontoAtraso(empresaKey, { employeeId: Number(solidesEmpId), dataHoraIso: iso(n.out), justificativaId: justId! });
-          await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "inclusao", in: n.in, out: n.out, motivo: obs.trim() || "esquecimento", autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: true }));
+          await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "inclusao", in: n.in, out: n.out, motivo: obs.trim() || "esquecimento", ...evidPayload, autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: true }));
         }
         if (solidesFalhas > 0) {
           setSalvando(false);
@@ -1305,7 +1336,7 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
         const mInfo = motivos.find(m => m.id === motivoId);
         const abonMin = diaInteiro ? 0 : Math.max(0, hhmmToMin(aout) - hhmmToMin(ain));
         if (solidesEmpId && diaInteiro) await lancarAfastamento(empresaKey, { employeeId: Number(solidesEmpId), adjustmentReasonId: motivoId, startDate: data, endDate: data, fullDay: true });
-        await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "abono", statusEscala, motivoSolidesId: motivoId, ...(abonMin ? { minutos: abonMin, in: ain, out: aout } : {}), motivo: obs.trim() || (mInfo?.description || ""), autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: !!(solidesEmpId && diaInteiro) }));
+        await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "abono", statusEscala, motivoSolidesId: motivoId, ...(abonMin ? { minutos: abonMin, in: ain, out: aout } : {}), motivo: obs.trim() || (mInfo?.description || ""), ...evidPayload, autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: !!(solidesEmpId && diaInteiro) }));
         await setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(motivoId)]: { ...(mapa[String(motivoId)] || {}), status: statusEscala, descricao: mInfo?.description || `Motivo ${motivoId}` } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
         onClose();
       }
@@ -1393,6 +1424,33 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
         </>)}
 
         {caminho && <label className="flex flex-col gap-1"><span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Observação (trilha do app)</span><textarea value={obs} onChange={e => setObs(e.target.value)} rows={2} placeholder="Ex.: esqueceu de bater a saída; atestado de 1 dia…" className={inp} /></label>}
+
+        {caminho && (
+          <div className="flex flex-col gap-1.5">
+            <span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Evidência (opcional) <span className="font-normal text-gray-400">— print do WhatsApp, atestado…</span></span>
+            {evidencias.length > 0 && (
+              <div className="flex flex-col gap-1">
+                {evidencias.map((ev, i) => (
+                  <div key={i} className="flex items-center gap-2 text-xs rounded-lg border border-gray-200 dark:border-gray-700 px-2 py-1">
+                    <span className="text-gray-400">{ev.tipo === "arquivo" ? "📎" : "🔗"}</span>
+                    <a href={ev.url} target="_blank" rel="noreferrer" className="flex-1 truncate text-teal-600 dark:text-teal-400 hover:underline">{ev.nome}</a>
+                    <button type="button" onClick={() => setEvidencias(prev => prev.filter((_, j) => j !== i))} className="text-gray-400 hover:text-rose-500" title="Remover">✕</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="flex flex-wrap items-center gap-2">
+              <label className={`text-xs rounded-lg border border-gray-300 dark:border-gray-700 px-2.5 py-1.5 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800 ${subindoEvid ? "opacity-50 pointer-events-none" : ""}`}>
+                {subindoEvid ? "Subindo…" : "📎 Anexar arquivo"}
+                <input type="file" accept="image/*,application/pdf" className="hidden" disabled={subindoEvid} onChange={e => { void subirEvidencia(e.target.files?.[0] || null); e.target.value = ""; }} />
+              </label>
+              <div className="flex items-center gap-1 flex-1 min-w-[180px]">
+                <input value={linkEvid} onChange={e => setLinkEvid(e.target.value)} onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addLinkEvidencia(); } }} placeholder="ou colar um link (Drive, etc.)" className={`${inp} text-xs`} />
+                <Button size="sm" variant="secondary" onClick={addLinkEvidencia} disabled={!linkEvid.trim()}>Add</Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
         {aviso && <div className="text-[13px] rounded-lg px-3 py-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200">{aviso}</div>}
