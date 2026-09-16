@@ -50,6 +50,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         checks: (d && typeof d.checks === "object" && d.checks) || {},
         qtys: (d && typeof d.qtys === "object" && d.qtys) || {},
         extras: (d && Array.isArray(d.extras) && d.extras) || [],
+        removidos: (d && typeof d.removidos === "object" && d.removidos) || {},
       });
       return;
     }
@@ -76,6 +77,15 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const d = await firestoreLer(COL, evento);
       const cur = (d && Array.isArray(d.extras) ? d.extras : []) as Extra[];
       await firestorePatchCampos(COL, evento, { extras: cur.filter((e) => e && e.id !== id), ["checks." + id]: undefined, ["qtys." + id]: undefined });
+      res.status(200).json({ ok: true }); return;
+    }
+    if (op === "hide") {
+      const id = String(body.id || ""); if (!idOk(id)) { res.status(400).json({ ok: false }); return; }
+      await firestorePatchCampos(COL, evento, { ["removidos." + id]: body.val ? true : undefined });
+      res.status(200).json({ ok: true }); return;
+    }
+    if (op === "showAll") {
+      await firestorePatchCampos(COL, evento, { removidos: {} });
       res.status(200).json({ ok: true }); return;
     }
     if (op === "reset") {
