@@ -109,10 +109,11 @@ function assinaturaBatida(d: Record<string, unknown>): string {
 // Espelha as batidas do Sólides. Cria as novas; atualiza as que mudaram
 // (arquivando a versão anterior em historico[] — append-only). Não toca nas
 // que não mudaram. Retorna { criadas, atualizadas }.
-async function gravarBatidas(empresaKey: string, batidas: Punch[]): Promise<{ criadas: number; atualizadas: number }> {
-  let criadas = 0, atualizadas = 0;
+async function gravarBatidas(empresaKey: string, batidas: Punch[]): Promise<{ criadas: number; atualizadas: number; erros: number }> {
+  let criadas = 0, atualizadas = 0, erros = 0;
   const agora = new Date().toISOString();
   for (const p of batidas) {
+   try {
     const punchId = String(p.id);
     const id = `${empresaKey}_${punchId}`;
     const doc: Record<string, unknown> = {
@@ -159,8 +160,13 @@ async function gravarBatidas(empresaKey: string, batidas: Punch[]): Promise<{ cr
       historico: [...hist, snapshotAnterior].slice(-30),   // cap defensivo
     });
     atualizadas++;
+   } catch (e) {
+    // Uma batida problemática (ex.: regra bloqueando update) NÃO derruba o lote.
+    erros++;
+    console.warn(`[ptrp-sync] falha na batida ${empresaKey}_${p.id}:`, e instanceof Error ? e.message : e);
+   }
   }
-  return { criadas, atualizadas };
+  return { criadas, atualizadas, erros };
 }
 
 async function sincronizarEmpresa(empresaKey: string, token: string, desdeOverride?: string, ateOverride?: string): Promise<Record<string, unknown>> {
@@ -174,7 +180,7 @@ async function sincronizarEmpresa(empresaKey: string, token: string, desdeOverri
   const desde = minYmd(baseDesde, ate);
 
   const batidas = await buscarBatidas(token, desde, ate);
-  const { criadas, atualizadas } = await gravarBatidas(empresaKey, batidas);
+  const { criadas, atualizadas, erros } = await gravarBatidas(empresaKey, batidas);
 
   const novoCursor = ate;
   // Menor data já sincronizada (1ª batida coberta ever) — pra a UI mostrar desde quando há dados.
@@ -189,9 +195,10 @@ async function sincronizarEmpresa(empresaKey: string, token: string, desdeOverri
     lidasUltima: batidas.length,
     criadasUltima: criadas,
     atualizadasUltima: atualizadas,
+    errosUltima: erros,
     atrasado: novoCursor < hoje,   // ainda em backfill?
   });
-  return { empresaKey, desde, ate, lidas: batidas.length, criadas, atualizadas, cursor: novoCursor, atrasado: novoCursor < hoje };
+  return { empresaKey, desde, ate, lidas: batidas.length, criadas, atualizadas, erros, cursor: novoCursor, atrasado: novoCursor < hoje };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
