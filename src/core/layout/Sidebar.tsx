@@ -155,6 +155,13 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
       if (pessoa.isMaster) return true;
       return canAcaoRid("ponto", "conferir") || canAcaoRid("ponto", "banco") || canAcaoRid("ponto", "sincronizar") || canAcaoRid("ponto", "regras") || canAcaoRid("ponto", "validar");
     }
+    // Escala Praticada: tela só-leitura "como o mês foi". Segue a Previsão de
+    // Escala — ativa junto e usa a MESMA permissão (não tem config própria).
+    if (moduleId === "escalaPraticada") {
+      if (!modulosAtivos.includes("escala")) return false;
+      if (pessoa.isMaster) return true;
+      return canUse(pessoa, rid, "escala");
+    }
     if (!modulosAtivos.includes(moduleId)) return false;
     if (pessoa.isMaster) return true;
     return canUse(pessoa, rid, moduleId);

@@ -104,6 +104,7 @@ function ModuleRouter() {
     case "dadosEmpresa":  return <ConfiguracoesPage key={k} modo="dados" />;
     case "modulos":       return <ConfiguracoesPage key={k} modo="modulos" />;
     case "escala":        return <EscalaPage key={k} />;
+    case "escalaPraticada": return <EscalaPage key={k} modo="praticada" />;
     case "freelas":       return <FreelasPage key={k} />;
     case "gorjetas":      return <GorjetasPage key={k} />;
     case "beneficios2":   return <Beneficios2Page key={k} />;

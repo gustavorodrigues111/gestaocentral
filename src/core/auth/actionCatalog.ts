@@ -261,8 +261,8 @@ export const CATALOGO: CatalogoModulo[] = [
   {
     id: "escala",
     icon: "calendar-range",
-    label: "Escala",
-    desc: "Escala mensal do time, trocas, fechamento",
+    label: "Previsão de Escala",
+    desc: "Escala prevista do time (planejamento) — base do VT/benefícios e do que o empregado vê",
     area: "time",
     acoes: [
       { id: "verPropria",      label: "Ver sua escala (já no self-service)" },
@@ -275,6 +275,18 @@ export const CATALOGO: CatalogoModulo[] = [
       { id: "exportar",        label: "Exportar/imprimir escala" },
       { id: "planejarPrevista",label: "Planejar escala prevista" },
       { id: "configurarEscalas",label: "Cadastrar escalas nomeadas (catálogo)", sensivel: true },
+    ],
+  },
+  {
+    id: "escalaPraticada",
+    icon: "calendar-check",
+    label: "Escala Praticada",
+    desc: "Como o mês foi de fato (só leitura) — abastecida pelo ponto/PTRP e freelas",
+    area: "time",
+    // Sem permissão própria: a visibilidade segue a da Previsão de Escala
+    // (quem vê a escala do time vê a praticada). Ação só pra o catálogo não vazio.
+    acoes: [
+      { id: "ver", label: "Ver a escala praticada do time (só leitura)" },
     ],
   },
   {

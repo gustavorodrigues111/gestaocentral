@@ -61,7 +61,8 @@ const STATUS_LIST: ScheduleStatus[] = [
   "trabalho", "folga", "freela", "comp", "comp_trab", "ferias", "falta_j", "falta_i",
 ];
 
-export function EscalaPage() {
+export function EscalaPage({ modo }: { modo?: "praticada" } = {}) {
+  const soPraticada = modo === "praticada";   // tela só-leitura "como o mês foi"
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
   const { rid: ridParam } = useParams<{ rid: string }>();
@@ -125,12 +126,13 @@ export function EscalaPage() {
   //   - prevista NÃO fechada → força a view pra prevista (mesmo que estava em
   //     "real" no mês anterior). Senão fica tela vazia/quebrada.
   useEffect(() => {
+    if (soPraticada) { setVersao("real"); return; }   // módulo Escala Praticada: sempre a real
     if (escala?.previstaFechadaEm) {
       setVersao("real");
     } else {
       setVersao("prevista");
     }
-  }, [escala?.previstaFechadaEm]);
+  }, [escala?.previstaFechadaEm, soPraticada]);
 
   // Empregados
   useEffect(() => {
@@ -733,6 +735,9 @@ export function EscalaPage() {
 
       {/* Toggle Prevista / Real + status */}
       <div className="flex items-center justify-between gap-3 mb-3 flex-wrap">
+        {soPraticada ? (
+          <div className="text-xs font-semibold text-gray-600 dark:text-gray-300 inline-flex items-center gap-1.5"><CheckSquare size={13}/> Escala Praticada <span className="font-normal text-gray-400">— como o mês foi (só leitura)</span></div>
+        ) : (
         <div className="inline-flex items-center bg-gray-100 dark:bg-gray-800/60 p-0.5 rounded-lg">
           <button
             type="button"
@@ -764,8 +769,9 @@ export function EscalaPage() {
             <span className="inline-flex items-center gap-1"><CheckSquare size={13}/> Praticada</span>{!previstaFechada && <Lock size={11} className="inline align-[-1px] ml-1"/>}
           </button>
         </div>
+        )}
 
-        {versao === "real" && !fechada && (
+        {!soPraticada && versao === "real" && !fechada && (
           <button
             type="button"
             onClick={() => navigate(`/r/${rid}/analise-ponto?tab=fechamento`)}
@@ -820,7 +826,7 @@ export function EscalaPage() {
                 <span className="inline-flex items-center gap-1"><Palmtree size={14}/> Marcar férias em lote</span>
               </Button>
             )}
-            {podeConfig && (
+            {podeConfig && !soPraticada && (
               <Button variant="secondary" size="sm" onClick={() => setShowInversao(true)}>
                 <span className="inline-flex items-center gap-1"><ArrowLeftRight size={14}/> Inversão de domingo</span>
               </Button>
