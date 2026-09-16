@@ -1264,7 +1264,10 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
       const ck = foneKey(sel);
       // naoLidaManual é POR NÚMERO → grava no número de DESTINO (encAlvo), senão o
       // "auto-marcar lida" da origem apagava. nomeManual/atribuidoA seguem globais.
-      const patch: Partial<WhatsappContato> = { naoLidaManual: true };
+      // REABRE no destino (finalizadoEm=null): senão, se aquele número já tinha um
+      // atendimento finalizado com o mesmo contato, a conversa encaminhada aparecia
+      // em "Finalizados" pra quem recebe (bug relatado: transferi pra Grazi → foi pra finalizados).
+      const patch: Partial<WhatsappContato> = { naoLidaManual: true, finalizadoEm: null, finalizadoPor: null };
       if (nomeSel && ehTelefoneBR(sel) && !contatos[ck]?.nomeManual) patch.nomeManual = nomeSel;
       if (atendente) { patch.atribuidoA = atendente.id; patch.atribuidoNome = atendente.nome; }
       void salvarContato(clientePhone, patch, encAlvo);
