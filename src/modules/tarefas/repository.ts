@@ -457,7 +457,9 @@ export async function mudarStatus(id: string, status: TarefaStatus, autor: { id:
   if (atual.status === status) return;
 
   // Validação: ao concluir, exigir custom fields marcados como obrigatórios.
-  if (status === "concluida") {
+  // Só quando a tarefa tem subprojeto — senão doc(..., "") é referência inválida
+  // e explodia ANTES de gravar o status (rotinas/tarefas sem subprojeto não concluíam).
+  if (status === "concluida" && atual.subprojetoId) {
     const subSnap = await getDoc(doc(db, COL_SUBPROJETOS, atual.subprojetoId));
     if (subSnap.exists()) {
       const sub = subSnap.data() as TarefaSubprojeto;
