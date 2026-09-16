@@ -143,9 +143,14 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   // ── Cobranças internas: vendas de OUTRA empresa em que MEU restaurante é o
   //    cliente vinculado + já teve cobrança gerada (status cobranca_enviada). ──
   const ridsKeyAll = restaurants.map((r) => r.id).join(",");
+  // Avisos FINANCEIROS são sensíveis: só carrega (e mostra) os dados dos
+  // restaurantes onde a pessoa tem permissão de VER o módulo. Estar vinculado ao
+  // restaurante NÃO basta — senão vaza valor pra empregado comum (ex.: bartender).
+  const ridsVendasKey = restaurants.filter((r) => pessoa && canAcao(pessoa, r.id, "vendas", "ver", perfis)).map((r) => r.id).join(",");
+  const ridsFaturasKey = restaurants.filter((r) => pessoa && canAcao(pessoa, r.id, "faturas", "ver", perfis)).map((r) => r.id).join(",");
   const [cobrancasInt, setCobrancasInt] = useState<Array<{ id: string; restaurantId?: string; clienteRestauranteVinculadoId?: string | null; valorTotal?: number; saldo?: number; status?: string; criadoEm?: string }>>([]);
   useEffect(() => {
-    const rids = ridsKeyAll ? ridsKeyAll.split(",").slice(0, 10) : [];
+    const rids = ridsVendasKey ? ridsVendasKey.split(",").slice(0, 10) : [];
     if (!rids.length) { setCobrancasInt([]); return; }
     const unsub = onSnapshot(
       query(collection(db, "vendas"), where("clienteRestauranteVinculadoId", "in", rids)),
@@ -153,7 +158,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       () => setCobrancasInt([]),
     );
     return () => unsub();
-  }, [ridsKeyAll]);
+  }, [ridsVendasKey]);
 
   // ── Reembolsos de cartão: lançamentos atribuídos ao MEU restaurante (sou o
   //    pagador) e lançamentos MEUS já marcados como pagos (sou o solicitante). ──
@@ -162,7 +167,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
   const [reembReceber, setReembReceber] = useState<ReembLanc[]>([]);
   const [reembPagos, setReembPagos] = useState<ReembLanc[]>([]);
   useEffect(() => {
-    const rids = ridsKeyAll ? ridsKeyAll.split(",").slice(0, 10) : [];
+    const rids = ridsFaturasKey ? ridsFaturasKey.split(",").slice(0, 10) : [];
     if (!rids.length) { setReembReceber([]); setReembPagos([]); return; }
     // Só faturas FECHADAS (publicado=true) geram aviso; rascunho não vaza pras outras.
     const u1 = onSnapshot(
@@ -176,7 +181,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       () => setReembPagos([]),
     );
     return () => { u1(); u2(); };
-  }, [ridsKeyAll]);
+  }, [ridsFaturasKey]);
 
   // ── Prazos (módulo novo unificado): vencidos + a vencer dentro da antecedência ──
   const [prazosAv, setPrazosAv] = useState<Prazo[]>([]);
@@ -417,11 +422,16 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       });
     }
 
+    // Avisos FINANCEIROS (cobranças/reembolsos) são SENSÍVEIS: só quem tem
+    // permissão de VER o módulo naquela empresa recebe — NUNCA vazar valor pra
+    // empregado comum (ex.: bartender). Estar vinculado ao restaurante não basta.
+    const podeVerFin = (rid: string, modulo: "vendas" | "faturas") => !!pessoa && !!rid && canAcao(pessoa, rid, modulo, "ver", perfis);
+
     // ── Cobranças internas recebidas (agrupadas por empresa vendedora) ──
     const cobrGrp = new Map<string, { buyerRid: string; sellerRid: string; n: number; total: number; em: string }>();
     for (const v of cobrancasInt) {
       const buyerRid = v.clienteRestauranteVinculadoId || "";
-      if (!buyerRid) continue;
+      if (!buyerRid || !podeVerFin(buyerRid, "vendas")) continue;
       const sellerRid = v.restaurantId || "";
       const key = `${buyerRid}_${sellerRid}`;
       const g = cobrGrp.get(key) || { buyerRid, sellerRid, n: 0, total: 0, em: "" };
@@ -452,6 +462,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
       const donoRid = l.restaurantId || "";
       for (const p of l.rateio || []) {
         if (!meusRids.has(p.empresaId) || p.status === "pago") continue;   // só minhas fatias, ainda não pagas
+        if (!podeVerFin(p.empresaId, "faturas")) continue;                 // e só quem pode ver Faturas na empresa pagadora
         const pagadorRid = p.empresaId;
         const key = `${pagadorRid}_${donoRid}`;
         const g = pagarGrp.get(key) || { pagadorRid, donoRid, n: 0, total: 0, venc: "", em: "" };
@@ -482,6 +493,7 @@ export function AvisosProvider({ children }: { children: ReactNode }) {
     for (const l of reembPagos) {
       const donoRid = l.restaurantId || "";
       if (!meusRids.has(donoRid)) continue;   // sou o dono do cartão
+      if (!podeVerFin(donoRid, "faturas")) continue;   // e só quem pode ver Faturas na empresa dona
       for (const p of l.rateio || []) {
         if (p.status !== "pago") continue;
         const pagadorRid = p.empresaId;
