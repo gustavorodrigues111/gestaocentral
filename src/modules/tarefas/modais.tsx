@@ -40,6 +40,7 @@ function EnderecoPicker({ restaurantIds, value, onChange }: { restaurantIds: str
   );
 }
 import { RecorrenciaEditor } from "../prazos/PrazoModal";
+import { resumoRecorrencia } from "../prazos/recorrencia";
 import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 import { resolverPrazoOffset, extrairMencoes } from "./prazoOffset";
 import { ProrrogarContratoModal } from "../admissao/ProrrogarContratoModal";
@@ -904,6 +905,31 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
                 value={ymdParaBr(tarefa.prazo || "")}
                 onChange={(br) => salvarCampo("prazo", brParaYmd(br) || null, "prazo")}
               />
+            </FieldRow>
+            <FieldRow label="Recorrência">
+              <div className="space-y-1.5 py-1">
+                <div className="text-sm text-gray-600 dark:text-gray-300">
+                  {resumoRecorrencia(tarefa.recorrencia)}
+                  {!tarefa.recorrencia && subprojeto?.auto && subprojeto?.recorrenciaTipo && subprojeto.recorrenciaTipo !== "nenhuma" && (
+                    <span className="text-gray-400"> — herdada da rotina “{subprojeto.nome}”</span>
+                  )}
+                </div>
+                <RecorrenciaEditor
+                  rec={tarefa.recorrencia || null}
+                  onChange={(r) => salvarCampo("recorrencia", r, "recorrência")}
+                />
+                {tarefa.recorrencia && !tarefa.prazo && (
+                  <p className="text-xs text-amber-600 dark:text-amber-400">
+                    ⚠️ Sem data de conclusão, a próxima ocorrência não é criada. Defina a data acima.
+                  </p>
+                )}
+                {!tarefa.recorrencia && subprojeto?.auto && subprojeto?.recorrenciaTipo && subprojeto.recorrenciaTipo !== "nenhuma" && (
+                  <p className="text-xs text-gray-500 dark:text-gray-400">
+                    A repetição vem da rotina do subprojeto. Definir uma recorrência aqui assume o controle
+                    desta tarefa (ex.: Seg–Sex = todos os dias úteis).
+                  </p>
+                )}
+              </div>
             </FieldRow>
             <FieldRow label="Prioridade">
               <select
