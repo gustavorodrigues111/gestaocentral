@@ -1183,20 +1183,21 @@ function CorrecaoLoteModal({ emp, qtd, textoInicial, onClose, onEnviar }: { emp:
   );
 }
 
-// Repareia os pontos do dia CRONOLOGICAMENTE: junta todos os horários (a Sólides
-// pode mandar cada batida só com entrada), ordena e forma pares 1º-2º, 3º-4º…
-// (1º=entrada, 2º=saída). Assim 09:36 + 11:52 vira UM par 09:36–11:52 (e não duas
-// entradas soltas). Pendentes/excluídas ficam de fora (têm fluxo próprio).
+// Cada punch da Sólides já é um BLOCO [entrada, saída] — confiamos no bloco
+// (igual à Análise/Exceções). NÃO repareamos cronologicamente entre blocos: isso
+// colapsava dois blocos ABERTOS (saída nula) num único par a→c, escondendo a
+// pausa e o total. Bloco com saída nula OU <= entrada = aberto (saída = null; a
+// apuração sinaliza o ímpar). Pendentes/excluídas ficam de fora (fluxo próprio).
 function reparearDia(docs: BatidaDoc[]): BatidaDoc[] {
   const ehPend = (b: BatidaDoc) => b.status === "PENDING" || b.status === "REJECTED";
   const reais = docs.filter(b => !b.excluded && !ehPend(b));
   const outros = docs.filter(b => b.excluded || ehPend(b));
-  const ev: { ms: number; src: BatidaDoc }[] = [];
-  for (const b of reais) { if (typeof b.dateIn === "number") ev.push({ ms: b.dateIn, src: b }); if (typeof b.dateOut === "number") ev.push({ ms: b.dateOut, src: b }); }
-  ev.sort((a, z) => a.ms - z.ms);
-  const pares: BatidaDoc[] = [];
-  for (let i = 0; i < ev.length; i += 2) pares.push({ ...ev[i].src, dateIn: ev[i].ms, dateOut: ev[i + 1] ? ev[i + 1].ms : null });
-  return [...pares, ...outros].sort((a, b) => (a.dateIn ?? Infinity) - (b.dateIn ?? Infinity));
+  const blocos = reais.map(b => {
+    const dIn = typeof b.dateIn === "number" ? b.dateIn : null;
+    const dOut = typeof b.dateOut === "number" && (dIn == null || b.dateOut > dIn) ? b.dateOut : null;
+    return { ...b, dateIn: dIn, dateOut: dOut };
+  }).filter(b => b.dateIn != null || b.dateOut != null);
+  return [...blocos, ...outros].sort((a, b) => (a.dateIn ?? Infinity) - (b.dateIn ?? Infinity));
 }
 
 // Modal de TRATAMENTO (gera ptrpAjustes — nunca edita a batida original).

@@ -2,16 +2,19 @@
 //  /api/ptrp-punch-sync — SYNC INCREMENTAL das batidas do Sólides → Firestore.
 //
 //  Módulo PTRP (tratamento de ponto). A batida oficial do REGISTRADOR (Sólides)
-//  é espelhada numa coleção IMUTÁVEL `ptrpBatidas` — a partir dela a apuração do
-//  planejamento.app roda de forma determinística e recalculável. Nenhuma tela
-//  escreve/edita batida: só esta rotina, e SÓ com create (nunca update/delete),
-//  garantindo a integridade exigida pela Portaria MTP 671/2021.
+//  é espelhada em `ptrpBatidas` — a partir dela a apuração do planejamento.app
+//  roda de forma determinística e recalculável. Nenhuma TELA escreve/edita
+//  batida: só esta rotina. O espelho reflete o estado ATUAL do Sólides (que é a
+//  fonte da verdade): quando uma batida muda lá (saída preenchida depois da
+//  entrada, correção, exclusão), o doc é atualizado E a versão anterior é
+//  arquivada em `historico[]` (append-only) — nada se perde, preservando a
+//  trilha de auditoria exigida pela Portaria MTP 671/2021.
 //
 //  Multi-empresa: uma conta/token Sólides por empresa em SOLIDES_TOKENS (JSON
 //  {"SHORTCODE":"tokenBasic"}). Roda por cron (Vercel), janela deslizante com
 //  overlap pra pegar batidas que chegaram atrasadas; backfill em passos.
 //
-//    ptrpBatidas/{empresaKey}_{punchId}  — 1 doc por batida (create-only)
+//    ptrpBatidas/{empresaKey}_{punchId}  — 1 doc por batida (upsert + historico[])
 //    ptrpSyncState/{empresaKey}          — cursor + status do último sync
 //
 //  Params (opcionais, p/ backfill/manual): ?empresa=KEY  ?desde=YYYY-MM-DD
@@ -89,12 +92,30 @@ async function buscarBatidas(token: string, desde: string, ate: string): Promise
   return [...porId.values()].filter(p => typeof p.date === "string" && p.date >= desde && p.date <= ate);
 }
 
-// Grava as batidas novas (create-only = imutável). Retorna quantas criou.
-async function gravarBatidas(empresaKey: string, batidas: Punch[]): Promise<number> {
-  let criadas = 0;
+// Campos "vivos" da batida: se algum mudar no Sólides, o espelho precisa refletir.
+// (raw/syncedAt não entram — mudam sempre e não são semânticos p/ apuração.)
+function assinaturaBatida(d: Record<string, unknown>): string {
+  return JSON.stringify({
+    dateIn: (d.dateIn as number | null) ?? null,
+    dateOut: (d.dateOut as number | null) ?? null,
+    excluded: d.excluded === true,
+    edited: d.edited === true,
+    status: (d.status as string | null) ?? null,
+    workScheduleId: (d.workScheduleId as string | null) ?? null,
+    temAjuste: d.temAjuste === true,
+  });
+}
+
+// Espelha as batidas do Sólides. Cria as novas; atualiza as que mudaram
+// (arquivando a versão anterior em historico[] — append-only). Não toca nas
+// que não mudaram. Retorna { criadas, atualizadas }.
+async function gravarBatidas(empresaKey: string, batidas: Punch[]): Promise<{ criadas: number; atualizadas: number }> {
+  let criadas = 0, atualizadas = 0;
+  const agora = new Date().toISOString();
   for (const p of batidas) {
     const punchId = String(p.id);
-    const doc = {
+    const id = `${empresaKey}_${punchId}`;
+    const doc: Record<string, unknown> = {
       empresaKey, punchId,
       employeeId: p.employeeId != null ? String(p.employeeId) : null,
       cpf: (p.employee?.cpf || "").replace(/\D/g, "") || null,
@@ -108,13 +129,38 @@ async function gravarBatidas(empresaKey: string, batidas: Punch[]): Promise<numb
       temAjuste: p.adjustmentReason != null,
       raw: p,                       // payload bruto (fidelidade p/ espelho/AEJ)
       origem: "solides",
-      syncedAt: new Date().toISOString(),
+      syncedAt: agora,
     };
-    // create-only: 409 (já existe) → não sobrescreve (imutável) e não conta.
-    const novo = await firestoreCriarSeAusente("ptrpBatidas", `${empresaKey}_${punchId}`, doc);
-    if (novo) criadas++;
+    // Lê o que já existe pra decidir criar / atualizar / ignorar.
+    const atual = await firestoreLer("ptrpBatidas", id) as Record<string, unknown> | null;
+    if (!atual) {
+      const novo = await firestoreCriarSeAusente("ptrpBatidas", id, { ...doc, versao: 1, criadoEm: agora });
+      if (novo) criadas++;
+      continue;
+    }
+    if (assinaturaBatida(atual) === assinaturaBatida(doc)) continue;  // nada mudou
+    // Mudou → arquiva o snapshot anterior (append-only) e atualiza o vivo.
+    const hist = Array.isArray(atual.historico) ? (atual.historico as unknown[]) : [];
+    const snapshotAnterior = {
+      dateIn: (atual.dateIn as number | null) ?? null,
+      dateOut: (atual.dateOut as number | null) ?? null,
+      excluded: atual.excluded === true,
+      edited: atual.edited === true,
+      status: (atual.status as string | null) ?? null,
+      workScheduleId: (atual.workScheduleId as string | null) ?? null,
+      temAjuste: atual.temAjuste === true,
+      syncedAt: (atual.syncedAt as string | null) ?? null,
+      arquivadoEm: agora,
+    };
+    await firestoreAtualizar("ptrpBatidas", id, {
+      ...doc,
+      versao: (typeof atual.versao === "number" ? atual.versao : 1) + 1,
+      criadoEm: (atual.criadoEm as string) || (atual.syncedAt as string) || agora,
+      historico: [...hist, snapshotAnterior].slice(-30),   // cap defensivo
+    });
+    atualizadas++;
   }
-  return criadas;
+  return { criadas, atualizadas };
 }
 
 async function sincronizarEmpresa(empresaKey: string, token: string, desdeOverride?: string, ateOverride?: string): Promise<Record<string, unknown>> {
@@ -128,7 +174,7 @@ async function sincronizarEmpresa(empresaKey: string, token: string, desdeOverri
   const desde = minYmd(baseDesde, ate);
 
   const batidas = await buscarBatidas(token, desde, ate);
-  const criadas = await gravarBatidas(empresaKey, batidas);
+  const { criadas, atualizadas } = await gravarBatidas(empresaKey, batidas);
 
   const novoCursor = ate;
   // Menor data já sincronizada (1ª batida coberta ever) — pra a UI mostrar desde quando há dados.
@@ -142,9 +188,10 @@ async function sincronizarEmpresa(empresaKey: string, token: string, desdeOverri
     ultimaJanela: { desde, ate },
     lidasUltima: batidas.length,
     criadasUltima: criadas,
+    atualizadasUltima: atualizadas,
     atrasado: novoCursor < hoje,   // ainda em backfill?
   });
-  return { empresaKey, desde, ate, lidas: batidas.length, criadas, cursor: novoCursor, atrasado: novoCursor < hoje };
+  return { empresaKey, desde, ate, lidas: batidas.length, criadas, atualizadas, cursor: novoCursor, atrasado: novoCursor < hoje };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
