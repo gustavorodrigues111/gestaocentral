@@ -33,10 +33,37 @@ service cloud.firestore {
       return request.resource.data.diff(resource.data).affectedKeys().hasAny(sensitive);
     }
 
+    // ── Permissão no SERVIDOR (permUsuario) ──────────────────────────────────
+    // Resumo por login mantido pela Cloud Function `syncPermUsuario*` (cliente não
+    // forja). permUsuario/{uid}.perms[modulo][acao] = [rids]. Ver functions/.
+    function temPermU()   { return authed() && exists(/databases/$(database)/documents/permUsuario/$(request.auth.uid)); }
+    function permU()      { return get(/databases/$(database)/documents/permUsuario/$(request.auth.uid)).data; }
+    // Pode a AÇÃO do MÓDULO nesse restaurante? Master (lista /admins) sempre pode —
+    // não depende do permUsuario (evita lockout se o resumo estiver stale/faltando).
+    function podeModulo(modulo, acao, rid) {
+      return isMaster() || (temPermU() && (rid in permU().perms.get(modulo, {}).get(acao, [])));
+    }
+    // Sou o dono deste registro pessoal? (pessoaId do resumo == campo do doc)
+    function ehDono(campoPessoaId) {
+      return temPermU() && permU().pessoaId == campoPessoaId;
+    }
+
     // ── /admins ── lista de masters por email ────────────────────────────
     match /admins/{email} {
       allow read:  if authed();
       allow write: if isMaster();
+    }
+
+    // ── /permUsuario ── resumo de permissão por login (só a Cloud Function grava)
+    match /permUsuario/{uid} {
+      allow read:  if authed() && request.auth.uid == uid;   // cada um lê o seu
+      allow write: if false;                                  // só Admin SDK (function)
+    }
+    // Master pede um rebuild em lote do permUsuario (backfill).
+    match /permUsuarioRebuild/{id} {
+      allow create: if isMaster();
+      allow read:   if isMaster();
+      allow update, delete: if false;
     }
 
     // ── /falhasLog ── Monitor de falhas. Gravado pelo usuário de serviço
@@ -185,11 +212,14 @@ service cloud.firestore {
     match /freelasConfig/{rid}      { allow read, write: if authed(); }   // datas de corte de pagamento (id=rid)
     match /paginasEstado/{id}       { allow read, write: if authed(); }   // estado compartilhado de páginas hospedadas (checklist em tempo real)
     match /freelaMensalistaConfirmado/{id} { allow read, write: if authed(); }
-    match /vendas/{id}                 { allow read, write: if authed(); }
-    match /vendasProdutos/{id}         { allow read, write: if authed(); }
-    match /vendasClientes/{id}         { allow read, write: if authed(); }
-    match /vendasFormasPagamento/{id}  { allow read, write: if authed(); }
-    match /vendasCobrancas/{id}        { allow read, write: if authed(); }
+    // FINANCEIRO (F2) — leitura só de quem tem permissão de VER Vendas na empresa
+    // do doc (hoje = só master; nenhum perfil não-master tem vendas.ver). Escrita
+    // só master (nenhum perfil concede lançar/quitar). Ver permUsuario/podeModulo.
+    match /vendas/{id}                 { allow read: if podeModulo("vendas","ver", resource.data.restaurantId); allow write: if isMaster(); }
+    match /vendasProdutos/{id}         { allow read: if podeModulo("vendas","ver", resource.data.restaurantId); allow write: if isMaster(); }
+    match /vendasClientes/{id}         { allow read: if podeModulo("vendas","ver", resource.data.restaurantId); allow write: if isMaster(); }
+    match /vendasFormasPagamento/{id}  { allow read: if podeModulo("vendas","ver", resource.data.restaurantId); allow write: if isMaster(); }
+    match /vendasCobrancas/{id}        { allow read: if podeModulo("vendas","ver", resource.data.restaurantId); allow write: if isMaster(); }
     match /ftInsumos/{id}              { allow read, write: if authed(); }
     match /ftFichas/{id}               { allow read, write: if authed(); }
     match /ftCategorias/{id}           { allow read, write: if authed(); }
@@ -210,9 +240,11 @@ service cloud.firestore {
     match /rotinaNotificacoes/{id}     { allow read, write: if authed(); }
     match /notificacaoConfigs/{id}     { allow read, write: if authed(); }
     match /enderecos/{id}              { allow read, write: if authed(); }
-    match /cartaoCategorias/{id}       { allow read, write: if authed(); }
-    match /cartaoFaturas/{id}          { allow read, write: if authed(); }
-    match /cartaoLancamentos/{id}      { allow read, write: if authed(); }
+    // FINANCEIRO (F2) — Faturas de cartão/reembolso. Leitura só de quem tem
+    // faturas.ver na empresa do doc (hoje = só master). Escrita só master.
+    match /cartaoCategorias/{id}       { allow read: if podeModulo("faturas","ver", resource.data.restaurantId); allow write: if isMaster(); }
+    match /cartaoFaturas/{id}          { allow read: if podeModulo("faturas","ver", resource.data.restaurantId); allow write: if isMaster(); }
+    match /cartaoLancamentos/{id}      { allow read: if podeModulo("faturas","ver", resource.data.restaurantId); allow write: if isMaster(); }
     // Agentes de IA: config só master edita; conversas authed; logs append-only.
     match /agentesIA/{id}     { allow read: if authed(); allow create, update, delete: if isMaster(); }
     // PTRP (tratamento de ponto). A garantia legal/fiscal está na SÓLIDES

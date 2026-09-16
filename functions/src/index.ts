@@ -14,7 +14,7 @@
 //    3. escreve a senha temporária de volta no MESMO doc → o cliente lê e
 //       mostra pro master (que pode testar o login) e apaga o doc em seguida.
 // ════════════════════════════════════════════════════════════════════════════
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
 import { setGlobalOptions } from "firebase-functions/v2";
 import * as admin from "firebase-admin";
 import { randomBytes } from "crypto";
@@ -106,4 +106,113 @@ export const processarResetSenha = onDocumentCreated("resetSenhaRequests/{id}", 
   } catch (e) {
     await erro(e instanceof Error ? e.message : "Erro inesperado ao redefinir senha.");
   }
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+//  permUsuario — resumo de permissão POR LOGIN (uid), pra as regras do Firestore
+//  travarem leitura no SERVIDOR (não só na UI).
+//
+//  Problema: as regras não sabem mapear uid → pessoa → permissão (uid ≠ pessoaId;
+//  permissão vem do perfil). Solução: este gatilho (Admin SDK, cliente NÃO pode
+//  forjar) mantém `permUsuario/{uid}` = { pessoaId, isMaster, perms{modulo:{acao:
+//  [rids]}} }. As regras leem via get() e checam `rid in perms.modulo.acao`.
+//
+//  Fonte da verdade = pessoa.profileIds[rid] → perfil (accessProfiles no Firestore,
+//  ou built-in Portal Empregado embutido). FAIL-CLOSED: perfil não resolvido = sem
+//  acesso (direção segura). Regenera on-write de pessoas e de accessProfiles, e há
+//  um rebuild em lote (escreve doc em permUsuarioRebuild) pra backfill.
+// ════════════════════════════════════════════════════════════════════════════
+
+// Único built-in que NÃO é semeado no Firestore (e não dá acesso sensível).
+// Os demais perfis (Gerente e custom) vivem em /accessProfiles.
+const PORTAL_EMPREGADO_PERMS: Record<string, Record<string, unknown>> = {
+  portalEmpregado: { acessar: true, verMinhaEscala: true, verMeusHorarios: true, verMinhaGorjeta: true, acessarFaleComDP: true },
+};
+
+async function resolverProfilePerms(
+  db: admin.firestore.Firestore,
+  profileId: string | undefined,
+): Promise<Record<string, Record<string, unknown>>> {
+  if (!profileId) return {};
+  const d = await db.collection("accessProfiles").doc(profileId).get();
+  if (d.exists) return ((d.data() as { permissions?: Record<string, Record<string, unknown>> }).permissions) || {};
+  if (profileId === "_builtin_portal_empregado") return PORTAL_EMPREGADO_PERMS;
+  // Gerente não-semeado ou id desconhecido: fail-closed (sem perms).
+  return {};
+}
+
+type PessoaPerm = { id: string; uidVinculado?: string; isMaster?: boolean; restaurantIds?: string[]; profileIds?: Record<string, string> };
+
+async function computarPerms(
+  db: admin.firestore.Firestore,
+  pessoa: PessoaPerm,
+): Promise<Record<string, Record<string, string[]>>> {
+  const perms: Record<string, Record<string, string[]>> = {};
+  const rids = Array.isArray(pessoa.restaurantIds) ? pessoa.restaurantIds : [];
+  const profileIds = pessoa.profileIds || {};
+  const cache: Record<string, Record<string, Record<string, unknown>>> = {};
+  for (const rid of rids) {
+    const pid = profileIds[rid];
+    if (!pid) continue;
+    if (!cache[pid]) cache[pid] = await resolverProfilePerms(db, pid);
+    const pp = cache[pid];
+    for (const [mod, acoes] of Object.entries(pp)) {
+      if (!acoes || typeof acoes !== "object") continue;
+      for (const [acao, val] of Object.entries(acoes)) {
+        if (val === true) {
+          (perms[mod] = perms[mod] || {});
+          (perms[mod][acao] = perms[mod][acao] || []);
+          if (!perms[mod][acao].includes(rid)) perms[mod][acao].push(rid);
+        }
+      }
+    }
+  }
+  return perms;
+}
+
+async function gerarPermUsuario(db: admin.firestore.Firestore, pessoa: PessoaPerm): Promise<void> {
+  const uid = pessoa.uidVinculado;
+  if (!uid) return;   // sem conta de acesso → não há uid pra travar
+  const perms = await computarPerms(db, pessoa);
+  await db.collection("permUsuario").doc(uid).set({
+    pessoaId: pessoa.id,
+    isMaster: pessoa.isMaster === true,
+    perms,
+    restaurantIds: Array.isArray(pessoa.restaurantIds) ? pessoa.restaurantIds : [],
+    atualizadoEm: new Date().toISOString(),
+  });
+}
+
+// Pessoa mudou (perfil/vínculo/uid/master) → regenera o resumo dela.
+export const syncPermUsuarioPessoa = onDocumentWritten("pessoas/{id}", async (event) => {
+  const after = event.data?.after;
+  if (!after || !after.exists) return;
+  await gerarPermUsuario(admin.firestore(), { id: after.id, ...(after.data() as object) } as PessoaPerm);
+});
+
+// Um perfil de acesso mudou → regenera todos que usam esse perfil.
+export const syncPermUsuarioPerfil = onDocumentWritten("accessProfiles/{id}", async (event) => {
+  const db = admin.firestore();
+  const profileId = event.params.id as string;
+  const snap = await db.collection("pessoas").get();
+  for (const doc of snap.docs) {
+    const p = { id: doc.id, ...(doc.data() as object) } as PessoaPerm;
+    if (!p.uidVinculado) continue;
+    if (Object.values(p.profileIds || {}).includes(profileId)) await gerarPermUsuario(db, p);
+  }
+});
+
+// Backfill em lote: master grava um doc em permUsuarioRebuild → regenera TODOS.
+export const rebuildPermUsuario = onDocumentCreated("permUsuarioRebuild/{id}", async (event) => {
+  const db = admin.firestore();
+  const snap = await db.collection("pessoas").get();
+  let n = 0;
+  for (const doc of snap.docs) {
+    const p = { id: doc.id, ...(doc.data() as object) } as PessoaPerm;
+    if (!p.uidVinculado) continue;
+    await gerarPermUsuario(db, p);
+    n++;
+  }
+  const s = event.data;
+  if (s) await s.ref.set({ status: "ok", gerados: n, resolvidoEm: new Date().toISOString() }, { merge: true });
 });
