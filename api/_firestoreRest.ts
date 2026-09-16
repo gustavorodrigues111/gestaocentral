@@ -152,6 +152,36 @@ export async function firestoreAtualizar(colecao: string, docId: string, obj: Re
   throw new Error(`Firestore PATCH ${resp.status}: ${t.slice(0, 200)}`);
 }
 
+// PATCH com caminhos PONTUADOS ("checks.abc": true) — atualiza SÓ esses campos
+// aninhados, sem sobrescrever o resto do mapa (dois escrevendo campos diferentes
+// não se apagam). `undefined` numa chave = apaga aquele campo. Upsert (cria se
+// não existir).
+export async function firestorePatchCampos(colecao: string, docId: string, updates: Record<string, unknown>): Promise<boolean> {
+  const token = await idToken();
+  const root: Record<string, unknown> = {};
+  const mask: string[] = [];
+  for (const [path, v] of Object.entries(updates)) {
+    mask.push(path);
+    if (v === undefined) continue;                 // no updateMask sem field → apaga
+    const e = encVal(v);
+    if (!e) continue;
+    const parts = path.split(".");
+    let cur = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const seg = parts[i];
+      if (!cur[seg]) cur[seg] = { mapValue: { fields: {} } };
+      cur = (cur[seg] as { mapValue: { fields: Record<string, unknown> } }).mapValue.fields;
+    }
+    cur[parts[parts.length - 1]] = e;
+  }
+  if (mask.length === 0) return true;
+  const maskQs = mask.map(m => `updateMask.fieldPaths=${encodeURIComponent(m)}`).join("&");
+  const url = `https://firestore.googleapis.com/v1/projects/${PROJECT_ID}/databases/(default)/documents/${colecao}/${encodeURIComponent(docId)}?${maskQs}`;
+  const resp = await fetch(url, { method: "PATCH", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" }, body: JSON.stringify({ fields: root }) });
+  if (resp.ok) return true;
+  throw new Error(`Firestore PATCH ${resp.status}: ${(await resp.text()).slice(0, 200)}`);
+}
+
 // Como firestoreCriar, mas devolve SE criou (true) ou já existia (false, 409) —
 // sem leitura extra. Pra sync idempotente que precisa contar só os docs novos.
 export async function firestoreCriarSeAusente(colecao: string, docId: string, obj: Record<string, unknown>): Promise<boolean> {
