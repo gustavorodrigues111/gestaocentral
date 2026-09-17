@@ -73,7 +73,8 @@ def item_height(c, it):
         for para in str(desc).split('\n'):   # respeita quebras de parágrafo (linha em branco = meia altura)
             dl += 0.5 if para.strip() == '' else len(wrap(c, para, 'I400', FS, desc_w))
     np = len(it[2]) if len(it) > 2 and it[2] else 0  # preços empilham à direita a partir da 1ª linha do nome
-    return max(nl + dl, np) * NAME_LH
+    # nome/preços ocupam max(nl, np) linhas no topo; a descrição vem ABAIXO disso.
+    return (max(nl, np) + dl) * NAME_LH
 
 def label_w(c, txt, size, cs):
     return c.stringWidth(txt, 'Bebas', size) + cs * (len(txt) - 1)
@@ -185,6 +186,12 @@ def draw_copy(c, dx, dy, header_png, sections, title_lines, box_bot, cont_top=No
                             c.drawRightString(PRICE_X + dx, py, pl)
                     first = False
                 yy += NAME_LH
+            # Preços empilham à direita a partir da 1ª linha do nome. Se há MAIS
+            # preços que linhas de nome, a descrição precisa começar abaixo do
+            # último preço — senão o preço de baixo colide com a 1ª linha da desc.
+            np_ = len(prices)
+            if np_ > len(nlines):
+                yy += (np_ - len(nlines)) * NAME_LH
             if desc:
                 c.setFont('I400', FS)
                 for para in str(desc).split('\n'):
