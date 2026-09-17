@@ -1212,7 +1212,11 @@ function reparearDia(docs: BatidaDoc[]): BatidaDoc[] {
 // na Sólides) · (B) Lançar motivo (afastamento/abono: motivo Sólides + status escala).
 const STATUS_LISTA: ScheduleStatus[] = ["trabalho", "falta_j", "falta_i", "folga", "comp", "comp_trab", "ferias", "freela"];
 function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }: { empresaKey: string; emp: Empregado; data: string; bs: BatidaDoc[]; solidesEmpId: string | null; autor: { id: string; nome: string }; onClose: () => void }) {
-  const [caminho, setCaminho] = useState<"" | "marcacoes" | "motivo">("");
+  const [caminho, setCaminho] = useState<"" | "marcacoes" | "motivo" | "atestado">("");
+  const [atIni, setAtIni] = useState(data);          // período do atestado
+  const [atFim, setAtFim] = useState(data);
+  const [trocarMotivo, setTrocarMotivo] = useState(false);
+  const [trocarStatus, setTrocarStatus] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [err, setErr] = useState("");
   const [aviso, setAviso] = useState("");
@@ -1292,10 +1296,26 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
     if (p === "abono") return (motivos.find(m => /^abono$/i.test(m.description.trim())) || motivos.find(m => /abono/i.test(m.description)))?.id ?? null;
     return null;
   };
-  const abrirCaminhoMotivo = (p: "abono" | "atestado" | "outro") => {
+  const abrirCaminhoMotivo = (p: "abono" | "outro") => {
     setMotivoPreset(p); setCaminho("motivo"); setBuscaMotivo("");
-    const def = motivoPadrao(p);
+    const def = p === "abono" ? motivoPadrao("abono") : null;
     if (def) escolherMotivo(def); else setMotivoId(null);
+  };
+  // Caminho dedicado ao atestado: motivo PRÉ-SELECIONADO (ATESTADO MÉDICO) +
+  // status DERIVADO (falta justificada) + período de/até. Sem listas cheias.
+  const STATUS_AUSENCIA: ScheduleStatus[] = ["falta_j", "falta_i", "folga", "ferias"];
+  const abrirAtestado = () => {
+    setMotivoPreset("atestado"); setCaminho("atestado"); setBuscaMotivo("");
+    setAtIni(data); setAtFim(data); setTrocarMotivo(false); setTrocarStatus(false);
+    setStatusEscala("falta_j");
+    const def = motivoPadrao("atestado");
+    if (def) escolherMotivo(def); else setMotivoId(null);
+    if (!(motivoPadrao("atestado") && mapa[String(motivoPadrao("atestado"))]?.status)) setStatusEscala("falta_j");
+  };
+  const diasDoIntervalo = (ini: string, fim: string): string[] => {
+    const out: string[] = []; let d = ini; let guard = 0;
+    while (d <= fim && guard++ < 366) { out.push(d); d = somaDiasYmd(d, 1); }
+    return out;
   };
   const togglePreferido = (id: number) => { const cur = mapa[String(id)] || {}; const m = motivos.find(x => x.id === id); void setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(id)]: { ...cur, exibir: !cur.exibir, descricao: m?.description || cur.descricao } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {}); };
 
@@ -1369,6 +1389,19 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
         await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "abono", statusEscala, motivoSolidesId: motivoId, ...(abonMin ? { minutos: abonMin, in: ain, out: aout } : {}), motivo: obs.trim() || (mInfo?.description || ""), ...evidPayload, autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: !!(solidesEmpId && diaInteiro) }));
         await setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(motivoId)]: { ...(mapa[String(motivoId)] || {}), status: statusEscala, descricao: mInfo?.description || `Motivo ${motivoId}` } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
         onClose();
+      } else if (caminho === "atestado") {
+        if (!motivoId) { setErr("Escolha o motivo do atestado."); return; }
+        if (atIni > atFim) { setErr("A data de início não pode ser depois do fim."); return; }
+        setSalvando(true);
+        const mInfo = motivos.find(m => m.id === motivoId);
+        // Atestado é dia inteiro. 1 chamada cobre o PERÍODO inteiro na Sólides;
+        // no app grava 1 lançamento por dia (pra refletir no espelho de cada dia).
+        if (solidesEmpId) await lancarAfastamento(empresaKey, { employeeId: Number(solidesEmpId), adjustmentReasonId: motivoId, startDate: atIni, endDate: atFim, fullDay: true });
+        for (const dia of diasDoIntervalo(atIni, atFim)) {
+          await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data: dia, tipo: "abono", statusEscala, motivoSolidesId: motivoId, motivo: obs.trim() || (mInfo?.description || "Atestado médico"), ...evidPayload, autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: !!solidesEmpId }));
+        }
+        await setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(motivoId)]: { ...(mapa[String(motivoId)] || {}), status: statusEscala, descricao: mInfo?.description || `Motivo ${motivoId}` } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
+        onClose();
       }
     } catch (e) { setErr("Falha ao aplicar na Sólides: " + (e instanceof Error ? e.message : "erro")); setSalvando(false); }
   }
@@ -1388,9 +1421,9 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
               <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Umbrella size={14}/> Abono / justificativa</div>
               <div className="text-[11px] text-gray-500 mt-0.5">Abona falta ou intervalo (dia inteiro ou parcial) — na Sólides e na escala.</div>
             </button>
-            <button onClick={() => abrirCaminhoMotivo("atestado")} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10">
+            <button onClick={abrirAtestado} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10">
               <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Umbrella size={14}/> Atestado / afastamento médico</div>
-              <div className="text-[11px] text-gray-500 mt-0.5">Atestado médico, acompanhamento, INSS, licença — anexe o atestado.</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">Atestado médico por período, com anexo — motivo e status já vêm prontos.</div>
             </button>
             <button onClick={() => abrirCaminhoMotivo("outro")} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10">
               <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Umbrella size={14}/> Outro motivo</div>
@@ -1429,9 +1462,8 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
         {caminho === "motivo" && (<>
           <div className="flex items-center justify-between gap-2">
             <button onClick={() => { setCaminho(""); setMotivoPreset(null); }} className="text-[11px] text-gray-400 hover:underline">‹ voltar</button>
-            <span className="text-[11px] font-semibold text-gray-500">{motivoPreset === "abono" ? "Abono / justificativa" : motivoPreset === "atestado" ? "Atestado / afastamento médico" : "Outro motivo"}</span>
+            <span className="text-[11px] font-semibold text-gray-500">{motivoPreset === "abono" ? "Abono / justificativa" : "Outro motivo"}</span>
           </div>
-          {motivoPreset === "atestado" && <div className="text-[11px] text-indigo-600 dark:text-indigo-300 inline-flex items-center gap-1"><Umbrella size={11}/> Anexe o atestado no campo Evidência abaixo — vale como respaldo do afastamento.</div>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-semibold text-gray-500">Motivo na Sólides {motivos.length === 0 && <span className="text-gray-400">(carregando…)</span>}</label>
@@ -1459,6 +1491,71 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
           {!solidesEmpId && <div className="text-[11px] text-amber-600 inline-flex items-center gap-1"><TriangleAlert size={11}/> Sem vínculo Sólides — fica só no app (sincronize antes pra refletir lá).</div>}
           {!diaInteiro && <div className="text-[11px] text-gray-400">Abono parcial entra no saldo do app. Envio parcial à Sólides ainda não disponível — use dia inteiro pra refletir lá.</div>}
         </>)}
+
+        {caminho === "atestado" && (() => {
+          const mSel = motivos.find(m => m.id === motivoId) || null;
+          const ehLongo = /inss|acidente|óbito|obito|matern|patern|^afastamento$/i.test(mSel?.description || "");
+          const nDias = atIni && atFim && atIni <= atFim ? diasDoIntervalo(atIni, atFim).length : 0;
+          return (<>
+            <div className="flex items-center justify-between gap-2">
+              <button onClick={() => { setCaminho(""); setMotivoPreset(null); }} className="text-[11px] text-gray-400 hover:underline">‹ voltar</button>
+              <span className="text-[11px] font-semibold text-gray-500 inline-flex items-center gap-1"><Umbrella size={11}/> Atestado / afastamento médico</span>
+            </div>
+
+            {/* Motivo PRÉ-SELECIONADO + trocar (só a família de atestado) */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-gray-500">Motivo na Sólides</label>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-900/40 text-[12.5px] font-medium text-gray-800 dark:text-gray-100">
+                  {mSel?.description || (motivos.length ? "escolha um motivo" : "carregando…")}
+                </span>
+                <button type="button" onClick={() => setTrocarMotivo(v => !v)} className="text-[11px] text-indigo-600 dark:text-indigo-300 hover:underline">trocar</button>
+              </div>
+              {trocarMotivo && (
+                <div className="max-h-40 overflow-y-auto rounded-lg border border-gray-200 dark:border-gray-700 divide-y divide-gray-100 dark:divide-gray-800 mt-1">
+                  {motivos.filter(m => !familia || familia.has(m.id)).map(m => (
+                    <button key={m.id} type="button" onClick={() => { escolherMotivo(m.id); setTrocarMotivo(false); }} className={`flex w-full px-2 py-1.5 text-[12px] text-left hover:bg-gray-50 dark:hover:bg-gray-800 ${m.id === motivoId ? "bg-indigo-50 dark:bg-indigo-900/20" : ""}`}>{m.description}</button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Status DERIVADO + trocar (só status de ausência) */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-gray-500">Status na escala (praticada)</label>
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg text-[12px] font-medium`}>
+                  <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[statusEscala].bg} ${STATUS_INFO[statusEscala].text}`}>{STATUS_INFO[statusEscala].short}</span>
+                  {STATUS_INFO[statusEscala].label}
+                </span>
+                <button type="button" onClick={() => setTrocarStatus(v => !v)} className="text-[11px] text-indigo-600 dark:text-indigo-300 hover:underline">trocar</button>
+              </div>
+              {trocarStatus && (
+                <div className="flex gap-1.5 flex-wrap mt-1">
+                  {STATUS_AUSENCIA.map(s => (
+                    <button key={s} type="button" onClick={() => { setStatusEscala(s); setTrocarStatus(false); }} className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-lg border text-[12px] ${s === statusEscala ? "border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20" : "border-gray-200 dark:border-gray-700"}`}>
+                      <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[s].bg} ${STATUS_INFO[s].text}`}>{STATUS_INFO[s].short}</span>{STATUS_INFO[s].label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Período de/até (dia inteiro) */}
+            <div className="flex flex-col gap-1">
+              <label className="text-[11px] font-semibold text-gray-500">Período do atestado (dia inteiro)</label>
+              <div className="grid grid-cols-2 gap-2">
+                <label className="text-[10px] text-gray-500">Início<input type="date" value={atIni} onChange={e => { setAtIni(e.target.value); if (e.target.value > atFim) setAtFim(e.target.value); }} className={inp} /></label>
+                <label className="text-[10px] text-gray-500">Fim<input type="date" value={atFim} min={atIni} onChange={e => setAtFim(e.target.value)} className={inp} /></label>
+              </div>
+              {nDias > 0 && <span className="text-[11px] text-gray-500">{nDias} dia(s) — 1 lançamento na Sólides cobrindo o período.</span>}
+            </div>
+
+            <div className="text-[11px] text-indigo-600 dark:text-indigo-300 inline-flex items-center gap-1"><Umbrella size={11}/> Anexe o atestado no campo Evidência abaixo — respaldo do afastamento.</div>
+            {ehLongo && <div className="text-[11px] text-amber-600 dark:text-amber-400 inline-flex items-start gap-1"><TriangleAlert size={11} className="mt-0.5 shrink-0"/> Afastamento longo (INSS/acidente/licença) exige o evento eSocial (S-2230), que esta via NÃO gera — ela entra como abono no ponto. Faça o registro do afastamento direto na Sólides.</div>}
+            {!solidesEmpId && <div className="text-[11px] text-amber-600 inline-flex items-center gap-1"><TriangleAlert size={11}/> Sem vínculo Sólides — fica só no app (sincronize antes pra refletir lá).</div>}
+          </>);
+        })()}
 
         {caminho && <label className="flex flex-col gap-1"><span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Observação (trilha do app)</span><textarea value={obs} onChange={e => setObs(e.target.value)} rows={2} placeholder="Ex.: esqueceu de bater a saída; atestado de 1 dia…" className={inp} /></label>}
 
