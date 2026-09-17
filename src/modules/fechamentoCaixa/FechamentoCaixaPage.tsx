@@ -195,6 +195,7 @@ function MaquininhasView({ maquininhas, creditoAltec, debitoAltec, pixAltec, onR
 export function FechamentoCaixaPage() {
   const { pessoa: me } = useAuth();
   const [reenviando, setReenviando] = useState<string | null>(null);   // id do fechamento em reenvio
+  const [reenviarAlvo, setReenviarAlvo] = useState<FechamentoCaixa | null>(null);   // caixa no seletor de canal
   const { restaurants } = useRestaurant();
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
@@ -270,31 +271,41 @@ export function FechamentoCaixaPage() {
     } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao excluir."); }
   }
 
-  // Reenvio manual (só master): redispara o aviso aos sócios (email + WhatsApp)
-  // daquele caixa. Diferente do fechamento, AGUARDA e reporta o resultado por
-  // número — útil quando a Meta falhou a entrega e você quer reenviar caixa a caixa.
-  async function reenviar(f: FechamentoCaixa) {
-    if (!restaurant) return;
-    const canal = restaurant.fechamentoCanalEnvio || "ambos";
-    const socios = pessoas.filter((p) => (restaurant.fechamentoSociosPessoaIds || []).includes(p.id));
-    const emails = (canal === "email" || canal === "ambos") ? Array.from(new Set([
+  // Destinatários dos sócios (email + WhatsApp) do restaurante ativo — pro reenvio
+  // manual escolher o canal. Sempre calcula os dois; a escolha decide o que dispara.
+  function destinatariosReenvio() {
+    const socios = pessoas.filter((p) => (restaurant?.fechamentoSociosPessoaIds || []).includes(p.id));
+    const emails = Array.from(new Set([
       ...socios.map((p) => (p.email || "").trim().toLowerCase()),
-      ...(restaurant.fechamentoSociosEmails || []),
-    ].filter((e) => e.includes("@")))) : [];
-    const zaps = (canal === "whatsapp" || canal === "ambos") ? Array.from(new Set([
+      ...((restaurant?.fechamentoSociosEmails) || []),
+    ].filter((e) => e.includes("@"))));
+    const zaps = Array.from(new Set([
       ...socios.map((p) => (p.whatsapp || "").replace(/\D/g, "")),
-      ...(restaurant.fechamentoSociosWhatsapp || []).map((n) => n.replace(/\D/g, "")),
-    ].filter((n) => n.length >= 10))) : [];
-    if (!emails.length && !zaps.length) { window.alert("Nenhum sócio com email/WhatsApp configurado (aba Configurações)."); return; }
-    if (!window.confirm(`Reenviar o fechamento de ${fmtData(f.data)} (${TURNO_CAIXA_LABEL[f.turno]}) aos sócios?\n\nEmail: ${emails.length} · WhatsApp: ${zaps.length}`)) return;
+      ...((restaurant?.fechamentoSociosWhatsapp) || []).map((n) => n.replace(/\D/g, "")),
+    ].filter((n) => n.length >= 10)));
+    return { emails, zaps };
+  }
+
+  // Botão Reenviar (só master) → abre o seletor de canal.
+  function reenviar(f: FechamentoCaixa) { setReenviarAlvo(f); }
+
+  // Executa o reenvio nos canais ESCOLHIDOS. AGUARDA e reporta o resultado por
+  // número (aceito/erro pela Meta) — útil pra reenviar caixa a caixa.
+  async function executarReenvio(f: FechamentoCaixa, opt: { email: boolean; zap: boolean }) {
+    if (!restaurant) return;
+    const { emails, zaps } = destinatariosReenvio();
+    const usaEmail = opt.email && emails.length > 0;
+    const usaZap = opt.zap && zaps.length > 0;
+    setReenviarAlvo(null);
+    if (!usaEmail && !usaZap) { window.alert("Nenhum destinatário nesse canal (confira os sócios na aba Configurações)."); return; }
     setReenviando(f.id);
     const linhas: string[] = [];
     try {
-      if (emails.length) {
+      if (usaEmail) {
         try { await enviarEmailResumo(emails, restaurant.nome || "Restaurante", f, fechamentos, restaurant.fechamentoEmailRemetente); linhas.push(`✅ Email enviado (${emails.length}).`); }
         catch (e) { linhas.push(`⚠️ Email falhou: ${e instanceof Error ? e.message : "erro"}`); }
       }
-      if (zaps.length) {
+      if (usaZap) {
         const totalStr = f.totalVendas != null ? fmtBRL(f.totalVendas) : "—";
         const quando = `${fmtData(f.data)} · ${TURNO_CAIXA_LABEL[f.turno]}`;
         const link = `https://admin.planejamento.app/r/${rid}/fechamentoCaixa`;
@@ -387,6 +398,31 @@ export function FechamentoCaixaPage() {
       {abaEfetiva === "conciliacao" && podeVer && <ConciliacaoCartoes rid={rid} temIfood={!!restaurant?.fechamentoTemIfood} me={me} podeConfig={podeConfig} />}
 
       {abaEfetiva === "config" && podeConfig && <FechamentoConfig rid={rid} restaurant={restaurant} pessoas={pessoas} />}
+
+      {/* Seletor de canal do reenvio (só master) */}
+      {reenviarAlvo && (() => {
+        const dst = destinatariosReenvio();
+        const alvo = reenviarAlvo;
+        return (
+          <Modal title={<span className="inline-flex items-center gap-2"><Send size={18} /> Reenviar aos sócios</span>} onClose={() => setReenviarAlvo(null)} maxWidth="max-w-sm">
+            <div className="space-y-3">
+              <p className="text-sm text-gray-600 dark:text-gray-300">Caixa <b className="tabular-nums">{fmtData(alvo.data)} · {TURNO_CAIXA_LABEL[alvo.turno]}</b>. Por qual canal?</p>
+              <div className="grid gap-2">
+                <Button variant="secondary" disabled={!dst.zaps.length} onClick={() => void executarReenvio(alvo, { email: false, zap: true })}>
+                  <span className="inline-flex items-center gap-2"><MessageSquare size={16} /> Só WhatsApp <span className="text-gray-400 font-normal">({dst.zaps.length})</span></span>
+                </Button>
+                <Button variant="secondary" disabled={!dst.emails.length} onClick={() => void executarReenvio(alvo, { email: true, zap: false })}>
+                  <span className="inline-flex items-center gap-2"><Mail size={16} /> Só e-mail <span className="text-gray-400 font-normal">({dst.emails.length})</span></span>
+                </Button>
+                <Button disabled={!dst.emails.length && !dst.zaps.length} onClick={() => void executarReenvio(alvo, { email: true, zap: true })}>
+                  <span className="inline-flex items-center gap-2"><Send size={16} /> Ambos</span>
+                </Button>
+              </div>
+              {!dst.emails.length && !dst.zaps.length && <p className="text-[12px] text-amber-600 dark:text-amber-400">Nenhum sócio com contato — configure na aba Configurações.</p>}
+            </div>
+          </Modal>
+        );
+      })()}
 
       {abaEfetiva === "lista" && podeVer && (
         <div className="space-y-3">
