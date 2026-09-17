@@ -13,7 +13,7 @@
 //  (processarImagem), e dispara o /api/send-email (Resend).
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
-import { Lock, Banknote, ClipboardList, BarChart3, CreditCard, Settings, Download, CheckSquare, Trash2, Camera, Search, Clock, TriangleAlert, Paperclip, ReceiptText, Save, ShoppingBag, Mail, MessageSquare, User, FolderOpen, Pencil, type LucideIcon } from "lucide-react";
+import { Lock, Banknote, ClipboardList, BarChart3, CreditCard, Settings, Download, CheckSquare, Trash2, Camera, Search, Clock, TriangleAlert, Paperclip, ReceiptText, Save, ShoppingBag, Mail, MessageSquare, User, FolderOpen, Pencil, Send, type LucideIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where, deleteField } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -194,6 +194,7 @@ function MaquininhasView({ maquininhas, creditoAltec, debitoAltec, pixAltec, onR
 
 export function FechamentoCaixaPage() {
   const { pessoa: me } = useAuth();
+  const [reenviando, setReenviando] = useState<string | null>(null);   // id do fechamento em reenvio
   const { restaurants } = useRestaurant();
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
@@ -267,6 +268,46 @@ export function FechamentoCaixaPage() {
     try {
       await updateDoc(doc(db, "fechamentosCaixa", f.id), { excluidoEm: new Date().toISOString(), excluidoPor: { id: me?.id || "", nome: me?.nome || "?" } });
     } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao excluir."); }
+  }
+
+  // Reenvio manual (só master): redispara o aviso aos sócios (email + WhatsApp)
+  // daquele caixa. Diferente do fechamento, AGUARDA e reporta o resultado por
+  // número — útil quando a Meta falhou a entrega e você quer reenviar caixa a caixa.
+  async function reenviar(f: FechamentoCaixa) {
+    if (!restaurant) return;
+    const canal = restaurant.fechamentoCanalEnvio || "ambos";
+    const socios = pessoas.filter((p) => (restaurant.fechamentoSociosPessoaIds || []).includes(p.id));
+    const emails = (canal === "email" || canal === "ambos") ? Array.from(new Set([
+      ...socios.map((p) => (p.email || "").trim().toLowerCase()),
+      ...(restaurant.fechamentoSociosEmails || []),
+    ].filter((e) => e.includes("@")))) : [];
+    const zaps = (canal === "whatsapp" || canal === "ambos") ? Array.from(new Set([
+      ...socios.map((p) => (p.whatsapp || "").replace(/\D/g, "")),
+      ...(restaurant.fechamentoSociosWhatsapp || []).map((n) => n.replace(/\D/g, "")),
+    ].filter((n) => n.length >= 10))) : [];
+    if (!emails.length && !zaps.length) { window.alert("Nenhum sócio com email/WhatsApp configurado (aba Configurações)."); return; }
+    if (!window.confirm(`Reenviar o fechamento de ${fmtData(f.data)} (${TURNO_CAIXA_LABEL[f.turno]}) aos sócios?\n\nEmail: ${emails.length} · WhatsApp: ${zaps.length}`)) return;
+    setReenviando(f.id);
+    const linhas: string[] = [];
+    try {
+      if (emails.length) {
+        try { await enviarEmailResumo(emails, restaurant.nome || "Restaurante", f, fechamentos, restaurant.fechamentoEmailRemetente); linhas.push(`✅ Email enviado (${emails.length}).`); }
+        catch (e) { linhas.push(`⚠️ Email falhou: ${e instanceof Error ? e.message : "erro"}`); }
+      }
+      if (zaps.length) {
+        const totalStr = f.totalVendas != null ? fmtBRL(f.totalVendas) : "—";
+        const quando = `${fmtData(f.data)} · ${TURNO_CAIXA_LABEL[f.turno]}`;
+        const link = `https://admin.planejamento.app/r/${rid}/fechamentoCaixa`;
+        let ok = 0; const erros: string[] = [];
+        for (const num of zaps) {
+          const r = await enviarWhatsapp({ to: num, template: "aviso_fechamento", params: ["sócio(a)", restaurant.nome || "Restaurante", quando, totalStr, link], contexto: "fechamento_socios", restaurantId: rid, criadoPor: me?.id });
+          if (r.ok) ok++; else erros.push(`${num}: ${r.erro || "falhou"}`);
+        }
+        linhas.push(`WhatsApp: ${ok}/${zaps.length} aceitos pela Meta.` + (erros.length ? "\n  " + erros.join("\n  ") : ""));
+        if (ok > 0) linhas.push("ℹ️ 'Aceito' ≠ 'entregue' — se o sócio não receber, é bloqueio/limite do lado dele.");
+      }
+    } finally { setReenviando(null); }
+    window.alert(`Reenvio — ${fmtData(f.data)} (${TURNO_CAIXA_LABEL[f.turno]}):\n\n` + linhas.join("\n"));
   }
 
   // Restaura um fechamento excluído.
@@ -355,7 +396,7 @@ export function FechamentoCaixaPage() {
               <Button size="sm" variant="secondary" disabled={!!exportando} onClick={() => void exportar("pdf")}>{exportando === "pdf" ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><Download size={14} /> PDF</span>}</Button>
             </div>
           )}
-          <FechamentoTabela fechamentos={pendentes} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} onConferir={podeEditar ? conferir : undefined} />
+          <FechamentoTabela fechamentos={pendentes} podeEditar={podeEditar} podeConfig={podeConfig} onExcluir={excluir} onConferir={podeEditar ? conferir : undefined} onReenviar={me?.isMaster ? reenviar : undefined} reenviandoId={reenviando} />
 
           {/* Histórico de conferidos (abaixo da lista, colapsável) */}
           {conferidos.length > 0 && (
@@ -1779,16 +1820,18 @@ function FechamentoConfig({ rid, restaurant, pessoas }: { rid: string; pessoas: 
 }
 
 // ─── Tabela de fechamentos ──────────────────────────────────────────────────
-function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir, onConferir }: {
+function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir, onConferir, onReenviar, reenviandoId }: {
   fechamentos: FechamentoCaixa[];
   podeEditar: boolean;
   podeConfig: boolean;
   onExcluir: (f: FechamentoCaixa) => void;
   onConferir?: (f: FechamentoCaixa) => void;
+  onReenviar?: (f: FechamentoCaixa) => void;   // só master: reenvia aviso aos sócios
+  reenviandoId?: string | null;
 }) {
   const [detalhe, setDetalhe] = useState<FechamentoCaixa | null>(null);
   const [editar, setEditar] = useState<FechamentoCaixa | null>(null);
-  const temAcoes = !!onConferir || podeConfig;
+  const temAcoes = !!onConferir || podeConfig || !!onReenviar;
   if (fechamentos.length === 0) {
     return <div className="text-center text-sm text-gray-400 py-12">Tudo conferido! Nenhum fechamento pendente.</div>;
   }
@@ -1838,6 +1881,12 @@ function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir, onCo
                 {temAcoes && (
                   <td className="px-4 py-3">
                     <div className="flex items-center justify-end gap-2">
+                      {onReenviar && (
+                        <button type="button" onClick={() => onReenviar(f)} disabled={reenviandoId === f.id} title="Reenviar o aviso aos sócios (WhatsApp + email) deste caixa"
+                          className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg text-[12px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors disabled:opacity-50">
+                          <Send size={13} /> {reenviandoId === f.id ? "Enviando…" : "Reenviar"}
+                        </button>
+                      )}
                       {onConferir && (
                         <button type="button" onClick={() => setDetalhe(f)} title="Abrir pra conferir"
                           className="inline-flex items-center gap-1 px-2.5 h-8 rounded-lg text-[12px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors">
@@ -1883,6 +1932,12 @@ function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir, onCo
                 {f.observacao && <span className="truncate text-gray-400 italic">{f.observacao}</span>}
               </div>
               <div className="flex items-center gap-1.5 shrink-0">
+                {onReenviar && (
+                  <button type="button" onClick={() => onReenviar(f)} disabled={reenviandoId === f.id} title="Reenviar o aviso aos sócios (WhatsApp + email)"
+                    className="inline-flex items-center gap-1 px-3 h-9 rounded-lg text-[13px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 active:bg-indigo-100 transition-colors disabled:opacity-50">
+                    <Send size={15} /> {reenviandoId === f.id ? "…" : "Reenviar"}
+                  </button>
+                )}
                 {onConferir && (
                   <button type="button" onClick={() => setDetalhe(f)} title="Abrir pra conferir"
                     className="inline-flex items-center gap-1 px-3 h-9 rounded-lg text-[13px] font-medium text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/30 active:bg-emerald-100 transition-colors">
