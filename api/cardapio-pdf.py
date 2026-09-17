@@ -64,6 +64,21 @@ def wrap(c, text, font, size, maxw):
     if cur: out.append(cur)
     return out
 
+# A borda ESQUERDA do preço (qual longo empurra pra esquerda). Se essa borda cai
+# dentro da coluna do texto (TEXT_X..TEXT_X+desc_w), o preço INVADE a descrição —
+# aí a descrição tem que começar abaixo dos preços; senão, flui logo abaixo do nome.
+def precos_invadem(c, prices, desc_w):
+    limite = TEXT_X + desc_w
+    for pl in prices:
+        if isinstance(pl, tuple):
+            qual, val = pl
+            left = PRICE_X - c.stringWidth(val, 'I700', FS) - 3.5 - c.stringWidth(qual, 'I400', 6.3)
+        else:
+            left = PRICE_X - c.stringWidth(pl, 'I700', FS)
+        if left < limite:
+            return True
+    return False
+
 def item_height(c, it):
     name, desc = it[0], it[1]
     desc_w = it[3] if len(it) > 3 else 148
@@ -72,9 +87,13 @@ def item_height(c, it):
     if desc:
         for para in str(desc).split('\n'):   # respeita quebras de parágrafo (linha em branco = meia altura)
             dl += 0.5 if para.strip() == '' else len(wrap(c, para, 'I400', FS, desc_w))
-    np = len(it[2]) if len(it) > 2 and it[2] else 0  # preços empilham à direita a partir da 1ª linha do nome
-    # nome/preços ocupam max(nl, np) linhas no topo; a descrição vem ABAIXO disso.
-    return (max(nl, np) + dl) * NAME_LH
+    prices = it[2] if len(it) > 2 and it[2] else []
+    np = len(prices)
+    if desc and precos_invadem(c, prices, desc_w):
+        # descrição empurrada pra ABAIXO dos preços (qual longo colidiria)
+        return (max(nl, np) + dl) * NAME_LH
+    # descrição flui ao lado dos preços; bloco = max(preços, nome+descrição)
+    return max(np, nl + dl) * NAME_LH
 
 def label_w(c, txt, size, cs):
     return c.stringWidth(txt, 'Bebas', size) + cs * (len(txt) - 1)
@@ -168,6 +187,7 @@ def draw_copy(c, dx, dy, header_png, sections, title_lines, box_bot, cont_top=No
         for it in items:
             name, desc, prices = it[0], it[1], it[2]
             desc_w = it[3] if len(it) > 3 else 148
+            item_start = yy
             nlines = wrap(c, name, 'I700', FS, 148)
             first = True; c.setFillColorRGB(*BLUE)
             for ln in nlines:
@@ -186,11 +206,11 @@ def draw_copy(c, dx, dy, header_png, sections, title_lines, box_bot, cont_top=No
                             c.drawRightString(PRICE_X + dx, py, pl)
                     first = False
                 yy += NAME_LH
-            # Preços empilham à direita a partir da 1ª linha do nome. Se há MAIS
-            # preços que linhas de nome, a descrição precisa começar abaixo do
-            # último preço — senão o preço de baixo colide com a 1ª linha da desc.
             np_ = len(prices)
-            if np_ > len(nlines):
+            # Só empurra a descrição pra baixo dos preços se eles INVADIREM a coluna
+            # do texto (qual longo). Com qual curto, a descrição flui logo abaixo do
+            # nome, ao lado dos preços — sem pulo de linha estranho.
+            if desc and np_ > len(nlines) and precos_invadem(c, prices, desc_w):
                 yy += (np_ - len(nlines)) * NAME_LH
             if desc:
                 c.setFont('I400', FS)
@@ -199,6 +219,8 @@ def draw_copy(c, dx, dy, header_png, sections, title_lines, box_bot, cont_top=No
                         yy += NAME_LH * 0.5; continue
                     for ln in wrap(c, para, 'I400', FS, desc_w):
                         c.drawString(TEXT_X + dx, PH - (yy + BASE_OFF), ln); yy += NAME_LH
+            # O bloco tem que cobrir ao menos a pilha de preços (desc curta + vários preços).
+            yy = max(yy, item_start + np_ * NAME_LH)
             yy += gap
         y = sec_top + sec_h
         if si < len(sections) - 1:
