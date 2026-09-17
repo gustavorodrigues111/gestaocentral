@@ -17,6 +17,10 @@ const SEED: Seed[] = [
   // ── Drive / conta central ──
   { modulo: "recebimento", resp: "gustavo", titulo: "Configurar a CONTA CENTRAL do Drive na Vercel (GOOGLE_OAUTH_CLIENT_ID, GOOGLE_OAUTH_CLIENT_SECRET, GOOGLE_DRIVE_REFRESH_TOKEN) — sem isso os uploads caem no login Google de cada usuário e batem no bloqueio 'app só pode ser usado dentro da organização'", descricao: "Código já usa driveShared (central quando configurada). Refresh token via OAuth Playground com um client Web + a conta que dona da pasta. Vale pra Fechamento e Recebimento." },
 
+  // ── Compras / Contagens ──
+  { modulo: "compras", resp: "ia", titulo: "Fornecedores: lista redesenhada (linha clicável → modal de visualização com Editar dentro), mesclar manual (escolhe o sobrevivente), consulta CNPJ na Receita (BrasilAPI, botão 'Receita') e sugestão de pré-cadastro a partir dos emissores de NF do recebimento.", descricao: "api/cnpj.ts (requireUser, BrasilAPI). Sugestões: emissores de recebimentos que ainda não são fornecedores (por nome normalizado ou CNPJ) aparecem como chips no topo; clicar abre o cadastro pré-preenchido." },
+  { modulo: "contagens", resp: "ia", titulo: "Lançar contagem: agrupamento por categoria OU fornecedor prioritário, steppers, desktop com rail de progresso. Sessão nomeada: cada 'Salvar' carimba sessaoId + turno; aba Visão lista 'Sessões recentes' (data · turno · quem · horário · nº itens)." },
+
   // ── Admissão ──
   { modulo: "admissao", resp: "ia", titulo: "Envio da ficha do candidato passa pelo servidor (/api/admissao-submit) — acabou o 'Missing or insufficient permissions'. Regra pública de escrita de admissoes TRAVADA (só authed). Pendente: validar que a foto (Storage) sobe como image/jpeg (rule exige jpeg/png)." },
 
