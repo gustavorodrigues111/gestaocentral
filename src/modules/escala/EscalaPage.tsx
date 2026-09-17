@@ -12,6 +12,8 @@ import { MesContextoBanner, tintaVersao } from "../../core/ui/MesContextoBanner"
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { AjustesSolicitadosTab } from "./AjustesSolicitadosTab";
+import { fetchMotivosAfastamento, lancarAfastamento, fetchRoster, type MotivoAfastamento } from "../../core/ponto/solidesPontoClient";
+import type { PontoColaborador } from "../../core/ponto/analise";
 import {
   daysInMonth, dowShort, fmtAnoMes, fmtBR, nomeMes, pad2, parseYmd, shiftMonth, ymd as ymdFromDate,
 } from "../../core/utils/date";
@@ -964,6 +966,7 @@ export function EscalaPage({ modo }: { modo?: "praticada" } = {}) {
           empregados={empregadosOrdenados}
           ano={ano}
           mes={mes}
+          shortCode={activeRestaurant?.shortCode || ""}
           onClose={() => setShowFeriasLote(false)}
           onApply={async (empregadoId, dataInicio, dataFim, status) => {
             if (!rid) return;
@@ -1899,10 +1902,11 @@ function BulkActionBar({
 
 // ─── Modal: marcar férias (ou outro status) em lote num range ──────────────
 function MarcarFeriasLoteModal({
-  empregados, ano, mes, onClose, onApply,
+  empregados, ano, mes, shortCode, onClose, onApply,
 }: {
   empregados: Empregado[];
   ano: number; mes: number;
+  shortCode: string;
   onClose: () => void;
   onApply: (empregadoId: string, dataInicio: string, dataFim: string, status: ScheduleStatus) => Promise<void>;
 }) {
@@ -1915,6 +1919,34 @@ function MarcarFeriasLoteModal({
   const [status, setStatus] = useState<ScheduleStatus>("ferias");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+
+  // ── Registro opcional na Sólides (opt-in, default OFF) ──────────────────────
+  // Férias e falta justificada podem virar afastamento na Sólides no PERÍODO
+  // inteiro (1 chamada, dia inteiro). Casa o motivo por DESCRIÇÃO (ids variam
+  // por empresa) e usa o solidesId do empregado. Não escreve nada sem o opt-in.
+  const [regSolides, setRegSolides] = useState(false);
+  const [motivos, setMotivos] = useState<MotivoAfastamento[]>([]);
+  const [roster, setRoster] = useState<PontoColaborador[]>([]);
+  useEffect(() => {
+    if (!shortCode) return;
+    fetchMotivosAfastamento(shortCode).then(setMotivos).catch(() => {});
+    fetchRoster(shortCode).then(setRoster).catch(() => {});
+  }, [shortCode]);
+  const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
+  const empSel = empregados.find(e => e.id === empregadoId) || null;
+  // id Sólides do empregado = casa o CPF no roster (employee/find-all).
+  const solidesIdSel = (() => {
+    const cpf = soDig(empSel?.cpf);
+    if (!cpf) return null;
+    const hit = roster.find(r => soDig(r.cpf) === cpf);
+    return hit?.id ?? null;
+  })();
+  const motivoSolides = (() => {
+    const re = status === "ferias" ? /f[ée]rias/i : status === "falta_j" ? /falta justif/i : null;
+    return re ? (motivos.find(m => re.test(m.description)) || null) : null;
+  })();
+  const podeRegSolides = !!(shortCode && solidesIdSel && motivoSolides);
+  useEffect(() => { if (!podeRegSolides) setRegSolides(false); }, [podeRegSolides]);
 
   // Calcula quantos dias serão alterados
   const diasNoRange = (() => {
@@ -1931,9 +1963,20 @@ function MarcarFeriasLoteModal({
     setErr("");
     setSaving(true);
     try {
+      // Sólides PRIMEIRO (o onApply pinta e fecha o modal no fim) — assim o erro
+      // aparece aqui antes de fechar. Período inteiro, dia inteiro, 1 chamada.
+      if (regSolides && podeRegSolides && solidesIdSel && motivoSolides) {
+        await lancarAfastamento(shortCode, {
+          employeeId: solidesIdSel,
+          adjustmentReasonId: motivoSolides.id,
+          startDate: dataInicio, endDate: dataFim, fullDay: true,
+        });
+      }
       await onApply(empregadoId, dataInicio, dataFim, status);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Erro");
+      setErr((regSolides ? "Registro na Sólides falhou (a escala NÃO foi aplicada): " : "Erro: ") + (e instanceof Error ? e.message : "Erro"));
+      setSaving(false);
+      return;
     } finally {
       setSaving(false);
     }
@@ -2006,6 +2049,18 @@ function MarcarFeriasLoteModal({
             Vai aplicar <strong>{STATUS_INFO[status].label}</strong> em <strong>{diasNoRange} dia(s)</strong>.
             Sobrescreve overrides existentes no range. (Pra reverter, use o botão "↩ Reverter" depois.)
           </div>
+        )}
+
+        {/* Registro na Sólides (opt-in) — só férias/falta justificada, período inteiro */}
+        {(status === "ferias" || status === "falta_j") && (
+          <label className={`flex items-start gap-2 rounded-lg border px-3 py-2 text-xs ${podeRegSolides ? "border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-900/10 cursor-pointer" : "border-gray-200 dark:border-gray-800 opacity-70"}`}>
+            <input type="checkbox" checked={regSolides} disabled={!podeRegSolides} onChange={e => setRegSolides(e.target.checked)} className="mt-0.5 accent-emerald-600" />
+            <span className="text-gray-700 dark:text-gray-300">
+              <span className="font-semibold">Registrar também na Sólides</span> — lança <strong>{motivoSolides?.description || (status === "ferias" ? "FÉRIAS" : "falta justificada")}</strong> no período inteiro (dia inteiro), como registro legal.
+              {!solidesIdSel && <span className="block text-amber-600 mt-0.5">⚠ {empSel?.nome || "empregado"} sem vínculo Sólides (CPF não bateu no roster) — só na escala.</span>}
+              {solidesIdSel && !motivoSolides && <span className="block text-amber-600 mt-0.5">⚠ Motivo correspondente não encontrado no cadastro da Sólides desta empresa.</span>}
+            </span>
+          </label>
         )}
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
