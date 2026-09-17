@@ -17,11 +17,14 @@ type Props = {
   insumos?: Insumo[];
   restaurantId: string;
   podeConfig: boolean;
+  emissoresNota?: { emissor?: string; cnpjEmissor?: string }[];
 };
 
-export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, podeConfig }: Props) {
+export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, podeConfig, emissoresNota = [] }: Props) {
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Fornecedor | "new" | null>(null);
+  const [prefill, setPrefill] = useState<{ nome?: string; cnpj?: string } | null>(null);
+  const [verSugestoes, setVerSugestoes] = useState(false);
   const [ocupado, setOcupado] = useState(false);
   const [selMode, setSelMode] = useState(false);                         // modo "mesclar manual"
   const [selIds, setSelIds] = useState<Set<string>>(new Set());          // fornecedores marcados
@@ -51,6 +54,27 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
 
   // Nomes fora do padrão (não são "Primeira Maiúscula") — pra o botão Padronizar.
   const foraPadrao = useMemo(() => fornecedores.filter(f => f.nome !== tituloCaso(f.nome)), [fornecedores]);
+
+  // Sugestões de pré-cadastro a partir dos emissores das notas de recebimento:
+  // quem já emitiu NF pra gente mas ainda NÃO é fornecedor cadastrado (nem por
+  // nome normalizado, nem por CNPJ). Agrupa por nome, guarda o CNPJ e a contagem.
+  const sugestoesNota = useMemo(() => {
+    const nomesCad = new Set(fornecedores.map(f => normalizar(f.nome)));
+    const cnpjsCad = new Set(fornecedores.map(f => onlyDigits(f.cnpj || "")).filter(c => c.length === 14));
+    const m = new Map<string, { nome: string; cnpj: string; count: number }>();
+    for (const e of emissoresNota) {
+      const nome = (e.emissor || "").trim();
+      if (!nome) continue;
+      const chave = normalizar(nome);
+      if (!chave || nomesCad.has(chave)) continue;
+      const cnpj = onlyDigits(e.cnpjEmissor || "");
+      if (cnpj.length === 14 && cnpjsCad.has(cnpj)) continue;
+      const cur = m.get(chave);
+      if (cur) { cur.count++; if (!cur.cnpj && cnpj.length === 14) cur.cnpj = cnpj; }
+      else m.set(chave, { nome: tituloCaso(nome), cnpj: cnpj.length === 14 ? cnpj : "", count: 1 });
+    }
+    return [...m.values()].sort((a, b) => b.count - a.count);
+  }, [emissoresNota, fornecedores]);
 
   // Padroniza os nomes (tituloCaso) de todos os que estão fora do padrão.
   async function padronizarNomes() {
@@ -184,6 +208,38 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
         </div>
       )}
 
+      {/* Sugestões do recebimento — emissores de NF que ainda não são fornecedores. */}
+      {podeConfig && sugestoesNota.length > 0 && (
+        <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/70 dark:bg-indigo-900/10 p-3 space-y-2">
+          <button type="button" onClick={() => setVerSugestoes(v => !v)} className="w-full flex items-center justify-between gap-2 text-left">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 inline-flex items-center gap-1">
+              <FileText size={12} /> Emissores de NF sem cadastro ({sugestoesNota.length})
+            </span>
+            <ChevronRight size={14} className={`text-indigo-500 transition-transform ${verSugestoes ? "rotate-90" : ""}`} />
+          </button>
+          {verSugestoes && (
+            <>
+              <div className="flex flex-wrap gap-1.5">
+                {sugestoesNota.map((s, i) => (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => { setPrefill({ nome: s.nome, cnpj: s.cnpj }); setEditing("new"); }}
+                    title={s.cnpj ? `CNPJ ${s.cnpj} · ${s.count} nota(s) — clique pra cadastrar` : `${s.count} nota(s) — clique pra cadastrar`}
+                    className="inline-flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-indigo-200 dark:border-indigo-900/40 text-gray-800 dark:text-gray-100 hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+                  >
+                    <span className="truncate max-w-[180px]">{s.nome}</span>
+                    {s.cnpj && <span className="text-[10px] text-indigo-500">CNPJ</span>}
+                    <span className="text-[10px] text-gray-400">{s.count}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10px] text-indigo-600/70 dark:text-indigo-400/70">Clique num emissor pra abrir o cadastro já com nome e CNPJ preenchidos — depois use "Receita" pra completar os dados.</p>
+            </>
+          )}
+        </div>
+      )}
+
       {filtered.length === 0 ? (
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
           <div className="flex justify-center mb-3 text-gray-400"><Building2 size={40} /></div>
@@ -228,7 +284,8 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
           fornecedor={editing === "new" ? null : editing}
           fornecedores={fornecedores}
           restaurantId={restaurantId}
-          onClose={() => setEditing(null)}
+          prefill={editing === "new" ? prefill : null}
+          onClose={() => { setEditing(null); setPrefill(null); }}
         />
       )}
 
@@ -341,20 +398,21 @@ export function onlyDigits(s: string): string {
 // ── FornecedorModal ────────────────────────────────────────────────────────
 
 function FornecedorModal({
-  fornecedor, fornecedores, restaurantId, onClose,
+  fornecedor, fornecedores, restaurantId, prefill, onClose,
 }: {
   fornecedor: Fornecedor | null;
   fornecedores: Fornecedor[];
   restaurantId: string;
+  prefill?: { nome?: string; cnpj?: string } | null;
   onClose: () => void;
 }) {
   const { pessoa: me } = useAuth();
   const isNew = !fornecedor;
 
-  const [nome, setNome] = useState(fornecedor?.nome || "");
+  const [nome, setNome] = useState(fornecedor?.nome || prefill?.nome || "");
   const [whatsapp, setWhatsapp] = useState(fornecedor?.whatsapp || "");
   const [email, setEmail] = useState(fornecedor?.email || "");
-  const [cnpj, setCnpj] = useState(fornecedor?.cnpj || "");
+  const [cnpj, setCnpj] = useState(fornecedor?.cnpj || prefill?.cnpj || "");
   const [nomeVendedor, setNomeVendedor] = useState(fornecedor?.nomeVendedor || "");
   const [prazoEntrega, setPrazoEntrega] = useState(fornecedor?.prazoEntrega || "");
   const [formaPedido, setFormaPedido] = useState(fornecedor?.formaPedido || "");

@@ -29,6 +29,7 @@ export function ComprasPage() {
   const [contagens, setContagens] = useState<Contagem[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [emissoresNota, setEmissoresNota] = useState<{ emissor?: string; cnpjEmissor?: string }[]>([]);
 
   useEffect(() => {
     if (!rid) return;
@@ -71,6 +72,20 @@ export function ComprasPage() {
     });
     return () => unsub();
   }, [rid]);
+
+  // Emissores das notas de recebimento (só na aba Fornecedores e p/ quem configura)
+  // — pra sugerir pré-cadastro de fornecedor a partir de quem já emitiu NF.
+  useEffect(() => {
+    if (!rid || tab !== "fornecedores" || !podeConfig) return;
+    const q = query(collection(db, "recebimentos"), where("restaurantId", "==", rid));
+    const unsub = onSnapshot(q, (snap) => {
+      setEmissoresNota(snap.docs.map(d => {
+        const v = d.data() as { emissor?: string; cnpjEmissor?: string };
+        return { emissor: v.emissor, cnpjEmissor: v.cnpjEmissor };
+      }));
+    });
+    return () => unsub();
+  }, [rid, tab, podeConfig]);
 
   // Última contagem por insumo
   const ultimaContagem = useMemo(() => {
@@ -173,6 +188,7 @@ export function ComprasPage() {
           insumos={insumos}
           restaurantId={rid}
           podeConfig={podeConfig}
+          emissoresNota={emissoresNota}
         />
       )}
 
