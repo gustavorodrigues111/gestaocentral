@@ -52,6 +52,20 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
     return Object.entries(m).sort(([a], [b]) => a.localeCompare(b));
   }, [insumosFilt, agrupamento]);   // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Progresso por grupo (total × contados) — pro rail e cabeçalhos.
+  const grupoStats = useMemo(() => {
+    const m: Record<string, { total: number; feitos: number }> = {};
+    for (const i of insumos) {
+      const k = chaveDe(i);
+      const s = m[k] || { total: 0, feitos: 0 };
+      s.total++;
+      const d = drafts[i.id];
+      if (d && d.trim() !== "" && !isNaN(parseFloat(d))) s.feitos++;
+      m[k] = s;
+    }
+    return m;
+  }, [insumos, agrupamento, drafts]);   // eslint-disable-line react-hooks/exhaustive-deps
+
   function setDraft(id: string, v: string) {
     setDrafts(s => ({ ...s, [id]: v }));
   }
@@ -131,8 +145,8 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
         ))}
       </div>
 
-      {/* Chips (categorias OU fornecedores) — rola na horizontal no mobile */}
-      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+      {/* Chips — só no mobile (no desktop vira rail à esquerda) */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1 lg:hidden">
         <button type="button" onClick={() => setFiltroChip("todas")} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium ${filtroChip === "todas" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}>Todas</button>
         {chaves.map(c => (
           <button key={c} type="button" onClick={() => setFiltroChip(c)} className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium ${filtroChip === c ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}>{c}</button>
@@ -143,45 +157,65 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
         <div className="text-xs text-gray-500 italic">Sem permissão pra salvar contagens — você vê a interface mas não persiste.</div>
       )}
 
-      {/* Lista pra contar */}
-      <div className="space-y-3 pb-2">
-        {grupos.map(([grupo, list]) => (
-          <div key={grupo}>
-            <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 mb-1 px-1">
-              {grupo} <span className="text-gray-400 font-normal">({list.length})</span>
-            </h3>
-            <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl divide-y divide-gray-100 dark:divide-gray-800">
-              {list.map(i => {
-                const ult = ultimaContagem[i.id];
-                const draft = drafts[i.id] || "";
-                const min = i.minStock || 0;
-                const qtdAtual = parseFloat(draft);
-                const abaixoMin = !isNaN(qtdAtual) && min > 0 && qtdAtual < min;
-                const forn = fornecedorDe(i);
-                return (
-                  <div key={i.id} className="p-3">
-                    <div className="flex items-center gap-3">
-                      <div className="flex-1 min-w-0">
-                        <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{i.nome}</div>
-                        <div className="text-xs text-gray-500 mt-0.5 flex gap-2.5 flex-wrap">
-                          <span className="inline-flex items-center gap-1"><Ruler size={12} /> {i.unidade === "outro" ? (i.unidadeOutroLabel || "outro") : UNIDADES_LABEL[i.unidade]}</span>
-                          {agrupamento === "categoria" && forn !== "Sem fornecedor" && <span className="inline-flex items-center gap-1"><Users size={12} /> {forn}</span>}
-                          {ult && <span>última <strong>{ult.qty}</strong></span>}
-                          {abaixoMin && <span className="text-amber-600 dark:text-amber-400">abaixo do mín ({min})</span>}
-                        </div>
-                      </div>
-                      <Stepper value={draft} onChange={(v) => setDraft(i.id, v)} disabled={!podeConfig} destaque={!!draft && !abaixoMin} alerta={abaixoMin} />
-                    </div>
-                    {!!draft && (
-                      <input type="text" value={obsDrafts[i.id] || ""} onChange={(e) => setObs(i.id, e.target.value)} disabled={!podeConfig} placeholder="observação (opcional)"
-                        className="mt-2 w-full px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 disabled:opacity-60" />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
+      <div className="lg:flex lg:gap-4 lg:items-start">
+        {/* Rail de grupos — só desktop */}
+        <aside className="hidden lg:block lg:w-56 shrink-0 lg:sticky lg:top-2 self-start">
+          <div className="text-[10px] uppercase tracking-wider text-gray-400 font-semibold px-2 pb-1.5">{agrupamento === "categoria" ? "Categorias" : "Fornecedores"}</div>
+          <div className="flex flex-col gap-0.5">
+            <button type="button" onClick={() => setFiltroChip("todas")} className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm ${filtroChip === "todas" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 font-medium" : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50"}`}>Todas <span className="text-[11px] text-gray-400">{Object.values(grupoStats).reduce((s, g) => s + g.feitos, 0)}/{insumos.length}</span></button>
+            {chaves.map(c => {
+              const st = grupoStats[c] || { total: 0, feitos: 0 };
+              return (
+                <button key={c} type="button" onClick={() => setFiltroChip(c)} className={`flex items-center justify-between gap-2 px-3 py-2 rounded-lg text-sm text-left ${filtroChip === c ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300 font-medium" : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800/50"}`}>
+                  <span className="truncate">{c}</span>
+                  <span className={`text-[11px] shrink-0 ${st.feitos > 0 ? "text-emerald-600 dark:text-emerald-400" : "text-gray-400"}`}>{st.feitos}/{st.total}</span>
+                </button>
+              );
+            })}
           </div>
-        ))}
+        </aside>
+
+        {/* Itens — grade 2 colunas no desktop, 1 no mobile */}
+        <div className="flex-1 min-w-0 space-y-4 pb-2">
+          {grupos.map(([grupo, list]) => (
+            <div key={grupo}>
+              <div className="flex items-center justify-between mb-1.5 px-1">
+                <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400">{grupo}</h3>
+                <span className="text-[11px] text-gray-400">{(grupoStats[grupo]?.feitos || 0)}/{list.length} contados</span>
+              </div>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">
+                {list.map(i => {
+                  const ult = ultimaContagem[i.id];
+                  const draft = drafts[i.id] || "";
+                  const min = i.minStock || 0;
+                  const qtdAtual = parseFloat(draft);
+                  const abaixoMin = !isNaN(qtdAtual) && min > 0 && qtdAtual < min;
+                  const forn = fornecedorDe(i);
+                  return (
+                    <div key={i.id} className={`bg-white dark:bg-gray-900 border rounded-xl p-3 ${draft ? "border-emerald-300 dark:border-emerald-800" : "border-gray-200 dark:border-gray-800"}`}>
+                      <div className="flex items-center gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{i.nome}</div>
+                          <div className="text-xs text-gray-500 mt-0.5 flex gap-2.5 flex-wrap">
+                            <span className="inline-flex items-center gap-1"><Ruler size={12} /> {i.unidade === "outro" ? (i.unidadeOutroLabel || "outro") : UNIDADES_LABEL[i.unidade]}</span>
+                            {agrupamento === "categoria" && forn !== "Sem fornecedor" && <span className="inline-flex items-center gap-1 truncate"><Users size={12} /> {forn}</span>}
+                            {ult && <span>última <strong>{ult.qty}</strong></span>}
+                            {abaixoMin && <span className="text-amber-600 dark:text-amber-400">abaixo do mín ({min})</span>}
+                          </div>
+                        </div>
+                        <Stepper value={draft} onChange={(v) => setDraft(i.id, v)} disabled={!podeConfig} destaque={!!draft && !abaixoMin} alerta={abaixoMin} />
+                      </div>
+                      {!!draft && (
+                        <input type="text" value={obsDrafts[i.id] || ""} onChange={(e) => setObs(i.id, e.target.value)} disabled={!podeConfig} placeholder="observação (opcional)"
+                          className="mt-2 w-full px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 disabled:opacity-60" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
       {err && <div className="text-sm text-rose-600">{err}</div>}
