@@ -94,6 +94,10 @@ const SEED: Seed[] = [
 
   // ── Escala ──
   { modulo: "escala", resp: "ia", titulo: "Solicitação de ajuste de escala: notificar o empregado quando aprovado/aplicado" },
+  { modulo: "escala", resp: "ia", titulo: "Férias: 'Marcar em lote' ganhou opt-in 'Registrar na Sólides' (férias/falta just.) — lança o período inteiro como afastamento (motivo casado por descrição, dia inteiro), id Sólides via CPF no roster.", descricao: "Opção A do plano de afastamentos. Default OFF. Roda a Sólides ANTES de pintar/fechar. Pendente: badge 'Sólides ✓' no dia + gravar auditoria do registro (pra Fechamento reconhecer, como o PTRP faz via pontoAuditoria)." },
+
+  // ── PTRP / afastamentos ──
+  { modulo: "ptrp", resp: "ia", titulo: "Modal de Ação separado em Abono / Atestado / Outro motivo (Fase 1). Falta: anexar o atestado NA Sólides (base64 via /adjustment/register/1.1) e o afastamento eSocial longo.", descricao: "Fase 1 no ar (pré-seleção por descrição). BLOQUEIO do eSocial oficial: PUT /unified/time-off-work/register exige hashIdColaborador que a API oficial NÃO expõe (só hashIdEmpresa). Afastamento longo (raro): rota legada timeoffwork-web (tokens 24h, id numérico) OU manual na Sólides. Ver memória reference-solides-afastamento-e-conector." },
 
   // ── Análise de ponto ──
   { modulo: "analise-ponto", resp: "ia", titulo: "Fechamento de ponto cockpit — Fase 2 (aba Inconsistências) e Fase 3 (correção in-app pelo empregado)" },
