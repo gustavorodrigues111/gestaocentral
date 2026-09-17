@@ -55,7 +55,7 @@ type WValue = {
   metadata?: { phone_number_id?: string; display_phone_number?: string };
   contacts?: Array<{ profile?: { name?: string }; wa_id?: string }>;
   messages?: Array<{ from?: string; id?: string; timestamp?: string; type?: string; text?: { body?: string }; image?: { id?: string; mime_type?: string; caption?: string }; document?: { caption?: string; filename?: string }; audio?: { id?: string; mime_type?: string }; button?: { text?: string }; interactive?: { button_reply?: { title?: string }; list_reply?: { title?: string } } }>;
-  statuses?: Array<{ id?: string; status?: string; timestamp?: string; recipient_id?: string }>;
+  statuses?: Array<{ id?: string; status?: string; timestamp?: string; recipient_id?: string; errors?: Array<{ code?: number; title?: string; message?: string; error_data?: { details?: string } }> }>;
 };
 
 async function processar(body: WebhookBody | null): Promise<void> {
@@ -92,9 +92,11 @@ async function processar(body: WebhookBody | null): Promise<void> {
   for (const s of value.statuses || []) {
     if (!s.id) continue;
     try {
+      const err0 = (s.errors && s.errors[0]) || null;   // motivo da FALHA (Meta): código + título
       await firestoreCriar("whatsappStatus", s.id + "_" + (s.status || ""), {
         messageId: s.id, status: s.status || null, recipiente: s.recipient_id || null,
         em: s.timestamp ? new Date(Number(s.timestamp) * 1000).toISOString() : new Date().toISOString(),
+        ...(err0 ? { erroCodigo: err0.code ?? null, erroTitulo: err0.title || err0.message || null, erroDetalhe: err0.error_data?.details || null } : {}),
       });
     } catch { /* status é secundário */ }
   }
