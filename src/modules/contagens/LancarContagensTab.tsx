@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Package, Search, Ruler, Save } from "lucide-react";
+import { Package, Search, Ruler, Save, Minus, Plus, Users, LayoutGrid } from "lucide-react";
 import { addDoc, collection } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -20,7 +20,8 @@ type Props = {
 export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, podeConfig }: Props) {
   const { pessoa: me } = useAuth();
   const [data, setData] = useState(todayYmd());
-  const [filtroCat, setFiltroCat] = useState<string>("todas");
+  const [agrupamento, setAgrupamento] = useState<"categoria" | "fornecedor">("categoria");
+  const [filtroChip, setFiltroChip] = useState<string>("todas");
   const [search, setSearch] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({}); // insumoId → string
   const [obsDrafts, setObsDrafts] = useState<Record<string, string>>({});
@@ -28,33 +29,28 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
   const [err, setErr] = useState("");
   const [okMsg, setOkMsg] = useState("");
 
-  const categorias = useMemo(() => {
-    const s = new Set<string>();
-    insumos.forEach(i => s.add(i.categoria || "(sem categoria)"));
-    return Array.from(s).sort();
-  }, [insumos]);
+  // Fornecedor PRIORITÁRIO do insumo (nome), pra agrupar "por fornecedor".
+  const fornecedorDe = (i: Insumo): string => {
+    const arr = i.fornecedores || [];
+    const pref = arr.find(x => x.fornecedorId && x.fornecedorId === i.fornecedorPreferredId);
+    return ((pref?.nome || arr[0]?.nome || "").trim()) || "Sem fornecedor";
+  };
+  // Chave do agrupamento atual (categoria ou fornecedor).
+  const chaveDe = (i: Insumo): string => agrupamento === "categoria" ? (i.categoria || "(sem categoria)") : fornecedorDe(i);
 
-  const insumosFilt = useMemo(() => {
-    return insumos.filter(i => {
-      if (filtroCat !== "todas" && (i.categoria || "(sem categoria)") !== filtroCat) return false;
-      if (search.trim()) {
-        const s = search.toLowerCase();
-        if (!i.nome.toLowerCase().includes(s)) return false;
-      }
-      return true;
-    });
-  }, [insumos, filtroCat, search]);
+  const chaves = useMemo(() => Array.from(new Set(insumos.map(chaveDe))).sort((a, b) => a.localeCompare(b)), [insumos, agrupamento]);   // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Agrupado por categoria
-  const insumosPorCat = useMemo(() => {
+  const insumosFilt = useMemo(() => insumos.filter(i => {
+    if (filtroChip !== "todas" && chaveDe(i) !== filtroChip) return false;
+    if (search.trim() && !i.nome.toLowerCase().includes(search.toLowerCase())) return false;
+    return true;
+  }), [insumos, filtroChip, search, agrupamento]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  const grupos = useMemo(() => {
     const m: Record<string, Insumo[]> = {};
-    for (const i of insumosFilt) {
-      const c = i.categoria || "(sem categoria)";
-      if (!m[c]) m[c] = [];
-      m[c].push(i);
-    }
+    for (const i of insumosFilt) { const k = chaveDe(i); (m[k] = m[k] || []).push(i); }
     return Object.entries(m).sort(([a], [b]) => a.localeCompare(b));
-  }, [insumosFilt]);
+  }, [insumosFilt, agrupamento]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   function setDraft(id: string, v: string) {
     setDrafts(s => ({ ...s, [id]: v }));
@@ -119,61 +115,40 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
 
   return (
     <div className="space-y-3">
-      {/* Topo: data + filtros */}
-      <div className="flex items-end gap-3 flex-wrap">
-        <Input
-          label="Data da contagem"
-          type="date"
-          value={data}
-          onChange={(e) => setData(e.target.value)}
-        />
-        <Input
-          label={<span className="inline-flex items-center gap-1"><Search size={12} /> Buscar</span>}
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="filtra por nome"
-          className="flex-1 min-w-[200px]"
-        />
+      {/* Topo: data + busca (empilha no mobile) */}
+      <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] gap-2 items-end">
+        <Input label="Data" type="date" value={data} onChange={(e) => setData(e.target.value)} />
+        <Input label={<span className="inline-flex items-center gap-1"><Search size={12} /> Buscar</span>} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="filtra por nome" />
       </div>
 
-      {/* Filtro de categoria */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <span className="text-[10px] uppercase tracking-wider text-gray-500 font-semibold">Categoria:</span>
-        <button
-          type="button"
-          onClick={() => setFiltroCat("todas")}
-          className={`px-3 py-1 rounded-full text-xs font-medium ${
-            filtroCat === "todas"
-              ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
-              : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
-          }`}
-        >Todas</button>
-        {categorias.map(c => (
-          <button
-            key={c}
-            type="button"
-            onClick={() => setFiltroCat(c)}
-            className={`px-3 py-1 rounded-full text-xs font-medium ${
-              filtroCat === c
-                ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"
-                : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"
-            }`}
-          >{c}</button>
+      {/* Toggle do agrupamento: por categoria OU por fornecedor prioritário */}
+      <div className="flex bg-gray-100 dark:bg-gray-800/60 rounded-xl p-1">
+        {([["categoria", "Por categoria", LayoutGrid], ["fornecedor", "Por fornecedor", Users]] as const).map(([k, label, Ico]) => (
+          <button key={k} type="button" onClick={() => { setAgrupamento(k); setFiltroChip("todas"); }}
+            className={`flex-1 inline-flex items-center justify-center gap-1.5 py-2 rounded-lg text-sm font-medium transition-colors ${agrupamento === k ? "bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-300 shadow-sm" : "text-gray-500 dark:text-gray-400"}`}>
+            <Ico size={15} /> {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Chips (categorias OU fornecedores) — rola na horizontal no mobile */}
+      <div className="flex gap-2 overflow-x-auto pb-1 -mx-1 px-1">
+        <button type="button" onClick={() => setFiltroChip("todas")} className={`shrink-0 px-3 py-1.5 rounded-full text-xs font-medium ${filtroChip === "todas" ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}>Todas</button>
+        {chaves.map(c => (
+          <button key={c} type="button" onClick={() => setFiltroChip(c)} className={`shrink-0 whitespace-nowrap px-3 py-1.5 rounded-full text-xs font-medium ${filtroChip === c ? "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400"}`}>{c}</button>
         ))}
       </div>
 
       {!podeConfig && (
-        <div className="text-xs text-gray-500 italic">
-          Sem permissão pra salvar contagens. Você pode visualizar a interface mas não persistir.
-        </div>
+        <div className="text-xs text-gray-500 italic">Sem permissão pra salvar contagens — você vê a interface mas não persiste.</div>
       )}
 
-      {/* Lista pra digitar */}
-      <div className="space-y-3">
-        {insumosPorCat.map(([cat, list]) => (
-          <div key={cat}>
-            <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 mb-1">
-              {cat} <span className="text-gray-400 font-normal">({list.length})</span>
+      {/* Lista pra contar */}
+      <div className="space-y-3 pb-2">
+        {grupos.map(([grupo, list]) => (
+          <div key={grupo}>
+            <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 mb-1 px-1">
+              {grupo} <span className="text-gray-400 font-normal">({list.length})</span>
             </h3>
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl divide-y divide-gray-100 dark:divide-gray-800">
               {list.map(i => {
@@ -182,44 +157,25 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
                 const min = i.minStock || 0;
                 const qtdAtual = parseFloat(draft);
                 const abaixoMin = !isNaN(qtdAtual) && min > 0 && qtdAtual < min;
+                const forn = fornecedorDe(i);
                 return (
-                  <div key={i.id} className="p-3 flex items-start gap-3 flex-wrap">
-                    <div className="flex-1 min-w-[200px]">
-                      <div className="font-medium text-gray-900 dark:text-gray-100">{i.nome}</div>
-                      <div className="text-xs text-gray-500 mt-0.5 flex gap-3 flex-wrap">
-                        <span className="inline-flex items-center gap-1"><Ruler size={12} /> {i.unidade === "outro" ? (i.unidadeOutroLabel || "outro") : UNIDADES_LABEL[i.unidade]}</span>
-                        {i.minStock != null && i.minStock > 0 && <span>min: {i.minStock}</span>}
-                        {ult && (
-                          <span>última: <strong>{ult.qty}</strong> em {new Date(ult.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
-                        )}
+                  <div key={i.id} className="p-3">
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-gray-900 dark:text-gray-100 truncate">{i.nome}</div>
+                        <div className="text-xs text-gray-500 mt-0.5 flex gap-2.5 flex-wrap">
+                          <span className="inline-flex items-center gap-1"><Ruler size={12} /> {i.unidade === "outro" ? (i.unidadeOutroLabel || "outro") : UNIDADES_LABEL[i.unidade]}</span>
+                          {agrupamento === "categoria" && forn !== "Sem fornecedor" && <span className="inline-flex items-center gap-1"><Users size={12} /> {forn}</span>}
+                          {ult && <span>última <strong>{ult.qty}</strong></span>}
+                          {abaixoMin && <span className="text-amber-600 dark:text-amber-400">abaixo do mín ({min})</span>}
+                        </div>
                       </div>
+                      <Stepper value={draft} onChange={(v) => setDraft(i.id, v)} disabled={!podeConfig} destaque={!!draft && !abaixoMin} alerta={abaixoMin} />
                     </div>
-                    <div className="flex items-start gap-2 flex-wrap">
-                      <input
-                        type="number"
-                        step="any"
-                        min={0}
-                        value={draft}
-                        onChange={(e) => setDraft(i.id, e.target.value)}
-                        disabled={!podeConfig}
-                        placeholder="0"
-                        className={`px-3 py-2 text-sm rounded-lg border w-24 text-right font-mono ${
-                          abaixoMin
-                            ? "border-amber-400 bg-amber-50 dark:bg-amber-900/20"
-                            : draft
-                              ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10"
-                              : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
-                        } disabled:opacity-60`}
-                      />
-                      <input
-                        type="text"
-                        value={obsDrafts[i.id] || ""}
-                        onChange={(e) => setObs(i.id, e.target.value)}
-                        disabled={!podeConfig || !draft}
-                        placeholder="obs (opc.)"
-                        className="px-2 py-2 text-xs rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 w-32 disabled:opacity-60"
-                      />
-                    </div>
+                    {!!draft && (
+                      <input type="text" value={obsDrafts[i.id] || ""} onChange={(e) => setObs(i.id, e.target.value)} disabled={!podeConfig} placeholder="observação (opcional)"
+                        className="mt-2 w-full px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 disabled:opacity-60" />
+                    )}
                   </div>
                 );
               })}
@@ -247,6 +203,26 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// Stepper mobile-first: − [qtd] +. O número é editável (aceita decimal p/ kg).
+function Stepper({ value, onChange, disabled, destaque, alerta }: { value: string; onChange: (v: string) => void; disabled?: boolean; destaque?: boolean; alerta?: boolean }) {
+  const num = parseFloat(value);
+  const passo = (d: number) => onChange(String(Math.max(0, (isNaN(num) ? 0 : num) + d)));
+  const btn = "w-10 h-10 rounded-lg inline-flex items-center justify-center select-none disabled:opacity-40 shrink-0 active:scale-95 transition-transform";
+  const campo = alerta
+    ? "border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300"
+    : destaque
+      ? "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10 text-emerald-700 dark:text-emerald-300"
+      : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900";
+  return (
+    <div className="flex items-center gap-1.5 shrink-0">
+      <button type="button" disabled={disabled} onClick={() => passo(-1)} aria-label="Diminuir" className={`${btn} border border-gray-300 dark:border-gray-700 text-gray-500`}><Minus size={17} /></button>
+      <input type="number" step="any" min={0} value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} placeholder="0"
+        className={`w-16 h-10 text-center text-base font-medium rounded-lg border tabular-nums disabled:opacity-60 ${campo}`} />
+      <button type="button" disabled={disabled} onClick={() => passo(1)} aria-label="Aumentar" className={`${btn} border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300`}><Plus size={17} /></button>
     </div>
   );
 }
