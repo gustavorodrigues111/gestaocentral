@@ -1,5 +1,6 @@
 import { useMemo, useState, type ReactNode } from "react";
-import { Building2, Smartphone, Mail, MessageSquare, Ban, Check, GitMerge, Sparkles, ChevronRight, Pencil, Clock, Package, FileText, User } from "lucide-react";
+import { Building2, Smartphone, Mail, MessageSquare, Ban, Check, GitMerge, Sparkles, ChevronRight, Pencil, Clock, Package, FileText, User, Search } from "lucide-react";
+import { authHeader } from "../../core/firebase/idToken";
 import { addDoc, collection, deleteDoc, doc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -362,6 +363,30 @@ function FornecedorModal({
   const [ativo, setAtivo] = useState(fornecedor?.ativo ?? true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [buscandoCnpj, setBuscandoCnpj] = useState(false);
+  const [cnpjMsg, setCnpjMsg] = useState("");
+
+  // Consulta cadastral na Receita (BrasilAPI via /api/cnpj) e pré-preenche o que
+  // estiver VAZIO — nunca sobrescreve o que você já digitou.
+  async function buscarCnpj() {
+    const digits = cnpj.replace(/\D/g, "");
+    if (digits.length !== 14) { setCnpjMsg("Digite os 14 dígitos do CNPJ."); return; }
+    setBuscandoCnpj(true); setCnpjMsg("");
+    try {
+      const r = await fetch(`/api/cnpj?cnpj=${digits}`, { headers: await authHeader() });
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok) { setCnpjMsg(j.error || "Falha na consulta."); return; }
+      if (!nome.trim()) setNome(j.nomeFantasia || j.razaoSocial || "");
+      if (!email.trim() && j.email) setEmail(j.email);
+      if (!whatsapp.trim() && j.telefone) setWhatsapp(j.telefone);
+      if (!observacoes.trim()) {
+        const partes = [j.razaoSocial, j.endereco, j.situacao ? `situação: ${j.situacao}` : "", j.atividade].filter(Boolean);
+        if (partes.length) setObservacoes(partes.join(" · "));
+      }
+      setCnpjMsg(`✓ ${j.razaoSocial || j.nomeFantasia || "encontrado"}${j.situacao ? ` · ${j.situacao}` : ""}`);
+    } catch { setCnpjMsg("Erro ao consultar a Receita."); }
+    finally { setBuscandoCnpj(false); }
+  }
 
   async function salvar() {
     if (!nome.trim()) { setErr("Nome obrigatório"); return; }
@@ -430,7 +455,15 @@ function FornecedorModal({
           onChange={(e) => setEmail(e.target.value)}
         />
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Input label="CNPJ" value={cnpj} onChange={(e) => setCnpj(e.target.value)} placeholder="00.000.000/0000-00" />
+          <div>
+            <div className="flex items-end gap-2">
+              <Input label="CNPJ" value={cnpj} onChange={(e) => { setCnpj(e.target.value); setCnpjMsg(""); }} placeholder="00.000.000/0000-00" className="flex-1" />
+              <Button type="button" variant="secondary" onClick={() => void buscarCnpj()} disabled={buscandoCnpj || cnpj.replace(/\D/g, "").length !== 14} title="Buscar dados na Receita Federal">
+                {buscandoCnpj ? "Buscando…" : <span className="inline-flex items-center gap-1.5"><Search size={14} /> Receita</span>}
+              </Button>
+            </div>
+            {cnpjMsg && <p className="text-[11px] mt-1 text-gray-500 dark:text-gray-400">{cnpjMsg}</p>}
+          </div>
           <Input label="Vendedor (contato)" value={nomeVendedor} onChange={(e) => setNomeVendedor(e.target.value)} placeholder="ex: João" />
           <Input label="Prazo de entrega" value={prazoEntrega} onChange={(e) => setPrazoEntrega(e.target.value)} placeholder="ex: 2 dias úteis" />
           <Input label="Como fazer o pedido" value={formaPedido} onChange={(e) => setFormaPedido(e.target.value)} placeholder="ex: WhatsApp, e-mail, site" />
