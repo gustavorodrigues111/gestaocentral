@@ -22,6 +22,10 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Fornecedor | "new" | null>(null);
   const [ocupado, setOcupado] = useState(false);
+  const [selMode, setSelMode] = useState(false);                         // modo "mesclar manual"
+  const [selIds, setSelIds] = useState<Set<string>>(new Set());          // fornecedores marcados
+  const [mergeAlvo, setMergeAlvo] = useState<Fornecedor[] | null>(null);  // selecionados no modal de escolha do principal
+  const [sobrevSel, setSobrevSel] = useState<string>("");                // id do fornecedor que sobrevive
   const abrirWhatsapp = useAbrirWhatsapp();
 
   // Clusters de possíveis DUPLICADOS: mesmo nome normalizado (caixa/acento) OU
@@ -61,12 +65,13 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
 
   // Mescla um cluster num sobrevivente (mais completo). Repointa os insumos
   // vinculados (fornecedorPreferredId + fornecedores[]) e exclui os duplicados.
-  async function mesclarCluster(cluster: Fornecedor[]) {
+  async function mesclarCluster(cluster: Fornecedor[], sobrevId?: string): Promise<boolean> {
     const score = (f: Fornecedor) => (f.whatsapp ? 1 : 0) + (f.email ? 1 : 0) + (f.observacoes ? 1 : 0) + (f.ativo ? 1 : 0);
-    const sobrev = [...cluster].sort((a, b) => score(b) - score(a))[0];
+    // Sobrevivente = o escolhido (merge manual) OU o mais completo (auto).
+    const sobrev = (sobrevId && cluster.find(f => f.id === sobrevId)) || [...cluster].sort((a, b) => score(b) - score(a))[0];
     const dupes = cluster.filter(f => f.id !== sobrev.id);
     const nomeFinal = tituloCaso(sobrev.nome);
-    if (!confirm(`Mesclar ${cluster.length} fornecedores em "${nomeFinal}"?\n\nOs insumos vinculados passam pra ele e os outros ${dupes.length} são excluídos. Pedidos antigos preservam o nome que tinham.`)) return;
+    if (!confirm(`Mesclar ${cluster.length} fornecedores em "${nomeFinal}"?\n\nOs insumos vinculados passam pra ele e os outros ${dupes.length} são excluídos. Pedidos antigos preservam o nome que tinham.`)) return false;
     setOcupado(true);
     try {
       const dupeIds = new Set(dupes.map(d => d.id));
@@ -86,8 +91,28 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
       }
       for (const d of dupes) batch.delete(doc(db, "fornecedores", d.id));
       await batch.commit();
-    } catch (e) { alert("Erro ao mesclar: " + (e instanceof Error ? e.message : "?")); }
+      return true;
+    } catch (e) { alert("Erro ao mesclar: " + (e instanceof Error ? e.message : "?")); return false; }
     finally { setOcupado(false); }
+  }
+
+  // Merge MANUAL: abre o modal pra escolher qual dos marcados é o principal.
+  function abrirMergeManual() {
+    const sel = fornecedores.filter(f => selIds.has(f.id));
+    if (sel.length < 2) return;
+    const score = (f: Fornecedor) => (f.whatsapp ? 1 : 0) + (f.email ? 1 : 0) + (f.observacoes ? 1 : 0) + (f.ativo ? 1 : 0) + f.nome.length * 0.001;
+    setSobrevSel([...sel].sort((a, b) => score(b) - score(a))[0].id);   // sugere o mais completo/longo
+    setMergeAlvo(sel);
+  }
+  async function confirmarMergeManual() {
+    if (!mergeAlvo) return;
+    const ok = await mesclarCluster(mergeAlvo, sobrevSel);
+    setMergeAlvo(null);
+    if (ok) { setSelIds(new Set()); setSelMode(false); }
+  }
+
+  function toggleSel(id: string) {
+    setSelIds(prev => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   }
 
   const filtered = useMemo(() => {
@@ -118,13 +143,28 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
           onChange={(e) => setSearch(e.target.value)}
           className="flex-1 max-w-md"
         />
-        <div className="flex items-center gap-2">
-          {podeConfig && foraPadrao.length > 0 && (
-            <Button variant="secondary" onClick={() => void padronizarNomes()} disabled={ocupado} title="Corrige a caixa dos nomes (Primeira Maiúscula, resto minúsculo)">
-              <span className="inline-flex items-center gap-1.5"><Sparkles size={14} /> Padronizar nomes ({foraPadrao.length})</span>
-            </Button>
+        <div className="flex items-center gap-2 flex-wrap">
+          {podeConfig && selMode ? (
+            <>
+              <span className="text-xs text-gray-500 dark:text-gray-400">{selIds.size} marcado(s)</span>
+              <Button onClick={abrirMergeManual} disabled={selIds.size < 2 || ocupado} title="Mesclar os fornecedores marcados">
+                <span className="inline-flex items-center gap-1.5"><GitMerge size={14} /> Mesclar ({selIds.size})</span>
+              </Button>
+              <Button variant="secondary" onClick={() => { setSelMode(false); setSelIds(new Set()); }}>Cancelar</Button>
+            </>
+          ) : podeConfig && (
+            <>
+              {foraPadrao.length > 0 && (
+                <Button variant="secondary" onClick={() => void padronizarNomes()} disabled={ocupado} title="Corrige a caixa dos nomes (Primeira Maiúscula, resto minúsculo)">
+                  <span className="inline-flex items-center gap-1.5"><Sparkles size={14} /> Padronizar nomes ({foraPadrao.length})</span>
+                </Button>
+              )}
+              <Button variant="secondary" onClick={() => { setSelMode(true); setSelIds(new Set()); }} title="Marcar fornecedores manualmente pra mesclar (mesmo que estejam em grupos diferentes)">
+                <span className="inline-flex items-center gap-1.5"><GitMerge size={14} /> Mesclar manual</span>
+              </Button>
+              <Button onClick={() => setEditing("new")}>+ Novo fornecedor</Button>
+            </>
           )}
-          {podeConfig && <Button onClick={() => setEditing("new")}>+ Novo fornecedor</Button>}
         </div>
       </div>
 
@@ -154,9 +194,11 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
           {filtered.map(f => (
             <div
               key={f.id}
-              className={`bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 ${!f.ativo ? "opacity-60" : ""}`}
+              onClick={selMode ? () => toggleSel(f.id) : undefined}
+              className={`bg-white dark:bg-gray-900 border rounded-xl p-3 ${!f.ativo ? "opacity-60" : ""} ${selMode ? "cursor-pointer" : ""} ${selIds.has(f.id) ? "border-rose-400 ring-2 ring-rose-300 dark:ring-rose-700" : "border-gray-200 dark:border-gray-800"}`}
             >
               <div className="flex items-start justify-between gap-3 flex-wrap">
+                {selMode && <input type="checkbox" checked={selIds.has(f.id)} onChange={() => toggleSel(f.id)} onClick={(e) => e.stopPropagation()} className="mt-1 shrink-0 w-4 h-4 accent-rose-600" />}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 flex-wrap">
                     <h3 className="font-bold text-gray-900 dark:text-gray-100">{f.nome}</h3>
@@ -177,7 +219,7 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
                   )}
                   {f.observacoes && <div className="text-xs text-gray-700 dark:text-gray-300 italic mt-1">{f.observacoes}</div>}
                 </div>
-                {podeConfig && (
+                {podeConfig && !selMode && (
                   <div className="flex gap-1">
                     {f.whatsapp && (
                       <Button
@@ -204,6 +246,38 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
           restaurantId={restaurantId}
           onClose={() => setEditing(null)}
         />
+      )}
+
+      {/* Merge manual: escolher qual dos marcados é o PRINCIPAL (nome/registro que fica). */}
+      {mergeAlvo && (
+        <Modal title={<span className="inline-flex items-center gap-2"><GitMerge size={18} /> Mesclar {mergeAlvo.length} fornecedores</span>} onClose={() => setMergeAlvo(null)} maxWidth="max-w-lg">
+          <div className="space-y-3">
+            <p className="text-sm text-gray-600 dark:text-gray-300">Escolha qual <b>fica como principal</b> — os outros {mergeAlvo.length - 1} são excluídos e os insumos vinculados passam pro escolhido (pedidos antigos preservam o nome que tinham).</p>
+            <div className="space-y-1.5 max-h-[50vh] overflow-y-auto">
+              {mergeAlvo.map(f => (
+                <label key={f.id} className={`flex items-start gap-2 p-2.5 rounded-lg border cursor-pointer ${sobrevSel === f.id ? "border-rose-400 bg-rose-50 dark:bg-rose-950/20" : "border-gray-200 dark:border-gray-700"}`}>
+                  <input type="radio" name="sobrev" checked={sobrevSel === f.id} onChange={() => setSobrevSel(f.id)} className="mt-1 accent-rose-600" />
+                  <div className="min-w-0">
+                    <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">{f.nome}</div>
+                    <div className="text-[11px] text-gray-500 dark:text-gray-400 flex gap-2 flex-wrap mt-0.5">
+                      {f.cnpj && <span>CNPJ {f.cnpj}</span>}
+                      {f.whatsapp && <span>{f.whatsapp}</span>}
+                      {f.email && <span>{f.email}</span>}
+                      {f.nomeVendedor && <span>👤 {f.nomeVendedor}</span>}
+                      {!f.ativo && <span className="uppercase">inativo</span>}
+                    </div>
+                  </div>
+                </label>
+              ))}
+            </div>
+            <div className="flex justify-end gap-2 pt-1">
+              <Button variant="secondary" onClick={() => setMergeAlvo(null)}>Cancelar</Button>
+              <Button onClick={() => void confirmarMergeManual()} disabled={ocupado || !sobrevSel}>
+                <span className="inline-flex items-center gap-1.5"><GitMerge size={14} /> Mesclar</span>
+              </Button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );
