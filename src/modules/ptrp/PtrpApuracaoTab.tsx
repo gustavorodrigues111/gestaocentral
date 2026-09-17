@@ -1256,6 +1256,7 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
   const [motivos, setMotivos] = useState<MotivoAfastamento[]>([]);
   const [mapa, setMapa] = useState<Record<string, { status?: string; exibir?: boolean; descricao?: string }>>({});
   const [motivoId, setMotivoId] = useState<number | null>(null);
+  const [motivoPreset, setMotivoPreset] = useState<"abono" | "atestado" | "outro" | null>(null);
   const [statusEscala, setStatusEscala] = useState<ScheduleStatus>("falta_j");
   const [diaInteiro, setDiaInteiro] = useState(true);
   const [ain, setAin] = useState("08:00");
@@ -1263,12 +1264,39 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
   const [buscaMotivo, setBuscaMotivo] = useState("");
   useEffect(() => { fetchMotivosAfastamento(empresaKey).then(setMotivos).catch(() => {}); }, [empresaKey]);
   useEffect(() => onSnapshot(doc(db, "ptrpMotivosMapa", empresaKey), d => setMapa((d.exists() ? (d.data() as { mapa?: Record<string, { status?: string; exibir?: boolean; descricao?: string }> }).mapa : {}) || {})), [empresaKey]);
+  // Família de motivos por caminho (casada por DESCRIÇÃO — os ids variam entre as
+  // empresas, então não dá pra fixar id). Usada pra pré-selecionar e subir os
+  // relevantes ao topo, sem esconder os demais.
+  const reFamilia = (p: "abono" | "atestado" | "outro" | null): RegExp =>
+    p === "atestado" ? /atestad|afastament|inss|licen|acidente|óbito|obito|matern|patern/i
+      : p === "abono" ? /abono|falta justif|intervalo/i : /.^/;
+  const familia = useMemo(() => {
+    if (!motivoPreset || motivoPreset === "outro") return null;
+    const re = reFamilia(motivoPreset);
+    return new Set(motivos.filter(m => re.test(m.description)).map(m => m.id));
+  }, [motivoPreset, motivos]);
   const motivosOrd = useMemo(() => {
     const q = buscaMotivo.trim().toLowerCase();
     return motivos.filter(m => !q || m.description.toLowerCase().includes(q))
-      .sort((a, b) => { const pa = mapa[String(a.id)]?.exibir ? 0 : 1, pb = mapa[String(b.id)]?.exibir ? 0 : 1; return pa !== pb ? pa - pb : a.description.localeCompare(b.description); });
-  }, [motivos, mapa, buscaMotivo]);
+      .sort((a, b) => {
+        const fa = familia ? (familia.has(a.id) ? 0 : 1) : 0, fb = familia ? (familia.has(b.id) ? 0 : 1) : 0;
+        if (fa !== fb) return fa - fb;
+        const pa = mapa[String(a.id)]?.exibir ? 0 : 1, pb = mapa[String(b.id)]?.exibir ? 0 : 1;
+        return pa !== pb ? pa - pb : a.description.localeCompare(b.description);
+      });
+  }, [motivos, mapa, buscaMotivo, familia]);
   const escolherMotivo = (id: number) => { setMotivoId(id); const st = mapa[String(id)]?.status; if (st) setStatusEscala(st as ScheduleStatus); };
+  // Motivo-padrão do caminho (por descrição): Atestado→"ATESTADO MÉDICO", Abono→"ABONO".
+  const motivoPadrao = (p: "abono" | "atestado" | "outro" | null): number | null => {
+    if (p === "atestado") return (motivos.find(m => /atestado m/i.test(m.description)) || motivos.find(m => /atestad/i.test(m.description)))?.id ?? null;
+    if (p === "abono") return (motivos.find(m => /^abono$/i.test(m.description.trim())) || motivos.find(m => /abono/i.test(m.description)))?.id ?? null;
+    return null;
+  };
+  const abrirCaminhoMotivo = (p: "abono" | "atestado" | "outro") => {
+    setMotivoPreset(p); setCaminho("motivo"); setBuscaMotivo("");
+    const def = motivoPadrao(p);
+    if (def) escolherMotivo(def); else setMotivoId(null);
+  };
   const togglePreferido = (id: number) => { const cur = mapa[String(id)] || {}; const m = motivos.find(x => x.id === id); void setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(id)]: { ...cur, exibir: !cur.exibir, descricao: m?.description || cur.descricao } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {}); };
 
   // ── Evidência opcional (respaldo jurídico do tratamento) ────────────────────
@@ -1350,18 +1378,27 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
       <div className="space-y-3">
         <div className="text-[11px] text-gray-500">A batida original é imutável — o tratamento entra como lançamento adicional (Portaria 671) e sempre reflete na Sólides.</div>
 
-        {!caminho && (
+        {!caminho && (<>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <button onClick={() => setCaminho("marcacoes")} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10">
               <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Pencil size={14}/> Editar marcações</div>
               <div className="text-[11px] text-gray-500 mt-0.5">Incluir uma esquecida, excluir uma duplicada ou corrigir uma errada.</div>
             </button>
-            <button onClick={() => setCaminho("motivo")} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10">
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Umbrella size={14}/> Lançar motivo</div>
-              <div className="text-[11px] text-gray-500 mt-0.5">Falta, atestado, folga, férias ou abono — na Sólides e na escala.</div>
+            <button onClick={() => abrirCaminhoMotivo("abono")} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10">
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Umbrella size={14}/> Abono / justificativa</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">Abona falta ou intervalo (dia inteiro ou parcial) — na Sólides e na escala.</div>
+            </button>
+            <button onClick={() => abrirCaminhoMotivo("atestado")} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10">
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Umbrella size={14}/> Atestado / afastamento médico</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">Atestado médico, acompanhamento, INSS, licença — anexe o atestado.</div>
+            </button>
+            <button onClick={() => abrirCaminhoMotivo("outro")} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10">
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Umbrella size={14}/> Outro motivo</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">Folga, feriado, home office, falta não justificada, compensação…</div>
             </button>
           </div>
-        )}
+          <div className="text-[11px] text-gray-400">Férias: registre no fluxo de Escala (previsão de férias do período), não aqui.</div>
+        </>)}
 
         {caminho === "marcacoes" && (<>
           <button onClick={() => setCaminho("")} className="text-[11px] text-gray-400 hover:underline">‹ voltar</button>
@@ -1390,7 +1427,11 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
         </>)}
 
         {caminho === "motivo" && (<>
-          <button onClick={() => setCaminho("")} className="text-[11px] text-gray-400 hover:underline">‹ voltar</button>
+          <div className="flex items-center justify-between gap-2">
+            <button onClick={() => { setCaminho(""); setMotivoPreset(null); }} className="text-[11px] text-gray-400 hover:underline">‹ voltar</button>
+            <span className="text-[11px] font-semibold text-gray-500">{motivoPreset === "abono" ? "Abono / justificativa" : motivoPreset === "atestado" ? "Atestado / afastamento médico" : "Outro motivo"}</span>
+          </div>
+          {motivoPreset === "atestado" && <div className="text-[11px] text-indigo-600 dark:text-indigo-300 inline-flex items-center gap-1"><Umbrella size={11}/> Anexe o atestado no campo Evidência abaixo — vale como respaldo do afastamento.</div>}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="flex flex-col gap-1">
               <label className="text-[11px] font-semibold text-gray-500">Motivo na Sólides {motivos.length === 0 && <span className="text-gray-400">(carregando…)</span>}</label>
