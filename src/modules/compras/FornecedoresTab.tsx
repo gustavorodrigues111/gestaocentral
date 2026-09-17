@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Building2, Smartphone, Mail, MessageSquare, Ban, Check, GitMerge, Sparkles } from "lucide-react";
+import { useMemo, useState, type ReactNode } from "react";
+import { Building2, Smartphone, Mail, MessageSquare, Ban, Check, GitMerge, Sparkles, ChevronRight, Pencil, Clock, Package, FileText, User } from "lucide-react";
 import { addDoc, collection, deleteDoc, doc, updateDoc, writeBatch } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -26,6 +26,7 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
   const [selIds, setSelIds] = useState<Set<string>>(new Set());          // fornecedores marcados
   const [mergeAlvo, setMergeAlvo] = useState<Fornecedor[] | null>(null);  // selecionados no modal de escolha do principal
   const [sobrevSel, setSobrevSel] = useState<string>("");                // id do fornecedor que sobrevive
+  const [viewing, setViewing] = useState<Fornecedor | null>(null);       // modal de visualização (clica na linha)
   const abrirWhatsapp = useAbrirWhatsapp();
 
   // Clusters de possíveis DUPLICADOS: mesmo nome normalizado (caixa/acento) OU
@@ -190,52 +191,34 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {filtered.map(f => (
-            <div
-              key={f.id}
-              onClick={selMode ? () => toggleSel(f.id) : undefined}
-              className={`bg-white dark:bg-gray-900 border rounded-xl p-3 ${!f.ativo ? "opacity-60" : ""} ${selMode ? "cursor-pointer" : ""} ${selIds.has(f.id) ? "border-rose-400 ring-2 ring-rose-300 dark:ring-rose-700" : "border-gray-200 dark:border-gray-800"}`}
-            >
-              <div className="flex items-start justify-between gap-3 flex-wrap">
-                {selMode && <input type="checkbox" checked={selIds.has(f.id)} onChange={() => toggleSel(f.id)} onClick={(e) => e.stopPropagation()} className="mt-1 shrink-0 w-4 h-4 accent-rose-600" />}
+        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden divide-y divide-gray-100 dark:divide-gray-800">
+          {filtered.map(f => {
+            const sel = selIds.has(f.id);
+            return (
+              <div
+                key={f.id}
+                onClick={() => selMode ? toggleSel(f.id) : setViewing(f)}
+                className={`flex items-center gap-3 px-3.5 py-3 cursor-pointer transition-colors ${!f.ativo ? "opacity-60" : ""} ${sel ? "bg-rose-50 dark:bg-rose-950/20" : "hover:bg-gray-50 dark:hover:bg-gray-800/40"}`}
+              >
+                {selMode
+                  ? <input type="checkbox" checked={sel} onChange={() => toggleSel(f.id)} onClick={(e) => e.stopPropagation()} className="shrink-0 w-4 h-4 accent-rose-600" />
+                  : <span className={`shrink-0 w-9 h-9 rounded-full inline-flex items-center justify-center text-[13px] font-semibold ${avatarCor(f.nome)}`}>{iniciais(f.nome)}</span>}
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-bold text-gray-900 dark:text-gray-100">{f.nome}</h3>
-                    {!f.ativo && <span className="text-[10px] uppercase text-gray-500">Inativo</span>}
+                  <div className="flex items-center gap-2">
+                    <span className="font-semibold text-gray-900 dark:text-gray-100 truncate">{f.nome}</span>
+                    {!f.ativo && <span className="text-[10px] uppercase text-gray-400 shrink-0">Inativo</span>}
                   </div>
-                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 flex gap-3 flex-wrap">
-                    {f.whatsapp && <span className="inline-flex items-center gap-1"><Smartphone size={12} /> {f.whatsapp}</span>}
-                    {f.email && <span className="inline-flex items-center gap-1"><Mail size={12} /> {f.email}</span>}
-                    {f.nomeVendedor && <span>👤 {f.nomeVendedor}</span>}
-                    {f.cnpj && <span>CNPJ {f.cnpj}</span>}
+                  <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex gap-3 flex-wrap min-w-0">
+                    {f.whatsapp && <span className="inline-flex items-center gap-1 truncate"><Smartphone size={12} /> {f.whatsapp}</span>}
+                    {f.nomeVendedor && <span className="inline-flex items-center gap-1 truncate"><User size={12} /> {f.nomeVendedor}</span>}
+                    {f.cnpj && <span className="truncate">CNPJ {f.cnpj}</span>}
+                    {!f.whatsapp && !f.nomeVendedor && !f.cnpj && f.email && <span className="inline-flex items-center gap-1 truncate"><Mail size={12} /> {f.email}</span>}
                   </div>
-                  {(f.prazoEntrega || f.formaPedido || f.pedidoMinimo) && (
-                    <div className="text-[11px] text-gray-500 dark:text-gray-400 mt-0.5 flex gap-3 flex-wrap">
-                      {f.prazoEntrega && <span>⏱ Entrega: {f.prazoEntrega}</span>}
-                      {f.formaPedido && <span>📝 Pedido: {f.formaPedido}</span>}
-                      {f.pedidoMinimo && <span>📦 Mín.: {f.pedidoMinimo}</span>}
-                    </div>
-                  )}
-                  {f.observacoes && <div className="text-xs text-gray-700 dark:text-gray-300 italic mt-1">{f.observacoes}</div>}
                 </div>
-                {podeConfig && !selMode && (
-                  <div className="flex gap-1">
-                    {f.whatsapp && (
-                      <Button
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => void abrirWhatsapp(restaurantId, "fornecedores", f.whatsapp!, f.nome)}
-                      ><span className="inline-flex items-center gap-1.5"><MessageSquare size={14} /> WhatsApp</span></Button>
-                    )}
-                    <Button variant="secondary" size="sm" onClick={() => toggleAtivo(f)} title={f.ativo ? "Inativar" : "Ativar"}>{f.ativo ? <Ban size={15} /> : <Check size={15} />}</Button>
-                    <Button variant="secondary" size="sm" onClick={() => setEditing(f)}>Editar</Button>
-                    <Button variant="danger" size="sm" onClick={() => excluir(f)}>×</Button>
-                  </div>
-                )}
+                {!selMode && <ChevronRight size={18} className="shrink-0 text-gray-300 dark:text-gray-600" />}
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -246,6 +229,47 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
           restaurantId={restaurantId}
           onClose={() => setEditing(null)}
         />
+      )}
+
+      {/* Modal de VISUALIZAÇÃO — clica na linha; editar/inativar/excluir ficam DENTRO. */}
+      {viewing && (
+        <Modal
+          title={<span className="inline-flex items-center gap-2.5 min-w-0"><span className={`w-8 h-8 rounded-full inline-flex items-center justify-center text-xs font-semibold shrink-0 ${avatarCor(viewing.nome)}`}>{iniciais(viewing.nome)}</span><span className="truncate">{viewing.nome}</span></span>}
+          onClose={() => setViewing(null)}
+          maxWidth="max-w-md"
+        >
+          <div>
+            {(viewing.nomeVendedor || !viewing.ativo) && (
+              <div className="text-[13px] text-gray-500 dark:text-gray-400 mb-2 flex items-center gap-2">
+                {viewing.nomeVendedor && <span className="inline-flex items-center gap-1"><User size={13} /> {viewing.nomeVendedor}</span>}
+                {!viewing.ativo && <span className="text-[10px] uppercase text-gray-400">inativo</span>}
+              </div>
+            )}
+            <div className="divide-y divide-gray-100 dark:divide-gray-800">
+              {viewing.cnpj && <ViewRow icon={<Building2 size={15} />} label="CNPJ" val={viewing.cnpj} />}
+              {viewing.whatsapp && <ViewRow icon={<Smartphone size={15} />} label="WhatsApp" val={viewing.whatsapp} />}
+              {viewing.email && <ViewRow icon={<Mail size={15} />} label="E-mail" val={viewing.email} />}
+              {viewing.prazoEntrega && <ViewRow icon={<Clock size={15} />} label="Prazo de entrega" val={viewing.prazoEntrega} />}
+              {viewing.formaPedido && <ViewRow icon={<FileText size={15} />} label="Forma de pedido" val={viewing.formaPedido} />}
+              {viewing.pedidoMinimo && <ViewRow icon={<Package size={15} />} label="Pedido mínimo" val={viewing.pedidoMinimo} />}
+            </div>
+            {viewing.observacoes && <div className="text-sm text-gray-600 dark:text-gray-300 italic mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">{viewing.observacoes}</div>}
+
+            <div className="flex items-center gap-2 pt-4 mt-3 border-t border-gray-100 dark:border-gray-800">
+              <Button onClick={() => { const f = viewing; setViewing(null); setEditing(f); }}>
+                <span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editar</span>
+              </Button>
+              {viewing.whatsapp && (
+                <Button variant="secondary" onClick={() => void abrirWhatsapp(restaurantId, "fornecedores", viewing.whatsapp!, viewing.nome)}>
+                  <span className="inline-flex items-center gap-1.5"><MessageSquare size={14} /> WhatsApp</span>
+                </Button>
+              )}
+              <div className="flex-1" />
+              {podeConfig && <Button variant="secondary" size="sm" onClick={() => { toggleAtivo(viewing); setViewing(null); }} title={viewing.ativo ? "Inativar" : "Ativar"}>{viewing.ativo ? <Ban size={15} /> : <Check size={15} />}</Button>}
+              {podeConfig && <Button variant="danger" size="sm" onClick={() => { const f = viewing; setViewing(null); excluir(f); }} title="Excluir">×</Button>}
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* Merge manual: escolher qual dos marcados é o PRINCIPAL (nome/registro que fica). */}
@@ -281,6 +305,32 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
       )}
     </div>
   );
+}
+
+function ViewRow({ icon, label, val }: { icon: ReactNode; label: string; val: string }) {
+  return (
+    <div className="flex items-center justify-between gap-3 py-2.5">
+      <span className="text-sm text-gray-500 dark:text-gray-400 inline-flex items-center gap-1.5 shrink-0">{icon} {label}</span>
+      <span className="text-sm text-gray-800 dark:text-gray-100 text-right break-words">{val}</span>
+    </div>
+  );
+}
+
+function iniciais(nome: string): string {
+  const p = (nome || "").trim().split(/\s+/).filter(Boolean);
+  return (((p[0]?.[0] || "") + (p[1]?.[0] || "")).toUpperCase()) || "?";
+}
+const AVATAR_CORES = [
+  "bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300",
+  "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300",
+  "bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300",
+  "bg-purple-50 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300",
+  "bg-pink-50 text-pink-700 dark:bg-pink-900/30 dark:text-pink-300",
+  "bg-teal-50 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300",
+];
+function avatarCor(nome: string): string {
+  let h = 0; for (const c of (nome || "")) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+  return AVATAR_CORES[h % AVATAR_CORES.length];
 }
 
 export function onlyDigits(s: string): string {
