@@ -61,6 +61,8 @@ const hm = (min: number) => min <= 0 ? "0h00" : `${Math.floor(min / 60)}h${Strin
 const hmSigned = (min: number) => (min < 0 ? "−" : "+") + hm(Math.abs(min));
 const somaDiasYmd = (ymd: string, n: number) => { const [y, m, d] = ymd.split("-").map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
 const fmtDataBR = (ymd?: string | null) => ymd ? ymd.split("-").reverse().join("/") : "—";
+const DOW_ABREV = ["dom", "seg", "ter", "qua", "qui", "sex", "sáb"];
+const diaSemanaAbrev = (ymd: string) => DOW_ABREV[new Date(ymd + "T12:00:00").getDay()] || "";
 const hhmm = (ms?: number | null) => { if (ms == null) return "—"; const t = minutoDoDiaBRT(ms); return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`; };
 const hhmmN = (ms?: number | null) => ms == null ? null : hhmm(ms);
 const soDig = (s?: string | null) => (s || "").replace(/\D/g, "");
@@ -1117,7 +1119,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                 <tbody>
                   {sel.r.linhas.map((l, idx) => { const f = flagsLinha(l, idx); return (
                     <tr key={l.data} className={`border-b border-gray-50 dark:border-gray-800/40 ${f.rowBg}`}>
-                      <td className="tabular-nums font-medium text-gray-700 dark:text-gray-200">{l.data.slice(-2)}/{l.data.slice(5, 7)}</td>
+                      <td className="tabular-nums font-medium text-gray-700 dark:text-gray-200 whitespace-nowrap">{l.data.slice(-2)}/{l.data.slice(5, 7)} <span className={`text-[10px] font-normal ${[0, 6].includes(new Date(l.data + "T12:00:00").getDay()) ? "text-rose-400 dark:text-rose-400/70" : "text-gray-400"}`}>{diaSemanaAbrev(l.data)}</span></td>
                       <td className={`whitespace-nowrap ${f.folga ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}`}>{renderPrevisto(l)}</td>
                       <td className="text-gray-700 dark:text-gray-200">{renderBatidas(l, f.inclPunch)}</td>
                       <td className="text-right tabular-nums font-medium">{l.trabalhado ? hm(l.trabalhado) : <span className="text-gray-300 dark:text-gray-600">—</span>}</td>

@@ -190,9 +190,9 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
         </aside>
 
         {/* Itens — grade 2 colunas no desktop, 1 no mobile */}
-        <div className="flex-1 min-w-0 space-y-4 pb-2">
+        <div className="flex-1 min-w-0 space-y-3 pb-2">
           {grupos.map(([grupo, list]) => (
-            <div key={grupo}>
+            <div key={grupo} className={grupos.length > 1 ? "rounded-xl bg-gray-100/60 dark:bg-white/[0.03] p-2.5" : ""}>
               <div className="flex items-center justify-between mb-1.5 px-1">
                 <h3 className="text-xs uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400">{grupo}</h3>
                 <span className="text-[11px] text-gray-400">{(grupoStats[grupo]?.feitos || 0)}/{list.length} contados</span>
@@ -268,8 +268,8 @@ function Stepper({ value, onChange, disabled, destaque, alerta }: { value: strin
   return (
     <div className="flex items-center gap-1.5 shrink-0">
       <button type="button" disabled={disabled} onClick={() => passo(-1)} aria-label="Diminuir" className={`${btn} border border-gray-300 dark:border-gray-700 text-gray-500`}><Minus size={17} /></button>
-      <input type="number" step="any" min={0} value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} placeholder="0"
-        className={`w-16 h-10 text-center text-base font-medium rounded-lg border tabular-nums disabled:opacity-60 ${campo}`} />
+      <input type="number" inputMode="decimal" step="any" min={0} value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} placeholder="0"
+        className={`w-16 h-10 text-center text-base font-medium rounded-lg border tabular-nums disabled:opacity-60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${campo}`} />
       <button type="button" disabled={disabled} onClick={() => passo(1)} aria-label="Aumentar" className={`${btn} border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300`}><Plus size={17} /></button>
     </div>
   );

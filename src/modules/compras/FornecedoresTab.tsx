@@ -55,25 +55,64 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
   // Nomes fora do padrão (não são "Primeira Maiúscula") — pra o botão Padronizar.
   const foraPadrao = useMemo(() => fornecedores.filter(f => f.nome !== tituloCaso(f.nome)), [fornecedores]);
 
-  // Sugestões de pré-cadastro a partir dos emissores das notas de recebimento:
-  // quem já emitiu NF pra gente mas ainda NÃO é fornecedor cadastrado (nem por
-  // nome normalizado, nem por CNPJ). Agrupa por nome, guarda o CNPJ e a contagem.
-  const sugestoesNota = useMemo(() => {
-    const nomesCad = new Set(fornecedores.map(f => normalizar(f.nome)));
-    const cnpjsCad = new Set(fornecedores.map(f => onlyDigits(f.cnpj || "")).filter(c => c.length === 14));
-    const m = new Map<string, { nome: string; cnpj: string; count: number }>();
+  // Sugestões a partir dos emissores das notas de recebimento. Duas coisas:
+  //  • sugNovos: quem já emitiu NF mas NÃO é fornecedor (nem por CNPJ nem por
+  //    nome). Agrupa por CNPJ quando existe (colapsa variações de OCR do mesmo
+  //    CNPJ num só), senão por nome normalizado.
+  //  • sugCnpj: emissor cujo nome bate (igual ou parecido) com um fornecedor JÁ
+  //    cadastrado que ainda NÃO tem CNPJ → sugere preencher o CNPJ visto na nota.
+  const { sugNovos, sugCnpj } = useMemo(() => {
+    const fornNorm = fornecedores.map(f => ({ f, n: normalizar(f.nome) }));
+    const fornPorCnpj = new Map<string, Fornecedor>();
+    for (const f of fornecedores) { const c = onlyDigits(f.cnpj || ""); if (c.length === 14) fornPorCnpj.set(c, f); }
+
+    type Agg = { cnpj: string; count: number; nomes: Map<string, number> };
+    const byKey = new Map<string, Agg>();
     for (const e of emissoresNota) {
-      const nome = (e.emissor || "").trim();
-      if (!nome) continue;
-      const chave = normalizar(nome);
-      if (!chave || nomesCad.has(chave)) continue;
+      const nomeRaw = (e.emissor || "").trim();
       const cnpj = onlyDigits(e.cnpjEmissor || "");
-      if (cnpj.length === 14 && cnpjsCad.has(cnpj)) continue;
-      const cur = m.get(chave);
-      if (cur) { cur.count++; if (!cur.cnpj && cnpj.length === 14) cur.cnpj = cnpj; }
-      else m.set(chave, { nome: tituloCaso(nome), cnpj: cnpj.length === 14 ? cnpj : "", count: 1 });
+      const temCnpj = cnpj.length === 14;
+      const chaveNome = normalizar(nomeRaw);
+      if (!temCnpj && !chaveNome) continue;
+      const key = temCnpj ? `c:${cnpj}` : `n:${chaveNome}`;
+      let a = byKey.get(key);
+      if (!a) { a = { cnpj: temCnpj ? cnpj : "", count: 0, nomes: new Map() }; byKey.set(key, a); }
+      a.count++;
+      if (!a.cnpj && temCnpj) a.cnpj = cnpj;
+      if (nomeRaw) a.nomes.set(nomeRaw, (a.nomes.get(nomeRaw) || 0) + 1);
     }
-    return [...m.values()].sort((a, b) => b.count - a.count);
+
+    // Fornecedor cadastrado compatível com QUALQUER variante do nome (igual
+    // normalizado ou muito parecido por Levenshtein — pega erro de OCR).
+    const acharForn = (nomes: string[]): Fornecedor | null => {
+      const alvos = nomes.map(normalizar).filter(Boolean);
+      for (const { f, n } of fornNorm) if (alvos.includes(n)) return f;
+      for (const alvo of alvos) for (const { f, n } of fornNorm) {
+        const lim = Math.max(alvo.length, n.length);
+        if (lim >= 5 && levenshtein(alvo, n) <= 2 && levenshtein(alvo, n) / lim <= 0.25) return f;
+      }
+      return null;
+    };
+    const melhorNome = (nomes: Map<string, number>): string => {
+      let best = ""; let bc = -1;
+      for (const [nm, c] of nomes) if (c > bc || (c === bc && nm.length > best.length)) { best = nm; bc = c; }
+      return tituloCaso(best);
+    };
+
+    const novos: { nome: string; cnpj: string; count: number }[] = [];
+    const cnpjPara: { forn: Fornecedor; cnpj: string; count: number }[] = [];
+    for (const a of byKey.values()) {
+      if (a.cnpj && fornPorCnpj.has(a.cnpj)) continue;              // já cadastrado (CNPJ bate)
+      const match = acharForn([...a.nomes.keys()]);
+      if (match) {
+        if (a.cnpj && !onlyDigits(match.cnpj || "")) cnpjPara.push({ forn: match, cnpj: a.cnpj, count: a.count });
+        continue;                                                   // já existe pelo nome
+      }
+      novos.push({ nome: melhorNome(a.nomes), cnpj: a.cnpj, count: a.count });
+    }
+    novos.sort((x, y) => y.count - x.count);
+    cnpjPara.sort((x, y) => y.count - x.count);
+    return { sugNovos: novos, sugCnpj: cnpjPara };
   }, [emissoresNota, fornecedores]);
 
   // Padroniza os nomes (tituloCaso) de todos os que estão fora do padrão.
@@ -208,34 +247,60 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
         </div>
       )}
 
-      {/* Sugestões do recebimento — emissores de NF que ainda não são fornecedores. */}
-      {podeConfig && sugestoesNota.length > 0 && (
+      {/* Sugestões do recebimento — emissores de NF (agrupados por CNPJ) que ainda
+          não são fornecedores + CNPJ pra fornecedor cadastrado sem CNPJ. */}
+      {podeConfig && (sugNovos.length > 0 || sugCnpj.length > 0) && (
         <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/70 dark:bg-indigo-900/10 p-3 space-y-2">
           <button type="button" onClick={() => setVerSugestoes(v => !v)} className="w-full flex items-center justify-between gap-2 text-left">
             <span className="text-[11px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 inline-flex items-center gap-1">
-              <FileText size={12} /> Emissores de NF sem cadastro ({sugestoesNota.length})
+              <FileText size={12} /> Sugestões do recebimento ({sugNovos.length + sugCnpj.length})
             </span>
             <ChevronRight size={14} className={`text-indigo-500 transition-transform ${verSugestoes ? "rotate-90" : ""}`} />
           </button>
           {verSugestoes && (
-            <>
-              <div className="flex flex-wrap gap-1.5">
-                {sugestoesNota.map((s, i) => (
-                  <button
-                    key={i}
-                    type="button"
-                    onClick={() => { setPrefill({ nome: s.nome, cnpj: s.cnpj }); setEditing("new"); }}
-                    title={s.cnpj ? `CNPJ ${s.cnpj} · ${s.count} nota(s) — clique pra cadastrar` : `${s.count} nota(s) — clique pra cadastrar`}
-                    className="inline-flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-indigo-200 dark:border-indigo-900/40 text-gray-800 dark:text-gray-100 hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
-                  >
-                    <span className="truncate max-w-[180px]">{s.nome}</span>
-                    {s.cnpj && <span className="text-[10px] text-indigo-500">CNPJ</span>}
-                    <span className="text-[10px] text-gray-400">{s.count}</span>
-                  </button>
-                ))}
-              </div>
-              <p className="text-[10px] text-indigo-600/70 dark:text-indigo-400/70">Clique num emissor pra abrir o cadastro já com nome e CNPJ preenchidos — depois use "Receita" pra completar os dados.</p>
-            </>
+            <div className="space-y-3">
+              {sugCnpj.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:text-emerald-400">Preencher CNPJ de quem já está cadastrado ({sugCnpj.length})</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {sugCnpj.map((s, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => { setPrefill({ cnpj: fmtCnpj(s.cnpj) }); setEditing(s.forn); }}
+                        title={`CNPJ ${fmtCnpj(s.cnpj)} visto em ${s.count} nota(s) — clique pra preencher no cadastro`}
+                        className="inline-flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-900/40 text-gray-800 dark:text-gray-100 hover:border-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-colors"
+                      >
+                        <span className="truncate max-w-[160px]">{s.forn.nome}</span>
+                        <span className="text-[10px] text-emerald-600">+ CNPJ</span>
+                        <span className="text-[10px] text-gray-400">{s.count}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              {sugNovos.length > 0 && (
+                <div className="space-y-1.5">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-indigo-700 dark:text-indigo-400">Emissores de NF sem cadastro ({sugNovos.length})</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {sugNovos.map((s, i) => (
+                      <button
+                        key={i}
+                        type="button"
+                        onClick={() => { setPrefill({ nome: s.nome, cnpj: s.cnpj ? fmtCnpj(s.cnpj) : "" }); setEditing("new"); }}
+                        title={s.cnpj ? `CNPJ ${fmtCnpj(s.cnpj)} · ${s.count} nota(s) — clique pra cadastrar` : `${s.count} nota(s) — clique pra cadastrar`}
+                        className="inline-flex items-center gap-1.5 text-[12px] font-medium px-2.5 py-1.5 rounded-lg bg-white dark:bg-gray-900 border border-indigo-200 dark:border-indigo-900/40 text-gray-800 dark:text-gray-100 hover:border-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 transition-colors"
+                      >
+                        <span className="truncate max-w-[180px]">{s.nome}</span>
+                        {s.cnpj && <span className="text-[10px] text-indigo-500">CNPJ</span>}
+                        <span className="text-[10px] text-gray-400">{s.count}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+              <p className="text-[10px] text-indigo-600/70 dark:text-indigo-400/70">Agrupado por CNPJ (variações de nome do OCR viram um só). Clique pra abrir o cadastro pré-preenchido — depois use "Receita" pra completar.</p>
+            </div>
           )}
         </div>
       )}
@@ -284,7 +349,7 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
           fornecedor={editing === "new" ? null : editing}
           fornecedores={fornecedores}
           restaurantId={restaurantId}
-          prefill={editing === "new" ? prefill : null}
+          prefill={prefill}
           onClose={() => { setEditing(null); setPrefill(null); }}
         />
       )}
@@ -393,6 +458,12 @@ function avatarCor(nome: string): string {
 
 export function onlyDigits(s: string): string {
   return s.replace(/\D/g, "");
+}
+
+// Formata 14 dígitos como 00.000.000/0000-00 (deixa como veio se não tiver 14).
+function fmtCnpj(s: string): string {
+  const d = onlyDigits(s);
+  return d.length === 14 ? d.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5") : s;
 }
 
 // ── FornecedorModal ────────────────────────────────────────────────────────
