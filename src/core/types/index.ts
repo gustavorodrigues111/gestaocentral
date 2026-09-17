@@ -2775,6 +2775,8 @@ export type Contagem = {
   registradoEm: string;
   registradoPor: string;
   registradoNome?: string;            // snapshot
+  sessaoId?: string;                  // agrupa os itens salvos na mesma contagem
+  turno?: string;                     // manhã | tarde | noite (opcional)
 };
 
 // Pedido / ordem de compra

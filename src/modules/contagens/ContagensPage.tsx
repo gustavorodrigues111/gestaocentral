@@ -423,6 +423,19 @@ export function ContagensPage() {
     return m;
   }, [contagens]);
 
+  // Sessões de contagem: agrupa os itens salvos no mesmo "Salvar" (sessaoId).
+  // Cada sessão = uma contagem nomeada por data · turno · quem · horário.
+  const sessoes = useMemo(() => {
+    const m = new Map<string, { sessaoId: string; data: string; turno?: string; nome?: string; registradoEm: string; itens: number }>();
+    for (const c of contagens) {
+      if (!c.sessaoId) continue;
+      const cur = m.get(c.sessaoId);
+      if (cur) { cur.itens++; if (c.registradoEm > cur.registradoEm) cur.registradoEm = c.registradoEm; }
+      else m.set(c.sessaoId, { sessaoId: c.sessaoId, data: c.data, turno: c.turno, nome: c.registradoNome, registradoEm: c.registradoEm, itens: 1 });
+    }
+    return [...m.values()].sort((a, b) => b.registradoEm.localeCompare(a.registradoEm)).slice(0, 8);
+  }, [contagens]);
+
   // Insumos com alerta de estoque mínimo
   const alertasMinStock = useMemo(() => {
     return insumos.filter(i => {
@@ -524,6 +537,27 @@ export function ContagensPage() {
       {/* TAB VISÃO ATUAL */}
       {tab === "visao" && (
         <div className="space-y-2">
+          {/* Sessões de contagem recentes — data · turno · quem · horário · nº itens */}
+          {sessoes.length > 0 && (
+            <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+              <div className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">Sessões de contagem recentes</div>
+              <div className="flex flex-col divide-y divide-gray-100 dark:divide-gray-800">
+                {sessoes.map(s => (
+                  <div key={s.sessaoId} className="flex items-center justify-between gap-3 py-1.5 text-sm">
+                    <div className="min-w-0">
+                      <span className="font-medium text-gray-900 dark:text-gray-100">{new Date(s.data + "T12:00:00").toLocaleDateString("pt-BR")}</span>
+                      {s.turno && <span className="ml-2 text-[11px] uppercase tracking-wide text-indigo-600 dark:text-indigo-400">{s.turno}</span>}
+                      {s.nome && <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">· {s.nome}</span>}
+                    </div>
+                    <div className="shrink-0 text-xs text-gray-500 dark:text-gray-400 tabular-nums">
+                      {new Date(s.registradoEm).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
+                      <span className="ml-2 font-semibold text-gray-700 dark:text-gray-300">{s.itens} {s.itens === 1 ? "item" : "itens"}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
           {loading ? (
             <div className="text-sm text-gray-500">Carregando...</div>
           ) : insumos.filter(i => i.ativo).length === 0 ? (
