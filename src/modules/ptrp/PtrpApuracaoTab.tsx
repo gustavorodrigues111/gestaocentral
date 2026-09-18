@@ -35,7 +35,7 @@ import { PtrpAssinaturasModal, type AlvoAssinatura } from "./PtrpAssinaturasModa
 import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horarios";
 import { apurarDia, minutoDoDiaBRT, hhmmToMin, type BatidaBloco, type AjusteDia } from "../../core/ptrp/apuracao";
 import { feriadosDoAno } from "../../core/ptrp/feriados";
-import { fetchRoster, decidirAprovacao, corrigirPontoAtraso, excluirBatida, fetchJustificativas, fetchMotivosAfastamento, lancarAfastamento } from "../../core/ponto/solidesPontoClient";
+import { fetchRoster, decidirAprovacao, corrigirPontoAtraso, excluirBatida, fetchJustificativas, fetchMotivosAfastamento, lancarAfastamento, criarAfastamentoNovo } from "../../core/ponto/solidesPontoClient";
 import type { Justificativa, MotivoAfastamento } from "../../core/ponto/solidesPontoClient";
 import { fetchPunches } from "../../core/excecoes/solidesClient";
 import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
@@ -1392,15 +1392,26 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
       } else if (caminho === "atestado") {
         if (!motivoId) { setErr("Escolha o motivo do atestado."); return; }
         if (atIni > atFim) { setErr("A data de início não pode ser depois do fim."); return; }
-        setSalvando(true);
         const mInfo = motivos.find(m => m.id === motivoId);
-        // Atestado é dia inteiro. 1 chamada cobre o PERÍODO inteiro na Sólides;
-        // no app grava 1 lançamento por dia (pra refletir no espelho de cada dia).
-        if (solidesEmpId) await lancarAfastamento(empresaKey, { employeeId: Number(solidesEmpId), adjustmentReasonId: motivoId, startDate: atIni, endDate: atFim, fullDay: true });
-        for (const dia of diasDoIntervalo(atIni, atFim)) {
-          await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data: dia, tipo: "abono", statusEscala, motivoSolidesId: motivoId, motivo: obs.trim() || (mInfo?.description || "Atestado médico"), ...evidPayload, autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: !!solidesEmpId }));
+        const desc = mInfo?.description || "";
+        // Atestado médico vai pelo MÓDULO NOVO (timeoffwork) — o /adjustment/register
+        // recusa atestados/licenças com HTTP 400. Só o atestado médico está mapeado
+        // (timeOffWork 4 · eSocial COD_02); os demais (licença/INSS/acidente/óbito/
+        // acompanhamento) ainda não têm mapeamento → orienta lançar na Sólides.
+        const ehAtestadoMedico = /atestado m[ée]dico|doen[çc]a n[ãa]o relacionada/i.test(desc);
+        const ehLongoBloqueado = !ehAtestadoMedico && /licen[çc]a|matern|patern|[oó]bito|afastament|inss|acidente|acompanhament|doen[çc]a do trabalho/i.test(desc);
+        if (ehLongoBloqueado) { setErr(`"${desc}" ainda não está integrado aqui — lance direto no módulo de Afastamentos da Sólides (exige o evento eSocial). O atestado médico comum funciona por aqui.`); return; }
+        setSalvando(true);
+        // Sólides: 1 chamada cobre o período inteiro (dia inteiro).
+        if (solidesEmpId && ehAtestadoMedico) {
+          await criarAfastamentoNovo(empresaKey, { employee: Number(solidesEmpId), timeOffWork: 4, esocialReason: "COD_02", startDate: atIni, endDate: atFim });
         }
-        await setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(motivoId)]: { ...(mapa[String(motivoId)] || {}), status: statusEscala, descricao: mInfo?.description || `Motivo ${motivoId}` } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
+        const foiSolides = !!(solidesEmpId && ehAtestadoMedico);
+        // App: 1 lançamento por dia (pra refletir no espelho de cada dia).
+        for (const dia of diasDoIntervalo(atIni, atFim)) {
+          await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data: dia, tipo: "abono", statusEscala, motivoSolidesId: motivoId, motivo: obs.trim() || (desc || "Atestado médico"), ...evidPayload, autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: foiSolides }));
+        }
+        await setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(motivoId)]: { ...(mapa[String(motivoId)] || {}), status: statusEscala, descricao: desc || `Motivo ${motivoId}` } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
         onClose();
       }
     } catch (e) { setErr("Falha ao aplicar na Sólides: " + (e instanceof Error ? e.message : "erro")); setSalvando(false); }
@@ -1494,7 +1505,9 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
 
         {caminho === "atestado" && (() => {
           const mSel = motivos.find(m => m.id === motivoId) || null;
-          const ehLongo = /inss|acidente|óbito|obito|matern|patern|^afastamento$/i.test(mSel?.description || "");
+          const dSel = mSel?.description || "";
+          const ehAtMed = /atestado m[ée]dico|doen[çc]a n[ãa]o relacionada/i.test(dSel);
+          const ehLongo = !ehAtMed && /licen[çc]a|matern|patern|[oó]bito|afastament|inss|acidente|acompanhament|doen[çc]a do trabalho/i.test(dSel);
           const nDias = atIni && atFim && atIni <= atFim ? diasDoIntervalo(atIni, atFim).length : 0;
           return (<>
             <div className="flex items-center justify-between gap-2">
@@ -1551,8 +1564,8 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
               {nDias > 0 && <span className="text-[11px] text-gray-500">{nDias} dia(s) — 1 lançamento na Sólides cobrindo o período.</span>}
             </div>
 
-            <div className="text-[11px] text-indigo-600 dark:text-indigo-300 inline-flex items-center gap-1"><Umbrella size={11}/> Anexe o atestado no campo Evidência abaixo — respaldo do afastamento.</div>
-            {ehLongo && <div className="text-[11px] text-amber-600 dark:text-amber-400 inline-flex items-start gap-1"><TriangleAlert size={11} className="mt-0.5 shrink-0"/> Afastamento longo (INSS/acidente/licença) exige o evento eSocial (S-2230), que esta via NÃO gera — ela entra como abono no ponto. Faça o registro do afastamento direto na Sólides.</div>}
+            {ehAtMed && <div className="text-[11px] text-emerald-600 dark:text-emerald-400 inline-flex items-start gap-1"><Umbrella size={11} className="mt-0.5 shrink-0"/> Atestado médico vai pro <b className="font-semibold">módulo de Afastamentos</b> da Sólides (eSocial COD_02) — a rotina certa. Anexe o atestado no campo Evidência abaixo.</div>}
+            {ehLongo && <div className="text-[11px] text-rose-600 dark:text-rose-400 inline-flex items-start gap-1"><TriangleAlert size={11} className="mt-0.5 shrink-0"/> "{dSel}" ainda não está integrado aqui (exige evento eSocial próprio) — <b className="font-semibold">lance direto no módulo de Afastamentos da Sólides</b>. O botão vai recusar este tipo.</div>}
             {!solidesEmpId && <div className="text-[11px] text-amber-600 inline-flex items-center gap-1"><TriangleAlert size={11}/> Sem vínculo Sólides — fica só no app (sincronize antes pra refletir lá).</div>}
           </>);
         })()}
