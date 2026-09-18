@@ -59,7 +59,10 @@ export type PtrpEscalaMes = {
 export type PtrpAjusteTipo = "inclusao" | "desconsideracao" | "abono" | "atestado" | "folga" | "ferias" | "afastamento"
   // Validação de exceção pelo líder: "atraso_justificado" abona o atraso (zera no
   // saldo e some da trilha); "atraso_confirmado" só marca como validado.
-  | "atraso_justificado" | "atraso_confirmado";
+  | "atraso_justificado" | "atraso_confirmado"
+  // Reclassificação do status na escala praticada (ex.: folga trabalhada → trabalho
+  // ou trabalho por compensação). Carrega statusEscala e imprime direto na real.
+  | "reclassificacao";
 // Evidência anexada a um tratamento (arquivo no Storage ou link externo).
 export type PtrpEvidencia = {
   tipo: "arquivo" | "link";

@@ -7,7 +7,7 @@
 //  como OVERRIDE opcional (fase seguinte). Valida contra o Sólides (Fase 1).
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, doc, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
+import { addDoc, collection, deleteField, doc, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { db, storage } from "../../core/firebase/config";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { authHeader } from "../../core/firebase/idToken";
@@ -124,6 +124,9 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const [batidas, setBatidas] = useState<BatidaDoc[]>([]);
   const [ajustes, setAjustes] = useState<PtrpAjuste[]>([]);
   const [ajusteModal, setAjusteModal] = useState<{ emp: Empregado; data: string; bs: BatidaDoc[] } | null>(null);
+  // Reclassificar o status na escala praticada de um dia (ex.: folga trabalhada).
+  const [reclass, setReclass] = useState<{ emp: Empregado; data: string; prev?: ScheduleStatus } | null>(null);
+  const [reclassBusy, setReclassBusy] = useState(false);
   const [ccts, setCcts] = useState<ParametrosCCT[]>([]);
   const [escala, setEscala] = useState<EscalaMes | null>(null);
   const [aberto, setAberto] = useState<string | null>(null);
@@ -598,7 +601,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     <div className="tabular-nums">{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); const pend = correcaoPendente(b) && !(b.punchId && l.decididos.has(b.punchId)); const tratada = !!(b.punchId && inclPunch.has(b.punchId)); const cls = b.excluded || desc ? "line-through text-gray-400" : pend ? "text-amber-600 dark:text-amber-400 underline decoration-dashed decoration-amber-400" : tratada ? "text-indigo-600 dark:text-indigo-300 underline decoration-dotted decoration-indigo-400" : ""; return <span key={i} className={cls} title={desc ? "desconsiderada" : pend ? `correção ${b.status === "REJECTED" ? "rejeitada" : "pendente"} no Sólides — não entra no oficial` : tratada ? "horário tratado (correção)" : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}{pend ? " 🟡" : ""}{tratada ? " ✎" : ""}</span>; }) : <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
     {l.ajustesDia.length > 0 && (
       <div className="mt-1 flex flex-col gap-0.5">
-        {l.ajustesDia.map(a => { const inline = a.tipo === "inclusao" && !!a.punchId && l.bs.some(b => b.punchId === a.punchId); const Icon = a.tipo === "inclusao" ? Pencil : a.tipo === "desconsideracao" ? Ban : Umbrella; const label = a.motivo?.trim() || (a.tipo === "inclusao" ? "Correção incluída" : a.tipo === "desconsideracao" ? "Batida desconsiderada" : a.tipo); return (
+        {l.ajustesDia.map(a => { const inline = a.tipo === "inclusao" && !!a.punchId && l.bs.some(b => b.punchId === a.punchId); const Icon = a.tipo === "inclusao" ? Pencil : a.tipo === "desconsideracao" ? Ban : a.tipo === "reclassificacao" ? CalendarDays : Umbrella; const label = a.motivo?.trim() || (a.tipo === "inclusao" ? "Correção incluída" : a.tipo === "desconsideracao" ? "Batida desconsiderada" : a.tipo); return (
           <div key={a.id} className="flex items-center gap-x-1 text-[10.5px] text-indigo-700 dark:text-indigo-300">
             <span className="inline-flex items-center gap-1"><Icon size={11}/> {a.tipo === "inclusao" && !inline && a.in ? `${a.in}–${a.out} · ` : ""}{label}</span>
             {a.autor?.nome && <span className="text-indigo-400 dark:text-indigo-500">· por {a.autor.nome}</span>}
@@ -619,6 +622,9 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         <button type="button" disabled={acaoBusy} onClick={() => sel && void decidirCorrecao(sel.emp, l, "REPROVED")} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-rose-300 dark:border-rose-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40" title="Reprovar correção">✗</button>
       </>}
       <button type="button" onClick={() => toggleCorr(l.data)} className={`text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border ${corrSel ? "bg-blue-500 border-blue-500 text-white" : temCorrigivel ? "border-blue-300 dark:border-blue-800 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20" : "border-gray-300 dark:border-gray-700 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}`} title={corrSel ? "Remover do pedido de correção" : "Selecionar p/ pedir correção"}><MessageSquare size={14} className="inline"/></button>
+      {l.excecoes.includes("fora_escala") && !travado && (
+        <button type="button" disabled={reclassBusy} onClick={() => sel && setReclass({ emp: sel.emp, data: l.data, prev: l.statusEscala })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-amber-300 dark:border-amber-800 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-40" title="Definir o status na escala praticada (folga trabalhada → trabalho / compensação)"><CalendarDays size={14} className="inline"/></button>
+      )}
       <button type="button" disabled={travado} onClick={() => sel && setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bsRaw })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title={travado ? "Mês fechado" : "Tratar"}><Settings size={14} className="inline"/></button>
     </div>
   ); };
@@ -815,7 +821,38 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     finally { setRegistrando(false); }
   }
 
+  // Grava o status escolhido na escala PRATICADA do dia (escalas/{rid}_{comp}.real)
+  // e registra a reclassificação como ajuste (trilha + prioridade no "Gerar
+  // praticada", pra não ser recomputado). Uso típico: folga trabalhada → TR/TC.
+  async function aplicarReclass(status: ScheduleStatus) {
+    if (!reclass || !me || !rid) return;
+    const { emp, data, prev } = reclass;
+    setReclassBusy(true);
+    try {
+      await setDoc(doc(db, "escalas", `${rid}_${comp}`), sanitizeForFirestore({ real: { [emp.id]: { [data]: status } }, atualizadoEm: new Date().toISOString(), atualizadoPor: { id: me.id, nome: me.nome } }), { merge: true });
+      const de = prev ? STATUS_INFO[prev].label : "sem status";
+      await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({
+        empresaKey: shortCode, colaboradorId: emp.id, cpf: soDig(emp.cpf), data,
+        tipo: "reclassificacao" as PtrpAjusteTipo, statusEscala: status,
+        motivo: `Escala praticada: ${de} → ${STATUS_INFO[status].label}`,
+        autor: { id: me.id, nome: me.nome }, criadoEm: new Date().toISOString(), cancelado: false,
+      }));
+      setReclass(null);
+    } catch (e) { setAcaoMsg("Falha ao reclassificar: " + (e instanceof Error ? e.message : "erro")); }
+    finally { setReclassBusy(false); }
+  }
+
   async function cancelarAjuste(a: PtrpAjuste) {
+    // Reclassificação de escala: desfazer volta a real pro previsto (remove a real).
+    if (a.tipo === "reclassificacao") {
+      if (!confirm("Desfazer a reclassificação? A escala praticada deste dia volta ao previsto.")) return;
+      try {
+        await setDoc(doc(db, "escalas", `${rid}_${comp}`), { real: { [a.colaboradorId]: { [a.data]: deleteField() } }, atualizadoEm: new Date().toISOString() }, { merge: true });
+        await updateDoc(doc(db, "ptrpAjustes", a.id), { cancelado: true, canceladoPor: { id: me?.id || "", nome: me?.nome || "" }, canceladoEm: new Date().toISOString() });
+        setAcaoMsg("✓ Reclassificação desfeita — voltou ao previsto.");
+      } catch (e) { setAcaoMsg("Falha ao desfazer: " + (e instanceof Error ? e.message : "erro")); }
+      return;
+    }
     const reverteSolides = !!(a.solidesDecisao && a.punchId);
     const msg = reverteSolides
       ? "Desfazer esta decisão? A correção volta a PENDENTE na Sólides E o tratamento é cancelado aqui (fica na trilha)."
@@ -1144,6 +1181,27 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         </>
       ))}
       {ajusteModal && me && <AjusteModal empresaKey={shortCode} emp={ajusteModal.emp} data={ajusteModal.data} bs={ajusteModal.bs} solidesEmpId={empIdPorCpf.get(soDig(ajusteModal.emp.cpf)) || null} autor={{ id: me.id, nome: me.nome }} onClose={() => setAjusteModal(null)} />}
+
+      {/* Reclassificar status na escala praticada (dia fora de escala / folga trabalhada) */}
+      {reclass && (
+        <Modal title={`Escala praticada · ${reclass.emp.nome} · ${reclass.data.slice(-2)}/${reclass.data.slice(5, 7)}`} onClose={() => setReclass(null)} maxWidth="max-w-sm">
+          <div className="space-y-3">
+            <p className="text-[12px] text-gray-500 dark:text-gray-400">
+              Previsto era <b>{reclass.prev ? STATUS_INFO[reclass.prev].label : "—"}</b> e ele bateu ponto. Como esse dia entra na <b>escala praticada</b> (base da gorjeta)?
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              {(["trabalho", "comp_trab", "folga", "freela"] as ScheduleStatus[]).map(s => (
+                <button key={s} type="button" disabled={reclassBusy} onClick={() => void aplicarReclass(s)}
+                  className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-left text-[13px] transition-colors disabled:opacity-50 ${s === reclass.prev ? "border-gray-200 dark:border-gray-800" : "border-gray-300 dark:border-gray-700 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20"}`}>
+                  <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[s].bg} ${STATUS_INFO[s].text}`}>{STATUS_INFO[s].short}</span>
+                  <span className="text-gray-800 dark:text-gray-100">{STATUS_INFO[s].label}</span>
+                </button>
+              ))}
+            </div>
+            <p className="text-[10.5px] text-gray-400">Grava direto na praticada e fica registrado na trilha do dia. Pra desfazer, use o ✕ no lançamento.</p>
+          </div>
+        </Modal>
+      )}
       {assModal && me && <PtrpAssinaturasModal empresaKey={shortCode} comp={comp} compLabel={labelComp(comp)} restaurantId={rid} driveFolderInit={{ id: (activeRestaurant as { drivePontoAssinadoFolderId?: string } | null)?.drivePontoAssinadoFolderId, nome: (activeRestaurant as { drivePontoAssinadoFolderNome?: string } | null)?.drivePontoAssinadoFolderNome }} alvos={alvosAssinatura()} meta={espelhoMeta()} autor={{ id: me.id, nome: me.nome }} onClose={() => setAssModal(false)} />}
       {preview && (
         <Modal title={preview.titulo} onClose={fecharPreview} maxWidth="max-w-4xl">
