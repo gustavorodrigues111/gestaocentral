@@ -68,6 +68,7 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
   const [unidade, setUnidade] = useState<UnidadeMedida>(base?.unidade || "un");
   const [unidadeOutro, setUnidadeOutro] = useState(base?.unidadeOutroLabel || "");
   const [minStock, setMinStock] = useState(base?.minStock != null ? String(base.minStock) : "");
+  const [minPedido, setMinPedido] = useState(base?.minPedido != null ? String(base.minPedido) : "");
   // Fornecedor por NOME (combobox) — funciona mesmo antes de o fornecedor virar
   // cadastro; é criado/casado ao salvar. Default = primário do preset/insumo.
   const nomePrefInicial = (() => {
@@ -169,6 +170,7 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
     try {
       const now = new Date().toISOString();
       const min = minStock.trim() ? parseFloat(minStock.replace(",", ".")) : undefined;
+      const minPed = minPedido.trim() ? parseFloat(minPedido.replace(",", ".")) : undefined;
       // Modo pacote: fator = qtd/pacote; unitário = preço do pacote ÷ fator.
       // Modo avulso: sem fator; preço é o unitário digitado direto.
       const fatorNum = ehPacote ? (parseInt(fatorCompra) || 0) : 0;
@@ -199,6 +201,7 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
         fornecedores: base?.fornecedores,
         fornecedorPreferredId: fornPrefId,
         fatorCompra: fator !== undefined && !isNaN(fator) && fator > 0 ? fator : undefined,
+        minPedido: minPed !== undefined && !isNaN(minPed) && minPed > 0 ? minPed : undefined,
         precoEstimado: preco !== undefined && !isNaN(preco) ? preco : undefined,
         ativo,
         ordem: insumo?.ordem,
@@ -238,6 +241,7 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
           <Row label="Unidade (contagem)">{unidLabel}</Row>
           {insumo.fatorCompra && insumo.fatorCompra > 1 && <Row label="Pacote de compra">{insumo.fatorCompra} un</Row>}
           <Row label="Estoque mínimo">{insumo.minStock != null ? insumo.minStock : "—"}</Row>
+          {insumo.minPedido != null && <Row label="Pedido mínimo/item">{insumo.minPedido}</Row>}
           <Row label="Preço estimado">{insumo.precoEstimado != null ? `R$ ${insumo.precoEstimado.toFixed(2)}/un${insumo.fatorCompra && insumo.fatorCompra > 1 ? ` · pacote R$ ${(insumo.precoEstimado * insumo.fatorCompra).toFixed(2)}` : ""}` : "—"}</Row>
           <Row label="Fornecedor(es)">{fornLista.length ? fornLista.join(", ") : (fornPref || "—")}</Row>
           {insumo.aliases && insumo.aliases.length > 0 && <Row label="Reconhece na nota como"><span className="text-[11px] text-gray-500">{insumo.aliases.length} nome(s)</span></Row>}
@@ -379,6 +383,12 @@ export function InsumoModal({ insumo, fornecedores, restaurantId, categoriasExis
               />
               <datalist id="forn-modal-sug">{fornOpcoes.map((n) => <option key={n} value={n} />)}</datalist>
               <p className="text-[10px] text-gray-400 mt-1">Escolhe um existente ou digita um novo — ele é criado ao salvar.</p>
+            </div>
+
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Pedido mínimo por item (qtd)</label>
+              <input inputMode="decimal" value={minPedido} onChange={(e) => setMinPedido(e.target.value.replace(/[^\d.,]/g, ""))} placeholder="ex: 5 — mínimo que o fornecedor aceita" className={fieldCls} />
+              <p className="text-[10px] text-gray-400 mt-1">Quando precisar pedir, a sugestão nunca vem abaixo disso (arredonda pra cima).</p>
             </div>
 
             {(opcoesPreco?.length ?? 0) > 1 && (

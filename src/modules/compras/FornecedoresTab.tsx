@@ -375,6 +375,7 @@ export function FornecedoresTab({ fornecedores, insumos = [], restaurantId, pode
               {viewing.prazoEntrega && <ViewRow icon={<Clock size={15} />} label="Prazo de entrega" val={viewing.prazoEntrega} />}
               {viewing.formaPedido && <ViewRow icon={<FileText size={15} />} label="Forma de pedido" val={viewing.formaPedido} />}
               {viewing.pedidoMinimo && <ViewRow icon={<Package size={15} />} label="Pedido mínimo" val={viewing.pedidoMinimo} />}
+              {viewing.pedidoMinimoValor != null && <ViewRow icon={<Package size={15} />} label="Valor mínimo do pedido" val={`R$ ${viewing.pedidoMinimoValor.toFixed(2).replace(".", ",")}`} />}
             </div>
             {viewing.observacoes && <div className="text-sm text-gray-600 dark:text-gray-300 italic mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">{viewing.observacoes}</div>}
 
@@ -488,6 +489,7 @@ function FornecedorModal({
   const [prazoEntrega, setPrazoEntrega] = useState(fornecedor?.prazoEntrega || "");
   const [formaPedido, setFormaPedido] = useState(fornecedor?.formaPedido || "");
   const [pedidoMinimo, setPedidoMinimo] = useState(fornecedor?.pedidoMinimo || "");
+  const [pedidoMinimoValor, setPedidoMinimoValor] = useState(fornecedor?.pedidoMinimoValor != null ? String(fornecedor.pedidoMinimoValor) : "");
   const [observacoes, setObservacoes] = useState(fornecedor?.observacoes || "");
   const [ativo, setAtivo] = useState(fornecedor?.ativo ?? true);
   const [saving, setSaving] = useState(false);
@@ -539,6 +541,7 @@ function FornecedorModal({
         prazoEntrega: prazoEntrega.trim() || undefined,
         formaPedido: formaPedido.trim() || undefined,
         pedidoMinimo: pedidoMinimo.trim() || undefined,
+        pedidoMinimoValor: pedidoMinimoValor.trim() ? Number(pedidoMinimoValor.replace(",", ".")) || undefined : undefined,
         observacoes: observacoes.trim() || undefined,
         ativo,
         criadoEm: fornecedor?.criadoEm || now,
@@ -596,7 +599,11 @@ function FornecedorModal({
           <Input label="Vendedor (contato)" value={nomeVendedor} onChange={(e) => setNomeVendedor(e.target.value)} placeholder="ex: João" />
           <Input label="Prazo de entrega" value={prazoEntrega} onChange={(e) => setPrazoEntrega(e.target.value)} placeholder="ex: 2 dias úteis" />
           <Input label="Como fazer o pedido" value={formaPedido} onChange={(e) => setFormaPedido(e.target.value)} placeholder="ex: WhatsApp, e-mail, site" />
-          <Input label="Pedido mínimo" value={pedidoMinimo} onChange={(e) => setPedidoMinimo(e.target.value)} placeholder="ex: R$ 300 ou 10 cx" />
+          <Input label="Pedido mínimo (obs.)" value={pedidoMinimo} onChange={(e) => setPedidoMinimo(e.target.value)} placeholder="ex: R$ 300 ou 10 cx" />
+          <div>
+            <Input label="Valor mínimo do pedido (R$)" type="number" inputMode="decimal" value={pedidoMinimoValor} onChange={(e) => setPedidoMinimoValor(e.target.value)} placeholder="ex: 300" />
+            <p className="text-[11px] text-gray-400 mt-0.5">A sugestão avisa quando o pedido não atinge esse valor.</p>
+          </div>
         </div>
         <div>
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Observações</label>

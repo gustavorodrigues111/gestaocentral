@@ -2712,7 +2712,8 @@ export type Fornecedor = {
   nomeVendedor?: string;              // contato/vendedor
   prazoEntrega?: string;             // ex.: "2 dias úteis"
   formaPedido?: string;              // como fazer o pedido: WhatsApp, e-mail, site, vendedor...
-  pedidoMinimo?: string;             // ex.: "R$ 300" ou "10 caixas"
+  pedidoMinimo?: string;             // (legado) texto livre: "R$ 300" ou "10 caixas"
+  pedidoMinimoValor?: number;        // pedido mínimo estruturado: VALOR total do pedido (R$)
   ativo: boolean;
   criadoEm: string;
   criadoPor: string;
@@ -2755,6 +2756,7 @@ export type Insumo = {
   fornecedorPreferredId?: string | null;
   // Quanto comprar de cada vez (múltiplo). Ex: vinho vem caixa de 6 → fator=6
   fatorCompra?: number;
+  minPedido?: number;                 // pedido mínimo POR ITEM (qtd mínima que o fornecedor aceita deste insumo)
   precoEstimado?: number;             // R$ por unidade do insumo (info)
   ativo: boolean;
   ordem?: number;
@@ -2814,6 +2816,13 @@ export type PedidoItem = {
   qtdRecebida?: number | null;        // preenchido no recebimento
   precoUnit?: number;                 // R$ por unidade (snapshot)
   observacao?: string;
+  // ─ Contexto da sugestão (3 colunas: contagem | mínimo | sugestão) ─
+  qtdSugeridaIA?: number;             // o que a IA/regra sugeriu (base do "restaurar")
+  contagemSnapshot?: number | null;   // quanto tinha na contagem
+  minStockSnapshot?: number | null;   // estoque mínimo do insumo no momento
+  fatorCompraSnapshot?: number | null;// múltiplo do pacote
+  precisaPedido?: boolean;            // true = abaixo do mínimo; false = OK (linha opaca)
+  incluido?: boolean;                 // se entra no pedido final (OK começa false)
 };
 
 export type Pedido = {
@@ -2837,6 +2846,16 @@ export type Pedido = {
   observacaoGeral?: string;
   observacaoRecebimento?: string;
   atualizadoEm: string;
+  // ─ Sugestão da IA (gerada ao enviar a contagem; persiste, não re-avalia) ─
+  origemContagemSessaoId?: string;    // sessão de contagem que originou
+  geradoPorIA?: boolean;
+  iaEspelho?: PedidoItem[];           // snapshot da sugestão da IA (pra "restaurar")
+  iaResumo?: string;                  // explicação curta da IA (mínimos, pacote, etc.)
+  iaGeradoEm?: string | null;
+  // ─ Vínculo com o Recebimento (baixa) ─
+  recebimentoNotaId?: string | null;  // NF que deu baixa neste pedido
+  recebimentoVinculadoEm?: string | null;
+  recebimentoVinculadoPor?: string | null;
 };
 
 // ─── TEMPLATES DE PERMISSÃO (REMOVIDO — Rodada 5) ───
@@ -6144,6 +6163,10 @@ export type RecebimentoNota = {
   conferidoPor?: { id: string; nome: string };
   excluidoEm?: string;                // ISO — soft delete (vai pra "Excluídos"; some sozinho em 60 dias)
   excluidoPor?: { id: string; nome: string };
+  // Vínculo com um Pedido de compra (baixa): esta NF deu entrada num pedido aberto.
+  pedidoVinculadoId?: string | null;
+  pedidoVinculadoEm?: string | null;
+  pedidoVinculadoPor?: { id: string; nome: string } | null;
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
