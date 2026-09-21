@@ -125,7 +125,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [batidas, setBatidas] = useState<BatidaDoc[]>([]);
   const [ajustes, setAjustes] = useState<PtrpAjuste[]>([]);
-  const [ajusteModal, setAjusteModal] = useState<{ emp: Empregado; data: string; bs: BatidaDoc[] } | null>(null);
+  const [ajusteModal, setAjusteModal] = useState<{ emp: Empregado; data: string; bs: BatidaDoc[]; reorgPares?: { in: string; out: string }[] } | null>(null);
   // Reclassificar o status na escala praticada de um dia (ex.: folga trabalhada).
   const [reclass, setReclass] = useState<{ emp: Empregado; data: string; prev?: ScheduleStatus } | null>(null);
   const [reclassBusy, setReclassBusy] = useState(false);
@@ -320,7 +320,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     return m;
   }, [ajustes]);
 
-  type Linha = { data: string; bs: BatidaDoc[]; bsRaw: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean; ehFuturo: boolean; ehHoje: boolean; pendenteCorrecao: boolean; reorgPares?: { in: string; out: string }[]; bsVirada?: BatidaDoc[] };
+  type Linha = { data: string; bs: BatidaDoc[]; bsRaw: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; statusPrevisto?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean; ehFuturo: boolean; ehHoje: boolean; pendenteCorrecao: boolean; reorgPares?: { in: string; out: string }[]; bsVirada?: BatidaDoc[] };
   function apurarColab(emp: Empregado) {
     const cpf = soDig(emp.cpf);
     const dias = batidasPorCpf[cpf] || {};
@@ -347,6 +347,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       const ehFuturo = data > hojeStr;   // dia ainda não aconteceu (BRT)
       const ehHoje = data === hojeStr;   // dia em ANDAMENTO — não acusa erro ainda
       const statusEscala = escala ? (escala.real?.[emp.id]?.[data] ?? escala.prevista?.[emp.id]?.[data]) : undefined;
+      const statusPrevisto = escala?.prevista?.[emp.id]?.[data];   // SÓ o previsto (sem a real) — pra comparar previsto × praticado
       const prev = turnoPrevisto(emp, data, statusEscala);
       // Mostra TODOS os dias do mês — inclusive folgas, dias sem batida e FUTUROS
       // (estes só com o previsto, sem virar falta e fora do saldo).
@@ -407,7 +408,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       if (!ehHoje && !pendenteCorrecao && atrasoMin > 0 && ajustesDia.some(a => a.tipo === "atraso_justificado")) {
         abonadoMin += atrasoMin; saldoMes += atrasoMin; excecoes = excecoes.filter(e => e !== "atraso"); atrasoMin = 0;
       }
-      linhas.push({ data, bs, bsRaw, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo, ehHoje, pendenteCorrecao, reorgPares: reorg?.pares, bsVirada });
+      linhas.push({ data, bs, bsRaw, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, statusPrevisto: statusPrevisto as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo, ehHoje, pendenteCorrecao, reorgPares: reorg?.pares, bsVirada });
     }
     // Interjornada: descanso entre a última saída de um dia e a 1ª entrada do dia
     // seguinte (calendário) < mínimo da CCT → exceção no dia seguinte.
@@ -709,10 +710,20 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     return <span className={`tabular-nums font-medium ${pos ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{pos ? "+" : "−"}{hm(Math.abs(s))}</span>;
   };
   const renderPrevisto = (l: Linha) => (<>
-    {l.statusEscala && <span className={`inline-block mr-1 text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[l.statusEscala].bg} ${STATUS_INFO[l.statusEscala].text}`} title={STATUS_INFO[l.statusEscala].label}>{STATUS_INFO[l.statusEscala].short}</span>}
-    {l.statusEscala ? (l.previstoTxt.includes("–") ? l.previstoTxt : "") : l.previstoTxt}
+    {l.statusPrevisto && <span className={`inline-block mr-1 text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[l.statusPrevisto].bg} ${STATUS_INFO[l.statusPrevisto].text}`} title={STATUS_INFO[l.statusPrevisto].label}>{STATUS_INFO[l.statusPrevisto].short}</span>}
+    {l.statusPrevisto ? (l.previstoTxt.includes("–") ? l.previstoTxt : "") : l.previstoTxt}
     {l.ehFeriado && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">feriado</span>}
   </>);
+  // PRATICADO da escala = o que a apuração diz que aconteceu (statusPraticado).
+  // Fica lado a lado com o previsto pra o DP comparar mudança por dia. "•" marca
+  // que o praticado difere do previsto (o dia mudou). Hoje/futuro não têm praticado.
+  const renderPraticado = (l: Linha) => {
+    if (l.ehFuturo || l.ehHoje) return <span className="text-gray-300 dark:text-gray-600">—</span>;
+    const st = statusPraticado(l);
+    if (!st) return <span className="text-gray-300 dark:text-gray-600">—</span>;
+    const difere = (l.statusPrevisto || "trabalho") !== st;
+    return <span className={`inline-flex items-center gap-1 text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[st].bg} ${STATUS_INFO[st].text}`} title={difere ? `Mudou: ${l.statusPrevisto ? STATUS_INFO[l.statusPrevisto].label : "trabalho"} → ${STATUS_INFO[st].label}` : STATUS_INFO[st].label}>{STATUS_INFO[st].short}{difere && <span className="text-[10px] leading-none">•</span>}</span>;
+  };
   const renderBatidas = (l: Linha, inclPunch: Set<string>) => l.ehFuturo ? <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-300">futuro</span> : l.reorgPares ? (
     <div className="tabular-nums text-violet-700 dark:text-violet-300" title="Batidas reorganizadas manualmente (o original segue imutável na Sólides)">
       {[...l.reorgPares].sort((a, b) => (horaMin(a.in) ?? 0) - (horaMin(b.in) ?? 0)).map((p, i) => <span key={i}>{i > 0 ? " · " : ""}{p.in}–{p.out}</span>)} <span className="text-[10px] text-violet-500">↔ reorganizado</span>
@@ -754,7 +765,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         <button type="button" disabled={reclassBusy} onClick={() => sel && setReclass({ emp: sel.emp, data: l.data, prev: l.statusEscala })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-amber-300 dark:border-amber-800 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-40" title="Definir o status na escala praticada (folga trabalhada, ou falta → justificada / injustificada / férias)"><CalendarDays size={14} className="inline"/></button>
       )}
       <button type="button" onClick={() => toggleCorr(l.data)} className={`text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border ${corrSel ? "bg-blue-500 border-blue-500 text-white" : temCorrigivel ? "border-blue-300 dark:border-blue-800 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20" : "border-gray-300 dark:border-gray-700 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}`} title={corrSel ? "Remover do pedido de correção" : "Selecionar p/ pedir correção"}><MessageSquare size={14} className="inline"/></button>
-      <button type="button" disabled={travado} onClick={() => sel && setAjusteModal({ emp: sel.emp, data: l.data, bs: [...l.bsRaw, ...(l.bsVirada || [])] })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title={travado ? "Mês fechado" : "Tratar"}><Settings size={14} className="inline"/></button>
+      <button type="button" disabled={travado} onClick={() => sel && setAjusteModal({ emp: sel.emp, data: l.data, bs: [...l.bsRaw, ...(l.bsVirada || [])], reorgPares: l.reorgPares })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title={travado ? "Mês fechado" : "Tratar"}><Settings size={14} className="inline"/></button>
     </div>
   ); };
 
@@ -1034,6 +1045,12 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       // Desfaz nos DOIS lados: primeiro reverte a decisão na Sólides (→ PENDENTE),
       // só então cancela o tratamento no app (se a Sólides falhar, não cancela aqui).
       if (reverteSolides) await decidirAprovacao(shortCode, { punchId: Number(a.punchId), status: "PENDING", observation: "Decisão desfeita no planejamento.app" });
+      // Abono de dia inteiro grava o status na escala praticada; ao desfazer, volta
+      // o dia ao previsto — mas só se o dia AINDA não foi fechado (solides_sync) e a
+      // real atual é exatamente o que este abono escreveu (não pisa em outra decisão).
+      if (a.tipo === "abono" && a.statusEscala && !diaFechado(a.colaboradorId, a.data) && escala?.real?.[a.colaboradorId]?.[a.data] === a.statusEscala) {
+        await setDoc(doc(db, "escalas", `${rid}_${a.data.slice(0, 7)}`), { real: { [a.colaboradorId]: { [a.data]: deleteField() } }, atualizadoEm: new Date().toISOString() }, { merge: true }).catch(() => {});
+      }
       await updateDoc(doc(db, "ptrpAjustes", a.id), { cancelado: true, canceladoPor: { id: me?.id || "", nome: me?.nome || "" }, canceladoEm: new Date().toISOString() });
       setAcaoMsg(reverteSolides ? "✓ Decisão desfeita — correção voltou a pendente na Sólides." : "✓ Tratamento cancelado.");
     } catch (e) { setAcaoMsg("Falha ao desfazer: " + (e instanceof Error ? e.message : "erro")); }
@@ -1425,7 +1442,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0 text-[12.5px] text-gray-600 dark:text-gray-300 flex items-center gap-1.5">
                         <span className="shrink-0 w-5 inline-flex justify-center">{renderFecharCell(l)}</span>
-                        <span><span className="font-semibold tabular-nums text-gray-800 dark:text-gray-100 mr-1.5">{l.data.slice(-2)}/{l.data.slice(5, 7)}</span>{renderPrevisto(l)}</span>
+                        <span><span className="font-semibold tabular-nums text-gray-800 dark:text-gray-100 mr-1.5">{l.data.slice(-2)}/{l.data.slice(5, 7)}</span>{renderPrevisto(l)}{!l.ehFuturo && !l.ehHoje && statusPraticado(l) && statusPraticado(l) !== (l.statusPrevisto || "trabalho") && <span className="text-gray-400"> → {renderPraticado(l)}</span>}</span>
                       </div>
                       {renderAcoes(l, f.pendUndecided, f.temCorrigivel)}
                     </div>
@@ -1442,11 +1459,11 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
 
               {/* DESKTOP — tabela */}
               <div className="hidden sm:block overflow-x-auto">
-              <table className="w-full text-[12px] min-w-[640px] border-collapse [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top [&_th]:px-2">
-                <colgroup><col className="w-8" /><col className="w-14" /><col className="w-32" /><col /><col className="w-16" /><col className="w-16" /><col className="w-14" /><col className="w-20" /><col className="w-12" /></colgroup>
+              <table className="w-full text-[12px] min-w-[720px] border-collapse [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top [&_th]:px-2">
+                <colgroup><col className="w-8" /><col className="w-14" /><col className="w-32" /><col className="w-20" /><col /><col className="w-16" /><col className="w-16" /><col className="w-14" /><col className="w-20" /><col className="w-12" /></colgroup>
                 <thead>
                   <tr className="text-[10px] uppercase tracking-wide text-gray-400 text-left border-b border-gray-200 dark:border-gray-800">
-                    <th className="py-1.5 font-semibold text-center" title={fecharMode ? "Marque pra fechar" : "Fechado ✓"}>{fecharMode ? "✓" : <Lock size={11} className="inline"/>}</th><th className="py-1.5 font-semibold">Dia</th><th className="font-semibold">Previsto</th><th className="font-semibold">Batidas / tratamento</th>
+                    <th className="py-1.5 font-semibold text-center" title={fecharMode ? "Marque pra fechar" : "Fechado ✓"}>{fecharMode ? "✓" : <Lock size={11} className="inline"/>}</th><th className="py-1.5 font-semibold">Dia</th><th className="font-semibold" title="Status previsto na escala (o que foi programado)">Previsto</th><th className="font-semibold" title="Status praticado na escala (o que a apuração indica) — '•' = mudou em relação ao previsto">Praticado</th><th className="font-semibold">Batidas / tratamento</th>
                     <th className="font-semibold text-right">Trab.</th><th className="font-semibold text-right" title="Saldo do dia = trabalhado + abonado − previsto (+ verde / − vermelho / 0 azul). Dia com batida aberta fica 'pendente' e conta zero no banco até a correção.">Saldo</th><th className="font-semibold text-right" title="Adicional noturno — minutos trabalhados na faixa noturna (22h–05h)">Not.</th><th className="font-semibold">Exceções</th><th className="font-semibold text-right">Ação</th>
                   </tr>
                 </thead>
@@ -1456,6 +1473,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                       <td className="text-center">{renderFecharCell(l)}</td>
                       <td className="tabular-nums font-medium text-gray-700 dark:text-gray-200 whitespace-nowrap">{l.data.slice(-2)}/{l.data.slice(5, 7)} <span className={`text-[10px] font-normal ${[0, 6].includes(new Date(l.data + "T12:00:00").getDay()) ? "text-rose-400 dark:text-rose-400/70" : "text-gray-400"}`}>{diaSemanaAbrev(l.data)}</span></td>
                       <td className={`whitespace-nowrap ${f.folga ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}`}>{renderPrevisto(l)}</td>
+                      <td className="whitespace-nowrap">{renderPraticado(l)}</td>
                       <td className="text-gray-700 dark:text-gray-200">{renderBatidas(l, f.inclPunch)}</td>
                       <td className="text-right tabular-nums font-medium">{l.trabalhado ? hm(l.trabalhado) : <span className="text-gray-300 dark:text-gray-600">—</span>}</td>
                       <td className="text-right">{renderSaldo(l)}</td>
@@ -1478,7 +1496,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         )}
         </>
       ))}
-      {ajusteModal && me && <AjusteModal empresaKey={shortCode} emp={ajusteModal.emp} data={ajusteModal.data} bs={ajusteModal.bs} solidesEmpId={empIdPorCpf.get(soDig(ajusteModal.emp.cpf)) || null} autor={{ id: me.id, nome: me.nome }} onClose={() => setAjusteModal(null)} />}
+      {ajusteModal && me && rid && <AjusteModal empresaKey={shortCode} rid={rid} emp={ajusteModal.emp} data={ajusteModal.data} bs={ajusteModal.bs} reorgExistente={ajusteModal.reorgPares} solidesEmpId={empIdPorCpf.get(soDig(ajusteModal.emp.cpf)) || null} autor={{ id: me.id, nome: me.nome }} onClose={() => setAjusteModal(null)} />}
 
       {/* Reclassificar status na escala praticada (dia fora de escala / folga trabalhada) */}
       {reclass && (
@@ -1596,7 +1614,7 @@ function reparearDia(docs: BatidaDoc[]): BatidaDoc[] {
 // 2 caminhos: (A) Editar marcações (incluir/excluir, cronológico, sempre reflete
 // na Sólides) · (B) Lançar motivo (afastamento/abono: motivo Sólides + status escala).
 const STATUS_LISTA: ScheduleStatus[] = ["trabalho", "falta_j", "falta_i", "folga", "comp", "comp_trab", "ferias", "freela"];
-function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }: { empresaKey: string; emp: Empregado; data: string; bs: BatidaDoc[]; solidesEmpId: string | null; autor: { id: string; nome: string }; onClose: () => void }) {
+function AjusteModal({ empresaKey, rid, emp, data, bs, reorgExistente, solidesEmpId, autor, onClose }: { empresaKey: string; rid: string; emp: Empregado; data: string; bs: BatidaDoc[]; reorgExistente?: { in: string; out: string }[]; solidesEmpId: string | null; autor: { id: string; nome: string }; onClose: () => void }) {
   const [caminho, setCaminho] = useState<"" | "marcacoes" | "motivo" | "atestado" | "reorganizar">("");
   const [reorgT, setReorgT] = useState<string[]>([]);   // marcações individuais (HH:MM), em ordem
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -1619,6 +1637,16 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
   // Reorganizar: parte de TODAS as batidas do dia (inclusive pendentes — antes de
   // aprovar), pra o DP corrigir o pareamento (ex.: 18:01–00:00).
   const abrirReorganizar = () => {
+    // Se já existe uma reorganização salva pra este dia, reabre NA ORDEM salva
+    // (achatando os pares em marcações individuais: in,out,in,out…), pra o DP não
+    // perder o rearranjo que fez. Só quando não há reorganização é que extraímos
+    // as marcações cruas do dia e ordenamos cronologicamente como ponto de partida.
+    if (reorgExistente && reorgExistente.length) {
+      const flat = reorgExistente.flatMap(p => [p.in, p.out]).filter(t => t && t !== "—");
+      setReorgT(flat.length ? flat : [""]);
+      setCaminho("reorganizar");
+      return;
+    }
     // Extrai TODAS as marcações individuais do dia (entradas e saídas de cada
     // batida, inclusive pendentes), em ordem cronológica. O DP arrasta/edita/
     // exclui cada uma; os pares saem por adjacência (1ª+2ª, 3ª+4ª…).
@@ -1794,6 +1822,14 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
         if (solidesEmpId && diaInteiro) await lancarAfastamento(empresaKey, { employeeId: Number(solidesEmpId), adjustmentReasonId: motivoId, startDate: data, endDate: data, fullDay: true });
         await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "abono", statusEscala, motivoSolidesId: motivoId, ...(abonMin ? { minutos: abonMin, in: ain, out: aout } : {}), motivo: obs.trim() || (mInfo?.description || ""), ...evidPayload, autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: !!(solidesEmpId && diaInteiro) }));
         await setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(motivoId)]: { ...(mapa[String(motivoId)] || {}), status: statusEscala, descricao: mInfo?.description || `Motivo ${motivoId}` } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
+        // Abono de DIA INTEIRO reflete já na escala PRATICADA do dia (igual à
+        // reclassificação): o gestor escolheu o status ("falta justificada" etc.),
+        // então grava em escalas.real na hora — sem precisar "Fechar praticada".
+        // Abono PARCIAL (só X minutos) não mexe: a pessoa trabalhou, é só desconto.
+        if (diaInteiro) {
+          const compDia = data.slice(0, 7);
+          await setDoc(doc(db, "escalas", `${rid}_${compDia}`), sanitizeForFirestore({ real: { [emp.id]: { [data]: statusEscala } }, atualizadoEm: new Date().toISOString(), atualizadoPor: autor }), { merge: true }).catch(() => {});
+        }
         onClose();
       } else if (caminho === "atestado") {
         if (!motivoId) { setErr("Escolha o motivo do atestado."); return; }
@@ -1813,9 +1849,11 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
           await criarAfastamentoNovo(empresaKey, { employee: Number(solidesEmpId), timeOffWork: 4, esocialReason: "COD_02", startDate: atIni, endDate: atFim });
         }
         const foiSolides = !!(solidesEmpId && ehAtestadoMedico);
-        // App: 1 lançamento por dia (pra refletir no espelho de cada dia).
+        // App: 1 lançamento por dia (pra refletir no espelho de cada dia) + grava
+        // já o status na escala PRATICADA do dia (atestado é sempre dia inteiro).
         for (const dia of diasDoIntervalo(atIni, atFim)) {
           await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data: dia, tipo: "abono", statusEscala, motivoSolidesId: motivoId, motivo: obs.trim() || (desc || "Atestado médico"), ...evidPayload, autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: foiSolides }));
+          await setDoc(doc(db, "escalas", `${rid}_${dia.slice(0, 7)}`), sanitizeForFirestore({ real: { [emp.id]: { [dia]: statusEscala } }, atualizadoEm: new Date().toISOString(), atualizadoPor: autor }), { merge: true }).catch(() => {});
         }
         await setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(motivoId)]: { ...(mapa[String(motivoId)] || {}), status: statusEscala, descricao: desc || `Motivo ${motivoId}` } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
         onClose();
