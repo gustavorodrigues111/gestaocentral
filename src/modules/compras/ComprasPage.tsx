@@ -6,7 +6,7 @@ import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfigurar, canVer } from "../../core/auth/permissions";
-import type { Contagem, Fornecedor, Insumo, Pedido } from "../../core/types";
+import type { Contagem, Fornecedor, Insumo, Pedido, RecebimentoNota } from "../../core/types";
 import { FornecedoresTab } from "./FornecedoresTab";
 import { PedidosTab } from "./PedidosTab";
 import { NovoPedidoModal } from "./NovoPedidoModal";
@@ -74,19 +74,15 @@ export function ComprasPage() {
     return () => unsub();
   }, [rid]);
 
-  // Emissores das notas de recebimento (só na aba Fornecedores e p/ quem configura)
-  // — pra sugerir pré-cadastro de fornecedor a partir de quem já emitiu NF.
+  // Notas de recebimento — pra vincular pedido↔NF (baixa) e sugerir fornecedores.
+  const [recebimentos, setRecebimentos] = useState<RecebimentoNota[]>([]);
   useEffect(() => {
-    if (!rid || tab !== "fornecedores" || !podeConfig) return;
+    if (!rid || !podeConfig) { setRecebimentos([]); return; }
     const q = query(collection(db, "recebimentos"), where("restaurantId", "==", rid));
-    const unsub = onSnapshot(q, (snap) => {
-      setEmissoresNota(snap.docs.map(d => {
-        const v = d.data() as { emissor?: string; cnpjEmissor?: string };
-        return { emissor: v.emissor, cnpjEmissor: v.cnpjEmissor };
-      }));
-    });
+    const unsub = onSnapshot(q, (snap) => setRecebimentos(snap.docs.map(d => ({ id: d.id, ...d.data() }) as RecebimentoNota).filter(n => !n.excluidoEm)), () => setRecebimentos([]));
     return () => unsub();
-  }, [rid, tab, podeConfig]);
+  }, [rid, podeConfig]);
+  useEffect(() => { setEmissoresNota(recebimentos.map(v => ({ emissor: v.emissor, cnpjEmissor: v.cnpjEmissor }))); }, [recebimentos]);
 
   // Última contagem por insumo
   const ultimaContagem = useMemo(() => {
@@ -171,6 +167,8 @@ export function ComprasPage() {
         <PedidosTab
           pedidos={pedidos}
           podeConfig={podeConfig}
+          insumos={insumos}
+          recebimentos={recebimentos}
           onNovoPedido={podeConfig ? () => setNovoPedido(true) : undefined}
         />
       )}

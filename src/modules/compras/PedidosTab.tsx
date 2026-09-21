@@ -10,11 +10,14 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import {
   PEDIDO_STATUS_LABEL, UNIDADES_LABEL,
 } from "../../core/types";
-import type { Pedido, PedidoStatus, PedidoItem } from "../../core/types";
+import type { Pedido, PedidoStatus, PedidoItem, Insumo, RecebimentoNota } from "../../core/types";
+import { normalizar } from "../contagens/sugestoesRecebimento";
 
 type Props = {
   pedidos: Pedido[];
   podeConfig: boolean;
+  insumos?: Insumo[];
+  recebimentos?: RecebimentoNota[];
   onNovoPedido?: () => void;
 };
 
@@ -36,7 +39,7 @@ const PEDIDO_STATUS_LUCIDE: Record<PedidoStatus, LucideIcon> = {
   cancelado:    X,
 };
 
-export function PedidosTab({ pedidos, podeConfig, onNovoPedido }: Props) {
+export function PedidosTab({ pedidos, podeConfig, insumos = [], recebimentos = [], onNovoPedido }: Props) {
   const [filtroStatus, setFiltroStatus] = useState<"abertos" | "todos" | PedidoStatus>("abertos");
   const [search, setSearch] = useState("");
   const [recebendo, setRecebendo] = useState<Pedido | null>(null);
@@ -120,6 +123,8 @@ export function PedidosTab({ pedidos, podeConfig, onNovoPedido }: Props) {
       {recebendo && (
         <ReceberModal
           pedido={recebendo}
+          insumos={insumos}
+          recebimentos={recebimentos}
           onClose={() => setRecebendo(null)}
         />
       )}
@@ -288,62 +293,126 @@ function PedidoCard({ pedido, podeConfig, onReceber }: {
 
 // ── ReceberModal ───────────────────────────────────────────────────────────
 
-function ReceberModal({ pedido, onClose }: { pedido: Pedido; onClose: () => void }) {
+function ReceberModal({ pedido, insumos, recebimentos, onClose }: { pedido: Pedido; insumos: Insumo[]; recebimentos: RecebimentoNota[]; onClose: () => void }) {
   const { pessoa: me } = useAuth();
   const [recebido, setRecebido] = useState<Record<string, string>>(() => {
     const m: Record<string, string> = {};
-    for (const it of pedido.itens) {
-      m[it.insumoId] = String(it.qtdRecebida ?? it.qtdPedida);
-    }
+    for (const it of pedido.itens) m[it.insumoId] = String(it.qtdRecebida ?? it.qtdPedida);
     return m;
   });
   const [obs, setObs] = useState(pedido.observacaoRecebimento || "");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [notaId, setNotaId] = useState<string | null>(pedido.recebimentoNotaId || null);
+  const [verTodas, setVerTodas] = useState(false);
+
+  const insumoById = useMemo(() => new Map(insumos.map(i => [i.id, i])), [insumos]);
+  const fornNorm = normalizar(pedido.fornecedorNomeSnapshot);
+
+  // NFs candidatas: mesmo fornecedor (emissor parecido) e ainda não vinculadas a
+  // outro pedido. Ordena por data desc. "Ver todas" mostra o resto também.
+  const candidatas = useMemo(() => {
+    const disp = recebimentos.filter(n => !n.pedidoVinculadoId || n.pedidoVinculadoId === pedido.id);
+    const casa = (n: RecebimentoNota) => { const e = normalizar(n.emissor || ""); return !!e && (e.includes(fornNorm) || fornNorm.includes(e)); };
+    const sug = disp.filter(casa);
+    const resto = disp.filter(n => !casa(n));
+    const ord = (a: RecebimentoNota, b: RecebimentoNota) => (b.dataEmissao || b.recebidoEm || "").localeCompare(a.dataEmissao || a.recebidoEm || "");
+    return { sug: sug.sort(ord), resto: resto.sort(ord) };
+  }, [recebimentos, fornNorm, pedido.id]);
+  const notaSel = notaId ? recebimentos.find(n => n.id === notaId) || null : null;
+
+  // Ao escolher uma NF: casa os itens da nota (por descrição normalizada × aliases/
+  // nome do insumo) e preenche a qtd recebida de cada item do pedido.
+  function aplicarNota(n: RecebimentoNota | null) {
+    setNotaId(n?.id || null);
+    if (!n) return;
+    const m: Record<string, string> = { ...recebido };
+    for (const it of pedido.itens) {
+      const ins = insumoById.get(it.insumoId);
+      const chaves = new Set<string>([normalizar(it.insumoNomeSnapshot), ...(ins?.aliases || []), ...(ins ? [normalizar(ins.nome)] : [])]);
+      const casado = (n.itens || []).find(ni => { const d = normalizar(ni.descricao || ""); return d && (chaves.has(d) || [...chaves].some(k => k && (d.includes(k) || k.includes(d)))); });
+      if (casado?.quantidade != null) m[it.insumoId] = String(casado.quantidade);
+    }
+    setRecebido(m);
+  }
 
   async function confirmar() {
     if (!me) return;
-    setSaving(true);
-    setErr("");
+    setSaving(true); setErr("");
     try {
-      // Detecta divergência
       let temDivergencia = false;
       const itensRec: PedidoItem[] = pedido.itens.map(it => {
         const rec = parseFloat(recebido[it.insumoId] || "0");
         if (!isNaN(rec) && rec !== it.qtdPedida) temDivergencia = true;
         return { ...it, qtdRecebida: isNaN(rec) ? 0 : rec };
       });
-
       const status: PedidoStatus = temDivergencia ? "recebido_div" : "recebido_ok";
       const now = new Date().toISOString();
       await updateDoc(doc(db, "pedidos", pedido.id), sanitizeForFirestore({
-        itens: itensRec,
-        status,
-        recebidoEm: now,
-        recebidoPor: me.id,
+        itens: itensRec, status, recebidoEm: now, recebidoPor: me.id,
         observacaoRecebimento: obs.trim() || undefined,
+        recebimentoNotaId: notaId || undefined,
+        recebimentoVinculadoEm: notaId ? now : undefined,
+        recebimentoVinculadoPor: notaId ? me.id : undefined,
         atualizadoEm: now,
       }));
+      // Mão dupla: marca a NF como vinculada a este pedido (baixa).
+      if (notaId) {
+        await updateDoc(doc(db, "recebimentos", notaId), sanitizeForFirestore({
+          pedidoVinculadoId: pedido.id, pedidoVinculadoEm: now, pedidoVinculadoPor: { id: me.id, nome: me.nome },
+        })).catch(() => {});
+      }
       onClose();
     } catch (e) {
-      console.error(e);
       setErr(e instanceof Error ? e.message : "Erro");
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
-  // Cálculo de divergências
   const divergencias = pedido.itens.filter(it => {
     const rec = parseFloat(recebido[it.insumoId] || "0");
     return !isNaN(rec) && rec !== it.qtdPedida;
   }).length;
+  const fmtD = (s?: string) => s ? new Date(s.length <= 10 ? s + "T12:00:00" : s).toLocaleDateString("pt-BR") : "";
 
   return (
     <Modal title={<span className="inline-flex items-center gap-2"><Package size={18} /> Receber — {pedido.fornecedorNomeSnapshot}</span>} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
+        {/* Vincular a uma NF do Recebimento */}
+        <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-900/10 p-2.5 space-y-1.5">
+          <div className="text-[11px] font-bold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Vincular à nota do Recebimento (dá baixa)</div>
+          {notaSel ? (
+            <div className="flex items-center justify-between gap-2 text-[13px] bg-white dark:bg-gray-900 rounded-lg border border-indigo-200 dark:border-indigo-800 px-2.5 py-1.5">
+              <span className="min-w-0"><strong className="text-gray-900 dark:text-gray-100">{notaSel.emissor || "NF"}</strong> <span className="text-gray-500">· nº {notaSel.numeroNota || "—"} · {fmtD(notaSel.dataEmissao || notaSel.recebidoEm)}{notaSel.valorTotal != null ? ` · R$ ${notaSel.valorTotal.toFixed(2)}` : ""}</span></span>
+              <button type="button" onClick={() => setNotaId(null)} className="shrink-0 text-[11px] text-rose-500 hover:underline">desvincular</button>
+            </div>
+          ) : (
+            <>
+              {candidatas.sug.length === 0 && !verTodas && <div className="text-[12px] text-gray-500">Nenhuma NF do fornecedor "{pedido.fornecedorNomeSnapshot}" encontrada. <button type="button" onClick={() => setVerTodas(true)} className="text-indigo-600 dark:text-indigo-400 hover:underline">ver todas as notas</button></div>}
+              {candidatas.sug.map(n => (
+                <button key={n.id} type="button" onClick={() => aplicarNota(n)} className="w-full text-left text-[13px] bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-indigo-300 px-2.5 py-1.5 flex items-center justify-between gap-2">
+                  <span className="min-w-0"><strong>{n.emissor || "NF"}</strong> <span className="text-gray-500">· nº {n.numeroNota || "—"} · {fmtD(n.dataEmissao || n.recebidoEm)}{n.valorTotal != null ? ` · R$ ${n.valorTotal.toFixed(2)}` : ""}</span></span>
+                  <span className="shrink-0 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">é esta ›</span>
+                </button>
+              ))}
+              {(verTodas || candidatas.sug.length > 0) && (
+                <details className="text-[12px]">
+                  <summary className="cursor-pointer text-gray-500 hover:text-gray-700">Outra nota… ({candidatas.resto.length})</summary>
+                  <div className="mt-1 space-y-1 max-h-48 overflow-y-auto">
+                    {candidatas.resto.map(n => (
+                      <button key={n.id} type="button" onClick={() => aplicarNota(n)} className="w-full text-left bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-indigo-300 px-2.5 py-1.5">
+                        <strong>{n.emissor || "NF"}</strong> <span className="text-gray-500">· nº {n.numeroNota || "—"} · {fmtD(n.dataEmissao || n.recebidoEm)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              )}
+              <p className="text-[10px] text-gray-400">Opcional — dá pra confirmar o recebimento sem NF. Vincular preenche as quantidades a partir da nota e marca a baixa nos dois lados.</p>
+            </>
+          )}
+        </div>
+
         <p className="text-sm text-gray-600 dark:text-gray-400">
-          Confira o que foi entregue. Se diferente do pedido, ajuste a quantidade.
+          Confira o que foi entregue{notaSel ? " (quantidades vieram da NF — ajuste se preciso)" : ""}. Se diferente do pedido, ajuste a quantidade.
         </p>
 
         <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl divide-y divide-gray-100 dark:divide-gray-800">
