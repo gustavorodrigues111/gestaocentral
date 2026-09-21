@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Building2, CalendarDays, Package, Banknote, MessageSquare, Send, TriangleAlert, ClipboardList, FolderOpen, FileText, Check, X, type LucideIcon } from "lucide-react";
+import { Building2, CalendarDays, Package, Banknote, Send, TriangleAlert, ClipboardList, FolderOpen, FileText, Check, X, Copy, type LucideIcon } from "lucide-react";
 import { deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -11,7 +11,6 @@ import {
   PEDIDO_STATUS_LABEL, UNIDADES_LABEL,
 } from "../../core/types";
 import type { Pedido, PedidoStatus, PedidoItem } from "../../core/types";
-import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
 
 type Props = {
   pedidos: Pedido[];
@@ -131,7 +130,7 @@ function PedidoCard({ pedido, podeConfig, onReceber }: {
   const { pessoa: me } = useAuth();
   const [busy, setBusy] = useState(false);
   const [expandido, setExpandido] = useState(false);
-  const abrirWhatsapp = useAbrirWhatsapp();
+  const [copiado, setCopiado] = useState(false);
 
   async function setStatus(status: PedidoStatus, extra?: Partial<Pedido>) {
     if (!me) return;
@@ -184,22 +183,17 @@ function PedidoCard({ pedido, podeConfig, onReceber }: {
     return linhas.join("\n");
   }
 
-  async function abrirWA() {
-    if (!pedido.fornecedorWhatsappSnapshot) {
-      alert("Fornecedor não tem WhatsApp cadastrado.");
-      return;
-    }
-    const ok = await abrirWhatsapp(
-      pedido.restaurantId,
-      "fornecedores",
-      pedido.fornecedorWhatsappSnapshot,
-      pedido.fornecedorNomeSnapshot,
-      gerarMensagemWA(),
-    );
-    // Marca como enviado se não estava e a conversa abriu
-    if (ok && (pedido.status === "rascunho" || pedido.status === "aprovado")) {
-      void setStatus("enviado");
-    }
+  async function copiarMensagem() {
+    try { await navigator.clipboard.writeText(gerarMensagemWA()); setCopiado(true); setTimeout(() => setCopiado(false), 1800); }
+    catch { alert("Não consegui copiar — selecione e copie manualmente:\n\n" + gerarMensagemWA()); }
+  }
+
+  // Abre o WhatsApp DO CELULAR (wa.me) já com o fornecedor e a mensagem prontos.
+  function enviarWhatsApp() {
+    const num = (pedido.fornecedorWhatsappSnapshot || "").replace(/\D/g, "");
+    if (!num) { alert("Fornecedor não tem WhatsApp cadastrado."); return; }
+    window.open(`https://wa.me/${num}?text=${encodeURIComponent(gerarMensagemWA())}`, "_blank");
+    if (pedido.status === "rascunho" || pedido.status === "aprovado") void setStatus("enviado");
   }
 
   const isFinal = pedido.status === "recebido_ok" || pedido.status === "recebido_div" || pedido.status === "cancelado";
@@ -227,8 +221,11 @@ function PedidoCard({ pedido, podeConfig, onReceber }: {
           {podeConfig && pedido.status === "rascunho" && (
             <Button variant="secondary" size="sm" onClick={() => setStatus("aprovado")} disabled={busy}>✓ Aprovar</Button>
           )}
+          {podeConfig && !isFinal && (
+            <Button variant="secondary" size="sm" onClick={() => void copiarMensagem()}><span className="inline-flex items-center gap-1.5"><Copy size={14} /> {copiado ? "Copiado!" : "Copiar"}</span></Button>
+          )}
           {podeConfig && (pedido.status === "rascunho" || pedido.status === "aprovado" || pedido.status === "enviado") && pedido.fornecedorWhatsappSnapshot && (
-            <Button variant="secondary" size="sm" onClick={() => void abrirWA()}><span className="inline-flex items-center gap-1.5"><MessageSquare size={14} /> Enviar WhatsApp</span></Button>
+            <Button variant="secondary" size="sm" onClick={enviarWhatsApp}><span className="inline-flex items-center gap-1.5"><Send size={14} /> Enviar WhatsApp</span></Button>
           )}
           {podeConfig && (pedido.status === "rascunho" || pedido.status === "aprovado") && (
             <Button variant="secondary" size="sm" onClick={() => setStatus("enviado")} disabled={busy}><span className="inline-flex items-center gap-1.5"><Send size={14} /> Marcar enviado</span></Button>
