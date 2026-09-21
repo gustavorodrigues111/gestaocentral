@@ -1,7 +1,7 @@
-import { useMemo, useState } from "react";
-import { Building2, Smartphone, ClipboardList, TriangleAlert, ChevronDown, ChevronRight } from "lucide-react";
-import { addDoc, collection } from "firebase/firestore";
-import { db } from "../../core/firebase/config";
+import { useEffect, useMemo, useState } from "react";
+import { Building2, Smartphone, ClipboardList, TriangleAlert, ChevronDown, ChevronRight, Sparkles, RotateCcw, Loader2 } from "lucide-react";
+import { addDoc, collection, doc, onSnapshot, setDoc } from "firebase/firestore";
+import { db, auth } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
@@ -30,14 +30,77 @@ export function SugestoesTab({ ultimaContagem, fornecedores, insumos, restaurant
 
   const grupos = useMemo(() => montarSugestao(insumos, ultimaContagem, fornecedores), [insumos, ultimaContagem, fornecedores]);
 
+  // ── Sugestão da IA (persistida em comprasSugestaoIA/{rid}) ──────────────────
+  // Gerada 1x quando você "monta com IA"; fica salva (não re-avalia ao abrir). É a
+  // BASE das quantidades (o espelho da IA pra restaurar); a edição sobrepõe.
+  type IaDoc = { geradoEm?: string; grupos?: { fornecedorId: string; resumo?: string; itens?: { insumoId: string; qtd: number }[] }[] };
+  const [iaDoc, setIaDoc] = useState<IaDoc | null>(null);
+  const [montando, setMontando] = useState(false);
+  const [iaErr, setIaErr] = useState("");
+
+  useEffect(() => {
+    if (!restaurantId) return;
+    return onSnapshot(doc(db, "comprasSugestaoIA", restaurantId), (snap) => setIaDoc(snap.exists() ? (snap.data() as IaDoc) : null), () => setIaDoc(null));
+  }, [restaurantId]);
+
+  // Mapa insumoId → qtd sugerida pela IA; e fornecedorId → resumo.
+  const iaQtd = useMemo(() => {
+    const m: Record<string, number> = {};
+    for (const g of iaDoc?.grupos || []) for (const it of g.itens || []) if (it?.insumoId != null) m[it.insumoId] = it.qtd;
+    return m;
+  }, [iaDoc]);
+  const iaResumo = useMemo(() => {
+    const m: Record<string, string> = {};
+    for (const g of iaDoc?.grupos || []) if (g.resumo) m[g.fornecedorId] = g.resumo;
+    return m;
+  }, [iaDoc]);
+  const temIA = !!iaDoc?.grupos?.length;
+
+  // Base da qtd: a IA (se tem) senão a regra. A edição do usuário sobrepõe.
+  const baseQtd = (l: LinhaSugestao): number => (iaQtd[l.insumo.id] != null ? iaQtd[l.insumo.id] : l.qtdSugerida);
+  const baseIncluido = (l: LinhaSugestao): boolean => (iaQtd[l.insumo.id] != null ? iaQtd[l.insumo.id] > 0 : l.precisaPedido);
+
+  async function montarComIA() {
+    if (!me) return;
+    setMontando(true); setIaErr("");
+    try {
+      const gruposPayload = grupos.filter(g => g.fornecedorId !== null).map(g => ({
+        fornecedorId: g.fornecedorId, fornecedorNome: g.fornecedor?.nome || "", pedidoMinimoValor: g.pedidoMinimoValor,
+        itens: [...g.precisam, ...g.ok].map(l => ({
+          insumoId: l.insumo.id, nome: l.insumo.nome, unidade: l.insumo.unidade,
+          contagem: l.contagem, minStock: l.minStock, fator: l.fator, minPedido: l.minPedido,
+          precoUnit: l.precoUnit, precisaPedido: l.precisaPedido, sugestaoRegra: l.qtdSugerida,
+        })),
+      }));
+      if (!gruposPayload.length) { setIaErr("Nada pra sugerir — cadastre estoque mínimo e fornecedor nos produtos."); return; }
+      const idToken = await auth.currentUser?.getIdToken();
+      const r = await fetch("/api/compras-ia", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken, grupos: gruposPayload }) });
+      const j = await r.json().catch(() => ({})) as { grupos?: IaDoc["grupos"]; error?: string };
+      if (!r.ok) { setIaErr(j.error || "Falha na IA."); return; }
+      await setDoc(doc(db, "comprasSugestaoIA", restaurantId), sanitizeForFirestore({
+        restaurantId, geradoEm: new Date().toISOString(), geradoPor: { id: me.id, nome: me.nome }, grupos: j.grupos || [],
+      }));
+      setAjustes({}); setIncluir({});   // volta pra base da IA
+    } catch (e) {
+      setIaErr(e instanceof Error ? e.message : "Erro ao montar com IA");
+    } finally { setMontando(false); }
+  }
+
+  // Restaura a sugestão da IA (ou da regra) de um fornecedor — descarta as edições dos itens dele.
+  function restaurarIA(g: GrupoFornecedor) {
+    const ids = [...g.precisam, ...g.ok].map(l => l.insumo.id);
+    setAjustes(s => { const n = { ...s }; for (const id of ids) delete n[id]; return n; });
+    setIncluir(s => { const n = { ...s }; for (const id of ids) delete n[id]; return n; });
+  }
+
   const qtd = (l: LinhaSugestao): number => {
     const v = ajustes[l.insumo.id];
-    if (v == null || v === "") return l.qtdSugerida;
+    if (v == null || v === "") return baseQtd(l);
     const n = parseFloat(v.replace(",", "."));
-    return isNaN(n) ? l.qtdSugerida : n;
+    return isNaN(n) ? baseQtd(l) : n;
   };
-  // OK começa NÃO incluído (opaco); item que precisa começa incluído.
-  const isIncluido = (l: LinhaSugestao): boolean => incluir[l.insumo.id] ?? l.precisaPedido;
+  // OK começa NÃO incluído (opaco); item que precisa (ou que a IA incluiu) começa incluído.
+  const isIncluido = (l: LinhaSugestao): boolean => incluir[l.insumo.id] ?? baseIncluido(l);
   const totalLinha = (l: LinhaSugestao): number => (l.precoUnit || 0) * qtd(l);
 
   const totalGrupo = (g: GrupoFornecedor): number =>
@@ -58,7 +121,7 @@ export function SugestoesTab({ ultimaContagem, fornecedores, insumos, restaurant
         qtdPedida: qtd(l),
         qtdRecebida: null,
         precoUnit: l.precoUnit,
-        qtdSugeridaIA: l.qtdSugerida,
+        qtdSugeridaIA: baseQtd(l),
         contagemSnapshot: l.temContagem ? l.contagem : null,
         minStockSnapshot: l.minStock || null,
         fatorCompraSnapshot: l.fator > 1 ? l.fator : null,
@@ -98,11 +161,23 @@ export function SugestoesTab({ ultimaContagem, fornecedores, insumos, restaurant
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-600 dark:text-gray-400">
-        Sugestão baseada em <strong>contagem × estoque mínimo</strong>, arredondada pelo pacote e pelo pedido mínimo do item.
-        Itens já OK aparecem no rodapé de cada fornecedor — dá pra <strong>adicionar</strong> se quiser antecipar.
-      </p>
-      {nadaPrecisa && comFornecedor.length > 0 && (
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <p className="text-sm text-gray-600 dark:text-gray-400 flex-1 min-w-[220px]">
+          Sugestão baseada em <strong>contagem × estoque mínimo</strong>, arredondada pelo pacote e pelo pedido mínimo do item.
+          {temIA
+            ? <> A <strong className="text-violet-600 dark:text-violet-300">IA</strong> montou o pedido considerando o pedido mínimo por item e o valor mínimo do fornecedor — edite à vontade e use "restaurar" pra voltar à sugestão dela.</>
+            : <> Itens já OK aparecem no rodapé de cada fornecedor.</>}
+        </p>
+        {podeConfig && (
+          <button type="button" onClick={() => void montarComIA()} disabled={montando}
+            className="shrink-0 inline-flex items-center gap-1.5 px-3 py-2 text-sm font-semibold rounded-lg bg-violet-600 text-white hover:bg-violet-700 disabled:opacity-50">
+            {montando ? <Loader2 size={15} className="animate-spin" /> : <Sparkles size={15} />} {montando ? "Montando…" : temIA ? "Refazer com IA" : "Montar com IA"}
+          </button>
+        )}
+      </div>
+      {iaErr && <div className="text-[12px] text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 rounded-lg px-3 py-1.5">{iaErr}</div>}
+      {temIA && iaDoc?.geradoEm && <div className="text-[11px] text-gray-400">Sugestão da IA gerada em {new Date(iaDoc.geradoEm).toLocaleString("pt-BR")}. Não re-avalia sozinha — clique em "Refazer com IA" após uma nova contagem.</div>}
+      {nadaPrecisa && comFornecedor.length > 0 && !temIA && (
         <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 text-center text-sm text-emerald-800 dark:text-emerald-300">
           ✓ Nenhum insumo abaixo do estoque mínimo. Tudo em ordem! (dá pra adicionar itens OK abaixo, se quiser)
         </div>
@@ -127,6 +202,9 @@ export function SugestoesTab({ ultimaContagem, fornecedores, insumos, restaurant
                 <div className="text-xs text-gray-600 dark:text-gray-400">
                   <strong>{inclui.length}</strong> item(ns){total > 0 && <> · <strong>{fmtR$(total)}</strong></>}
                 </div>
+                {temIA && podeConfig && (
+                  <button type="button" onClick={() => restaurarIA(g)} title="Descartar suas edições e voltar à sugestão da IA" className="text-[11px] font-medium text-violet-600 dark:text-violet-300 hover:underline inline-flex items-center gap-1"><RotateCcw size={12} /> restaurar IA</button>
+                )}
                 {podeConfig && (
                   <Button onClick={() => gerarPedido(g)} disabled={savingFornId === forn.id || inclui.length === 0}>
                     {savingFornId === forn.id ? "..." : <span className="inline-flex items-center gap-1.5"><ClipboardList size={14} /> Gerar pedido ({inclui.length})</span>}
@@ -135,8 +213,13 @@ export function SugestoesTab({ ultimaContagem, fornecedores, insumos, restaurant
               </div>
             </div>
 
+            {iaResumo[forn.id] && (
+              <div className="mb-2 text-[12px] inline-flex items-start gap-1.5 text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-900/15 border border-violet-200 dark:border-violet-800 rounded-lg px-2 py-1">
+                <Sparkles size={13} className="mt-0.5 shrink-0" /> <span>{iaResumo[forn.id]}</span>
+              </div>
+            )}
             {faltaMin > 0 && (
-              <div className="mb-2 text-[12px] inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-2 py-1">
+              <div className="mb-2 ml-2 text-[12px] inline-flex items-center gap-1.5 text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-2 py-1">
                 <TriangleAlert size={13} /> Faltam <strong>{fmtR$(faltaMin)}</strong> pra atingir o pedido mínimo ({fmtR$(g.pedidoMinimoValor!)}).
               </div>
             )}
@@ -153,7 +236,7 @@ export function SugestoesTab({ ultimaContagem, fornecedores, insumos, restaurant
             <div className="divide-y divide-gray-50 dark:divide-gray-800/50">
               {g.precisam.length === 0 && <div className="text-[12px] text-gray-400 px-2 py-2">Nenhum item abaixo do mínimo.</div>}
               {g.precisam.map(l => <LinhaItem key={l.insumo.id} l={l} incluido={isIncluido(l)} podeConfig={podeConfig}
-                valor={ajustes[l.insumo.id] ?? String(l.qtdSugerida)}
+                valor={ajustes[l.insumo.id] ?? String(baseQtd(l))}
                 onQtd={v => setAjustes(s => ({ ...s, [l.insumo.id]: v }))}
                 onToggle={v => setIncluir(s => ({ ...s, [l.insumo.id]: v }))} />)}
             </div>
@@ -168,7 +251,7 @@ export function SugestoesTab({ ultimaContagem, fornecedores, insumos, restaurant
                 {okOpen && (
                   <div className="divide-y divide-gray-50 dark:divide-gray-800/50 mt-1">
                     {okVisiveis.map(l => <LinhaItem key={l.insumo.id} l={l} incluido={isIncluido(l)} podeConfig={podeConfig} opaco
-                      valor={ajustes[l.insumo.id] ?? String(qtdInicialOk(l))}
+                      valor={ajustes[l.insumo.id] ?? String(baseQtd(l) > 0 ? baseQtd(l) : qtdInicialOk(l))}
                       onQtd={v => setAjustes(s => ({ ...s, [l.insumo.id]: v }))}
                       onToggle={v => setIncluir(s => ({ ...s, [l.insumo.id]: v }))} />)}
                   </div>
