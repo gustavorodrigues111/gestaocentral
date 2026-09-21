@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Building2, CalendarDays, Package, Banknote, Send, TriangleAlert, ClipboardList, FolderOpen, FileText, Check, X, Copy, type LucideIcon } from "lucide-react";
+import { Building2, CalendarDays, Package, Banknote, Send, TriangleAlert, FolderOpen, FileText, Check, X, Copy, Plus, type LucideIcon } from "lucide-react";
 import { deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -60,14 +60,19 @@ export function PedidosTab({ pedidos, podeConfig, insumos = [], recebimentos = [
     });
   }, [pedidos, filtroStatus, search]);
 
+  const NovoPedidoCard = onNovoPedido ? (
+    <button type="button" onClick={onNovoPedido}
+      className="group w-full flex items-center gap-3 rounded-xl border-2 border-dashed border-indigo-300 dark:border-indigo-800 bg-indigo-50/40 dark:bg-indigo-900/10 hover:bg-indigo-50 dark:hover:bg-indigo-900/20 hover:border-indigo-400 px-4 py-3.5 text-left transition-all">
+      <span className="w-9 h-9 rounded-lg bg-indigo-600 text-white inline-flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform"><Plus size={20} /></span>
+      <span className="min-w-0">
+        <span className="block font-semibold text-indigo-700 dark:text-indigo-300">Novo pedido</span>
+        <span className="block text-[12px] text-indigo-600/70 dark:text-indigo-400/70">A partir de uma contagem ou avulso (por fornecedor / categoria)</span>
+      </span>
+    </button>
+  ) : null;
+
   return (
     <div className="space-y-3">
-      {onNovoPedido && (
-        <button type="button" onClick={onNovoPedido}
-          className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 text-white py-2.5 text-sm font-semibold hover:bg-indigo-700">
-          <ClipboardList size={16} /> Novo pedido
-        </button>
-      )}
       <Input
         placeholder="🔍 Buscar por fornecedor ou item..."
         value={search}
@@ -97,28 +102,22 @@ export function PedidosTab({ pedidos, podeConfig, insumos = [], recebimentos = [
         ))}
       </div>
 
-      {filtered.length === 0 ? (
-        <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
-          <div className="flex justify-center mb-3 text-gray-400"><ClipboardList size={40} /></div>
-          <p className="text-gray-700 dark:text-gray-300 font-medium">
-            {search || filtroStatus !== "abertos" ? "Nenhum pedido encontrado" : "Nenhum pedido aberto"}
-          </p>
-          {!search && filtroStatus === "abertos" && (
-            <p className="text-sm text-gray-500 mt-2">Gere pedidos a partir das Sugestões.</p>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {filtered.map(p => (
-            <PedidoCard
-              key={p.id}
-              pedido={p}
-              podeConfig={podeConfig}
-              onReceber={() => setRecebendo(p)}
-            />
-          ))}
-        </div>
-      )}
+      <div className="space-y-2">
+        {NovoPedidoCard}
+        {filtered.map(p => (
+          <PedidoCard
+            key={p.id}
+            pedido={p}
+            podeConfig={podeConfig}
+            onReceber={() => setRecebendo(p)}
+          />
+        ))}
+        {filtered.length === 0 && (
+          <div className="text-center py-6 text-sm text-gray-400">
+            {search || filtroStatus !== "abertos" ? "Nenhum pedido encontrado nesse filtro." : "Nenhum pedido aberto ainda — clique em Novo pedido acima."}
+          </div>
+        )}
+      </div>
 
       {recebendo && (
         <ReceberModal

@@ -151,12 +151,16 @@ export function NovoPedidoModal({ rid, insumos, fornecedores, contagens, pedidos
   const toggleSel = (id: string) => setSelecionados(s => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const podeAvancarAvulso = escopoTodos || selecionados.size > 0;
 
+  const largo = step === "builder";
   return (
-    <Modal title={<span className="inline-flex items-center gap-2"><ClipboardList size={18} /> Novo pedido</span>} onClose={onClose} maxWidth="max-w-3xl">
+    <Modal title={<span className="inline-flex items-center gap-2"><ClipboardList size={18} /> Novo pedido</span>} onClose={onClose} maxWidth={largo ? "max-w-3xl" : "max-w-xl"}>
       {/* STEP ORIGEM */}
       {step === "origem" && (
-        <div className="space-y-4">
-          <p className="text-[13px] text-gray-500 dark:text-gray-400">De onde vem esse pedido?</p>
+        <div className="min-h-[320px] flex flex-col justify-center space-y-4 py-2">
+          <div className="text-center">
+            <p className="text-[15px] font-semibold text-gray-900 dark:text-gray-100">De onde vem esse pedido?</p>
+            <p className="text-[12px] text-gray-500 dark:text-gray-400 mt-0.5">Escolha o ponto de partida</p>
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button type="button" onClick={() => { setOrigem("contagem"); setStep("contagem"); }}
               className="group relative rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-400 dark:hover:border-indigo-600 hover:shadow-sm p-4 text-left transition-all">
