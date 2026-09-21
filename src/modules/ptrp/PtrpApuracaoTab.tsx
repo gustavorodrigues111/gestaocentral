@@ -922,16 +922,25 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   // Status praticado + horário de QUALQUER empregado num dia: CLT usa a apuração
   // (batidas); freela/demitido sem apuração usa a praticada (real ?? prevista),
   // pois não batem ponto. Retorna null se o empregado não está ativo no dia.
-  const statusFechavel = (emp: Empregado, d: string): { st: ScheduleStatus | null; horario: string; l?: Linha; ehFut: boolean; bloqueio?: "pendente" | "impar" } => {
-    if (!empregadoAtivoEm(emp, d)) return { st: null, horario: "", ehFut: false };
+  const statusFechavel = (emp: Empregado, d: string): { st: ScheduleStatus | null; horarios: string[]; l?: Linha; ehFut: boolean; bloqueio?: "pendente" | "impar"; grave?: boolean; alerta?: string } => {
+    if (!empregadoAtivoEm(emp, d)) return { st: null, horarios: [], ehFut: false };
     const l = linhasPorEmp.get(emp.id)?.get(d);
     if (l) {
-      const horario = l.bs.length ? `${hhmm(l.bs[0].dateIn)}–${hhmm(l.bs[l.bs.length - 1].dateOut)}` : "";
+      // TODAS as batidas do dia (cada par entrada–saída), não só a 1ª e a última.
+      const horarios = (l.bs || []).filter(b => !b.excluded).map(b => `${hhmm(b.dateIn)}–${hhmm(b.dateOut)}`);
       const bloqueio = l.excecoes.includes("correcao_pendente") ? "pendente" as const : (l.excecoes.includes("batida_impar") || l.pendenteCorrecao) ? "impar" as const : undefined;
-      return { st: statusPraticado(l), horario, l, ehFut: l.ehFuturo || l.ehHoje, bloqueio };
+      const st = statusPraticado(l);
+      // Inconsistências: FALTA com batida bruta, correção pendente, batida ímpar/
+      // aberta, sem batida, fora de escala — o ⚠ acende; o tooltip lista TODAS.
+      const temBatidaRaw = (l.bsRaw || []).some(b => !b.excluded && b.dateIn != null);
+      const faltaComBatida = (st === "falta_i" || st === "falta_j") && temBatidaRaw;
+      const graves = new Set(["correcao_pendente", "batida_impar", "sem_batida", "falta", "fora_escala"]);
+      const grave = faltaComBatida || l.excecoes.some(e => graves.has(e));
+      const labels = [...(faltaComBatida ? ["FALTA mas há batida no dia"] : []), ...l.excecoes.map(e => EXC_LABEL[e] || e)];
+      return { st, horarios, l, ehFut: l.ehFuturo || l.ehHoje, bloqueio, grave, alerta: labels.join(" · ") || undefined };
     }
     const st = (escala?.real?.[emp.id]?.[d] ?? escala?.prevista?.[emp.id]?.[d]) as ScheduleStatus | undefined;
-    return { st: st ?? null, horario: "", ehFut: d >= hojeYmd };
+    return { st: st ?? null, horarios: [], ehFut: d >= hojeYmd };
   };
   const diasNoMesComp = new Date(Number(comp.slice(0, 4)), Number(comp.slice(5, 7)), 0).getDate();
   const diasSemana = useMemo(() => { const out: string[] = []; for (let d = chunkIni; d <= Math.min(chunkIni + 6, diasNoMesComp); d++) out.push(`${comp}-${String(d).padStart(2, "0")}`); return out; }, [chunkIni, diasNoMesComp, comp]);
@@ -1082,10 +1091,11 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                               <span className="inline-flex items-center gap-0.5"><Lock size={10} className="text-emerald-600"/>{st && <span className={`text-[9px] font-bold px-1 rounded ${STATUS_INFO[st].bg} ${STATUS_INFO[st].text}`}>{STATUS_INFO[st].short}</span>}</span>
                             </button>
                           ) : info.ehFut ? <span className="text-blue-400 text-[10px]">{info.l?.ehHoje ? "hoje" : "—"}</span> : (
-                            <button type="button" onClick={() => selecionavel && toggleGrid(emp.id, d)} className={`w-full rounded-md px-1 py-1 border transition-colors ${marcado ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 ring-1 ring-emerald-400" : "border-gray-200 dark:border-gray-700 hover:border-emerald-400 hover:bg-emerald-50/40 dark:hover:bg-emerald-900/10"}`}>
+                            <button type="button" onClick={() => selecionavel && toggleGrid(emp.id, d)} title={info.alerta || undefined} className={`relative w-full rounded-md px-1 py-1 border transition-colors ${info.grave ? "border-rose-300 dark:border-rose-800 ring-1 ring-rose-300 dark:ring-rose-800 bg-rose-50/50 dark:bg-rose-950/20" : marcado ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 ring-1 ring-emerald-400" : "border-gray-200 dark:border-gray-700 hover:border-emerald-400 hover:bg-emerald-50/40 dark:hover:bg-emerald-900/10"} ${marcado && info.grave ? "ring-emerald-500" : ""}`}>
+                              {info.grave && <TriangleAlert size={10} className="absolute -top-1 -right-1 text-rose-500 bg-white dark:bg-gray-900 rounded-full" />}
                               <div className="flex flex-col items-center gap-0.5 leading-none">
                                 {st ? <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[st].bg} ${STATUS_INFO[st].text}`}>{STATUS_INFO[st].short}</span> : <span className="text-[9px] text-gray-400">?</span>}
-                                <span className="text-[9.5px] tabular-nums text-gray-500 dark:text-gray-400">{info.horario || "—"}</span>
+                                {info.horarios.length ? info.horarios.map((h, i) => <span key={i} className="text-[9.5px] tabular-nums text-gray-500 dark:text-gray-400 whitespace-nowrap">{h}</span>) : <span className="text-[9.5px] text-gray-400">—</span>}
                               </div>
                             </button>
                           )}
