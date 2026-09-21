@@ -34,7 +34,7 @@ import { gerarAEJ } from "../../core/ptrp/aej";
 import { baixarOuCompartilhar } from "../../core/pdf/baixarOuCompartilhar";
 import { DEV_PADRAO, REP_PADRAO, type ParametrosPTRP } from "./PtrpAejConfig";
 import { PtrpAssinaturasModal, type AlvoAssinatura } from "./PtrpAssinaturasModal";
-import { getActiveWorkSchedule, getEffectiveDays } from "../../core/escala/horarios";
+import { getActiveWorkSchedule, getEffectiveDays, derivedScheduleForEmpregado } from "../../core/escala/horarios";
 import { apurarDia, minutoDoDiaBRT, hhmmToMin, type BatidaBloco, type AjusteDia } from "../../core/ptrp/apuracao";
 import { feriadosDoAno } from "../../core/ptrp/feriados";
 import { fetchRoster, decidirAprovacao, corrigirPontoAtraso, excluirBatida, fetchJustificativas, fetchMotivosAfastamento, lancarAfastamento, criarAfastamentoNovo } from "../../core/ponto/solidesPontoClient";
@@ -948,10 +948,20 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   );
   // Grid semanal (aba Fechar praticada): linha do dia por empregado + dias da semana visível.
   const linhasPorEmp = useMemo(() => new Map(resultados.map(x => [x.emp.id, new Map(x.r.linhas.map(l => [l.data, l]))])), [resultados]);
+  // Prevista DERIVADA do cadastro (workSchedule) dos freelas mensalistas — eles não
+  // batem ponto nem têm apuração, mas TÊM horário cadastrado. Isso vira a sugestão
+  // de praticada no grid ("vem o sugerido, você confirma").
+  const derivadosFreela = useMemo(() => {
+    const m = new Map<string, { [date: string]: { status: ScheduleStatus } }>();
+    const y = Number(comp.slice(0, 4)), mo = Number(comp.slice(5, 7));
+    for (const e of empregados) if ((e as { freelaMensalista?: boolean }).freelaMensalista) m.set(e.id, derivedScheduleForEmpregado(e, y, mo));
+    return m;
+  }, [empregados, comp]);
   // Status praticado + horário de QUALQUER empregado num dia: CLT usa a apuração
-  // (batidas); freela/demitido sem apuração usa a praticada (real ?? prevista),
-  // pois não batem ponto. Retorna null se o empregado não está ativo no dia.
-  const statusFechavel = (emp: Empregado, d: string): { st: ScheduleStatus | null; horarios: string[]; l?: Linha; ehFut: boolean; bloqueio?: "pendente" | "impar"; grave?: boolean; alerta?: string } => {
+  // (batidas); freela/demitido sem apuração usa a praticada (real ?? prevista) e,
+  // no caso do freela, cai na prevista DERIVADA do cadastro (sugestão a confirmar).
+  // Retorna null se o empregado não está ativo no dia.
+  const statusFechavel = (emp: Empregado, d: string): { st: ScheduleStatus | null; horarios: string[]; l?: Linha; ehFut: boolean; bloqueio?: "pendente" | "impar"; grave?: boolean; alerta?: string; semPonto?: boolean; sugerido?: boolean } => {
     if (!empregadoAtivoEm(emp, d)) return { st: null, horarios: [], ehFut: false };
     const l = linhasPorEmp.get(emp.id)?.get(d);
     if (l) {
@@ -968,8 +978,16 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       const labels = [...(faltaComBatida ? ["FALTA mas há batida no dia"] : []), ...l.excecoes.map(e => EXC_LABEL[e] || e)];
       return { st, horarios, l, ehFut: l.ehFuturo || l.ehHoje, bloqueio, grave, alerta: labels.join(" · ") || undefined };
     }
-    const st = (escala?.real?.[emp.id]?.[d] ?? escala?.prevista?.[emp.id]?.[d]) as ScheduleStatus | undefined;
-    return { st: st ?? null, horarios: [], ehFut: d >= hojeYmd };
+    // Sem apuração (freela/demitido): praticada real → prevista do mapa → prevista
+    // DERIVADA do cadastro (só freela). O freela é marcado como "sem ponto" e, quando
+    // o status vem da derivada (nem real nem prevista), como "sugerido" (a confirmar).
+    const real = escala?.real?.[emp.id]?.[d] as ScheduleStatus | undefined;
+    const prev = escala?.prevista?.[emp.id]?.[d] as ScheduleStatus | undefined;
+    const deriv = derivadosFreela.get(emp.id)?.[d]?.status;
+    const ehFreela = !!(emp as { freelaMensalista?: boolean }).freelaMensalista;
+    const st = (real ?? prev ?? (ehFreela ? deriv : undefined)) as ScheduleStatus | undefined;
+    const sugerido = ehFreela && real == null && prev == null && deriv != null;
+    return { st: st ?? null, horarios: [], ehFut: d >= hojeYmd, semPonto: ehFreela, sugerido };
   };
   const diasNoMesComp = new Date(Number(comp.slice(0, 4)), Number(comp.slice(5, 7)), 0).getDate();
   const diasSemana = useMemo(() => { const out: string[] = []; for (let d = chunkIni; d <= Math.min(chunkIni + 6, diasNoMesComp); d++) out.push(`${comp}-${String(d).padStart(2, "0")}`); return out; }, [chunkIni, diasNoMesComp, comp]);
@@ -1074,6 +1092,11 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         const selecionaveisDoDia = (d: string) => empregadosSemana.filter(e => { if (diaFechado(e.id, d)) return false; const info = statusFechavel(e, d); return !!info.st && !info.ehFut; }).map(e => e.id);
         const diaMarcado = (d: string) => { const ids = selecionaveisDoDia(d); return ids.length > 0 && ids.every(id => selGrid.has(`${id}|${d}`)); };
         const toggleDia = (d: string) => { const ids = selecionaveisDoDia(d); setSelGrid(prev => { const n = new Set(prev); const all = ids.length > 0 && ids.every(id => n.has(`${id}|${d}`)); for (const id of ids) { const k = `${id}|${d}`; if (all) n.delete(k); else n.add(k); } return n; }); };
+        // Seleção da LINHA (empregado) na semana visível — confirma todos os dias
+        // dele de uma vez. Ótimo pro freela: vem o sugerido, um clique marca a semana.
+        const diasSelDoEmp = (empId: string) => diasSemana.filter(d => { if (diaFechado(empId, d)) return false; const info = statusFechavel(empregadosSemana.find(e => e.id === empId)!, d); return !!info.st && !info.ehFut; });
+        const empMarcado = (empId: string) => { const ds = diasSelDoEmp(empId); return ds.length > 0 && ds.every(d => selGrid.has(`${empId}|${d}`)); };
+        const toggleEmpSemana = (empId: string) => { const ds = diasSelDoEmp(empId); setSelGrid(prev => { const n = new Set(prev); const all = ds.length > 0 && ds.every(d => n.has(`${empId}|${d}`)); for (const d of ds) { const k = `${empId}|${d}`; if (all) n.delete(k); else n.add(k); } return n; }); };
         const semLabel = `${diasSemana[0]?.slice(-2)}–${diasSemana[diasSemana.length - 1]?.slice(-2)}/${comp.slice(5, 7)}`;
         return (
         <div className="space-y-3">
@@ -1105,7 +1128,12 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
               <tbody>
                 {empregadosSemana.map(emp => (
                   <tr key={emp.id} className="border-b border-gray-50 dark:border-gray-800/40">
-                    <td className="sticky left-0 z-10 bg-white dark:bg-gray-900 px-3 py-1.5 font-medium text-gray-800 dark:text-gray-100 truncate max-w-[160px] border-r border-gray-100 dark:border-gray-800">{emp.nome}{emp.freelaMensalista && <span className="ml-1 text-[9px] uppercase text-violet-500">freela</span>}</td>
+                    <td className="sticky left-0 z-10 bg-white dark:bg-gray-900 px-3 py-1.5 font-medium text-gray-800 dark:text-gray-100 max-w-[180px] border-r border-gray-100 dark:border-gray-800">
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate">{emp.nome}{emp.freelaMensalista && <span className="ml-1 text-[9px] uppercase text-violet-500">freela</span>}</span>
+                        {(() => { const ds = diasSelDoEmp(emp.id); if (!ds.length) return null; const marc = empMarcado(emp.id); return <button type="button" onClick={() => toggleEmpSemana(emp.id)} className={`shrink-0 text-[9px] px-1.5 py-0.5 rounded ${marc ? "bg-emerald-600 text-white" : "border border-emerald-300 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"}`} title="Marcar todos os dias deste empregado na semana visível">{marc ? "✓ semana" : "semana"}</button>; })()}
+                      </div>
+                    </td>
                     {diasSemana.map(d => {
                       const ativo = empregadoAtivoEm(emp, d);
                       const fechado = diaFechado(emp.id, d);
@@ -1120,11 +1148,12 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                               <span className="inline-flex items-center gap-0.5"><Lock size={10} className="text-emerald-600"/>{st && <span className={`text-[9px] font-bold px-1 rounded ${STATUS_INFO[st].bg} ${STATUS_INFO[st].text}`}>{STATUS_INFO[st].short}</span>}</span>
                             </button>
                           ) : info.ehFut ? <span className="text-blue-400 text-[10px]">{info.l?.ehHoje ? "hoje" : "—"}</span> : (
-                            <button type="button" onClick={() => selecionavel && toggleGrid(emp.id, d)} title={info.alerta || undefined} className={`relative w-full rounded-md px-1 py-1 border transition-colors ${info.grave ? "border-rose-300 dark:border-rose-800 ring-1 ring-rose-300 dark:ring-rose-800 bg-rose-50/50 dark:bg-rose-950/20" : marcado ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 ring-1 ring-emerald-400" : "border-gray-200 dark:border-gray-700 hover:border-emerald-400 hover:bg-emerald-50/40 dark:hover:bg-emerald-900/10"} ${marcado && info.grave ? "ring-emerald-500" : ""}`}>
+                            <button type="button" onClick={() => selecionavel && toggleGrid(emp.id, d)} title={info.semPonto ? `Freela — não bate ponto. Status ${info.sugerido ? "SUGERIDO pelo horário cadastrado" : "definido na escala"}; confirme (🔒 Fechar) pra entrar na praticada/gorjeta.` : (info.alerta || undefined)} className={`relative w-full rounded-md px-1 py-1 border transition-colors ${info.grave ? "border-rose-300 dark:border-rose-800 ring-1 ring-rose-300 dark:ring-rose-800 bg-rose-50/50 dark:bg-rose-950/20" : marcado ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 ring-1 ring-emerald-400" : info.sugerido ? "border-dashed border-violet-300 dark:border-violet-800 hover:border-violet-400 hover:bg-violet-50/40 dark:hover:bg-violet-900/10" : "border-gray-200 dark:border-gray-700 hover:border-emerald-400 hover:bg-emerald-50/40 dark:hover:bg-emerald-900/10"} ${marcado && info.grave ? "ring-emerald-500" : ""}`}>
                               {info.grave && <TriangleAlert size={10} className="absolute -top-1 -right-1 text-rose-500 bg-white dark:bg-gray-900 rounded-full" />}
+                              {info.semPonto && <span className="absolute -top-1 -left-1 text-[8px] leading-none px-0.5 rounded bg-violet-500 text-white font-bold" title="Freela — sem registro de ponto">F</span>}
                               <div className="flex flex-col items-center gap-0.5 leading-none">
                                 {st ? <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[st].bg} ${STATUS_INFO[st].text}`}>{STATUS_INFO[st].short}</span> : <span className="text-[9px] text-gray-400">?</span>}
-                                {info.horarios.length ? info.horarios.map((h, i) => <span key={i} className="text-[9.5px] tabular-nums text-gray-500 dark:text-gray-400 whitespace-nowrap">{h}</span>) : <span className="text-[9.5px] text-gray-400">—</span>}
+                                {info.horarios.length ? info.horarios.map((h, i) => <span key={i} className="text-[9.5px] tabular-nums text-gray-500 dark:text-gray-400 whitespace-nowrap">{h}</span>) : <span className={`text-[9.5px] ${info.sugerido ? "text-violet-500" : "text-gray-400"}`}>{info.sugerido ? "sugerido" : "—"}</span>}
                               </div>
                             </button>
                           )}
