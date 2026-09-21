@@ -7,7 +7,7 @@
 //  como OVERRIDE opcional (fase seguinte). Valida contra o Sólides (Fase 1).
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { addDoc, collection, deleteField, doc, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, deleteField, doc, getDocs, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { db, storage } from "../../core/firebase/config";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL } from "firebase/storage";
 import { authHeader } from "../../core/firebase/idToken";
@@ -710,7 +710,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   </>);
   const renderBatidas = (l: Linha, inclPunch: Set<string>) => l.ehFuturo ? <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-300">futuro</span> : l.reorgPares ? (
     <div className="tabular-nums text-violet-700 dark:text-violet-300" title="Batidas reorganizadas manualmente (o original segue imutável na Sólides)">
-      {l.reorgPares.map((p, i) => <span key={i}>{i > 0 ? " · " : ""}{p.in}–{p.out}</span>)} <span className="text-[10px] text-violet-500">↔ reorganizado</span>
+      {[...l.reorgPares].sort((a, b) => (horaMin(a.in) ?? 0) - (horaMin(b.in) ?? 0)).map((p, i) => <span key={i}>{i > 0 ? " · " : ""}{p.in}–{p.out}</span>)} <span className="text-[10px] text-violet-500">↔ reorganizado</span>
       {(() => { const a = l.ajustesDia.find(x => x.tipo === "reorganizacao" && !x.cancelado); return a ? <button type="button" onClick={() => void cancelarAjuste(a)} className="ml-1 text-rose-400 hover:text-rose-600" title="Desfazer reorganização">✕</button> : null; })()}
     </div>
   ) : (<>
@@ -1812,9 +1812,15 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
         // App-only: grava os pares corretos do dia. NÃO toca na Sólides (a batida
         // original é imutável) — só sobrepõe a interpretação da apuração.
         for (const p of reorgP) if ((p.in && horaMin(p.in) == null) || (p.out && horaMin(p.out) == null)) { setErr(`Horário inválido: "${p.in}–${p.out}". Use HH:MM (saída após meia-noite = 24:00).`); return; }
-        const pares = reorgP.filter(p => horaMin(p.in) != null && horaMin(p.out) != null && (horaMin(p.out) as number) > (horaMin(p.in) as number)).map(p => ({ in: p.in, out: p.out }));
+        const pares = reorgP.filter(p => horaMin(p.in) != null && horaMin(p.out) != null && (horaMin(p.out) as number) > (horaMin(p.in) as number))
+          .map(p => ({ in: p.in, out: p.out }))
+          .sort((a, b) => (horaMin(a.in) as number) - (horaMin(b.in) as number));   // cronológico
         if (!pares.length) { setErr("Preencha ao menos um par válido (saída depois da entrada — pra virada use 24:00)."); return; }
         setSalvando(true);
+        // Remove reorganizações ANTERIORES do dia (app-only, sem trilha) pra não duplicar.
+        const qOld = query(collection(db, "ptrpAjustes"), where("empresaKey", "==", empresaKey), where("colaboradorId", "==", emp.id), where("data", "==", data), where("tipo", "==", "reorganizacao"));
+        const snapOld = await getDocs(qOld);
+        for (const d of snapOld.docs) await deleteDoc(d.ref);
         await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "reorganizacao" as PtrpAjusteTipo, pares, motivo: obs.trim() || "Batidas reorganizadas manualmente", ...evidPayload, autor, criadoEm: new Date().toISOString(), cancelado: false }));
         onClose();
       }
