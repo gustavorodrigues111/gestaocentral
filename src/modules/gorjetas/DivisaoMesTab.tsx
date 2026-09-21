@@ -138,7 +138,8 @@ export function DivisaoMesTab({
   // Dias já PUBLICADOS (congelados) seguem aparecendo, independentemente.
   const hojeYmd = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
   const fechPrat = useMemo(
-    () => calcularFechamentoPraticada(escala, empregados, ano, mes, hojeYmd),
+    // CLT ativo (mesmo conjunto do grid de fechamento do PTRP; freela fica fora por ora).
+    () => calcularFechamentoPraticada(escala, empregados.filter(e => e.estaAtivo && !e.freelaMensalista), ano, mes, hojeYmd),
     [escala, empregados, ano, mes, hojeYmd],
   );
   // Trava só ATIVA quando o DP já começou a fechar a praticada deste mês (há ao

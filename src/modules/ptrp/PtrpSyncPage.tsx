@@ -6,7 +6,7 @@
 //  backfill sem abrir o console do Firestore.
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useState } from "react";
-import { BarChart3, Scale, Landmark, Settings, ScrollText, Repeat, Building2, Lock, TriangleAlert, Hourglass } from "lucide-react";
+import { BarChart3, Scale, Landmark, Settings, ScrollText, Repeat, Building2, Lock, TriangleAlert, Hourglass, CalendarCheck } from "lucide-react";
 import { collection, getDocs, limit, onSnapshot, orderBy, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -59,12 +59,13 @@ export function PtrpSyncPage() {
   const [loading, setLoading] = useState(true);
   const [rodando, setRodando] = useState<string | null>(null);   // "*" = geral; ou empresaKey
   const [msg, setMsg] = useState("");
-  const [aba, setAba] = useState<"conferencia" | "validar" | "banco" | "config">("conferencia");
+  const [aba, setAba] = useState<"conferencia" | "fechar" | "validar" | "banco" | "config">("conferencia");
   const [subAba, setSubAba] = useState<"regras" | "sync" | "validadores">("regras");
   const [desdeInput, setDesdeInput] = useState("");
   // Top-abas (Conferência · Banco · Configurações); a efetiva é a 1ª válida.
   const abasPermitidas = [
     ...(podeConferir ? [["conferencia", "Conferência", BarChart3] as const] : []),
+    ...(podeConferir ? [["fechar", "Fechar praticada", CalendarCheck] as const] : []),
     ...(podeValidar ? [["validar", "Exceções a validar", Scale] as const] : []),
     ...(podeBanco ? [["banco", "Banco de horas", Landmark] as const] : []),
     ...(podeConfig ? [["config", "Configurações", Settings] as const] : []),
@@ -133,7 +134,7 @@ export function PtrpSyncPage() {
         ))}
       </div>
 
-      {abaEfetiva === "conferencia" ? <PtrpApuracaoTab /> : abaEfetiva === "validar" ? <PtrpApuracaoTab mode="validar" /> : abaEfetiva === "banco" ? <PtrpApuracaoTab mode="banco" /> : (
+      {abaEfetiva === "conferencia" ? <PtrpApuracaoTab /> : abaEfetiva === "fechar" ? <PtrpApuracaoTab mode="fechar" /> : abaEfetiva === "validar" ? <PtrpApuracaoTab mode="validar" /> : abaEfetiva === "banco" ? <PtrpApuracaoTab mode="banco" /> : (
       <>
       {/* Configurações → sub-abas */}
       <div className="flex gap-1 mb-4 border-b border-gray-200 dark:border-gray-800">

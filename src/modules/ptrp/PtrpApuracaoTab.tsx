@@ -21,7 +21,7 @@ import {
   CircleOff, X, CalendarX2, Unlink, AlarmClock, Coffee, Hourglass, BedDouble, CircleDot,
   TriangleAlert, Pencil, Ban, Umbrella, MessageSquare, Settings, Lock, LockOpen,
   CalendarDays, Signature, Printer, ArrowDown, Search, Scale, PartyPopper, Landmark,
-  HelpCircle, ChevronDown, Eye, Crown, RotateCw,
+  HelpCircle, ChevronDown, Eye, Crown, RotateCw, CalendarCheck,
 } from "lucide-react";
 import type { Empregado, HorarioDia, Cargo, EscalaMes, ScheduleStatus, AjusteEscalaMeta } from "../../core/types";
 import { calcularFechamentoPraticada } from "../../core/escala/fechamentoPraticada";
@@ -113,7 +113,7 @@ function turnoPrevisto(emp: Empregado, date: string, statusEscala?: string): { k
   return { kind: "trabalho", turno: turnoDoHd() };
 }
 
-export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia" | "banco" | "comparar" | "validar" | "validadores" } = {}) {
+export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia" | "banco" | "comparar" | "validar" | "validadores" | "fechar" } = {}) {
   const { pessoa: me } = useAuth();
   // Segue o restaurante ATIVO do sistema (seletor global), como a Análise de Ponto.
   const { activeRestaurant } = useRestaurant();
@@ -152,6 +152,9 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const [fecharMode, setFecharMode] = useState(false);              // modo "travar dias na praticada"
   const [selFechar, setSelFechar] = useState<Set<string>>(new Set());
   const [fecharBusy, setFecharBusy] = useState(false);
+  const [chunkIni, setChunkIni] = useState(1);                      // 1º dia da semana visível (aba Fechar praticada)
+  const [selGrid, setSelGrid] = useState<Set<string>>(new Set());   // "empId|YYYY-MM-DD" marcados no grid semanal
+  const [gridBusy, setGridBusy] = useState(false);
   const [ptrpCfg, setPtrpCfg] = useState<ParametrosPTRP>({});        // config AEJ (empregador/REP/desenvolvedor)
   const [fech, setFech] = useState<PtrpFechamento | null>(null);    // fechamento do mês (empresa+comp)
   const [fechBusy, setFechBusy] = useState(false);
@@ -625,6 +628,43 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       setAcaoMsg("✓ Dia reaberto.");
     } catch (e) { setAcaoMsg("Falha ao reabrir: " + (e instanceof Error ? e.message : "erro")); }
   }
+  // Fecha em LOTE os pares (empId, dia) marcados no grid semanal — mesmos guardrails.
+  async function fecharGrid() {
+    if (!me || !rid || !selGrid.size) return;
+    if (mesEncerrado) { setAcaoMsg("Mês encerrado — reabra no módulo Escala."); return; }
+    const porEmp = new Map<string, string[]>();
+    for (const key of selGrid) { const i = key.indexOf("|"); const e = key.slice(0, i), d = key.slice(i + 1); (porEmp.get(e) || porEmp.set(e, []).get(e)!).push(d); }
+    const now = new Date().toISOString();
+    const bloqueados: string[] = []; const faltasAuto: string[] = [];
+    const realFull: Record<string, Record<string, ScheduleStatus>> = {}; const ajFull: Record<string, Record<string, AjusteEscalaMeta>> = {};
+    let n = 0;
+    for (const [empId, dias] of porEmp) {
+      const res = resultados.find(x => x.emp.id === empId); if (!res) continue;
+      const lp = new Map(res.r.linhas.map(l => [l.data, l]));
+      for (const d of dias) {
+        const l = lp.get(d); if (!l) continue;
+        const st = statusPraticado(l); if (!st) continue;
+        const dd = `${d.slice(-2)}/${d.slice(5, 7)}`;
+        if (l.excecoes.includes("correcao_pendente")) { bloqueados.push(`${res.emp.nome} ${dd}`); continue; }
+        if (l.excecoes.includes("batida_impar") || l.pendenteCorrecao) { bloqueados.push(`${res.emp.nome} ${dd}`); continue; }
+        if (st === "falta_i" && !l.ajustesDia.some(a => a.statusEscala)) faltasAuto.push(`${res.emp.nome} ${dd}`);
+        (realFull[empId] = realFull[empId] || {})[d] = st;
+        (ajFull[empId] = ajFull[empId] || {})[d] = { origem: "solides_sync", ajustadoEm: now, ajustadoPor: me.id, ajustadoPorNome: me.nome, statusAnterior: escala?.real?.[empId]?.[d] as ScheduleStatus | undefined };
+        n++;
+      }
+    }
+    if (bloqueados.length) { setAcaoMsg(`Não dá pra fechar — resolva antes (correção pendente / batida ímpar): ${bloqueados.slice(0, 6).join("; ")}${bloqueados.length > 6 ? "…" : ""}.`); return; }
+    if (!n) { setAcaoMsg("Nada a fechar (dias de hoje/futuro não fecham)."); return; }
+    if (faltasAuto.length && !window.confirm(`${faltasAuto.length} vão fechar como FALTA INJUSTIFICADA (previsto trabalho, sem batida): ${faltasAuto.slice(0, 8).join(", ")}${faltasAuto.length > 8 ? "…" : ""}.\n\nSe alguma for justificada/férias/atestado, CANCELE e classifique antes. Fechar assim mesmo?`)) return;
+    setGridBusy(true); setAcaoMsg("");
+    try {
+      await setDoc(doc(db, "escalas", `${rid}_${comp}`), sanitizeForFirestore({ real: realFull, realAjustes: ajFull, atualizadoEm: now, atualizadoPor: { id: me.id, nome: me.nome } }), { merge: true });
+      setAcaoMsg(`✓ ${n} dia(s) fechado(s) na praticada.`);
+      setSelGrid(new Set());
+    } catch (e) { setAcaoMsg("Falha ao fechar: " + (e instanceof Error ? e.message : "erro")); }
+    finally { setGridBusy(false); }
+  }
+  const toggleGrid = (empId: string, data: string) => setSelGrid(prev => { const n = new Set(prev); const k = `${empId}|${data}`; if (n.has(k)) n.delete(k); else n.add(k); return n; });
 
   // ─── Helpers de render da linha do dia (reusados na tabela desktop e nos cards mobile) ───
   const flagsLinha = (l: Linha, idx: number) => {
@@ -871,10 +911,18 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const hojeYmd = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
   // Fechamento da praticada do mês (até que dia TODOS estão fechados) — base do
   // painel de pendências e do que a gorjeta pode dividir.
+  // Usa empVis (CLT ativo) — o MESMO conjunto do grid de fechamento — pra painel,
+  // trava e grid ficarem consistentes (freela mensalista fica fora por ora).
   const fechamentoPrat = useMemo(
-    () => calcularFechamentoPraticada(escala, empregados, Number(comp.slice(0, 4)), Number(comp.slice(5, 7)), hojeYmd),
-    [escala, empregados, comp, hojeYmd],
+    () => calcularFechamentoPraticada(escala, empVis, Number(comp.slice(0, 4)), Number(comp.slice(5, 7)), hojeYmd),
+    [escala, empVis, comp, hojeYmd],
   );
+  // Grid semanal (aba Fechar praticada): linha do dia por empregado + dias da semana visível.
+  const linhasPorEmp = useMemo(() => new Map(resultados.map(x => [x.emp.id, new Map(x.r.linhas.map(l => [l.data, l]))])), [resultados]);
+  const diasNoMesComp = new Date(Number(comp.slice(0, 4)), Number(comp.slice(5, 7)), 0).getDate();
+  const diasSemana = useMemo(() => { const out: string[] = []; for (let d = chunkIni; d <= Math.min(chunkIni + 6, diasNoMesComp); d++) out.push(`${comp}-${String(d).padStart(2, "0")}`); return out; }, [chunkIni, diasNoMesComp, comp]);
+  // Ao entrar na aba (ou trocar mês), começa na semana onde o fechamento parou.
+  useEffect(() => { if (mode === "fechar") setChunkIni(Math.max(1, Math.floor(fechamentoPrat.fechadoAteDia / 7) * 7 + 1)); }, [mode, comp, fechamentoPrat.fechadoAteDia]);
   const movVencido = (mv: PtrpBancoMov) => (mv.saldoMinutos || 0) > 0 && !!mv.vencimento && mv.vencimento < hojeYmd;
   const registradoComp = (colabId: string) => bancoMovs.some(mv => mv.colaboradorId === colabId && mv.competencia === comp);
 
@@ -963,6 +1011,86 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         {!cct && <span className="text-xs text-amber-600 dark:text-amber-400 inline-flex items-center gap-1"><TriangleAlert size={12}/> Sem CCT — configure em Regras (extras/noturno não calculam).</span>}
       </div>
       )}
+
+      {mode === "fechar" && (() => {
+        const selecionaveisDoDia = (d: string) => resultados.filter(x => { const l = linhasPorEmp.get(x.emp.id)?.get(d); return !!l && !diaFechado(x.emp.id, d) && !l.ehFuturo && !l.ehHoje && !!statusPraticado(l); }).map(x => x.emp.id);
+        const diaMarcado = (d: string) => { const ids = selecionaveisDoDia(d); return ids.length > 0 && ids.every(id => selGrid.has(`${id}|${d}`)); };
+        const toggleDia = (d: string) => { const ids = selecionaveisDoDia(d); setSelGrid(prev => { const n = new Set(prev); const all = ids.length > 0 && ids.every(id => n.has(`${id}|${d}`)); for (const id of ids) { const k = `${id}|${d}`; if (all) n.delete(k); else n.add(k); } return n; }); };
+        const semLabel = `${diasSemana[0]?.slice(-2)}–${diasSemana[diasSemana.length - 1]?.slice(-2)}/${comp.slice(5, 7)}`;
+        return (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="text-[12.5px] text-gray-700 dark:text-gray-200 inline-flex items-center gap-1.5">
+              <CalendarCheck size={15} className="text-emerald-600 dark:text-emerald-400"/> {fechamentoPrat.fechadoAteYmd ? <>Praticada fechada até <b>{fmtDataBR(fechamentoPrat.fechadoAteYmd)}</b>.</> : "Nada fechado ainda."} Marque os dias e feche — a gorjeta avança até onde <b>todos</b> estiverem fechados.
+            </div>
+            <div className="inline-flex items-center gap-1.5">
+              <button type="button" onClick={() => setChunkIni(Math.max(1, chunkIni - 7))} disabled={chunkIni <= 1} className="w-7 h-7 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30">‹</button>
+              <span className="text-[12px] font-semibold tabular-nums text-gray-700 dark:text-gray-200 w-20 text-center">{semLabel}</span>
+              <button type="button" onClick={() => setChunkIni(Math.min(chunkIni + 7, Math.floor((diasNoMesComp - 1) / 7) * 7 + 1))} disabled={chunkIni + 7 > diasNoMesComp} className="w-7 h-7 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30">›</button>
+            </div>
+          </div>
+          {acaoMsg && <div className={`text-[12px] ${acaoMsg.startsWith("✓") ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{acaoMsg}</div>}
+          {resultados.length === 0 ? <div className="text-sm text-gray-400 py-6 text-center">Sem empregados pra fechar em {labelComp(comp)}.</div> : (
+          <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
+            <table className="w-full text-[12px] border-collapse">
+              <thead>
+                <tr className="bg-gray-50 dark:bg-gray-800/50 border-b border-gray-200 dark:border-gray-800">
+                  <th className="sticky left-0 z-10 bg-gray-50 dark:bg-gray-800/50 text-left px-3 py-2 font-semibold text-gray-500 min-w-[140px]">Empregado</th>
+                  {diasSemana.map(d => { const marc = diaMarcado(d); const n = selecionaveisDoDia(d).length; return (
+                    <th key={d} className={`px-2 py-1.5 text-center font-semibold ${[0, 6].includes(new Date(d + "T12:00:00").getDay()) ? "text-rose-500" : "text-gray-500"}`}>
+                      <div className="tabular-nums">{d.slice(-2)} <span className="text-[10px] font-normal">{diaSemanaAbrev(d)}</span></div>
+                      <button type="button" disabled={n === 0} onClick={() => toggleDia(d)} className={`mt-0.5 text-[10px] px-1.5 py-0.5 rounded ${marc ? "bg-emerald-600 text-white" : n === 0 ? "text-gray-300 dark:text-gray-600" : "border border-emerald-300 dark:border-emerald-800 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"}`} title="Marcar o dia inteiro (todos)">{marc ? "✓ dia" : "dia"}</button>
+                    </th>
+                  ); })}
+                </tr>
+              </thead>
+              <tbody>
+                {resultados.map(x => (
+                  <tr key={x.emp.id} className="border-b border-gray-50 dark:border-gray-800/40">
+                    <td className="sticky left-0 z-10 bg-white dark:bg-gray-900 px-3 py-1.5 font-medium text-gray-800 dark:text-gray-100 truncate max-w-[160px] border-r border-gray-100 dark:border-gray-800">{x.emp.nome}</td>
+                    {diasSemana.map(d => {
+                      const l = linhasPorEmp.get(x.emp.id)?.get(d);
+                      const fechado = diaFechado(x.emp.id, d);
+                      const st = fechado ? (escala?.real?.[x.emp.id]?.[d] as ScheduleStatus | undefined) : l ? statusPraticado(l) || undefined : undefined;
+                      const horario = l && l.bs.length ? `${hhmm(l.bs[0].dateIn)}–${hhmm(l.bs[l.bs.length - 1].dateOut)}` : "";
+                      const selecionavel = !!l && !fechado && !l.ehFuturo && !l.ehHoje && !!statusPraticado(l);
+                      const marcado = selGrid.has(`${x.emp.id}|${d}`);
+                      return (
+                        <td key={d} className="px-1 py-1 text-center align-middle">
+                          {!l ? <span className="text-gray-200 dark:text-gray-700">·</span> : fechado ? (
+                            <button type="button" onClick={() => void reabrirDiaPraticada(x.emp.id, d)} title="Fechado — clique pra reabrir" className="w-full rounded-md px-1 py-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/40">
+                              <span className="inline-flex items-center gap-0.5"><Lock size={10} className="text-emerald-600"/>{st && <span className={`text-[9px] font-bold px-1 rounded ${STATUS_INFO[st].bg} ${STATUS_INFO[st].text}`}>{STATUS_INFO[st].short}</span>}</span>
+                            </button>
+                          ) : (l.ehFuturo || l.ehHoje) ? <span className="text-blue-400 text-[10px]">{l.ehHoje ? "hoje" : "—"}</span> : (
+                            <button type="button" onClick={() => selecionavel && toggleGrid(x.emp.id, d)} className={`w-full rounded-md px-1 py-1 border transition-colors ${marcado ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 ring-1 ring-emerald-400" : "border-gray-200 dark:border-gray-700 hover:border-emerald-400 hover:bg-emerald-50/40 dark:hover:bg-emerald-900/10"}`}>
+                              <div className="flex flex-col items-center gap-0.5 leading-none">
+                                {st && <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[st].bg} ${STATUS_INFO[st].text}`}>{STATUS_INFO[st].short}</span>}
+                                <span className="text-[9.5px] tabular-nums text-gray-500 dark:text-gray-400">{horario || "—"}</span>
+                              </div>
+                            </button>
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          )}
+          <p className="text-[11px] text-gray-500">Clique nas células (ou em <b>"dia"</b> pra marcar a coluna inteira) e feche. Verde com 🔒 = já fechado (clique pra reabrir). Status/horário vêm da apuração; pra mudar, use a Conferência (📅 / ⚙️).</p>
+          {selGrid.size > 0 && (
+            <div className="sticky bottom-0 bg-white dark:bg-gray-900 border border-emerald-200 dark:border-emerald-900/40 rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap shadow-lg">
+              <span className="text-[12.5px] font-medium text-emerald-800 dark:text-emerald-200 inline-flex items-center gap-1.5"><Lock size={13}/> {selGrid.size} dia(s) de empregado marcados</span>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => setSelGrid(new Set())} className="text-[12px] px-3 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Limpar</button>
+                <button type="button" disabled={gridBusy} onClick={() => void fecharGrid()} className="text-[12px] font-semibold px-3.5 py-1.5 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50">{gridBusy ? "Fechando…" : `🔒 Fechar (${selGrid.size})`}</button>
+              </div>
+            </div>
+          )}
+        </div>
+        );
+      })()}
 
       {mode === "conferencia" && (<>
       {/* Fechamento mensal + exportações (espelho PDF / AEJ) */}
