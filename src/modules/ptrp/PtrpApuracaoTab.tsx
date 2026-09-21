@@ -1593,7 +1593,8 @@ function reparearDia(docs: BatidaDoc[]): BatidaDoc[] {
 const STATUS_LISTA: ScheduleStatus[] = ["trabalho", "falta_j", "falta_i", "folga", "comp", "comp_trab", "ferias", "freela"];
 function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }: { empresaKey: string; emp: Empregado; data: string; bs: BatidaDoc[]; solidesEmpId: string | null; autor: { id: string; nome: string }; onClose: () => void }) {
   const [caminho, setCaminho] = useState<"" | "marcacoes" | "motivo" | "atestado" | "reorganizar">("");
-  const [reorgP, setReorgP] = useState<{ in: string; out: string }[]>([]);
+  const [reorgT, setReorgT] = useState<string[]>([]);   // marcações individuais (HH:MM), em ordem
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [atIni, setAtIni] = useState(data);          // período do atestado
   const [atFim, setAtFim] = useState(data);
   const [trocarMotivo, setTrocarMotivo] = useState(false);
@@ -1613,17 +1614,22 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
   // Reorganizar: parte de TODAS as batidas do dia (inclusive pendentes — antes de
   // aprovar), pra o DP corrigir o pareamento (ex.: 18:01–00:00).
   const abrirReorganizar = () => {
-    const raw = bs.filter(b => !b.excluded).map(b => ({ in: hhmmLocal(b.dateIn), out: hhmmLocal(b.dateOut) })).map(p => ({ in: p.in === "—" ? "" : p.in, out: p.out === "—" ? "" : p.out }));
-    // Sugestão: uma "entrada 00:00" é, na verdade, a SAÍDA da virada — casa com a
-    // última entrada aberta como 24:00 (o DP só confirma ou ajusta).
-    const idxMeia = raw.findIndex(p => p.in === "00:00" && !p.out);
-    if (idxMeia >= 0) {
-      const alvo = raw.map((p, i) => ({ p, i })).filter(o => o.i !== idxMeia && o.p.in && !o.p.out).sort((a, b) => (horaMin(b.p.in) ?? 0) - (horaMin(a.p.in) ?? 0))[0];
-      if (alvo) { alvo.p.out = "24:00"; raw.splice(idxMeia, 1); }
-    }
-    setReorgP(raw.length ? raw : [{ in: "", out: "" }]);
+    // Extrai TODAS as marcações individuais do dia (entradas e saídas de cada
+    // batida, inclusive pendentes), em ordem cronológica. O DP arrasta/edita/
+    // exclui cada uma; os pares saem por adjacência (1ª+2ª, 3ª+4ª…).
+    const tempos = bs.filter(b => !b.excluded).flatMap(b => [hhmmLocal(b.dateIn), hhmmLocal(b.dateOut)]).filter(t => t && t !== "—");
+    tempos.sort((a, b) => (horaMin(a) ?? 0) - (horaMin(b) ?? 0));
+    setReorgT(tempos.length ? tempos : [""]);
     setCaminho("reorganizar");
   };
+  // Pares por adjacência: [t0,t1,t2,t3] → [(t0–t1),(t2–t3)]. Saída < entrada = vira
+  // o dia (a apuração soma 24h). Sobra ímpar fica como par incompleto (ignorado).
+  const paresDeTempos = (ts: string[]): { in: string; out: string }[] => {
+    const out: { in: string; out: string }[] = [];
+    for (let i = 0; i + 1 < ts.length; i += 2) out.push({ in: ts[i], out: ts[i + 1] });
+    return out;
+  };
+  const moverTempo = (from: number, to: number) => setReorgT(v => { if (to < 0 || to >= v.length) return v; const n = [...v]; const [x] = n.splice(from, 1); n.splice(to, 0, x); return n; });
   const [removidos, setRemovidos] = useState<Set<string>>(new Set());
   const [novos, setNovos] = useState<{ in: string; out: string }[]>([]);
   const [nin, setNin] = useState("08:00");
@@ -1811,11 +1817,10 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
       } else if (caminho === "reorganizar") {
         // App-only: grava os pares corretos do dia. NÃO toca na Sólides (a batida
         // original é imutável) — só sobrepõe a interpretação da apuração.
-        for (const p of reorgP) if ((p.in && horaMin(p.in) == null) || (p.out && horaMin(p.out) == null)) { setErr(`Horário inválido: "${p.in}–${p.out}". Use HH:MM (saída após meia-noite = 24:00).`); return; }
-        const pares = reorgP.filter(p => horaMin(p.in) != null && horaMin(p.out) != null && (horaMin(p.out) as number) > (horaMin(p.in) as number))
-          .map(p => ({ in: p.in, out: p.out }))
-          .sort((a, b) => (horaMin(a.in) as number) - (horaMin(b.in) as number));   // cronológico
-        if (!pares.length) { setErr("Preencha ao menos um par válido (saída depois da entrada — pra virada use 24:00)."); return; }
+        for (const t of reorgT) if (t.trim() && horaMin(t) == null) { setErr(`Horário inválido: "${t}". Use HH:MM.`); return; }
+        const validos = reorgT.filter(t => horaMin(t) != null);
+        const pares = paresDeTempos(validos);   // por adjacência: (1,2),(3,4)… saída<entrada = vira o dia
+        if (!pares.length) { setErr("Precisa de pelo menos um par (2 marcações: entrada e saída)."); return; }
         setSalvando(true);
         // Remove reorganizações ANTERIORES do dia (app-only, sem trilha) pra não duplicar.
         const qOld = query(collection(db, "ptrpAjustes"), where("empresaKey", "==", empresaKey), where("colaboradorId", "==", emp.id), where("data", "==", data), where("tipo", "==", "reorganizacao"));
@@ -1839,8 +1844,8 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
               <div className="text-[11px] text-gray-500 mt-0.5">Incluir uma esquecida, excluir uma duplicada ou corrigir uma errada.</div>
             </button>
             <button onClick={abrirReorganizar} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-violet-400 hover:bg-violet-50/40 dark:hover:bg-violet-900/10">
-              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><RotateCw size={14}/> Reorganizar batidas</div>
-              <div className="text-[11px] text-gray-500 mt-0.5">Ajusta os pares quando o sistema entendeu errado (ex.: 00:00 é saída → 18:01–00:00). App-only, antes de aprovar.</div>
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><RotateCw size={14}/> Reorganizar marcações</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">Arrasta, edita ou exclui <b>cada marcação</b> e refaz os pares (ex.: joga o 00:00 pro fim → 18:01–00:00). App-only, antes de aprovar.</div>
             </button>
             <button onClick={() => abrirCaminhoMotivo("abono")} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10">
               <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Umbrella size={14}/> Abono / justificativa</div>
@@ -1984,22 +1989,29 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
           </>);
         })()}
 
-        {caminho === "reorganizar" && (<>
+        {caminho === "reorganizar" && (() => {
+          const previa = paresDeTempos(reorgT.filter(t => horaMin(t) != null));
+          const impar = reorgT.filter(t => horaMin(t) != null).length % 2 !== 0;
+          return (<>
           <button onClick={() => setCaminho("")} className="text-[11px] text-gray-400 hover:underline">‹ voltar</button>
-          <div className="text-[11px] text-gray-600 dark:text-gray-300">Defina os <b>pares corretos</b> (entrada–saída), em ordem cronológica. <b>Saída depois da meia-noite → use 24:00</b> (ou 24:15, 25:00…): assim o sistema entende que virou o dia. Ex.: <b>18:01 → 24:00</b>. <span className="text-gray-400">A batida original na Sólides continua intacta; isto é só a interpretação do app.</span></div>
-          <div className="flex flex-col gap-1.5">
-            {reorgP.map((p, i) => (
-              <div key={i} className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-2">
-                <input type="text" inputMode="numeric" maxLength={5} placeholder="HH:MM" value={p.in} onChange={e => setReorgP(v => v.map((x, k) => k === i ? { ...x, in: mascararHora(e.target.value) } : x))} className={`${inp} tabular-nums`} />
-                <span className="text-gray-400">–</span>
-                <input type="text" inputMode="numeric" maxLength={5} placeholder="HH:MM" value={p.out} onChange={e => setReorgP(v => v.map((x, k) => k === i ? { ...x, out: mascararHora(e.target.value) } : x))} className={`${inp} tabular-nums`} />
-                <button type="button" onClick={() => setReorgP(v => v.filter((_, k) => k !== i))} className="text-rose-500 hover:text-rose-600 px-1" title="Remover par">✕</button>
+          <div className="text-[11px] text-gray-600 dark:text-gray-300">Cada linha é uma <b>marcação</b>. <b>Arraste</b> (ou ↑/↓) pra reordenar, edite ou exclua cada uma. Os pares saem por ordem: <b>1ª+2ª = entrada→saída</b>, 3ª+4ª, e assim por diante. Saída depois da meia-noite: é só deixar o horário da madrugada <b>por último</b> (ex.: 18:01 … 00:00) — o sistema soma 24h. <span className="text-gray-400">A batida na Sólides continua intacta; isto é só a interpretação do app.</span></div>
+          <div className="flex flex-col gap-1">
+            {reorgT.map((t, i) => (
+              <div key={i} draggable onDragStart={() => setDragIdx(i)} onDragOver={e => e.preventDefault()} onDrop={() => { if (dragIdx != null && dragIdx !== i) moverTempo(dragIdx, i); setDragIdx(null); }}
+                className={`flex items-center gap-2 rounded-lg border px-2 py-1.5 ${dragIdx === i ? "opacity-50" : ""} ${i % 2 === 0 ? "border-emerald-200 dark:border-emerald-900/40" : "border-indigo-200 dark:border-indigo-900/40"}`}>
+                <span className="cursor-grab text-gray-400 select-none" title="Arraste pra reordenar">⠿</span>
+                <span className={`text-[9px] font-bold px-1 py-0.5 rounded shrink-0 ${i % 2 === 0 ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-indigo-100 text-indigo-700 dark:bg-indigo-900/40 dark:text-indigo-300"}`}>{i % 2 === 0 ? "entra" : "sai"}</span>
+                <input type="text" inputMode="numeric" maxLength={5} placeholder="HH:MM" value={t} onChange={e => setReorgT(v => v.map((x, k) => k === i ? mascararHora(e.target.value) : x))} className={`${inp} tabular-nums flex-1`} />
+                <button type="button" onClick={() => moverTempo(i, i - 1)} disabled={i === 0} className="text-gray-400 hover:text-gray-700 disabled:opacity-30 px-0.5" title="Subir">↑</button>
+                <button type="button" onClick={() => moverTempo(i, i + 1)} disabled={i === reorgT.length - 1} className="text-gray-400 hover:text-gray-700 disabled:opacity-30 px-0.5" title="Descer">↓</button>
+                <button type="button" onClick={() => setReorgT(v => v.filter((_, k) => k !== i))} className="text-rose-500 hover:text-rose-600 px-1" title="Excluir marcação">✕</button>
               </div>
             ))}
-            <button type="button" onClick={() => setReorgP(v => [...v, { in: "", out: "" }])} className="text-[11px] text-violet-600 dark:text-violet-300 hover:underline self-start">+ adicionar par</button>
+            <button type="button" onClick={() => setReorgT(v => [...v, ""])} className="text-[11px] text-violet-600 dark:text-violet-300 hover:underline self-start">+ adicionar marcação</button>
           </div>
-          <div className="text-[11px] text-gray-500">Contam só os pares com entrada <b>e</b> saída válidas (HH:MM, até 27:59 pra virada). Pra desfazer depois, cancele o lançamento no dia (✕).</div>
-        </>)}
+          {previa.length > 0 && <div className="text-[11px] text-gray-600 dark:text-gray-300">Vai ficar: <b className="tabular-nums">{previa.map(p => `${p.in}–${p.out}`).join(" · ")}</b>{impar && <span className="text-amber-600 dark:text-amber-400 ml-2">⚠ 1 marcação sem par (ímpar) — vai ser ignorada</span>}</div>}
+          </>);
+        })()}
 
         {caminho && caminho !== "reorganizar" && <label className="flex flex-col gap-1"><span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Observação (trilha do app)</span><textarea value={obs} onChange={e => setObs(e.target.value)} rows={2} placeholder="Ex.: esqueceu de bater a saída; atestado de 1 dia…" className={inp} /></label>}
 
