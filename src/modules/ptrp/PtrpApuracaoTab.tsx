@@ -592,21 +592,21 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         ajPatch[l.data] = { origem: "solides_sync", ajustadoEm: now, ajustadoPor: me.id, ajustadoPorNome: me.nome, statusAnterior: escala?.real?.[alvo.emp.id]?.[l.data] as ScheduleStatus | undefined };
         n++;
       }
-      if (!n) { setAcaoMsg("Nada a travar — dias de hoje/futuro não fecham."); setFecharBusy(false); return; }
+      if (!n) { setAcaoMsg("Nada a fechar — dias de hoje/futuro não fecham."); setFecharBusy(false); return; }
       await setDoc(doc(db, "escalas", `${rid}_${comp}`), sanitizeForFirestore({ real: { [alvo.emp.id]: realPatch }, realAjustes: { [alvo.emp.id]: ajPatch }, atualizadoEm: now, atualizadoPor: { id: me.id, nome: me.nome } }), { merge: true });
-      setAcaoMsg(`✓ ${n} dia(s) travado(s) na praticada de ${alvo.emp.nome}.`);
+      setAcaoMsg(`✓ ${n} dia(s) fechado(s) na praticada de ${alvo.emp.nome}.`);
       setSelFechar(new Set()); setFecharMode(false);
-    } catch (e) { setAcaoMsg("Falha ao travar: " + (e instanceof Error ? e.message : "erro")); }
+    } catch (e) { setAcaoMsg("Falha ao fechar: " + (e instanceof Error ? e.message : "erro")); }
     finally { setFecharBusy(false); }
   }
   async function reabrirDiaPraticada(empId: string, data: string) {
     if (!rid) return;
     if (mesEncerrado) { setAcaoMsg("Mês encerrado — reabra no módulo Escala."); return; }
-    if (!confirm(`Destravar ${data.slice(-2)}/${data.slice(5, 7)}? O dia volta a ser editável na praticada (o status gravado permanece até travar de novo).`)) return;
+    if (!confirm(`Reabrir ${data.slice(-2)}/${data.slice(5, 7)}? O dia volta a ser editável na praticada (o status gravado permanece até fechar de novo).`)) return;
     try {
       await updateDoc(doc(db, "escalas", `${rid}_${comp}`), { [`realAjustes.${empId}.${data}`]: deleteField(), atualizadoEm: new Date().toISOString() });
-      setAcaoMsg("✓ Dia destravado.");
-    } catch (e) { setAcaoMsg("Falha ao destravar: " + (e instanceof Error ? e.message : "erro")); }
+      setAcaoMsg("✓ Dia reaberto.");
+    } catch (e) { setAcaoMsg("Falha ao reabrir: " + (e instanceof Error ? e.message : "erro")); }
   }
 
   // ─── Helpers de render da linha do dia (reusados na tabela desktop e nos cards mobile) ───
@@ -661,10 +661,16 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     )}
   </>);
   const renderExcecoes = (l: Linha, incompleta: boolean, suspeito: boolean) => l.ehHoje ? <span className="text-blue-600 dark:text-blue-300 text-[11px] font-bold">HOJE</span> : l.ehFuturo ? <span className="text-blue-500 text-[11px]">a realizar</span> : l.excecoes.length ? <span className="inline-flex flex-wrap items-center gap-1 leading-none">{l.excecoes.map(e => { const Ic = EXC_LUCIDE[e] || TriangleAlert; return <span key={e} className="cursor-help" title={EXC_LABEL[e] || e}><Ic size={14}/></span>; })}</span> : incompleta ? <span className="cursor-help inline-flex" title="Batida sem par (ponto aberto) — precisa corrigir"><Unlink size={14}/></span> : suspeito ? <span className="cursor-help inline-flex text-amber-600 dark:text-amber-400" title="Só 2 batidas — o padrão é 4 ou 6 (conferir)"><Eye size={14}/></span> : <span className="text-emerald-500 text-[12px]">✓</span>;
-  const renderAcoes = (l: Linha, pendUndecided: boolean, temCorrigivel: boolean) => { const corrSel = selCorr.has(l.data); const fechado = !!sel && diaFechado(sel.emp.id, l.data); return (
+  // 1ª coluna à esquerda: cadeado se o dia está FECHADO na praticada (clica destrava);
+  // no modo "Fechar dias", checkbox pra selecionar. Vazio em futuro/hoje/mês travado.
+  const renderFecharCell = (l: Linha) => {
+    if (!sel) return null;
+    if (diaFechado(sel.emp.id, l.data)) return <button type="button" onClick={() => sel && void reabrirDiaPraticada(sel.emp.id, l.data)} className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400" title="Dia fechado na praticada (alimenta a gorjeta) — clique pra reabrir"><Lock size={15} className="inline"/></button>;
+    if (fecharMode && !l.ehFuturo && !l.ehHoje && !travado && !mesEncerrado) return <input type="checkbox" checked={selFechar.has(l.data)} onChange={() => toggleFechar(l.data)} className="w-4 h-4 accent-emerald-600 align-middle" title="Selecionar pra fechar na praticada" />;
+    return null;
+  };
+  const renderAcoes = (l: Linha, pendUndecided: boolean, temCorrigivel: boolean) => { const corrSel = selCorr.has(l.data); return (
     <div className="inline-flex items-center gap-1">
-      {fechado && <button type="button" onClick={() => sel && void reabrirDiaPraticada(sel.emp.id, l.data)} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-emerald-400 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/40" title="Travado na praticada (alimenta a gorjeta) — clique pra destravar"><Lock size={13} className="inline"/></button>}
-      {fecharMode && !fechado && !l.ehFuturo && !l.ehHoje && <input type="checkbox" checked={selFechar.has(l.data)} onChange={() => toggleFechar(l.data)} className="w-4 h-4 accent-emerald-600 mr-0.5" title="Selecionar pra travar na praticada" />}
       {pendUndecided && !travado && <>
         <button type="button" disabled={acaoBusy} onClick={() => sel && void decidirCorrecao(sel.emp, l, "APPROVED")} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-emerald-300 dark:border-emerald-800 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40" title="Aprovar correção (Sólides + trilha)">✓</button>
         <button type="button" disabled={acaoBusy} onClick={() => sel && void decidirCorrecao(sel.emp, l, "REPROVED")} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-rose-300 dark:border-rose-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40" title="Reprovar correção">✗</button>
@@ -1158,17 +1164,17 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                 <span className="text-[11px] text-gray-500">trab. {hm(sel.r.totTrab)}{sel.r.totExtra ? ` · extra ${hm(sel.r.totExtra)}` : ""}{sel.r.totNot ? ` · not. ${hm(sel.r.totNot)}` : ""}</span>
                 {!mesEncerrado && (fecharMode
                   ? <button type="button" onClick={() => { setFecharMode(false); setSelFechar(new Set()); }} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Cancelar</button>
-                  : <button type="button" onClick={() => { setFecharMode(true); setSelCorr(new Set()); }} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" title="Travar dias na escala praticada (fechar um período — ex.: rescisão)"><span className="inline-flex items-center gap-1"><Lock size={12}/> Travar dias</span></button>)}
+                  : <button type="button" onClick={() => { setFecharMode(true); setSelCorr(new Set()); }} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" title="Fechar dias na escala praticada (fecha um período — ex.: rescisão)"><span className="inline-flex items-center gap-1"><Lock size={12}/> Fechar dias</span></button>)}
                 <button type="button" disabled={!!exportBusy} onClick={() => void baixarEspelho(sel)} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40" title="Espelho de ponto deste colaborador (PDF)">{exportBusy === "espelho" ? "…" : <span className="inline-flex items-center gap-1"><Printer size={12}/> Espelho</span>}</button>
               </div>
             </div>
             {acaoMsg && <div className={`px-3 py-1.5 text-[11.5px] border-b border-gray-100 dark:border-gray-800 ${acaoMsg.startsWith("✓") ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{acaoMsg}</div>}
             {fecharMode && (
               <div className="px-3 py-2 border-b border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 flex items-center justify-between gap-2 flex-wrap">
-                <span className="text-[12px] text-emerald-800 dark:text-emerald-200 font-medium inline-flex items-center gap-1"><Lock size={13}/> Modo travar — marque os dias e trave a praticada (fecha o período p/ a gorjeta). {selFechar.size > 0 && <b>{selFechar.size} selecionado(s)</b>}</span>
+                <span className="text-[12px] text-emerald-800 dark:text-emerald-200 font-medium inline-flex items-center gap-1"><Lock size={13}/> Fechar dias — marque os dias e feche a praticada (fecha o período p/ a gorjeta). {selFechar.size > 0 && <b>{selFechar.size} selecionado(s)</b>}</span>
                 <div className="flex items-center gap-2">
                   <button type="button" onClick={() => setSelFechar(new Set())} className="text-[11px] px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800">Limpar</button>
-                  <button type="button" disabled={fecharBusy || selFechar.size === 0} onClick={() => void travarDias()} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40">{fecharBusy ? "Travando…" : `🔒 Travar (${selFechar.size})`}</button>
+                  <button type="button" disabled={fecharBusy || selFechar.size === 0} onClick={() => void travarDias()} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40">{fecharBusy ? "Fechando…" : `🔒 Fechar (${selFechar.size})`}</button>
                 </div>
               </div>
             )}
@@ -1189,7 +1195,10 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                 {sel.r.linhas.map((l, idx) => { const f = flagsLinha(l, idx); return (
                   <div key={l.data} className={`rounded-lg px-2.5 py-2 ${f.rowBg || "bg-gray-50/40 dark:bg-gray-800/20"}`}>
                     <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0 text-[12.5px] text-gray-600 dark:text-gray-300"><span className="font-semibold tabular-nums text-gray-800 dark:text-gray-100 mr-1.5">{l.data.slice(-2)}/{l.data.slice(5, 7)}</span>{renderPrevisto(l)}</div>
+                      <div className="min-w-0 text-[12.5px] text-gray-600 dark:text-gray-300 flex items-center gap-1.5">
+                        <span className="shrink-0 w-5 inline-flex justify-center">{renderFecharCell(l)}</span>
+                        <span><span className="font-semibold tabular-nums text-gray-800 dark:text-gray-100 mr-1.5">{l.data.slice(-2)}/{l.data.slice(5, 7)}</span>{renderPrevisto(l)}</span>
+                      </div>
                       {renderAcoes(l, f.pendUndecided, f.temCorrigivel)}
                     </div>
                     <div className="mt-1 text-[12.5px] text-gray-700 dark:text-gray-200">{renderBatidas(l, f.inclPunch)}</div>
@@ -1206,16 +1215,17 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
               {/* DESKTOP — tabela */}
               <div className="hidden sm:block overflow-x-auto">
               <table className="w-full text-[12px] min-w-[640px] border-collapse [&_td]:px-2 [&_td]:py-1.5 [&_td]:align-top [&_th]:px-2">
-                <colgroup><col className="w-14" /><col className="w-32" /><col /><col className="w-16" /><col className="w-16" /><col className="w-14" /><col className="w-20" /><col className="w-12" /></colgroup>
+                <colgroup><col className="w-8" /><col className="w-14" /><col className="w-32" /><col /><col className="w-16" /><col className="w-16" /><col className="w-14" /><col className="w-20" /><col className="w-12" /></colgroup>
                 <thead>
                   <tr className="text-[10px] uppercase tracking-wide text-gray-400 text-left border-b border-gray-200 dark:border-gray-800">
-                    <th className="py-1.5 font-semibold">Dia</th><th className="font-semibold">Previsto</th><th className="font-semibold">Batidas / tratamento</th>
+                    <th className="py-1.5 font-semibold text-center" title={fecharMode ? "Marque pra fechar" : "Fechado ✓"}>{fecharMode ? "✓" : <Lock size={11} className="inline"/>}</th><th className="py-1.5 font-semibold">Dia</th><th className="font-semibold">Previsto</th><th className="font-semibold">Batidas / tratamento</th>
                     <th className="font-semibold text-right">Trab.</th><th className="font-semibold text-right" title="Saldo do dia = trabalhado + abonado − previsto (+ verde / − vermelho / 0 azul). Dia com batida aberta fica 'pendente' e conta zero no banco até a correção.">Saldo</th><th className="font-semibold text-right" title="Adicional noturno — minutos trabalhados na faixa noturna (22h–05h)">Not.</th><th className="font-semibold">Exceções</th><th className="font-semibold text-right">Ação</th>
                   </tr>
                 </thead>
                 <tbody>
                   {sel.r.linhas.map((l, idx) => { const f = flagsLinha(l, idx); return (
                     <tr key={l.data} className={`border-b border-gray-50 dark:border-gray-800/40 ${f.rowBg}`}>
+                      <td className="text-center">{renderFecharCell(l)}</td>
                       <td className="tabular-nums font-medium text-gray-700 dark:text-gray-200 whitespace-nowrap">{l.data.slice(-2)}/{l.data.slice(5, 7)} <span className={`text-[10px] font-normal ${[0, 6].includes(new Date(l.data + "T12:00:00").getDay()) ? "text-rose-400 dark:text-rose-400/70" : "text-gray-400"}`}>{diaSemanaAbrev(l.data)}</span></td>
                       <td className={`whitespace-nowrap ${f.folga ? "text-gray-400" : "text-gray-600 dark:text-gray-300"}`}>{renderPrevisto(l)}</td>
                       <td className="text-gray-700 dark:text-gray-200">{renderBatidas(l, f.inclPunch)}</td>
