@@ -11,7 +11,7 @@ import type { Contagem, Fornecedor, Insumo, Pedido } from "../../core/types";
 import { FornecedoresTab } from "./FornecedoresTab";
 import { SugestoesTab } from "./SugestoesTab";
 import { PedidosTab } from "./PedidosTab";
-import { ProdutosTab } from "./ProdutosTab";
+import { InsumosManager } from "../contagens/InsumosManager";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 type Tab = "sugestoes" | "pedidos" | "produtos" | "fornecedores";
@@ -185,12 +185,7 @@ export function ComprasPage() {
         />
       )}
       {tab === "produtos" && (
-        <ProdutosTab
-          insumos={insumos}
-          fornecedores={fornecedores}
-          restaurantId={rid}
-          podeConfig={podeConfig}
-        />
+        <InsumosManager rid={rid} podeConfig={podeConfig} />
       )}
       {tab === "fornecedores" && (
         <FornecedoresTab
