@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import type { Empregado, HorarioDia, Cargo, EscalaMes, ScheduleStatus, AjusteEscalaMeta } from "../../core/types";
 import { calcularFechamentoPraticada } from "../../core/escala/fechamentoPraticada";
+import { empregadoAtivoEm } from "../../core/utils/empregado";
 import { empregadoBatePonto } from "../../core/types";
 import type { ParametrosCCT, PtrpTurno, PtrpAjuste, PtrpAjusteTipo, PtrpBancoMov, PtrpApuracaoColab, PtrpApuracaoDia, PtrpFechamento, PtrpEvidencia } from "../../core/ptrp/tipos";
 import { cctVigenteEm } from "../../core/ptrp/tipos";
@@ -639,16 +640,15 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     const realFull: Record<string, Record<string, ScheduleStatus>> = {}; const ajFull: Record<string, Record<string, AjusteEscalaMeta>> = {};
     let n = 0;
     for (const [empId, dias] of porEmp) {
-      const res = resultados.find(x => x.emp.id === empId); if (!res) continue;
-      const lp = new Map(res.r.linhas.map(l => [l.data, l]));
+      const emp = empregados.find(e => e.id === empId); if (!emp) continue;
       for (const d of dias) {
-        const l = lp.get(d); if (!l) continue;
-        const st = statusPraticado(l); if (!st) continue;
+        const info = statusFechavel(emp, d);
+        if (!info.st || info.ehFut) continue;
         const dd = `${d.slice(-2)}/${d.slice(5, 7)}`;
-        if (l.excecoes.includes("correcao_pendente")) { bloqueados.push(`${res.emp.nome} ${dd}`); continue; }
-        if (l.excecoes.includes("batida_impar") || l.pendenteCorrecao) { bloqueados.push(`${res.emp.nome} ${dd}`); continue; }
-        if (st === "falta_i" && !l.ajustesDia.some(a => a.statusEscala)) faltasAuto.push(`${res.emp.nome} ${dd}`);
-        (realFull[empId] = realFull[empId] || {})[d] = st;
+        if (info.bloqueio === "pendente") { bloqueados.push(`${emp.nome} ${dd} (correção pendente)`); continue; }
+        if (info.bloqueio === "impar") { bloqueados.push(`${emp.nome} ${dd} (batida ímpar)`); continue; }
+        if (info.st === "falta_i" && info.l && !info.l.ajustesDia.some(a => a.statusEscala)) faltasAuto.push(`${emp.nome} ${dd}`);
+        (realFull[empId] = realFull[empId] || {})[d] = info.st;
         (ajFull[empId] = ajFull[empId] || {})[d] = { origem: "solides_sync", ajustadoEm: now, ajustadoPor: me.id, ajustadoPorNome: me.nome, statusAnterior: escala?.real?.[empId]?.[d] as ScheduleStatus | undefined };
         n++;
       }
@@ -911,16 +911,36 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const hojeYmd = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
   // Fechamento da praticada do mês (até que dia TODOS estão fechados) — base do
   // painel de pendências e do que a gorjeta pode dividir.
-  // Usa empVis (CLT ativo) — o MESMO conjunto do grid de fechamento — pra painel,
-  // trava e grid ficarem consistentes (freela mensalista fica fora por ora).
+  // TODOS os empregados (empregadoAtivoEm filtra por dia) — CLT ativo, freela em
+  // cobertura e demitido nos dias trabalhados. É o conjunto que entra na gorjeta.
   const fechamentoPrat = useMemo(
-    () => calcularFechamentoPraticada(escala, empVis, Number(comp.slice(0, 4)), Number(comp.slice(5, 7)), hojeYmd),
-    [escala, empVis, comp, hojeYmd],
+    () => calcularFechamentoPraticada(escala, empregados, Number(comp.slice(0, 4)), Number(comp.slice(5, 7)), hojeYmd),
+    [escala, empregados, comp, hojeYmd],
   );
   // Grid semanal (aba Fechar praticada): linha do dia por empregado + dias da semana visível.
   const linhasPorEmp = useMemo(() => new Map(resultados.map(x => [x.emp.id, new Map(x.r.linhas.map(l => [l.data, l]))])), [resultados]);
+  // Status praticado + horário de QUALQUER empregado num dia: CLT usa a apuração
+  // (batidas); freela/demitido sem apuração usa a praticada (real ?? prevista),
+  // pois não batem ponto. Retorna null se o empregado não está ativo no dia.
+  const statusFechavel = (emp: Empregado, d: string): { st: ScheduleStatus | null; horario: string; l?: Linha; ehFut: boolean; bloqueio?: "pendente" | "impar" } => {
+    if (!empregadoAtivoEm(emp, d)) return { st: null, horario: "", ehFut: false };
+    const l = linhasPorEmp.get(emp.id)?.get(d);
+    if (l) {
+      const horario = l.bs.length ? `${hhmm(l.bs[0].dateIn)}–${hhmm(l.bs[l.bs.length - 1].dateOut)}` : "";
+      const bloqueio = l.excecoes.includes("correcao_pendente") ? "pendente" as const : (l.excecoes.includes("batida_impar") || l.pendenteCorrecao) ? "impar" as const : undefined;
+      return { st: statusPraticado(l), horario, l, ehFut: l.ehFuturo || l.ehHoje, bloqueio };
+    }
+    const st = (escala?.real?.[emp.id]?.[d] ?? escala?.prevista?.[emp.id]?.[d]) as ScheduleStatus | undefined;
+    return { st: st ?? null, horario: "", ehFut: d >= hojeYmd };
+  };
   const diasNoMesComp = new Date(Number(comp.slice(0, 4)), Number(comp.slice(5, 7)), 0).getDate();
   const diasSemana = useMemo(() => { const out: string[] = []; for (let d = chunkIni; d <= Math.min(chunkIni + 6, diasNoMesComp); d++) out.push(`${comp}-${String(d).padStart(2, "0")}`); return out; }, [chunkIni, diasNoMesComp, comp]);
+  // Linhas do grid: todo empregado ativo em algum dia da semana visível (CLT,
+  // freela em cobertura, demitido nos dias trabalhados). Ordena por nome.
+  const empregadosSemana = useMemo(
+    () => empregados.filter(e => diasSemana.some(d => empregadoAtivoEm(e, d))).sort((a, b) => a.nome.localeCompare(b.nome)),
+    [empregados, diasSemana],
+  );
   // Ao entrar na aba (ou trocar mês), começa na semana onde o fechamento parou.
   useEffect(() => { if (mode === "fechar") setChunkIni(Math.max(1, Math.floor(fechamentoPrat.fechadoAteDia / 7) * 7 + 1)); }, [mode, comp, fechamentoPrat.fechadoAteDia]);
   const movVencido = (mv: PtrpBancoMov) => (mv.saldoMinutos || 0) > 0 && !!mv.vencimento && mv.vencimento < hojeYmd;
@@ -1013,7 +1033,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       )}
 
       {mode === "fechar" && (() => {
-        const selecionaveisDoDia = (d: string) => resultados.filter(x => { const l = linhasPorEmp.get(x.emp.id)?.get(d); return !!l && !diaFechado(x.emp.id, d) && !l.ehFuturo && !l.ehHoje && !!statusPraticado(l); }).map(x => x.emp.id);
+        const selecionaveisDoDia = (d: string) => empregadosSemana.filter(e => { if (diaFechado(e.id, d)) return false; const info = statusFechavel(e, d); return !!info.st && !info.ehFut; }).map(e => e.id);
         const diaMarcado = (d: string) => { const ids = selecionaveisDoDia(d); return ids.length > 0 && ids.every(id => selGrid.has(`${id}|${d}`)); };
         const toggleDia = (d: string) => { const ids = selecionaveisDoDia(d); setSelGrid(prev => { const n = new Set(prev); const all = ids.length > 0 && ids.every(id => n.has(`${id}|${d}`)); for (const id of ids) { const k = `${id}|${d}`; if (all) n.delete(k); else n.add(k); } return n; }); };
         const semLabel = `${diasSemana[0]?.slice(-2)}–${diasSemana[diasSemana.length - 1]?.slice(-2)}/${comp.slice(5, 7)}`;
@@ -1030,7 +1050,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
             </div>
           </div>
           {acaoMsg && <div className={`text-[12px] ${acaoMsg.startsWith("✓") ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{acaoMsg}</div>}
-          {resultados.length === 0 ? <div className="text-sm text-gray-400 py-6 text-center">Sem empregados pra fechar em {labelComp(comp)}.</div> : (
+          {empregadosSemana.length === 0 ? <div className="text-sm text-gray-400 py-6 text-center">Sem empregados ativos nesta semana.</div> : (
           <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
             <table className="w-full text-[12px] border-collapse">
               <thead>
@@ -1045,27 +1065,27 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                 </tr>
               </thead>
               <tbody>
-                {resultados.map(x => (
-                  <tr key={x.emp.id} className="border-b border-gray-50 dark:border-gray-800/40">
-                    <td className="sticky left-0 z-10 bg-white dark:bg-gray-900 px-3 py-1.5 font-medium text-gray-800 dark:text-gray-100 truncate max-w-[160px] border-r border-gray-100 dark:border-gray-800">{x.emp.nome}</td>
+                {empregadosSemana.map(emp => (
+                  <tr key={emp.id} className="border-b border-gray-50 dark:border-gray-800/40">
+                    <td className="sticky left-0 z-10 bg-white dark:bg-gray-900 px-3 py-1.5 font-medium text-gray-800 dark:text-gray-100 truncate max-w-[160px] border-r border-gray-100 dark:border-gray-800">{emp.nome}{emp.freelaMensalista && <span className="ml-1 text-[9px] uppercase text-violet-500">freela</span>}</td>
                     {diasSemana.map(d => {
-                      const l = linhasPorEmp.get(x.emp.id)?.get(d);
-                      const fechado = diaFechado(x.emp.id, d);
-                      const st = fechado ? (escala?.real?.[x.emp.id]?.[d] as ScheduleStatus | undefined) : l ? statusPraticado(l) || undefined : undefined;
-                      const horario = l && l.bs.length ? `${hhmm(l.bs[0].dateIn)}–${hhmm(l.bs[l.bs.length - 1].dateOut)}` : "";
-                      const selecionavel = !!l && !fechado && !l.ehFuturo && !l.ehHoje && !!statusPraticado(l);
-                      const marcado = selGrid.has(`${x.emp.id}|${d}`);
+                      const ativo = empregadoAtivoEm(emp, d);
+                      const fechado = diaFechado(emp.id, d);
+                      const info = statusFechavel(emp, d);
+                      const st = fechado ? ((escala?.real?.[emp.id]?.[d] as ScheduleStatus | undefined) ?? info.st ?? undefined) : (info.st ?? undefined);
+                      const selecionavel = ativo && !fechado && !!info.st && !info.ehFut;
+                      const marcado = selGrid.has(`${emp.id}|${d}`);
                       return (
                         <td key={d} className="px-1 py-1 text-center align-middle">
-                          {!l ? <span className="text-gray-200 dark:text-gray-700">·</span> : fechado ? (
-                            <button type="button" onClick={() => void reabrirDiaPraticada(x.emp.id, d)} title="Fechado — clique pra reabrir" className="w-full rounded-md px-1 py-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/40">
+                          {!ativo ? <span className="text-gray-200 dark:text-gray-700">·</span> : fechado ? (
+                            <button type="button" onClick={() => void reabrirDiaPraticada(emp.id, d)} title="Fechado — clique pra reabrir" className="w-full rounded-md px-1 py-1 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/40">
                               <span className="inline-flex items-center gap-0.5"><Lock size={10} className="text-emerald-600"/>{st && <span className={`text-[9px] font-bold px-1 rounded ${STATUS_INFO[st].bg} ${STATUS_INFO[st].text}`}>{STATUS_INFO[st].short}</span>}</span>
                             </button>
-                          ) : (l.ehFuturo || l.ehHoje) ? <span className="text-blue-400 text-[10px]">{l.ehHoje ? "hoje" : "—"}</span> : (
-                            <button type="button" onClick={() => selecionavel && toggleGrid(x.emp.id, d)} className={`w-full rounded-md px-1 py-1 border transition-colors ${marcado ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 ring-1 ring-emerald-400" : "border-gray-200 dark:border-gray-700 hover:border-emerald-400 hover:bg-emerald-50/40 dark:hover:bg-emerald-900/10"}`}>
+                          ) : info.ehFut ? <span className="text-blue-400 text-[10px]">{info.l?.ehHoje ? "hoje" : "—"}</span> : (
+                            <button type="button" onClick={() => selecionavel && toggleGrid(emp.id, d)} className={`w-full rounded-md px-1 py-1 border transition-colors ${marcado ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-900/30 ring-1 ring-emerald-400" : "border-gray-200 dark:border-gray-700 hover:border-emerald-400 hover:bg-emerald-50/40 dark:hover:bg-emerald-900/10"}`}>
                               <div className="flex flex-col items-center gap-0.5 leading-none">
-                                {st && <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[st].bg} ${STATUS_INFO[st].text}`}>{STATUS_INFO[st].short}</span>}
-                                <span className="text-[9.5px] tabular-nums text-gray-500 dark:text-gray-400">{horario || "—"}</span>
+                                {st ? <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[st].bg} ${STATUS_INFO[st].text}`}>{STATUS_INFO[st].short}</span> : <span className="text-[9px] text-gray-400">?</span>}
+                                <span className="text-[9.5px] tabular-nums text-gray-500 dark:text-gray-400">{info.horario || "—"}</span>
                               </div>
                             </button>
                           )}
