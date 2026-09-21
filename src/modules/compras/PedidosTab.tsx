@@ -15,6 +15,7 @@ import type { Pedido, PedidoStatus, PedidoItem } from "../../core/types";
 type Props = {
   pedidos: Pedido[];
   podeConfig: boolean;
+  onNovoPedido?: () => void;
 };
 
 const STATUS_CLS: Record<PedidoStatus, string> = {
@@ -35,7 +36,7 @@ const PEDIDO_STATUS_LUCIDE: Record<PedidoStatus, LucideIcon> = {
   cancelado:    X,
 };
 
-export function PedidosTab({ pedidos, podeConfig }: Props) {
+export function PedidosTab({ pedidos, podeConfig, onNovoPedido }: Props) {
   const [filtroStatus, setFiltroStatus] = useState<"abertos" | "todos" | PedidoStatus>("abertos");
   const [search, setSearch] = useState("");
   const [recebendo, setRecebendo] = useState<Pedido | null>(null);
@@ -58,6 +59,12 @@ export function PedidosTab({ pedidos, podeConfig }: Props) {
 
   return (
     <div className="space-y-3">
+      {onNovoPedido && (
+        <button type="button" onClick={onNovoPedido}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-lg bg-indigo-600 text-white py-2.5 text-sm font-semibold hover:bg-indigo-700">
+          <ClipboardList size={16} /> Novo pedido
+        </button>
+      )}
       <Input
         placeholder="🔍 Buscar por fornecedor ou item..."
         value={search}

@@ -1,20 +1,19 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Lock, Lightbulb, ClipboardList, Building2, Package } from "lucide-react";
+import { Lock, ClipboardList, Building2, Package } from "lucide-react";
 import { useParams, Link } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canConfigurar, canVer } from "../../core/auth/permissions";
-import { Button } from "../../core/ui/Button";
 import type { Contagem, Fornecedor, Insumo, Pedido } from "../../core/types";
 import { FornecedoresTab } from "./FornecedoresTab";
-import { SugestoesTab } from "./SugestoesTab";
 import { PedidosTab } from "./PedidosTab";
+import { NovoPedidoModal } from "./NovoPedidoModal";
 import { InsumosManager } from "../contagens/InsumosManager";
 import { PageContainer } from "../../core/ui/PageContainer";
 
-type Tab = "sugestoes" | "pedidos" | "produtos" | "fornecedores";
+type Tab = "pedidos" | "produtos" | "fornecedores";
 
 export function ComprasPage() {
   const { pessoa: me } = useAuth();
@@ -25,7 +24,8 @@ export function ComprasPage() {
   const podeVer = canVer(me, rid, "compras");
   const podeConfig = canConfigurar(me, rid, "compras");
 
-  const [tab, setTab] = useState<Tab>("sugestoes");
+  const [tab, setTab] = useState<Tab>("pedidos");
+  const [novoPedido, setNovoPedido] = useState(false);
   const [insumos, setInsumos] = useState<Insumo[]>([]);
   const [contagens, setContagens] = useState<Contagem[]>([]);
   const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
@@ -144,7 +144,6 @@ export function ComprasPage() {
       {/* Tabs */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {([
-          ["sugestoes",    <span className="inline-flex items-center gap-1.5"><Lightbulb size={15} /> Sugestões{insumosComFalta.length > 0 ? ` (${insumosComFalta.length})` : ""}</span>],
           ["pedidos",      <span className="inline-flex items-center gap-1.5"><ClipboardList size={15} /> Pedidos ({pedidos.length})</span>],
           ["produtos",     <span className="inline-flex items-center gap-1.5"><Package size={15} /> Produtos ({insumos.filter(i => i.ativo).length})</span>],
           ["fornecedores", <span className="inline-flex items-center gap-1.5"><Building2 size={15} /> Fornecedores ({fornecedores.length})</span>],
@@ -168,20 +167,11 @@ export function ComprasPage() {
         )}
       </div>
 
-      {tab === "sugestoes" && (
-        <SugestoesTab
-          ultimaContagem={ultimaContagem}
-          fornecedores={fornecedores}
-          insumos={insumos}
-          restaurantId={rid}
-          podeConfig={podeConfig}
-          onPedidoCriado={() => setTab("pedidos")}
-        />
-      )}
       {tab === "pedidos" && (
         <PedidosTab
           pedidos={pedidos}
           podeConfig={podeConfig}
+          onNovoPedido={podeConfig ? () => setNovoPedido(true) : undefined}
         />
       )}
       {tab === "produtos" && (
@@ -197,19 +187,16 @@ export function ComprasPage() {
         />
       )}
 
-      {!fornecedores.length && tab === "sugestoes" && (
-        <div className="mt-4 text-sm text-gray-500 italic">
-          <Lightbulb size={13} className="inline align-[-2px] mr-1" />Pra criar pedidos automáticos, cadastre fornecedores na aba "Fornecedores" e
-          vincule-os aos insumos no módulo Contagens (campo "Fornecedor preferencial").
-        </div>
-      )}
-
-      {tab === "sugestoes" && (
-        <div className="mt-4 flex justify-end">
-          <Button variant="secondary" onClick={() => setTab("pedidos")}>
-            Ver pedidos →
-          </Button>
-        </div>
+      {novoPedido && (
+        <NovoPedidoModal
+          rid={rid}
+          insumos={insumos}
+          fornecedores={fornecedores}
+          contagens={contagens}
+          pedidos={pedidos}
+          onClose={() => setNovoPedido(false)}
+          onCreated={() => setTab("pedidos")}
+        />
       )}
     </PageContainer>
   );
