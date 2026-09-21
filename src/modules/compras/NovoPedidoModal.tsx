@@ -85,12 +85,21 @@ export function NovoPedidoModal({ rid, insumos, fornecedores, contagens, pedidos
   // ── Builder helpers ──────────────────────────────────────────────────────────
   const baseQtd = (l: LinhaSugestao): number => (iaMap && iaMap[l.insumo.id] != null ? iaMap[l.insumo.id] : l.qtdSugerida);
   const baseIncluido = (l: LinhaSugestao): boolean => (iaMap && iaMap[l.insumo.id] != null ? iaMap[l.insumo.id] > 0 : l.precisaPedido);
-  const qtd = (l: LinhaSugestao): number => { const v = ajustes[l.insumo.id]; if (v == null || v === "") return baseQtd(l); const n = parseFloat(v.replace(",", ".")); return isNaN(n) ? baseQtd(l) : n; };
   const isIncluido = (l: LinhaSugestao): boolean => incluir[l.insumo.id] ?? baseIncluido(l);
+  const qtdInicialOk = (l: LinhaSugestao): number => l.fator > 1 ? l.fator : (l.minPedido > 0 ? l.minPedido : 1);
+  // Qtd efetiva: edição do usuário → base (IA/regra) → se está incluído mas a base
+  // é 0 (item OK/avulso), assume a qtd inicial (pacote/mín/1). O que aparece no
+  // campo é EXATAMENTE isso — evita mostrar "1" e contar 0 na hora de gerar.
+  const qtd = (l: LinhaSugestao): number => {
+    const v = ajustes[l.insumo.id];
+    if (v != null && v !== "") { const n = parseFloat(v.replace(",", ".")); return isNaN(n) ? 0 : n; }
+    const b = baseQtd(l);
+    return b > 0 ? b : (isIncluido(l) ? qtdInicialOk(l) : 0);
+  };
+  const valorCampo = (l: LinhaSugestao): string => ajustes[l.insumo.id] ?? (qtd(l) > 0 ? String(qtd(l)) : String(qtdInicialOk(l)));
   const totalLinha = (l: LinhaSugestao): number => (l.precoUnit || 0) * qtd(l);
   const totalGrupo = (g: GrupoFornecedor): number => [...g.precisam, ...g.ok].filter(isIncluido).reduce((s, l) => s + totalLinha(l), 0);
   const itensIncluidos = (g: GrupoFornecedor): LinhaSugestao[] => [...g.precisam, ...g.ok].filter(l => isIncluido(l) && qtd(l) > 0);
-  const qtdInicialOk = (l: LinhaSugestao): number => l.fator > 1 ? l.fator : (l.minPedido > 0 ? l.minPedido : 1);
   function restaurar(g: GrupoFornecedor) {
     const ids = [...g.precisam, ...g.ok].map(l => l.insumo.id);
     setAjustes(s => { const n = { ...s }; for (const id of ids) delete n[id]; return n; });
@@ -323,14 +332,14 @@ export function NovoPedidoModal({ rid, insumos, fornecedores, contagens, pedidos
                   <span>Item</span><span className="w-16 text-right">Contagem</span><span className="w-16 text-right">Mínimo</span><span className="w-24 text-right">Sugestão</span>
                 </div>
                 <div className="divide-y divide-gray-50 dark:divide-gray-800/50">
-                  {g.precisam.map(l => <Linha key={l.insumo.id} l={l} incluido={isIncluido(l)} valor={ajustes[l.insumo.id] ?? String(baseQtd(l))} onQtd={v => setAjustes(s => ({ ...s, [l.insumo.id]: v }))} onToggle={v => setIncluir(s => ({ ...s, [l.insumo.id]: v }))} />)}
+                  {g.precisam.map(l => <Linha key={l.insumo.id} l={l} incluido={isIncluido(l)} valor={valorCampo(l)} onQtd={v => setAjustes(s => ({ ...s, [l.insumo.id]: v }))} onToggle={v => setIncluir(s => ({ ...s, [l.insumo.id]: v }))} />)}
                 </div>
                 {g.ok.length > 0 && (
                   <div className="mt-1.5 border-t border-dashed border-gray-200 dark:border-gray-800 pt-1.5">
                     <button type="button" onClick={() => setOkAberto(s => ({ ...s, [forn.id]: !okOpen }))} className="text-[11px] font-medium text-gray-500 hover:text-gray-700 inline-flex items-center gap-1">{okOpen ? <ChevronDown size={13} /> : <ChevronRight size={13} />} {origem === "avulso" ? "Demais produtos" : "Itens em dia"} ({g.ok.length})</button>
                     {okOpen && (
                       <div className="divide-y divide-gray-50 dark:divide-gray-800/50 mt-1">
-                        {g.ok.map(l => <Linha key={l.insumo.id} l={l} incluido={isIncluido(l)} opaco valor={ajustes[l.insumo.id] ?? String(baseQtd(l) > 0 ? baseQtd(l) : qtdInicialOk(l))} onQtd={v => setAjustes(s => ({ ...s, [l.insumo.id]: v }))} onToggle={v => setIncluir(s => ({ ...s, [l.insumo.id]: v }))} />)}
+                        {g.ok.map(l => <Linha key={l.insumo.id} l={l} incluido={isIncluido(l)} opaco valor={valorCampo(l)} onQtd={v => setAjustes(s => ({ ...s, [l.insumo.id]: v }))} onToggle={v => setIncluir(s => ({ ...s, [l.insumo.id]: v }))} />)}
                       </div>
                     )}
                   </div>

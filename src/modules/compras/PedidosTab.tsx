@@ -229,19 +229,16 @@ function PedidoCard({ pedido, podeConfig, onReceber }: {
           </div>
         </div>
         <div className="flex gap-1 flex-wrap">
-          {podeConfig && pedido.status === "rascunho" && (
-            <Button variant="secondary" size="sm" onClick={() => setStatus("aprovado")} disabled={busy}>✓ Aprovar</Button>
-          )}
           {podeConfig && !isFinal && (
             <Button variant="secondary" size="sm" onClick={() => void copiarMensagem()}><span className="inline-flex items-center gap-1.5"><Copy size={14} /> {copiado ? "Copiado!" : "Copiar"}</span></Button>
           )}
-          {podeConfig && (pedido.status === "rascunho" || pedido.status === "aprovado" || pedido.status === "enviado") && pedido.fornecedorWhatsappSnapshot && (
-            <Button variant="secondary" size="sm" onClick={enviarWhatsApp}><span className="inline-flex items-center gap-1.5"><Send size={14} /> Enviar WhatsApp</span></Button>
+          {podeConfig && !isFinal && pedido.fornecedorWhatsappSnapshot && (
+            <Button size="sm" onClick={enviarWhatsApp}><span className="inline-flex items-center gap-1.5"><Send size={14} /> Enviar WhatsApp</span></Button>
           )}
-          {podeConfig && (pedido.status === "rascunho" || pedido.status === "aprovado") && (
-            <Button variant="secondary" size="sm" onClick={() => setStatus("enviado")} disabled={busy}><span className="inline-flex items-center gap-1.5"><Send size={14} /> Marcar enviado</span></Button>
+          {podeConfig && pedido.status !== "enviado" && !isFinal && (
+            <Button variant="secondary" size="sm" onClick={() => setStatus("enviado")} disabled={busy}><span className="inline-flex items-center gap-1.5"><Check size={14} /> Marcar enviado</span></Button>
           )}
-          {podeConfig && (pedido.status === "enviado" || pedido.status === "aprovado") && (
+          {podeConfig && !isFinal && (
             <Button variant="secondary" size="sm" onClick={onReceber}><span className="inline-flex items-center gap-1.5"><Package size={14} /> Receber</span></Button>
           )}
           {podeConfig && !isFinal && (
