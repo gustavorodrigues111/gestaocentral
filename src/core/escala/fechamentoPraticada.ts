@@ -42,6 +42,9 @@ export function calcularFechamentoPraticada(
 
   const fechado = (empId: string, ymd: string) =>
     (escala?.realAjustes?.[empId]?.[ymd] as { origem?: string } | undefined)?.origem === "solides_sync";
+  // Tem algum status na escala naquele dia (praticada ou prevista)?
+  const temStatus = (empId: string, ymd: string) =>
+    escala?.real?.[empId]?.[ymd] != null || escala?.prevista?.[empId]?.[ymd] != null;
 
   const pendMap = new Map<string, { nome: string; dias: string[] }>();
   let fechadoAteDia = 0;
@@ -53,6 +56,11 @@ export function calcularFechamentoPraticada(
     let diaCompleto = true;
     for (const e of empregados) {
       if (!empregadoAtivoEm(e, ymd)) continue;   // só cobra dos ativos naquele dia
+      // Freela mensalista NÃO bate ponto e não tem escala fixa: só entra na gorjeta
+      // (e precisa ser fechado) nos dias em que foi MARCADO (tem status). Dia sem
+      // marcação = não trabalhou → não trava o fechamento. Nos dias marcados, exige
+      // fechamento normal — o dia só divide quando ela também estiver confirmada.
+      if ((e as { freelaMensalista?: boolean }).freelaMensalista && !temStatus(e.id, ymd)) continue;
       if (!fechado(e.id, ymd)) {
         diaCompleto = false;
         totalDiasAbertos++;
