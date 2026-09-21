@@ -320,7 +320,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     return m;
   }, [ajustes]);
 
-  type Linha = { data: string; bs: BatidaDoc[]; bsRaw: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean; ehFuturo: boolean; ehHoje: boolean; pendenteCorrecao: boolean; reorgPares?: { in: string; out: string }[] };
+  type Linha = { data: string; bs: BatidaDoc[]; bsRaw: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean; ehFuturo: boolean; ehHoje: boolean; pendenteCorrecao: boolean; reorgPares?: { in: string; out: string }[]; bsVirada?: BatidaDoc[] };
   function apurarColab(emp: Empregado) {
     const cpf = soDig(emp.cpf);
     const dias = batidasPorCpf[cpf] || {};
@@ -333,6 +333,11 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       // Ordena as batidas por horário (a correção lançada depois pode vir fora de
       // ordem no armazenamento) — deixa render/marcações/CSV cronológicos.
       const bsRaw = dias[data] || [];   // registros crus da Sólides (p/ excluir individualmente no modal)
+      // Turno que vira a meia-noite: a Sólides data a SAÍDA (00:00) no dia SEGUINTE.
+      // Se hoje tem entrada noturna aberta, puxa as marcações de madrugada (<05:00)
+      // do dia seguinte pra o tratamento poder pareá-las aqui (ex.: 18:01 + 00:00).
+      const temEntradaNoiteAberta = bsRaw.some(b => !b.excluded && typeof b.dateIn === "number" && minutoDoDiaBRT(b.dateIn) > 720 && (b.dateOut == null || minutoDoDiaBRT(b.dateOut) < minutoDoDiaBRT(b.dateIn)));
+      const bsVirada = temEntradaNoiteAberta ? (dias[somaDiasYmd(data, 1)] || []).filter(b => !b.excluded && typeof b.dateIn === "number" && minutoDoDiaBRT(b.dateIn) < 300) : [];
       const ajustesDia = ajDias[data] || [];
       // Desconsideração: remove a batida referida ANTES de reparear/apurar — assim
       // os horários que sobram são remontados cronologicamente (igual ao preview do
@@ -402,7 +407,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       if (!ehHoje && !pendenteCorrecao && atrasoMin > 0 && ajustesDia.some(a => a.tipo === "atraso_justificado")) {
         abonadoMin += atrasoMin; saldoMes += atrasoMin; excecoes = excecoes.filter(e => e !== "atraso"); atrasoMin = 0;
       }
-      linhas.push({ data, bs, bsRaw, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo, ehHoje, pendenteCorrecao, reorgPares: reorg?.pares });
+      linhas.push({ data, bs, bsRaw, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo, ehHoje, pendenteCorrecao, reorgPares: reorg?.pares, bsVirada });
     }
     // Interjornada: descanso entre a última saída de um dia e a 1ª entrada do dia
     // seguinte (calendário) < mínimo da CCT → exceção no dia seguinte.
@@ -749,7 +754,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         <button type="button" disabled={reclassBusy} onClick={() => sel && setReclass({ emp: sel.emp, data: l.data, prev: l.statusEscala })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-amber-300 dark:border-amber-800 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-40" title="Definir o status na escala praticada (folga trabalhada, ou falta → justificada / injustificada / férias)"><CalendarDays size={14} className="inline"/></button>
       )}
       <button type="button" onClick={() => toggleCorr(l.data)} className={`text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border ${corrSel ? "bg-blue-500 border-blue-500 text-white" : temCorrigivel ? "border-blue-300 dark:border-blue-800 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20" : "border-gray-300 dark:border-gray-700 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}`} title={corrSel ? "Remover do pedido de correção" : "Selecionar p/ pedir correção"}><MessageSquare size={14} className="inline"/></button>
-      <button type="button" disabled={travado} onClick={() => sel && setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bsRaw })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title={travado ? "Mês fechado" : "Tratar"}><Settings size={14} className="inline"/></button>
+      <button type="button" disabled={travado} onClick={() => sel && setAjusteModal({ emp: sel.emp, data: l.data, bs: [...l.bsRaw, ...(l.bsVirada || [])] })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title={travado ? "Mês fechado" : "Tratar"}><Settings size={14} className="inline"/></button>
     </div>
   ); };
 
