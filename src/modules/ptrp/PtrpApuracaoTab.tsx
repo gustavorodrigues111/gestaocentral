@@ -24,6 +24,7 @@ import {
   HelpCircle, ChevronDown, Eye, Crown, RotateCw,
 } from "lucide-react";
 import type { Empregado, HorarioDia, Cargo, EscalaMes, ScheduleStatus, AjusteEscalaMeta } from "../../core/types";
+import { calcularFechamentoPraticada } from "../../core/escala/fechamentoPraticada";
 import { empregadoBatePonto } from "../../core/types";
 import type { ParametrosCCT, PtrpTurno, PtrpAjuste, PtrpAjusteTipo, PtrpBancoMov, PtrpApuracaoColab, PtrpApuracaoDia, PtrpFechamento, PtrpEvidencia } from "../../core/ptrp/tipos";
 import { cctVigenteEm } from "../../core/ptrp/tipos";
@@ -868,6 +869,12 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const saldoAcumPorColab = useMemo(() => { const m = new Map<string, number>(); for (const mv of bancoMovs) m.set(mv.colaboradorId, (m.get(mv.colaboradorId) || 0) + (mv.saldoMinutos || 0)); return m; }, [bancoMovs]);
   const movsPorColab = useMemo(() => { const m = new Map<string, PtrpBancoMov[]>(); for (const mv of bancoMovs) { const a = m.get(mv.colaboradorId) || []; a.push(mv); m.set(mv.colaboradorId, a); } for (const a of m.values()) a.sort((x, y) => x.competencia.localeCompare(y.competencia)); return m; }, [bancoMovs]);
   const hojeYmd = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+  // Fechamento da praticada do mês (até que dia TODOS estão fechados) — base do
+  // painel de pendências e do que a gorjeta pode dividir.
+  const fechamentoPrat = useMemo(
+    () => calcularFechamentoPraticada(escala, empregados, Number(comp.slice(0, 4)), Number(comp.slice(5, 7)), hojeYmd),
+    [escala, empregados, comp, hojeYmd],
+  );
   const movVencido = (mv: PtrpBancoMov) => (mv.saldoMinutos || 0) > 0 && !!mv.vencimento && mv.vencimento < hojeYmd;
   const registradoComp = (colabId: string) => bancoMovs.some(mv => mv.colaboradorId === colabId && mv.competencia === comp);
 
@@ -977,6 +984,35 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       {sincMsg && <div className="mb-2 text-[12px] text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">{sincMsg}</div>}
       {qtdPendentes > 0 && <div className="mb-2 text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2 inline-flex items-center gap-1.5"><TriangleAlert size={13}/> {qtdPendentes} correção(ões) a aprovar na Sólides aparecem tracejadas (🟡) — use ✓ / ✗ no dia pra decidir.</div>}
       {pendErr && <div className="mb-2 text-[11px] text-amber-600 dark:text-amber-400">Leitura ao vivo da Sólides indisponível agora ({pendErr.replace(/\s+/g, " ").slice(0, 80)}) — mostrando o espelho da última sincronização, que pode estar desatualizado. Tente novamente em instantes.</div>}
+
+      {/* Fechamento da praticada → o que a gorjeta pode dividir + pendências */}
+      {fechamentoPrat.ultimoDiaConsiderado > 0 && (
+        <div className={`mb-2 rounded-xl border p-3 ${fechamentoPrat.pendencias.length ? "border-amber-200 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-950/20" : "border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20"}`}>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <span className="text-[12.5px] font-medium text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5">
+              {fechamentoPrat.fechadoAteDia > 0
+                ? <><Lock size={14} className="text-emerald-600 dark:text-emerald-400"/> Praticada fechada até <b>{fmtDataBR(fechamentoPrat.fechadoAteYmd)}</b> — a gorjeta divide só até aí.</>
+                : <><TriangleAlert size={14} className="text-amber-600 dark:text-amber-400"/> Nenhum dia totalmente fechado ainda — a gorjeta não divide até fechar a praticada de todos.</>}
+            </span>
+            {fechamentoPrat.pendencias.length > 0 && <span className="text-[11px] font-semibold text-amber-700 dark:text-amber-300">{fechamentoPrat.pendencias.length} pessoa(s) · {fechamentoPrat.totalDiasAbertos} dia(s) a fechar</span>}
+          </div>
+          {fechamentoPrat.pendencias.length > 0 && (
+            <details className="mt-2 group">
+              <summary className="cursor-pointer select-none text-[11.5px] font-medium text-amber-700 dark:text-amber-300 inline-flex items-center gap-1"><ChevronDown size={12} className="transition-transform group-open:rotate-180"/> Ver quem falta fechar pra destravar a gorjeta</summary>
+              <div className="mt-1.5 flex flex-col gap-1">
+                {fechamentoPrat.pendencias.map(p => (
+                  <button key={p.empId} type="button" onClick={() => setAberto(p.empId)} className="text-left text-[12px] rounded-md px-2.5 py-1.5 bg-white dark:bg-gray-900 border border-amber-100 dark:border-amber-900/40 hover:border-amber-300 dark:hover:border-amber-700 flex items-center justify-between gap-2">
+                    <span className="font-medium text-gray-800 dark:text-gray-100 truncate">{p.nome}</span>
+                    <span className="text-[11px] text-amber-600 dark:text-amber-400 tabular-nums shrink-0" title={p.diasAbertos.map(d => d.slice(-2) + "/" + d.slice(5, 7)).join(", ")}>dias {p.diasAbertos.map(d => d.slice(-2)).join(", ")}</span>
+                  </button>
+                ))}
+              </div>
+              <p className="text-[10.5px] text-gray-500 mt-1.5">Clique numa pessoa, feche os dias (📅 / checkbox) e a gorjeta avança sozinha.</p>
+            </details>
+          )}
+        </div>
+      )}
+
       {/* Legenda recolhida: some da visão permanente e abre só quando quiser. */}
       <details className="group mb-2 rounded-lg border border-gray-200 dark:border-gray-800">
         <summary className="flex items-center gap-1.5 cursor-pointer select-none list-none px-3 py-1.5 text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">
