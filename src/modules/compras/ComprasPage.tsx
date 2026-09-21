@@ -170,7 +170,7 @@ export function ComprasPage() {
         <SugestoesTab
           ultimaContagem={ultimaContagem}
           fornecedores={fornecedores}
-          insumosComFalta={insumosComFalta}
+          insumos={insumos}
           restaurantId={rid}
           podeConfig={podeConfig}
           onPedidoCriado={() => setTab("pedidos")}
@@ -199,12 +199,6 @@ export function ComprasPage() {
         </div>
       )}
 
-      {/* Avisos de fluxo */}
-      {tab === "sugestoes" && fornecedores.length > 0 && insumosComFalta.length === 0 && (
-        <div className="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 text-center text-sm text-emerald-800 dark:text-emerald-300">
-          ✓ Nenhum insumo abaixo do estoque mínimo. Tudo em ordem!
-        </div>
-      )}
       {tab === "sugestoes" && (
         <div className="mt-4 flex justify-end">
           <Button variant="secondary" onClick={() => setTab("pedidos")}>
