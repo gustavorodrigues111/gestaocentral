@@ -1542,7 +1542,22 @@ function reparearDia(docs: BatidaDoc[]): BatidaDoc[] {
     const dOut = typeof b.dateOut === "number" && (dIn == null || b.dateOut > dIn) ? b.dateOut : null;
     return { ...b, dateIn: dIn, dateOut: dOut };
   }).filter(b => b.dateIn != null || b.dateOut != null);
-  return [...blocos, ...outros].sort((a, b) => (a.dateIn ?? Infinity) - (b.dateIn ?? Infinity));
+  // Regra do negócio: o restaurante NÃO abre de madrugada — ninguém ENTRA 00:00.
+  // Então uma batida ABERTA de madrugada (< 05:00) é uma SAÍDA que virou o dia:
+  // casa com a entrada aberta mais tardia (turno noite → madrugada). Ex.: a
+  // entrada 18:01 + a "00:00" viram um par 18:01–00:00 (a apuração soma 24h).
+  const mn = (ms: number) => minutoDoDiaBRT(ms);
+  const abertos = blocos.filter(b => b.dateIn != null && b.dateOut == null);
+  const madrugadas = abertos.filter(b => mn(b.dateIn as number) < 300).sort((a, b) => mn(a.dateIn as number) - mn(b.dateIn as number));
+  const entradasNoite = abertos.filter(b => mn(b.dateIn as number) >= 300).sort((a, b) => mn(b.dateIn as number) - mn(a.dateIn as number)); // mais tarde primeiro
+  const usados = new Set<typeof blocos[number]>();
+  const casadas = new Set<typeof blocos[number]>();
+  for (const saida of madrugadas) {
+    const entrada = entradasNoite.find(e => !usados.has(e));
+    if (entrada) { entrada.dateOut = saida.dateIn; usados.add(entrada); casadas.add(saida); }
+  }
+  const final = blocos.filter(b => !casadas.has(b));
+  return [...final, ...outros].sort((a, b) => (a.dateIn ?? Infinity) - (b.dateIn ?? Infinity));
 }
 
 // Modal de TRATAMENTO (gera ptrpAjustes — nunca edita a batida original).
