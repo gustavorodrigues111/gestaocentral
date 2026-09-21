@@ -18,7 +18,7 @@ type Props = {
   onPedidoCriado?: () => void;
 };
 
-const undLabel = (i: Insumo) => i.unidade === "outro" ? (i.unidadeOutroLabel || "?") : UNIDADES_LABEL[i.unidade].slice(0, 3);
+const undLabel = (i: Insumo) => i.unidade === "outro" ? (i.unidadeOutroLabel || "?") : (UNIDADES_LABEL[i.unidade]?.slice(0, 3) ?? String(i.unidade || "?").slice(0, 3));
 const fmtR$ = (v: number) => `R$ ${v.toFixed(2).replace(".", ",")}`;
 
 export function SugestoesTab({ ultimaContagem, fornecedores, insumos, restaurantId, podeConfig, onPedidoCriado }: Props) {

@@ -71,11 +71,13 @@ export function montarSugestao(
 
   for (const insumo of insumos) {
     if (!insumo.ativo) continue;
-    const fid = insumo.fornecedorPreferredId || null;
+    // Resolve o fornecedor: se o preferencial não existe mais (deletado), cai no
+    // grupo "sem fornecedor" em vez de deixar um grupo com id e fornecedor null.
+    const forn = insumo.fornecedorPreferredId ? fornById.get(insumo.fornecedorPreferredId) ?? null : null;
+    const fid = forn ? forn.id : null;
     const chave = chaveDe(fid);
     let g = grupos.get(chave);
     if (!g) {
-      const forn = fid ? fornById.get(fid) ?? null : null;
       g = { fornecedorId: fid, fornecedor: forn, precisam: [], ok: [], pedidoMinimoValor: forn?.pedidoMinimoValor };
       grupos.set(chave, g);
     }
@@ -83,7 +85,7 @@ export function montarSugestao(
     (linha.precisaPedido ? g.precisam : g.ok).push(linha);
   }
 
-  const ordNome = (a: LinhaSugestao, b: LinhaSugestao) => a.insumo.nome.localeCompare(b.insumo.nome, "pt-BR");
+  const ordNome = (a: LinhaSugestao, b: LinhaSugestao) => (a.insumo.nome || "").localeCompare(b.insumo.nome || "", "pt-BR");
   const lista = [...grupos.values()].map(g => ({ ...g, precisam: g.precisam.sort(ordNome), ok: g.ok.sort(ordNome) }));
   // Grupos com faltas primeiro; "sem fornecedor" por último; depois por nome.
   return lista.sort((a, b) => {
