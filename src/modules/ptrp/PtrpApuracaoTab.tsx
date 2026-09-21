@@ -578,6 +578,22 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     const alvo = resultados.find(x => x.emp.id === aberto);
     if (!alvo) return;
     if (mesEncerrado) { setAcaoMsg("Mês encerrado — reabra no módulo Escala pra editar a praticada."); return; }
+    // Guardrail: não fecha dia com pendência (correção não decidida / batida ímpar
+    // ou aberta) e avisa quando um dia vai fechar como FALTA (sem batida) sem o DP
+    // ter classificado — evita gorjeta em cima de dia errado.
+    const bloqueados: string[] = [];
+    const faltasAuto: string[] = [];
+    for (const l of alvo.r.linhas) {
+      if (!selFechar.has(l.data)) continue;
+      if (!statusPraticado(l)) continue;   // hoje/futuro nem entram
+      const dd = `${l.data.slice(-2)}/${l.data.slice(5, 7)}`;
+      if (l.excecoes.includes("correcao_pendente")) { bloqueados.push(`${dd} (correção do empregado ainda não aprovada)`); continue; }
+      if (l.excecoes.includes("batida_impar") || l.pendenteCorrecao) { bloqueados.push(`${dd} (batida ímpar/aberta)`); continue; }
+      // Falta auto (previsto trabalho, sem batida) que o DP NÃO classificou:
+      if (statusPraticado(l) === "falta_i" && !l.ajustesDia.some(a => a.statusEscala)) faltasAuto.push(dd);
+    }
+    if (bloqueados.length) { setAcaoMsg(`Não dá pra fechar — resolva estes dias antes: ${bloqueados.join("; ")}. Aprove/reprove a correção (✓/✗) ou corrija a batida (⚙️ Tratar).`); return; }
+    if (faltasAuto.length && !window.confirm(`${faltasAuto.length} dia(s) vão fechar como FALTA INJUSTIFICADA (previsto trabalho, sem batida): ${faltasAuto.join(", ")}.\n\nSe alguma for falta justificada, férias ou atestado, CANCELE e classifique antes (botão 📅 na 1ª coluna, ou ⚙️ Tratar). Fechar assim mesmo?`)) return;
     setFecharBusy(true); setAcaoMsg("");
     try {
       const now = new Date().toISOString();
@@ -675,8 +691,8 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         <button type="button" disabled={acaoBusy} onClick={() => sel && void decidirCorrecao(sel.emp, l, "APPROVED")} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-emerald-300 dark:border-emerald-800 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40" title="Aprovar correção (Sólides + trilha)">✓</button>
         <button type="button" disabled={acaoBusy} onClick={() => sel && void decidirCorrecao(sel.emp, l, "REPROVED")} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-rose-300 dark:border-rose-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40" title="Reprovar correção">✗</button>
       </>}
-      {l.excecoes.includes("fora_escala") && !travado && (
-        <button type="button" disabled={reclassBusy} onClick={() => sel && setReclass({ emp: sel.emp, data: l.data, prev: l.statusEscala })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-amber-300 dark:border-amber-800 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-40" title="Definir o status na escala praticada (folga trabalhada → trabalho / compensação)"><CalendarDays size={14} className="inline"/></button>
+      {(l.excecoes.includes("fora_escala") || l.excecoes.includes("falta") || l.excecoes.includes("sem_batida")) && !travado && (
+        <button type="button" disabled={reclassBusy} onClick={() => sel && setReclass({ emp: sel.emp, data: l.data, prev: l.statusEscala })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-amber-300 dark:border-amber-800 text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-900/20 disabled:opacity-40" title="Definir o status na escala praticada (folga trabalhada, ou falta → justificada / injustificada / férias)"><CalendarDays size={14} className="inline"/></button>
       )}
       <button type="button" onClick={() => toggleCorr(l.data)} className={`text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border ${corrSel ? "bg-blue-500 border-blue-500 text-white" : temCorrigivel ? "border-blue-300 dark:border-blue-800 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20" : "border-gray-300 dark:border-gray-700 text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800"}`} title={corrSel ? "Remover do pedido de correção" : "Selecionar p/ pedir correção"}><MessageSquare size={14} className="inline"/></button>
       <button type="button" disabled={travado} onClick={() => sel && setAjusteModal({ emp: sel.emp, data: l.data, bs: l.bsRaw })} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-gray-300 dark:border-gray-700 text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-30" title={travado ? "Mês fechado" : "Tratar"}><Settings size={14} className="inline"/></button>
@@ -1257,10 +1273,10 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         <Modal title={`Escala praticada · ${reclass.emp.nome} · ${reclass.data.slice(-2)}/${reclass.data.slice(5, 7)}`} onClose={() => setReclass(null)} maxWidth="max-w-sm">
           <div className="space-y-3">
             <p className="text-[12px] text-gray-500 dark:text-gray-400">
-              Previsto era <b>{reclass.prev ? STATUS_INFO[reclass.prev].label : "—"}</b> e ele bateu ponto. Como esse dia entra na <b>escala praticada</b> (base da gorjeta)?
+              Previsto era <b>{reclass.prev ? STATUS_INFO[reclass.prev].label : "—"}</b>. Como esse dia entra na <b>escala praticada</b> (base da gorjeta)?
             </p>
             <div className="grid grid-cols-2 gap-2">
-              {(["trabalho", "comp_trab", "folga", "freela"] as ScheduleStatus[]).map(s => (
+              {(["trabalho", "comp_trab", "falta_j", "falta_i", "ferias", "folga"] as ScheduleStatus[]).map(s => (
                 <button key={s} type="button" disabled={reclassBusy} onClick={() => void aplicarReclass(s)}
                   className={`flex items-center gap-2 px-3 py-2.5 rounded-lg border text-left text-[13px] transition-colors disabled:opacity-50 ${s === reclass.prev ? "border-gray-200 dark:border-gray-800" : "border-gray-300 dark:border-gray-700 hover:border-indigo-400 hover:bg-indigo-50/50 dark:hover:bg-indigo-900/20"}`}>
                   <span className={`text-[9px] font-bold px-1 py-0.5 rounded ${STATUS_INFO[s].bg} ${STATUS_INFO[s].text}`}>{STATUS_INFO[s].short}</span>
