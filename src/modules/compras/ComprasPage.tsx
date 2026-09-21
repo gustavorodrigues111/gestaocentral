@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { Lock, Lightbulb, ClipboardList, Building2 } from "lucide-react";
+import { Lock, Lightbulb, ClipboardList, Building2, Package } from "lucide-react";
 import { useParams, Link } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -11,9 +11,10 @@ import type { Contagem, Fornecedor, Insumo, Pedido } from "../../core/types";
 import { FornecedoresTab } from "./FornecedoresTab";
 import { SugestoesTab } from "./SugestoesTab";
 import { PedidosTab } from "./PedidosTab";
+import { ProdutosTab } from "./ProdutosTab";
 import { PageContainer } from "../../core/ui/PageContainer";
 
-type Tab = "sugestoes" | "pedidos" | "fornecedores";
+type Tab = "sugestoes" | "pedidos" | "produtos" | "fornecedores";
 
 export function ComprasPage() {
   const { pessoa: me } = useAuth();
@@ -145,6 +146,7 @@ export function ComprasPage() {
         {([
           ["sugestoes",    <span className="inline-flex items-center gap-1.5"><Lightbulb size={15} /> Sugestões{insumosComFalta.length > 0 ? ` (${insumosComFalta.length})` : ""}</span>],
           ["pedidos",      <span className="inline-flex items-center gap-1.5"><ClipboardList size={15} /> Pedidos ({pedidos.length})</span>],
+          ["produtos",     <span className="inline-flex items-center gap-1.5"><Package size={15} /> Produtos ({insumos.filter(i => i.ativo).length})</span>],
           ["fornecedores", <span className="inline-flex items-center gap-1.5"><Building2 size={15} /> Fornecedores ({fornecedores.length})</span>],
         ] as [Tab, ReactNode][]).map(([id, label]) => (
           <button
@@ -179,6 +181,14 @@ export function ComprasPage() {
       {tab === "pedidos" && (
         <PedidosTab
           pedidos={pedidos}
+          podeConfig={podeConfig}
+        />
+      )}
+      {tab === "produtos" && (
+        <ProdutosTab
+          insumos={insumos}
+          fornecedores={fornecedores}
+          restaurantId={rid}
           podeConfig={podeConfig}
         />
       )}
