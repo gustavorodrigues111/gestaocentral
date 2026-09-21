@@ -23,7 +23,7 @@ import {
   CalendarDays, Signature, Printer, ArrowDown, Search, Scale, PartyPopper, Landmark,
   HelpCircle, ChevronDown, Eye, Crown, RotateCw,
 } from "lucide-react";
-import type { Empregado, HorarioDia, Cargo, EscalaMes, ScheduleStatus } from "../../core/types";
+import type { Empregado, HorarioDia, Cargo, EscalaMes, ScheduleStatus, AjusteEscalaMeta } from "../../core/types";
 import { empregadoBatePonto } from "../../core/types";
 import type { ParametrosCCT, PtrpTurno, PtrpAjuste, PtrpAjusteTipo, PtrpBancoMov, PtrpApuracaoColab, PtrpApuracaoDia, PtrpFechamento, PtrpEvidencia } from "../../core/ptrp/tipos";
 import { cctVigenteEm } from "../../core/ptrp/tipos";
@@ -148,6 +148,9 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const [pendErr, setPendErr] = useState("");
   const [selCorr, setSelCorr] = useState<Set<string>>(new Set());   // dias marcados p/ pedir correção (lote)
   const [corrModal, setCorrModal] = useState(false);
+  const [fecharMode, setFecharMode] = useState(false);              // modo "travar dias na praticada"
+  const [selFechar, setSelFechar] = useState<Set<string>>(new Set());
+  const [fecharBusy, setFecharBusy] = useState(false);
   const [ptrpCfg, setPtrpCfg] = useState<ParametrosPTRP>({});        // config AEJ (empregador/REP/desenvolvedor)
   const [fech, setFech] = useState<PtrpFechamento | null>(null);    // fechamento do mês (empresa+comp)
   const [fechBusy, setFechBusy] = useState(false);
@@ -563,6 +566,49 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     finally { setFechBusy(false); }
   }
 
+  // ─── Travar dias na praticada (por empregado, tipo Análise de Ponto) ──────────
+  // Grava real + realAjustes.origem="solides_sync" (o marcador que a Escala lê pra
+  // pintar o dia como PRATICADO/vivo e liberar a gorjeta daquele dia). Serve pra
+  // fechar um período no meio do mês (ex.: rescisão) sem esperar o fim.
+  const mesEncerrado = !!escala?.fechadoEm;
+  const diaFechado = (empId: string, data: string) => (escala?.realAjustes?.[empId]?.[data] as AjusteEscalaMeta | undefined)?.origem === "solides_sync";
+  const toggleFechar = (data: string) => setSelFechar(prev => { const n = new Set(prev); if (n.has(data)) n.delete(data); else n.add(data); return n; });
+  async function travarDias() {
+    if (!aberto || !me || !rid || !selFechar.size) return;
+    const alvo = resultados.find(x => x.emp.id === aberto);
+    if (!alvo) return;
+    if (mesEncerrado) { setAcaoMsg("Mês encerrado — reabra no módulo Escala pra editar a praticada."); return; }
+    setFecharBusy(true); setAcaoMsg("");
+    try {
+      const now = new Date().toISOString();
+      const realPatch: Record<string, ScheduleStatus> = {};
+      const ajPatch: Record<string, AjusteEscalaMeta> = {};
+      let n = 0;
+      for (const l of alvo.r.linhas) {
+        if (!selFechar.has(l.data)) continue;
+        const st = statusPraticado(l);
+        if (!st) continue;   // hoje/futuro não fecham
+        realPatch[l.data] = st;
+        ajPatch[l.data] = { origem: "solides_sync", ajustadoEm: now, ajustadoPor: me.id, ajustadoPorNome: me.nome, statusAnterior: escala?.real?.[alvo.emp.id]?.[l.data] as ScheduleStatus | undefined };
+        n++;
+      }
+      if (!n) { setAcaoMsg("Nada a travar — dias de hoje/futuro não fecham."); setFecharBusy(false); return; }
+      await setDoc(doc(db, "escalas", `${rid}_${comp}`), sanitizeForFirestore({ real: { [alvo.emp.id]: realPatch }, realAjustes: { [alvo.emp.id]: ajPatch }, atualizadoEm: now, atualizadoPor: { id: me.id, nome: me.nome } }), { merge: true });
+      setAcaoMsg(`✓ ${n} dia(s) travado(s) na praticada de ${alvo.emp.nome}.`);
+      setSelFechar(new Set()); setFecharMode(false);
+    } catch (e) { setAcaoMsg("Falha ao travar: " + (e instanceof Error ? e.message : "erro")); }
+    finally { setFecharBusy(false); }
+  }
+  async function reabrirDiaPraticada(empId: string, data: string) {
+    if (!rid) return;
+    if (mesEncerrado) { setAcaoMsg("Mês encerrado — reabra no módulo Escala."); return; }
+    if (!confirm(`Destravar ${data.slice(-2)}/${data.slice(5, 7)}? O dia volta a ser editável na praticada (o status gravado permanece até travar de novo).`)) return;
+    try {
+      await updateDoc(doc(db, "escalas", `${rid}_${comp}`), { [`realAjustes.${empId}.${data}`]: deleteField(), atualizadoEm: new Date().toISOString() });
+      setAcaoMsg("✓ Dia destravado.");
+    } catch (e) { setAcaoMsg("Falha ao destravar: " + (e instanceof Error ? e.message : "erro")); }
+  }
+
   // ─── Helpers de render da linha do dia (reusados na tabela desktop e nos cards mobile) ───
   const flagsLinha = (l: Linha, idx: number) => {
     const folga = l.previstoTxt === "folga";
@@ -615,8 +661,10 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     )}
   </>);
   const renderExcecoes = (l: Linha, incompleta: boolean, suspeito: boolean) => l.ehHoje ? <span className="text-blue-600 dark:text-blue-300 text-[11px] font-bold">HOJE</span> : l.ehFuturo ? <span className="text-blue-500 text-[11px]">a realizar</span> : l.excecoes.length ? <span className="inline-flex flex-wrap items-center gap-1 leading-none">{l.excecoes.map(e => { const Ic = EXC_LUCIDE[e] || TriangleAlert; return <span key={e} className="cursor-help" title={EXC_LABEL[e] || e}><Ic size={14}/></span>; })}</span> : incompleta ? <span className="cursor-help inline-flex" title="Batida sem par (ponto aberto) — precisa corrigir"><Unlink size={14}/></span> : suspeito ? <span className="cursor-help inline-flex text-amber-600 dark:text-amber-400" title="Só 2 batidas — o padrão é 4 ou 6 (conferir)"><Eye size={14}/></span> : <span className="text-emerald-500 text-[12px]">✓</span>;
-  const renderAcoes = (l: Linha, pendUndecided: boolean, temCorrigivel: boolean) => { const corrSel = selCorr.has(l.data); return (
+  const renderAcoes = (l: Linha, pendUndecided: boolean, temCorrigivel: boolean) => { const corrSel = selCorr.has(l.data); const fechado = !!sel && diaFechado(sel.emp.id, l.data); return (
     <div className="inline-flex items-center gap-1">
+      {fechado && <button type="button" onClick={() => sel && void reabrirDiaPraticada(sel.emp.id, l.data)} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-emerald-400 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 hover:bg-emerald-100 dark:hover:bg-emerald-900/40" title="Travado na praticada (alimenta a gorjeta) — clique pra destravar"><Lock size={13} className="inline"/></button>}
+      {fecharMode && !fechado && !l.ehFuturo && !l.ehHoje && <input type="checkbox" checked={selFechar.has(l.data)} onChange={() => toggleFechar(l.data)} className="w-4 h-4 accent-emerald-600 mr-0.5" title="Selecionar pra travar na praticada" />}
       {pendUndecided && !travado && <>
         <button type="button" disabled={acaoBusy} onClick={() => sel && void decidirCorrecao(sel.emp, l, "APPROVED")} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-emerald-300 dark:border-emerald-800 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 disabled:opacity-40" title="Aprovar correção (Sólides + trilha)">✓</button>
         <button type="button" disabled={acaoBusy} onClick={() => sel && void decidirCorrecao(sel.emp, l, "REPROVED")} className="text-[12px] w-7 h-7 sm:w-6 sm:h-6 rounded border border-rose-300 dark:border-rose-800 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 disabled:opacity-40" title="Reprovar correção">✗</button>
@@ -1108,10 +1156,22 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
               <div className="font-semibold text-gray-900 dark:text-gray-100 truncate">{sel.emp.nome} <span className="text-[11px] font-normal text-gray-500">· {sel.area}</span></div>
               <div className="flex items-center gap-2 shrink-0">
                 <span className="text-[11px] text-gray-500">trab. {hm(sel.r.totTrab)}{sel.r.totExtra ? ` · extra ${hm(sel.r.totExtra)}` : ""}{sel.r.totNot ? ` · not. ${hm(sel.r.totNot)}` : ""}</span>
+                {!mesEncerrado && (fecharMode
+                  ? <button type="button" onClick={() => { setFecharMode(false); setSelFechar(new Set()); }} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Cancelar</button>
+                  : <button type="button" onClick={() => { setFecharMode(true); setSelCorr(new Set()); }} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" title="Travar dias na escala praticada (fechar um período — ex.: rescisão)"><span className="inline-flex items-center gap-1"><Lock size={12}/> Travar dias</span></button>)}
                 <button type="button" disabled={!!exportBusy} onClick={() => void baixarEspelho(sel)} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40" title="Espelho de ponto deste colaborador (PDF)">{exportBusy === "espelho" ? "…" : <span className="inline-flex items-center gap-1"><Printer size={12}/> Espelho</span>}</button>
               </div>
             </div>
             {acaoMsg && <div className={`px-3 py-1.5 text-[11.5px] border-b border-gray-100 dark:border-gray-800 ${acaoMsg.startsWith("✓") ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{acaoMsg}</div>}
+            {fecharMode && (
+              <div className="px-3 py-2 border-b border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 flex items-center justify-between gap-2 flex-wrap">
+                <span className="text-[12px] text-emerald-800 dark:text-emerald-200 font-medium inline-flex items-center gap-1"><Lock size={13}/> Modo travar — marque os dias e trave a praticada (fecha o período p/ a gorjeta). {selFechar.size > 0 && <b>{selFechar.size} selecionado(s)</b>}</span>
+                <div className="flex items-center gap-2">
+                  <button type="button" onClick={() => setSelFechar(new Set())} className="text-[11px] px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800">Limpar</button>
+                  <button type="button" disabled={fecharBusy || selFechar.size === 0} onClick={() => void travarDias()} className="text-[11px] font-semibold px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-40">{fecharBusy ? "Travando…" : `🔒 Travar (${selFechar.size})`}</button>
+                </div>
+              </div>
+            )}
             {selCorr.size > 0 && (
               <div className="px-3 py-2 border-b border-blue-100 dark:border-blue-900/40 bg-blue-50/60 dark:bg-blue-950/20 flex items-center justify-between gap-2 flex-wrap">
                 <span className="text-[12px] text-blue-800 dark:text-blue-200 font-medium inline-flex items-center gap-1"><MessageSquare size={13}/> {selCorr.size} dia(s) selecionado(s) para pedir correção ao empregado</span>
