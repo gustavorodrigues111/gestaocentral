@@ -62,7 +62,9 @@ export type PtrpAjusteTipo = "inclusao" | "desconsideracao" | "abono" | "atestad
   | "atraso_justificado" | "atraso_confirmado"
   // Reclassificação do status na escala praticada (ex.: folga trabalhada → trabalho
   // ou trabalho por compensação). Carrega statusEscala e imprime direto na real.
-  | "reclassificacao";
+  | "reclassificacao"
+  // Reorganização manual das batidas do dia (pares corretos) — app-only.
+  | "reorganizacao";
 // Evidência anexada a um tratamento (arquivo no Storage ou link externo).
 export type PtrpEvidencia = {
   tipo: "arquivo" | "link";
@@ -81,6 +83,10 @@ export type PtrpAjuste = {
   tipo: PtrpAjusteTipo;
   in?: string | null;             // "HH:MM" (inclusao — marcação incluída)
   out?: string | null;            // "HH:MM" (inclusao)
+  // Reorganização MANUAL das batidas do dia (tipo "reorganizacao"): o DP define
+  // os pares corretos (ex.: 18:01–00:00 quando o sistema entendeu 00:00 como
+  // entrada). App-only, sobrepõe a apuração do dia. Independe da aprovação.
+  pares?: { in: string; out: string }[];
   punchId?: string | null;        // batida desprezada (desconsideracao)
   minutos?: number | null;        // abono parcial (default: dia inteiro)
   motivoSolidesId?: number | null;   // motivo de ajuste/afastamento da Sólides (do mapeamento)

@@ -320,7 +320,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     return m;
   }, [ajustes]);
 
-  type Linha = { data: string; bs: BatidaDoc[]; bsRaw: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean; ehFuturo: boolean; ehHoje: boolean; pendenteCorrecao: boolean };
+  type Linha = { data: string; bs: BatidaDoc[]; bsRaw: BatidaDoc[]; descPunch: Set<string>; decididos: Set<string>; ajustesDia: PtrpAjuste[]; previstoTxt: string; statusEscala?: ScheduleStatus; trabalhado: number; extra: number; noturno: number; previstoMin: number; atrasoMin: number; abonadoMin: number; excecoes: string[]; primeiraMs: number | null; ultimaMs: number | null; ehFeriado: boolean; ehFuturo: boolean; ehHoje: boolean; pendenteCorrecao: boolean; reorgPares?: { in: string; out: string }[] };
   function apurarColab(emp: Empregado) {
     const cpf = soDig(emp.cpf);
     const dias = batidasPorCpf[cpf] || {};
@@ -351,17 +351,25 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       // Só a batida EFETIVA (aprovada) entra na apuração — espelha o oficial.
       // A correção pendente é preservada em `bs` (aparece na linha), mas não soma.
       const blocos: BatidaBloco[] = bs.filter(b => !b.excluded && !correcaoPendente(b) && !(b.punchId && descPunch.has(b.punchId))).map(b => ({ dateIn: b.dateIn as number, dateOut: (b.dateOut ?? null) as number | null }));
+      // REORGANIZAÇÃO MANUAL: se o DP redefiniu os pares do dia (ex.: 18:01–00:00),
+      // a apuração usa ESSES pares e ignora as batidas (app-only, independe de
+      // aprovação). Some a pendência de "batida aberta"/ímpar deste dia.
+      const reorg = ajustesDia.find(a => a.tipo === "reorganizacao" && !a.cancelado);
+      const blocosEfetivos: BatidaBloco[] = reorg ? [] : blocos;
       // Batida ABERTA (entrada sem a saída pareada) = dia PENDENTE: não dá pra
       // apurar o saldo até completar a batida. O dia fica "pendente" e conta
       // ZERO no banco de horas (não distorce o mês por esquecimento de batida).
-      const temBatidaAberta = blocos.some(b => b.dateIn != null && b.dateOut == null);
+      const temBatidaAberta = blocosEfetivos.some(b => b.dateIn != null && b.dateOut == null);
       const pendenteCorrecao = !ehFuturo && !ehHoje && temBatidaAberta;
-      // Inclusões e abonos entram como lançamento no motor.
+      // Inclusões e abonos entram como lançamento no motor. Com reorganização, os
+      // pares dela SUBSTITUEM as inclusões de batida (mas mantém abonos).
       const ajMotor: AjusteDia[] = [];
       for (const a of ajustesDia) {
+        if (reorg && a.tipo === "inclusao") continue;
         if (a.tipo === "inclusao" && a.in && a.out) ajMotor.push({ tipo: "inclusao", in: hhmmToMin(a.in), out: hhmmToMin(a.out) });
         else if (["abono", "atestado", "folga", "ferias", "afastamento"].includes(a.tipo)) ajMotor.push({ tipo: a.tipo as "abono", minutos: a.minutos || undefined });
       }
+      if (reorg) for (const p of (reorg.pares || [])) if (p.in && p.out) ajMotor.push({ tipo: "inclusao", in: hhmmToMin(p.in), out: hhmmToMin(p.out) });
       const ehDomingo = new Date(data + "T12:00:00").getDay() === 0;
       const ehFeriado = feriadosSet.has(data);
       let trabalhado = 0, extra = 0, noturno = 0, previstoMin = 0, atrasoMin = 0, abonadoMin = 0, excecoes: string[] = [], previstoTxt = "—";
@@ -370,22 +378,22 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       else previstoTxt = "sem cadastro";
       if (ehFuturo) {
         // Dia futuro: só o previsto aparece; nada de falta/exceção nem saldo.
-        trabalhado = blocos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
+        trabalhado = blocosEfetivos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
       } else if (cct && prev.kind !== "implicito") {
-        const ap = apurarDia({ data, blocos, turno: prev.turno, cct, ehDomingo, ehFeriado, ajustes: ajMotor });
+        const ap = apurarDia({ data, blocos: blocosEfetivos, turno: prev.turno, cct, ehDomingo, ehFeriado, ajustes: ajMotor });
         trabalhado = ap.minutosTrabalhados; extra = ap.minutosExtras; noturno = ap.noturnoMin;
         excecoes = ehHoje ? [] : ap.excecoes;   // HOJE em andamento → sem erro (falta/ponto aberto só a partir de amanhã)
         previstoMin = ap.minutosPrevistos; atrasoMin = ap.atrasoMin; abonadoMin = ap.abonadoMin;
         if (!ehHoje && !pendenteCorrecao) saldoMes += ap.minutosTrabalhados + ap.abonadoMin - ap.minutosPrevistos;   // hoje/pendente não entram no saldo
       } else {
-        trabalhado = blocos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
+        trabalhado = blocosEfetivos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
       }
       // Correção não aprovada E ainda não decidida → pendência a tratar. Como a
       // batida pendente não conta, o motor marca falta/sem batida — mas a pessoa
       // BATEU (só aguarda aprovação): remove falta/sem batida e sinaliza pendência.
-      if (!ehHoje && bs.some(b => correcaoPendente(b) && !(b.punchId && decididos.has(b.punchId)))) excecoes = [...excecoes.filter(e => e !== "falta" && e !== "sem_batida"), "correcao_pendente"];
+      if (!reorg && !ehHoje && bs.some(b => correcaoPendente(b) && !(b.punchId && decididos.has(b.punchId)))) excecoes = [...excecoes.filter(e => e !== "falta" && e !== "sem_batida"), "correcao_pendente"];
       // Entrada/saída reais (ms) do dia — pra checar interjornada entre dias.
-      const ins = blocos.map(b => b.dateIn).filter((x): x is number => typeof x === "number");
+      const ins = blocosEfetivos.map(b => b.dateIn).filter((x): x is number => typeof x === "number");
       const outs = blocos.map(b => b.dateOut).filter((x): x is number => typeof x === "number");
       const primeiraMs = ins.length ? Math.min(...ins) : null;
       const ultimaMs = outs.length ? Math.max(...outs) : null;
@@ -394,7 +402,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       if (!ehHoje && !pendenteCorrecao && atrasoMin > 0 && ajustesDia.some(a => a.tipo === "atraso_justificado")) {
         abonadoMin += atrasoMin; saldoMes += atrasoMin; excecoes = excecoes.filter(e => e !== "atraso"); atrasoMin = 0;
       }
-      linhas.push({ data, bs, bsRaw, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo, ehHoje, pendenteCorrecao });
+      linhas.push({ data, bs, bsRaw, descPunch, decididos, ajustesDia, previstoTxt, statusEscala: statusEscala as ScheduleStatus | undefined, trabalhado, extra, noturno, previstoMin, atrasoMin, abonadoMin, excecoes, primeiraMs, ultimaMs, ehFeriado, ehFuturo, ehHoje, pendenteCorrecao, reorgPares: reorg?.pares });
     }
     // Interjornada: descanso entre a última saída de um dia e a 1ª entrada do dia
     // seguinte (calendário) < mínimo da CCT → exceção no dia seguinte.
@@ -700,7 +708,12 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
     {l.statusEscala ? (l.previstoTxt.includes("–") ? l.previstoTxt : "") : l.previstoTxt}
     {l.ehFeriado && <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-rose-100 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300">feriado</span>}
   </>);
-  const renderBatidas = (l: Linha, inclPunch: Set<string>) => l.ehFuturo ? <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-300">futuro</span> : (<>
+  const renderBatidas = (l: Linha, inclPunch: Set<string>) => l.ehFuturo ? <span className="text-[11px] font-semibold text-blue-600 dark:text-blue-300">futuro</span> : l.reorgPares ? (
+    <div className="tabular-nums text-violet-700 dark:text-violet-300" title="Batidas reorganizadas manualmente (o original segue imutável na Sólides)">
+      {l.reorgPares.map((p, i) => <span key={i}>{i > 0 ? " · " : ""}{p.in}–{p.out}</span>)} <span className="text-[10px] text-violet-500">↔ reorganizado</span>
+      {(() => { const a = l.ajustesDia.find(x => x.tipo === "reorganizacao" && !x.cancelado); return a ? <button type="button" onClick={() => void cancelarAjuste(a)} className="ml-1 text-rose-400 hover:text-rose-600" title="Desfazer reorganização">✕</button> : null; })()}
+    </div>
+  ) : (<>
     <div className="tabular-nums">{l.bs.length ? l.bs.map((b, i) => { const desc = !!(b.punchId && l.descPunch.has(b.punchId)); const pend = correcaoPendente(b) && !(b.punchId && l.decididos.has(b.punchId)); const tratada = !!(b.punchId && inclPunch.has(b.punchId)); const cls = b.excluded || desc ? "line-through text-gray-400" : pend ? "text-amber-600 dark:text-amber-400 underline decoration-dashed decoration-amber-400" : tratada ? "text-indigo-600 dark:text-indigo-300 underline decoration-dotted decoration-indigo-400" : ""; return <span key={i} className={cls} title={desc ? "desconsiderada" : pend ? `correção ${b.status === "REJECTED" ? "rejeitada" : "pendente"} no Sólides — não entra no oficial` : tratada ? "horário tratado (correção)" : undefined}>{i > 0 ? " · " : ""}{hhmm(b.dateIn)}–{hhmm(b.dateOut)}{pend ? " 🟡" : ""}{tratada ? " ✎" : ""}</span>; }) : <span className="text-gray-300 dark:text-gray-600">—</span>}</div>
     {l.ajustesDia.length > 0 && (
       <div className="mt-1 flex flex-col gap-0.5">
@@ -1565,7 +1578,8 @@ function reparearDia(docs: BatidaDoc[]): BatidaDoc[] {
 // na Sólides) · (B) Lançar motivo (afastamento/abono: motivo Sólides + status escala).
 const STATUS_LISTA: ScheduleStatus[] = ["trabalho", "falta_j", "falta_i", "folga", "comp", "comp_trab", "ferias", "freela"];
 function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }: { empresaKey: string; emp: Empregado; data: string; bs: BatidaDoc[]; solidesEmpId: string | null; autor: { id: string; nome: string }; onClose: () => void }) {
-  const [caminho, setCaminho] = useState<"" | "marcacoes" | "motivo" | "atestado">("");
+  const [caminho, setCaminho] = useState<"" | "marcacoes" | "motivo" | "atestado" | "reorganizar">("");
+  const [reorgP, setReorgP] = useState<{ in: string; out: string }[]>([]);
   const [atIni, setAtIni] = useState(data);          // período do atestado
   const [atFim, setAtFim] = useState(data);
   const [trocarMotivo, setTrocarMotivo] = useState(false);
@@ -1582,6 +1596,13 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
 
   // ── Caminho A: editar marcações ────────────────────────────────────────────
   const existentes = useMemo(() => bs.filter(b => !b.excluded && !ehPend(b)).map(b => ({ punchId: b.punchId || "", in: hhmmLocal(b.dateIn), out: hhmmLocal(b.dateOut), inMs: b.dateIn ?? null, dateIn: b.dateIn ?? undefined, dateOut: b.dateOut ?? undefined })), [bs]);
+  // Reorganizar: parte de TODAS as batidas do dia (inclusive pendentes — antes de
+  // aprovar), pra o DP corrigir o pareamento (ex.: 18:01–00:00).
+  const abrirReorganizar = () => {
+    const ini = bs.filter(b => !b.excluded).map(b => ({ in: hhmmLocal(b.dateIn), out: hhmmLocal(b.dateOut) })).map(p => ({ in: p.in === "—" ? "" : p.in, out: p.out === "—" ? "" : p.out }));
+    setReorgP(ini.length ? ini : [{ in: "", out: "" }]);
+    setCaminho("reorganizar");
+  };
   const [removidos, setRemovidos] = useState<Set<string>>(new Set());
   const [novos, setNovos] = useState<{ in: string; out: string }[]>([]);
   const [nin, setNin] = useState("08:00");
@@ -1766,8 +1787,16 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
         }
         await setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(motivoId)]: { ...(mapa[String(motivoId)] || {}), status: statusEscala, descricao: desc || `Motivo ${motivoId}` } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
         onClose();
+      } else if (caminho === "reorganizar") {
+        // App-only: grava os pares corretos do dia. NÃO toca na Sólides (a batida
+        // original é imutável) — só sobrepõe a interpretação da apuração.
+        const pares = reorgP.filter(p => p.in && p.out).map(p => ({ in: p.in, out: p.out }));
+        if (!pares.length) { setErr("Preencha ao menos um par entrada–saída."); return; }
+        setSalvando(true);
+        await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "reorganizacao" as PtrpAjusteTipo, pares, motivo: obs.trim() || "Batidas reorganizadas manualmente", ...evidPayload, autor, criadoEm: new Date().toISOString(), cancelado: false }));
+        onClose();
       }
-    } catch (e) { setErr("Falha ao aplicar na Sólides: " + (e instanceof Error ? e.message : "erro")); setSalvando(false); }
+    } catch (e) { setErr("Falha ao aplicar: " + (e instanceof Error ? e.message : "erro")); setSalvando(false); }
   }
 
   return (
@@ -1780,6 +1809,10 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
             <button onClick={() => setCaminho("marcacoes")} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10">
               <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Pencil size={14}/> Editar marcações</div>
               <div className="text-[11px] text-gray-500 mt-0.5">Incluir uma esquecida, excluir uma duplicada ou corrigir uma errada.</div>
+            </button>
+            <button onClick={abrirReorganizar} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-violet-400 hover:bg-violet-50/40 dark:hover:bg-violet-900/10">
+              <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><RotateCw size={14}/> Reorganizar batidas</div>
+              <div className="text-[11px] text-gray-500 mt-0.5">Ajusta os pares quando o sistema entendeu errado (ex.: 00:00 é saída → 18:01–00:00). App-only, antes de aprovar.</div>
             </button>
             <button onClick={() => abrirCaminhoMotivo("abono")} className="rounded-xl border border-gray-200 dark:border-gray-700 p-4 text-left hover:border-indigo-400 hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10">
               <div className="text-sm font-semibold text-gray-800 dark:text-gray-100 inline-flex items-center gap-1"><Umbrella size={14}/> Abono / justificativa</div>
@@ -1923,7 +1956,24 @@ function AjusteModal({ empresaKey, emp, data, bs, solidesEmpId, autor, onClose }
           </>);
         })()}
 
-        {caminho && <label className="flex flex-col gap-1"><span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Observação (trilha do app)</span><textarea value={obs} onChange={e => setObs(e.target.value)} rows={2} placeholder="Ex.: esqueceu de bater a saída; atestado de 1 dia…" className={inp} /></label>}
+        {caminho === "reorganizar" && (<>
+          <button onClick={() => setCaminho("")} className="text-[11px] text-gray-400 hover:underline">‹ voltar</button>
+          <div className="text-[11px] text-gray-600 dark:text-gray-300">Defina os <b>pares corretos</b> (entrada–saída) do dia. Saída depois da meia-noite: coloque a hora normal (ex.: <b>18:01</b> → <b>00:00</b>) — o sistema soma 24h. <span className="text-gray-400">A batida original na Sólides continua intacta; isto é só a interpretação do app.</span></div>
+          <div className="flex flex-col gap-1.5">
+            {reorgP.map((p, i) => (
+              <div key={i} className="grid grid-cols-[1fr_auto_1fr_auto] items-center gap-2">
+                <input type="time" value={p.in} onChange={e => setReorgP(v => v.map((x, k) => k === i ? { ...x, in: e.target.value } : x))} className={inp} />
+                <span className="text-gray-400">–</span>
+                <input type="time" value={p.out} onChange={e => setReorgP(v => v.map((x, k) => k === i ? { ...x, out: e.target.value } : x))} className={inp} />
+                <button type="button" onClick={() => setReorgP(v => v.filter((_, k) => k !== i))} className="text-rose-500 hover:text-rose-600 px-1" title="Remover par">✕</button>
+              </div>
+            ))}
+            <button type="button" onClick={() => setReorgP(v => [...v, { in: "", out: "" }])} className="text-[11px] text-violet-600 dark:text-violet-300 hover:underline self-start">+ adicionar par</button>
+          </div>
+          <div className="text-[11px] text-gray-500">Vão contar só os pares com entrada <b>e</b> saída preenchidas. Pra desfazer depois, cancele o lançamento no dia (✕).</div>
+        </>)}
+
+        {caminho && caminho !== "reorganizar" && <label className="flex flex-col gap-1"><span className="text-xs font-semibold text-gray-600 dark:text-gray-400">Observação (trilha do app)</span><textarea value={obs} onChange={e => setObs(e.target.value)} rows={2} placeholder="Ex.: esqueceu de bater a saída; atestado de 1 dia…" className={inp} /></label>}
 
         {caminho && (
           <div className="flex flex-col gap-1.5">
