@@ -1045,12 +1045,6 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       // Desfaz nos DOIS lados: primeiro reverte a decisão na Sólides (→ PENDENTE),
       // só então cancela o tratamento no app (se a Sólides falhar, não cancela aqui).
       if (reverteSolides) await decidirAprovacao(shortCode, { punchId: Number(a.punchId), status: "PENDING", observation: "Decisão desfeita no planejamento.app" });
-      // Abono de dia inteiro grava o status na escala praticada; ao desfazer, volta
-      // o dia ao previsto — mas só se o dia AINDA não foi fechado (solides_sync) e a
-      // real atual é exatamente o que este abono escreveu (não pisa em outra decisão).
-      if (a.tipo === "abono" && a.statusEscala && !diaFechado(a.colaboradorId, a.data) && escala?.real?.[a.colaboradorId]?.[a.data] === a.statusEscala) {
-        await setDoc(doc(db, "escalas", `${rid}_${a.data.slice(0, 7)}`), { real: { [a.colaboradorId]: { [a.data]: deleteField() } }, atualizadoEm: new Date().toISOString() }, { merge: true });
-      }
       await updateDoc(doc(db, "ptrpAjustes", a.id), { cancelado: true, canceladoPor: { id: me?.id || "", nome: me?.nome || "" }, canceladoEm: new Date().toISOString() });
       setAcaoMsg(reverteSolides ? "✓ Decisão desfeita — correção voltou a pendente na Sólides." : "✓ Tratamento cancelado.");
     } catch (e) { setAcaoMsg("Falha ao desfazer: " + (e instanceof Error ? e.message : "erro")); }
@@ -1496,7 +1490,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         )}
         </>
       ))}
-      {ajusteModal && me && rid && <AjusteModal empresaKey={shortCode} rid={rid} emp={ajusteModal.emp} data={ajusteModal.data} bs={ajusteModal.bs} reorgExistente={ajusteModal.reorgPares} solidesEmpId={empIdPorCpf.get(soDig(ajusteModal.emp.cpf)) || null} autor={{ id: me.id, nome: me.nome }} onClose={() => setAjusteModal(null)} />}
+      {ajusteModal && me && <AjusteModal empresaKey={shortCode} emp={ajusteModal.emp} data={ajusteModal.data} bs={ajusteModal.bs} reorgExistente={ajusteModal.reorgPares} solidesEmpId={empIdPorCpf.get(soDig(ajusteModal.emp.cpf)) || null} autor={{ id: me.id, nome: me.nome }} onClose={() => setAjusteModal(null)} />}
 
       {/* Reclassificar status na escala praticada (dia fora de escala / folga trabalhada) */}
       {reclass && (
@@ -1614,7 +1608,7 @@ function reparearDia(docs: BatidaDoc[]): BatidaDoc[] {
 // 2 caminhos: (A) Editar marcações (incluir/excluir, cronológico, sempre reflete
 // na Sólides) · (B) Lançar motivo (afastamento/abono: motivo Sólides + status escala).
 const STATUS_LISTA: ScheduleStatus[] = ["trabalho", "falta_j", "falta_i", "folga", "comp", "comp_trab", "ferias", "freela"];
-function AjusteModal({ empresaKey, rid, emp, data, bs, reorgExistente, solidesEmpId, autor, onClose }: { empresaKey: string; rid: string; emp: Empregado; data: string; bs: BatidaDoc[]; reorgExistente?: { in: string; out: string }[]; solidesEmpId: string | null; autor: { id: string; nome: string }; onClose: () => void }) {
+function AjusteModal({ empresaKey, emp, data, bs, reorgExistente, solidesEmpId, autor, onClose }: { empresaKey: string; emp: Empregado; data: string; bs: BatidaDoc[]; reorgExistente?: { in: string; out: string }[]; solidesEmpId: string | null; autor: { id: string; nome: string }; onClose: () => void }) {
   const [caminho, setCaminho] = useState<"" | "marcacoes" | "motivo" | "atestado" | "reorganizar">("");
   const [reorgT, setReorgT] = useState<string[]>([]);   // marcações individuais (HH:MM), em ordem
   const [dragIdx, setDragIdx] = useState<number | null>(null);
@@ -1822,14 +1816,10 @@ function AjusteModal({ empresaKey, rid, emp, data, bs, reorgExistente, solidesEm
         if (solidesEmpId && diaInteiro) await lancarAfastamento(empresaKey, { employeeId: Number(solidesEmpId), adjustmentReasonId: motivoId, startDate: data, endDate: data, fullDay: true });
         await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data, tipo: "abono", statusEscala, motivoSolidesId: motivoId, ...(abonMin ? { minutos: abonMin, in: ain, out: aout } : {}), motivo: obs.trim() || (mInfo?.description || ""), ...evidPayload, autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: !!(solidesEmpId && diaInteiro) }));
         await setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(motivoId)]: { ...(mapa[String(motivoId)] || {}), status: statusEscala, descricao: mInfo?.description || `Motivo ${motivoId}` } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
-        // Abono de DIA INTEIRO reflete já na escala PRATICADA do dia (igual à
-        // reclassificação): o gestor escolheu o status ("falta justificada" etc.),
-        // então grava em escalas.real na hora — sem precisar "Fechar praticada".
-        // Abono PARCIAL (só X minutos) não mexe: a pessoa trabalhou, é só desconto.
-        if (diaInteiro) {
-          const compDia = data.slice(0, 7);
-          await setDoc(doc(db, "escalas", `${rid}_${compDia}`), sanitizeForFirestore({ real: { [emp.id]: { [data]: statusEscala } }, atualizadoEm: new Date().toISOString(), atualizadoPor: autor }), { merge: true });
-        }
+        // NÃO grava em escalas.real aqui: o abono trata o dia (vira statusPraticado);
+        // quem SOBE pra escala praticada é o FECHAMENTO do dia ("Fechar dias" grava
+        // real + realAjustes.solides_sync). A visibilidade imediata fica na coluna
+        // "Praticado" da Conferência.
         onClose();
       } else if (caminho === "atestado") {
         if (!motivoId) { setErr("Escolha o motivo do atestado."); return; }
@@ -1849,11 +1839,10 @@ function AjusteModal({ empresaKey, rid, emp, data, bs, reorgExistente, solidesEm
           await criarAfastamentoNovo(empresaKey, { employee: Number(solidesEmpId), timeOffWork: 4, esocialReason: "COD_02", startDate: atIni, endDate: atFim });
         }
         const foiSolides = !!(solidesEmpId && ehAtestadoMedico);
-        // App: 1 lançamento por dia (pra refletir no espelho de cada dia) + grava
-        // já o status na escala PRATICADA do dia (atestado é sempre dia inteiro).
+        // App: 1 lançamento por dia (pra refletir no espelho de cada dia). Sobe pra
+        // escala praticada no FECHAMENTO do dia (não aqui) — igual ao abono.
         for (const dia of diasDoIntervalo(atIni, atFim)) {
           await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data: dia, tipo: "abono", statusEscala, motivoSolidesId: motivoId, motivo: obs.trim() || (desc || "Atestado médico"), ...evidPayload, autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: foiSolides }));
-          await setDoc(doc(db, "escalas", `${rid}_${dia.slice(0, 7)}`), sanitizeForFirestore({ real: { [emp.id]: { [dia]: statusEscala } }, atualizadoEm: new Date().toISOString(), atualizadoPor: autor }), { merge: true });
         }
         await setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(motivoId)]: { ...(mapa[String(motivoId)] || {}), status: statusEscala, descricao: desc || `Motivo ${motivoId}` } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
         onClose();
