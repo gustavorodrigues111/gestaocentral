@@ -6,7 +6,7 @@
 //  mínimo/sugestão editável + Montar com IA), e gera 1 pedido por fornecedor.
 // ════════════════════════════════════════════════════════════════════════════
 import { useMemo, useState } from "react";
-import { Building2, Smartphone, ClipboardList, TriangleAlert, ChevronDown, ChevronRight, Sparkles, RotateCcw, Loader2, ClipboardCheck, PencilLine, ArrowLeft } from "lucide-react";
+import { Building2, Smartphone, ClipboardList, TriangleAlert, ChevronDown, ChevronRight, Sparkles, RotateCcw, Loader2, ClipboardCheck, PencilLine, ArrowLeft, Tag, Check, CalendarDays } from "lucide-react";
 import { addDoc, collection } from "firebase/firestore";
 import { db, auth } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -155,16 +155,26 @@ export function NovoPedidoModal({ rid, insumos, fornecedores, contagens, pedidos
     <Modal title={<span className="inline-flex items-center gap-2"><ClipboardList size={18} /> Novo pedido</span>} onClose={onClose} maxWidth="max-w-3xl">
       {/* STEP ORIGEM */}
       {step === "origem" && (
-        <div className="space-y-3">
-          <p className="text-sm text-gray-600 dark:text-gray-400">De onde vem esse pedido?</p>
+        <div className="space-y-4">
+          <p className="text-[13px] text-gray-500 dark:text-gray-400">De onde vem esse pedido?</p>
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <button type="button" onClick={() => { setOrigem("contagem"); setStep("contagem"); }} className="rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-indigo-400 p-4 text-left">
-              <div className="font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><ClipboardCheck size={18} className="text-indigo-500" /> A partir de uma contagem</div>
-              <p className="text-[12px] text-gray-500 mt-1">Usa uma contagem feita: sugere quanto pedir (contagem × estoque mínimo). {sessoes.length > 0 ? `${sessoes.length} contagem(ns) esperando.` : "Nenhuma contagem pendente."}</p>
+            <button type="button" onClick={() => { setOrigem("contagem"); setStep("contagem"); }}
+              className="group relative rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-400 dark:hover:border-indigo-600 hover:shadow-sm p-4 text-left transition-all">
+              <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 inline-flex items-center justify-center mb-2.5"><ClipboardCheck size={20} /></div>
+              <div className="font-semibold text-gray-900 dark:text-gray-100">A partir de uma contagem</div>
+              <p className="text-[12px] text-gray-500 mt-1 leading-snug">Sugere quanto pedir a partir de uma contagem feita (contagem × estoque mínimo).</p>
+              <div className={`mt-2 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full ${sessoes.length > 0 ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300" : "bg-gray-100 text-gray-400 dark:bg-gray-800"}`}>
+                {sessoes.length > 0 ? `${sessoes.length} contagem${sessoes.length > 1 ? "s" : ""} pendente${sessoes.length > 1 ? "s" : ""}` : "nenhuma pendente"}
+              </div>
+              <ChevronRight size={16} className="absolute top-4 right-4 text-gray-300 group-hover:text-indigo-400" />
             </button>
-            <button type="button" onClick={() => { setOrigem("avulso"); setStep("avulso"); }} className="rounded-xl border-2 border-gray-200 dark:border-gray-700 hover:border-indigo-400 p-4 text-left">
-              <div className="font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><PencilLine size={18} className="text-indigo-500" /> Avulso (sem contagem)</div>
-              <p className="text-[12px] text-gray-500 mt-1">Monta o pedido do zero, escolhendo por fornecedor ou por categoria.</p>
+            <button type="button" onClick={() => { setOrigem("avulso"); setStep("avulso"); }}
+              className="group relative rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-400 dark:hover:border-indigo-600 hover:shadow-sm p-4 text-left transition-all">
+              <div className="w-10 h-10 rounded-xl bg-violet-50 dark:bg-violet-900/30 text-violet-600 dark:text-violet-300 inline-flex items-center justify-center mb-2.5"><PencilLine size={20} /></div>
+              <div className="font-semibold text-gray-900 dark:text-gray-100">Avulso (sem contagem)</div>
+              <p className="text-[12px] text-gray-500 mt-1 leading-snug">Monta o pedido do zero, escolhendo por fornecedor ou por categoria.</p>
+              <div className="mt-2 inline-flex items-center gap-1 text-[11px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400">{fornecedores.filter(f => f.ativo).length} fornecedores</div>
+              <ChevronRight size={16} className="absolute top-4 right-4 text-gray-300 group-hover:text-indigo-400" />
             </button>
           </div>
         </div>
@@ -181,13 +191,17 @@ export function NovoPedidoModal({ rid, insumos, fornecedores, contagens, pedidos
             <div className="space-y-1.5">
               {sessoes.map(s => (
                 <button key={s.sessaoId} type="button" onClick={() => { setSessaoId(s.sessaoId); setIaMap(null); setIaResumo({}); setAjustes({}); setIncluir({}); setStep("builder"); }}
-                  className="w-full text-left rounded-lg border border-gray-200 dark:border-gray-800 px-3 py-2 hover:border-indigo-300 flex items-center justify-between gap-3">
-                  <span className="text-sm">
-                    <strong className="text-gray-900 dark:text-gray-100">{new Date(s.data + "T12:00:00").toLocaleDateString("pt-BR")}</strong>
-                    {s.turno && <span className="ml-2 text-[11px] uppercase tracking-wide text-indigo-600 dark:text-indigo-400">{s.turno}</span>}
-                    {s.nome && <span className="ml-2 text-xs text-gray-500">· {s.nome}</span>}
-                  </span>
-                  <span className="text-xs text-gray-500 tabular-nums">{s.itens} {s.itens === 1 ? "item" : "itens"} ›</span>
+                  className="group w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2.5 hover:border-indigo-400 hover:shadow-sm transition-all flex items-center gap-3">
+                  <div className="w-9 h-9 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 inline-flex items-center justify-center shrink-0"><CalendarDays size={18} /></div>
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm">
+                      <strong className="text-gray-900 dark:text-gray-100">{new Date(s.data + "T12:00:00").toLocaleDateString("pt-BR")}</strong>
+                      {s.turno && <span className="ml-2 text-[10px] font-semibold uppercase tracking-wide text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 rounded px-1.5 py-0.5">{s.turno}</span>}
+                    </div>
+                    {s.nome && <div className="text-[11px] text-gray-500 truncate">por {s.nome}</div>}
+                  </div>
+                  <span className="text-xs text-gray-500 tabular-nums shrink-0">{s.itens} {s.itens === 1 ? "item" : "itens"}</span>
+                  <ChevronRight size={16} className="text-gray-300 group-hover:text-indigo-400 shrink-0" />
                 </button>
               ))}
             </div>
@@ -196,38 +210,69 @@ export function NovoPedidoModal({ rid, insumos, fornecedores, contagens, pedidos
       )}
 
       {/* STEP AVULSO — modo + escopo */}
-      {step === "avulso" && (
-        <div className="space-y-3">
+      {step === "avulso" && (() => {
+        const opcoes = modo === "fornecedor" ? fornecedores.filter(f => f.ativo).map(f => ({ id: f.id, nome: f.nome })) : categoriasExistentes.map(c => ({ id: c, nome: c }));
+        return (
+        <div className="space-y-4">
           <button type="button" onClick={() => setStep("origem")} className="text-[12px] text-gray-500 hover:text-gray-800 inline-flex items-center gap-1"><ArrowLeft size={13} /> voltar</button>
+
           <div>
-            <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold mb-1">Organizar por</div>
-            <div className="inline-flex rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden">
+            <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold mb-1.5">Organizar por</div>
+            <div className="inline-flex rounded-xl bg-gray-100 dark:bg-gray-800 p-1 gap-1">
               {(["fornecedor", "categoria"] as const).map(mo => (
-                <button key={mo} type="button" onClick={() => { setModo(mo); setSelecionados(new Set()); }} className={`px-3 py-1.5 text-sm font-medium ${modo === mo ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>{mo === "fornecedor" ? "Fornecedor" : "Categoria"}</button>
+                <button key={mo} type="button" onClick={() => { setModo(mo); setSelecionados(new Set()); }}
+                  className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors ${modo === mo ? "bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-300 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700"}`}>
+                  {mo === "fornecedor" ? <Building2 size={14} /> : <Tag size={14} />} {mo === "fornecedor" ? "Fornecedor" : "Categoria"}
+                </button>
               ))}
             </div>
           </div>
+
           <div>
-            <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold mb-1">Quais {modo === "fornecedor" ? "fornecedores" : "categorias"}?</div>
-            <label className="flex items-center gap-2 text-sm mb-2 cursor-pointer">
-              <input type="radio" checked={escopoTodos} onChange={() => setEscopoTodos(true)} /> Todos
-            </label>
-            <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="radio" checked={!escopoTodos} onChange={() => setEscopoTodos(false)} /> Selecionar
-            </label>
+            <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold mb-1.5">Quais {modo === "fornecedor" ? "fornecedores" : "categorias"}?</div>
+            <div className="grid grid-cols-2 gap-2">
+              <button type="button" onClick={() => setEscopoTodos(true)}
+                className={`rounded-xl border p-3 text-left transition-all ${escopoTodos ? "border-indigo-500 bg-indigo-50/60 dark:bg-indigo-900/20 ring-1 ring-indigo-400" : "border-gray-200 dark:border-gray-800 hover:border-indigo-300"}`}>
+                <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">Todos</div>
+                <div className="text-[11px] text-gray-500">{opcoes.length} {modo === "fornecedor" ? "fornecedores" : "categorias"}</div>
+              </button>
+              <button type="button" onClick={() => setEscopoTodos(false)}
+                className={`rounded-xl border p-3 text-left transition-all ${!escopoTodos ? "border-indigo-500 bg-indigo-50/60 dark:bg-indigo-900/20 ring-1 ring-indigo-400" : "border-gray-200 dark:border-gray-800 hover:border-indigo-300"}`}>
+                <div className="font-semibold text-sm text-gray-900 dark:text-gray-100">Selecionar</div>
+                <div className="text-[11px] text-gray-500">{selecionados.size > 0 ? `${selecionados.size} escolhido(s)` : "escolher quais"}</div>
+              </button>
+            </div>
+
             {!escopoTodos && (
-              <div className="mt-2 flex flex-wrap gap-1.5 max-h-52 overflow-y-auto">
-                {(modo === "fornecedor" ? fornecedores.filter(f => f.ativo).map(f => ({ id: f.id, nome: f.nome })) : categoriasExistentes.map(c => ({ id: c, nome: c }))).map(o => (
-                  <button key={o.id} type="button" onClick={() => toggleSel(o.id)} className={`px-2.5 py-1 rounded-full text-[12px] border ${selecionados.has(o.id) ? "bg-indigo-600 border-indigo-600 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>{o.nome}</button>
-                ))}
+              <div className="mt-2.5 rounded-xl border border-gray-200 dark:border-gray-800 p-2.5">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className="text-[11px] text-gray-400">{selecionados.size} de {opcoes.length}</span>
+                  <div className="flex gap-2 text-[11px] font-medium">
+                    <button type="button" onClick={() => setSelecionados(new Set(opcoes.map(o => o.id)))} className="text-indigo-600 dark:text-indigo-400 hover:underline">todos</button>
+                    <button type="button" onClick={() => setSelecionados(new Set())} className="text-gray-400 hover:text-gray-600">limpar</button>
+                  </div>
+                </div>
+                <div className="flex flex-wrap gap-1.5 max-h-56 overflow-y-auto">
+                  {opcoes.map(o => {
+                    const on = selecionados.has(o.id);
+                    return (
+                      <button key={o.id} type="button" onClick={() => toggleSel(o.id)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[12px] border transition-colors ${on ? "bg-indigo-600 border-indigo-600 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>
+                        {on && <Check size={11} />} {o.nome}
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
-          <div className="flex justify-end pt-2 border-t border-gray-200 dark:border-gray-800">
+
+          <div className="flex justify-end pt-3 border-t border-gray-200 dark:border-gray-800">
             <Button onClick={() => { setIaMap(null); setIaResumo({}); setAjustes({}); setIncluir({}); setStep("builder"); }} disabled={!podeAvancarAvulso}>Continuar →</Button>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* STEP BUILDER */}
       {step === "builder" && (
