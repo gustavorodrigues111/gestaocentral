@@ -26,6 +26,15 @@ type Props = {
   initialTab?: "dados" | "horarios";
 };
 
+// Soma/subtrai dias de uma data YYYY-MM-DD (UTC, sem fuso). Usado pra converter
+// entre "último dia de cobertura" (inclusivo, o que o usuário digita) e o campo
+// `demissao` do período, que é o PRIMEIRO DIA FORA (ver core/utils/empregado).
+const addDiasYmd = (ymd: string, n: number): string => {
+  if (!ymd) return "";
+  const [y, m, d] = ymd.split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+};
+
 export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId, cargos, onClose, onSaved, initialTab }: Props) {
   const { pessoa: me } = useAuth();
   const { restaurants } = useRestaurant();
@@ -73,8 +82,9 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
   const [admissao, setAdmissao] = useState<string>(
     empregado?.admissaoAtual || ultimoPeriodo?.admissao || todayYmd()
   );
-  // Fim da cobertura do freela mensalista (= demissão do período). "" = em aberto.
-  const [coberturaFim, setCoberturaFim] = useState<string>(ultimoPeriodo?.demissao || "");
+  // ÚLTIMO DIA de cobertura (inclusivo — o que o usuário vê/digita). "" = em aberto.
+  // O período guarda `demissao` = 1º dia FORA, então o último dia = demissao − 1.
+  const [coberturaFim, setCoberturaFim] = useState<string>(ultimoPeriodo?.demissao ? addDiasYmd(ultimoPeriodo.demissao, -1) : "");
   const [coberturaMotivo, setCoberturaMotivo] = useState<string>(ultimoPeriodo?.motivo || "");
   const [empCode, setEmpCode] = useState(empregado?.empCode || "");
   const [codigoContabil, setCodigoContabil] = useState(empregado?.codigoContabil || "");
@@ -222,7 +232,8 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
 
   // Fim do período: freela mensalista fecha na data de fim da cobertura;
   // demais vínculos ficam em aberto (demissão vem pelo fluxo de inativação).
-  const demissaoPeriodo = (): string | null => (freelaMensalista && coberturaFim ? coberturaFim : null);
+  // Grava demissao = último dia + 1 (1º dia fora), pra o último dia ser TRABALHADO.
+  const demissaoPeriodo = (): string | null => (freelaMensalista && coberturaFim ? addDiasYmd(coberturaFim, 1) : null);
 
   function buildPeriodos() {
     const now = new Date().toISOString();
@@ -659,12 +670,12 @@ export function EmpregadoModal({ empregado: empregadoProp, pessoa, restaurantId,
               <>
                 <div className="grid grid-cols-2 gap-2 pl-6">
                   <div>
-                    <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Início da cobertura *</label>
+                    <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Primeiro dia de cobertura *</label>
                     <input type="date" value={admissao} onChange={(e) => setAdmissao(e.target.value)}
                       className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
                   </div>
                   <div>
-                    <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Fim da cobertura</label>
+                    <label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Último dia de cobertura</label>
                     <input type="date" value={coberturaFim} min={admissao || undefined} onChange={(e) => setCoberturaFim(e.target.value)}
                       className="w-full px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
                   </div>
