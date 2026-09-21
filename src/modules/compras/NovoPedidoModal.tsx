@@ -222,10 +222,10 @@ export function NovoPedidoModal({ rid, insumos, fornecedores, contagens, pedidos
 
           <div>
             <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold mb-1.5">Organizar por</div>
-            <div className="inline-flex rounded-xl bg-gray-100 dark:bg-gray-800 p-1 gap-1">
+            <div className="flex w-full rounded-xl bg-gray-100 dark:bg-gray-800 p-1 gap-1">
               {(["fornecedor", "categoria"] as const).map(mo => (
                 <button key={mo} type="button" onClick={() => { setModo(mo); setSelecionados(new Set()); }}
-                  className={`inline-flex items-center gap-1.5 px-3.5 py-1.5 text-sm font-medium rounded-lg transition-colors ${modo === mo ? "bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-300 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700"}`}>
+                  className={`flex-1 inline-flex items-center justify-center gap-1.5 px-3.5 py-2 text-sm font-medium rounded-lg transition-colors ${modo === mo ? "bg-white dark:bg-gray-900 text-indigo-600 dark:text-indigo-300 shadow-sm" : "text-gray-500 dark:text-gray-400 hover:text-gray-700"}`}>
                   {mo === "fornecedor" ? <Building2 size={14} /> : <Tag size={14} />} {mo === "fornecedor" ? "Fornecedor" : "Categoria"}
                 </button>
               ))}
