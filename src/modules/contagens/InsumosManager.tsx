@@ -6,8 +6,8 @@
 //  dados (insumos/fornecedores/recebimentos) — os dois módulos só montam o componente.
 // ════════════════════════════════════════════════════════════════════════════
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import { Package, Plus, Sparkles, Truck, Link2, Loader2, Layers, EyeOff, RotateCcw, GitMerge } from "lucide-react";
-import { addDoc, collection, deleteDoc, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { Package, Plus, Sparkles, Truck, Link2, Loader2, Layers, EyeOff, RotateCcw, GitMerge, Ruler, Save } from "lucide-react";
+import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where, writeBatch } from "firebase/firestore";
 import { db, auth } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -46,6 +46,12 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
   const [mesclando, setMesclando] = useState(false);
   const [ignorados, setIgnorados] = useState<Set<string>>(new Set());
   const [naoDuplicatas, setNaoDuplicatas] = useState<Set<string>>(new Set());
+  // Organização da lista: por produto (categoria) ou por fornecedor.
+  const [agrupamento, setAgrupamento] = useState<"produto" | "fornecedor">("produto");
+  // Definir estoque mínimo em LOTE (abre um campo por produto; salva tudo de uma vez).
+  const [editandoMin, setEditandoMin] = useState(false);
+  const [minEdits, setMinEdits] = useState<Record<string, string>>({});
+  const [salvandoMin, setSalvandoMin] = useState(false);
 
   // ── Dados ────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -334,11 +340,69 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
     const s = searchConfig.toLowerCase();
     return insumos.filter(i => (i.nome || "").toLowerCase().includes(s) || (i.categoria || "").toLowerCase().includes(s));
   }, [insumos, searchConfig]);
-  const insumosPorCat = useMemo(() => {
-    const m: Record<string, Insumo[]> = {};
-    for (const i of insumosFiltrados) { const c = i.categoria || "(sem categoria)"; (m[c] = m[c] || []).push(i); }
-    return Object.entries(m).sort(([a], [b]) => a.localeCompare(b));
-  }, [insumosFiltrados]);
+  // Rótulo do grupo do insumo conforme a organização escolhida.
+  const grupoFornLabel = (i: Insumo) => {
+    const forn = i.fornecedorPreferredId ? fornecedorMap[i.fornecedorPreferredId] : null;
+    const nome = forn?.nome || (i.fornecedores?.find(f => f.primario)?.nome) || (i.fornecedores?.[0]?.nome);
+    return nome || "(sem fornecedor)";
+  };
+  // Grupos exibidos: por categoria (produto) OU por fornecedor. Grupos em ordem
+  // alfabética ("(sem …)" por último) e produtos em ordem alfabética dentro deles.
+  const gruposExibidos = useMemo(() => {
+    const m = new Map<string, Insumo[]>();
+    for (const i of insumosFiltrados) {
+      const chave = agrupamento === "fornecedor" ? grupoFornLabel(i) : (i.categoria || "(sem categoria)");
+      const arr = m.get(chave); if (arr) arr.push(i); else m.set(chave, [i]);
+    }
+    const entradas = [...m.entries()].map(([k, list]) => [k, list.slice().sort((a, b) => (a.nome || "").localeCompare(b.nome || "", "pt-BR"))] as [string, Insumo[]]);
+    entradas.sort((a, b) => { const aSem = a[0].startsWith("("), bSem = b[0].startsWith("("); if (aSem !== bSem) return aSem ? 1 : -1; return a[0].localeCompare(b[0], "pt-BR"); });
+    return entradas;
+  }, [insumosFiltrados, agrupamento, fornecedorMap]);
+
+  // ── Definir estoque mínimo em lote ───────────────────────────────────────────
+  function abrirDefinirMin() {
+    const m: Record<string, string> = {};
+    for (const i of insumos) m[i.id] = i.minStock != null ? String(i.minStock) : "";
+    setMinEdits(m);
+    setEditandoMin(true);
+  }
+  async function salvarMin() {
+    setSalvandoMin(true);
+    try {
+      const now = new Date().toISOString();
+      const alterados = insumos.filter(i => {
+        if (!(i.id in minEdits)) return false;   // só os que estavam na tela ao abrir a edição
+        const v = (minEdits[i.id] ?? "").trim();
+        const novo = v === "" ? undefined : parseFloat(v.replace(",", "."));
+        const novoNorm = novo == null || isNaN(novo) ? undefined : novo;
+        return novoNorm !== (i.minStock ?? undefined);
+      });
+      // Firestore aceita até 500 escritas por batch — fatia em pedaços.
+      for (let k = 0; k < alterados.length; k += 400) {
+        const batch = writeBatch(db);
+        for (const i of alterados.slice(k, k + 400)) {
+          const v = (minEdits[i.id] ?? "").trim();
+          const novo = v === "" ? undefined : parseFloat(v.replace(",", "."));
+          const novoNorm = novo == null || isNaN(novo) ? undefined : novo;
+          batch.update(doc(db, "insumos", i.id), { minStock: novoNorm ?? deleteField(), atualizadoEm: now });
+        }
+        await batch.commit();
+      }
+      setEditandoMin(false);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Erro ao salvar estoque mínimo");
+    } finally { setSalvandoMin(false); }
+  }
+  const minAlterados = useMemo(() => {
+    if (!editandoMin) return 0;
+    return insumos.reduce((n, i) => {
+      if (!(i.id in minEdits)) return n;
+      const v = (minEdits[i.id] ?? "").trim();
+      const novo = v === "" ? undefined : parseFloat(v.replace(",", "."));
+      const novoNorm = novo == null || isNaN(novo) ? undefined : novo;
+      return n + (novoNorm !== (i.minStock ?? undefined) ? 1 : 0);
+    }, 0);
+  }, [editandoMin, minEdits, insumos]);
 
   return (
     <div className="space-y-3">
@@ -436,10 +500,21 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
         </div>
       )}
 
-      {podeConfig && insumos.length >= 2 && (
-        <div className="flex justify-end">
-          <button type="button" onClick={() => setMesclando(true)} className="text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 inline-flex items-center gap-1"><Layers size={13} /> Mesclar duplicados</button>
-        </div>
+      {podeConfig && insumos.length > 0 && (
+        editandoMin ? (
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-2 flex-wrap rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/80 dark:bg-indigo-900/20 px-3 py-2 backdrop-blur">
+            <span className="text-[12px] font-medium text-indigo-800 dark:text-indigo-200 inline-flex items-center gap-1.5"><Ruler size={14} /> Preencha o estoque mínimo de cada produto {minAlterados > 0 && <span className="text-indigo-500">· {minAlterados} alterado(s)</span>}</span>
+            <div className="inline-flex items-center gap-2">
+              <button type="button" onClick={() => setEditandoMin(false)} disabled={salvandoMin} className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-white dark:hover:bg-gray-800 disabled:opacity-50">Cancelar</button>
+              <button type="button" onClick={() => void salvarMin()} disabled={salvandoMin} className="text-xs font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 inline-flex items-center gap-1"><Save size={13} /> {salvandoMin ? "Salvando…" : `Salvar estoque mínimo${minAlterados > 0 ? ` (${minAlterados})` : ""}`}</button>
+            </div>
+          </div>
+        ) : (
+          <div className="flex justify-end gap-4 items-center">
+            <button type="button" onClick={abrirDefinirMin} className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 inline-flex items-center gap-1"><Ruler size={13} /> Definir estoque mínimo</button>
+            {insumos.length >= 2 && <button type="button" onClick={() => setMesclando(true)} className="text-xs font-medium text-gray-500 dark:text-gray-400 hover:text-gray-800 dark:hover:text-gray-200 inline-flex items-center gap-1"><Layers size={13} /> Mesclar duplicados</button>}
+          </div>
+        )
       )}
 
       {insumos.length === 0 ? (
@@ -455,30 +530,48 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
               <tr className="text-[10px] uppercase tracking-wide text-gray-400 border-b border-gray-200 dark:border-gray-800 text-left">
                 <th className="px-3 py-1.5 font-semibold">Produto</th>
                 <th className="px-2 py-1.5 font-semibold w-24">Unidade</th>
-                <th className="px-2 py-1.5 font-semibold w-20 text-right">Estoque mín.</th>
+                <th className="px-2 py-1.5 font-semibold w-24 text-right">Estoque mín.</th>
                 <th className="px-2 py-1.5 font-semibold w-24 text-right">R$/un</th>
-                <th className="px-2 py-1.5 font-semibold w-52">Fornecedor</th>
+                <th className="px-2 py-1.5 font-semibold w-52">
+                  <div className="inline-flex items-center gap-1.5">
+                    <span>Fornecedor</span>
+                    <select value={agrupamento} onChange={e => setAgrupamento(e.target.value as "produto" | "fornecedor")} onClick={e => e.stopPropagation()}
+                      title="Organizar a lista" className="text-[10px] normal-case font-normal rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 px-1 py-0.5">
+                      <option value="produto">agrupar: produto</option>
+                      <option value="fornecedor">agrupar: fornecedor</option>
+                    </select>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
-              {insumosPorCat.map(([cat, list]) => (
-                <Fragment key={cat}>
+              {gruposExibidos.map(([grupo, list]) => (
+                <Fragment key={grupo}>
                   <tr className="bg-gray-50 dark:bg-gray-800/40">
-                    <td colSpan={5} className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">{cat} <span className="font-normal text-gray-400">({list.length})</span></td>
+                    <td colSpan={5} className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">{grupo} <span className="font-normal text-gray-400">({list.length})</span></td>
                   </tr>
                   {list.map(i => {
                     const forn = i.fornecedorPreferredId ? fornecedorMap[i.fornecedorPreferredId] : null;
                     const fornNome = (i.fornecedores && i.fornecedores.length) ? (i.fornecedores.find(f => f.primario)?.nome || i.fornecedores[0].nome) : forn?.nome;
                     const semMin = !i.minStock || i.minStock <= 0;
                     return (
-                      <tr key={i.id} onClick={() => setEditing(i)} className={`border-b border-gray-50 dark:border-gray-800/40 cursor-pointer hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10 ${!i.ativo ? "opacity-50" : ""}`}>
+                      <tr key={i.id} onClick={() => { if (!editandoMin) setEditing(i); }} className={`border-b border-gray-50 dark:border-gray-800/40 ${editandoMin ? "" : "cursor-pointer hover:bg-indigo-50/40 dark:hover:bg-indigo-900/10"} ${!i.ativo ? "opacity-50" : ""}`}>
                         <td className="px-3 py-1.5">
                           <span className="font-medium text-gray-900 dark:text-gray-100">{i.nome}</span>
                           {i.fatorCompra && i.fatorCompra > 1 && <span className="ml-1.5 text-[10px] text-gray-400">pct {i.fatorCompra}</span>}
                           {!i.ativo && <span className="ml-1.5 text-[10px] uppercase text-gray-400">inativo</span>}
+                          {agrupamento === "fornecedor" && i.categoria && <span className="ml-1.5 text-[10px] text-gray-400">· {i.categoria}</span>}
                         </td>
                         <td className="px-2 py-1.5 text-gray-500 uppercase">{i.unidade === "outro" ? (i.unidadeOutroLabel || "outro") : (UNIDADES_LABEL[i.unidade] || i.unidade)}</td>
-                        <td className={`px-2 py-1.5 text-right tabular-nums ${semMin ? "text-amber-600 dark:text-amber-400" : "text-gray-700 dark:text-gray-200 font-medium"}`}>{semMin ? "definir" : i.minStock}</td>
+                        <td className="px-2 py-1.5 text-right tabular-nums">
+                          {editandoMin ? (
+                            <input inputMode="decimal" value={minEdits[i.id] ?? ""} onClick={e => e.stopPropagation()}
+                              onChange={e => { const v = e.target.value.replace(/[^\d.,]/g, ""); setMinEdits(s => ({ ...s, [i.id]: v })); }}
+                              placeholder="—" className="w-16 px-2 py-1 text-sm text-right rounded border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900 tabular-nums focus:outline-none focus:ring-1 focus:ring-indigo-400" />
+                          ) : (
+                            <span className={semMin ? "text-amber-600 dark:text-amber-400" : "text-gray-700 dark:text-gray-200 font-medium"}>{semMin ? "definir" : i.minStock}</span>
+                          )}
+                        </td>
                         <td className="px-2 py-1.5 text-right tabular-nums text-gray-600 dark:text-gray-300">{i.precoEstimado != null ? i.precoEstimado.toFixed(2) : "—"}</td>
                         <td className="px-2 py-1.5 text-gray-600 dark:text-gray-300 truncate max-w-[220px]">{fornNome || <span className="text-amber-600 dark:text-amber-400">sem fornecedor</span>}</td>
                       </tr>
