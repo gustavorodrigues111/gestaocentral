@@ -9,6 +9,7 @@ import { getActiveSplitVersion } from "./splitRules";
 import { DescontosPanel } from "./DescontosPanel";
 import { calcularDesconto, aplicarDescontos, reducaoDiaArea, reduzirItensDia, type DescontoCalc, type GorjetaDesconto } from "./descontos";
 import { nomeMes } from "../../core/utils/date";
+import { calcularFechamentoPraticada } from "../../core/escala/fechamentoPraticada";
 import { ExportarGorjetasPDFModal } from "./ExportarGorjetasPDFModal";
 import { recalcularSnapshotGorjeta } from "./publicar";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -131,10 +132,45 @@ export function DivisaoMesTab({
     return unidades.find(u => u.id === filtroUnidadeId)?.tipo || null;
   }, [filtroUnidadeId, unidades]);
 
+  // TRAVA DA PRATICADA: a gorjeta só divide dias em que TODOS os empregados
+  // ativos estão fechados na praticada (até o dia D). Dias além de D ficam
+  // "retidos" — não entram na divisão até o DP fechar a praticada no PTRP.
+  // Dias já PUBLICADOS (congelados) seguem aparecendo, independentemente.
+  const hojeYmd = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+  const fechPrat = useMemo(
+    () => calcularFechamentoPraticada(escala, empregados, ano, mes, hojeYmd),
+    [escala, empregados, ano, mes, hojeYmd],
+  );
+  // Trava só ATIVA quando o DP já começou a fechar a praticada deste mês (há ao
+  // menos 1 dia fechado). Se nunca fechou nada, mantém o comportamento antigo
+  // (divide tudo) — pra não quebrar quem ainda não adotou o fluxo de fechamento.
+  const travaAtiva = useMemo(() => {
+    const ra = escala?.realAjustes || {};
+    for (const emp of Object.values(ra)) for (const meta of Object.values(emp || {})) if ((meta as { origem?: string })?.origem === "solides_sync") return true;
+    return false;
+  }, [escala]);
+  // Dias COM gorjeta que estão retidos (> D e não publicados) — pra avisar o DP.
+  const diasRetidos = useMemo(() => {
+    if (!travaAtiva) return [] as string[];
+    const at = fechPrat.fechadoAteYmd;
+    const set = new Set<string>();
+    for (const g of gorjetas) {
+      if (g.semGorjeta || (g.valorBruto || 0) <= 0) continue;
+      if (g.publicada) continue;
+      if (!at || g.date > at) set.add(g.date);
+    }
+    return [...set].sort();
+  }, [gorjetas, fechPrat.fechadoAteYmd, travaAtiva]);
+
   const gorjetasFiltradas = useMemo(() => {
-    if (!filtroUnidadeId || tipoUnidadeFiltro !== "atendimento") return gorjetas;
-    return gorjetas.filter(g => g.unidadeId === filtroUnidadeId);
-  }, [gorjetas, filtroUnidadeId, tipoUnidadeFiltro]);
+    const base = (!filtroUnidadeId || tipoUnidadeFiltro !== "atendimento")
+      ? gorjetas
+      : gorjetas.filter(g => g.unidadeId === filtroUnidadeId);
+    if (!travaAtiva) return base;   // fluxo antigo: sem trava
+    const at = fechPrat.fechadoAteYmd;
+    // Só divide dias fechados na praticada (<= D) OU já publicados (congelados).
+    return base.filter(g => g.publicada || (at ? g.date <= at : false));
+  }, [gorjetas, filtroUnidadeId, tipoUnidadeFiltro, fechPrat.fechadoAteYmd, travaAtiva]);
 
   // Descontos da gorjeta (config) → cálculo (valor, detalhe, base por dia).
   const descontosCalc = useMemo<DescontoCalc[]>(
@@ -587,6 +623,22 @@ export function DivisaoMesTab({
 
   return (
     <div className="space-y-4">
+      {/* TRAVA DA PRATICADA — a divisão só vai até onde todos estão fechados */}
+      {travaAtiva && fechPrat.ultimoDiaConsiderado > 0 && (
+        <div className={`rounded-xl border p-3 text-[12.5px] ${diasRetidos.length ? "border-amber-300 dark:border-amber-800 bg-amber-50/70 dark:bg-amber-950/25" : "border-emerald-200 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20"}`}>
+          {fechPrat.fechadoAteYmd ? (
+            <span className="text-gray-800 dark:text-gray-100 inline-flex items-center gap-1.5"><CalendarDays size={14} className="text-emerald-600 dark:text-emerald-400"/> Divisão fechada <b>até {fechPrat.fechadoAteYmd.slice(-2)}/{fechPrat.fechadoAteYmd.slice(5, 7)}</b> — só entram dias com a escala praticada fechada pra <b>todos</b> os empregados.</span>
+          ) : (
+            <span className="text-amber-800 dark:text-amber-200 inline-flex items-center gap-1.5"><TriangleAlert size={14}/> A divisão ainda não pode aparecer — nenhum dia está com a praticada fechada pra todos os empregados.</span>
+          )}
+          {diasRetidos.length > 0 && (
+            <div className="mt-1 text-amber-800 dark:text-amber-300">
+              <b>{diasRetidos.length} dia(s) com gorjeta</b> ainda não entram (dias {diasRetidos.map(d => d.slice(-2)).join(", ")}). Feche a praticada de todos no <b>Ponto (PTRP)</b> pra a divisão avançar.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* Filtro de unidade vive no header da GorjetasPage (pills compartilhados
           entre tabs Lançamentos e Divisão do mês). */}
 
