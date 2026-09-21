@@ -1049,7 +1049,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       // o dia ao previsto — mas só se o dia AINDA não foi fechado (solides_sync) e a
       // real atual é exatamente o que este abono escreveu (não pisa em outra decisão).
       if (a.tipo === "abono" && a.statusEscala && !diaFechado(a.colaboradorId, a.data) && escala?.real?.[a.colaboradorId]?.[a.data] === a.statusEscala) {
-        await setDoc(doc(db, "escalas", `${rid}_${a.data.slice(0, 7)}`), { real: { [a.colaboradorId]: { [a.data]: deleteField() } }, atualizadoEm: new Date().toISOString() }, { merge: true }).catch(() => {});
+        await setDoc(doc(db, "escalas", `${rid}_${a.data.slice(0, 7)}`), { real: { [a.colaboradorId]: { [a.data]: deleteField() } }, atualizadoEm: new Date().toISOString() }, { merge: true });
       }
       await updateDoc(doc(db, "ptrpAjustes", a.id), { cancelado: true, canceladoPor: { id: me?.id || "", nome: me?.nome || "" }, canceladoEm: new Date().toISOString() });
       setAcaoMsg(reverteSolides ? "✓ Decisão desfeita — correção voltou a pendente na Sólides." : "✓ Tratamento cancelado.");
@@ -1828,7 +1828,7 @@ function AjusteModal({ empresaKey, rid, emp, data, bs, reorgExistente, solidesEm
         // Abono PARCIAL (só X minutos) não mexe: a pessoa trabalhou, é só desconto.
         if (diaInteiro) {
           const compDia = data.slice(0, 7);
-          await setDoc(doc(db, "escalas", `${rid}_${compDia}`), sanitizeForFirestore({ real: { [emp.id]: { [data]: statusEscala } }, atualizadoEm: new Date().toISOString(), atualizadoPor: autor }), { merge: true }).catch(() => {});
+          await setDoc(doc(db, "escalas", `${rid}_${compDia}`), sanitizeForFirestore({ real: { [emp.id]: { [data]: statusEscala } }, atualizadoEm: new Date().toISOString(), atualizadoPor: autor }), { merge: true });
         }
         onClose();
       } else if (caminho === "atestado") {
@@ -1853,7 +1853,7 @@ function AjusteModal({ empresaKey, rid, emp, data, bs, reorgExistente, solidesEm
         // já o status na escala PRATICADA do dia (atestado é sempre dia inteiro).
         for (const dia of diasDoIntervalo(atIni, atFim)) {
           await addDoc(collection(db, "ptrpAjustes"), sanitizeForFirestore({ empresaKey, colaboradorId: emp.id, cpf, data: dia, tipo: "abono", statusEscala, motivoSolidesId: motivoId, motivo: obs.trim() || (desc || "Atestado médico"), ...evidPayload, autor, criadoEm: new Date().toISOString(), cancelado: false, solidesDecisao: foiSolides }));
-          await setDoc(doc(db, "escalas", `${rid}_${dia.slice(0, 7)}`), sanitizeForFirestore({ real: { [emp.id]: { [dia]: statusEscala } }, atualizadoEm: new Date().toISOString(), atualizadoPor: autor }), { merge: true }).catch(() => {});
+          await setDoc(doc(db, "escalas", `${rid}_${dia.slice(0, 7)}`), sanitizeForFirestore({ real: { [emp.id]: { [dia]: statusEscala } }, atualizadoEm: new Date().toISOString(), atualizadoPor: autor }), { merge: true });
         }
         await setDoc(doc(db, "ptrpMotivosMapa", empresaKey), sanitizeForFirestore({ mapa: { ...mapa, [String(motivoId)]: { ...(mapa[String(motivoId)] || {}), status: statusEscala, descricao: desc || `Motivo ${motivoId}` } }, atualizadoEm: new Date().toISOString() }), { merge: true }).catch(() => {});
         onClose();
