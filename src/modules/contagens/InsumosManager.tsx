@@ -13,6 +13,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
+import { Modal } from "../../core/ui/Modal";
 import { UNIDADES_LABEL } from "../../core/types";
 import type { Fornecedor, Insumo, InsumoFornecedor, RecebimentoNota, UnidadeMedida } from "../../core/types";
 import { InsumoModal, type OpcaoPreco } from "./InsumoModal";
@@ -47,6 +48,7 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
   const [ignorados, setIgnorados] = useState<Set<string>>(new Set());
   const [naoDuplicatas, setNaoDuplicatas] = useState<Set<string>>(new Set());
   const [verMatchIA, setVerMatchIA] = useState(false);   // revelar as que a IA casou com insumo existente
+  const [vinculando, setVinculando] = useState<GrupoSugerido | null>(null);   // "já cadastrado" → escolher qual insumo
   // Organização da lista: por produto (categoria) ou por fornecedor.
   const [agrupamento, setAgrupamento] = useState<"produto" | "fornecedor">("produto");
   // Definir estoque mínimo em LOTE (abre um campo por produto; salva tudo de uma vez).
@@ -375,6 +377,19 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
     await deleteDoc(doc(db, "insumos", i.id));
   }
 
+  // "Já está cadastrado" → vincula o grupo a um insumo existente escolhido pelo
+  // usuário: junta as grafias (aliases) e os fornecedores no insumo. A partir daí
+  // essa nota é reconhecida por match exato e não volta a ser sugerida.
+  async function vincularGrupoAoInsumo(g: GrupoSugerido, insumoId: string) {
+    const alvo = insumos.find(i => i.id === insumoId); if (!alvo) return;
+    const { lista } = await montarFornecedores(g.fornecedores);
+    const aliases = Array.from(new Set([...(alvo.aliases || []).map(normalizar), ...g.aliases.map(normalizar), normalizar(alvo.nome)]));
+    const fornMap = new Map<string, InsumoFornecedor>();
+    for (const f of [...(alvo.fornecedores || []), ...lista]) fornMap.set(normalizar(f.nome), f);
+    await updateDoc(doc(db, "insumos", alvo.id), sanitizeForFirestore({ aliases, fornecedores: [...fornMap.values()], atualizadoEm: new Date().toISOString() }));
+    setVinculando(null);
+  }
+
   // ── Filtro + agrupamento por categoria ───────────────────────────────────────
   const fornecedorMap = useMemo(() => Object.fromEntries(fornecedores.map(f => [f.id, f])), [fornecedores]);
   const insumosFiltrados = useMemo(() => {
@@ -514,7 +529,7 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
                   <p className="text-[10px] text-rose-600/70 dark:text-rose-400/70">Nomes muito parecidos que talvez sejam o mesmo produto. Ao juntar, a IA escolhe o nome certo e as grafias viram apelidos.</p>
                 </div>
               )}
-              {sugeridosView === "tabela" && <SugeridosTabela grupos={gruposSugeridos} fornecedoresNomes={fornecedores.map(f => f.nome)} unidadesCustom={unidadesCustom} onCadastrar={cadastrarLote} onAbrir={abrirGrupoNoModal} onIgnorar={ignorarGrupo} onJuntar={juntarGrupos} onReavaliar={reavaliarSelecionados} reavaliando={reavaliando} />}
+              {sugeridosView === "tabela" && <SugeridosTabela grupos={gruposSugeridos} fornecedoresNomes={fornecedores.map(f => f.nome)} unidadesCustom={unidadesCustom} onCadastrar={cadastrarLote} onAbrir={abrirGrupoNoModal} onIgnorar={ignorarGrupo} onJuntar={juntarGrupos} onReavaliar={reavaliarSelecionados} reavaliando={reavaliando} onJaCadastrado={setVinculando} />}
               {sugeridosView === "lista" && gruposSugeridos.map(g => {
                 const alvo = g.matchInsumoId ? insumos.find(i => i.id === g.matchInsumoId) : null;
                 return (
@@ -537,6 +552,7 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
                       <Button size="sm" variant={alvo ? "secondary" : undefined} onClick={() => void cadastrarGrupo(g)}>
                         {alvo ? <span className="inline-flex items-center gap-1"><Link2 size={13} /> Vincular</span> : <span className="inline-flex items-center gap-1"><Plus size={13} /> Cadastrar</span>}
                       </Button>
+                      <button type="button" onClick={() => setVinculando(g)} title="Já está cadastrado — vincular a um insumo existente" className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 p-1"><Link2 size={15} /></button>
                       <button type="button" onClick={() => ignorarGrupo(g)} title="Ignorar (não cadastrar)" className="text-gray-300 hover:text-rose-500 p-1"><EyeOff size={15} /></button>
                     </div>
                   </div>
@@ -650,6 +666,36 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
       )}
       {mesclando && <MesclarInsumosModal insumos={insumos} onClose={() => setMesclando(false)} />}
       {notaView && <NotaViewModal nota={notaView.nota} grafia={notaView.grafia} onClose={() => setNotaView(null)} />}
+      {vinculando && <VincularExistenteModal grupo={vinculando} insumos={insumos} onPick={(id) => void vincularGrupoAoInsumo(vinculando, id)} onClose={() => setVinculando(null)} />}
     </div>
+  );
+}
+
+// Escolher a qual insumo JÁ cadastrado vincular uma sugestão ("já está cadastrado").
+function VincularExistenteModal({ grupo, insumos, onPick, onClose }: { grupo: GrupoSugerido; insumos: Insumo[]; onPick: (insumoId: string) => void; onClose: () => void }) {
+  const [busca, setBusca] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const lista = useMemo(() => {
+    const b = busca.trim().toLowerCase();
+    return insumos.filter(i => i.ativo).filter(i => !b || (i.nome || "").toLowerCase().includes(b) || (i.categoria || "").toLowerCase().includes(b))
+      .sort((a, c) => (a.nome || "").localeCompare(c.nome || "", "pt-BR")).slice(0, 200);
+  }, [insumos, busca]);
+  return (
+    <Modal title="Vincular a um insumo cadastrado" onClose={onClose} maxWidth="max-w-lg">
+      <div className="space-y-3">
+        <p className="text-[13px] text-gray-600 dark:text-gray-400">Vincular <strong className="text-gray-900 dark:text-gray-100">"{grupo.nome}"</strong> a um produto que já existe. As grafias da nota viram apelidos dele — e essa nota não é sugerida de novo.</p>
+        <Input placeholder="🔍 Buscar insumo…" value={busca} onChange={e => setBusca(e.target.value)} />
+        <div className="max-h-80 overflow-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+          {lista.length === 0 && <div className="text-sm text-gray-400 p-4 text-center">Nenhum insumo encontrado.</div>}
+          {lista.map(i => (
+            <button key={i.id} type="button" disabled={salvando} onClick={() => { setSalvando(true); onPick(i.id); }}
+              className="w-full text-left px-3 py-2 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10 disabled:opacity-50 flex items-center justify-between gap-2">
+              <span className="min-w-0"><span className="font-medium text-gray-900 dark:text-gray-100">{i.nome}</span>{i.categoria && <span className="ml-1.5 text-[11px] text-gray-400">{i.categoria}</span>}</span>
+              <span className="shrink-0 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><Link2 size={12} /> vincular</span>
+            </button>
+          ))}
+        </div>
+      </div>
+    </Modal>
   );
 }
