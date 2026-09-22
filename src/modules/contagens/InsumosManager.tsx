@@ -46,6 +46,7 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
   const [mesclando, setMesclando] = useState(false);
   const [ignorados, setIgnorados] = useState<Set<string>>(new Set());
   const [naoDuplicatas, setNaoDuplicatas] = useState<Set<string>>(new Set());
+  const [verMatchIA, setVerMatchIA] = useState(false);   // revelar as que a IA casou com insumo existente
   // Organização da lista: por produto (categoria) ou por fornecedor.
   const [agrupamento, setAgrupamento] = useState<"produto" | "fornecedor">("produto");
   // Definir estoque mínimo em LOTE (abre um campo por produto; salva tudo de uma vez).
@@ -137,7 +138,13 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
 
   // ── Sugeridos + IA ─────────────────────────────────────────────────────────
   const sugestoes = useMemo(() => agruparSugestoes(recebimentos, insumos, fornecedores), [recebimentos, insumos, fornecedores]);
-  const sugestoesNovas = useMemo(() => sugestoes.filter(s => !s.jaCadastrado && !ignorados.has(s.chave) && (!soRecorrentes || s.ocorrencias >= 2)), [sugestoes, soRecorrentes, ignorados]);
+  // A IA casou esta sugestão com um insumo que já existe? (matchInsumoId válido)
+  const insumoIds = useMemo(() => new Set(insumos.map(i => i.id)), [insumos]);
+  const iaCasou = (chave: string) => { const mid = iaMapa[chave]?.matchInsumoId; return !!(mid && insumoIds.has(mid)); };
+  const baseNovas = useMemo(() => sugestoes.filter(s => !s.jaCadastrado && !ignorados.has(s.chave) && (!soRecorrentes || s.ocorrencias >= 2)), [sugestoes, soRecorrentes, ignorados]);
+  // Esconde as que a IA achou que já existem (salvo quando o usuário pede pra ver).
+  const ocultasIA = useMemo(() => baseNovas.filter(s => iaCasou(s.chave)).length, [baseNovas, iaMapa, insumoIds]);
+  const sugestoesNovas = useMemo(() => verMatchIA ? baseNovas : baseNovas.filter(s => !iaCasou(s.chave)), [baseNovas, verMatchIA, iaMapa, insumoIds]);
 
   useEffect(() => {
     if (!sugestoesAbertas || !podeConfig) return;
@@ -449,6 +456,12 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
                 <div className="text-[11px] text-gray-400 flex items-center gap-1.5">
                   <GitMerge size={11} /> {naoDuplicatas.size} par(es) marcado(s) como diferentes
                   <button type="button" onClick={() => salvarNaoDuplicatas(new Set())} className="text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-0.5"><RotateCcw size={10} /> restaurar</button>
+                </div>
+              )}
+              {(ocultasIA > 0 || verMatchIA) && (
+                <div className="text-[11px] text-gray-400 flex items-center gap-1.5">
+                  <Sparkles size={11} /> {verMatchIA ? "mostrando os que a IA achou que já existem" : `${ocultasIA} escondido(s) — a IA achou que já existem`}
+                  <button type="button" onClick={() => setVerMatchIA(v => !v)} className="text-indigo-600 dark:text-indigo-400 hover:underline">{verMatchIA ? "esconder de novo" : "ver / vincular"}</button>
                 </div>
               )}
               {duplicatasProvaveis.length > 0 && (
