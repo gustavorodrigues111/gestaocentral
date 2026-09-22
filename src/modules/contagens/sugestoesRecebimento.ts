@@ -19,6 +19,32 @@ export function tokensSig(norm: string): string {
   return norm.replace(/[^A-Z0-9 ]/g, " ").split(/\s+/).filter(t => t.length >= 3 && !/\d/.test(t)).sort().join(" ");
 }
 
+// Índice de insumos pra casar um termo (grafia da nota OU nome limpo pela IA) com um
+// insumo já cadastrado: match EXATO (nome/alias), por assinatura de palavras
+// significativas, ou por erro de grafia de 1 letra. Devolve o id do insumo casado.
+export function criarIndiceInsumos(insumos: Array<{ id: string; nome: string; aliases?: string[] }>) {
+  const exato = new Map<string, string>();
+  const sig = new Map<string, string>();
+  const lista: Array<{ c: string; id: string }> = [];
+  for (const i of insumos) {
+    for (const raw of [i.nome, ...(i.aliases || [])]) {
+      const c = normalizar(raw); if (!c) continue;
+      if (!exato.has(c)) exato.set(c, i.id);
+      lista.push({ c, id: i.id });
+      const s = tokensSig(c); if (s && !sig.has(s)) sig.set(s, i.id);
+    }
+  }
+  return {
+    achar(termo?: string | null): string | null {
+      const c = normalizar(termo); if (!c) return null;
+      const e = exato.get(c); if (e) return e;
+      const s = tokensSig(c); if (s) { const g = sig.get(s); if (g) return g; }
+      if (c.length >= 6) for (const x of lista) if (Math.abs(x.c.length - c.length) <= 1 && levenshtein(c, x.c) <= 1) return x.id;
+      return null;
+    },
+  };
+}
+
 // Primeira maiúscula, resto minúsculo (por palavra). Conectores curtos ficam
 // minúsculos (exceto a 1ª palavra). Preserva tokens com dígito (ex.: "2L").
 const CONECTORES = new Set(["de", "da", "do", "das", "dos", "e", "com", "sem", "para", "pra", "a", "o"]);
@@ -133,23 +159,7 @@ export function agruparSugestoes(
   // números/tamanhos, ordem-independente) ou erro de grafia de 1 letra — assim o
   // mesmo produto com grafia diferente (ou cadastrado na mão, sem alias da nota)
   // não volta a ser sugerido. Alta precisão: só esconde o que é claramente igual.
-  const cadNorm = new Set<string>();
-  const cadSig = new Set<string>();
-  const cadList: string[] = [];
-  for (const i of insumos) {
-    for (const raw of [i.nome, ...(i.aliases || [])]) {
-      const c = normalizar(raw); if (!c) continue;
-      cadNorm.add(c); cadList.push(c);
-      const sig = tokensSig(c); if (sig) cadSig.add(sig);
-    }
-  }
-  const jaCobre = (chave: string): boolean => {
-    if (cadNorm.has(chave)) return true;
-    const sig = tokensSig(chave);
-    if (sig && cadSig.has(sig)) return true;
-    if (chave.length >= 6) for (const c of cadList) if (Math.abs(c.length - chave.length) <= 1 && levenshtein(chave, c) <= 1) return true;
-    return false;
-  };
+  const idx = criarIndiceInsumos(insumos);
   const fornPorNome = new Map(fornecedores.map((f) => [normalizar(f.nome), f.id]));
 
   type Acc = {
@@ -204,7 +214,7 @@ export function agruparSugestoes(
       ocorrencias: g.notasVistas.size,
       ultimaData: g.ultimaData,
       fornecedores,
-      jaCadastrado: jaCobre(g.chave),
+      jaCadastrado: !!idx.achar(g.chave),
     });
   }
   // Não cadastrados primeiro; depois por recorrência desc; depois nome.

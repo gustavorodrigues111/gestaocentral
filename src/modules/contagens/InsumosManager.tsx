@@ -16,7 +16,7 @@ import { Input } from "../../core/ui/Input";
 import { UNIDADES_LABEL } from "../../core/types";
 import type { Fornecedor, Insumo, InsumoFornecedor, RecebimentoNota, UnidadeMedida } from "../../core/types";
 import { InsumoModal, type OpcaoPreco } from "./InsumoModal";
-import { agruparSugestoes, normalizar, tituloCaso, levenshtein, type SugestaoInsumo, type GrupoSugerido } from "./sugestoesRecebimento";
+import { agruparSugestoes, normalizar, tituloCaso, levenshtein, criarIndiceInsumos, type SugestaoInsumo, type GrupoSugerido } from "./sugestoesRecebimento";
 import { MesclarInsumosModal } from "./MesclarInsumosModal";
 import { NotaViewModal } from "./NotaViewModal";
 import { SugeridosTabela, type EdicaoGrupo } from "./SugeridosTabela";
@@ -138,13 +138,19 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
 
   // ── Sugeridos + IA ─────────────────────────────────────────────────────────
   const sugestoes = useMemo(() => agruparSugestoes(recebimentos, insumos, fornecedores), [recebimentos, insumos, fornecedores]);
-  // A IA casou esta sugestão com um insumo que já existe? (matchInsumoId válido)
+  // Casa a sugestão com um insumo já cadastrado: pelo matchInsumoId da IA, OU pelo
+  // NOME LIMPO da IA / nome da sugestão (não só a grafia crua da nota). Devolve o id.
   const insumoIds = useMemo(() => new Set(insumos.map(i => i.id)), [insumos]);
-  const iaCasou = (chave: string) => { const mid = iaMapa[chave]?.matchInsumoId; return !!(mid && insumoIds.has(mid)); };
+  const idxInsumos = useMemo(() => criarIndiceInsumos(insumos), [insumos]);
+  const resolverMatch = (s: SugestaoInsumo): string | null => {
+    const mid = iaMapa[s.chave]?.matchInsumoId;
+    if (mid && insumoIds.has(mid)) return mid;
+    return idxInsumos.achar(iaMapa[s.chave]?.nomeLimpo) || idxInsumos.achar(s.nome) || null;
+  };
   const baseNovas = useMemo(() => sugestoes.filter(s => !s.jaCadastrado && !ignorados.has(s.chave) && (!soRecorrentes || s.ocorrencias >= 2)), [sugestoes, soRecorrentes, ignorados]);
-  // Esconde as que a IA achou que já existem (salvo quando o usuário pede pra ver).
-  const ocultasIA = useMemo(() => baseNovas.filter(s => iaCasou(s.chave)).length, [baseNovas, iaMapa, insumoIds]);
-  const sugestoesNovas = useMemo(() => verMatchIA ? baseNovas : baseNovas.filter(s => !iaCasou(s.chave)), [baseNovas, verMatchIA, iaMapa, insumoIds]);
+  // Esconde as que já existem (IA ou nome limpo), salvo quando o usuário pede pra ver.
+  const ocultasIA = useMemo(() => baseNovas.filter(s => resolverMatch(s)).length, [baseNovas, iaMapa, idxInsumos, insumoIds]);
+  const sugestoesNovas = useMemo(() => verMatchIA ? baseNovas : baseNovas.filter(s => !resolverMatch(s)), [baseNovas, verMatchIA, iaMapa, idxInsumos, insumoIds]);
 
   // MEMÓRIA: quando a IA reconhece que uma grafia de nota é um insumo que já existe
   // (matchInsumoId), grava essa grafia como ALIAS permanente daquele insumo. Assim o
@@ -156,9 +162,9 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
     if (!rid || !podeConfig) return;
     const porInsumo = new Map<string, string[]>();
     for (const s of sugestoes) {
-      if (aliasFeitos.current.has(s.chave)) continue;
-      const mid = iaMapa[s.chave]?.matchInsumoId;
-      if (!mid || !insumoIds.has(mid)) continue;
+      if (s.jaCadastrado || aliasFeitos.current.has(s.chave)) continue;
+      const mid = resolverMatch(s);
+      if (!mid) continue;
       const alvo = insumos.find(i => i.id === mid); if (!alvo) continue;
       if ((alvo.aliases || []).map(normalizar).includes(s.chave)) { aliasFeitos.current.add(s.chave); continue; }
       aliasFeitos.current.add(s.chave);   // marca ANTES de escrever (evita re-fila no re-render)
