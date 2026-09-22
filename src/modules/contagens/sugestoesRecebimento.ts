@@ -10,6 +10,15 @@ export function normalizar(s?: string | null): string {
   return (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toUpperCase().replace(/\s+/g, " ").trim();
 }
 
+// "Assinatura" de palavras significativas de um nome normalizado: só palavras com
+// 3+ letras e SEM dígito (descarta tamanhos/embalagem tipo "2L", "500G", "24UN"),
+// ordenadas — pra comparar produtos ignorando ordem das palavras e o tamanho.
+// Ex.: "COCA COLA 2L" e "REFRI COCA COLA" NÃO batem (refri sobra); "COCA COLA 2L"
+// e "COLA COCA 600ML" batem (mesmo conjunto {COCA,COLA}).
+export function tokensSig(norm: string): string {
+  return norm.replace(/[^A-Z0-9 ]/g, " ").split(/\s+/).filter(t => t.length >= 3 && !/\d/.test(t)).sort().join(" ");
+}
+
 // Primeira maiúscula, resto minúsculo (por palavra). Conectores curtos ficam
 // minúsculos (exceto a 1ª palavra). Preserva tokens com dígito (ex.: "2L").
 const CONECTORES = new Set(["de", "da", "do", "das", "dos", "e", "com", "sem", "para", "pra", "a", "o"]);
@@ -119,11 +128,28 @@ export function agruparSugestoes(
   insumos: Insumo[],
   fornecedores: Fornecedor[],
 ): SugestaoInsumo[] {
-  // Já cadastrado = casa pelo NOME do insumo OU por um dos ALIASES (nomes de
-  // nota vinculados a ele) — assim produtos de fornecedores diferentes já
-  // linkados não voltam a ser sugeridos.
-  const cadastrados = new Set<string>();
-  for (const i of insumos) { cadastrados.add(normalizar(i.nome)); for (const a of (i.aliases || [])) cadastrados.add(normalizar(a)); }
+  // Já cadastrado = casa pelo NOME do insumo OU por um dos ALIASES. Além do match
+  // EXATO, considera SIMILAR: mesma "assinatura" de palavras significativas (sem
+  // números/tamanhos, ordem-independente) ou erro de grafia de 1 letra — assim o
+  // mesmo produto com grafia diferente (ou cadastrado na mão, sem alias da nota)
+  // não volta a ser sugerido. Alta precisão: só esconde o que é claramente igual.
+  const cadNorm = new Set<string>();
+  const cadSig = new Set<string>();
+  const cadList: string[] = [];
+  for (const i of insumos) {
+    for (const raw of [i.nome, ...(i.aliases || [])]) {
+      const c = normalizar(raw); if (!c) continue;
+      cadNorm.add(c); cadList.push(c);
+      const sig = tokensSig(c); if (sig) cadSig.add(sig);
+    }
+  }
+  const jaCobre = (chave: string): boolean => {
+    if (cadNorm.has(chave)) return true;
+    const sig = tokensSig(chave);
+    if (sig && cadSig.has(sig)) return true;
+    if (chave.length >= 6) for (const c of cadList) if (Math.abs(c.length - chave.length) <= 1 && levenshtein(chave, c) <= 1) return true;
+    return false;
+  };
   const fornPorNome = new Map(fornecedores.map((f) => [normalizar(f.nome), f.id]));
 
   type Acc = {
@@ -178,7 +204,7 @@ export function agruparSugestoes(
       ocorrencias: g.notasVistas.size,
       ultimaData: g.ultimaData,
       fornecedores,
-      jaCadastrado: cadastrados.has(g.chave),
+      jaCadastrado: jaCobre(g.chave),
     });
   }
   // Não cadastrados primeiro; depois por recorrência desc; depois nome.
