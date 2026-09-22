@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
-import { Package, Search, Ruler, Save, Minus, Plus, Users, LayoutGrid } from "lucide-react";
-import { addDoc, collection } from "firebase/firestore";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Package, Search, Ruler, Save, Minus, Plus, Users, LayoutGrid, Radio } from "lucide-react";
+import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
@@ -9,7 +9,7 @@ import { Select } from "../../core/ui/Select";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { todayYmd } from "../../core/utils/date";
 import { UNIDADES_LABEL } from "../../core/types";
-import type { Contagem, Insumo } from "../../core/types";
+import type { Contagem, ContagemSessao, Insumo } from "../../core/types";
 
 type Props = {
   insumos: Insumo[];
@@ -30,6 +30,54 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [okMsg, setOkMsg] = useState("");
+  // ── Sessão AO VIVO (colaborativa) ──────────────────────────────────────────
+  const [sessao, setSessao] = useState<ContagemSessao | null>(null);
+  const editandoRef = useRef<string | null>(null);   // campo em foco agora (não sobrescreve com snapshot)
+  const sessionId = useMemo(() => `${restaurantId}_${data}_${turno || "_"}`, [restaurantId, data, turno]);
+
+  // Assina a sessão viva da data+turno atual; sincroniza os campos que NÃO estou
+  // editando (pra ver o que os outros digitam em tempo real).
+  useEffect(() => {
+    setDrafts({}); setObsDrafts({}); editandoRef.current = null;
+    const ref = doc(db, "contagemSessoes", sessionId);
+    return onSnapshot(ref, snap => {
+      const s = snap.exists() ? ({ id: snap.id, ...snap.data() } as ContagemSessao) : null;
+      setSessao(s);
+      const val = s?.valores || {};
+      setDrafts(prev => {
+        const n = { ...prev };
+        for (const [id, v] of Object.entries(val)) if (editandoRef.current !== id) n[id] = String(v.qty);
+        for (const id of Object.keys(n)) if (!(id in val) && editandoRef.current !== id) delete n[id];
+        return n;
+      });
+      setObsDrafts(prev => {
+        const n = { ...prev };
+        for (const [id, v] of Object.entries(val)) if (editandoRef.current !== id) n[id] = v.obs || "";
+        return n;
+      });
+    }, () => setSessao(null));
+  }, [sessionId]);
+
+  // Grava um item na sessão viva (ou remove se ficou vazio). setDoc merge cria a
+  // sessão na 1ª digitação e mescla `valores.{id}` sem tocar nos outros itens.
+  async function commit(id: string, override?: string) {
+    if (!me || !podeConfig) return;
+    const now = new Date().toISOString();
+    const ref = doc(db, "contagemSessoes", sessionId);
+    const meta = {
+      restaurantId, data, turno: turno || undefined, atualizadoEm: now, atualizadoPorNome: me.nome,
+      iniciadoPor: sessao?.iniciadoPor || me.id, iniciadoPorNome: sessao?.iniciadoPorNome || me.nome, iniciadoEm: sessao?.iniciadoEm || now,
+    };
+    const raw = override ?? drafts[id];
+    const qtd = parseFloat((raw || "").replace(",", "."));
+    try {
+      if (raw == null || raw.trim() === "" || isNaN(qtd)) {
+        await setDoc(ref, sanitizeForFirestore({ ...meta, valores: { [id]: deleteField() } }), { merge: true });
+      } else {
+        await setDoc(ref, sanitizeForFirestore({ ...meta, valores: { [id]: { qty: qtd, obs: obsDrafts[id]?.trim() || undefined, porId: me.id, porNome: me.nome, em: now } } }), { merge: true });
+      }
+    } catch (e) { setErr(e instanceof Error ? e.message : "Erro ao sincronizar"); }
+  }
 
   // Fornecedor PRIORITÁRIO do insumo (nome), pra agrupar "por fornecedor".
   const fornecedorDe = (i: Insumo): string => {
@@ -111,6 +159,8 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
         await addDoc(collection(db, "contagens"), sanitizeForFirestore(c));
         saved++;
       }
+      // Finalizou: apaga a sessão viva (o histórico ficou em `contagens`).
+      await deleteDoc(doc(db, "contagemSessoes", sessionId)).catch(() => {});
       setDrafts({});
       setObsDrafts({});
       setOkMsg(`✓ ${saved} contagem(ns) salva(s)`);
@@ -167,6 +217,14 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
         ))}
       </div>
 
+      {sessao && Object.keys(sessao.valores || {}).length > 0 && (
+        <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-900/15 px-3 py-2 text-[12px] text-emerald-800 dark:text-emerald-200 flex items-center gap-2 flex-wrap">
+          <Radio size={14} className="shrink-0 animate-pulse" />
+          <span><strong>Contagem em andamento</strong> (ao vivo) — {Object.keys(sessao.valores).length} item(ns). Outras pessoas podem contar junto nesta mesma data/turno; salva sozinho a cada campo. Só vira contagem oficial ao <strong>Finalizar</strong>.</span>
+          {sessao.atualizadoPorNome && <span className="text-emerald-600/80 dark:text-emerald-400/80">última edição: {sessao.atualizadoPorNome}</span>}
+        </div>
+      )}
+
       {!podeConfig && (
         <div className="text-xs text-gray-500 italic">Sem permissão pra salvar contagens — você vê a interface mas não persiste.</div>
       )}
@@ -217,10 +275,14 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
                             {abaixoMin && <span className="text-amber-600 dark:text-amber-400">abaixo do mín ({min})</span>}
                           </div>
                         </div>
-                        <Stepper value={draft} onChange={(v) => setDraft(i.id, v)} disabled={!podeConfig} destaque={!!draft && !abaixoMin} alerta={abaixoMin} />
+                        <Stepper value={draft} onChange={(v) => setDraft(i.id, v)} onCommit={(v) => void commit(i.id, v)}
+                          onFocus={() => { editandoRef.current = i.id; }} onBlur={() => { editandoRef.current = null; void commit(i.id); }}
+                          disabled={!podeConfig} destaque={!!draft && !abaixoMin} alerta={abaixoMin} />
                       </div>
                       {!!draft && (
-                        <input type="text" value={obsDrafts[i.id] || ""} onChange={(e) => setObs(i.id, e.target.value)} disabled={!podeConfig} placeholder="observação (opcional)"
+                        <input type="text" value={obsDrafts[i.id] || ""} onChange={(e) => setObs(i.id, e.target.value)}
+                          onFocus={() => { editandoRef.current = i.id; }} onBlur={() => { editandoRef.current = null; void commit(i.id); }}
+                          disabled={!podeConfig} placeholder="observação (opcional)"
                           className="mt-2 w-full px-3 py-1.5 text-xs rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 disabled:opacity-60" />
                       )}
                     </div>
@@ -239,14 +301,11 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
       {podeConfig && (
         <div className="sticky bottom-0 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap shadow-lg">
           <div className="text-sm text-gray-700 dark:text-gray-300">
-            <strong>{totalDigitados}</strong> contagem(ns) prontas pra salvar
+            <strong>{totalDigitados}</strong> item(ns) contados <span className="text-gray-400">· salvando ao vivo</span>
           </div>
           <div className="flex gap-2">
-            <Button variant="secondary" onClick={() => { setDrafts({}); setObsDrafts({}); }} disabled={totalDigitados === 0}>
-              Limpar
-            </Button>
             <Button onClick={salvarTudo} disabled={saving || totalDigitados === 0}>
-              {saving ? "Salvando..." : <span className="inline-flex items-center gap-1.5"><Save size={15} /> Salvar ({totalDigitados})</span>}
+              {saving ? "Finalizando..." : <span className="inline-flex items-center gap-1.5"><Save size={15} /> Finalizar e salvar ({totalDigitados})</span>}
             </Button>
           </div>
         </div>
@@ -256,9 +315,9 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
 }
 
 // Stepper mobile-first: − [qtd] +. O número é editável (aceita decimal p/ kg).
-function Stepper({ value, onChange, disabled, destaque, alerta }: { value: string; onChange: (v: string) => void; disabled?: boolean; destaque?: boolean; alerta?: boolean }) {
+function Stepper({ value, onChange, onCommit, onFocus, onBlur, disabled, destaque, alerta }: { value: string; onChange: (v: string) => void; onCommit?: (v: string) => void; onFocus?: () => void; onBlur?: () => void; disabled?: boolean; destaque?: boolean; alerta?: boolean }) {
   const num = parseFloat(value);
-  const passo = (d: number) => onChange(String(Math.max(0, (isNaN(num) ? 0 : num) + d)));
+  const passo = (d: number) => { const v = String(Math.max(0, (isNaN(num) ? 0 : num) + d)); onChange(v); onCommit?.(v); };
   const btn = "w-10 h-10 rounded-lg inline-flex items-center justify-center select-none disabled:opacity-40 shrink-0 active:scale-95 transition-transform";
   const campo = alerta
     ? "border-amber-400 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-300"
@@ -268,7 +327,7 @@ function Stepper({ value, onChange, disabled, destaque, alerta }: { value: strin
   return (
     <div className="flex items-center gap-1.5 shrink-0">
       <button type="button" disabled={disabled} onClick={() => passo(-1)} aria-label="Diminuir" className={`${btn} border border-gray-300 dark:border-gray-700 text-gray-500`}><Minus size={17} /></button>
-      <input type="number" inputMode="decimal" step="any" min={0} value={value} onChange={(e) => onChange(e.target.value)} disabled={disabled} placeholder="0"
+      <input type="number" inputMode="decimal" step="any" min={0} value={value} onChange={(e) => onChange(e.target.value)} onFocus={onFocus} onBlur={onBlur} disabled={disabled} placeholder="0"
         className={`w-16 h-10 text-center text-base font-medium rounded-lg border tabular-nums disabled:opacity-60 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none ${campo}`} />
       <button type="button" disabled={disabled} onClick={() => passo(1)} aria-label="Aumentar" className={`${btn} border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300`}><Plus size={17} /></button>
     </div>

@@ -563,6 +563,7 @@ service cloud.firestore {
     match /segurancaModelos/{id}    { allow read, write: if authed(); }
     match /segurancaAvaliacoes/{id} { allow read, write: if authed(); }
     match /contagens/{id}           { allow read, write: if authed(); }
+    match /contagemSessoes/{id}     { allow read, write: if authed(); }
     match /insumos/{id}             { allow read, write: if authed(); }
     match /fornecedores/{id}        { allow read, write: if authed(); }
     match /pedidos/{id}             { allow read, write: if authed(); }

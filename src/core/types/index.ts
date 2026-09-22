@@ -2765,6 +2765,25 @@ export type Insumo = {
   atualizadoEm: string;
 };
 
+// Sessão de contagem AO VIVO (colaborativa): enquanto a contagem está aberta, os
+// valores ficam aqui e todos que estão contando veem/editam em tempo real (como o
+// checklist). Só ao FINALIZAR vira uma leva de docs em `contagens` e a sessão some.
+// Doc id determinístico = `${restaurantId}_${data}_${turno||"_"}` (1 sessão viva por
+// data+turno — quem abrir a mesma data/turno entra na mesma contagem).
+export type ContagemSessaoValor = { qty: number; obs?: string; porId?: string; porNome?: string; em?: string };
+export type ContagemSessao = {
+  id: string;
+  restaurantId: string;
+  data: string;
+  turno?: string;
+  valores: { [insumoId: string]: ContagemSessaoValor };
+  iniciadoPor?: string;
+  iniciadoPorNome?: string;
+  iniciadoEm?: string;
+  atualizadoEm?: string;
+  atualizadoPorNome?: string;
+};
+
 export type Contagem = {
   id: string;
   restaurantId: string;
