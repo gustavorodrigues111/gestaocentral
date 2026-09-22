@@ -146,6 +146,35 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
   const ocultasIA = useMemo(() => baseNovas.filter(s => iaCasou(s.chave)).length, [baseNovas, iaMapa, insumoIds]);
   const sugestoesNovas = useMemo(() => verMatchIA ? baseNovas : baseNovas.filter(s => !iaCasou(s.chave)), [baseNovas, verMatchIA, iaMapa, insumoIds]);
 
+  // MEMÓRIA: quando a IA reconhece que uma grafia de nota é um insumo que já existe
+  // (matchInsumoId), grava essa grafia como ALIAS permanente daquele insumo. Assim o
+  // produto passa a ser reconhecido pra sempre por match EXATO — não depende mais do
+  // cache da IA nem de re-avaliar, mesmo depois de renomeado. Guardado por ref pra
+  // não reescrever em loop.
+  const aliasFeitos = useRef<Set<string>>(new Set());
+  useEffect(() => {
+    if (!rid || !podeConfig) return;
+    const porInsumo = new Map<string, string[]>();
+    for (const s of sugestoes) {
+      if (aliasFeitos.current.has(s.chave)) continue;
+      const mid = iaMapa[s.chave]?.matchInsumoId;
+      if (!mid || !insumoIds.has(mid)) continue;
+      const alvo = insumos.find(i => i.id === mid); if (!alvo) continue;
+      if ((alvo.aliases || []).map(normalizar).includes(s.chave)) { aliasFeitos.current.add(s.chave); continue; }
+      aliasFeitos.current.add(s.chave);   // marca ANTES de escrever (evita re-fila no re-render)
+      const arr = porInsumo.get(mid) || []; arr.push(s.chave); porInsumo.set(mid, arr);
+    }
+    if (!porInsumo.size) return;
+    (async () => {
+      for (const [mid, novos] of porInsumo) {
+        const alvo = insumos.find(i => i.id === mid); if (!alvo) continue;
+        const aliases = Array.from(new Set([...(alvo.aliases || []).map(normalizar), ...novos]));
+        try { await updateDoc(doc(db, "insumos", mid), sanitizeForFirestore({ aliases, atualizadoEm: new Date().toISOString() })); }
+        catch { for (const c of novos) aliasFeitos.current.delete(c); }   // falhou: permite tentar de novo depois
+      }
+    })();
+  }, [sugestoes, iaMapa, insumos, insumoIds, rid, podeConfig]);
+
   useEffect(() => {
     if (!sugestoesAbertas || !podeConfig) return;
     const faltando = sugestoesNovas.filter(s => !iaMapa[s.chave]);
