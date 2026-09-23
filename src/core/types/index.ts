@@ -6156,6 +6156,29 @@ export const FORMA_PAGAMENTO_LABEL: Record<FormaPagamento, string> = {
   dinheiro: "Dinheiro",
   pix: "PIX",
 };
+// Diff de um item ao casar a NF com um pedido de compra (conferência de recebimento).
+// status: ok = veio conforme | qtd_menor/qtd_maior = quantidade divergente |
+// faltou = estava no pedido e não veio na NF | extra = veio na NF sem estar no pedido.
+export type RecebimentoMatchItemStatus = "ok" | "qtd_menor" | "qtd_maior" | "faltou" | "extra";
+export type RecebimentoMatchItem = {
+  status: RecebimentoMatchItemStatus;
+  descricaoNota?: string;        // grafia crua do item na NF (quando existe na nota)
+  insumoNomePedido?: string;     // item do pedido que casou (quando existe no pedido)
+  qtdNota?: number | null;
+  qtdPedida?: number | null;
+  unidade?: string;
+  obs?: string;
+};
+// Resultado (cacheado) da conferência NF ⇄ pedido feita pela IA. Salvo no doc da NF
+// pra não re-rodar à toa — só re-roda ao trocar o pedido-alvo ou pedir "Reanalisar".
+export type RecebimentoMatchIA = {
+  pedidoId: string;
+  analisadoEm: string;           // ISO
+  resumo: string;                // explicação curta ("mesmo CNPJ, 7 de 8 itens batem…")
+  statusSugerido: "recebido_ok" | "recebido_div";
+  itens: RecebimentoMatchItem[];
+};
+
 export type RecebimentoNota = {
   id: string;
   restaurantId: string;
@@ -6203,6 +6226,7 @@ export type RecebimentoNota = {
   pedidoVinculadoId?: string | null;
   pedidoVinculadoEm?: string | null;
   pedidoVinculadoPor?: { id: string; nome: string } | null;
+  matchIA?: RecebimentoMatchIA | null;   // conferência item-a-item cacheada
 };
 
 // ═══════════════════════════════════════════════════════════════════════════

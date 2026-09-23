@@ -10,7 +10,7 @@
 //  Os lançamentos ficam organizados aqui na tabela (por data/hora de recebimento),
 //  com export PDF/XLSX. OCR (pré-preenche os campos) entra como Fase 2.
 // ════════════════════════════════════════════════════════════════════════════
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -20,8 +20,10 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import { ReceiptText, CreditCard, Banknote, Zap, ClipboardList, Settings, Download, CheckSquare, Trash2, FileText, TriangleAlert, Package, CalendarDays, Search, Plus, Camera, Image as ImageIcon, Pencil, Calculator, Check, Lock, FolderOpen, Lightbulb, Paperclip, Sparkles, SlidersHorizontal, type LucideIcon } from "lucide-react";
-import type { BoletoNota, DuplicataNota, FormaPagamento, ItemNota, RecebimentoNota, TipoDocumento } from "../../core/types";
+import type { BoletoNota, DuplicataNota, FormaPagamento, ItemNota, RecebimentoNota, TipoDocumento, Pedido, PedidoItem, PedidoStatus, Fornecedor, RecebimentoMatchIA, RecebimentoMatchItem } from "../../core/types";
 import { FORMA_PAGAMENTO_LABEL, TIPO_DOCUMENTO_LABEL, CONTA_FIXA_CATEGORIAS } from "../../core/types";
+import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { montarCandidatos } from "./matchPedido";
 import { requestAccessToken } from "../../core/google/driveClient";
 import { findOrCreateSubfolder, uploadFileToFolder } from "../../core/google/driveShared";
 import { centralConfigured } from "../../core/google/driveCentral";
@@ -1016,6 +1018,7 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir, onInclu
         <div className="mt-3 text-[12px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-900/40 rounded-lg px-3 py-2">✓ Conferido em {fmtDataHora(nota.conferidoEm)}{nota.conferidoPor?.nome ? ` por ${nota.conferidoPor.nome}` : ""}</div>
       )}
       {reproMsg && <div className="mt-3 text-[12px] text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">{reproMsg}</div>}
+      {nota.tipoDocumento !== "conta_fixa" && <VincularPedidoBlock nota={nota} podeEditar={podeEditar} />}
       <div className="flex justify-end items-center gap-2 pt-3 flex-wrap">
         {nota.notaDriveUrl && <a href={nota.notaDriveUrl} target="_blank" rel="noreferrer" className="text-xs font-semibold px-3 py-1.5 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300">↗ Abrir nota no Drive</a>}
         {onIncluirDanfe && nota.tipoDocumento === "romaneio" && (
@@ -1034,6 +1037,264 @@ function DetalheModal({ nota, podeEditar, onClose, onEditar, onConferir, onInclu
         )}
       </div>
     </Modal>
+  );
+}
+
+// ─── Vínculo NF ⇄ Pedido de compra (baixa + conferência item-a-item) ─────────
+// Camada 1 (código) sugere o pedido mais provável; camada 2 (IA) confere item a
+// item e o resultado fica cacheado na NF (matchIA). Ao vincular, dá baixa no
+// pedido (bidirecional) e sugere o status conforme/divergente.
+const normNome = (s?: string) => (s || "").normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim();
+
+function VincularPedidoBlock({ nota, podeEditar }: { nota: RecebimentoNota; podeEditar: boolean }) {
+  const { pessoa: me } = useAuth();
+  const rid = nota.restaurantId;
+  const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
+  const [alvoId, setAlvoId] = useState<string>("");
+  const [analisando, setAnalisando] = useState(false);
+  const [erro, setErro] = useState("");
+  const [statusOverride, setStatusOverride] = useState<PedidoStatus | null>(null);
+  const [salvando, setSalvando] = useState(false);
+  const [expandido, setExpandido] = useState(false);
+  const analisadoParaRef = useRef<string>("");
+
+  useEffect(() => {
+    if (!rid) return;
+    return onSnapshot(query(collection(db, "pedidos"), where("restaurantId", "==", rid)),
+      (snap) => setPedidos(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pedido)), () => setPedidos([]));
+  }, [rid]);
+  useEffect(() => {
+    if (!rid) return;
+    return onSnapshot(query(collection(db, "fornecedores"), where("restaurantId", "==", rid)),
+      (snap) => setFornecedores(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Fornecedor)), () => setFornecedores([]));
+  }, [rid]);
+
+  const vinculado = useMemo(() => nota.pedidoVinculadoId ? pedidos.find(p => p.id === nota.pedidoVinculadoId) || null : null, [nota.pedidoVinculadoId, pedidos]);
+  const candidatos = useMemo(() => vinculado ? [] : montarCandidatos(nota, pedidos, fornecedores), [vinculado, nota, pedidos, fornecedores]);
+
+  // Alvo = pedido vinculado, ou o escolhido, ou o melhor candidato.
+  useEffect(() => {
+    if (vinculado) { setAlvoId(vinculado.id); return; }
+    if (!alvoId && candidatos.length > 0) setAlvoId(candidatos[0].pedido.id);
+  }, [vinculado, candidatos, alvoId]);
+
+  const alvo = useMemo(() => pedidos.find(p => p.id === alvoId) || null, [pedidos, alvoId]);
+  const temItensNota = (nota.itens?.length || 0) > 0;
+
+  const analisar = useCallback(async (pedido: Pedido) => {
+    if (!temItensNota) return;   // sem itens lidos não dá pra conferir quantidade
+    setAnalisando(true); setErro("");
+    try {
+      const r = await fetch("/api/recebimento-match-ia", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(await authHeader()) },
+        body: JSON.stringify({
+          nota: { emissor: nota.emissor, valorTotal: nota.valorTotal ?? nota.valorProdutos, dataEmissao: nota.dataEmissao || nota.recebidoEm?.slice(0, 10) },
+          pedido: { fornecedor: pedido.fornecedorNomeSnapshot, totalEstimado: pedido.totalEstimado, enviadoEm: pedido.enviadoEm || pedido.criadoEm },
+          itensNota: (nota.itens || []).map(it => ({ descricao: it.descricao, quantidade: it.quantidade, unidade: it.unidade, valorTotal: it.valorTotal })),
+          itensPedido: pedido.itens.map(it => ({ nome: it.insumoNomeSnapshot, qtdPedida: it.qtdPedida, unidade: it.unidadeSnapshot })),
+        }),
+      });
+      const j = await r.json() as { resumo?: string; statusSugerido?: "recebido_ok" | "recebido_div"; itens?: RecebimentoMatchItem[]; error?: string };
+      if (!r.ok) { setErro(j.error || "Falha ao conferir com a IA."); return; }
+      const matchIA: RecebimentoMatchIA = {
+        pedidoId: pedido.id, analisadoEm: new Date().toISOString(),
+        resumo: j.resumo || "", statusSugerido: j.statusSugerido === "recebido_div" ? "recebido_div" : "recebido_ok",
+        itens: Array.isArray(j.itens) ? j.itens : [],
+      };
+      await updateDoc(doc(db, "recebimentos", nota.id), sanitizeForFirestore({ matchIA }));
+    } catch (e) { setErro(e instanceof Error ? e.message : "Erro na conferência."); }
+    finally { setAnalisando(false); }
+  }, [nota, temItensNota]);
+
+  // Conferência automática (uma vez por pedido-alvo), cacheada na NF.
+  useEffect(() => {
+    if (!podeEditar || vinculado || !alvo || analisando) return;
+    const jaTem = nota.matchIA?.pedidoId === alvo.id;
+    if (jaTem || analisadoParaRef.current === alvo.id) return;
+    analisadoParaRef.current = alvo.id;
+    void analisar(alvo);
+  }, [podeEditar, vinculado, alvo, nota.matchIA, analisando, analisar]);
+
+  const match = nota.matchIA && alvo && nota.matchIA.pedidoId === alvo.id ? nota.matchIA : null;
+  const statusFinal: PedidoStatus = statusOverride || match?.statusSugerido || "recebido_ok";
+
+  async function vincular() {
+    if (!me || !alvo) return;
+    setSalvando(true); setErro("");
+    try {
+      const now = new Date().toISOString();
+      // Mapa nome→diff pra preencher qtdRecebida item a item.
+      const porNome: Record<string, RecebimentoMatchItem> = {};
+      for (const it of match?.itens || []) if (it.insumoNomePedido) porNome[normNome(it.insumoNomePedido)] = it;
+      const itensRec: PedidoItem[] = alvo.itens.map(it => {
+        const d = porNome[normNome(it.insumoNomeSnapshot)];
+        const qtdRecebida = d ? (d.status === "faltou" ? 0 : (d.qtdNota ?? it.qtdPedida)) : it.qtdPedida;
+        return { ...it, qtdRecebida };
+      });
+      await updateDoc(doc(db, "pedidos", alvo.id), sanitizeForFirestore({
+        itens: itensRec, status: statusFinal, recebidoEm: now, recebidoPor: me.id,
+        recebimentoNotaId: nota.id, recebimentoVinculadoEm: now, recebimentoVinculadoPor: me.id,
+        observacaoRecebimento: match?.resumo || undefined, atualizadoEm: now,
+      }));
+      await updateDoc(doc(db, "recebimentos", nota.id), sanitizeForFirestore({
+        pedidoVinculadoId: alvo.id, pedidoVinculadoEm: now, pedidoVinculadoPor: { id: me.id, nome: me.nome },
+        conforme: statusFinal === "recebido_ok",
+        divergencia: statusFinal === "recebido_div" ? (match?.resumo || "Divergência no recebimento") : deleteField(),
+      }));
+    } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao vincular."); }
+    finally { setSalvando(false); }
+  }
+
+  async function desvincular() {
+    if (!me || !vinculado) return;
+    if (!window.confirm("Desvincular esta nota do pedido? O pedido volta para 'Enviado' (aguardando recebimento).")) return;
+    setSalvando(true); setErro("");
+    try {
+      const now = new Date().toISOString();
+      await updateDoc(doc(db, "pedidos", vinculado.id), sanitizeForFirestore({
+        status: "enviado", recebidoEm: deleteField(), recebidoPor: deleteField(),
+        recebimentoNotaId: deleteField(), recebimentoVinculadoEm: deleteField(), recebimentoVinculadoPor: deleteField(),
+        atualizadoEm: now,
+      }));
+      await updateDoc(doc(db, "recebimentos", nota.id), sanitizeForFirestore({
+        pedidoVinculadoId: deleteField(), pedidoVinculadoEm: deleteField(), pedidoVinculadoPor: deleteField(),
+      }));
+    } catch (e) { setErro(e instanceof Error ? e.message : "Erro ao desvincular."); }
+    finally { setSalvando(false); }
+  }
+
+  const fmtDia = (s?: string | null) => s ? (s.length <= 10 ? s.split("-").reverse().join("/") : fmtDataBR(s.slice(0, 10))) : "—";
+  const pedidoLabel = (p: Pedido) => `${p.fornecedorNomeSnapshot} · ${fmtDia(p.enviadoEm || p.criadoEm)} · ${fmtBRL(p.totalEstimado)} · ${p.itens.length} itens`;
+
+  const STATUS_ITEM: Record<RecebimentoMatchItem["status"], { label: string; cls: string; dot: string }> = {
+    ok:        { label: "OK",         cls: "text-emerald-700 dark:text-emerald-300", dot: "bg-emerald-500" },
+    qtd_menor: { label: "veio menos", cls: "text-amber-700 dark:text-amber-300",     dot: "bg-amber-500" },
+    qtd_maior: { label: "veio mais",  cls: "text-amber-700 dark:text-amber-300",     dot: "bg-amber-500" },
+    faltou:    { label: "faltou",     cls: "text-red-700 dark:text-red-300",         dot: "bg-red-500" },
+    extra:     { label: "extra",      cls: "text-indigo-700 dark:text-indigo-300",   dot: "bg-indigo-400" },
+  };
+
+  // ── Já vinculado ──
+  if (vinculado) {
+    const m = nota.matchIA?.pedidoId === vinculado.id ? nota.matchIA : null;
+    return (
+      <div className="mt-3 rounded-xl border border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/60 dark:bg-emerald-900/15 px-3 py-2.5">
+        <div className="flex items-center justify-between gap-2">
+          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-emerald-800 dark:text-emerald-200"><Package size={15} /> Vinculada a um pedido</span>
+          {podeEditar && <button type="button" onClick={() => void desvincular()} disabled={salvando} className="text-[11px] text-gray-500 hover:text-red-600 hover:underline">desvincular</button>}
+        </div>
+        <div className="text-[12px] text-gray-600 dark:text-gray-300 mt-1">{pedidoLabel(vinculado)}</div>
+        {m && (
+          <>
+            {m.resumo && <div className="text-[12px] text-gray-600 dark:text-gray-300 mt-1.5 italic">{m.resumo}</div>}
+            <MatchItens itens={m.itens} statusMap={STATUS_ITEM} />
+          </>
+        )}
+        {erro && <div className="text-[11px] text-red-600 mt-1">{erro}</div>}
+      </div>
+    );
+  }
+
+  // ── Sem pedidos abertos ──
+  if (candidatos.length === 0) {
+    return (
+      <div className="mt-3 rounded-xl border border-gray-200 dark:border-gray-800 px-3 py-2.5 text-[12px] text-gray-500">
+        <span className="inline-flex items-center gap-1.5 font-medium text-gray-600 dark:text-gray-300"><Package size={14} /> Vincular a um pedido</span>
+        <div className="mt-1">Nenhum pedido aberto (enviado/aprovado) pra vincular. Crie e envie o pedido no módulo Compras.</div>
+      </div>
+    );
+  }
+
+  // ── Não vinculado: sugestão + escolha + conferência ──
+  const top = candidatos[0];
+  return (
+    <div className="mt-3 rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-900/10 px-3 py-2.5">
+      <div className="flex items-center justify-between gap-2">
+        <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-indigo-800 dark:text-indigo-200"><Package size={15} /> Vincular a um pedido</span>
+        {top.forte && alvoId === top.pedido.id && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">sugestão forte</span>}
+      </div>
+
+      {/* Escolha do pedido */}
+      <div className="mt-2">
+        <label className="block text-[11px] text-gray-500 mb-1">Pedido</label>
+        <select value={alvoId} onChange={e => { setAlvoId(e.target.value); setStatusOverride(null); }}
+          className="w-full text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-2 py-1.5">
+          {candidatos.map(c => (
+            <option key={c.pedido.id} value={c.pedido.id}>{pedidoLabel(c.pedido)}{c.motivos.length ? ` — ${c.motivos.join(", ")}` : ""}</option>
+          ))}
+        </select>
+      </div>
+
+      {/* Conferência item-a-item (IA) */}
+      {!temItensNota && (
+        <div className="mt-2 text-[11px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 rounded-lg px-2 py-1.5">Esta nota não tem itens lidos — dá pra vincular e dar baixa, mas não dá pra conferir item a item. (Reprocesse pela IA pra extrair os itens.)</div>
+      )}
+      {temItensNota && analisando && <div className="mt-2 text-[12px] text-gray-500 inline-flex items-center gap-1.5"><Sparkles size={13} className="animate-pulse" /> Conferindo itens com a IA…</div>}
+      {temItensNota && match && (
+        <div className="mt-2">
+          {match.resumo && <div className="text-[12px] text-gray-700 dark:text-gray-300 italic">{match.resumo}</div>}
+          <MatchItens itens={match.itens} statusMap={STATUS_ITEM} expandido={expandido} onToggle={() => setExpandido(v => !v)} />
+          <button type="button" onClick={() => alvo && void analisar(alvo)} disabled={analisando} className="text-[11px] text-indigo-600 hover:underline mt-1 inline-flex items-center gap-1"><Sparkles size={11} /> Reanalisar</button>
+        </div>
+      )}
+
+      {/* Status + confirmar */}
+      {podeEditar && (
+        <div className="mt-2.5 flex items-center justify-between gap-2 flex-wrap">
+          <div className="inline-flex rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden text-[12px]">
+            {(["recebido_ok", "recebido_div"] as PedidoStatus[]).map(s => (
+              <button key={s} type="button" onClick={() => setStatusOverride(s)}
+                className={`px-2.5 py-1 font-medium transition-colors ${statusFinal === s ? (s === "recebido_ok" ? "bg-emerald-600 text-white" : "bg-amber-500 text-white") : "text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>
+                {s === "recebido_ok" ? "Recebido OK" : "Com divergência"}
+              </button>
+            ))}
+          </div>
+          <button type="button" onClick={() => void vincular()} disabled={salvando || !alvo}
+            className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 transition-colors">
+            <Check size={15} /> {salvando ? "Vinculando…" : "Vincular e dar baixa"}
+          </button>
+        </div>
+      )}
+      {erro && <div className="text-[11px] text-red-600 mt-1.5">{erro}</div>}
+    </div>
+  );
+}
+
+function MatchItens({ itens, statusMap, expandido = true, onToggle }: {
+  itens: RecebimentoMatchItem[];
+  statusMap: Record<RecebimentoMatchItem["status"], { label: string; cls: string; dot: string }>;
+  expandido?: boolean; onToggle?: () => void;
+}) {
+  if (!itens.length) return null;
+  const divergentes = itens.filter(it => it.status !== "ok");
+  const nOk = itens.length - divergentes.length;
+  return (
+    <div className="mt-1.5">
+      {onToggle && (
+        <button type="button" onClick={onToggle} className="text-[11px] text-gray-500 hover:text-gray-700 dark:hover:text-gray-300">
+          {nOk} conferem{divergentes.length ? ` · ${divergentes.length} divergência(s)` : ""} — {expandido ? "ocultar" : "ver itens"}
+        </button>
+      )}
+      {expandido && (
+        <div className="mt-1 rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 max-h-56 overflow-auto">
+          {itens.map((it, i) => {
+            const st = statusMap[it.status];
+            return (
+              <div key={i} className="px-2 py-1.5 text-[12px] flex items-center gap-2">
+                <span className={`shrink-0 w-1.5 h-1.5 rounded-full ${st.dot}`} />
+                <span className="min-w-0 flex-1 truncate text-gray-800 dark:text-gray-200">{it.insumoNomePedido || it.descricaoNota || "—"}</span>
+                <span className="shrink-0 tabular-nums text-gray-500">
+                  {it.qtdPedida != null ? `ped ${it.qtdPedida}` : ""}{it.qtdPedida != null && it.qtdNota != null ? " · " : ""}{it.qtdNota != null ? `nf ${it.qtdNota}` : ""}{it.unidade ? ` ${it.unidade}` : ""}
+                </span>
+                <span className={`shrink-0 font-semibold ${st.cls}`}>{st.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
   );
 }
 
