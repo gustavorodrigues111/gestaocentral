@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Building2, CalendarDays, Package, Banknote, Send, TriangleAlert, FolderOpen, FileText, Check, X, Copy, Plus, type LucideIcon } from "lucide-react";
+import { Building2, CalendarDays, Package, Banknote, Send, TriangleAlert, FolderOpen, FileText, Check, X, Copy, Plus, Pencil, Trash2, type LucideIcon } from "lucide-react";
 import { deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -109,7 +109,8 @@ export function PedidosTab({ pedidos, podeConfig, insumos = [], recebimentos = [
             key={p.id}
             pedido={p}
             podeConfig={podeConfig}
-            onReceber={() => setRecebendo(p)}
+            insumos={insumos}
+            onVincularReceb={() => setRecebendo(p)}
           />
         ))}
         {filtered.length === 0 && (
@@ -133,15 +134,19 @@ export function PedidosTab({ pedidos, podeConfig, insumos = [], recebimentos = [
 
 // ── PedidoCard ─────────────────────────────────────────────────────────────
 
-function PedidoCard({ pedido, podeConfig, onReceber }: {
+const undPed = (u: string) => u === "outro" ? "" : (UNIDADES_LABEL[u as keyof typeof UNIDADES_LABEL] || u || "").slice(0, 3).toLowerCase();
+
+function PedidoCard({ pedido, podeConfig, insumos, onVincularReceb }: {
   pedido: Pedido;
   podeConfig: boolean;
-  onReceber: () => void;
+  insumos: Insumo[];
+  onVincularReceb: () => void;
 }) {
   const { pessoa: me } = useAuth();
   const [busy, setBusy] = useState(false);
   const [expandido, setExpandido] = useState(false);
-  const [copiado, setCopiado] = useState(false);
+  const [enviarOpen, setEnviarOpen] = useState(false);
+  const [editarOpen, setEditarOpen] = useState(false);
 
   async function setStatus(status: PedidoStatus, extra?: Partial<Pedido>) {
     if (!me) return;
@@ -149,62 +154,17 @@ function PedidoCard({ pedido, podeConfig, onReceber }: {
     try {
       const now = new Date().toISOString();
       const patch: Partial<Pedido> = { status, atualizadoEm: now, ...extra };
-      if (status === "aprovado" && !pedido.aprovadoEm) {
-        patch.aprovadoEm = now;
-        patch.aprovadoPor = me.id;
-      }
-      if (status === "enviado" && !pedido.enviadoEm) {
-        patch.enviadoEm = now;
-        patch.enviadoPor = me.id;
-      }
+      if (status === "enviado" && !pedido.enviadoEm) { patch.enviadoEm = now; patch.enviadoPor = me.id; }
       await updateDoc(doc(db, "pedidos", pedido.id), sanitizeForFirestore(patch));
     } catch (e) {
-      console.error(e);
       alert(e instanceof Error ? e.message : "Erro");
-    } finally {
-      setBusy(false);
-    }
+    } finally { setBusy(false); }
   }
 
   async function excluir() {
-    if (!confirm(`Excluir pedido pra "${pedido.fornecedorNomeSnapshot}"? Não dá pra desfazer.`)) return;
+    if (!confirm(`Excluir o pedido pra "${pedido.fornecedorNomeSnapshot}"? Não dá pra desfazer.`)) return;
     setBusy(true);
-    try {
-      await deleteDoc(doc(db, "pedidos", pedido.id));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  function gerarMensagemWA(): string {
-    const linhas = [
-      `*Pedido — ${pedido.fornecedorNomeSnapshot}*`,
-      `Data: ${new Date(pedido.criadoEm).toLocaleDateString("pt-BR")}`,
-      "",
-      ...pedido.itens.map(it =>
-        `• ${it.insumoNomeSnapshot}: ${it.qtdPedida} ${it.unidadeSnapshot === "outro" ? "" : UNIDADES_LABEL[it.unidadeSnapshot].slice(0, 3).toLowerCase()}`
-      ),
-    ];
-    if (pedido.totalEstimado != null && pedido.totalEstimado > 0) {
-      linhas.push("", `Total estimado: R$ ${pedido.totalEstimado.toFixed(2)}`);
-    }
-    if (pedido.observacaoGeral) {
-      linhas.push("", pedido.observacaoGeral);
-    }
-    return linhas.join("\n");
-  }
-
-  async function copiarMensagem() {
-    try { await navigator.clipboard.writeText(gerarMensagemWA()); setCopiado(true); setTimeout(() => setCopiado(false), 1800); }
-    catch { alert("Não consegui copiar — selecione e copie manualmente:\n\n" + gerarMensagemWA()); }
-  }
-
-  // Abre o WhatsApp DO CELULAR (wa.me) já com o fornecedor e a mensagem prontos.
-  function enviarWhatsApp() {
-    const num = (pedido.fornecedorWhatsappSnapshot || "").replace(/\D/g, "");
-    if (!num) { alert("Fornecedor não tem WhatsApp cadastrado."); return; }
-    window.open(`https://wa.me/${num}?text=${encodeURIComponent(gerarMensagemWA())}`, "_blank");
-    if (pedido.status === "rascunho" || pedido.status === "aprovado") void setStatus("enviado");
+    try { await deleteDoc(doc(db, "pedidos", pedido.id)); } finally { setBusy(false); }
   }
 
   const isFinal = pedido.status === "recebido_ok" || pedido.status === "recebido_div" || pedido.status === "cancelado";
@@ -228,28 +188,20 @@ function PedidoCard({ pedido, podeConfig, onReceber }: {
             )}
           </div>
         </div>
-        <div className="flex gap-1 flex-wrap">
-          {podeConfig && !isFinal && (
-            <Button variant="secondary" size="sm" onClick={() => void copiarMensagem()}><span className="inline-flex items-center gap-1.5"><Copy size={14} /> {copiado ? "Copiado!" : "Copiar"}</span></Button>
-          )}
-          {podeConfig && !isFinal && pedido.fornecedorWhatsappSnapshot && (
-            <Button size="sm" onClick={enviarWhatsApp}><span className="inline-flex items-center gap-1.5"><Send size={14} /> Enviar WhatsApp</span></Button>
-          )}
-          {podeConfig && pedido.status !== "enviado" && !isFinal && (
-            <Button variant="secondary" size="sm" onClick={() => setStatus("enviado")} disabled={busy}><span className="inline-flex items-center gap-1.5"><Check size={14} /> Marcar enviado</span></Button>
+        <div className="flex gap-1.5 flex-wrap">
+          {podeConfig && pedido.status === "rascunho" && (
+            <Button variant="secondary" size="sm" onClick={() => setEditarOpen(true)}><span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editar</span></Button>
           )}
           {podeConfig && !isFinal && (
-            <Button variant="secondary" size="sm" onClick={onReceber}><span className="inline-flex items-center gap-1.5"><Package size={14} /> Receber</span></Button>
+            <Button size="sm" onClick={() => setEnviarOpen(true)}><span className="inline-flex items-center gap-1.5"><Send size={14} /> {pedido.status === "enviado" ? "Reenviar" : "Enviar pedido"}</span></Button>
           )}
           {podeConfig && !isFinal && (
-            <Button variant="secondary" size="sm" onClick={() => setStatus("cancelado")} disabled={busy}>✕ Cancelar</Button>
+            <Button variant="secondary" size="sm" onClick={onVincularReceb}><span className="inline-flex items-center gap-1.5"><Package size={14} /> Vincular recebimento</span></Button>
           )}
-          <Button variant="secondary" size="sm" onClick={() => setExpandido(s => !s)}>
-            {expandido ? "▴" : "▾"}
-          </Button>
-          {podeConfig && (
-            <Button variant="danger" size="sm" onClick={excluir} disabled={busy}>×</Button>
-          )}
+          {podeConfig && !isFinal && (pedido.status === "rascunho"
+            ? <Button variant="secondary" size="sm" onClick={() => void excluir()} disabled={busy}><span className="inline-flex items-center gap-1.5"><Trash2 size={14} /> Excluir</span></Button>
+            : <Button variant="secondary" size="sm" onClick={() => { if (confirm("Cancelar este pedido?")) void setStatus("cancelado"); }} disabled={busy}><span className="inline-flex items-center gap-1.5"><X size={14} /> Cancelar</span></Button>)}
+          <Button variant="secondary" size="sm" onClick={() => setExpandido(s => !s)}>{expandido ? "▴ itens" : "▾ itens"}</Button>
         </div>
       </div>
 
@@ -259,31 +211,116 @@ function PedidoCard({ pedido, podeConfig, onReceber }: {
             const recebido = it.qtdRecebida;
             const div = recebido != null && recebido !== it.qtdPedida;
             return (
-              <div key={it.insumoId} className="flex items-center justify-between gap-2 text-sm">
-                <span className="flex-1 truncate">{it.insumoNomeSnapshot}</span>
-                <span className="text-gray-600 dark:text-gray-400">
-                  pedido: <strong>{it.qtdPedida}</strong> {it.unidadeSnapshot === "outro" ? "" : UNIDADES_LABEL[it.unidadeSnapshot].slice(0, 3).toLowerCase()}
-                </span>
-                {recebido != null && (
-                  <span className={`font-medium ${div ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"}`}>
-                    rec: {recebido}{div ? ` (${recebido > it.qtdPedida ? "+" : ""}${recebido - it.qtdPedida})` : " ✓"}
-                  </span>
-                )}
-                {it.precoUnit != null && (
-                  <span className="text-xs text-gray-500 w-20 text-right">R$ {((it.precoUnit) * it.qtdPedida).toFixed(2)}</span>
-                )}
+              <div key={it.insumoId} className="flex items-center gap-2 text-sm">
+                <span className="flex-1 min-w-0 truncate text-gray-800 dark:text-gray-200">{it.insumoNomeSnapshot}</span>
+                <span className="w-24 text-right tabular-nums text-gray-600 dark:text-gray-400">{it.qtdPedida} {undPed(it.unidadeSnapshot)}</span>
+                {recebido != null
+                  ? <span className={`w-24 text-right text-xs font-medium ${div ? "text-amber-700 dark:text-amber-400" : "text-emerald-700 dark:text-emerald-400"}`}>rec {recebido}{div ? ` (${recebido > it.qtdPedida ? "+" : ""}${recebido - it.qtdPedida})` : " ✓"}</span>
+                  : <span className="w-24 text-right tabular-nums text-xs text-gray-500">{it.precoUnit != null ? `R$ ${(it.precoUnit * it.qtdPedida).toFixed(2)}` : "—"}</span>}
               </div>
             );
           })}
-          {pedido.observacaoGeral && (
-            <div className="text-xs text-gray-700 dark:text-gray-300 italic mt-2">{pedido.observacaoGeral}</div>
-          )}
-          {pedido.observacaoRecebimento && (
-            <div className="text-xs text-amber-700 dark:text-amber-400 italic mt-2 inline-flex items-center gap-1"><Package size={12} className="shrink-0" /> {pedido.observacaoRecebimento}</div>
-          )}
+          {pedido.observacaoGeral && <div className="text-xs text-gray-700 dark:text-gray-300 italic mt-2">{pedido.observacaoGeral}</div>}
+          {pedido.observacaoRecebimento && <div className="text-xs text-amber-700 dark:text-amber-400 italic mt-2 inline-flex items-center gap-1"><Package size={12} className="shrink-0" /> {pedido.observacaoRecebimento}</div>}
         </div>
       )}
+
+      {enviarOpen && <EnviarPedidoModal pedido={pedido} onEnviado={() => void setStatus("enviado")} onClose={() => setEnviarOpen(false)} />}
+      {editarOpen && <EditarPedidoModal pedido={pedido} insumos={insumos} onClose={() => setEditarOpen(false)} />}
     </div>
+  );
+}
+
+// ── EnviarPedidoModal — copiar OU abrir no WhatsApp (wa.me) ───────────────────
+function EnviarPedidoModal({ pedido, onEnviado, onClose }: { pedido: Pedido; onEnviado: () => void; onClose: () => void }) {
+  const [copiado, setCopiado] = useState(false);
+  const msg = useMemo(() => {
+    const linhas = [`*Pedido — ${pedido.fornecedorNomeSnapshot}*`, `Data: ${new Date(pedido.criadoEm).toLocaleDateString("pt-BR")}`, "",
+      ...pedido.itens.map(it => `• ${it.insumoNomeSnapshot}: ${it.qtdPedida} ${undPed(it.unidadeSnapshot)}`.trimEnd())];
+    if (pedido.totalEstimado != null && pedido.totalEstimado > 0) linhas.push("", `Total estimado: R$ ${pedido.totalEstimado.toFixed(2)}`);
+    if (pedido.observacaoGeral) linhas.push("", pedido.observacaoGeral);
+    return linhas.join("\n");
+  }, [pedido]);
+  const num = (pedido.fornecedorWhatsappSnapshot || "").replace(/\D/g, "");
+  async function copiar() { try { await navigator.clipboard.writeText(msg); setCopiado(true); setTimeout(() => setCopiado(false), 1800); } catch { /* ignore */ } }
+  function abrirWhats() { if (!num) return; window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, "_blank"); onEnviado(); onClose(); }
+  return (
+    <Modal title={<span className="inline-flex items-center gap-2"><Send size={18} /> Enviar pedido — {pedido.fornecedorNomeSnapshot}</span>} onClose={onClose} maxWidth="max-w-lg">
+      <div className="space-y-3">
+        <textarea readOnly value={msg} rows={Math.min(14, pedido.itens.length + 5)} className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 font-mono resize-y" />
+        <div className="flex flex-wrap gap-2 justify-end">
+          <Button variant="secondary" onClick={() => void copiar()}><span className="inline-flex items-center gap-1.5"><Copy size={15} /> {copiado ? "Copiado!" : "Copiar mensagem"}</span></Button>
+          {num
+            ? <Button onClick={abrirWhats}><span className="inline-flex items-center gap-1.5"><Send size={15} /> Abrir no WhatsApp</span></Button>
+            : <span className="text-[12px] text-amber-600 dark:text-amber-400 self-center">Fornecedor sem WhatsApp — copie e envie por fora.</span>}
+        </div>
+        <div className="pt-2 border-t border-gray-200 dark:border-gray-800 flex justify-end">
+          <button type="button" onClick={() => { onEnviado(); onClose(); }} className="text-[12px] text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 inline-flex items-center gap-1"><Check size={13} /> já enviei — marcar como enviado</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── EditarPedidoModal — muda quantidades / remove itens / observação ──────────
+function EditarPedidoModal({ pedido, insumos, onClose }: { pedido: Pedido; insumos: Insumo[]; onClose: () => void }) {
+  const { pessoa: me } = useAuth();
+  const [itens, setItens] = useState<PedidoItem[]>(() => pedido.itens.map(it => ({ ...it })));
+  const [obs, setObs] = useState(pedido.observacaoGeral || "");
+  const [addBusca, setAddBusca] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const jaTem = new Set(itens.map(i => i.insumoId));
+  const addOpcoes = useMemo(() => {
+    const b = addBusca.trim().toLowerCase(); if (!b) return [] as Insumo[];
+    return insumos.filter(i => i.ativo && !jaTem.has(i.id) && (i.nome || "").toLowerCase().includes(b)).slice(0, 6);
+  }, [insumos, addBusca, itens]);
+  const total = itens.reduce((s, it) => s + ((it.precoUnit || 0) * (it.qtdPedida || 0)), 0);
+  function setQtd(id: string, v: string) { const n = parseFloat(v.replace(",", ".")); setItens(arr => arr.map(it => it.insumoId === id ? { ...it, qtdPedida: isNaN(n) ? 0 : n } : it)); }
+  function remover(id: string) { setItens(arr => arr.filter(it => it.insumoId !== id)); }
+  function adicionar(i: Insumo) { setItens(arr => [...arr, { insumoId: i.id, insumoNomeSnapshot: i.nome, unidadeSnapshot: i.unidade, qtdPedida: i.fatorCompra && i.fatorCompra > 1 ? i.fatorCompra : 1, precoUnit: i.precoEstimado, incluido: true }]); setAddBusca(""); }
+  async function salvar() {
+    if (!me) return;
+    const validos = itens.filter(it => (it.qtdPedida || 0) > 0);
+    if (!validos.length) { if (!confirm("Nenhum item com quantidade — isso vai deixar o pedido vazio. Continuar?")) return; }
+    setSalvando(true);
+    try {
+      const totalEst = validos.reduce((s, it) => s + ((it.precoUnit || 0) * it.qtdPedida), 0);
+      await updateDoc(doc(db, "pedidos", pedido.id), sanitizeForFirestore({ itens: validos, totalEstimado: totalEst > 0 ? totalEst : undefined, observacaoGeral: obs.trim() || undefined, atualizadoEm: new Date().toISOString() }));
+      onClose();
+    } catch (e) { alert(e instanceof Error ? e.message : "Erro"); } finally { setSalvando(false); }
+  }
+  return (
+    <Modal title={<span className="inline-flex items-center gap-2"><Pencil size={18} /> Editar pedido — {pedido.fornecedorNomeSnapshot}</span>} onClose={onClose} maxWidth="max-w-lg">
+      <div className="space-y-3">
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 max-h-[50vh] overflow-auto">
+          {itens.length === 0 && <div className="text-sm text-gray-400 p-4 text-center">Sem itens — adicione abaixo.</div>}
+          {itens.map(it => (
+            <div key={it.insumoId} className="flex items-center gap-2 px-3 py-1.5">
+              <span className="flex-1 min-w-0 truncate text-sm text-gray-900 dark:text-gray-100">{it.insumoNomeSnapshot}</span>
+              <input type="number" min={0} step="any" value={it.qtdPedida} onChange={e => setQtd(it.insumoId, e.target.value)} className="w-20 px-2 py-1 text-sm text-right rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+              <span className="text-[10px] text-gray-400 w-6">{undPed(it.unidadeSnapshot)}</span>
+              <button type="button" onClick={() => remover(it.insumoId)} className="text-gray-300 hover:text-rose-500 p-1"><Trash2 size={15} /></button>
+            </div>
+          ))}
+        </div>
+        <div>
+          <input value={addBusca} onChange={e => setAddBusca(e.target.value)} placeholder="+ adicionar item ao pedido…" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+          {addOpcoes.length > 0 && (
+            <div className="mt-1 rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+              {addOpcoes.map(i => <button key={i.id} type="button" onClick={() => adicionar(i)} className="w-full text-left px-3 py-1.5 text-sm hover:bg-indigo-50/50 dark:hover:bg-indigo-900/10">{i.nome}</button>)}
+            </div>
+          )}
+        </div>
+        <textarea value={obs} onChange={e => setObs(e.target.value)} rows={2} placeholder="Observação do pedido (opcional)" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 resize-y" />
+        <div className="flex items-center justify-between pt-2 border-t border-gray-200 dark:border-gray-800">
+          <span className="text-sm text-gray-500">Total: <strong className="text-gray-800 dark:text-gray-100">R$ {total.toFixed(2)}</strong></span>
+          <div className="flex gap-2">
+            <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+            <Button onClick={() => void salvar()} disabled={salvando}>{salvando ? "Salvando…" : "Salvar"}</Button>
+          </div>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
