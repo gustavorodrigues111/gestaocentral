@@ -365,13 +365,20 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
   // "Já está cadastrado" → vincula o grupo a um insumo existente escolhido pelo
   // usuário: junta as grafias (aliases) e os fornecedores no insumo. A partir daí
   // essa nota é reconhecida por match exato e não volta a ser sugerida.
-  async function vincularGrupoAoInsumo(g: GrupoSugerido, insumoId: string) {
+  async function vincularGrupoAoInsumo(g: GrupoSugerido, insumoId: string, escolhas: { nome?: string; preco?: number | null; fornecedorPrefNome?: string | null }) {
     const alvo = insumos.find(i => i.id === insumoId); if (!alvo) return;
     const { lista } = await montarFornecedores(g.fornecedores);
     const aliases = Array.from(new Set([...(alvo.aliases || []).map(normalizar), ...g.aliases.map(normalizar), normalizar(alvo.nome)]));
+    // Une fornecedores; marca como primário o escolhido pelo usuário.
     const fornMap = new Map<string, InsumoFornecedor>();
-    for (const f of [...(alvo.fornecedores || []), ...lista]) fornMap.set(normalizar(f.nome), f);
-    await updateDoc(doc(db, "insumos", alvo.id), sanitizeForFirestore({ aliases, fornecedores: [...fornMap.values()], atualizadoEm: new Date().toISOString() }));
+    for (const f of [...(alvo.fornecedores || []), ...lista]) fornMap.set(normalizar(f.nome), { ...f, primario: false });
+    const prefKey = escolhas.fornecedorPrefNome ? normalizar(escolhas.fornecedorPrefNome) : null;
+    let fornPrefId = alvo.fornecedorPreferredId ?? null;
+    if (prefKey && fornMap.has(prefKey)) { const f = fornMap.get(prefKey)!; f.primario = true; fornMap.set(prefKey, f); fornPrefId = f.fornecedorId ?? fornPrefId; }
+    const patch: Record<string, unknown> = { aliases, fornecedores: [...fornMap.values()], fornecedorPreferredId: fornPrefId, atualizadoEm: new Date().toISOString() };
+    if (escolhas.nome && escolhas.nome !== alvo.nome) patch.nome = escolhas.nome;
+    if (escolhas.preco !== undefined) patch.precoEstimado = escolhas.preco == null ? deleteField() : escolhas.preco;
+    await updateDoc(doc(db, "insumos", alvo.id), sanitizeForFirestore(patch));
     setVinculando(null);
   }
 
@@ -649,32 +656,113 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
       )}
       {mesclando && <MesclarInsumosModal insumos={insumos} onClose={() => setMesclando(false)} />}
       {notaView && <NotaViewModal nota={notaView.nota} grafia={notaView.grafia} onClose={() => setNotaView(null)} />}
-      {vinculando && <VincularExistenteModal grupo={vinculando} insumos={insumos} onPick={(id) => void vincularGrupoAoInsumo(vinculando, id)} onClose={() => setVinculando(null)} />}
+      {vinculando && <VincularExistenteModal grupo={vinculando} insumos={insumos} onPick={(id, esc) => void vincularGrupoAoInsumo(vinculando, id, esc)} onClose={() => setVinculando(null)} />}
     </div>
   );
 }
 
 // Escolher a qual insumo JÁ cadastrado vincular uma sugestão ("já está cadastrado").
-function VincularExistenteModal({ grupo, insumos, onPick, onClose }: { grupo: GrupoSugerido; insumos: Insumo[]; onPick: (insumoId: string) => void; onClose: () => void }) {
+type EscolhasVinc = { nome?: string; preco?: number | null; fornecedorPrefNome?: string | null };
+function VincularExistenteModal({ grupo, insumos, onPick, onClose }: { grupo: GrupoSugerido; insumos: Insumo[]; onPick: (insumoId: string, escolhas: EscolhasVinc) => void; onClose: () => void }) {
   const [busca, setBusca] = useState("");
+  const [alvo, setAlvo] = useState<Insumo | null>(null);   // insumo escolhido → passo de resolução
   const [salvando, setSalvando] = useState(false);
   const lista = useMemo(() => {
     const b = busca.trim().toLowerCase();
     return insumos.filter(i => i.ativo).filter(i => !b || (i.nome || "").toLowerCase().includes(b) || (i.categoria || "").toLowerCase().includes(b))
       .sort((a, c) => (a.nome || "").localeCompare(c.nome || "", "pt-BR")).slice(0, 200);
   }, [insumos, busca]);
+
+  // Preço sugerido convertido pra unitário (se a sugestão veio em pacote).
+  const grupoPrecoUn = grupo.precoEstimado != null && grupo.fator && grupo.fator > 1 ? grupo.precoEstimado / grupo.fator : (grupo.precoEstimado ?? null);
+  const alvoPrefNome = alvo ? (alvo.fornecedores?.find(f => f.primario)?.nome || (alvo.fornecedorPreferredId ? alvo.fornecedores?.find(f => f.fornecedorId === alvo.fornecedorPreferredId)?.nome : undefined) || alvo.fornecedores?.[0]?.nome) : undefined;
+  const fornOpcoes = useMemo(() => {
+    if (!alvo) return [] as string[];
+    const set = new Set<string>();
+    if (alvoPrefNome) set.add(alvoPrefNome);
+    for (const f of alvo.fornecedores || []) if (f.nome) set.add(f.nome);
+    for (const f of grupo.fornecedores || []) if (f.nome) set.add(f.nome);
+    return [...set];
+  }, [alvo, grupo, alvoPrefNome]);
+
+  // Escolhas (default = manter o do insumo existente).
+  const [nomeSel, setNomeSel] = useState<string>("");
+  const [precoSel, setPrecoSel] = useState<number | null>(null);
+  const [fornSel, setFornSel] = useState<string>("");
+  function escolher(i: Insumo) {
+    setAlvo(i);
+    setNomeSel(i.nome);
+    setPrecoSel(i.precoEstimado ?? null);
+    setFornSel((i.fornecedores?.find(f => f.primario)?.nome || (i.fornecedorPreferredId ? i.fornecedores?.find(f => f.fornecedorId === i.fornecedorPreferredId)?.nome : undefined) || i.fornecedores?.[0]?.nome) || "");
+  }
+
+  if (alvo) {
+    const nomeDifere = grupo.nome && grupo.nome !== alvo.nome;
+    const precoDifere = grupoPrecoUn != null && grupoPrecoUn !== (alvo.precoEstimado ?? null);
+    const Opcao = ({ on, onClick, titulo, sub }: { on: boolean; onClick: () => void; titulo: string; sub?: string }) => (
+      <button type="button" onClick={onClick} className={`flex-1 min-w-0 text-left rounded-lg border p-2 ${on ? "border-emerald-500 bg-emerald-50/60 dark:bg-emerald-900/20 ring-1 ring-emerald-400" : "border-gray-200 dark:border-gray-700 hover:border-emerald-300"}`}>
+        <div className="text-sm text-gray-900 dark:text-gray-100 truncate">{titulo}</div>
+        {sub && <div className="text-[10px] text-gray-400">{sub}</div>}
+      </button>
+    );
+    return (
+      <Modal title="Vincular — o que manter?" onClose={onClose} maxWidth="max-w-lg">
+        <div className="space-y-3">
+          <p className="text-[13px] text-gray-600 dark:text-gray-400">Unindo a sugestão <strong>"{grupo.nome}"</strong> ao insumo <strong>"{alvo.nome}"</strong>. Escolha o que fica (as grafias e fornecedores são somados de qualquer jeito).</p>
+
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold mb-1">Nome</div>
+            {nomeDifere ? (
+              <div className="flex gap-2">
+                <Opcao on={nomeSel === alvo.nome} onClick={() => setNomeSel(alvo.nome)} titulo={alvo.nome} sub="já cadastrado" />
+                <Opcao on={nomeSel === grupo.nome} onClick={() => setNomeSel(grupo.nome)} titulo={grupo.nome} sub="da nota / IA" />
+              </div>
+            ) : <div className="text-sm text-gray-700 dark:text-gray-200">{alvo.nome}</div>}
+          </div>
+
+          <div>
+            <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold mb-1">Preço /un</div>
+            {precoDifere ? (
+              <div className="flex gap-2">
+                <Opcao on={precoSel === (alvo.precoEstimado ?? null)} onClick={() => setPrecoSel(alvo.precoEstimado ?? null)} titulo={alvo.precoEstimado != null ? `R$ ${alvo.precoEstimado.toFixed(2)}` : "sem preço"} sub="já cadastrado" />
+                <Opcao on={precoSel === grupoPrecoUn} onClick={() => setPrecoSel(grupoPrecoUn)} titulo={grupoPrecoUn != null ? `R$ ${grupoPrecoUn.toFixed(2)}` : "sem preço"} sub="da nota" />
+              </div>
+            ) : <div className="text-sm text-gray-700 dark:text-gray-200">{alvo.precoEstimado != null ? `R$ ${alvo.precoEstimado.toFixed(2)}` : "—"}</div>}
+          </div>
+
+          {fornOpcoes.length > 1 && (
+            <div>
+              <div className="text-[11px] uppercase tracking-wide text-gray-500 font-semibold mb-1">Fornecedor preferencial</div>
+              <div className="flex flex-wrap gap-1.5">
+                {fornOpcoes.map(n => (
+                  <button key={n} type="button" onClick={() => setFornSel(n)} className={`px-2.5 py-1 rounded-full text-[12px] border ${fornSel === n ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800"}`}>{n}</button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="flex justify-between items-center pt-2 border-t border-gray-200 dark:border-gray-800">
+            <button type="button" onClick={() => setAlvo(null)} className="text-[12px] text-gray-500 hover:text-gray-800">← escolher outro</button>
+            <button type="button" disabled={salvando} onClick={() => { setSalvando(true); onPick(alvo.id, { nome: nomeSel, preco: precoSel, fornecedorPrefNome: fornSel || null }); }}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 text-sm font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50"><Link2 size={15} /> {salvando ? "Vinculando…" : "Vincular"}</button>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
     <Modal title="Vincular a um insumo cadastrado" onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
-        <p className="text-[13px] text-gray-600 dark:text-gray-400">Vincular <strong className="text-gray-900 dark:text-gray-100">"{grupo.nome}"</strong> a um produto que já existe. As grafias da nota viram apelidos dele — e essa nota não é sugerida de novo.</p>
+        <p className="text-[13px] text-gray-600 dark:text-gray-400">Vincular <strong className="text-gray-900 dark:text-gray-100">"{grupo.nome}"</strong> a um produto que já existe. No próximo passo você escolhe qual nome/preço/fornecedor manter.</p>
         <Input placeholder="🔍 Buscar insumo…" value={busca} onChange={e => setBusca(e.target.value)} />
         <div className="max-h-80 overflow-auto rounded-lg border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
           {lista.length === 0 && <div className="text-sm text-gray-400 p-4 text-center">Nenhum insumo encontrado.</div>}
           {lista.map(i => (
-            <button key={i.id} type="button" disabled={salvando} onClick={() => { setSalvando(true); onPick(i.id); }}
-              className="w-full text-left px-3 py-2 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10 disabled:opacity-50 flex items-center justify-between gap-2">
+            <button key={i.id} type="button" onClick={() => escolher(i)}
+              className="w-full text-left px-3 py-2 hover:bg-emerald-50/50 dark:hover:bg-emerald-900/10 flex items-center justify-between gap-2">
               <span className="min-w-0"><span className="font-medium text-gray-900 dark:text-gray-100">{i.nome}</span>{i.categoria && <span className="ml-1.5 text-[11px] text-gray-400">{i.categoria}</span>}</span>
-              <span className="shrink-0 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><Link2 size={12} /> vincular</span>
+              <span className="shrink-0 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><Link2 size={12} /> escolher</span>
             </button>
           ))}
         </div>
