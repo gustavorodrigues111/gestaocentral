@@ -342,18 +342,19 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
       {err && <div className="text-sm text-rose-600">{err}</div>}
       {okMsg && <div className="text-sm text-emerald-700 dark:text-emerald-400 font-medium">{okMsg}</div>}
 
-      {/* Barra de ação fixa */}
-      {podeConfig && (
-        <div className="sticky bottom-0 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3 flex items-center justify-between gap-3 flex-wrap shadow-lg">
-          <div className="text-sm text-gray-700 dark:text-gray-300">
-            <strong>{totalDigitados}</strong> item(ns) contados <span className="text-gray-400">· salvando ao vivo</span>
-          </div>
-          <div className="flex gap-2">
-            <Button onClick={salvarTudo} disabled={saving || totalDigitados === 0}>
-              {saving ? "Finalizando..." : <span className="inline-flex items-center gap-1.5"><Save size={15} /> Finalizar e salvar ({totalDigitados})</span>}
+      {/* Barra fina de ação — só quando há itens contados; não cobre o card (spacer) */}
+      {podeConfig && totalDigitados > 0 && (
+        <>
+          <div className="h-14" aria-hidden />
+          <div className="fixed bottom-0 inset-x-0 z-30 bg-white/95 dark:bg-gray-900/95 backdrop-blur border-t border-gray-200 dark:border-gray-800 px-4 py-2.5 flex items-center justify-between gap-3">
+            <div className="text-[13px] text-gray-600 dark:text-gray-300 min-w-0 truncate">
+              <strong className="text-gray-900 dark:text-gray-100">{totalDigitados}</strong> contados <span className="text-emerald-500">· salvando ao vivo</span>
+            </div>
+            <Button size="sm" onClick={salvarTudo} disabled={saving}>
+              {saving ? "Finalizando…" : <span className="inline-flex items-center gap-1.5"><Save size={15} /> Finalizar ({totalDigitados})</span>}
             </Button>
           </div>
-        </div>
+        </>
       )}
     </div>
   );
