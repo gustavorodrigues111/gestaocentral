@@ -140,7 +140,7 @@ const undPed = (u: string) => u === "outro" ? "" : (UNIDADES_LABEL[u as keyof ty
 const precisaUnidade = (u?: string) => !u;
 
 // Stepper −/+ com o número no meio (mobile e desktop), ainda digitável.
-export function QtyStepper({ value, onChange, step = 1, disabled }: { value: number; onChange: (n: number) => void; step?: number; disabled?: boolean }) {
+export function QtyStepper({ value, onChange, step = 1, disabled, tone = "neutro" }: { value: number; onChange: (n: number) => void; step?: number; disabled?: boolean; tone?: "neutro" | "ok" | "warn" }) {
   const [txt, setTxt] = useState(String(value ?? 0));
   useEffect(() => { setTxt(String(value ?? 0)); }, [value]);
   const round = (n: number) => Math.round(n * 1000) / 1000;
@@ -150,14 +150,17 @@ export function QtyStepper({ value, onChange, step = 1, disabled }: { value: num
     <button type="button" disabled={disabled} onMouseDown={e => e.preventDefault()} onClick={() => bump(d)}
       className="px-2.5 flex items-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700 disabled:opacity-40 disabled:hover:bg-transparent transition-colors">{icon}</button>
   );
+  const toneCls = tone === "ok" ? "border-emerald-400 dark:border-emerald-600 bg-emerald-50/60 dark:bg-emerald-900/10"
+    : tone === "warn" ? "border-amber-400 dark:border-amber-600 bg-amber-50/60 dark:bg-amber-900/15"
+    : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900";
   return (
-    <div className={`inline-flex items-stretch h-9 rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden shrink-0 bg-white dark:bg-gray-900 ${disabled ? "opacity-50" : ""}`}>
+    <div className={`inline-flex items-stretch h-9 rounded-lg border overflow-hidden shrink-0 ${toneCls} ${disabled ? "opacity-50" : ""}`}>
       <Btn d={-step} icon={<Minus size={14} />} />
       <input inputMode="decimal" value={txt} disabled={disabled}
         onChange={e => { setTxt(e.target.value); const n = parseFloat(e.target.value.replace(",", ".")); onChange(isNaN(n) ? 0 : n); }}
         onFocus={e => e.currentTarget.select()}
         onBlur={() => setTxt(String(value ?? 0))}
-        className="w-12 text-center text-sm tabular-nums border-x border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:bg-indigo-50/40 dark:focus:bg-indigo-900/20 disabled:bg-transparent" />
+        className="w-12 text-center text-sm tabular-nums border-x border-current/20 bg-transparent focus:outline-none disabled:bg-transparent" />
       <Btn d={step} icon={<Plus size={14} />} />
     </div>
   );
@@ -428,21 +431,29 @@ function ReceberModal({ pedido, insumos, recebimentos, onClose }: { pedido: Pedi
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [notaId, setNotaId] = useState<string | null>(pedido.recebimentoNotaId || null);
-  const [verTodas, setVerTodas] = useState(false);
 
   const insumoById = useMemo(() => new Map(insumos.map(i => [i.id, i])), [insumos]);
   const fornNorm = normalizar(pedido.fornecedorNomeSnapshot);
 
   // NFs candidatas: mesmo fornecedor (emissor parecido) e ainda não vinculadas a
-  // outro pedido. Ordena por data desc. "Ver todas" mostra o resto também.
+  // outro pedido. A sugestão são só as notas emitidas DEPOIS do pedido (faz sentido:
+  // a nota do que chegou é posterior ao pedido). Notas anteriores ao pedido vão pra
+  // um box recolhido (exceção). Outros fornecedores idem.
+  const pedidoDia = (pedido.enviadoEm || pedido.criadoEm || "").slice(0, 10);
   const candidatas = useMemo(() => {
     const disp = recebimentos.filter(n => !n.pedidoVinculadoId || n.pedidoVinculadoId === pedido.id);
     const casa = (n: RecebimentoNota) => { const e = normalizar(n.emissor || ""); return !!e && (e.includes(fornNorm) || fornNorm.includes(e)); };
-    const sug = disp.filter(casa);
+    const notaDia = (n: RecebimentoNota) => (n.dataEmissao || n.recebidoEm || "").slice(0, 10);
+    const posterior = (n: RecebimentoNota) => { const d = notaDia(n); return !pedidoDia || !d || d >= pedidoDia; };
+    const doForn = disp.filter(casa);
     const resto = disp.filter(n => !casa(n));
     const ord = (a: RecebimentoNota, b: RecebimentoNota) => (b.dataEmissao || b.recebidoEm || "").localeCompare(a.dataEmissao || a.recebidoEm || "");
-    return { sug: sug.sort(ord), resto: resto.sort(ord) };
-  }, [recebimentos, fornNorm, pedido.id]);
+    return {
+      sug: doForn.filter(posterior).sort(ord),          // sugestões (depois do pedido)
+      anteriores: doForn.filter(n => !posterior(n)).sort(ord),  // exceção (antes do pedido)
+      resto: resto.sort(ord),                            // outros fornecedores
+    };
+  }, [recebimentos, fornNorm, pedido.id, pedidoDia]);
   const notaSel = notaId ? recebimentos.find(n => n.id === notaId) || null : null;
 
   // Ao escolher uma NF: casa os itens da nota (por descrição normalizada × aliases/
@@ -501,9 +512,13 @@ function ReceberModal({ pedido, insumos, recebimentos, onClose }: { pedido: Pedi
   return (
     <Modal title={<span className="inline-flex items-center gap-2"><Package size={18} /> Receber — {pedido.fornecedorNomeSnapshot}</span>} onClose={onClose} maxWidth="max-w-2xl">
       <div className="space-y-3">
-        {/* Vincular a uma NF do Recebimento */}
-        <div className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-900/10 p-2.5 space-y-1.5">
-          <div className="text-[11px] font-bold uppercase tracking-wide text-indigo-700 dark:text-indigo-300">Vincular à nota do Recebimento (dá baixa)</div>
+        {/* Vincular a uma NF do Recebimento — box expansível */}
+        <details open={!notaSel} className="rounded-xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50/50 dark:bg-indigo-900/10 p-2.5 [&_summary]:list-none">
+          <summary className="text-[11px] font-bold uppercase tracking-wide text-indigo-700 dark:text-indigo-300 cursor-pointer flex items-center justify-between gap-2">
+            <span>Vincular à nota do Recebimento (dá baixa)</span>
+            <span className="text-[10px] font-normal normal-case text-indigo-500">{notaSel ? "1 vinculada" : `${candidatas.sug.length} sugestão(ões)`}</span>
+          </summary>
+          <div className="space-y-1.5 mt-2">
           {notaSel ? (
             <div className="flex items-center justify-between gap-2 text-[13px] bg-white dark:bg-gray-900 rounded-lg border border-indigo-200 dark:border-indigo-800 px-2.5 py-1.5">
               <span className="min-w-0"><strong className="text-gray-900 dark:text-gray-100">{notaSel.emissor || "NF"}</strong> <span className="text-gray-500">· nº {notaSel.numeroNota || "—"} · {fmtD(notaSel.dataEmissao || notaSel.recebidoEm)}{notaSel.valorTotal != null ? ` · R$ ${notaSel.valorTotal.toFixed(2)}` : ""}</span></span>
@@ -511,16 +526,34 @@ function ReceberModal({ pedido, insumos, recebimentos, onClose }: { pedido: Pedi
             </div>
           ) : (
             <>
-              {candidatas.sug.length === 0 && !verTodas && <div className="text-[12px] text-gray-500">Nenhuma NF do fornecedor "{pedido.fornecedorNomeSnapshot}" encontrada. <button type="button" onClick={() => setVerTodas(true)} className="text-indigo-600 dark:text-indigo-400 hover:underline">ver todas as notas</button></div>}
-              {candidatas.sug.map(n => (
-                <button key={n.id} type="button" onClick={() => aplicarNota(n)} className="w-full text-left text-[13px] bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-indigo-300 px-2.5 py-1.5 flex items-center justify-between gap-2">
-                  <span className="min-w-0"><strong>{n.emissor || "NF"}</strong> <span className="text-gray-500">· nº {n.numeroNota || "—"} · {fmtD(n.dataEmissao || n.recebidoEm)}{n.valorTotal != null ? ` · R$ ${n.valorTotal.toFixed(2)}` : ""}</span></span>
-                  <span className="shrink-0 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">é esta ›</span>
-                </button>
-              ))}
-              {(verTodas || candidatas.sug.length > 0) && (
+              {candidatas.sug.length === 0
+                ? <div className="text-[12px] text-gray-500">Nenhuma nota do fornecedor "{pedido.fornecedorNomeSnapshot}" emitida após o pedido. Veja as opções abaixo ou confirme sem NF.</div>
+                : candidatas.sug.map(n => (
+                  <button key={n.id} type="button" onClick={() => aplicarNota(n)} className="w-full text-left text-[13px] bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-indigo-300 px-2.5 py-1.5 flex items-center justify-between gap-2">
+                    <span className="min-w-0"><strong>{n.emissor || "NF"}</strong> <span className="text-gray-500">· nº {n.numeroNota || "—"} · {fmtD(n.dataEmissao || n.recebidoEm)}{n.valorTotal != null ? ` · R$ ${n.valorTotal.toFixed(2)}` : ""}</span></span>
+                    <span className="shrink-0 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">é esta ›</span>
+                  </button>
+                ))}
+
+              {/* Exceção: notas do fornecedor emitidas ANTES do pedido (recolhido) */}
+              {candidatas.anteriores.length > 0 && (
                 <details className="text-[12px]">
-                  <summary className="cursor-pointer text-gray-500 hover:text-gray-700">Outra nota… ({candidatas.resto.length})</summary>
+                  <summary className="cursor-pointer text-gray-500 hover:text-gray-700">Notas anteriores ao pedido ({candidatas.anteriores.length})</summary>
+                  <div className="mt-1 space-y-1 max-h-48 overflow-y-auto">
+                    {candidatas.anteriores.map(n => (
+                      <button key={n.id} type="button" onClick={() => aplicarNota(n)} className="w-full text-left bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-indigo-300 px-2.5 py-1.5 flex items-center justify-between gap-2">
+                        <span className="min-w-0"><strong>{n.emissor || "NF"}</strong> <span className="text-gray-500">· nº {n.numeroNota || "—"} · {fmtD(n.dataEmissao || n.recebidoEm)}{n.valorTotal != null ? ` · R$ ${n.valorTotal.toFixed(2)}` : ""}</span></span>
+                        <span className="shrink-0 text-[11px] text-gray-400">vincular ›</span>
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              )}
+
+              {/* Outros fornecedores (recolhido) */}
+              {candidatas.resto.length > 0 && (
+                <details className="text-[12px]">
+                  <summary className="cursor-pointer text-gray-500 hover:text-gray-700">Outra nota (outro fornecedor)… ({candidatas.resto.length})</summary>
                   <div className="mt-1 space-y-1 max-h-48 overflow-y-auto">
                     {candidatas.resto.map(n => (
                       <button key={n.id} type="button" onClick={() => aplicarNota(n)} className="w-full text-left bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-indigo-300 px-2.5 py-1.5">
@@ -533,7 +566,8 @@ function ReceberModal({ pedido, insumos, recebimentos, onClose }: { pedido: Pedi
               <p className="text-[10px] text-gray-400">Opcional — dá pra confirmar o recebimento sem NF. Vincular preenche as quantidades a partir da nota e marca a baixa nos dois lados.</p>
             </>
           )}
-        </div>
+          </div>
+        </details>
 
         <p className="text-sm text-gray-600 dark:text-gray-400">
           Confira o que foi entregue{notaSel ? " (quantidades vieram da NF — ajuste se preciso)" : ""}. Se diferente do pedido, ajuste a quantidade.
@@ -556,18 +590,11 @@ function ReceberModal({ pedido, insumos, recebimentos, onClose }: { pedido: Pedi
                   <div className="text-[10px] text-gray-500">{UNIDADES_LABEL[it.unidadeSnapshot]}</div>
                 </div>
                 <div className="col-span-2 text-right text-sm">{it.qtdPedida}</div>
-                <div className="col-span-3 text-right">
-                  <input
-                    type="number"
-                    min={0}
-                    step="any"
-                    value={recebido[it.insumoId] || ""}
-                    onChange={(e) => setRecebido(s => ({ ...s, [it.insumoId]: e.target.value }))}
-                    className={`w-full px-2 py-1 text-sm text-right rounded border font-mono ${
-                      diff !== 0
-                        ? "border-amber-400 bg-amber-50 dark:bg-amber-900/20"
-                        : "border-emerald-400 bg-emerald-50 dark:bg-emerald-900/10"
-                    }`}
+                <div className="col-span-3 flex justify-end">
+                  <QtyStepper
+                    value={parseFloat((recebido[it.insumoId] || "0").replace(",", ".")) || 0}
+                    onChange={n => setRecebido(s => ({ ...s, [it.insumoId]: String(n) }))}
+                    tone={diff !== 0 ? "warn" : "ok"}
                   />
                 </div>
                 <div className={`col-span-1 text-right text-xs font-bold ${
