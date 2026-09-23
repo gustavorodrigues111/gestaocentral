@@ -7,7 +7,6 @@ import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Select } from "../../core/ui/Select";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import { todayYmd } from "../../core/utils/date";
 import { UNIDADES_LABEL } from "../../core/types";
 import type { Contagem, ContagemSessao, Insumo } from "../../core/types";
 
@@ -16,12 +15,14 @@ type Props = {
   ultimaContagem: Record<string, Contagem>;
   restaurantId: string;
   podeConfig: boolean;
+  data: string;
+  turno: string;
+  onData: (v: string) => void;
+  onTurno: (v: string) => void;
 };
 
-export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, podeConfig }: Props) {
+export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, podeConfig, data, turno, onData, onTurno }: Props) {
   const { pessoa: me } = useAuth();
-  const [data, setData] = useState(todayYmd());
-  const [turno, setTurno] = useState<string>("");
   const [agrupamento, setAgrupamento] = useState<"categoria" | "fornecedor">("categoria");
   const [filtroChip, setFiltroChip] = useState<string>("todas");
   const [search, setSearch] = useState("");
@@ -216,8 +217,8 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
     <div className="space-y-3">
       {/* Topo: data + turno + busca (empilha no mobile) */}
       <div className="grid grid-cols-1 sm:grid-cols-[auto_auto_1fr] gap-2 items-end">
-        <Input label="Data" type="date" value={data} onChange={(e) => setData(e.target.value)} />
-        <Select label="Turno" value={turno} onChange={(e) => setTurno(e.target.value)}>
+        <Input label="Data" type="date" value={data} onChange={(e) => onData(e.target.value)} />
+        <Select label="Turno" value={turno} onChange={(e) => onTurno(e.target.value)}>
           <option value="">—</option>
           <option value="manhã">Manhã</option>
           <option value="tarde">Tarde</option>

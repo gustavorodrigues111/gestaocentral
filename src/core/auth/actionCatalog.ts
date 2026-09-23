@@ -169,6 +169,7 @@ export const CATALOGO: CatalogoModulo[] = [
       { id: "lancar",           label: "Lançar contagem" },
       { id: "verCiclos",        label: "Ver ciclos atuais e passados" },
       { id: "abrirFecharCiclo", label: "Abrir / fechar ciclo" },
+      { id: "editarFinalizada", label: "Editar/corrigir contagem já finalizada" },
       { id: "configurar",       label: "Configurar itens, categorias, estoques" },
     ],
   },

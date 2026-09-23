@@ -7,7 +7,7 @@
 // ════════════════════════════════════════════════════════════════════════════
 import { useMemo, useState } from "react";
 import { Building2, Smartphone, ClipboardList, TriangleAlert, ChevronDown, ChevronRight, Sparkles, RotateCcw, Loader2, ClipboardCheck, PencilLine, ArrowLeft, Tag, Check, CalendarDays } from "lucide-react";
-import { addDoc, collection } from "firebase/firestore";
+import { addDoc, collection, doc, updateDoc } from "firebase/firestore";
 import { db, auth } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
@@ -149,7 +149,12 @@ export function NovoPedidoModal({ rid, insumos, fornecedores, contagens, pedidos
         iaResumo: iaResumo[g.fornecedorId!] || undefined,
         criadoEm: now, criadoPor: me.id, atualizadoEm: now,
       };
-      await addDoc(collection(db, "pedidos"), sanitizeForFirestore(pedido));
+      const ref = await addDoc(collection(db, "pedidos"), sanitizeForFirestore(pedido));
+      // Trava a contagem de origem: vira "pedido feito" — não pode mais ser editada
+      // (só o pedido edita). Anti-duplicidade. Marca só uma vez.
+      if (origem === "contagem" && sessaoId) {
+        await updateDoc(doc(db, "contagemSessoes", sessaoId), sanitizeForFirestore({ status: "pedido", pedidoId: ref.id, atualizadoEm: now })).catch(() => {});
+      }
       setCriados(c => [...c, g.fornecedorId!]);
       onCreated?.();
     } catch (e) { alert(e instanceof Error ? e.message : "Erro ao criar pedido"); }
