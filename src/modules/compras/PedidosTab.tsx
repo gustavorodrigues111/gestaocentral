@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Building2, CalendarDays, Package, Banknote, Send, TriangleAlert, FolderOpen, FileText, Check, X, Copy, Plus, Pencil, Trash2, Sparkles, Minus, type LucideIcon } from "lucide-react";
+import { Building2, CalendarDays, Package, Banknote, Send, TriangleAlert, FolderOpen, FileText, Check, X, Copy, Plus, Pencil, Trash2, Sparkles, Minus, Clock, Store, ChevronDown, type LucideIcon } from "lucide-react";
 import { deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -431,6 +431,7 @@ function ReceberModal({ pedido, insumos, recebimentos, onClose }: { pedido: Pedi
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [notaId, setNotaId] = useState<string | null>(pedido.recebimentoNotaId || null);
+  const [verMais, setVerMais] = useState<"anteriores" | "resto" | null>(null);
 
   const insumoById = useMemo(() => new Map(insumos.map(i => [i.id, i])), [insumos]);
   const fornNorm = normalizar(pedido.fornecedorNomeSnapshot);
@@ -535,33 +536,32 @@ function ReceberModal({ pedido, insumos, recebimentos, onClose }: { pedido: Pedi
                   </button>
                 ))}
 
-              {/* Exceção: notas do fornecedor emitidas ANTES do pedido (recolhido) */}
-              {candidatas.anteriores.length > 0 && (
-                <details className="text-[12px]">
-                  <summary className="cursor-pointer text-gray-500 hover:text-gray-700">Notas anteriores ao pedido ({candidatas.anteriores.length})</summary>
-                  <div className="mt-1 space-y-1 max-h-48 overflow-y-auto">
-                    {candidatas.anteriores.map(n => (
-                      <button key={n.id} type="button" onClick={() => aplicarNota(n)} className="w-full text-left bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-indigo-300 px-2.5 py-1.5 flex items-center justify-between gap-2">
-                        <span className="min-w-0"><strong>{n.emissor || "NF"}</strong> <span className="text-gray-500">· nº {n.numeroNota || "—"} · {fmtD(n.dataEmissao || n.recebidoEm)}{n.valorTotal != null ? ` · R$ ${n.valorTotal.toFixed(2)}` : ""}</span></span>
-                        <span className="shrink-0 text-[11px] text-gray-400">vincular ›</span>
-                      </button>
-                    ))}
-                  </div>
-                </details>
+              {/* Dois botões (largura completa): notas anteriores ao pedido / outro fornecedor */}
+              {(candidatas.anteriores.length > 0 || candidatas.resto.length > 0) && (
+                <div className="flex gap-2">
+                  {candidatas.anteriores.length > 0 && (
+                    <button type="button" onClick={() => setVerMais(v => v === "anteriores" ? null : "anteriores")}
+                      className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-[12px] font-medium transition-colors ${verMais === "anteriores" ? "border-indigo-400 bg-indigo-100/70 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-indigo-300"}`}>
+                      <Clock size={13} /> Anteriores ao pedido ({candidatas.anteriores.length}) <ChevronDown size={13} className={`transition-transform ${verMais === "anteriores" ? "rotate-180" : ""}`} />
+                    </button>
+                  )}
+                  {candidatas.resto.length > 0 && (
+                    <button type="button" onClick={() => setVerMais(v => v === "resto" ? null : "resto")}
+                      className={`flex-1 inline-flex items-center justify-center gap-1.5 rounded-lg border px-2.5 py-2 text-[12px] font-medium transition-colors ${verMais === "resto" ? "border-indigo-400 bg-indigo-100/70 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-gray-600 dark:text-gray-300 hover:border-indigo-300"}`}>
+                      <Store size={13} /> Outro fornecedor ({candidatas.resto.length}) <ChevronDown size={13} className={`transition-transform ${verMais === "resto" ? "rotate-180" : ""}`} />
+                    </button>
+                  )}
+                </div>
               )}
-
-              {/* Outros fornecedores (recolhido) */}
-              {candidatas.resto.length > 0 && (
-                <details className="text-[12px]">
-                  <summary className="cursor-pointer text-gray-500 hover:text-gray-700">Outra nota (outro fornecedor)… ({candidatas.resto.length})</summary>
-                  <div className="mt-1 space-y-1 max-h-48 overflow-y-auto">
-                    {candidatas.resto.map(n => (
-                      <button key={n.id} type="button" onClick={() => aplicarNota(n)} className="w-full text-left bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-indigo-300 px-2.5 py-1.5">
-                        <strong>{n.emissor || "NF"}</strong> <span className="text-gray-500">· nº {n.numeroNota || "—"} · {fmtD(n.dataEmissao || n.recebidoEm)}</span>
-                      </button>
-                    ))}
-                  </div>
-                </details>
+              {verMais && (
+                <div className="space-y-1 max-h-48 overflow-y-auto">
+                  {(verMais === "anteriores" ? candidatas.anteriores : candidatas.resto).map(n => (
+                    <button key={n.id} type="button" onClick={() => aplicarNota(n)} className="w-full text-left text-[13px] bg-white dark:bg-gray-900 rounded-lg border border-gray-200 dark:border-gray-800 hover:border-indigo-300 px-2.5 py-1.5 flex items-center justify-between gap-2">
+                      <span className="min-w-0"><strong>{n.emissor || "NF"}</strong> <span className="text-gray-500">· nº {n.numeroNota || "—"} · {fmtD(n.dataEmissao || n.recebidoEm)}{n.valorTotal != null ? ` · R$ ${n.valorTotal.toFixed(2)}` : ""}</span></span>
+                      <span className="shrink-0 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">vincular ›</span>
+                    </button>
+                  ))}
+                </div>
               )}
               <p className="text-[10px] text-gray-400">Opcional — dá pra confirmar o recebimento sem NF. Vincular preenche as quantidades a partir da nota e marca a baixa nos dois lados.</p>
             </>
