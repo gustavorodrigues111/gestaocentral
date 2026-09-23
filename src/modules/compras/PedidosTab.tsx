@@ -235,9 +235,9 @@ function PedidoCard({ pedido, podeConfig, insumos, onVincularReceb }: {
 function EnviarPedidoModal({ pedido, onEnviado, onClose }: { pedido: Pedido; onEnviado: () => void; onClose: () => void }) {
   const [copiado, setCopiado] = useState(false);
   const msg = useMemo(() => {
+    // Sem preço/total na mensagem do fornecedor — ele cota com o preço dele.
     const linhas = [`*Pedido — ${pedido.fornecedorNomeSnapshot}*`, `Data: ${new Date(pedido.criadoEm).toLocaleDateString("pt-BR")}`, "",
       ...pedido.itens.map(it => `• ${it.insumoNomeSnapshot}: ${it.qtdPedida} ${undPed(it.unidadeSnapshot)}`.trimEnd())];
-    if (pedido.totalEstimado != null && pedido.totalEstimado > 0) linhas.push("", `Total estimado: R$ ${pedido.totalEstimado.toFixed(2)}`);
     if (pedido.observacaoGeral) linhas.push("", pedido.observacaoGeral);
     return linhas.join("\n");
   }, [pedido]);
@@ -248,6 +248,12 @@ function EnviarPedidoModal({ pedido, onEnviado, onClose }: { pedido: Pedido; onE
     <Modal title={<span className="inline-flex items-center gap-2"><Send size={18} /> Enviar pedido — {pedido.fornecedorNomeSnapshot}</span>} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
         <textarea readOnly value={msg} rows={Math.min(14, pedido.itens.length + 5)} className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 font-mono resize-y" />
+        {pedido.totalEstimado != null && pedido.totalEstimado > 0 && (
+          <div className="flex items-center justify-between gap-2 rounded-lg border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/60 dark:bg-indigo-900/15 px-3 py-2">
+            <span className="text-[12px] text-gray-600 dark:text-gray-300 inline-flex items-center gap-1.5"><Banknote size={14} className="text-indigo-500" /> Total estimado <span className="text-gray-400">(interno — não vai na mensagem)</span></span>
+            <span className="text-sm font-bold tabular-nums text-indigo-700 dark:text-indigo-300">R$ {pedido.totalEstimado.toFixed(2)}</span>
+          </div>
+        )}
         <div className="flex flex-wrap gap-2 justify-end">
           <Button variant="secondary" onClick={() => void copiar()}><span className="inline-flex items-center gap-1.5"><Copy size={15} /> {copiado ? "Copiado!" : "Copiar mensagem"}</span></Button>
           {num
