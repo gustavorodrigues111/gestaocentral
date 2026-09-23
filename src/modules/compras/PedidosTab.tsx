@@ -178,6 +178,7 @@ function PedidoCard({ pedido, podeConfig, insumos, onVincularReceb }: {
   const [enviarOpen, setEnviarOpen] = useState(false);
   const [editarOpen, setEditarOpen] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [statusMenuOpen, setStatusMenuOpen] = useState(false);
 
   async function setStatus(status: PedidoStatus, extra?: Partial<Pedido>) {
     if (!me) return;
@@ -247,11 +248,25 @@ function PedidoCard({ pedido, podeConfig, insumos, onVincularReceb }: {
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Building2 size={16} /> {pedido.fornecedorNomeSnapshot}</h3>
             {podeConfig && naoEnviado ? (
-              <button type="button" title="Marcar como enviado" disabled={busy}
-                onClick={e => { e.stopPropagation(); void setStatus("enviado"); }}
-                className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded hover:ring-1 hover:ring-current/30 ${badgeCls}`}>
-                <BadgeIcon size={11} /> {badgeLabel} <Check size={10} className="opacity-60" />
-              </button>
+              <span className="relative inline-flex" onClick={e => e.stopPropagation()}>
+                <button type="button" title="Alterar status" disabled={busy}
+                  onClick={() => setStatusMenuOpen(o => !o)}
+                  className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded hover:ring-1 hover:ring-current/30 ${badgeCls}`}>
+                  <BadgeIcon size={11} /> {badgeLabel} <ChevronDown size={10} className="opacity-60" />
+                </button>
+                {statusMenuOpen && (
+                  <>
+                    <button type="button" aria-hidden className="fixed inset-0 z-10 cursor-default" onClick={() => setStatusMenuOpen(false)} />
+                    <div className="absolute left-0 top-full mt-1 z-20 w-48 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg py-1">
+                      <div className="px-3 pb-1 pt-0.5 text-[10px] uppercase tracking-wider text-gray-400">Alterar status</div>
+                      <button type="button" disabled={busy} onClick={() => { setStatusMenuOpen(false); void setStatus("enviado"); }}
+                        className="w-full text-left px-3 py-1.5 text-sm inline-flex items-center gap-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300">
+                        <Send size={14} /> Marcar como enviado
+                      </button>
+                    </div>
+                  </>
+                )}
+              </span>
             ) : (
               <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${badgeCls}`}>
                 <BadgeIcon size={11} /> {badgeLabel}
@@ -318,14 +333,14 @@ function PedidoCard({ pedido, podeConfig, insumos, onVincularReceb }: {
         </div>
       )}
 
-      {enviarOpen && <EnviarPedidoModal pedido={pedido} onEnviado={() => void setStatus("enviado")} onClose={() => setEnviarOpen(false)} />}
+      {enviarOpen && <EnviarPedidoModal pedido={pedido} jaEnviado={pedido.status === "enviado"} onEnviado={() => void setStatus("enviado")} onClose={() => setEnviarOpen(false)} />}
       {editarOpen && <EditarPedidoModal pedido={pedido} insumos={insumos} onClose={() => setEditarOpen(false)} />}
     </div>
   );
 }
 
 // ── EnviarPedidoModal — copiar OU abrir no WhatsApp (wa.me) ───────────────────
-function EnviarPedidoModal({ pedido, onEnviado, onClose }: { pedido: Pedido; onEnviado: () => void; onClose: () => void }) {
+function EnviarPedidoModal({ pedido, jaEnviado, onEnviado, onClose }: { pedido: Pedido; jaEnviado?: boolean; onEnviado: () => void; onClose: () => void }) {
   const [copiado, setCopiado] = useState(false);
   const msg = useMemo(() => {
     // Sem preço/total na mensagem do fornecedor — ele cota com o preço dele.
@@ -348,11 +363,13 @@ function EnviarPedidoModal({ pedido, onEnviado, onClose }: { pedido: Pedido; onE
             <span className="text-sm font-bold tabular-nums text-indigo-700 dark:text-indigo-300">R$ {pedido.totalEstimado.toFixed(2)}</span>
           </div>
         )}
-        <div className="flex flex-wrap gap-2 justify-end items-center">
-          <Button variant="secondary" onClick={() => void copiar()}><span className="inline-flex items-center gap-1.5"><Copy size={15} /> {copiado ? "Copiado!" : "Copiar mensagem"}</span></Button>
-          <Button variant="secondary" disabled={!num} onClick={abrirWhats} title={num ? "Abrir a conversa no WhatsApp" : "Fornecedor sem WhatsApp"}><span className="inline-flex items-center gap-1.5"><Send size={15} /> Enviar no WhatsApp</span></Button>
-          <Button onClick={() => { onEnviado(); onClose(); }}><span className="inline-flex items-center gap-1.5"><Check size={15} /> Pedido enviado</span></Button>
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="secondary" className="w-full justify-center" onClick={() => void copiar()}><span className="inline-flex items-center gap-1.5"><Copy size={15} /> {copiado ? "Copiado!" : "Copiar mensagem"}</span></Button>
+          <Button variant="secondary" className="w-full justify-center" disabled={!num} onClick={abrirWhats} title={num ? "Abrir a conversa no WhatsApp" : "Fornecedor sem WhatsApp"}><span className="inline-flex items-center gap-1.5"><Send size={15} /> Enviar no WhatsApp</span></Button>
         </div>
+        {!jaEnviado && (
+          <Button className="w-full justify-center" onClick={() => { onEnviado(); onClose(); }}><span className="inline-flex items-center gap-1.5"><Check size={15} /> Pedido enviado</span></Button>
+        )}
       </div>
     </Modal>
   );
