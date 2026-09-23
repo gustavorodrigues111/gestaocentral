@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Building2, CalendarDays, Package, Banknote, Send, TriangleAlert, FolderOpen, FileText, Check, X, Copy, Plus, Pencil, Trash2, Sparkles, Minus, Clock, Store, ChevronDown, type LucideIcon } from "lucide-react";
+import { Building2, CalendarDays, Package, Banknote, Send, TriangleAlert, FolderOpen, FileText, Check, X, Copy, Plus, Pencil, Trash2, Sparkles, Minus, Clock, Store, ChevronDown, MoreHorizontal, type LucideIcon } from "lucide-react";
 import { deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -177,6 +177,7 @@ function PedidoCard({ pedido, podeConfig, insumos, onVincularReceb }: {
   const [expandido, setExpandido] = useState(false);
   const [enviarOpen, setEnviarOpen] = useState(false);
   const [editarOpen, setEditarOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   async function setStatus(status: PedidoStatus, extra?: Partial<Pedido>) {
     if (!me) return;
@@ -197,41 +198,103 @@ function PedidoCard({ pedido, podeConfig, insumos, onVincularReceb }: {
     try { await deleteDoc(doc(db, "pedidos", pedido.id)); } finally { setBusy(false); }
   }
 
-  const isFinal = pedido.status === "recebido_ok" || pedido.status === "recebido_div" || pedido.status === "cancelado";
+  const naoEnviado = pedido.status === "rascunho" || pedido.status === "aprovado";
+  const dias = naoEnviado ? Math.floor((Date.now() - new Date(pedido.criadoEm).getTime()) / 86400000) : 0;
+
+  // Sombreamento do card + badge conforme status e tempo sem envio.
+  let tone: "gray" | "green" | "amber" | "red" | "rose" = "gray";
+  let badgeCls = STATUS_CLS[pedido.status];
+  let badgeLabel: string = PEDIDO_STATUS_LABEL[pedido.status];
+  let BadgeIcon = PEDIDO_STATUS_LUCIDE[pedido.status];
+  if (pedido.status === "enviado") { tone = "green"; badgeCls = "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"; }
+  else if (naoEnviado && dias >= 3) { tone = "red"; badgeCls = "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300"; badgeLabel = "há mais de 3 dias sem envio"; BadgeIcon = Clock; }
+  else if (naoEnviado && dias >= 2) { tone = "amber"; badgeCls = "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"; badgeLabel = "há mais de 2 dias sem envio"; BadgeIcon = Clock; }
+  else if (naoEnviado && dias >= 1) { tone = "amber"; badgeCls = "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300"; badgeLabel = "há mais de 1 dia sem envio"; BadgeIcon = Clock; }
+  else if (pedido.status === "recebido_ok") tone = "green";
+  else if (pedido.status === "recebido_div") tone = "amber";
+  else if (pedido.status === "cancelado") tone = "rose";
+  const TONE_CARD: Record<typeof tone, string> = {
+    gray:  "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900",
+    green: "border-emerald-200 dark:border-emerald-900/50 bg-emerald-50/40 dark:bg-emerald-900/10",
+    amber: "border-amber-300 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-900/10",
+    red:   "border-red-300 dark:border-red-900/50 bg-red-50/50 dark:bg-red-900/10",
+    rose:  "border-rose-200 dark:border-rose-900/50 bg-rose-50/30 dark:bg-rose-900/10 opacity-90",
+  };
+
+  // Menu "Ações" conforme o estado.
+  type Acao = { label: string; icon: LucideIcon; onClick: () => void; danger?: boolean };
+  const acoes: Acao[] = [];
+  if (podeConfig) {
+    if (naoEnviado) {
+      acoes.push({ label: "Editar", icon: Pencil, onClick: () => setEditarOpen(true) });
+      acoes.push({ label: "Vincular recebimento", icon: Package, onClick: onVincularReceb });
+      acoes.push({ label: "Excluir", icon: Trash2, onClick: () => void excluir(), danger: true });
+    } else if (pedido.status === "enviado") {
+      acoes.push({ label: "Vincular recebimento", icon: Package, onClick: onVincularReceb });
+      acoes.push({ label: "Cancelar pedido", icon: X, onClick: () => { if (confirm("Cancelar este pedido?")) void setStatus("cancelado"); }, danger: true });
+    } else {
+      acoes.push({ label: "Excluir", icon: Trash2, onClick: () => void excluir(), danger: true });
+    }
+  }
 
   return (
-    <div className={`bg-white dark:bg-gray-900 border rounded-xl p-3 ${isFinal ? "border-gray-200 dark:border-gray-800 opacity-90" : "border-gray-200 dark:border-gray-800"}`}>
-      <div className="flex items-start justify-between gap-3 flex-wrap mb-2">
-        <div className="flex-1 min-w-0">
+    <div className={`border rounded-xl p-3 transition-colors ${TONE_CARD[tone]}`}>
+      <div className="flex items-start justify-between gap-3">
+        {/* Área clicável: clicar na linha do pedido expande os itens */}
+        <div role="button" tabIndex={0} onClick={() => setExpandido(s => !s)}
+          onKeyDown={e => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpandido(s => !s); } }}
+          className="flex-1 min-w-0 text-left cursor-pointer select-none">
           <div className="flex items-center gap-2 flex-wrap">
             <h3 className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Building2 size={16} /> {pedido.fornecedorNomeSnapshot}</h3>
-            {(() => { const Ic = PEDIDO_STATUS_LUCIDE[pedido.status]; return (
-            <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${STATUS_CLS[pedido.status]}`}>
-              <Ic size={11} /> {PEDIDO_STATUS_LABEL[pedido.status]}
-            </span>); })()}
+            {podeConfig && naoEnviado ? (
+              <button type="button" title="Marcar como enviado" disabled={busy}
+                onClick={e => { e.stopPropagation(); void setStatus("enviado"); }}
+                className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded hover:ring-1 hover:ring-current/30 ${badgeCls}`}>
+                <BadgeIcon size={11} /> {badgeLabel} <Check size={10} className="opacity-60" />
+              </button>
+            ) : (
+              <span className={`inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded ${badgeCls}`}>
+                <BadgeIcon size={11} /> {badgeLabel}
+              </span>
+            )}
           </div>
-          <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 flex gap-3 flex-wrap">
+          <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5 flex gap-3 flex-wrap items-center">
             <span className="inline-flex items-center gap-1"><CalendarDays size={12} /> {new Date(pedido.criadoEm).toLocaleDateString("pt-BR")}</span>
             <span className="inline-flex items-center gap-1"><Package size={12} /> {pedido.itens.length} item(ns)</span>
             {pedido.totalEstimado != null && pedido.totalEstimado > 0 && (
               <span className="inline-flex items-center gap-1"><Banknote size={12} /> R$ {pedido.totalEstimado.toFixed(2)}</span>
             )}
+            <span className="inline-flex items-center gap-0.5 text-gray-400">{expandido ? "ocultar" : "ver itens"} <ChevronDown size={12} className={`transition-transform ${expandido ? "rotate-180" : ""}`} /></span>
           </div>
         </div>
-        <div className="flex gap-1.5 flex-wrap">
-          {podeConfig && pedido.status === "rascunho" && (
-            <Button variant="secondary" size="sm" onClick={() => setEditarOpen(true)}><span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editar</span></Button>
+
+        {/* Ações: só Enviar pedido (primário) + menu Ações */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {podeConfig && naoEnviado && (
+            <Button size="sm" onClick={() => setEnviarOpen(true)}><span className="inline-flex items-center gap-1.5"><Send size={14} /> Enviar pedido</span></Button>
           )}
-          {podeConfig && !isFinal && (
-            <Button size="sm" onClick={() => setEnviarOpen(true)}><span className="inline-flex items-center gap-1.5"><Send size={14} /> {pedido.status === "enviado" ? "Reenviar" : "Enviar pedido"}</span></Button>
+          {podeConfig && pedido.status === "enviado" && (
+            <Button variant="secondary" size="sm" onClick={() => setEnviarOpen(true)}><span className="inline-flex items-center gap-1.5"><Send size={14} /> Reenviar</span></Button>
           )}
-          {podeConfig && !isFinal && (
-            <Button variant="secondary" size="sm" onClick={onVincularReceb}><span className="inline-flex items-center gap-1.5"><Package size={14} /> Vincular recebimento</span></Button>
+          {acoes.length > 0 && (
+            <div className="relative">
+              <Button variant="secondary" size="sm" onClick={() => setMenuOpen(o => !o)}><span className="inline-flex items-center gap-1"><MoreHorizontal size={16} /> Ações</span></Button>
+              {menuOpen && (
+                <>
+                  <button type="button" aria-hidden className="fixed inset-0 z-10 cursor-default" onClick={() => setMenuOpen(false)} />
+                  <div className="absolute right-0 top-full mt-1 z-20 w-52 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg py-1">
+                    {acoes.map((a, i) => (
+                      <button key={i} type="button" disabled={busy}
+                        onClick={() => { setMenuOpen(false); a.onClick(); }}
+                        className={`w-full text-left px-3 py-1.5 text-sm inline-flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-800 ${a.danger ? "text-rose-600 dark:text-rose-400" : "text-gray-700 dark:text-gray-200"}`}>
+                        <a.icon size={14} /> {a.label}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
           )}
-          {podeConfig && !isFinal && (pedido.status === "rascunho"
-            ? <Button variant="secondary" size="sm" onClick={() => void excluir()} disabled={busy}><span className="inline-flex items-center gap-1.5"><Trash2 size={14} /> Excluir</span></Button>
-            : <Button variant="secondary" size="sm" onClick={() => { if (confirm("Cancelar este pedido?")) void setStatus("cancelado"); }} disabled={busy}><span className="inline-flex items-center gap-1.5"><X size={14} /> Cancelar</span></Button>)}
-          <Button variant="secondary" size="sm" onClick={() => setExpandido(s => !s)}>{expandido ? "▴ itens" : "▾ itens"}</Button>
         </div>
       </div>
 
@@ -273,10 +336,11 @@ function EnviarPedidoModal({ pedido, onEnviado, onClose }: { pedido: Pedido; onE
   }, [pedido]);
   const num = (pedido.fornecedorWhatsappSnapshot || "").replace(/\D/g, "");
   async function copiar() { try { await navigator.clipboard.writeText(msg); setCopiado(true); setTimeout(() => setCopiado(false), 1800); } catch { /* ignore */ } }
-  function abrirWhats() { if (!num) return; window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, "_blank"); onEnviado(); onClose(); }
+  function abrirWhats() { if (!num) return; window.open(`https://wa.me/${num}?text=${encodeURIComponent(msg)}`, "_blank"); }
   return (
     <Modal title={<span className="inline-flex items-center gap-2"><Send size={18} /> Enviar pedido — {pedido.fornecedorNomeSnapshot}</span>} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
+        {!num && <div className="text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2 inline-flex items-center gap-1.5"><TriangleAlert size={13} className="shrink-0" /> Fornecedor sem WhatsApp cadastrado — copie a mensagem e envie por fora.</div>}
         <textarea readOnly value={msg} rows={Math.min(14, pedido.itens.length + 5)} className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/40 font-mono resize-y" />
         {pedido.totalEstimado != null && pedido.totalEstimado > 0 && (
           <div className="flex items-center justify-between gap-2 rounded-lg border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/60 dark:bg-indigo-900/15 px-3 py-2">
@@ -284,14 +348,10 @@ function EnviarPedidoModal({ pedido, onEnviado, onClose }: { pedido: Pedido; onE
             <span className="text-sm font-bold tabular-nums text-indigo-700 dark:text-indigo-300">R$ {pedido.totalEstimado.toFixed(2)}</span>
           </div>
         )}
-        <div className="flex flex-wrap gap-2 justify-end">
+        <div className="flex flex-wrap gap-2 justify-end items-center">
           <Button variant="secondary" onClick={() => void copiar()}><span className="inline-flex items-center gap-1.5"><Copy size={15} /> {copiado ? "Copiado!" : "Copiar mensagem"}</span></Button>
-          {num
-            ? <Button onClick={abrirWhats}><span className="inline-flex items-center gap-1.5"><Send size={15} /> Abrir no WhatsApp</span></Button>
-            : <span className="text-[12px] text-amber-600 dark:text-amber-400 self-center">Fornecedor sem WhatsApp — copie e envie por fora.</span>}
-        </div>
-        <div className="pt-2 border-t border-gray-200 dark:border-gray-800 flex justify-end">
-          <button type="button" onClick={() => { onEnviado(); onClose(); }} className="text-[12px] text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 inline-flex items-center gap-1"><Check size={13} /> já enviei — marcar como enviado</button>
+          <Button variant="secondary" disabled={!num} onClick={abrirWhats} title={num ? "Abrir a conversa no WhatsApp" : "Fornecedor sem WhatsApp"}><span className="inline-flex items-center gap-1.5"><Send size={15} /> Enviar no WhatsApp</span></Button>
+          <Button onClick={() => { onEnviado(); onClose(); }}><span className="inline-flex items-center gap-1.5"><Check size={15} /> Pedido enviado</span></Button>
         </div>
       </div>
     </Modal>
