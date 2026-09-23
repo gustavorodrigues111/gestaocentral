@@ -11,7 +11,6 @@ import { addDoc, collection, deleteDoc, deleteField, doc, getDoc, onSnapshot, qu
 import { db, auth } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
-import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
 import { UNIDADES_LABEL } from "../../core/types";
@@ -41,6 +40,14 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
   const [soRecorrentes, setSoRecorrentes] = useState(true);
   const [sugestoesAbertas, setSugestoesAbertas] = useState(false);
   const [sugeridosView, setSugeridosView] = useState<"lista" | "tabela">("tabela");
+  // Mobile usa sempre a LISTA (a tabela larga fica apertada). Toggle só no desktop.
+  const [isMobile, setIsMobile] = useState(() => typeof window !== "undefined" && window.matchMedia("(max-width: 1023px)").matches);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const mq = window.matchMedia("(max-width: 1023px)");
+    const h = () => setIsMobile(mq.matches); mq.addEventListener("change", h); return () => mq.removeEventListener("change", h);
+  }, []);
+  const viewEfetiva = isMobile ? "lista" : sugeridosView;
   const [iaMapa, setIaMapa] = useState<Record<string, IaInfo>>({});
   const iaEmAndamento = useRef(false);
   const [reavaliando, setReavaliando] = useState(false);
@@ -271,28 +278,6 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
     return { lista, primeiroId };
   }
 
-  async function cadastrarGrupo(g: GrupoSugerido) {
-    const { lista, primeiroId } = await montarFornecedores(g.fornecedores);
-    if (g.matchInsumoId) {
-      const alvo = insumos.find(i => i.id === g.matchInsumoId);
-      if (alvo && confirm(`A IA acha que é o mesmo insumo já cadastrado "${alvo.nome}". Vincular a ele? (os fornecedores e nomes deste grupo passam a apontar pra ele)`)) {
-        const aliases = Array.from(new Set([...(alvo.aliases || []), ...g.aliases, normalizar(alvo.nome)]));
-        const fornMap = new Map<string, InsumoFornecedor>();
-        for (const f of [...(alvo.fornecedores || []), ...lista]) fornMap.set(normalizar(f.nome), f);
-        await updateDoc(doc(db, "insumos", alvo.id), sanitizeForFirestore({ aliases, fornecedores: [...fornMap.values()], atualizadoEm: new Date().toISOString() }));
-        return;
-      }
-    }
-    const fator = g.fator && g.fator > 1 ? g.fator : undefined;
-    const precoUnit = g.precoEstimado != null && fator ? g.precoEstimado / fator : g.precoEstimado;
-    setPreset({
-      nome: g.nome, categoria: g.categoria, unidade: g.unidade, unidadeOutroLabel: g.unidadeOutroLabel,
-      precoEstimado: precoUnit, fatorCompra: fator, fornecedorPreferredId: primeiroId || null,
-      aliases: g.aliases, fornecedores: lista,
-    });
-    setEditing("new");
-  }
-
   async function reavaliarTodos() {
     if (sugestoesNovas.length === 0) return;
     if (!window.confirm(`Reavaliar ${sugestoesNovas.length} sugestões pela IA em segundo plano?\n\nPode sair da tela — o resultado aparece sozinho.`)) return;
@@ -491,7 +476,7 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
                   ? <span className="text-[11px] text-amber-700/80 inline-flex items-center gap-1"><Sparkles size={11} /> IA analisando categoria, unidade e repetidos… (faltam {iaPendentes})</span>
                   : <span className="text-[11px] text-emerald-600/80 dark:text-emerald-400/80 inline-flex items-center gap-1"><Sparkles size={11} /> analisado pela IA</span>}
                 <button type="button" disabled={reavaliando} onClick={() => void reavaliarTodos()} className="ml-auto text-[11px] font-medium text-amber-700 dark:text-amber-300 hover:underline inline-flex items-center gap-1 disabled:opacity-60"><RotateCcw size={11} /> {reavaliando ? "Reavaliando (pode sair)…" : "Reavaliar todos"}</button>
-                <div className="inline-flex rounded-lg bg-white/70 dark:bg-gray-800/70 border border-amber-200 dark:border-amber-800 p-0.5">
+                <div className="hidden lg:inline-flex rounded-lg bg-white/70 dark:bg-gray-800/70 border border-amber-200 dark:border-amber-800 p-0.5">
                   <button type="button" onClick={() => setSugeridosView("tabela")} className={`px-2 py-0.5 text-[11px] font-medium rounded-md ${sugeridosView === "tabela" ? "bg-amber-500 text-white" : "text-amber-700 dark:text-amber-300"}`}>Tabela</button>
                   <button type="button" onClick={() => setSugeridosView("lista")} className={`px-2 py-0.5 text-[11px] font-medium rounded-md ${sugeridosView === "lista" ? "bg-amber-500 text-white" : "text-amber-700 dark:text-amber-300"}`}>Lista</button>
                 </div>
@@ -529,8 +514,8 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
                   <p className="text-[10px] text-rose-600/70 dark:text-rose-400/70">Nomes muito parecidos que talvez sejam o mesmo produto. Ao juntar, a IA escolhe o nome certo e as grafias viram apelidos.</p>
                 </div>
               )}
-              {sugeridosView === "tabela" && <SugeridosTabela grupos={gruposSugeridos} fornecedoresNomes={fornecedores.map(f => f.nome)} unidadesCustom={unidadesCustom} onCadastrar={cadastrarLote} onAbrir={abrirGrupoNoModal} onIgnorar={ignorarGrupo} onJuntar={juntarGrupos} onReavaliar={reavaliarSelecionados} reavaliando={reavaliando} onJaCadastrado={setVinculando} />}
-              {sugeridosView === "lista" && gruposSugeridos.map(g => {
+              {viewEfetiva === "tabela" && <SugeridosTabela grupos={gruposSugeridos} fornecedoresNomes={fornecedores.map(f => f.nome)} unidadesCustom={unidadesCustom} onCadastrar={cadastrarLote} onAbrir={abrirGrupoNoModal} onIgnorar={ignorarGrupo} onJuntar={juntarGrupos} onReavaliar={reavaliarSelecionados} reavaliando={reavaliando} onJaCadastrado={setVinculando} />}
+              {viewEfetiva === "lista" && gruposSugeridos.map(g => {
                 const alvo = g.matchInsumoId ? insumos.find(i => i.id === g.matchInsumoId) : null;
                 return (
                   <div key={g.grupo} className="rounded-lg border border-amber-200/70 dark:border-amber-900/40 bg-white dark:bg-gray-900 p-2.5 flex items-center gap-2 flex-wrap">
@@ -548,12 +533,10 @@ export function InsumosManager({ rid, podeConfig }: { rid: string; podeConfig: b
                       </div>
                       {alvo && <div className="text-[11px] text-indigo-600 dark:text-indigo-400 mt-0.5 inline-flex items-center gap-1"><Link2 size={11} /> pode ser: <strong>{alvo.nome}</strong></div>}
                     </div>
-                    <div className="flex items-center gap-1">
-                      <Button size="sm" variant={alvo ? "secondary" : undefined} onClick={() => void cadastrarGrupo(g)}>
-                        {alvo ? <span className="inline-flex items-center gap-1"><Link2 size={13} /> Vincular</span> : <span className="inline-flex items-center gap-1"><Plus size={13} /> Cadastrar</span>}
-                      </Button>
-                      <button type="button" onClick={() => setVinculando(g)} title="Já está cadastrado — vincular a um insumo existente" className="text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400 p-1"><Link2 size={15} /></button>
-                      <button type="button" onClick={() => ignorarGrupo(g)} title="Ignorar (não cadastrar)" className="text-gray-300 hover:text-rose-500 p-1"><EyeOff size={15} /></button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button type="button" onClick={() => abrirGrupoNoModal(g)} className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700"><Plus size={14} /> Cadastrar</button>
+                      <button type="button" onClick={() => setVinculando(g)} title="Já está cadastrado — vincular a um insumo existente" className="inline-flex items-center gap-1 px-3 py-1.5 text-sm font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700"><Link2 size={14} /> Vincular</button>
+                      <button type="button" onClick={() => ignorarGrupo(g)} title="Ignorar (não cadastrar)" className="text-gray-300 hover:text-rose-500 p-1"><EyeOff size={16} /></button>
                     </div>
                   </div>
                 );
