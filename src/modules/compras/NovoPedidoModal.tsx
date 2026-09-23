@@ -15,6 +15,7 @@ import { Modal } from "../../core/ui/Modal";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { UNIDADES_LABEL } from "../../core/types";
 import type { Contagem, Fornecedor, Insumo, Pedido, PedidoItem } from "../../core/types";
+import { QtyStepper } from "./PedidosTab";
 import { montarSugestao, type LinhaSugestao, type GrupoFornecedor } from "./sugestao";
 
 type Props = {
@@ -373,8 +374,8 @@ function Linha({ l, incluido, opaco, valor, onQtd, onToggle }: { l: LinhaSugesta
       </div>
       <span className={`w-16 text-right tabular-nums text-sm ${l.temContagem ? "text-gray-700 dark:text-gray-200" : "text-gray-300 dark:text-gray-600"}`}>{l.temContagem ? l.contagem : "—"}</span>
       <span className="w-16 text-right tabular-nums text-sm text-gray-500">{l.minStock || "—"}</span>
-      <div className="w-24 flex items-center justify-end gap-1">
-        <input type="number" min={0} step={l.fator || "any"} value={valor} onChange={e => onQtd(e.target.value)} disabled={!incluido} className="w-16 px-2 py-1 text-sm text-right rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 disabled:opacity-50 tabular-nums" />
+      <div className="flex items-center justify-end gap-1 shrink-0">
+        <QtyStepper value={parseFloat(valor.replace(",", ".")) || 0} onChange={n => onQtd(String(n))} step={l.fator > 1 ? l.fator : 1} disabled={!incluido} />
         <span className="text-[10px] text-gray-400 w-6">{undLabel(l.insumo)}</span>
       </div>
     </div>

@@ -1,16 +1,17 @@
-import { useMemo, useState } from "react";
-import { Building2, CalendarDays, Package, Banknote, Send, TriangleAlert, FolderOpen, FileText, Check, X, Copy, Plus, Pencil, Trash2, type LucideIcon } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Building2, CalendarDays, Package, Banknote, Send, TriangleAlert, FolderOpen, FileText, Check, X, Copy, Plus, Pencil, Trash2, Sparkles, Minus, type LucideIcon } from "lucide-react";
 import { deleteDoc, doc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
+import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { Modal } from "../../core/ui/Modal";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import {
-  PEDIDO_STATUS_LABEL, UNIDADES_LABEL,
+  PEDIDO_STATUS_LABEL, UNIDADES_LABEL, UNIDADES_LISTA,
 } from "../../core/types";
-import type { Pedido, PedidoStatus, PedidoItem, Insumo, RecebimentoNota } from "../../core/types";
+import type { Pedido, PedidoStatus, PedidoItem, Insumo, RecebimentoNota, UnidadeMedida } from "../../core/types";
 import { normalizar } from "../contagens/sugestoesRecebimento";
 
 type Props = {
@@ -135,6 +136,32 @@ export function PedidosTab({ pedidos, podeConfig, insumos = [], recebimentos = [
 // ── PedidoCard ─────────────────────────────────────────────────────────────
 
 const undPed = (u: string) => u === "outro" ? "" : (UNIDADES_LABEL[u as keyof typeof UNIDADES_LABEL] || u || "").slice(0, 3).toLowerCase();
+// Precisa atribuir unidade? (vazia). "outro" tem rótulo próprio no cadastro, então não conta.
+const precisaUnidade = (u?: string) => !u;
+
+// Stepper −/+ com o número no meio (mobile e desktop), ainda digitável.
+export function QtyStepper({ value, onChange, step = 1, disabled }: { value: number; onChange: (n: number) => void; step?: number; disabled?: boolean }) {
+  const [txt, setTxt] = useState(String(value ?? 0));
+  useEffect(() => { setTxt(String(value ?? 0)); }, [value]);
+  const round = (n: number) => Math.round(n * 1000) / 1000;
+  const cur = () => { const n = parseFloat(txt.replace(",", ".")); return isNaN(n) ? 0 : n; };
+  const bump = (d: number) => { if (disabled) return; const n = round(Math.max(0, cur() + d)); setTxt(String(n)); onChange(n); };
+  const Btn = ({ d, icon }: { d: number; icon: React.ReactNode }) => (
+    <button type="button" disabled={disabled} onMouseDown={e => e.preventDefault()} onClick={() => bump(d)}
+      className="px-2.5 flex items-center text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-800 active:bg-gray-200 dark:active:bg-gray-700 disabled:opacity-40 disabled:hover:bg-transparent transition-colors">{icon}</button>
+  );
+  return (
+    <div className={`inline-flex items-stretch h-9 rounded-lg border border-gray-300 dark:border-gray-700 overflow-hidden shrink-0 bg-white dark:bg-gray-900 ${disabled ? "opacity-50" : ""}`}>
+      <Btn d={-step} icon={<Minus size={14} />} />
+      <input inputMode="decimal" value={txt} disabled={disabled}
+        onChange={e => { setTxt(e.target.value); const n = parseFloat(e.target.value.replace(",", ".")); onChange(isNaN(n) ? 0 : n); }}
+        onFocus={e => e.currentTarget.select()}
+        onBlur={() => setTxt(String(value ?? 0))}
+        className="w-12 text-center text-sm tabular-nums border-x border-gray-300 dark:border-gray-700 bg-transparent focus:outline-none focus:bg-indigo-50/40 dark:focus:bg-indigo-900/20 disabled:bg-transparent" />
+      <Btn d={step} icon={<Plus size={14} />} />
+    </div>
+  );
+}
 
 function PedidoCard({ pedido, podeConfig, insumos, onVincularReceb }: {
   pedido: Pedido;
@@ -275,15 +302,43 @@ function EditarPedidoModal({ pedido, insumos, onClose }: { pedido: Pedido; insum
   const [obs, setObs] = useState(pedido.observacaoGeral || "");
   const [addBusca, setAddBusca] = useState("");
   const [salvando, setSalvando] = useState(false);
+  const [iaMsg, setIaMsg] = useState("");            // banner das unidades atribuídas pela IA
+  const [iaFeitas, setIaFeitas] = useState<Set<string>>(new Set());
   const jaTem = new Set(itens.map(i => i.insumoId));
   const addOpcoes = useMemo(() => {
     const b = addBusca.trim().toLowerCase(); if (!b) return [] as Insumo[];
     return insumos.filter(i => i.ativo && !jaTem.has(i.id) && (i.nome || "").toLowerCase().includes(b)).slice(0, 6);
   }, [insumos, addBusca, itens]);
   const total = itens.reduce((s, it) => s + ((it.precoUnit || 0) * (it.qtdPedida || 0)), 0);
-  function setQtd(id: string, v: string) { const n = parseFloat(v.replace(",", ".")); setItens(arr => arr.map(it => it.insumoId === id ? { ...it, qtdPedida: isNaN(n) ? 0 : n } : it)); }
+  function setQtd(id: string, n: number) { setItens(arr => arr.map(it => it.insumoId === id ? { ...it, qtdPedida: n } : it)); }
+  function setUnidade(id: string, u: string) { setItens(arr => arr.map(it => it.insumoId === id ? { ...it, unidadeSnapshot: u as UnidadeMedida } : it)); }
   function remover(id: string) { setItens(arr => arr.filter(it => it.insumoId !== id)); }
   function adicionar(i: Insumo) { setItens(arr => [...arr, { insumoId: i.id, insumoNomeSnapshot: i.nome, unidadeSnapshot: i.unidade, qtdPedida: i.fatorCompra && i.fatorCompra > 1 ? i.fatorCompra : 1, precoUnit: i.precoEstimado, incluido: true }]); setAddBusca(""); }
+
+  // IA: atribui unidade aos itens que estão sem — não trava o pedido; mostra banner.
+  useEffect(() => {
+    const faltam = pedido.itens.filter(it => precisaUnidade(it.unidadeSnapshot));
+    if (faltam.length === 0) return;
+    let vivo = true;
+    (async () => {
+      try {
+        const r = await fetch("/api/insumo-unidade-ia", {
+          method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
+          body: JSON.stringify({ produtos: faltam.map(it => ({ id: it.insumoId, nome: it.insumoNomeSnapshot })) }),
+        });
+        const j = await r.json() as { sugestoes?: { id: string; unidade: string }[]; error?: string };
+        if (!vivo || !r.ok || !Array.isArray(j.sugestoes) || j.sugestoes.length === 0) return;
+        const byId: Record<string, string> = {}; for (const s of j.sugestoes) byId[s.id] = s.unidade;
+        setItens(arr => arr.map(it => (precisaUnidade(it.unidadeSnapshot) && byId[it.insumoId]) ? { ...it, unidadeSnapshot: byId[it.insumoId] as UnidadeMedida } : it));
+        setIaFeitas(new Set(Object.keys(byId)));
+        const nomeDe = (id: string) => faltam.find(x => x.insumoId === id)?.insumoNomeSnapshot || id;
+        setIaMsg(`A IA atribuiu unidade a ${j.sugestoes.length} produto(s) sem unidade: ${j.sugestoes.map(s => `${nomeDe(s.id)} → ${undPed(s.unidade) || s.unidade}`).join("; ")}. Confira; salvar também grava a unidade no cadastro do produto.`);
+      } catch { /* silencioso: dá pra escolher na mão */ }
+    })();
+    return () => { vivo = false; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   async function salvar() {
     if (!me) return;
     const validos = itens.filter(it => (it.qtdPedida || 0) > 0);
@@ -292,22 +347,52 @@ function EditarPedidoModal({ pedido, insumos, onClose }: { pedido: Pedido; insum
     try {
       const totalEst = validos.reduce((s, it) => s + ((it.precoUnit || 0) * it.qtdPedida), 0);
       await updateDoc(doc(db, "pedidos", pedido.id), sanitizeForFirestore({ itens: validos, totalEstimado: totalEst > 0 ? totalEst : undefined, observacaoGeral: obs.trim() || undefined, atualizadoEm: new Date().toISOString() }));
+      // Grava a unidade escolhida no cadastro do insumo que estava sem — assim fica certo pra próxima.
+      const now = new Date().toISOString();
+      await Promise.all(validos.map(it => {
+        const ins = insumos.find(i => i.id === it.insumoId);
+        if (ins && precisaUnidade(ins.unidade) && !precisaUnidade(it.unidadeSnapshot)) {
+          return updateDoc(doc(db, "insumos", ins.id), sanitizeForFirestore({ unidade: it.unidadeSnapshot, atualizadoEm: now }));
+        }
+        return Promise.resolve();
+      })).catch(() => {});
       onClose();
     } catch (e) { alert(e instanceof Error ? e.message : "Erro"); } finally { setSalvando(false); }
   }
+  const UNI_OPCOES = UNIDADES_LISTA.filter(u => u !== "outro");
   return (
     <Modal title={<span className="inline-flex items-center gap-2"><Pencil size={18} /> Editar pedido — {pedido.fornecedorNomeSnapshot}</span>} onClose={onClose} maxWidth="max-w-lg">
       <div className="space-y-3">
+        {iaMsg && (
+          <div className="rounded-lg border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/60 dark:bg-indigo-900/15 px-3 py-2 text-[12px] text-indigo-800 dark:text-indigo-200 flex gap-2">
+            <Sparkles size={14} className="shrink-0 mt-0.5 text-indigo-500" /><span>{iaMsg}</span>
+          </div>
+        )}
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 max-h-[50vh] overflow-auto">
           {itens.length === 0 && <div className="text-sm text-gray-400 p-4 text-center">Sem itens — adicione abaixo.</div>}
-          {itens.map(it => (
-            <div key={it.insumoId} className="flex items-center gap-2 px-3 py-1.5">
+          {itens.map(it => {
+            const semUni = precisaUnidade(it.unidadeSnapshot);
+            const iaUni = iaFeitas.has(it.insumoId);
+            return (
+            <div key={it.insumoId} className="flex items-center gap-2 px-3 py-2">
               <span className="flex-1 min-w-0 truncate text-sm text-gray-900 dark:text-gray-100">{it.insumoNomeSnapshot}</span>
-              <input type="number" min={0} step="any" value={it.qtdPedida} onChange={e => setQtd(it.insumoId, e.target.value)} className="w-20 px-2 py-1 text-sm text-right rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-              <span className="text-[10px] text-gray-400 w-6">{undPed(it.unidadeSnapshot)}</span>
+              <QtyStepper value={it.qtdPedida} onChange={n => setQtd(it.insumoId, n)} />
+              {semUni ? (
+                <select value="" onChange={e => e.target.value && setUnidade(it.insumoId, e.target.value)}
+                  className="h-9 text-[11px] rounded-lg border border-amber-400 dark:border-amber-600 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-200 px-1">
+                  <option value="">un?</option>
+                  {UNI_OPCOES.map(u => <option key={u} value={u}>{undPed(u)}</option>)}
+                </select>
+              ) : (
+                <select value={it.unidadeSnapshot} onChange={e => setUnidade(it.insumoId, e.target.value)}
+                  title={iaUni ? "Unidade sugerida pela IA — ajuste se precisar" : "Unidade"}
+                  className={`h-9 text-[11px] rounded-lg border px-1 bg-white dark:bg-gray-900 ${iaUni ? "border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
+                  {UNI_OPCOES.map(u => <option key={u} value={u}>{undPed(u)}</option>)}
+                </select>
+              )}
               <button type="button" onClick={() => remover(it.insumoId)} className="text-gray-300 hover:text-rose-500 p-1"><Trash2 size={15} /></button>
             </div>
-          ))}
+          );})}
         </div>
         <div>
           <input value={addBusca} onChange={e => setAddBusca(e.target.value)} placeholder="+ adicionar item ao pedido…" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
