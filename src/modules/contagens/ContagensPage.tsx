@@ -7,7 +7,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canVer, canConfigurar } from "../../core/auth/permissions";
 import { useCanAcao } from "../../core/auth/useCanAcao";
-import type { Contagem, ContagemSessao, Insumo } from "../../core/types";
+import type { Contagem, ContagemSessao, Insumo, Fornecedor } from "../../core/types";
 import { LancarContagensTab } from "./LancarContagensTab";
 import { PainelContagensTab } from "./PainelContagensTab";
 import { HistoricoContagensTab } from "./HistoricoContagensTab";
@@ -32,6 +32,7 @@ export function ContagensPage() {
   const [insumos, setInsumos] = useState<Insumo[]>([]);
   const [contagens, setContagens] = useState<Contagem[]>([]);
   const [sessoes, setSessoes] = useState<ContagemSessao[]>([]);
+  const [fornecedores, setFornecedores] = useState<Fornecedor[]>([]);
 
   useEffect(() => {
     if (!rid) return;
@@ -57,6 +58,12 @@ export function ContagensPage() {
     if (!rid) return;
     const q = query(collection(db, "contagemSessoes"), where("restaurantId", "==", rid));
     return onSnapshot(q, (snap) => setSessoes(snap.docs.map(d => ({ id: d.id, ...d.data() }) as ContagemSessao)), () => setSessoes([]));
+  }, [rid]);
+
+  useEffect(() => {
+    if (!rid) return;
+    const q = query(collection(db, "fornecedores"), where("restaurantId", "==", rid));
+    return onSnapshot(q, (snap) => setFornecedores(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Fornecedor)), () => setFornecedores([]));
   }, [rid]);
 
   // Última contagem por insumo (mais recente).
@@ -120,7 +127,7 @@ export function ContagensPage() {
           )}
 
           {/* Painel (cards + maiores faltas expansível) */}
-          <PainelContagensTab insumos={insumos} ultimaContagem={ultimaContagem} rid={rid} />
+          <PainelContagensTab insumos={insumos} ultimaContagem={ultimaContagem} rid={rid} fornecedores={fornecedores} />
 
           {/* Histórico das contagens, linha a linha */}
           <div>
