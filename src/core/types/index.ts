@@ -2771,17 +2771,33 @@ export type Insumo = {
 // Doc id determinístico = `${restaurantId}_${data}_${turno||"_"}` (1 sessão viva por
 // data+turno — quem abrir a mesma data/turno entra na mesma contagem).
 export type ContagemSessaoValor = { qty: number; obs?: string; porId?: string; porNome?: string; em?: string };
+// Ciclo de vida: em_andamento (ao vivo, colaborativa) → realizada (finalizada) →
+// editada (corrigida depois, com permissão) → pedido (virou pedido: TRAVADA, só o
+// pedido edita). cancelada = abortada (guardada pra retomar). A sessão ao vivo tem
+// id determinístico {rid}_{data}_{turno}; ao finalizar/abortar vira um registro de
+// histórico (id automático) e a viva é apagada.
+export type ContagemSessaoStatus = "em_andamento" | "realizada" | "editada" | "pedido" | "cancelada";
 export type ContagemSessao = {
   id: string;
   restaurantId: string;
   data: string;
   turno?: string;
+  status?: ContagemSessaoStatus;    // ausente = em_andamento (retrocompat)
   valores: { [insumoId: string]: ContagemSessaoValor };
   iniciadoPor?: string;
   iniciadoPorNome?: string;
   iniciadoEm?: string;
   atualizadoEm?: string;
   atualizadoPorNome?: string;
+  finalizadaEm?: string;
+  finalizadaPor?: string;
+  finalizadaPorNome?: string;
+  editadaEm?: string;
+  editadaPorNome?: string;
+  canceladaEm?: string;
+  canceladaPorNome?: string;
+  pedidoId?: string;                // pedido gerado a partir dela (trava a edição)
+  totalItens?: number;              // snapshot do nº de itens (histórico)
 };
 
 export type Contagem = {

@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Package, Search, Ruler, Save, Minus, Plus, Users, LayoutGrid, Radio } from "lucide-react";
+import { Package, Search, Ruler, Save, Minus, Plus, Users, LayoutGrid, Radio, Ban } from "lucide-react";
 import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -41,7 +41,8 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
     setDrafts({}); setObsDrafts({}); editandoRef.current = null;
     const ref = doc(db, "contagemSessoes", sessionId);
     return onSnapshot(ref, snap => {
-      const s = snap.exists() ? ({ id: snap.id, ...snap.data() } as ContagemSessao) : null;
+      const raw = snap.exists() ? ({ id: snap.id, ...snap.data() } as ContagemSessao) : null;
+      const s = raw && (!raw.status || raw.status === "em_andamento") ? raw : null;   // só a viva
       setSessao(s);
       const val = s?.valores || {};
       setDrafts(prev => {
@@ -65,7 +66,7 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
     const now = new Date().toISOString();
     const ref = doc(db, "contagemSessoes", sessionId);
     const meta = {
-      restaurantId, data, turno: turno || undefined, atualizadoEm: now, atualizadoPorNome: me.nome,
+      restaurantId, data, turno: turno || undefined, status: "em_andamento" as const, atualizadoEm: now, atualizadoPorNome: me.nome,
       iniciadoPor: sessao?.iniciadoPor || me.id, iniciadoPorNome: sessao?.iniciadoPorNome || me.nome, iniciadoEm: sessao?.iniciadoEm || now,
     };
     const raw = override ?? drafts[id];
@@ -125,52 +126,78 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
 
   const totalDigitados = Object.entries(drafts).filter(([, v]) => v.trim() !== "" && !isNaN(parseFloat(v))).length;
 
+  // Fonte de verdade ao finalizar = valores da sessão viva (colaborativa). Fallback
+  // pros drafts locais caso a sessão ainda não tenha sincronizado.
+  function valoresParaGravar(): Array<{ insumoId: string; qty: number; obs?: string }> {
+    const val = sessao?.valores || {};
+    const ids = new Set([...Object.keys(val), ...Object.keys(drafts)]);
+    const out: Array<{ insumoId: string; qty: number; obs?: string }> = [];
+    for (const id of ids) {
+      const raw = drafts[id] ?? (val[id] != null ? String(val[id].qty) : "");
+      const qty = parseFloat((raw || "").replace(",", "."));
+      if (isNaN(qty) || raw.trim() === "") continue;
+      out.push({ insumoId: id, qty, obs: obsDrafts[id]?.trim() || val[id]?.obs?.trim() || undefined });
+    }
+    return out;
+  }
+
   async function salvarTudo() {
     if (!me) return;
-    if (totalDigitados === 0) { setErr("Digite pelo menos uma quantidade"); return; }
-    setErr("");
-    setOkMsg("");
-    setSaving(true);
+    const itens = valoresParaGravar();
+    if (itens.length === 0) { setErr("Digite pelo menos uma quantidade"); return; }
+    setErr(""); setOkMsg(""); setSaving(true);
     try {
-      // Uma sessão de contagem = um lote salvo. Identificada por data + turno +
-      // quem fez + horário; o sessaoId agrupa todos os itens desse "Salvar".
-      const sessaoId = `${data}_${Date.now().toString(36)}_${me.id.slice(0, 6)}`;
-      const registradoEm = new Date().toISOString();
-      let saved = 0;
-      for (const [insumoId, qtdStr] of Object.entries(drafts)) {
-        const qtd = parseFloat(qtdStr);
-        if (isNaN(qtd) || qtdStr.trim() === "") continue;
-        const insumo = insumos.find(i => i.id === insumoId);
-        if (!insumo) continue;
-        const c: Omit<Contagem, "id"> = {
-          restaurantId,
-          insumoId,
-          insumoNomeSnapshot: insumo.nome,
-          unidadeSnapshot: insumo.unidade,
-          qty: qtd,
-          data,
-          observacao: obsDrafts[insumoId]?.trim() || undefined,
-          registradoEm,
-          registradoPor: me.id,
-          registradoNome: me.nome,
-          sessaoId,
-          turno: turno || undefined,
-        };
-        await addDoc(collection(db, "contagens"), sanitizeForFirestore(c));
-        saved++;
+      const now = new Date().toISOString();
+      // 1) Cria o REGISTRO da sessão (histórico) com status "realizada". O id dele
+      //    vira o sessaoId das contagens (liga histórico ↔ contagens).
+      const regRef = await addDoc(collection(db, "contagemSessoes"), sanitizeForFirestore({
+        restaurantId, data, turno: turno || undefined, status: "realizada",
+        valores: sessao?.valores || {},
+        iniciadoPor: sessao?.iniciadoPor || me.id, iniciadoPorNome: sessao?.iniciadoPorNome || me.nome, iniciadoEm: sessao?.iniciadoEm || now,
+        finalizadaEm: now, finalizadaPor: me.id, finalizadaPorNome: me.nome, totalItens: itens.length, atualizadoEm: now,
+      }));
+      const sessaoId = regRef.id;
+      // 2) Materializa as contagens.
+      for (const it of itens) {
+        const insumo = insumos.find(i => i.id === it.insumoId); if (!insumo) continue;
+        await addDoc(collection(db, "contagens"), sanitizeForFirestore({
+          restaurantId, insumoId: it.insumoId, insumoNomeSnapshot: insumo.nome, unidadeSnapshot: insumo.unidade,
+          qty: it.qty, data, observacao: it.obs, registradoEm: now, registradoPor: me.id, registradoNome: me.nome,
+          sessaoId, turno: turno || undefined,
+        }));
       }
-      // Finalizou: apaga a sessão viva (o histórico ficou em `contagens`).
+      // 3) Apaga a sessão viva (deterministic).
       await deleteDoc(doc(db, "contagemSessoes", sessionId)).catch(() => {});
-      setDrafts({});
-      setObsDrafts({});
-      setOkMsg(`✓ ${saved} contagem(ns) salva(s)`);
+      setDrafts({}); setObsDrafts({});
+      setOkMsg(`✓ Contagem finalizada — ${itens.length} item(ns)`);
       setTimeout(() => setOkMsg(""), 3000);
     } catch (e) {
-      console.error(e);
       setErr(e instanceof Error ? e.message : "Erro");
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
+  }
+
+  // Aborta a contagem ao vivo: dupla confirmação → guarda um registro "cancelada"
+  // (com os valores, pra retomar no Histórico) e apaga a sessão viva.
+  async function abortar() {
+    if (!me || !sessao) return;
+    if (!confirm("Abortar esta contagem em andamento? Ela não vira contagem oficial.")) return;
+    if (!confirm("Tem certeza? Os valores ficam guardados em 'canceladas' (dá pra retomar depois no Histórico), mas a contagem atual é encerrada.")) return;
+    setSaving(true); setErr("");
+    try {
+      const now = new Date().toISOString();
+      await addDoc(collection(db, "contagemSessoes"), sanitizeForFirestore({
+        restaurantId, data, turno: turno || undefined, status: "cancelada",
+        valores: sessao.valores || {},
+        iniciadoPor: sessao.iniciadoPor, iniciadoPorNome: sessao.iniciadoPorNome, iniciadoEm: sessao.iniciadoEm,
+        canceladaEm: now, canceladaPorNome: me.nome, totalItens: Object.keys(sessao.valores || {}).length, atualizadoEm: now,
+      }));
+      await deleteDoc(doc(db, "contagemSessoes", sessionId)).catch(() => {});
+      setDrafts({}); setObsDrafts({});
+      setOkMsg("Contagem abortada (guardada em canceladas).");
+      setTimeout(() => setOkMsg(""), 3000);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erro");
+    } finally { setSaving(false); }
   }
 
   if (insumos.length === 0) {
@@ -222,6 +249,7 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
           <Radio size={14} className="shrink-0 animate-pulse" />
           <span><strong>Contagem em andamento</strong> (ao vivo) — {Object.keys(sessao.valores).length} item(ns). Outras pessoas podem contar junto nesta mesma data/turno; salva sozinho a cada campo. Só vira contagem oficial ao <strong>Finalizar</strong>.</span>
           {sessao.atualizadoPorNome && <span className="text-emerald-600/80 dark:text-emerald-400/80">última edição: {sessao.atualizadoPorNome}</span>}
+          {podeConfig && <button type="button" onClick={() => void abortar()} className="ml-auto text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline inline-flex items-center gap-1"><Ban size={12} /> Abortar</button>}
         </div>
       )}
 
