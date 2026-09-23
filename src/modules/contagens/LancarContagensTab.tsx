@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Package, Search, Ruler, Save, Minus, Plus, Users, LayoutGrid, Radio, Ban } from "lucide-react";
+import { Package, Search, Ruler, Save, Minus, Plus, Users, LayoutGrid, Radio, Ban, ArrowLeft } from "lucide-react";
 import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -14,9 +14,10 @@ type Props = {
   ultimaContagem: Record<string, Contagem>;
   restaurantId: string;
   podeConfig: boolean;
+  onSair?: () => void;   // voltar pra home de Contagens
 };
 
-export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, podeConfig }: Props) {
+export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, podeConfig, onSair }: Props) {
   const { pessoa: me } = useAuth();
   const [agrupamento, setAgrupamento] = useState<"categoria" | "fornecedor">("categoria");
   const [filtroChip, setFiltroChip] = useState<string>("todas");
@@ -178,6 +179,7 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
       setDrafts({}); setObsDrafts({});
       setOkMsg(`✓ Contagem finalizada — ${itens.length} item(ns)`);
       setTimeout(() => setOkMsg(""), 3000);
+      onSair?.();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Erro");
     } finally { setSaving(false); }
@@ -202,6 +204,7 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
       setDrafts({}); setObsDrafts({});
       setOkMsg("Contagem abortada (guardada em canceladas).");
       setTimeout(() => setOkMsg(""), 3000);
+      onSair?.();
     } catch (e) {
       setErr(e instanceof Error ? e.message : "Erro");
     } finally { setSaving(false); }
@@ -221,6 +224,10 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
 
   return (
     <div className="space-y-3">
+      {onSair && (
+        <button type="button" onClick={onSair} className="text-[13px] text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 inline-flex items-center gap-1"><ArrowLeft size={14} /> voltar</button>
+      )}
+
       {/* Identificação da contagem: nome OPCIONAL + data/horário automáticos */}
       <div>
         <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Nome da contagem <span className="font-normal text-gray-400">(opcional)</span></label>

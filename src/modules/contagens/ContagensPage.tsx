@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Pencil, LayoutDashboard, History, Lock, TriangleAlert, Package, Truck } from "lucide-react";
+import { Pencil, LayoutDashboard, History, Lock, Radio, Package, Truck } from "lucide-react";
 import { useParams, Link } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -14,7 +14,7 @@ import { HistoricoContagensTab } from "./HistoricoContagensTab";
 import { InsumosManager } from "./InsumosManager";
 import { PageContainer } from "../../core/ui/PageContainer";
 
-type Tab = "lancar" | "painel" | "historico" | "config";
+type Tab = "contagens" | "config";
 
 export function ContagensPage() {
   const { pessoa: me } = useAuth();
@@ -27,7 +27,8 @@ export function ContagensPage() {
   const { can } = useCanAcao(rid);
   const podeEditarContagem = can("contagens", "editarFinalizada");
 
-  const [tab, setTab] = useState<Tab>("lancar");
+  const [tab, setTab] = useState<Tab>("contagens");
+  const [contando, setContando] = useState(false);   // true = tela de lançar contagem
   const [insumos, setInsumos] = useState<Insumo[]>([]);
   const [contagens, setContagens] = useState<Contagem[]>([]);
   const [sessoes, setSessoes] = useState<ContagemSessao[]>([]);
@@ -65,13 +66,6 @@ export function ContagensPage() {
     return m;
   }, [contagens]);
 
-  const alertasMinStock = useMemo(() => insumos.filter(i => {
-    if (!i.ativo || !i.minStock) return false;
-    const c = ultimaContagem[i.id];
-    return (c?.qty ?? 0) < i.minStock;
-  }), [insumos, ultimaContagem]);
-
-  const nHistorico = useMemo(() => sessoes.filter(s => (s.status || "em_andamento") !== "em_andamento").length, [sessoes]);
   const nVivas = useMemo(() => sessoes.filter(s => (s.status || "em_andamento") === "em_andamento").length, [sessoes]);
 
   if (!restaurant) return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -84,22 +78,21 @@ export function ContagensPage() {
     );
   }
 
-  function irParaLancar() { setTab("lancar"); }
+  // Se estou contando, a tela vira a de lançar (com voltar). Senão, a home mesclada.
+  if (tab === "contagens" && contando) {
+    return (
+      <PageContainer>
+        <LancarContagensTab insumos={insumos.filter(i => i.ativo)} ultimaContagem={ultimaContagem} restaurantId={rid} podeConfig={podeConfig} onSair={() => setContando(false)} />
+      </PageContainer>
+    );
+  }
 
   return (
     <PageContainer>
-      {alertasMinStock.length > 0 && tab !== "painel" && (
-        <button type="button" onClick={() => setTab("painel")} className="w-full text-left rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-3 py-2 text-sm text-amber-800 dark:text-amber-300 mb-3 hover:bg-amber-100 dark:hover:bg-amber-900/30">
-          <span className="inline-flex items-center gap-1"><TriangleAlert size={14} className="shrink-0" /> <strong>{alertasMinStock.length}</strong> insumo(s) abaixo do estoque mínimo. Ver no Painel →</span>
-        </button>
-      )}
-
-      {/* Tabs */}
+      {/* Tabs — só Contagens e Insumos (painel/histórico foram mesclados aqui) */}
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {([
-          ["lancar",    <>Lançar contagem{nVivas > 0 ? <span className="ml-1 text-[10px] text-emerald-600 dark:text-emerald-400">● {nVivas} ao vivo</span> : null}</>, Pencil],
-          ["painel",    <>Painel{alertasMinStock.length > 0 ? <> <span className="text-amber-600">({alertasMinStock.length})</span></> : null}</>, LayoutDashboard],
-          ["historico", <>Histórico{nHistorico > 0 ? ` (${nHistorico})` : ""}</>, History],
+          ["contagens", `Contagens${nVivas > 0 ? " · ● ao vivo" : ""}`, LayoutDashboard],
           ["config",    `Insumos (${insumos.filter(i => i.ativo).length})`, Package],
         ] as const).map(([id, label, Ico]) => (
           <button key={id} onClick={() => setTab(id)}
@@ -116,18 +109,26 @@ export function ContagensPage() {
         )}
       </div>
 
-      <p className="text-xs text-gray-500 dark:text-gray-400 -mt-2 mb-4">
-        {tab === "lancar" && "Conte o estoque: percorra os insumos e digite a quantidade. Salva ao vivo; outras pessoas podem contar junto."}
-        {tab === "painel" && "Foto da situação do estoque: o que está abaixo do mínimo, sem contagem, e a reposição estimada."}
-        {tab === "historico" && "Contagens já feitas (e as ao vivo). Clique numa pra ver o detalhe — e editar, se tiver permissão."}
-        {tab === "config" && "Cadastro dos insumos (nome, categoria, unidade, estoque mínimo, fornecedor). Base da contagem e da compra."}
-      </p>
+      {tab === "contagens" && (
+        <div className="space-y-4">
+          {/* Iniciar / continuar contagem — largura completa */}
+          {podeConfig && (
+            <button type="button" onClick={() => setContando(true)}
+              className={`w-full inline-flex items-center justify-center gap-2 rounded-xl py-3.5 text-sm font-semibold text-white transition-colors ${nVivas > 0 ? "bg-emerald-600 hover:bg-emerald-700" : "bg-indigo-600 hover:bg-indigo-700"}`}>
+              {nVivas > 0 ? <><Radio size={17} className="animate-pulse" /> Continuar contagem ao vivo</> : <><Pencil size={17} /> Iniciar nova contagem</>}
+            </button>
+          )}
 
-      {tab === "lancar" && (
-        <LancarContagensTab insumos={insumos.filter(i => i.ativo)} ultimaContagem={ultimaContagem} restaurantId={rid} podeConfig={podeConfig} />
+          {/* Painel (cards + maiores faltas expansível) */}
+          <PainelContagensTab insumos={insumos} ultimaContagem={ultimaContagem} rid={rid} />
+
+          {/* Histórico das contagens, linha a linha */}
+          <div>
+            <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5 mb-2"><History size={15} /> Histórico de contagens</h3>
+            <HistoricoContagensTab sessoes={sessoes} insumos={insumos} rid={rid} podeEditar={podeEditarContagem} onContinuar={() => setContando(true)} />
+          </div>
+        </div>
       )}
-      {tab === "painel" && <PainelContagensTab insumos={insumos} ultimaContagem={ultimaContagem} rid={rid} />}
-      {tab === "historico" && <HistoricoContagensTab sessoes={sessoes} insumos={insumos} rid={rid} podeEditar={podeEditarContagem} onContinuar={irParaLancar} />}
       {tab === "config" && <InsumosManager rid={rid} podeConfig={podeConfig} />}
     </PageContainer>
   );

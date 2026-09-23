@@ -1,8 +1,8 @@
 // Painel enxuto da situação de estoque — resumo, não tabelão. Cards + top faltas.
 // A ação (gerar pedido) vive no Compras; aqui é a foto pra decisão.
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { TriangleAlert, PackageX, ClipboardCheck, Banknote, Truck, ArrowRight } from "lucide-react";
+import { TriangleAlert, PackageX, ClipboardCheck, Banknote, Truck, ArrowRight, ChevronDown, ChevronRight } from "lucide-react";
 import { UNIDADES_LABEL } from "../../core/types";
 import type { Contagem, Insumo } from "../../core/types";
 import { todayYmd } from "../../core/utils/date";
@@ -13,6 +13,7 @@ const und = (i: Insumo) => (i.unidade === "outro" ? (i.unidadeOutroLabel || "un"
 export function PainelContagensTab({ insumos, ultimaContagem, rid }: { insumos: Insumo[]; ultimaContagem: Record<string, Contagem>; rid: string }) {
   const ativos = useMemo(() => insumos.filter(i => i.ativo), [insumos]);
   const hoje = todayYmd();
+  const [faltasAberto, setFaltasAberto] = useState(false);
 
   const stats = useMemo(() => {
     let contadosHoje = 0, semContagem = 0, reposicao = 0;
@@ -53,14 +54,18 @@ export function PainelContagensTab({ insumos, ultimaContagem, rid }: { insumos: 
       </div>
 
       <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-3">
-        <div className="flex items-center justify-between mb-2">
-          <h3 className="text-sm font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><TriangleAlert size={15} className="text-amber-500" /> Maiores faltas</h3>
-          <Link to={`/r/${rid}/compras`} className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"><Truck size={13} /> Gerar pedido no Compras <ArrowRight size={12} /></Link>
+        <div className="flex items-center justify-between gap-2">
+          <button type="button" onClick={() => setFaltasAberto(v => !v)} className="inline-flex items-center gap-1.5 text-sm font-bold text-gray-900 dark:text-gray-100">
+            {faltasAberto ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+            <TriangleAlert size={15} className="text-amber-500" /> Maiores faltas
+            {stats.faltas.length > 0 && <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">({stats.faltas.length})</span>}
+          </button>
+          <Link to={`/r/${rid}/compras`} className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 hover:underline inline-flex items-center gap-1"><Truck size={13} /> Gerar pedido <ArrowRight size={12} /></Link>
         </div>
-        {stats.faltas.length === 0 ? (
+        {faltasAberto && (stats.faltas.length === 0 ? (
           <div className="text-sm text-emerald-700 dark:text-emerald-400 py-6 text-center">✓ Nenhum insumo abaixo do mínimo.</div>
         ) : (
-          <div className="divide-y divide-gray-50 dark:divide-gray-800/50">
+          <div className="divide-y divide-gray-50 dark:divide-gray-800/50 mt-2">
             {stats.faltas.slice(0, 12).map(({ insumo: i, falta, qtd }) => (
               <div key={i.id} className="flex items-center justify-between gap-3 py-1.5 text-sm">
                 <div className="min-w-0">
@@ -74,7 +79,7 @@ export function PainelContagensTab({ insumos, ultimaContagem, rid }: { insumos: 
             ))}
             {stats.faltas.length > 12 && <div className="text-[11px] text-gray-400 pt-1.5">+ {stats.faltas.length - 12} outros abaixo do mínimo</div>}
           </div>
-        )}
+        ))}
       </div>
     </div>
   );
