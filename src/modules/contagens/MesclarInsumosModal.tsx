@@ -1,7 +1,7 @@
 // Mescla insumos duplicados num só: junta aliases + fornecedores, aponta as
 // contagens antigas pro insumo escolhido e apaga os demais.
 import { useMemo, useState } from "react";
-import { collection, deleteDoc, doc, getDocs, query, updateDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, deleteField, doc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { Layers, Check, Sparkles, Loader2 } from "lucide-react";
 import { db, auth } from "../../core/firebase/config";
 import { Modal } from "../../core/ui/Modal";
@@ -19,6 +19,11 @@ export function MesclarInsumosModal({ insumos, onClose }: { insumos: Insumo[]; o
   const [principalId, setPrincipalId] = useState<string>("");
   const [salvando, setSalvando] = useState(false);
   const [err, setErr] = useState("");
+  // Resolução de conflito: nome/preço/fornecedor que ficam (default = principal).
+  const [nomeFinal, setNomeFinal] = useState<string>("");
+  const [precoFinal, setPrecoFinal] = useState<number | null | undefined>(undefined);
+  const [fornFinal, setFornFinal] = useState<string>("");
+  const prefNomeDe = (i: Insumo) => i.fornecedores?.find(f => f.primario)?.nome || (i.fornecedorPreferredId ? i.fornecedores?.find(f => f.fornecedorId === i.fornecedorPreferredId)?.nome : undefined) || i.fornecedores?.[0]?.nome || "";
   // Sugestão de duplicados por IA.
   const [sugerindo, setSugerindo] = useState(false);
   const [sugestoes, setSugestoes] = useState<GrupoDup[] | null>(null);
@@ -65,13 +70,20 @@ export function MesclarInsumosModal({ insumos, onClose }: { insumos: Insumo[]; o
       // 1) Une aliases + fornecedores no principal.
       const aliases = new Set<string>([...(principal.aliases || []), normalizar(principal.nome)]);
       const fornMap = new Map<string, InsumoFornecedor>();
-      for (const f of (principal.fornecedores || [])) fornMap.set(normalizar(f.nome), f);
+      for (const f of (principal.fornecedores || [])) fornMap.set(normalizar(f.nome), { ...f, primario: false });
       for (const o of outros) {
         aliases.add(normalizar(o.nome));
         for (const a of (o.aliases || [])) aliases.add(a);
         for (const f of (o.fornecedores || [])) if (!fornMap.has(normalizar(f.nome))) fornMap.set(normalizar(f.nome), { ...f, primario: false });
       }
-      await updateDoc(doc(db, "insumos", principal.id), sanitizeForFirestore({ aliases: [...aliases], fornecedores: [...fornMap.values()], atualizadoEm: new Date().toISOString() }));
+      // Escolhas de conflito (default = principal).
+      const nomeF = nomeFinal || principal.nome;
+      const precoF = precoFinal !== undefined ? precoFinal : (principal.precoEstimado ?? null);
+      const fornF = fornFinal || prefNomeDe(principal);
+      let fornPrefId = principal.fornecedorPreferredId ?? null;
+      if (fornF) { const k = normalizar(fornF); const f = fornMap.get(k); if (f) { f.primario = true; fornMap.set(k, f); fornPrefId = f.fornecedorId ?? fornPrefId; } }
+      const patch: Record<string, unknown> = { nome: nomeF, aliases: [...aliases], fornecedores: [...fornMap.values()], fornecedorPreferredId: fornPrefId, precoEstimado: precoF == null ? deleteField() : precoF, atualizadoEm: new Date().toISOString() };
+      await updateDoc(doc(db, "insumos", principal.id), sanitizeForFirestore(patch));
       // 2) Aponta contagens dos outros pro principal e apaga os outros.
       for (const o of outros) {
         const snap = await getDocs(query(collection(db, "contagens"), where("insumoId", "==", o.id)));
@@ -134,6 +146,41 @@ export function MesclarInsumosModal({ insumos, onClose }: { insumos: Insumo[]; o
             );
           })}
         </div>
+        {/* Resolução de conflito — o que fica ao mesclar */}
+        {sel.size >= 2 && (() => {
+          const selecionados = insumos.filter(i => sel.has(i.id));
+          const principal = insumos.find(i => i.id === (principalId || [...sel][0]));
+          const nomes = [...new Set(selecionados.map(i => i.nome).filter(Boolean))];
+          const precos = [...new Set(selecionados.map(i => i.precoEstimado).filter((p): p is number => p != null))];
+          const forns = [...new Set(selecionados.flatMap(i => (i.fornecedores || []).map(f => f.nome)).filter(Boolean))];
+          const nomeAtual = nomeFinal || principal?.nome || "";
+          const precoAtual = precoFinal !== undefined ? precoFinal : (principal?.precoEstimado ?? null);
+          const fornAtual = fornFinal || (principal ? prefNomeDe(principal) : "");
+          return (
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 p-2.5 space-y-2 bg-gray-50/60 dark:bg-gray-800/30">
+              <div className="text-[11px] font-bold uppercase tracking-wide text-gray-500">O que fica</div>
+              {nomes.length > 1 && (
+                <div>
+                  <div className="text-[10px] uppercase text-gray-400 mb-1">Nome</div>
+                  <div className="flex flex-wrap gap-1.5">{nomes.map(n => <button key={n} type="button" onClick={() => setNomeFinal(n)} className={`px-2 py-1 rounded-full text-[12px] border ${nomeAtual === n ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{n}</button>)}</div>
+                </div>
+              )}
+              {precos.length > 1 && (
+                <div>
+                  <div className="text-[10px] uppercase text-gray-400 mb-1">Preço /un</div>
+                  <div className="flex flex-wrap gap-1.5">{precos.map(p => <button key={p} type="button" onClick={() => setPrecoFinal(p)} className={`px-2 py-1 rounded-full text-[12px] border ${precoAtual === p ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>R$ {p.toFixed(2)}</button>)}</div>
+                </div>
+              )}
+              {forns.length > 1 && (
+                <div>
+                  <div className="text-[10px] uppercase text-gray-400 mb-1">Fornecedor preferencial</div>
+                  <div className="flex flex-wrap gap-1.5">{forns.map(n => <button key={n} type="button" onClick={() => setFornFinal(n)} className={`px-2 py-1 rounded-full text-[12px] border ${fornAtual === n ? "bg-emerald-600 border-emerald-600 text-white" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{n}</button>)}</div>
+                </div>
+              )}
+              {nomes.length <= 1 && precos.length <= 1 && forns.length <= 1 && <div className="text-[11px] text-gray-400">Sem conflitos — nome, preço e fornecedor iguais.</div>}
+            </div>
+          );
+        })()}
         {err && <div className="text-sm text-rose-600">{err}</div>}
         <div className="flex justify-between items-center pt-3 border-t border-gray-200 dark:border-gray-800">
           <span className="text-xs text-gray-400">{sel.size} selecionado(s)</span>
