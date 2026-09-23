@@ -26,7 +26,7 @@ const fmtDia = (d?: string) => d ? new Date(d + "T12:00:00").toLocaleDateString(
 const fmtHora = (iso?: string) => iso ? new Date(iso).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }) : "";
 
 export function HistoricoContagensTab({ sessoes, insumos, rid, podeEditar, onContinuar }: {
-  sessoes: ContagemSessao[]; insumos: Insumo[]; rid: string; podeEditar: boolean; onContinuar: (data: string, turno: string) => void;
+  sessoes: ContagemSessao[]; insumos: Insumo[]; rid: string; podeEditar: boolean; onContinuar: () => void;
 }) {
   const [aberta, setAberta] = useState<ContagemSessao | null>(null);
   const vivas = useMemo(() => sessoes.filter(s => statusDe(s) === "em_andamento"), [sessoes]);
@@ -46,7 +46,7 @@ export function HistoricoContagensTab({ sessoes, insumos, rid, podeEditar, onCon
                 {s.turno && <span className="ml-1.5 text-[11px] uppercase text-emerald-700 dark:text-emerald-300">{s.turno}</span>}
                 <span className="ml-2 text-xs text-gray-500">{Object.keys(s.valores || {}).length} item(ns) · {s.atualizadoPorNome || s.iniciadoPorNome}</span>
               </div>
-              <Button size="sm" onClick={() => onContinuar(s.data, s.turno || "")}>Continuar</Button>
+              <Button size="sm" onClick={onContinuar}>Continuar</Button>
             </div>
           ))}
         </div>
@@ -62,8 +62,8 @@ export function HistoricoContagensTab({ sessoes, insumos, rid, podeEditar, onCon
               <button key={s.id} type="button" onClick={() => setAberta(s)}
                 className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2.5 hover:border-indigo-300 flex items-center justify-between gap-3">
                 <div className="min-w-0 text-sm">
-                  <strong className="text-gray-900 dark:text-gray-100">{fmtDia(s.data)}</strong>
-                  {s.turno && <span className="ml-1.5 text-[11px] uppercase text-gray-500">{s.turno}</span>}
+                  {s.nome ? <strong className="text-gray-900 dark:text-gray-100">{s.nome}</strong> : <strong className="text-gray-900 dark:text-gray-100">{fmtDia(s.data)}</strong>}
+                  {s.nome && <span className="ml-1.5 text-[11px] text-gray-500">{fmtDia(s.data)}</span>}
                   <span className={`ml-2 inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wide px-1.5 py-0.5 rounded ${info.cls}`}><info.Icon size={10} /> {info.label}</span>
                   <div className="text-[11px] text-gray-500 mt-0.5">{s.totalItens ?? Object.keys(s.valores || {}).length} itens · {s.finalizadaPorNome || s.canceladaPorNome || s.iniciadoPorNome} · {fmtHora(s.atualizadoEm || s.finalizadaEm)}</div>
                 </div>
@@ -80,7 +80,7 @@ export function HistoricoContagensTab({ sessoes, insumos, rid, podeEditar, onCon
 }
 
 function DetalheModal({ sessao, insumos, rid, podeEditar, onContinuar, onClose }: {
-  sessao: ContagemSessao; insumos: Insumo[]; rid: string; podeEditar: boolean; onContinuar: (data: string, turno: string) => void; onClose: () => void;
+  sessao: ContagemSessao; insumos: Insumo[]; rid: string; podeEditar: boolean; onContinuar: () => void; onClose: () => void;
 }) {
   const { pessoa: me } = useAuth();
   const st = statusDe(sessao);
@@ -136,14 +136,14 @@ function DetalheModal({ sessao, insumos, rid, podeEditar, onContinuar, onClose }
     setSalvando(true); setErr("");
     try {
       const now = new Date().toISOString();
-      const liveId = `${rid}_${sessao.data}_${sessao.turno || "_"}`;
+      const liveId = `${rid}_live`;
       await setDoc(doc(db, "contagemSessoes", liveId), sanitizeForFirestore({
-        restaurantId: rid, data: sessao.data, turno: sessao.turno || undefined, status: "em_andamento",
+        restaurantId: rid, data: sessao.data, nome: sessao.nome || undefined, status: "em_andamento",
         valores: sessao.valores || {}, iniciadoPor: me.id, iniciadoPorNome: me.nome, iniciadoEm: now, atualizadoEm: now, atualizadoPorNome: me.nome,
       }), { merge: true });
       await deleteDoc(doc(db, "contagemSessoes", sessao.id)).catch(() => {});   // consome a cancelada
       onClose();
-      onContinuar(sessao.data, sessao.turno || "");
+      onContinuar();
     } catch (e) { setErr(e instanceof Error ? e.message : "Erro ao retomar"); }
     finally { setSalvando(false); }
   }

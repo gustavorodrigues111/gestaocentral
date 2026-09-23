@@ -2782,6 +2782,7 @@ export type ContagemSessao = {
   restaurantId: string;
   data: string;
   turno?: string;
+  nome?: string;                    // nome OPCIONAL da contagem (ex.: "Fechamento sexta")
   status?: ContagemSessaoStatus;    // ausente = em_andamento (retrocompat)
   valores: { [insumoId: string]: ContagemSessaoValor };
   iniciadoPor?: string;

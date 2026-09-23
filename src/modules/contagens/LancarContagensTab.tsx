@@ -1,12 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Package, Search, Ruler, Save, Minus, Plus, Users, LayoutGrid, Radio, Ban } from "lucide-react";
-import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, setDoc } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, deleteField, doc, onSnapshot, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
-import { Input } from "../../core/ui/Input";
-import { Select } from "../../core/ui/Select";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
+import { todayYmd } from "../../core/utils/date";
 import { UNIDADES_LABEL } from "../../core/types";
 import type { Contagem, ContagemSessao, Insumo } from "../../core/types";
 
@@ -15,31 +14,29 @@ type Props = {
   ultimaContagem: Record<string, Contagem>;
   restaurantId: string;
   podeConfig: boolean;
-  data: string;
-  turno: string;
-  onData: (v: string) => void;
-  onTurno: (v: string) => void;
 };
 
-export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, podeConfig, data, turno, onData, onTurno }: Props) {
+export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, podeConfig }: Props) {
   const { pessoa: me } = useAuth();
   const [agrupamento, setAgrupamento] = useState<"categoria" | "fornecedor">("categoria");
   const [filtroChip, setFiltroChip] = useState<string>("todas");
   const [search, setSearch] = useState("");
   const [drafts, setDrafts] = useState<Record<string, string>>({}); // insumoId → string
   const [obsDrafts, setObsDrafts] = useState<Record<string, string>>({});
+  const [nome, setNome] = useState("");   // nome opcional da contagem
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [okMsg, setOkMsg] = useState("");
-  // ── Sessão AO VIVO (colaborativa) ──────────────────────────────────────────
+  // ── Sessão AO VIVO (colaborativa) — UMA por restaurante ────────────────────
   const [sessao, setSessao] = useState<ContagemSessao | null>(null);
   const editandoRef = useRef<string | null>(null);   // campo em foco agora (não sobrescreve com snapshot)
-  const sessionId = useMemo(() => `${restaurantId}_${data}_${turno || "_"}`, [restaurantId, data, turno]);
+  const sessionId = `${restaurantId}_live`;
+  const dataAtual = sessao?.data || todayYmd();   // data = quando a contagem começou (automático)
 
-  // Assina a sessão viva da data+turno atual; sincroniza os campos que NÃO estou
+  // Assina a sessão viva do restaurante; sincroniza os campos que NÃO estou
   // editando (pra ver o que os outros digitam em tempo real).
   useEffect(() => {
-    setDrafts({}); setObsDrafts({}); editandoRef.current = null;
+    setDrafts({}); setObsDrafts({}); setNome(""); editandoRef.current = null;
     const ref = doc(db, "contagemSessoes", sessionId);
     return onSnapshot(ref, snap => {
       const raw = snap.exists() ? ({ id: snap.id, ...snap.data() } as ContagemSessao) : null;
@@ -57,6 +54,7 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
         for (const [id, v] of Object.entries(val)) if (editandoRef.current !== id) n[id] = v.obs || "";
         return n;
       });
+      if (editandoRef.current !== "__nome__") setNome(s?.nome || "");
     }, () => setSessao(null));
   }, [sessionId]);
 
@@ -67,7 +65,7 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
     const now = new Date().toISOString();
     const ref = doc(db, "contagemSessoes", sessionId);
     const meta = {
-      restaurantId, data, turno: turno || undefined, status: "em_andamento" as const, atualizadoEm: now, atualizadoPorNome: me.nome,
+      restaurantId, data: dataAtual, status: "em_andamento" as const, atualizadoEm: now, atualizadoPorNome: me.nome,
       iniciadoPor: sessao?.iniciadoPor || me.id, iniciadoPorNome: sessao?.iniciadoPorNome || me.nome, iniciadoEm: sessao?.iniciadoEm || now,
     };
     const raw = override ?? drafts[id];
@@ -79,6 +77,14 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
         await setDoc(ref, sanitizeForFirestore({ ...meta, valores: { [id]: { qty: qtd, obs: obsDrafts[id]?.trim() || undefined, porId: me.id, porNome: me.nome, em: now } } }), { merge: true });
       }
     } catch (e) { setErr(e instanceof Error ? e.message : "Erro ao sincronizar"); }
+  }
+
+  // Nome opcional da contagem — só grava se já existe sessão viva (não cria sessão
+  // vazia só por causa do nome; ele entra no snapshot ao finalizar de qualquer jeito).
+  async function commitNome() {
+    if (!me || !podeConfig || !sessao) return;
+    try { await updateDoc(doc(db, "contagemSessoes", sessionId), sanitizeForFirestore({ nome: nome.trim() || deleteField(), atualizadoEm: new Date().toISOString() })); }
+    catch { /* silencioso: nome é secundário */ }
   }
 
   // Fornecedor PRIORITÁRIO do insumo (nome), pra agrupar "por fornecedor".
@@ -152,7 +158,7 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
       // 1) Cria o REGISTRO da sessão (histórico) com status "realizada". O id dele
       //    vira o sessaoId das contagens (liga histórico ↔ contagens).
       const regRef = await addDoc(collection(db, "contagemSessoes"), sanitizeForFirestore({
-        restaurantId, data, turno: turno || undefined, status: "realizada",
+        restaurantId, data: dataAtual, nome: nome.trim() || undefined, status: "realizada",
         valores: sessao?.valores || {},
         iniciadoPor: sessao?.iniciadoPor || me.id, iniciadoPorNome: sessao?.iniciadoPorNome || me.nome, iniciadoEm: sessao?.iniciadoEm || now,
         finalizadaEm: now, finalizadaPor: me.id, finalizadaPorNome: me.nome, totalItens: itens.length, atualizadoEm: now,
@@ -163,8 +169,8 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
         const insumo = insumos.find(i => i.id === it.insumoId); if (!insumo) continue;
         await addDoc(collection(db, "contagens"), sanitizeForFirestore({
           restaurantId, insumoId: it.insumoId, insumoNomeSnapshot: insumo.nome, unidadeSnapshot: insumo.unidade,
-          qty: it.qty, data, observacao: it.obs, registradoEm: now, registradoPor: me.id, registradoNome: me.nome,
-          sessaoId, turno: turno || undefined,
+          qty: it.qty, data: dataAtual, observacao: it.obs, registradoEm: now, registradoPor: me.id, registradoNome: me.nome,
+          sessaoId,
         }));
       }
       // 3) Apaga a sessão viva (deterministic).
@@ -187,7 +193,7 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
     try {
       const now = new Date().toISOString();
       await addDoc(collection(db, "contagemSessoes"), sanitizeForFirestore({
-        restaurantId, data, turno: turno || undefined, status: "cancelada",
+        restaurantId, data: dataAtual, nome: nome.trim() || undefined, status: "cancelada",
         valores: sessao.valores || {},
         iniciadoPor: sessao.iniciadoPor, iniciadoPorNome: sessao.iniciadoPorNome, iniciadoEm: sessao.iniciadoEm,
         canceladaEm: now, canceladaPorNome: me.nome, totalItens: Object.keys(sessao.valores || {}).length, atualizadoEm: now,
@@ -215,16 +221,26 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
 
   return (
     <div className="space-y-3">
-      {/* Topo: data + turno + busca (empilha no mobile) */}
-      <div className="grid grid-cols-1 sm:grid-cols-[auto_auto_1fr] gap-2 items-end">
-        <Input label="Data" type="date" value={data} onChange={(e) => onData(e.target.value)} />
-        <Select label="Turno" value={turno} onChange={(e) => onTurno(e.target.value)}>
-          <option value="">—</option>
-          <option value="manhã">Manhã</option>
-          <option value="tarde">Tarde</option>
-          <option value="noite">Noite</option>
-        </Select>
-        <Input label={<span className="inline-flex items-center gap-1"><Search size={12} /> Buscar</span>} value={search} onChange={(e) => setSearch(e.target.value)} placeholder="filtra por nome" />
+      {/* Identificação da contagem: nome OPCIONAL + data/horário automáticos */}
+      <div>
+        <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Nome da contagem <span className="font-normal text-gray-400">(opcional)</span></label>
+        <input value={nome} disabled={!podeConfig}
+          onChange={(e) => setNome(e.target.value)} onFocus={() => { editandoRef.current = "__nome__"; }} onBlur={() => { editandoRef.current = null; void commitNome(); }}
+          placeholder='ex: "Fechamento sexta", "Inventário mensal"…'
+          className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100 disabled:opacity-60" />
+        <p className="text-[11px] text-gray-400 mt-1 inline-flex items-center gap-1">
+          <Radio size={11} className={sessao ? "text-emerald-500" : "text-gray-300"} />
+          {sessao?.iniciadoEm
+            ? <>Iniciada em {new Date(sessao.iniciadoEm).toLocaleString("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" })}{sessao.iniciadoPorNome ? ` por ${sessao.iniciadoPorNome}` : ""} · encerra ao finalizar</>
+            : <>A data e o horário são registrados automaticamente quando você começar a contar.</>}
+        </p>
+      </div>
+
+      {/* Buscar ITEM (filtra a lista de insumos) */}
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
+        <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Buscar item pra contar…"
+          className="w-full pl-9 pr-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 dark:text-gray-100" />
       </div>
 
       {/* Toggle do agrupamento: por categoria OU por fornecedor prioritário */}
@@ -248,7 +264,7 @@ export function LancarContagensTab({ insumos, ultimaContagem, restaurantId, pode
       {sessao && Object.keys(sessao.valores || {}).length > 0 && (
         <div className="rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50/70 dark:bg-emerald-900/15 px-3 py-2 text-[12px] text-emerald-800 dark:text-emerald-200 flex items-center gap-2 flex-wrap">
           <Radio size={14} className="shrink-0 animate-pulse" />
-          <span><strong>Contagem em andamento</strong> (ao vivo) — {Object.keys(sessao.valores).length} item(ns). Outras pessoas podem contar junto nesta mesma data/turno; salva sozinho a cada campo. Só vira contagem oficial ao <strong>Finalizar</strong>.</span>
+          <span><strong>Contagem em andamento</strong> (ao vivo) — {Object.keys(sessao.valores).length} item(ns). Outras pessoas podem contar junto; salva sozinho a cada campo. Só vira contagem oficial ao <strong>Finalizar</strong>.</span>
           {sessao.atualizadoPorNome && <span className="text-emerald-600/80 dark:text-emerald-400/80">última edição: {sessao.atualizadoPorNome}</span>}
           {podeConfig && <button type="button" onClick={() => void abortar()} className="ml-auto text-[11px] font-semibold text-rose-600 dark:text-rose-400 hover:underline inline-flex items-center gap-1"><Ban size={12} /> Abortar</button>}
         </div>

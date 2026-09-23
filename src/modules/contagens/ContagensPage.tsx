@@ -7,7 +7,6 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { canVer, canConfigurar } from "../../core/auth/permissions";
 import { useCanAcao } from "../../core/auth/useCanAcao";
-import { todayYmd } from "../../core/utils/date";
 import type { Contagem, ContagemSessao, Insumo } from "../../core/types";
 import { LancarContagensTab } from "./LancarContagensTab";
 import { PainelContagensTab } from "./PainelContagensTab";
@@ -29,8 +28,6 @@ export function ContagensPage() {
   const podeEditarContagem = can("contagens", "editarFinalizada");
 
   const [tab, setTab] = useState<Tab>("lancar");
-  const [data, setData] = useState(todayYmd());   // data/turno subidos (pra Histórico "continuar")
-  const [turno, setTurno] = useState<string>("");
   const [insumos, setInsumos] = useState<Insumo[]>([]);
   const [contagens, setContagens] = useState<Contagem[]>([]);
   const [sessoes, setSessoes] = useState<ContagemSessao[]>([]);
@@ -87,7 +84,7 @@ export function ContagensPage() {
     );
   }
 
-  function irParaLancar(d: string, t: string) { setData(d); setTurno(t); setTab("lancar"); }
+  function irParaLancar() { setTab("lancar"); }
 
   return (
     <PageContainer>
@@ -127,8 +124,7 @@ export function ContagensPage() {
       </p>
 
       {tab === "lancar" && (
-        <LancarContagensTab insumos={insumos.filter(i => i.ativo)} ultimaContagem={ultimaContagem} restaurantId={rid} podeConfig={podeConfig}
-          data={data} turno={turno} onData={setData} onTurno={setTurno} />
+        <LancarContagensTab insumos={insumos.filter(i => i.ativo)} ultimaContagem={ultimaContagem} restaurantId={rid} podeConfig={podeConfig} />
       )}
       {tab === "painel" && <PainelContagensTab insumos={insumos} ultimaContagem={ultimaContagem} rid={rid} />}
       {tab === "historico" && <HistoricoContagensTab sessoes={sessoes} insumos={insumos} rid={rid} podeEditar={podeEditarContagem} onContinuar={irParaLancar} />}
