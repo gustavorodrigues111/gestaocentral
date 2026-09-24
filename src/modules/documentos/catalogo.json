@@ -2264,8 +2264,16 @@
 "titulo": "Opção de desistência do vale-transporte",
 "categoria": "Benefícios",
 "quando_usar": "Quando o empregado não quer receber vale-transporte porque tem meios próprios de locomoção e precisa formalizar essa recusa por escrito.",
-"observacoes": "Documento redigido em nome do empregado e assinado só por ele; não exige testemunhas. A opção é por tempo indeterminado, mas o empregado pode voltar atrás a qualquer momento — nesse caso é preciso novo termo de requisição de vale-transporte. Guarde o original no prontuário, pois é a prova de que a empresa não descumpriu a Lei 7.418/85. O nome da empregadora já vem impresso no modelo.",
+"observacoes": "Documento redigido em nome do empregado e assinado só por ele; não exige testemunhas. A opção é por tempo indeterminado, mas o empregado pode voltar atrás a qualquer momento — nesse caso é preciso novo termo de requisição de vale-transporte. Guarde o original no prontuário, pois é a prova de que a empresa não descumpriu a Lei 7.418/85. A razão social da empregadora é preenchida automaticamente a partir do cadastro da empresa.",
 "campos": [
+{
+"token": "RAZAO_SOCIAL",
+"rotulo": "Razão social da empresa",
+"tipo": "texto",
+"obrigatorio": true,
+"origem": "empresa",
+"ajuda": ""
+},
 {
 "token": "CIDADE",
 "rotulo": "Cidade da assinatura",
