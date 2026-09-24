@@ -5,7 +5,7 @@
 // preenchido pra assinatura. PDF exato sai pela skill/LibreOffice (fase seguinte).
 
 import { useEffect, useMemo, useState } from "react";
-import { Settings, FileSignature, History, Files, TriangleAlert, CheckSquare, Check, ReceiptText, Plus, PenLine, FileText, Building2, CalendarDays, User, Pencil, UserRoundPlus, type LucideIcon } from "lucide-react";
+import { Settings, FileSignature, History, Files, TriangleAlert, CheckSquare, Check, ReceiptText, Plus, PenLine, FileText, Building2, CalendarDays, User, Pencil, UserRoundPlus, Sparkles, Loader2, X, type LucideIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where, doc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -76,6 +76,11 @@ export function DocumentosPage() {
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [empresas, setEmpresas] = useState<Record<string, EmpresaCfg>>({});
   const [busca, setBusca] = useState("");
+  const [iaPergunta, setIaPergunta] = useState("");
+  const [iaIds, setIaIds] = useState<string[] | null>(null);
+  const [iaResposta, setIaResposta] = useState("");
+  const [iaLoading, setIaLoading] = useState(false);
+  const [iaErro, setIaErro] = useState("");
   const [sel, setSel] = useState<DocModelo | null>(null);
   const [modo, setModo] = useState<"catalogo" | "config">("catalogo");
   const [secao, setSecao] = useState<"contratos" | "outros" | "historico" | "cargos">("contratos");
@@ -104,9 +109,31 @@ export function DocumentosPage() {
   const habil = empresas[empresaRid]?.habilitados;
   const disponiveis = habil ? DOCS.filter(d => habil.includes(d.id)) : DOCS;
   const q = busca.trim().toLowerCase();
-  const filtrados = disponiveis.filter(d => !q || `${d.titulo} ${d.categoria} ${d.quando_usar}`.toLowerCase().includes(q));
+  const iaSet = iaIds ? new Set(iaIds) : null;
+  const filtrados = disponiveis.filter(d => {
+    if (iaSet && !iaSet.has(d.id)) return false;
+    return !q || `${d.titulo} ${d.categoria} ${d.quando_usar}`.toLowerCase().includes(q);
+  });
   const porCategoria = new Map<string, DocModelo[]>();
   for (const d of filtrados) { const arr = porCategoria.get(d.categoria) || []; arr.push(d); porCategoria.set(d.categoria, arr); }
+
+  async function perguntarIA() {
+    const p = iaPergunta.trim();
+    if (!p) return;
+    setIaLoading(true); setIaErro(""); setIaResposta("");
+    try {
+      const r = await fetch("/api/documentos-buscar-ia", {
+        method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
+        body: JSON.stringify({ pergunta: p, docs: disponiveis.map(d => ({ id: d.id, titulo: d.titulo, categoria: d.categoria, quando_usar: d.quando_usar, observacoes: d.observacoes })) }),
+      });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || "Falha ao consultar a IA.");
+      setIaResposta(j.resposta || "");
+      setIaIds(Array.isArray(j.ids) ? j.ids : []);
+    } catch (e) { setIaErro(e instanceof Error ? e.message : "Erro"); }
+    finally { setIaLoading(false); }
+  }
+  function limparIA() { setIaIds(null); setIaResposta(""); setIaPergunta(""); setIaErro(""); }
 
   if (modo === "config" && podeConfig) {
     return <ConfigView restaurants={restaurants} empresas={empresas} empresaRid={empresaRid} setEmpresaRid={setEmpresaRid}
@@ -146,6 +173,30 @@ export function DocumentosPage() {
         </select>
         <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="🔍 Buscar documento…"
           className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+      </div>
+
+      {/* Assistente IA — pergunte o que precisa e a lista filtra */}
+      <div className="mb-4 rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-900/10 p-3">
+        <div className="flex items-center gap-2">
+          <Sparkles size={16} className="shrink-0 text-indigo-500" />
+          <input value={iaPergunta} onChange={e => setIaPergunta(e.target.value)}
+            onKeyDown={e => { if (e.key === "Enter") void perguntarIA(); }}
+            placeholder="Pergunte à IA: quais documentos usar na admissão? na advertência? na demissão sem justa causa?"
+            className="flex-1 min-w-0 bg-transparent text-sm outline-none placeholder:text-gray-400 dark:text-gray-100" />
+          <Button size="sm" onClick={() => void perguntarIA()} disabled={iaLoading || !iaPergunta.trim()}>
+            <span className="inline-flex items-center gap-1.5">{iaLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />} {iaLoading ? "Pensando…" : "Perguntar"}</span>
+          </Button>
+        </div>
+        {iaErro && <div className="mt-2 text-[12px] text-rose-600 dark:text-rose-400">{iaErro}</div>}
+        {(iaResposta || iaIds) && !iaErro && (
+          <div className="mt-2 flex items-start justify-between gap-2">
+            <p className="text-[13px] text-gray-700 dark:text-gray-200 leading-snug">
+              {iaResposta}
+              {iaIds && <span className="text-gray-400"> {" "}· {iaIds.length} documento(s) filtrado(s).</span>}
+            </p>
+            <button type="button" onClick={limparIA} className="shrink-0 text-[11px] text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 inline-flex items-center gap-1"><X size={12} /> limpar</button>
+          </div>
+        )}
       </div>
 
       {podeGerar ? (
