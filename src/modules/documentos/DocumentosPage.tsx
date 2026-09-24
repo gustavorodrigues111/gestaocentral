@@ -22,6 +22,7 @@ import { getTermosAssinaturaDefault } from "../../core/admissao/admissaoHelpers"
 import { ContratosTrabalho } from "./ContratosTrabalho";
 import { HistoricoDocumentos } from "./HistoricoDocumentos";
 import { ConfigCargos } from "./ConfigCargos";
+import { LoteModal } from "./LoteModal";
 import CATALOGO from "./catalogo.json";
 import MARCACOES_JSON from "./marcacoes.json";
 import QUADROS_JSON from "./quadros.json";
@@ -83,6 +84,7 @@ export function DocumentosPage() {
   const [iaLoading, setIaLoading] = useState(false);
   const [iaErro, setIaErro] = useState("");
   const [sel, setSel] = useState<DocModelo | null>(null);
+  const [loteAberto, setLoteAberto] = useState(false);
   const [modo, setModo] = useState<"catalogo" | "config">("catalogo");
   const [secao, setSecao] = useState<"contratos" | "outros" | "historico" | "cargos">("contratos");
   const [empresaRid, setEmpresaRid] = useState(rid || "");
@@ -117,6 +119,11 @@ export function DocumentosPage() {
   });
   const porCategoria = new Map<string, DocModelo[]>();
   for (const d of filtrados) { const arr = porCategoria.get(d.categoria) || []; arr.push(d); porCategoria.set(d.categoria, arr); }
+
+  // Documentos que dá pra gerar em lote (preenchem sozinhos: só empresa/empregado/data,
+  // sem opções, tabelas ou textos redigidos).
+  const docElegivelLote = (d: DocModelo) => !(MARCACOES[d.id]?.length) && !(QUADROS[d.id]?.length) && !(d.texto_livre?.length) && d.campos.every(c => ["empresa", "empregado", "data"].includes(c.origem));
+  const docsElegiveisLote = disponiveis.filter(docElegivelLote);
 
   async function perguntarIA() {
     const p = iaPergunta.trim();
@@ -174,6 +181,7 @@ export function DocumentosPage() {
         </select>
         <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="🔍 Buscar documento…"
           className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
+        {podeGerar && <Button variant="secondary" onClick={() => setLoteAberto(true)}><span className="inline-flex items-center gap-1.5"><Files size={14} /> Gerar em lote</span></Button>}
       </div>
 
       {/* Assistente IA — pergunte o que precisa e a lista filtra */}
@@ -226,6 +234,11 @@ export function DocumentosPage() {
       {sel && podeGerar && (
         <GeradorModal key={sel.id} doc={sel} rid={empresaRid || rid || ""} restaurants={restaurants} pessoas={pessoas} empregados={empregados}
           empresas={empresas} onClose={() => setSel(null)} />
+      )}
+      {loteAberto && podeGerar && (
+        <LoteModal docsElegiveis={docsElegiveisLote} empresaData={empresas[empresaRid]?.campos || {}}
+          empregados={empregados.filter(e => e.restaurantId === empresaRid)} pessoas={pessoas}
+          empresaNome={restaurants.find(r => r.id === empresaRid)?.nome || ""} onClose={() => setLoteAberto(false)} />
       )}
       </>)}
     </PageContainer>
