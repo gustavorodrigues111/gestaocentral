@@ -5,7 +5,7 @@
 // preenchido pra assinatura. PDF exato sai pela skill/LibreOffice (fase seguinte).
 
 import { useEffect, useMemo, useState } from "react";
-import { Settings, FileSignature, History, Files, TriangleAlert, CheckSquare, ReceiptText, Plus, PenLine, FileText, Building2, CalendarDays, User, Pencil, UserRoundPlus, type LucideIcon } from "lucide-react";
+import { Settings, FileSignature, History, Files, TriangleAlert, CheckSquare, Check, ReceiptText, Plus, PenLine, FileText, Building2, CalendarDays, User, Pencil, UserRoundPlus, type LucideIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where, doc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -514,6 +514,52 @@ function ConfigView({ restaurants, empresas, empresaRid, setEmpresaRid, pessoaId
         <button type="button" onClick={onVoltar} className="text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 text-sm">← Voltar</button>
         <h1 className="text-xl font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Settings size={20} className="text-gray-500 dark:text-gray-400" /> Configurações — Documentos</h1>
       </header>
+
+      {/* Auditoria — dados cadastrais por empresa (todas de uma vez) */}
+      <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-4">
+        <h2 className="font-bold text-gray-900 dark:text-gray-100 mb-1 inline-flex items-center gap-1.5"><Building2 size={16} /> Auditoria — dados por empresa</h2>
+        <p className="text-xs text-gray-500 mb-3">Confira num lugar só se cada empresa tem os dados que entram nos documentos. Clique numa linha pra editar.</p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-[11px] uppercase tracking-wider text-gray-500 border-b border-gray-200 dark:border-gray-800">
+                <th className="text-left font-semibold py-1.5 pr-2">Empresa</th>
+                <th className="text-center font-semibold py-1.5 px-2">Razão social</th>
+                <th className="text-center font-semibold py-1.5 px-2">CNPJ</th>
+                <th className="text-center font-semibold py-1.5 px-2">Endereço</th>
+                <th className="text-right font-semibold py-1.5 pl-2">Documentos</th>
+              </tr>
+            </thead>
+            <tbody>
+              {restaurants.map(r => {
+                const cfg = empresas[r.id];
+                const val = (t: string, fb?: string) => (cfg?.campos?.[t] || fb || "").trim();
+                const razao = val("RAZAO_SOCIAL", r.razaoSocial);
+                const cnpj = val("CNPJ_EMPRESA", r.cnpj);
+                const end = val("ENDERECO_EMPRESA", r.endereco);
+                const nHab = cfg?.habilitados == null ? DOCS.length : cfg.habilitados.length;
+                const Cel = ({ ok }: { ok: boolean }) => (
+                  <td className="text-center px-2 py-1.5">
+                    {ok ? <Check size={15} className="inline text-emerald-600 dark:text-emerald-400" /> : <span className="inline-flex items-center gap-0.5 text-rose-600 dark:text-rose-400 text-[11px] font-semibold"><TriangleAlert size={13} /> falta</span>}
+                  </td>
+                );
+                const faltaAlgo = !razao || !cnpj || !end;
+                return (
+                  <tr key={r.id} onClick={() => setEmpresaRid(r.id)}
+                    className={`border-b border-gray-100 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 ${empresaRid === r.id ? "bg-indigo-50/50 dark:bg-indigo-900/10" : ""}`}>
+                    <td className="py-1.5 pr-2 font-medium text-gray-900 dark:text-gray-100">{r.nome} {faltaAlgo && <span className="ml-1 text-[10px] text-rose-500">●</span>}</td>
+                    <Cel ok={!!razao} />
+                    <Cel ok={!!cnpj} />
+                    <Cel ok={!!end} />
+                    <td className="text-right pl-2 py-1.5 tabular-nums text-gray-600 dark:text-gray-300">{nHab}<span className="text-gray-400">/{DOCS.length}</span></td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p className="text-[11px] text-gray-400 mt-2">Documentos = quantos estão habilitados pra aparecer na lista de geração dessa empresa.</p>
+      </section>
 
       <div className="mb-4">
         <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Empresa</label>
