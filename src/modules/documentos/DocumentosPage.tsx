@@ -4,7 +4,8 @@
 // preenchidos, e o backend (/api/documento-preencher, python-docx) devolve o DOCX
 // preenchido pra assinatura. PDF exato sai pela skill/LibreOffice (fase seguinte).
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { renderAsync } from "docx-preview";
 import { Settings, FileSignature, History, Files, TriangleAlert, CheckSquare, Check, ReceiptText, Plus, PenLine, FileText, Building2, CalendarDays, User, Pencil, UserRoundPlus, Sparkles, Loader2, X, type LucideIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where, doc, setDoc } from "firebase/firestore";
@@ -255,6 +256,9 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
   const [gerando, setGerando] = useState(false);
   const [erro, setErro] = useState("");
   const [faltando, setFaltando] = useState<string[] | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewAberto, setPreviewAberto] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   const empsAtivos = useMemo(() => empregados.filter(e => e.restaurantId === empresaRid && e.estaAtivo !== false), [empregados, empresaRid]);
   const emp = empsAtivos.find(e => e.id === empId) || null;
@@ -303,36 +307,42 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
     return ORIGEM_ORDEM.filter(o => g[o]?.length).map(o => [o, g[o]] as [string, Campo[]]);
   }, [modelo]);
 
+  // Monta os dados e chama o backend; devolve o .docx pronto (sem baixar).
+  async function montarDocx(): Promise<{ blob: Blob; nomeArq: string; faltando: string[] }> {
+    const dados: Record<string, unknown> = {};
+    for (const c of modelo.campos) dados[c.token] = valDe(c.token);
+    const _inserir = modelo.texto_livre.filter(t => (livres[t.campo] || "").trim()).map(t => ({ apos: t.apos, texto: (livres[t.campo] || "").trim() }));
+    if (_inserir.length) dados._inserir = _inserir;
+    const _marcar = marcs.map(g => g.opcoes.find(o => o.valor === marcado[g.campo])).filter(Boolean).map(o => ({ ancora: (o as MarcOpcao).ancora }));
+    if (_marcar.length) dados._marcar = _marcar;
+    const _tabela = quads.map((qd, qi) => ({
+      tabela: qd.tabela, linha_inicial: qd.linha_inicial, col_inicial: qd.col_inicial,
+      linhas: (linhasQ[qi] || []).map(r => r.map(v => (v || "").trim())).filter(r => r.some(v => v)),
+    })).filter(x => x.linhas.length);
+    if (_tabela.length) dados._tabela = _tabela;
+    if (assinaturas) dados._assinaturas = { empregado: valDe("NOME_EMPREGADO"), empregadora: valDe("RAZAO_SOCIAL") };
+    if (testemunhas) dados._testemunhas = true;
+
+    const r = await fetch("/api/documento-preencher", {
+      method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
+      body: JSON.stringify({ modeloId: modelo.id, dados }),
+    });
+    const data = await r.json();
+    if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
+    const bin = atob(String(data.docxBase64 || ""));
+    const arr = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+    const blob = new Blob([arr], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+    const hoje = new Date();
+    const stamp = `${hoje.getFullYear()}.${String(hoje.getMonth() + 1).padStart(2, "0")}.${String(hoje.getDate()).padStart(2, "0")}`;
+    const nomeArq = `${stamp} ${modelo.titulo}${valDe("NOME_EMPREGADO") ? " - " + valDe("NOME_EMPREGADO") : ""}.docx`;
+    return { blob, nomeArq, faltando: Array.isArray(data.faltando) ? data.faltando : [] };
+  }
+
   async function gerar() {
     setErro(""); setGerando(true); setFaltando(null);
     try {
-      const dados: Record<string, unknown> = {};
-      for (const c of modelo.campos) dados[c.token] = valDe(c.token);
-      const _inserir = modelo.texto_livre.filter(t => (livres[t.campo] || "").trim()).map(t => ({ apos: t.apos, texto: (livres[t.campo] || "").trim() }));
-      if (_inserir.length) dados._inserir = _inserir;
-      const _marcar = marcs.map(g => g.opcoes.find(o => o.valor === marcado[g.campo])).filter(Boolean).map(o => ({ ancora: (o as MarcOpcao).ancora }));
-      if (_marcar.length) dados._marcar = _marcar;
-      const _tabela = quads.map((qd, qi) => ({
-        tabela: qd.tabela, linha_inicial: qd.linha_inicial, col_inicial: qd.col_inicial,
-        linhas: (linhasQ[qi] || []).map(r => r.map(v => (v || "").trim())).filter(r => r.some(v => v)),
-      })).filter(x => x.linhas.length);
-      if (_tabela.length) dados._tabela = _tabela;
-      if (assinaturas) dados._assinaturas = { empregado: valDe("NOME_EMPREGADO"), empregadora: valDe("RAZAO_SOCIAL") };
-      if (testemunhas) dados._testemunhas = true;
-
-      const r = await fetch("/api/documento-preencher", {
-        method: "POST", headers: { "Content-Type": "application/json", ...(await authHeader()) },
-        body: JSON.stringify({ modeloId: modelo.id, dados }),
-      });
-      const data = await r.json();
-      if (!r.ok) throw new Error(data?.error || `HTTP ${r.status}`);
-      const bin = atob(String(data.docxBase64 || ""));
-      const arr = new Uint8Array(bin.length);
-      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
-      const blob = new Blob([arr], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-      const hoje = new Date();
-      const stamp = `${hoje.getFullYear()}.${String(hoje.getMonth() + 1).padStart(2, "0")}.${String(hoje.getDate()).padStart(2, "0")}`;
-      const nomeArq = `${stamp} ${modelo.titulo}${valDe("NOME_EMPREGADO") ? " - " + valDe("NOME_EMPREGADO") : ""}.docx`;
+      const { blob, nomeArq, faltando } = await montarDocx();
       if (onGerado) {
         await onGerado(blob, nomeArq);   // uso externo (ex.: sobe pro Drive da Admissão)
       } else {
@@ -340,10 +350,27 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
         const a = document.createElement("a"); a.href = url; a.download = nomeArq; document.body.appendChild(a); a.click(); a.remove();
         URL.revokeObjectURL(url);
       }
-      setFaltando(Array.isArray(data.faltando) ? data.faltando : []);
+      setFaltando(faltando);
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Falha ao gerar o documento.");
     } finally { setGerando(false); }
+  }
+
+  // Pré-visualiza o .docx preenchido renderizado no navegador (docx-preview).
+  async function preview() {
+    setErro(""); setPreviewLoading(true); setFaltando(null);
+    try {
+      const { blob, faltando } = await montarDocx();
+      setFaltando(faltando);
+      const el = previewRef.current;
+      if (el) {
+        el.innerHTML = "";
+        await renderAsync(blob, el, undefined, { className: "docxpv", inWrapper: true, ignoreWidth: false, ignoreHeight: false });
+      }
+      setPreviewAberto(true);
+    } catch (e) {
+      setErro(e instanceof Error ? e.message : "Falha ao pré-visualizar.");
+    } finally { setPreviewLoading(false); }
   }
 
   const inp = "w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100";
@@ -496,13 +523,25 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
             </div>
           )}
           {erro && <div className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">{erro}</div>}
+
+          {/* Preview do documento preenchido (renderizado no navegador) */}
+          <div className={previewAberto ? "block" : "hidden"}>
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide inline-flex items-center gap-1.5"><FileText size={12} /> Pré-visualização</div>
+              <button type="button" onClick={() => setPreviewAberto(false)} className="text-[11px] text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 inline-flex items-center gap-1"><X size={12} /> fechar preview</button>
+            </div>
+            <div className="rounded-lg border border-gray-200 dark:border-gray-800 bg-gray-100 dark:bg-gray-800/40 p-3 max-h-[55vh] overflow-auto">
+              <div ref={previewRef} className="docxpv-host bg-white mx-auto shadow-sm" />
+            </div>
+          </div>
         </div>
 
         <div className="p-4 border-t border-gray-100 dark:border-gray-800 flex justify-end gap-2">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             {faltamMarcacoes && <span className="text-[11px] text-amber-600">Escolha as opções do documento</span>}
             <Button variant="secondary" onClick={onClose}>Fechar</Button>
-            <Button onClick={gerar} disabled={gerando || faltamMarcacoes}>{gerando ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><FileText size={14} /> Gerar documento (DOCX)</span>}</Button>
+            <Button variant="secondary" onClick={preview} disabled={previewLoading || gerando || faltamMarcacoes}>{previewLoading ? "Gerando preview…" : <span className="inline-flex items-center gap-1.5"><FileText size={14} /> Pré-visualizar</span>}</Button>
+            <Button onClick={gerar} disabled={gerando || faltamMarcacoes}>{gerando ? "Gerando…" : <span className="inline-flex items-center gap-1.5"><FileText size={14} /> {onGerado ? "Gerar e salvar" : "Baixar (DOCX)"}</span>}</Button>
           </div>
         </div>
       </div>
