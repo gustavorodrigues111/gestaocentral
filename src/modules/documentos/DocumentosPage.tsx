@@ -144,7 +144,7 @@ export function DocumentosPage() {
   function limparIA() { setIaIds(null); setIaResposta(""); setIaPergunta(""); setIaErro(""); }
 
   if (modo === "config" && podeConfig) {
-    return <ConfigView restaurants={restaurants} empresas={empresas} empresaRid={empresaRid} setEmpresaRid={setEmpresaRid}
+    return <ConfigView restaurants={restaurants} empresas={empresas} empresaRid={empresaRid}
       pessoaId={pessoa.id} pessoaNome={pessoa.nome} onVoltar={() => setModo("catalogo")} />;
   }
 
@@ -175,10 +175,6 @@ export function DocumentosPage() {
 
       {secao === "outros" && (<>
       <div className="flex flex-col sm:flex-row gap-2 mb-4">
-        <select value={empresaRid} onChange={e => setEmpresaRid(e.target.value)}
-          className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100 sm:w-56">
-          {restaurants.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
-        </select>
         <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="🔍 Buscar documento…"
           className="flex-1 px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm dark:text-gray-100" />
         {podeGerar && <Button variant="secondary" onClick={() => setLoteAberto(true)}><span className="inline-flex items-center gap-1.5"><Files size={14} /> Gerar em lote</span></Button>}
@@ -246,7 +242,7 @@ export function DocumentosPage() {
 }
 
 // ─── Gerador de um documento ─────────────────────────────────────────────────
-export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empresas, onClose, prefill, onGerado, lockEmpresa, hideEmpregado, subtitulo, prefillQuadros }: {
+export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empresas, onClose, prefill, onGerado, hideEmpregado, subtitulo, prefillQuadros }: {
   doc: DocModelo; rid: string; restaurants: { id: string; nome: string }[]; pessoas: Pessoa[]; empregados: Empregado[];
   empresas: Record<string, EmpresaCfg>; onClose: () => void;
   // Uso externo (ex.: Admissão): prefill de campos, empresa travada, empregado
@@ -257,7 +253,7 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
   // por índice do quadro.
   prefillQuadros?: Record<number, string[][]>;
 }) {
-  const [empresaRid, setEmpresaRid] = useState(rid || restaurants[0]?.id || "");
+  const [empresaRid] = useState(rid || restaurants[0]?.id || "");
   const [empId, setEmpId] = useState<string>("");
   const [buscaEmp, setBuscaEmp] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
@@ -410,9 +406,10 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Empresa</label>
-              <select value={empresaRid} onChange={e => setEmpresaRid(e.target.value)} disabled={lockEmpresa} className={`${inp} mt-1 ${lockEmpresa ? "opacity-70" : ""}`}>
-                {restaurants.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
-              </select>
+              <div className={`${inp} mt-1 flex items-center gap-2`} title="A empresa segue o seletor do topo">
+                <Building2 size={14} className="text-gray-400 shrink-0" />
+                <span className="truncate">{restaurants.find(r => r.id === empresaRid)?.nome || "—"}</span>
+              </div>
               {empresaIncompleta && <div className="text-[11px] text-rose-600 mt-1">Sem dados cadastrais — preencha em <span className="inline-flex items-center gap-0.5 align-middle"><Settings size={11} /> Configurações</span>.</div>}
             </div>
             <div className={hideEmpregado ? "hidden" : ""}>
@@ -565,9 +562,9 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
 // ─── Configurações do módulo (por empresa) ───────────────────────────────────
 // Dados cadastrais da empresa + quais documentos ficam disponíveis pra ela.
 // É o hub: outros módulos (ex.: Admissão) consomem estes documentos.
-function ConfigView({ restaurants, empresas, empresaRid, setEmpresaRid, pessoaId, pessoaNome, onVoltar }: {
+function ConfigView({ restaurants, empresas, empresaRid, pessoaId, pessoaNome, onVoltar }: {
   restaurants: { id: string; nome: string; razaoSocial?: string; cnpj?: string; endereco?: string }[];
-  empresas: Record<string, EmpresaCfg>; empresaRid: string; setEmpresaRid: (r: string) => void;
+  empresas: Record<string, EmpresaCfg>; empresaRid: string;
   pessoaId: string; pessoaNome: string; onVoltar: () => void;
 }) {
   const [campos, setCampos] = useState<Record<string, string>>({});
@@ -648,9 +645,9 @@ function ConfigView({ restaurants, empresas, empresaRid, setEmpresaRid, pessoaId
                 );
                 const faltaAlgo = !razao || !cnpj || !end;
                 return (
-                  <tr key={r.id} onClick={() => setEmpresaRid(r.id)}
-                    className={`border-b border-gray-100 dark:border-gray-800 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 ${empresaRid === r.id ? "bg-indigo-50/50 dark:bg-indigo-900/10" : ""}`}>
-                    <td className="py-1.5 pr-2 font-medium text-gray-900 dark:text-gray-100">{r.nome} {faltaAlgo && <span className="ml-1 text-[10px] text-rose-500">●</span>}</td>
+                  <tr key={r.id}
+                    className={`border-b border-gray-100 dark:border-gray-800 ${empresaRid === r.id ? "bg-indigo-50/50 dark:bg-indigo-900/10" : ""}`}>
+                    <td className="py-1.5 pr-2 font-medium text-gray-900 dark:text-gray-100">{r.nome} {empresaRid === r.id && <span className="ml-1 text-[10px] font-semibold text-indigo-500">· editando</span>} {faltaAlgo && <span className="ml-1 text-[10px] text-rose-500">●</span>}</td>
                     <Cel ok={!!razao} />
                     <Cel ok={!!cnpj} />
                     <Cel ok={!!end} />
@@ -661,20 +658,13 @@ function ConfigView({ restaurants, empresas, empresaRid, setEmpresaRid, pessoaId
             </tbody>
           </table>
         </div>
-        <p className="text-[11px] text-gray-400 mt-2">Documentos = quantos estão habilitados pra aparecer na lista de geração dessa empresa.</p>
+        <p className="text-[11px] text-gray-400 mt-2">Documentos = quantos estão habilitados pra aparecer na lista de geração dessa empresa. Para configurar outra empresa, troque no seletor do topo.</p>
       </section>
-
-      <div className="mb-4">
-        <label className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide">Empresa</label>
-        <select value={empresaRid} onChange={e => setEmpresaRid(e.target.value)} className={`${inp} mt-1 sm:w-72`}>
-          {restaurants.map(r => <option key={r.id} value={r.id}>{r.nome}</option>)}
-        </select>
-      </div>
 
       {/* Dados cadastrais */}
       <section className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 mb-4">
-        <h2 className="font-bold text-gray-900 dark:text-gray-100 mb-1 inline-flex items-center gap-1.5"><Building2 size={16} /> Dados cadastrais da empresa</h2>
-        <p className="text-xs text-gray-500 mb-3">Usados no preenchimento dos documentos.</p>
+        <h2 className="font-bold text-gray-900 dark:text-gray-100 mb-1 inline-flex items-center gap-1.5"><Building2 size={16} /> Dados cadastrais — {restaurants.find(r => r.id === empresaRid)?.nome || "empresa"}</h2>
+        <p className="text-xs text-gray-500 mb-3">Usados no preenchimento dos documentos. Empresa definida pelo seletor do topo.</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
           {EMPRESA_ESSENCIAIS.map(({ token, rotulo }) => (
             <div key={token} className={token === "RAZAO_SOCIAL" || token === "ENDERECO_EMPRESA" ? "sm:col-span-2" : ""}>
