@@ -65,6 +65,20 @@ const ORIGEM_LABEL: Record<string, string> = { empresa: "Empresa", data: "Data (
 const ORIGEM_ICONE: Record<string, LucideIcon> = { empresa: Building2, data: CalendarDays, empregado: User, especifico: Pencil };
 const ORIGEM_ORDEM = ["empregado", "especifico", "data", "empresa"];
 
+// Resumo dos campos que o usuário PREENCHE num documento (empregado + específicos
+// + opções + textos livres) e as tabelas. Empresa/data são automáticos (não listados).
+function resumoCampos(d: DocModelo) {
+  const marc = MARCACOES[d.id] || [];
+  const quad = QUADROS[d.id] || [];
+  const tl = d.texto_livre || [];
+  const preenche = [
+    ...d.campos.filter(c => c.origem === "empregado" || c.origem === "especifico").map(c => c.obrigatorio ? c.rotulo : c.rotulo + " (opc.)"),
+    ...marc.map(m => m.rotulo),
+    ...tl.map(t => t.rotulo),
+  ];
+  return { preenche, tabelas: quad.map(q => q.titulo) };
+}
+
 export function DocumentosPage() {
   const { pessoa } = useAuth();
   const { rid } = useParams<{ rid: string }>();
@@ -85,6 +99,7 @@ export function DocumentosPage() {
   const [iaErro, setIaErro] = useState("");
   const [sel, setSel] = useState<DocModelo | null>(null);
   const [loteAberto, setLoteAberto] = useState(false);
+  const [areaSel, setAreaSel] = useState<string>("");
   const [modo, setModo] = useState<"catalogo" | "config">("catalogo");
   const [secao, setSecao] = useState<"contratos" | "outros" | "historico" | "cargos">("contratos");
   const [empresaRid, setEmpresaRid] = useState(rid || "");
@@ -117,13 +132,15 @@ export function DocumentosPage() {
     if (iaSet && !iaSet.has(d.id)) return false;
     return !q || `${d.titulo} ${d.categoria} ${d.quando_usar}`.toLowerCase().includes(q);
   });
-  const porCategoria = new Map<string, DocModelo[]>();
-  for (const d of filtrados) { const arr = porCategoria.get(d.categoria) || []; arr.push(d); porCategoria.set(d.categoria, arr); }
-
   // Documentos que dá pra gerar em lote (preenchem sozinhos: só empresa/empregado/data,
   // sem opções, tabelas ou textos redigidos).
   const docElegivelLote = (d: DocModelo) => !(MARCACOES[d.id]?.length) && !(QUADROS[d.id]?.length) && !(d.texto_livre?.length) && d.campos.every(c => ["empresa", "empregado", "data"].includes(c.origem));
   const docsElegiveisLote = disponiveis.filter(docElegivelLote);
+
+  // Mestre-detalhe: áreas (categorias) à esquerda, documentos à direita.
+  const categorias = [...new Set(disponiveis.map(d => d.categoria))];
+  const areaAtual = (areaSel && filtrados.some(d => d.categoria === areaSel)) ? areaSel : (categorias.find(c => filtrados.some(d => d.categoria === c)) || categorias[0] || "");
+  const docsDaArea = filtrados.filter(d => d.categoria === areaAtual);
 
   async function perguntarIA() {
     const p = iaPergunta.trim();
@@ -205,23 +222,56 @@ export function DocumentosPage() {
       </div>
 
       {podeGerar ? (
-        porCategoria.size === 0 ? (
+        categorias.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Nenhum documento disponível para esta empresa. {podeConfig ? "Habilite documentos em ⚙️ Configurações." : "Fale com quem configura o módulo."}</div>
         ) : (
-          [...porCategoria.entries()].map(([cat, lista]) => (
-            <div key={cat} className="mb-5">
-              <div className="text-xs font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2">{cat}</div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                {lista.map(d => (
-                  <button key={d.id} type="button" onClick={() => setSel(d)}
-                    className="text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2.5 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
-                    <div className="text-sm font-medium text-gray-900 dark:text-gray-100">{d.titulo}</div>
-                    <div className="text-[11px] text-gray-400 line-clamp-2 mt-0.5">{d.quando_usar}</div>
-                  </button>
-                ))}
+          <div className="flex flex-col md:flex-row gap-4">
+            {/* Áreas (mestre) */}
+            <aside className="md:w-56 shrink-0">
+              <div className="text-[11px] font-semibold text-gray-500 uppercase tracking-wide mb-2">Áreas</div>
+              <div className="flex md:flex-col gap-1.5 overflow-x-auto md:overflow-visible pb-1 -mx-1 px-1 md:mx-0 md:px-0">
+                {categorias.map(cat => {
+                  const n = filtrados.filter(d => d.categoria === cat).length;
+                  const on = cat === areaAtual;
+                  return (
+                    <button key={cat} type="button" onClick={() => setAreaSel(cat)} disabled={n === 0}
+                      className={`text-left whitespace-nowrap md:whitespace-normal rounded-lg border px-3 py-2 text-sm transition-colors shrink-0 md:shrink ${on ? "border-indigo-400 bg-indigo-50/70 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300 font-semibold" : n === 0 ? "border-gray-200 dark:border-gray-800 text-gray-300 dark:text-gray-600 cursor-default" : "border-gray-200 dark:border-gray-800 text-gray-700 dark:text-gray-300 hover:border-indigo-300"}`}>
+                      <span className="flex items-center justify-between gap-2">{cat} <span className="text-[11px] opacity-70 tabular-nums">{n}</span></span>
+                    </button>
+                  );
+                })}
               </div>
+            </aside>
+            {/* Documentos da área (detalhe) */}
+            <div className="flex-1 min-w-0 space-y-2">
+              {docsDaArea.length === 0 ? (
+                <div className="text-sm text-gray-400 py-10 text-center">Nenhum documento nesta área com o filtro atual.</div>
+              ) : docsDaArea.map(d => {
+                const rc = resumoCampos(d);
+                return (
+                  <button key={d.id} type="button" onClick={() => setSel(d)}
+                    className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="min-w-0">
+                        <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">{d.titulo}</div>
+                        <div className="text-[11px] text-gray-400 mt-0.5">{d.quando_usar}</div>
+                      </div>
+                      <span className="shrink-0 text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1"><PenLine size={12} /> preencher</span>
+                    </div>
+                    {(rc.preenche.length > 0 || rc.tabelas.length > 0) ? (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        <span className="text-[10px] text-gray-400 uppercase tracking-wide mr-0.5 self-center">preenche:</span>
+                        {rc.preenche.map((f, i) => <span key={i} className="text-[10.5px] rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300 px-2 py-0.5">{f}</span>)}
+                        {rc.tabelas.map((f, i) => <span key={"t" + i} className="text-[10.5px] rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 px-2 py-0.5">▤ {f}</span>)}
+                      </div>
+                    ) : (
+                      <div className="mt-2 text-[11px] text-gray-400">Só dados de empresa/empregado (preenchidos automaticamente).</div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
-          ))
+          </div>
         )
       ) : (
         <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Você pode configurar o módulo, mas não tem permissão para gerar documentos.</div>
