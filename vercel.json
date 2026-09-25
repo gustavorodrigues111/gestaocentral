@@ -44,6 +44,7 @@
       "destination": "/site/sororoca/index.html"
     },
     { "source": "/copa", "destination": "/copa.html" },
+    { "source": "/pages/:slug", "destination": "/api/pagina-og?slug=:slug" },
     { "source": "/((?!api/|site/|copa).*)", "destination": "/index.html" }
   ],
   "crons": [
