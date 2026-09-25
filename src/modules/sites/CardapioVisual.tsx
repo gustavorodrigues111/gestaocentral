@@ -27,7 +27,7 @@ const MSYMS_HREF = `https://fonts.googleapis.com/css2?family=Material+Symbols+Ou
 const icoFonteStyle: CSSProperties = {
   fontFamily: "'Material Symbols Outlined'", fontWeight: 300,
   fontVariationSettings: "'wght' 250, 'opsz' 24, 'FILL' 0, 'GRAD' 0",
-  fontStyle: "normal", color: TEAL, marginRight: 3, lineHeight: 1, verticalAlign: "-0.15em",
+  fontStyle: "normal", color: TEAL, marginRight: 3, lineHeight: 1, verticalAlign: "middle",
 };
 const CAPA = "/cardapio-capa-sororoca.png";
 const norm = (s: string) => (s || "").trim().toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
@@ -323,15 +323,15 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
                           style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, color: lay.corDescricao, marginTop: lay.espacoDescricao, lineHeight: 1.25, whiteSpace: "pre-line", outline: "none" }}>{subt}</div>
                       )}
                     </div>
-                    <span style={{ display: "block", textAlign: "right", flexShrink: 0, lineHeight: 1.15 }}>
+                    <span style={{ display: "block", textAlign: "right", flexShrink: 0 }}>
                       {precoTxt && (
-                        <span style={{ display: "block", whiteSpace: "nowrap", lineHeight: 1.15 }}>
+                        <span style={{ display: "block", whiteSpace: "nowrap", lineHeight: `${Math.round(lay.tamTitulo * 1.25)}px`, height: `${Math.round(lay.tamTitulo * 1.25)}px`, overflow: "visible" }}>
                           {!ehNota && mostrarGarrafa && <span style={{ ...icoFonteStyle, color: lay.corPreco, fontSize: lay.tamTitulo * 1.05 }}>{GLYPH_GARRAFA}</span>}
                           {!ehNota && (p.garrafaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: lay.corPreco, opacity: 0.75, marginRight: 3 }}>({String(p.garrafaMl).replace(/ml$/i, "").trim()}ml)</span>}
                           <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: lay.corPreco, fontWeight: 600 }}>{precoTxt}</span>
                         </span>
                       )}
-                      <span style={{ display: "block", whiteSpace: "nowrap", lineHeight: 1.15 }}>
+                      <span style={{ display: "block", whiteSpace: "nowrap", lineHeight: `${Math.round(lay.tamTitulo * 1.25)}px`, height: `${Math.round(lay.tamTitulo * 1.25)}px`, overflow: "visible" }}>
                         <span style={{ ...icoFonteStyle, color: lay.corPreco, fontSize: lay.tamTitulo * 1.05 }}>{GLYPH_TACA}</span>
                         {(p.tacaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: lay.corPreco, opacity: 0.75, marginRight: 3 }}>({String(p.tacaMl).replace(/ml$/i, "").trim()}ml)</span>}
                         <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, color: lay.corPreco, fontWeight: 600 }}>{lay.mostrarCifrao ? `$ ${p.precoTaca!.trim()}` : p.precoTaca!.trim()}</span>
