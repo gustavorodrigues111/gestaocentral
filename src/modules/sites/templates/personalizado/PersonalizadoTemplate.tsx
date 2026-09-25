@@ -1452,6 +1452,27 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
                 : p.iconeId
                   ? <IconeCardapioView id={p.iconeId} size={ico} color={corPrimaria} style={{ display: "block" }} />
                   : null;
+              const temTacaPr = !!(p.taca && (p.precoTaca || "").trim());
+              // Bloco de preço: garrafa em cima, taça embaixo (empilhados à direita).
+              const precoBloco = (p.preco || temTacaPr) ? (
+                <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, gap: 1 }}>
+                  {p.preco && (
+                    <span style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                      {menuAtual.mostrarGarrafa && <svg width={txCorpo(13)} height={txCorpo(13)} viewBox="0 0 24 24" fill="none" stroke={corPrimaria} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ alignSelf: "center" }}><path d="M10 2.5h4" /><path d="M10.5 2.5V6c0 1-.4 1.6-1.1 2.3C8.3 9.6 8 10.5 8 11.8V20a1.5 1.5 0 0 0 1.5 1.5h5A1.5 1.5 0 0 0 16 20v-8.2c0-1.3-.3-2.2-1.4-3.5C13.9 7.6 13.5 7 13.5 6V2.5" /></svg>}
+                      {(p.garrafaMl || "").trim() && <span style={{ fontSize: txCorpo(12), color: corPrimaria, opacity: 0.75, whiteSpace: "nowrap" }}>({String(p.garrafaMl).replace(/ml$/i, "").trim()}ml)</span>}
+                      <span style={{ fontSize: txCorpo(16), fontWeight: 600, color: corPrimaria, whiteSpace: "nowrap" }}>{p.preco}</span>
+                    </span>
+                  )}
+                  {temTacaPr && (
+                    <span style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                      <svg width={txCorpo(13)} height={txCorpo(13)} viewBox="0 0 24 24" fill="none" stroke={corPrimaria} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ alignSelf: "center" }}><path d="M6.5 3h11l-1.2 6.6a4.6 4.6 0 0 1-9.2 0L6.5 3z" /><path d="M12 15.5V20" /><path d="M8.5 20h7" /></svg>
+                      {(p.tacaMl || "").trim() && <span style={{ fontSize: txCorpo(12), color: corPrimaria, opacity: 0.75, whiteSpace: "nowrap" }}>({String(p.tacaMl).replace(/ml$/i, "").trim()}ml)</span>}
+                      <span style={{ fontSize: txCorpo(15), fontWeight: 600, color: corPrimaria, whiteSpace: "nowrap" }}>{p.precoTaca!.trim()}</span>
+                    </span>
+                  )}
+                </span>
+              ) : null;
+              const descNode = subPr(p) ? <div style={{ fontSize: txCorpo(13.5), opacity: 0.7, marginTop: 2, lineHeight: 1.35, whiteSpace: "pre-line" }}>{subPr(p)}</div> : null;
               return (
               <div key={p.id} style={{ padding: "9px 0", borderBottom: `1px solid ${corSecundaria}22`, display: "flex", alignItems: "center", gap: 10 }}>
                 {secComIcone && (
@@ -1460,28 +1481,25 @@ function CardapioEstruturadoView({ rid, corPrimaria, corSecundaria, txCorpo }: {
                   </div>
                 )}
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                    <span style={{ fontSize: txCorpo(17), fontWeight: 600, flex: 1, whiteSpace: "pre-line" }}>{tituloPr(p)}</span>
-                    {(p.preco || (p.taca && (p.precoTaca || "").trim())) && (
-                      <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, gap: 1 }}>
-                        {p.preco && (
-                          <span style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                            {menuAtual.mostrarGarrafa && <svg width={txCorpo(13)} height={txCorpo(13)} viewBox="0 0 24 24" fill="none" stroke={corPrimaria} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ alignSelf: "center" }}><path d="M10 2.5h4" /><path d="M10.5 2.5V6c0 1-.4 1.6-1.1 2.3C8.3 9.6 8 10.5 8 11.8V20a1.5 1.5 0 0 0 1.5 1.5h5A1.5 1.5 0 0 0 16 20v-8.2c0-1.3-.3-2.2-1.4-3.5C13.9 7.6 13.5 7 13.5 6V2.5" /></svg>}
-                            {(p.garrafaMl || "").trim() && <span style={{ fontSize: txCorpo(12), color: corPrimaria, opacity: 0.75, whiteSpace: "nowrap" }}>({String(p.garrafaMl).replace(/ml$/i, "").trim()}ml)</span>}
-                            <span style={{ fontSize: txCorpo(16), fontWeight: 600, color: corPrimaria, whiteSpace: "nowrap" }}>{p.preco}</span>
-                          </span>
-                        )}
-                        {p.taca && (p.precoTaca || "").trim() && (
-                          <span style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-                            <svg width={txCorpo(13)} height={txCorpo(13)} viewBox="0 0 24 24" fill="none" stroke={corPrimaria} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" style={{ alignSelf: "center" }}><path d="M6.5 3h11l-1.2 6.6a4.6 4.6 0 0 1-9.2 0L6.5 3z" /><path d="M12 15.5V20" /><path d="M8.5 20h7" /></svg>
-                            {(p.tacaMl || "").trim() && <span style={{ fontSize: txCorpo(12), color: corPrimaria, opacity: 0.75, whiteSpace: "nowrap" }}>({String(p.tacaMl).replace(/ml$/i, "").trim()}ml)</span>}
-                            <span style={{ fontSize: txCorpo(15), fontWeight: 600, color: corPrimaria, whiteSpace: "nowrap" }}>{p.precoTaca!.trim()}</span>
-                          </span>
-                        )}
-                      </span>
-                    )}
-                  </div>
-                  {subPr(p) && <div style={{ fontSize: txCorpo(13.5), opacity: 0.7, marginTop: 2, lineHeight: 1.35, whiteSpace: "pre-line" }}>{subPr(p)}</div>}
+                  {temTacaPr ? (
+                    // Vinho com taça: título+descrição à esquerda; garrafa/taça
+                    // empilhadas à direita e alinhadas ao TOPO (descrição cola no título).
+                    <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                      <div style={{ flex: 1, minWidth: 0 }}>
+                        <div style={{ fontSize: txCorpo(17), fontWeight: 600, whiteSpace: "pre-line" }}>{tituloPr(p)}</div>
+                        {descNode}
+                      </div>
+                      {precoBloco}
+                    </div>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
+                        <span style={{ fontSize: txCorpo(17), fontWeight: 600, flex: 1, whiteSpace: "pre-line" }}>{tituloPr(p)}</span>
+                        {precoBloco}
+                      </div>
+                      {descNode}
+                    </>
+                  )}
                 </div>
               </div>
               );
