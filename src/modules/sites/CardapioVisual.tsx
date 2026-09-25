@@ -313,7 +313,7 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
                     onBlur={(e) => onEditarPrato?.(p.id, campoTit, e.currentTarget.innerText)}
                     style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: lay.corPratos, whiteSpace: "pre-line", outline: "none", minWidth: 0 }}>{titulo}</span>
                   {(precoTxt || (p.taca && (p.precoTaca || "").trim())) && (
-                    <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, gap: 1 }}>
+                    <span style={{ display: "flex", flexDirection: "row", alignItems: "baseline", justifyContent: "flex-end", flexShrink: 0, gap: 12 }}>
                       {precoTxt && (
                         <span style={{ whiteSpace: "nowrap", lineHeight: 1.1 }}>
                           {!ehNota && mostrarGarrafa && <span style={{ ...icoFonteStyle, color: lay.corPreco, fontSize: lay.tamTitulo * 1.05 }}>{GLYPH_GARRAFA}</span>}
