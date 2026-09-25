@@ -7,13 +7,25 @@ import { collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, where
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { Button } from "../../core/ui/Button";
 import { Modal } from "../../core/ui/Modal";
 import { PageContainer } from "../../core/ui/PageContainer";
-import { CreditCard, Smartphone, Laptop, Bike, Car, IdCard, Package, Plus, Search, Lock, Pencil, Trash2, Undo2, Ban, CircleCheck } from "lucide-react";
-import type { Ativo, AtivoTipo, AtivoStatus, Empregado } from "../../core/types";
+import { CreditCard, Smartphone, Laptop, Bike, Car, IdCard, Package, Plus, Search, Lock, Pencil, Trash2, Undo2, Ban, CircleCheck, FileText } from "lucide-react";
+import type { Ativo, AtivoTipo, AtivoStatus, Empregado, Pessoa } from "../../core/types";
 import { ATIVO_TIPO_LABEL, ATIVO_IDENT_LABEL, ATIVO_STATUS_LABEL } from "../../core/types";
+import { DOCS, GeradorModal } from "../documentos/DocumentosPage";
+
+// Tipo de ativo → modelo de termo na Fábrica de Documentos (cartão/outro ainda não têm).
+const TIPO_DOC: Partial<Record<AtivoTipo, string>> = {
+  celular: "termo-responsabilidade-celular",
+  veiculo: "termo-responsabilidade-veiculo",
+  moto: "termo-responsabilidade-motocicleta",
+  notebook: "termo-responsabilidade-equipamento",
+  cracha: "termo-entrega-cracha",
+};
+type EmpresaCfgLite = { campos: Record<string, string>; habilitados: string[] | null; termoMap: Record<string, string> };
 
 const TIPO_ICON: Record<AtivoTipo, React.ComponentType<{ size?: number; className?: string }>> = {
   cartao: CreditCard, celular: Smartphone, notebook: Laptop, moto: Bike, veiculo: Car, cracha: IdCard, outro: Package,
@@ -38,6 +50,7 @@ const fmtDia = (iso?: string | null) => iso ? new Date(iso).toLocaleDateString("
 export function AtivosPage() {
   const { pessoa: me } = useAuth();
   const { rid } = useParams<{ rid: string }>();
+  const { restaurants } = useRestaurant();
   const master = !!me?.isMaster;
   const { can, loading } = useCanAcao(rid || "");
   const podeVer = master || can("ativos", "ver");
@@ -46,11 +59,14 @@ export function AtivosPage() {
 
   const [ativos, setAtivos] = useState<Ativo[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
+  const [pessoas, setPessoas] = useState<Pessoa[]>([]);
+  const [empresas, setEmpresas] = useState<Record<string, EmpresaCfgLite>>({});
   const [fTipo, setFTipo] = useState<"todos" | AtivoTipo>("todos");
   const [fStatus, setFStatus] = useState<"abertos" | AtivoStatus | "todos">("abertos");
   const [busca, setBusca] = useState("");
   const [form, setForm] = useState<Ativo | "novo" | null>(null);
   const [devolver, setDevolver] = useState<Ativo | null>(null);
+  const [termo, setTermo] = useState<{ docId: string; empId: string } | null>(null);
 
   useEffect(() => {
     if (!rid) return;
@@ -58,7 +74,14 @@ export function AtivosPage() {
       snap => setAtivos(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Ativo)), () => setAtivos([]));
     const ue = onSnapshot(query(collection(db, "empregados"), where("restaurantId", "==", rid)),
       snap => setEmpregados(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Empregado)));
-    return () => { ua(); ue(); };
+    const up = onSnapshot(query(collection(db, "pessoas"), where("restaurantIds", "array-contains", rid)),
+      snap => setPessoas(snap.docs.map(d => ({ id: d.id, ...d.data() }) as Pessoa)), () => setPessoas([]));
+    const uc = onSnapshot(collection(db, "documentosEmpresas"), snap => {
+      const m: Record<string, EmpresaCfgLite> = {};
+      snap.docs.forEach(d => { const data = d.data() as { campos?: Record<string, string>; habilitados?: string[] | null; termoMap?: Record<string, string> }; m[d.id] = { campos: data?.campos || {}, habilitados: data?.habilitados ?? null, termoMap: data?.termoMap || {} }; });
+      setEmpresas(m);
+    }, () => setEmpresas({}));
+    return () => { ua(); ue(); up(); uc(); };
   }, [rid]);
 
   const lista = useMemo(() => {
@@ -147,6 +170,7 @@ export function AtivosPage() {
                   </div>
                   {podeOperar && (
                     <div className="flex items-center gap-1 shrink-0">
+                      {TIPO_DOC[a.tipo] && <Button size="sm" variant="secondary" onClick={() => setTermo({ docId: TIPO_DOC[a.tipo]!, empId: a.empregadoId })}><span className="inline-flex items-center gap-1"><FileText size={13} /> Gerar termo</span></Button>}
                       {a.status !== "devolvido" && <Button size="sm" variant="secondary" onClick={() => setDevolver(a)}><span className="inline-flex items-center gap-1"><Undo2 size={13} /> Devolver</span></Button>}
                       {a.status === "ativo" && <button type="button" title="Bloquear" onClick={() => void setStatus(a, "bloqueado")} className="p-1.5 rounded-lg text-gray-400 hover:text-rose-600 hover:bg-gray-100 dark:hover:bg-gray-800"><Ban size={15} /></button>}
                       {a.status === "bloqueado" && <button type="button" title="Reativar" onClick={() => void setStatus(a, "ativo")} className="p-1.5 rounded-lg text-gray-400 hover:text-emerald-600 hover:bg-gray-100 dark:hover:bg-gray-800"><CircleCheck size={15} /></button>}
@@ -168,6 +192,12 @@ export function AtivosPage() {
       {devolver && podeOperar && (
         <DevolverModal ativo={devolver} onConfirm={(destino) => { void setStatus(devolver, "devolvido", { devolvidoEm: new Date().toISOString(), devolvidoPorNome: me.nome, destinoDevolucao: destino }); setDevolver(null); }} onClose={() => setDevolver(null)} />
       )}
+      {termo && (() => {
+        const doc = DOCS.find(d => d.id === termo.docId);
+        if (!doc) { return null; }
+        return <GeradorModal doc={doc} rid={rid || ""} restaurants={restaurants} pessoas={pessoas} empregados={empregados}
+          empresas={empresas} empIdInicial={termo.empId} subtitulo="Termo a partir do ativo" onClose={() => setTermo(null)} />;
+      })()}
     </PageContainer>
   );
 }

@@ -292,7 +292,7 @@ export function DocumentosPage() {
 }
 
 // ─── Gerador de um documento ─────────────────────────────────────────────────
-export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empresas, onClose, prefill, onGerado, hideEmpregado, subtitulo, prefillQuadros }: {
+export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregados, empresas, onClose, prefill, onGerado, hideEmpregado, subtitulo, prefillQuadros, empIdInicial }: {
   doc: DocModelo; rid: string; restaurants: { id: string; nome: string }[]; pessoas: Pessoa[]; empregados: Empregado[];
   empresas: Record<string, EmpresaCfg>; onClose: () => void;
   // Uso externo (ex.: Admissão): prefill de campos, empresa travada, empregado
@@ -302,9 +302,11 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
   // Linhas de quadro pré-preenchidas (ex.: itens de uma entrega de uniforme/EPI),
   // por índice do quadro.
   prefillQuadros?: Record<number, string[][]>;
+  // Empregado pré-selecionado (ex.: abrindo o termo a partir de um ativo).
+  empIdInicial?: string;
 }) {
   const [empresaRid] = useState(rid || restaurants[0]?.id || "");
-  const [empId, setEmpId] = useState<string>("");
+  const [empId, setEmpId] = useState<string>(empIdInicial || "");
   const [buscaEmp, setBuscaEmp] = useState("");
   const [values, setValues] = useState<Record<string, string>>({});
   const [livres, setLivres] = useState<Record<string, string>>({});
