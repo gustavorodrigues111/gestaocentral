@@ -312,7 +312,13 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
                   // Vinho com TAÇA: título+descrição à esquerda; garrafa em cima /
                   // taça embaixo à direita, alinhadas ao TOPO — assim a descrição
                   // cola no título (o preço de 2 linhas não empurra a descrição).
-                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                  // paddingTop: nos vinhos SEM taça o glifo da garrafa (fonte de ícone,
+                  // 1.05×) fica na mesma linha do título e infla a line-box, empurrando
+                  // o título ~0.93em pra baixo. No ramo da taça o preço fica noutra
+                  // coluna, então o título colaria no topo e o espaçamento entre esse
+                  // vinho e o anterior sairia menor que nos demais. Reproduzimos o mesmo
+                  // top-leading aqui (só quando a garrafa é exibida) pra ritmo uniforme.
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10, paddingTop: mostrarGarrafa ? lay.tamTitulo * 0.93 : 0 }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <span contentEditable={!!onEditarPrato} suppressContentEditableWarning
                         onBlur={(e) => onEditarPrato?.(p.id, campoTit, e.currentTarget.innerText)}
