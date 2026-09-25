@@ -318,7 +318,7 @@ export function ChecklistsPage() {
                 return (
                   <div key={area || "sem"}>
                     <CabecalhoArea area={area} n={itens.length} />
-                    <div className="space-y-2 mt-2">
+                    <div className="space-y-3 mt-3">
                       {itens.map(t => {
                         const run = runHojeMap[t.id];
                         const completo = run?.status === "completo";
@@ -455,12 +455,12 @@ export function ChecklistsPage() {
                 return (
                   <div key={area || "sem"}>
                     <CabecalhoArea area={area} n={itens.length} />
-                    <div className="space-y-2 mt-2">
+                    <div className="space-y-3 mt-3">
                       {itens.map(t => (
                         <div
                           key={t.id}
                           style={{ borderLeftWidth: 5, borderLeftColor: cor.dot }}
-                          className={`bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 ${!t.ativo ? "opacity-60" : ""}`}
+                          className={`${cor.bg} border border-gray-200/70 dark:border-gray-800 rounded-xl p-4 ${!t.ativo ? "opacity-60" : ""}`}
                         >
                           <div className="flex items-start justify-between gap-3 flex-wrap">
                             <div className="flex-1">
