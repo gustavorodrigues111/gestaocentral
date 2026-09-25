@@ -596,6 +596,19 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "ativos",
+    icon: "credit-card",
+    label: "Ativos por Empregado",
+    desc: "Controle de itens únicos sob responsabilidade (cartão, celular, veículo, etc.): entrega, status e devolução",
+    area: "gestao",
+    acoes: [
+      { id: "receberAvisos", label: "Receber avisos deste módulo na Central de Avisos", sensivel: true },
+      { id: "ver",        label: "Ver ativos e entregas" },
+      { id: "registrar",  label: "Registrar entrega, devolução e status" },
+      { id: "configurar", label: "Excluir registros / configurações" },
+    ],
+  },
+  {
     id: "configuracoes",
     icon: "settings",
     label: "Configurações gerais",

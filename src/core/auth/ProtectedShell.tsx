@@ -38,6 +38,7 @@ import { HorariosPage } from "../../modules/horarios/HorariosPage";
 import { ContagensPage } from "../../modules/contagens/ContagensPage";
 import { ComprasPage } from "../../modules/compras/ComprasPage";
 import { RecebimentoPage } from "../../modules/recebimento/RecebimentoPage";
+import { AtivosPage } from "../../modules/ativos/AtivosPage";
 import { FechamentoCaixaPage } from "../../modules/fechamentoCaixa/FechamentoCaixaPage";
 import { RegistrosPontoPage } from "../../modules/excecoes/RegistrosPontoPage";
 import { AnalisePontoPage } from "../../modules/analisePonto/AnalisePontoPage";
@@ -121,6 +122,7 @@ function ModuleRouter() {
     case "contagens":     return <ContagensPage key={k} />;
     case "compras":       return <ComprasPage key={k} />;
     case "recebimento":   return <RecebimentoPage key={k} />;
+    case "ativos":        return <AtivosPage key={k} />;
     case "estoqueValidade": return <EstoqueValidadePage key={k} />;
     case "fechamentoFin": return <FechamentoFinPage key={k} />;
     case "fechamentoCaixa": return <FechamentoCaixaPage key={k} />;

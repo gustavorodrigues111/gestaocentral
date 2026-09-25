@@ -87,6 +87,7 @@ export const MODULES: ModuleDef[] = [
   // ── Saúde & Equipamentos ─────────────────────────────────────────
   { id: "exames",      area: "dp", subarea: "Saúde & Equipamentos",   label: "Exames Médicos",  icon: "stethoscope", status: "ativo", etapa: "beta", desc: "Exames periódicos dos empregados (Clínico, Coprocultura) com fluxo de agendamento, acompanhamento e baixa", dependsOn: ["pessoas"] },
   { id: "uniformes",   area: "dp", subarea: "Saúde & Equipamentos",   label: "Uniformes & EPIs", icon: "shirt", status: "ativo", etapa: "beta", desc: "Catálogo, estoque, entregas e termos de uniformes e EPIs", dependsOn: ["pessoas"] },
+  { id: "ativos",      area: "dp", subarea: "Saúde & Equipamentos",   label: "Ativos por Empregado", icon: "credit-card", status: "ativo", etapa: "em_desenvolvimento", desc: "Controle de itens únicos sob responsabilidade (cartão corporativo, celular, notebook, moto, veículo, crachá): entrega, status (ativo/devolvido/bloqueado) e devolução.", dependsOn: ["pessoas"] },
 
   // ── ocultos (dp) ─────────────────────────────────────────────────
   { id: "fechamentoEscala", area: "dp", label: "Fechamento Escala", icon: "lock", status: "planejado", etapa: "em_desenvolvimento", desc: "Não é módulo — já é função dentro da Escala", dependsOn: ["escala", "gorjetas"], oculto: true },

@@ -287,6 +287,7 @@ service cloud.firestore {
     match /beneficioPagamentos/{id} { allow read, write: if authed(); }
     match /beneficioAjustes/{id}    { allow read, write: if authed(); }
     match /recebimentos/{id}        { allow read, write: if authed(); }
+    match /ativos/{id}              { allow read, write: if authed(); }
     // Gestão de Estoques e Validades
     match /locaisEstoque/{id}       { allow read, write: if authed(); }
     match /produtosEtiqueta/{id}    { allow read, write: if authed(); }

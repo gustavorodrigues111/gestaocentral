@@ -82,7 +82,7 @@ export type ModuleId =
   // Escritório
   | "fechamentoEscala" | "gorjetas" | "vt" | "vr" | "beneficios" | "beneficios2" | "compras" | "recebimento" | "fechamentoCaixa" | "recursos" | "faleDp"
   | "pessoas" | "comunicados" | "configuracoes" | "excecoes" | "analise-ponto" | "ptrp" | "admissao" | "processoSeletivo" | "sites" | "cardapio"
-  | "uniformes"
+  | "uniformes" | "ativos"
   // Gestor de Tarefas + cadastros mestres
   | "tarefas"
   // Prazos (novo módulo unificado — substitui contasFixas/manutencoes/prazosTrabalhistas)
@@ -6177,6 +6177,49 @@ export type RecebimentoMatchIA = {
   resumo: string;                // explicação curta ("mesmo CNPJ, 7 de 8 itens batem…")
   statusSugerido: "recebido_ok" | "recebido_div";
   itens: RecebimentoMatchItem[];
+};
+
+// ─── Ativos por empregado (patrimônio atribuído) ─────────────────────────────
+// Itens ÚNICOS entregues a um empregado sob responsabilidade (cartão corporativo,
+// celular, notebook, moto, veículo, crachá). Diferente de Uniformes/EPI (estoque
+// com quantidade/tamanho). Controla entrega, status e devolução.
+export type AtivoTipo = "cartao" | "celular" | "notebook" | "moto" | "veiculo" | "cracha" | "outro";
+export const ATIVO_TIPO_LABEL: Record<AtivoTipo, string> = {
+  cartao: "Cartão de crédito", celular: "Celular", notebook: "Notebook",
+  moto: "Motocicleta", veiculo: "Veículo", cracha: "Crachá", outro: "Outro",
+};
+export const ATIVO_TIPO_ICON: Record<AtivoTipo, string> = {
+  cartao: "credit-card", celular: "smartphone", notebook: "laptop",
+  moto: "bike", veiculo: "car", cracha: "id-card", outro: "package",
+};
+// Rótulo do campo identificador conforme o tipo.
+export const ATIVO_IDENT_LABEL: Record<AtivoTipo, string> = {
+  cartao: "Final do cartão (4 dígitos)", celular: "IMEI / nº de série", notebook: "Nº de série / patrimônio",
+  moto: "Placa", veiculo: "Placa", cracha: "Nº do crachá", outro: "Identificador",
+};
+export type AtivoStatus = "ativo" | "devolvido" | "bloqueado";
+export const ATIVO_STATUS_LABEL: Record<AtivoStatus, string> = { ativo: "Ativo", devolvido: "Devolvido", bloqueado: "Bloqueado" };
+export type AtivoHist = { acao: string; em: string; porId?: string; porNome?: string; detalhe?: string };
+export type Ativo = {
+  id: string;
+  restaurantId: string;
+  tipo: AtivoTipo;
+  nome?: string;                       // descrição livre (ex.: "Visa Itaú — operação")
+  identificador?: string;              // final do cartão / placa / IMEI / nº série
+  detalhes?: Record<string, string>;   // campos extras por tipo (bandeira, limite, modelo…)
+  empregadoId: string;
+  empregadoNomeSnapshot: string;
+  status: AtivoStatus;
+  entregueEm: string;                  // ISO
+  entreguePorId?: string;
+  entreguePorNome?: string;
+  devolvidoEm?: string | null;
+  devolvidoPorNome?: string | null;
+  destinoDevolucao?: string;           // "devolvido em bom estado" | "perdido" | etc.
+  obs?: string;
+  criadoEm: string;
+  atualizadoEm: string;
+  historico?: AtivoHist[];
 };
 
 export type RecebimentoNota = {
