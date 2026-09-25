@@ -10,7 +10,7 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
 import { todayYmd, fmtBR } from "../../core/utils/date";
-import { CHECKLIST_FREQ_LABEL, CHECKLIST_TURNO_LABEL, AREAS } from "../../core/types";
+import { CHECKLIST_FREQ_LABEL, CHECKLIST_TURNO_LABEL, AREAS, segAreaCor } from "../../core/types";
 import type { Area, Cargo, ChecklistFrequencia, ChecklistRun, ChecklistTemplate, Empregado } from "../../core/types";
 import { ChecklistTemplateModal } from "./ChecklistTemplateModal";
 import { ImportarChecklistModal } from "./ImportarChecklistModal";
@@ -19,6 +19,36 @@ import { itemDoDia, temFreqPorItem } from "./recorrencia";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 type Tab = "hoje" | "templates" | "historico";
+
+// Agrupa templates por área na ordem canônica (AREAS), com um balde "Sem área"
+// no fim. Só devolve grupos não-vazios.
+function agrupaPorArea<T extends { area?: Area }>(list: T[]): { area: Area | null; itens: T[] }[] {
+  const grupos: { area: Area | null; itens: T[] }[] = [];
+  for (const a of AREAS) {
+    const itens = list.filter(t => t.area === a);
+    if (itens.length) grupos.push({ area: a, itens });
+  }
+  const semArea = list.filter(t => !t.area);
+  if (semArea.length) grupos.push({ area: null, itens: semArea });
+  return grupos;
+}
+// Cor da área (reaproveita a paleta fixa Bar/Cozinha/Salão/Limpeza). "Sem área" = cinza neutro.
+const CINZA_SEM_AREA = { bg: "bg-gray-50 dark:bg-gray-900", fg: "text-gray-500 dark:text-gray-400", dot: "#9ca3af" };
+function corDaArea(area: Area | null) {
+  return area ? segAreaCor(area) : CINZA_SEM_AREA;
+}
+// Cabeçalho de grupo de área: bolinha + nome colorido + contagem + régua.
+function CabecalhoArea({ area, n }: { area: Area | null; n: number }) {
+  const cor = corDaArea(area);
+  return (
+    <div className="flex items-center gap-2 mt-5 first:mt-0">
+      <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: cor.dot }} />
+      <h3 className={`text-xs font-bold uppercase tracking-wider ${cor.fg}`}>{area || "Sem área"}</h3>
+      <span className="text-[10px] text-gray-400 dark:text-gray-500">({n})</span>
+      <div className="flex-1 h-px bg-gray-100 dark:bg-gray-800" />
+    </div>
+  );
+}
 
 export function ChecklistsPage() {
   const { pessoa: me } = useAuth();
@@ -282,60 +312,70 @@ export function ChecklistsPage() {
               )}
             </div>
           ) : (
-            <div className="space-y-2">
-              {templatesHoje.map(t => {
-                const run = runHojeMap[t.id];
-                const completo = run?.status === "completo";
-                const rascunho = run?.status === "rascunho";
-                const pct = run ? Math.round((run.feitos / Math.max(1, run.totalItens)) * 100) : 0;
+            <div>
+              {agrupaPorArea(templatesHoje).map(({ area, itens }) => {
+                const cor = corDaArea(area);
                 return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    onClick={() => abrirRunPraTemplate(t)}
-                    className={`w-full text-left rounded-xl border p-4 transition-colors ${
-                      completo
-                        ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20"
-                        : rascunho
-                          ? "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20"
-                          : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-400 dark:hover:border-indigo-700"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-3 flex-wrap">
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-bold text-gray-900 dark:text-gray-100">{t.nome}</h3>
-                          {t.area && <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400">{t.area}</span>}
-                          {t.turno && <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">{CHECKLIST_TURNO_LABEL[t.turno]}</span>}
-                          <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
-                            {CHECKLIST_FREQ_LABEL[t.frequencia]}
-                          </span>
-                          {t.horarioReferencia && <span className="text-xs text-gray-500 inline-flex items-center gap-1"><AlarmClock size={12} /> {t.horarioReferencia}</span>}
-                        </div>
-                        <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                          {t.itens.length} item(ns) · {t.itens.filter(i => i.obrigatorio).length} obrigatório(s)
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        {completo ? (
-                          <span className="text-emerald-700 dark:text-emerald-400 font-bold text-sm">✓ Concluído</span>
-                        ) : rascunho ? (
-                          <div>
-                            <div className="text-amber-700 dark:text-amber-400 font-bold text-sm inline-flex items-center gap-1"><Hourglass size={13} /> {pct}%</div>
-                            <div className="text-[10px] text-gray-500">{run.feitos}/{run.totalItens}</div>
-                          </div>
-                        ) : (
-                          <span className="text-indigo-700 dark:text-indigo-400 font-medium text-sm">▶ Iniciar</span>
-                        )}
-                      </div>
+                  <div key={area || "sem"}>
+                    <CabecalhoArea area={area} n={itens.length} />
+                    <div className="space-y-2 mt-2">
+                      {itens.map(t => {
+                        const run = runHojeMap[t.id];
+                        const completo = run?.status === "completo";
+                        const rascunho = run?.status === "rascunho";
+                        const pct = run ? Math.round((run.feitos / Math.max(1, run.totalItens)) * 100) : 0;
+                        return (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => abrirRunPraTemplate(t)}
+                            style={{ borderLeftWidth: 5, borderLeftColor: cor.dot }}
+                            className={`w-full text-left rounded-xl border p-4 transition-colors ${
+                              completo
+                                ? "border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20"
+                                : rascunho
+                                  ? "border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20"
+                                  : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-400 dark:hover:border-indigo-700"
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-3 flex-wrap">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <h3 className="font-bold text-gray-900 dark:text-gray-100">{t.nome}</h3>
+                                  {t.turno && <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">{CHECKLIST_TURNO_LABEL[t.turno]}</span>}
+                                  <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
+                                    {CHECKLIST_FREQ_LABEL[t.frequencia]}
+                                  </span>
+                                  {t.horarioReferencia && <span className="text-xs text-gray-500 inline-flex items-center gap-1"><AlarmClock size={12} /> {t.horarioReferencia}</span>}
+                                </div>
+                                <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                  {t.itens.length} item(ns) · {t.itens.filter(i => i.obrigatorio).length} obrigatório(s)
+                                </div>
+                              </div>
+                              <div className="text-right">
+                                {completo ? (
+                                  <span className="text-emerald-700 dark:text-emerald-400 font-bold text-sm">✓ Concluído</span>
+                                ) : rascunho ? (
+                                  <div>
+                                    <div className="text-amber-700 dark:text-amber-400 font-bold text-sm inline-flex items-center gap-1"><Hourglass size={13} /> {pct}%</div>
+                                    <div className="text-[10px] text-gray-500">{run.feitos}/{run.totalItens}</div>
+                                  </div>
+                                ) : (
+                                  <span className="text-indigo-700 dark:text-indigo-400 font-medium text-sm">▶ Iniciar</span>
+                                )}
+                              </div>
+                            </div>
+                            {run?.executorNome && (
+                              <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+                                <span className="inline-flex items-center gap-1"><User size={12} /> {run.executorNome}</span>
+                                {run.finalizadoEm && <> · ✓ {new Date(run.finalizadoEm).toLocaleString("pt-BR")}</>}
+                              </div>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
-                    {run?.executorNome && (
-                      <div className="text-xs text-gray-500 mt-2 pt-2 border-t border-gray-200 dark:border-gray-800">
-                        <span className="inline-flex items-center gap-1"><User size={12} /> {run.executorNome}</span>
-                        {run.finalizadoEm && <> · ✓ {new Date(run.finalizadoEm).toLocaleString("pt-BR")}</>}
-                      </div>
-                    )}
-                  </button>
+                  </div>
                 );
               })}
             </div>
@@ -409,38 +449,48 @@ export function ChecklistsPage() {
               )}
             </div>
           ) : (
-            <div className="space-y-2">
-              {templatesFiltered.map(t => (
-                <div
-                  key={t.id}
-                  className={`bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 ${!t.ativo ? "opacity-60" : ""}`}
-                >
-                  <div className="flex items-start justify-between gap-3 flex-wrap">
-                    <div className="flex-1">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <h3 className="font-bold text-gray-900 dark:text-gray-100">{t.nome}</h3>
-                        {t.area && <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-gray-100 dark:bg-gray-800">{t.area}</span>}
-                        {t.turno && <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">{CHECKLIST_TURNO_LABEL[t.turno]}</span>}
-                        <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
-                          {CHECKLIST_FREQ_LABEL[t.frequencia]}
-                        </span>
-                        {!t.ativo && <span className="text-[10px] uppercase text-gray-500">Inativo</span>}
-                      </div>
-                      {t.descricao && <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{t.descricao}</p>}
-                      <div className="text-xs text-gray-500 mt-1">
-                        {t.itens.length} item(ns)
-                        {t.horarioReferencia && <> · <AlarmClock size={12} className="inline align-[-2px]" /> {t.horarioReferencia}</>}
-                      </div>
+            <div>
+              {agrupaPorArea(templatesFiltered).map(({ area, itens }) => {
+                const cor = corDaArea(area);
+                return (
+                  <div key={area || "sem"}>
+                    <CabecalhoArea area={area} n={itens.length} />
+                    <div className="space-y-2 mt-2">
+                      {itens.map(t => (
+                        <div
+                          key={t.id}
+                          style={{ borderLeftWidth: 5, borderLeftColor: cor.dot }}
+                          className={`bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-4 ${!t.ativo ? "opacity-60" : ""}`}
+                        >
+                          <div className="flex items-start justify-between gap-3 flex-wrap">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h3 className="font-bold text-gray-900 dark:text-gray-100">{t.nome}</h3>
+                                {t.turno && <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300">{CHECKLIST_TURNO_LABEL[t.turno]}</span>}
+                                <span className="text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300">
+                                  {CHECKLIST_FREQ_LABEL[t.frequencia]}
+                                </span>
+                                {!t.ativo && <span className="text-[10px] uppercase text-gray-500">Inativo</span>}
+                              </div>
+                              {t.descricao && <p className="text-xs text-gray-600 dark:text-gray-400 mt-1">{t.descricao}</p>}
+                              <div className="text-xs text-gray-500 mt-1">
+                                {t.itens.length} item(ns)
+                                {t.horarioReferencia && <> · <AlarmClock size={12} className="inline align-[-2px]" /> {t.horarioReferencia}</>}
+                              </div>
+                            </div>
+                            {podeConfig && (
+                              <div className="flex gap-1">
+                                <Button variant="secondary" size="sm" onClick={() => setEditTemplate(t)}>Editar</Button>
+                                <Button variant="danger" size="sm" onClick={() => excluirTemplate(t)}>×</Button>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                    {podeConfig && (
-                      <div className="flex gap-1">
-                        <Button variant="secondary" size="sm" onClick={() => setEditTemplate(t)}>Editar</Button>
-                        <Button variant="danger" size="sm" onClick={() => excluirTemplate(t)}>×</Button>
-                      </div>
-                    )}
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
