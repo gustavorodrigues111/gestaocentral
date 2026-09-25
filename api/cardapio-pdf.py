@@ -348,10 +348,21 @@ def render(estado):
         # ── Verso (interna): COMIDAS em 1,5 coluna (esquerda inteira + topo da
         #    direita, fluindo) + ESPECIAIS DE ALMOÇO na metade de baixo da direita.
         if comidas:
-            esq, dir_top = split_por_altura(c, comidas, RB - HDR_BOT - 30.0)
-            draw_copy(c, 0.0, 0.0, Hd('header_comidas_sem_titulo.png'), esq, ["COMIDAS"], RB)
-            if dir_top:   # continuação: sobe até o topo da coluna (alinha com o cabeçalho da esquerda)
-                draw_copy(c, 297.8, 0.0, None, dir_top, None, HALF - 14.0, cont_top=12.6)
+            if vendinha:
+                # 1,5 coluna: esquerda inteira + topo da direita; metade de baixo p/ Especiais.
+                esq, dir_top = split_por_altura(c, comidas, RB - HDR_BOT - 30.0)
+                draw_copy(c, 0.0, 0.0, Hd('header_comidas_sem_titulo.png'), esq, ["COMIDAS"], RB)
+                if dir_top:   # continuação: sobe até o topo da coluna (alinha com o cabeçalho da esquerda)
+                    draw_copy(c, 297.8, 0.0, None, dir_top, None, HALF - 14.0, cont_top=12.6)
+            else:
+                # SEM Especiais: distribui COMIDAS ~50/50 nas DUAS colunas cheias (até RB).
+                gap = 12.0
+                sec_h = lambda items: sum(item_height(c, it) for it in items) + (len(items) + 1) * gap
+                total = sum(sec_h(items) for _, items in comidas) or 1.0
+                esq, dir = split_por_altura(c, comidas, total / 2.0)
+                draw_copy(c, 0.0, 0.0, Hd('header_comidas_sem_titulo.png'), esq, ["COMIDAS"], RB)
+                if dir:   # coluna direita cheia (continuação, alinhada com o topo da esquerda)
+                    draw_copy(c, 297.8, 0.0, None, dir, None, RB, cont_top=12.6)
         if vendinha:
             # base do Especiais alinhada com a base da coluna esquerda (RB).
             draw_copy(c, 297.8, HALF, Hd('header_comidas_sem_titulo.png'), vendinha, ["ESPECIAIS", "DE ALMOÇO"], RB - HALF)
