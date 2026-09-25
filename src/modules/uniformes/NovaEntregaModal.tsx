@@ -7,14 +7,14 @@
 //   5. Salva → cria entrega + baixa estoque + gera PDF pra download
 
 import { useEffect, useMemo, useState } from "react";
-import { collection, doc, getDoc, getDocs, onSnapshot, query, where } from "firebase/firestore";
+import { collection, doc, getDoc, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { authHeader } from "../../core/firebase/idToken";
 import { Modal } from "../../core/ui/Modal";
 import { Button } from "../../core/ui/Button";
 import type {
   Admissao, Cargo, EntregaUniforme, ItemUniforme, KitAreaUniforme, Pessoa, Restaurant,
-  TermoUniformesConfig, TipoItemUniforme,
+  TipoItemUniforme,
 } from "../../core/types";
 
 // Formata "YYYY-MM-DDTHH:mm:ss.sssZ" → "DD/MM/YYYY HH:mm"
@@ -26,7 +26,6 @@ function fmtDateTime(iso: string): string {
   } catch { return iso; }
 }
 import { criarEntrega, atualizarEntrega } from "../../core/uniformes/uniformesHelpers";
-import { gerarTermoUniformesPDF } from "./gerarTermoPDF";
 
 type Props = {
   tipo: TipoItemUniforme;
@@ -58,7 +57,7 @@ type LinhaEntrega = {
 };
 
 export function NovaEntregaModal({
-  tipo, itens, kits, restaurantId, activeRestaurant, pessoa, onClose,
+  tipo, itens, kits, restaurantId, pessoa, onClose,
   admissaoContexto, entregaExistente, onEntregaCriada, pessoaInicialId,
 }: Props) {
   // Modo "admissão": pessoa fixa (candidato), tipo fixo, motivo=admissao.
@@ -254,35 +253,14 @@ export function NovaEntregaModal({
             catalogo: itens,
           });
 
-      // Busca config de termo (override por restaurante)
-      const cfgSnap = await getDocs(query(
-        collection(db, "termoUniformesConfig"),
-        where("restaurantId", "==", restaurantId),
-      ));
-      const cfg = cfgSnap.docs[0]
-        ? ({ id: cfgSnap.docs[0].id, ...cfgSnap.docs[0].data() } as TermoUniformesConfig)
-        : null;
-
-      // Função do empregado (cargo) — pra cabeçalho do PDF
-      const teamData = (pessoaSel as unknown as {
-        teamData?: { [rid: string]: { cargoId?: string } };
-      } | undefined)?.teamData;
-      const cargoId = teamData?.[restaurantId]?.cargoId;
-      const cargo = cargos.find(c => c.id === cargoId);
-
-      // Gera PDF — usa candidato da admissão se em modo admissão, senão usa pessoa
-      const nomePdf = modoAdmissao && admissaoContexto
-        ? admissaoContexto.candidato.nome
-        : (pessoaSel?.nome || "");
-      const cpfPdf = modoAdmissao && admissaoContexto
-        ? admissaoContexto.candidato.cpf
-        : (pessoaSel?.cpf || "");
-      // Termo = documento do ADVOGADO (fábrica): ficha-entrega-uniforme /
-      // termo-entrega-epi, já com os itens da entrega no quadro. Mesmo termo
-      // na admissão e na reposição pelo módulo. Fallback pro PDF interno se
-      // a fábrica falhar (pra nunca travar a entrega).
-      let blob: Blob;
-      let ehDocx = false;
+      // Nome/CPF pro termo (candidato da admissão em modo admissão, senão a pessoa).
+      const nomePdf = modoAdmissao && admissaoContexto ? admissaoContexto.candidato.nome : (pessoaSel?.nome || "");
+      const cpfPdf = modoAdmissao && admissaoContexto ? admissaoContexto.candidato.cpf : (pessoaSel?.cpf || "");
+      // Termo OFICIAL da Fábrica (FONTE ÚNICA): ficha-entrega-uniforme /
+      // termo-entrega-epi, já com os itens da entrega no quadro. Sem template
+      // paralelo — editar o modelo na Fábrica atualiza aqui automaticamente. A
+      // entrega já está registrada; se a Fábrica falhar, o termo pode ser gerado
+      // depois pelo Gerador de Documentos (nunca cai num modelo antigo).
       try {
         const cfgDoc = await getDoc(doc(db, "documentosEmpresas", restaurantId));
         const campos = (cfgDoc.data() as { campos?: Record<string, string> } | undefined)?.campos || {};
@@ -310,16 +288,15 @@ export function NovaEntregaModal({
         const bin = atob(String(data.docxBase64 || ""));
         const u8 = new Uint8Array(bin.length);
         for (let i = 0; i < bin.length; i++) u8[i] = bin.charCodeAt(i);
-        blob = new Blob([u8], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
-        ehDocx = true;
-      } catch {
-        const pdfParams = { entrega, restaurant: activeRestaurant, candidatoNome: nomePdf, candidatoCpf: cpfPdf, funcao: cargo?.nome, config: cfg };
-        blob = (await gerarTermoUniformesPDF(pdfParams)).output("blob");
+        const blob = new Blob([u8], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+        const stamp = `${h.getFullYear()}.${String(h.getMonth() + 1).padStart(2, "0")}.${String(h.getDate()).padStart(2, "0")}`;
+        const filename = `${stamp} Termo de entrega de ${tipo === "epi" ? "EPI" : "uniforme"} - ${nomePdf || "sem nome"}.docx`;
+        const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click(); a.remove();
+        onEntregaCriada?.({ blob, filename });
+      } catch (err) {
+        console.error("Falha ao gerar o termo pela Fábrica:", err);
+        alert("Entrega registrada, mas não foi possível gerar o termo agora (Gerador de Documentos indisponível). Gere o termo depois pelo Gerador de Documentos.");
       }
-      const stamp = (() => { const h = new Date(); return `${h.getFullYear()}.${String(h.getMonth() + 1).padStart(2, "0")}.${String(h.getDate()).padStart(2, "0")}`; })();
-      const filename = `${stamp} Termo de entrega de ${tipo === "epi" ? "EPI" : "uniforme"} - ${nomePdf || "sem nome"}.${ehDocx ? "docx" : "pdf"}`;
-      const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = filename; document.body.appendChild(a); a.click(); a.remove();
-      onEntregaCriada?.({ blob, filename });
       onClose();
     } catch (e) {
       setErro(e instanceof Error ? e.message : "Erro ao salvar.");
