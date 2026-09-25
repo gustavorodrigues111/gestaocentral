@@ -6,7 +6,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { renderAsync } from "docx-preview";
-import { Settings, FileSignature, History, Files, TriangleAlert, CheckSquare, Check, ReceiptText, Plus, PenLine, FileText, Building2, CalendarDays, User, Pencil, UserRoundPlus, Sparkles, Loader2, X, type LucideIcon } from "lucide-react";
+import { Settings, History, Files, TriangleAlert, CheckSquare, Check, ReceiptText, Plus, PenLine, FileText, Building2, CalendarDays, User, Pencil, UserRoundPlus, Sparkles, Loader2, X, type LucideIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where, doc, setDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -19,7 +19,6 @@ import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
 import type { Pessoa, Empregado } from "../../core/types";
 import { getTermosAssinaturaDefault } from "../../core/admissao/admissaoHelpers";
-import { ContratosTrabalho } from "./ContratosTrabalho";
 import { HistoricoDocumentos } from "./HistoricoDocumentos";
 import { ConfigCargos } from "./ConfigCargos";
 import { LoteModal } from "./LoteModal";
@@ -101,7 +100,7 @@ export function DocumentosPage() {
   const [loteAberto, setLoteAberto] = useState(false);
   const [areaSel, setAreaSel] = useState<string>("");
   const [modo, setModo] = useState<"catalogo" | "config">("catalogo");
-  const [secao, setSecao] = useState<"contratos" | "outros" | "historico" | "cargos">("contratos");
+  const [secao, setSecao] = useState<"outros" | "historico" | "cargos">("outros");
   const [empresaRid, setEmpresaRid] = useState(rid || "");
 
   useEffect(() => { if (rid) setEmpresaRid(rid); }, [rid]);
@@ -138,7 +137,9 @@ export function DocumentosPage() {
   const docsElegiveisLote = disponiveis.filter(docElegivelLote);
 
   // Mestre-detalhe: áreas (categorias) à esquerda, documentos à direita.
-  const categorias = [...new Set(disponiveis.map(d => d.categoria))];
+  const ORDEM_AREAS = ["Admissão e contratos", "Termos de responsabilidade", "LGPD e diversos", "Benefícios", "Férias e jornada", "Disciplina", "Desligamento"];
+  const categorias = [...new Set(disponiveis.map(d => d.categoria))]
+    .sort((a, b) => { const ia = ORDEM_AREAS.indexOf(a), ib = ORDEM_AREAS.indexOf(b); return (ia < 0 ? 99 : ia) - (ib < 0 ? 99 : ib); });
   const areaAtual = (areaSel && filtrados.some(d => d.categoria === areaSel)) ? areaSel : (categorias.find(c => filtrados.some(d => d.categoria === c)) || categorias[0] || "");
   const docsDaArea = filtrados.filter(d => d.categoria === areaAtual);
 
@@ -175,16 +176,13 @@ export function DocumentosPage() {
 
       {/* Abas por tipo de documento */}
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-4">
-        {([["contratos", "Novos contratos de trabalho", FileSignature], ["cargos", "Cargos p/ contrato", Settings], ["historico", "Histórico", History], ["outros", "Outros modelos", Files]] as const).map(([id, lb, Ico]) => (
+        {([["outros", "Documentos", Files], ["historico", "Histórico", History], ["cargos", "Cargos", Settings]] as const).map(([id, lb, Ico]) => (
           <button key={id} type="button" onClick={() => setSecao(id)}
             className={`inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium border-b-2 -mb-px transition-colors ${secao === id ? "border-indigo-600 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-800 dark:text-gray-400"}`}>
             <Ico size={15} /> {lb}
           </button>
         ))}
       </div>
-
-      {secao === "contratos" && podeGerar && <ContratosTrabalho rid={rid || empresaRid || ""} restaurants={restaurants} />}
-      {secao === "contratos" && !podeGerar && <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-8 text-center text-sm text-gray-500">Sem permissão para gerar documentos.</div>}
 
       {secao === "cargos" && <ConfigCargos rid={rid || empresaRid || ""} />}
 
