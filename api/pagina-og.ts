@@ -39,7 +39,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
   let imagem = "";
   try {
     const doc = slug ? await firestoreConsultarUm("hostedPages", "slug", slug) : null;
-    if (doc && doc.titulo) titulo = String(doc.titulo);
+    // Título do preview: campo dedicado (ogTitulo) se preenchido; senão o título da página.
+    const ogT = doc && doc.ogTitulo ? String(doc.ogTitulo).trim() : "";
+    if (ogT) titulo = ogT;
+    else if (doc && doc.titulo) titulo = String(doc.titulo);
     const publica = doc && doc.ativo && doc.visibilidade === "publico";
     if (publica) {
       const ex = excerto(String(doc!.html || ""));

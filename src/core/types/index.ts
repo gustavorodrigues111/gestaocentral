@@ -145,6 +145,7 @@ export type HostedPage = {
   id: string;
   slug: string;                       // parte após a barra; [a-z0-9-]
   titulo: string;
+  ogTitulo?: string;                  // título no preview do link (WhatsApp/redes); vazio = usa `titulo`
   html: string;                       // conteúdo (Firestore, até ~900KB)
   visibilidade: HostedPageVisibilidade;
   emailsAutorizados?: string[];       // privado: e-mails liberados (minúsculo)

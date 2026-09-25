@@ -19,7 +19,7 @@ async function sha256Hex(s: string): Promise<string> {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
 
-type Dados = Pick<HostedPage, "slug" | "titulo" | "html" | "visibilidade" | "emailsAutorizados" | "senhaHash" | "ativo" | "tamanhoBytes">;
+type Dados = Pick<HostedPage, "slug" | "titulo" | "ogTitulo" | "html" | "visibilidade" | "emailsAutorizados" | "senhaHash" | "ativo" | "tamanhoBytes">;
 
 export function PaginaModal({ pagina, slugsUsados, autor, onClose, onSalvar }: {
   pagina: HostedPage | null;
@@ -30,6 +30,7 @@ export function PaginaModal({ pagina, slugsUsados, autor, onClose, onSalvar }: {
 }) {
   const isNew = !pagina;
   const [titulo, setTitulo] = useState(pagina?.titulo || "");
+  const [ogTitulo, setOgTitulo] = useState(pagina?.ogTitulo || "");
   const [slug, setSlug] = useState(pagina?.slug || "");
   const [html, setHtml] = useState(pagina?.html || "");
   const [temHtml, setTemHtml] = useState(!!pagina?.html);
@@ -74,6 +75,7 @@ export function PaginaModal({ pagina, slugsUsados, autor, onClose, onSalvar }: {
       await onSalvar({
         slug: slugNorm,
         titulo: titulo.trim(),
+        ogTitulo: ogTitulo.trim() || "",
         html,
         visibilidade,
         emailsAutorizados: visibilidade === "privado" ? listaEmails : [],
@@ -102,6 +104,11 @@ export function PaginaModal({ pagina, slugsUsados, autor, onClose, onSalvar }: {
         </div>
 
         <Input label="Título *" value={titulo} onChange={(e) => setTitulo(e.target.value)} placeholder="ex: Proposta Comercial Puba" />
+
+        <div>
+          <Input label="Título do compartilhamento (link)" value={ogTitulo} onChange={(e) => setOgTitulo(e.target.value)} placeholder={titulo.trim() || "usa o Título se vazio"} />
+          <p className="text-[11px] text-gray-500 mt-1">Nome que aparece no preview do link no WhatsApp/redes. Vazio = usa o Título.</p>
+        </div>
 
         <div>
           <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Endereço *</label>
