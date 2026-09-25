@@ -30,7 +30,9 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
   const nome = (rest?.nome || "").toString();
 
   const origin = process.env.APP_ORIGIN || "https://admin.planejamento.app";
-  const url = `${origin}/cardapio-pdf/${encodeURIComponent(rid)}?headless=1&menu=${encodeURIComponent(menu)}&nome=${encodeURIComponent(nome)}`;
+  // Cache-buster: sem isso a CDN pode servir o index.html ANTIGO (que aponta pro
+  // bundle antigo), fazendo o PDF sair com um layout desatualizado após deploy.
+  const url = `${origin}/cardapio-pdf/${encodeURIComponent(rid)}?headless=1&menu=${encodeURIComponent(menu)}&nome=${encodeURIComponent(nome)}&_v=${Date.now()}`;
 
   let browser: Awaited<ReturnType<typeof puppeteer.launch>> | null = null;
   try {
@@ -41,6 +43,7 @@ export default async function handler(req: VercelReq, res: VercelRes): Promise<v
       defaultViewport: { width: 1280, height: 1800, deviceScaleFactor: 1 },
     });
     const page = await browser.newPage();
+    await page.setCacheEnabled(false);
     await page.goto(url, { waitUntil: "domcontentloaded", timeout: 45000 });
     // A página (modo print) renderiza só as páginas e sinaliza __CARDAPIO_READY__
     // quando fontes + arte carregaram. Polling ignora detaches transitórios do SPA.
