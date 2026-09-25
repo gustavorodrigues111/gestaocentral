@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams, useNavigate, useSearchParams } from "react-router-dom";
-import { collection, deleteField, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
+import { collection, deleteDoc, deleteField, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -22,7 +22,7 @@ import { AREAS, ESCALA_FASE_LABEL, ESCALA_FASE_LUCIDE, getEscalaFase, AJUSTE_MOT
 import {
   CalendarDays, ClipboardList, Lock, LockOpen, CheckSquare, PenLine, Palmtree,
   ArrowLeftRight, FileText, Lightbulb, CircleHelp, SearchX, House, Building2, Zap,
-  Coins, AlarmClock,
+  Coins, AlarmClock, AlertTriangle, Trash2, Check,
 } from "lucide-react";
 import { derivedScheduleForEmpregado, modalidadeDerivadaDia, type DerivedDay } from "../../core/escala/horarios";
 import { modalidadeEfetivaEmpDia, previstaFechadaParaEmp } from "../../core/escala/statusEfetivo";
@@ -336,6 +336,22 @@ export function EscalaPage({ modo }: { modo?: "praticada" } = {}) {
       return a.nome.localeCompare(b.nome);
     });
   }, [empregadosDoMes, cargos, me, rid, filtroArea, filtroUnidadeId]);
+
+  // Empregados DUPLICADOS: dois registros de `empregados` pra mesma pessoa (ou
+  // mesmo CPF) → a grade mostra a pessoa em duas linhas, embora em Pessoas apareça
+  // uma só. Só quem configura vê o aviso pra remover o registro extra.
+  const [dupResolver, setDupResolver] = useState<Empregado[] | null>(null);
+  const dupGroups = useMemo(() => {
+    if (!podeConfig) return [] as Empregado[][];
+    const byKey: Record<string, Empregado[]> = {};
+    for (const e of empregadosDoMes) {
+      const cpf = (e.cpf || "").replace(/\D/g, "");
+      const key = e.pessoaId ? "p:" + e.pessoaId : (cpf ? "c:" + cpf : "");
+      if (!key) continue;
+      (byKey[key] ||= []).push(e);
+    }
+    return Object.values(byKey).filter(g => g.length > 1);
+  }, [empregadosDoMes, podeConfig]);
 
   const dias = daysInMonth(ano, mes);
 
@@ -916,6 +932,20 @@ export function EscalaPage({ modo }: { modo?: "praticada" } = {}) {
         </div>
       ) : (
         <>
+          {dupGroups.length > 0 && (
+            <div className="mt-4 rounded-xl border border-amber-300 dark:border-amber-900/50 bg-amber-50 dark:bg-amber-900/15 p-3">
+              <div className="text-sm font-bold text-amber-800 dark:text-amber-200 inline-flex items-center gap-1.5"><AlertTriangle size={15} /> {dupGroups.length} empregado(s) duplicado(s) na escala</div>
+              <p className="text-[12px] text-amber-800/90 dark:text-amber-200/90 mt-1">Aparecem em duas linhas porque têm mais de um cadastro de empregado (a tela Pessoas mostra só um). Remova o registro extra.</p>
+              <div className="mt-2 flex flex-wrap gap-2">
+                {dupGroups.map((g, i) => (
+                  <button key={i} type="button" onClick={() => setDupResolver(g)}
+                    className="text-[12px] font-semibold rounded-lg border border-amber-400 dark:border-amber-700 bg-white dark:bg-gray-900 px-2.5 py-1 hover:bg-amber-100 dark:hover:bg-amber-900/30 inline-flex items-center gap-1.5">
+                    {g[0].nome} <span className="text-amber-600">· {g.length} cadastros →</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
           {/* Desktop / Tablet: vista mensal completa (31 colunas) */}
           <div className="hidden md:block">
             <Grade
@@ -1063,7 +1093,76 @@ export function EscalaPage({ modo }: { modo?: "praticada" } = {}) {
           onClose={() => setShowExportPDF(false)}
         />
       )}
+      {dupResolver && (
+        <DedupEmpregadoModal group={dupResolver} escala={escala} cargos={cargos} onClose={() => setDupResolver(null)} />
+      )}
     </div>
+  );
+}
+
+// Modal: resolve empregado duplicado — dois registros de `empregados` pra mesma
+// pessoa. Compara os cadastros (cargo, admissão, dados já lançados na escala) e
+// apaga o(s) que o usuário não quer manter. Gorjeta/VT antigos guardam snapshot.
+function DedupEmpregadoModal({ group, escala, cargos, onClose }: {
+  group: Empregado[]; escala: EscalaMes | null; cargos: Cargo[]; onClose: () => void;
+}) {
+  const cargoNome = (id?: string) => cargos.find(c => c.id === id)?.nome || "—";
+  const admissaoDe = (e: Empregado) => e.admissaoAtual || e.periodos?.[(e.periodos?.length || 1) - 1]?.admissao || "";
+  const dadosEscala = (e: Empregado) => Object.keys(escala?.real?.[e.id] || {}).length + Object.keys(escala?.prevista?.[e.id] || {}).length;
+  // Sugere manter o registro com mais dados lançados (depois, o mais recente).
+  const sugerido = [...group].sort((a, b) => dadosEscala(b) - dadosEscala(a) || admissaoDe(b).localeCompare(admissaoDe(a)))[0];
+  const [manterId, setManterId] = useState<string>(sugerido.id);
+  const [saving, setSaving] = useState(false);
+  const [erro, setErro] = useState("");
+
+  async function aplicar() {
+    const remover = group.filter(e => e.id !== manterId);
+    if (!remover.length) { onClose(); return; }
+    const perdeDados = remover.some(e => dadosEscala(e) > 0);
+    const msg = `Manter "${group.find(e => e.id === manterId)?.nome}" e APAGAR ${remover.length} cadastro(s) de empregado duplicado(s)?` +
+      (perdeDados ? "\n\n⚠️ Um dos cadastros a apagar tem dias já lançados na escala — esses dias serão perdidos. Confira se escolheu o certo pra manter." : "") +
+      "\n\nGorjetas e VT antigos guardam o nome em snapshot, então não se perdem. Não dá pra desfazer.";
+    if (!window.confirm(msg)) return;
+    setSaving(true); setErro("");
+    try {
+      for (const e of remover) await deleteDoc(doc(db, "empregados", e.id));
+      onClose();
+    } catch (e) { setErro(e instanceof Error ? e.message : "Falha ao remover."); setSaving(false); }
+  }
+
+  return (
+    <Modal title={<span className="inline-flex items-center gap-1.5"><AlertTriangle size={18} className="text-amber-500" /> Empregado duplicado</span>} onClose={onClose} maxWidth="max-w-lg">
+      <div className="space-y-3">
+        <p className="text-sm text-gray-600 dark:text-gray-300">Há {group.length} cadastros de empregado para <b>{group[0].nome}</b>. Escolha qual <b>manter</b>; os outros serão apagados.</p>
+        <div className="space-y-2">
+          {group.map(e => {
+            const nd = dadosEscala(e);
+            const on = manterId === e.id;
+            return (
+              <label key={e.id} className={`block rounded-xl border px-3 py-2.5 cursor-pointer transition-colors ${on ? "border-emerald-400 bg-emerald-50/60 dark:bg-emerald-900/15" : "border-gray-200 dark:border-gray-800 hover:border-gray-300"}`}>
+                <div className="flex items-start gap-2">
+                  <input type="radio" name="manter" checked={on} onChange={() => setManterId(e.id)} className="mt-1 accent-emerald-600" />
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5">{e.nome} {e.id === sugerido.id && <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">sugerido</span>}</div>
+                    <div className="text-[12px] text-gray-500 mt-0.5">
+                      {cargoNome(e.cargoId)} · admissão {admissaoDe(e) ? admissaoDe(e).split("-").reverse().join("/") : "—"} · {e.estaAtivo === false ? "inativo" : "ativo"}
+                      {nd > 0 ? <span className="text-amber-700 dark:text-amber-400"> · {nd} dia(s) lançado(s) na escala</span> : <span className="text-gray-400"> · sem dias lançados</span>}
+                    </div>
+                    <div className="text-[10px] text-gray-400 mt-0.5 font-mono">id {e.id}</div>
+                  </div>
+                  {on ? <Check size={16} className="text-emerald-600 shrink-0 mt-0.5" /> : <Trash2 size={15} className="text-gray-300 shrink-0 mt-0.5" />}
+                </div>
+              </label>
+            );
+          })}
+        </div>
+        {erro && <div className="text-sm text-rose-600 bg-rose-50 dark:bg-rose-900/20 rounded-lg px-3 py-2">{erro}</div>}
+        <div className="flex justify-end gap-2 pt-1">
+          <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+          <Button onClick={() => void aplicar()} disabled={saving}><span className="inline-flex items-center gap-1.5"><Trash2 size={14} /> {saving ? "Removendo…" : "Manter 1 e apagar o resto"}</span></Button>
+        </div>
+      </div>
+    </Modal>
   );
 }
 
