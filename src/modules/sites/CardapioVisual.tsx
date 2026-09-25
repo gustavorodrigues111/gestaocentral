@@ -27,7 +27,7 @@ const MSYMS_HREF = `https://fonts.googleapis.com/css2?family=Material+Symbols+Ou
 const icoFonteStyle: CSSProperties = {
   fontFamily: "'Material Symbols Outlined'", fontWeight: 300,
   fontVariationSettings: "'wght' 250, 'opsz' 24, 'FILL' 0, 'GRAD' 0",
-  fontStyle: "normal", color: TEAL, marginRight: 3, lineHeight: 1, verticalAlign: "middle",
+  fontStyle: "normal", color: TEAL, marginRight: 3, lineHeight: 1, verticalAlign: "-0.22em",
 };
 const CAPA = "/cardapio-capa-sororoca.png";
 const norm = (s: string) => (s || "").trim().toLowerCase().normalize("NFD").replace(new RegExp("[\\u0300-\\u036f]", "g"), "");
