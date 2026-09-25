@@ -308,12 +308,22 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
                 </div>
               )}
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ display: "flex", justifyContent: justPrato, alignItems: "baseline", gap: 8 }}>
-                  <span contentEditable={!!onEditarPrato} suppressContentEditableWarning
-                    onBlur={(e) => onEditarPrato?.(p.id, campoTit, e.currentTarget.innerText)}
-                    style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: lay.corPratos, whiteSpace: "pre-line", outline: "none", minWidth: 0 }}>{titulo}</span>
-                  {(precoTxt || (p.taca && (p.precoTaca || "").trim())) && (
-                    <span style={{ display: "flex", flexDirection: "row", alignItems: "baseline", justifyContent: "flex-end", flexShrink: 0, gap: 12 }}>
+                {(p.taca && (p.precoTaca || "").trim()) ? (
+                  // Vinho com TAÇA: título+descrição à esquerda; garrafa em cima /
+                  // taça embaixo à direita, alinhadas ao TOPO — assim a descrição
+                  // cola no título (o preço de 2 linhas não empurra a descrição).
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <span contentEditable={!!onEditarPrato} suppressContentEditableWarning
+                        onBlur={(e) => onEditarPrato?.(p.id, campoTit, e.currentTarget.innerText)}
+                        style={{ display: "block", fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: lay.corPratos, whiteSpace: "pre-line", outline: "none" }}>{titulo}</span>
+                      {subt && (
+                        <div contentEditable={!!onEditarPrato} suppressContentEditableWarning
+                          onBlur={(e) => onEditarPrato?.(p.id, campoSub, e.currentTarget.innerText)}
+                          style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, color: lay.corDescricao, marginTop: lay.espacoDescricao, lineHeight: 1.25, whiteSpace: "pre-line", outline: "none" }}>{subt}</div>
+                      )}
+                    </div>
+                    <span style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", flexShrink: 0, gap: 1 }}>
                       {precoTxt && (
                         <span style={{ whiteSpace: "nowrap", lineHeight: 1.1 }}>
                           {!ehNota && mostrarGarrafa && <span style={{ ...icoFonteStyle, color: lay.corPreco, fontSize: lay.tamTitulo * 1.05 }}>{GLYPH_GARRAFA}</span>}
@@ -321,22 +331,35 @@ export function CardapioVisual({ rid, menuId, secoes, mostrarGarrafa, nomeRestau
                           <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: lay.corPreco, fontWeight: 600 }}>{precoTxt}</span>
                         </span>
                       )}
-                      {p.taca && (p.precoTaca || "").trim() && (
-                        <span style={{ whiteSpace: "nowrap", lineHeight: 1.1 }}>
-                          <span style={{ ...icoFonteStyle, color: lay.corPreco, fontSize: lay.tamTitulo * 1.05 }}>{GLYPH_TACA}</span>
-                          {(p.tacaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: lay.corPreco, opacity: 0.75, marginRight: 3 }}>({String(p.tacaMl).replace(/ml$/i, "").trim()}ml)</span>}
-                          <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, color: lay.corPreco, fontWeight: 600 }}>{lay.mostrarCifrao ? `$ ${p.precoTaca!.trim()}` : p.precoTaca!.trim()}</span>
+                      <span style={{ whiteSpace: "nowrap", lineHeight: 1.1 }}>
+                        <span style={{ ...icoFonteStyle, color: lay.corPreco, fontSize: lay.tamTitulo * 1.05 }}>{GLYPH_TACA}</span>
+                        {(p.tacaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: lay.corPreco, opacity: 0.75, marginRight: 3 }}>({String(p.tacaMl).replace(/ml$/i, "").trim()}ml)</span>}
+                        <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, color: lay.corPreco, fontWeight: 600 }}>{lay.mostrarCifrao ? `$ ${p.precoTaca!.trim()}` : p.precoTaca!.trim()}</span>
+                      </span>
+                    </span>
+                  </div>
+                ) : (
+                  <>
+                    <div style={{ display: "flex", justifyContent: justPrato, alignItems: "baseline", gap: 8 }}>
+                      <span contentEditable={!!onEditarPrato} suppressContentEditableWarning
+                        onBlur={(e) => onEditarPrato?.(p.id, campoTit, e.currentTarget.innerText)}
+                        style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo, fontWeight: 600, color: lay.corPratos, whiteSpace: "pre-line", outline: "none", minWidth: 0 }}>{titulo}</span>
+                      {precoTxt && (
+                        <span style={{ whiteSpace: "nowrap", lineHeight: 1.1, flexShrink: 0 }}>
+                          {!ehNota && mostrarGarrafa && <span style={{ ...icoFonteStyle, color: lay.corPreco, fontSize: lay.tamTitulo * 1.05 }}>{GLYPH_GARRAFA}</span>}
+                          {!ehNota && (p.garrafaMl || "").trim() && <span style={{ fontFamily: fCorpo, fontSize: lay.tamTitulo * 0.78, color: lay.corPreco, opacity: 0.75, marginRight: 3 }}>({String(p.garrafaMl).replace(/ml$/i, "").trim()}ml)</span>}
+                          <span style={{ fontFamily: fCorpo, fontSize: ehNota ? lay.tamDescricao : lay.tamTitulo, fontStyle: ehNota ? "italic" : "normal", color: lay.corPreco, fontWeight: 600 }}>{precoTxt}</span>
                         </span>
                       )}
-                    </span>
-                  )}
-                </div>
-                {/* Só renderiza a descrição quando existe — assim o "espaço nome→descrição"
-                    não mexe nos pratos sem descrição (pra adicionar uma, use o campo do editor). */}
-                {subt && (
-                  <div contentEditable={!!onEditarPrato} suppressContentEditableWarning
-                    onBlur={(e) => onEditarPrato?.(p.id, campoSub, e.currentTarget.innerText)}
-                    style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, color: lay.corDescricao, marginTop: lay.espacoDescricao, lineHeight: 1.25, whiteSpace: "pre-line", outline: "none" }}>{subt}</div>
+                    </div>
+                    {/* Só renderiza a descrição quando existe — assim o "espaço nome→descrição"
+                        não mexe nos pratos sem descrição (pra adicionar uma, use o campo do editor). */}
+                    {subt && (
+                      <div contentEditable={!!onEditarPrato} suppressContentEditableWarning
+                        onBlur={(e) => onEditarPrato?.(p.id, campoSub, e.currentTarget.innerText)}
+                        style={{ fontFamily: fCorpo, fontSize: lay.tamDescricao, color: lay.corDescricao, marginTop: lay.espacoDescricao, lineHeight: 1.25, whiteSpace: "pre-line", outline: "none" }}>{subt}</div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
