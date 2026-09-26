@@ -15,6 +15,7 @@ import type { Area, Cargo, ChecklistFrequencia, ChecklistRun, ChecklistTemplate,
 import { ChecklistTemplateModal } from "./ChecklistTemplateModal";
 import { ImportarChecklistModal } from "./ImportarChecklistModal";
 import { ChecklistRunModal } from "./ChecklistRunModal";
+import { ChecklistHistoricoDash } from "./ChecklistHistoricoDash";
 import { itemDoDia, temFreqPorItem } from "./recorrencia";
 import { PageContainer } from "../../core/ui/PageContainer";
 
@@ -87,6 +88,7 @@ export function ChecklistsPage() {
   const [filtroArea, setFiltroArea] = useState<"todas" | Area>("todas");
   const [filtroFreq, setFiltroFreq] = useState<"todas" | ChecklistFrequencia>("todas");
   const [searchHist, setSearchHist] = useState("");
+  const [histView, setHistView] = useState<"dash" | "lista">("dash");
 
   useEffect(() => {
     if (!rid) return;
@@ -499,6 +501,23 @@ export function ChecklistsPage() {
       {/* TAB HISTÓRICO */}
       {abaEfetiva === "historico" && (
         <div className="space-y-3">
+          {/* Sub-seletor: Dashboard de consistência × Lista de execuções */}
+          <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-800 p-0.5 bg-gray-50 dark:bg-gray-900">
+            {([["dash", "📊 Dashboard"], ["lista", "📋 Execuções"]] as const).map(([id, lbl]) => (
+              <button
+                key={id}
+                type="button"
+                onClick={() => setHistView(id)}
+                className={`px-3 py-1 rounded-md text-xs font-medium transition-colors ${
+                  histView === id ? "bg-white dark:bg-gray-800 text-indigo-600 dark:text-indigo-400 shadow-sm" : "text-gray-500 hover:text-gray-800 dark:text-gray-400"
+                }`}
+              >{lbl}</button>
+            ))}
+          </div>
+
+          {histView === "dash" && <ChecklistHistoricoDash templates={templates} runs={runs} />}
+
+          {histView === "lista" && (<>
           <Input
             placeholder="🔍 Buscar (template, executor, data YYYY-MM-DD)..."
             value={searchHist}
@@ -558,6 +577,7 @@ export function ChecklistsPage() {
               )}
             </div>
           )}
+          </>)}
         </div>
       )}
 
