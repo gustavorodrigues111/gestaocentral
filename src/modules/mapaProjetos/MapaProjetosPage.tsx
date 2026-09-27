@@ -117,8 +117,19 @@ export function MapaProjetosPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projetos, areas, subs, tarefas, expanded]);
 
-  // ── zoom / pan ───────────────────────────────────────────────────────────
+  // ── altura real do canvas ────────────────────────────────────────────────
+  // O módulo vive dentro de <main class="p-6"><div class="max-w-6xl">…, cujo
+  // container tem ALTURA AUTOMÁTICA — flex-1/height:100% colapsavam pra 0 e a
+  // tela ficava em branco. Calculamos a altura disponível a partir da viewport.
   const stageRef = useRef<HTMLDivElement>(null);
+  const [stageH, setStageH] = useState(560);
+  useEffect(() => {
+    function calc() { const el = stageRef.current; if (!el) return; const top = el.getBoundingClientRect().top; setStageH(Math.max(380, window.innerHeight - top - 14)); }
+    const t = setTimeout(calc, 30); window.addEventListener("resize", calc);
+    return () => { clearTimeout(t); window.removeEventListener("resize", calc); };
+  }, []);
+
+  // ── zoom / pan ───────────────────────────────────────────────────────────
   const [tf, setTf] = useState({ s: 0.8, x: 0, y: 0 });
   const fitDoneRef = useRef(false);
   function fit() {
@@ -219,7 +230,7 @@ export function MapaProjetosPage() {
   const overlayProj = overlay ? projetos.find(p => p.id === overlay.pid) || null : null;
 
   return (
-    <div className="flex flex-col min-h-0 -m-6 overflow-hidden" style={{ height: "calc(100% + 3rem)", width: "calc(100% + 3rem)" }}>
+    <div className="flex flex-col overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
       {/* Toolbar */}
       <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex-wrap">
         <GitFork size={18} className="text-indigo-500" />
@@ -238,8 +249,8 @@ export function MapaProjetosPage() {
 
       {/* Canvas */}
       <div ref={stageRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
-        className="relative flex-1 overflow-hidden cursor-grab bg-gray-50 dark:bg-gray-950"
-        style={{ backgroundImage: "radial-gradient(circle at center, var(--tw-gradient-from,#f1f4f8) , transparent 70%)" }}>
+        className="relative overflow-hidden cursor-grab bg-gray-50 dark:bg-gray-950"
+        style={{ height: stageH }}>
         {projetos.length === 0 ? (
           <div className="absolute inset-0 grid place-content-center text-center px-6">
             <GitFork size={40} className="mx-auto text-gray-300 mb-3" />
