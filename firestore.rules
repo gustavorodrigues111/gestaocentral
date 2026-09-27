@@ -369,6 +369,14 @@ service cloud.firestore {
     }
     match /tarefaProjetos/{id}      { allow read, write: if authed(); allow delete: if isMaster(); }
     match /tarefaSubprojetos/{id}   { allow read, write: if authed(); allow delete: if isMaster(); }
+    // Mapa de Projetos — camada pessoal por cima do Gestor. Só metadados
+    // (referências a sub-áreas + marcos), sem PII. Read auth-only (o app já
+    // filtra por ownerId); create/update/delete exigem ser o dono (ou master).
+    match /mapaProjetos/{id} {
+      allow read: if authed();
+      allow create: if authed() && (isMaster() || ehDono(request.resource.data.ownerId));
+      allow update, delete: if authed() && (isMaster() || ehDono(resource.data.ownerId));
+    }
     match /tarefas/{id} {
       allow read: if authed() && tarefaPodeLer();
       allow create: if authed();

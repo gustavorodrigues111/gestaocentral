@@ -652,6 +652,17 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "mapaProjetos",
+    icon: "git-fork",
+    label: "Mapa de Projetos",
+    desc: "Mapa mental das frentes de trabalho, compondo áreas/sub-áreas/tarefas do Gestor. Por enquanto pessoal (cada um vê os seus).",
+    area: "gestao",
+    acoes: [
+      { id: "ver",       label: "Abrir o Mapa de Projetos e navegar" },
+      { id: "gerenciar", label: "Criar/editar projetos e marcos; criar tarefas no Gestor", sensivel: true },
+    ],
+  },
+  {
     id: "wikiProcessos",
     icon: "book-marked",
     label: "Wiki de Processos",

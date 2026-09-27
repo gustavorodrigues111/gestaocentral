@@ -85,6 +85,8 @@ export type ModuleId =
   | "uniformes" | "ativos"
   // Gestor de Tarefas + cadastros mestres
   | "tarefas"
+  // Mapa de Projetos (mapa mental radial que compõe áreas/sub-áreas/tarefas do Gestor)
+  | "mapaProjetos"
   // Prazos (novo módulo unificado — substitui contasFixas/manutencoes/prazosTrabalhistas)
   | "prazos"
   // Agentes de IA
@@ -2293,6 +2295,34 @@ export type ChecklistRun = {
   finalizadoEm?: string | null;
   atualizadoEm?: string;
   observacaoGeral?: string;
+};
+
+// ─── MAPA DE PROJETOS ───────────────────────────────────────────────────────
+// Camada POR CIMA do Gestor de Tarefas. Um "projeto" aqui é criado pelo usuário
+// e COMPÕE sub-áreas (tarefaSubprojetos) que já existem no Gestor — atravessando
+// várias áreas. Nada é duplicado: guarda só referências (incSubs) + metadados.
+// Visões: Mapa (radial), Roadmap (marcos + tarefas) e Lista.
+export type MapaMarco = {
+  id: string;
+  nome: string;
+  data: string;           // YYYY-MM-DD
+};
+export type MapaProjeto = {
+  id: string;
+  nome: string;
+  cor: string;            // hex
+  icone?: string;         // nome do ícone lucide (kebab) — opcional
+  ownerId: string;        // pessoaId dono do mapa (por enquanto pessoal)
+  ownerNome?: string;
+  restaurantIds?: string[];
+  incSubs: string[];      // ids de tarefaSubprojetos incluídos neste projeto
+  marcos?: MapaMarco[];   // marcos/fases (roadmap estratégico) — opcional
+  taskMarco?: { [tarefaId: string]: string };  // tarefaId → marcoId (opcional)
+  ordem?: number;
+  ativo?: boolean;
+  criadoEm: string;
+  criadoPor: string;
+  atualizadoEm?: string;
 };
 
 // ─── RESERVAS + CRM ─────────────────────────────────────────────────────────
