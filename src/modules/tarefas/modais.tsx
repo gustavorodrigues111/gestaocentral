@@ -131,6 +131,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
   // Pré-preenche só quando vem do contexto (calendário, click num dia).
   const [projetoId, setProjetoId] = useState(projetoIdInicial || "");
   const [subprojetoId, setSubprojetoId] = useState(subprojetoIdInicial || "");
+  const [inicio, setInicio] = useState("");
   const [prazo, setPrazo] = useState(prazoInicial || "");
   const [prioridade, setPrioridade] = useState<TarefaPrioridade>("normal");
   const [restaurantIds, setRestaurantIds] = useState<string[]>([]);
@@ -272,6 +273,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
       subtarefas: subtarefasFinal,
       subtarefaResponsaveisIds: subRespIds.length ? subRespIds : undefined,
       recorrencia: rec || undefined,
+      inicio: inicio || undefined,
       projetoMapaId: projetoMapaIdInicial || undefined,
       criadoPor: pessoaId,
       criadoPorNome: pessoaNome,
@@ -414,6 +416,9 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
             {projetoAtual && projetoAtual.visibilidade === "privado" && (
               <p className="text-[11px] text-amber-700 dark:text-amber-400 pl-[172px]"><span className="inline-flex items-center gap-1"><Lock size={12} /> Área privada — só pessoas autorizadas podem ser responsáveis.</span></p>
             )}
+            <FieldRow label="Início">
+              <DatePickerBR value={ymdParaBr(inicio)} onChange={(br) => setInicio(brParaYmd(br))} />
+            </FieldRow>
             <FieldRow label="Prazo *">
               <DatePickerBR value={ymdParaBr(prazo)} onChange={(br) => setPrazo(brParaYmd(br))} />
             </FieldRow>
@@ -911,6 +916,12 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
                   })}
                 </div>
               )}
+            </FieldRow>
+            <FieldRow label="Início">
+              <DatePickerBR
+                value={ymdParaBr(tarefa.inicio || "")}
+                onChange={(br) => salvarCampo("inicio", brParaYmd(br) || null, "inicio")}
+              />
             </FieldRow>
             <FieldRow label="Data de conclusão">
               <DatePickerBR

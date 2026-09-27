@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Minus, Maximize2, ArrowLeft, X, GitFork, CalendarDays, ListTree, Trash2, Pencil } from "lucide-react";
+import { Plus, Minus, Maximize2, ArrowLeft, X, GitFork, CalendarDays, ListTree, Trash2, Pencil, Network } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
@@ -21,8 +21,8 @@ import { ouvirMapaProjetos, salvarMapaProjeto, excluirMapaProjeto } from "./mapa
 const PALETA = ["#6366f1", "#7c3aed", "#2563eb", "#db2777", "#0891b2", "#d97706", "#ea580c", "#16a34a", "#0d9488", "#e11d48"];
 const RING1 = 250, GAP = 205;
 const SC: Record<"fazer" | "and" | "ok", string> = { fazer: "#94a3b8", and: "#2563eb", ok: "#16a34a" };
-type NType = "root" | "proj" | "task";
-type Desc = { type: NType; nid: string; ref?: unknown; proj?: MapaProjeto; c?: string };
+type NType = "root" | "proj" | "task" | "preview";
+type Desc = { type: NType; nid: string; ref?: unknown; proj?: MapaProjeto; c?: string; kind?: "roadmap" | "lista" };
 type MNode = Desc & { depth: number; angle: number; x: number; y: number; px: number; py: number; hasKids: boolean; open: boolean; parentNid?: string };
 
 function stBucket(s: TarefaStatus): "fazer" | "and" | "ok" { return s === "concluida" ? "ok" : s === "em_andamento" ? "and" : "fazer"; }
@@ -43,6 +43,7 @@ export function MapaProjetosPage() {
   const [tarefas, setTarefas] = useState<Tarefa[]>([]);
   const [projetos, setProjetos] = useState<MapaProjeto[]>([]);
   const [expanded, setExpanded] = useState<Set<string>>(new Set(["root"]));
+  const [projView, setProjView] = useState<Record<string, "mapa" | "roadmap" | "lista">>({});
   const seededRef = useRef(false);
 
   const [overlay, setOverlay] = useState<{ pid: string; view: "roadmap" | "lista"; alt: "marcos" | "tarefas" } | null>(null);
@@ -85,7 +86,12 @@ export function MapaProjetosPage() {
   function kidsOf(node: Desc | { type: NType; nid: string }): Desc[] {
     if (node.type === "root") return projetos.map(p => ({ type: "proj" as NType, nid: `root/p:${p.id}`, ref: p, proj: p, c: p.cor }));
     const n = node as MNode;
-    if (n.type === "proj") return projTasks(n.ref as MapaProjeto).map(t => ({ type: "task" as NType, nid: `${n.nid}/t:${t.id}`, ref: t, proj: n.ref as MapaProjeto, c: (n.ref as MapaProjeto).cor }));
+    if (n.type === "proj") {
+      const p = n.ref as MapaProjeto; const view = projView[p.id] || "mapa";
+      if (view === "roadmap") return [{ type: "preview" as NType, nid: `${n.nid}/pv-rm`, ref: p, proj: p, c: p.cor, kind: "roadmap" }];
+      if (view === "lista") return [{ type: "preview" as NType, nid: `${n.nid}/pv-li`, ref: p, proj: p, c: p.cor, kind: "lista" }];
+      return projTasks(p).map(t => ({ type: "task" as NType, nid: `${n.nid}/t:${t.id}`, ref: t, proj: p, c: p.cor }));
+    }
     return [];
   }
 
@@ -107,7 +113,8 @@ export function MapaProjetosPage() {
     };
     place(root, 0);
     let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
-    visible.forEach(n => { minX = Math.min(minX, n.x - 130); maxX = Math.max(maxX, n.x + 130); minY = Math.min(minY, n.y - 52); maxY = Math.max(maxY, n.y + 52); });
+    const hw = (t: NType) => t === "preview" ? 210 : 130, hh = (t: NType) => t === "preview" ? 130 : 52;
+    visible.forEach(n => { minX = Math.min(minX, n.x - hw(n.type)); maxX = Math.max(maxX, n.x + hw(n.type)); minY = Math.min(minY, n.y - hh(n.type)); maxY = Math.max(maxY, n.y + hh(n.type)); });
     const pad = 90, offX = pad - minX, offY = pad - minY;
     visible.forEach(n => { n.px = n.x + offX; n.py = n.y + offY; });
     const byNid = new Map(visible.map(n => [n.nid, n]));
@@ -115,7 +122,7 @@ export function MapaProjetosPage() {
     const maxDepth = visible.reduce((m, n) => Math.max(m, n.depth), 0);
     return { visible, links, worldW: maxX - minX + pad * 2, worldH: maxY - minY + pad * 2, rootX: offX, rootY: offY, maxDepth };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projetos, tarefas, expanded]);
+  }, [projetos, tarefas, expanded, projView]);
 
   // altura real do canvas (container do app tem altura automática)
   const stageRef = useRef<HTMLDivElement>(null);
@@ -147,6 +154,11 @@ export function MapaProjetosPage() {
   function zoomBtn(dir: "in" | "out") { const st = stageRef.current; if (!st) return; const r = st.getBoundingClientRect(); const mx = r.width / 2, my = r.height / 2; setTf(p => { const ns = Math.max(0.3, Math.min(dir === "in" ? p.s * 1.2 : p.s / 1.2, 2.4)); return { s: ns, x: mx - (mx - p.x) * (ns / p.s), y: my - (my - p.y) * (ns / p.s) }; }); }
 
   function toggle(nid: string) { setExpanded(prev => { const n = new Set(prev); n.has(nid) ? n.delete(nid) : n.add(nid); return n; }); }
+  function aplicarView(pid: string, mode: "mapa" | "roadmap" | "lista") {
+    const nid = `root/p:${pid}`; const jaAtivo = (projView[pid] || "mapa") === mode && expanded.has(nid);
+    setProjView(v => ({ ...v, [pid]: mode }));
+    setExpanded(e => { const n = new Set(e); jaAtivo ? n.delete(nid) : n.add(nid); return n; });
+  }
   function expandAll() { const all = new Set<string>(["root"]); const walk = (node: Desc | { type: NType; nid: string }) => { all.add(node.nid); kidsOf(node).forEach(walk); }; walk({ type: "root", nid: "root" }); setExpanded(all); setTimeout(fit, 40); }
   async function toggleTask(t: Tarefa) { if (!podeGerenciar) return; await mudarStatus(t.id, t.status === "concluida" ? "a_fazer" : "concluida", { id: me?.id || "", nome: me?.nome || "—" }); say(t.status === "concluida" ? "↺ Reaberta no Gestor" : "✓ Concluída no Gestor"); }
 
@@ -175,10 +187,12 @@ export function MapaProjetosPage() {
           </div>
           <Ring pct={prog(ts)} c={p.cor} />
         </div>
-        <div className="flex gap-1 mt-2">
-          <VBtn on={n.open} c={p.cor} onClick={(e) => { e.stopPropagation(); toggle(n.nid); }} label="🕸 Mapa" />
-          <VBtn c={p.cor} onClick={(e) => { e.stopPropagation(); setOverlay({ pid: p.id, view: "roadmap", alt: (p.marcos && p.marcos.length ? "marcos" : "tarefas") }); }} label="📅 Roadmap" />
-          <VBtn c={p.cor} onClick={(e) => { e.stopPropagation(); setOverlay({ pid: p.id, view: "lista", alt: "tarefas" }); }} label="☰ Lista" />
+        <div className="flex gap-1 mt-2.5 justify-around">
+          {(() => { const view = projView[p.id] || "mapa"; const act = (m: string) => n.open && view === m; return <>
+            <ViewBtn icon={<Network size={16} />} label="Mapa" active={act("mapa")} c={p.cor} onClick={(e) => { e.stopPropagation(); aplicarView(p.id, "mapa"); }} />
+            <ViewBtn icon={<CalendarDays size={16} />} label="Roadmap" active={act("roadmap")} c={p.cor} onClick={(e) => { e.stopPropagation(); aplicarView(p.id, "roadmap"); }} />
+            <ViewBtn icon={<ListTree size={16} />} label="Lista" active={act("lista")} c={p.cor} onClick={(e) => { e.stopPropagation(); aplicarView(p.id, "lista"); }} />
+          </>; })()}
         </div>
         <div className="text-[10px] text-gray-400 mt-1.5">{ts.length ? `${ts.filter(t => t.status === "concluida").length}/${ts.length} tarefas` : "sem tarefas ainda"}</div>
         {podeGerenciar && <>
@@ -186,6 +200,17 @@ export function MapaProjetosPage() {
           <button onClick={(e) => { e.stopPropagation(); abrirNovaTarefa(p.id); }} className="absolute -bottom-2 -right-2 w-6 h-6 rounded-full text-white grid place-items-center shadow" style={{ background: p.cor }} title="Nova tarefa neste projeto"><Plus size={13} /></button>
         </>}
         {tog}
+      </div>;
+    }
+    if (n.type === "preview") {
+      const p = n.ref as MapaProjeto; const ts = projTasks(p); const kind = n.kind!;
+      return <div onClick={(e) => { e.stopPropagation(); setOverlay({ pid: p.id, view: kind, alt: (p.marcos && p.marcos.length ? "marcos" : "tarefas") }); }}
+        className="w-[380px] rounded-xl bg-white dark:bg-gray-900 border-2 shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow" style={{ borderColor: p.cor }}>
+        <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold border-b border-gray-100 dark:border-gray-800" style={{ color: p.cor }}>
+          {kind === "roadmap" ? <CalendarDays size={13} /> : <ListTree size={13} />}{kind === "roadmap" ? "Roadmap" : "Lista"}
+          <span className="ml-auto text-gray-400 inline-flex items-center gap-1 text-[10px] font-medium"><Maximize2 size={11} /> abrir</span>
+        </div>
+        <div className="p-2.5">{ts.length === 0 ? <div className="text-[11px] text-gray-400 py-6 text-center">sem tarefas ainda</div> : kind === "roadmap" ? <MiniRoadmap proj={p} tasks={ts} /> : <MiniLista tasks={ts} />}</div>
       </div>;
     }
     const t = n.ref as Tarefa; const b = stBucket(t.status); const late = isLate(t);
@@ -268,9 +293,55 @@ function Ring({ pct, c }: { pct: number; c: string }) {
     <div className="absolute inset-0 grid place-items-center text-[9px] font-extrabold">{pct}%</div>
   </div>;
 }
-function VBtn({ label, c, on, onClick }: { label: string; c: string; on?: boolean; onClick: (e: React.MouseEvent) => void }) {
-  return <button onClick={onClick} className="flex-1 text-[10px] font-bold px-1.5 py-1 rounded-md border transition-colors"
-    style={on ? { background: c, color: "#fff", borderColor: "transparent" } : { borderColor: "#e5e7eb", color: "#6b7280", background: "transparent" }}>{label}</button>;
+function ViewBtn({ icon, label, c, active, onClick }: { icon: React.ReactNode; label: string; c: string; active?: boolean; onClick: (e: React.MouseEvent) => void }) {
+  return <button onClick={onClick} title={label}
+    className="flex flex-col items-center gap-0.5 px-2 py-1 rounded-lg transition-colors hover:bg-gray-100 dark:hover:bg-gray-800"
+    style={{ color: active ? c : "#9aa3b0" }}>
+    {icon}<span className="text-[9px] font-bold uppercase tracking-wide">{label}</span>
+    <span className="h-0.5 w-4 rounded-full" style={{ background: active ? c : "transparent" }} />
+  </button>;
+}
+// Mini roadmap (preview compacto dentro do nó do projeto)
+function miniMonths(tasks: Tarefa[], marcos: MapaMarco[]) {
+  const datas = [...tasks.flatMap(t => [t.inicio, t.prazo]).filter(Boolean) as string[], ...marcos.map(m => m.data)];
+  const now = new Date(); let ini = new Date(now.getFullYear(), now.getMonth(), 1); let fim = new Date(now.getFullYear(), now.getMonth() + 3, 1);
+  if (datas.length) { const ds = datas.map(d => new Date(d)).sort((a, b) => a.getTime() - b.getTime()); ini = new Date(ds[0].getFullYear(), ds[0].getMonth(), 1); const last = ds[ds.length - 1]; fim = new Date(last.getFullYear(), last.getMonth() + 1, 1); if (fim.getTime() - ini.getTime() < 1000 * 3600 * 24 * 60) fim = new Date(ini.getFullYear(), ini.getMonth() + 2, 1); }
+  const months: string[] = []; { const c = new Date(ini); while (c < fim) { months.push(c.toLocaleDateString("pt-BR", { month: "short" })); c.setMonth(c.getMonth() + 1); } }
+  const span = fim.getTime() - ini.getTime();
+  return { months, xF: (d: string) => Math.max(0, Math.min(1, (new Date(d).getTime() - ini.getTime()) / span)) };
+}
+function MiniRoadmap({ proj, tasks }: { proj: MapaProjeto; tasks: Tarefa[] }) {
+  const marcos = proj.marcos || [];
+  const { months, xF } = miniMonths(tasks, marcos);
+  const rows = tasks.slice().sort((a, b) => ((a.inicio || a.prazo) || "").localeCompare((b.inicio || b.prazo) || "")).slice(0, 7);
+  return <div>
+    <div className="grid text-[8px] font-bold text-gray-400 uppercase mb-1" style={{ gridTemplateColumns: `repeat(${months.length},1fr)` }}>
+      {months.map((m, i) => <div key={i} className="text-center border-l border-dashed border-gray-200 dark:border-gray-800 first:border-0">{m}</div>)}
+    </div>
+    <div className="relative">
+      {months.map((_, i) => <div key={i} className="absolute top-0 bottom-0 border-l border-dashed border-gray-100 dark:border-gray-800" style={{ left: `${(i / months.length) * 100}%` }} />)}
+      {marcos.map(mc => <div key={mc.id} className="absolute top-0 bottom-0 border-l border-dotted" style={{ left: `${xF(mc.data) * 100}%`, borderColor: proj.cor, opacity: .5 }} />)}
+      <div className="space-y-1 relative">
+        {rows.map(t => { const done = t.status === "concluida", late = isLate(t); const sd = t.inicio || t.prazo || new Date().toISOString(), ed = t.prazo || t.inicio || new Date().toISOString(); const l = xF(sd) * 100, w = Math.max(4, xF(ed) * 100 - l); return (
+          <div key={t.id} className="relative h-3.5">
+            <div className="absolute h-3.5 rounded text-[8px] text-white font-bold flex items-center px-1 overflow-hidden whitespace-nowrap" style={{ left: `${l}%`, width: `${w}%`, minWidth: 34, background: done ? "#16a34a" : late ? "#e11d48" : proj.cor, opacity: done ? .6 : 1 }}>{t.titulo}</div>
+          </div>); })}
+      </div>
+    </div>
+    {tasks.length > rows.length && <div className="text-[9px] text-gray-400 mt-1">+{tasks.length - rows.length} tarefas…</div>}
+  </div>;
+}
+function MiniLista({ tasks }: { tasks: Tarefa[] }) {
+  const rows = tasks.slice().sort((a, b) => ((a.prazo || "") .localeCompare(b.prazo || ""))).slice(0, 8);
+  return <div className="space-y-1">
+    {rows.map(t => { const b = stBucket(t.status); const late = isLate(t); return (
+      <div key={t.id} className="flex items-center gap-1.5 text-[10px]">
+        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: SC[b] }} />
+        <span className={`flex-1 truncate ${t.status === "concluida" ? "line-through text-gray-400" : "text-gray-700 dark:text-gray-200"}`}>{t.titulo}</span>
+        {(t.inicio || t.prazo) && <span className={`flex-shrink-0 ${late ? "text-rose-600 font-bold" : "text-gray-400"}`}>{t.inicio ? shortD(t.inicio) + "→" : ""}{shortD(t.prazo)}</span>}
+      </div>); })}
+    {tasks.length > rows.length && <div className="text-[9px] text-gray-400">+{tasks.length - rows.length} tarefas…</div>}
+  </div>;
 }
 
 // ── Overlay: Roadmap + Lista ─────────────────────────────────────────────────
