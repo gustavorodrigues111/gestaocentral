@@ -113,7 +113,7 @@ export function MapaProjetosPage() {
     };
     place(root, 0);
     let minX = 1e9, maxX = -1e9, minY = 1e9, maxY = -1e9;
-    const hw = (t: NType) => t === "preview" ? 210 : 130, hh = (t: NType) => t === "preview" ? 130 : 52;
+    const hw = (t: NType) => t === "preview" ? 280 : 130, hh = (t: NType) => t === "preview" ? 170 : 52;
     visible.forEach(n => { minX = Math.min(minX, n.x - hw(n.type)); maxX = Math.max(maxX, n.x + hw(n.type)); minY = Math.min(minY, n.y - hh(n.type)); maxY = Math.max(maxY, n.y + hh(n.type)); });
     const pad = 90, offX = pad - minX, offY = pad - minY;
     visible.forEach(n => { n.px = n.x + offX; n.py = n.y + offY; });
@@ -171,10 +171,20 @@ export function MapaProjetosPage() {
     ) : null;
 
     if (n.type === "root") {
-      const all = projetos.flatMap(projTasks); const okc = all.filter(t => t.status === "concluida").length;
-      return <div className="rounded-full aspect-square w-[150px] bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 grid place-content-center text-center shadow-xl px-4">
-        <div className="font-extrabold text-[13px]">Meus projetos</div>
-        <div className="text-[10px] opacity-70 mt-0.5">{projetos.length} · {all.length ? Math.round(okc / all.length * 100) : 0}%</div>
+      const all = projetos.flatMap(projTasks); const okc = all.filter(t => t.status === "concluida").length; const pctAll = all.length ? Math.round(okc / all.length * 100) : 0;
+      const R = 74, C = 2 * Math.PI * R;
+      return <div className="relative w-[170px] h-[170px] grid place-items-center">
+        <div className="absolute inset-0 rounded-full blur-2xl opacity-40 animate-pulse" style={{ background: "radial-gradient(circle, #8b5cf6 0%, transparent 68%)" }} />
+        <svg className="absolute inset-0" width="170" height="170" style={{ transform: "rotate(-90deg)" }}>
+          <defs><linearGradient id="hubgrad" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#818cf8" /><stop offset="1" stopColor="#e879f9" /></linearGradient></defs>
+          <circle cx="85" cy="85" r={R} fill="none" stroke="rgba(148,163,184,0.25)" strokeWidth="5" />
+          <circle cx="85" cy="85" r={R} fill="none" stroke="url(#hubgrad)" strokeWidth="5" strokeLinecap="round" strokeDasharray={C} strokeDashoffset={C * (1 - pctAll / 100)} />
+        </svg>
+        <div className="relative w-[132px] h-[132px] rounded-full grid place-content-center text-center text-white shadow-2xl ring-1 ring-white/20" style={{ background: "linear-gradient(140deg,#4f46e5 0%,#7c3aed 55%,#db2777 100%)" }}>
+          <GitFork size={20} className="mx-auto mb-1 opacity-90" />
+          <div className="font-extrabold text-[13px] leading-tight">Meus projetos</div>
+          <div className="text-[10.5px] opacity-85 mt-0.5">{projetos.length} projeto{projetos.length === 1 ? "" : "s"} · {pctAll}%</div>
+        </div>
       </div>;
     }
     if (n.type === "proj") {
@@ -205,12 +215,12 @@ export function MapaProjetosPage() {
     if (n.type === "preview") {
       const p = n.ref as MapaProjeto; const ts = projTasks(p); const kind = n.kind!;
       return <div onClick={(e) => { e.stopPropagation(); setOverlay({ pid: p.id, view: kind, alt: (p.marcos && p.marcos.length ? "marcos" : "tarefas") }); }}
-        className="w-[380px] rounded-xl bg-white dark:bg-gray-900 border-2 shadow-md overflow-hidden cursor-pointer hover:shadow-lg transition-shadow" style={{ borderColor: p.cor }}>
-        <div className="flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold border-b border-gray-100 dark:border-gray-800" style={{ color: p.cor }}>
-          {kind === "roadmap" ? <CalendarDays size={13} /> : <ListTree size={13} />}{kind === "roadmap" ? "Roadmap" : "Lista"}
-          <span className="ml-auto text-gray-400 inline-flex items-center gap-1 text-[10px] font-medium"><Maximize2 size={11} /> abrir</span>
+        className="w-[520px] rounded-2xl bg-white dark:bg-gray-900 border-2 shadow-lg overflow-hidden cursor-pointer hover:shadow-xl transition-shadow" style={{ borderColor: p.cor }}>
+        <div className="flex items-center gap-2 px-4 py-2.5 text-[13px] font-bold border-b border-gray-100 dark:border-gray-800" style={{ color: p.cor }}>
+          {kind === "roadmap" ? <CalendarDays size={16} /> : <ListTree size={16} />}{kind === "roadmap" ? "Roadmap" : "Lista"}
+          <span className="ml-auto text-gray-400 inline-flex items-center gap-1 text-[11px] font-medium"><Maximize2 size={13} /> abrir em tela cheia</span>
         </div>
-        <div className="p-2.5">{ts.length === 0 ? <div className="text-[11px] text-gray-400 py-6 text-center">sem tarefas ainda</div> : kind === "roadmap" ? <MiniRoadmap proj={p} tasks={ts} /> : <MiniLista tasks={ts} />}</div>
+        <div className="p-4 min-h-[120px]">{ts.length === 0 ? <div className="text-[12px] text-gray-400 py-10 text-center">sem tarefas ainda</div> : kind === "roadmap" ? <MiniRoadmap proj={p} tasks={ts} /> : <MiniLista tasks={ts} />}</div>
       </div>;
     }
     const t = n.ref as Tarefa; const b = stBucket(t.status); const late = isLate(t);
@@ -313,34 +323,34 @@ function miniMonths(tasks: Tarefa[], marcos: MapaMarco[]) {
 function MiniRoadmap({ proj, tasks }: { proj: MapaProjeto; tasks: Tarefa[] }) {
   const marcos = proj.marcos || [];
   const { months, xF } = miniMonths(tasks, marcos);
-  const rows = tasks.slice().sort((a, b) => ((a.inicio || a.prazo) || "").localeCompare((b.inicio || b.prazo) || "")).slice(0, 7);
+  const rows = tasks.slice().sort((a, b) => ((a.inicio || a.prazo) || "").localeCompare((b.inicio || b.prazo) || "")).slice(0, 12);
   return <div>
-    <div className="grid text-[8px] font-bold text-gray-400 uppercase mb-1" style={{ gridTemplateColumns: `repeat(${months.length},1fr)` }}>
+    <div className="grid text-[10px] font-bold text-gray-400 uppercase mb-1.5" style={{ gridTemplateColumns: `repeat(${months.length},1fr)` }}>
       {months.map((m, i) => <div key={i} className="text-center border-l border-dashed border-gray-200 dark:border-gray-800 first:border-0">{m}</div>)}
     </div>
     <div className="relative">
       {months.map((_, i) => <div key={i} className="absolute top-0 bottom-0 border-l border-dashed border-gray-100 dark:border-gray-800" style={{ left: `${(i / months.length) * 100}%` }} />)}
       {marcos.map(mc => <div key={mc.id} className="absolute top-0 bottom-0 border-l border-dotted" style={{ left: `${xF(mc.data) * 100}%`, borderColor: proj.cor, opacity: .5 }} />)}
-      <div className="space-y-1 relative">
-        {rows.map(t => { const done = t.status === "concluida", late = isLate(t); const sd = t.inicio || t.prazo || new Date().toISOString(), ed = t.prazo || t.inicio || new Date().toISOString(); const l = xF(sd) * 100, w = Math.max(4, xF(ed) * 100 - l); return (
-          <div key={t.id} className="relative h-3.5">
-            <div className="absolute h-3.5 rounded text-[8px] text-white font-bold flex items-center px-1 overflow-hidden whitespace-nowrap" style={{ left: `${l}%`, width: `${w}%`, minWidth: 34, background: done ? "#16a34a" : late ? "#e11d48" : proj.cor, opacity: done ? .6 : 1 }}>{t.titulo}</div>
+      <div className="space-y-1.5 relative">
+        {rows.map(t => { const done = t.status === "concluida", late = isLate(t); const sd = t.inicio || t.prazo || new Date().toISOString(), ed = t.prazo || t.inicio || new Date().toISOString(); const l = xF(sd) * 100, w = Math.max(5, xF(ed) * 100 - l); return (
+          <div key={t.id} className="relative h-5">
+            <div className="absolute h-5 rounded-md text-[10px] text-white font-bold flex items-center px-1.5 overflow-hidden whitespace-nowrap" style={{ left: `${l}%`, width: `${w}%`, minWidth: 44, background: done ? "#16a34a" : late ? "#e11d48" : proj.cor, opacity: done ? .6 : 1 }}>{t.titulo}</div>
           </div>); })}
       </div>
     </div>
-    {tasks.length > rows.length && <div className="text-[9px] text-gray-400 mt-1">+{tasks.length - rows.length} tarefas…</div>}
+    {tasks.length > rows.length && <div className="text-[10px] text-gray-400 mt-1.5">+{tasks.length - rows.length} tarefas…</div>}
   </div>;
 }
 function MiniLista({ tasks }: { tasks: Tarefa[] }) {
-  const rows = tasks.slice().sort((a, b) => ((a.prazo || "") .localeCompare(b.prazo || ""))).slice(0, 8);
-  return <div className="space-y-1">
+  const rows = tasks.slice().sort((a, b) => ((a.prazo || "") .localeCompare(b.prazo || ""))).slice(0, 14);
+  return <div className="space-y-1.5">
     {rows.map(t => { const b = stBucket(t.status); const late = isLate(t); return (
-      <div key={t.id} className="flex items-center gap-1.5 text-[10px]">
-        <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ background: SC[b] }} />
+      <div key={t.id} className="flex items-center gap-2 text-[12px]">
+        <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ background: SC[b] }} />
         <span className={`flex-1 truncate ${t.status === "concluida" ? "line-through text-gray-400" : "text-gray-700 dark:text-gray-200"}`}>{t.titulo}</span>
-        {(t.inicio || t.prazo) && <span className={`flex-shrink-0 ${late ? "text-rose-600 font-bold" : "text-gray-400"}`}>{t.inicio ? shortD(t.inicio) + "→" : ""}{shortD(t.prazo)}</span>}
+        {(t.inicio || t.prazo) && <span className={`flex-shrink-0 text-[10.5px] ${late ? "text-rose-600 font-bold" : "text-gray-400"}`}>{t.inicio ? shortD(t.inicio) + "→" : ""}{shortD(t.prazo)}</span>}
       </div>); })}
-    {tasks.length > rows.length && <div className="text-[9px] text-gray-400">+{tasks.length - rows.length} tarefas…</div>}
+    {tasks.length > rows.length && <div className="text-[10px] text-gray-400">+{tasks.length - rows.length} tarefas…</div>}
   </div>;
 }
 
