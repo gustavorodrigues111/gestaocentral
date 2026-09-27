@@ -2,10 +2,12 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
 import { Plus, Minus, Maximize2, ArrowLeft, X, GitFork, CalendarDays, ListTree, Trash2, Pencil } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
+import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { fmtBR } from "../../core/utils/date";
 import type { MapaProjeto, MapaMarco, Tarefa, TarefaProjeto, TarefaSubprojeto, TarefaStatus } from "../../core/types";
-import { ouvirProjetos, ouvirSubprojetos, ouvirTodasTarefas, criarTarefa, mudarStatus, atualizarTarefa } from "../tarefas/repository";
+import { ouvirProjetos, ouvirSubprojetos, ouvirTodasTarefas, mudarStatus, atualizarTarefa } from "../tarefas/repository";
+import { DetalheModal, NovaTarefaModal as GestorNovaTarefaModal } from "../tarefas/modais";
 import { ouvirMapaProjetos, salvarMapaProjeto, excluirMapaProjeto } from "./mapaRepository";
 
 // ════════════════════════════════════════════════════════════════════════════
@@ -31,6 +33,7 @@ function prog(ts: Tarefa[]): number { return ts.length ? Math.round(ts.filter(t 
 
 export function MapaProjetosPage() {
   const { pessoa: me } = useAuth();
+  const { restaurants } = useRestaurant();
   const { rid } = useParams<{ rid: string }>();
   const { can } = useCanAcao(rid || "");
   const podeGerenciar = !!me?.isMaster || can("mapaProjetos", "gerenciar");
@@ -47,6 +50,7 @@ export function MapaProjetosPage() {
   function closeOverlay() { setOvClosing(true); setTimeout(() => { setOverlay(null); setOvClosing(false); }, 200); }
   const [projModal, setProjModal] = useState<{ mode: "new" | "edit"; proj?: MapaProjeto } | null>(null);
   const [taskModal, setTaskModal] = useState<{ pid: string } | null>(null);
+  const [detalheId, setDetalheId] = useState<string | null>(null);
   const [toast, setToast] = useState("");
 
   useEffect(() => ouvirProjetos(setAreas), []);
@@ -61,6 +65,7 @@ export function MapaProjetosPage() {
   }, [projetos]);
 
   function say(m: string) { setToast(m); setTimeout(() => setToast(""), 2600); }
+  function abrirNovaTarefa(pid: string) { const p = projetos.find(x => x.id === pid); if (!p) return; if (!p.areaId) { alert("Defina a Área do projeto antes de criar tarefas (edite o projeto)."); return; } setTaskModal({ pid }); }
 
   const areaById = useMemo(() => new Map(areas.map(a => [a.id, a])), [areas]);
   const subById = useMemo(() => new Map(subs.map(s => [s.id, s])), [subs]);
@@ -178,19 +183,19 @@ export function MapaProjetosPage() {
         <div className="text-[10px] text-gray-400 mt-1.5">{ts.length ? `${ts.filter(t => t.status === "concluida").length}/${ts.length} tarefas` : "sem tarefas ainda"}</div>
         {podeGerenciar && <>
           <button onClick={(e) => { e.stopPropagation(); setProjModal({ mode: "edit", proj: p }); }} className="absolute -top-2 -right-2 w-6 h-6 rounded-full bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 grid place-items-center text-gray-500 shadow"><Pencil size={11} /></button>
-          <button onClick={(e) => { e.stopPropagation(); setTaskModal({ pid: p.id }); }} className="absolute -bottom-2 -right-2 w-6 h-6 rounded-full text-white grid place-items-center shadow" style={{ background: p.cor }} title="Nova tarefa neste projeto"><Plus size={13} /></button>
+          <button onClick={(e) => { e.stopPropagation(); abrirNovaTarefa(p.id); }} className="absolute -bottom-2 -right-2 w-6 h-6 rounded-full text-white grid place-items-center shadow" style={{ background: p.cor }} title="Nova tarefa neste projeto"><Plus size={13} /></button>
         </>}
         {tog}
       </div>;
     }
     const t = n.ref as Tarefa; const b = stBucket(t.status); const late = isLate(t);
-    return <div onClick={(e) => { e.stopPropagation(); toggleTask(t); }} className={`w-[210px] rounded-xl bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 shadow-sm p-2 px-2.5 flex items-start gap-2 ${t.status === "concluida" ? "opacity-70" : ""}`}>
-      <span className="w-2.5 h-2.5 rounded-full mt-1 flex-shrink-0" style={{ background: SC[b] }} />
+    return <div onClick={(e) => { e.stopPropagation(); setDetalheId(t.id); }} className={`w-[210px] rounded-xl bg-white dark:bg-gray-900 border border-dashed border-gray-300 dark:border-gray-700 shadow-sm p-2 px-2.5 flex items-start gap-2 hover:border-solid hover:border-gray-400 dark:hover:border-gray-600 ${t.status === "concluida" ? "opacity-70" : ""}`}>
+      <button onClick={(e) => { e.stopPropagation(); toggleTask(t); }} title="Concluir/reabrir" className="w-2.5 h-2.5 rounded-full mt-1 flex-shrink-0" style={{ background: SC[b] }} />
       <div className="min-w-0 flex-1">
         <div className={`text-[11.5px] font-semibold leading-tight ${t.status === "concluida" ? "line-through text-gray-500" : "text-gray-900 dark:text-gray-100"}`}>{t.titulo}</div>
         <div className="text-[9.5px] text-gray-500 mt-0.5 flex gap-1.5 flex-wrap items-center">
           {t.responsavelNome && <span>{t.responsavelNome}</span>}
-          {t.prazo && <span className={late ? "text-rose-600 font-bold" : ""}>📅 {shortD(t.prazo)}</span>}
+          {(t.inicio || t.prazo) && <span className={late ? "text-rose-600 font-bold" : ""}>📅 {t.inicio ? `${shortD(t.inicio)}→` : ""}{shortD(t.prazo) || "?"}</span>}
         </div>
       </div>
     </div>;
@@ -239,11 +244,17 @@ export function MapaProjetosPage() {
       {overlayProj && overlay && <ProjOverlay proj={overlayProj} view={overlay.view} alt={overlay.alt} closing={ovClosing}
         setView={(v) => setOverlay(o => o ? { ...o, view: v } : o)} setAlt={(a) => setOverlay(o => o ? { ...o, alt: a } : o)}
         close={closeOverlay} tasks={projTasks(overlayProj)} cls={projClass(overlayProj)}
-        onNovaTarefa={() => setTaskModal({ pid: overlayProj.id })} onToggleTask={toggleTask} podeGerenciar={podeGerenciar}
+        onNovaTarefa={() => abrirNovaTarefa(overlayProj.id)} onToggleTask={toggleTask} onOpenTask={(t) => setDetalheId(t.id)} podeGerenciar={podeGerenciar}
         onSetMarco={async (tId, mId) => { const tm = { ...(overlayProj.taskMarco || {}) }; if (mId) tm[tId] = mId; else delete tm[tId]; await salvarMapaProjeto({ ...overlayProj, taskMarco: tm }); }} />}
 
       {projModal && <ProjetoModal mode={projModal.mode} proj={projModal.proj} areas={areas} subs={subs} tarefas={tarefas} me={me} onClose={() => setProjModal(null)} onSay={say} />}
-      {taskModal && <NovaTarefaModal proj={projetos.find(p => p.id === taskModal.pid)!} areaById={areaById} subById={subById} me={me} onClose={() => setTaskModal(null)} onSay={say} />}
+      {taskModal && (() => { const p = projetos.find(x => x.id === taskModal.pid); return p ? (
+        <GestorNovaTarefaModal onClose={() => setTaskModal(null)} projetos={areas} subprojetos={subs}
+          restaurantes={restaurants.map(r => ({ id: r.id, nome: r.nome }))} pessoaId={me?.id || ""} pessoaNome={me?.nome || "—"}
+          projetoIdInicial={p.areaId} subprojetoIdInicial={p.subareaId} projetoMapaIdInicial={p.id} bloquearProjeto
+          onCriada={() => say("✓ Tarefa criada no Gestor")} />
+      ) : null; })()}
+      {detalheId && (() => { const t = tarefas.find(x => x.id === detalheId); return t ? <DetalheModal tarefa={t} projetos={areas} subprojetos={subs} autor={{ id: me?.id || "", nome: me?.nome || "—" }} onClose={() => setDetalheId(null)} /> : null; })()}
 
       {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-xl z-[70]">{toast}</div>}
     </div>
@@ -267,7 +278,7 @@ type OverlayProps = {
   proj: MapaProjeto; view: "roadmap" | "lista"; alt: "marcos" | "tarefas"; closing?: boolean;
   setView: (v: "roadmap" | "lista") => void; setAlt: (a: "marcos" | "tarefas") => void; close: () => void;
   tasks: Tarefa[]; cls: { area?: TarefaProjeto; subNome?: string };
-  onNovaTarefa: () => void; onToggleTask: (t: Tarefa) => void; podeGerenciar: boolean; onSetMarco: (tId: string, mId: string) => void;
+  onNovaTarefa: () => void; onToggleTask: (t: Tarefa) => void; onOpenTask: (t: Tarefa) => void; podeGerenciar: boolean; onSetMarco: (tId: string, mId: string) => void;
 };
 function ProjOverlay(props: OverlayProps) {
   const { proj, view, alt, setView, setAlt, close, tasks, cls } = props;
@@ -336,7 +347,12 @@ function ProjOverlay(props: OverlayProps) {
               <div className="relative border-l border-dashed border-gray-200 dark:border-gray-800">
                 {months.map((_, i) => <div key={i} className="absolute top-0 bottom-0 border-l border-dashed border-gray-200 dark:border-gray-800" style={{ left: `${(i / months.length) * 100}%` }} />)}
                 {marcos.map(mc => <div key={mc.id} className="absolute top-0 bottom-0 border-l-2 border-dotted" style={{ left: `${xF(mc.data) * 100}%`, borderColor: proj.cor, opacity: .4 }} />)}
-                {lane.ts.slice().sort((a, b) => (a.prazo || "").localeCompare(b.prazo || "")).map((t, i) => { const done = t.status === "concluida", late = isLate(t); return <div key={t.id} onClick={() => props.onToggleTask(t)} title={`${t.titulo} · ${shortD(t.prazo)}`} className="absolute h-[22px] -translate-y-1/2 rounded-lg text-[10px] font-bold text-white flex items-center px-2 whitespace-nowrap overflow-hidden shadow cursor-pointer max-w-[240px]" style={{ left: `calc(${xF(t.prazo || new Date().toISOString()) * 100}% - 4px)`, top: `calc(50% + ${(i % 2 ? 14 : -14)}px)`, background: done ? "#16a34a" : late ? "#e11d48" : proj.cor, opacity: done ? .65 : 1 }}>{done ? "✓ " : late ? "⚠ " : ""}{t.titulo}</div>; })}
+                {lane.ts.slice().sort((a, b) => ((a.inicio || a.prazo) || "").localeCompare((b.inicio || b.prazo) || "")).map((t, i) => {
+                  const done = t.status === "concluida", late = isLate(t);
+                  const sd = t.inicio || t.prazo || new Date().toISOString(); const ed = t.prazo || t.inicio || new Date().toISOString();
+                  const l = xF(sd) * 100; const w = Math.max(2.5, xF(ed) * 100 - l);
+                  return <div key={t.id} onClick={() => props.onOpenTask(t)} title={`${t.titulo} · ${t.inicio ? shortD(t.inicio) + "→" : ""}${shortD(t.prazo)}`} className="absolute h-[22px] -translate-y-1/2 rounded-lg text-[10px] font-bold text-white flex items-center px-2 whitespace-nowrap overflow-hidden shadow cursor-pointer" style={{ left: `${l}%`, width: `${w}%`, minWidth: 64, top: `calc(50% + ${(i % 2 ? 14 : -14)}px)`, background: done ? "#16a34a" : late ? "#e11d48" : proj.cor, opacity: done ? .65 : 1 }}>{done ? "✓ " : late ? "⚠ " : ""}{t.titulo}</div>;
+                })}
               </div>
             </div>)
           )}
@@ -348,12 +364,12 @@ function ProjOverlay(props: OverlayProps) {
             <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-hidden">
               {lane.ts.length === 0 ? <div className="text-xs text-gray-400 p-3">—</div> : lane.ts.map((t, i) => { const b = stBucket(t.status); const late = isLate(t); return (
                 <div key={t.id} className={`flex items-start gap-2 px-3 py-2 ${i ? "border-t border-gray-100 dark:border-gray-800" : ""}`}>
-                  <button onClick={() => props.onToggleTask(t)} className="w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0" style={{ background: SC[b] }} />
+                  <button onClick={() => props.onToggleTask(t)} title="Concluir/reabrir" className="w-2.5 h-2.5 rounded-full mt-1.5 flex-shrink-0" style={{ background: SC[b] }} />
                   <div className="flex-1 min-w-0">
-                    <div className={`text-[12.5px] font-semibold ${t.status === "concluida" ? "line-through text-gray-500" : ""}`}>{t.titulo}</div>
+                    <div onClick={() => props.onOpenTask(t)} className={`text-[12.5px] font-semibold cursor-pointer hover:underline ${t.status === "concluida" ? "line-through text-gray-500" : ""}`}>{t.titulo}</div>
                     <div className="text-[10.5px] text-gray-500 mt-0.5 flex gap-2 flex-wrap items-center">
                       {t.responsavelNome && <span>{t.responsavelNome}</span>}
-                      {t.prazo && <span className={late ? "text-rose-600 font-bold" : ""}>📅 {fmtBR(t.prazo)}</span>}
+                      {(t.inicio || t.prazo) && <span className={late ? "text-rose-600 font-bold" : ""}>📅 {t.inicio ? fmtBR(t.inicio) + " → " : ""}{t.prazo ? fmtBR(t.prazo) : "?"}</span>}
                       {marcos.length > 0 && <select value={proj.taskMarco?.[t.id] || ""} onChange={(e) => props.onSetMarco(t.id, e.target.value)} className="text-[10px] border border-gray-200 dark:border-gray-700 rounded px-1 py-0.5 bg-transparent">
                         <option value="">— marco —</option>{marcos.map(m => <option key={m.id} value={m.id}>{m.nome}</option>)}
                       </select>}
@@ -464,43 +480,3 @@ function ProjetoModal(props: { mode: "new" | "edit"; proj?: MapaProjeto; areas: 
   </div>;
 }
 
-// ── Modal: nova tarefa (grava no Gestor já vinculada ao projeto) ─────────────
-function NovaTarefaModal(props: { proj: MapaProjeto; areaById: Map<string, TarefaProjeto>; subById: Map<string, TarefaSubprojeto>; me: ReturnType<typeof useAuth>["pessoa"]; onClose: () => void; onSay: (m: string) => void }) {
-  const { proj, areaById, subById, me, onClose, onSay } = props;
-  const area = proj.areaId ? areaById.get(proj.areaId) : undefined;
-  const subNome = proj.subareaId ? subById.get(proj.subareaId)?.nome : undefined;
-  const [titulo, setTitulo] = useState("");
-  const [prazo, setPrazo] = useState("");
-  const [prio, setPrio] = useState<Tarefa["prioridade"]>("normal");
-  const [salvando, setSalvando] = useState(false);
-  async function criar() {
-    if (!titulo.trim()) return;
-    if (!proj.areaId) { alert("Defina a Área do projeto antes de criar tarefas (edite o projeto)."); return; }
-    setSalvando(true);
-    try {
-      await criarTarefa({
-        projetoId: proj.areaId, subprojetoId: proj.subareaId || "", titulo: titulo.trim(),
-        responsavelId: me?.id || "", responsavelNome: me?.nome, prazo: prazo || null,
-        status: "a_fazer", prioridade: prio, origem: "manual", projetoMapaId: proj.id,
-        criadoPor: me?.id || "", criadoPorNome: me?.nome,
-      } as Omit<Tarefa, "id" | "criadoEm" | "atualizadoEm">);
-      onSay("✓ Tarefa criada no Gestor"); onClose();
-    } catch (e) { alert("Não consegui criar a tarefa: " + (e instanceof Error ? e.message : String(e))); setSalvando(false); }
-  }
-  return <div className="fixed inset-0 z-[80] bg-black/40 grid place-items-center p-4" onClick={onClose}>
-    <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-[400px] max-w-full p-5" onClick={e => e.stopPropagation()}>
-      <div className="font-extrabold text-[15px]">Nova tarefa</div>
-      <div className="text-[11.5px] text-gray-500 mb-3">no projeto <b>{proj.nome}</b>{area ? ` · ${area.nome}${subNome ? " › " + subNome : ""}` : ""}</div>
-      <input value={titulo} onChange={e => setTitulo(e.target.value)} placeholder="O que precisa ser feito?" autoFocus className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm mb-2" />
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
-        <input type="date" value={prazo} onChange={e => setPrazo(e.target.value)} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm" />
-        <select value={prio} onChange={e => setPrio(e.target.value as Tarefa["prioridade"])} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm">
-          <option value="baixa">Baixa</option><option value="normal">Normal</option><option value="alta">Alta</option><option value="urgente">Urgente</option>
-        </select>
-      </div>
-      <div className="flex gap-2 justify-end"><button onClick={onClose} className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold">Cancelar</button>
-        <button onClick={criar} disabled={!titulo.trim() || salvando} className="px-4 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-50">Criar no Gestor</button></div>
-      <div className="text-[10.5px] text-gray-400 mt-3 text-center">grava em <b>tarefas</b> (Gestor) já vinculada a este projeto</div>
-    </div>
-  </div>;
-}

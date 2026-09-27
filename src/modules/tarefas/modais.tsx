@@ -105,7 +105,7 @@ export function EscolhaRestauranteModal({ restaurants, rota, tituloModulo, onClo
   );
 }
 
-export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaId, pessoaNome, prazoInicial, projetoIdInicial, subprojetoIdInicial, tituloInicial, descricaoInicial, puxandoInicial }: {
+export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, pessoaId, pessoaNome, prazoInicial, projetoIdInicial, subprojetoIdInicial, tituloInicial, descricaoInicial, puxandoInicial, projetoMapaIdInicial, bloquearProjeto, onCriada }: {
   onClose: () => void;
   projetos: TarefaProjeto[];
   subprojetos: TarefaSubprojeto[];
@@ -118,6 +118,11 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
   tituloInicial?: string;
   descricaoInicial?: string;
   puxandoInicial?: { tipo: "ideia" | "ocorrencia"; id: string; titulo: string } | null;
+  // Vínculo com o Mapa de Projetos: preenche tarefa.projetoMapaId na criação.
+  projetoMapaIdInicial?: string;
+  // Trava a escolha de área/sub-área (quando criada de dentro de um projeto do mapa).
+  bloquearProjeto?: boolean;
+  onCriada?: (tarefaId: string) => void;
 }) {
   const [titulo, setTitulo] = useState(tituloInicial || "");
   const [descricao, setDescricao] = useState(descricaoInicial || "");
@@ -267,6 +272,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
       subtarefas: subtarefasFinal,
       subtarefaResponsaveisIds: subRespIds.length ? subRespIds : undefined,
       recorrencia: rec || undefined,
+      projetoMapaId: projetoMapaIdInicial || undefined,
       criadoPor: pessoaId,
       criadoPorNome: pessoaNome,
     };
@@ -276,6 +282,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
     onClose();
     criarTarefa(payload)
       .then(async (tarefaId) => {
+        onCriada?.(tarefaId);
         // Se essa tarefa foi puxada de uma ideia/ocorrência, marca a origem
         if (puxandoSnap) {
           const now = new Date().toISOString();
@@ -345,6 +352,10 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
               className="w-full text-2xl font-bold bg-transparent border-b-2 border-transparent focus:border-indigo-500 text-gray-900 dark:text-gray-100 outline-none placeholder:text-gray-300 dark:placeholder:text-gray-600 px-1 -mx-1"
             />
             {/* Área (chips) */}
+            {bloquearProjeto && (
+              <div className="mt-3 text-xs text-gray-500">Projeto do mapa · <b className="text-gray-700 dark:text-gray-300">{projetos.find(p => p.id === projetoId)?.nome || "—"}{subprojetos.find(s => s.id === subprojetoId) ? " › " + subprojetos.find(s => s.id === subprojetoId)!.nome : ""}</b></div>
+            )}
+            {!bloquearProjeto && (<>
             <div className="mt-3">
               <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1.5">Área *</label>
               <div className="flex flex-wrap gap-1.5">
@@ -376,6 +387,7 @@ export function NovaTarefaModal({ onClose, projetos, subprojetos, restaurantes, 
                 </div>
               </div>
             )}
+            </>)}
           </div>
 
           {/* ─── Bloco de campos (linhas label/valor) — espelha o detalhe ─── */}
