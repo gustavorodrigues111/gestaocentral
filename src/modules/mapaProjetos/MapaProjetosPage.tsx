@@ -134,7 +134,7 @@ export function MapaProjetosPage() {
     return () => st.removeEventListener("wheel", onWheel);
   }, []);
   const drag = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
-  function onDown(e: React.PointerEvent) { if ((e.target as HTMLElement).closest(".mnode")) return; drag.current = { x: e.clientX, y: e.clientY, tx: tf.x, ty: tf.y }; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); }
+  function onDown(e: React.PointerEvent) { if ((e.target as HTMLElement).closest(".mnode, button, a, input, select, textarea")) return; drag.current = { x: e.clientX, y: e.clientY, tx: tf.x, ty: tf.y }; (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); }
   function onMove(e: React.PointerEvent) { if (!drag.current) return; setTf(p => ({ ...p, x: drag.current!.tx + (e.clientX - drag.current!.x), y: drag.current!.ty + (e.clientY - drag.current!.y) })); }
   function onUp() { drag.current = null; }
   function zoomBtn(dir: "in" | "out") { const st = stageRef.current; if (!st) return; const r = st.getBoundingClientRect(); const mx = r.width / 2, my = r.height / 2; setTf(p => { const ns = Math.max(0.3, Math.min(dir === "in" ? p.s * 1.2 : p.s / 1.2, 2.4)); return { s: ns, x: mx - (mx - p.x) * (ns / p.s), y: my - (my - p.y) * (ns / p.s) }; }); }
@@ -198,10 +198,7 @@ export function MapaProjetosPage() {
 
   return (
     <div className="flex flex-col overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-      <div className="flex items-center gap-2 px-4 py-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex-wrap">
-        <GitFork size={18} className="text-indigo-500" />
-        <div className="font-bold text-[15px]">Mapa de Projetos</div>
-        <div className="text-[11px] text-gray-500 hidden sm:block">radial · cada projeto: Mapa · Roadmap · Lista</div>
+      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex-wrap">
         <div className="flex-1" />
         <button onClick={expandAll} className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">Expandir tudo</button>
         {podeGerenciar && <button onClick={() => setProjModal({ mode: "new" })} className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white inline-flex items-center gap-1"><Plus size={14} /> Novo projeto</button>}
