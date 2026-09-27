@@ -43,6 +43,8 @@ export function MapaProjetosPage() {
   const seededRef = useRef(false);
 
   const [overlay, setOverlay] = useState<{ pid: string; view: "roadmap" | "lista"; alt: "marcos" | "tarefas" } | null>(null);
+  const [ovClosing, setOvClosing] = useState(false);
+  function closeOverlay() { setOvClosing(true); setTimeout(() => { setOverlay(null); setOvClosing(false); }, 200); }
   const [projModal, setProjModal] = useState<{ mode: "new" | "edit"; proj?: MapaProjeto } | null>(null);
   const [taskModal, setTaskModal] = useState<{ pid: string } | null>(null);
   const [toast, setToast] = useState("");
@@ -197,21 +199,20 @@ export function MapaProjetosPage() {
   const overlayProj = overlay ? projetos.find(p => p.id === overlay.pid) || null : null;
 
   return (
-    <div className="flex flex-col overflow-hidden rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
-      <div className="flex items-center gap-2 px-3 py-1.5 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950 flex-wrap">
-        <div className="flex-1" />
-        <button onClick={expandAll} className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">Expandir tudo</button>
-        {podeGerenciar && <button onClick={() => setProjModal({ mode: "new" })} className="text-[12.5px] font-semibold px-3 py-1.5 rounded-lg bg-indigo-600 text-white inline-flex items-center gap-1"><Plus size={14} /> Novo projeto</button>}
-        <div className="inline-flex items-center gap-0.5 border border-gray-200 dark:border-gray-700 rounded-lg p-0.5 bg-gray-50 dark:bg-gray-900">
-          <button onClick={() => zoomBtn("out")} className="w-7 h-7 grid place-items-center rounded-md"><Minus size={14} /></button>
-          <span className="text-[11px] text-gray-500 w-9 text-center tabular-nums">{Math.round(tf.s * 100)}%</span>
-          <button onClick={() => zoomBtn("in")} className="w-7 h-7 grid place-items-center rounded-md"><Plus size={14} /></button>
-          <button onClick={fit} className="w-7 h-7 grid place-items-center rounded-md" title="Centralizar"><Maximize2 size={13} /></button>
-        </div>
-      </div>
-
+    <div className="relative">
       <div ref={stageRef} onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerCancel={onUp}
-        className="relative overflow-hidden cursor-grab bg-gray-50 dark:bg-gray-950" style={{ height: stageH }}>
+        className="relative overflow-hidden cursor-grab rounded-2xl bg-gray-50 dark:bg-gray-950" style={{ height: stageH }}>
+        {/* Controles flutuantes (sem barra/borda) */}
+        <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
+          {podeGerenciar && <button onClick={() => setProjModal({ mode: "new" })} className="text-[12.5px] font-semibold px-3.5 py-1.5 rounded-full bg-indigo-600 hover:bg-indigo-700 text-white inline-flex items-center gap-1 shadow-lg"><Plus size={14} /> Novo projeto</button>}
+          <button onClick={expandAll} className="text-[12px] font-semibold px-3 py-1.5 rounded-full bg-white/80 dark:bg-gray-900/80 backdrop-blur border border-gray-200/70 dark:border-gray-700/60 shadow-sm">Expandir tudo</button>
+          <div className="inline-flex items-center gap-0.5 rounded-full bg-white/80 dark:bg-gray-900/80 backdrop-blur border border-gray-200/70 dark:border-gray-700/60 shadow-sm p-0.5">
+            <button onClick={() => zoomBtn("out")} className="w-7 h-7 grid place-items-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"><Minus size={14} /></button>
+            <span className="text-[11px] text-gray-500 w-9 text-center tabular-nums">{Math.round(tf.s * 100)}%</span>
+            <button onClick={() => zoomBtn("in")} className="w-7 h-7 grid place-items-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800"><Plus size={14} /></button>
+            <button onClick={fit} className="w-7 h-7 grid place-items-center rounded-full hover:bg-gray-100 dark:hover:bg-gray-800" title="Centralizar"><Maximize2 size={13} /></button>
+          </div>
+        </div>
         {projetos.length === 0 ? (
           <div className="absolute inset-0 grid place-content-center text-center px-6">
             <GitFork size={40} className="mx-auto text-gray-300 mb-3" />
@@ -233,14 +234,11 @@ export function MapaProjetosPage() {
             ))}
           </div>
         )}
-        <div className="absolute left-1/2 -translate-x-1/2 bottom-3 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-full px-3.5 py-1.5 text-[11px] text-gray-500 shadow hidden sm:flex gap-3">
-          <span>🕸 abre as tarefas</span><span>📅 Roadmap</span><span>☰ Lista</span><span>arraste / scroll</span>
-        </div>
       </div>
 
-      {overlayProj && overlay && <ProjOverlay proj={overlayProj} view={overlay.view} alt={overlay.alt}
+      {overlayProj && overlay && <ProjOverlay proj={overlayProj} view={overlay.view} alt={overlay.alt} closing={ovClosing}
         setView={(v) => setOverlay(o => o ? { ...o, view: v } : o)} setAlt={(a) => setOverlay(o => o ? { ...o, alt: a } : o)}
-        close={() => setOverlay(null)} tasks={projTasks(overlayProj)} cls={projClass(overlayProj)}
+        close={closeOverlay} tasks={projTasks(overlayProj)} cls={projClass(overlayProj)}
         onNovaTarefa={() => setTaskModal({ pid: overlayProj.id })} onToggleTask={toggleTask} podeGerenciar={podeGerenciar}
         onSetMarco={async (tId, mId) => { const tm = { ...(overlayProj.taskMarco || {}) }; if (mId) tm[tId] = mId; else delete tm[tId]; await salvarMapaProjeto({ ...overlayProj, taskMarco: tm }); }} />}
 
@@ -266,13 +264,16 @@ function VBtn({ label, c, on, onClick }: { label: string; c: string; on?: boolea
 
 // ── Overlay: Roadmap + Lista ─────────────────────────────────────────────────
 type OverlayProps = {
-  proj: MapaProjeto; view: "roadmap" | "lista"; alt: "marcos" | "tarefas";
+  proj: MapaProjeto; view: "roadmap" | "lista"; alt: "marcos" | "tarefas"; closing?: boolean;
   setView: (v: "roadmap" | "lista") => void; setAlt: (a: "marcos" | "tarefas") => void; close: () => void;
   tasks: Tarefa[]; cls: { area?: TarefaProjeto; subNome?: string };
   onNovaTarefa: () => void; onToggleTask: (t: Tarefa) => void; podeGerenciar: boolean; onSetMarco: (tId: string, mId: string) => void;
 };
 function ProjOverlay(props: OverlayProps) {
   const { proj, view, alt, setView, setAlt, close, tasks, cls } = props;
+  const [shown, setShown] = useState(false);
+  useEffect(() => { const r = requestAnimationFrame(() => setShown(true)); return () => cancelAnimationFrame(r); }, []);
+  const visible = shown && !props.closing;
   const marcos = proj.marcos || [];
   const pc = prog(tasks);
   const datas = [...tasks.map(t => t.prazo).filter(Boolean) as string[], ...marcos.map(m => m.data)];
@@ -288,7 +289,7 @@ function ProjOverlay(props: OverlayProps) {
     ? [...marcos.map(m => ({ id: m.id, nome: m.nome, ts: tasks.filter(t => proj.taskMarco?.[t.id] === m.id) })), { id: "_none", nome: "Sem marco", ts: tasks.filter(t => !proj.taskMarco?.[t.id]) }].filter(l => l.ts.length || l.id !== "_none")
     : [{ id: "_all", nome: "Tarefas", ts: tasks }];
 
-  return <div className="fixed inset-0 z-[60] bg-white dark:bg-gray-950 flex flex-col">
+  return <div className={`fixed inset-0 z-[60] bg-white dark:bg-gray-950 flex flex-col transition-all duration-200 ease-out ${visible ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4"}`}>
     <div className="flex items-center gap-3 px-4 py-3 border-b border-gray-200 dark:border-gray-800 flex-wrap">
       <button onClick={close} className="inline-flex items-center gap-1 text-sm font-semibold px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900"><ArrowLeft size={15} /> Voltar ao mapa</button>
       <div className="w-9 h-9 rounded-lg grid place-items-center text-white" style={{ background: proj.cor }}><GitFork size={18} /></div>
