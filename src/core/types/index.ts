@@ -2315,7 +2315,11 @@ export type MapaProjeto = {
   ownerId: string;        // pessoaId dono do mapa (por enquanto pessoal)
   ownerNome?: string;
   restaurantIds?: string[];
-  incSubs: string[];      // ids de tarefaSubprojetos incluídos neste projeto
+  // Classificação: o projeto PERTENCE a uma área (tarefaProjeto) e, opcional,
+  // a uma sub-área (tarefaSubprojeto). É só rótulo/contexto — NÃO puxa tarefas.
+  areaId?: string;
+  subareaId?: string;
+  incSubs?: string[];     // @deprecated (modelo antigo por composição de sub-áreas)
   marcos?: MapaMarco[];   // marcos/fases (roadmap estratégico) — opcional
   taskMarco?: { [tarefaId: string]: string };  // tarefaId → marcoId (opcional)
   ordem?: number;
@@ -5210,6 +5214,10 @@ export type Tarefa = {
   // botão "Não renovar — iniciar demissão" no DetalheModal.
   ehDecisaoExperiencia?: "1a" | "2a";
   corHerdada?: string;
+  // Vínculo OPCIONAL com um projeto do Mapa de Projetos. Só tarefas com este
+  // campo preenchido aparecem sob o projeto no mapa. Preenchido automaticamente
+  // quando a tarefa é criada de dentro de um projeto.
+  projetoMapaId?: string | null;
   deletadoEm?: string | null;
   deletadoPor?: string | null;
   motivoDelete?: string;
