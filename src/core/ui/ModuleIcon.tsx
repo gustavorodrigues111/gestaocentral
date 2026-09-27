@@ -18,7 +18,7 @@ import {
   Stethoscope, Shirt,
   // Administrativo
   ListTodo, AlarmClock, Calculator, ShoppingCart, BookMarked, Repeat, KeyRound,
-  Receipt, ChartLine, CreditCard, Bot,
+  Receipt, ChartLine, CreditCard, Bot, GitFork,
   // Configurações
   Building2, LayoutGrid, UserRoundCog, Plug,
   // Master
@@ -54,7 +54,7 @@ const REGISTRY: Record<string, LucideIcon> = {
   "list-todo": ListTodo, "alarm-clock": AlarmClock, "calculator": Calculator,
   "shopping-cart": ShoppingCart, "book-marked": BookMarked, "repeat": Repeat,
   "key-round": KeyRound, "receipt": Receipt, "chart-line": ChartLine,
-  "credit-card": CreditCard, "bot": Bot,
+  "credit-card": CreditCard, "bot": Bot, "git-fork": GitFork,
   // Configurações
   "building-2": Building2, "layout-grid": LayoutGrid,
   "user-round-cog": UserRoundCog, "plug": Plug,
