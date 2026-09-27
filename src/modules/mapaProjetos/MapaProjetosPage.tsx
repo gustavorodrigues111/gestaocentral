@@ -49,7 +49,7 @@ export function MapaProjetosPage() {
   useEffect(() => { const u = ouvirProjetos(setAreas); return u; }, []);
   useEffect(() => { const u = ouvirSubprojetos(setSubs); return u; }, []);
   useEffect(() => { const u = ouvirTodasTarefas(setTarefas); return u; }, []);
-  useEffect(() => { if (!me?.id) return; const u = ouvirMapaProjetos(me.id, setProjetos); return u; }, [me?.id]);
+  useEffect(() => { if (!me?.id) return; const u = ouvirMapaProjetos(me.isMaster ? null : me.id, setProjetos); return u; }, [me?.id, me?.isMaster]);
 
   // Abre os projetos (nível de áreas) na 1ª carga.
   useEffect(() => {
@@ -461,7 +461,14 @@ function ProjetoModal(props: { mode: "new" | "edit"; proj?: MapaProjeto; areas: 
       taskMarco: proj?.taskMarco || {}, ownerId: me?.id || "", ownerNome: me?.nome,
       ordem: proj?.ordem ?? Date.now(), ativo: true, criadoEm: proj?.criadoEm || now, criadoPor: proj?.criadoPor || (me?.id || ""),
     };
-    await salvarMapaProjeto(p); onSay(mode === "new" ? "✓ Projeto criado" : "✓ Projeto salvo"); onClose();
+    try {
+      await salvarMapaProjeto(p);
+      onSay(mode === "new" ? "✓ Projeto criado" : "✓ Projeto salvo");
+      onClose();
+    } catch (e) {
+      console.error("[MapaProjetos] falha ao salvar projeto", e, p);
+      alert("Não consegui salvar o projeto: " + (e instanceof Error ? e.message : String(e)));
+    }
   }
   async function excluir() { if (!proj) return; if (!confirm(`Excluir o projeto "${proj.nome}"? As tarefas no Gestor não são apagadas.`)) return; await excluirMapaProjeto(proj.id); onSay("Projeto excluído"); onClose(); }
 

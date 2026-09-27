@@ -5,15 +5,16 @@ import type { MapaProjeto } from "../../core/types";
 
 const COL = "mapaProjetos";
 
-// Escuta os projetos do MAPA de um dono (por enquanto é pessoal — cada um vê os
-// seus). O app filtra por ownerId; as rules liberam read auth-only.
-export function ouvirMapaProjetos(ownerId: string, cb: (l: MapaProjeto[]) => void): Unsubscribe {
-  const q = query(collection(db, COL), where("ownerId", "==", ownerId));
+// Escuta os projetos do MAPA. Com ownerId → filtra por dono (uso normal, por
+// pessoa). Com ownerId=null (master) → todos, pra nada ficar escondido por um
+// ownerId inesperado. As rules liberam read auth-only.
+export function ouvirMapaProjetos(ownerId: string | null, cb: (l: MapaProjeto[]) => void): Unsubscribe {
+  const q = ownerId ? query(collection(db, COL), where("ownerId", "==", ownerId)) : query(collection(db, COL));
   return onSnapshot(q, (snap) => {
     const l = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as MapaProjeto);
     l.sort((a, b) => (a.ordem ?? 0) - (b.ordem ?? 0) || (a.nome || "").localeCompare(b.nome || ""));
     cb(l);
-  });
+  }, (err) => { console.error("[MapaProjetos] erro ao ouvir projetos", err); });
 }
 
 export async function salvarMapaProjeto(p: MapaProjeto): Promise<void> {
