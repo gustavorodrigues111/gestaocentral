@@ -11,7 +11,7 @@ import { useAvisos } from "../../modules/chat/useAvisos";
 import { confirmarSaida } from "../nav/unsaved";
 import { ModuleBadge } from "../ui/ModuleBadge";
 import { ModuleIcon } from "../ui/ModuleIcon";
-import { PanelLeftClose, Store, ChevronsUpDown, Check, Plus, Compass, Star, X } from "lucide-react";
+import { PanelLeftClose, Store, ChevronsUpDown, Check, Plus, Compass, Star, X, Search } from "lucide-react";
 import { NewRestaurantModal } from "../../modules/configuracoes/NewRestaurantModal";
 import type { ModuleArea, ModuleId } from "../types";
 
@@ -22,6 +22,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
   const navigate = useNavigate();
   const location = useLocation();
   const [showNewRest, setShowNewRest] = useState(false);
+  const [busca, setBusca] = useState("");
   const modulosAtivos = activeRestaurant?.modulosAtivos || [];
 
   // Fecha o drawer ao navegar, mas antes checa alterações não salvas (ex:
@@ -257,11 +258,51 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           ) : (
             activeRestaurant && <div className="px-1 text-sm font-semibold text-gray-700 dark:text-gray-200 truncate">{activeRestaurant.nome}</div>
           )}
+          {/* Busca de módulos — discreta, entre o seletor e os Favoritos */}
+          {rid && (
+            <div className="relative mt-2">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+              <input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Buscar módulo…"
+                className="w-full pl-8 pr-7 py-1.5 text-[13px] rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900 text-gray-800 dark:text-gray-100 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/30 focus:border-indigo-400"
+              />
+              {busca && (
+                <button type="button" onClick={() => setBusca("")} className="absolute right-1.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-gray-400 hover:text-gray-700 dark:hover:text-gray-200"><X size={14} /></button>
+              )}
+            </div>
+          )}
         </div>
 
         <nav className="flex-1 overflow-y-auto p-3 space-y-4">
+          {/* RESULTADOS DA BUSCA — substitui o menu enquanto há texto */}
+          {rid && busca.trim() && (() => {
+            const q = busca.trim().toLowerCase();
+            const res = MODULES.filter(m => !m.oculto && visibleModule(m.id) && (m.label.toLowerCase().includes(q) || (m.desc || "").toLowerCase().includes(q)))
+              .sort((a, b) => a.label.localeCompare(b.label));
+            const itemCls = ({ isActive }: { isActive: boolean }) => `flex items-center gap-2 px-3 py-2 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`;
+            return (
+              <div>
+                <div className="px-1 mb-1 text-[10px] font-bold uppercase tracking-wider text-gray-400">{res.length} resultado{res.length === 1 ? "" : "s"}</div>
+                {res.length === 0 ? (
+                  <div className="px-3 py-6 text-center text-sm text-gray-400">Nenhum módulo encontrado.</div>
+                ) : (
+                  <div className="space-y-0.5">
+                    {res.map(m => (
+                      <NavLink key={m.id} to={`/r/${rid}/${m.id}`} onClick={(e) => { guardedClose(e); setBusca(""); }} className={itemCls}>
+                        <ModuleIcon name={m.icon} size={16} />
+                        <span className="flex-1 truncate">{m.label}</span>
+                        <ModuleBadge etapa={m.etapa} />
+                      </NavLink>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
           {/* FAVORITOS — atalhos POR USUÁRIO, fixados no topo do menu. */}
-          {rid && (() => {
+          {rid && !busca.trim() && (() => {
             const favMods = favoritos.flatMap((id) => { const m = getModule(id); return m && !m.oculto && visibleModule(m.id) ? [m] : []; });
             const disponiveis = MODULES.filter((m) => !m.oculto && visibleModule(m.id));
             const itemCls = ({ isActive }: { isActive: boolean }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`;
@@ -310,7 +351,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
           {/* MINHAS INFORMAÇÕES — área pessoal do usuário. Dashboard (Central
               de Avisos, UNIVERSAL) + módulos do Portal do Empregado (deep-link
               pra PortalPage já na aba certa). */}
-          {rid && (() => {
+          {rid && !busca.trim() && (() => {
             const info = AREA_INFO.minhas;
             const fechada = colapsadas.has("minhas");
             const itemCls = ({ isActive }: { isActive: boolean }) => `flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm ${isActive ? "bg-gray-100 dark:bg-gray-800 text-gray-900 dark:text-gray-100 font-medium" : "text-gray-600 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-800"}`;
@@ -354,7 +395,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
             );
           })()}
 
-          {areas.map(area => {
+          {!busca.trim() && areas.map(area => {
             // Chat (Central de Avisos) é item de topo — removido dos grupos.
             // (Tarefas migrou pra seção Master.)
             const mods = modulesByArea(area).filter(m => !m.oculto && m.id !== "chat" && visibleModule(m.id));
@@ -437,7 +478,7 @@ export function Sidebar({ open, onClose }: { open: boolean; onClose: () => void 
 
           {/* Seção Master — módulos da área master (Governança de IA) +
               ferramentas do dono (Caderno, Perfis de Acesso, Propostas). */}
-          {(pessoa?.isMaster || masterMods.length > 0) && (() => {
+          {!busca.trim() && (pessoa?.isMaster || masterMods.length > 0) && (() => {
             const fechada = colapsadas.has("master");
             const info = AREA_INFO.master;
             const total = masterMods.length + (pessoa?.isMaster ? 2 : 0);
