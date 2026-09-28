@@ -26,8 +26,12 @@ type Desc = { type: NType; nid: string; ref?: unknown; proj?: MapaProjeto; c?: s
 type MNode = Desc & { depth: number; angle: number; x: number; y: number; px: number; py: number; hasKids: boolean; open: boolean; parentNid?: string };
 
 function stBucket(s: TarefaStatus): "fazer" | "and" | "ok" { return s === "concluida" ? "ok" : s === "em_andamento" ? "and" : "fazer"; }
-function isLate(t: Tarefa): boolean { return t.status !== "concluida" && t.status !== "cancelada" && !!t.prazo && new Date(t.prazo) < new Date(new Date().toDateString()); }
-function shortD(iso?: string | null): string { if (!iso) return ""; const d = new Date(iso); return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`; }
+function isLate(t: Tarefa): boolean {
+  if (t.status === "concluida" || t.status === "cancelada" || !t.prazo) return false;
+  const h = new Date(); const hoje = `${h.getFullYear()}-${String(h.getMonth() + 1).padStart(2, "0")}-${String(h.getDate()).padStart(2, "0")}`;
+  return t.prazo.slice(0, 10) < hoje;
+}
+function shortD(iso?: string | null): string { if (!iso) return ""; const [, m, d] = iso.slice(0, 10).split("-"); return d && m ? `${d}/${m}` : ""; }
 function uid(): string { try { return crypto.randomUUID(); } catch { return "id" + Date.now() + Math.random().toString(36).slice(2); } }
 function prog(ts: Tarefa[]): number { return ts.length ? Math.round(ts.filter(t => t.status === "concluida").length / ts.length * 100) : 0; }
 

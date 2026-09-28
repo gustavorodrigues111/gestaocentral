@@ -595,6 +595,12 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
   // grava no Firestore em background; sem isso, o chip só "acende" depois do round-trip).
   const [restIdsLocal, setRestIdsLocal] = useState<string[]>(tarefa.restaurantIds || []);
   useEffect(() => { setRestIdsLocal(tarefa.restaurantIds || []); }, [tarefa.restaurantIds]);
+  // Datas: estado local otimista — o input muda na hora (salvarCampo grava no
+  // Firestore em background; sem isso o campo só atualiza depois do round-trip).
+  const [inicioLocal, setInicioLocal] = useState<string | null>(tarefa.inicio || null);
+  const [prazoLocal, setPrazoLocal] = useState<string | null>(tarefa.prazo || null);
+  useEffect(() => { setInicioLocal(tarefa.inicio || null); }, [tarefa.inicio]);
+  useEffect(() => { setPrazoLocal(tarefa.prazo || null); }, [tarefa.prazo]);
   const [detMais, setDetMais] = useState(false);
   const [addLink, setAddLink] = useState(false);
   const [linkUrl, setLinkUrl] = useState("");
@@ -919,14 +925,14 @@ export function DetalheModal({ tarefa, projetos, subprojetos, autor, onClose }: 
             </FieldRow>
             <FieldRow label="Início">
               <DatePickerBR
-                value={ymdParaBr(tarefa.inicio || "")}
-                onChange={(br) => salvarCampo("inicio", brParaYmd(br) || null, "inicio")}
+                value={ymdParaBr(inicioLocal || "")}
+                onChange={(br) => { const v = brParaYmd(br) || null; setInicioLocal(v); salvarCampo("inicio", v, "inicio"); }}
               />
             </FieldRow>
             <FieldRow label="Data de conclusão">
               <DatePickerBR
-                value={ymdParaBr(tarefa.prazo || "")}
-                onChange={(br) => salvarCampo("prazo", brParaYmd(br) || null, "prazo")}
+                value={ymdParaBr(prazoLocal || "")}
+                onChange={(br) => { const v = brParaYmd(br) || null; setPrazoLocal(v); salvarCampo("prazo", v, "prazo"); }}
               />
             </FieldRow>
             <FieldRow label="Recorrência">
