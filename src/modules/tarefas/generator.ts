@@ -134,6 +134,64 @@ export async function tentarAgendarProximaRecorrencia(
   return true;
 }
 
+// ── Recuperação de correntes de recorrência quebradas ─────────────────────
+// A próxima ocorrência normalmente nasce ao CONCLUIR a atual. Se a pessoa deixa
+// de concluir por alguns dias (atraso), a corrente quebra e não volta sozinha.
+// Este catch-up: pra cada série (recorrenciaMaeId) SEM ocorrência aberta cuja
+// última foi CONCLUÍDA, cria a ocorrência do período ATUAL (pulando as perdidas
+// pra não empilhar backlog). Cancelada = parar a série (não regenera).
+// Idempotente via recorrenciaKey. Roda lazy (1×/dia) ao abrir Tarefas.
+export async function gerarRecorrenciasPendentes(
+  tarefas: Tarefa[],
+  autor: { id: string; nome: string },
+): Promise<number> {
+  const { proximoVencimento } = await import("../prazos/recorrencia");
+  const hoje = new Date().toISOString().slice(0, 10);
+  const series = new Map<string, Tarefa[]>();
+  for (const t of tarefas) {
+    if (!t.recorrencia || !t.prazo || t.deletadoEm) continue;
+    const mae = t.recorrenciaMaeId || t.id;
+    const arr = series.get(mae); if (arr) arr.push(t); else series.set(mae, [t]);
+  }
+  let criadas = 0;
+  for (const [maeId, occs] of series) {
+    try {
+      if (occs.some(o => o.status === "a_fazer" || o.status === "em_andamento")) continue; // corrente viva
+      occs.sort((a, b) => (a.prazo || "").localeCompare(b.prazo || ""));
+      const ult = occs[occs.length - 1];
+      if (ult.status !== "concluida" || !ult.recorrencia || !ult.prazo) continue; // cancelada = parar
+      let prox = proximoVencimento(ult.recorrencia, ult.prazo);
+      let guard = 0;
+      while (prox && prox < hoje && guard++ < 500) prox = proximoVencimento(ult.recorrencia, prox);
+      if (!prox) continue;
+      const chave = `rect-${maeId}-${prox}`;
+      const jaTem = await getDocs(query(collection(db, "tarefas"), where("recorrenciaKey", "==", chave)));
+      if (!jaTem.empty) continue;
+      const delta = Math.round((new Date(prox + "T00:00:00").getTime() - new Date(ult.prazo + "T00:00:00").getTime()) / 86400000);
+      const subtarefas: Subtarefa[] | undefined = (ult.subtarefas || []).length
+        ? (ult.subtarefas || []).map((s, i) => ({ id: Math.random().toString(36).slice(2, 11), texto: s.texto, feito: false, ordem: i + 1, prazo: s.prazo ? addDias(s.prazo, delta) : null, responsavelId: s.responsavelId, responsavelNome: s.responsavelNome }))
+        : undefined;
+      const subRespIds = Array.from(new Set((subtarefas || []).map(s => s.responsavelId).filter((x): x is string => !!x)));
+      await criarTarefa({
+        projetoId: ult.projetoId, subprojetoId: ult.subprojetoId, titulo: ult.titulo,
+        descricao: ult.descricao, link: ult.link,
+        responsavelId: ult.responsavelId, responsavelNome: ult.responsavelNome,
+        coResponsaveis: ult.coResponsaveis, coResponsaveisNomes: ult.coResponsaveisNomes,
+        observadoresIds: ult.observadoresIds, observadoresNomes: ult.observadoresNomes,
+        subtarefaResponsaveisIds: subRespIds.length ? subRespIds : undefined,
+        restaurantIds: ult.restaurantIds, prazo: prox, status: "a_fazer",
+        prioridade: ult.prioridade || "normal", subtarefas,
+        recorrencia: ult.recorrencia, recorrenciaMaeId: maeId, recorrenciaKey: chave,
+        origem: "recorrencia", corHerdada: ult.corHerdada, visibilidadeEfetiva: ult.visibilidadeEfetiva,
+        projetoMapaId: ult.projetoMapaId || undefined,
+        criadoPor: autor.id, criadoPorNome: autor.nome,
+      });
+      criadas++;
+    } catch (e) { console.error("[recorrência] falha ao recuperar série", maeId, e); }
+  }
+  return criadas;
+}
+
 function calcularProximoPrazo(
   tipo: NonNullable<TarefaSubprojeto["recorrenciaTipo"]>,
   dia?: number,

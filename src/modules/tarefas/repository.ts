@@ -493,7 +493,10 @@ export async function mudarStatus(id: string, status: TarefaStatus, autor: { id:
       const { tentarAgendarProximaRecorrencia } = await import("./generator");
       await tentarAgendarProximaRecorrencia(atual, autor);
     } catch (e) {
-      console.warn("[repository] auto-clone falhou:", e);
+      // Não engole em silêncio: a próxima ocorrência não foi criada. O catch-up
+      // (gerarRecorrenciasPendentes) recupera ao reabrir Tarefas, mas registramos
+      // o erro pra diagnóstico em vez de perder de vista.
+      console.error("[repository] auto-clone da recorrência falhou:", e);
     }
   }
 }

@@ -303,6 +303,25 @@ export function TarefasPage() {
     return () => u();
   }, [pessoa?.id]);
 
+  // Recuperação de rotinas: correntes de recorrência que quebraram (a pessoa
+  // deixou de concluir por uns dias) não voltavam sozinhas. Ao abrir Tarefas,
+  // 1×/dia, garante a ocorrência do período atual. Idempotente (recorrenciaKey).
+  const catchupRef = useRef(false);
+  useEffect(() => {
+    if (catchupRef.current || !pessoa?.id || minhas.length === 0) return;
+    const chaveDia = `recCatchup-${pessoa.id}-${hojeYmd()}`;
+    try { if (localStorage.getItem(chaveDia)) { catchupRef.current = true; return; } } catch { /* ignore */ }
+    catchupRef.current = true;
+    (async () => {
+      try {
+        const { gerarRecorrenciasPendentes } = await import("./generator");
+        const n = await gerarRecorrenciasPendentes(minhas, { id: pessoa.id, nome: pessoa.nome || "—" });
+        try { localStorage.setItem(chaveDia, "1"); } catch { /* ignore */ }
+        if (n) console.info(`[tarefas] rotinas recuperadas: ${n}`);
+      } catch (e) { console.error("[tarefas] catch-up de recorrência falhou:", e); }
+    })();
+  }, [pessoa?.id, pessoa?.nome, minhas]);
+
   // Tarefas do projeto filtrado
   useEffect(() => {
     if (tab !== "projeto" || !projetoFiltro) { setTarefasProjeto([]); return; }
