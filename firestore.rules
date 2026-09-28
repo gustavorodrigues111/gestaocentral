@@ -32,6 +32,15 @@ service cloud.firestore {
       let sensitive = ['isMaster','permissions','restaurantIds','specialPermissions'];
       return request.resource.data.diff(resource.data).affectedKeys().hasAny(sensitive);
     }
+    // Vínculo ADITIVO: liga uma pessoa existente a MAIS restaurantes (ex.: freela
+    // de um rest que fez freela noutro). Só cresce restaurantIds (nunca remove) e
+    // NÃO toca nos campos de privilégio (isMaster/permissions/specialPermissions).
+    // Escalada de privilégio segue barrada; vínculo é operação normal de admin.
+    function pessoaVinculoAditivo() {
+      return !request.resource.data.diff(resource.data).affectedKeys().hasAny(['isMaster','permissions','specialPermissions'])
+        && request.resource.data.restaurantIds is list
+        && request.resource.data.restaurantIds.hasAll(resource.data.restaurantIds);
+    }
 
     // ── Permissão no SERVIDOR (permUsuario) ──────────────────────────────────
     // Resumo por login mantido pela Cloud Function `syncPermUsuario*` (cliente não
@@ -135,7 +144,9 @@ service cloud.firestore {
         // OU é alteração não-sensível feita por qualquer authed
         // (deixa admin no app editar nome/email/whatsapp/cpf de pessoas existentes
         // sem precisar ser master — Phase 2 vai apertar mais)
-        || (authed() && !pessoaSensitiveChanged());
+        || (authed() && !pessoaSensitiveChanged())
+        // OU é vínculo aditivo (ligar pessoa existente a mais restaurantes)
+        || (authed() && pessoaVinculoAditivo());
       allow delete: if isMaster();
     }
 
