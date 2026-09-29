@@ -147,6 +147,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   // apuração — o espelho ptrpBatidas vira só fallback quando a Sólides cai.
   const [liveCorrigidos, setLiveCorrigidos] = useState<Record<string, BatidaDoc[]>>({});
   const [liveMesOk, setLiveMesOk] = useState(false);   // o mês inteiro veio ao vivo?
+  const [liveLoading, setLiveLoading] = useState(true); // buscando o ao-vivo da Sólides (evita mostrar o espelho antigo como final)
   const [pendErr, setPendErr] = useState("");
   const [selCorr, setSelCorr] = useState<Set<string>>(new Set());   // dias marcados p/ pedir correção (lote)
   const [corrModal, setCorrModal] = useState(false);
@@ -202,7 +203,11 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   // o mês e injeta como batida PENDING sintética — a UI de correção pendente
   // (tracejado + ✓/✗) acende sem depender do espelho imutável.
   async function carregarPendentes() {
-    if (!shortCode || !comp) { setLiveCorrigidos({}); setLiveMesOk(false); return; }
+    if (!shortCode || !comp) { setLiveCorrigidos({}); setLiveMesOk(false); setLiveLoading(false); return; }
+    // Enquanto o ao-vivo não volta, marca carregando E zera o liveMesOk — assim a
+    // tela mostra o aviso de "atualizando" em vez de exibir o espelho antigo como
+    // se fosse o número final (era isso que abria desatualizado/errado).
+    setLiveLoading(true); setLiveMesOk(false);
     try {
       const hojeStr = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
       const fimMes = `${comp}-${String(diasDoMes).padStart(2, "0")}`;
@@ -239,6 +244,8 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       setLiveCorrigidos({});
       setLiveMesOk(false);
       setPendErr(e instanceof Error ? e.message : "");
+    } finally {
+      setLiveLoading(false);
     }
   }
   useEffect(() => { void carregarPendentes(); }, [shortCode, comp]);   // eslint-disable-line react-hooks/exhaustive-deps
@@ -1204,6 +1211,7 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       {sincMsg && <div className="mb-2 text-[12px] text-gray-700 dark:text-gray-300 bg-gray-50 dark:bg-gray-800/60 border border-gray-200 dark:border-gray-700 rounded-lg px-3 py-2">{sincMsg}</div>}
       {qtdPendentes > 0 && <div className="mb-2 text-[12px] text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2 inline-flex items-center gap-1.5"><TriangleAlert size={13}/> {qtdPendentes} correção(ões) a aprovar na Sólides aparecem tracejadas (🟡) — use ✓ / ✗ no dia pra decidir.</div>}
       {pendErr && <div className="mb-2 text-[11px] text-amber-600 dark:text-amber-400">Leitura ao vivo da Sólides indisponível agora ({pendErr.replace(/\s+/g, " ").slice(0, 80)}) — mostrando o espelho da última sincronização, que pode estar desatualizado. Tente novamente em instantes.</div>}
+      {liveLoading && !liveMesOk && !pendErr && <div className="mb-2 text-[12px] text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2 inline-flex items-center gap-2"><span className="inline-block w-3.5 h-3.5 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin"/> Atualizando com o Sólides… os números deste mês ainda estão carregando e podem mudar em instantes.</div>}
 
       {/* Fechamento da praticada → o que a gorjeta pode dividir + pendências */}
       {fechamentoPrat.ultimoDiaConsiderado > 0 && (
