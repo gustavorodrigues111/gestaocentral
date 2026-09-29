@@ -356,7 +356,11 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       const decididos = new Set<string>([...descPunch, ...ajustesDia.filter(a => a.tipo === "inclusao" && a.punchId).map(a => a.punchId as string)]);
       // Só a batida EFETIVA (aprovada) entra na apuração — espelha o oficial.
       // A correção pendente é preservada em `bs` (aparece na linha), mas não soma.
-      const blocos: BatidaBloco[] = bs.filter(b => !b.excluded && !correcaoPendente(b) && !(b.punchId && descPunch.has(b.punchId))).map(b => ({ dateIn: b.dateIn as number, dateOut: (b.dateOut ?? null) as number | null }));
+      // IMPORTANTE: exclui os punches já cobertos por uma INCLUSÃO (correção
+      // aprovada via Sólides) — senão a batida crua (agora APPROVED) contava JUNTO
+      // com o par da inclusão e DOBRAVA as horas do dia. Por isso usa `decididos`
+      // (desconsiderados ∪ punches virados inclusão), não só `descPunch`.
+      const blocos: BatidaBloco[] = bs.filter(b => !b.excluded && !correcaoPendente(b) && !(b.punchId && decididos.has(b.punchId))).map(b => ({ dateIn: b.dateIn as number, dateOut: (b.dateOut ?? null) as number | null }));
       // REORGANIZAÇÃO MANUAL: se o DP redefiniu os pares do dia (ex.: 18:01–00:00),
       // a apuração usa ESSES pares e ignora as batidas (app-only, independe de
       // aprovação). Some a pendência de "batida aberta"/ímpar deste dia.
