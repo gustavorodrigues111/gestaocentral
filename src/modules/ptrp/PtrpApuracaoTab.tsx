@@ -153,6 +153,8 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const [corrModal, setCorrModal] = useState(false);
   const [fecharMode, setFecharMode] = useState(false);              // modo "travar dias na praticada"
   const [selFechar, setSelFechar] = useState<Set<string>>(new Set());
+  const [loteReclass, setLoteReclass] = useState(false);            // modo "reclassificar em lote" (seleciona vários dias)
+  const [selRc, setSelRc] = useState<Set<string>>(new Set());
   const [fecharBusy, setFecharBusy] = useState(false);
   const [chunkIni, setChunkIni] = useState(1);                      // 1º dia da semana visível (aba Fechar praticada)
   const [selGrid, setSelGrid] = useState<Set<string>>(new Set());   // "empId|YYYY-MM-DD" marcados no grid semanal
@@ -775,6 +777,11 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
   const renderFecharCell = (l: Linha) => {
     if (!sel) return null;
     if (diaFechado(sel.emp.id, l.data)) return <button type="button" onClick={() => sel && void reabrirDiaPraticada(sel.emp.id, l.data)} className="text-emerald-600 hover:text-emerald-700 dark:text-emerald-400" title="Dia fechado na praticada (alimenta a gorjeta) — clique pra reabrir"><Lock size={15} className="inline"/></button>;
+    if (loteReclass) {
+      if (l.ehFuturo || l.ehHoje || travado) return null;
+      const on = selRc.has(l.data);
+      return <input type="checkbox" checked={on} onChange={() => setSelRc(p => { const n = new Set(p); n.has(l.data) ? n.delete(l.data) : n.add(l.data); return n; })} className="w-4 h-4 accent-amber-600 align-middle" title="Selecionar pra reclassificar em lote" />;
+    }
     if (fecharMode && !l.ehFuturo && !l.ehHoje && !travado && !mesEncerrado) return <input type="checkbox" checked={selFechar.has(l.data)} onChange={() => toggleFechar(l.data)} className="w-4 h-4 accent-emerald-600 align-middle" title="Selecionar pra fechar na praticada" />;
     return null;
   };
@@ -1063,6 +1070,35 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
       }));
       setReclass(null);
     } catch (e) { setAcaoMsg("Falha ao reclassificar: " + (e instanceof Error ? e.message : "erro")); }
+    finally { setReclassBusy(false); }
+  }
+
+  // Reclassificação em LOTE: aplica o mesmo status a vários dias selecionados do
+  // colaborador aberto (escalas.real + 1 ajuste por dia, em batch).
+  async function aplicarReclassLote(status: ScheduleStatus) {
+    if (!sel || !me || !rid || selRc.size === 0) return;
+    setReclassBusy(true);
+    try {
+      const emp = sel.emp; const datas = [...selRc];
+      const realPatch: Record<string, ScheduleStatus> = {};
+      for (const d of datas) realPatch[d] = status;
+      await setDoc(doc(db, "escalas", `${rid}_${comp}`), sanitizeForFirestore({ real: { [emp.id]: realPatch }, atualizadoEm: new Date().toISOString(), atualizadoPor: { id: me.id, nome: me.nome } }), { merge: true });
+      const linhaPorData = new Map(sel.r.linhas.map(l => [l.data, l]));
+      const batch = writeBatch(db);
+      for (const d of datas) {
+        const prev = linhaPorData.get(d)?.statusEscala;
+        const de = prev ? STATUS_INFO[prev].label : "sem status";
+        batch.set(doc(collection(db, "ptrpAjustes")), sanitizeForFirestore({
+          empresaKey: shortCode, colaboradorId: emp.id, cpf: soDig(emp.cpf), data: d,
+          tipo: "reclassificacao" as PtrpAjusteTipo, statusEscala: status,
+          motivo: `Escala praticada (lote): ${de} → ${STATUS_INFO[status].label}`,
+          autor: { id: me.id, nome: me.nome }, criadoEm: new Date().toISOString(), cancelado: false,
+        }));
+      }
+      await batch.commit();
+      setSelRc(new Set()); setLoteReclass(false);
+      setAcaoMsg(`✓ ${datas.length} dia(s) reclassificado(s) como ${STATUS_INFO[status].label}.`);
+    } catch (e) { setAcaoMsg("Falha na reclassificação em lote: " + (e instanceof Error ? e.message : "erro")); }
     finally { setReclassBusy(false); }
   }
 
@@ -1457,10 +1493,22 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
                 {!mesEncerrado && (fecharMode
                   ? <button type="button" onClick={() => { setFecharMode(false); setSelFechar(new Set()); }} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Cancelar</button>
                   : <button type="button" onClick={() => { setFecharMode(true); setSelCorr(new Set()); }} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" title="Fechar dias na escala praticada (fecha um período — ex.: rescisão)"><span className="inline-flex items-center gap-1"><Lock size={12}/> Fechar dias</span></button>)}
+                {!mesEncerrado && !travado && (loteReclass
+                  ? <button type="button" onClick={() => { setLoteReclass(false); setSelRc(new Set()); }} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800">Cancelar lote</button>
+                  : <button type="button" onClick={() => { setLoteReclass(true); setFecharMode(false); setSelFechar(new Set()); setSelCorr(new Set()); }} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-900/20" title="Selecionar vários dias e mudar o status da praticada de uma vez"><span className="inline-flex items-center gap-1"><CalendarDays size={12}/> Reclassificar em lote</span></button>)}
                 <button type="button" disabled={!!exportBusy} onClick={() => void baixarEspelho(sel)} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800 disabled:opacity-40" title="Espelho de ponto deste colaborador (PDF)">{exportBusy === "espelho" ? "…" : <span className="inline-flex items-center gap-1"><Printer size={12}/> Espelho</span>}</button>
               </div>
             </div>
             {acaoMsg && <div className={`px-3 py-1.5 text-[11.5px] border-b border-gray-100 dark:border-gray-800 ${acaoMsg.startsWith("✓") ? "text-emerald-600 dark:text-emerald-400" : "text-rose-600 dark:text-rose-400"}`}>{acaoMsg}</div>}
+            {loteReclass && (
+              <div className="px-3 py-2 border-b border-amber-100 dark:border-amber-900/40 bg-amber-50/60 dark:bg-amber-950/20 flex items-center gap-2 flex-wrap">
+                <span className="text-[12px] font-semibold text-amber-800 dark:text-amber-200">{selRc.size ? `${selRc.size} dia(s) — marcar como:` : "Marque os dias (☑ na 1ª coluna) e escolha o status:"}</span>
+                {(["trabalho", "comp_trab", "falta_j", "falta_i", "ferias", "folga"] as ScheduleStatus[]).map(s => (
+                  <button key={s} type="button" disabled={reclassBusy || selRc.size === 0} onClick={() => void aplicarReclassLote(s)} className={`text-[11px] font-bold px-2 py-1 rounded-lg border border-transparent disabled:opacity-40 ${STATUS_INFO[s].bg} ${STATUS_INFO[s].text}`} title={STATUS_INFO[s].label}>{STATUS_INFO[s].short} · {STATUS_INFO[s].label}</button>
+                ))}
+                {selRc.size > 0 && <button type="button" onClick={() => setSelRc(new Set())} className="text-[11px] text-gray-500 ml-auto">limpar seleção</button>}
+              </div>
+            )}
             {fecharMode && (
               <div className="px-3 py-2 border-b border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-950/20 flex items-center justify-between gap-2 flex-wrap">
                 <span className="text-[12px] text-emerald-800 dark:text-emerald-200 font-medium inline-flex items-center gap-1"><Lock size={13}/> Fechar dias — marque os dias e feche a praticada (fecha o período p/ a gorjeta). {selFechar.size > 0 && <b>{selFechar.size} selecionado(s)</b>}</span>
