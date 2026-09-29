@@ -392,6 +392,7 @@ service cloud.firestore {
     // Read/write autenticado (o app gate por permissão do módulo); delete master.
     match /investProjetos/{id}    { allow read, write: if authed(); allow delete: if isMaster(); }
     match /investCategorias/{id}  { allow read, write: if authed(); allow delete: if isMaster(); }
+    match /investFormas/{id}      { allow read, write: if authed(); allow delete: if isMaster(); }
     match /investLancamentos/{id} { allow read, write: if authed(); allow delete: if authed(); }
     match /tarefas/{id} {
       allow read: if authed() && tarefaPodeLer();

@@ -2345,6 +2345,14 @@ export const INVEST_FORMA_LABEL: Record<InvestFormaPagamento, string> = {
   dinheiro: "Dinheiro", pix: "Pix", debito: "Cartão débito", credito: "Cartão crédito",
   boleto: "Boleto", transferencia: "Transferência", outro: "Outro",
 };
+// formaPagamento é string: pode ser uma das chaves fixas acima OU uma forma
+// custom criada pelo usuário (guardada em investFormas). O label cai pra fixa
+// quando é chave conhecida, senão mostra o próprio texto.
+export function investFormaLabel(f?: string): string {
+  if (!f) return "—";
+  return (INVEST_FORMA_LABEL as Record<string, string>)[f] || f;
+}
+export type InvestForma = { id: string; restaurantId: string; nome: string; criadoEm: string };
 export type InvestParcela = { n: number; data: string; valor: number; pago?: boolean };  // data = YYYY-MM-DD
 export type InvestCategoria = {
   id: string; restaurantId: string; nome: string;
@@ -2364,7 +2372,7 @@ export type InvestLancamento = {
   estabelecimento: string;
   categoriaId?: string; categoriaNome?: string;
   valor: number;
-  formaPagamento?: InvestFormaPagamento;
+  formaPagamento?: string;   // chave fixa (ver INVEST_FORMA_LABEL) ou forma custom
   parcelado?: boolean; parcelas?: InvestParcela[];
   comprovanteDriveId?: string; comprovanteUrl?: string; comprovanteNome?: string;
   observacao?: string;

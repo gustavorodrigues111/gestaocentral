@@ -1,21 +1,88 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
-import { Plus, TrendingUp, Trash2, Pencil, FolderOpen, Sparkles, X, Check, FileText, ExternalLink, Settings, Lock } from "lucide-react";
+import { Plus, TrendingUp, Trash2, Pencil, FolderOpen, Sparkles, X, Check, FileText, ExternalLink, Settings, Lock, ChevronDown } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { auth } from "../../core/firebase/config";
 import { uploadFileToFolder } from "../../core/google/driveClient";
 import { pickDriveFolder } from "../../core/google/drivePicker";
 import { fmtBR } from "../../core/utils/date";
-import { INVEST_FORMA_LABEL } from "../../core/types";
-import type { InvestProjeto, InvestCategoria, InvestLancamento, InvestParcela, InvestFormaPagamento } from "../../core/types";
-import { ouvirProjetos, salvarProjeto, excluirProjeto, ouvirCategorias, salvarCategoria, excluirCategoria, ouvirLancamentos, salvarLancamento, excluirLancamento } from "./repository";
+import { INVEST_FORMA_LABEL, investFormaLabel } from "../../core/types";
+import type { InvestProjeto, InvestCategoria, InvestLancamento, InvestParcela, InvestForma } from "../../core/types";
+import { ouvirProjetos, salvarProjeto, excluirProjeto, ouvirCategorias, salvarCategoria, excluirCategoria, ouvirFormas, salvarForma, ouvirLancamentos, salvarLancamento, excluirLancamento } from "./repository";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 const uid = () => { try { return crypto.randomUUID(); } catch { return "id" + Date.now() + Math.random().toString(36).slice(2); } };
 const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const parseR = (s: string) => { const n = parseFloat((s || "").replace(/[R$\s.]/g, "").replace(",", ".")); return isNaN(n) ? 0 : n; };
-const FORMAS = Object.keys(INVEST_FORMA_LABEL) as InvestFormaPagamento[];
+const FORMAS_FIXAS: { value: string; label: string }[] = Object.entries(INVEST_FORMA_LABEL).map(([value, label]) => ({ value, label }));
+
+// Classe única pros campos — todos com a MESMA altura (h-10).
+const INP = "w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/40";
+const LBL = "text-[11px] font-bold text-gray-500 uppercase tracking-wide";
+
+// ── Combo elegante (busca + criar novo), renderizado em portal pra não ser
+//    cortado pelo overflow do modal ─────────────────────────────────────────
+function Combo(props: {
+  value: string; onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  placeholder?: string; onAdd?: (nome: string) => Promise<void> | void; addLabel?: string;
+}) {
+  const { value, onChange, options, placeholder, onAdd, addLabel } = props;
+  const [open, setOpen] = useState(false);
+  const [q, setQ] = useState("");
+  const [rect, setRect] = useState<{ top: number; left: number; width: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const place = () => { const b = btnRef.current?.getBoundingClientRect(); if (b) setRect({ top: b.bottom + 4, left: b.left, width: b.width }); };
+    place();
+    const onDoc = (e: MouseEvent) => { if (btnRef.current?.contains(e.target as Node) || panelRef.current?.contains(e.target as Node)) return; setOpen(false); };
+    document.addEventListener("mousedown", onDoc);
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => { document.removeEventListener("mousedown", onDoc); window.removeEventListener("scroll", place, true); window.removeEventListener("resize", place); };
+  }, [open]);
+
+  const sel = options.find((o) => o.value === value);
+  const ql = q.trim().toLowerCase();
+  const filt = ql ? options.filter((o) => o.label.toLowerCase().includes(ql)) : options;
+  const canAdd = !!onAdd && !!q.trim() && !options.some((o) => o.label.toLowerCase() === ql);
+
+  return <>
+    <button ref={btnRef} type="button" onClick={() => setOpen((o) => !o)}
+      className="w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm flex items-center justify-between gap-2 hover:border-gray-300 dark:hover:border-gray-600">
+      <span className={"truncate " + (sel && sel.value ? "text-gray-800 dark:text-gray-100" : "text-gray-400")}>{sel ? sel.label : (placeholder || "Selecionar")}</span>
+      <ChevronDown size={15} className={"text-gray-400 shrink-0 transition-transform " + (open ? "rotate-180" : "")} />
+    </button>
+    {open && rect && createPortal(
+      <div ref={panelRef} style={{ position: "fixed", top: rect.top, left: rect.left, width: rect.width, zIndex: 200 }}
+        className="rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-2xl overflow-hidden">
+        <div className="p-2 border-b border-gray-100 dark:border-gray-800">
+          <input autoFocus value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar ou criar…"
+            className="w-full h-9 px-2.5 rounded-md border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm focus:outline-none" />
+        </div>
+        <div className="max-h-56 overflow-auto py-1">
+          {filt.map((o) => (
+            <button key={o.value || "__none"} type="button" onClick={() => { onChange(o.value); setOpen(false); setQ(""); }}
+              className={"w-full text-left px-3 py-2 text-sm hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-between gap-2 " + (o.value === value ? "font-semibold text-indigo-600 dark:text-indigo-300" : "")}>
+              <span className="truncate">{o.label}</span>{o.value === value && <Check size={14} className="shrink-0" />}
+            </button>
+          ))}
+          {filt.length === 0 && !canAdd && <div className="px-3 py-3 text-sm text-gray-400">Nada encontrado</div>}
+        </div>
+        {canAdd && (
+          <button type="button" onClick={async () => { const n = q.trim(); await onAdd!(n); onChange(n); setOpen(false); setQ(""); }}
+            className="w-full text-left px-3 py-2.5 text-sm border-t border-gray-100 dark:border-gray-800 text-indigo-600 dark:text-indigo-300 font-semibold inline-flex items-center gap-1.5 hover:bg-indigo-50 dark:hover:bg-indigo-950/30">
+            <Plus size={14} /> {addLabel || "Criar"} “{q.trim()}”
+          </button>
+        )}
+      </div>, document.body)}
+  </>;
+}
 
 export function InvestimentosPage() {
   const { pessoa: me } = useAuth();
@@ -28,6 +95,7 @@ export function InvestimentosPage() {
 
   const [projetos, setProjetos] = useState<InvestProjeto[]>([]);
   const [categorias, setCategorias] = useState<InvestCategoria[]>([]);
+  const [formas, setFormas] = useState<InvestForma[]>([]);
   const [lancamentos, setLancamentos] = useState<InvestLancamento[]>([]);
   const [projId, setProjId] = useState("");
   const proj = projetos.find((p) => p.id === projId) || projetos[0] || null;
@@ -40,11 +108,11 @@ export function InvestimentosPage() {
 
   useEffect(() => { if (!rid) return; return ouvirProjetos(rid, setProjetos); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirCategorias(rid, setCategorias); }, [rid]);
+  useEffect(() => { if (!rid) return; return ouvirFormas(rid, setFormas); }, [rid]);
   useEffect(() => { if (!rid || !proj) { setLancamentos([]); return; } return ouvirLancamentos(rid, proj.id, setLancamentos); }, [rid, proj?.id]);
   useEffect(() => { if (proj && projId !== proj.id) setProjId(proj.id); }, [proj, projId]);
 
   const total = useMemo(() => lancamentos.reduce((s, l) => s + (l.valor || 0), 0), [lancamentos]);
-  const catConfirmadas = useMemo(() => categorias.filter((c) => c.confirmada !== false), [categorias]);
   const catPendentes = useMemo(() => categorias.filter((c) => c.criadaPorIa && c.confirmada === false), [categorias]);
 
   async function confirmarCategoria(c: InvestCategoria) { await salvarCategoria({ ...c, confirmada: true, criadaPorIa: false }); }
@@ -99,14 +167,14 @@ export function InvestimentosPage() {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {lancamentos.length === 0 ? (
-                  <tr><td colSpan={8} className="px-3 py-10 text-center text-gray-400">Nenhum lançamento. Clique em "Novo lançamento" (dá pra subir o comprovante e a IA preenche).</td></tr>
+                  <tr><td colSpan={8} className="px-3 py-10 text-center text-gray-400">Nenhum lançamento. Clique em "Novo lançamento" (dá pra arrastar/colar o comprovante e a IA preenche).</td></tr>
                 ) : lancamentos.map((l) => (
                   <tr key={l.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
                     <td className="px-3 py-2 tabular-nums whitespace-nowrap">{fmtBR(l.data)}</td>
                     <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">{l.estabelecimento || "—"}</td>
                     <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{l.categoriaNome || "—"}</td>
                     <td className="px-3 py-2 text-right tabular-nums font-semibold">{fmtR(l.valor)}</td>
-                    <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{l.formaPagamento ? INVEST_FORMA_LABEL[l.formaPagamento] : "—"}</td>
+                    <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{investFormaLabel(l.formaPagamento)}</td>
                     <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{l.parcelado && l.parcelas?.length ? `${l.parcelas.length}x` : "à vista"}</td>
                     <td className="px-3 py-2 text-center">{l.comprovanteUrl ? <a href={l.comprovanteUrl} target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 text-[12px]"><FileText size={13} /> ver <ExternalLink size={11} /></a> : <span className="text-gray-300">—</span>}</td>
                     <td className="px-2 py-2 text-right whitespace-nowrap">
@@ -130,9 +198,9 @@ export function InvestimentosPage() {
 
       {projModal && <ProjetoModal mode={projModal.mode} proj={projModal.proj} rid={rid} me={me} onClose={() => setProjModal(null)} onSay={say} onSaved={(id) => setProjId(id)} />}
       {gerirCat && <CategoriasModal categorias={categorias} rid={rid!} onConfirmar={confirmarCategoria} onClose={() => setGerirCat(false)} />}
-      {lancModal && proj && <LancamentoModal registro={lancModal === "new" ? null : lancModal} proj={proj} rid={rid!} me={me} categorias={catConfirmadas} onClose={() => setLancModal(null)} onSay={say} />}
+      {lancModal && proj && <LancamentoModal registro={lancModal === "new" ? null : lancModal} proj={proj} rid={rid!} me={me} categorias={categorias} formas={formas} onClose={() => setLancModal(null)} onSay={say} />}
 
-      {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-xl z-[70]">{toast}</div>}
+      {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-xl z-[210]">{toast}</div>}
     </PageContainer>
   );
 }
@@ -169,13 +237,13 @@ function ProjetoModal(props: { mode: "new" | "edit"; proj?: InvestProjeto; rid: 
   return <div className="fixed inset-0 z-[80] bg-black/40 grid place-items-center p-4" onClick={onClose}>
     <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-[480px] max-w-full p-5" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-2 mb-3"><div className="font-extrabold text-[15px]">{mode === "new" ? "Novo projeto" : "Editar projeto"}</div><div className="flex-1" /><button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg bg-gray-100 dark:bg-gray-800"><X size={16} /></button></div>
-      <label className="text-[11px] font-bold text-gray-500 uppercase">Nome</label>
-      <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Reforma do salão" autoFocus className="w-full mt-1 mb-3 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm" />
-      <label className="text-[11px] font-bold text-gray-500 uppercase">Descrição <span className="text-gray-400 normal-case">(opcional)</span></label>
-      <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className="w-full mt-1 mb-3 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm" />
-      <label className="text-[11px] font-bold text-gray-500 uppercase">Pasta do Drive (comprovantes)</label>
+      <label className={LBL}>Nome</label>
+      <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Reforma do salão" autoFocus className={INP + " mt-1 mb-3"} />
+      <label className={LBL}>Descrição <span className="text-gray-400 normal-case">(opcional)</span></label>
+      <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className={INP + " mt-1 mb-3"} />
+      <label className={LBL}>Pasta do Drive (comprovantes)</label>
       <div className="flex items-center gap-2 mt-1">
-        <button onClick={() => void escolherPasta()} className="px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm inline-flex items-center gap-1.5"><FolderOpen size={15} className="text-amber-500" /> {pastaNome ? "Trocar pasta" : "Escolher pasta"}</button>
+        <button onClick={() => void escolherPasta()} className="h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm inline-flex items-center gap-1.5"><FolderOpen size={15} className="text-amber-500" /> {pastaNome ? "Trocar pasta" : "Escolher pasta"}</button>
         {pastaNome && <span className="text-[12px] text-gray-600 dark:text-gray-300 truncate">{pastaNome}</span>}
       </div>
       <div className="text-[11px] text-gray-400 mt-1">Os comprovantes vão pra essa pasta, nomeados <b>Estabelecimento_Data</b>.</div>
@@ -218,25 +286,26 @@ function CategoriasModal(props: { categorias: InvestCategoria[]; rid: string; on
       <div className="flex flex-wrap gap-1.5 mb-3">{confirmadas.length === 0 ? <span className="text-xs text-gray-400">Nenhuma ainda.</span> : confirmadas.map((c) => (
         <span key={c.id} className="text-[12px] px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 inline-flex items-center gap-1">{c.nome}<button onClick={() => void excluirCategoria(c.id)} className="text-gray-400 hover:text-rose-500"><X size={12} /></button></span>))}</div>
       <div className="flex gap-2">
-        <input value={nova} onChange={(e) => setNova(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void adicionar(); }} placeholder="Nova categoria" className="flex-1 px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm" />
-        <button onClick={() => void adicionar()} disabled={!nova.trim()} className="px-3 py-2 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-50">Adicionar</button>
+        <input value={nova} onChange={(e) => setNova(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void adicionar(); }} placeholder="Nova categoria" className="flex-1 h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm" />
+        <button onClick={() => void adicionar()} disabled={!nova.trim()} className="px-3 h-10 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-50">Adicionar</button>
       </div>
     </div>
   </div>;
 }
 
 // ── Modal: novo/editar lançamento (comprovante + IA + parcelas) ──────────────
-function LancamentoModal(props: { registro: InvestLancamento | null; proj: InvestProjeto; rid: string; me: ReturnType<typeof useAuth>["pessoa"]; categorias: InvestCategoria[]; onClose: () => void; onSay: (m: string) => void }) {
-  const { registro, proj, rid, me, categorias, onClose, onSay } = props;
+function LancamentoModal(props: { registro: InvestLancamento | null; proj: InvestProjeto; rid: string; me: ReturnType<typeof useAuth>["pessoa"]; categorias: InvestCategoria[]; formas: InvestForma[]; onClose: () => void; onSay: (m: string) => void }) {
+  const { registro, proj, rid, me, categorias, formas, onClose, onSay } = props;
   const [data, setData] = useState(registro?.data || new Date().toISOString().slice(0, 10));
   const [estabelecimento, setEstab] = useState(registro?.estabelecimento || "");
   const [categoriaNome, setCategoriaNome] = useState(registro?.categoriaNome || "");
   const [valor, setValor] = useState(registro ? String(registro.valor).replace(".", ",") : "");
-  const [forma, setForma] = useState<InvestFormaPagamento>(registro?.formaPagamento || "pix");
+  const [forma, setForma] = useState<string>(registro?.formaPagamento || "pix");
   const [parcelado, setParcelado] = useState(registro?.parcelado || false);
   const [parcelas, setParcelas] = useState<InvestParcela[]>(registro?.parcelas || []);
   const [observacao, setObs] = useState(registro?.observacao || "");
   const [file, setFile] = useState<File | null>(null);
+  const [dragOver, setDragOver] = useState(false);
   const [iaBusy, setIaBusy] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
@@ -244,6 +313,46 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
   const fileRef = useRef<HTMLInputElement>(null);
 
   const jaTemComprovante = !!registro?.comprovanteUrl;
+
+  const catOptions = useMemo(() => [
+    { value: "", label: "— sem categoria —" },
+    ...categorias.map((c) => ({ value: c.nome, label: c.confirmada === false ? `${c.nome} · a confirmar` : c.nome })),
+  ], [categorias]);
+  const formaOptions = useMemo(() => {
+    const extra = formas.filter((fc) => !FORMAS_FIXAS.some((x) => x.value === fc.nome || x.label.toLowerCase() === fc.nome.toLowerCase())).map((fc) => ({ value: fc.nome, label: fc.nome }));
+    return [...FORMAS_FIXAS, ...extra];
+  }, [formas]);
+
+  async function addCategoria(nome: string) {
+    if (categorias.some((c) => c.nome.toLowerCase() === nome.toLowerCase())) return;
+    await salvarCategoria({ id: uid(), restaurantId: rid, nome, confirmada: true, criadoEm: new Date().toISOString() });
+  }
+  async function addForma(nome: string) {
+    if (FORMAS_FIXAS.some((x) => x.value === nome || x.label.toLowerCase() === nome.toLowerCase())) return;
+    if (formas.some((f) => f.nome.toLowerCase() === nome.toLowerCase())) return;
+    await salvarForma({ id: uid(), restaurantId: rid, nome, criadoEm: new Date().toISOString() });
+  }
+
+  function aceitar(f: File | null | undefined) {
+    if (!f) return;
+    const ok = f.type.startsWith("image/") || f.type === "application/pdf";
+    if (!ok) { setErro("Só aceito imagem ou PDF como comprovante."); return; }
+    const named = f.name ? f : new File([f], `comprovante-${Date.now()}.${(f.type.split("/")[1] || "png")}`, { type: f.type });
+    setFile(named); void preencherComIA(named);
+  }
+
+  // Colar (⌘V / Ctrl+V) uma imagem ou PDF em qualquer lugar do modal.
+  useEffect(() => {
+    function onPaste(e: ClipboardEvent) {
+      const items = e.clipboardData?.items; if (!items) return;
+      for (const it of items) {
+        if (it.kind === "file") { const f = it.getAsFile(); if (f) { aceitar(f); e.preventDefault(); break; } }
+      }
+    }
+    window.addEventListener("paste", onPaste);
+    return () => window.removeEventListener("paste", onPaste);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [categorias]);
 
   async function preencherComIA(f: File) {
     setIaBusy(true); setErro("");
@@ -257,7 +366,7 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
       if (ex.data) setData(String(ex.data).slice(0, 10));
       if (ex.estabelecimento) setEstab(String(ex.estabelecimento));
       if (typeof ex.valor === "number" && ex.valor > 0) setValor(String(ex.valor).replace(".", ","));
-      if (ex.formaPagamento && (FORMAS as string[]).includes(ex.formaPagamento)) setForma(ex.formaPagamento);
+      if (ex.formaPagamento) setForma(String(ex.formaPagamento));
       if (ex.categoriaExistente && categorias.some((c) => c.nome.toLowerCase() === String(ex.categoriaExistente).toLowerCase())) { setCategoriaNome(String(ex.categoriaExistente)); setCatSugerida(""); }
       else if (ex.categoriaSugerida) { setCatSugerida(String(ex.categoriaSugerida)); }
       if (ex.parcelado && Array.isArray(ex.parcelas) && ex.parcelas.length) {
@@ -271,7 +380,7 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
 
   function gerarParcelas(n: number) {
     const v = parseR(valor); if (!v || n < 1) return;
-    const base = parseR(valor) / n;
+    const base = v / n;
     const arr: InvestParcela[] = [];
     for (let i = 0; i < n; i++) { const d = new Date(data + "T12:00:00"); d.setMonth(d.getMonth() + i); arr.push({ n: i + 1, data: d.toISOString().slice(0, 10), valor: Math.round(base * 100) / 100 }); }
     setParcelas(arr);
@@ -314,51 +423,58 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
     } catch (e) { setErro("Falha ao salvar: " + (e instanceof Error ? e.message : "erro")); setSalvando(false); }
   }
 
-  const inp = "w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm";
   return <div className="fixed inset-0 z-[80] bg-black/40 grid place-items-center p-4" onClick={onClose}>
     <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-[560px] max-w-full max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
       <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center gap-2"><div className="font-extrabold text-[15px]">{registro ? "Editar lançamento" : "Novo lançamento"}</div><div className="flex-1" /><button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg bg-gray-100 dark:bg-gray-800"><X size={16} /></button></div>
       <div className="p-4 overflow-auto space-y-3">
-        {/* Comprovante + IA */}
-        <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-950/20 p-3">
-          <div className="text-[12px] font-semibold text-indigo-800 dark:text-indigo-200 mb-1.5 inline-flex items-center gap-1"><Sparkles size={14} /> Comprovante — a IA preenche a linha</div>
-          <input ref={fileRef} type="file" accept="image/*,application/pdf" onChange={(e) => { const f = e.target.files?.[0] || null; setFile(f); if (f) void preencherComIA(f); }} className="text-[12px]" />
-          {jaTemComprovante && !file && <div className="text-[11px] text-gray-500 mt-1 inline-flex items-center gap-1"><FileText size={12} /> Já tem comprovante ({registro?.comprovanteNome}). Suba outro pra substituir.</div>}
-          {iaBusy && <div className="text-[12px] text-indigo-600 mt-1 inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" /> Lendo o comprovante…</div>}
+        {/* Comprovante — arrasta, cola ou clica */}
+        <div
+          onClick={() => fileRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => { e.preventDefault(); setDragOver(false); aceitar(e.dataTransfer.files?.[0]); }}
+          className={"rounded-xl border-2 border-dashed p-4 text-center cursor-pointer transition-colors " + (dragOver ? "border-indigo-400 bg-indigo-100/60 dark:bg-indigo-950/40" : "border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20")}
+        >
+          <input ref={fileRef} type="file" accept="image/*,application/pdf" className="hidden" onChange={(e) => aceitar(e.target.files?.[0])} />
+          <div className="inline-flex items-center gap-1.5 text-[12px] font-semibold text-indigo-800 dark:text-indigo-200"><Sparkles size={14} /> Comprovante — a IA preenche a linha</div>
+          <div className="text-[12px] text-gray-500 mt-1">Arraste aqui, cole (⌘V) ou <span className="text-indigo-600 dark:text-indigo-300 font-semibold underline">clique pra escolher</span></div>
+          {file && <div className="text-[12px] text-gray-700 dark:text-gray-200 mt-2 inline-flex items-center gap-1"><FileText size={13} /> {file.name}</div>}
+          {jaTemComprovante && !file && <div className="text-[11px] text-gray-500 mt-2 inline-flex items-center gap-1"><FileText size={12} /> Já tem: {registro?.comprovanteNome} — suba outro pra trocar</div>}
+          {iaBusy && <div className="text-[12px] text-indigo-600 mt-2 inline-flex items-center gap-1"><span className="w-3 h-3 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" /> Lendo o comprovante…</div>}
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div><label className="text-[11px] font-bold text-gray-500 uppercase">Data</label><input type="date" value={data} onChange={(e) => setData(e.target.value)} className={inp} /></div>
-          <div><label className="text-[11px] font-bold text-gray-500 uppercase">Valor</label><input value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" className={inp} /></div>
+          <div><label className={LBL}>Data</label><input type="date" value={data} onChange={(e) => setData(e.target.value)} className={INP + " mt-1"} /></div>
+          <div><label className={LBL}>Valor</label><input value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" className={INP + " mt-1"} /></div>
         </div>
-        <div><label className="text-[11px] font-bold text-gray-500 uppercase">Estabelecimento</label><input value={estabelecimento} onChange={(e) => setEstab(e.target.value)} className={inp} /></div>
+        <div><label className={LBL}>Estabelecimento</label><input value={estabelecimento} onChange={(e) => setEstab(e.target.value)} className={INP + " mt-1"} /></div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <div><label className="text-[11px] font-bold text-gray-500 uppercase">Categoria</label>
-            <select value={categoriaNome} onChange={(e) => setCategoriaNome(e.target.value)} className={inp}>
-              <option value="">— sem categoria —</option>{categorias.map((c) => <option key={c.id} value={c.nome}>{c.nome}</option>)}
-            </select>
-            {catSugerida && <button onClick={() => void adicionarCatSugerida()} className="text-[11px] mt-1 text-amber-700 dark:text-amber-300 inline-flex items-center gap-1"><Sparkles size={11} /> IA sugeriu "{catSugerida}" — adicionar</button>}
+          <div>
+            <label className={LBL}>Categoria</label>
+            <div className="mt-1"><Combo value={categoriaNome} onChange={setCategoriaNome} options={catOptions} placeholder="— sem categoria —" onAdd={addCategoria} addLabel="Criar categoria" /></div>
+            {catSugerida && !categorias.some((c) => c.nome.toLowerCase() === catSugerida.toLowerCase()) && <button type="button" onClick={() => void adicionarCatSugerida()} className="text-[11px] mt-1 text-amber-700 dark:text-amber-300 inline-flex items-center gap-1"><Sparkles size={11} /> IA sugeriu “{catSugerida}” — adicionar</button>}
           </div>
-          <div><label className="text-[11px] font-bold text-gray-500 uppercase">Forma de pagamento</label>
-            <select value={forma} onChange={(e) => setForma(e.target.value as InvestFormaPagamento)} className={inp}>{FORMAS.map((f) => <option key={f} value={f}>{INVEST_FORMA_LABEL[f]}</option>)}</select>
+          <div>
+            <label className={LBL}>Forma de pagamento</label>
+            <div className="mt-1"><Combo value={forma} onChange={setForma} options={formaOptions} placeholder="Selecionar" onAdd={addForma} addLabel="Criar forma" /></div>
           </div>
         </div>
         {/* Parcelamento */}
         <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">
           <label className="inline-flex items-center gap-2 text-[13px] font-semibold"><input type="checkbox" checked={parcelado} onChange={(e) => { setParcelado(e.target.checked); if (e.target.checked && parcelas.length === 0) gerarParcelas(2); }} /> Parcelado</label>
           {parcelado && <div className="mt-2 space-y-2">
-            <div className="flex items-center gap-1.5 text-[11px] text-gray-500">Gerar rápido:{[2, 3, 4, 6, 10, 12].map((n) => <button key={n} onClick={() => gerarParcelas(n)} className="px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700">{n}x</button>)}</div>
+            <div className="flex items-center gap-1.5 text-[11px] text-gray-500 flex-wrap">Gerar rápido:{[2, 3, 4, 6, 10, 12].map((n) => <button key={n} type="button" onClick={() => gerarParcelas(n)} className="px-1.5 py-0.5 rounded border border-gray-200 dark:border-gray-700">{n}x</button>)}</div>
             {parcelas.map((p, i) => (
               <div key={i} className="flex items-center gap-2">
                 <span className="text-[11px] text-gray-400 w-6">{p.n}ª</span>
-                <input type="date" value={p.data} onChange={(e) => setParcelas((arr) => arr.map((x, j) => j === i ? { ...x, data: e.target.value } : x))} className="px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-[12px]" />
-                <input value={String(p.valor).replace(".", ",")} onChange={(e) => setParcelas((arr) => arr.map((x, j) => j === i ? { ...x, valor: parseR(e.target.value) } : x))} placeholder="valor" className="w-24 px-2 py-1 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-[12px] text-right" />
-                <button onClick={() => setParcelas((arr) => arr.filter((_, j) => j !== i))} className="text-rose-400 hover:text-rose-600"><X size={14} /></button>
+                <input type="date" value={p.data} onChange={(e) => setParcelas((arr) => arr.map((x, j) => j === i ? { ...x, data: e.target.value } : x))} className="h-9 px-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-[12px]" />
+                <input value={String(p.valor).replace(".", ",")} onChange={(e) => setParcelas((arr) => arr.map((x, j) => j === i ? { ...x, valor: parseR(e.target.value) } : x))} placeholder="valor" className="w-24 h-9 px-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-[12px] text-right" />
+                <button type="button" onClick={() => setParcelas((arr) => arr.filter((_, j) => j !== i))} className="text-rose-400 hover:text-rose-600"><X size={14} /></button>
               </div>
             ))}
-            <button onClick={() => setParcelas((arr) => [...arr, { n: arr.length + 1, data, valor: 0 }])} className="text-[12px] font-semibold text-indigo-600">+ parcela</button>
+            <button type="button" onClick={() => setParcelas((arr) => [...arr, { n: arr.length + 1, data, valor: 0 }])} className="text-[12px] font-semibold text-indigo-600">+ parcela</button>
           </div>}
         </div>
-        <div><label className="text-[11px] font-bold text-gray-500 uppercase">Observação <span className="text-gray-400 normal-case">(opcional)</span></label><input value={observacao} onChange={(e) => setObs(e.target.value)} className={inp} /></div>
+        <div><label className={LBL}>Observação <span className="text-gray-400 normal-case">(opcional)</span></label><input value={observacao} onChange={(e) => setObs(e.target.value)} className={INP + " mt-1"} /></div>
         {erro && <div className="text-[12px] text-rose-600">{erro}</div>}
       </div>
       <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex justify-end gap-2">
