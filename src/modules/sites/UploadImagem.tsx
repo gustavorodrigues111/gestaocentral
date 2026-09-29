@@ -4,7 +4,7 @@
 // Rules já permitem write authed + read público.
 
 import { useRef, useState } from "react";
-import { TriangleAlert } from "lucide-react";
+import { TriangleAlert, UploadCloud, ImageIcon } from "lucide-react";
 import { ref as storageRef, uploadBytesResumable, getDownloadURL, deleteObject } from "firebase/storage";
 import { storage } from "../../core/firebase/config";
 import { Input } from "../../core/ui/Input";
@@ -27,6 +27,7 @@ export function UploadImagem({ rid, tipo, label, descricao, url, onChange, disab
   const [erro, setErro] = useState("");
   const [acabouDeSalvar, setAcabouDeSalvar] = useState(false);
   const [mostrandoUrl, setMostrandoUrl] = useState(false);
+  const [drag, setDrag] = useState(false);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   function uploadFile(file: File) {
@@ -123,49 +124,43 @@ export function UploadImagem({ rid, tipo, label, descricao, url, onChange, disab
         )}
       </div>
 
-      {/* Preview se houver URL */}
-      {url && (
-        <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/30 p-2 flex items-center gap-3">
-          <img
-            src={url}
-            alt="Preview"
-            style={{ height: tipo === "logo" ? 40 : 60, width: "auto", maxWidth: 200, objectFit: "contain" }}
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-            }}
-          />
-          <div className="flex-1 min-w-0">
-            <div className="text-[10px] text-gray-400 truncate font-mono">{url}</div>
-          </div>
-          {!disabled && (
-            <button onClick={remover} className="text-xs text-rose-600 hover:underline shrink-0">
-              remover
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Upload */}
-      {!disabled && (
+      {/* Dropzone: preview + arrastar/clicar */}
+      {!disabled ? (
         <div>
           <input
             ref={inputRef}
             type="file"
             accept="image/*"
-            onChange={(e) => {
-              const f = e.target.files?.[0];
-              if (f) uploadFile(f);
-            }}
+            className="hidden"
+            onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadFile(f); }}
             disabled={uploading}
-            className="block w-full text-sm text-gray-700 dark:text-gray-300
-              file:mr-3 file:py-2 file:px-3 file:rounded file:border-0
-              file:text-sm file:font-semibold
-              file:bg-indigo-50 dark:file:bg-indigo-900/30
-              file:text-indigo-700 dark:file:text-indigo-300
-              hover:file:bg-indigo-100 disabled:opacity-50"
           />
+          <div
+            onClick={() => { if (!uploading) inputRef.current?.click(); }}
+            onDragOver={(e) => { e.preventDefault(); setDrag(true); }}
+            onDragLeave={() => setDrag(false)}
+            onDrop={(e) => { e.preventDefault(); setDrag(false); const f = e.dataTransfer.files?.[0]; if (f) uploadFile(f); }}
+            className={"rounded-xl border-2 border-dashed p-3 cursor-pointer transition-colors " + (drag ? "border-indigo-400 bg-indigo-50/60 dark:bg-indigo-950/30" : "border-gray-300 dark:border-gray-700 hover:border-indigo-300 dark:hover:border-indigo-700 bg-gray-50/60 dark:bg-gray-800/30")}
+          >
+            {url ? (
+              <div className="flex items-center gap-3">
+                <img src={url} alt="Preview" style={{ height: tipo === "logo" ? 44 : 64, width: "auto", maxWidth: 200, objectFit: "contain" }} className="rounded-md bg-white" onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[12.5px] font-semibold text-gray-700 dark:text-gray-200">Imagem definida</div>
+                  <div className="text-[11px] text-gray-400">Clique ou arraste pra trocar</div>
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); void remover(); }} className="text-[12px] text-rose-600 hover:underline shrink-0">remover</button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-center justify-center text-center py-3 gap-1.5">
+                <div className="w-10 h-10 rounded-full grid place-items-center bg-indigo-50 dark:bg-indigo-950/40 text-indigo-500">{drag ? <UploadCloud size={20} /> : <ImageIcon size={18} />}</div>
+                <div className="text-[13px] font-semibold text-gray-700 dark:text-gray-200">Arraste a imagem aqui, ou <span className="text-indigo-600 dark:text-indigo-400 underline">clique pra escolher</span></div>
+                <div className="text-[11px] text-gray-400">PNG, JPG, WEBP ou SVG · até {TAMANHO_MAX_MB} MB</div>
+              </div>
+            )}
+          </div>
           {uploading && (
-            <div className="mt-1 space-y-1">
+            <div className="mt-1.5 space-y-1">
               <div className="h-2 w-full bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                 <div className="h-full bg-emerald-500 transition-all" style={{ width: `${progresso}%` }} />
               </div>
@@ -173,12 +168,16 @@ export function UploadImagem({ rid, tipo, label, descricao, url, onChange, disab
             </div>
           )}
           {acabouDeSalvar && !uploading && (
-            <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium mt-1">
-              ✓ Salvo automaticamente — site atualizado.
-            </p>
+            <p className="text-xs text-emerald-700 dark:text-emerald-400 font-medium mt-1">✓ Salvo automaticamente — site atualizado.</p>
           )}
           {erro && <p className="text-xs text-rose-600 mt-1 inline-flex items-center gap-1"><TriangleAlert size={12} /> {erro}</p>}
         </div>
+      ) : (
+        url && (
+          <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/30 p-2 flex items-center gap-3">
+            <img src={url} alt="Preview" style={{ height: tipo === "logo" ? 40 : 60, width: "auto", maxWidth: 200, objectFit: "contain" }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+          </div>
+        )
       )}
 
       {/* URL externa (alternativa avançada) */}

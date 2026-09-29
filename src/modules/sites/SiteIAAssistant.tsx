@@ -2,9 +2,10 @@
 // (slogan, hero, história) a partir de nome/tipo/tom e aplica no sitesConfig.
 // Nada publica sozinho: mostra o gerado pra revisar e o usuário escolhe aplicar.
 import { useState } from "react";
-import { Sparkles, X, Check } from "lucide-react";
+import { Sparkles, X, Check, Mic, Square } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { auth } from "../../core/firebase/config";
+import { useDitado } from "../../core/hooks/useDitado";
 import { useSiteConfig } from "./useSiteConfig";
 
 type Gerado = { slogan?: string; heroTitulo?: string; heroSubtitulo?: string; heroCtaLabel?: string; historiaTitulo?: string; historia?: string };
@@ -24,7 +25,7 @@ export function SiteIAAssistant({ rid, nomeRestaurante, onClose }: { rid: string
   const [nome, setNome] = useState(nomeRestaurante);
   const [tipoCozinha, setTipo] = useState("");
   const [tom, setTom] = useState("Acolhedor");
-  const [diferenciais, setDif] = useState("");
+  const dit = useDitado();   // briefing por voz — dit.transcricao é o buffer
   const [gerando, setGerando] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
@@ -32,12 +33,14 @@ export function SiteIAAssistant({ rid, nomeRestaurante, onClose }: { rid: string
   const [sel, setSel] = useState<Record<string, boolean>>({});
 
   async function gerar() {
+    if (dit.gravando) dit.parar();
+    const briefing = (dit.transcricao + " " + dit.parcial).replace(/\s+/g, " ").trim();
     setGerando(true); setErro(""); setGer(null);
     try {
       const idToken = await auth.currentUser?.getIdToken();
       const r = await fetch("/api/sites-ia", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ idToken, modo: "site", nome, tipoCozinha, tom, cidade: config?.endereco?.cidade || "", diferenciais }),
+        body: JSON.stringify({ idToken, modo: "site", nome, tipoCozinha, tom, cidade: config?.endereco?.cidade || "", briefing }),
       });
       const j = await r.json();
       if (!r.ok) { setErro(j?.error || "A IA não conseguiu gerar."); return; }
@@ -90,7 +93,7 @@ export function SiteIAAssistant({ rid, nomeRestaurante, onClose }: { rid: string
             <>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div><label className={lbl}>Nome</label><input value={nome} onChange={(e) => setNome(e.target.value)} className={inp + " mt-1"} /></div>
-                <div><label className={lbl}>Tipo de cozinha</label><input value={tipoCozinha} onChange={(e) => setTipo(e.target.value)} placeholder="Frutos do mar, contemporânea…" className={inp + " mt-1"} /></div>
+                <div><label className={lbl}>Tipo de cozinha (opcional)</label><input value={tipoCozinha} onChange={(e) => setTipo(e.target.value)} placeholder="Frutos do mar, contemporânea…" className={inp + " mt-1"} /></div>
               </div>
               <div>
                 <label className={lbl}>Tom de voz</label>
@@ -98,7 +101,26 @@ export function SiteIAAssistant({ rid, nomeRestaurante, onClose }: { rid: string
                   {TONS.map((t) => <button key={t} type="button" onClick={() => setTom(t)} className={"text-[12px] px-3 py-1.5 rounded-full border " + (tom === t ? "bg-indigo-600 border-indigo-600 text-white" : "border-gray-200 dark:border-gray-700")}>{t}</button>)}
                 </div>
               </div>
-              <div><label className={lbl}>Diferenciais (opcional)</label><textarea value={diferenciais} onChange={(e) => setDif(e.target.value)} placeholder="Vista pra baía, drinks autorais, peixe do dia…" className={inp + " mt-1 h-auto py-2"} rows={2} /></div>
+
+              {/* Briefing por voz (ou texto) — a estrela */}
+              <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20 p-3">
+                <div className="flex items-center gap-2 mb-1.5">
+                  <span className={lbl}>Briefing — conte sobre o restaurante</span>
+                  <div className="flex-1" />
+                  {dit.gravando
+                    ? <button type="button" onClick={dit.parar} className="text-[12px] font-bold px-3 py-1.5 rounded-full bg-rose-600 text-white inline-flex items-center gap-1.5"><Square size={12} /> Parar</button>
+                    : <button type="button" onClick={dit.iniciar} className="text-[12px] font-bold px-3 py-1.5 rounded-full bg-indigo-600 text-white inline-flex items-center gap-1.5"><Mic size={13} /> Gravar</button>}
+                </div>
+                <textarea
+                  value={dit.transcricao + (dit.parcial ? (dit.transcricao ? " " : "") + dit.parcial : "")}
+                  onChange={(e) => { dit.setTranscricao(e.target.value); dit.setParcial(""); }}
+                  placeholder="Fale (ou escreva) livremente: o que é o lugar, a proposta, a vibe, os pratos que são a cara da casa, o público, a história… A IA transforma isso nas chamadas e textos do site."
+                  className={inp + " h-auto py-2"} rows={6}
+                />
+                {dit.gravando && <div className="text-[11px] text-rose-600 mt-1 inline-flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-rose-500 animate-pulse" /> Gravando… pode falar</div>}
+                {dit.erroMic && <div className="text-[11px] text-amber-600 mt-1">{dit.erroMic}</div>}
+                <div className="text-[11px] text-gray-400 mt-1">Dica: fale como se estivesse me contando por áudio. Quanto mais contexto, melhor o site sai.</div>
+              </div>
               {erro && <div className="text-[12px] text-rose-600">{erro}</div>}
             </>
           )}

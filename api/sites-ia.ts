@@ -50,11 +50,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       userMsg = `Traduza:\n"""${texto}"""`;
     } else {
       const nome = String(body.nome || "Restaurante");
-      const tipoCozinha = String(body.tipoCozinha || "");
       const tom = String(body.tom || "acolhedor");
       const cidade = String(body.cidade || "");
-      const diferenciais = String(body.diferenciais || "");
-      system = `Você é redator de sites de restaurantes (PT-BR). Gere o conteúdo editorial do site com base nos dados. Tom: ${tom}. Devolva SÓ JSON, sem markdown, no formato:
+      const briefing = String(body.briefing || body.diferenciais || "").trim();
+      const tipoCozinha = String(body.tipoCozinha || "");
+      system = `Você é redator de sites de restaurantes (PT-BR). Gere o conteúdo editorial do site a partir do BRIEFING do dono (pode ser transcrição de áudio, informal, com repetições — extraia o essencial). Tom: ${tom}. Devolva SÓ JSON, sem markdown, no formato:
 {"slogan":"","heroTitulo":"","heroSubtitulo":"","heroCtaLabel":"","historiaTitulo":"","historia":""}
 Regras:
 - slogan: tagline curta (até ~6 palavras).
@@ -63,11 +63,13 @@ Regras:
 - heroCtaLabel: rótulo curto de botão (ex.: "Reservar", "Ver cardápio").
 - historiaTitulo: título curto da seção sobre (ex.: "Nossa história").
 - historia: 2 parágrafos curtos (use \\n\\n entre eles), sobre a proposta do lugar.
-- NÃO invente fatos específicos (prêmios, datas, nomes de chef, preços). Fale da proposta e da experiência de forma verdadeira e genérica quando faltar dado.`;
+- Baseie-se NO BRIEFING. Só use fatos que estão nele; NÃO invente prêmios, datas, nomes de chef ou preços que não foram ditos. Quando faltar detalhe, fale da proposta e da experiência de forma verdadeira e genérica.`;
       userMsg = `Restaurante: ${nome}
-Tipo de cozinha: ${tipoCozinha || "(não informado)"}
 Cidade: ${cidade || "(não informada)"}
-Diferenciais: ${diferenciais || "(não informados)"}`;
+Tipo de cozinha: ${tipoCozinha || "(não informado)"}
+
+BRIEFING DO DONO:
+"""${briefing || "(não informado — gere algo genérico e elegante pra esse tipo de restaurante)"}"""`;
     }
 
     const payload = { model: MODEL, max_tokens: 2000, system, messages: [{ role: "user", content: [{ type: "text", text: userMsg }] }] };
