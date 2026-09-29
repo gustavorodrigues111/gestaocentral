@@ -155,40 +155,41 @@ export function InvestimentosPage() {
           </div>
 
           {/* Tabela */}
-          <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
+          <div className="border border-gray-200 dark:border-gray-800 rounded-2xl overflow-x-auto shadow-sm">
             <table className="w-full text-sm min-w-[820px]">
-              <thead className="bg-gray-50 dark:bg-gray-800/40 text-gray-500 text-[11px] uppercase tracking-wide">
+              <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-400 dark:text-gray-500 text-[11px] uppercase tracking-wider border-b border-gray-200 dark:border-gray-800">
                 <tr>
-                  <th className="text-left px-3 py-2">Data</th><th className="text-left px-3 py-2">Estabelecimento</th>
-                  <th className="text-left px-3 py-2">Categoria</th><th className="text-right px-3 py-2">Valor</th>
-                  <th className="text-left px-3 py-2">Pagamento</th><th className="text-left px-3 py-2">Parcelas</th>
-                  <th className="text-center px-3 py-2">Comprovante</th><th className="px-2 py-2"></th>
+                  <th className="text-left px-4 py-3 font-semibold">Data</th><th className="text-left px-4 py-3 font-semibold">Estabelecimento</th>
+                  <th className="text-left px-4 py-3 font-semibold">Categoria</th><th className="text-right px-4 py-3 font-semibold">Valor</th>
+                  <th className="text-left px-4 py-3 font-semibold">Pagamento</th><th className="text-left px-4 py-3 font-semibold">Parcelas</th>
+                  <th className="text-center px-4 py-3 font-semibold">Comprovante</th><th className="px-3 py-3"></th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800/70">
                 {lancamentos.length === 0 ? (
-                  <tr><td colSpan={8} className="px-3 py-10 text-center text-gray-400">Nenhum lançamento. Clique em "Novo lançamento" (dá pra arrastar/colar o comprovante e a IA preenche).</td></tr>
+                  <tr><td colSpan={8} className="px-4 py-12 text-center text-gray-400">Nenhum lançamento. Clique em "Novo lançamento" (dá pra arrastar/colar o comprovante e a IA preenche).</td></tr>
                 ) : lancamentos.map((l) => (
-                  <tr key={l.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                    <td className="px-3 py-2 tabular-nums whitespace-nowrap">{fmtBR(l.data)}</td>
-                    <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">{l.estabelecimento || "—"}</td>
-                    <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{l.categoriaNome || "—"}</td>
-                    <td className="px-3 py-2 text-right tabular-nums font-semibold">{fmtR(l.valor)}</td>
-                    <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{investFormaLabel(l.formaPagamento)}</td>
-                    <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{l.parcelado && l.parcelas?.length ? `${l.parcelas.length}x` : "à vista"}</td>
-                    <td className="px-3 py-2 text-center">{l.comprovanteUrl ? <a href={l.comprovanteUrl} target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 text-[12px]"><FileText size={13} /> ver <ExternalLink size={11} /></a> : <span className="text-gray-300">—</span>}</td>
-                    <td className="px-2 py-2 text-right whitespace-nowrap">
-                      {podeLancar && <>
-                        <button onClick={() => setLancModal(l)} className="w-7 h-7 grid place-items-center rounded border border-gray-200 dark:border-gray-700 text-gray-500 inline-flex" title="Editar"><Pencil size={13} /></button>
-                        <button onClick={async () => { if (confirm("Excluir este lançamento? O comprovante no Drive não é apagado.")) { await excluirLancamento(l.id); say("Lançamento excluído"); } }} className="w-7 h-7 grid place-items-center rounded border border-gray-200 dark:border-gray-700 text-rose-500 inline-flex ml-1" title="Excluir"><Trash2 size={13} /></button>
-                      </>}
+                  <tr key={l.id} className="group hover:bg-indigo-50/40 dark:hover:bg-gray-800/40 transition-colors">
+                    <td className="px-4 py-3 tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{fmtBR(l.data)}</td>
+                    <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{l.estabelecimento || "—"}</td>
+                    <td className="px-4 py-3">{l.categoriaNome ? <span className="inline-block px-2 py-0.5 rounded-full text-[12px] bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">{l.categoriaNome}</span> : <span className="text-gray-300">—</span>}</td>
+                    <td className="px-4 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">{fmtR(l.valor)}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{investFormaLabel(l.formaPagamento)}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{l.parcelado && l.parcelas?.length ? `${l.parcelas.length}x` : "à vista"}</td>
+                    <td className="px-4 py-3 text-center">{l.comprovanteUrl ? <a href={l.comprovanteUrl} target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 text-[12px] font-medium"><FileText size={13} /> ver <ExternalLink size={11} /></a> : <span className="text-gray-300">—</span>}</td>
+                    <td className="px-3 py-3 text-right whitespace-nowrap">
+                      {podeLancar && <button onClick={() => setLancModal(l)} className="w-8 h-8 inline-grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-indigo-600 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors" title="Editar"><Pencil size={14} /></button>}
                     </td>
                   </tr>
                 ))}
               </tbody>
               {lancamentos.length > 0 && (
-                <tfoot className="bg-gray-50 dark:bg-gray-800/40 font-bold text-gray-800 dark:text-gray-100">
-                  <tr><td className="px-3 py-2" colSpan={3}>Total do projeto</td><td className="px-3 py-2 text-right tabular-nums">{fmtR(total)}</td><td colSpan={4}></td></tr>
+                <tfoot>
+                  <tr className="border-t-2 border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200 font-extrabold">
+                    <td className="px-4 py-3.5" colSpan={3}>Total do projeto</td>
+                    <td className="px-4 py-3.5 text-right tabular-nums text-[15px]">{fmtR(total)}</td>
+                    <td colSpan={4}></td>
+                  </tr>
                 </tfoot>
               )}
             </table>
@@ -477,7 +478,9 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
         <div><label className={LBL}>Observação <span className="text-gray-400 normal-case">(opcional)</span></label><input value={observacao} onChange={(e) => setObs(e.target.value)} className={INP + " mt-1"} /></div>
         {erro && <div className="text-[12px] text-rose-600">{erro}</div>}
       </div>
-      <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex justify-end gap-2">
+      <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2">
+        {registro && <button onClick={async () => { if (confirm("Excluir este lançamento? O comprovante no Drive não é apagado.")) { await excluirLancamento(registro.id); onSay("Lançamento excluído"); onClose(); } }} className="px-3 py-2 rounded-lg border border-rose-200 dark:border-rose-900 text-rose-600 text-sm font-semibold inline-flex items-center gap-1"><Trash2 size={14} /> Excluir</button>}
+        <div className="flex-1" />
         <button onClick={onClose} className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold">Cancelar</button>
         <button onClick={() => void salvar()} disabled={salvando || iaBusy} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-50 inline-flex items-center gap-1">{salvando ? "Salvando…" : <><Lock size={13} /> Salvar</>}</button>
       </div>
