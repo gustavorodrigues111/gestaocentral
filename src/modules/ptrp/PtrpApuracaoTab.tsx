@@ -398,10 +398,22 @@ export function PtrpApuracaoTab({ mode = "conferencia" }: { mode?: "conferencia"
         trabalhado = blocosEfetivos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
       } else if (cct && prev.kind !== "implicito") {
         const ap = apurarDia({ data, blocos: blocosEfetivos, turno: prev.turno, cct, ehDomingo, ehFeriado, ajustes: ajMotor });
-        trabalhado = ap.minutosTrabalhados; extra = ap.minutosExtras; noturno = ap.noturnoMin;
-        excecoes = ehHoje ? [] : ap.excecoes;   // HOJE em andamento → sem erro (falta/ponto aberto só a partir de amanhã)
-        previstoMin = ap.minutosPrevistos; atrasoMin = ap.atrasoMin; abonadoMin = ap.abonadoMin;
-        if (!ehHoje && !pendenteCorrecao) saldoMes += ap.minutosTrabalhados + ap.abonadoMin - ap.minutosPrevistos;   // hoje/pendente não entram no saldo
+        // Colaborador que NÃO bate ponto (cargo de confiança / override): num dia
+        // de TRABALHO sem nenhuma marcação e sem tratamento, PRATICOU = PREVISTO
+        // (não é falta). Saldo 0. Se ele bateu OU tem abono/atestado, cai no fluxo normal.
+        const semRegistro = naoBatePonto(emp) && prev.kind === "trabalho" && blocosEfetivos.length === 0
+          && !ajMotor.some(a => a.tipo === "inclusao")
+          && !ajMotor.some(a => ["abono", "atestado", "folga", "ferias", "afastamento"].includes(a.tipo));
+        if (semRegistro) {
+          trabalhado = ap.minutosPrevistos; previstoMin = ap.minutosPrevistos; extra = 0; noturno = 0; atrasoMin = 0; abonadoMin = 0;
+          excecoes = [];   // sem falta/sem_batida — o dia praticado espelha o previsto
+          // saldo 0: não soma nem subtrai
+        } else {
+          trabalhado = ap.minutosTrabalhados; extra = ap.minutosExtras; noturno = ap.noturnoMin;
+          excecoes = ehHoje ? [] : ap.excecoes;   // HOJE em andamento → sem erro (falta/ponto aberto só a partir de amanhã)
+          previstoMin = ap.minutosPrevistos; atrasoMin = ap.atrasoMin; abonadoMin = ap.abonadoMin;
+          if (!ehHoje && !pendenteCorrecao) saldoMes += ap.minutosTrabalhados + ap.abonadoMin - ap.minutosPrevistos;   // hoje/pendente não entram no saldo
+        }
       } else {
         trabalhado = blocosEfetivos.reduce((s, b) => s + (b.dateOut != null ? Math.max(0, minutoDoDiaBRT(b.dateOut) - minutoDoDiaBRT(b.dateIn)) : 0), 0);
       }
