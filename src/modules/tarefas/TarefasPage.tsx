@@ -194,6 +194,9 @@ export function TarefasPage() {
   const [gerenciarMenuAberto, setGerenciarMenuAberto] = useState(false);
   const [busca, setBusca] = useState("");
   const filtrar = (ts: Tarefa[]) => { const q = busca.trim().toLowerCase(); return q ? ts.filter(t => (t.titulo || "").toLowerCase().includes(q) || (t.descricao || "").toLowerCase().includes(q)) : ts; };
+  // A busca também filtra PRAZOS (senão, ao buscar uma tarefa, os prazos —
+  // exames, contas — continuavam aparecendo e parecia que a busca não funcionava).
+  const filtrarP = (ps: Prazo[]) => { const q = busca.trim().toLowerCase(); return q ? ps.filter(p => (p.titulo || "").toLowerCase().includes(q) || (p.responsavelNome || "").toLowerCase().includes(q)) : ps; };
   const buscaInput = (
     <div className="flex items-center gap-1.5 flex-1 min-w-[160px] max-w-[380px] rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 px-2.5 py-1.5">
       <span className="text-gray-400 inline-flex"><Search size={15} /></span>
@@ -531,7 +534,7 @@ export function TarefasPage() {
             <>
               <CalendarioView
                 tarefas={filtroTipo === "prazos" ? [] : filtrar(minhas)}
-                prazos={filtroTipo === "tarefas" ? [] : prazosMinhasVis}
+                prazos={filtroTipo === "tarefas" ? [] : filtrarP(prazosMinhasVis)}
                 onAbrirPrazo={abrirPrazo}
                 projetos={projetos}
                 subprojetos={subprojetos}
@@ -556,7 +559,7 @@ export function TarefasPage() {
           {viewMinhas === "lista" && (
             <ListaUnificada
               tarefas={filtroTipo === "prazos" ? [] : filtrar(minhas)}
-              prazos={filtroTipo === "tarefas" ? [] : prazosMinhasVis}
+              prazos={filtroTipo === "tarefas" ? [] : filtrarP(prazosMinhasVis)}
               projetos={projetos}
               restaurants={restaurants}
               podeVerTipo={podeVerTipoPrazo}
@@ -586,11 +589,11 @@ export function TarefasPage() {
             {/* No mobile+calendário o +/engrenagem vão pra frente do seletor de semana (dentro do CalendarioView), então some daqui. */}
             <div className={viewMinhas === "calendario" ? "hidden sm:block" : "contents"}>{acoesHeader}</div>
           </div>
-          {viewMinhas === "calendario" && <CalendarioView tarefas={filtroTipo === "prazos" ? [] : filtrar(todasTarefasVisiveis)} prazos={filtroTipo === "tarefas" ? [] : prazosVis} onAbrirPrazo={abrirPrazo} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} acoes={acoesHeader} />}
+          {viewMinhas === "calendario" && <CalendarioView tarefas={filtroTipo === "prazos" ? [] : filtrar(todasTarefasVisiveis)} prazos={filtroTipo === "tarefas" ? [] : filtrarP(prazosVis)} onAbrirPrazo={abrirPrazo} projetos={projetos} subprojetos={subprojetos} onAbrir={setDetalheId} autor={{ id: pessoa?.id || "", nome: pessoa?.nome || "" }} onNovaTarefaNoDia={(prazo) => setNovaAberta({ prazo })} onIdeiaNoDia={(i, prazo) => setNovaAberta({ titulo: i.titulo, descricao: i.descricao || "", prazo, puxando: { tipo: "ideia", id: i.id, titulo: i.titulo } })} acoes={acoesHeader} />}
           {viewMinhas === "lista" && (
             <ListaUnificada
               tarefas={filtroTipo === "prazos" ? [] : filtrar(todasTarefasVisiveis)}
-              prazos={filtroTipo === "tarefas" ? [] : prazosVis}
+              prazos={filtroTipo === "tarefas" ? [] : filtrarP(prazosVis)}
               projetos={projetos}
               restaurants={restaurants}
               podeVerTipo={podeVerTipoPrazo}
