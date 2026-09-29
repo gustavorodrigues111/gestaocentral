@@ -1809,6 +1809,10 @@ export type BeneficioAjusteLinha = {
   diasDesconto?: string[]; // dias pagos mas não trabalhados (YYYY-MM-DD)
   diasCredito?: string[];  // dias trabalhados além do previsto
   demissao?: boolean;      // acerto final: empregado desligado no mês → reconcilia o período pago inteiro
+  // Edição MANUAL do DP antes de fechar (quando o cálculo não contemplou algo):
+  ajusteManual?: number;   // delta em R$ somado ao ajusteTotal calculado (+ crédito / − desconto)
+  motivoManual?: string;   // justificativa do ajuste manual (trilha)
+  manual?: boolean;        // linha 100% manual (não veio do cálculo) — empregadoId pode ser sintético
 };
 export type BeneficioAjusteLote = {
   id: string;

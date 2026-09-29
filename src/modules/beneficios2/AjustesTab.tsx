@@ -49,7 +49,21 @@ export function AjustesTab(props: {
     if (!sel || !cursor || !ate || ate < cursor.de) return [];
     return montarLinhasAjuste({ pagamento: sel, empregados, escala, ano: sel.ano, mes: sel.mes, de: cursor.de, ate, usaVR, ajustesAnteriores: ajustes });
   }, [sel, cursor, ate, empregados, escala, usaVR, ajustes]);
-  const total = totalAjuste(linhas);
+  // ── Edição MANUAL do DP antes de fechar (quando o cálculo não contemplou algo) ──
+  const [editando, setEditando] = useState(false);
+  const [ovr, setOvr] = useState<Record<string, { v: string; m: string }>>({});   // delta R$ + motivo por empregado
+  const [manuais, setManuais] = useState<{ id: string; nome: string; v: string; m: string }[]>([]); // linhas 100% manuais
+  useEffect(() => { setOvr({}); setManuais([]); setEditando(false); }, [sel?.id, cursor?.de, ate]);
+  const parseR = (s: string) => { const n = parseFloat((s || "").replace(/\./g, "").replace(",", ".")); return isNaN(n) ? 0 : n; };
+  const linhasFinais = useMemo<BeneficioAjusteLinha[]>(() => {
+    const base = linhas.map((l) => { const o = ovr[l.empregadoId]; const dv = o ? parseR(o.v) : 0; return dv ? { ...l, ajusteManual: dv, motivoManual: (o?.m || "").trim() || undefined, ajusteTotal: l.ajusteTotal + dv } : l; });
+    const extra = manuais.filter((m) => m.nome.trim() && parseR(m.v) !== 0).map((m) => ({
+      empregadoId: `manual_${m.id}`, empregadoNome: m.nome.trim(), diasPrevista: 0, diasPraticada: 0, ajusteDias: 0,
+      vtValorDiario: 0, vrValorDiario: 0, ajusteVt: 0, ajusteVr: 0, ajusteTotal: parseR(m.v), manual: true, motivoManual: (m.m || "").trim() || undefined,
+    } as BeneficioAjusteLinha));
+    return [...base, ...extra];
+  }, [linhas, ovr, manuais]);
+  const total = totalAjuste(linhasFinais);
   const ajustesDoLote = useMemo(() => sel ? ajustes.filter((a) => a.pagamentoLoteId === sel.id).sort((a, b) => (b.criadoEm || "").localeCompare(a.criadoEm || "")) : [], [sel, ajustes]);
 
   // Reabrir = cancelar o lote de ajuste pra refazer a janela. Só enquanto ele
@@ -66,13 +80,13 @@ export function AjustesTab(props: {
   async function confirmar() {
     if (!sel || !cursor || !ate || !podeConfig) return;
     if (ate < cursor.de) { alert("A data apurada é anterior ao que já foi ajustado."); return; }
-    if (linhas.length === 0 && !confirm("Nenhuma diferença nesta janela. Fechar o ajuste mesmo assim (só avança o cursor)?")) return;
+    if (linhasFinais.length === 0 && !confirm("Nenhuma diferença nesta janela. Fechar o ajuste mesmo assim (só avança o cursor)?")) return;
     setSalvando(true);
     try {
       const nowIso = new Date().toISOString();
       const lote: Omit<BeneficioAjusteLote, "id"> = {
         restaurantId: rid, ano: sel.ano, mes: sel.mes, pagamentoLoteId: sel.id,
-        janelaDe: cursor.de, janelaAte: ate, status: "pendente", linhas,
+        janelaDe: cursor.de, janelaAte: ate, status: "pendente", linhas: linhasFinais,
         totalAjuste: total, criadoEm: nowIso, criadoPor: me?.id || null, criadoPorNome: me?.nome || null,
       };
       await addDoc(collection(db, "beneficioAjustes"), sanitizeForFirestore(lote));
@@ -112,6 +126,14 @@ export function AjustesTab(props: {
         </div>
       )}
 
+      {/* Toolbar: editar valores antes de fechar */}
+      {podeConfig && (
+        <div className="flex items-center justify-between gap-2">
+          <span className="text-[11px] text-gray-400">{editando ? "Ajuste manual: some/subtrai R$ ao calculado (com motivo). Também dá pra adicionar linhas do zero." : "Confira os valores. Precisa mexer em algo que o sistema não pegou? Clique em Editar ajuste."}</span>
+          <button type="button" onClick={() => setEditando((v) => !v)} className={`text-[12px] font-semibold px-2.5 py-1 rounded-lg border ${editando ? "border-indigo-300 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/20" : "border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800"}`}>{editando ? "✓ Concluir edição" : "✎ Editar ajuste"}</button>
+        </div>
+      )}
+
       {/* Tabela do ajuste */}
       <div className="border border-gray-200 dark:border-gray-800 rounded-xl overflow-x-auto">
         <table className="w-full text-sm">
@@ -125,34 +147,75 @@ export function AjustesTab(props: {
             </tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-            {linhas.length === 0 ? (
-              <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">Nenhuma diferença nesta janela.</td></tr>
-            ) : linhas.map((l) => (
-              <tr key={l.empregadoId} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
-                <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
-                  {l.empregadoNome}
-                  {l.demissao && <span className="ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded px-1.5 py-0.5 inline-flex items-center gap-1"><UserRoundMinus size={11}/> demitido · acerto do mês inteiro</span>}
-                </td>
-                <td className="text-center px-2 py-2 text-gray-500">{l.diasPrevista}</td>
-                <td className="text-center px-2 py-2 text-gray-500">{l.diasPraticada}</td>
-                <td className={`text-center px-2 py-2 font-semibold cursor-help ${l.ajusteDias < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}
-                  title={[
-                    (l.diasDesconto && l.diasDesconto.length) ? `Descontar (não trabalhou): ${l.diasDesconto.map(brDate).join(", ")}` : "",
-                    (l.diasCredito && l.diasCredito.length) ? `Adicionar (trabalhou a mais): ${l.diasCredito.map(brDate).join(", ")}` : "",
-                    ((l.ajusteAuxVt || 0) + (l.ajusteAuxVr || 0)) ? `Auxílio proporcional: ${fmt((l.ajusteAuxVt || 0) + (l.ajusteAuxVr || 0))}${l.demissao ? " (÷30, rescisão)" : " (÷dias previstos)"}` : "",
-                  ].filter(Boolean).join("\n") || "Sem diferença de dias"}>
-                  {l.ajusteDias > 0 ? `+${l.ajusteDias}` : l.ajusteDias}
-                </td>
-                <td className={`text-right px-3 py-2 font-semibold tabular-nums ${l.ajusteTotal < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmt(l.ajusteTotal)}</td>
-              </tr>
-            ))}
+            {linhas.length === 0 && manuais.length === 0 ? (
+              <tr><td colSpan={5} className="px-3 py-8 text-center text-gray-400">Nenhuma diferença nesta janela.{editando ? " Você pode adicionar um ajuste manual abaixo." : ""}</td></tr>
+            ) : (<>
+              {linhas.map((l) => {
+                const o = ovr[l.empregadoId]; const dv = o ? parseR(o.v) : 0; const tot = l.ajusteTotal + dv;
+                return (
+                <tr key={l.empregadoId} className="hover:bg-gray-50 dark:hover:bg-gray-800/30">
+                  <td className="px-3 py-2 font-medium text-gray-900 dark:text-gray-100">
+                    {l.empregadoNome}
+                    {l.demissao && <span className="ml-2 align-middle text-[10px] font-semibold uppercase tracking-wide text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 rounded px-1.5 py-0.5 inline-flex items-center gap-1"><UserRoundMinus size={11}/> demitido · acerto do mês inteiro</span>}
+                  </td>
+                  <td className="text-center px-2 py-2 text-gray-500">{l.diasPrevista}</td>
+                  <td className="text-center px-2 py-2 text-gray-500">{l.diasPraticada}</td>
+                  <td className={`text-center px-2 py-2 font-semibold cursor-help ${l.ajusteDias < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}
+                    title={[
+                      (l.diasDesconto && l.diasDesconto.length) ? `Descontar (não trabalhou): ${l.diasDesconto.map(brDate).join(", ")}` : "",
+                      (l.diasCredito && l.diasCredito.length) ? `Adicionar (trabalhou a mais): ${l.diasCredito.map(brDate).join(", ")}` : "",
+                      ((l.ajusteAuxVt || 0) + (l.ajusteAuxVr || 0)) ? `Auxílio proporcional: ${fmt((l.ajusteAuxVt || 0) + (l.ajusteAuxVr || 0))}${l.demissao ? " (÷30, rescisão)" : " (÷dias previstos)"}` : "",
+                    ].filter(Boolean).join("\n") || "Sem diferença de dias"}>
+                    {l.ajusteDias > 0 ? `+${l.ajusteDias}` : l.ajusteDias}
+                  </td>
+                  <td className="text-right px-3 py-2 tabular-nums">
+                    {editando ? (
+                      <div className="flex flex-col items-end gap-1">
+                        <span className="text-[10.5px] text-gray-400">calc {fmt(l.ajusteTotal)}</span>
+                        <div className="inline-flex items-center gap-1">
+                          <span className="text-[11px] text-gray-400">+/−</span>
+                          <input value={o?.v ?? ""} onChange={(e) => setOvr((s) => ({ ...s, [l.empregadoId]: { v: e.target.value, m: s[l.empregadoId]?.m || "" } }))} placeholder="R$ 0,00" className="w-24 text-right text-[12px] rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5 py-0.5" />
+                        </div>
+                        {dv !== 0 && <input value={o?.m ?? ""} onChange={(e) => setOvr((s) => ({ ...s, [l.empregadoId]: { v: s[l.empregadoId]?.v || "", m: e.target.value } }))} placeholder="motivo do ajuste" className="w-40 text-[11px] rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5 py-0.5" />}
+                        {dv !== 0 && <span className={`text-[12.5px] font-bold ${tot < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>= {fmt(tot)}</span>}
+                      </div>
+                    ) : <span className={`font-semibold ${tot < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmt(tot)}{dv !== 0 && <span className="ml-1 text-[10px] text-indigo-500" title={o?.m || "ajuste manual"}>✎</span>}</span>}
+                  </td>
+                </tr>
+              ); })}
+              {manuais.map((m) => (
+                <tr key={m.id} className="bg-amber-50/40 dark:bg-amber-950/10">
+                  <td className="px-3 py-2">
+                    <input value={m.nome} onChange={(e) => setManuais((arr) => arr.map((x) => x.id === m.id ? { ...x, nome: e.target.value } : x))} placeholder="Descrição / empregado" className="w-full text-[13px] rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5 py-0.5" />
+                    <span className="ml-1 align-middle text-[9px] font-semibold uppercase text-amber-700 dark:text-amber-300">manual</span>
+                  </td>
+                  <td className="text-center px-2 py-2 text-gray-300">—</td>
+                  <td className="text-center px-2 py-2 text-gray-300">—</td>
+                  <td className="text-center px-2 py-2 text-gray-300">—</td>
+                  <td className="text-right px-3 py-2">
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="inline-flex items-center gap-1">
+                        <input value={m.v} onChange={(e) => setManuais((arr) => arr.map((x) => x.id === m.id ? { ...x, v: e.target.value } : x))} placeholder="R$ (+/−)" className="w-24 text-right text-[12px] rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5 py-0.5" />
+                        <button type="button" onClick={() => setManuais((arr) => arr.filter((x) => x.id !== m.id))} className="text-rose-400 hover:text-rose-600 text-sm px-1" title="Remover">✕</button>
+                      </div>
+                      <input value={m.m} onChange={(e) => setManuais((arr) => arr.map((x) => x.id === m.id ? { ...x, m: e.target.value } : x))} placeholder="motivo" className="w-40 text-[11px] rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 px-1.5 py-0.5" />
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </>)}
           </tbody>
-          {linhas.length > 0 && (
+          {linhasFinais.length > 0 && (
             <tfoot className="bg-gray-50 dark:bg-gray-800/40 font-bold text-gray-800 dark:text-gray-100">
               <tr><td className="px-3 py-2" colSpan={4}>Total do ajuste (abate no próximo pagamento)</td><td className={`text-right px-3 py-2 tabular-nums ${total < 0 ? "text-rose-600 dark:text-rose-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmt(total)}</td></tr>
             </tfoot>
           )}
         </table>
+        {editando && (
+          <div className="px-3 py-2 border-t border-gray-100 dark:border-gray-800">
+            <button type="button" onClick={() => setManuais((arr) => [...arr, { id: Math.random().toString(36).slice(2, 9), nome: "", v: "", m: "" }])} className="text-[12px] font-semibold text-indigo-600 dark:text-indigo-400 hover:underline">+ Adicionar ajuste manual</button>
+          </div>
+        )}
       </div>
 
       <div className="flex justify-end">
