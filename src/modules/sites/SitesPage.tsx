@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Lock, SquarePen, ClipboardList, Eye, Globe } from "lucide-react";
+import { Lock, SquarePen, ClipboardList, Eye, Globe, Sparkles } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -8,6 +8,7 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { GeralTab } from "./GeralTab";
 import { PreviewTab } from "./PreviewTab";
 import { ConexaoTab } from "./ConexaoTab";
+import { SiteIAAssistant } from "./SiteIAAssistant";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 type Tab = "geral" | "conexao" | "cardapio" | "preview";
@@ -48,6 +49,7 @@ export function SitesPage() {
   const podeConectar = !!me?.isMaster || can("sites", "publicar") || !!special?.sitesGeral;
 
   const [tab, setTab] = useState<Tab>("geral");
+  const [iaOpen, setIaOpen] = useState(false);
 
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;
@@ -66,8 +68,8 @@ export function SitesPage() {
 
   return (
     <PageContainer className="space-y-4">
-      {/* Tabs */}
-      <div className="flex border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
+      {/* Tabs + Assistente IA */}
+      <div className="flex items-center border-b border-gray-200 dark:border-gray-800 overflow-x-auto gap-1">
         <TabButton active={tab === "geral"} onClick={() => setTab("geral")} disabled={!podeGeral}>
           <span className="inline-flex items-center gap-1.5"><SquarePen size={15} /> Geral</span>
         </TabButton>
@@ -80,6 +82,12 @@ export function SitesPage() {
         <TabButton active={tab === "preview"} onClick={() => setTab("preview")}>
           <span className="inline-flex items-center gap-1.5"><Eye size={15} /> Preview</span>
         </TabButton>
+        <div className="flex-1" />
+        {podeGeral && (
+          <button onClick={() => setIaOpen(true)} className="shrink-0 mb-1 ml-2 h-8 px-3 rounded-lg text-white text-[12.5px] font-bold inline-flex items-center gap-1.5" style={{ background: "linear-gradient(90deg,#6d5efc,#9b6bff)" }}>
+            <Sparkles size={14} /> Assistente IA
+          </button>
+        )}
       </div>
 
       {/* Conteúdo */}
@@ -108,6 +116,8 @@ export function SitesPage() {
       {tab === "preview" && (
         <PreviewTab rid={rid} nomeRestaurante={activeRestaurant.nome} />
       )}
+
+      {iaOpen && <SiteIAAssistant rid={rid} nomeRestaurante={activeRestaurant.nome} onClose={() => setIaOpen(false)} />}
     </PageContainer>
   );
 }
