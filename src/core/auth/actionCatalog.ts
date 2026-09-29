@@ -658,8 +658,10 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Planilha de investimentos por projeto (por restaurante): lançamentos, comprovantes no Drive e extração por IA.",
     area: "gestao",
     acoes: [
-      { id: "ver",       label: "Abrir e ver os investimentos/projetos" },
-      { id: "gerenciar", label: "Criar projetos, lançar/editar e subir comprovantes", sensivel: true },
+      { id: "ver",          label: "Abrir e ver os investimentos/projetos" },
+      { id: "lancar",       label: "Lançar, editar e subir comprovantes", sensivel: true },
+      { id: "gerirProjetos", label: "Criar e editar projetos (e pasta do Drive)", sensivel: true },
+      { id: "gerirCategorias", label: "Gerenciar categorias" },
     ],
   },
   {

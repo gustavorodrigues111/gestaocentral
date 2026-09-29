@@ -21,7 +21,10 @@ export function InvestimentosPage() {
   const { pessoa: me } = useAuth();
   const { rid } = useParams<{ rid: string }>();
   const { can } = useCanAcao(rid || "");
-  const podeGerenciar = !!me?.isMaster || can("investimentos", "gerenciar");
+  const master = !!me?.isMaster;
+  const podeLancar = master || can("investimentos", "lancar");
+  const podeGerirProjetos = master || can("investimentos", "gerirProjetos");
+  const podeGerirCategorias = master || can("investimentos", "gerirCategorias");
 
   const [projetos, setProjetos] = useState<InvestProjeto[]>([]);
   const [categorias, setCategorias] = useState<InvestCategoria[]>([]);
@@ -58,8 +61,8 @@ export function InvestimentosPage() {
             {projetos.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
           </select>
         ) : <span className="text-gray-500 text-sm">Nenhum projeto ainda</span>}
-        {podeGerenciar && <button onClick={() => setProjModal({ mode: "new" })} className="h-9 px-3 rounded-lg bg-emerald-600 text-white text-sm font-semibold inline-flex items-center gap-1"><Plus size={15} /> Novo projeto</button>}
-        {proj && podeGerenciar && <button onClick={() => setProjModal({ mode: "edit", proj })} className="h-9 w-9 grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500" title="Editar projeto / pasta do Drive"><Settings size={16} /></button>}
+        {podeGerirProjetos && <button onClick={() => setProjModal({ mode: "new" })} className="h-9 px-3 rounded-lg bg-emerald-600 text-white text-sm font-semibold inline-flex items-center gap-1"><Plus size={15} /> Novo projeto</button>}
+        {proj && podeGerirProjetos && <button onClick={() => setProjModal({ mode: "edit", proj })} className="h-9 w-9 grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500" title="Editar projeto / pasta do Drive"><Settings size={16} /></button>}
         <div className="flex-1" />
         {proj && <div className="text-sm text-gray-500">Total: <b className="text-gray-800 dark:text-gray-100">{fmtR(total)}</b> · {lancamentos.length} lançamento(s)</div>}
       </div>
@@ -69,7 +72,7 @@ export function InvestimentosPage() {
           <TrendingUp size={40} className="mx-auto text-gray-300 mb-3" />
           <div className="font-semibold text-gray-700 dark:text-gray-300">Crie um projeto de investimento</div>
           <div className="text-sm text-gray-500 mt-1 max-w-sm mx-auto">Cada projeto é uma planilha própria (ex.: "Reforma do salão", "Cozinha nova"). Você indica uma pasta do Drive pros comprovantes.</div>
-          {podeGerenciar && <button onClick={() => setProjModal({ mode: "new" })} className="mt-4 h-9 px-4 rounded-lg bg-emerald-600 text-white text-sm font-semibold inline-flex items-center gap-1"><Plus size={15} /> Criar primeiro projeto</button>}
+          {podeGerirProjetos && <button onClick={() => setProjModal({ mode: "new" })} className="mt-4 h-9 px-4 rounded-lg bg-emerald-600 text-white text-sm font-semibold inline-flex items-center gap-1"><Plus size={15} /> Criar primeiro projeto</button>}
         </div>
       ) : (
         <>
@@ -79,8 +82,8 @@ export function InvestimentosPage() {
               ? <span className="text-[12px] text-gray-500 inline-flex items-center gap-1"><FolderOpen size={13} className="text-amber-500" /> Comprovantes: <b className="text-gray-700 dark:text-gray-300">{proj.pastaDriveNome || "pasta do Drive"}</b></span>
               : <span className="text-[12px] text-amber-600 inline-flex items-center gap-1"><FolderOpen size={13} /> Sem pasta do Drive — configure no ⚙️ pra anexar comprovantes.</span>}
             <div className="flex-1" />
-            {podeGerenciar && <button onClick={() => setGerirCat(true)} className="text-[12.5px] font-semibold px-3 h-8 rounded-lg border border-gray-200 dark:border-gray-700">Categorias{catPendentes.length ? ` · ${catPendentes.length} da IA a confirmar` : ""}</button>}
-            {podeGerenciar && <button onClick={() => setLancModal("new")} className="text-[12.5px] font-semibold px-3 h-8 rounded-lg bg-indigo-600 text-white inline-flex items-center gap-1"><Plus size={14} /> Novo lançamento</button>}
+            {podeGerirCategorias && <button onClick={() => setGerirCat(true)} className="text-[12.5px] font-semibold px-3 h-8 rounded-lg border border-gray-200 dark:border-gray-700">Categorias{catPendentes.length ? ` · ${catPendentes.length} da IA a confirmar` : ""}</button>}
+            {podeLancar && <button onClick={() => setLancModal("new")} className="text-[12.5px] font-semibold px-3 h-8 rounded-lg bg-indigo-600 text-white inline-flex items-center gap-1"><Plus size={14} /> Novo lançamento</button>}
           </div>
 
           {/* Tabela */}
@@ -107,7 +110,7 @@ export function InvestimentosPage() {
                     <td className="px-3 py-2 text-gray-600 dark:text-gray-300">{l.parcelado && l.parcelas?.length ? `${l.parcelas.length}x` : "à vista"}</td>
                     <td className="px-3 py-2 text-center">{l.comprovanteUrl ? <a href={l.comprovanteUrl} target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 text-[12px]"><FileText size={13} /> ver <ExternalLink size={11} /></a> : <span className="text-gray-300">—</span>}</td>
                     <td className="px-2 py-2 text-right whitespace-nowrap">
-                      {podeGerenciar && <>
+                      {podeLancar && <>
                         <button onClick={() => setLancModal(l)} className="w-7 h-7 grid place-items-center rounded border border-gray-200 dark:border-gray-700 text-gray-500 inline-flex" title="Editar"><Pencil size={13} /></button>
                         <button onClick={async () => { if (confirm("Excluir este lançamento? O comprovante no Drive não é apagado.")) { await excluirLancamento(l.id); say("Lançamento excluído"); } }} className="w-7 h-7 grid place-items-center rounded border border-gray-200 dark:border-gray-700 text-rose-500 inline-flex ml-1" title="Excluir"><Trash2 size={13} /></button>
                       </>}
