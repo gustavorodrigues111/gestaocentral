@@ -412,11 +412,12 @@ export function EscalaPage({ modo }: { modo?: "praticada" } = {}) {
       return [];
     }
     // Fase 2 — lote de previsão: empregado já FECHADO num lote não é editável na
-    // prevista (exceto master). Quem entrou depois (fora do mapa) segue editável.
-    if (versao === "prevista" && !isMaster && previstaFechadaParaEmp(escala, empregadoId) && escala?.previstaFechadaPorEmp) {
+    // prevista, EXCETO por quem tem a permissão de reabrir escala (master ou
+    // specialPermissions.escalaReabrir). Quem entrou depois (fora do mapa) segue editável.
+    if (versao === "prevista" && !canReabrirEscala(me, rid) && previstaFechadaParaEmp(escala, empregadoId) && escala?.previstaFechadaPorEmp) {
       alert(
         "🔒 A previsão deste empregado já foi fechada num lote.\n\n" +
-        "Pra ajustar, reabra a previsão dele — ou peça a um master."
+        "Pra ajustar, é preciso a permissão de reabrir escala — peça a um master pra habilitar (Perfis de Acesso) ou pra reabrir por você."
       );
       return [];
     }
