@@ -5,9 +5,10 @@
 //
 // Passos que continuam manuais (fora do app): adicionar o domínio no painel do
 // Vercel e apontar o DNS no registrador. As instruções ficam aqui na tela.
-import { useMemo, useState } from "react";
-import { Globe, Check, Copy, ExternalLink, Trash2, Plus, Lock } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Globe, Check, Copy, ExternalLink, Trash2, Plus, Lock, Cloud } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
+import { auth } from "../../core/firebase/config";
 import { useSiteConfig } from "./useSiteConfig";
 
 // Extrai o host limpo de um input (aceita "https://x.com/y", "X.COM ", etc).
@@ -30,6 +31,24 @@ export function ConexaoTab({ rid, nomeRestaurante, podeEditar }: { rid: string; 
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
   const [copiado, setCopiado] = useState("");
+  const [vercelOn, setVercelOn] = useState<boolean | null>(null);
+  const [vmsg, setVmsg] = useState<Record<string, string>>({});
+
+  async function vpost(action: string, domain?: string): Promise<Record<string, unknown> & { ok: boolean }> {
+    const idToken = await auth.currentUser?.getIdToken();
+    const r = await fetch("/api/site-vercel", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken, action, domain }) });
+    const j = await r.json().catch(() => ({}));
+    return { ok: r.ok, ...j };
+  }
+  useEffect(() => { vpost("status").then((j) => setVercelOn(!!j.configured)).catch(() => setVercelOn(false)); }, []);
+  async function addVercel(apex: string) {
+    setVmsg((m) => ({ ...m, [apex]: "Adicionando no Vercel…" }));
+    try {
+      for (const h of [apex, `www.${apex}`]) await vpost("add", h);
+      const c = await vpost("check", apex);
+      setVmsg((m) => ({ ...m, [apex]: c.verified ? "✓ verificado no Vercel" : "adicionado — aguardando DNS propagar" }));
+    } catch { setVmsg((m) => ({ ...m, [apex]: "falha ao falar com o Vercel" })); }
+  }
 
   const dominios = useMemo(() => config?.dominios || [], [config]);
   const slug = config?.slug || "";
@@ -88,14 +107,18 @@ export function ConexaoTab({ rid, nomeRestaurante, podeEditar }: { rid: string; 
         <div className="mt-2 space-y-2">
           {grupos.length === 0 && <div className="text-[13px] text-gray-400">Nenhum domínio conectado ainda.</div>}
           {grupos.map(([apex, hosts]) => (
-            <div key={apex} className="flex items-center gap-2 rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2">
-              <Globe size={14} className="text-emerald-500 shrink-0" />
-              <div className="flex-1 min-w-0">
-                <div className="text-[13.5px] font-semibold truncate">{apex}</div>
-                <div className="text-[11px] text-gray-400">{hosts.includes(`www.${apex}`) ? "com www" : "sem www"} · {hosts.length} host(s)</div>
+            <div key={apex} className="rounded-xl border border-gray-200 dark:border-gray-700 px-3 py-2">
+              <div className="flex items-center gap-2">
+                <Globe size={14} className="text-emerald-500 shrink-0" />
+                <div className="flex-1 min-w-0">
+                  <div className="text-[13.5px] font-semibold truncate">{apex}</div>
+                  <div className="text-[11px] text-gray-400">{hosts.includes(`www.${apex}`) ? "com www" : "sem www"} · {hosts.length} host(s)</div>
+                </div>
+                {podeEditar && vercelOn && <button onClick={() => void addVercel(apex)} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 inline-flex items-center gap-1"><Cloud size={12} /> Vercel</button>}
+                <a href={`https://${apex}`} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-indigo-600" title="Testar no navegador"><ExternalLink size={15} /></a>
+                {podeEditar && <button onClick={() => void remover(apex, hosts)} className="text-gray-400 hover:text-rose-500" title="Desconectar"><Trash2 size={15} /></button>}
               </div>
-              <a href={`https://${apex}`} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-indigo-600" title="Testar no navegador"><ExternalLink size={15} /></a>
-              {podeEditar && <button onClick={() => void remover(apex, hosts)} className="text-gray-400 hover:text-rose-500" title="Desconectar"><Trash2 size={15} /></button>}
+              {vmsg[apex] && <div className="text-[11px] text-gray-500 mt-1 pl-6">{vmsg[apex]}</div>}
             </div>
           ))}
         </div>
@@ -132,7 +155,9 @@ export function ConexaoTab({ rid, nomeRestaurante, podeEditar }: { rid: string; 
           <div className="text-[11px] font-bold text-gray-500 uppercase tracking-wide mb-2">Passos</div>
           <ol className="text-[12.5px] text-gray-600 dark:text-gray-300 space-y-2 list-decimal pl-4">
             <li>Conecte o domínio aqui (ao lado).</li>
-            <li>No painel do <b>Vercel</b> → Settings → Domains → adicione o domínio e o www.</li>
+            {vercelOn
+              ? <li>Clique em <b>Vercel</b> no domínio pra adicioná-lo automaticamente no projeto.</li>
+              : <li>No painel do <b>Vercel</b> → Settings → Domains → adicione o domínio e o www.</li>}
             <li>No <b>registro.br</b>, aponte o DNS (tabela acima).</li>
             <li>Publique o site na aba <b>Geral</b> (se ainda não).</li>
           </ol>
