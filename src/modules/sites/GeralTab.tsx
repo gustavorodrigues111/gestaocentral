@@ -227,8 +227,29 @@ export function GeralTab({
   const assetsDisabled  = !canAssets;
   const publicDisabled  = !canPubl;
 
+  const navItens: { id: string; label: string }[] = [
+    { id: "sec-imagens", label: "Imagens" },
+    { id: "sec-textos", label: "Textos" },
+    { id: "sec-ordem", label: "Ordem" },
+    { id: "sec-endereco", label: "Endereço" },
+    { id: "sec-contato", label: "Contato" },
+    { id: "sec-redes", label: "Redes" },
+    { id: "sec-secoes", label: "Seções" },
+    ...(form.features.hasDelivery ? [{ id: "sec-delivery", label: "Delivery" }] : []),
+    { id: "sec-tema", label: "Tema" },
+    { id: "sec-publicacao", label: "Publicação" },
+  ];
+  const CARD = "scroll-mt-24 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-5 shadow-sm";
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {/* Índice — salta pra cada seção */}
+      <nav className="sticky top-0 z-20 -mx-1 px-1 py-2 bg-white/90 dark:bg-gray-950/90 backdrop-blur flex gap-1.5 overflow-x-auto">
+        {navItens.map((n) => (
+          <a key={n.id} href={`#${n.id}`} className="shrink-0 text-[12px] font-semibold px-3 py-1.5 rounded-full border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:border-indigo-400 hover:text-indigo-600 whitespace-nowrap">{n.label}</a>
+        ))}
+      </nav>
+
       {!existe && (
         <div className="rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 p-3 text-sm text-amber-900 dark:text-amber-200">
           ⓘ Ainda não há configuração salva pra este restaurante — você está vendo valores padrão.
@@ -237,10 +258,11 @@ export function GeralTab({
       )}
 
       {/* IMAGENS */}
-      <section className="space-y-4">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
-          Imagens
-        </h3>
+      <section id="sec-imagens" className={CARD + " space-y-4"}>
+        <div>
+          <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">Imagens</h3>
+          <p className="text-[11px] text-gray-500 dark:text-gray-400">Logo, banner do topo (hero) e ícone da aba.</p>
+        </div>
         <UploadImagem
           rid={rid}
           tipo="logo"
@@ -272,14 +294,18 @@ export function GeralTab({
 
       {/* TEXTOS DAS SEÇÕES — slogan, história e todos os textos do site,
           em ordem de aparição. */}
-      <TextosSection form={form} setForm={setForm} disabled={textosDisabled} />
+      <div id="sec-textos" className={CARD}>
+        <TextosSection form={form} setForm={setForm} disabled={textosDisabled} />
+      </div>
 
       {/* ORDEM DAS SEÇÕES — reordena o site público */}
-      <OrdemSecoesSection form={form} setForm={setForm} disabled={inputDisabled} />
+      <div id="sec-ordem" className={CARD}>
+        <OrdemSecoesSection form={form} setForm={setForm} disabled={inputDisabled} />
+      </div>
 
       {/* ENDEREÇO */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+      <section id="sec-endereco" className={CARD + " space-y-3"}>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
           Endereço
         </h3>
         <p className="text-[11px] text-gray-500 dark:text-gray-400">
@@ -377,8 +403,8 @@ export function GeralTab({
       </section>
 
       {/* CONTATO */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+      <section id="sec-contato" className={CARD + " space-y-3"}>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
           Contato
         </h3>
         {/* Telefone com seletor de DDI + validação por país */}
@@ -471,9 +497,9 @@ export function GeralTab({
       </section>
 
       {/* REDES SOCIAIS */}
-      <section className="space-y-3">
+      <section id="sec-redes" className={CARD + " space-y-3"}>
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+          <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
             Redes sociais
           </h3>
           {podeEditar && <Button size="sm" variant="secondary" onClick={addRede}>+ adicionar</Button>}
@@ -513,8 +539,8 @@ export function GeralTab({
       </section>
 
       {/* FEATURES */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+      <section id="sec-secoes" className={CARD + " space-y-3"}>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
           Seções do site
         </h3>
         <p className="text-xs text-gray-500 dark:text-gray-400">
@@ -558,9 +584,9 @@ export function GeralTab({
 
       {/* DELIVERY links */}
       {form.features.hasDelivery && (
-        <section className="space-y-3">
+        <section id="sec-delivery" className={CARD + " space-y-3"}>
           <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+            <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
               Links de delivery
             </h3>
             {podeEditar && <Button size="sm" variant="secondary" onClick={addDelivery}>+ adicionar</Button>}
@@ -601,9 +627,9 @@ export function GeralTab({
       )}
 
       {/* TEMA */}
-      <section className="space-y-3">
+      <section id="sec-tema" className={CARD + " space-y-3"}>
         <div className="flex items-center justify-between gap-2 flex-wrap">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+          <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
             Tema visual
           </h3>
           {!temaDisabled && (
@@ -670,8 +696,8 @@ export function GeralTab({
           basta restaurar essa seção e ajustar o SiteRenderer. */}
 
       {/* PUBLICAÇÃO */}
-      <section className="space-y-3">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400">
+      <section id="sec-publicacao" className={CARD + " space-y-3"}>
+        <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
           Publicação
         </h3>
         <div className="flex items-center gap-3">
