@@ -306,21 +306,26 @@ export function TarefasPage() {
   // Recuperação de rotinas: correntes de recorrência que quebraram (a pessoa
   // deixou de concluir por uns dias) não voltavam sozinhas. Ao abrir Tarefas,
   // 1×/dia, garante a ocorrência do período atual. Idempotente (recorrenciaKey).
+  // Roda ~3s após montar (NÃO no 1º snapshot parcial — "minhas" chega em 4
+  // listeners; disparar cedo perdia séries que ainda não tinham emitido).
+  const minhasRef = useRef<Tarefa[]>([]);
+  useEffect(() => { minhasRef.current = minhas; }, [minhas]);
   const catchupRef = useRef(false);
   useEffect(() => {
-    if (catchupRef.current || !pessoa?.id || minhas.length === 0) return;
+    if (!pessoa?.id) return;
     const chaveDia = `recCatchup-${pessoa.id}-${hojeYmd()}`;
-    try { if (localStorage.getItem(chaveDia)) { catchupRef.current = true; return; } } catch { /* ignore */ }
-    catchupRef.current = true;
-    (async () => {
+    try { if (localStorage.getItem(chaveDia)) return; } catch { /* ignore */ }
+    const t = setTimeout(async () => {
+      if (catchupRef.current) return; catchupRef.current = true;
       try {
         const { gerarRecorrenciasPendentes } = await import("./generator");
-        const n = await gerarRecorrenciasPendentes(minhas, { id: pessoa.id, nome: pessoa.nome || "—" });
+        const n = await gerarRecorrenciasPendentes(minhasRef.current, { id: pessoa.id!, nome: pessoa.nome || "—" });
         try { localStorage.setItem(chaveDia, "1"); } catch { /* ignore */ }
         if (n) console.info(`[tarefas] rotinas recuperadas: ${n}`);
       } catch (e) { console.error("[tarefas] catch-up de recorrência falhou:", e); }
-    })();
-  }, [pessoa?.id, pessoa?.nome, minhas]);
+    }, 3000);
+    return () => clearTimeout(t);
+  }, [pessoa?.id, pessoa?.nome]);
 
   // Tarefas do projeto filtrado
   useEffect(() => {
