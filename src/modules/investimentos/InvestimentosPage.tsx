@@ -130,16 +130,15 @@ export function InvestimentosPage() {
     <PageContainer>
       {/* Cabeçalho: seletor de projeto + ações */}
       <div className="flex items-center gap-2 flex-wrap mb-4">
-        <TrendingUp size={20} className="text-emerald-500" />
+        <TrendingUp size={20} className="text-emerald-500 shrink-0" />
         {projetos.length > 0 ? (
-          <select value={proj?.id || ""} onChange={(e) => setProjId(e.target.value)} className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-semibold">
+          <select value={proj?.id || ""} onChange={(e) => setProjId(e.target.value)} className="h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-semibold flex-1 min-w-0 sm:flex-none sm:min-w-[220px]">
             {projetos.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
           </select>
-        ) : <span className="text-gray-500 text-sm">Nenhum projeto ainda</span>}
-        {podeGerirProjetos && <button onClick={() => setProjModal({ mode: "new" })} className="h-9 px-3 rounded-lg bg-emerald-600 text-white text-sm font-semibold inline-flex items-center gap-1"><Plus size={15} /> Novo projeto</button>}
-        {proj && podeGerirProjetos && <button onClick={() => setProjModal({ mode: "edit", proj })} className="h-9 w-9 grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500" title="Editar projeto / pasta do Drive"><Settings size={16} /></button>}
-        <div className="flex-1" />
-        {proj && <div className="text-sm text-gray-500">Total: <b className="text-gray-800 dark:text-gray-100">{fmtR(total)}</b> · {lancamentos.length} lançamento(s)</div>}
+        ) : <span className="text-gray-500 text-sm flex-1">Nenhum projeto ainda</span>}
+        {podeGerirProjetos && <button onClick={() => setProjModal({ mode: "new" })} className="h-10 px-3 rounded-lg bg-emerald-600 text-white text-sm font-semibold inline-flex items-center gap-1 shrink-0"><Plus size={15} /> Novo projeto</button>}
+        {proj && podeGerirProjetos && <button onClick={() => setProjModal({ mode: "edit", proj })} className="h-10 w-10 grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 shrink-0" title="Editar projeto / pasta do Drive"><Settings size={16} /></button>}
+        {proj && <div className="w-full sm:w-auto sm:ml-auto text-sm text-gray-500">Total: <b className="text-gray-800 dark:text-gray-100">{fmtR(total)}</b> · {lancamentos.length} lançamento(s)</div>}
       </div>
 
       {!proj ? (
@@ -154,11 +153,13 @@ export function InvestimentosPage() {
           {/* Barra do projeto: pasta Drive + categorias + nova linha */}
           <div className="flex items-center gap-2 flex-wrap mb-3">
             {proj.pastaDriveId
-              ? <span className="text-[12px] text-gray-500 inline-flex items-center gap-1"><FolderOpen size={13} className="text-amber-500" /> Comprovantes: <b className="text-gray-700 dark:text-gray-300">{proj.pastaDriveNome || "pasta do Drive"}</b></span>
-              : <span className="text-[12px] text-amber-600 inline-flex items-center gap-1"><FolderOpen size={13} /> Sem pasta do Drive — configure no ⚙️ pra anexar comprovantes.</span>}
-            <div className="flex-1" />
-            {podeGerirCategorias && <button onClick={() => setGerirCat(true)} className="text-[12.5px] font-semibold px-3 h-8 rounded-lg border border-gray-200 dark:border-gray-700">Categorias{catPendentes.length ? ` · ${catPendentes.length} da IA a confirmar` : ""}</button>}
-            {podeLancar && <button onClick={() => setLancModal("new")} className="text-[12.5px] font-semibold px-3 h-8 rounded-lg bg-indigo-600 text-white inline-flex items-center gap-1"><Plus size={14} /> Novo lançamento</button>}
+              ? <span className="text-[12px] text-gray-500 inline-flex items-center gap-1 min-w-0"><FolderOpen size={13} className="text-amber-500 shrink-0" /> Comprovantes: <b className="text-gray-700 dark:text-gray-300 truncate">{proj.pastaDriveNome || "pasta do Drive"}</b></span>
+              : <span className="text-[12px] text-amber-600 inline-flex items-center gap-1"><FolderOpen size={13} className="shrink-0" /> Sem pasta do Drive — configure no ⚙️ pra anexar comprovantes.</span>}
+            <div className="hidden sm:block flex-1" />
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              {podeGerirCategorias && <button onClick={() => setGerirCat(true)} className="text-[12.5px] font-semibold px-3 h-9 rounded-lg border border-gray-200 dark:border-gray-700 flex-1 sm:flex-none">Categorias{catPendentes.length ? ` · ${catPendentes.length}` : ""}</button>}
+              {podeLancar && <button onClick={() => setLancModal("new")} className="text-[12.5px] font-semibold px-3 h-9 rounded-lg bg-indigo-600 text-white inline-flex items-center justify-center gap-1 flex-1 sm:flex-none"><Plus size={14} /> Novo lançamento</button>}
+            </div>
           </div>
 
           {/* Tabela */}
@@ -272,8 +273,8 @@ function ProjetoModal(props: {
   }
   async function excluir() { if (!proj) return; if (!confirm(`Excluir o projeto "${proj.nome}"? Os lançamentos ficam órfãos (não some do Drive).`)) return; await excluirProjeto(proj.id); onSay("Projeto excluído"); onClose(); }
 
-  return <div className="fixed inset-0 z-[80] bg-black/40 grid place-items-center p-4" onClick={onClose}>
-    <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-[480px] max-w-full p-5" onClick={(e) => e.stopPropagation()}>
+  return <div className="fixed inset-0 z-[80] bg-black/40 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
+    <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-[480px] max-h-[90vh] overflow-auto p-5" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-2 mb-3"><div className="font-extrabold text-[15px]">{mode === "new" ? "Novo projeto" : "Editar projeto"}</div><div className="flex-1" /><button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg bg-gray-100 dark:bg-gray-800"><X size={16} /></button></div>
       <label className={LBL}>Nome</label>
       <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Reforma do salão" autoFocus className={INP + " mt-1 mb-3"} />
@@ -333,8 +334,8 @@ function CategoriasModal(props: { categorias: InvestCategoria[]; rid: string; on
     await salvarCategoria({ id: uid(), restaurantId: rid, nome: n, confirmada: true, criadoEm: new Date().toISOString() });
     setNova("");
   }
-  return <div className="fixed inset-0 z-[80] bg-black/40 grid place-items-center p-4" onClick={onClose}>
-    <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-[440px] max-w-full p-5" onClick={(e) => e.stopPropagation()}>
+  return <div className="fixed inset-0 z-[80] bg-black/40 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
+    <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-[440px] max-h-[90vh] overflow-auto p-5" onClick={(e) => e.stopPropagation()}>
       <div className="flex items-center gap-2 mb-3"><div className="font-extrabold text-[15px]">Categorias</div><div className="flex-1" /><button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg bg-gray-100 dark:bg-gray-800"><X size={16} /></button></div>
       {pendentes.length > 0 && <div className="mb-3">
         <div className="text-[11px] font-bold text-amber-600 uppercase mb-1 inline-flex items-center gap-1"><Sparkles size={12} /> Sugeridas pela IA — confirme</div>
@@ -489,8 +490,8 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
     } catch (e) { setErro("Falha ao salvar: " + (e instanceof Error ? e.message : "erro")); setSalvando(false); }
   }
 
-  return <div className="fixed inset-0 z-[80] bg-black/40 grid place-items-center p-4" onClick={onClose}>
-    <div className="bg-white dark:bg-gray-900 rounded-2xl shadow-xl w-[560px] max-w-full max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+  return <div className="fixed inset-0 z-[80] bg-black/40 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
+    <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-[560px] max-h-[92vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
       <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center gap-2"><div className="font-extrabold text-[15px]">{registro ? "Editar lançamento" : "Novo lançamento"}</div><div className="flex-1" /><button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg bg-gray-100 dark:bg-gray-800"><X size={16} /></button></div>
       <div className="p-4 overflow-auto space-y-3">
         {/* Comprovante — arrasta, cola ou clica */}
