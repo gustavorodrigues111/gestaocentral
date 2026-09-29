@@ -15,6 +15,7 @@
 //       mostra pro master (que pode testar o login) e apaga o doc em seguida.
 // ════════════════════════════════════════════════════════════════════════════
 import { onDocumentCreated, onDocumentWritten } from "firebase-functions/v2/firestore";
+import { onSchedule } from "firebase-functions/v2/scheduler";
 import { setGlobalOptions } from "firebase-functions/v2";
 import * as admin from "firebase-admin";
 import { randomBytes } from "crypto";
@@ -216,3 +217,91 @@ export const rebuildPermUsuario = onDocumentCreated("permUsuarioRebuild/{id}", a
   const s = event.data;
   if (s) await s.ref.set({ status: "ok", gerados: n, resolvidoEm: new Date().toISOString() }, { merge: true });
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+//  recuperarRotinas — gerador de recorrência no SERVIDOR (1×/dia)
+//
+//  A próxima ocorrência de uma rotina (tarefa.recorrencia) nasce no cliente ao
+//  CONCLUIR a atual. Se a pessoa atrasa alguns dias, a corrente quebra e não
+//  volta sozinha (dependia de alguém abrir o app). Este agendado varre TODAS as
+//  rotinas e, pra cada série (recorrenciaMaeId) SEM ocorrência aberta cuja última
+//  foi concluída, cria a ocorrência do período ATUAL (pula as perdidas). Roda como
+//  Admin SDK (ignora regras). Idempotente via recorrenciaKey. Cancelada = parar.
+// ════════════════════════════════════════════════════════════════════════════
+type RecServer = { unidade?: string; intervalo?: number; diaDoMes?: number; diasSemana?: number[] };
+function parseYmdS(s: string): Date { const [y, m, d] = s.split("-").map(Number); return new Date(y, m - 1, d, 12, 0, 0); }
+function toYmdS(d: Date): string { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; }
+function ultimoDiaMesS(y: number, m0: number): number { return new Date(y, m0 + 1, 0).getDate(); }
+function proximoVencimentoS(rec: RecServer | null | undefined, apartirDe: string): string | null {
+  if (!rec) return null;
+  const base = parseYmdS(apartirDe);
+  const intervalo = Math.max(1, Math.round(rec.intervalo || 1));
+  if (rec.unidade === "ano") { const ano = base.getFullYear() + intervalo, m0 = base.getMonth(); const dia = Math.min(base.getDate(), ultimoDiaMesS(ano, m0)); return toYmdS(new Date(ano, m0, dia, 12, 0, 0)); }
+  if (rec.unidade === "mes") { let ano = base.getFullYear(), mes0 = base.getMonth(); for (let i = 0; i < 240; i++) { const dia = rec.diaDoMes ? Math.min(rec.diaDoMes, ultimoDiaMesS(ano, mes0)) : base.getDate(); const cand = new Date(ano, mes0, dia, 12, 0, 0); if (cand.getTime() > base.getTime()) return toYmdS(cand); mes0 += intervalo; ano += Math.floor(mes0 / 12); mes0 = ((mes0 % 12) + 12) % 12; } return null; }
+  const dias = (rec.diasSemana || []).slice().sort((a, b) => a - b); if (!dias.length) return null;
+  const anchor = new Date(base); anchor.setDate(base.getDate() - base.getDay()); anchor.setHours(12, 0, 0, 0);
+  const MS = 7 * 24 * 3600 * 1000; const cursor = new Date(base);
+  for (let i = 0; i < 3660; i++) { cursor.setDate(cursor.getDate() + 1); if (!dias.includes(cursor.getDay())) continue; const ws = new Date(cursor); ws.setDate(cursor.getDate() - cursor.getDay()); ws.setHours(12, 0, 0, 0); const semanas = Math.round((ws.getTime() - anchor.getTime()) / MS); if (semanas % intervalo === 0) return toYmdS(cursor); }
+  return null;
+}
+function stripUndef<T>(o: T): T {
+  if (Array.isArray(o)) return o.map(stripUndef) as unknown as T;
+  if (o && typeof o === "object") { const r: Record<string, unknown> = {}; for (const [k, v] of Object.entries(o as Record<string, unknown>)) { if (v !== undefined) r[k] = stripUndef(v); } return r as T; }
+  return o;
+}
+
+export const recuperarRotinas = onSchedule(
+  { schedule: "0 6 * * *", timeZone: "America/Sao_Paulo" },
+  async () => {
+    const db = admin.firestore();
+    const hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
+    const snap = await db.collection("tarefas").where("recorrencia", "!=", null).get();
+    type T = { id: string; status?: string; prazo?: string; recorrencia?: RecServer; recorrenciaMaeId?: string; deletadoEm?: unknown;[k: string]: unknown };
+    const series = new Map<string, T[]>();
+    snap.forEach((d) => {
+      const t = { id: d.id, ...(d.data() as object) } as T;
+      if (t.deletadoEm || !t.prazo || !t.recorrencia) return;
+      const mae = t.recorrenciaMaeId || t.id;
+      const arr = series.get(mae); if (arr) arr.push(t); else series.set(mae, [t]);
+    });
+    let criadas = 0;
+    for (const [maeId, occs] of series) {
+      try {
+        if (occs.some((o) => o.status === "a_fazer" || o.status === "em_andamento")) continue;
+        occs.sort((a, b) => (a.prazo || "").localeCompare(b.prazo || ""));
+        const ult = occs[occs.length - 1];
+        if (ult.status !== "concluida" || !ult.recorrencia || !ult.prazo) continue;
+        let prox = proximoVencimentoS(ult.recorrencia, ult.prazo); let g = 0;
+        while (prox && prox < hoje && g++ < 500) prox = proximoVencimentoS(ult.recorrencia, prox);
+        if (!prox) continue;
+        const chave = `rect-${maeId}-${prox}`;
+        const ja = await db.collection("tarefas").where("recorrenciaKey", "==", chave).limit(1).get();
+        if (!ja.empty) continue;
+        const now = new Date().toISOString();
+        const delta = Math.round((parseYmdS(prox).getTime() - parseYmdS(ult.prazo).getTime()) / 86400000);
+        const subs = Array.isArray(ult.subtarefas) ? (ult.subtarefas as Array<Record<string, unknown>>) : [];
+        const subtarefas = subs.length ? subs.map((s, i) => ({ id: Math.random().toString(36).slice(2, 11), texto: s.texto, feito: false, ordem: i + 1, prazo: s.prazo ? toYmdS(new Date(parseYmdS(String(s.prazo)).getTime() + delta * 86400000)) : null, responsavelId: s.responsavelId ?? null, responsavelNome: s.responsavelNome ?? null })) : undefined;
+        const nova = stripUndef({
+          projetoId: ult.projetoId, subprojetoId: ult.subprojetoId, titulo: ult.titulo,
+          descricao: ult.descricao, link: ult.link,
+          responsavelId: ult.responsavelId, responsavelNome: ult.responsavelNome,
+          coResponsaveis: ult.coResponsaveis, coResponsaveisNomes: ult.coResponsaveisNomes,
+          observadoresIds: ult.observadoresIds, observadoresNomes: ult.observadoresNomes,
+          subtarefaResponsaveisIds: ult.subtarefaResponsaveisIds,
+          restaurantIds: ult.restaurantIds, prazo: prox, inicio: ult.inicio ?? null,
+          status: "a_fazer", prioridade: ult.prioridade || "normal", subtarefas,
+          recorrencia: ult.recorrencia, recorrenciaMaeId: maeId, recorrenciaKey: chave,
+          origem: "recorrencia", corHerdada: ult.corHerdada,
+          visibilidadeEfetiva: ult.visibilidadeEfetiva, visiveisUid: ult.visiveisUid,
+          confidencial: ult.confidencial ?? false, projetoMapaId: ult.projetoMapaId ?? null,
+          criadoPor: ult.criadoPor || "sistema", criadoPorNome: ult.criadoPorNome || "Sistema (rotina)",
+          criadoEm: now, atualizadoEm: now,
+          log: [{ id: Math.random().toString(36).slice(2, 11), acao: "criada", autorId: "sistema", autorNome: "Sistema (rotina)", em: now }],
+        });
+        await db.collection("tarefas").add(nova);
+        criadas++;
+      } catch (e) { console.error("[recuperarRotinas] série", maeId, e); }
+    }
+    console.log(`[recuperarRotinas] rotinas recuperadas: ${criadas}`);
+  },
+);
