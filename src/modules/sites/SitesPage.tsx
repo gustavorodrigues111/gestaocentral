@@ -9,6 +9,7 @@ import { GeralTab } from "./GeralTab";
 import { PreviewTab } from "./PreviewTab";
 import { ConexaoTab } from "./ConexaoTab";
 import { SiteIAAssistant } from "./SiteIAAssistant";
+import { LivePreviewPanel } from "./LivePreviewPanel";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 type Tab = "geral" | "conexao" | "cardapio" | "preview";
@@ -90,18 +91,25 @@ export function SitesPage() {
         )}
       </div>
 
-      {/* Conteúdo */}
+      {/* Conteúdo — Geral com preview ao vivo lado a lado (telas largas) */}
       {tab === "geral" && (
-        <GeralTab
-          rid={rid}
-          nomeRestaurante={activeRestaurant.nome}
-          podeEditar={podeGeral}
-          podeEditarTextos={!!me?.isMaster || can("sites", "editarTextos") || !!special?.sitesGeral}
-          podeEditarContato={!!me?.isMaster || can("sites", "editarContato") || !!special?.sitesGeral}
-          podeEditarTema={!!me?.isMaster || can("sites", "editarTema") || !!special?.sitesGeral}
-          podeUploadAssets={!!me?.isMaster || can("sites", "uploadAssets") || !!special?.sitesGeral}
-          podePublicar={!!me?.isMaster || can("sites", "publicar") || !!special?.sitesGeral}
-        />
+        <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-5 items-start">
+          <div className="min-w-0">
+            <GeralTab
+              rid={rid}
+              nomeRestaurante={activeRestaurant.nome}
+              podeEditar={podeGeral}
+              podeEditarTextos={!!me?.isMaster || can("sites", "editarTextos") || !!special?.sitesGeral}
+              podeEditarContato={!!me?.isMaster || can("sites", "editarContato") || !!special?.sitesGeral}
+              podeEditarTema={!!me?.isMaster || can("sites", "editarTema") || !!special?.sitesGeral}
+              podeUploadAssets={!!me?.isMaster || can("sites", "uploadAssets") || !!special?.sitesGeral}
+              podePublicar={!!me?.isMaster || can("sites", "publicar") || !!special?.sitesGeral}
+            />
+          </div>
+          <div className="hidden xl:block">
+            <LivePreviewPanel rid={rid} nomeRestaurante={activeRestaurant.nome} />
+          </div>
+        </div>
       )}
       {tab === "conexao" && (
         <ConexaoTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeConectar} />
