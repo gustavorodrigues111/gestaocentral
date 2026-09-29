@@ -1,4 +1,4 @@
-import { lazy, Suspense } from "react";
+import { lazy, Suspense, useEffect, useState } from "react";
 import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 import { AuthProvider, useAuth } from "./core/auth/AuthContext";
 import { SignupScreen } from "./core/auth/SignupScreen";
@@ -14,7 +14,7 @@ import { PrivacidadePlataformaPage } from "./modules/sites/PrivacidadePlataforma
 import { ExcluirDadosPage } from "./modules/sites/ExcluirDadosPage";
 import { SitePublicaPage } from "./modules/sites/SitePublicaPage";
 import { CardapioRedirect } from "./modules/sites/CardapioRedirect";
-import { getSlugFromHost } from "./modules/sites/shared/customDomain";
+import { getSlugFromHost, isKnownNonSiteHost, resolveSlugFromHost } from "./modules/sites/shared/customDomain";
 import { SitePreviewPage } from "./modules/sites/SitePreviewPage";
 import { CardapioPdfPrintPage } from "./modules/sites/CardapioPdfPrintPage";
 import { HostedPagePublic } from "./modules/paginas/HostedPagePublic";
@@ -86,7 +86,24 @@ function App() {
 //   2) planejamento.app / www.planejamento.app → tela de boas-vindas.
 //   3) admin.planejamento.app (ou qualquer outro) → app normal (login admin).
 function RootOrShell() {
-  const slugDoHost = getSlugFromHost();
+  // 1) Fast-path síncrono: mapa fixo (lobozo, sororoca…). Instantâneo.
+  const slugFixo = getSlugFromHost();
+  // 2) Config-driven: pra hosts desconhecidos (nem admin, nem mapa fixo),
+  //    resolve host→slug no Firestore. `undefined` = ainda resolvendo.
+  const [slugDin, setSlugDin] = useState<string | null | undefined>(
+    slugFixo ? slugFixo : (isKnownNonSiteHost() ? null : undefined),
+  );
+  useEffect(() => {
+    if (slugDin !== undefined) return;   // já resolvido (fixo/admin) ou não precisa
+    let vivo = true;
+    resolveSlugFromHost().then((s) => { if (vivo) setSlugDin(s ?? null); });
+    return () => { vivo = false; };
+  }, [slugDin]);
+
+  // Enquanto resolve um domínio desconhecido, splash curto (evita piscar o admin).
+  if (slugDin === undefined) return <ShellSuspenseFallback />;
+
+  const slugDoHost = slugDin;
   if (slugDoHost) {
     // Domínio próprio. Raiz → site; sub-path (ex: /cardapio, /eventos, /reservas)
     // → resolve o atalho (PDF do cardápio, página de eventos/reservas) ou cai no site.

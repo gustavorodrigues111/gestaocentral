@@ -33,7 +33,8 @@ const ADMIN_HOSTS = new Set([
 ]);
 
 // Retorna o slug do restaurante se o host atual for de um domínio próprio
-// mapeado. Senão retorna null (host admin/preview/dev).
+// mapeado no MAPA FIXO (fast-path, síncrono). Senão retorna null — pode ainda
+// ser um domínio config-driven; use resolveSlugFromHost() pra resolver do banco.
 export function getSlugFromHost(): string | null {
   if (typeof window === "undefined") return null;
   const host = window.location.hostname.toLowerCase();
@@ -41,6 +42,39 @@ export function getSlugFromHost(): string | null {
   // Hosts de preview do Vercel (ex: *.vercel.app) — não tratar como custom
   if (host.endsWith(".vercel.app")) return null;
   return RESTAURANT_HOSTS[host] || null;
+}
+
+// True quando o host atual é sabidamente do ADMIN/preview/dev — nunca é um
+// site público, então nem tenta resolver domínio no banco.
+export function isKnownNonSiteHost(): boolean {
+  if (typeof window === "undefined") return true;
+  const host = window.location.hostname.toLowerCase();
+  return ADMIN_HOSTS.has(host) || host.endsWith(".vercel.app");
+}
+
+// Resolve host→slug de forma CONFIG-DRIVEN: primeiro o mapa fixo (instantâneo,
+// retrocompat), depois consulta /sitesConfig no Firestore por domínio próprio
+// cadastrado (dominios array-contains host). Leitura pública já é permitida
+// pelas rules de sitesConfig. Retorna null se não achar.
+export async function resolveSlugFromHost(): Promise<string | null> {
+  if (typeof window === "undefined") return null;
+  const host = window.location.hostname.toLowerCase();
+  if (ADMIN_HOSTS.has(host) || host.endsWith(".vercel.app")) return null;
+  const fixo = RESTAURANT_HOSTS[host];
+  if (fixo) return fixo;
+  try {
+    const { collection, getDocs, query, where, limit } = await import("firebase/firestore");
+    const { db } = await import("../../../core/firebase/config");
+    const snap = await getDocs(query(collection(db, "sitesConfig"), where("dominios", "array-contains", host), limit(1)));
+    const d = snap.docs[0];
+    if (!d) return null;
+    const data = d.data() as { slug?: string; publicado?: boolean };
+    if (!data.publicado) return null;
+    return data.slug || null;
+  } catch (e) {
+    console.warn("[customDomain] falha ao resolver domínio:", e);
+    return null;
+  }
 }
 
 // Reverso: domínio próprio (sem www) de um slug, se houver. Usado pra montar

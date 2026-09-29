@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Lock, SquarePen, ClipboardList, Eye } from "lucide-react";
+import { Lock, SquarePen, ClipboardList, Eye, Globe } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -7,9 +7,10 @@ import { canUse } from "../../core/auth/permissions";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { GeralTab } from "./GeralTab";
 import { PreviewTab } from "./PreviewTab";
+import { ConexaoTab } from "./ConexaoTab";
 import { PageContainer } from "../../core/ui/PageContainer";
 
-type Tab = "geral" | "cardapio" | "preview";
+type Tab = "geral" | "conexao" | "cardapio" | "preview";
 
 // Módulo Sites — controla o site público do restaurante.
 // Tabs:
@@ -43,6 +44,8 @@ export function SitesPage() {
     || can("sites", "editarTextos") || can("sites", "editarContato")
     || can("sites", "editarTema") || can("sites", "uploadAssets")
     || !!special?.sitesGeral;
+  // Conectar domínio é ação sensível — publicar/master.
+  const podeConectar = !!me?.isMaster || can("sites", "publicar") || !!special?.sitesGeral;
 
   const [tab, setTab] = useState<Tab>("geral");
 
@@ -68,6 +71,9 @@ export function SitesPage() {
         <TabButton active={tab === "geral"} onClick={() => setTab("geral")} disabled={!podeGeral}>
           <span className="inline-flex items-center gap-1.5"><SquarePen size={15} /> Geral</span>
         </TabButton>
+        <TabButton active={tab === "conexao"} onClick={() => setTab("conexao")}>
+          <span className="inline-flex items-center gap-1.5"><Globe size={15} /> Conexão do site</span>
+        </TabButton>
         <TabButton active={tab === "cardapio"} onClick={() => setTab("cardapio")} disabled={!podeCardapio}>
           <span className="inline-flex items-center gap-1.5"><ClipboardList size={15} /> Cardápio</span>
         </TabButton>
@@ -88,6 +94,9 @@ export function SitesPage() {
           podeUploadAssets={!!me?.isMaster || can("sites", "uploadAssets") || !!special?.sitesGeral}
           podePublicar={!!me?.isMaster || can("sites", "publicar") || !!special?.sitesGeral}
         />
+      )}
+      {tab === "conexao" && (
+        <ConexaoTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeConectar} />
       )}
       {tab === "cardapio" && (
         <div className="rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-6 text-center space-y-2">

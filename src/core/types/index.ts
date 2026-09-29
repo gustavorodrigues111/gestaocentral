@@ -4662,6 +4662,11 @@ export type SiteConfig = {
   };
   // Slug (subdomínio temporário tipo lobozo-site.web.app, ou path /site/lobozo)
   slug: string;
+  // Domínios próprios conectados a este site (config-driven — substitui o mapa
+  // fixo em customDomain.ts). Guardar sempre em minúsculas, incluindo apex e
+  // www (ex.: ["sororocaparaty.com.br","www.sororocaparaty.com.br"]). O boot
+  // resolve host→slug lendo daqui quando o host não é conhecido.
+  dominios?: string[];
   // Qual template visual usar pra renderizar o site público.
   // - "personalizado": template completo (header sticky, hero grande, todas
   //   as seções), pensado pra ser adaptado por cor/fonte/logo de cada marca.
