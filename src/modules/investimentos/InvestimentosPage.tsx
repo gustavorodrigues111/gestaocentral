@@ -7,10 +7,11 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { auth } from "../../core/firebase/config";
 import { uploadFileToFolder } from "../../core/google/driveClient";
 import { pickDriveFolder } from "../../core/google/drivePicker";
+import { centralConfigured, centralEnsureFolder, centralUpload, parseDriveFolderId } from "../../core/google/driveCentral";
 import { fmtBR } from "../../core/utils/date";
 import { INVEST_FORMA_LABEL, investFormaLabel } from "../../core/types";
-import type { InvestProjeto, InvestCategoria, InvestLancamento, InvestParcela, InvestForma } from "../../core/types";
-import { ouvirProjetos, salvarProjeto, excluirProjeto, ouvirCategorias, salvarCategoria, excluirCategoria, ouvirFormas, salvarForma, ouvirLancamentos, salvarLancamento, excluirLancamento } from "./repository";
+import type { InvestProjeto, InvestCategoria, InvestLancamento, InvestParcela, InvestForma, InvestConfig } from "../../core/types";
+import { ouvirProjetos, salvarProjeto, excluirProjeto, ouvirCategorias, salvarCategoria, excluirCategoria, ouvirFormas, salvarForma, ouvirLancamentos, salvarLancamento, excluirLancamento, ouvirConfig, salvarConfig } from "./repository";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 const uid = () => { try { return crypto.randomUUID(); } catch { return "id" + Date.now() + Math.random().toString(36).slice(2); } };
@@ -97,6 +98,8 @@ export function InvestimentosPage() {
   const [categorias, setCategorias] = useState<InvestCategoria[]>([]);
   const [formas, setFormas] = useState<InvestForma[]>([]);
   const [lancamentos, setLancamentos] = useState<InvestLancamento[]>([]);
+  const [cfg, setCfg] = useState<InvestConfig | null>(null);
+  const [central, setCentral] = useState<boolean | null>(null);
   const [projId, setProjId] = useState("");
   const proj = projetos.find((p) => p.id === projId) || projetos[0] || null;
 
@@ -109,6 +112,10 @@ export function InvestimentosPage() {
   useEffect(() => { if (!rid) return; return ouvirProjetos(rid, setProjetos); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirCategorias(rid, setCategorias); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirFormas(rid, setFormas); }, [rid]);
+  useEffect(() => { if (!rid) return; return ouvirConfig(rid, setCfg); }, [rid]);
+  useEffect(() => { centralConfigured().then(setCentral).catch(() => setCentral(false)); }, []);
+
+  async function salvarRoot(id: string, nome?: string) { if (!rid) return; await salvarConfig({ id: rid, restaurantId: rid, driveRootId: id, driveRootNome: nome }); }
   useEffect(() => { if (!rid || !proj) { setLancamentos([]); return; } return ouvirLancamentos(rid, proj.id, setLancamentos); }, [rid, proj?.id]);
   useEffect(() => { if (proj && projId !== proj.id) setProjId(proj.id); }, [proj, projId]);
 
@@ -197,7 +204,7 @@ export function InvestimentosPage() {
         </>
       )}
 
-      {projModal && <ProjetoModal mode={projModal.mode} proj={projModal.proj} rid={rid} me={me} onClose={() => setProjModal(null)} onSay={say} onSaved={(id) => setProjId(id)} />}
+      {projModal && <ProjetoModal mode={projModal.mode} proj={projModal.proj} rid={rid} me={me} central={central} driveRootId={cfg?.driveRootId} driveRootNome={cfg?.driveRootNome} onSaveRoot={salvarRoot} onClose={() => setProjModal(null)} onSay={say} onSaved={(id) => setProjId(id)} />}
       {gerirCat && <CategoriasModal categorias={categorias} rid={rid!} onConfirmar={confirmarCategoria} onClose={() => setGerirCat(false)} />}
       {lancModal && proj && <LancamentoModal registro={lancModal === "new" ? null : lancModal} proj={proj} rid={rid!} me={me} categorias={categorias} formas={formas} onClose={() => setLancModal(null)} onSay={say} />}
 
@@ -207,13 +214,21 @@ export function InvestimentosPage() {
 }
 
 // ── Modal: criar/editar projeto (+ pasta Drive) ──────────────────────────────
-function ProjetoModal(props: { mode: "new" | "edit"; proj?: InvestProjeto; rid: string; me: ReturnType<typeof useAuth>["pessoa"]; onClose: () => void; onSay: (m: string) => void; onSaved: (id: string) => void }) {
-  const { mode, proj, rid, me, onClose, onSay, onSaved } = props;
+function ProjetoModal(props: {
+  mode: "new" | "edit"; proj?: InvestProjeto; rid: string; me: ReturnType<typeof useAuth>["pessoa"];
+  central: boolean | null; driveRootId?: string; driveRootNome?: string; onSaveRoot: (id: string, nome?: string) => Promise<void>;
+  onClose: () => void; onSay: (m: string) => void; onSaved: (id: string) => void;
+}) {
+  const { mode, proj, rid, me, central, driveRootId, onSaveRoot, onClose, onSay, onSaved } = props;
   const [nome, setNome] = useState(proj?.nome || "");
   const [descricao, setDescricao] = useState(proj?.descricao || "");
-  const [pastaId, setPastaId] = useState(proj?.pastaDriveId || "");
+  const [pastaId, setPastaId] = useState(proj?.pastaDriveId || "");     // fluxo navegador (legado)
   const [pastaNome, setPastaNome] = useState(proj?.pastaDriveNome || "");
+  const [rootInput, setRootInput] = useState("");                       // fluxo central: root a configurar
+  const [editRoot, setEditRoot] = useState(false);
   const [erro, setErro] = useState("");
+  const [salvando, setSalvando] = useState(false);
+  const precisaRoot = central === true && (!driveRootId || editRoot);
 
   async function escolherPasta() {
     setErro("");
@@ -222,16 +237,38 @@ function ProjetoModal(props: { mode: "new" | "edit"; proj?: InvestProjeto; rid: 
       if (f) { setPastaId(f.id); setPastaNome(f.name); }
     } catch (e) { setErro("Não consegui abrir o Drive: " + (e instanceof Error ? e.message : "erro")); }
   }
+
   async function salvar() {
     if (!nome.trim()) return;
-    const now = new Date().toISOString();
-    const p: InvestProjeto = {
-      id: proj?.id || uid(), restaurantId: rid, nome: nome.trim(), descricao: descricao.trim() || undefined,
-      pastaDriveId: pastaId || undefined, pastaDriveNome: pastaNome || undefined,
-      ativo: true, ordem: proj?.ordem ?? Date.now(), criadoEm: proj?.criadoEm || now, criadoPor: proj?.criadoPor || (me?.id || ""),
-    };
-    try { await salvarProjeto(p); onSay(mode === "new" ? "✓ Projeto criado" : "✓ Projeto salvo"); onSaved(p.id); onClose(); }
-    catch (e) { setErro("Falha ao salvar: " + (e instanceof Error ? e.message : "erro")); }
+    setSalvando(true); setErro("");
+    try {
+      let dId = proj?.pastaDriveId, dNome = proj?.pastaDriveNome, dCentral = proj?.pastaDriveCentral;
+
+      if (central === true) {
+        // Descobre/garante a pasta-raiz da conta central.
+        let rootId = driveRootId;
+        if (!rootId || editRoot) {
+          const parsed = parseDriveFolderId(rootInput);
+          if (!parsed) { setErro("Cole o link ou o ID da pasta-raiz no Drive central."); setSalvando(false); return; }
+          await onSaveRoot(parsed); rootId = parsed;
+        }
+        // Cria/reaproveita a subpasta deste projeto dentro do root.
+        const subId = await centralEnsureFolder(rootId, nome.trim());
+        dId = subId; dNome = nome.trim(); dCentral = true;
+      } else {
+        // Fluxo navegador (central não configurada).
+        dId = pastaId || undefined; dNome = pastaNome || undefined; dCentral = false;
+      }
+
+      const now = new Date().toISOString();
+      const p: InvestProjeto = {
+        id: proj?.id || uid(), restaurantId: rid, nome: nome.trim(), descricao: descricao.trim() || undefined,
+        pastaDriveId: dId, pastaDriveNome: dNome, pastaDriveCentral: dCentral,
+        ativo: true, ordem: proj?.ordem ?? Date.now(), criadoEm: proj?.criadoEm || now, criadoPor: proj?.criadoPor || (me?.id || ""),
+      };
+      await salvarProjeto(p);
+      onSay(mode === "new" ? "✓ Projeto criado" : "✓ Projeto salvo"); onSaved(p.id); onClose();
+    } catch (e) { setErro("Falha ao salvar: " + (e instanceof Error ? e.message : "erro")); setSalvando(false); }
   }
   async function excluir() { if (!proj) return; if (!confirm(`Excluir o projeto "${proj.nome}"? Os lançamentos ficam órfãos (não some do Drive).`)) return; await excluirProjeto(proj.id); onSay("Projeto excluído"); onClose(); }
 
@@ -242,18 +279,43 @@ function ProjetoModal(props: { mode: "new" | "edit"; proj?: InvestProjeto; rid: 
       <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Reforma do salão" autoFocus className={INP + " mt-1 mb-3"} />
       <label className={LBL}>Descrição <span className="text-gray-400 normal-case">(opcional)</span></label>
       <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className={INP + " mt-1 mb-3"} />
-      <label className={LBL}>Pasta do Drive (comprovantes)</label>
-      <div className="flex items-center gap-2 mt-1">
-        <button onClick={() => void escolherPasta()} className="h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm inline-flex items-center gap-1.5"><FolderOpen size={15} className="text-amber-500" /> {pastaNome ? "Trocar pasta" : "Escolher pasta"}</button>
-        {pastaNome && <span className="text-[12px] text-gray-600 dark:text-gray-300 truncate">{pastaNome}</span>}
-      </div>
-      <div className="text-[11px] text-gray-400 mt-1">Os comprovantes vão pra essa pasta, nomeados <b>Estabelecimento_Data</b>.</div>
+
+      {/* Onde ficam os comprovantes */}
+      {central === true ? (
+        <>
+          <label className={LBL}>Pasta-raiz no Drive (conta central)</label>
+          {!precisaRoot ? (
+            <div className="mt-1 text-[12px] text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1.5">
+              <Check size={14} /> Configurada — cada projeto vira uma subpasta aqui. <button type="button" onClick={() => { setEditRoot(true); setRootInput(""); }} className="text-indigo-600 dark:text-indigo-400 underline">trocar</button>
+            </div>
+          ) : (
+            <>
+              <input value={rootInput} onChange={(e) => setRootInput(e.target.value)} placeholder="Cole o link ou o ID da pasta-raiz" className={INP + " mt-1"} />
+              <div className="text-[11px] text-gray-400 mt-1">É uma pasta do Drive da <b>conta central</b> (a mesma do Recebimento). Configura uma vez; os projetos criam subpastas dentro. <b>Sem popup de autorização.</b></div>
+              {driveRootId && <button type="button" onClick={() => setEditRoot(false)} className="text-[11px] text-gray-500 underline mt-1">cancelar troca</button>}
+            </>
+          )}
+          <div className="text-[11px] text-gray-400 mt-1">Comprovantes nomeados <b>Estabelecimento_Data</b>.</div>
+        </>
+      ) : central === false ? (
+        <>
+          <label className={LBL}>Pasta do Drive (comprovantes)</label>
+          <div className="flex items-center gap-2 mt-1">
+            <button type="button" onClick={() => void escolherPasta()} className="h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm inline-flex items-center gap-1.5"><FolderOpen size={15} className="text-amber-500" /> {pastaNome ? "Trocar pasta" : "Escolher pasta"}</button>
+            {pastaNome && <span className="text-[12px] text-gray-600 dark:text-gray-300 truncate">{pastaNome}</span>}
+          </div>
+          <div className="text-[11px] text-gray-400 mt-1">Comprovantes nomeados <b>Estabelecimento_Data</b>.</div>
+        </>
+      ) : (
+        <div className="text-[12px] text-gray-400 mt-1">Verificando Drive…</div>
+      )}
+
       {erro && <div className="text-[12px] text-rose-600 mt-2">{erro}</div>}
       <div className="flex gap-2 mt-4">
         {mode === "edit" && <button onClick={() => void excluir()} className="px-3 py-2 rounded-lg border border-rose-200 dark:border-rose-900 text-rose-600 text-sm font-semibold inline-flex items-center gap-1"><Trash2 size={14} /> Excluir</button>}
         <div className="flex-1" />
         <button onClick={onClose} className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold">Cancelar</button>
-        <button onClick={() => void salvar()} disabled={!nome.trim()} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-50">Salvar</button>
+        <button onClick={() => void salvar()} disabled={!nome.trim() || salvando || central === null} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-50">{salvando ? "Salvando…" : "Salvar"}</button>
       </div>
     </div>
   </div>;
@@ -406,7 +468,10 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
         const safe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 80);
         const nomeArq = `${safe(estabelecimento)}_${data}.${ext}`;
         const renamed = new File([file], nomeArq, { type: file.type });
-        const up = await uploadFileToFolder(proj.pastaDriveId, renamed);
+        // Conta central (sem popup) quando a pasta do projeto é central; senão, navegador.
+        const up = proj.pastaDriveCentral
+          ? await centralUpload(proj.pastaDriveId, renamed)
+          : await uploadFileToFolder(proj.pastaDriveId, renamed);
         comprovanteDriveId = up.id; comprovanteUrl = up.webViewLink || comprovanteUrl; comprovanteNome = nomeArq;
       }
       const now = new Date().toISOString();

@@ -2362,9 +2362,17 @@ export type InvestCategoria = {
 };
 export type InvestProjeto = {
   id: string; restaurantId: string; nome: string; descricao?: string;
-  pastaDriveId?: string; pastaDriveNome?: string;   // pasta fixa dos comprovantes (escolhida uma vez)
+  pastaDriveId?: string; pastaDriveNome?: string;   // pasta dos comprovantes deste projeto
+  pastaDriveCentral?: boolean;                       // true = subpasta da conta central (sem popup); false/undefined = pasta do Drive do usuário (navegador)
   ativo?: boolean; ordem?: number;
   criadoEm: string; criadoPor?: string; atualizadoEm?: string;
+};
+// Config do módulo por restaurante (doc id = restaurantId). Guarda a pasta-raiz
+// da conta central onde cada projeto vira uma subpasta — configurada 1 vez.
+export type InvestConfig = {
+  id: string; restaurantId: string;
+  driveRootId?: string; driveRootNome?: string;
+  atualizadoEm?: string;
 };
 export type InvestLancamento = {
   id: string; restaurantId: string; projetoId: string;

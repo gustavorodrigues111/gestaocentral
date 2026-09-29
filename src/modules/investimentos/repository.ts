@@ -1,7 +1,17 @@
 import { collection, deleteDoc, doc, onSnapshot, query, setDoc, where, type Unsubscribe } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import type { InvestProjeto, InvestCategoria, InvestLancamento, InvestForma } from "../../core/types";
+import type { InvestProjeto, InvestCategoria, InvestLancamento, InvestForma, InvestConfig } from "../../core/types";
+
+// ── Config do módulo por restaurante (doc id = restaurantId) ─────────────────
+export function ouvirConfig(rid: string, cb: (c: InvestConfig | null) => void): Unsubscribe {
+  return onSnapshot(doc(db, "investConfig", rid), (snap) => {
+    cb(snap.exists() ? ({ id: snap.id, ...snap.data() } as InvestConfig) : null);
+  }, (e) => console.error("[investimentos] config", e));
+}
+export async function salvarConfig(c: InvestConfig): Promise<void> {
+  await setDoc(doc(db, "investConfig", c.id), sanitizeForFirestore({ ...c, atualizadoEm: new Date().toISOString() }), { merge: true });
+}
 
 // ── Projetos (planilhas) por restaurante ────────────────────────────────────
 export function ouvirProjetos(rid: string, cb: (l: InvestProjeto[]) => void): Unsubscribe {
