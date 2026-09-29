@@ -121,6 +121,7 @@ export const MODULES: ModuleDef[] = [
 
   // ── Cartões ──────────────────────────────────────────────────────
   { id: "faturas",     area: "planejamento", subarea: "Cartões",      label: "Conciliação de Faturas", icon: "credit-card", status: "ativo", etapa: "em_desenvolvimento", desc: "Faturas de cartão: sobe o PDF, a IA extrai e você classifica os gastos por categoria/empresa. Gastos atribuídos a outra empresa viram reembolso na Central de Avisos dela." },
+  { id: "investimentos", area: "planejamento", subarea: "Investimentos", label: "Novos Investimentos", icon: "trending-up", status: "ativo", etapa: "em_desenvolvimento", desc: "Planilha de investimentos por projeto (por restaurante): cada linha com data, estabelecimento, categoria, valor, forma de pagamento e parcelamento. Sobe o comprovante pro Drive (pasta do projeto) e a IA preenche a linha pra você conferir." },
 
   // ── IA ───────────────────────────────────────────────────────────
   { id: "agentes",     area: "planejamento", subarea: "IA",           label: "Agentes de IA",   icon: "bot", status: "ativo", etapa: "em_desenvolvimento", desc: "Agentes de IA (DP e Financeiro) que consultam e — com confirmação — alteram dados dentro da plataforma. Acesso controlado herdado de Pessoas; futuramente respondem no WhatsApp em números autorizados." },

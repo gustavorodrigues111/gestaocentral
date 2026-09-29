@@ -87,6 +87,8 @@ export type ModuleId =
   | "tarefas"
   // Mapa de Projetos (mapa mental radial que compõe áreas/sub-áreas/tarefas do Gestor)
   | "mapaProjetos"
+  // Gestão de Novos Investimentos (planilha por projeto + comprovante no Drive + IA)
+  | "investimentos"
   // Prazos (novo módulo unificado — substitui contasFixas/manutencoes/prazosTrabalhistas)
   | "prazos"
   // Agentes de IA
@@ -2331,6 +2333,42 @@ export type MapaProjeto = {
   criadoEm: string;
   criadoPor: string;
   atualizadoEm?: string;
+};
+
+// ─── NOVOS INVESTIMENTOS ────────────────────────────────────────────────────
+// Planilha de investimentos por RESTAURANTE → vários PROJETOS (cada projeto =
+// uma planilha). Cada lançamento (linha) pode ter comprovante anexado numa
+// pasta FIXA do Drive escolhida no projeto (arquivo nomeado Estabelecimento_Data).
+// A IA extrai os campos do comprovante e o usuário confirma/edita.
+export type InvestFormaPagamento = "dinheiro" | "pix" | "debito" | "credito" | "boleto" | "transferencia" | "outro";
+export const INVEST_FORMA_LABEL: Record<InvestFormaPagamento, string> = {
+  dinheiro: "Dinheiro", pix: "Pix", debito: "Cartão débito", credito: "Cartão crédito",
+  boleto: "Boleto", transferencia: "Transferência", outro: "Outro",
+};
+export type InvestParcela = { n: number; data: string; valor: number; pago?: boolean };  // data = YYYY-MM-DD
+export type InvestCategoria = {
+  id: string; restaurantId: string; nome: string;
+  criadaPorIa?: boolean;   // sugerida pela IA — precisa confirmação
+  confirmada?: boolean;    // false = pendente de confirmação do usuário
+  criadoEm: string;
+};
+export type InvestProjeto = {
+  id: string; restaurantId: string; nome: string; descricao?: string;
+  pastaDriveId?: string; pastaDriveNome?: string;   // pasta fixa dos comprovantes (escolhida uma vez)
+  ativo?: boolean; ordem?: number;
+  criadoEm: string; criadoPor?: string; atualizadoEm?: string;
+};
+export type InvestLancamento = {
+  id: string; restaurantId: string; projetoId: string;
+  data: string;                          // YYYY-MM-DD
+  estabelecimento: string;
+  categoriaId?: string; categoriaNome?: string;
+  valor: number;
+  formaPagamento?: InvestFormaPagamento;
+  parcelado?: boolean; parcelas?: InvestParcela[];
+  comprovanteDriveId?: string; comprovanteUrl?: string; comprovanteNome?: string;
+  observacao?: string;
+  criadoEm: string; criadoPor?: string; criadoPorNome?: string; atualizadoEm?: string;
 };
 
 // ─── RESERVAS + CRM ─────────────────────────────────────────────────────────

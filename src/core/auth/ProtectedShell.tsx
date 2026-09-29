@@ -55,6 +55,7 @@ import { PerfisAcessoPage } from "../../modules/perfisAcesso/PerfisAcessoPage";
 import { PortalPage } from "../../modules/portalEmpregado/PortalPage";
 import { TarefasPage } from "../../modules/tarefas/TarefasPage";
 import { MapaProjetosPage } from "../../modules/mapaProjetos/MapaProjetosPage";
+import { InvestimentosPage } from "../../modules/investimentos/InvestimentosPage";
 import { WikiProcessosPage } from "../../modules/wikiProcessos/WikiProcessosPage";
 import { DocumentosPage } from "../../modules/documentos/DocumentosPage";
 import { IaGovernancaPage } from "../../modules/iaGovernanca/IaGovernancaPage";
@@ -141,6 +142,7 @@ function ModuleRouter() {
     // → lente enxuta. Master sempre avançado.
     case "tarefas":       return canUse(pessoa, rid || "", "tarefas") ? <TarefasPage key={k} /> : <LenteEnxutaPage key={k} />;
     case "mapaProjetos":  return <MapaProjetosPage key={k} />;
+    case "investimentos": return <InvestimentosPage key={k} />;
     case "wikiProcessos": return <WikiProcessosPage key={k} />;
     case "documentos": return <DocumentosPage key={k} />;
     case "iaGovernanca": return <IaGovernancaPage key={k} />;
