@@ -2,10 +2,11 @@
 // do preview → abre o modal certo (texto campo-a-campo, imagem ou cores) →
 // salva no sitesConfig. Preview num iframe (/site-preview/:rid?edit=1) pra
 // isolar o estilo; o clique chega por postMessage.
-import { useEffect, useState } from "react";
-import { Monitor, Smartphone, X, Sparkles, Check, MousePointerClick, Palette, Image as ImageIcon } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Monitor, Smartphone, X, Sparkles, Check, MousePointerClick, Palette, Image as ImageIcon, Crop } from "lucide-react";
+import { ref as storageRef, uploadBytes, getDownloadURL } from "firebase/storage";
 import { useAuth } from "../../core/auth/AuthContext";
-import { auth } from "../../core/firebase/config";
+import { auth, storage } from "../../core/firebase/config";
 import { useSiteConfig } from "./useSiteConfig";
 import { UploadImagem } from "./UploadImagem";
 import { FONTES_SITE, CATEGORIA_LABEL } from "./templates/fontesDisponiveis";
@@ -154,7 +155,7 @@ export function EditarVisualTab({ rid, nomeRestaurante, podeEditar }: { rid: str
         <CampoModal campo={sel.campo} info={CAMPO[sel.campo]} valor={valorAtual(config, sel.campo)} podeEditar={podeEditar} onClose={() => setSel(null)} onSave={salvarCampo} />
       )}
       {sel?.tipo === "asset" && (
-        <AssetModal rid={rid} asset={sel.asset} url={String((config as unknown as Record<string, unknown>)[ASSET_INFO[sel.asset].campo] || "")} podeEditar={podeEditar} onClose={() => setSel(null)} onChange={(u) => void salvarAsset(sel.asset, u)} />
+        <AssetModal rid={rid} asset={sel.asset} url={String((config as unknown as Record<string, unknown>)[ASSET_INFO[sel.asset].campo] || "")} logoUrl={config?.logoUrl || ""} podeEditar={podeEditar} onClose={() => setSel(null)} onChange={(u) => void salvarAsset(sel.asset, u)} />
       )}
       {sel?.tipo === "tema" && config && (
         <TemaModal tema={config.tema} logoUrl={config.logoUrl || ""} heroImagemUrl={config.heroImagemUrl || ""} podeEditar={podeEditar} onClose={() => setSel(null)} onSave={salvarTema} />
@@ -208,17 +209,108 @@ function CampoModal({ campo, info, valor, podeEditar, onClose, onSave }: {
 }
 
 // ── Modal de imagem (reusa UploadImagem) ─────────────────────────────────────
-function AssetModal({ rid, asset, url, podeEditar, onClose, onChange }: {
-  rid: string; asset: SelAsset["asset"]; url: string; podeEditar: boolean;
+function AssetModal({ rid, asset, url, logoUrl, podeEditar, onClose, onChange }: {
+  rid: string; asset: SelAsset["asset"]; url: string; logoUrl?: string; podeEditar: boolean;
   onClose: () => void; onChange: (url: string) => void;
 }) {
   const info = ASSET_INFO[asset];
+  const [recortar, setRecortar] = useState(false);
   return (
     <div className="fixed inset-0 z-[80] bg-black/40 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-[480px] p-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 mb-3"><div className="font-extrabold text-[15px]">{info.label}</div><div className="flex-1" /><button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg bg-gray-100 dark:bg-gray-800"><X size={16} /></button></div>
+        {asset === "favicon" && podeEditar && logoUrl && (
+          <button onClick={() => setRecortar(true)} className="w-full mb-3 h-10 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50/60 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 text-[13px] font-semibold inline-flex items-center justify-center gap-1.5"><Crop size={14} /> Recortar da logo (pegar só o ícone)</button>
+        )}
         <UploadImagem rid={rid} tipo={info.tipo} label={info.label} descricao={info.desc} url={url} onChange={onChange} disabled={!podeEditar} />
         <div className="flex justify-end mt-4"><button onClick={onClose} className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold">Fechar</button></div>
+      </div>
+      {recortar && logoUrl && <RecortarLogoFavicon rid={rid} logoUrl={logoUrl} onClose={() => setRecortar(false)} onDone={(u) => { onChange(u); setRecortar(false); }} />}
+    </div>
+  );
+}
+
+// Recorte da logo → favicon quadrado. O usuário enquadra (zoom + posição) e
+// gera; sobe pro Storage (sites/{rid}/favicon.png) e devolve a URL.
+function RecortarLogoFavicon({ rid, logoUrl, onClose, onDone }: { rid: string; logoUrl: string; onClose: () => void; onDone: (url: string) => void }) {
+  const [img, setImg] = useState<HTMLImageElement | null>(null);
+  const [zoom, setZoom] = useState(1.6);
+  const [px, setPx] = useState(0);
+  const [py, setPy] = useState(-0.6);   // começa enquadrando o topo (onde fica o peixe)
+  const [gerando, setGerando] = useState(false);
+  const [erro, setErro] = useState("");
+  const cvRef = useRef<HTMLCanvasElement | null>(null);
+
+  useEffect(() => {
+    let obj = "";
+    (async () => {
+      try {
+        const r = await fetch(logoUrl); const b = await r.blob(); obj = URL.createObjectURL(b);
+        const i = await new Promise<HTMLImageElement>((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = () => rej(new Error("imagem inválida")); im.src = obj; });
+        setImg(i);
+      } catch (e) { setErro("Não consegui carregar a logo" + (e instanceof Error ? `: ${e.message}` : "") + "."); }
+    })();
+    return () => { if (obj) URL.revokeObjectURL(obj); };
+  }, [logoUrl]);
+
+  function desenhar(cv: HTMLCanvasElement, i: HTMLImageElement) {
+    const s = cv.width; const ctx = cv.getContext("2d"); if (!ctx) return;
+    ctx.clearRect(0, 0, s, s);
+    const base = Math.max(s / i.width, s / i.height);
+    const scale = base * zoom;
+    const w = i.width * scale, h = i.height * scale;
+    const x = (s - w) / 2 + px * Math.max(0, (w - s)) / 2;
+    const y = (s - h) / 2 + py * Math.max(0, (h - s)) / 2;
+    ctx.drawImage(i, x, y, w, h);
+  }
+  useEffect(() => { const cv = cvRef.current; if (cv && img) desenhar(cv, img); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [img, zoom, px, py]);
+
+  async function gerar() {
+    const cv = cvRef.current; if (!cv || !img) return;
+    setGerando(true); setErro("");
+    try {
+      const out = document.createElement("canvas"); out.width = 256; out.height = 256;
+      desenharEm(out, img);
+      const blob = await new Promise<Blob | null>((res) => out.toBlob(res, "image/png"));
+      if (!blob) throw new Error("falha ao gerar imagem");
+      const ref = storageRef(storage, `sites/${rid}/favicon.png`);
+      await uploadBytes(ref, blob, { contentType: "image/png" });
+      const dl = await getDownloadURL(ref);
+      onDone(dl);
+    } catch (e) { setErro("Falha ao gerar favicon" + (e instanceof Error ? `: ${e.message}` : "") + "."); setGerando(false); }
+  }
+  function desenharEm(cv: HTMLCanvasElement, i: HTMLImageElement) {
+    const s = cv.width; const ctx = cv.getContext("2d"); if (!ctx) return;
+    ctx.clearRect(0, 0, s, s);
+    const base = Math.max(s / i.width, s / i.height);
+    const scale = base * zoom;
+    const w = i.width * scale, h = i.height * scale;
+    const x = (s - w) / 2 + px * Math.max(0, (w - s)) / 2;
+    const y = (s - h) / 2 + py * Math.max(0, (h - s)) / 2;
+    ctx.drawImage(i, x, y, w, h);
+  }
+
+  const sld = "w-full accent-indigo-600";
+  return (
+    <div className="fixed inset-0 z-[90] bg-black/50 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-[400px] p-5" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center gap-2 mb-3"><Crop size={16} className="text-indigo-500" /><div className="font-extrabold text-[15px]">Recortar favicon da logo</div><div className="flex-1" /><button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg bg-gray-100 dark:bg-gray-800"><X size={16} /></button></div>
+        <div className="grid place-items-center mb-3">
+          <div className="rounded-xl overflow-hidden border border-gray-200 dark:border-gray-700" style={{ width: 200, height: 200, background: "conic-gradient(#eee 25%, #fff 0 50%, #eee 0 75%, #fff 0) 0 0/16px 16px" }}>
+            <canvas ref={cvRef} width={200} height={200} style={{ width: 200, height: 200, display: "block" }} />
+          </div>
+          <div className="text-[10px] text-gray-400 mt-1">Prévia — quadrado do favicon</div>
+        </div>
+        <div className="space-y-2">
+          <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block">Zoom<input type="range" min={1} max={4} step={0.05} value={zoom} onChange={(e) => setZoom(Number(e.target.value))} className={sld} /></label>
+          <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block">Horizontal<input type="range" min={-1} max={1} step={0.02} value={px} onChange={(e) => setPx(Number(e.target.value))} className={sld} /></label>
+          <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide block">Vertical<input type="range" min={-1} max={1} step={0.02} value={py} onChange={(e) => setPy(Number(e.target.value))} className={sld} /></label>
+        </div>
+        {erro && <div className="text-[12px] text-rose-600 mt-2">{erro}</div>}
+        <div className="flex justify-end gap-2 mt-4">
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold">Cancelar</button>
+          <button onClick={() => void gerar()} disabled={gerando || !img} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-50 inline-flex items-center gap-1">{gerando ? "Gerando…" : <><Check size={15} /> Usar como favicon</>}</button>
+        </div>
       </div>
     </div>
   );
