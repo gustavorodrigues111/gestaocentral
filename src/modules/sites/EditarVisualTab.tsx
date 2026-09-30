@@ -198,9 +198,9 @@ function TemaModal({ tema, podeEditar, onClose, onSave }: {
                 <div key={c.k}>
                   <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{c.label}</label>
                   <div className="flex items-center gap-2 mt-1">
-                    <input type="color" value={val(c.k) || "#888888"} onChange={(e) => setC(c.k, e.target.value)} disabled={!podeEditar} className="w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-0.5" />
-                    <input value={val(c.k)} onChange={(e) => setC(c.k, e.target.value)} placeholder="padrão do tema" disabled={!podeEditar} className="flex-1 h-10 px-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-[12px] font-mono" />
-                    {val(c.k) && podeEditar && <button onClick={() => setC(c.k, "")} className="text-[11px] text-gray-400 hover:text-rose-500" title="Limpar (usa o padrão)">limpar</button>}
+                    <input type="color" value={val(c.k) || "#888888"} onChange={(e) => setC(c.k, e.target.value)} disabled={!podeEditar} className="w-10 h-10 shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-0.5 cursor-pointer" />
+                    <input value={val(c.k)} onChange={(e) => setC(c.k, e.target.value)} placeholder="padrão do tema" disabled={!podeEditar} className="flex-1 min-w-0 h-10 px-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-[12px] font-mono" />
+                    {val(c.k) && podeEditar && <button onClick={() => setC(c.k, "")} className="shrink-0 text-[11px] text-gray-400 hover:text-rose-500" title="Limpar (usa o padrão)">limpar</button>}
                   </div>
                 </div>
               ))}
