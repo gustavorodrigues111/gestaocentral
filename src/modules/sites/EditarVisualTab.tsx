@@ -39,6 +39,20 @@ const CAMPO: Record<string, { label: string; multi?: boolean; top?: boolean }> =
 function rgbToHex(r: number, g: number, b: number) { return "#" + [r, g, b].map((x) => Math.max(0, Math.min(255, x)).toString(16).padStart(2, "0")).join(""); }
 function hexToRgb(h: string) { const m = h.replace("#", ""); return { r: parseInt(m.slice(0, 2), 16) || 0, g: parseInt(m.slice(2, 4), 16) || 0, b: parseInt(m.slice(4, 6), 16) || 0 }; }
 function luminancia({ r, g, b }: { r: number; g: number; b: number }) { return 0.2126 * r + 0.7152 * g + 0.0722 * b; }
+function clarear(hex: string, f: number) { const { r, g, b } = hexToRgb(hex); return rgbToHex(Math.round(r + (255 - r) * f), Math.round(g + (255 - g) * f), Math.round(b + (255 - b) * f)); }
+function escurecer(hex: string, f: number) { const { r, g, b } = hexToRgb(hex); return rgbToHex(Math.round(r * (1 - f)), Math.round(g * (1 - f)), Math.round(b * (1 - f))); }
+// Gera variações (mais claras/escuras) da paleta, sem repetir.
+function variacoesDaPaleta(palette: string[]): string[] {
+  const out: string[] = [];
+  const seen = new Set(palette.map((h) => h.toLowerCase()));
+  for (const h of palette.slice(0, 4)) {
+    for (const v of [clarear(h, 0.35), escurecer(h, 0.3)]) {
+      const k = v.toLowerCase();
+      if (!seen.has(k)) { seen.add(k); out.push(v); }
+    }
+  }
+  return out.slice(0, 8);
+}
 function saturacao({ r, g, b }: { r: number; g: number; b: number }) { const mx = Math.max(r, g, b) / 255, mn = Math.min(r, g, b) / 255; const l = (mx + mn) / 2; const d = mx - mn; return d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1)); }
 
 async function paletaDaImagem(url: string): Promise<string[]> {
@@ -217,6 +231,7 @@ function TemaModal({ tema, logoUrl, heroImagemUrl, podeEditar, onClose, onSave }
   const [palette, setPalette] = useState<string[]>([]);
   const [extraindo, setExtraindo] = useState("");
   const [erroPal, setErroPal] = useState("");
+  const [dropK, setDropK] = useState<string | null>(null);   // campo destacado no arraste
   const cores: { k: keyof SiteConfig["tema"]; label: string }[] = [
     { k: "corPrimaria", label: "Cor primária" },
     { k: "corSecundaria", label: "Cor secundária" },
@@ -257,14 +272,26 @@ function TemaModal({ tema, logoUrl, heroImagemUrl, podeEditar, onClose, onSave }
                 {heroImagemUrl && <button type="button" onClick={() => void sugerir(heroImagemUrl, "hero")} disabled={!!extraindo} className="text-[12px] font-semibold px-3 h-8 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-900 disabled:opacity-50">{extraindo === "hero" ? "Analisando…" : "Da imagem de fundo"}</button>}
               </div>
               {palette.length > 0 && (
-                <div className="mt-2">
-                  <div className="text-[10px] text-gray-500 mb-1">Paleta encontrada (clique pra copiar o código):</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {palette.map((h) => (
-                      <button key={h} type="button" title={`${h} — clique pra copiar`} onClick={() => navigator.clipboard?.writeText(h)} className="w-7 h-7 rounded-md border border-black/10 shrink-0" style={{ background: h }} />
-                    ))}
+                <div className="mt-2 space-y-2">
+                  <div>
+                    <div className="text-[10px] text-gray-500 mb-1">Paleta encontrada — <b>arraste</b> pra um campo abaixo (ou clique pra copiar):</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {palette.map((h) => (
+                        <button key={h} type="button" draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", h)} title={`${h} — arraste ou clique pra copiar`} onClick={() => navigator.clipboard?.writeText(h)} className="w-7 h-7 rounded-md border border-black/10 shrink-0 cursor-grab active:cursor-grabbing" style={{ background: h }} />
+                      ))}
+                    </div>
                   </div>
-                  <div className="text-[10px] text-gray-400 mt-1">Preenchi as 4 cores abaixo — ajuste como quiser.</div>
+                  {variacoesDaPaleta(palette).length > 0 && (
+                    <div>
+                      <div className="text-[10px] text-gray-500 mb-1">Variações sugeridas (mais claras/escuras):</div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {variacoesDaPaleta(palette).map((h) => (
+                          <button key={h} type="button" draggable onDragStart={(e) => e.dataTransfer.setData("text/plain", h)} title={`${h} — arraste ou clique pra copiar`} onClick={() => navigator.clipboard?.writeText(h)} className="w-7 h-7 rounded-md border border-black/10 shrink-0 cursor-grab active:cursor-grabbing" style={{ background: h }} />
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div className="text-[10px] text-gray-400">Preenchi as 4 cores — arraste qualquer amostra pra trocar uma delas.</div>
                 </div>
               )}
               {erroPal && <div className="text-[11px] text-rose-600 mt-1">{erroPal}</div>}
@@ -276,7 +303,12 @@ function TemaModal({ tema, logoUrl, heroImagemUrl, podeEditar, onClose, onSave }
               {cores.map((c) => (
                 <div key={c.k}>
                   <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{c.label}</label>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div
+                    onDragOver={(e) => { e.preventDefault(); if (dropK !== c.k) setDropK(c.k); }}
+                    onDragLeave={() => setDropK((k) => (k === c.k ? null : k))}
+                    onDrop={(e) => { e.preventDefault(); setDropK(null); const raw = e.dataTransfer.getData("text/plain").trim(); const hex = raw.startsWith("#") ? raw : "#" + raw; if (/^#[0-9a-f]{6}$/i.test(hex)) setC(c.k, hex.toLowerCase()); }}
+                    className={"flex items-center gap-2 mt-1 rounded-lg transition-shadow " + (dropK === c.k ? "ring-2 ring-indigo-400 ring-offset-1" : "")}
+                  >
                     <input type="color" value={val(c.k) || "#888888"} onChange={(e) => setC(c.k, e.target.value)} disabled={!podeEditar} className="w-10 h-10 shrink-0 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-0.5 cursor-pointer" />
                     <input value={val(c.k)} onChange={(e) => setC(c.k, e.target.value)} placeholder="padrão do tema" disabled={!podeEditar} className="flex-1 min-w-0 h-10 px-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-[12px] font-mono" />
                     {val(c.k) && podeEditar && <button onClick={() => setC(c.k, "")} className="shrink-0 text-[11px] text-gray-400 hover:text-rose-500" title="Limpar (usa o padrão)">limpar</button>}
