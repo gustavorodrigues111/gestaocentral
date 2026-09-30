@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Lock, SquarePen, ClipboardList, Eye, Globe, Sparkles } from "lucide-react";
+import { Lock, SquarePen, ClipboardList, Eye, Globe, Sparkles, MousePointerClick } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -8,11 +8,12 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { GeralTab } from "./GeralTab";
 import { PreviewTab } from "./PreviewTab";
 import { ConexaoTab } from "./ConexaoTab";
+import { EditarVisualTab } from "./EditarVisualTab";
 import { SiteIAAssistant } from "./SiteIAAssistant";
 import { LivePreviewPanel } from "./LivePreviewPanel";
 import { PageContainer } from "../../core/ui/PageContainer";
 
-type Tab = "geral" | "conexao" | "cardapio" | "preview";
+type Tab = "geral" | "editar" | "conexao" | "cardapio" | "preview";
 
 // Módulo Sites — controla o site público do restaurante.
 // Tabs:
@@ -74,6 +75,9 @@ export function SitesPage() {
         <TabButton active={tab === "geral"} onClick={() => setTab("geral")} disabled={!podeGeral}>
           <span className="inline-flex items-center gap-1.5"><SquarePen size={15} /> Geral</span>
         </TabButton>
+        <TabButton active={tab === "editar"} onClick={() => setTab("editar")} disabled={!podeGeral}>
+          <span className="inline-flex items-center gap-1.5"><MousePointerClick size={15} /> Editar (visual)</span>
+        </TabButton>
         <TabButton active={tab === "conexao"} onClick={() => setTab("conexao")}>
           <span className="inline-flex items-center gap-1.5"><Globe size={15} /> Conexão do site</span>
         </TabButton>
@@ -110,6 +114,9 @@ export function SitesPage() {
             <LivePreviewPanel rid={rid} nomeRestaurante={activeRestaurant.nome} />
           </div>
         </div>
+      )}
+      {tab === "editar" && (
+        <EditarVisualTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeGeral} />
       )}
       {tab === "conexao" && (
         <ConexaoTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeConectar} />

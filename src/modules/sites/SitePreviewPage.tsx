@@ -47,5 +47,15 @@ export function SitePreviewPage() {
     );
   }
 
-  return <SiteRenderer siteConfig={config} />;
+  // Modo edição visual (admin): ?edit=1 torna os textos clicáveis; o clique é
+  // enviado pra janela-mãe (a tela de admin) via postMessage, que abre o modal.
+  const editMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("edit") === "1";
+  return (
+    <SiteRenderer
+      siteConfig={config}
+      edit={editMode ? {
+        onPick: (grupo) => { try { window.parent?.postMessage({ type: "site-edit-pick", grupo }, window.location.origin); } catch { /* noop */ } },
+      } : undefined}
+    />
+  );
 }

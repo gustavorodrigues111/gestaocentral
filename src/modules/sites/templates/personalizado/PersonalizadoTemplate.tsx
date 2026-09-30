@@ -25,7 +25,10 @@ import { enderecoLinhaUm, enderecoLinhaDois, googleMapsLink, googleMapsEmbedUrl 
 import { findFonte, googleFontsUrl } from "../fontesDisponiveis";
 import { normalizarOrdem, type SecaoId } from "../ordemSecoes";
 
-type Props = { siteConfig: SiteConfig };
+// Contexto de edição visual: quando presente, os textos do site viram
+// clicáveis e disparam onPick(grupo) — a tela de admin abre um modal.
+export type SiteEditCtx = { onPick: (grupo: string) => void };
+type Props = { siteConfig: SiteConfig; edit?: SiteEditCtx };
 
 // Defaults — usados quando cfg.tema não tem override
 const PADRAO_PRIMARIA = "#1a5c2a";   // verde-mata
@@ -33,7 +36,7 @@ const PADRAO_SECUNDARIA = "#b8923a"; // dourado-velho
 const PADRAO_FUNDO = "#f7f3e9";       // creme
 const PADRAO_TEXTO = "#1a1a1a";
 
-export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
+export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
   // Cores dinâmicas — pega do tema se preenchido, senão usa defaults da marca
   const corPrimaria = cfg.tema.corPrimaria || PADRAO_PRIMARIA;
   const corSecundaria = cfg.tema.corSecundaria || PADRAO_SECUNDARIA;
@@ -189,6 +192,24 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
     return cfg.textos?.[k] || def;
   };
 
+  // Wrapper de edição visual: no modo edit, o texto vira clicável (contorno no
+  // hover) e abre o modal do grupo. Fora do modo edit, passa direto (zero efeito).
+  const Edit = ({ grupo, children, block }: { grupo: string; children: React.ReactNode; block?: boolean }) => {
+    if (!edit) return <>{children}</>;
+    const Tag: "div" | "span" = block ? "div" : "span";
+    return (
+      <Tag
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); edit.onPick(grupo); }}
+        title="Clique pra editar"
+        style={{ cursor: "pointer", outline: "2px dashed transparent", outlineOffset: 3, borderRadius: 4, transition: "outline-color .12s", display: block ? "block" : "inline" }}
+        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.outlineColor = "#6d5efc"; }}
+        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.outlineColor = "transparent"; }}
+      >
+        {children}
+      </Tag>
+    );
+  };
+
   // Estilo do título h2 das seções — reaproveitado no layout pareado
   // (2 colunas no desktop). Section single-col faz tamanho maior inline.
   const tituloSectionStyle: React.CSSProperties = {
@@ -202,7 +223,9 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
   };
 
   return (
-    <div style={{
+    <div
+      onClickCapture={edit ? (e) => { const a = (e.target as HTMLElement).closest("a"); if (a) e.preventDefault(); } : undefined}
+      style={{
       fontFamily: fonteCorpo,
       color: "#1a1a1a",
       backgroundColor: corFundo,
@@ -412,7 +435,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
               color: corSecundaria, marginBottom: 16, opacity: 0.95,
               whiteSpace: "pre-wrap",
             }}>
-              {cfg.slogan}
+              <Edit grupo="hero">{cfg.slogan}</Edit>
             </p>
           )}
           <h1 style={{
@@ -423,7 +446,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             lineHeight: 1.05, margin: "0 0 20px 0", letterSpacing: "-0.01em",
             whiteSpace: "pre-wrap",
           }}>
-            {t("heroTitulo", "Cozinha caipira,\nfeita com tempo.")}
+            <Edit grupo="hero">{t("heroTitulo", "Cozinha caipira,\nfeita com tempo.")}</Edit>
           </h1>
           <p style={{
             fontFamily: fonteSubtitulo,
@@ -431,7 +454,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             lineHeight: 1.55,
             whiteSpace: "pre-wrap",
           }}>
-            {t("heroSubtitulo", "Um laboratório gastronômico no coração da Vila Madalena.")}
+            <Edit grupo="hero">{t("heroSubtitulo", "Um laboratório gastronômico no coração da Vila Madalena.")}</Edit>
           </p>
           {/* CTA do hero: leva pra reservas. Instagram + WhatsApp vivem
               nos botões flutuantes no canto inferior — não duplica aqui. */}
@@ -974,7 +997,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           );
         })()}
         <div style={{ fontSize: 12, opacity: 0.7, whiteSpace: "pre-wrap" }}>
-          © {new Date().getFullYear()} — {t("rodapeDireitos", "Todos os direitos reservados.")}
+          © {new Date().getFullYear()} — <Edit grupo="rodape">{t("rodapeDireitos", "Todos os direitos reservados.")}</Edit>
         </div>
         {/* Link LGPD — política + solicitação de exclusão */}
         {cfg.slug && (
@@ -993,7 +1016,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
           Ícones SVG das marcas pra parecer "de verdade", não emoji. */}
       <div style={{
         position: "fixed", bottom: 20, right: 20, zIndex: 100,
-        display: "flex", flexDirection: "column", gap: 12,
+        display: edit ? "none" : "flex", flexDirection: "column", gap: 12,
       }}>
         {(() => {
           const insta = cfg.redes.find(r => r.tipo === "instagram" && r.url);
@@ -1091,7 +1114,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg }: Props) {
             // CtaConteudo (h2 → texto = texto → botão = equidistante).
             marginBottom: 32,
           }}>
-            {titulo}
+            {edit ? <Edit grupo={id}>{titulo}</Edit> : titulo}
           </h2>
           {children}
         </div>

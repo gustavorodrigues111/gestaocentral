@@ -5,10 +5,10 @@
 // Se um dia tiver mais de um layout visual, o switch volta aqui.
 
 import type { SiteConfig } from "../../../core/types";
-import { PersonalizadoTemplate } from "./personalizado/PersonalizadoTemplate";
+import { PersonalizadoTemplate, type SiteEditCtx } from "./personalizado/PersonalizadoTemplate";
 
-type Props = { siteConfig: SiteConfig };
+type Props = { siteConfig: SiteConfig; edit?: SiteEditCtx };
 
-export function SiteRenderer({ siteConfig }: Props) {
-  return <PersonalizadoTemplate siteConfig={siteConfig} />;
+export function SiteRenderer({ siteConfig, edit }: Props) {
+  return <PersonalizadoTemplate siteConfig={siteConfig} edit={edit} />;
 }
