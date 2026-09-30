@@ -6,7 +6,7 @@
 // Passos que continuam manuais (fora do app): adicionar o domínio no painel do
 // Vercel e apontar o DNS no registrador. As instruções ficam aqui na tela.
 import { useEffect, useMemo, useState } from "react";
-import { Globe, Check, Copy, ExternalLink, Trash2, Plus, Lock, Cloud } from "lucide-react";
+import { Globe, Check, Copy, ExternalLink, Trash2, Plus, Lock, Cloud, ShieldCheck } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { auth } from "../../core/firebase/config";
 import { useSiteConfig } from "./useSiteConfig";
@@ -33,6 +33,19 @@ export function ConexaoTab({ rid, nomeRestaurante, podeEditar }: { rid: string; 
   const [copiado, setCopiado] = useState("");
   const [vercelOn, setVercelOn] = useState<boolean | null>(null);
   const [vmsg, setVmsg] = useState<Record<string, string>>({});
+  const [probe, setProbe] = useState<Record<string, { loading?: boolean; txt?: string; ok?: boolean }>>({});
+
+  async function verificar(apex: string) {
+    setProbe((p) => ({ ...p, [apex]: { loading: true } }));
+    try {
+      const j = await vpost("probe", apex);
+      let txt = "", ok = false;
+      if (!j.reachable) txt = "não respondeu ainda — o DNS pode não ter propagado.";
+      else if (j.servingOurSite) { ok = !!j.https; txt = j.https ? "conectado e funcional ✓" : "responde, mas o HTTPS ainda não está ativo."; }
+      else txt = `responde (HTTP ${j.status ?? "?"}), mas ainda não está servindo este site.`;
+      setProbe((p) => ({ ...p, [apex]: { txt, ok } }));
+    } catch { setProbe((p) => ({ ...p, [apex]: { txt: "falha ao verificar." } })); }
+  }
 
   async function vpost(action: string, domain?: string): Promise<Record<string, unknown> & { ok: boolean }> {
     const idToken = await auth.currentUser?.getIdToken();
@@ -114,10 +127,12 @@ export function ConexaoTab({ rid, nomeRestaurante, podeEditar }: { rid: string; 
                   <div className="text-[13.5px] font-semibold truncate">{apex}</div>
                   <div className="text-[11px] text-gray-400">{hosts.includes(`www.${apex}`) ? "com www" : "sem www"} · {hosts.length} host(s)</div>
                 </div>
+                <button onClick={() => void verificar(apex)} disabled={probe[apex]?.loading} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 inline-flex items-center gap-1 disabled:opacity-50"><ShieldCheck size={12} /> {probe[apex]?.loading ? "Verificando…" : "Verificar"}</button>
                 {podeEditar && vercelOn && <button onClick={() => void addVercel(apex)} className="text-[11px] font-semibold px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 inline-flex items-center gap-1"><Cloud size={12} /> Vercel</button>}
                 <a href={`https://${apex}`} target="_blank" rel="noreferrer" className="text-gray-400 hover:text-indigo-600" title="Testar no navegador"><ExternalLink size={15} /></a>
                 {podeEditar && <button onClick={() => void remover(apex, hosts)} className="text-gray-400 hover:text-rose-500" title="Desconectar"><Trash2 size={15} /></button>}
               </div>
+              {probe[apex]?.txt && <div className={"text-[11px] mt-1 pl-6 inline-flex items-center gap-1 " + (probe[apex]?.ok ? "text-emerald-600" : "text-amber-600")}>{probe[apex]?.ok ? <Check size={12} /> : null}{probe[apex]?.txt}</div>}
               {vmsg[apex] && <div className="text-[11px] text-gray-500 mt-1 pl-6">{vmsg[apex]}</div>}
             </div>
           ))}

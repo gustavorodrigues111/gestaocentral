@@ -46,6 +46,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const c = cfg();
 
     if (action === "status") { res.status(200).json({ configured: c.configured }); return; }
+
+    // "probe" — verifica se o domínio responde e está servindo ESTE site.
+    // Não depende do token do Vercel: faz um GET no domínio e checa o HTML.
+    if (action === "probe") {
+      const domain = normalize(String(body.domain || ""));
+      if (!domain) { res.status(400).json({ error: "Domínio inválido." }); return; }
+      try {
+        const ctrl = new AbortController();
+        const to = setTimeout(() => ctrl.abort(), 12000);
+        const r = await fetch(`https://${domain}/`, { redirect: "follow", signal: ctrl.signal, headers: { "user-agent": "gestaocentral-domain-check" } });
+        clearTimeout(to);
+        const html = await r.text().catch(() => "");
+        const nosso = /id="root"/.test(html) || /__SITE_CONFIG__/.test(html);
+        res.status(200).json({ ok: true, reachable: r.ok, status: r.status, https: (r.url || "").startsWith("https://"), servingOurSite: nosso, finalUrl: r.url });
+      } catch (e) {
+        res.status(200).json({ ok: true, reachable: false, erro: e instanceof Error ? e.message : "sem resposta" });
+      }
+      return;
+    }
     if (!c.configured) { res.status(503).json({ error: "Automação do Vercel não configurada (falta VERCEL_TOKEN/VERCEL_PROJECT_ID).", configured: false }); return; }
 
     const domain = normalize(String(body.domain || ""));
