@@ -25,6 +25,9 @@ type Props = {
   podeEditarTema?: boolean;
   podeUploadAssets?: boolean;
   podePublicar?: boolean;
+  // Quais seções renderizar. Se omitido, mostra todas (retrocompat). Ids:
+  // imagens | textos | ordem | endereco | contato | redes | secoes | delivery | publicacao
+  mostrar?: string[];
 };
 
 const TIPO_REDE_OPCOES: RedeSocial["tipo"][] = ["instagram", "whatsapp", "facebook", "tiktok", "youtube", "outro"];
@@ -41,7 +44,9 @@ const TIPO_DELIVERY_LABEL: Record<LinkDelivery["plataforma"], string> = {
 export function GeralTab({
   rid, nomeRestaurante, podeEditar,
   podeEditarTextos, podeEditarContato, podeEditarTema, podeUploadAssets, podePublicar,
+  mostrar,
 }: Props) {
+  const show = (k: string) => !mostrar || mostrar.includes(k);
   // Resolve capabilities: granulares se vieram, senão herda podeEditar
   const canTextos  = podeEditarTextos  ?? podeEditar;
   const canContato = podeEditarContato ?? podeEditar;
@@ -230,17 +235,17 @@ export function GeralTab({
   const publicDisabled  = !canPubl;
   void canTema;
 
-  const navItens: { id: string; label: string }[] = [
-    { id: "sec-imagens", label: "Imagens" },
-    { id: "sec-textos", label: "Textos" },
-    { id: "sec-ordem", label: "Ordem" },
-    { id: "sec-endereco", label: "Endereço" },
-    { id: "sec-contato", label: "Contato" },
-    { id: "sec-redes", label: "Redes" },
-    { id: "sec-secoes", label: "Seções" },
-    ...(form.features.hasDelivery ? [{ id: "sec-delivery", label: "Delivery" }] : []),
-    { id: "sec-publicacao", label: "Publicação" },
-  ];
+  const navItens: { id: string; label: string; k: string }[] = ([
+    { id: "sec-imagens", label: "Imagens", k: "imagens" },
+    { id: "sec-textos", label: "Textos", k: "textos" },
+    { id: "sec-ordem", label: "Ordem", k: "ordem" },
+    { id: "sec-endereco", label: "Endereço", k: "endereco" },
+    { id: "sec-contato", label: "Contato", k: "contato" },
+    { id: "sec-redes", label: "Redes", k: "redes" },
+    { id: "sec-secoes", label: "Seções", k: "secoes" },
+    ...(form.features.hasDelivery ? [{ id: "sec-delivery", label: "Delivery", k: "delivery" }] : []),
+    { id: "sec-publicacao", label: "Publicação", k: "publicacao" },
+  ]).filter((n) => show(n.k));
   const CARD = "scroll-mt-24 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-5 shadow-sm";
 
   return (
@@ -260,6 +265,7 @@ export function GeralTab({
       )}
 
       {/* IMAGENS */}
+      {show("imagens") && (
       <section id="sec-imagens" className={CARD + " space-y-4"}>
         <div>
           <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">Imagens</h3>
@@ -293,19 +299,25 @@ export function GeralTab({
           disabled={assetsDisabled}
         />
       </section>
+      )}
 
       {/* TEXTOS DAS SEÇÕES — slogan, história e todos os textos do site,
           em ordem de aparição. */}
+      {show("textos") && (
       <div id="sec-textos" className={CARD}>
         <TextosSection form={form} setForm={setForm} disabled={textosDisabled} />
       </div>
+      )}
 
       {/* ORDEM DAS SEÇÕES — reordena o site público */}
+      {show("ordem") && (
       <div id="sec-ordem" className={CARD}>
         <OrdemSecoesSection form={form} setForm={setForm} disabled={inputDisabled} />
       </div>
+      )}
 
       {/* ENDEREÇO */}
+      {show("endereco") && (
       <section id="sec-endereco" className={CARD + " space-y-3"}>
         <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
           Endereço
@@ -403,8 +415,10 @@ export function GeralTab({
           </div>
         </div>
       </section>
+      )}
 
       {/* CONTATO */}
+      {show("contato") && (
       <section id="sec-contato" className={CARD + " space-y-3"}>
         <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
           Contato
@@ -497,8 +511,10 @@ export function GeralTab({
           disabled={inputDisabled}
         />
       </section>
+      )}
 
       {/* REDES SOCIAIS */}
+      {show("redes") && (
       <section id="sec-redes" className={CARD + " space-y-3"}>
         <div className="flex items-center justify-between">
           <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
@@ -539,8 +555,10 @@ export function GeralTab({
           </div>
         )}
       </section>
+      )}
 
       {/* FEATURES */}
+      {show("secoes") && (
       <section id="sec-secoes" className={CARD + " space-y-3"}>
         <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
           Seções do site
@@ -583,9 +601,10 @@ export function GeralTab({
           </div>
         )}
       </section>
+      )}
 
       {/* DELIVERY links */}
-      {form.features.hasDelivery && (
+      {show("delivery") && form.features.hasDelivery && (
         <section id="sec-delivery" className={CARD + " space-y-3"}>
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
@@ -636,6 +655,7 @@ export function GeralTab({
           basta restaurar essa seção e ajustar o SiteRenderer. */}
 
       {/* PUBLICAÇÃO */}
+      {show("publicacao") && (
       <section id="sec-publicacao" className={CARD + " space-y-3"}>
         <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
           Publicação
@@ -665,6 +685,7 @@ export function GeralTab({
           )}
         </p>
       </section>
+      )}
 
       {/* AÇÕES */}
       {podeEditar && (

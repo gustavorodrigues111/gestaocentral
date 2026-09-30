@@ -103,12 +103,27 @@ export function SitesPage() {
             podeEditarTema={!!me?.isMaster || can("sites", "editarTema") || !!special?.sitesGeral}
             podeUploadAssets={!!me?.isMaster || can("sites", "uploadAssets") || !!special?.sitesGeral}
             podePublicar={!!me?.isMaster || can("sites", "publicar") || !!special?.sitesGeral}
+            mostrar={["imagens", "endereco", "contato", "redes", "publicacao"]}
           />
           <ConexaoTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeConectar} />
         </div>
       )}
       {tab === "editar" && (
-        <EditarVisualTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeGeral} />
+        <div className="space-y-5">
+          <EditarVisualTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeGeral} />
+          {/* Seções on/off, delivery e ordem — controles que não são clique no preview */}
+          <GeralTab
+            rid={rid}
+            nomeRestaurante={activeRestaurant.nome}
+            podeEditar={podeGeral}
+            podeEditarTextos={!!me?.isMaster || can("sites", "editarTextos") || !!special?.sitesGeral}
+            podeEditarContato={!!me?.isMaster || can("sites", "editarContato") || !!special?.sitesGeral}
+            podeEditarTema={!!me?.isMaster || can("sites", "editarTema") || !!special?.sitesGeral}
+            podeUploadAssets={!!me?.isMaster || can("sites", "uploadAssets") || !!special?.sitesGeral}
+            podePublicar={!!me?.isMaster || can("sites", "publicar") || !!special?.sitesGeral}
+            mostrar={["secoes", "delivery", "ordem"]}
+          />
+        </div>
       )}
       {tab === "cardapio" && (
         <div className="rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-6 text-center space-y-2">
