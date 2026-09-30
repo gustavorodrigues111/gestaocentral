@@ -25,10 +25,36 @@ import { enderecoLinhaUm, enderecoLinhaDois, googleMapsLink, googleMapsEmbedUrl 
 import { findFonte, googleFontsUrl } from "../fontesDisponiveis";
 import { normalizarOrdem, type SecaoId } from "../ordemSecoes";
 
-// Contexto de edição visual: quando presente, os textos do site viram
-// clicáveis e disparam onPick(grupo) — a tela de admin abre um modal.
-export type SiteEditCtx = { onPick: (grupo: string) => void };
+// Contexto de edição visual: quando presente, textos/imagens/cores do site
+// viram clicáveis e disparam pick(sel) — a tela de admin abre o modal certo.
+export type SiteEditSel =
+  | { tipo: "texto"; campo: string }
+  | { tipo: "asset"; asset: "logo" | "hero" | "favicon" }
+  | { tipo: "tema" };
+export type SiteEditCtx = { pick: (sel: SiteEditSel) => void };
 type Props = { siteConfig: SiteConfig; edit?: SiteEditCtx };
+
+// Wrapper de edição visual (nível de módulo pra ser usado tanto no template
+// quanto em sub-componentes tipo CtaConteudo). No modo edit, o filho vira
+// clicável (contorno no hover) e dispara pick(sel). Fora do modo edit, passa
+// direto (zero efeito no site público).
+function EditWrap({ edit, sel, children, block, titulo }: {
+  edit?: SiteEditCtx; sel: SiteEditSel; children: React.ReactNode; block?: boolean; titulo?: string;
+}) {
+  if (!edit) return <>{children}</>;
+  const Tag: "div" | "span" = block ? "div" : "span";
+  return (
+    <Tag
+      onClick={(e) => { e.preventDefault(); e.stopPropagation(); edit.pick(sel); }}
+      title={titulo || "Clique pra editar"}
+      style={{ cursor: "pointer", outline: "2px dashed transparent", outlineOffset: 3, borderRadius: 4, transition: "outline-color .12s", display: block ? "block" : "inline" }}
+      onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.outlineColor = "#6d5efc"; }}
+      onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.outlineColor = "transparent"; }}
+    >
+      {children}
+    </Tag>
+  );
+}
 
 // Defaults — usados quando cfg.tema não tem override
 const PADRAO_PRIMARIA = "#1a5c2a";   // verde-mata
@@ -192,23 +218,9 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
     return cfg.textos?.[k] || def;
   };
 
-  // Wrapper de edição visual: no modo edit, o texto vira clicável (contorno no
-  // hover) e abre o modal do grupo. Fora do modo edit, passa direto (zero efeito).
-  const Edit = ({ grupo, children, block }: { grupo: string; children: React.ReactNode; block?: boolean }) => {
-    if (!edit) return <>{children}</>;
-    const Tag: "div" | "span" = block ? "div" : "span";
-    return (
-      <Tag
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); edit.onPick(grupo); }}
-        title="Clique pra editar"
-        style={{ cursor: "pointer", outline: "2px dashed transparent", outlineOffset: 3, borderRadius: 4, transition: "outline-color .12s", display: block ? "block" : "inline" }}
-        onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.outlineColor = "#6d5efc"; }}
-        onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.outlineColor = "transparent"; }}
-      >
-        {children}
-      </Tag>
-    );
-  };
+  // Atalho local: injeta o `edit` no EditWrap de módulo.
+  const Edit = ({ campo, children, block }: { campo: string; children: React.ReactNode; block?: boolean }) =>
+    <EditWrap edit={edit} sel={{ tipo: "texto", campo }} block={block}>{children}</EditWrap>;
 
   // Estilo do título h2 das seções — reaproveitado no layout pareado
   // (2 colunas no desktop). Section single-col faz tamanho maior inline.
@@ -265,7 +277,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
             transition: "all 0.3s ease",
           }}>
             {cfg.logoUrl
-              ? <img
+              ? <EditWrap edit={edit} sel={{ tipo: "asset", asset: "logo" }} titulo="Editar logo"><img
                   src={cfg.logoUrl}
                   alt="Logo"
                   style={{
@@ -275,15 +287,15 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
                     width: "auto", display: "block",
                     transition: "height 0.3s ease",
                   }}
-                />
+                /></EditWrap>
               : (
-                <span style={{
+                <EditWrap edit={edit} sel={{ tipo: "asset", asset: "logo" }} titulo="Adicionar logo"><span style={{
                   fontSize: scrolled ? 22 : (isMobile ? 36 : 48),
                   letterSpacing: "0.02em",
                   transition: "font-size 0.3s ease",
                 }}>
                   {cfg.slogan || cfg.slug}
-                </span>
+                </span></EditWrap>
               )}
           </div>
           {/* Menu/hamburger — o header bege é sólido sempre, então o nav
@@ -425,6 +437,11 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
         padding: isMobile ? "56px 20px" : "72px 20px",
       }}>
         <div style={{ maxWidth: 900, margin: "0 auto", textAlign: "center" }}>
+          {edit && (
+            <EditWrap edit={edit} sel={{ tipo: "asset", asset: "hero" }} block titulo="Editar imagem de fundo do hero">
+              <div style={{ display: "inline-flex", gap: 6, alignItems: "center", background: "rgba(0,0,0,0.55)", color: "#fff", padding: "6px 12px", borderRadius: 999, fontSize: 12, marginBottom: 16, fontFamily: "system-ui" }}>🖼️ Trocar imagem de fundo</div>
+            </EditWrap>
+          )}
           {/* Logo NÃO aparece mais aqui — vive no header bege acima
               (expandido com cores próprias, encolhe ao rolar). Hero focado
               em slogan/título/subtítulo/CTA. */}
@@ -435,7 +452,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
               color: corSecundaria, marginBottom: 16, opacity: 0.95,
               whiteSpace: "pre-wrap",
             }}>
-              <Edit grupo="hero">{cfg.slogan}</Edit>
+              <Edit campo="slogan">{cfg.slogan}</Edit>
             </p>
           )}
           <h1 style={{
@@ -446,7 +463,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
             lineHeight: 1.05, margin: "0 0 20px 0", letterSpacing: "-0.01em",
             whiteSpace: "pre-wrap",
           }}>
-            <Edit grupo="hero">{t("heroTitulo", "Cozinha caipira,\nfeita com tempo.")}</Edit>
+            <Edit campo="heroTitulo">{t("heroTitulo", "Cozinha caipira,\nfeita com tempo.")}</Edit>
           </h1>
           <p style={{
             fontFamily: fonteSubtitulo,
@@ -454,14 +471,14 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
             lineHeight: 1.55,
             whiteSpace: "pre-wrap",
           }}>
-            <Edit grupo="hero">{t("heroSubtitulo", "Um laboratório gastronômico no coração da Vila Madalena.")}</Edit>
+            <Edit campo="heroSubtitulo">{t("heroSubtitulo", "Um laboratório gastronômico no coração da Vila Madalena.")}</Edit>
           </p>
           {/* CTA do hero: leva pra reservas. Instagram + WhatsApp vivem
               nos botões flutuantes no canto inferior — não duplica aqui. */}
           {cfg.features.hasReservas && (
             reservasExterno
-              ? <a href={reservasHref} target="_blank" rel="noreferrer" style={primaryButton(corSecundaria)}>{t("heroCtaLabel", "Faça sua reserva")}</a>
-              : <Link to={reservasHref} style={primaryButton(corSecundaria)}>{t("heroCtaLabel", "Faça sua reserva")}</Link>
+              ? <a href={reservasHref} target="_blank" rel="noreferrer" style={primaryButton(corSecundaria)}><Edit campo="heroCtaLabel">{t("heroCtaLabel", "Faça sua reserva")}</Edit></a>
+              : <Link to={reservasHref} style={primaryButton(corSecundaria)}><Edit campo="heroCtaLabel">{t("heroCtaLabel", "Faça sua reserva")}</Edit></Link>
           )}
         </div>
       </section>
@@ -479,7 +496,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
         const conteudos: Record<SecaoId, (bg: string) => SecaoConteudo | null> = {
           historia: (bg) => cfg.historia ? {
             titulo: t("historiaTitulo", "A nossa história"),
-            conteudo: <HistoriaExpansivel texto={cfg.historia} bgSecao={bg} corPrimaria={corPrimaria} fontSizeCorpo={txCorpo(17)} />,
+            conteudo: <EditWrap edit={edit} sel={{ tipo: "texto", campo: "historia" }} block titulo="Editar o texto Sobre"><HistoriaExpansivel texto={cfg.historia} bgSecao={bg} corPrimaria={corPrimaria} fontSizeCorpo={txCorpo(17)} /></EditWrap>,
           } : null,
           cardapio: () => (cfg.cardapioModo === "editor" || cfg.cardapioPdfPtUrl || cfg.cardapioPdfEnUrl) ? {
             titulo: t("cardapioTitulo", "Cardápio"),
@@ -589,6 +606,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
                 texto={t("lajeTexto", "Nosso rooftop recebe eventos privados para até 45 pessoas. Aniversários, encontros corporativos, jantares fechados — montamos cada celebração com você.")}
                 ctaTo={`/eventos/${cfg.restaurantId}`}
                 ctaLabel={t("lajeCtaLabel", "Solicitar proposta")}
+                edit={edit} textoCampo="lajeTexto" ctaCampo="lajeCtaLabel"
                 primaryButton={primaryButton}
                 fontSizeCorpo={txCorpo(17)}
                 corPrimaria={corPrimaria}
@@ -602,6 +620,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
                 texto={t("eventosTexto", "Reservamos o espaço para sua celebração. Conta pra gente o que tem em mente — voltamos com uma proposta sob medida.")}
                 ctaTo={`/eventos/${cfg.restaurantId}`}
                 ctaLabel={t("eventosCtaLabel", "Solicitar proposta")}
+                edit={edit} textoCampo="eventosTexto" ctaCampo="eventosCtaLabel"
                 primaryButton={primaryButton}
                 fontSizeCorpo={txCorpo(17)}
                 corPrimaria={corPrimaria}
@@ -616,6 +635,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
                 ctaTo={reservasHref}
                 externo={reservasExterno}
                 ctaLabel={t("reservasCtaLabel", "Reservar mesa")}
+                edit={edit} textoCampo="reservasTexto" ctaCampo="reservasCtaLabel"
                 primaryButton={primaryButton}
                 fontSizeCorpo={txCorpo(17)}
                 corPrimaria={corPrimaria}
@@ -636,7 +656,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
                     fontSize: tx(17), lineHeight: 1.7,
                     margin: 0, whiteSpace: "pre-wrap",
                   }}>
-                    {t("deliveryTexto", "")}
+                    <Edit campo="deliveryTexto">{t("deliveryTexto", "")}</Edit>
                   </p>
                 )}
                 <div style={{
@@ -660,6 +680,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
                 texto={t("trabalheTexto", "Sempre buscando gente boa pra somar no time.")}
                 ctaTo={`/vagas/${cfg.restaurantId}`}
                 ctaLabel={t("trabalheCtaLabel", "Enviar candidatura")}
+                edit={edit} textoCampo="trabalheTexto" ctaCampo="trabalheCtaLabel"
                 primaryButton={primaryButton}
                 fontSizeCorpo={txCorpo(17)}
                 corPrimaria={corPrimaria}
@@ -952,7 +973,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
           }
 
           nodes.push(
-            <Section key={a.id} id={a.id} titulo={a.titulo} bg={bg}>
+            <Section key={a.id} id={a.id} titulo={a.titulo} bg={bg} tituloCampo={`${a.id}Titulo`}>
               {a.conteudo}
             </Section>
           );
@@ -997,7 +1018,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
           );
         })()}
         <div style={{ fontSize: 12, opacity: 0.7, whiteSpace: "pre-wrap" }}>
-          © {new Date().getFullYear()} — <Edit grupo="rodape">{t("rodapeDireitos", "Todos os direitos reservados.")}</Edit>
+          © {new Date().getFullYear()} — <Edit campo="rodapeDireitos">{t("rodapeDireitos", "Todos os direitos reservados.")}</Edit>
         </div>
         {/* Link LGPD — política + solicitação de exclusão */}
         {cfg.slug && (
@@ -1099,8 +1120,8 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
     );
   }
 
-  function Section({ id, titulo, bg, children }: {
-    id: string; titulo: string; bg: string; children: React.ReactNode;
+  function Section({ id, titulo, bg, children, tituloCampo }: {
+    id: string; titulo: string; bg: string; children: React.ReactNode; tituloCampo?: string;
   }) {
     return (
       <section id={id} style={{ padding: "80px 20px", backgroundColor: bg }}>
@@ -1114,7 +1135,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
             // CtaConteudo (h2 → texto = texto → botão = equidistante).
             marginBottom: 32,
           }}>
-            {edit ? <Edit grupo={id}>{titulo}</Edit> : titulo}
+            {edit && tituloCampo ? <Edit campo={tituloCampo}>{titulo}</Edit> : titulo}
           </h2>
           {children}
         </div>
@@ -1305,6 +1326,7 @@ function HistoriaExpansivel({
 // de tamanhos diferentes).
 function CtaConteudo({
   texto, ctaTo, ctaLabel, primaryButton, corPrimaria, fontSizeCorpo, externo,
+  edit, textoCampo, ctaCampo,
 }: {
   texto: string;
   ctaTo: string;
@@ -1313,6 +1335,9 @@ function CtaConteudo({
   corPrimaria: string;
   fontSizeCorpo?: number;          // se omitido, usa default 17
   externo?: boolean;               // ctaTo é URL externa → abre em nova aba
+  edit?: SiteEditCtx;
+  textoCampo?: string;
+  ctaCampo?: string;
 }) {
   return (
     <div style={{
@@ -1329,12 +1354,12 @@ function CtaConteudo({
         fontSize: fontSizeCorpo ?? 17, lineHeight: 1.7,
         margin: 0, whiteSpace: "pre-wrap",
       }}>
-        {texto}
+        {edit && textoCampo ? <EditWrap edit={edit} sel={{ tipo: "texto", campo: textoCampo }}>{texto}</EditWrap> : texto}
       </p>
       <div style={{ marginTop: "auto" }}>
         {externo
-          ? <a href={ctaTo} target="_blank" rel="noreferrer" style={primaryButton(corPrimaria)}>{ctaLabel}</a>
-          : <Link to={ctaTo} style={primaryButton(corPrimaria)}>{ctaLabel}</Link>}
+          ? <a href={ctaTo} target="_blank" rel="noreferrer" style={primaryButton(corPrimaria)}>{edit && ctaCampo ? <EditWrap edit={edit} sel={{ tipo: "texto", campo: ctaCampo }}>{ctaLabel}</EditWrap> : ctaLabel}</a>
+          : <Link to={ctaTo} style={primaryButton(corPrimaria)}>{edit && ctaCampo ? <EditWrap edit={edit} sel={{ tipo: "texto", campo: ctaCampo }}>{ctaLabel}</EditWrap> : ctaLabel}</Link>}
       </div>
     </div>
   );

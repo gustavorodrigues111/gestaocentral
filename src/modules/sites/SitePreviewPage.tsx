@@ -54,7 +54,7 @@ export function SitePreviewPage() {
     <SiteRenderer
       siteConfig={config}
       edit={editMode ? {
-        onPick: (grupo) => { try { window.parent?.postMessage({ type: "site-edit-pick", grupo }, window.location.origin); } catch { /* noop */ } },
+        pick: (sel) => { try { window.parent?.postMessage({ type: "site-edit", sel }, window.location.origin); } catch { /* noop */ } },
       } : undefined}
     />
   );
