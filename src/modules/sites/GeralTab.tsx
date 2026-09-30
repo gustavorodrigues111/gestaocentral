@@ -567,6 +567,10 @@ export function GeralTab({
           Liga/desliga seções no site público. Desativadas não aparecem.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          <CheckRow label="Sobre (história)" checked={form.features.hasSobre !== false} onChange={(v) => atualizarFeature("hasSobre", v)} disabled={inputDisabled} />
+          <CheckRow label="Cardápio" checked={form.features.hasCardapio !== false} onChange={(v) => atualizarFeature("hasCardapio", v)} disabled={inputDisabled} />
+          <CheckRow label="Horário" checked={form.features.hasHorario !== false} onChange={(v) => atualizarFeature("hasHorario", v)} disabled={inputDisabled} />
+          <CheckRow label="Contato" checked={form.features.hasContato !== false} onChange={(v) => atualizarFeature("hasContato", v)} disabled={inputDisabled} />
           <CheckRow label="Reservas (form/widget)" checked={form.features.hasReservas} onChange={(v) => atualizarFeature("hasReservas", v)} disabled={inputDisabled} />
           <CheckRow label="Eventos privados" checked={form.features.hasEventos} onChange={(v) => atualizarFeature("hasEventos", v)} disabled={inputDisabled} />
           <CheckRow label="Espaço Laje (rooftop)" checked={form.features.hasLaje} onChange={(v) => atualizarFeature("hasLaje", v)} disabled={inputDisabled} />

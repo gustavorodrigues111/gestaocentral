@@ -4618,6 +4618,12 @@ export type SiteConfig = {
     hasTrabalheConosco: boolean;
     hasReservas: boolean;
     hasGaleria: boolean;             // não usado por enquanto (Instagram serve)
+    // Seções "core" — mostradas por padrão. undefined/true = aparece; false = oculta.
+    // (Permite ligar/desliga Sobre, Cardápio, Horário e Contato igual às demais.)
+    hasSobre?: boolean;
+    hasCardapio?: boolean;
+    hasHorario?: boolean;
+    hasContato?: boolean;
   };
   delivery?: LinkDelivery[];          // só se hasDelivery
   // Tema

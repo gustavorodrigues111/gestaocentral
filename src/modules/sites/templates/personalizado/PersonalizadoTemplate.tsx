@@ -374,13 +374,13 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
                 padding: "6px 12px",
                 transition: chipTransition,
               }}>
-                <NavLink href="#historia" cor={corTexto}>Sobre</NavLink>
-                <NavLink href="#cardapio" cor={corTexto}>Cardápio</NavLink>
-                <NavLink href="#horario" cor={corTexto}>Horário</NavLink>
+                {cfg.historia && cfg.features.hasSobre !== false && <NavLink href="#historia" cor={corTexto}>Sobre</NavLink>}
+                {cfg.features.hasCardapio !== false && <NavLink href="#cardapio" cor={corTexto}>Cardápio</NavLink>}
+                {cfg.features.hasHorario !== false && <NavLink href="#horario" cor={corTexto}>Horário</NavLink>}
                 {cfg.features.hasLaje && <NavLink href={eventosHref} cor={corTexto}>Laje</NavLink>}
                 {cfg.features.hasReservas && <NavLink href={reservasHref} externo={reservasExterno} cor={corTexto}>Reservas</NavLink>}
                 {cfg.features.hasDelivery && cfg.delivery && cfg.delivery.length > 0 && <NavLink href="#delivery" cor={corTexto}>Delivery</NavLink>}
-                <NavLink href="#contato" cor={corTexto}>Contato</NavLink>
+                {cfg.features.hasContato !== false && <NavLink href="#contato" cor={corTexto}>Contato</NavLink>}
               </nav>
             );
           })()}
@@ -397,15 +397,21 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
               padding: "8px 0",
               maxWidth: 1100, margin: "0 auto",
             }}>
-              <MobileMenuLink href="#historia" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
-                Sobre
-              </MobileMenuLink>
-              <MobileMenuLink href="#cardapio" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
-                Cardápio
-              </MobileMenuLink>
-              <MobileMenuLink href="#horario" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
-                Horário
-              </MobileMenuLink>
+              {cfg.historia && cfg.features.hasSobre !== false && (
+                <MobileMenuLink href="#historia" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
+                  Sobre
+                </MobileMenuLink>
+              )}
+              {cfg.features.hasCardapio !== false && (
+                <MobileMenuLink href="#cardapio" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
+                  Cardápio
+                </MobileMenuLink>
+              )}
+              {cfg.features.hasHorario !== false && (
+                <MobileMenuLink href="#horario" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
+                  Horário
+                </MobileMenuLink>
+              )}
               {cfg.features.hasLaje && (
                 <MobileMenuLink href={eventosHref} onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
                   Laje
@@ -421,9 +427,11 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
                   Delivery
                 </MobileMenuLink>
               )}
+              {cfg.features.hasContato !== false && (
               <MobileMenuLink href="#contato" onClick={() => setMenuAberto(false)} cor={corTexto} corBorda={corSecundaria}>
                 Contato
               </MobileMenuLink>
+              )}
             </nav>
           </div>
         )}
@@ -494,17 +502,18 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
         // dá pra parear 2 seções dentro de um único bg/padding no desktop.
         type SecaoConteudo = { titulo: string; conteudo: React.ReactNode };
         const conteudos: Record<SecaoId, (bg: string) => SecaoConteudo | null> = {
-          historia: (bg) => cfg.historia ? {
+          historia: (bg) => (cfg.historia && cfg.features.hasSobre !== false) ? {
             titulo: t("historiaTitulo", "A nossa história"),
             conteudo: <EditWrap edit={edit} sel={{ tipo: "texto", campo: "historia" }} block titulo="Editar o texto Sobre"><HistoriaExpansivel texto={cfg.historia} bgSecao={bg} corPrimaria={corPrimaria} fontSizeCorpo={txCorpo(17)} /></EditWrap>,
           } : null,
-          cardapio: () => (cfg.cardapioModo === "editor" || cfg.cardapioPdfPtUrl || cfg.cardapioPdfEnUrl) ? {
+          cardapio: () => (cfg.features.hasCardapio !== false && (cfg.cardapioModo === "editor" || cfg.cardapioPdfPtUrl || cfg.cardapioPdfEnUrl)) ? {
             titulo: t("cardapioTitulo", "Cardápio"),
             conteudo: cfg.cardapioModo === "editor"
               ? <CardapioEstruturadoView rid={cfg.restaurantId} corPrimaria={corPrimaria} corSecundaria={corSecundaria} txCorpo={txCorpo} />
               : <CardapioPreview cfg={cfg} isMobile={isMobile} corPrimaria={corPrimaria} corSecundaria={corSecundaria} corFundo={corFundo} menuButton={menuButton} />,
           } : null,
           horario: () => {
+            if (cfg.features.hasHorario === false) return null;
             // Cards de exceção — mesmo render usado em mobile (lista cheia)
             // ou desktop coluna direita.
             const cardsExcecoes = excecoes.map(e => {
@@ -688,6 +697,7 @@ export function PersonalizadoTemplate({ siteConfig: cfg, edit }: Props) {
             ),
           } : null,
           contato: () => {
+            if (cfg.features.hasContato === false) return null;
             const mapsHref = googleMapsLink(cfg.endereco);
             const mapsEmbed = googleMapsEmbedUrl(cfg.endereco);
             const telDigitos = (cfg.telefone || "").replace(/[^\d+]/g, "");
