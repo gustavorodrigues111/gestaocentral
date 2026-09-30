@@ -35,6 +35,50 @@ const CAMPO: Record<string, { label: string; multi?: boolean; top?: boolean }> =
   contatoTitulo: { label: "Título — Contato" },
   rodapeDireitos: { label: "Rodapé (após © ano)" },
 };
+// ── Extração de paleta de cores a partir de uma imagem (client-side) ─────────
+function rgbToHex(r: number, g: number, b: number) { return "#" + [r, g, b].map((x) => Math.max(0, Math.min(255, x)).toString(16).padStart(2, "0")).join(""); }
+function hexToRgb(h: string) { const m = h.replace("#", ""); return { r: parseInt(m.slice(0, 2), 16) || 0, g: parseInt(m.slice(2, 4), 16) || 0, b: parseInt(m.slice(4, 6), 16) || 0 }; }
+function luminancia({ r, g, b }: { r: number; g: number; b: number }) { return 0.2126 * r + 0.7152 * g + 0.0722 * b; }
+function saturacao({ r, g, b }: { r: number; g: number; b: number }) { const mx = Math.max(r, g, b) / 255, mn = Math.min(r, g, b) / 255; const l = (mx + mn) / 2; const d = mx - mn; return d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1)); }
+
+async function paletaDaImagem(url: string): Promise<string[]> {
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error("não consegui baixar a imagem");
+  const blob = await resp.blob();
+  const obj = URL.createObjectURL(blob);
+  try {
+    const img = await new Promise<HTMLImageElement>((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("imagem inválida")); i.src = obj; });
+    const w = 84, h = Math.max(1, Math.round(84 * (img.height || 1) / (img.width || 1)));
+    const cv = document.createElement("canvas"); cv.width = w; cv.height = h;
+    const ctx = cv.getContext("2d"); if (!ctx) return [];
+    ctx.drawImage(img, 0, 0, w, h);
+    const data = ctx.getImageData(0, 0, w, h).data;
+    const buckets = new Map<string, { n: number; r: number; g: number; b: number }>();
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i + 3] < 200) continue;   // ignora transparente
+      const r = data[i], g = data[i + 1], b = data[i + 2];
+      const key = `${Math.round(r / 24)}-${Math.round(g / 24)}-${Math.round(b / 24)}`;
+      const c = buckets.get(key) || { n: 0, r: 0, g: 0, b: 0 }; c.n++; c.r += r; c.g += g; c.b += b; buckets.set(key, c);
+    }
+    return [...buckets.values()].map((c) => ({ n: c.n, r: Math.round(c.r / c.n), g: Math.round(c.g / c.n), b: Math.round(c.b / c.n) }))
+      .sort((a, b) => b.n - a.n).slice(0, 8).map((c) => rgbToHex(c.r, c.g, c.b));
+  } finally { URL.revokeObjectURL(obj); }
+}
+
+// Deriva as 4 cores do tema a partir da paleta: fundo = mais clara, texto = mais
+// escura, primária = mais vibrante, secundária = 2ª mais vibrante distinta.
+function sugerirTemaDaPaleta(palette: string[]): { corPrimaria: string; corSecundaria: string; corFundo: string; corTexto: string } | null {
+  if (!palette.length) return null;
+  const cores = palette.map((h) => ({ h, rgb: hexToRgb(h) }));
+  const porLum = [...cores].sort((a, b) => luminancia(a.rgb) - luminancia(b.rgb));
+  const corFundo = porLum[porLum.length - 1].h;
+  const corTexto = porLum[0].h;
+  const porVib = [...cores].map((c) => ({ ...c, s: saturacao(c.rgb) })).sort((a, b) => b.s - a.s);
+  const corPrimaria = porVib[0]?.h || corTexto;
+  const corSecundaria = (porVib.find((c) => c.h !== corPrimaria)?.h) || corPrimaria;
+  return { corPrimaria, corSecundaria, corFundo, corTexto };
+}
+
 const ASSET_INFO: Record<SelAsset["asset"], { campo: keyof SiteConfig; label: string; desc: string; tipo: "logo" | "hero" | "favicon" }> = {
   logo: { campo: "logoUrl", label: "Logo do restaurante", desc: "Aparece no topo do site. PNG com fundo transparente fica melhor.", tipo: "logo" },
   hero: { campo: "heroImagemUrl", label: "Imagem de fundo (hero)", desc: "Fundo do topo do site, com um leve escurecido por cima.", tipo: "hero" },
@@ -99,7 +143,7 @@ export function EditarVisualTab({ rid, nomeRestaurante, podeEditar }: { rid: str
         <AssetModal rid={rid} asset={sel.asset} url={String((config as unknown as Record<string, unknown>)[ASSET_INFO[sel.asset].campo] || "")} podeEditar={podeEditar} onClose={() => setSel(null)} onChange={(u) => void salvarAsset(sel.asset, u)} />
       )}
       {sel?.tipo === "tema" && config && (
-        <TemaModal tema={config.tema} podeEditar={podeEditar} onClose={() => setSel(null)} onSave={salvarTema} />
+        <TemaModal tema={config.tema} logoUrl={config.logoUrl || ""} heroImagemUrl={config.heroImagemUrl || ""} podeEditar={podeEditar} onClose={() => setSel(null)} onSave={salvarTema} />
       )}
     </div>
   );
@@ -167,9 +211,12 @@ function AssetModal({ rid, asset, url, podeEditar, onClose, onChange }: {
 }
 
 // ── Modal de cores ───────────────────────────────────────────────────────────
-function TemaModal({ tema, podeEditar, onClose, onSave }: {
-  tema: SiteConfig["tema"]; podeEditar: boolean; onClose: () => void; onSave: (t: SiteConfig["tema"]) => Promise<void>;
+function TemaModal({ tema, logoUrl, heroImagemUrl, podeEditar, onClose, onSave }: {
+  tema: SiteConfig["tema"]; logoUrl?: string; heroImagemUrl?: string; podeEditar: boolean; onClose: () => void; onSave: (t: SiteConfig["tema"]) => Promise<void>;
 }) {
+  const [palette, setPalette] = useState<string[]>([]);
+  const [extraindo, setExtraindo] = useState("");
+  const [erroPal, setErroPal] = useState("");
   const cores: { k: keyof SiteConfig["tema"]; label: string }[] = [
     { k: "corPrimaria", label: "Cor primária" },
     { k: "corSecundaria", label: "Cor secundária" },
@@ -186,11 +233,43 @@ function TemaModal({ tema, podeEditar, onClose, onSave }: {
   const [salvando, setSalvando] = useState(false);
   const val = (k: keyof SiteConfig["tema"]) => (t[k] as string) || "";
   const setC = (k: keyof SiteConfig["tema"], v: string) => setT((p) => ({ ...p, [k]: v }));
+  async function sugerir(url: string, origem: string) {
+    setExtraindo(origem); setErroPal("");
+    try {
+      const pal = await paletaDaImagem(url);
+      if (!pal.length) { setErroPal("Não achei cores nessa imagem."); return; }
+      setPalette(pal);
+      const s = sugerirTemaDaPaleta(pal);
+      if (s) setT((p) => ({ ...p, ...s }));
+    } catch (e) { setErroPal("Não consegui ler a imagem" + (e instanceof Error ? `: ${e.message}` : "") + "."); }
+    finally { setExtraindo(""); }
+  }
   return (
     <div className="fixed inset-0 z-[80] bg-black/40 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-[440px] p-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 mb-3"><Palette size={18} className="text-indigo-500" /><div className="font-extrabold text-[15px]">Cores & fontes</div><div className="flex-1" /><button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg bg-gray-100 dark:bg-gray-800"><X size={16} /></button></div>
         <div className="max-h-[62vh] overflow-auto pr-1 space-y-4">
+          {podeEditar && (logoUrl || heroImagemUrl) && (
+            <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-950/20 p-3">
+              <div className="text-[11px] font-bold text-indigo-800 dark:text-indigo-200 uppercase tracking-wide mb-1.5 inline-flex items-center gap-1"><Sparkles size={12} /> Sugerir cores da imagem</div>
+              <div className="flex flex-wrap gap-2">
+                {logoUrl && <button type="button" onClick={() => void sugerir(logoUrl, "logo")} disabled={!!extraindo} className="text-[12px] font-semibold px-3 h-8 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-900 disabled:opacity-50">{extraindo === "logo" ? "Analisando…" : "Da logo"}</button>}
+                {heroImagemUrl && <button type="button" onClick={() => void sugerir(heroImagemUrl, "hero")} disabled={!!extraindo} className="text-[12px] font-semibold px-3 h-8 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-900 disabled:opacity-50">{extraindo === "hero" ? "Analisando…" : "Da imagem de fundo"}</button>}
+              </div>
+              {palette.length > 0 && (
+                <div className="mt-2">
+                  <div className="text-[10px] text-gray-500 mb-1">Paleta encontrada (clique pra copiar o código):</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {palette.map((h) => (
+                      <button key={h} type="button" title={`${h} — clique pra copiar`} onClick={() => navigator.clipboard?.writeText(h)} className="w-7 h-7 rounded-md border border-black/10 shrink-0" style={{ background: h }} />
+                    ))}
+                  </div>
+                  <div className="text-[10px] text-gray-400 mt-1">Preenchi as 4 cores abaixo — ajuste como quiser.</div>
+                </div>
+              )}
+              {erroPal && <div className="text-[11px] text-rose-600 mt-1">{erroPal}</div>}
+            </div>
+          )}
           <div>
             <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Cores</div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
