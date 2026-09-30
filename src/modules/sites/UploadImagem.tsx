@@ -104,6 +104,24 @@ export function UploadImagem({ rid, tipo, label, descricao, url, onChange, disab
     onChange("");
   }
 
+  async function baixar() {
+    if (!url) return;
+    try {
+      const resp = await fetch(url);
+      if (!resp.ok) throw new Error("fetch falhou");
+      const blob = await resp.blob();
+      const ext = ((blob.type.split("/")[1] || url.match(/\.([a-z0-9]+)(?:\?|$)/i)?.[1] || "png")).replace("jpeg", "jpg").replace("svg+xml", "svg");
+      const obj = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = obj; a.download = `${tipo}.${ext}`;
+      document.body.appendChild(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(obj), 1000);
+    } catch {
+      // Cross-origin sem CORS: abre em nova aba pra salvar manualmente.
+      window.open(url, "_blank");
+    }
+  }
+
   return (
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -149,6 +167,7 @@ export function UploadImagem({ rid, tipo, label, descricao, url, onChange, disab
                   <div className="text-[12.5px] font-semibold text-gray-700 dark:text-gray-200">Imagem definida</div>
                   <div className="text-[11px] text-gray-400">Clique ou arraste pra trocar</div>
                 </div>
+                <button onClick={(e) => { e.stopPropagation(); void baixar(); }} className="text-[12px] text-indigo-600 hover:underline shrink-0">baixar</button>
                 <button onClick={(e) => { e.stopPropagation(); void remover(); }} className="text-[12px] text-rose-600 hover:underline shrink-0">remover</button>
               </div>
             ) : (
@@ -176,6 +195,7 @@ export function UploadImagem({ rid, tipo, label, descricao, url, onChange, disab
         url && (
           <div className="rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/30 p-2 flex items-center gap-3">
             <img src={url} alt="Preview" style={{ height: tipo === "logo" ? 40 : 60, width: "auto", maxWidth: 200, objectFit: "contain" }} onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = "none"; }} />
+            <button onClick={() => void baixar()} className="text-[12px] text-indigo-600 hover:underline shrink-0 ml-auto">baixar</button>
           </div>
         )
       )}
