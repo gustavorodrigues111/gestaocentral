@@ -44,6 +44,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       const instrucao = String(body.instrucao || "Melhore o texto, deixando-o mais claro e elegante.");
       system = `Você é redator de sites de restaurantes (PT-BR). Reescreva o texto do campo "${campo}" seguindo a instrução, mantendo o sentido e um tom profissional e acolhedor. Devolva SÓ JSON: {"texto":"..."}. Sem markdown, sem aspas fora do JSON. Não invente fatos (preços, prêmios, endereços).`;
       userMsg = `Instrução: ${instrucao}\n\nTexto atual:\n"""${texto}"""`;
+    } else if (modo === "paleta") {
+      const descricao = String(body.descricao || "").trim();
+      system = `Você é designer de identidade visual. A partir da descrição, proponha uma paleta pra o site de um restaurante. Devolva SÓ JSON, sem texto fora dele:
+{"corPrimaria":"#rrggbb","corSecundaria":"#rrggbb","corFundo":"#rrggbb","corTexto":"#rrggbb","palette":["#rrggbb", "..."]}
+Regras:
+- Todas as cores em hex #rrggbb (minúsculas).
+- corFundo = clara (fundo do site). corTexto = escura, com bom contraste sobre o fundo (WCAG AA).
+- corPrimaria e corSecundaria = cores de destaque coerentes com a descrição (botões, títulos).
+- palette = 6 cores harmônicas coerentes com o tema (inclua as 4 acima).
+- Sem inventar marca; siga o clima descrito.`;
+      userMsg = `Descrição do tema desejado:\n"""${descricao || "tema elegante e acolhedor pra restaurante"}"""`;
     } else if (modo === "traduzir") {
       const texto = String(body.texto || "");
       system = `Você traduz textos de sites de restaurantes de PT-BR para inglês natural (en-US), tom acolhedor. Devolva SÓ JSON: {"texto":"..."}. Não traduza nomes próprios do restaurante.`;

@@ -324,6 +324,8 @@ function TemaModal({ tema, logoUrl, heroImagemUrl, podeEditar, onClose, onSave }
   const [extraindo, setExtraindo] = useState("");
   const [erroPal, setErroPal] = useState("");
   const [dropK, setDropK] = useState<string | null>(null);   // campo destacado no arraste
+  const [descPrompt, setDescPrompt] = useState("");
+  const [sugerindoDesc, setSugerindoDesc] = useState(false);
   const cores: { k: keyof SiteConfig["tema"]; label: string }[] = [
     { k: "corPrimaria", label: "Cor primária" },
     { k: "corSecundaria", label: "Cor secundária" },
@@ -351,14 +353,39 @@ function TemaModal({ tema, logoUrl, heroImagemUrl, podeEditar, onClose, onSave }
     } catch (e) { setErroPal("Não consegui ler a imagem" + (e instanceof Error ? `: ${e.message}` : "") + "."); }
     finally { setExtraindo(""); }
   }
+
+  async function sugerirPorDescricao() {
+    const d = descPrompt.trim(); if (!d) return;
+    setSugerindoDesc(true); setErroPal("");
+    try {
+      const idToken = await auth.currentUser?.getIdToken();
+      const r = await fetch("/api/sites-ia", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ idToken, modo: "paleta", descricao: d }) });
+      const j = await r.json();
+      if (!r.ok) { setErroPal(j?.error || "A IA não conseguiu sugerir."); return; }
+      const res = (j.resultado || {}) as Record<string, unknown>;
+      const ehHex = (x: unknown): x is string => typeof x === "string" && /^#[0-9a-f]{6}$/i.test(x);
+      const pal = Array.isArray(res.palette) ? (res.palette as unknown[]).filter(ehHex) : [];
+      if (pal.length) setPalette(pal);
+      const merge: Partial<SiteConfig["tema"]> = {};
+      (["corPrimaria", "corSecundaria", "corFundo", "corTexto"] as const).forEach((k) => { if (ehHex(res[k])) merge[k] = (res[k] as string).toLowerCase(); });
+      if (Object.keys(merge).length) setT((p) => ({ ...p, ...merge }));
+    } catch (e) { setErroPal("Falha na IA" + (e instanceof Error ? `: ${e.message}` : "") + "."); }
+    finally { setSugerindoDesc(false); }
+  }
   return (
     <div className="fixed inset-0 z-[80] bg-black/40 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-[440px] p-5" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center gap-2 mb-3"><Palette size={18} className="text-indigo-500" /><div className="font-extrabold text-[15px]">Cores & fontes</div><div className="flex-1" /><button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg bg-gray-100 dark:bg-gray-800"><X size={16} /></button></div>
         <div className="max-h-[62vh] overflow-auto pr-1 space-y-4">
-          {podeEditar && (logoUrl || heroImagemUrl) && (
+          {podeEditar && (
             <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/50 bg-indigo-50/50 dark:bg-indigo-950/20 p-3">
-              <div className="text-[11px] font-bold text-indigo-800 dark:text-indigo-200 uppercase tracking-wide mb-1.5 inline-flex items-center gap-1"><Sparkles size={12} /> Sugerir cores da imagem</div>
+              <div className="text-[11px] font-bold text-indigo-800 dark:text-indigo-200 uppercase tracking-wide mb-1.5 inline-flex items-center gap-1"><Sparkles size={12} /> Sugerir paleta</div>
+              {/* Por descrição (IA) */}
+              <div className="flex items-center gap-2">
+                <input value={descPrompt} onChange={(e) => setDescPrompt(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void sugerirPorDescricao(); }} placeholder="Descreva o clima: ex. 'praiano, verde-mar e areia'" className="flex-1 min-w-0 h-9 px-2.5 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-[12.5px]" />
+                <button type="button" onClick={() => void sugerirPorDescricao()} disabled={sugerindoDesc || !descPrompt.trim()} className="shrink-0 text-[12px] font-bold px-3 h-9 rounded-lg text-white disabled:opacity-50" style={{ background: "linear-gradient(90deg,#6d5efc,#9b6bff)" }}>{sugerindoDesc ? "…" : "Sugerir"}</button>
+              </div>
+              {(logoUrl || heroImagemUrl) && <div className="text-[10px] text-gray-400 mt-2 mb-1">…ou a partir da imagem:</div>}
               <div className="flex flex-wrap gap-2">
                 {logoUrl && <button type="button" onClick={() => void sugerir(logoUrl, "logo")} disabled={!!extraindo} className="text-[12px] font-semibold px-3 h-8 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-900 disabled:opacity-50">{extraindo === "logo" ? "Analisando…" : "Da logo"}</button>}
                 {heroImagemUrl && <button type="button" onClick={() => void sugerir(heroImagemUrl, "hero")} disabled={!!extraindo} className="text-[12px] font-semibold px-3 h-8 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-gray-900 disabled:opacity-50">{extraindo === "hero" ? "Analisando…" : "Da imagem de fundo"}</button>}
