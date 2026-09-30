@@ -1,17 +1,13 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { TriangleAlert, Search, Monitor, Smartphone } from "lucide-react";
+import { useEffect, useState } from "react";
+import { TriangleAlert, Search } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import type { LinkDelivery, RedeSocial, SiteConfig, TemaSite } from "../../core/types";
+import type { LinkDelivery, RedeSocial, SiteConfig } from "../../core/types";
 import { defaultSiteConfig, useSiteConfig } from "./useSiteConfig";
 import { UploadImagem } from "./UploadImagem";
 import { defaultTextosByTemplate } from "./templates/textosDefaults";
 import { normalizarOrdem, SECAO_LABEL, type SecaoId } from "./templates/ordemSecoes";
-import {
-  FONTES_SITE, CATEGORIA_LABEL, findFonte, googleFontsUrl,
-  type FonteSite,
-} from "./templates/fontesDisponiveis";
 import { buscarCep, formatarCep, limparCep, validarCep } from "./cepHelper";
 import {
   formatarNumeroLocal, getPaisByIso, montarE164, PAIS_BR, PAISES,
@@ -118,9 +114,6 @@ export function GeralTab({
   function atualizarEndereco<K extends keyof SiteConfig["endereco"]>(k: K, v: SiteConfig["endereco"][K]) {
     setForm(f => f ? { ...f, endereco: { ...f.endereco, [k]: v } } : f);
   }
-  function atualizarTema<K extends keyof TemaSite>(k: K, v: TemaSite[K]) {
-    setForm(f => f ? { ...f, tema: { ...f.tema, [k]: v } } : f);
-  }
   function atualizarFeature<K extends keyof SiteConfig["features"]>(k: K, v: boolean) {
     setForm(f => f ? { ...f, features: { ...f.features, [k]: v } } : f);
   }
@@ -210,6 +203,16 @@ export function GeralTab({
     }
   }
 
+  async function togglePublicado() {
+    if (!me || !form) return;
+    const novo = { ...form, publicado: !form.publicado };
+    setForm(novo);
+    setSalvando(true);
+    try { await save(novo, me.id); setSavedAt(new Date().toLocaleTimeString("pt-BR")); }
+    catch (e) { alert(e instanceof Error ? e.message : "Erro ao salvar"); }
+    finally { setSalvando(false); }
+  }
+
   function resetar() {
     if (!confirm("Resetar tudo pros valores padrão? Você perde as edições não salvas.")) return;
     setForm(defaultSiteConfig(rid, nomeRestaurante));
@@ -223,9 +226,9 @@ export function GeralTab({
   void canContato;
   const inputDisabled = !podeEditar;
   const textosDisabled  = !canTextos;
-  const temaDisabled    = !canTema;
   const assetsDisabled  = !canAssets;
   const publicDisabled  = !canPubl;
+  void canTema;
 
   const navItens: { id: string; label: string }[] = [
     { id: "sec-imagens", label: "Imagens" },
@@ -236,7 +239,6 @@ export function GeralTab({
     { id: "sec-redes", label: "Redes" },
     { id: "sec-secoes", label: "Seções" },
     ...(form.features.hasDelivery ? [{ id: "sec-delivery", label: "Delivery" }] : []),
-    { id: "sec-tema", label: "Tema" },
     { id: "sec-publicacao", label: "Publicação" },
   ];
   const CARD = "scroll-mt-24 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 sm:p-5 shadow-sm";
@@ -626,69 +628,7 @@ export function GeralTab({
         </section>
       )}
 
-      {/* TEMA */}
-      <section id="sec-tema" className={CARD + " space-y-3"}>
-        <div className="flex items-center justify-between gap-2 flex-wrap">
-          <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
-            Tema visual
-          </h3>
-          {!temaDisabled && (
-            <button
-              type="button"
-              onClick={() => {
-                if (!confirm("Limpar todas as customizações do tema? O site volta ao visual padrão do template selecionado.")) return;
-                setForm(f => f ? {
-                  ...f,
-                  tema: {
-                    corPrimaria: "", corSecundaria: "", corFundo: "", corTexto: "",
-                    fonteHeading: "", fonteCorpo: "", raioBorda: "",
-                  },
-                } : f);
-              }}
-              className="text-xs text-indigo-600 hover:underline"
-            >
-              ↺ usar padrão do template
-            </button>
-          )}
-        </div>
-        <p className="text-[11px] text-gray-500 dark:text-gray-400">
-          Sobrescreve as cores/fontes definidas pelo template. Campos vazios = template decide.
-        </p>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <ColorInputComLimpar label="Cor primária" value={form.tema.corPrimaria} onChange={(v) => atualizarTema("corPrimaria", v)} disabled={temaDisabled} />
-          <ColorInputComLimpar label="Cor secundária" value={form.tema.corSecundaria} onChange={(v) => atualizarTema("corSecundaria", v)} disabled={temaDisabled} />
-          <ColorInputComLimpar label="Cor de fundo" value={form.tema.corFundo || ""} onChange={(v) => atualizarTema("corFundo", v)} disabled={temaDisabled} />
-          <ColorInputComLimpar label="Cor de texto" value={form.tema.corTexto || ""} onChange={(v) => atualizarTema("corTexto", v)} disabled={temaDisabled} />
-        </div>
-        <div className="grid grid-cols-1 gap-3">
-          <FonteSelector
-            label="Fonte dos títulos"
-            descricao="Hero, títulos de seção"
-            value={form.tema.fonteHeading || ""}
-            onChange={(v) => atualizarTema("fonteHeading", v)}
-            disabled={temaDisabled}
-          />
-          <FonteSelector
-            label="Fonte de subtítulos"
-            descricao="Slogan, eyebrow, texto-destaque"
-            value={form.tema.fonteSubtitulo || ""}
-            onChange={(v) => atualizarTema("fonteSubtitulo", v)}
-            disabled={temaDisabled}
-          />
-          <FonteSelector
-            label="Fonte de corpo"
-            descricao="Parágrafos, listas, texto comum"
-            value={form.tema.fonteCorpo || ""}
-            onChange={(v) => atualizarTema("fonteCorpo", v)}
-            disabled={temaDisabled}
-          />
-          <EscalasTextoControl
-            tema={form.tema}
-            onChange={(campo, v) => atualizarTema(campo, v)}
-            disabled={temaDisabled}
-          />
-        </div>
-      </section>
+      {/* Tema visual (cores/fontes) e ordenação vivem agora na aba "Editar (visual)". */}
 
       {/* TEMPLATE — só um layout hoje, cada restaurante customiza via
           cor/fonte/logo/textos. Mantido implícito (sem picker no admin)
@@ -700,13 +640,15 @@ export function GeralTab({
         <h3 className="text-sm font-bold uppercase tracking-wider text-gray-700 dark:text-gray-300">
           Publicação
         </h3>
-        <div className="flex items-center gap-3">
-          <CheckRow
-            label="Site publicado (visível pro público)"
-            checked={form.publicado}
-            onChange={(v) => atualizar("publicado", v)}
-            disabled={publicDisabled}
-          />
+        <div className="flex items-center gap-3 flex-wrap">
+          <span className={"text-[12px] font-bold px-2.5 py-1 rounded-full " + (form.publicado ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800")}>
+            {form.publicado ? "● No ar" : "○ Não publicado"}
+          </span>
+          {!publicDisabled && (
+            form.publicado
+              ? <button onClick={() => void togglePublicado()} disabled={salvando} className="h-9 px-4 rounded-lg border border-rose-200 dark:border-rose-900 text-rose-600 text-sm font-bold disabled:opacity-50">{salvando ? "…" : "Despublicar"}</button>
+              : <button onClick={() => void togglePublicado()} disabled={salvando} className="h-9 px-4 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-50">{salvando ? "…" : "Publicar"}</button>
+          )}
         </div>
         <Input
           label="Slug (URL temporária pré-DNS)"
@@ -1017,163 +959,6 @@ function TextosSection({ form, setForm, disabled }: {
 // Backward compat: campos antigos sem device split (escalaHero, etc.)
 // viram fallback simétrico pros dois novos campos (desktop + mobile),
 // então ao migrar nada muda visualmente até o admin tocar o slider.
-function EscalasTextoControl({ tema, onChange, disabled }: {
-  tema: TemaSite;
-  onChange: (campo: keyof TemaSite, v: number) => void;
-  disabled?: boolean;
-}) {
-  // Helper: valor display de cada slider, com cascata de fallback.
-  // Mesma lógica do template (PersonalizadoTemplate.tsx) — assim o que o
-  // admin vê é exatamente o que o site renderiza.
-  const vHeroDsk = tema.escalaHeroDesktop ?? tema.escalaHero ?? 1;
-  const vHeroMob = tema.escalaHeroMobile ?? tema.escalaHero ?? 1;
-  const vTitDsk = tema.escalaTitulosDesktop ?? tema.escalaTitulos ?? 1;
-  const vTitMob = tema.escalaTitulosMobile ?? tema.escalaTitulos ?? 1;
-  const vCorDsk = tema.escalaCorpoDesktop ?? tema.escalaCorpo ?? tema.escalaTexto ?? 1;
-  const vCorMob = tema.escalaCorpoMobile ?? tema.escalaCorpo ?? tema.escalaTexto ?? 1;
-  const vMenDsk = tema.escalaMenuDesktop ?? tema.escalaPequenos ?? 1;
-  const vMenMob = tema.escalaMenuMobile ?? tema.escalaPequenos ?? 1;
-  const vBotDsk = tema.escalaBotoesDesktop ?? tema.escalaBotoes ?? tema.escalaPequenos ?? 1;
-  const vBotMob = tema.escalaBotoesMobile ?? tema.escalaBotoes ?? tema.escalaPequenos ?? 1;
-
-  // Cada categoria: label + descricao + 2 sliders (desktop + mobile)
-  const categorias = [
-    {
-      titulo: "Título do hero",
-      descricao: "Frase grande no topo do site",
-      dskVal: vHeroDsk,  dskCampo: "escalaHeroDesktop" as const,
-      mobVal: vHeroMob,  mobCampo: "escalaHeroMobile" as const,
-    },
-    {
-      titulo: "Títulos das seções",
-      descricao: "História, Cardápio, Reservas, etc.",
-      dskVal: vTitDsk, dskCampo: "escalaTitulosDesktop" as const,
-      mobVal: vTitMob, mobCampo: "escalaTitulosMobile" as const,
-    },
-    {
-      titulo: "Corpo de texto",
-      descricao: "Parágrafos, descrições, subtítulo do hero",
-      dskVal: vCorDsk, dskCampo: "escalaCorpoDesktop" as const,
-      mobVal: vCorMob, mobCampo: "escalaCorpoMobile" as const,
-    },
-    {
-      titulo: "Menu",
-      descricao: "Desktop: nav superior. Mobile: itens do hamburguer.",
-      dskVal: vMenDsk, dskCampo: "escalaMenuDesktop" as const,
-      mobVal: vMenMob, mobCampo: "escalaMenuMobile" as const,
-    },
-    {
-      titulo: "Botões",
-      descricao: "CTAs (Reservar, Solicitar, iFood, …)",
-      dskVal: vBotDsk, dskCampo: "escalaBotoesDesktop" as const,
-      mobVal: vBotMob, mobCampo: "escalaBotoesMobile" as const,
-    },
-  ];
-
-  return (
-    <div className="space-y-3">
-      <div>
-        <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block">
-          Tamanhos das fontes
-        </label>
-        <p className="text-[11px] text-gray-500 dark:text-gray-400">
-          5 categorias × 2 devices. Ajuste cada uma pra desktop e mobile
-          independentemente. <strong>100%</strong> = padrão do template.
-        </p>
-      </div>
-      {/* Cabeçalho das 2 colunas — só renderiza em viewports onde o grid
-          fica lado a lado (sm+). Em mobile cada slider já tem label "Desktop"/"Mobile". */}
-      <div className="hidden sm:grid grid-cols-[1fr_1fr] gap-3 pl-1 pt-1">
-        <div className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold inline-flex items-center gap-1"><Monitor size={11} /> Desktop</div>
-        <div className="text-[10px] uppercase tracking-wider text-gray-500 dark:text-gray-400 font-semibold inline-flex items-center gap-1"><Smartphone size={11} /> Mobile</div>
-      </div>
-      <div className="space-y-3">
-        {categorias.map(cat => (
-          <div
-            key={cat.titulo}
-            className="rounded-lg border border-gray-200 dark:border-gray-800 p-3 space-y-2"
-          >
-            <div>
-              <div className="text-[12px] font-semibold text-gray-700 dark:text-gray-300">{cat.titulo}</div>
-              <div className="text-[10px] text-gray-500 dark:text-gray-400">{cat.descricao}</div>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 sm:gap-3">
-              <SliderEscalaCompact
-                deviceLabel={<span className="inline-flex items-center gap-1"><Monitor size={11} /> Desktop</span>}
-                value={cat.dskVal}
-                onChange={(v) => onChange(cat.dskCampo, v)}
-                disabled={disabled}
-              />
-              <SliderEscalaCompact
-                deviceLabel={<span className="inline-flex items-center gap-1"><Smartphone size={11} /> Mobile</span>}
-                value={cat.mobVal}
-                onChange={(v) => onChange(cat.mobCampo, v)}
-                disabled={disabled}
-              />
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// Slider compacto pra uma célula da matriz 5×2 de escalas tipográficas.
-// Diferença vs SliderEscala antigo: não tem label/descrição próprios —
-// quem renderiza é a categoria pai (titulo+descricao) + cabeçalho da
-// coluna (Desktop/Mobile). Aqui só mostra device + slider + %.
-function SliderEscalaCompact({ deviceLabel, value, onChange, disabled }: {
-  deviceLabel: ReactNode;
-  value: number;
-  onChange: (v: number) => void;
-  disabled?: boolean;
-}) {
-  const pct = Math.round((value || 1) * 100);
-  const alterado = value !== 1;
-  return (
-    <div className="space-y-1">
-      <div className="flex items-baseline justify-between gap-2">
-        {/* Em mobile (cards empilhados), mostra "Desktop"/"Mobile" no slider.
-            Em desktop, o cabeçalho da coluna já mostra — esconde aqui via sm:hidden. */}
-        <div className="text-[10px] text-gray-500 dark:text-gray-400 font-medium sm:hidden">
-          {deviceLabel}
-        </div>
-        <div className="hidden sm:block text-[10px] text-gray-400 invisible">·</div>
-        <div className={`text-[11px] font-mono tabular-nums shrink-0 ${alterado ? "text-indigo-600 dark:text-indigo-400 font-semibold" : "text-gray-500"}`}>
-          {pct}%
-        </div>
-      </div>
-      <div className="flex items-center gap-1.5">
-        <span className="text-[9px] text-gray-400 w-5">85</span>
-        <input
-          type="range"
-          min={0.85}
-          max={1.40}
-          step={0.01}
-          value={value || 1}
-          onChange={(e) => onChange(parseFloat(e.target.value))}
-          disabled={disabled}
-          className="flex-1 min-w-0"
-        />
-        <span className="text-[9px] text-gray-400 w-7 text-right">140</span>
-        {alterado && (
-          <button
-            type="button"
-            onClick={() => onChange(1)}
-            disabled={disabled}
-            className="text-[11px] text-gray-500 hover:text-gray-700 underline px-0.5 shrink-0"
-            title="Voltar ao padrão"
-          >
-            ↺
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// Editor de ordem das seções do site — setas ↑↓ pra mover.
-// Hero fica sempre primeiro, Footer sempre último — não entram aqui.
 function OrdemSecoesSection({ form, setForm, disabled }: {
   form: SiteConfig;
   setForm: React.Dispatch<React.SetStateAction<SiteConfig | null>>;
@@ -1255,137 +1040,5 @@ function OrdemSecoesSection({ form, setForm, disabled }: {
         </div>
       </details>
     </section>
-  );
-}
-
-// Selector de fonte com preview ao vivo. Quando o user seleciona uma fonte,
-// carrega ela do Google Fonts pra renderizar o preview.
-function FonteSelector({ label, descricao, value, onChange, disabled }: {
-  label: string;
-  descricao: string;
-  value: string;
-  onChange: (v: string) => void;
-  disabled?: boolean;
-}) {
-  const fonteAtual = findFonte(value);
-
-  // Pre-carrega todas as fontes do catálogo na primeira vez que o seletor
-  // aparece, pra preview funcionar. Tem peso, então só se o user estiver
-  // editando (não disabled).
-  useEffect(() => {
-    if (disabled) return;
-    const ids = FONTES_SITE.map(f => f.id);
-    const url = googleFontsUrl(ids);
-    if (!url) return;
-    // Evita duplicar
-    const ja = document.querySelector(`link[data-fontes-preview="1"]`);
-    if (ja) return;
-    const link = document.createElement("link");
-    link.rel = "stylesheet";
-    link.href = url;
-    link.setAttribute("data-fontes-preview", "1");
-    document.head.appendChild(link);
-    // Não removemos no cleanup — pode ser usado em outros lugares
-  }, [disabled]);
-
-  // Agrupa por categoria
-  const grupos: { categoria: FonteSite["categoria"]; fontes: FonteSite[] }[] =
-    (["serif_elegante", "sans_moderna", "display", "script"] as FonteSite["categoria"][])
-      .map(c => ({ categoria: c, fontes: FONTES_SITE.filter(f => f.categoria === c) }));
-
-  return (
-    <div>
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-            {label}
-          </label>
-          <p className="text-[10px] text-gray-400">{descricao}</p>
-        </div>
-        {!disabled && value && (
-          <button
-            type="button"
-            onClick={() => onChange("")}
-            className="text-[10px] text-gray-400 hover:text-rose-600"
-          >
-            ↺ usar padrão do template
-          </button>
-        )}
-      </div>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        className="mt-1 w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm"
-        style={{ fontFamily: fonteAtual?.cssFamily }}
-      >
-        <option value="">— padrão do template —</option>
-        {grupos.map(g => (
-          <optgroup key={g.categoria} label={CATEGORIA_LABEL[g.categoria]}>
-            {g.fontes.map(f => (
-              <option key={f.id} value={f.id} style={{ fontFamily: f.cssFamily }}>
-                {f.nome}
-              </option>
-            ))}
-          </optgroup>
-        ))}
-      </select>
-      {/* Preview */}
-      {fonteAtual && (
-        <div
-          className="mt-2 rounded border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-3"
-          style={{ fontFamily: fonteAtual.cssFamily }}
-        >
-          <div style={{ fontSize: 28, lineHeight: 1.1, fontWeight: fonteAtual.categoria === "sans_moderna" ? 600 : 400 }}>
-            Bom apetite
-          </div>
-          <div style={{ fontSize: 14, color: "#666", marginTop: 4 }}>
-            The quick brown fox jumps over the lazy dog.
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ColorInput com suporte a valor vazio (usa "padrão do template")
-// e botão pra limpar e voltar ao default.
-function ColorInputComLimpar({ label, value, onChange, disabled }: {
-  label: string; value: string; onChange: (v: string) => void; disabled?: boolean;
-}) {
-  const vazio = !value || !value.trim();
-  return (
-    <div>
-      <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">
-        {label}
-      </label>
-      <div className="mt-1 flex items-center gap-1.5">
-        <input
-          type="color"
-          value={value || "#888888"}
-          onChange={(e) => onChange(e.target.value)}
-          disabled={disabled}
-          className={`w-9 h-9 rounded border border-gray-300 dark:border-gray-700 cursor-pointer disabled:opacity-50 ${vazio ? "opacity-40" : ""}`}
-        />
-        <input
-          type="text"
-          value={value || ""}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder="(template)"
-          disabled={disabled}
-          className="flex-1 px-2 py-1.5 rounded border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-xs font-mono tabular-nums"
-        />
-        {!disabled && !vazio && (
-          <button
-            type="button"
-            onClick={() => onChange("")}
-            title="Limpar (voltar pro padrão do template)"
-            className="text-xs text-gray-400 hover:text-rose-600 px-1"
-          >
-            ✕
-          </button>
-        )}
-      </div>
-    </div>
   );
 }

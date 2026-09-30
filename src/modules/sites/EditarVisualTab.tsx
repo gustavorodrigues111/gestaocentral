@@ -8,6 +8,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { auth } from "../../core/firebase/config";
 import { useSiteConfig } from "./useSiteConfig";
 import { UploadImagem } from "./UploadImagem";
+import { FONTES_SITE, CATEGORIA_LABEL } from "./templates/fontesDisponiveis";
 import type { SiteConfig } from "../../core/types";
 
 type SelTexto = { tipo: "texto"; campo: string };
@@ -72,7 +73,7 @@ export function EditarVisualTab({ rid, nomeRestaurante, podeEditar }: { rid: str
       <div className="flex items-center gap-2 flex-wrap">
         <div className="text-[13px] text-gray-600 dark:text-gray-300 inline-flex items-center gap-1.5"><MousePointerClick size={15} className="text-indigo-500" /> Clique num texto ou imagem do site pra editar.</div>
         <div className="flex-1" />
-        {podeEditar && <button onClick={() => setSel({ tipo: "tema" })} className="text-[12px] font-semibold px-3 h-8 rounded-lg border border-gray-200 dark:border-gray-700 inline-flex items-center gap-1.5"><Palette size={14} /> Cores</button>}
+        {podeEditar && <button onClick={() => setSel({ tipo: "tema" })} className="text-[12px] font-semibold px-3 h-8 rounded-lg border border-gray-200 dark:border-gray-700 inline-flex items-center gap-1.5"><Palette size={14} /> Aparência</button>}
         {podeEditar && <button onClick={() => setSel({ tipo: "asset", asset: "favicon" })} className="text-[12px] font-semibold px-3 h-8 rounded-lg border border-gray-200 dark:border-gray-700 inline-flex items-center gap-1.5"><ImageIcon size={14} /> Favicon</button>}
         <div className="flex items-center gap-1 ml-1">
           <button onClick={() => setVp("desktop")} className={`px-2.5 py-1 text-[11px] rounded ${vp === "desktop" ? "bg-indigo-600 text-white" : "bg-gray-100 dark:bg-gray-800"}`}><span className="inline-flex items-center gap-1"><Monitor size={12} /> Desktop</span></button>
@@ -175,6 +176,12 @@ function TemaModal({ tema, podeEditar, onClose, onSave }: {
     { k: "corFundo", label: "Cor de fundo" },
     { k: "corTexto", label: "Cor de texto" },
   ];
+  const fontes: { k: keyof SiteConfig["tema"]; label: string }[] = [
+    { k: "fonteHeading", label: "Fonte dos títulos" },
+    { k: "fonteSubtitulo", label: "Fonte de subtítulos" },
+    { k: "fonteCorpo", label: "Fonte do corpo" },
+  ];
+  const CATEGORIAS = ["serif_elegante", "sans_moderna", "display", "script"] as const;
   const [t, setT] = useState<SiteConfig["tema"]>(tema);
   const [salvando, setSalvando] = useState(false);
   const val = (k: keyof SiteConfig["tema"]) => (t[k] as string) || "";
@@ -182,20 +189,43 @@ function TemaModal({ tema, podeEditar, onClose, onSave }: {
   return (
     <div className="fixed inset-0 z-[80] bg-black/40 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
       <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-[440px] p-5" onClick={(e) => e.stopPropagation()}>
-        <div className="flex items-center gap-2 mb-3"><Palette size={18} className="text-indigo-500" /><div className="font-extrabold text-[15px]">Cores do site</div><div className="flex-1" /><button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg bg-gray-100 dark:bg-gray-800"><X size={16} /></button></div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {cores.map((c) => (
-            <div key={c.k}>
-              <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{c.label}</label>
-              <div className="flex items-center gap-2 mt-1">
-                <input type="color" value={val(c.k) || "#888888"} onChange={(e) => setC(c.k, e.target.value)} disabled={!podeEditar} className="w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-0.5" />
-                <input value={val(c.k)} onChange={(e) => setC(c.k, e.target.value)} placeholder="padrão do tema" disabled={!podeEditar} className="flex-1 h-10 px-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-[12px] font-mono" />
-                {val(c.k) && podeEditar && <button onClick={() => setC(c.k, "")} className="text-[11px] text-gray-400 hover:text-rose-500" title="Limpar (usa o padrão)">limpar</button>}
-              </div>
+        <div className="flex items-center gap-2 mb-3"><Palette size={18} className="text-indigo-500" /><div className="font-extrabold text-[15px]">Cores & fontes</div><div className="flex-1" /><button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg bg-gray-100 dark:bg-gray-800"><X size={16} /></button></div>
+        <div className="max-h-[62vh] overflow-auto pr-1 space-y-4">
+          <div>
+            <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Cores</div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {cores.map((c) => (
+                <div key={c.k}>
+                  <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{c.label}</label>
+                  <div className="flex items-center gap-2 mt-1">
+                    <input type="color" value={val(c.k) || "#888888"} onChange={(e) => setC(c.k, e.target.value)} disabled={!podeEditar} className="w-10 h-10 rounded-lg border border-gray-200 dark:border-gray-700 bg-transparent p-0.5" />
+                    <input value={val(c.k)} onChange={(e) => setC(c.k, e.target.value)} placeholder="padrão do tema" disabled={!podeEditar} className="flex-1 h-10 px-2 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-[12px] font-mono" />
+                    {val(c.k) && podeEditar && <button onClick={() => setC(c.k, "")} className="text-[11px] text-gray-400 hover:text-rose-500" title="Limpar (usa o padrão)">limpar</button>}
+                  </div>
+                </div>
+              ))}
             </div>
-          ))}
+          </div>
+          <div>
+            <div className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-1.5">Fontes</div>
+            <div className="space-y-2">
+              {fontes.map((f) => (
+                <div key={f.k}>
+                  <label className="text-[11px] font-bold text-gray-500 uppercase tracking-wide">{f.label}</label>
+                  <select value={val(f.k)} onChange={(e) => setC(f.k, e.target.value)} disabled={!podeEditar} className="w-full h-10 px-2 mt-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm">
+                    <option value="">— padrão do template —</option>
+                    {CATEGORIAS.map((cat) => (
+                      <optgroup key={cat} label={CATEGORIA_LABEL[cat]}>
+                        {FONTES_SITE.filter((ft) => ft.categoria === cat).map((ft) => <option key={ft.id} value={ft.id}>{ft.nome}</option>)}
+                      </optgroup>
+                    ))}
+                  </select>
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
-        <p className="text-[11px] text-gray-400 mt-2">Vazio = usa a cor padrão do template. As fontes ficam na aba Geral → Tema.</p>
+        <p className="text-[11px] text-gray-400 mt-2">Vazio = usa o padrão do template.</p>
         <div className="flex justify-end gap-2 mt-4">
           <button onClick={onClose} className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold">Cancelar</button>
           {podeEditar && <button onClick={async () => { setSalvando(true); try { await onSave(t); } catch { setSalvando(false); } }} disabled={salvando} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-50 inline-flex items-center gap-1">{salvando ? "Salvando…" : <><Check size={15} /> Salvar</>}</button>}

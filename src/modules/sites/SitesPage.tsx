@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Lock, SquarePen, ClipboardList, Eye, Globe, Sparkles, MousePointerClick } from "lucide-react";
+import { Lock, SquarePen, ClipboardList, Eye, Sparkles, MousePointerClick } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -10,10 +10,9 @@ import { PreviewTab } from "./PreviewTab";
 import { ConexaoTab } from "./ConexaoTab";
 import { EditarVisualTab } from "./EditarVisualTab";
 import { SiteIAAssistant } from "./SiteIAAssistant";
-import { LivePreviewPanel } from "./LivePreviewPanel";
 import { PageContainer } from "../../core/ui/PageContainer";
 
-type Tab = "geral" | "editar" | "conexao" | "cardapio" | "preview";
+type Tab = "geral" | "editar" | "cardapio" | "preview";
 
 // Módulo Sites — controla o site público do restaurante.
 // Tabs:
@@ -78,9 +77,6 @@ export function SitesPage() {
         <TabButton active={tab === "editar"} onClick={() => setTab("editar")} disabled={!podeGeral}>
           <span className="inline-flex items-center gap-1.5"><MousePointerClick size={15} /> Editar (visual)</span>
         </TabButton>
-        <TabButton active={tab === "conexao"} onClick={() => setTab("conexao")}>
-          <span className="inline-flex items-center gap-1.5"><Globe size={15} /> Conexão do site</span>
-        </TabButton>
         <TabButton active={tab === "cardapio"} onClick={() => setTab("cardapio")} disabled={!podeCardapio}>
           <span className="inline-flex items-center gap-1.5"><ClipboardList size={15} /> Cardápio</span>
         </TabButton>
@@ -95,31 +91,24 @@ export function SitesPage() {
         )}
       </div>
 
-      {/* Conteúdo — Geral com preview ao vivo lado a lado (telas largas) */}
+      {/* Conteúdo — Geral: definições gerais + conexão de domínio */}
       {tab === "geral" && (
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_400px] gap-5 items-start">
-          <div className="min-w-0">
-            <GeralTab
-              rid={rid}
-              nomeRestaurante={activeRestaurant.nome}
-              podeEditar={podeGeral}
-              podeEditarTextos={!!me?.isMaster || can("sites", "editarTextos") || !!special?.sitesGeral}
-              podeEditarContato={!!me?.isMaster || can("sites", "editarContato") || !!special?.sitesGeral}
-              podeEditarTema={!!me?.isMaster || can("sites", "editarTema") || !!special?.sitesGeral}
-              podeUploadAssets={!!me?.isMaster || can("sites", "uploadAssets") || !!special?.sitesGeral}
-              podePublicar={!!me?.isMaster || can("sites", "publicar") || !!special?.sitesGeral}
-            />
-          </div>
-          <div className="hidden xl:block">
-            <LivePreviewPanel rid={rid} nomeRestaurante={activeRestaurant.nome} />
-          </div>
+        <div className="space-y-5">
+          <GeralTab
+            rid={rid}
+            nomeRestaurante={activeRestaurant.nome}
+            podeEditar={podeGeral}
+            podeEditarTextos={!!me?.isMaster || can("sites", "editarTextos") || !!special?.sitesGeral}
+            podeEditarContato={!!me?.isMaster || can("sites", "editarContato") || !!special?.sitesGeral}
+            podeEditarTema={!!me?.isMaster || can("sites", "editarTema") || !!special?.sitesGeral}
+            podeUploadAssets={!!me?.isMaster || can("sites", "uploadAssets") || !!special?.sitesGeral}
+            podePublicar={!!me?.isMaster || can("sites", "publicar") || !!special?.sitesGeral}
+          />
+          <ConexaoTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeConectar} />
         </div>
       )}
       {tab === "editar" && (
         <EditarVisualTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeGeral} />
-      )}
-      {tab === "conexao" && (
-        <ConexaoTab rid={rid} nomeRestaurante={activeRestaurant.nome} podeEditar={podeConectar} />
       )}
       {tab === "cardapio" && (
         <div className="rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 p-6 text-center space-y-2">
