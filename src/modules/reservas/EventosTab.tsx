@@ -107,7 +107,28 @@ function PainelEvento({ ev, reservas, podeEditar, onVoltar, onNovaReserva, onEdi
         {!ev.pastaDriveId && <span className="text-[12px] text-amber-600 inline-flex items-center gap-1"><FolderOpen size={13} /> sem pasta do Drive — edite o evento</span>}
       </div>
 
-      <div className="border border-gray-200 dark:border-gray-800 rounded-2xl overflow-x-auto shadow-sm">
+      {/* Mobile: cards */}
+      <div className="sm:hidden space-y-2">
+        {ordenadas.length === 0 ? (
+          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-gray-400 text-sm">Nenhuma reserva nesse evento. Toque em "Nova reserva".</div>
+        ) : ordenadas.map((r) => (
+          <button key={r.id} onClick={() => onEditarReserva(r, ev)} className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+            <div className="flex items-center gap-2">
+              <div className="font-semibold text-gray-900 dark:text-gray-100 flex-1 min-w-0 truncate">{r.clienteNomeSnapshot || "—"}{r.status === "cancelada" && <span className="text-[11px] text-rose-500 ml-1">(cancelada)</span>}</div>
+              {r.pagamento?.pago ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">Pago</span> : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">Pendente</span>}
+            </div>
+            <div className="text-[12px] text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
+              <span><CalendarDays size={11} className="inline align-[-1px]" /> {fmtBR(r.data)} · {r.horario}</span>
+              <span>· {r.pessoas} pessoa(s)</span>
+              {r.pagamento?.valor ? <span>· {fmtR(r.pagamento.valor)}{r.pagamento.forma ? ` (${r.pagamento.forma})` : ""}</span> : null}
+            </div>
+            {r.pagamento?.comprovanteUrl && <a href={r.pagamento.comprovanteUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-[12px] text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 mt-1"><FileText size={12} /> ver comprovante</a>}
+          </button>
+        ))}
+      </div>
+
+      {/* Desktop: tabela */}
+      <div className="hidden sm:block border border-gray-200 dark:border-gray-800 rounded-2xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm min-w-[640px]">
           <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-400 text-[11px] uppercase tracking-wider">
             <tr><th className="text-left px-4 py-2.5">Cliente</th><th className="text-left px-4 py-2.5">Data/hora</th><th className="text-center px-4 py-2.5">Pessoas</th><th className="text-left px-4 py-2.5">Pagamento</th><th className="text-right px-4 py-2.5">Valor</th><th className="text-center px-4 py-2.5">Comprov.</th><th className="px-2 py-2.5"></th></tr>

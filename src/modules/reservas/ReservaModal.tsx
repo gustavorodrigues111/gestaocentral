@@ -263,13 +263,13 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
               </div>
             ) : (
               <div className="space-y-2">
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <Input
                     value={clienteNome}
                     onChange={(e) => setClienteNome(e.target.value)}
                     placeholder="Nome do cliente (digite ou busque)"
                     onFocus={() => setShowSearch(true)}
-                    className="flex-1"
+                    className="flex-1 min-w-[160px]"
                   />
                   <Button variant="secondary" onClick={() => setShowSearch(s => !s)}><span className="inline-flex items-center gap-1.5"><Search size={15} /> Buscar</span></Button>
                   <Button variant="secondary" onClick={() => setNovoClienteOpen(true)}>+ Novo</Button>
@@ -313,8 +313,8 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
           </div>
 
           {/* Data + horário + pessoas */}
-          <div className="grid grid-cols-3 gap-3">
-            <Input label="Data *" type="date" value={data} onChange={(e) => setData(e.target.value)} />
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <Input label="Data *" type="date" value={data} onChange={(e) => setData(e.target.value)} className="col-span-2 sm:col-span-1" />
             <Input label="Horário *" type="time" value={horario} onChange={(e) => setHorario(e.target.value)} />
             <Input label="Pessoas *" type="number" min={1} value={pessoas} onChange={(e) => setPessoas(e.target.value)} />
           </div>
@@ -416,7 +416,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
           {/* Status */}
           <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
             <label className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 block mb-1">Status</label>
-            <div className="grid grid-cols-5 gap-2">
+            <div className="grid grid-cols-3 sm:grid-cols-5 gap-2">
               {STATUSES.map(s => (
                 <button
                   key={s}
