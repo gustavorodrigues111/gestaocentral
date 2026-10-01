@@ -1485,6 +1485,14 @@
 "ajuda": ""
 },
 {
+"token": "HORARIO_TRABALHO",
+"rotulo": "Horário de trabalho (jornada)",
+"tipo": "textarea",
+"obrigatorio": false,
+"origem": "empregado",
+"ajuda": "Puxado da escala do empregado (cadastrada na admissão). Edite se precisar; vazio usa a jornada padrão de 44h."
+},
+{
 "token": "EMAIL_CONTATO",
 "rotulo": "E-mail (contato/assinatura)",
 "tipo": "texto",

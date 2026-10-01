@@ -19,6 +19,10 @@ import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
 import type { Pessoa, Empregado } from "../../core/types";
 import { getTermosAssinaturaDefault } from "../../core/admissao/admissaoHelpers";
+import { jornadaDoEmpregado } from "./jornada";
+
+// Jornada padrão (44h) — fallback quando o empregado não tem escala cadastrada.
+const HORARIO_PADRAO_44H = "De segunda a sexta-feira, das 08:00 às 12:00 e das 13:00 às 17:48, com 1 (uma) hora de intervalo para refeição e descanso, perfazendo 44 horas semanais.";
 import { HistoricoDocumentos } from "./HistoricoDocumentos";
 import { ConfigCargos } from "./ConfigCargos";
 import { LoteModal } from "./LoteModal";
@@ -344,10 +348,13 @@ export function GeradorModal({ doc: modelo, rid, restaurants, pessoas, empregado
     const nome = emp?.nome || pes?.nome || "";
     const cpf = emp?.cpf || pes?.cpf || "";
     const adm = emp?.admissaoAtual || emp?.periodos?.[(emp?.periodos?.length || 1) - 1]?.admissao || "";
+    // Jornada real do empregado (vem da escala importada da admissão). Fallback = 44h padrão.
+    const jornadaEmp = jornadaDoEmpregado(emp?.workSchedules);
     const d: Record<string, string> = {
       DIA: dia, DIA_1: dia, DIA_2: dia, MES: mes, MES_1: mes, MES_2: mes,
       ANO2: ano2, ANO2_1: ano2, ANO2_2: ano2, DATA: dataStr, CIDADE: empresaData.CIDADE || "",
       NOME_EMPREGADO: nome, CPF_EMPREGADO: cpf, DATA_ADMISSAO: adm ? fmtBR(adm) : "",
+      HORARIO_TRABALHO: jornadaEmp || HORARIO_PADRAO_44H,
       ...empresaData,
       ...(prefill || {}),
     };
