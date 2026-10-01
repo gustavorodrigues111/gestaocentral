@@ -15,6 +15,8 @@ import { ReservaModal } from "./ReservaModal";
 import { CancelarReservaModal } from "./CancelarReservaModal";
 import { ClientesTab } from "./ClientesTab";
 import { ConfigTab } from "./ConfigTab";
+import { EventosTab } from "./EventosTab";
+import type { ReservaEvento } from "../../core/types";
 import { AgendaTab } from "./AgendaTab";
 import { TabBadge } from "../../core/ui/TabBadge";
 import { ChegouModal } from "./ChegouModal";
@@ -37,7 +39,7 @@ function haQuantoTempo(iso?: string): string {
   return `há ${Math.floor(h / 24)} d`;
 }
 
-type Tab = "reservas" | "agenda" | "clientes" | "config";
+type Tab = "reservas" | "eventos" | "agenda" | "clientes" | "config";
 
 const STATUS_CLS: Record<ReservaStatus, string> = {
   pendente:   "border-blue-300 bg-blue-50 dark:bg-blue-900/20 dark:border-blue-800",
@@ -100,6 +102,7 @@ export function ReservasPage() {
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Reserva | "new" | null>(null);
+  const [eventoAtivo, setEventoAtivo] = useState<ReservaEvento | null>(null);   // evento da reserva sendo criada/editada
   // Modal "Cliente chegou" — escolhe mesa + nota
   const [chegouReserva, setChegouReserva] = useState<Reserva | null>(null);
   const [cancelando, setCancelando] = useState<Reserva | null>(null);
@@ -420,6 +423,9 @@ export function ReservasPage() {
       <div className="flex border-b border-gray-200 dark:border-gray-800 mb-4 overflow-x-auto">
         {([
           ["reservas", "Reservas",     pendentesHoje, CalendarDays] as const,
+          ...(podeCriar
+            ? [["eventos",  "Eventos",      0, PartyPopper] as const]
+            : []),
           ...(podeConfig
             ? [["agenda",   "Agenda",       0, CalendarRange] as const]
             : []),
@@ -717,6 +723,16 @@ export function ReservasPage() {
         <ConfigTab restaurantId={rid} podeConfig={podeConfig} pessoaId={me.id} />
       )}
 
+      {tab === "eventos" && podeCriar && (
+        <EventosTab
+          rid={rid}
+          reservas={reservas}
+          podeEditar={podeConfig}
+          onNovaReserva={(ev) => { setEventoAtivo(ev); setEditing("new"); }}
+          onEditarReserva={(r, ev) => { setEventoAtivo(ev); setEditing(r); }}
+        />
+      )}
+
       {editing && (
         <ReservaModal
           reserva={editing === "new" ? null : editing}
@@ -725,7 +741,8 @@ export function ReservasPage() {
           mesas={mesas}
           reservasMesmoDia={reservas.filter(r => r.data === (editing === "new" ? dataAtual : (editing as Reserva).data))}
           restaurantId={rid}
-          onClose={() => setEditing(null)}
+          evento={eventoAtivo}
+          onClose={() => { setEditing(null); setEventoAtivo(null); }}
         />
       )}
 

@@ -2695,6 +2695,10 @@ export type Reserva = {
   clienteEmailSnapshot?: string;
   observacoes?: string;
   ocasiao?: string;
+  // Evento especial (jantar pago etc.) — reserva lançada pela equipe. null/undefined = reserva normal.
+  eventoId?: string | null;
+  // Pagamento (eventos). Fica no doc PII (/reservasPII, auth-only) — valor/comprovante são sensíveis.
+  pagamento?: ReservaPagamento;
   status: ReservaStatus;
   // Origem: "interno" = criada no admin; "publico" = veio do form /reservas/:rid;
   // "getin" = sincronizada do GetIn (iFood) pelo conector api/getin-sync.
@@ -2715,6 +2719,37 @@ export type Reserva = {
   registradoEm: string;
   registradoPor: string;              // pessoaId (ou "publico" se veio do form)
   atualizadoEm: string;
+};
+
+// Pagamento de uma reserva de evento (fica em /reservasPII, auth-only).
+export type ReservaPagamento = {
+  pago: boolean;
+  forma?: string;                     // pix | dinheiro | debito | credito | transferencia | outro (texto livre)
+  valor?: number;                     // total pago/previsto (pessoas × valorPorPessoa, editável)
+  comprovanteDriveId?: string;
+  comprovanteUrl?: string;
+  comprovanteNome?: string;
+  pagoEm?: string;                    // ISO
+  registradoPor?: string;            // pessoaId
+};
+
+// Evento especial de reservas (ex.: jantar harmonizado). Reservas vinculadas
+// são lançadas pela EQUIPE (não pelo form público) e têm pagamento + comprovante.
+export type ReservaEvento = {
+  id: string; restaurantId: string;
+  nome: string; descricao?: string;
+  dataInicio: string;                 // YYYY-MM-DD
+  dataFim?: string;                   // YYYY-MM-DD (opcional — evento de período)
+  horarioPadrao?: string;             // HH:MM sugerido pras reservas
+  valorPorPessoa?: number;            // sugestão; total = pessoas × valor (editável por reserva)
+  pastaDriveId?: string; pastaDriveNome?: string;   // subpasta (conta central) dos comprovantes
+  ativo?: boolean; criadoEm: string; criadoPor?: string; atualizadoEm?: string;
+};
+// Config do sub-módulo Eventos por restaurante (doc id = restaurantId): pasta-raiz
+// na conta central onde cada evento vira uma subpasta. Configurada 1 vez.
+export type ReservaEventoConfig = {
+  id: string; restaurantId: string;
+  driveRootId?: string; driveRootNome?: string; atualizadoEm?: string;
 };
 
 // Solicitação de exclusão de dados (LGPD Art. 18).

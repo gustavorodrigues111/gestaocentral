@@ -1,5 +1,5 @@
-import { useMemo, useState } from "react";
-import { Phone, Search, Tag, Users, TriangleAlert } from "lucide-react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Phone, Search, Tag, Users, TriangleAlert, FileText, CalendarHeart } from "lucide-react";
 import { addDoc, collection, doc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -9,9 +9,14 @@ import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { todayYmd } from "../../core/utils/date";
 import { RESERVA_STATUS_LUCIDE, RESERVA_STATUS_LABEL } from "../../core/types";
-import type { Cliente, Mesa, Reserva, ReservaStatus } from "../../core/types";
+import type { Cliente, Mesa, Reserva, ReservaStatus, ReservaEvento, ReservaPagamento } from "../../core/types";
 import { reservaMesaIds } from "../../core/reservas/mesas";
+import { centralUpload } from "../../core/google/driveCentral";
 import { ClienteModal } from "./ClienteModal";
+
+const parseR = (s: string) => { const n = parseFloat((s || "").replace(/[R$\s.]/g, "").replace(",", ".")); return isNaN(n) ? 0 : n; };
+const FORMAS_PG = ["pix", "dinheiro", "debito", "credito", "transferencia", "outro"];
+const FORMA_PG_LABEL: Record<string, string> = { pix: "Pix", dinheiro: "Dinheiro", debito: "Cartão débito", credito: "Cartão crédito", transferencia: "Transferência", outro: "Outro" };
 
 type Props = {
   reserva: Reserva | null;
@@ -20,18 +25,27 @@ type Props = {
   mesas: Mesa[];
   reservasMesmoDia: Reserva[];   // pra detectar conflito de mesa/horário
   restaurantId: string;
+  evento?: ReservaEvento | null; // se setado, é reserva de evento (com pagamento)
   onClose: () => void;
 };
 
 const STATUSES: ReservaStatus[] = ["pendente", "confirmada", "chegou", "no_show", "cancelada"];
 
-export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMesmoDia, restaurantId, onClose }: Props) {
+export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMesmoDia, restaurantId, evento, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !reserva;
+  const evId = evento?.id ?? reserva?.eventoId ?? null;
 
-  const [data, setData] = useState(reserva?.data || defaultData || todayYmd());
-  const [horario, setHorario] = useState(reserva?.horario || "20:00");
+  const [data, setData] = useState(reserva?.data || defaultData || evento?.dataInicio || todayYmd());
+  const [horario, setHorario] = useState(reserva?.horario || evento?.horarioPadrao || "20:00");
   const [pessoas, setPessoas] = useState(String(reserva?.pessoas || 2));
+  // Pagamento (eventos)
+  const pagIni = reserva?.pagamento;
+  const [pago, setPago] = useState(!!pagIni?.pago);
+  const [formaPg, setFormaPg] = useState(pagIni?.forma || "pix");
+  const [valorPg, setValorPg] = useState(pagIni?.valor != null ? String(pagIni.valor).replace(".", ",") : "");
+  const [compFile, setCompFile] = useState<File | null>(null);
+  const valorTocado = useRef(pagIni?.valor != null);
   // Cliente
   const [clienteId, setClienteId] = useState<string | null>(reserva?.clienteId ?? null);
   const [clienteNome, setClienteNome] = useState(reserva?.clienteNomeSnapshot || "");
@@ -98,6 +112,12 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
   }
 
   const pessoasNum = parseInt(pessoas, 10) || 0;
+  // Total sugerido do evento = pessoas × valor por pessoa (até o usuário editar).
+  useEffect(() => {
+    if (!evId || valorTocado.current) return;
+    const vpp = evento?.valorPorPessoa;
+    if (vpp && pessoasNum > 0) setValorPg(String(pessoasNum * vpp).replace(".", ","));
+  }, [evId, evento, pessoasNum]);
   // Mesas selecionadas, na ordem de seleção; capacidade é a SOMA delas.
   const mesasSel = useMemo(
     () => mesaIds.map(id => mesas.find(m => m.id === id)).filter((m): m is Mesa => !!m),
@@ -138,12 +158,32 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
         statusMudou && status === "cancelada" ? now :
         reserva?.canceladaEm;
 
+      // Pagamento do evento (sobe comprovante pra pasta central do evento).
+      let pagamento: ReservaPagamento | undefined;
+      if (evId) {
+        let cId = pagIni?.comprovanteDriveId, cUrl = pagIni?.comprovanteUrl, cNome = pagIni?.comprovanteNome;
+        if (compFile) {
+          if (!evento?.pastaDriveId) { setErr("Configure a pasta do Drive do evento antes de anexar o comprovante."); setSaving(false); return; }
+          const ext = (compFile.name.split(".").pop() || "bin").toLowerCase();
+          const safe = (s: string) => s.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim().slice(0, 60);
+          const nomeArq = `${safe(clienteNome || "reserva")}_${data}.${ext}`;
+          const up = await centralUpload(evento.pastaDriveId, new File([compFile], nomeArq, { type: compFile.type }));
+          cId = up.id; cUrl = up.webViewLink || cUrl; cNome = nomeArq;
+        }
+        pagamento = {
+          pago, forma: formaPg, valor: parseR(valorPg) || undefined,
+          comprovanteDriveId: cId, comprovanteUrl: cUrl, comprovanteNome: cNome,
+          pagoEm: pago ? (pagIni?.pagoEm || now) : undefined, registradoPor: me.id,
+        };
+      }
+
       // Doc principal (sem PII) — read pode ser público (contagem disponibilidade)
       const payloadReserva: Omit<Reserva, "id"> = {
         restaurantId,
         data,
         horario,
         clienteId: clienteId || null,
+        eventoId: evId || null,
         pessoas: pessoasNum,
         mesaId: mesasSel[0]?.id ?? null,          // legado: 1ª mesa
         mesaNomeSnapshot: mesasSel[0]?.nome,       // legado: nome da 1ª
@@ -165,6 +205,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
         clienteTelefoneSnapshot: clienteTelefone.trim() || undefined,
         observacoes: observacoes.trim() || undefined,
         ocasiao: ocasiao.trim() || undefined,
+        ...(pagamento ? { pagamento } : {}),
         registradoEm: reserva?.registradoEm || now,
       };
 
@@ -344,6 +385,33 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
               className="w-full mt-1 px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 resize-y"
             />
           </div>
+
+          {/* Pagamento (reserva de evento) */}
+          {evId && (
+            <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
+              <div className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-2 inline-flex items-center gap-1.5"><CalendarHeart size={13} className="text-indigo-500" /> Pagamento {evento?.nome ? <>· <span className="text-indigo-600 dark:text-indigo-300 normal-case">{evento.nome}</span></> : null}</div>
+              <label className="flex items-center gap-2 mb-2 text-sm font-semibold">
+                <input type="checkbox" checked={pago} onChange={(e) => setPago(e.target.checked)} className="accent-emerald-600" />
+                {pago ? "Pago ✓" : "Ainda não pago"}
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Forma de pagamento</label>
+                  <select value={formaPg} onChange={(e) => setFormaPg(e.target.value)} className="w-full mt-1 h-10 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+                    {FORMAS_PG.map((f) => <option key={f} value={f}>{FORMA_PG_LABEL[f]}</option>)}
+                  </select>
+                </div>
+                <Input label={`Valor${evento?.valorPorPessoa ? ` (sugerido: ${pessoasNum}× R$ ${evento.valorPorPessoa})` : ""}`} value={valorPg} onChange={(e) => { valorTocado.current = true; setValorPg(e.target.value); }} placeholder="0,00" />
+              </div>
+              <div className="mt-2">
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Comprovante</label>
+                <input type="file" accept="image/*,application/pdf" onChange={(e) => setCompFile(e.target.files?.[0] || null)} className="block w-full text-[12px] mt-1" />
+                {compFile && <div className="text-[11px] text-gray-600 dark:text-gray-300 mt-1 inline-flex items-center gap-1"><FileText size={12} /> {compFile.name}</div>}
+                {!compFile && pagIni?.comprovanteUrl && <a href={pagIni.comprovanteUrl} target="_blank" rel="noreferrer" className="text-[12px] text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 mt-1"><FileText size={12} /> ver comprovante atual</a>}
+                {!evento?.pastaDriveId && <div className="text-[11px] text-amber-600 mt-1">Evento sem pasta do Drive — configure na aba Eventos pra anexar comprovante.</div>}
+              </div>
+            </div>
+          )}
 
           {/* Status */}
           <div className="border-t border-gray-200 dark:border-gray-800 pt-3">

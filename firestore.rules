@@ -457,6 +457,9 @@ service cloud.firestore {
         );
       allow update, delete: if authed();
     }
+    // Eventos especiais de reservas (admin-only — não há fluxo público).
+    match /reservaEventos/{id}       { allow read, write: if authed(); allow delete: if authed(); }
+    match /reservaEventosConfig/{id} { allow read, write: if authed(); allow delete: if isMaster(); }
     // Solicitações de exclusão de dados (LGPD Art. 18). Cliente envia pelo
     // form público /r/excluir-dados/:rid. Create público com guards (status
     // sempre pendente). Read/process só authed.
