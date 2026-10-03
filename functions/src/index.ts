@@ -254,7 +254,6 @@ export const recuperarRotinas = onSchedule(
   { schedule: "0 6 * * *", timeZone: "America/Sao_Paulo" },
   async () => {
     const db = admin.firestore();
-    const hoje = new Date().toLocaleDateString("en-CA", { timeZone: "America/Sao_Paulo" });
     const snap = await db.collection("tarefas").where("recorrencia", "!=", null).get();
     type T = { id: string; status?: string; prazo?: string; recorrencia?: RecServer; recorrenciaMaeId?: string; deletadoEm?: unknown;[k: string]: unknown };
     const series = new Map<string, T[]>();
@@ -271,8 +270,9 @@ export const recuperarRotinas = onSchedule(
         occs.sort((a, b) => (a.prazo || "").localeCompare(b.prazo || ""));
         const ult = occs[occs.length - 1];
         if (ult.status !== "concluida" || !ult.recorrencia || !ult.prazo) continue;
-        let prox = proximoVencimentoS(ult.recorrencia, ult.prazo); let g = 0;
-        while (prox && prox < hoje && g++ < 500) prox = proximoVencimentoS(ult.recorrencia, prox);
+        // Próximo dia devido imediato — mesmo que já tenha passado (conclusão
+        // atrasada). NÃO pula os perdidos: o dia que faltou nasce como atrasado.
+        const prox = proximoVencimentoS(ult.recorrencia, ult.prazo);
         if (!prox) continue;
         const chave = `rect-${maeId}-${prox}`;
         const ja = await db.collection("tarefas").where("recorrenciaKey", "==", chave).limit(1).get();

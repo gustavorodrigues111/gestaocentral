@@ -146,7 +146,6 @@ export async function gerarRecorrenciasPendentes(
   autor: { id: string; nome: string },
 ): Promise<number> {
   const { proximoVencimento } = await import("../prazos/recorrencia");
-  const hoje = new Date().toISOString().slice(0, 10);
   const series = new Map<string, Tarefa[]>();
   for (const t of tarefas) {
     if (!t.recorrencia || !t.prazo || t.deletadoEm) continue;
@@ -160,9 +159,10 @@ export async function gerarRecorrenciasPendentes(
       occs.sort((a, b) => (a.prazo || "").localeCompare(b.prazo || ""));
       const ult = occs[occs.length - 1];
       if (ult.status !== "concluida" || !ult.recorrencia || !ult.prazo) continue; // cancelada = parar
-      let prox = proximoVencimento(ult.recorrencia, ult.prazo);
-      let guard = 0;
-      while (prox && prox < hoje && guard++ < 500) prox = proximoVencimento(ult.recorrencia, prox);
+      // Cria o PRÓXIMO dia devido imediato — mesmo que já tenha passado (conclusão
+      // atrasada). Não pula os perdidos: assim a ocorrência do dia que faltou nasce
+      // como ATRASADA em vez de sumir. Avança um passo por conclusão.
+      const prox = proximoVencimento(ult.recorrencia, ult.prazo);
       if (!prox) continue;
       const chave = `rect-${maeId}-${prox}`;
       const jaTem = await getDocs(query(collection(db, "tarefas"), where("recorrenciaKey", "==", chave)));
