@@ -136,9 +136,12 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
 
   // Agrega o BRUTO por empregado num mês. O item da divisão traz o líquido;
   // bruto = líquido / (1 − retenção%). taxRate vem do snapshot quando publicada.
-  const brutoPorEmp = useMemo(() => (ym: string, escala: EscalaMes | null): Map<string, LinhaEmp> => {
+  const brutoPorEmp = useMemo(() => (ym: string, escala: EscalaMes | null): { map: Map<string, LinhaEmp>; freelaBruto: number } => {
     const acc = new Map<string, LinhaEmp>();
     const liquidoPorArea: Record<string, number> = {};
+    // Cota dos freelas (% freelas) descontada da divisão no mês, em BRUTO.
+    // Vira a linha "Freela" pra o total fechar com o arrecadado (Lançamentos).
+    let freelaBruto = 0;
     // Descontos do mês: % dos freelas aplica DIA A DIA (na gorjeta do dia);
     // valor fixo aplica no total do mês (proporcional na área).
     const dcs = descontos.filter((d) => d.competencia === ym).map((d) => calcularDesconto(d, freelaShifts, cargoById)).filter((x) => x.valor > 0);
@@ -156,9 +159,19 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
         itens = calcularDivisaoDia(g.date, liq, empregados, cargos, escala, sv, g.unidadeId || null, unidades, freelasDoDia(g.date, g.unidadeId || null)).itens;
       }
       // Desconto % freelas: reduz por dia antes de agregar (bate com a Divisão).
-      // Se o snapshot já veio descontado (flag), NÃO reaplica (senão 2×).
+      // Se o snapshot já veio descontado (flag), NÃO reaplica (senão 2×) — mas
+      // ainda soma a cota na linha Freela (lê o detalhe gravado no snapshot).
       const jaDescontado = !!(g.publicada && g.divisaoSnapshot && g.snapshotComDesconto);
-      if (!jaDescontado && redDia.size > 0) itens = reduzirItensDia(itens, g.date, redDia).itens;
+      let descLiqDia = 0;
+      if (jaDescontado) {
+        const df = g.descontoFreelaSnapshot;
+        if (df) for (const v of Object.values(df)) descLiqDia += v;
+      } else if (redDia.size > 0) {
+        const red = reduzirItensDia(itens, g.date, redDia);
+        itens = red.itens;
+        for (const v of Object.values(red.aplicadoPorArea)) descLiqDia += v;
+      }
+      if (descLiqDia > 0) freelaBruto += fator > 0 ? descLiqDia / fator : descLiqDia;
       for (const it of itens) {
         if (it.freela) continue;   // freela dilui a divisão, mas não é linha de empregado na comparação
         const cur = acc.get(it.empregadoId) || { nome: it.empregadoNome, cargoNome: it.cargoNome, area: it.area, bruto: 0 };
@@ -181,7 +194,7 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
       for (const v of acc.values()) { const f = fatorArea[v.area]; if (f != null && f < 1) v.bruto *= f; }
     }
     for (const v of acc.values()) v.bruto = Math.round(v.bruto * 100) / 100;
-    return acc;
+    return { map: acc, freelaBruto: Math.round(freelaBruto * 100) / 100 };
   }, [gorjetas, splitVersions, empregados, cargos, unidades, freelasDoDia, descontos, freelaShifts, cargoById]);
 
   // Ordena cronologicamente: base = mais antigo, comparado = mais recente.
@@ -198,9 +211,14 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
     return m;
   }, [empregados, unidades]);
 
+  const dadosBase = useMemo(() => brutoPorEmp(base, escalaBase), [brutoPorEmp, base, escalaBase]);
+  const dadosComp = useMemo(() => brutoPorEmp(comparado, escalaComp), [brutoPorEmp, comparado, escalaComp]);
+  const freelaBrutoBase = dadosBase.freelaBruto;
+  const freelaBrutoComp = dadosComp.freelaBruto;
+
   const linhas = useMemo(() => {
-    const mapBase = brutoPorEmp(base, escalaBase);
-    const mapComp = brutoPorEmp(comparado, escalaComp);
+    const mapBase = dadosBase.map;
+    const mapComp = dadosComp.map;
     const ids = new Set([...mapBase.keys(), ...mapComp.keys()]);
     const out = [...ids].map((id) => {
       const b = mapBase.get(id);
@@ -224,7 +242,7 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
       (a.area || "").localeCompare(b.area || "")
       || a.nome.localeCompare(b.nome),
     );
-  }, [brutoPorEmp, base, comparado, escalaBase, escalaComp, usaMultiUni, uniNomePorEmp]);
+  }, [dadosBase, dadosComp, usaMultiUni, uniNomePorEmp]);
 
   type Linha = (typeof linhas)[number];
   // Agrupa SÓ por área, com subtotal por área (a unidade vem embaixo do nome).
@@ -238,10 +256,17 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
     return out;
   }, [linhas]);
 
-  const totBase = linhas.reduce((s, l) => s + l.vBase, 0);
-  const totComp = linhas.reduce((s, l) => s + l.vComp, 0);
+  // Total GERAL = pessoas + linha Freela (cota paga). Assim o total bate com o
+  // "Bruto do mês" dos Lançamentos (arrecadado), em vez de "encolher" sem explicar.
+  const totPessoasBase = linhas.reduce((s, l) => s + l.vBase, 0);
+  const totPessoasComp = linhas.reduce((s, l) => s + l.vComp, 0);
+  const totBase = Math.round((totPessoasBase + freelaBrutoBase) * 100) / 100;
+  const totComp = Math.round((totPessoasComp + freelaBrutoComp) * 100) / 100;
   const totDelta = Math.round((totComp - totBase) * 100) / 100;
   const totPct = totBase > 0 ? (totDelta / totBase) * 100 : null;
+  const freelaDelta = Math.round((freelaBrutoComp - freelaBrutoBase) * 100) / 100;
+  const freelaPct = freelaBrutoBase > 0 ? (freelaDelta / freelaBrutoBase) * 100 : null;
+  const temFreela = freelaBrutoBase > 0.005 || freelaBrutoComp > 0.005;
 
   // Sombra da linha inteira conforme a variação: verde (aumento), vermelho
   // (queda), azul (exatamente zero).
@@ -294,12 +319,15 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
   async function exportarPDF() {
     setExportando(true);
     try {
+      const linhasPdf = linhas.map((l) => ({ nome: l.nome, cargoNome: l.cargoNome, area: l.area, uni: l.uni, liqBase: l.vBase, liqComp: l.vComp, delta: l.delta, pct: l.pct, ausBase: l.ausBase, ausComp: l.ausComp }));
+      // Linha Freela (cota paga) — pra o total do PDF fechar com o arrecadado.
+      if (temFreela) linhasPdf.push({ nome: "Freela (cota paga)", cargoNome: "diária dos freelas", area: "Freela", uni: "", liqBase: freelaBrutoBase, liqComp: freelaBrutoComp, delta: freelaDelta, pct: freelaPct, ausBase: { ferias: 0, faltaJ: 0, faltaI: 0 }, ausComp: { ferias: 0, faltaJ: 0, faltaI: 0 } });
       const doc = await gerarComparacaoPDF({
         restaurantNome,
         labelBase: labelMes(base),
         labelComp: labelMes(comparado),
         subtitulo: `Divisão bruta${usaMultiUni ? " · todas as unidades" : ""}`,
-        linhas: linhas.map((l) => ({ nome: l.nome, cargoNome: l.cargoNome, area: l.area, uni: l.uni, liqBase: l.vBase, liqComp: l.vComp, delta: l.delta, pct: l.pct, ausBase: l.ausBase, ausComp: l.ausComp })),
+        linhas: linhasPdf,
         totBase, totComp, totDelta, totPct,
       });
       pdfDocRef.current = doc;
@@ -431,6 +459,16 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
                 })}
               </tbody>
               <tfoot>
+                {temFreela && (
+                  <tr className="border-t border-gray-200 dark:border-gray-700 bg-amber-50/60 dark:bg-amber-900/10">
+                    <td className="px-3 py-1.5 text-[12px] font-semibold text-amber-800 dark:text-amber-300">
+                      Freela <span className="font-normal text-gray-500 dark:text-gray-400">· cota paga no mês (diária)</span>
+                    </td>
+                    <td className="text-right px-3 py-1.5 tabular-nums text-[12px] text-gray-700 dark:text-gray-300">{fmtBR(freelaBrutoBase)}</td>
+                    <td className="text-right px-3 py-1.5 tabular-nums text-[12px] font-semibold text-gray-900 dark:text-gray-100">{fmtBR(freelaBrutoComp)}</td>
+                    <td className="text-right px-3 py-1.5"><DeltaText delta={freelaDelta} pct={freelaPct} /></td>
+                  </tr>
+                )}
                 <tr className={`font-bold border-t-2 border-gray-300 dark:border-gray-600 ${rowTint(totDelta)}`}>
                   <td className="px-3 py-2">Total geral</td>
                   <td className="text-right px-3 py-2 tabular-nums">{fmtBR(totBase)}</td>

@@ -384,7 +384,7 @@ export function DivisaoMesTab({
       .filter(([, v]) => v.liquido > 0.005)
       .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([area, v]) => ({
-        empregadoId: `__desc_${area}__`, nome: "FREELA DESCONTO", cargoNome: area || "gorjeta", area: "",
+        empregadoId: `__desc_${area}__`, nome: "Freela", cargoNome: `cota paga · ${area || "gorjeta"}`, area: "",
         bruto: r2(v.bruto), retencao: r2(v.retencao), liquido: r2(v.liquido),
         diasComRecebimento: 0, dias: [], ehDesconto: true,
         descontoDetalhe: descontosCalc.filter(dc => dc.desconto.area === area),
