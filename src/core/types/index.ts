@@ -1446,6 +1446,14 @@ export type Gorjeta = {
   // dessa gorjeta NÃO recalcula mesmo que a escala mude. Pra recalcular, é
   // necessário despublicar e publicar de novo.
   divisaoSnapshot?: DivisaoItem[];
+  // true = o divisaoSnapshot já tem o desconto do dia (% dos freelas) aplicado.
+  // Snapshots gravados antes dessa correção não têm o flag → o admin reaplica o
+  // desconto ao vivo na tela. Com o flag, o admin usa o snapshot cru (o número
+  // já é o final, PÓS-desconto, igual ao que o empregado e a folha veem).
+  snapshotComDesconto?: boolean | null;
+  // Quanto foi descontado por área ao congelar (pra tela do admin mostrar a
+  // linha "Desconto freela" sem reabrir o cálculo). Só em snapshots com o flag.
+  descontoFreelaSnapshot?: Record<string, number> | null;
   // ISO da última vez que o divisaoSnapshot foi recalculado (mantendo a
   // publicação original). Usado pra detectar "escala mudou após a divisão":
   // a comparação é feita contra o MAIS RECENTE entre publicadaEm e este campo,

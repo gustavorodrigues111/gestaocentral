@@ -206,6 +206,11 @@ export function DivisaoMesTab({
       // entrar no calcularDivisaoDia. Sem arredondar, sobram frações de
       // centavo na conta que nem são distribuíveis nem somam ao bruto.
       let itens: DivisaoItem[];
+      // Snapshot JÁ congelado COM o desconto do dia (flag snapshotComDesconto):
+      // o número é final (pós-desconto), igual ao do empregado e da folha.
+      // NÃO reaplica reducaoDia (senão descontaria 2×) — só soma a linha de
+      // desconto a partir do que foi gravado ao publicar.
+      const jaDescontado = !!(g.publicada && g.divisaoSnapshot && g.snapshotComDesconto);
       if (g.publicada && g.divisaoSnapshot) {
         itens = g.divisaoSnapshot;
       } else {
@@ -217,9 +222,17 @@ export function DivisaoMesTab({
         // sem reabrir buraco. (calcularValorLiquido já arredondou.)
       }
 
-      // Desconto POR DIA (% dos freelas): reduz os itens não-freela da área
-      // ANTES de agregar — assim o desconto sai da gorjeta daquele dia.
-      if (reducaoDia.size > 0) {
+      if (jaDescontado) {
+        // Desconto já embutido no snapshot — só reconstrói a linha "Desconto".
+        for (const [area, v] of Object.entries(g.descontoFreelaSnapshot || {})) {
+          const b = fator > 0 ? v / fator : v;
+          if (!descAcc[area]) descAcc[area] = { liquido: 0, bruto: 0, retencao: 0 };
+          descAcc[area].liquido += v; descAcc[area].bruto += b; descAcc[area].retencao += b - v;
+        }
+      } else if (reducaoDia.size > 0) {
+        // Dia ao vivo OU snapshot antigo (pré-correção): aplica o desconto POR
+        // DIA (% dos freelas) reduzindo os itens não-freela da área ANTES de
+        // agregar — assim o desconto sai da gorjeta daquele dia.
         const red = reduzirItensDia(itens, g.date, reducaoDia);
         itens = red.itens;
         for (const [area, v] of Object.entries(red.aplicadoPorArea)) {

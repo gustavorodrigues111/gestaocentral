@@ -156,7 +156,9 @@ export function ComparacaoTab({ rid, restaurantNome, empregados, cargos, splitVe
         itens = calcularDivisaoDia(g.date, liq, empregados, cargos, escala, sv, g.unidadeId || null, unidades, freelasDoDia(g.date, g.unidadeId || null)).itens;
       }
       // Desconto % freelas: reduz por dia antes de agregar (bate com a Divisão).
-      if (redDia.size > 0) itens = reduzirItensDia(itens, g.date, redDia).itens;
+      // Se o snapshot já veio descontado (flag), NÃO reaplica (senão 2×).
+      const jaDescontado = !!(g.publicada && g.divisaoSnapshot && g.snapshotComDesconto);
+      if (!jaDescontado && redDia.size > 0) itens = reduzirItensDia(itens, g.date, redDia).itens;
       for (const it of itens) {
         if (it.freela) continue;   // freela dilui a divisão, mas não é linha de empregado na comparação
         const cur = acc.get(it.empregadoId) || { nome: it.empregadoNome, cargoNome: it.cargoNome, area: it.area, bruto: 0 };

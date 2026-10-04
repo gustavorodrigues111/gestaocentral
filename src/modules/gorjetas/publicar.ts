@@ -12,13 +12,14 @@
 // escala) e grava o resultado em gorjeta.divisaoSnapshot + flags.
 // Ao despublicar, apaga snapshot + flags.
 
-import { doc, updateDoc } from "firebase/firestore";
+import { collection, doc, getDocs, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type {
-  Area, Cargo, Empregado, EscalaMes, FreelaShift, Gorjeta, SplitVersion, Unidade,
+  Area, Cargo, DivisaoItem, Empregado, EscalaMes, FreelaShift, Gorjeta, SplitVersion, Unidade,
 } from "../../core/types";
 import { calcularDivisaoDia, calcularValorLiquido } from "./calc";
+import { calcularDesconto, reducaoDiaArea, reduzirItensDia, type GorjetaDesconto } from "./descontos";
 import { getActiveSplitVersion } from "./splitRules";
 
 export type PublicarParams = {
@@ -64,6 +65,40 @@ function freelasDoDia(
     .filter((f) => f.pontos > 0);
 }
 
+// Aplica o DESCONTO DO DIA (% dos freelas) sobre os itens da divisão ANTES de
+// congelar o snapshot — exatamente como o DivisaoMesTab faz na tela do admin.
+//
+// A ORDEM da divisão é: (1) retém o % legal (taxRate) → líquido; (2) tira a
+// cota dos freelas (este passo); (3) rateia entre os CLT. O `calcularDivisaoDia`
+// já faz (1) e (3). Este passo (2) faltava ser congelado no snapshot — por isso
+// o empregado via o valor PRÉ-desconto (inflado) enquanto o admin via o
+// PÓS-desconto. Agora o snapshot = admin = folha.
+//
+// Carrega os descontos da competência direto do Firestore pra garantir que o
+// snapshot sempre inclua o desconto, independente de quem chamou a publicação.
+async function aplicarDescontoFreelaDia(
+  gorjeta: Gorjeta,
+  cargos: Cargo[],
+  freelaShifts: FreelaShift[] | undefined,
+  itens: DivisaoItem[],
+): Promise<{ itens: DivisaoItem[]; aplicadoPorArea: Record<string, number> }> {
+  const competencia = gorjeta.date.slice(0, 7); // YYYY-MM
+  const snap = await getDocs(query(
+    collection(db, "gorjetaDescontos"),
+    where("restaurantId", "==", gorjeta.restaurantId),
+    where("competencia", "==", competencia),
+  ));
+  if (snap.empty) return { itens, aplicadoPorArea: {} };
+  const descontos = snap.docs.map((d) => ({ id: d.id, ...d.data() } as GorjetaDesconto));
+  const cargoById: Record<string, Cargo> = Object.fromEntries(cargos.map((c) => [c.id, c]));
+  const descontosCalc = descontos
+    .map((d) => calcularDesconto(d, freelaShifts || [], cargoById))
+    .filter((dc) => dc.valor > 0);
+  const reducaoDia = reducaoDiaArea(descontosCalc);
+  if (reducaoDia.size === 0) return { itens, aplicadoPorArea: {} };
+  return reduzirItensDia(itens, gorjeta.date, reducaoDia);
+}
+
 export async function publicarGorjeta(p: PublicarParams): Promise<void> {
   const { gorjeta, empregados, cargos, escala, splitVersions, unidades } = p;
   const sv = getActiveSplitVersion(splitVersions, gorjeta.date);
@@ -86,13 +121,19 @@ export async function publicarGorjeta(p: PublicarParams): Promise<void> {
     unidades,
     freelasDoDia(p.freelaShifts, cargos, gorjeta.date, gorjeta.unidadeId || null, unidades),
   );
+  const { itens: itensSnapshot, aplicadoPorArea } = await aplicarDescontoFreelaDia(gorjeta, cargos, p.freelaShifts, result.itens);
   const now = new Date().toISOString();
   await updateDoc(doc(db, "gorjetas", gorjeta.id), sanitizeForFirestore({
     publicada: true,
     publicadaEm: now,
     publicadaPor: p.publicadoPorId,
     publicadaPorNome: p.publicadoPorNome,
-    divisaoSnapshot: result.itens,
+    divisaoSnapshot: itensSnapshot,
+    // Desconto do dia (% dos freelas) JÁ aplicado no snapshot acima. O flag
+    // avisa o admin/comparação pra NÃO reaplicar (senão descontaria 2×);
+    // snapshots antigos sem o flag seguem recebendo o desconto ao vivo na tela.
+    snapshotComDesconto: true,
+    descontoFreelaSnapshot: aplicadoPorArea,
     // Atualiza taxRate/valorLiquido snapshot também (refletem o que o cálculo usou)
     taxRate: sv.taxRate,
     valorLiquido: liquido,
@@ -128,9 +169,12 @@ export async function recalcularSnapshotGorjeta(p: PublicarParams): Promise<void
     unidades,
     freelasDoDia(p.freelaShifts, cargos, gorjeta.date, gorjeta.unidadeId || null, unidades),
   );
+  const { itens: itensSnapshot, aplicadoPorArea } = await aplicarDescontoFreelaDia(gorjeta, cargos, p.freelaShifts, result.itens);
   const now = new Date().toISOString();
   await updateDoc(doc(db, "gorjetas", gorjeta.id), sanitizeForFirestore({
-    divisaoSnapshot: result.itens,
+    divisaoSnapshot: itensSnapshot,
+    snapshotComDesconto: true,
+    descontoFreelaSnapshot: aplicadoPorArea,
     taxRate: sv.taxRate,
     valorLiquido: liquido,
     // Marca QUANDO o snapshot foi recalculado — a detecção de "escala mudou
@@ -155,6 +199,8 @@ export async function despublicarGorjeta(gorjeta: Gorjeta): Promise<void> {
     pagaPorNome: null,
     // Apaga o snapshot pra próxima publicação recalcular
     divisaoSnapshot: null,
+    snapshotComDesconto: null,
+    descontoFreelaSnapshot: null,
     updatedAt: now,
   }));
 }
