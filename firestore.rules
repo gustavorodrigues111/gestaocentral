@@ -393,6 +393,7 @@ service cloud.firestore {
     match /investProjetos/{id}    { allow read, write: if authed(); allow delete: if isMaster(); }
     match /investCategorias/{id}  { allow read, write: if authed(); allow delete: if isMaster(); }
     match /investFormas/{id}      { allow read, write: if authed(); allow delete: if isMaster(); }
+    match /investPagadores/{id}   { allow read, write: if authed(); allow delete: if isMaster(); }
     match /investConfig/{id}      { allow read, write: if authed(); allow delete: if isMaster(); }
     match /investLancamentos/{id} { allow read, write: if authed(); allow delete: if authed(); }
     match /tarefas/{id} {

@@ -2361,6 +2361,8 @@ export function investFormaLabel(f?: string): string {
   return (INVEST_FORMA_LABEL as Record<string, string>)[f] || f;
 }
 export type InvestForma = { id: string; restaurantId: string; nome: string; criadoEm: string };
+// Quem pagou (sócio/entidade que desembolsou) — lista reutilizável por restaurante.
+export type InvestPagador = { id: string; restaurantId: string; nome: string; criadoEm: string };
 export type InvestParcela = { n: number; data: string; valor: number; pago?: boolean };  // data = YYYY-MM-DD
 export type InvestCategoria = {
   id: string; restaurantId: string; nome: string;
@@ -2389,6 +2391,7 @@ export type InvestLancamento = {
   categoriaId?: string; categoriaNome?: string;
   valor: number;
   formaPagamento?: string;   // chave fixa (ver INVEST_FORMA_LABEL) ou forma custom
+  pagoPor?: string;          // quem desembolsou (nome livre / da lista InvestPagador)
   parcelado?: boolean; parcelas?: InvestParcela[];
   comprovanteDriveId?: string; comprovanteUrl?: string; comprovanteNome?: string;
   observacao?: string;

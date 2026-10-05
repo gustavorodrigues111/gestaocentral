@@ -10,8 +10,8 @@ import { pickDriveFolder } from "../../core/google/drivePicker";
 import { centralConfigured, centralEnsureFolder, centralUpload, parseDriveFolderId } from "../../core/google/driveCentral";
 import { fmtBR } from "../../core/utils/date";
 import { INVEST_FORMA_LABEL, investFormaLabel } from "../../core/types";
-import type { InvestProjeto, InvestCategoria, InvestLancamento, InvestParcela, InvestForma, InvestConfig } from "../../core/types";
-import { ouvirProjetos, salvarProjeto, excluirProjeto, ouvirCategorias, salvarCategoria, excluirCategoria, ouvirFormas, salvarForma, ouvirLancamentos, salvarLancamento, excluirLancamento, ouvirConfig, salvarConfig } from "./repository";
+import type { InvestProjeto, InvestCategoria, InvestLancamento, InvestParcela, InvestForma, InvestPagador, InvestConfig } from "../../core/types";
+import { ouvirProjetos, salvarProjeto, excluirProjeto, ouvirCategorias, salvarCategoria, excluirCategoria, ouvirFormas, salvarForma, ouvirPagadores, salvarPagador, ouvirLancamentos, salvarLancamento, excluirLancamento, ouvirConfig, salvarConfig } from "./repository";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 const uid = () => { try { return crypto.randomUUID(); } catch { return "id" + Date.now() + Math.random().toString(36).slice(2); } };
@@ -97,6 +97,7 @@ export function InvestimentosPage() {
   const [projetos, setProjetos] = useState<InvestProjeto[]>([]);
   const [categorias, setCategorias] = useState<InvestCategoria[]>([]);
   const [formas, setFormas] = useState<InvestForma[]>([]);
+  const [pagadores, setPagadores] = useState<InvestPagador[]>([]);
   const [lancamentos, setLancamentos] = useState<InvestLancamento[]>([]);
   const [cfg, setCfg] = useState<InvestConfig | null>(null);
   const [central, setCentral] = useState<boolean | null>(null);
@@ -112,6 +113,7 @@ export function InvestimentosPage() {
   useEffect(() => { if (!rid) return; return ouvirProjetos(rid, setProjetos); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirCategorias(rid, setCategorias); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirFormas(rid, setFormas); }, [rid]);
+  useEffect(() => { if (!rid) return; return ouvirPagadores(rid, setPagadores); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirConfig(rid, setCfg); }, [rid]);
   useEffect(() => { centralConfigured().then(setCentral).catch(() => setCentral(false)); }, []);
 
@@ -164,18 +166,18 @@ export function InvestimentosPage() {
 
           {/* Tabela */}
           <div className="border border-gray-200 dark:border-gray-800 rounded-2xl overflow-x-auto shadow-sm">
-            <table className="w-full text-sm min-w-[820px]">
+            <table className="w-full text-sm min-w-[920px]">
               <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-400 dark:text-gray-500 text-[11px] uppercase tracking-wider border-b border-gray-200 dark:border-gray-800">
                 <tr>
                   <th className="text-left px-4 py-3 font-semibold">Data</th><th className="text-left px-4 py-3 font-semibold">Estabelecimento</th>
                   <th className="text-left px-4 py-3 font-semibold">Categoria</th><th className="text-right px-4 py-3 font-semibold">Valor</th>
-                  <th className="text-left px-4 py-3 font-semibold">Pagamento</th><th className="text-left px-4 py-3 font-semibold">Parcelas</th>
+                  <th className="text-left px-4 py-3 font-semibold">Pagamento</th><th className="text-left px-4 py-3 font-semibold">Quem pagou</th><th className="text-left px-4 py-3 font-semibold">Parcelas</th>
                   <th className="text-center px-4 py-3 font-semibold">Comprovante</th><th className="px-3 py-3"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800/70">
                 {lancamentos.length === 0 ? (
-                  <tr><td colSpan={8} className="px-4 py-12 text-center text-gray-400">Nenhum lançamento. Clique em "Novo lançamento" (dá pra arrastar/colar o comprovante e a IA preenche).</td></tr>
+                  <tr><td colSpan={9} className="px-4 py-12 text-center text-gray-400">Nenhum lançamento. Clique em "Novo lançamento" (dá pra arrastar/colar o comprovante e a IA preenche).</td></tr>
                 ) : lancamentos.map((l) => (
                   <tr key={l.id} className="group hover:bg-indigo-50/40 dark:hover:bg-gray-800/40 transition-colors">
                     <td className="px-4 py-3 tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{fmtBR(l.data)}</td>
@@ -183,6 +185,7 @@ export function InvestimentosPage() {
                     <td className="px-4 py-3">{l.categoriaNome ? <span className="inline-block px-2 py-0.5 rounded-full text-[12px] bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">{l.categoriaNome}</span> : <span className="text-gray-300">—</span>}</td>
                     <td className="px-4 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">{fmtR(l.valor)}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{investFormaLabel(l.formaPagamento)}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{l.pagoPor || <span className="text-gray-300">—</span>}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{l.parcelado && l.parcelas?.length ? `${l.parcelas.length}x` : "à vista"}</td>
                     <td className="px-4 py-3 text-center">{l.comprovanteUrl ? <a href={l.comprovanteUrl} target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 text-[12px] font-medium"><FileText size={13} /> ver <ExternalLink size={11} /></a> : <span className="text-gray-300">—</span>}</td>
                     <td className="px-3 py-3 text-right whitespace-nowrap">
@@ -196,7 +199,7 @@ export function InvestimentosPage() {
                   <tr className="border-t-2 border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200 font-extrabold">
                     <td className="px-4 py-3.5" colSpan={3}>Total do projeto</td>
                     <td className="px-4 py-3.5 text-right tabular-nums text-[15px]">{fmtR(total)}</td>
-                    <td colSpan={4}></td>
+                    <td colSpan={5}></td>
                   </tr>
                 </tfoot>
               )}
@@ -207,7 +210,7 @@ export function InvestimentosPage() {
 
       {projModal && <ProjetoModal mode={projModal.mode} proj={projModal.proj} rid={rid} me={me} central={central} driveRootId={cfg?.driveRootId} driveRootNome={cfg?.driveRootNome} onSaveRoot={salvarRoot} onClose={() => setProjModal(null)} onSay={say} onSaved={(id) => setProjId(id)} />}
       {gerirCat && <CategoriasModal categorias={categorias} rid={rid!} onConfirmar={confirmarCategoria} onClose={() => setGerirCat(false)} />}
-      {lancModal && proj && <LancamentoModal registro={lancModal === "new" ? null : lancModal} proj={proj} rid={rid!} me={me} categorias={categorias} formas={formas} onClose={() => setLancModal(null)} onSay={say} />}
+      {lancModal && proj && <LancamentoModal registro={lancModal === "new" ? null : lancModal} proj={proj} rid={rid!} me={me} categorias={categorias} formas={formas} pagadores={pagadores} onClose={() => setLancModal(null)} onSay={say} />}
 
       {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-xl z-[210]">{toast}</div>}
     </PageContainer>
@@ -358,13 +361,14 @@ function CategoriasModal(props: { categorias: InvestCategoria[]; rid: string; on
 }
 
 // ── Modal: novo/editar lançamento (comprovante + IA + parcelas) ──────────────
-function LancamentoModal(props: { registro: InvestLancamento | null; proj: InvestProjeto; rid: string; me: ReturnType<typeof useAuth>["pessoa"]; categorias: InvestCategoria[]; formas: InvestForma[]; onClose: () => void; onSay: (m: string) => void }) {
-  const { registro, proj, rid, me, categorias, formas, onClose, onSay } = props;
+function LancamentoModal(props: { registro: InvestLancamento | null; proj: InvestProjeto; rid: string; me: ReturnType<typeof useAuth>["pessoa"]; categorias: InvestCategoria[]; formas: InvestForma[]; pagadores: InvestPagador[]; onClose: () => void; onSay: (m: string) => void }) {
+  const { registro, proj, rid, me, categorias, formas, pagadores, onClose, onSay } = props;
   const [data, setData] = useState(registro?.data || new Date().toISOString().slice(0, 10));
   const [estabelecimento, setEstab] = useState(registro?.estabelecimento || "");
   const [categoriaNome, setCategoriaNome] = useState(registro?.categoriaNome || "");
   const [valor, setValor] = useState(registro ? String(registro.valor).replace(".", ",") : "");
   const [forma, setForma] = useState<string>(registro?.formaPagamento || "pix");
+  const [pagoPor, setPagoPor] = useState<string>(registro?.pagoPor || "");
   const [parcelado, setParcelado] = useState(registro?.parcelado || false);
   const [parcelas, setParcelas] = useState<InvestParcela[]>(registro?.parcelas || []);
   const [observacao, setObs] = useState(registro?.observacao || "");
@@ -386,6 +390,10 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
     const extra = formas.filter((fc) => !FORMAS_FIXAS.some((x) => x.value === fc.nome || x.label.toLowerCase() === fc.nome.toLowerCase())).map((fc) => ({ value: fc.nome, label: fc.nome }));
     return [...FORMAS_FIXAS, ...extra];
   }, [formas]);
+  const pagadorOptions = useMemo(() => [
+    { value: "", label: "— quem pagou —" },
+    ...pagadores.map((p) => ({ value: p.nome, label: p.nome })),
+  ], [pagadores]);
 
   async function addCategoria(nome: string) {
     if (categorias.some((c) => c.nome.toLowerCase() === nome.toLowerCase())) return;
@@ -395,6 +403,10 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
     if (FORMAS_FIXAS.some((x) => x.value === nome || x.label.toLowerCase() === nome.toLowerCase())) return;
     if (formas.some((f) => f.nome.toLowerCase() === nome.toLowerCase())) return;
     await salvarForma({ id: uid(), restaurantId: rid, nome, criadoEm: new Date().toISOString() });
+  }
+  async function addPagador(nome: string) {
+    if (pagadores.some((p) => p.nome.toLowerCase() === nome.toLowerCase())) return;
+    await salvarPagador({ id: uid(), restaurantId: rid, nome, criadoEm: new Date().toISOString() });
   }
 
   function aceitar(f: File | null | undefined) {
@@ -480,7 +492,7 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
       const l: InvestLancamento = {
         id: registro?.id || uid(), restaurantId: rid, projetoId: proj.id,
         data, estabelecimento: estabelecimento.trim(), categoriaId: catId, categoriaNome: categoriaNome || undefined,
-        valor: v, formaPagamento: forma, parcelado, parcelas: parcelado ? parcelas.filter((p) => p.valor > 0) : undefined,
+        valor: v, formaPagamento: forma, pagoPor: pagoPor.trim() || undefined, parcelado, parcelas: parcelado ? parcelas.filter((p) => p.valor > 0) : undefined,
         comprovanteDriveId, comprovanteUrl, comprovanteNome, observacao: observacao.trim() || undefined,
         criadoEm: registro?.criadoEm || now, criadoPor: registro?.criadoPor || (me?.id || ""), criadoPorNome: registro?.criadoPorNome || me?.nome,
       };
@@ -524,6 +536,10 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
             <label className={LBL}>Forma de pagamento</label>
             <div className="mt-1"><Combo value={forma} onChange={setForma} options={formaOptions} placeholder="Selecionar" onAdd={addForma} addLabel="Criar forma" /></div>
           </div>
+        </div>
+        <div>
+          <label className={LBL}>Quem pagou</label>
+          <div className="mt-1"><Combo value={pagoPor} onChange={setPagoPor} options={pagadorOptions} placeholder="— quem pagou —" onAdd={addPagador} addLabel="Criar pagador" /></div>
         </div>
         {/* Parcelamento */}
         <div className="rounded-xl border border-gray-200 dark:border-gray-700 p-3">

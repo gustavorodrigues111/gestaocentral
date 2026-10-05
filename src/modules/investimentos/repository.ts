@@ -1,7 +1,7 @@
 import { collection, deleteDoc, doc, onSnapshot, query, setDoc, where, type Unsubscribe } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import type { InvestProjeto, InvestCategoria, InvestLancamento, InvestForma, InvestConfig } from "../../core/types";
+import type { InvestProjeto, InvestCategoria, InvestLancamento, InvestForma, InvestPagador, InvestConfig } from "../../core/types";
 
 // ── Config do módulo por restaurante (doc id = restaurantId) ─────────────────
 export function ouvirConfig(rid: string, cb: (c: InvestConfig | null) => void): Unsubscribe {
@@ -54,6 +54,20 @@ export async function salvarForma(f: InvestForma): Promise<void> {
   await setDoc(doc(db, "investFormas", f.id), sanitizeForFirestore(f), { merge: true });
 }
 export async function excluirForma(id: string): Promise<void> { await deleteDoc(doc(db, "investFormas", id)); }
+
+// ── Quem pagou (sócios/entidades que desembolsam) ───────────────────────────
+export function ouvirPagadores(rid: string, cb: (l: InvestPagador[]) => void): Unsubscribe {
+  const q = query(collection(db, "investPagadores"), where("restaurantId", "==", rid));
+  return onSnapshot(q, (snap) => {
+    const l = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as InvestPagador);
+    l.sort((a, b) => (a.nome || "").localeCompare(b.nome || ""));
+    cb(l);
+  }, (e) => console.error("[investimentos] pagadores", e));
+}
+export async function salvarPagador(p: InvestPagador): Promise<void> {
+  await setDoc(doc(db, "investPagadores", p.id), sanitizeForFirestore(p), { merge: true });
+}
+export async function excluirPagador(id: string): Promise<void> { await deleteDoc(doc(db, "investPagadores", id)); }
 
 // ── Lançamentos (linhas) de um projeto ──────────────────────────────────────
 export function ouvirLancamentos(rid: string, projetoId: string, cb: (l: InvestLancamento[]) => void): Unsubscribe {
