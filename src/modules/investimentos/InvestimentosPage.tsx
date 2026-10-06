@@ -17,6 +17,8 @@ import { PageContainer } from "../../core/ui/PageContainer";
 const uid = () => { try { return crypto.randomUUID(); } catch { return "id" + Date.now() + Math.random().toString(36).slice(2); } };
 const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const parseR = (s: string) => { const n = parseFloat((s || "").replace(/[R$\s.]/g, "").replace(",", ".")); return isNaN(n) ? 0 : n; };
+// Formata centavos em pt-BR (ex.: 8000000 → "80.000,00"). Pro campo de valor mascarado.
+const fmtCents = (cents: number) => (cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const FORMAS_FIXAS: { value: string; label: string }[] = Object.entries(INVEST_FORMA_LABEL).map(([value, label]) => ({ value, label }));
 
 // Classe única pros campos — todos com a MESMA altura (h-10).
@@ -141,6 +143,8 @@ export function InvestimentosPage() {
   const proj = projetos.find((p) => p.id === projId) || projetos[0] || null;
 
   const [projModal, setProjModal] = useState<{ mode: "new" | "edit"; proj?: InvestProjeto } | null>(null);
+  const [projMenu, setProjMenu] = useState(false);
+  const projMenuRef = useRef<HTMLDivElement>(null);
   const [lancModal, setLancModal] = useState<InvestLancamento | "new" | null>(null);
   const [toast, setToast] = useState("");
   function say(m: string) { setToast(m); setTimeout(() => setToast(""), 2600); }
@@ -155,6 +159,12 @@ export function InvestimentosPage() {
   async function salvarRoot(id: string, nome?: string) { if (!rid) return; await salvarConfig({ id: rid, restaurantId: rid, driveRootId: id, driveRootNome: nome }); }
   useEffect(() => { if (!rid || !proj) { setLancamentos([]); return; } return ouvirLancamentos(rid, proj.id, setLancamentos); }, [rid, proj?.id]);
   useEffect(() => { if (proj && projId !== proj.id) setProjId(proj.id); }, [proj, projId]);
+  useEffect(() => {
+    if (!projMenu) return;
+    function onDown(e: MouseEvent) { if (projMenuRef.current && !projMenuRef.current.contains(e.target as Node)) setProjMenu(false); }
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [projMenu]);
 
   const total = useMemo(() => lancamentos.reduce((s, l) => s + (l.valor || 0), 0), [lancamentos]);
 
@@ -190,6 +200,16 @@ export function InvestimentosPage() {
     for (const l of lancamentos) { const k = investFormaLabel(l.formaPagamento) || "—"; m.set(k, (m.get(k) || 0) + (l.valor || 0)); }
     return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
   }, [lancamentos]);
+  // Cor por categoria (bate com o donut) + lista agrupada por categoria.
+  const catColor = useMemo(() => { const m: Record<string, string> = {}; porCategoria.forEach((d) => { m[d.label] = d.color; }); return m; }, [porCategoria]);
+  const lancPorCategoria = useMemo(() => {
+    const m = new Map<string, InvestLancamento[]>();
+    for (const l of lancamentos) { const k = l.categoriaNome || "Sem categoria"; const a = m.get(k) || []; a.push(l); m.set(k, a); }
+    return [...m.entries()].map(([cat, items]) => ({
+      cat, total: items.reduce((s, l) => s + (l.valor || 0), 0),
+      items: items.slice().sort((a, b) => b.data.localeCompare(a.data)),
+    })).sort((a, b) => b.total - a.total);
+  }, [lancamentos]);
 
   async function confirmarCategoria(c: InvestCategoria) { await salvarCategoria({ ...c, confirmada: true, criadaPorIa: false }); }
 
@@ -198,15 +218,40 @@ export function InvestimentosPage() {
   return (
     <PageContainer>
       {/* Cabeçalho: seletor de projeto + ações */}
-      <div className="flex items-center gap-2 flex-wrap mb-4">
-        <TrendingUp size={20} className="text-emerald-500 shrink-0" />
+      <div className="flex items-center gap-2 mb-4">
+        <TrendingUp size={18} className="text-emerald-500 shrink-0" />
         {projetos.length > 0 ? (
-          <select value={proj?.id || ""} onChange={(e) => setProjId(e.target.value)} className="h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm font-semibold flex-1 min-w-0 sm:flex-none sm:min-w-[220px]">
-            {projetos.map((p) => <option key={p.id} value={p.id}>{p.nome}</option>)}
-          </select>
-        ) : <span className="text-gray-500 text-sm flex-1">Nenhum projeto ainda</span>}
-        {podeGerirProjetos && <button onClick={() => setProjModal({ mode: "new" })} className="h-10 px-3 rounded-lg bg-emerald-600 text-white text-sm font-semibold inline-flex items-center gap-1 shrink-0"><Plus size={15} /> Novo projeto</button>}
-        {proj && (podeGerirProjetos || podeGerirCategorias) && <button onClick={() => setProjModal({ mode: "edit", proj })} className="h-10 w-10 grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 shrink-0 sm:ml-auto" title="Configurações do projeto (pasta, categorias, formas)"><Settings size={16} /></button>}
+          <div className="relative min-w-0" ref={projMenuRef}>
+            <button onClick={() => setProjMenu((v) => !v)} className="inline-flex items-center gap-1.5 max-w-full text-[17px] font-bold text-gray-900 dark:text-gray-100 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors">
+              <span className="truncate">{proj?.nome || "Selecionar projeto"}</span>
+              <ChevronDown size={16} className={"text-gray-400 shrink-0 transition-transform " + (projMenu ? "rotate-180" : "")} />
+            </button>
+            {projMenu && (
+              <div className="absolute z-30 mt-1.5 left-0 min-w-[240px] max-w-[320px] rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 shadow-lg py-1">
+                <div className="max-h-[50vh] overflow-auto">
+                  {projetos.map((p) => (
+                    <button key={p.id} onClick={() => { setProjId(p.id); setProjMenu(false); }} className={"w-full text-left px-3 py-2 text-sm flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-800 " + (p.id === proj?.id ? "font-semibold text-indigo-600 dark:text-indigo-400" : "text-gray-700 dark:text-gray-200")}>
+                      <Check size={14} className={"shrink-0 " + (p.id === proj?.id ? "" : "opacity-0")} />
+                      <span className="truncate">{p.nome}</span>
+                    </button>
+                  ))}
+                </div>
+                {podeGerirProjetos && (
+                  <>
+                    <div className="border-t border-gray-100 dark:border-gray-800 my-1" />
+                    <button onClick={() => { setProjMenu(false); setProjModal({ mode: "new" }); }} className="w-full text-left px-3 py-2 text-sm font-semibold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-2 hover:bg-gray-50 dark:hover:bg-gray-800"><Plus size={15} /> Novo projeto</button>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          podeGerirProjetos
+            ? <button onClick={() => setProjModal({ mode: "new" })} className="text-[15px] font-semibold text-emerald-600 dark:text-emerald-400 inline-flex items-center gap-1"><Plus size={16} /> Criar primeiro projeto</button>
+            : <span className="text-gray-500 text-sm">Nenhum projeto ainda</span>
+        )}
+        <div className="flex-1" />
+        {proj && (podeGerirProjetos || podeGerirCategorias) && <button onClick={() => setProjModal({ mode: "edit", proj })} className="w-8 h-8 grid place-items-center rounded-lg text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 shrink-0 transition-colors" title="Configurações do projeto (pasta, categorias, formas)"><Settings size={16} /></button>}
       </div>
 
       {!proj ? (
@@ -263,11 +308,20 @@ export function InvestimentosPage() {
             <button onClick={() => setLancModal("new")} className="w-full mb-3 rounded-2xl border-2 border-dashed border-indigo-200 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/60 dark:hover:bg-indigo-950/20 py-3 text-[13px] font-semibold inline-flex items-center justify-center gap-1.5 transition-colors"><Plus size={16} /> Novo lançamento</button>
           )}
 
-          {/* Lista de lançamentos (linha clicável → expande detalhes) */}
-          <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
+          {/* Lista de lançamentos agrupada por categoria (linha clica → expande) */}
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm overflow-hidden">
             {lancamentos.length === 0 ? (
               <div className="px-4 py-12 text-center text-gray-400 text-sm">Nenhum lançamento ainda. Use <b className="text-gray-500 dark:text-gray-400">+ Novo lançamento</b> — dá pra arrastar/colar o comprovante que a IA preenche.</div>
-            ) : lancamentos.map((l) => {
+            ) : lancPorCategoria.map((g) => (
+              <div key={g.cat} className="border-b border-gray-100 dark:border-gray-800 last:border-b-0">
+                <div className="flex items-center gap-2 px-4 py-2 bg-gray-50 dark:bg-gray-800/40">
+                  <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: catColor[g.cat] || "#94a3b8" }} />
+                  <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 truncate">{g.cat}</span>
+                  <span className="text-[11px] text-gray-400">· {g.items.length}</span>
+                  <span className="ml-auto text-[12px] font-bold tabular-nums text-gray-600 dark:text-gray-300">{fmtR(g.total)}</span>
+                </div>
+                <div className="divide-y divide-gray-100 dark:divide-gray-800">
+                {g.items.map((l) => {
               const parc = l.parcelado && l.parcelas?.length ? l.parcelas : null;
               const pagas = parc ? parc.filter((p) => p.pago).length : 0;
               const atrasada = parc ? parc.some((p) => !p.pago && p.data < hoje) : false;
@@ -277,10 +331,7 @@ export function InvestimentosPage() {
                   <button onClick={() => toggleExpand(l.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
                     <ChevronDown size={15} className={"shrink-0 transition-transform " + (aberto ? "rotate-180 text-gray-500" : "text-gray-300 dark:text-gray-600")} />
                     <div className="min-w-0 flex-1">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{l.estabelecimento || "—"}</span>
-                        {l.categoriaNome && <span className="shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">{l.categoriaNome}</span>}
-                      </div>
+                      <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{l.estabelecimento || "—"}</div>
                       <div className="text-[12px] text-gray-400 tabular-nums mt-0.5">{fmtBR(l.data)}</div>
                     </div>
                     <div className="text-right shrink-0">
@@ -327,7 +378,10 @@ export function InvestimentosPage() {
                   )}
                 </div>
               );
-            })}
+                })}
+                </div>
+              </div>
+            ))}
           </div>
         </>
       )}
@@ -519,7 +573,7 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
   const [data, setData] = useState(registro?.data || new Date().toISOString().slice(0, 10));
   const [estabelecimento, setEstab] = useState(registro?.estabelecimento || "");
   const [categoriaNome, setCategoriaNome] = useState(registro?.categoriaNome || "");
-  const [valor, setValor] = useState(registro ? String(registro.valor).replace(".", ",") : "");
+  const [valor, setValor] = useState(registro && registro.valor ? fmtCents(Math.round(registro.valor * 100)) : "");
   const [forma, setForma] = useState<string>(registro?.formaPagamento || "pix");
   const [pagoPor, setPagoPor] = useState<string>(registro?.pagoPor || "");
   const [parcelado, setParcelado] = useState(registro?.parcelado || false);
@@ -532,6 +586,9 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
   const [erro, setErro] = useState("");
   const [catSugerida, setCatSugerida] = useState("");   // sugestão da IA fora da lista
   const fileRef = useRef<HTMLInputElement>(null);
+  // Campo de valor mascarado (R$ xx.xxx,xx) — digita centavos da direita pra esquerda.
+  const valorNum = () => { const d = valor.replace(/\D/g, ""); return d ? parseInt(d, 10) / 100 : 0; };
+  function onValorChange(raw: string) { const d = raw.replace(/\D/g, ""); setValor(d ? fmtCents(parseInt(d, 10)) : ""); }
 
   const jaTemComprovante = !!registro?.comprovanteUrl;
 
@@ -594,7 +651,7 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
       const ex = j.extraido || {};
       if (ex.data) setData(String(ex.data).slice(0, 10));
       if (ex.estabelecimento) setEstab(String(ex.estabelecimento));
-      if (typeof ex.valor === "number" && ex.valor > 0) setValor(String(ex.valor).replace(".", ","));
+      if (typeof ex.valor === "number" && ex.valor > 0) setValor(fmtCents(Math.round(ex.valor * 100)));
       if (ex.formaPagamento) setForma(String(ex.formaPagamento));
       if (ex.categoriaExistente && categorias.some((c) => c.nome.toLowerCase() === String(ex.categoriaExistente).toLowerCase())) { setCategoriaNome(String(ex.categoriaExistente)); setCatSugerida(""); }
       else if (ex.categoriaSugerida) { setCatSugerida(String(ex.categoriaSugerida)); }
@@ -608,7 +665,7 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
   }
 
   function gerarParcelas(n: number) {
-    const v = parseR(valor); if (!v || n < 1) return;
+    const v = valorNum(); if (!v || n < 1) return;
     const base = v / n;
     const arr: InvestParcela[] = [];
     for (let i = 0; i < n; i++) { const d = new Date(data + "T12:00:00"); d.setMonth(d.getMonth() + i); arr.push({ n: i + 1, data: d.toISOString().slice(0, 10), valor: Math.round(base * 100) / 100 }); }
@@ -624,7 +681,7 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
 
   async function salvar() {
     if (!estabelecimento.trim()) { setErro("Informe o estabelecimento."); return; }
-    const v = parseR(valor); if (!v) { setErro("Informe o valor."); return; }
+    const v = valorNum(); if (!v) { setErro("Informe o valor."); return; }
     setSalvando(true); setErro("");
     try {
       let comprovanteDriveId = registro?.comprovanteDriveId, comprovanteUrl = registro?.comprovanteUrl, comprovanteNome = registro?.comprovanteNome;
@@ -676,7 +733,12 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div><label className={LBL}>Data</label><input type="date" value={data} onChange={(e) => setData(e.target.value)} className={INP + " mt-1"} /></div>
-          <div><label className={LBL}>Valor</label><input value={valor} onChange={(e) => setValor(e.target.value)} placeholder="0,00" className={INP + " mt-1"} /></div>
+          <div><label className={LBL}>Valor</label>
+            <div className="relative mt-1">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">R$</span>
+              <input value={valor} onChange={(e) => onValorChange(e.target.value)} inputMode="numeric" placeholder="0,00" className={INP + " pl-9 text-right"} />
+            </div>
+          </div>
         </div>
         <div><label className={LBL}>Estabelecimento</label><input value={estabelecimento} onChange={(e) => setEstab(e.target.value)} className={INP + " mt-1"} /></div>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
