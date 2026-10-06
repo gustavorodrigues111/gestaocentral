@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
 import { Plus, TrendingUp, Trash2, Pencil, FolderOpen, Sparkles, X, Check, FileText, ExternalLink, Settings, Lock, ChevronDown } from "lucide-react";
@@ -124,6 +124,25 @@ export function InvestimentosPage() {
   const total = useMemo(() => lancamentos.reduce((s, l) => s + (l.valor || 0), 0), [lancamentos]);
   const catPendentes = useMemo(() => categorias.filter((c) => c.criadaPorIa && c.confirmada === false), [categorias]);
 
+  // Parcelas: expandir transação + marcar pago (pra Pix/boleto futuros).
+  const hoje = new Date().toISOString().slice(0, 10);
+  const emBreveLimite = useMemo(() => { const t = new Date(hoje + "T00:00:00"); t.setDate(t.getDate() + 7); return t.toISOString().slice(0, 10); }, [hoje]);
+  const [expandParc, setExpandParc] = useState<Set<string>>(new Set());
+  const toggleExpand = (id: string) => setExpandParc((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  async function togglePagoParcela(l: InvestLancamento, idx: number) {
+    if (!podeLancar || !l.parcelas) return;
+    const parcelas = l.parcelas.map((p, i) => i === idx ? { ...p, pago: !p.pago, pagoEm: !p.pago ? new Date().toISOString() : undefined } : p);
+    await salvarLancamento({ ...l, parcelas, atualizadoEm: new Date().toISOString() });
+  }
+  // Parcelas pendentes (não pagas) de todos os lançamentos do projeto, por data.
+  const parcelasPendentes = useMemo(() => {
+    const arr: { date: string; valor: number }[] = [];
+    for (const l of lancamentos) if (l.parcelado && l.parcelas) for (const p of l.parcelas) if (!p.pago && p.valor > 0) arr.push({ date: p.data, valor: p.valor });
+    return arr.sort((a, b) => a.date.localeCompare(b.date));
+  }, [lancamentos]);
+  const aPagar = useMemo(() => parcelasPendentes.reduce((s, p) => s + p.valor, 0), [parcelasPendentes]);
+  const temAtrasada = useMemo(() => parcelasPendentes.some((p) => p.date < hoje), [parcelasPendentes, hoje]);
+
   async function confirmarCategoria(c: InvestCategoria) { await salvarCategoria({ ...c, confirmada: true, criadaPorIa: false }); }
 
   if (!rid) return <PageContainer><div className="text-gray-500">Selecione um restaurante.</div></PageContainer>;
@@ -140,7 +159,14 @@ export function InvestimentosPage() {
         ) : <span className="text-gray-500 text-sm flex-1">Nenhum projeto ainda</span>}
         {podeGerirProjetos && <button onClick={() => setProjModal({ mode: "new" })} className="h-10 px-3 rounded-lg bg-emerald-600 text-white text-sm font-semibold inline-flex items-center gap-1 shrink-0"><Plus size={15} /> Novo projeto</button>}
         {proj && podeGerirProjetos && <button onClick={() => setProjModal({ mode: "edit", proj })} className="h-10 w-10 grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 shrink-0" title="Editar projeto / pasta do Drive"><Settings size={16} /></button>}
-        {proj && <div className="w-full sm:w-auto sm:ml-auto text-sm text-gray-500">Total: <b className="text-gray-800 dark:text-gray-100">{fmtR(total)}</b> · {lancamentos.length} lançamento(s)</div>}
+        {proj && <div className="w-full sm:w-auto sm:ml-auto text-sm text-gray-500 flex items-center gap-2 flex-wrap">
+          <span>Total: <b className="text-gray-800 dark:text-gray-100">{fmtR(total)}</b> · {lancamentos.length} lançamento(s)</span>
+          {aPagar > 0 && (
+            <span className={`inline-flex items-center gap-1 text-[12px] font-semibold px-2 py-0.5 rounded-full ${temAtrasada ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200" : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"}`}>
+              {temAtrasada ? "⚠ " : ""}A pagar: {fmtR(aPagar)} · {parcelasPendentes.length} parcela(s){parcelasPendentes[0] ? ` · próx. ${fmtBR(parcelasPendentes[0].date)}` : ""}
+            </span>
+          )}
+        </div>}
       </div>
 
       {!proj ? (
@@ -179,19 +205,61 @@ export function InvestimentosPage() {
                 {lancamentos.length === 0 ? (
                   <tr><td colSpan={9} className="px-4 py-12 text-center text-gray-400">Nenhum lançamento. Clique em "Novo lançamento" (dá pra arrastar/colar o comprovante e a IA preenche).</td></tr>
                 ) : lancamentos.map((l) => (
-                  <tr key={l.id} className="group hover:bg-indigo-50/40 dark:hover:bg-gray-800/40 transition-colors">
+                  <Fragment key={l.id}>
+                  <tr className="group hover:bg-indigo-50/40 dark:hover:bg-gray-800/40 transition-colors">
                     <td className="px-4 py-3 tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{fmtBR(l.data)}</td>
                     <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{l.estabelecimento || "—"}</td>
                     <td className="px-4 py-3">{l.categoriaNome ? <span className="inline-block px-2 py-0.5 rounded-full text-[12px] bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">{l.categoriaNome}</span> : <span className="text-gray-300">—</span>}</td>
                     <td className="px-4 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">{fmtR(l.valor)}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{investFormaLabel(l.formaPagamento)}</td>
                     <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{l.pagoPor || <span className="text-gray-300">—</span>}</td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{l.parcelado && l.parcelas?.length ? `${l.parcelas.length}x` : "à vista"}</td>
+                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
+                      {l.parcelado && l.parcelas?.length ? (() => {
+                        const pagas = l.parcelas.filter((p) => p.pago).length;
+                        const atrasada = l.parcelas.some((p) => !p.pago && p.data < hoje);
+                        return (
+                          <button onClick={() => toggleExpand(l.id)} className="inline-flex items-center gap-1.5 hover:text-indigo-600 dark:hover:text-indigo-400">
+                            <span className="font-semibold">{l.parcelas.length}x</span>
+                            <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${pagas === l.parcelas.length ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200" : atrasada ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>{pagas}/{l.parcelas.length} pagas</span>
+                            <ChevronDown size={13} className={"transition-transform " + (expandParc.has(l.id) ? "rotate-180" : "")} />
+                          </button>
+                        );
+                      })() : <span className="text-gray-400">à vista</span>}
+                    </td>
                     <td className="px-4 py-3 text-center">{l.comprovanteUrl ? <a href={l.comprovanteUrl} target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 text-[12px] font-medium"><FileText size={13} /> ver <ExternalLink size={11} /></a> : <span className="text-gray-300">—</span>}</td>
                     <td className="px-3 py-3 text-right whitespace-nowrap">
                       {podeLancar && <button onClick={() => setLancModal(l)} className="w-8 h-8 inline-grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-indigo-600 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors" title="Editar"><Pencil size={14} /></button>}
                     </td>
                   </tr>
+                  {l.parcelado && !!l.parcelas?.length && expandParc.has(l.id) && (
+                    <tr className="bg-gray-50/70 dark:bg-gray-900/40">
+                      <td colSpan={9} className="px-4 pb-3 pt-0">
+                        <div className="rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
+                          {l.parcelas.map((p, i) => {
+                            const vencida = !p.pago && p.data < hoje;
+                            const aVencer = !p.pago && !vencida && p.data <= emBreveLimite;
+                            return (
+                              <div key={i} className="flex items-center gap-3 px-3 py-2 text-[12.5px]">
+                                <span className="w-7 text-gray-400 shrink-0">{p.n}ª</span>
+                                <span className="tabular-nums text-gray-600 dark:text-gray-300 w-24 shrink-0">{fmtBR(p.data)}</span>
+                                <span className="tabular-nums font-semibold text-gray-900 dark:text-gray-100 w-24 shrink-0">{fmtR(p.valor)}</span>
+                                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${p.pago ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200" : vencida ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200" : aVencer ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>
+                                  {p.pago ? "Pago" : vencida ? "Atrasada" : aVencer ? "Vence em breve" : "Pendente"}
+                                </span>
+                                <div className="flex-1" />
+                                {podeLancar && (
+                                  <button onClick={() => void togglePagoParcela(l, i)} className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-lg border inline-flex items-center gap-1 ${p.pago ? "border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-700" : "border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"}`}>
+                                    {p.pago ? "Desmarcar" : <><Check size={12} /> Marcar pago</>}
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                  </Fragment>
                 ))}
               </tbody>
               {lancamentos.length > 0 && (

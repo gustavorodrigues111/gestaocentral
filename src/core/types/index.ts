@@ -2363,7 +2363,7 @@ export function investFormaLabel(f?: string): string {
 export type InvestForma = { id: string; restaurantId: string; nome: string; criadoEm: string };
 // Quem pagou (sócio/entidade que desembolsou) — lista reutilizável por restaurante.
 export type InvestPagador = { id: string; restaurantId: string; nome: string; criadoEm: string };
-export type InvestParcela = { n: number; data: string; valor: number; pago?: boolean };  // data = YYYY-MM-DD
+export type InvestParcela = { n: number; data: string; valor: number; pago?: boolean; pagoEm?: string };  // data = YYYY-MM-DD; pagoEm = ISO quando marcada paga
 export type InvestCategoria = {
   id: string; restaurantId: string; nome: string;
   criadaPorIa?: boolean;   // sugerida pela IA — precisa confirmação
