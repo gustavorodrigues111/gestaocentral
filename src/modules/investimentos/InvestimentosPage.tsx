@@ -19,6 +19,19 @@ const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency"
 const parseR = (s: string) => { const n = parseFloat((s || "").replace(/[R$\s.]/g, "").replace(",", ".")); return isNaN(n) ? 0 : n; };
 // Formata centavos em pt-BR (ex.: 8000000 → "80.000,00"). Pro campo de valor mascarado.
 const fmtCents = (cents: number) => (cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+// Detecção de duplicidade: mesmo valor + estabelecimento parecido + data em até 3 dias.
+const normTxt = (s: string) => (s || "").toLowerCase().trim().replace(/\s+/g, " ");
+const diasEntre = (a: string, b: string) => Math.abs((Date.parse(a + "T00:00:00") - Date.parse(b + "T00:00:00")) / 86400000);
+type DupBase = { id: string; data: string; estabelecimento: string; valor: number };
+function ehDuplicado(a: DupBase, b: DupBase): boolean {
+  if (a.id === b.id) return false;
+  if (Math.abs((a.valor || 0) - (b.valor || 0)) > 0.005) return false;
+  if (!a.data || !b.data || diasEntre(a.data, b.data) > 3) return false;
+  const na = normTxt(a.estabelecimento), nb = normTxt(b.estabelecimento);
+  if (!na || !nb) return false;
+  return na === nb || na.includes(nb) || nb.includes(na);
+}
 const FORMAS_FIXAS: { value: string; label: string }[] = Object.entries(INVEST_FORMA_LABEL).map(([value, label]) => ({ value, label }));
 
 // Classe única pros campos — todos com a MESMA altura (h-10).
@@ -210,6 +223,14 @@ export function InvestimentosPage() {
       items: items.slice().sort((a, b) => b.data.localeCompare(a.data)),
     })).sort((a, b) => b.total - a.total);
   }, [lancamentos]);
+  // IDs com possível duplicidade (pra marcar na lista).
+  const idsDuplicados = useMemo(() => {
+    const s = new Set<string>();
+    for (let i = 0; i < lancamentos.length; i++) for (let j = i + 1; j < lancamentos.length; j++) {
+      if (ehDuplicado(lancamentos[i], lancamentos[j])) { s.add(lancamentos[i].id); s.add(lancamentos[j].id); }
+    }
+    return s;
+  }, [lancamentos]);
 
   async function confirmarCategoria(c: InvestCategoria) { await salvarCategoria({ ...c, confirmada: true, criadaPorIa: false }); }
 
@@ -331,7 +352,10 @@ export function InvestimentosPage() {
                   <button onClick={() => toggleExpand(l.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
                     <ChevronDown size={15} className={"shrink-0 transition-transform " + (aberto ? "rotate-180 text-gray-500" : "text-gray-300 dark:text-gray-600")} />
                     <div className="min-w-0 flex-1">
-                      <div className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{l.estabelecimento || "—"}</div>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{l.estabelecimento || "—"}</span>
+                        {idsDuplicados.has(l.id) && <span className="shrink-0 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-200" title="Possível duplicidade — mesmo valor, estabelecimento e data próximos">⚠ dup?</span>}
+                      </div>
                       <div className="text-[12px] text-gray-400 tabular-nums mt-0.5">{fmtBR(l.data)}</div>
                     </div>
                     <div className="text-right shrink-0">
@@ -388,7 +412,7 @@ export function InvestimentosPage() {
 
       {projModal && <ProjetoModal mode={projModal.mode} proj={projModal.proj} rid={rid} me={me} central={central} driveRootId={cfg?.driveRootId} driveRootNome={cfg?.driveRootNome} onSaveRoot={salvarRoot} onClose={() => setProjModal(null)} onSay={say} onSaved={(id) => setProjId(id)}
         categorias={categorias} formas={formas} podeGerirProjetos={podeGerirProjetos} podeGerirCategorias={podeGerirCategorias} onConfirmarCat={confirmarCategoria} />}
-      {lancModal && proj && <LancamentoModal registro={lancModal === "new" ? null : lancModal} proj={proj} rid={rid!} me={me} categorias={categorias} formas={formas} pagadores={pagadores} onClose={() => setLancModal(null)} onSay={say} />}
+      {lancModal && proj && <LancamentoModal registro={lancModal === "new" ? null : lancModal} proj={proj} rid={rid!} me={me} categorias={categorias} formas={formas} pagadores={pagadores} lancamentos={lancamentos} onClose={() => setLancModal(null)} onSay={say} />}
 
       {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-xl z-[210]">{toast}</div>}
     </PageContainer>
@@ -568,8 +592,8 @@ function ProjetoModal(props: {
 }
 
 // ── Modal: novo/editar lançamento (comprovante + IA + parcelas) ──────────────
-function LancamentoModal(props: { registro: InvestLancamento | null; proj: InvestProjeto; rid: string; me: ReturnType<typeof useAuth>["pessoa"]; categorias: InvestCategoria[]; formas: InvestForma[]; pagadores: InvestPagador[]; onClose: () => void; onSay: (m: string) => void }) {
-  const { registro, proj, rid, me, categorias, formas, pagadores, onClose, onSay } = props;
+function LancamentoModal(props: { registro: InvestLancamento | null; proj: InvestProjeto; rid: string; me: ReturnType<typeof useAuth>["pessoa"]; categorias: InvestCategoria[]; formas: InvestForma[]; pagadores: InvestPagador[]; lancamentos: InvestLancamento[]; onClose: () => void; onSay: (m: string) => void }) {
+  const { registro, proj, rid, me, categorias, formas, pagadores, lancamentos, onClose, onSay } = props;
   const [data, setData] = useState(registro?.data || new Date().toISOString().slice(0, 10));
   const [estabelecimento, setEstab] = useState(registro?.estabelecimento || "");
   const [categoriaNome, setCategoriaNome] = useState(registro?.categoriaNome || "");
@@ -585,6 +609,7 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState("");
   const [catSugerida, setCatSugerida] = useState("");   // sugestão da IA fora da lista
+  const [dupWarn, setDupWarn] = useState<InvestLancamento[] | null>(null);   // possíveis duplicados
   const fileRef = useRef<HTMLInputElement>(null);
   // Campo de valor mascarado (R$ xx.xxx,xx) — digita centavos da direita pra esquerda.
   const valorNum = () => { const d = valor.replace(/\D/g, ""); return d ? parseInt(d, 10) / 100 : 0; };
@@ -679,9 +704,14 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
     onSay("Categoria adicionada (pendente de confirmação nas Categorias)");
   }
 
-  async function salvar() {
+  async function salvar(bypassDup = false) {
     if (!estabelecimento.trim()) { setErro("Informe o estabelecimento."); return; }
     const v = valorNum(); if (!v) { setErro("Informe o valor."); return; }
+    if (!bypassDup) {
+      const dups = lancamentos.filter((x) => ehDuplicado({ id: registro?.id || "__novo__", data, estabelecimento: estabelecimento.trim(), valor: v }, x));
+      if (dups.length) { setDupWarn(dups); return; }
+    }
+    setDupWarn(null);
     setSalvando(true); setErro("");
     try {
       let comprovanteDriveId = registro?.comprovanteDriveId, comprovanteUrl = registro?.comprovanteUrl, comprovanteNome = registro?.comprovanteNome;
@@ -773,6 +803,25 @@ function LancamentoModal(props: { registro: InvestLancamento | null; proj: Inves
           </div>}
         </div>
         <div><label className={LBL}>Observação <span className="text-gray-400 normal-case">(opcional)</span></label><input value={observacao} onChange={(e) => setObs(e.target.value)} className={INP + " mt-1"} /></div>
+        {dupWarn && (
+          <div className="rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-3 text-[12.5px]">
+            <div className="font-bold text-amber-800 dark:text-amber-200 mb-1">⚠ Possível duplicidade</div>
+            <div className="text-amber-700 dark:text-amber-300/90">Já existe lançamento parecido (mesmo valor, estabelecimento e data próximos):</div>
+            <ul className="mt-1.5 space-y-1">
+              {dupWarn.map((d) => (
+                <li key={d.id} className="flex items-center gap-2 text-gray-700 dark:text-gray-200">
+                  <span className="tabular-nums text-gray-500 dark:text-gray-400">{fmtBR(d.data)}</span>
+                  <span className="truncate">{d.estabelecimento}</span>
+                  <span className="ml-auto font-semibold tabular-nums">{fmtR(d.valor)}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="flex justify-end gap-2 mt-2">
+              <button onClick={() => setDupWarn(null)} className="text-[12px] font-semibold px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700">Revisar</button>
+              <button onClick={() => void salvar(true)} disabled={salvando} className="text-[12px] font-semibold px-2.5 py-1 rounded-lg bg-amber-600 text-white disabled:opacity-50">Salvar mesmo assim</button>
+            </div>
+          </div>
+        )}
         {erro && <div className="text-[12px] text-rose-600">{erro}</div>}
       </div>
       <div className="p-4 border-t border-gray-200 dark:border-gray-800 flex items-center gap-2">
