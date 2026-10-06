@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { useParams } from "react-router-dom";
 import { Plus, TrendingUp, Trash2, Pencil, FolderOpen, Sparkles, X, Check, FileText, ExternalLink, Settings, Lock, ChevronDown } from "lucide-react";
@@ -11,7 +11,7 @@ import { centralConfigured, centralEnsureFolder, centralUpload, parseDriveFolder
 import { fmtBR } from "../../core/utils/date";
 import { INVEST_FORMA_LABEL, investFormaLabel } from "../../core/types";
 import type { InvestProjeto, InvestCategoria, InvestLancamento, InvestParcela, InvestForma, InvestPagador, InvestConfig } from "../../core/types";
-import { ouvirProjetos, salvarProjeto, excluirProjeto, ouvirCategorias, salvarCategoria, excluirCategoria, ouvirFormas, salvarForma, ouvirPagadores, salvarPagador, ouvirLancamentos, salvarLancamento, excluirLancamento, ouvirConfig, salvarConfig } from "./repository";
+import { ouvirProjetos, salvarProjeto, excluirProjeto, ouvirCategorias, salvarCategoria, excluirCategoria, ouvirFormas, salvarForma, excluirForma, ouvirPagadores, salvarPagador, ouvirLancamentos, salvarLancamento, excluirLancamento, ouvirConfig, salvarConfig } from "./repository";
 import { PageContainer } from "../../core/ui/PageContainer";
 
 const uid = () => { try { return crypto.randomUUID(); } catch { return "id" + Date.now() + Math.random().toString(36).slice(2); } };
@@ -22,6 +22,42 @@ const FORMAS_FIXAS: { value: string; label: string }[] = Object.entries(INVEST_F
 // Classe única pros campos — todos com a MESMA altura (h-10).
 const INP = "w-full h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400/40";
 const LBL = "text-[11px] font-bold text-gray-500 uppercase tracking-wide";
+
+// Paleta categórica (distinta, legível nos dois temas) pro donut/legenda.
+const CAT_COLORS = ["#6366f1", "#10b981", "#f59e0b", "#ef4444", "#06b6d4", "#8b5cf6", "#ec4899", "#84cc16", "#f97316", "#14b8a6", "#a855f7", "#64748b"];
+
+// Donut simples em SVG (sem lib). data = fatias já com cor.
+function MiniDonut({ data, size = 112, stroke = 15 }: { data: { label: string; value: number; color: string }[]; size?: number; stroke?: number }) {
+  const total = data.reduce((s, d) => s + d.value, 0);
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  let acc = 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="shrink-0">
+      <g transform={`rotate(-90 ${size / 2} ${size / 2})`}>
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" strokeWidth={stroke} className="stroke-gray-100 dark:stroke-gray-800" />
+        {total > 0 && data.map((d, i) => {
+          const dash = (d.value / total) * c;
+          const el = <circle key={i} cx={size / 2} cy={size / 2} r={r} fill="none" stroke={d.color} strokeWidth={stroke} strokeDasharray={`${dash} ${c - dash}`} strokeDashoffset={-acc} strokeLinecap="butt" />;
+          acc += dash;
+          return el;
+        })}
+      </g>
+    </svg>
+  );
+}
+
+// Número-resumo do dashboard.
+function Stat({ label, value, sub, tone }: { label: string; value: ReactNode; sub?: string; tone?: "rose" | "amber" }) {
+  const valCls = tone === "rose" ? "text-rose-600 dark:text-rose-400" : tone === "amber" ? "text-amber-600 dark:text-amber-400" : "text-gray-900 dark:text-gray-100";
+  return (
+    <div>
+      <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{label}</div>
+      <div className={`text-[17px] font-bold tabular-nums leading-tight ${valCls}`}>{value}</div>
+      {sub && <div className="text-[11px] text-gray-400 mt-0.5">{sub}</div>}
+    </div>
+  );
+}
 
 // ── Combo elegante (busca + criar novo), renderizado em portal pra não ser
 //    cortado pelo overflow do modal ─────────────────────────────────────────
@@ -106,7 +142,6 @@ export function InvestimentosPage() {
 
   const [projModal, setProjModal] = useState<{ mode: "new" | "edit"; proj?: InvestProjeto } | null>(null);
   const [lancModal, setLancModal] = useState<InvestLancamento | "new" | null>(null);
-  const [gerirCat, setGerirCat] = useState(false);
   const [toast, setToast] = useState("");
   function say(m: string) { setToast(m); setTimeout(() => setToast(""), 2600); }
 
@@ -122,7 +157,6 @@ export function InvestimentosPage() {
   useEffect(() => { if (proj && projId !== proj.id) setProjId(proj.id); }, [proj, projId]);
 
   const total = useMemo(() => lancamentos.reduce((s, l) => s + (l.valor || 0), 0), [lancamentos]);
-  const catPendentes = useMemo(() => categorias.filter((c) => c.criadaPorIa && c.confirmada === false), [categorias]);
 
   // Parcelas: expandir transação + marcar pago (pra Pix/boleto futuros).
   const hoje = new Date().toISOString().slice(0, 10);
@@ -142,6 +176,20 @@ export function InvestimentosPage() {
   }, [lancamentos]);
   const aPagar = useMemo(() => parcelasPendentes.reduce((s, p) => s + p.valor, 0), [parcelasPendentes]);
   const temAtrasada = useMemo(() => parcelasPendentes.some((p) => p.date < hoje), [parcelasPendentes, hoje]);
+  const proxima = parcelasPendentes[0] || null;
+
+  // Dashboard: gasto por categoria (donut) e por forma de pagamento.
+  const porCategoria = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of lancamentos) { const k = l.categoriaNome || "Sem categoria"; m.set(k, (m.get(k) || 0) + (l.valor || 0)); }
+    return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value)
+      .map((d, i) => ({ ...d, color: CAT_COLORS[i % CAT_COLORS.length] }));
+  }, [lancamentos]);
+  const porForma = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of lancamentos) { const k = investFormaLabel(l.formaPagamento) || "—"; m.set(k, (m.get(k) || 0) + (l.valor || 0)); }
+    return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+  }, [lancamentos]);
 
   async function confirmarCategoria(c: InvestCategoria) { await salvarCategoria({ ...c, confirmada: true, criadaPorIa: false }); }
 
@@ -158,15 +206,7 @@ export function InvestimentosPage() {
           </select>
         ) : <span className="text-gray-500 text-sm flex-1">Nenhum projeto ainda</span>}
         {podeGerirProjetos && <button onClick={() => setProjModal({ mode: "new" })} className="h-10 px-3 rounded-lg bg-emerald-600 text-white text-sm font-semibold inline-flex items-center gap-1 shrink-0"><Plus size={15} /> Novo projeto</button>}
-        {proj && podeGerirProjetos && <button onClick={() => setProjModal({ mode: "edit", proj })} className="h-10 w-10 grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 shrink-0" title="Editar projeto / pasta do Drive"><Settings size={16} /></button>}
-        {proj && <div className="w-full sm:w-auto sm:ml-auto text-sm text-gray-500 flex items-center gap-2 flex-wrap">
-          <span>Total: <b className="text-gray-800 dark:text-gray-100">{fmtR(total)}</b> · {lancamentos.length} lançamento(s)</span>
-          {aPagar > 0 && (
-            <span className={`inline-flex items-center gap-1 text-[12px] font-semibold px-2 py-0.5 rounded-full ${temAtrasada ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200" : "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200"}`}>
-              {temAtrasada ? "⚠ " : ""}A pagar: {fmtR(aPagar)} · {parcelasPendentes.length} parcela(s){parcelasPendentes[0] ? ` · próx. ${fmtBR(parcelasPendentes[0].date)}` : ""}
-            </span>
-          )}
-        </div>}
+        {proj && (podeGerirProjetos || podeGerirCategorias) && <button onClick={() => setProjModal({ mode: "edit", proj })} className="h-10 w-10 grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-500 shrink-0 sm:ml-auto" title="Configurações do projeto (pasta, categorias, formas)"><Settings size={16} /></button>}
       </div>
 
       {!proj ? (
@@ -178,106 +218,122 @@ export function InvestimentosPage() {
         </div>
       ) : (
         <>
-          {/* Barra do projeto: pasta Drive + categorias + nova linha */}
-          <div className="flex items-center gap-2 flex-wrap mb-3">
-            {proj.pastaDriveId
-              ? <span className="text-[12px] text-gray-500 inline-flex items-center gap-1 min-w-0"><FolderOpen size={13} className="text-amber-500 shrink-0" /> Comprovantes: <b className="text-gray-700 dark:text-gray-300 truncate">{proj.pastaDriveNome || "pasta do Drive"}</b></span>
-              : <span className="text-[12px] text-amber-600 inline-flex items-center gap-1"><FolderOpen size={13} className="shrink-0" /> Sem pasta do Drive — configure no ⚙️ pra anexar comprovantes.</span>}
-            <div className="hidden sm:block flex-1" />
-            <div className="flex items-center gap-2 w-full sm:w-auto">
-              {podeGerirCategorias && <button onClick={() => setGerirCat(true)} className="text-[12.5px] font-semibold px-3 h-9 rounded-lg border border-gray-200 dark:border-gray-700 flex-1 sm:flex-none">Categorias{catPendentes.length ? ` · ${catPendentes.length}` : ""}</button>}
-              {podeLancar && <button onClick={() => setLancModal("new")} className="text-[12.5px] font-semibold px-3 h-9 rounded-lg bg-indigo-600 text-white inline-flex items-center justify-center gap-1 flex-1 sm:flex-none"><Plus size={14} /> Novo lançamento</button>}
+          {/* Dashboard: números + donut por categoria + formas */}
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm p-4 mb-3">
+            <div className="flex flex-col sm:flex-row gap-4 sm:gap-6">
+              <div className="grid grid-cols-2 gap-x-6 gap-y-3 flex-1 content-start">
+                <Stat label="Total gasto" value={fmtR(total)} />
+                <Stat label="Lançamentos" value={lancamentos.length} />
+                <Stat label="A pagar" value={aPagar > 0 ? fmtR(aPagar) : "—"} sub={aPagar > 0 ? `${parcelasPendentes.length} parcela(s)${proxima ? ` · próx. ${fmtBR(proxima.date)}` : ""}` : "nada em aberto"} tone={aPagar > 0 ? (temAtrasada ? "rose" : "amber") : undefined} />
+                <Stat label="Parcelas em aberto" value={parcelasPendentes.length} sub={temAtrasada ? "⚠ há atrasada" : undefined} tone={temAtrasada ? "rose" : undefined} />
+              </div>
+              {porCategoria.length > 0 && total > 0 && (
+                <div className="flex items-center gap-4 sm:border-l sm:border-gray-100 sm:dark:border-gray-800 sm:pl-6">
+                  <div className="relative">
+                    <MiniDonut data={porCategoria} />
+                    <div className="absolute inset-0 grid place-items-center text-center">
+                      <div><div className="text-[9px] uppercase tracking-wider text-gray-400 font-bold">Categorias</div><div className="text-sm font-bold text-gray-700 dark:text-gray-200">{porCategoria.length}</div></div>
+                    </div>
+                  </div>
+                  <div className="space-y-1 min-w-0">
+                    {porCategoria.slice(0, 5).map((d) => (
+                      <div key={d.label} className="flex items-center gap-1.5 text-[12px]">
+                        <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ background: d.color }} />
+                        <span className="text-gray-600 dark:text-gray-300 truncate max-w-[120px]">{d.label}</span>
+                        <span className="text-gray-400 tabular-nums ml-auto pl-2">{Math.round((d.value / total) * 100)}%</span>
+                      </div>
+                    ))}
+                    {porCategoria.length > 5 && <div className="text-[11px] text-gray-400">+{porCategoria.length - 5} outras</div>}
+                  </div>
+                </div>
+              )}
             </div>
+            {porForma.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mr-1">Formas</span>
+                {porForma.map((f) => (
+                  <span key={f.label} className="text-[11.5px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">{f.label} <b className="text-gray-800 dark:text-gray-100 tabular-nums">{fmtR(f.value)}</b></span>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* Tabela */}
-          <div className="border border-gray-200 dark:border-gray-800 rounded-2xl overflow-x-auto shadow-sm">
-            <table className="w-full text-sm min-w-[920px]">
-              <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-400 dark:text-gray-500 text-[11px] uppercase tracking-wider border-b border-gray-200 dark:border-gray-800">
-                <tr>
-                  <th className="text-left px-4 py-3 font-semibold">Data</th><th className="text-left px-4 py-3 font-semibold">Estabelecimento</th>
-                  <th className="text-left px-4 py-3 font-semibold">Categoria</th><th className="text-right px-4 py-3 font-semibold">Valor</th>
-                  <th className="text-left px-4 py-3 font-semibold">Pagamento</th><th className="text-left px-4 py-3 font-semibold">Quem pagou</th><th className="text-left px-4 py-3 font-semibold">Parcelas</th>
-                  <th className="text-center px-4 py-3 font-semibold">Comprovante</th><th className="px-3 py-3"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-gray-100 dark:divide-gray-800/70">
-                {lancamentos.length === 0 ? (
-                  <tr><td colSpan={9} className="px-4 py-12 text-center text-gray-400">Nenhum lançamento. Clique em "Novo lançamento" (dá pra arrastar/colar o comprovante e a IA preenche).</td></tr>
-                ) : lancamentos.map((l) => (
-                  <Fragment key={l.id}>
-                  <tr className="group hover:bg-indigo-50/40 dark:hover:bg-gray-800/40 transition-colors">
-                    <td className="px-4 py-3 tabular-nums whitespace-nowrap text-gray-500 dark:text-gray-400">{fmtBR(l.data)}</td>
-                    <td className="px-4 py-3 font-semibold text-gray-900 dark:text-gray-100">{l.estabelecimento || "—"}</td>
-                    <td className="px-4 py-3">{l.categoriaNome ? <span className="inline-block px-2 py-0.5 rounded-full text-[12px] bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">{l.categoriaNome}</span> : <span className="text-gray-300">—</span>}</td>
-                    <td className="px-4 py-3 text-right tabular-nums font-bold text-gray-900 dark:text-gray-100">{fmtR(l.valor)}</td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{investFormaLabel(l.formaPagamento)}</td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">{l.pagoPor || <span className="text-gray-300">—</span>}</td>
-                    <td className="px-4 py-3 text-gray-600 dark:text-gray-300">
-                      {l.parcelado && l.parcelas?.length ? (() => {
-                        const pagas = l.parcelas.filter((p) => p.pago).length;
-                        const atrasada = l.parcelas.some((p) => !p.pago && p.data < hoje);
-                        return (
-                          <button onClick={() => toggleExpand(l.id)} className="inline-flex items-center gap-1.5 hover:text-indigo-600 dark:hover:text-indigo-400">
-                            <span className="font-semibold">{l.parcelas.length}x</span>
-                            <span className={`text-[11px] px-1.5 py-0.5 rounded-full ${pagas === l.parcelas.length ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200" : atrasada ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>{pagas}/{l.parcelas.length} pagas</span>
-                            <ChevronDown size={13} className={"transition-transform " + (expandParc.has(l.id) ? "rotate-180" : "")} />
-                          </button>
-                        );
-                      })() : <span className="text-gray-400">à vista</span>}
-                    </td>
-                    <td className="px-4 py-3 text-center">{l.comprovanteUrl ? <a href={l.comprovanteUrl} target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 text-[12px] font-medium"><FileText size={13} /> ver <ExternalLink size={11} /></a> : <span className="text-gray-300">—</span>}</td>
-                    <td className="px-3 py-3 text-right whitespace-nowrap">
-                      {podeLancar && <button onClick={() => setLancModal(l)} className="w-8 h-8 inline-grid place-items-center rounded-lg border border-gray-200 dark:border-gray-700 text-gray-400 hover:text-indigo-600 hover:border-indigo-300 dark:hover:border-indigo-700 transition-colors" title="Editar"><Pencil size={14} /></button>}
-                    </td>
-                  </tr>
-                  {l.parcelado && !!l.parcelas?.length && expandParc.has(l.id) && (
-                    <tr className="bg-gray-50/70 dark:bg-gray-900/40">
-                      <td colSpan={9} className="px-4 pb-3 pt-0">
-                        <div className="rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
-                          {l.parcelas.map((p, i) => {
-                            const vencida = !p.pago && p.data < hoje;
-                            const aVencer = !p.pago && !vencida && p.data <= emBreveLimite;
-                            return (
-                              <div key={i} className="flex items-center gap-3 px-3 py-2 text-[12.5px]">
-                                <span className="w-7 text-gray-400 shrink-0">{p.n}ª</span>
-                                <span className="tabular-nums text-gray-600 dark:text-gray-300 w-24 shrink-0">{fmtBR(p.data)}</span>
-                                <span className="tabular-nums font-semibold text-gray-900 dark:text-gray-100 w-24 shrink-0">{fmtR(p.valor)}</span>
-                                <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${p.pago ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200" : vencida ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200" : aVencer ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>
-                                  {p.pago ? "Pago" : vencida ? "Atrasada" : aVencer ? "Vence em breve" : "Pendente"}
-                                </span>
-                                <div className="flex-1" />
-                                {podeLancar && (
-                                  <button onClick={() => void togglePagoParcela(l, i)} className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-lg border inline-flex items-center gap-1 ${p.pago ? "border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-700" : "border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"}`}>
-                                    {p.pago ? "Desmarcar" : <><Check size={12} /> Marcar pago</>}
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          })}
+          {/* Linha tracejada "novo lançamento" */}
+          {podeLancar && (
+            <button onClick={() => setLancModal("new")} className="w-full mb-3 rounded-2xl border-2 border-dashed border-indigo-200 dark:border-indigo-900/60 text-indigo-600 dark:text-indigo-400 hover:bg-indigo-50/60 dark:hover:bg-indigo-950/20 py-3 text-[13px] font-semibold inline-flex items-center justify-center gap-1.5 transition-colors"><Plus size={16} /> Novo lançamento</button>
+          )}
+
+          {/* Lista de lançamentos (linha clicável → expande detalhes) */}
+          <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-sm divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden">
+            {lancamentos.length === 0 ? (
+              <div className="px-4 py-12 text-center text-gray-400 text-sm">Nenhum lançamento ainda. Use <b className="text-gray-500 dark:text-gray-400">+ Novo lançamento</b> — dá pra arrastar/colar o comprovante que a IA preenche.</div>
+            ) : lancamentos.map((l) => {
+              const parc = l.parcelado && l.parcelas?.length ? l.parcelas : null;
+              const pagas = parc ? parc.filter((p) => p.pago).length : 0;
+              const atrasada = parc ? parc.some((p) => !p.pago && p.data < hoje) : false;
+              const aberto = expandParc.has(l.id);
+              return (
+                <div key={l.id}>
+                  <button onClick={() => toggleExpand(l.id)} className="w-full flex items-center gap-3 px-4 py-3 text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 transition-colors">
+                    <ChevronDown size={15} className={"shrink-0 transition-transform " + (aberto ? "rotate-180 text-gray-500" : "text-gray-300 dark:text-gray-600")} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">{l.estabelecimento || "—"}</span>
+                        {l.categoriaNome && <span className="shrink-0 text-[11px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400">{l.categoriaNome}</span>}
+                      </div>
+                      <div className="text-[12px] text-gray-400 tabular-nums mt-0.5">{fmtBR(l.data)}</div>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <div className="font-bold text-sm tabular-nums text-gray-900 dark:text-gray-100">{fmtR(l.valor)}</div>
+                      {parc ? (
+                        <span className={`inline-block mt-0.5 text-[10.5px] font-semibold px-1.5 py-0.5 rounded-full ${pagas === parc.length ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200" : atrasada ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-400"}`}>{parc.length}x · {pagas}/{parc.length}</span>
+                      ) : <span className="block text-[11px] text-gray-400 mt-0.5">à vista</span>}
+                    </div>
+                  </button>
+                  {aberto && (
+                    <div className="px-4 pb-4 pt-1 bg-gray-50/60 dark:bg-gray-900/40 space-y-3">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-x-4 gap-y-2">
+                        <div><div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Forma</div><div className="text-[13px] text-gray-700 dark:text-gray-200">{investFormaLabel(l.formaPagamento)}</div></div>
+                        <div><div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Quem pagou</div><div className="text-[13px] text-gray-700 dark:text-gray-200">{l.pagoPor || "—"}</div></div>
+                        <div><div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Categoria</div><div className="text-[13px] text-gray-700 dark:text-gray-200">{l.categoriaNome || "—"}</div></div>
+                        <div><div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Comprovante</div><div className="text-[13px]">{l.comprovanteUrl ? <a href={l.comprovanteUrl} target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 font-medium"><FileText size={13} /> ver <ExternalLink size={11} /></a> : <span className="text-gray-400">—</span>}</div></div>
+                      </div>
+                      {l.observacao && <div><div className="text-[10px] font-bold uppercase tracking-wide text-gray-400">Observação</div><div className="text-[13px] text-gray-700 dark:text-gray-200">{l.observacao}</div></div>}
+                      {parc && (
+                        <div>
+                          <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 mb-1">Parcelas</div>
+                          <div className="rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800 overflow-hidden bg-white dark:bg-gray-900">
+                            {parc.map((p, i) => {
+                              const vencida = !p.pago && p.data < hoje;
+                              const aVencer = !p.pago && !vencida && p.data <= emBreveLimite;
+                              return (
+                                <div key={i} className="flex items-center gap-3 px-3 py-2 text-[12.5px]">
+                                  <span className="w-7 text-gray-400 shrink-0">{p.n}ª</span>
+                                  <span className="tabular-nums text-gray-600 dark:text-gray-300 w-20 shrink-0">{fmtBR(p.data)}</span>
+                                  <span className="tabular-nums font-semibold text-gray-900 dark:text-gray-100 w-24 shrink-0">{fmtR(p.valor)}</span>
+                                  <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${p.pago ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200" : vencida ? "bg-rose-100 text-rose-700 dark:bg-rose-900/40 dark:text-rose-200" : aVencer ? "bg-amber-100 text-amber-800 dark:bg-amber-900/40 dark:text-amber-200" : "bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-300"}`}>{p.pago ? "Pago" : vencida ? "Atrasada" : aVencer ? "Vence em breve" : "Pendente"}</span>
+                                  <div className="flex-1" />
+                                  {podeLancar && <button onClick={() => void togglePagoParcela(l, i)} className={`text-[11.5px] font-semibold px-2.5 py-1 rounded-lg border inline-flex items-center gap-1 ${p.pago ? "border-gray-200 dark:border-gray-700 text-gray-500 hover:text-gray-700" : "border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-900/20"}`}>{p.pago ? "Desmarcar" : <><Check size={12} /> Marcar pago</>}</button>}
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
-                      </td>
-                    </tr>
+                      )}
+                      <div className="flex justify-end pt-1">
+                        {podeLancar && <button onClick={() => setLancModal(l)} className="text-[12px] font-semibold px-3 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:text-indigo-600 hover:border-indigo-300 dark:hover:border-indigo-700 inline-flex items-center gap-1.5 transition-colors"><Pencil size={13} /> Editar</button>}
+                      </div>
+                    </div>
                   )}
-                  </Fragment>
-                ))}
-              </tbody>
-              {lancamentos.length > 0 && (
-                <tfoot>
-                  <tr className="border-t-2 border-emerald-200 dark:border-emerald-900/60 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-200 font-extrabold">
-                    <td className="px-4 py-3.5" colSpan={3}>Total do projeto</td>
-                    <td className="px-4 py-3.5 text-right tabular-nums text-[15px]">{fmtR(total)}</td>
-                    <td colSpan={5}></td>
-                  </tr>
-                </tfoot>
-              )}
-            </table>
+                </div>
+              );
+            })}
           </div>
         </>
       )}
 
-      {projModal && <ProjetoModal mode={projModal.mode} proj={projModal.proj} rid={rid} me={me} central={central} driveRootId={cfg?.driveRootId} driveRootNome={cfg?.driveRootNome} onSaveRoot={salvarRoot} onClose={() => setProjModal(null)} onSay={say} onSaved={(id) => setProjId(id)} />}
-      {gerirCat && <CategoriasModal categorias={categorias} rid={rid!} onConfirmar={confirmarCategoria} onClose={() => setGerirCat(false)} />}
+      {projModal && <ProjetoModal mode={projModal.mode} proj={projModal.proj} rid={rid} me={me} central={central} driveRootId={cfg?.driveRootId} driveRootNome={cfg?.driveRootNome} onSaveRoot={salvarRoot} onClose={() => setProjModal(null)} onSay={say} onSaved={(id) => setProjId(id)}
+        categorias={categorias} formas={formas} podeGerirProjetos={podeGerirProjetos} podeGerirCategorias={podeGerirCategorias} onConfirmarCat={confirmarCategoria} />}
       {lancModal && proj && <LancamentoModal registro={lancModal === "new" ? null : lancModal} proj={proj} rid={rid!} me={me} categorias={categorias} formas={formas} pagadores={pagadores} onClose={() => setLancModal(null)} onSay={say} />}
 
       {toast && <div className="fixed bottom-5 left-1/2 -translate-x-1/2 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900 px-4 py-2.5 rounded-xl text-sm font-semibold shadow-xl z-[210]">{toast}</div>}
@@ -290,8 +346,9 @@ function ProjetoModal(props: {
   mode: "new" | "edit"; proj?: InvestProjeto; rid: string; me: ReturnType<typeof useAuth>["pessoa"];
   central: boolean | null; driveRootId?: string; driveRootNome?: string; onSaveRoot: (id: string, nome?: string) => Promise<void>;
   onClose: () => void; onSay: (m: string) => void; onSaved: (id: string) => void;
+  categorias: InvestCategoria[]; formas: InvestForma[]; podeGerirProjetos: boolean; podeGerirCategorias: boolean; onConfirmarCat: (c: InvestCategoria) => void;
 }) {
-  const { mode, proj, rid, me, central, driveRootId, onSaveRoot, onClose, onSay, onSaved } = props;
+  const { mode, proj, rid, me, central, driveRootId, onSaveRoot, onClose, onSay, onSaved, categorias, formas, podeGerirProjetos, podeGerirCategorias, onConfirmarCat } = props;
   const [nome, setNome] = useState(proj?.nome || "");
   const [descricao, setDescricao] = useState(proj?.descricao || "");
   const [pastaId, setPastaId] = useState(proj?.pastaDriveId || "");     // fluxo navegador (legado)
@@ -301,6 +358,21 @@ function ProjetoModal(props: {
   const [erro, setErro] = useState("");
   const [salvando, setSalvando] = useState(false);
   const precisaRoot = central === true && (!driveRootId || editRoot);
+  // Categorias & formas (gerenciadas aqui dentro da engrenagem).
+  const [novaCat, setNovaCat] = useState("");
+  const [novaForma, setNovaForma] = useState("");
+  const catConfirmadas = categorias.filter((c) => c.confirmada !== false);
+  const catPend = categorias.filter((c) => c.criadaPorIa && c.confirmada === false);
+  async function addCat() {
+    const n = novaCat.trim(); if (!n) return;
+    if (categorias.some((c) => c.nome.toLowerCase() === n.toLowerCase())) { setNovaCat(""); return; }
+    await salvarCategoria({ id: uid(), restaurantId: rid, nome: n, confirmada: true, criadoEm: new Date().toISOString() }); setNovaCat("");
+  }
+  async function addForma() {
+    const n = novaForma.trim(); if (!n) return;
+    if (FORMAS_FIXAS.some((x) => x.value === n || x.label.toLowerCase() === n.toLowerCase()) || formas.some((f) => f.nome.toLowerCase() === n.toLowerCase())) { setNovaForma(""); return; }
+    await salvarForma({ id: uid(), restaurantId: rid, nome: n, criadoEm: new Date().toISOString() }); setNovaForma("");
+  }
 
   async function escolherPasta() {
     setErro("");
@@ -346,83 +418,96 @@ function ProjetoModal(props: {
 
   return <div className="fixed inset-0 z-[80] bg-black/40 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
     <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-[480px] max-h-[90vh] overflow-auto p-5" onClick={(e) => e.stopPropagation()}>
-      <div className="flex items-center gap-2 mb-3"><div className="font-extrabold text-[15px]">{mode === "new" ? "Novo projeto" : "Editar projeto"}</div><div className="flex-1" /><button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg bg-gray-100 dark:bg-gray-800"><X size={16} /></button></div>
-      <label className={LBL}>Nome</label>
-      <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Reforma do salão" autoFocus className={INP + " mt-1 mb-3"} />
-      <label className={LBL}>Descrição <span className="text-gray-400 normal-case">(opcional)</span></label>
-      <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className={INP + " mt-1 mb-3"} />
+      <div className="flex items-center gap-2 mb-3"><div className="font-extrabold text-[15px]">{mode === "new" ? "Novo projeto" : "Configurações do projeto"}</div><div className="flex-1" /><button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg bg-gray-100 dark:bg-gray-800"><X size={16} /></button></div>
 
-      {/* Onde ficam os comprovantes */}
-      {central === true ? (
-        <>
-          <label className={LBL}>Pasta-raiz no Drive (conta central)</label>
-          {!precisaRoot ? (
-            <div className="mt-1 text-[12px] text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1.5">
-              <Check size={14} /> Configurada — cada projeto vira uma subpasta aqui. <button type="button" onClick={() => { setEditRoot(true); setRootInput(""); }} className="text-indigo-600 dark:text-indigo-400 underline">trocar</button>
+      {podeGerirProjetos && <>
+        <label className={LBL}>Nome</label>
+        <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Ex.: Reforma do salão" autoFocus className={INP + " mt-1 mb-3"} />
+        <label className={LBL}>Descrição <span className="text-gray-400 normal-case">(opcional)</span></label>
+        <input value={descricao} onChange={(e) => setDescricao(e.target.value)} className={INP + " mt-1 mb-3"} />
+
+        {/* Onde ficam os comprovantes */}
+        {central === true ? (
+          <>
+            <label className={LBL}>Pasta-raiz no Drive (conta central)</label>
+            {!precisaRoot ? (
+              <div className="mt-1 text-[12px] text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1.5">
+                <Check size={14} /> Configurada — cada projeto vira uma subpasta aqui. <button type="button" onClick={() => { setEditRoot(true); setRootInput(""); }} className="text-indigo-600 dark:text-indigo-400 underline">trocar</button>
+              </div>
+            ) : (
+              <>
+                <input value={rootInput} onChange={(e) => setRootInput(e.target.value)} placeholder="Cole o link ou o ID da pasta-raiz" className={INP + " mt-1"} />
+                <div className="text-[11px] text-gray-400 mt-1">É uma pasta do Drive da <b>conta central</b> (a mesma do Recebimento). Configura uma vez; os projetos criam subpastas dentro. <b>Sem popup de autorização.</b></div>
+                {driveRootId && <button type="button" onClick={() => setEditRoot(false)} className="text-[11px] text-gray-500 underline mt-1">cancelar troca</button>}
+              </>
+            )}
+            <div className="text-[11px] text-gray-400 mt-1">Comprovantes nomeados <b>Estabelecimento_Data</b>.</div>
+          </>
+        ) : central === false ? (
+          <>
+            <label className={LBL}>Pasta do Drive (comprovantes)</label>
+            <div className="flex items-center gap-2 mt-1">
+              <button type="button" onClick={() => void escolherPasta()} className="h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm inline-flex items-center gap-1.5"><FolderOpen size={15} className="text-amber-500" /> {pastaNome ? "Trocar pasta" : "Escolher pasta"}</button>
+              {pastaNome && <span className="text-[12px] text-gray-600 dark:text-gray-300 truncate">{pastaNome}</span>}
             </div>
-          ) : (
-            <>
-              <input value={rootInput} onChange={(e) => setRootInput(e.target.value)} placeholder="Cole o link ou o ID da pasta-raiz" className={INP + " mt-1"} />
-              <div className="text-[11px] text-gray-400 mt-1">É uma pasta do Drive da <b>conta central</b> (a mesma do Recebimento). Configura uma vez; os projetos criam subpastas dentro. <b>Sem popup de autorização.</b></div>
-              {driveRootId && <button type="button" onClick={() => setEditRoot(false)} className="text-[11px] text-gray-500 underline mt-1">cancelar troca</button>}
-            </>
+            <div className="text-[11px] text-gray-400 mt-1">Comprovantes nomeados <b>Estabelecimento_Data</b>.</div>
+          </>
+        ) : (
+          <div className="text-[12px] text-gray-400 mt-1">Verificando Drive…</div>
+        )}
+      </>}
+
+      {/* Categorias & Formas de pagamento (gerenciadas aqui) */}
+      {mode === "edit" && podeGerirCategorias && <>
+        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+          <label className={LBL}>Categorias ({catConfirmadas.length})</label>
+          {catPend.length > 0 && (
+            <div className="mt-1 mb-2 space-y-1">
+              {catPend.map((c) => (
+                <div key={c.id} className="flex items-center gap-2 text-[13px] bg-amber-50 dark:bg-amber-950/20 rounded-lg px-2.5 py-1.5">
+                  <Sparkles size={12} className="text-amber-500 shrink-0" />
+                  <span className="flex-1 font-medium">{c.nome}</span>
+                  <button onClick={() => onConfirmarCat(c)} className="text-[11px] font-bold px-2 py-1 rounded bg-emerald-600 text-white inline-flex items-center gap-1"><Check size={12} /> Confirmar</button>
+                  <button onClick={() => void excluirCategoria(c.id)} className="text-rose-400 hover:text-rose-600" title="Descartar"><X size={14} /></button>
+                </div>
+              ))}
+            </div>
           )}
-          <div className="text-[11px] text-gray-400 mt-1">Comprovantes nomeados <b>Estabelecimento_Data</b>.</div>
-        </>
-      ) : central === false ? (
-        <>
-          <label className={LBL}>Pasta do Drive (comprovantes)</label>
-          <div className="flex items-center gap-2 mt-1">
-            <button type="button" onClick={() => void escolherPasta()} className="h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm inline-flex items-center gap-1.5"><FolderOpen size={15} className="text-amber-500" /> {pastaNome ? "Trocar pasta" : "Escolher pasta"}</button>
-            {pastaNome && <span className="text-[12px] text-gray-600 dark:text-gray-300 truncate">{pastaNome}</span>}
+          <div className="flex flex-wrap gap-1.5 mt-1.5 mb-2">
+            {catConfirmadas.length === 0 ? <span className="text-xs text-gray-400">Nenhuma ainda.</span> : catConfirmadas.map((c) => (
+              <span key={c.id} className="text-[12px] px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 inline-flex items-center gap-1">{c.nome}<button onClick={() => void excluirCategoria(c.id)} className="text-gray-400 hover:text-rose-500"><X size={12} /></button></span>
+            ))}
           </div>
-          <div className="text-[11px] text-gray-400 mt-1">Comprovantes nomeados <b>Estabelecimento_Data</b>.</div>
-        </>
-      ) : (
-        <div className="text-[12px] text-gray-400 mt-1">Verificando Drive…</div>
-      )}
+          <div className="flex gap-2">
+            <input value={novaCat} onChange={(e) => setNovaCat(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void addCat(); }} placeholder="Nova categoria" className="flex-1 h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm" />
+            <button onClick={() => void addCat()} disabled={!novaCat.trim()} className="px-3 h-9 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-50">Adicionar</button>
+          </div>
+        </div>
+        <div className="mt-4 pt-4 border-t border-gray-100 dark:border-gray-800">
+          <label className={LBL}>Formas de pagamento</label>
+          <div className="text-[11px] text-gray-400 mt-0.5">As fixas (Pix, Dinheiro, Cartão…) já vêm prontas. Adicione formas próprias abaixo.</div>
+          <div className="flex flex-wrap gap-1.5 mt-2 mb-2">
+            {formas.length === 0 ? <span className="text-xs text-gray-400">Nenhuma forma própria ainda.</span> : formas.map((f) => (
+              <span key={f.id} className="text-[12px] px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 inline-flex items-center gap-1">{f.nome}<button onClick={() => void excluirForma(f.id)} className="text-gray-400 hover:text-rose-500"><X size={12} /></button></span>
+            ))}
+          </div>
+          <div className="flex gap-2">
+            <input value={novaForma} onChange={(e) => setNovaForma(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void addForma(); }} placeholder="Nova forma de pagamento" className="flex-1 h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm" />
+            <button onClick={() => void addForma()} disabled={!novaForma.trim()} className="px-3 h-9 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-50">Adicionar</button>
+          </div>
+        </div>
+      </>}
 
       {erro && <div className="text-[12px] text-rose-600 mt-2">{erro}</div>}
       <div className="flex gap-2 mt-4">
-        {mode === "edit" && <button onClick={() => void excluir()} className="px-3 py-2 rounded-lg border border-rose-200 dark:border-rose-900 text-rose-600 text-sm font-semibold inline-flex items-center gap-1"><Trash2 size={14} /> Excluir</button>}
+        {mode === "edit" && podeGerirProjetos && <button onClick={() => void excluir()} className="px-3 py-2 rounded-lg border border-rose-200 dark:border-rose-900 text-rose-600 text-sm font-semibold inline-flex items-center gap-1"><Trash2 size={14} /> Excluir</button>}
         <div className="flex-1" />
-        <button onClick={onClose} className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold">Cancelar</button>
-        <button onClick={() => void salvar()} disabled={!nome.trim() || salvando || central === null} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-50">{salvando ? "Salvando…" : "Salvar"}</button>
-      </div>
-    </div>
-  </div>;
-}
-
-// ── Modal: gerir categorias (fixa + confirmar sugestões da IA) ────────────────
-function CategoriasModal(props: { categorias: InvestCategoria[]; rid: string; onConfirmar: (c: InvestCategoria) => void; onClose: () => void }) {
-  const { categorias, rid, onConfirmar, onClose } = props;
-  const [nova, setNova] = useState("");
-  const confirmadas = categorias.filter((c) => c.confirmada !== false);
-  const pendentes = categorias.filter((c) => c.criadaPorIa && c.confirmada === false);
-  async function adicionar() {
-    const n = nova.trim(); if (!n) return;
-    if (categorias.some((c) => c.nome.toLowerCase() === n.toLowerCase())) { setNova(""); return; }
-    await salvarCategoria({ id: uid(), restaurantId: rid, nome: n, confirmada: true, criadoEm: new Date().toISOString() });
-    setNova("");
-  }
-  return <div className="fixed inset-0 z-[80] bg-black/40 flex items-end sm:items-center justify-center sm:p-4" onClick={onClose}>
-    <div className="bg-white dark:bg-gray-900 rounded-t-2xl sm:rounded-2xl shadow-xl w-full sm:max-w-[440px] max-h-[90vh] overflow-auto p-5" onClick={(e) => e.stopPropagation()}>
-      <div className="flex items-center gap-2 mb-3"><div className="font-extrabold text-[15px]">Categorias</div><div className="flex-1" /><button onClick={onClose} className="w-8 h-8 grid place-items-center rounded-lg bg-gray-100 dark:bg-gray-800"><X size={16} /></button></div>
-      {pendentes.length > 0 && <div className="mb-3">
-        <div className="text-[11px] font-bold text-amber-600 uppercase mb-1 inline-flex items-center gap-1"><Sparkles size={12} /> Sugeridas pela IA — confirme</div>
-        <div className="space-y-1">{pendentes.map((c) => (
-          <div key={c.id} className="flex items-center gap-2 text-sm bg-amber-50 dark:bg-amber-950/20 rounded-lg px-2.5 py-1.5">
-            <span className="flex-1 font-medium">{c.nome}</span>
-            <button onClick={() => onConfirmar(c)} className="text-[11px] font-bold px-2 py-1 rounded bg-emerald-600 text-white inline-flex items-center gap-1"><Check size={12} /> Confirmar</button>
-            <button onClick={() => void excluirCategoria(c.id)} className="text-rose-400 hover:text-rose-600" title="Descartar"><X size={14} /></button>
-          </div>))}</div>
-      </div>}
-      <div className="text-[11px] font-bold text-gray-500 uppercase mb-1">Categorias ({confirmadas.length})</div>
-      <div className="flex flex-wrap gap-1.5 mb-3">{confirmadas.length === 0 ? <span className="text-xs text-gray-400">Nenhuma ainda.</span> : confirmadas.map((c) => (
-        <span key={c.id} className="text-[12px] px-2.5 py-1 rounded-full border border-gray-200 dark:border-gray-700 inline-flex items-center gap-1">{c.nome}<button onClick={() => void excluirCategoria(c.id)} className="text-gray-400 hover:text-rose-500"><X size={12} /></button></span>))}</div>
-      <div className="flex gap-2">
-        <input value={nova} onChange={(e) => setNova(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void adicionar(); }} placeholder="Nova categoria" className="flex-1 h-10 px-3 rounded-lg border border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800 text-sm" />
-        <button onClick={() => void adicionar()} disabled={!nova.trim()} className="px-3 h-10 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-50">Adicionar</button>
+        {podeGerirProjetos ? <>
+          <button onClick={onClose} className="px-4 py-2 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold">Cancelar</button>
+          <button onClick={() => void salvar()} disabled={!nome.trim() || salvando || central === null} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold disabled:opacity-50">{salvando ? "Salvando…" : "Salvar"}</button>
+        </> : (
+          <button onClick={onClose} className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-bold">Fechar</button>
+        )}
       </div>
     </div>
   </div>;
