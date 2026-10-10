@@ -3,7 +3,7 @@
 // pagamento + comprovante). Pasta do Drive por evento (conta central, subpasta
 // de uma pasta-raiz indicada pelo usuário).
 import { useEffect, useMemo, useState } from "react";
-import { CalendarHeart, Plus, Settings, Trash2, X, Check, FileText, ChevronLeft, FolderOpen, CalendarDays, Link2 } from "lucide-react";
+import { CalendarHeart, Plus, Settings, Trash2, X, Check, ChevronLeft, FolderOpen, CalendarDays, Link2 } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { fmtBR } from "../../core/utils/date";
 import { centralConfigured, centralEnsureFolder, parseDriveFolderId } from "../../core/google/driveCentral";
@@ -15,6 +15,12 @@ const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency"
 const parseR = (s: string) => { const n = parseFloat((s || "").replace(/[R$\s.]/g, "").replace(",", ".")); return isNaN(n) ? 0 : n; };
 const fmtCents = (cents: number) => (cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const periodoTxt = (e: ReservaEvento) => e.dataFim && e.dataFim !== e.dataInicio ? `${fmtBR(e.dataInicio)} – ${fmtBR(e.dataFim)}` : fmtBR(e.dataInicio);
+// Nº da(s) mesa(s) da reserva — tira o prefixo "Mesa " e mostra "Nº 4".
+const mesaTxt = (r: Reserva) => {
+  const nomes = r.mesasNomesSnapshot?.length ? r.mesasNomesSnapshot : (r.mesaNomeSnapshot ? [r.mesaNomeSnapshot] : []);
+  if (!nomes.length) return "—";
+  return nomes.map((n) => n.replace(/^mesa\s+/i, "Nº ")).join(", ");
+};
 
 export function EventosTab({ rid, reservas, podeEditar, onNovaReserva, onEditarReserva, onVincular }: {
   rid: string; reservas: Reserva[]; podeEditar: boolean;
@@ -129,10 +135,10 @@ function PainelEvento({ ev, reservas, candidatas, podeEditar, onVoltar, onNovaRe
             </div>
             <div className="text-[12px] text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
               <span><CalendarDays size={11} className="inline align-[-1px]" /> {fmtBR(r.data)} · {r.horario}</span>
-              <span>· {r.pessoas} pessoa(s)</span>
+              <span>· {r.pessoas} pax</span>
+              <span>· Mesa {mesaTxt(r)}</span>
               {r.pagamento?.valor ? <span>· {fmtR(r.pagamento.valor)}{r.pagamento.forma ? ` (${r.pagamento.forma})` : ""}</span> : null}
             </div>
-            {r.pagamento?.comprovanteUrl && <a href={r.pagamento.comprovanteUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-[12px] text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 mt-1"><FileText size={12} /> ver comprovante</a>}
           </button>
         ))}
       </div>
@@ -141,7 +147,7 @@ function PainelEvento({ ev, reservas, candidatas, podeEditar, onVoltar, onNovaRe
       <div className="hidden sm:block border border-gray-200 dark:border-gray-800 rounded-2xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm min-w-[640px]">
           <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-400 text-[11px] uppercase tracking-wider">
-            <tr><th className="text-left px-4 py-2.5">Cliente</th><th className="text-left px-4 py-2.5">Data/hora</th><th className="text-center px-4 py-2.5">Pessoas</th><th className="text-left px-4 py-2.5">Pagamento</th><th className="text-right px-4 py-2.5">Valor</th><th className="text-center px-4 py-2.5">Comprov.</th></tr>
+            <tr><th className="text-left px-4 py-2.5">Cliente</th><th className="text-left px-4 py-2.5">Data/hora</th><th className="text-center px-4 py-2.5">Pax</th><th className="text-left px-4 py-2.5">Mesa</th><th className="text-left px-4 py-2.5">Pagamento</th><th className="text-right px-4 py-2.5">Valor</th></tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800/70">
             {ordenadas.length === 0 ? (
@@ -150,10 +156,10 @@ function PainelEvento({ ev, reservas, candidatas, podeEditar, onVoltar, onNovaRe
               <tr key={r.id} onClick={() => onEditarReserva(r, ev)} className="cursor-pointer hover:bg-indigo-50/40 dark:hover:bg-gray-800/40">
                 <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100">{r.clienteNomeSnapshot || "—"}{r.status === "cancelada" && <span className="text-[11px] text-rose-500 ml-1">(cancelada)</span>}</td>
                 <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{fmtBR(r.data)} · {r.horario}</td>
-                <td className="px-4 py-2.5 text-center">{r.pessoas}</td>
+                <td className="px-4 py-2.5 text-center tabular-nums">{r.pessoas}</td>
+                <td className="px-4 py-2.5 whitespace-nowrap">{mesaTxt(r)}</td>
                 <td className="px-4 py-2.5">{r.pagamento?.pago ? <span className="text-emerald-600 font-semibold">Pago</span> : <span className="text-amber-600">Pendente</span>}{r.pagamento?.forma ? <span className="text-gray-400 text-[12px]"> · {r.pagamento.forma}</span> : null}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{r.pagamento?.valor ? fmtR(r.pagamento.valor) : "—"}</td>
-                <td className="px-4 py-2.5 text-center">{r.pagamento?.comprovanteUrl ? <a href={r.pagamento.comprovanteUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 text-[12px]"><FileText size={13} /> ver</a> : <span className="text-gray-300">—</span>}</td>
               </tr>
             ))}
           </tbody>
