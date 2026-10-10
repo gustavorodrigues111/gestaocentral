@@ -210,8 +210,12 @@ export function ReservasPage() {
     try {
       const r = await fetch(`/api/getin-sync?rid=${encodeURIComponent(rid)}`, { method: "POST", headers: { ...(await authHeader()) } });
       const j = await r.json().catch(() => ({}));
-      if (!r.ok) alert("Falha ao sincronizar: " + ((j as { error?: string }).error || `HTTP ${r.status}`));
-      // O badge atualiza sozinho via o listener de getinSyncStatus.
+      if (!r.ok) { alert("Falha ao sincronizar: " + ((j as { error?: string }).error || `HTTP ${r.status}`)); return; }
+      // Feedback imediato (o badge também atualiza via listener de getinSyncStatus).
+      const res = (j as { resultado?: Array<{ erro?: string; total?: number; novas?: number; atualizadas?: number }> }).resultado?.[0];
+      if (res?.erro) alert("GetIn retornou erro: " + res.erro);
+      else if (res) alert(`Sincronizado ✓ ${res.total ?? 0} reserva(s) · ${res.novas ?? 0} nova(s) · ${res.atualizadas ?? 0} atualizada(s)`);
+      else alert((j as { aviso?: string }).aviso || "Sincronizado.");
     } catch (e) {
       alert("Falha ao sincronizar: " + (e instanceof Error ? e.message : "?"));
     } finally { setForcandoSync(false); }
@@ -240,6 +244,7 @@ export function ReservasPage() {
     setReservas(merged);
   }, [reservasBase, piiMap]);
 
+  const temGetin = useMemo(() => reservas.some((r) => (r.origem || "").includes("getin")), [reservas]);
   const today = todayYmd();
 
   // Reservas do dia selecionado (separadas: ativas vs canceladas/no-show)
@@ -399,14 +404,20 @@ export function ReservasPage() {
   return (
     <PageContainer>
       <div className="flex items-start justify-between mb-4 flex-wrap gap-3">
-        {getinStatus ? (
+        {(getinStatus || temGetin) ? (
           <div className="flex items-center gap-2 text-xs flex-wrap">
-            <span title={getinStatus.erro || undefined}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${getinStatus.erro
-                ? "border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300"
-                : "border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300"}`}>
-              <LinkIcon size={12} /> GetIn · {getinStatus.erro ? "erro na sincronização" : `sincronizado ${haQuantoTempo(getinStatus.atualizadoEm)}`}
-            </span>
+            {getinStatus ? (
+              <span title={getinStatus.erro || undefined}
+                className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border ${getinStatus.erro
+                  ? "border-rose-300 dark:border-rose-800 bg-rose-50 dark:bg-rose-900/20 text-rose-700 dark:text-rose-300"
+                  : "border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-300"}`}>
+                <LinkIcon size={12} /> GetIn · {getinStatus.erro ? "erro na sincronização" : `sincronizado ${haQuantoTempo(getinStatus.atualizadoEm)}`}
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-gray-300 dark:border-gray-700 text-gray-500 dark:text-gray-400">
+                <LinkIcon size={12} /> GetIn
+              </span>
+            )}
             {podeConfig && (
               <button type="button" onClick={() => void forcarSyncGetin()} disabled={forcandoSync}
                 className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-gray-300 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 disabled:opacity-50">
