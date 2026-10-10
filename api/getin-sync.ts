@@ -38,6 +38,8 @@ type GetinReserva = {
   id: string; sector?: { name?: string }; name?: string; mobile?: string; email?: string;
   people?: number; date?: string; time?: string; info?: string; occasion?: string;
   status?: string; source?: string; created_at?: string; updated_at?: string;
+  // Nº da mesa — preenchido pelo garçom ao SENTAR a reserva (vem null até lá).
+  table?: string | number | null;
 };
 
 // GetIn status → nosso ReservaStatus.
@@ -155,6 +157,12 @@ async function sincronizarUm(a: { rid: string; nome: string; unitId?: string; cr
       origem: "getin", externoId: gr.id, getinStatus: gr.status || "",
       getinAtualizadoEm: gr.updated_at || agora, atualizadoEm: agora,
     };
+    // Mesa: o GetIn só preenche `table` quando o garçom SENTA a reserva (null até
+    // lá). Como o sync é PATCH (merge), só gravamos quando vier preenchido — assim
+    // cada sync "procura" a mesa e, quando o garçom atribui, aparece aqui; e nunca
+    // apagamos uma mesa já definida (no GetIn ou manual no app) quando vier null.
+    const tableRaw = gr.table != null && String(gr.table).trim() !== "" ? String(gr.table).trim() : null;
+    if (tableRaw) base.mesaNomeSnapshot = /^mesa/i.test(tableRaw) ? tableRaw : `Mesa ${tableRaw}`;
     if (!existente) {
       base.status = mapStatus(gr.status);
       base.registradoEm = gr.created_at || agora;
