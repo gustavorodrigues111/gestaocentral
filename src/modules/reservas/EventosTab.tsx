@@ -3,7 +3,7 @@
 // pagamento + comprovante). Pasta do Drive por evento (conta central, subpasta
 // de uma pasta-raiz indicada pelo usuário).
 import { useEffect, useMemo, useState } from "react";
-import { PartyPopper, Plus, Settings, Trash2, X, Check, FileText, ChevronLeft, FolderOpen, CalendarDays } from "lucide-react";
+import { CalendarHeart, Plus, Settings, Trash2, X, Check, FileText, ChevronLeft, FolderOpen, CalendarDays, Link2 } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { fmtBR } from "../../core/utils/date";
 import { centralConfigured, centralEnsureFolder, parseDriveFolderId } from "../../core/google/driveCentral";
@@ -13,12 +13,14 @@ import { ouvirEventos, salvarEvento, excluirEvento, ouvirEventoConfig, salvarEve
 const uid = () => { try { return crypto.randomUUID(); } catch { return "ev" + Date.now() + Math.random().toString(36).slice(2); } };
 const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const parseR = (s: string) => { const n = parseFloat((s || "").replace(/[R$\s.]/g, "").replace(",", ".")); return isNaN(n) ? 0 : n; };
+const fmtCents = (cents: number) => (cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const periodoTxt = (e: ReservaEvento) => e.dataFim && e.dataFim !== e.dataInicio ? `${fmtBR(e.dataInicio)} – ${fmtBR(e.dataFim)}` : fmtBR(e.dataInicio);
 
-export function EventosTab({ rid, reservas, podeEditar, onNovaReserva, onEditarReserva }: {
+export function EventosTab({ rid, reservas, podeEditar, onNovaReserva, onEditarReserva, onVincular }: {
   rid: string; reservas: Reserva[]; podeEditar: boolean;
   onNovaReserva: (ev: ReservaEvento) => void;
   onEditarReserva: (r: Reserva, ev: ReservaEvento) => void;
+  onVincular: (r: Reserva, ev: ReservaEvento) => void;
 }) {
   const [eventos, setEventos] = useState<ReservaEvento[]>([]);
   const [cfg, setCfg] = useState<ReservaEventoConfig | null>(null);
@@ -32,6 +34,9 @@ export function EventosTab({ rid, reservas, podeEditar, onNovaReserva, onEditarR
 
   const sel = eventos.find((e) => e.id === selId) || null;
   const reservasDoEvento = useMemo(() => (ev: string) => reservas.filter((r) => r.eventoId === ev), [reservas]);
+  // Reservas NORMAIS que caem na(s) data(s) do evento e ainda não estão vinculadas — pra "puxar pra dentro".
+  const candidatasDoEvento = useMemo(() => (ev: ReservaEvento) => reservas.filter((r) =>
+    !r.eventoId && r.status !== "cancelada" && r.data >= ev.dataInicio && r.data <= (ev.dataFim || ev.dataInicio)), [reservas]);
 
   function totais(evId: string) {
     const rs = reservas.filter((r) => r.eventoId === evId && r.status !== "cancelada");
@@ -40,19 +45,21 @@ export function EventosTab({ rid, reservas, podeEditar, onNovaReserva, onEditarR
     return { n: rs.length, recebido, pendente };
   }
 
-  if (sel) return <PainelEvento ev={sel} reservas={reservasDoEvento(sel.id)} podeEditar={podeEditar} onVoltar={() => setSelId(null)} onNovaReserva={onNovaReserva} onEditarReserva={onEditarReserva} onEditarEvento={() => setModal({ ev: sel })} totais={totais(sel.id)} />;
-
   return (
+    <>
+      {sel ? (
+        <PainelEvento ev={sel} reservas={reservasDoEvento(sel.id)} candidatas={candidatasDoEvento(sel)} podeEditar={podeEditar} onVoltar={() => setSelId(null)} onNovaReserva={onNovaReserva} onEditarReserva={onEditarReserva} onVincular={onVincular} onEditarEvento={() => setModal({ ev: sel })} totais={totais(sel.id)} />
+      ) : (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
-        <div className="text-[13px] text-gray-600 dark:text-gray-300 inline-flex items-center gap-1.5"><PartyPopper size={15} className="text-indigo-500" /> Eventos especiais — reservas pagas lançadas pela equipe.</div>
+        <div className="text-[13px] text-gray-600 dark:text-gray-300 inline-flex items-center gap-1.5"><CalendarHeart size={15} className="text-indigo-500" /> Eventos próprios — datas especiais com reservas pagas, lançadas pela equipe.</div>
         <div className="flex-1" />
         {podeEditar && <button onClick={() => setModal({})} className="h-9 px-3 rounded-lg bg-indigo-600 text-white text-sm font-semibold inline-flex items-center gap-1"><Plus size={15} /> Novo evento</button>}
       </div>
 
       {eventos.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-gray-300 dark:border-gray-700 p-10 text-center">
-          <PartyPopper size={38} className="mx-auto text-gray-300 mb-2" />
+          <CalendarHeart size={38} className="mx-auto text-gray-300 mb-2" />
           <div className="font-semibold text-gray-700 dark:text-gray-300">Nenhum evento ainda</div>
           <div className="text-sm text-gray-500 mt-1">Crie um evento (ex.: "Jantar harmonizado") pra lançar reservas com pagamento.</div>
         </div>
@@ -75,18 +82,21 @@ export function EventosTab({ rid, reservas, podeEditar, onNovaReserva, onEditarR
           })}
         </div>
       )}
+    </div>
+      )}
 
       {modal && <EventoModal rid={rid} ev={modal.ev} central={central} cfg={cfg} onClose={() => setModal(null)} onSaved={(id) => { setModal(null); setSelId(id); }} />}
-    </div>
+    </>
   );
 }
 
-function PainelEvento({ ev, reservas, podeEditar, onVoltar, onNovaReserva, onEditarReserva, onEditarEvento, totais }: {
-  ev: ReservaEvento; reservas: Reserva[]; podeEditar: boolean; onVoltar: () => void;
-  onNovaReserva: (ev: ReservaEvento) => void; onEditarReserva: (r: Reserva, ev: ReservaEvento) => void; onEditarEvento: () => void;
+function PainelEvento({ ev, reservas, candidatas, podeEditar, onVoltar, onNovaReserva, onEditarReserva, onVincular, onEditarEvento, totais }: {
+  ev: ReservaEvento; reservas: Reserva[]; candidatas: Reserva[]; podeEditar: boolean; onVoltar: () => void;
+  onNovaReserva: (ev: ReservaEvento) => void; onEditarReserva: (r: Reserva, ev: ReservaEvento) => void; onVincular: (r: Reserva, ev: ReservaEvento) => void; onEditarEvento: () => void;
   totais: { n: number; recebido: number; pendente: number };
 }) {
   const ordenadas = [...reservas].sort((a, b) => (a.data + a.horario).localeCompare(b.data + b.horario));
+  const candOrd = [...candidatas].sort((a, b) => (a.data + a.horario).localeCompare(b.data + b.horario));
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
@@ -131,25 +141,42 @@ function PainelEvento({ ev, reservas, podeEditar, onVoltar, onNovaReserva, onEdi
       <div className="hidden sm:block border border-gray-200 dark:border-gray-800 rounded-2xl overflow-x-auto shadow-sm">
         <table className="w-full text-sm min-w-[640px]">
           <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-400 text-[11px] uppercase tracking-wider">
-            <tr><th className="text-left px-4 py-2.5">Cliente</th><th className="text-left px-4 py-2.5">Data/hora</th><th className="text-center px-4 py-2.5">Pessoas</th><th className="text-left px-4 py-2.5">Pagamento</th><th className="text-right px-4 py-2.5">Valor</th><th className="text-center px-4 py-2.5">Comprov.</th><th className="px-2 py-2.5"></th></tr>
+            <tr><th className="text-left px-4 py-2.5">Cliente</th><th className="text-left px-4 py-2.5">Data/hora</th><th className="text-center px-4 py-2.5">Pessoas</th><th className="text-left px-4 py-2.5">Pagamento</th><th className="text-right px-4 py-2.5">Valor</th><th className="text-center px-4 py-2.5">Comprov.</th></tr>
           </thead>
           <tbody className="divide-y divide-gray-100 dark:divide-gray-800/70">
             {ordenadas.length === 0 ? (
-              <tr><td colSpan={7} className="px-4 py-10 text-center text-gray-400">Nenhuma reserva nesse evento. Clique em "Nova reserva".</td></tr>
+              <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">Nenhuma reserva nesse evento. Clique em "Nova reserva".</td></tr>
             ) : ordenadas.map((r) => (
-              <tr key={r.id} className="hover:bg-indigo-50/40 dark:hover:bg-gray-800/40">
+              <tr key={r.id} onClick={() => onEditarReserva(r, ev)} className="cursor-pointer hover:bg-indigo-50/40 dark:hover:bg-gray-800/40">
                 <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100">{r.clienteNomeSnapshot || "—"}{r.status === "cancelada" && <span className="text-[11px] text-rose-500 ml-1">(cancelada)</span>}</td>
                 <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{fmtBR(r.data)} · {r.horario}</td>
                 <td className="px-4 py-2.5 text-center">{r.pessoas}</td>
                 <td className="px-4 py-2.5">{r.pagamento?.pago ? <span className="text-emerald-600 font-semibold">Pago</span> : <span className="text-amber-600">Pendente</span>}{r.pagamento?.forma ? <span className="text-gray-400 text-[12px]"> · {r.pagamento.forma}</span> : null}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{r.pagamento?.valor ? fmtR(r.pagamento.valor) : "—"}</td>
-                <td className="px-4 py-2.5 text-center">{r.pagamento?.comprovanteUrl ? <a href={r.pagamento.comprovanteUrl} target="_blank" rel="noreferrer" className="text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 text-[12px]"><FileText size={13} /> ver</a> : <span className="text-gray-300">—</span>}</td>
-                <td className="px-2 py-2.5 text-right"><button onClick={() => onEditarReserva(r, ev)} className="text-[12px] text-indigo-600 dark:text-indigo-400 hover:underline">editar</button></td>
+                <td className="px-4 py-2.5 text-center">{r.pagamento?.comprovanteUrl ? <a href={r.pagamento.comprovanteUrl} target="_blank" rel="noreferrer" onClick={(e) => e.stopPropagation()} className="text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 text-[12px]"><FileText size={13} /> ver</a> : <span className="text-gray-300">—</span>}</td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+
+      {/* Vincular reservas normais que caem na data do evento */}
+      {candOrd.length > 0 && (
+        <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/10 p-3">
+          <div className="text-[12px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 mb-2 inline-flex items-center gap-1.5"><Link2 size={13} /> Reservas do dia pra vincular ({candOrd.length})</div>
+          <div className="space-y-1.5">
+            {candOrd.map((r) => (
+              <div key={r.id} className="flex items-center gap-2 text-[13px] bg-white dark:bg-gray-900 rounded-lg px-3 py-2 border border-gray-100 dark:border-gray-800">
+                <div className="min-w-0 flex-1">
+                  <span className="font-medium text-gray-900 dark:text-gray-100 truncate">{r.clienteNomeSnapshot || "—"}</span>
+                  <span className="text-gray-400 text-[12px]"> · {fmtBR(r.data)} · {r.horario} · {r.pessoas} pessoa(s)</span>
+                </div>
+                <button onClick={() => onVincular(r, ev)} className="shrink-0 text-[12px] font-semibold px-2.5 py-1 rounded-lg bg-indigo-600 text-white inline-flex items-center gap-1"><Link2 size={12} /> Vincular</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -163,7 +190,7 @@ function EventoModal({ rid, ev, central, cfg, onClose, onSaved }: {
   const [dataInicio, setDataInicio] = useState(ev?.dataInicio || new Date().toISOString().slice(0, 10));
   const [dataFim, setDataFim] = useState(ev?.dataFim || "");
   const [horario, setHorario] = useState(ev?.horarioPadrao || "20:00");
-  const [valorPP, setValorPP] = useState(ev?.valorPorPessoa != null ? String(ev.valorPorPessoa).replace(".", ",") : "");
+  const [valorPP, setValorPP] = useState(ev?.valorPorPessoa != null ? fmtCents(Math.round(ev.valorPorPessoa * 100)) : "");
   const [rootInput, setRootInput] = useState("");
   const [editRoot, setEditRoot] = useState(false);
   const [erro, setErro] = useState("");
@@ -213,7 +240,12 @@ function EventoModal({ rid, ev, central, cfg, onClose, onSaved }: {
           <div><label className={lbl}>Data início</label><input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} className={inp + " mt-1"} /></div>
           <div><label className={lbl}>Data fim <span className="text-gray-400 normal-case">(opcional)</span></label><input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} className={inp + " mt-1"} /></div>
           <div><label className={lbl}>Horário padrão</label><input type="time" value={horario} onChange={(e) => setHorario(e.target.value)} className={inp + " mt-1"} /></div>
-          <div><label className={lbl}>Valor por pessoa</label><input value={valorPP} onChange={(e) => setValorPP(e.target.value)} placeholder="0,00" className={inp + " mt-1"} /></div>
+          <div><label className={lbl}>Valor por pessoa</label>
+            <div className="relative mt-1">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">R$</span>
+              <input value={valorPP} onChange={(e) => { const d = e.target.value.replace(/\D/g, ""); setValorPP(d ? fmtCents(parseInt(d, 10)) : ""); }} inputMode="numeric" placeholder="0,00" className={inp + " pl-8 text-right"} />
+            </div>
+          </div>
         </div>
 
         {central === true ? (

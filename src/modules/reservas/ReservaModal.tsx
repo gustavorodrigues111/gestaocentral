@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Phone, Search, Tag, Users, TriangleAlert, FileText, CalendarHeart } from "lucide-react";
+import { Phone, Search, Tag, Users, TriangleAlert, FileText, CalendarHeart, Pencil } from "lucide-react";
 import { addDoc, collection, doc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -15,6 +15,7 @@ import { centralUpload } from "../../core/google/driveCentral";
 import { ClienteModal } from "./ClienteModal";
 
 const parseR = (s: string) => { const n = parseFloat((s || "").replace(/[R$\s.]/g, "").replace(",", ".")); return isNaN(n) ? 0 : n; };
+const fmtCents = (cents: number) => (cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const FORMAS_PG = ["pix", "dinheiro", "debito", "credito", "transferencia", "outro"];
 const FORMA_PG_LABEL: Record<string, string> = { pix: "Pix", dinheiro: "Dinheiro", debito: "Cartão débito", credito: "Cartão crédito", transferencia: "Transferência", outro: "Outro" };
 
@@ -26,15 +27,17 @@ type Props = {
   reservasMesmoDia: Reserva[];   // pra detectar conflito de mesa/horário
   restaurantId: string;
   evento?: ReservaEvento | null; // se setado, é reserva de evento (com pagamento)
+  startReadOnly?: boolean;       // abre só visualizando (lápis pra editar)
   onClose: () => void;
 };
 
 const STATUSES: ReservaStatus[] = ["pendente", "confirmada", "chegou", "no_show", "cancelada"];
 
-export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMesmoDia, restaurantId, evento, onClose }: Props) {
+export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMesmoDia, restaurantId, evento, startReadOnly, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !reserva;
   const evId = evento?.id ?? reserva?.eventoId ?? null;
+  const [editing, setEditing] = useState(isNew ? true : !startReadOnly);
 
   const [data, setData] = useState(reserva?.data || defaultData || evento?.dataInicio || todayYmd());
   const [horario, setHorario] = useState(reserva?.horario || evento?.horarioPadrao || "20:00");
@@ -43,7 +46,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
   const pagIni = reserva?.pagamento;
   const [pago, setPago] = useState(!!pagIni?.pago);
   const [formaPg, setFormaPg] = useState(pagIni?.forma || "pix");
-  const [valorPg, setValorPg] = useState(pagIni?.valor != null ? String(pagIni.valor).replace(".", ",") : "");
+  const [valorPg, setValorPg] = useState(pagIni?.valor != null ? fmtCents(Math.round(pagIni.valor * 100)) : "");
   const [compFile, setCompFile] = useState<File | null>(null);
   const valorTocado = useRef(pagIni?.valor != null);
   // Cliente
@@ -57,7 +60,8 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
   const [mesaIds, setMesaIds] = useState<string[]>(() => reservaMesaIds(reserva));
   // Outros
   const [observacoes, setObservacoes] = useState(reserva?.observacoes || "");
-  const [ocasiao, setOcasiao] = useState(reserva?.ocasiao || "");
+  // Evento: a "ocasião" é o próprio nome do evento (campo fica oculto).
+  const [ocasiao, setOcasiao] = useState(reserva?.ocasiao || (evId ? (evento?.nome || "") : ""));
   const [status, setStatus] = useState<ReservaStatus>(reserva?.status || "pendente");
   const [motivoCancel, setMotivoCancel] = useState(reserva?.motivoCancelamento || "");
   const [saving, setSaving] = useState(false);
@@ -116,7 +120,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
   useEffect(() => {
     if (!evId || valorTocado.current) return;
     const vpp = evento?.valorPorPessoa;
-    if (vpp && pessoasNum > 0) setValorPg(String(pessoasNum * vpp).replace(".", ","));
+    if (vpp && pessoasNum > 0) setValorPg(fmtCents(Math.round(pessoasNum * vpp * 100)));
   }, [evId, evento, pessoasNum]);
   // Mesas selecionadas, na ordem de seleção; capacidade é a SOMA delas.
   const mesasSel = useMemo(
@@ -246,8 +250,18 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
 
   return (
     <>
-      <Modal title={isNew ? "+ Nova reserva" : `Editar reserva — ${reserva?.clienteNomeSnapshot}`} onClose={onClose} maxWidth="max-w-2xl">
+      <Modal
+        title={
+          <span className="inline-flex items-center gap-2">
+            {isNew ? "+ Nova reserva" : `${editing ? "Editar reserva" : "Reserva"} — ${reserva?.clienteNomeSnapshot}`}
+            {!isNew && !editing && <button type="button" onClick={() => setEditing(true)} className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400" title="Editar"><Pencil size={15} /></button>}
+          </span>
+        }
+        onClose={onClose}
+        maxWidth="max-w-2xl"
+      >
         <div className="space-y-3">
+          <fieldset disabled={!editing} className="space-y-3 border-0 p-0 m-0 min-w-0">
           {/* Cliente */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 block mb-1">
@@ -368,13 +382,15 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
             )}
           </div>
 
-          {/* Ocasião + observações */}
-          <Input
-            label="Ocasião"
-            value={ocasiao}
-            onChange={(e) => setOcasiao(e.target.value)}
-            placeholder="ex: Aniversário, Almoço de negócios"
-          />
+          {/* Ocasião + observações — ocasião some em reserva de evento (usa o nome do evento) */}
+          {!evId && (
+            <Input
+              label="Ocasião"
+              value={ocasiao}
+              onChange={(e) => setOcasiao(e.target.value)}
+              placeholder="ex: Aniversário, Almoço de negócios"
+            />
+          )}
           <div>
             <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Observações</label>
             <textarea
@@ -401,7 +417,13 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
                     {FORMAS_PG.map((f) => <option key={f} value={f}>{FORMA_PG_LABEL[f]}</option>)}
                   </select>
                 </div>
-                <Input label={`Valor${evento?.valorPorPessoa ? ` (sugerido: ${pessoasNum}× R$ ${evento.valorPorPessoa})` : ""}`} value={valorPg} onChange={(e) => { valorTocado.current = true; setValorPg(e.target.value); }} placeholder="0,00" />
+                <div>
+                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Valor{evento?.valorPorPessoa ? ` (sugerido: ${pessoasNum}× R$ ${fmtCents(Math.round(evento.valorPorPessoa * 100))})` : ""}</label>
+                  <div className="relative mt-1">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">R$</span>
+                    <input value={valorPg} onChange={(e) => { valorTocado.current = true; const d = e.target.value.replace(/\D/g, ""); setValorPg(d ? fmtCents(parseInt(d, 10)) : ""); }} inputMode="numeric" placeholder="0,00" className="w-full h-10 pl-8 pr-2 text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+                  </div>
+                </div>
               </div>
               <div className="mt-2">
                 <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Comprovante</label>
@@ -444,12 +466,22 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
           </div>
 
           {err && <div className="text-sm text-rose-600">{err}</div>}
+          </fieldset>
 
           <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
-            <Button variant="secondary" onClick={onClose}>Cancelar</Button>
-            <Button onClick={salvar} disabled={saving}>
-              {saving ? "Salvando..." : isNew ? "Criar reserva" : "Salvar"}
-            </Button>
+            {editing ? (
+              <>
+                <Button variant="secondary" onClick={onClose}>Cancelar</Button>
+                <Button onClick={salvar} disabled={saving}>
+                  {saving ? "Salvando..." : isNew ? "Criar reserva" : "Salvar"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="secondary" onClick={onClose}>Fechar</Button>
+                <Button onClick={() => setEditing(true)}><span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editar</span></Button>
+              </>
+            )}
           </div>
         </div>
       </Modal>

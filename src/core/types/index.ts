@@ -2833,6 +2833,7 @@ export type ReservaPII = {
   clienteEmailSnapshot?: string;
   observacoes?: string;
   ocasiao?: string;                   // ex: "Aniversário"
+  pagamento?: ReservaPagamento;       // reserva de evento (valor/comprovante sensíveis)
   // Mantém timestamp pra auditoria
   registradoEm: string;
 };

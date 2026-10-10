@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { CalendarDays, CalendarRange, Users, Settings, Lock, Link as LinkIcon, TriangleAlert, AlarmClock, Ban, CircleHelp, MessageSquare, Armchair, Frown, Tag, PartyPopper, Landmark, Phone, FileText, BarChart3, Smartphone, Plus, Pencil } from "lucide-react";
+import { CalendarDays, CalendarRange, Users, Settings, Lock, Link as LinkIcon, TriangleAlert, AlarmClock, Ban, CircleHelp, MessageSquare, Armchair, Frown, Tag, PartyPopper, CalendarHeart, Landmark, Phone, FileText, BarChart3, Smartphone, Plus, Pencil } from "lucide-react";
 import { useParams } from "react-router-dom";
 import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -102,6 +102,7 @@ export function ReservasPage() {
   const [reservas, setReservas] = useState<Reserva[]>([]);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState<Reserva | "new" | null>(null);
+  const [viewMode, setViewMode] = useState(false);   // abre o modal em visualização (lápis pra editar)
   const [eventoAtivo, setEventoAtivo] = useState<ReservaEvento | null>(null);   // evento da reserva sendo criada/editada
   // Modal "Cliente chegou" — escolhe mesa + nota
   const [chegouReserva, setChegouReserva] = useState<Reserva | null>(null);
@@ -228,6 +229,7 @@ export function ReservasPage() {
         clienteEmailSnapshot: pii.clienteEmailSnapshot || r.clienteEmailSnapshot,
         observacoes: pii.observacoes || r.observacoes,
         ocasiao: pii.ocasiao || r.ocasiao,
+        pagamento: pii.pagamento || r.pagamento,
       };
     });
     merged.sort((a, b) => {
@@ -414,7 +416,7 @@ export function ReservasPage() {
           </div>
         ) : <div />}
         {podeCriar && tab === "reservas" && (
-          <Button onClick={() => setEditing("new")}>+ Nova reserva</Button>
+          <Button onClick={() => { setViewMode(false); setEditing("new"); }}>+ Nova reserva</Button>
         )}
       </div>
 
@@ -424,7 +426,7 @@ export function ReservasPage() {
         {([
           ["reservas", "Reservas",     pendentesHoje, CalendarDays] as const,
           ...(podeCriar
-            ? [["eventos",  "Eventos",      0, PartyPopper] as const]
+            ? [["eventos",  "Eventos próprios", 0, CalendarHeart] as const]
             : []),
           ...(podeConfig
             ? [["agenda",   "Agenda",       0, CalendarRange] as const]
@@ -657,7 +659,7 @@ export function ReservasPage() {
                         reserva={r}
                         clientes={clientes}
                         acoes={{ podeEditar, podeCancelar, podeChegou, podeWhatsapp, podeVerCRM, podeNota }}
-                        onEditar={() => setEditing(r)}
+                        onEditar={() => { setViewMode(false); setEditing(r); }}
                         onStatus={(s) => setStatus(r, s)}
                         onCancelar={() => setCancelando(r)}
                         onWhatsapp={() => abrirWhatsappConfirmacao(r)}
@@ -684,7 +686,7 @@ export function ReservasPage() {
                     reserva={r}
                     clientes={clientes}
                     acoes={{ podeEditar, podeCancelar, podeChegou, podeWhatsapp, podeVerCRM, podeNota }}
-                    onEditar={() => setEditing(r)}
+                    onEditar={() => { setViewMode(false); setEditing(r); }}
                     onStatus={(s) => setStatus(r, s)}
                     onCancelar={() => setCancelando(r)}
                     onWhatsapp={() => abrirWhatsappConfirmacao(r)}
@@ -728,8 +730,9 @@ export function ReservasPage() {
           rid={rid}
           reservas={reservas}
           podeEditar={podeConfig}
-          onNovaReserva={(ev) => { setEventoAtivo(ev); setEditing("new"); }}
-          onEditarReserva={(r, ev) => { setEventoAtivo(ev); setEditing(r); }}
+          onNovaReserva={(ev) => { setViewMode(false); setEventoAtivo(ev); setEditing("new"); }}
+          onEditarReserva={(r, ev) => { setViewMode(true); setEventoAtivo(ev); setEditing(r); }}
+          onVincular={(r, ev) => { setViewMode(false); setEventoAtivo(ev); setEditing(r); }}
         />
       )}
 
@@ -742,7 +745,8 @@ export function ReservasPage() {
           reservasMesmoDia={reservas.filter(r => r.data === (editing === "new" ? dataAtual : (editing as Reserva).data))}
           restaurantId={rid}
           evento={eventoAtivo}
-          onClose={() => { setEditing(null); setEventoAtivo(null); }}
+          startReadOnly={viewMode}
+          onClose={() => { setEditing(null); setEventoAtivo(null); setViewMode(false); }}
         />
       )}
 
