@@ -670,6 +670,7 @@ export function ReservasPage() {
                         reserva={r}
                         clientes={clientes}
                         acoes={{ podeEditar, podeCancelar, podeChegou, podeWhatsapp, podeVerCRM, podeNota }}
+                        onAbrir={() => { setViewMode(true); setEditing(r); }}
                         onEditar={() => { setViewMode(false); setEditing(r); }}
                         onStatus={(s) => setStatus(r, s)}
                         onCancelar={() => setCancelando(r)}
@@ -697,7 +698,8 @@ export function ReservasPage() {
                     reserva={r}
                     clientes={clientes}
                     acoes={{ podeEditar, podeCancelar, podeChegou, podeWhatsapp, podeVerCRM, podeNota }}
-                    onEditar={() => { setViewMode(false); setEditing(r); }}
+                    onAbrir={() => { setViewMode(true); setEditing(r); }}
+                        onEditar={() => { setViewMode(false); setEditing(r); }}
                     onStatus={(s) => setStatus(r, s)}
                     onCancelar={() => setCancelando(r)}
                     onWhatsapp={() => abrirWhatsappConfirmacao(r)}
@@ -805,7 +807,7 @@ export function ReservasPage() {
   // acesso ao CRM completo (verCRM). Mantém nome+telefone+horário/pessoas/
   // salão/mesa — info operacional mínima.
   function ReservaCard({
-    reserva, clientes, acoes, onEditar, onStatus, onWhatsapp, onCancelar,
+    reserva, clientes, acoes, onAbrir, onEditar, onStatus, onWhatsapp, onCancelar,
   }: {
     reserva: Reserva;
     clientes: Cliente[];
@@ -817,6 +819,7 @@ export function ReservasPage() {
       podeVerCRM: boolean;
       podeNota: boolean;
     };
+    onAbrir: () => void;
     onEditar: () => void;
     onStatus: (s: ReservaStatus) => void;
     onWhatsapp: () => void;
@@ -863,7 +866,7 @@ export function ReservasPage() {
     return (
       <div className={`rounded-xl border p-3 ${STATUS_CLS[reserva.status]}`}>
         <div className="flex items-start gap-2">
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 cursor-pointer" onClick={onAbrir} title="Ver reserva">
             {/* Nome destacado + badge de status ao lado */}
             <div className="flex items-center gap-2 flex-wrap">
               <span className="text-base font-bold text-gray-900 dark:text-gray-100">{reserva.clienteNomeSnapshot}</span>
