@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Phone, Search, Tag, Users, TriangleAlert, FileText, CalendarHeart, Pencil } from "lucide-react";
-import { addDoc, collection, doc, setDoc, updateDoc } from "firebase/firestore";
+import { Phone, Search, Tag, Users, TriangleAlert, FileText, CalendarHeart, Pencil, GitMerge, X } from "lucide-react";
+import { addDoc, collection, doc, deleteDoc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { Modal } from "../../core/ui/Modal";
@@ -112,6 +112,11 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
   const [motivoCancel, setMotivoCancel] = useState(reserva?.motivoCancelamento || "");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  // Mesclar com outra reserva do mesmo dia (duplicata)
+  const [mesclarOpen, setMesclarOpen] = useState(false);
+  const [mesclarAlvo, setMesclarAlvo] = useState<Reserva | null>(null);
+  const [mesclarPax, setMesclarPax] = useState("");
+  const candidatosMesclar = useMemo(() => reservasMesmoDia.filter((r) => r.id !== reserva?.id && r.status !== "cancelada"), [reservasMesmoDia, reserva]);
 
   // Sincroniza nome quando seleciona cliente da lista
   function selecionarCliente(c: Cliente) {
@@ -290,6 +295,42 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
       console.error(e);
       setErr(e instanceof Error ? e.message : "Erro");
     } finally {
+      setSaving(false);
+    }
+  }
+
+  // Mescla a reserva ATUAL com `mesclarAlvo` (duplicata do dia): une mesas,
+  // mantém o pagamento pago/preenchido, soma observações, Pax escolhido na
+  // hora; apaga a outra reserva (+ PII).
+  async function mesclar() {
+    if (!reserva || !mesclarAlvo) return;
+    setSaving(true); setErr("");
+    try {
+      const now = new Date().toISOString();
+      const outra = mesclarAlvo;
+      const mesasUniao = Array.from(new Set([...reservaMesaIds(reserva), ...reservaMesaIds(outra)]));
+      const mesasNomes = mesasUniao.map((id) => mesas.find((m) => m.id === id)?.nome).filter(Boolean) as string[];
+      const pagA = reserva.pagamento, pagB = outra.pagamento;
+      const pagamento = pagA?.pago ? pagA : pagB?.pago ? pagB : (pagA?.valor != null ? pagA : pagB?.valor != null ? pagB : (pagA || pagB));
+      const obs = [reserva.observacoes, outra.observacoes].filter(Boolean).join(" · ") || undefined;
+      const eventoIdFinal = reserva.eventoId || outra.eventoId || null;
+      const paxFinal = parseInt(mesclarPax, 10) || reserva.pessoas || 0;
+      await updateDoc(doc(db, "reservas", reserva.id), sanitizeForFirestore({
+        pessoas: paxFinal,
+        mesaId: mesasUniao[0] ?? null, mesaNomeSnapshot: mesasNomes[0],
+        mesaIds: mesasUniao.length ? mesasUniao : null,
+        mesasNomesSnapshot: mesasNomes.length ? mesasNomes : undefined,
+        eventoId: eventoIdFinal, atualizadoEm: now,
+      }));
+      await setDoc(doc(db, "reservasPII", reserva.id), sanitizeForFirestore({
+        restaurantId, observacoes: obs, ...(pagamento ? { pagamento } : {}),
+      }), { merge: true });
+      await deleteDoc(doc(db, "reservas", outra.id));
+      try { await deleteDoc(doc(db, "reservasPII", outra.id)); } catch { /* best-effort */ }
+      onClose();
+    } catch (e) {
+      console.error(e);
+      setErr("Falha ao mesclar: " + (e instanceof Error ? e.message : "erro"));
       setSaving(false);
     }
   }
@@ -518,6 +559,44 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
               />
             )}
           </div>
+
+          {!isNew && candidatosMesclar.length > 0 && (
+            <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
+              {!mesclarOpen ? (
+                <button type="button" onClick={() => setMesclarOpen(true)} className="text-[12px] font-semibold text-gray-500 hover:text-indigo-600 dark:hover:text-indigo-400 inline-flex items-center gap-1.5"><GitMerge size={13} /> Mesclar com outra reserva do dia</button>
+              ) : (
+                <div className="rounded-xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/10 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="text-[12px] font-bold uppercase tracking-wider text-indigo-700 dark:text-indigo-300 inline-flex items-center gap-1.5"><GitMerge size={13} /> Mesclar reservas</div>
+                    <button type="button" onClick={() => { setMesclarOpen(false); setMesclarAlvo(null); }} className="text-gray-400 hover:text-gray-600"><X size={14} /></button>
+                  </div>
+                  {!mesclarAlvo ? (
+                    <>
+                      <div className="text-[12px] text-gray-500">Escolha a reserva do dia pra juntar nesta (a outra será apagada):</div>
+                      <div className="space-y-1">
+                        {candidatosMesclar.map((r) => (
+                          <button key={r.id} type="button" onClick={() => { setMesclarAlvo(r); setMesclarPax(String(Math.max(pessoasNum, r.pessoas || 0))); }} className="w-full text-left text-[13px] bg-white dark:bg-gray-900 rounded-lg px-2.5 py-1.5 border border-gray-100 dark:border-gray-800 hover:border-indigo-300 dark:hover:border-indigo-700">
+                            <span className="font-medium text-gray-900 dark:text-gray-100">{r.clienteNomeSnapshot || "—"}</span>
+                            <span className="text-gray-400 text-[12px]"> · {r.horario} · {r.pessoas} pax{r.mesasNomesSnapshot?.length ? ` · ${r.mesasNomesSnapshot.join(", ")}` : ""}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-[13px] text-gray-700 dark:text-gray-200">Juntar <b>{mesclarAlvo.clienteNomeSnapshot || "—"}</b> ({mesclarAlvo.pessoas} pax) nesta reserva (<b>{clienteNome || "—"}</b>, {pessoasNum} pax). Mesas são unidas e a outra é apagada.</div>
+                      <div className="flex items-end gap-2">
+                        <div><label className="text-[11px] font-semibold text-gray-600 dark:text-gray-400">Pax final</label><input value={mesclarPax} onChange={(e) => setMesclarPax(e.target.value.replace(/\D/g, ""))} inputMode="numeric" className="w-24 mt-1 h-9 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm text-center tabular-nums" /></div>
+                        <div className="flex-1" />
+                        <Button variant="secondary" size="sm" onClick={() => setMesclarAlvo(null)}>Voltar</Button>
+                        <Button size="sm" onClick={() => void mesclar()} disabled={saving}>{saving ? "..." : "Mesclar"}</Button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
 
           {err && <div className="text-sm text-rose-600">{err}</div>}
           </div>
