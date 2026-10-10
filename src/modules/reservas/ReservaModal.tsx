@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Phone, Search, Tag, Users, TriangleAlert, FileText, CalendarHeart, Pencil } from "lucide-react";
 import { addDoc, collection, doc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
@@ -7,7 +7,7 @@ import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
 import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import { todayYmd } from "../../core/utils/date";
+import { todayYmd, fmtBR } from "../../core/utils/date";
 import { RESERVA_STATUS_LUCIDE, RESERVA_STATUS_LABEL } from "../../core/types";
 import type { Cliente, Mesa, Reserva, ReservaStatus, ReservaEvento, ReservaPagamento } from "../../core/types";
 import { reservaMesaIds } from "../../core/reservas/mesas";
@@ -32,6 +32,52 @@ type Props = {
 };
 
 const STATUSES: ReservaStatus[] = ["pendente", "confirmada", "chegou", "no_show", "cancelada"];
+
+// Tela de VISUALIZAÇÃO da reserva (read-only, sem caixas de formulário).
+function ResumoReserva({ clienteNome, clienteTelefone, data, horario, pessoas, mesas, status, eventoNome, ocasiao, observacoes, pagamento }: {
+  clienteNome: string; clienteTelefone?: string; data: string; horario: string; pessoas: number; mesas: string[]; status: ReservaStatus;
+  eventoNome?: string; ocasiao?: string; observacoes?: string;
+  pagamento?: { pago: boolean; forma?: string; valor?: number; comprovanteUrl?: string };
+}) {
+  const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  const Campo = ({ label, children }: { label: string; children: ReactNode }) => (
+    <div><div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{label}</div><div className="text-sm text-gray-800 dark:text-gray-100">{children}</div></div>
+  );
+  const Ic = RESERVA_STATUS_LUCIDE[status];
+  return (
+    <div className="space-y-3">
+      <div className="flex items-start justify-between gap-2">
+        <div className="min-w-0">
+          <div className="font-bold text-[16px] text-gray-900 dark:text-gray-100 truncate">{clienteNome || "—"}</div>
+          {clienteTelefone && <div className="text-xs text-gray-500 inline-flex items-center gap-1 mt-0.5"><Phone size={11} /> {clienteTelefone}</div>}
+        </div>
+        <span className="shrink-0 text-xs font-semibold px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200 inline-flex items-center gap-1"><Ic size={12} /> {RESERVA_STATUS_LABEL[status]}</span>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 rounded-xl bg-gray-50 dark:bg-gray-800/40 p-3">
+        <Campo label="Data"><span className="tabular-nums">{fmtBR(data)}</span></Campo>
+        <Campo label="Horário"><span className="tabular-nums">{horario}</span></Campo>
+        <Campo label="Pessoas">{pessoas}</Campo>
+        {mesas.length > 0 && <Campo label={mesas.length > 1 ? "Mesas" : "Mesa"}>{mesas.join(", ")}</Campo>}
+        {eventoNome && <Campo label="Evento">{eventoNome}</Campo>}
+        {ocasiao && <Campo label="Ocasião">{ocasiao}</Campo>}
+      </div>
+      {observacoes && <Campo label="Observações">{observacoes}</Campo>}
+      {pagamento && (
+        <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Pagamento</div>
+          <div className="flex items-center gap-2 flex-wrap text-sm">
+            {pagamento.pago
+              ? <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">Pago</span>
+              : <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">Pendente</span>}
+            {pagamento.valor != null && <span className="font-semibold tabular-nums">{fmtR(pagamento.valor)}</span>}
+            {pagamento.forma && <span className="text-gray-400">· {pagamento.forma}</span>}
+          </div>
+          {pagamento.comprovanteUrl && <a href={pagamento.comprovanteUrl} target="_blank" rel="noreferrer" className="text-[12px] text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 mt-1.5"><FileText size={12} /> ver comprovante</a>}
+        </div>
+      )}
+    </div>
+  );
+}
 
 export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMesmoDia, restaurantId, evento, startReadOnly, onClose }: Props) {
   const { pessoa: me } = useAuth();
@@ -251,17 +297,25 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
   return (
     <>
       <Modal
-        title={
-          <span className="inline-flex items-center gap-2">
-            {isNew ? "+ Nova reserva" : `${editing ? "Editar reserva" : "Reserva"} — ${reserva?.clienteNomeSnapshot}`}
-            {!isNew && !editing && <button type="button" onClick={() => setEditing(true)} className="text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400" title="Editar"><Pencil size={15} /></button>}
-          </span>
-        }
+        title={isNew ? "+ Nova reserva" : `${editing ? "Editar reserva" : "Reserva"} — ${reserva?.clienteNomeSnapshot}`}
         onClose={onClose}
         maxWidth="max-w-2xl"
       >
         <div className="space-y-3">
-          <fieldset disabled={!editing} className="space-y-3 border-0 p-0 m-0 min-w-0">
+          {!editing && (
+            <div className="flex justify-end -mt-1">
+              <button type="button" onClick={() => setEditing(true)} className="text-[12px] font-semibold px-2.5 py-1 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:text-indigo-600 hover:border-indigo-300 dark:hover:border-indigo-700 inline-flex items-center gap-1.5 transition-colors"><Pencil size={13} /> Editar</button>
+            </div>
+          )}
+          {!editing && <ResumoReserva
+            clienteNome={clienteNome} clienteTelefone={clienteTelefone} data={data} horario={horario}
+            pessoas={pessoasNum} mesas={mesasSel.map((m) => m.nome)} status={status}
+            eventoNome={evId ? (evento?.nome || reserva?.ocasiao) : undefined} ocasiao={evId ? undefined : ocasiao}
+            observacoes={observacoes}
+            pagamento={evId ? { pago, forma: formaPg, valor: parseR(valorPg) || undefined, comprovanteUrl: pagIni?.comprovanteUrl } : undefined}
+          />}
+          {editing && (
+          <div className="space-y-3">
           {/* Cliente */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 block mb-1">
@@ -466,7 +520,8 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
           </div>
 
           {err && <div className="text-sm text-rose-600">{err}</div>}
-          </fieldset>
+          </div>
+          )}
 
           <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
             {editing ? (
@@ -477,10 +532,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
                 </Button>
               </>
             ) : (
-              <>
-                <Button variant="secondary" onClick={onClose}>Fechar</Button>
-                <Button onClick={() => setEditing(true)}><span className="inline-flex items-center gap-1.5"><Pencil size={14} /> Editar</span></Button>
-              </>
+              <Button variant="secondary" onClick={onClose}>Fechar</Button>
             )}
           </div>
         </div>
