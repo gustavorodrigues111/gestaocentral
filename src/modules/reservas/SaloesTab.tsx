@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Landmark, Ruler, Ban, Check, Users, UtensilsCrossed } from "lucide-react";
 import {
-  addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where,
+  addDoc, collection, deleteDoc, doc, getDocs, onSnapshot, query, updateDoc, where,
 } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
@@ -42,7 +42,19 @@ export function SaloesTab({ restaurantId, podeConfig, pessoaId }: Props) {
   }, [restaurantId]);
 
   async function excluir(s: Salao) {
-    if (!confirm(`Excluir salão "${s.nome}"? Reservas antigas preservam o nome em snapshot.`)) return;
+    // Busca as mesas vinculadas pra avisar e apagar JUNTO (senão viram órfãs).
+    let mesasDoSalao: { id: string }[] = [];
+    try {
+      const snap = await getDocs(query(collection(db, "mesas"), where("restaurantId", "==", restaurantId), where("salaoId", "==", s.id)));
+      mesasDoSalao = snap.docs.map((d) => ({ id: d.id }));
+    } catch { /* se falhar a contagem, segue só com o salão */ }
+    const n = mesasDoSalao.length;
+    const msg = n > 0
+      ? `Excluir o salão "${s.nome}"?\n\nIsto também vai APAGAR as ${n} mesa(s) deste salão. Reservas já feitas preservam o número da mesa (snapshot), mas o salão e as mesas somem do cadastro.\n\nEssa ação NÃO dá pra desfazer.`
+      : `Excluir o salão "${s.nome}"? Essa ação NÃO dá pra desfazer.`;
+    if (!confirm(msg)) return;
+    // Apaga as mesas do salão primeiro (cascata), depois o salão.
+    for (const m of mesasDoSalao) { try { await deleteDoc(doc(db, "mesas", m.id)); } catch { /* best-effort */ } }
     await deleteDoc(doc(db, "saloes", s.id));
   }
 
