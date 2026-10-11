@@ -742,6 +742,8 @@ export function ReservasPage() {
         <EventosTab
           rid={rid}
           reservas={reservas}
+          mesas={mesas}
+          carregando={loading}
           podeEditar={podeConfig}
           onNovaReserva={(ev) => { setViewMode(false); setEventoAtivo(ev); setEditing("new"); }}
           onEditarReserva={(r, ev) => { setViewMode(true); setEventoAtivo(ev); setEditing(r); }}

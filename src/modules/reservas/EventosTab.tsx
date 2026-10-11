@@ -3,11 +3,12 @@
 // pagamento + comprovante). Pasta do Drive por evento (conta central, subpasta
 // de uma pasta-raiz indicada pelo usuário).
 import { useEffect, useMemo, useState } from "react";
-import { CalendarHeart, Plus, Settings, Trash2, X, Check, ChevronLeft, FolderOpen, CalendarDays, Link2 } from "lucide-react";
+import { CalendarHeart, Plus, Settings, Trash2, X, Check, ChevronLeft, FolderOpen, CalendarDays, Link2, Armchair, Wine, RefreshCw } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { fmtBR } from "../../core/utils/date";
+import { reservaMesaIds } from "../../core/reservas/mesas";
 import { centralConfigured, centralEnsureFolder, parseDriveFolderId } from "../../core/google/driveCentral";
-import type { Reserva, ReservaEvento, ReservaEventoConfig } from "../../core/types";
+import type { Mesa, Reserva, ReservaEvento, ReservaEventoConfig } from "../../core/types";
 import { ouvirEventos, salvarEvento, excluirEvento, ouvirEventoConfig, salvarEventoConfig } from "./eventosRepo";
 
 const uid = () => { try { return crypto.randomUUID(); } catch { return "ev" + Date.now() + Math.random().toString(36).slice(2); } };
@@ -15,6 +16,36 @@ const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency"
 const parseR = (s: string) => { const n = parseFloat((s || "").replace(/[R$\s.]/g, "").replace(",", ".")); return isNaN(n) ? 0 : n; };
 const fmtCents = (cents: number) => (cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const periodoTxt = (e: ReservaEvento) => e.dataFim && e.dataFim !== e.dataInicio ? `${fmtBR(e.dataInicio)} – ${fmtBR(e.dataFim)}` : fmtBR(e.dataInicio);
+// "há 3 min" / "há 2 h" / "agora" — freshness do painel do evento.
+const tempoRel = (ts: number) => {
+  const s = Math.max(0, Math.round((Date.now() - ts) / 1000));
+  if (s < 45) return "agora";
+  const min = Math.round(s / 60);
+  if (min < 60) return `há ${min} min`;
+  const h = Math.round(min / 60);
+  if (h < 24) return `há ${h} h`;
+  return `há ${Math.round(h / 24)} d`;
+};
+
+// Card de estatística do dashboard do evento.
+function Stat({ label, value, hint, tone = "default" }: { label: string; value: string; hint?: string; tone?: "default" | "muted" | "emerald" | "amber" | "indigo" | "rose" | "violet" }) {
+  const toneCls: Record<string, string> = {
+    default: "text-gray-900 dark:text-gray-100",
+    muted: "text-gray-400 dark:text-gray-500",
+    emerald: "text-emerald-600 dark:text-emerald-300",
+    amber: "text-amber-600 dark:text-amber-300",
+    indigo: "text-indigo-600 dark:text-indigo-300",
+    rose: "text-rose-600 dark:text-rose-300",
+    violet: "text-violet-600 dark:text-violet-300",
+  };
+  return (
+    <div className="rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 px-3 py-2">
+      <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 truncate">{label}</div>
+      <div className={`text-base font-bold tabular-nums leading-tight ${toneCls[tone]}`}>{value}</div>
+      {hint && <div className="text-[10px] text-gray-400 truncate">{hint}</div>}
+    </div>
+  );
+}
 // Nº da(s) mesa(s) da reserva — tira o prefixo "Mesa " e mostra "Nº 4".
 const mesaTxt = (r: Reserva) => {
   const nomes = r.mesasNomesSnapshot?.length ? r.mesasNomesSnapshot : (r.mesaNomeSnapshot ? [r.mesaNomeSnapshot] : []);
@@ -22,8 +53,8 @@ const mesaTxt = (r: Reserva) => {
   return nomes.map((n) => n.replace(/^mesa\s+/i, "Nº ")).join(", ");
 };
 
-export function EventosTab({ rid, reservas, podeEditar, onNovaReserva, onEditarReserva, onVincular }: {
-  rid: string; reservas: Reserva[]; podeEditar: boolean;
+export function EventosTab({ rid, reservas, mesas, carregando, podeEditar, onNovaReserva, onEditarReserva, onVincular }: {
+  rid: string; reservas: Reserva[]; mesas: Mesa[]; carregando?: boolean; podeEditar: boolean;
   onNovaReserva: (ev: ReservaEvento) => void;
   onEditarReserva: (r: Reserva, ev: ReservaEvento) => void;
   onVincular: (r: Reserva, ev: ReservaEvento) => void;
@@ -54,7 +85,7 @@ export function EventosTab({ rid, reservas, podeEditar, onNovaReserva, onEditarR
   return (
     <>
       {sel ? (
-        <PainelEvento ev={sel} reservas={reservasDoEvento(sel.id)} candidatas={candidatasDoEvento(sel)} podeEditar={podeEditar} onVoltar={() => setSelId(null)} onNovaReserva={onNovaReserva} onEditarReserva={onEditarReserva} onVincular={onVincular} onEditarEvento={() => setModal({ ev: sel })} totais={totais(sel.id)} />
+        <PainelEvento ev={sel} reservas={reservasDoEvento(sel.id)} candidatas={candidatasDoEvento(sel)} mesas={mesas} carregando={carregando} podeEditar={podeEditar} onVoltar={() => setSelId(null)} onNovaReserva={onNovaReserva} onEditarReserva={onEditarReserva} onVincular={onVincular} onEditarEvento={() => setModal({ ev: sel })} />
       ) : (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
@@ -96,13 +127,45 @@ export function EventosTab({ rid, reservas, podeEditar, onNovaReserva, onEditarR
   );
 }
 
-function PainelEvento({ ev, reservas, candidatas, podeEditar, onVoltar, onNovaReserva, onEditarReserva, onVincular, onEditarEvento, totais }: {
-  ev: ReservaEvento; reservas: Reserva[]; candidatas: Reserva[]; podeEditar: boolean; onVoltar: () => void;
+function PainelEvento({ ev, reservas, candidatas, mesas, carregando, podeEditar, onVoltar, onNovaReserva, onEditarReserva, onVincular, onEditarEvento }: {
+  ev: ReservaEvento; reservas: Reserva[]; candidatas: Reserva[]; mesas: Mesa[]; carregando?: boolean; podeEditar: boolean; onVoltar: () => void;
   onNovaReserva: (ev: ReservaEvento) => void; onEditarReserva: (r: Reserva, ev: ReservaEvento) => void; onVincular: (r: Reserva, ev: ReservaEvento) => void; onEditarEvento: () => void;
-  totais: { n: number; recebido: number; pendente: number };
 }) {
+  // ── Snapshot local (Task 3): pinta na hora com a última atualização
+  // conhecida enquanto o Firestore ainda carrega. Guarda só o timestamp no
+  // localStorage (sem PII); os dados vêm do cache do Firestore (cache-first).
+  const tsKey = `ev_ts_${ev.id}`;
+  const [ultAtualiz, setUltAtualiz] = useState<number | null>(() => {
+    try { const s = localStorage.getItem(tsKey); return s ? parseInt(s, 10) : null; } catch { return null; }
+  });
+  useEffect(() => {
+    if (carregando) return;
+    const now = Date.now();
+    setUltAtualiz(now);
+    try { localStorage.setItem(tsKey, String(now)); } catch { /* private mode */ }
+  }, [carregando, reservas, tsKey]);
+
   const ordenadas = [...reservas].sort((a, b) => (a.data + a.horario).localeCompare(b.data + b.horario));
   const candOrd = [...candidatas].sort((a, b) => (a.data + a.horario).localeCompare(b.data + b.horario));
+
+  // ── Dashboard do evento (Task 2) ────────────────────────────────────
+  const ativas = reservas.filter((r) => r.status !== "cancelada");
+  const mesasAtivas = mesas.filter((m) => m.ativa);
+  const usadas = new Set<string>();
+  for (const r of ativas) for (const id of reservaMesaIds(r)) usadas.add(id);
+  const mesasLivres = mesasAtivas.filter((m) => !usadas.has(m.id));
+  const lugaresTotais = mesasAtivas.reduce((s, m) => s + (m.capacidade || 0), 0);
+  const lugaresLivres = mesasLivres.reduce((s, m) => s + (m.capacidade || 0), 0);
+  const totalPessoas = ativas.reduce((s, r) => s + (r.pessoas || 0), 0);
+  let recebido = 0, pendente = 0, descontos = 0, cortesias = 0;
+  for (const r of ativas) {
+    const p = r.pagamento; if (!p) continue;
+    if (p.ajusteTipo === "cortesia") cortesias++;
+    if (p.ajusteTipo === "desconto" && p.ajusteValor) descontos += p.ajusteValor;
+    const v = p.valor || 0;
+    if (p.pago) recebido += v; else pendente += v;
+  }
+  const potencial = lugaresLivres * (ev.valorPorPessoa || 0);
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
@@ -116,11 +179,23 @@ function PainelEvento({ ev, reservas, candidatas, podeEditar, onVoltar, onNovaRe
         <button onClick={() => onNovaReserva(ev)} className="h-9 px-3 rounded-lg bg-indigo-600 text-white text-sm font-semibold inline-flex items-center gap-1"><Plus size={15} /> Nova reserva</button>
       </div>
 
-      <div className="flex items-center gap-3 text-[13px] flex-wrap">
-        <span className="px-2.5 py-1 rounded-full bg-gray-100 dark:bg-gray-800">{totais.n} reserva(s)</span>
-        <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300 font-semibold">{fmtR(totais.recebido)} recebido</span>
-        {totais.pendente > 0 && <span className="px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">{fmtR(totais.pendente)} pendente</span>}
-        {!ev.pastaDriveId && <span className="text-[12px] text-amber-600 inline-flex items-center gap-1"><FolderOpen size={13} /> sem pasta do Drive — edite o evento</span>}
+      {/* Dashboard do evento */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
+        <Stat label="Reservas" value={String(ativas.length)} />
+        <Stat label="Pessoas" value={String(totalPessoas)} />
+        <Stat label="Recebido" value={fmtR(recebido)} tone="emerald" />
+        <Stat label="Pendente" value={fmtR(pendente)} tone={pendente > 0 ? "amber" : "muted"} />
+        <Stat label="Mesas livres" value={`${mesasLivres.length}/${mesasAtivas.length}`} hint={`${lugaresLivres}/${lugaresTotais} lugares`} />
+        <Stat label="Potencial restante" value={fmtR(potencial)} tone="indigo" hint={ev.valorPorPessoa ? `${lugaresLivres} × ${fmtR(ev.valorPorPessoa)}` : "sem valor/pessoa"} />
+        {descontos > 0 && <Stat label="Descontos" value={`− ${fmtR(descontos)}`} tone="rose" />}
+        {cortesias > 0 && <Stat label="Cortesias" value={String(cortesias)} tone="violet" />}
+      </div>
+
+      <div className="flex items-center gap-3 text-[12px] text-gray-500 flex-wrap">
+        {carregando
+          ? <span className="inline-flex items-center gap-1.5 text-indigo-600 dark:text-indigo-300"><RefreshCw size={12} className="animate-spin" /> Atualizando…</span>
+          : <span>Atualizado {ultAtualiz ? tempoRel(ultAtualiz) : "agora"}</span>}
+        {!ev.pastaDriveId && <span className="text-amber-600 inline-flex items-center gap-1"><FolderOpen size={13} /> sem pasta do Drive — edite o evento</span>}
       </div>
 
       {/* Mobile: cards */}
@@ -165,6 +240,32 @@ function PainelEvento({ ev, reservas, candidatas, podeEditar, onVoltar, onNovaRe
           </tbody>
         </table>
       </div>
+
+      {/* Mesas ainda disponíveis no evento */}
+      {mesasAtivas.length > 0 && (
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 p-3">
+          <div className="text-[12px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2 inline-flex items-center gap-1.5">
+            <Armchair size={13} /> Mesas disponíveis ({mesasLivres.length} · {lugaresLivres} lugares)
+          </div>
+          {mesasLivres.length === 0 ? (
+            <div className="text-[13px] text-gray-500">Todas as mesas ativas já têm reserva nesse evento. 🎉</div>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {mesasLivres.map((m) => {
+                const alta = m.tipoMesa === "alta";
+                return (
+                  <span key={m.id} title={`${m.capacidade} pax · ${alta ? "alta" : "baixa"}`}
+                    className="inline-flex items-center gap-1 text-[12px] font-medium px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+                    {alta ? <Wine size={12} className="text-indigo-500" /> : <Armchair size={12} className="text-gray-400" />}
+                    {m.nome}
+                    <span className="text-gray-400">· {m.capacidade}</span>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* Vincular reservas normais que caem na data do evento */}
       {candOrd.length > 0 && (
