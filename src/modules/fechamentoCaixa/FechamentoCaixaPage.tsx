@@ -1961,13 +1961,13 @@ function FechamentoTabela({ fechamentos, podeEditar, podeConfig, onExcluir, onCo
                 <div className="text-[10px] uppercase tracking-wide text-gray-400">vendas</div>
               </div>
             </button>
-            <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-[12px] text-gray-500">
+            <div className="mt-2 pt-2 border-t border-gray-100 dark:border-gray-800 text-[12px] text-gray-500 space-y-2">
               <div className="flex flex-col gap-0.5 min-w-0">
                 {f.fechadoPor?.nome && <span className="truncate inline-flex items-center gap-1"><User size={11} className="shrink-0" /> {f.fechadoPor.nome}</span>}
                 {f.numeroLacre && <span className="tabular-nums inline-flex items-center gap-1"><Lock size={11} /> {f.numeroLacre}</span>}
                 {f.observacao && <span className="truncate text-gray-400 italic">{f.observacao}</span>}
               </div>
-              <div className="flex items-center gap-1.5 shrink-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
                 {onReenviar && (
                   <button type="button" onClick={() => onReenviar(f)} disabled={reenviandoId === f.id} title="Reenviar o aviso aos sócios (WhatsApp + email)"
                     className="inline-flex items-center gap-1 px-3 h-9 rounded-lg text-[13px] font-medium text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-900/30 active:bg-indigo-100 transition-colors disabled:opacity-50">
