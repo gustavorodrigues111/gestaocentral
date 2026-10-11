@@ -10,7 +10,7 @@ import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where
 import { db } from "../../core/firebase/config";
 import { Button } from "../../core/ui/Button";
 import { Input } from "../../core/ui/Input";
-import { Zap, Landmark, Armchair, Users, Ban, Check } from "lucide-react";
+import { Zap, Landmark, Armchair, Users, Wine, Pencil, Trash2 } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type { Mesa, Salao } from "../../core/types";
@@ -24,7 +24,7 @@ export function MesasTab({ restaurantId, podeConfig }: Props) {
   const [mesas, setMesas] = useState<Mesa[]>([]);
   const [saloes, setSaloes] = useState<Salao[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState<Mesa | "new" | null>(null);
+  const [open, setOpen] = useState<{ m: Mesa | "new"; ro: boolean } | null>(null);
   const [bulkOpen, setBulkOpen] = useState(false);
 
   useEffect(() => {
@@ -61,15 +61,6 @@ export function MesasTab({ restaurantId, podeConfig }: Props) {
     return m;
   }, [mesas]);
 
-  async function excluir(m: Mesa) {
-    if (!confirm(`Excluir mesa "${m.nome}"? Reservas antigas com essa mesa preservam o nome em snapshot.`)) return;
-    await deleteDoc(doc(db, "mesas", m.id));
-  }
-
-  async function toggleAtiva(m: Mesa) {
-    await updateDoc(doc(db, "mesas", m.id), { ativa: !m.ativa });
-  }
-
   if (loading) return <div className="text-sm text-gray-500">Carregando...</div>;
 
   const totalCapacidade = mesas.filter(m => m.ativa).reduce((s, m) => s + (m.capacidade || 0), 0);
@@ -84,7 +75,7 @@ export function MesasTab({ restaurantId, podeConfig }: Props) {
         {podeConfig && !semSaloesCadastrados && (
           <div className="flex gap-2">
             <Button variant="secondary" onClick={() => setBulkOpen(true)}><span className="inline-flex items-center gap-1.5"><Zap size={15} /> Adicionar várias</span></Button>
-            <Button onClick={() => setEditing("new")}>+ Nova mesa</Button>
+            <Button onClick={() => setOpen({ m: "new", ro: false })}>+ Nova mesa</Button>
           </div>
         )}
       </div>
@@ -118,10 +109,7 @@ export function MesasTab({ restaurantId, podeConfig }: Props) {
                 key={s.id}
                 titulo={s.nome}
                 mesas={list}
-                podeConfig={podeConfig}
-                onEditar={(m) => setEditing(m)}
-                onToggleAtiva={toggleAtiva}
-                onExcluir={excluir}
+                onAbrir={(m) => setOpen({ m, ro: true })}
               />
             );
           })}
@@ -130,21 +118,20 @@ export function MesasTab({ restaurantId, podeConfig }: Props) {
             <GrupoMesas
               titulo="Sem salão atribuído"
               mesas={grupos.get("__nenhum__")!}
-              podeConfig={podeConfig}
-              onEditar={(m) => setEditing(m)}
-              onToggleAtiva={toggleAtiva}
-              onExcluir={excluir}
+              onAbrir={(m) => setOpen({ m, ro: true })}
             />
           )}
         </div>
       )}
 
-      {editing && (
+      {open && (
         <MesaModal
-          mesa={editing === "new" ? null : editing}
+          mesa={open.m === "new" ? null : open.m}
+          startReadOnly={open.ro}
+          podeConfig={podeConfig}
           restaurantId={restaurantId}
           saloes={saloes}
-          onClose={() => setEditing(null)}
+          onClose={() => setOpen(null)}
           ordemAtual={mesas.length}
         />
       )}
@@ -162,14 +149,11 @@ export function MesasTab({ restaurantId, podeConfig }: Props) {
 
 // ── Grupo de mesas (1 salão) ───────────────────────────────────────────
 function GrupoMesas({
-  titulo, mesas, podeConfig, onEditar, onToggleAtiva, onExcluir,
+  titulo, mesas, onAbrir,
 }: {
   titulo: string;
   mesas: Mesa[];
-  podeConfig: boolean;
-  onEditar: (m: Mesa) => void;
-  onToggleAtiva: (m: Mesa) => void;
-  onExcluir: (m: Mesa) => void;
+  onAbrir: (m: Mesa) => void;
 }) {
   const total = mesas.filter(m => m.ativa).reduce((s, m) => s + (m.capacidade || 0), 0);
   return (
@@ -181,29 +165,32 @@ function GrupoMesas({
         </span>
       </h3>
       <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
-        {mesas.map(m => (
-          <div
-            key={m.id}
-            className={`bg-white dark:bg-gray-900 border rounded-xl p-2.5 ${
-              m.ativa
-                ? "border-gray-200 dark:border-gray-800"
-                : "border-gray-200 dark:border-gray-800 opacity-60"
-            }`}
-          >
-            <div className="font-bold text-gray-900 dark:text-gray-100 truncate">{m.nome}</div>
-            <div className="text-xs text-gray-600 dark:text-gray-400">
-              <Users size={12} className="inline align-[-2px] mr-1" />{m.capacidade} pax
-            </div>
-            {!m.ativa && <div className="text-[10px] uppercase text-gray-500 mt-0.5">Inativa</div>}
-            {podeConfig && (
-              <div className="flex gap-1 mt-1.5">
-                <Button variant="secondary" size="sm" onClick={() => onEditar(m)}>Editar</Button>
-                <Button variant="secondary" size="sm" onClick={() => onToggleAtiva(m)} title={m.ativa ? "Inativar" : "Ativar"}>{m.ativa ? <Ban size={15} /> : <Check size={15} />}</Button>
-                <Button variant="danger" size="sm" onClick={() => onExcluir(m)}>×</Button>
+        {mesas.map(m => {
+          const alta = m.tipoMesa === "alta";
+          return (
+            <button
+              key={m.id}
+              type="button"
+              onClick={() => onAbrir(m)}
+              title={alta ? "Mesa alta / bar" : "Mesa baixa"}
+              className={`text-left bg-white dark:bg-gray-900 border rounded-xl p-2.5 transition hover:border-indigo-300 dark:hover:border-indigo-700 hover:shadow-sm ${
+                m.ativa ? "border-gray-200 dark:border-gray-800" : "border-gray-200 dark:border-gray-800 opacity-60"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-1">
+                <div className="font-bold text-gray-900 dark:text-gray-100 truncate">{m.nome}</div>
+                {alta
+                  ? <Wine size={15} className="shrink-0 text-indigo-500" />
+                  : <Armchair size={15} className="shrink-0 text-gray-400" />}
               </div>
-            )}
-          </div>
-        ))}
+              <div className="text-xs text-gray-600 dark:text-gray-400 mt-0.5">
+                <Users size={12} className="inline align-[-2px] mr-1" />{m.capacidade} pax
+                <span className="text-gray-400"> · {alta ? "alta" : "baixa"}</span>
+              </div>
+              {!m.ativa && <div className="text-[10px] uppercase text-gray-500 mt-0.5">Inativa</div>}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
@@ -211,15 +198,18 @@ function GrupoMesas({
 
 // ── MesaModal (individual) ─────────────────────────────────────────────
 function MesaModal({
-  mesa, restaurantId, saloes, onClose, ordemAtual,
+  mesa, restaurantId, saloes, onClose, ordemAtual, startReadOnly, podeConfig,
 }: {
   mesa: Mesa | null;
   restaurantId: string;
   saloes: Salao[];
   onClose: () => void;
   ordemAtual: number;
+  startReadOnly?: boolean;
+  podeConfig?: boolean;
 }) {
   const isNew = !mesa;
+  const [editando, setEditando] = useState(isNew || !startReadOnly);
   const [nome, setNome] = useState(mesa?.nome || "");
   const [capacidade, setCapacidade] = useState(String(mesa?.capacidade || 4));
   const [salaoId, setSalaoId] = useState(mesa?.salaoId || (saloes[0]?.id || ""));
@@ -227,6 +217,19 @@ function MesaModal({
   const [ativa, setAtiva] = useState(mesa?.ativa ?? true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+
+  async function excluir() {
+    if (!mesa) return;
+    if (!confirm(`Excluir mesa "${mesa.nome}"? Reservas antigas com essa mesa preservam o nome em snapshot.`)) return;
+    setSaving(true);
+    try {
+      await deleteDoc(doc(db, "mesas", mesa.id));
+      onClose();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : "Erro ao excluir");
+      setSaving(false);
+    }
+  }
 
   async function salvar() {
     if (!nome.trim()) { setErr("Nome obrigatório"); return; }
@@ -259,8 +262,40 @@ function MesaModal({
     }
   }
 
+  // ── Modo visualização (clicou no card) ──────────────────────────────
+  if (!editando && mesa) {
+    const alta = mesa.tipoMesa === "alta";
+    const salaoNome = saloes.find(s => s.id === mesa.salaoId)?.nome;
+    return (
+      <Modal title="Detalhes da mesa" onClose={onClose} maxWidth="max-w-md">
+        <div className="space-y-4">
+          <div className="flex items-start justify-between gap-2">
+            <div className="flex items-center gap-3">
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${alta ? "bg-indigo-50 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-300" : "bg-gray-100 text-gray-500 dark:bg-gray-800 dark:text-gray-300"}`}>
+                {alta ? <Wine size={22} /> : <Armchair size={22} />}
+              </div>
+              <div>
+                <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Mesa Nº</div>
+                <div className="text-xl font-bold text-gray-900 dark:text-gray-100 leading-tight">{mesa.nome}</div>
+              </div>
+            </div>
+            {podeConfig && (
+              <Button variant="secondary" size="sm" onClick={() => setEditando(true)} title="Editar"><Pencil size={15} /></Button>
+            )}
+          </div>
+          <div className="grid grid-cols-2 gap-3 rounded-xl bg-gray-50 dark:bg-gray-800/40 p-3">
+            <div><div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Altura</div><div className="text-sm text-gray-800 dark:text-gray-100">{alta ? "Alta / bar" : "Baixa"}</div></div>
+            <div><div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Capacidade</div><div className="text-sm text-gray-800 dark:text-gray-100">{mesa.capacidade} pax</div></div>
+            {salaoNome && <div><div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Salão</div><div className="text-sm text-gray-800 dark:text-gray-100">{salaoNome}</div></div>}
+            <div><div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Situação</div><div className="text-sm text-gray-800 dark:text-gray-100">{mesa.ativa ? "Ativa" : "Inativa"}</div></div>
+          </div>
+        </div>
+      </Modal>
+    );
+  }
+
   return (
-    <Modal title={isNew ? "+ Nova mesa" : `Editar — ${mesa.nome}`} onClose={onClose} maxWidth="max-w-md">
+    <Modal title={isNew ? "+ Nova mesa" : `Editar — ${mesa!.nome}`} onClose={onClose} maxWidth="max-w-md">
       <div className="space-y-3">
         <Input
           label="Nome *"
@@ -309,7 +344,11 @@ function MesaModal({
 
         {err && <div className="text-sm text-rose-600">{err}</div>}
 
-        <div className="flex justify-end gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
+        <div className="flex items-center gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
+          {!isNew && podeConfig && (
+            <Button variant="danger" size="sm" onClick={excluir} disabled={saving} title="Excluir mesa"><span className="inline-flex items-center gap-1.5"><Trash2 size={14} /> Excluir</span></Button>
+          )}
+          <div className="flex-1" />
           <Button variant="secondary" onClick={onClose}>Cancelar</Button>
           <Button onClick={salvar} disabled={saving}>{saving ? "..." : isNew ? "Criar" : "Salvar"}</Button>
         </div>
