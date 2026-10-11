@@ -13,9 +13,9 @@
 //  (processarImagem), e dispara o /api/send-email (Resend).
 // ════════════════════════════════════════════════════════════════════════════
 import { useEffect, useMemo, useRef, useState, type ChangeEvent, type ReactNode } from "react";
-import { Lock, Banknote, ClipboardList, BarChart3, CreditCard, Settings, Download, CheckSquare, Trash2, Camera, Search, Clock, TriangleAlert, Paperclip, ReceiptText, Save, ShoppingBag, Mail, MessageSquare, User, FolderOpen, Pencil, Send, type LucideIcon } from "lucide-react";
+import { Lock, Banknote, ClipboardList, BarChart3, CreditCard, Settings, Download, CheckSquare, Trash2, Camera, Search, TriangleAlert, Paperclip, ReceiptText, Save, ShoppingBag, Mail, MessageSquare, User, FolderOpen, Pencil, Send, type LucideIcon } from "lucide-react";
 import { useParams } from "react-router-dom";
-import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where, deleteField } from "firebase/firestore";
+import { addDoc, collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where, deleteField } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -574,13 +574,16 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
   const [lendoComandas, setLendoComandas] = useState(0); // comandas em leitura (OCR)
   const [salvando, setSalvando] = useState(false);
   const [salvo, setSalvo] = useState(false);
-  // true = salvo LOCAL mas o servidor ainda não confirmou (rede ruim); a
-  // gravação sincroniza sozinha em segundo plano (IndexedDB persistente).
-  const [sincronizandoSalvo, setSincronizandoSalvo] = useState(false);
   const [erro, setErro] = useState("");
   const leituraSeq = useRef(0);
   const [confirmarDT, setConfirmarDT] = useState<string | null>(null);  // mensagem da inconsistência dia/turno
   const dtConfirmadoRef = useRef(false);
+  // Refazer sem duplicar: id estável do doc, Drive já feito e aviso já enviado
+  // persistem entre tentativas do mesmo fechamento (quando a gravação falha e o
+  // usuário clica "Fechar caixa" de novo).
+  const docIdRef = useRef("");
+  const driveFeitoRef = useRef<{ anexos: AnexoFechamento[]; url?: string } | null>(null);
+  const notificadoRef = useRef(false);
 
   // Confere o dia/turno marcados contra o horário REAL de fechamento (agora).
   // Devolve a mensagem da inconsistência, ou null se está coerente.
@@ -677,9 +680,9 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
     try {
       const agora = new Date();
       const fechadoEm = agora.toISOString();
-      let anexosSalvos: AnexoFechamento[] = [];
-      let driveFolderUrl: string | undefined;
-      if (anexos.length) {
+      let anexosSalvos: AnexoFechamento[] = driveFeitoRef.current?.anexos ?? [];
+      let driveFolderUrl: string | undefined = driveFeitoRef.current?.url;
+      if (anexos.length && !driveFeitoRef.current) {
         // {raiz}/planejamento.app/Fechamentos / <dia dd.mm.aaaa> / <turno> /
         passo = "abrir a pasta Fechamentos no Drive";
         const base = await comTimeout(ensureModuloFolder(restaurant.driveRootFolderId as string, "Fechamentos"), 30000, passo);
@@ -703,6 +706,7 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
           const s = await comTimeout(uploadFileToFolder(turnoId, alvo), 60000, passo);
           anexosSalvos.push({ driveFileId: s.id, nome: alvo.name, grupo: a.grupo, ...(a.rotulo ? { rotulo: a.rotulo } : {}), ...(s.webViewLink ? { driveUrl: s.webViewLink } : {}) });
         }
+        driveFeitoRef.current = { anexos: anexosSalvos, url: driveFolderUrl };
       }
       // Canal do aviso aos sócios: default "ambos" (retrocompat — antes mandava os dois).
       const canal = restaurant.fechamentoCanalEnvio || "ambos";
@@ -731,37 +735,35 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
         ...(driveFolderUrl ? { driveFolderUrl } : {}),
         ...(emails.length ? { emailEnviadoPara: emails } : {}),
       };
-      passo = "gravar o fechamento no banco";
-      // Numa conexão ruim, o addDoc pode demorar a CONFIRMAR no servidor — mas a
-      // gravação já fica salva localmente (IndexedDB persistente) e sincroniza
-      // sozinha. Então NÃO travamos esperando: se o servidor não confirmar em 8s,
-      // seguimos como "salvo (sincronizando)" e a escrita completa em background.
-      // Destinatários de WhatsApp — calculados ANTES pra usar no .then da gravação.
-      const zaps = enviaZap ? Array.from(new Set([
-        ...socios.map((p) => (p.whatsapp || "").replace(/\D/g, "")),
-        ...(restaurant.fechamentoSociosWhatsapp || []).map((n) => n.replace(/\D/g, "")),
-      ].filter((n) => n.length >= 10))) : [];
-      const totalStr = parseBRL(totalVendas) != null ? fmtBRL(parseBRL(totalVendas)!) : "—";
-      const quando = `${fmtData(data)} · ${TURNO_CAIXA_LABEL[turno]}`;
-      const link = `https://admin.planejamento.app/r/${rid}/fechamentoCaixa`;
-
-      const gravacao = addDoc(collection(db, "fechamentosCaixa"), fechamento);
-      // CRÍTICO (integridade): só avisa os sócios (email/WhatsApp) QUANDO a gravação
-      // CONFIRMAR no servidor. Antes o aviso saía mesmo se a escrita falhasse → chegava
-      // e-mail de um fechamento que não ficava salvo (não aparecia na lista). Agora:
-      // sem gravação confirmada, NENHUM aviso. Se confirmar depois (rede lenta), o aviso
-      // dispara nesse momento.
-      gravacao.then(() => {
+      // Aviso aos sócios (e-mail + WhatsApp) + Drive acontecem normalmente. Dispara
+      // UMA vez só — se a gravação falhar e o usuário refizer, não manda de novo.
+      if (!notificadoRef.current) {
+        notificadoRef.current = true;
+        const zaps = enviaZap ? Array.from(new Set([
+          ...socios.map((p) => (p.whatsapp || "").replace(/\D/g, "")),
+          ...(restaurant.fechamentoSociosWhatsapp || []).map((n) => n.replace(/\D/g, "")),
+        ].filter((n) => n.length >= 10))) : [];
         if (emails.length) void enviarEmailResumo(emails, restaurant.nome || "Restaurante", fechamento, recentes, restaurant.fechamentoEmailRemetente);
-        for (const num of zaps) void enviarWhatsapp({ to: num, template: "aviso_fechamento", params: ["sócio(a)", restaurant.nome || "Restaurante", quando, totalStr, link], contexto: "fechamento_socios", restaurantId: rid, criadoPor: por?.id });
-      }).catch((e2) => console.error("[fechamentoCaixa] gravação falhou — e-mail/WhatsApp NÃO enviados:", e2));
+        if (zaps.length) {
+          const totalStr = parseBRL(totalVendas) != null ? fmtBRL(parseBRL(totalVendas)!) : "—";
+          const quando = `${fmtData(data)} · ${TURNO_CAIXA_LABEL[turno]}`;
+          const link = `https://admin.planejamento.app/r/${rid}/fechamentoCaixa`;
+          for (const num of zaps) void enviarWhatsapp({ to: num, template: "aviso_fechamento", params: ["sócio(a)", restaurant.nome || "Restaurante", quando, totalStr, link], contexto: "fechamento_socios", restaurantId: rid, criadoPor: por?.id });
+        }
+      }
+      // Grava o REGISTRO com ID ESTÁVEL (refazer sobrescreve o mesmo doc → não
+      // duplica). Se a gravação NÃO confirmar no servidor, mostra erro em vermelho
+      // e MANTÉM os dados na tela pra refazer na hora — o Drive e o aviso já foram
+      // feitos, falta só o registro. Nunca mais "salvo" sem registro de verdade.
+      passo = "gravar o fechamento no banco";
+      if (!docIdRef.current) docIdRef.current = (crypto?.randomUUID?.() ?? `fc_${Date.now()}_${Math.random().toString(36).slice(2)}`);
       try {
-        await comTimeout(gravacao, 8000, passo);
-      } catch (eTimeout) {
-        // Só engole o TIMEOUT (rede lenta → segue como "sincronizando"; o aviso sai
-        // quando a escrita confirmar). Erro REAL do Firestore → repropaga pro motivo.
-        if (eTimeout instanceof Error && /demorou mais de/.test(eTimeout.message)) setSincronizandoSalvo(true);
-        else throw eTimeout;
+        await comTimeout(setDoc(doc(db, "fechamentosCaixa", docIdRef.current), fechamento), 20000, passo);
+      } catch (eGrav) {
+        const msg = eGrav instanceof Error ? eGrav.message : String(eGrav);
+        setErro(`⚠️ O aviso aos sócios saiu e os anexos foram salvos no Drive, mas o REGISTRO não gravou (${/demorou mais de/.test(msg) ? "conexão instável" : msg}). Seus dados continuam aqui — toque em "Fechar caixa" de novo pra gravar (não duplica nem reenvia).`);
+        setSalvando(false);
+        return;
       }
       setSalvo(true);
     } catch (e) {
@@ -776,17 +778,12 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
     return (
       <Modal title={<span className="inline-flex items-center gap-2"><Banknote size={18} /> Novo fechamento</span>} onClose={onSalvo} maxWidth="max-w-lg">
         <div className="py-10 flex flex-col items-center text-center gap-3">
-          <div className="flex justify-center">{sincronizandoSalvo ? <Clock size={48} className="text-amber-500" /> : <CheckSquare size={48} className="text-emerald-500" />}</div>
-          <div className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">{sincronizandoSalvo ? "Fechamento salvo!" : "Fechamento registrado!"}</div>
+          <div className="flex justify-center"><CheckSquare size={48} className="text-emerald-500" /></div>
+          <div className="text-lg font-semibold text-emerald-700 dark:text-emerald-300">Fechamento registrado!</div>
           <p className="text-sm text-gray-500 dark:text-gray-400">
             {TURNO_CAIXA_LABEL[turno]} de {fmtData(data)} salvo{anexos.length ? " e arquivado no Drive" : ""}.
             {(restaurant.fechamentoSociosEmails || []).filter((e) => e.includes("@")).length ? " Email enviado aos sócios." : ""}
           </p>
-          {sincronizandoSalvo && (
-            <p className="text-[13px] text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-900/40 rounded-lg px-3 py-2 max-w-sm">
-              A internet estava lenta, então o fechamento ficou <strong>salvo no aparelho</strong> e vai subir pro servidor sozinho assim que a conexão melhorar. Pode concluir normalmente — só deixe o app abrir de novo mais tarde no mesmo aparelho pra garantir que subiu (confira em "Fechamentos enviados").
-            </p>
-          )}
           <Button onClick={onSalvo}>Concluir</Button>
         </div>
       </Modal>
