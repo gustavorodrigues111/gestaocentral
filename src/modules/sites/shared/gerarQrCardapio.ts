@@ -4,6 +4,7 @@
 // salvar no celular e mostrar pro cliente. Tudo no canvas (sem html2canvas):
 // a logo é carregada com CORS; se falhar, o card sai sem logo (best-effort).
 import QRCode from "qrcode";
+import { baixarOuCompartilhar } from "../../../core/pdf/baixarOuCompartilhar";
 
 function carregarImagem(src: string, comCors: boolean): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
@@ -74,6 +75,14 @@ export async function gerarQrCardapioJpeg(opts: {
   ctx.font = "44px Helvetica, Arial, sans-serif";
   ctx.fillText("Aponte a câmera do celular", W / 2, qrY + qrSize + 250);
 
-  const jpeg = canvas.toDataURL("image/jpeg", 0.92);
-  baixarDataUrl(jpeg, opts.nomeArquivo);
+  // Download robusto: Blob + objectURL (ou folha de compartilhamento no
+  // mobile). O caminho antigo (data URL em <a download>) é IGNORADO pelo
+  // Safari — por isso "parecia não baixar". Fallback pro data URL se toBlob
+  // não vier (navegador muito antigo).
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob((b) => resolve(b), "image/jpeg", 0.92));
+  if (blob) {
+    await baixarOuCompartilhar(blob, opts.nomeArquivo, { titulo: opts.idioma === "pt" ? "Cardápio" : "Menu" });
+  } else {
+    baixarDataUrl(canvas.toDataURL("image/jpeg", 0.92), opts.nomeArquivo);
+  }
 }

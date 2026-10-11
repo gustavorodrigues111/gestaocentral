@@ -120,8 +120,9 @@ function AtalhosCardapio({ config, podeEditar, onSave }: {
         corTexto: config.tema?.corPrimaria,
         nomeArquivo: `${config.slug}-${idioma === "pt" ? "cardapio" : "menu"}.jpg`,
       });
-    } catch { /* navegador sem canvas — ignora */ }
-    finally { setGerando(""); }
+    } catch (e) {
+      alert("Não consegui gerar o QR do cardápio: " + (e instanceof Error ? e.message : String(e)));
+    } finally { setGerando(""); }
   }
 
   const Linha = ({ idioma, bandeira, label, slug, setSlug, temPdf }: {
