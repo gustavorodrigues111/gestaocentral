@@ -9,7 +9,7 @@ import { Button } from "../../core/ui/Button";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { todayYmd, fmtBR } from "../../core/utils/date";
 import { RESERVA_STATUS_LUCIDE, RESERVA_STATUS_LABEL } from "../../core/types";
-import type { Cliente, Mesa, Reserva, ReservaStatus, ReservaEvento, ReservaPagamento } from "../../core/types";
+import type { Cliente, Mesa, Reserva, ReservaStatus, ReservaEvento, ReservaPagamento, Salao } from "../../core/types";
 import { reservaMesaIds } from "../../core/reservas/mesas";
 import { centralUpload } from "../../core/google/driveCentral";
 import { ClienteModal } from "./ClienteModal";
@@ -24,6 +24,7 @@ type Props = {
   defaultData?: string;          // pré-preenchimento
   clientes: Cliente[];
   mesas: Mesa[];
+  saloes?: Salao[];              // pra agrupar as mesas por salão no seletor
   reservasMesmoDia: Reserva[];   // pra detectar conflito de mesa/horário
   restaurantId: string;
   evento?: ReservaEvento | null; // se setado, é reserva de evento (com pagamento)
@@ -79,7 +80,7 @@ function ResumoReserva({ clienteNome, clienteTelefone, data, horario, pessoas, m
   );
 }
 
-export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMesmoDia, restaurantId, evento, startReadOnly, onClose }: Props) {
+export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, reservasMesmoDia, restaurantId, evento, startReadOnly, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !reserva;
   const evId = evento?.id ?? reserva?.eventoId ?? null;
@@ -187,6 +188,22 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
       .filter(m => m.ativa)
       .sort((a, b) => (a.setor || "").localeCompare(b.setor || "") || a.nome.localeCompare(b.nome));
   }, [mesas]);
+
+  // Mesas AGRUPADAS por salão (com a altura do salão pro ícone/etiqueta).
+  const gruposMesas = useMemo(() => {
+    const salById = new Map((saloes || []).map(s => [s.id, s]));
+    const map = new Map<string, { salao?: Salao; mesas: Mesa[] }>();
+    for (const m of mesasOrdenadas) {
+      const key = m.salaoId || "__sem__";
+      if (!map.has(key)) map.set(key, { salao: m.salaoId ? salById.get(m.salaoId) : undefined, mesas: [] });
+      map.get(key)!.mesas.push(m);
+    }
+    return [...map.values()].sort((a, b) => {
+      if (!a.salao) return 1;
+      if (!b.salao) return -1;
+      return (a.salao.ordem ?? 999) - (b.salao.ordem ?? 999) || a.salao.nome.localeCompare(b.salao.nome);
+    });
+  }, [mesasOrdenadas, saloes]);
 
   async function salvar() {
     if (!clienteNome.trim()) { setErr("Cliente obrigatório (escolha cadastrado ou digite nome)"); return; }
@@ -440,27 +457,40 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, reservasMe
                 </span>
               )}
             </div>
-            <div className="mt-1 flex flex-wrap gap-1.5">
-              {mesasOrdenadas.map(m => {
-                const sel = mesaIds.includes(m.id);
-                const ocupada = mesasOcupadas.has(m.id) && !sel;
+            <div className="mt-1 space-y-2.5">
+              {gruposMesas.map((g, gi) => {
+                const alta = g.salao?.tipoMesa === "alta";
                 return (
-                  <button
-                    key={m.id}
-                    type="button"
-                    onClick={() => toggleMesa(m.id)}
-                    disabled={ocupada}
-                    title={ocupada ? "Mesa já reservada nesse horário" : m.setor || undefined}
-                    className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
-                      sel
-                        ? "border-indigo-500 bg-indigo-600 text-white font-semibold"
-                        : ocupada
-                          ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-gray-400 line-through cursor-not-allowed"
-                          : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400"
-                    }`}
-                  >
-                    {m.nome} · <Users size={12} className="inline align-[-2px]" />{m.capacidade}{ocupada ? " · ocupada" : ""}
-                  </button>
+                  <div key={g.salao?.id || `sem-${gi}`}>
+                    <div className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1.5">
+                      <span>{g.salao?.nome || "Sem salão"}</span>
+                      {g.salao && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">{alta ? "🍸 alta" : "🪑 baixa"}</span>}
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {g.mesas.map(m => {
+                        const sel = mesaIds.includes(m.id);
+                        const ocupada = mesasOcupadas.has(m.id) && !sel;
+                        return (
+                          <button
+                            key={m.id}
+                            type="button"
+                            onClick={() => toggleMesa(m.id)}
+                            disabled={ocupada}
+                            title={ocupada ? "Mesa já reservada nesse horário" : (g.salao?.nome || m.setor || undefined)}
+                            className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
+                              sel
+                                ? "border-indigo-500 bg-indigo-600 text-white font-semibold"
+                                : ocupada
+                                  ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-gray-400 line-through cursor-not-allowed"
+                                  : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400"
+                            }`}
+                          >
+                            {alta ? "🍸 " : ""}{m.nome} · <Users size={12} className="inline align-[-2px]" />{m.capacidade}{ocupada ? " · ocupada" : ""}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
               {mesasOrdenadas.length === 0 && (
