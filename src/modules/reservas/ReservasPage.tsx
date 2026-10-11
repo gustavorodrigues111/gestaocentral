@@ -758,7 +758,7 @@ export function ReservasPage() {
           clientes={clientes}
           mesas={mesas}
           saloes={saloes}
-          reservasMesmoDia={reservas.filter(r => r.data === (editing === "new" ? dataAtual : (editing as Reserva).data))}
+          reservasRestaurante={reservas}
           restaurantId={rid}
           evento={eventoAtivo}
           startReadOnly={viewMode}

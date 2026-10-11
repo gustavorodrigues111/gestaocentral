@@ -25,7 +25,7 @@ type Props = {
   clientes: Cliente[];
   mesas: Mesa[];
   saloes?: Salao[];              // pra agrupar as mesas por salão no seletor
-  reservasMesmoDia: Reserva[];   // pra detectar conflito de mesa/horário
+  reservasRestaurante: Reserva[];   // todas as reservas do restaurante; o conflito de mesa/horário é calculado pela data selecionada no modal
   restaurantId: string;
   evento?: ReservaEvento | null; // se setado, é reserva de evento (com pagamento)
   startReadOnly?: boolean;       // abre só visualizando (lápis pra editar)
@@ -94,13 +94,14 @@ function ResumoReserva({ clienteNome, clienteTelefone, data, horario, pessoas, m
   );
 }
 
-export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, reservasMesmoDia, restaurantId, evento, startReadOnly, onClose }: Props) {
+export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, reservasRestaurante, restaurantId, evento, startReadOnly, onClose }: Props) {
   const { pessoa: me } = useAuth();
   const isNew = !reserva;
   const evId = evento?.id ?? reserva?.eventoId ?? null;
   const [editing, setEditing] = useState(isNew ? true : !startReadOnly);
 
-  const [data, setData] = useState(reserva?.data || defaultData || evento?.dataInicio || todayYmd());
+  // Reserva nova de evento já abre na data do evento (não no dia atual).
+  const [data, setData] = useState(reserva?.data || evento?.dataInicio || defaultData || todayYmd());
   const [horario, setHorario] = useState(reserva?.horario || evento?.horarioPadrao || "20:00");
   const [pessoas, setPessoas] = useState(String(reserva?.pessoas || 2));
   // Pagamento (eventos)
@@ -133,6 +134,10 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
   const [mesclarOpen, setMesclarOpen] = useState(false);
   const [mesclarAlvo, setMesclarAlvo] = useState<Reserva | null>(null);
   const [mesclarPax, setMesclarPax] = useState("");
+  // Reservas do MESMO DIA da data selecionada no modal — reage quando a data
+  // muda (ex.: reserva nova de evento que cai noutro dia). É a base pra
+  // detectar mesa ocupada e sugerir mesclagem.
+  const reservasMesmoDia = useMemo(() => reservasRestaurante.filter((r) => r.data === data), [reservasRestaurante, data]);
   const candidatosMesclar = useMemo(() => reservasMesmoDia.filter((r) => r.id !== reserva?.id && r.status !== "cancelada"), [reservasMesmoDia, reserva]);
 
   // Sincroniza nome quando seleciona cliente da lista
