@@ -137,7 +137,7 @@ function PainelEvento({ ev, reservas, candidatas, podeEditar, onVoltar, onNovaRe
               <span><CalendarDays size={11} className="inline align-[-1px]" /> {fmtBR(r.data)} · {r.horario}</span>
               <span>· {r.pessoas} pax</span>
               <span>· Mesa {mesaTxt(r)}</span>
-              {r.pagamento?.valor ? <span>· {fmtR(r.pagamento.valor)}{r.pagamento.forma ? ` (${r.pagamento.forma})` : ""}</span> : null}
+              {r.pagamento?.ajusteTipo === "cortesia" ? <span className="text-violet-600 dark:text-violet-400 font-semibold">· Cortesia</span> : r.pagamento?.valor ? <span>· {fmtR(r.pagamento.valor)}{r.pagamento.forma ? ` (${r.pagamento.forma})` : ""}</span> : null}
             </div>
           </button>
         ))}
@@ -159,7 +159,7 @@ function PainelEvento({ ev, reservas, candidatas, podeEditar, onVoltar, onNovaRe
                 <td className="px-4 py-2.5 text-center tabular-nums">{r.pessoas}</td>
                 <td className="px-4 py-2.5 whitespace-nowrap">{mesaTxt(r)}</td>
                 <td className="px-4 py-2.5">{r.pagamento?.pago ? <span className="text-emerald-600 font-semibold">Pago</span> : <span className="text-amber-600">Pendente</span>}{r.pagamento?.forma ? <span className="text-gray-400 text-[12px]"> · {r.pagamento.forma}</span> : null}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{r.pagamento?.valor ? fmtR(r.pagamento.valor) : "—"}</td>
+                <td className="px-4 py-2.5 text-right tabular-nums">{r.pagamento?.ajusteTipo === "cortesia" ? <span className="text-violet-600 dark:text-violet-400 font-semibold">Cortesia</span> : r.pagamento?.valor ? fmtR(r.pagamento.valor) : "—"}</td>
               </tr>
             ))}
           </tbody>

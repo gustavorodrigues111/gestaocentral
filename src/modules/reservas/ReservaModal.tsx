@@ -14,7 +14,7 @@ import { reservaMesaIds } from "../../core/reservas/mesas";
 import { centralUpload } from "../../core/google/driveCentral";
 import { ClienteModal } from "./ClienteModal";
 
-const parseR = (s: string) => { const n = parseFloat((s || "").replace(/[R$\s.]/g, "").replace(",", ".")); return isNaN(n) ? 0 : n; };
+const parseCents = (s: string) => { const d = (s || "").replace(/\D/g, ""); return d ? parseInt(d, 10) : 0; };
 const fmtCents = (cents: number) => (cents / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const FORMAS_PG = ["pix", "dinheiro", "debito", "credito", "transferencia", "outro"];
 const FORMA_PG_LABEL: Record<string, string> = { pix: "Pix", dinheiro: "Dinheiro", debito: "Cartão débito", credito: "Cartão crédito", transferencia: "Transferência", outro: "Outro" };
@@ -38,7 +38,7 @@ const STATUSES: ReservaStatus[] = ["pendente", "confirmada", "chegou", "no_show"
 function ResumoReserva({ clienteNome, clienteTelefone, data, horario, pessoas, mesas, status, eventoNome, ocasiao, observacoes, pagamento }: {
   clienteNome: string; clienteTelefone?: string; data: string; horario: string; pessoas: number; mesas: string[]; status: ReservaStatus;
   eventoNome?: string; ocasiao?: string; observacoes?: string;
-  pagamento?: { pago: boolean; forma?: string; valor?: number; comprovanteUrl?: string };
+  pagamento?: { pago: boolean; forma?: string; valor?: number; ajusteTipo?: "cheio" | "desconto" | "acrescimo" | "cortesia"; ajusteValor?: number; comprovanteUrl?: string };
 }) {
   const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   const Campo = ({ label, children }: { label: string; children: ReactNode }) => (
@@ -70,9 +70,14 @@ function ResumoReserva({ clienteNome, clienteTelefone, data, horario, pessoas, m
             {pagamento.pago
               ? <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">Pago</span>
               : <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">Pendente</span>}
-            {pagamento.valor != null && <span className="font-semibold tabular-nums">{fmtR(pagamento.valor)}</span>}
-            {pagamento.forma && <span className="text-gray-400">· {pagamento.forma}</span>}
+            {pagamento.ajusteTipo === "cortesia"
+              ? <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300">Cortesia</span>
+              : pagamento.valor != null && <span className="font-semibold tabular-nums">{fmtR(pagamento.valor)}</span>}
+            {pagamento.forma && pagamento.ajusteTipo !== "cortesia" && <span className="text-gray-400">· {pagamento.forma}</span>}
           </div>
+          {(pagamento.ajusteTipo === "desconto" || pagamento.ajusteTipo === "acrescimo") && pagamento.ajusteValor ? (
+            <div className="text-[11px] text-gray-500 mt-1">{pagamento.ajusteTipo === "desconto" ? "Desconto" : "Acréscimo"} de {fmtR(pagamento.ajusteValor)} sobre o sugerido</div>
+          ) : null}
           {pagamento.comprovanteUrl && <a href={pagamento.comprovanteUrl} target="_blank" rel="noreferrer" className="text-[12px] text-indigo-600 dark:text-indigo-400 inline-flex items-center gap-1 mt-1.5"><FileText size={12} /> ver comprovante</a>}
         </div>
       )}
@@ -93,9 +98,11 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
   const pagIni = reserva?.pagamento;
   const [pago, setPago] = useState(!!pagIni?.pago);
   const [formaPg, setFormaPg] = useState(pagIni?.forma || "pix");
-  const [valorPg, setValorPg] = useState(pagIni?.valor != null ? fmtCents(Math.round(pagIni.valor * 100)) : "");
+  const [ajusteTipo, setAjusteTipo] = useState<"cheio" | "desconto" | "acrescimo" | "cortesia">(pagIni?.ajusteTipo || "cheio");
+  const [valorPg, setValorPg] = useState(pagIni?.valor != null ? fmtCents(Math.round(pagIni.valor * 100)) : "");   // modo "cheio" (manual)
+  const [ajusteValor, setAjusteValor] = useState(pagIni?.ajusteValor != null ? fmtCents(Math.round(pagIni.ajusteValor * 100)) : "");
   const [compFile, setCompFile] = useState<File | null>(null);
-  const valorTocado = useRef(pagIni?.valor != null);
+  const valorTocado = useRef(pagIni?.valor != null && (pagIni?.ajusteTipo ?? "cheio") === "cheio");
   // Cliente
   const [clienteId, setClienteId] = useState<string | null>(reserva?.clienteId ?? null);
   const [clienteNome, setClienteNome] = useState(reserva?.clienteNomeSnapshot || "");
@@ -168,12 +175,20 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
   }
 
   const pessoasNum = parseInt(pessoas, 10) || 0;
-  // Total sugerido do evento = pessoas × valor por pessoa (até o usuário editar).
+  // Base sugerida do evento = pessoas × valor por pessoa (em centavos).
+  const baseCents = evento?.valorPorPessoa && pessoasNum > 0 ? Math.round(pessoasNum * evento.valorPorPessoa * 100) : 0;
+  // No modo "cheio" (valor manual), sugere a base até o usuário editar.
   useEffect(() => {
-    if (!evId || valorTocado.current) return;
-    const vpp = evento?.valorPorPessoa;
-    if (vpp && pessoasNum > 0) setValorPg(fmtCents(Math.round(pessoasNum * vpp * 100)));
-  }, [evId, evento, pessoasNum]);
+    if (!evId || ajusteTipo !== "cheio" || valorTocado.current) return;
+    if (baseCents > 0) setValorPg(fmtCents(baseCents));
+  }, [evId, ajusteTipo, baseCents]);
+  // Valor final cobrado (centavos) conforme o modo escolhido.
+  const ajusteCents = parseCents(ajusteValor);
+  const valorFinalCents =
+    ajusteTipo === "cortesia" ? 0 :
+    ajusteTipo === "desconto" ? Math.max(0, baseCents - ajusteCents) :
+    ajusteTipo === "acrescimo" ? baseCents + ajusteCents :
+    parseCents(valorPg);   // cheio (manual)
   // Mesas selecionadas, na ordem de seleção; capacidade é a SOMA delas.
   const mesasSel = useMemo(
     () => mesaIds.map(id => mesas.find(m => m.id === id)).filter((m): m is Mesa => !!m),
@@ -243,7 +258,10 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
           cId = up.id; cUrl = up.webViewLink || cUrl; cNome = nomeArq;
         }
         pagamento = {
-          pago, forma: formaPg, valor: parseR(valorPg) || undefined,
+          pago, forma: formaPg,
+          valor: ajusteTipo === "cortesia" ? 0 : (valorFinalCents > 0 ? valorFinalCents / 100 : undefined),
+          ajusteTipo,
+          ajusteValor: (ajusteTipo === "desconto" || ajusteTipo === "acrescimo") ? ajusteCents / 100 : undefined,
           comprovanteDriveId: cId, comprovanteUrl: cUrl, comprovanteNome: cNome,
           pagoEm: pago ? (pagIni?.pagoEm || now) : undefined, registradoPor: me.id,
         };
@@ -370,7 +388,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
             pessoas={pessoasNum} mesas={mesasSel.map((m) => m.nome)} status={status}
             eventoNome={evId ? (evento?.nome || reserva?.ocasiao) : undefined} ocasiao={evId ? undefined : ocasiao}
             observacoes={observacoes}
-            pagamento={evId ? { pago, forma: formaPg, valor: parseR(valorPg) || undefined, comprovanteUrl: pagIni?.comprovanteUrl } : undefined}
+            pagamento={evId ? { pago, forma: formaPg, valor: ajusteTipo === "cortesia" ? 0 : (valorFinalCents > 0 ? valorFinalCents / 100 : undefined), ajusteTipo, ajusteValor: ajusteCents / 100, comprovanteUrl: pagIni?.comprovanteUrl } : undefined}
           />}
           {editing && (
           <div className="space-y-3">
@@ -537,13 +555,35 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
                     {FORMAS_PG.map((f) => <option key={f} value={f}>{FORMA_PG_LABEL[f]}</option>)}
                   </select>
                 </div>
-                <div>
-                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Valor{evento?.valorPorPessoa ? ` (sugerido: ${pessoasNum}× R$ ${fmtCents(Math.round(evento.valorPorPessoa * 100))})` : ""}</label>
-                  <div className="relative mt-1">
+              </div>
+
+              {/* Valor do evento: cheio / desconto / acréscimo / cortesia */}
+              <div className="mt-3">
+                <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block">Valor{evento?.valorPorPessoa ? ` · sugerido ${pessoasNum}× R$ ${fmtCents(Math.round(evento.valorPorPessoa * 100))} = R$ ${fmtCents(baseCents)}` : ""}</label>
+                <div className="grid grid-cols-4 gap-1.5 mt-1.5">
+                  {([["cheio", "Valor"], ["desconto", "Desconto"], ["acrescimo", "Acréscimo"], ["cortesia", "Cortesia"]] as const).map(([v, lbl]) => (
+                    <button key={v} type="button" onClick={() => { setAjusteTipo(v); if (v === "cheio") valorTocado.current = false; }}
+                      className={`h-9 rounded-lg text-xs font-semibold border ${ajusteTipo === v ? "bg-indigo-50 border-indigo-300 text-indigo-700 dark:bg-indigo-900/20 dark:border-indigo-700 dark:text-indigo-200" : "bg-white border-gray-300 text-gray-600 dark:bg-gray-900 dark:border-gray-700 dark:text-gray-300"}`}>{lbl}</button>
+                  ))}
+                </div>
+                {ajusteTipo === "cheio" && (
+                  <div className="relative mt-2">
                     <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">R$</span>
                     <input value={valorPg} onChange={(e) => { valorTocado.current = true; const d = e.target.value.replace(/\D/g, ""); setValorPg(d ? fmtCents(parseInt(d, 10)) : ""); }} inputMode="numeric" placeholder="0,00" className="w-full h-10 pl-8 pr-2 text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
                   </div>
-                </div>
+                )}
+                {(ajusteTipo === "desconto" || ajusteTipo === "acrescimo") && (
+                  <>
+                    <div className="relative mt-2">
+                      <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400 pointer-events-none">R$</span>
+                      <input value={ajusteValor} onChange={(e) => { const d = e.target.value.replace(/\D/g, ""); setAjusteValor(d ? fmtCents(parseInt(d, 10)) : ""); }} inputMode="numeric" placeholder={ajusteTipo === "desconto" ? "desconto em R$" : "acréscimo em R$"} className="w-full h-10 pl-8 pr-2 text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm" />
+                    </div>
+                    <div className="text-sm font-semibold text-right mt-1.5 tabular-nums">Total: R$ {fmtCents(valorFinalCents)}</div>
+                  </>
+                )}
+                {ajusteTipo === "cortesia" && (
+                  <div className="mt-2 text-sm text-violet-700 dark:text-violet-300 font-semibold rounded-lg bg-violet-50 dark:bg-violet-950/20 px-3 py-2">Cortesia — sem cobrança (R$ 0,00)</div>
+                )}
               </div>
               <div className="mt-2">
                 <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Comprovante</label>

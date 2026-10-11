@@ -2737,7 +2737,9 @@ export type Reserva = {
 export type ReservaPagamento = {
   pago: boolean;
   forma?: string;                     // pix | dinheiro | debito | credito | transferencia | outro (texto livre)
-  valor?: number;                     // total pago/previsto (pessoas × valorPorPessoa, editável)
+  valor?: number;                     // total final cobrado (já com desconto/acréscimo aplicado; cortesia = 0)
+  ajusteTipo?: "cheio" | "desconto" | "acrescimo" | "cortesia"; // como o valor foi definido vs. o sugerido do evento
+  ajusteValor?: number;               // R$ do desconto ou acréscimo (só p/ desconto/acrescimo)
   comprovanteDriveId?: string;
   comprovanteUrl?: string;
   comprovanteNome?: string;
