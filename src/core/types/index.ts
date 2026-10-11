@@ -2457,7 +2457,6 @@ export type Salao = {
   descricao?: string;                 // mostrada pro cliente no form de reserva
   ordem: number;
   ativo: boolean;
-  tipoMesa?: "baixa" | "alta";        // altura das mesas do salão (ícone no seletor). default "baixa"
   modeloCapacidade: ModeloCapacidadeSalao;
   // ─ Modelo "por_capacidade"
   capacidadeMaxPax?: number;          // total de pessoas que cabem no salão

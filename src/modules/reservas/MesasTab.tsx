@@ -223,7 +223,7 @@ function MesaModal({
   const [nome, setNome] = useState(mesa?.nome || "");
   const [capacidade, setCapacidade] = useState(String(mesa?.capacidade || 4));
   const [salaoId, setSalaoId] = useState(mesa?.salaoId || (saloes[0]?.id || ""));
-  const [tipoMesa, setTipoMesa] = useState<"baixa" | "alta">(mesa?.tipoMesa || saloes.find(s => s.id === (mesa?.salaoId || saloes[0]?.id))?.tipoMesa || "baixa");
+  const [tipoMesa, setTipoMesa] = useState<"baixa" | "alta">(mesa?.tipoMesa || "baixa");
   const [ativa, setAtiva] = useState(mesa?.ativa ?? true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -282,11 +282,7 @@ function MesaModal({
           </label>
           <select
             value={salaoId}
-            onChange={(e) => {
-              setSalaoId(e.target.value);
-              // Mesa nova herda a altura PADRÃO do salão escolhido (dá pra mudar abaixo).
-              if (isNew) { const t = saloes.find(s => s.id === e.target.value)?.tipoMesa; if (t) setTipoMesa(t); }
-            }}
+            onChange={(e) => setSalaoId(e.target.value)}
             className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
           >
             <option value="">— escolhe —</option>
@@ -332,7 +328,7 @@ function BulkMesasModal({
   onClose: () => void;
 }) {
   const [salaoId, setSalaoId] = useState(saloes[0]?.id || "");
-  const [tipoMesa, setTipoMesa] = useState<"baixa" | "alta">(saloes[0]?.tipoMesa || "baixa");
+  const [tipoMesa, setTipoMesa] = useState<"baixa" | "alta">("baixa");
   const [de, setDe] = useState("1");
   const [ate, setAte] = useState("10");
   const [capacidade, setCapacidade] = useState("4");
@@ -416,7 +412,7 @@ function BulkMesasModal({
           </label>
           <select
             value={salaoId}
-            onChange={(e) => { setSalaoId(e.target.value); const t = saloes.find(s => s.id === e.target.value)?.tipoMesa; if (t) setTipoMesa(t); }}
+            onChange={(e) => setSalaoId(e.target.value)}
             className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
           >
             <option value="">— escolhe —</option>

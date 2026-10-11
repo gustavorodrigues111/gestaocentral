@@ -465,7 +465,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
                     {g.mesas.map(m => {
                       const sel = mesaIds.includes(m.id);
                       const ocupada = mesasOcupadas.has(m.id) && !sel;
-                      const alta = (m.tipoMesa ?? g.salao?.tipoMesa) === "alta";   // altura POR MESA (fallback no salão)
+                      const alta = m.tipoMesa === "alta";   // altura POR MESA
                       return (
                         <button
                           key={m.id}
