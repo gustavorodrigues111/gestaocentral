@@ -458,41 +458,36 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
               )}
             </div>
             <div className="mt-1 space-y-2.5">
-              {gruposMesas.map((g, gi) => {
-                const alta = g.salao?.tipoMesa === "alta";
-                return (
-                  <div key={g.salao?.id || `sem-${gi}`}>
-                    <div className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-1 flex items-center gap-1.5">
-                      <span>{g.salao?.nome || "Sem salão"}</span>
-                      {g.salao && <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">{alta ? "🍸 alta" : "🪑 baixa"}</span>}
-                    </div>
-                    <div className="flex flex-wrap gap-1.5">
-                      {g.mesas.map(m => {
-                        const sel = mesaIds.includes(m.id);
-                        const ocupada = mesasOcupadas.has(m.id) && !sel;
-                        return (
-                          <button
-                            key={m.id}
-                            type="button"
-                            onClick={() => toggleMesa(m.id)}
-                            disabled={ocupada}
-                            title={ocupada ? "Mesa já reservada nesse horário" : (g.salao?.nome || m.setor || undefined)}
-                            className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
-                              sel
-                                ? "border-indigo-500 bg-indigo-600 text-white font-semibold"
-                                : ocupada
-                                  ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-gray-400 line-through cursor-not-allowed"
-                                  : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400"
-                            }`}
-                          >
-                            {alta ? "🍸 " : ""}{m.nome} · <Users size={12} className="inline align-[-2px]" />{m.capacidade}{ocupada ? " · ocupada" : ""}
-                          </button>
-                        );
-                      })}
-                    </div>
+              {gruposMesas.map((g, gi) => (
+                <div key={g.salao?.id || `sem-${gi}`}>
+                  <div className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-1">{g.salao?.nome || "Sem salão"}</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {g.mesas.map(m => {
+                      const sel = mesaIds.includes(m.id);
+                      const ocupada = mesasOcupadas.has(m.id) && !sel;
+                      const alta = (m.tipoMesa ?? g.salao?.tipoMesa) === "alta";   // altura POR MESA (fallback no salão)
+                      return (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => toggleMesa(m.id)}
+                          disabled={ocupada}
+                          title={ocupada ? "Mesa já reservada nesse horário" : `${alta ? "Mesa alta/bar · " : ""}${g.salao?.nome || m.setor || ""}` || undefined}
+                          className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
+                            sel
+                              ? "border-indigo-500 bg-indigo-600 text-white font-semibold"
+                              : ocupada
+                                ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-gray-400 line-through cursor-not-allowed"
+                                : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400"
+                          }`}
+                        >
+                          {alta ? "🍸 " : ""}{m.nome} · <Users size={12} className="inline align-[-2px]" />{m.capacidade}{ocupada ? " · ocupada" : ""}
+                        </button>
+                      );
+                    })}
                   </div>
-                );
-              })}
+                </div>
+              ))}
               {mesasOrdenadas.length === 0 && (
                 <span className="text-xs text-gray-400">Nenhuma mesa cadastrada. Configure em Mesas.</span>
               )}

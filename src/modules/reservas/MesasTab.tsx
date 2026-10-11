@@ -223,6 +223,7 @@ function MesaModal({
   const [nome, setNome] = useState(mesa?.nome || "");
   const [capacidade, setCapacidade] = useState(String(mesa?.capacidade || 4));
   const [salaoId, setSalaoId] = useState(mesa?.salaoId || (saloes[0]?.id || ""));
+  const [tipoMesa, setTipoMesa] = useState<"baixa" | "alta">(mesa?.tipoMesa || saloes.find(s => s.id === (mesa?.salaoId || saloes[0]?.id))?.tipoMesa || "baixa");
   const [ativa, setAtiva] = useState(mesa?.ativa ?? true);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -240,6 +241,7 @@ function MesaModal({
         nome: nome.trim(),
         capacidade: cap,
         salaoId,
+        tipoMesa,
         ativa,
         ordem: mesa?.ordem ?? ordemAtual,
       };
@@ -280,7 +282,11 @@ function MesaModal({
           </label>
           <select
             value={salaoId}
-            onChange={(e) => setSalaoId(e.target.value)}
+            onChange={(e) => {
+              setSalaoId(e.target.value);
+              // Mesa nova herda a altura PADRÃO do salão escolhido (dá pra mudar abaixo).
+              if (isNew) { const t = saloes.find(s => s.id === e.target.value)?.tipoMesa; if (t) setTipoMesa(t); }
+            }}
             className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
           >
             <option value="">— escolhe —</option>
@@ -288,6 +294,17 @@ function MesaModal({
               <option key={s.id} value={s.id}>{s.nome}</option>
             ))}
           </select>
+        </div>
+        <div>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Altura da mesa</label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {([["baixa", "🪑 Baixa"], ["alta", "🍸 Alta / bar"]] as const).map(([v, label]) => (
+              <button key={v} type="button" onClick={() => setTipoMesa(v)}
+                className={`px-3 py-2 rounded-lg text-sm border ${tipoMesa === v ? "bg-indigo-50 border-indigo-300 dark:bg-indigo-900/20 dark:border-indigo-700 font-semibold" : "bg-white border-gray-300 dark:bg-gray-900 dark:border-gray-700"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
         <label className="flex items-center gap-2 text-sm cursor-pointer">
           <input type="checkbox" checked={ativa} onChange={(e) => setAtiva(e.target.checked)} />
@@ -315,6 +332,7 @@ function BulkMesasModal({
   onClose: () => void;
 }) {
   const [salaoId, setSalaoId] = useState(saloes[0]?.id || "");
+  const [tipoMesa, setTipoMesa] = useState<"baixa" | "alta">(saloes[0]?.tipoMesa || "baixa");
   const [de, setDe] = useState("1");
   const [ate, setAte] = useState("10");
   const [capacidade, setCapacidade] = useState("4");
@@ -366,6 +384,7 @@ function BulkMesasModal({
           nome: String(i),
           capacidade: capN,
           salaoId,
+          tipoMesa,
           ativa: true,
           ordem: ordemBase + idx,
         };
@@ -397,12 +416,24 @@ function BulkMesasModal({
           </label>
           <select
             value={salaoId}
-            onChange={(e) => setSalaoId(e.target.value)}
+            onChange={(e) => { setSalaoId(e.target.value); const t = saloes.find(s => s.id === e.target.value)?.tipoMesa; if (t) setTipoMesa(t); }}
             className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900"
           >
             <option value="">— escolhe —</option>
             {saloes.map(s => <option key={s.id} value={s.id}>{s.nome}</option>)}
           </select>
+        </div>
+
+        <div>
+          <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Altura das mesas</label>
+          <div className="grid grid-cols-2 gap-1.5">
+            {([["baixa", "🪑 Baixa"], ["alta", "🍸 Alta / bar"]] as const).map(([v, label]) => (
+              <button key={v} type="button" onClick={() => setTipoMesa(v)}
+                className={`px-3 py-2 rounded-lg text-sm border ${tipoMesa === v ? "bg-indigo-50 border-indigo-300 dark:bg-indigo-900/20 dark:border-indigo-700 font-semibold" : "bg-white border-gray-300 dark:bg-gray-900 dark:border-gray-700"}`}>
+                {label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <div className="grid grid-cols-2 gap-3">

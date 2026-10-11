@@ -2425,6 +2425,7 @@ export type Mesa = {
   restaurantId: string;
   nome: string;                       // ex: "Mesa 4", "Bar 2", "Varanda 1"
   capacidade: number;                 // qtd máx de pessoas
+  tipoMesa?: "baixa" | "alta";        // altura da mesa (ícone no seletor). default = padrão do salão, senão "baixa"
   setor?: string;                     // LEGADO — substituído por salaoId
   // Salão ao qual a mesa pertence. Opcional pra retrocompat com mesas
   // criadas antes dessa relação existir (UI mostra "sem salão" pra elas

@@ -287,7 +287,7 @@ function SalaoModal({
 
         {/* Altura das mesas — vira o ícone/etiqueta no seletor de mesa */}
         <div>
-          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Altura das mesas</label>
+          <label className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400">Altura padrão das mesas <span className="normal-case font-normal text-gray-400">(mesas novas herdam; dá pra mudar por mesa)</span></label>
           <div className="mt-1 grid grid-cols-2 gap-1.5">
             {([["baixa", "🪑 Mesa baixa"], ["alta", "🍸 Mesa alta / bar"]] as const).map(([v, label]) => (
               <button key={v} type="button" onClick={() => setTipoMesa(v)}
