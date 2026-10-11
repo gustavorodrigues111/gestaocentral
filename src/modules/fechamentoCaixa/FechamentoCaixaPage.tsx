@@ -736,29 +736,32 @@ function NovoFechamentoModal({ rid, restaurant, pessoas, por, recentes, onClose,
       // gravação já fica salva localmente (IndexedDB persistente) e sincroniza
       // sozinha. Então NÃO travamos esperando: se o servidor não confirmar em 8s,
       // seguimos como "salvo (sincronizando)" e a escrita completa em background.
-      const gravacao = addDoc(collection(db, "fechamentosCaixa"), fechamento);
-      gravacao.catch((e2) => console.error("[fechamentoCaixa] sincronização do fechamento falhou:", e2));
-      try {
-        await comTimeout(gravacao, 8000, passo);
-      } catch (eTimeout) {
-        // Só engole o TIMEOUT (rede lenta). Erro REAL do Firestore (permissão,
-        // doc inválido) tem outra mensagem → repropaga pra aparecer o motivo.
-        if (eTimeout instanceof Error && /demorou mais de/.test(eTimeout.message)) setSincronizandoSalvo(true);
-        else throw eTimeout;
-      }
-      // Email de resumo pros sócios (best-effort — não trava o save).
-      if (emails.length) void enviarEmailResumo(emails, restaurant.nome || "Restaurante", fechamento, recentes, restaurant.fechamentoEmailRemetente);
-      // WhatsApp pros sócios (mesma ideia do email — aditivo, best-effort). Só dispara
-      // quando o template aviso_fechamento estiver aprovado; senão fica logado como erro.
+      // Destinatários de WhatsApp — calculados ANTES pra usar no .then da gravação.
       const zaps = enviaZap ? Array.from(new Set([
         ...socios.map((p) => (p.whatsapp || "").replace(/\D/g, "")),
         ...(restaurant.fechamentoSociosWhatsapp || []).map((n) => n.replace(/\D/g, "")),
       ].filter((n) => n.length >= 10))) : [];
-      if (zaps.length) {
-        const totalStr = parseBRL(totalVendas) != null ? fmtBRL(parseBRL(totalVendas)!) : "—";
-        const quando = `${fmtData(data)} · ${TURNO_CAIXA_LABEL[turno]}`;
-        const link = `https://admin.planejamento.app/r/${rid}/fechamentoCaixa`;
+      const totalStr = parseBRL(totalVendas) != null ? fmtBRL(parseBRL(totalVendas)!) : "—";
+      const quando = `${fmtData(data)} · ${TURNO_CAIXA_LABEL[turno]}`;
+      const link = `https://admin.planejamento.app/r/${rid}/fechamentoCaixa`;
+
+      const gravacao = addDoc(collection(db, "fechamentosCaixa"), fechamento);
+      // CRÍTICO (integridade): só avisa os sócios (email/WhatsApp) QUANDO a gravação
+      // CONFIRMAR no servidor. Antes o aviso saía mesmo se a escrita falhasse → chegava
+      // e-mail de um fechamento que não ficava salvo (não aparecia na lista). Agora:
+      // sem gravação confirmada, NENHUM aviso. Se confirmar depois (rede lenta), o aviso
+      // dispara nesse momento.
+      gravacao.then(() => {
+        if (emails.length) void enviarEmailResumo(emails, restaurant.nome || "Restaurante", fechamento, recentes, restaurant.fechamentoEmailRemetente);
         for (const num of zaps) void enviarWhatsapp({ to: num, template: "aviso_fechamento", params: ["sócio(a)", restaurant.nome || "Restaurante", quando, totalStr, link], contexto: "fechamento_socios", restaurantId: rid, criadoPor: por?.id });
+      }).catch((e2) => console.error("[fechamentoCaixa] gravação falhou — e-mail/WhatsApp NÃO enviados:", e2));
+      try {
+        await comTimeout(gravacao, 8000, passo);
+      } catch (eTimeout) {
+        // Só engole o TIMEOUT (rede lenta → segue como "sincronizando"; o aviso sai
+        // quando a escrita confirmar). Erro REAL do Firestore → repropaga pro motivo.
+        if (eTimeout instanceof Error && /demorou mais de/.test(eTimeout.message)) setSincronizandoSalvo(true);
+        else throw eTimeout;
       }
       setSalvo(true);
     } catch (e) {
