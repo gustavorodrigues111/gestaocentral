@@ -6,7 +6,7 @@ import { useEffect, useMemo, useState } from "react";
 import { CalendarHeart, Plus, Settings, Trash2, X, Check, ChevronLeft, FolderOpen, CalendarDays, Link2, Armchair, Wine, RefreshCw } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { fmtBR } from "../../core/utils/date";
-import { reservaMesaIds } from "../../core/reservas/mesas";
+import { reservaMesaIds, reservaMesasNomes } from "../../core/reservas/mesas";
 import { centralConfigured, centralEnsureFolder, parseDriveFolderId } from "../../core/google/driveCentral";
 import type { Mesa, Reserva, ReservaEvento, ReservaEventoConfig } from "../../core/types";
 import { ouvirEventos, salvarEvento, excluirEvento, ouvirEventoConfig, salvarEventoConfig } from "./eventosRepo";
@@ -46,12 +46,37 @@ function Stat({ label, value, hint, tone = "default" }: { label: string; value: 
     </div>
   );
 }
-// Nº da(s) mesa(s) da reserva — tira o prefixo "Mesa " e mostra "Nº 4".
-const mesaTxt = (r: Reserva) => {
-  const nomes = r.mesasNomesSnapshot?.length ? r.mesasNomesSnapshot : (r.mesaNomeSnapshot ? [r.mesaNomeSnapshot] : []);
-  if (!nomes.length) return "—";
-  return nomes.map((n) => n.replace(/^mesa\s+/i, "Nº ")).join(", ");
-};
+// Mesa(s) da reserva, com altura (alta/baixa) pelo cadastro atual quando
+// a mesa ainda existe; senão cai no nome do snapshot (sem altura).
+function mesasDaReserva(r: Reserva, mesas: Mesa[]): { label: string; alta: boolean }[] {
+  const ids = reservaMesaIds(r);
+  const nomes = reservaMesasNomes(r);
+  const n = Math.max(ids.length, nomes.length);
+  if (!n) return [];
+  const out: { label: string; alta: boolean }[] = [];
+  for (let i = 0; i < n; i++) {
+    const m = ids[i] ? mesas.find((x) => x.id === ids[i]) : undefined;
+    const nome = m?.nome ?? nomes[i] ?? "";
+    out.push({ label: nome ? nome.replace(/^mesa\s+/i, "Nº ") : "—", alta: m?.tipoMesa === "alta" });
+  }
+  return out;
+}
+
+// Chips de mesa com ícone de altura (🍸 alta / 🪑 baixa).
+function MesaTags({ r, mesas }: { r: Reserva; mesas: Mesa[] }) {
+  const items = mesasDaReserva(r, mesas);
+  if (!items.length) return <>—</>;
+  return (
+    <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      {items.map((it, i) => (
+        <span key={i} className="inline-flex items-center gap-1 whitespace-nowrap">
+          {it.alta ? <Wine size={12} className="text-indigo-500" /> : <Armchair size={12} className="text-gray-400" />}
+          {it.label}
+        </span>
+      ))}
+    </span>
+  );
+}
 
 export function EventosTab({ rid, reservas, mesas, carregando, podeEditar, onNovaReserva, onEditarReserva, onVincular }: {
   rid: string; reservas: Reserva[]; mesas: Mesa[]; carregando?: boolean; podeEditar: boolean;
@@ -211,7 +236,7 @@ function PainelEvento({ ev, reservas, candidatas, mesas, carregando, podeEditar,
             <div className="text-[12px] text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
               <span><CalendarDays size={11} className="inline align-[-1px]" /> {fmtBR(r.data)} · {r.horario}</span>
               <span>· {r.pessoas} pax</span>
-              <span>· Mesa {mesaTxt(r)}</span>
+              <span className="inline-flex items-center gap-1">· <MesaTags r={r} mesas={mesas} /></span>
               {r.pagamento?.ajusteTipo === "cortesia" ? <span className="text-violet-600 dark:text-violet-400 font-semibold">· Cortesia</span> : r.pagamento?.valor ? <span>· {fmtR(r.pagamento.valor)}{r.pagamento.forma ? ` (${r.pagamento.forma})` : ""}</span> : null}
             </div>
           </button>
@@ -232,7 +257,7 @@ function PainelEvento({ ev, reservas, candidatas, mesas, carregando, podeEditar,
                 <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100">{r.clienteNomeSnapshot || "—"}{r.status === "cancelada" && <span className="text-[11px] text-rose-500 ml-1">(cancelada)</span>}</td>
                 <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{fmtBR(r.data)} · {r.horario}</td>
                 <td className="px-4 py-2.5 text-center tabular-nums">{r.pessoas}</td>
-                <td className="px-4 py-2.5 whitespace-nowrap">{mesaTxt(r)}</td>
+                <td className="px-4 py-2.5 whitespace-nowrap"><MesaTags r={r} mesas={mesas} /></td>
                 <td className="px-4 py-2.5">{r.pagamento?.pago ? <span className="text-emerald-600 font-semibold">Pago</span> : <span className="text-amber-600">Pendente</span>}{r.pagamento?.forma ? <span className="text-gray-400 text-[12px]"> · {r.pagamento.forma}</span> : null}</td>
                 <td className="px-4 py-2.5 text-right tabular-nums">{r.pagamento?.ajusteTipo === "cortesia" ? <span className="text-violet-600 dark:text-violet-400 font-semibold">Cortesia</span> : r.pagamento?.valor ? fmtR(r.pagamento.valor) : "—"}</td>
               </tr>

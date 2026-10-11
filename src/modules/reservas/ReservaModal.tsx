@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { Phone, Search, Tag, Users, TriangleAlert, FileText, CalendarHeart, Pencil, GitMerge, X } from "lucide-react";
+import { Phone, Search, Tag, Users, TriangleAlert, FileText, CalendarHeart, Pencil, GitMerge, X, Wine, Armchair } from "lucide-react";
 import { addDoc, collection, doc, deleteDoc, setDoc, updateDoc } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
@@ -36,7 +36,7 @@ const STATUSES: ReservaStatus[] = ["pendente", "confirmada", "chegou", "no_show"
 
 // Tela de VISUALIZAÇÃO da reserva (read-only, sem caixas de formulário).
 function ResumoReserva({ clienteNome, clienteTelefone, data, horario, pessoas, mesas, status, eventoNome, ocasiao, observacoes, pagamento }: {
-  clienteNome: string; clienteTelefone?: string; data: string; horario: string; pessoas: number; mesas: string[]; status: ReservaStatus;
+  clienteNome: string; clienteTelefone?: string; data: string; horario: string; pessoas: number; mesas: { nome: string; alta: boolean }[]; status: ReservaStatus;
   eventoNome?: string; ocasiao?: string; observacoes?: string;
   pagamento?: { pago: boolean; forma?: string; valor?: number; ajusteTipo?: "cheio" | "desconto" | "acrescimo" | "cortesia"; ajusteValor?: number; comprovanteUrl?: string };
 }) {
@@ -58,7 +58,16 @@ function ResumoReserva({ clienteNome, clienteTelefone, data, horario, pessoas, m
         <Campo label="Data"><span className="tabular-nums">{fmtBR(data)}</span></Campo>
         <Campo label="Horário"><span className="tabular-nums">{horario}</span></Campo>
         <Campo label="Pessoas">{pessoas}</Campo>
-        {mesas.length > 0 && <Campo label={mesas.length > 1 ? "Mesas" : "Mesa"}>{mesas.join(", ")}</Campo>}
+        {mesas.length > 0 && <Campo label={mesas.length > 1 ? "Mesas" : "Mesa"}>
+          <span className="inline-flex flex-wrap items-center gap-x-2 gap-y-1">
+            {mesas.map((m, i) => (
+              <span key={i} className="inline-flex items-center gap-1">
+                {m.alta ? <Wine size={13} className="text-indigo-500" /> : <Armchair size={13} className="text-gray-400" />}
+                {m.nome}
+              </span>
+            ))}
+          </span>
+        </Campo>}
         {eventoNome && <Campo label="Evento">{eventoNome}</Campo>}
         {ocasiao && <Campo label="Ocasião">{ocasiao}</Campo>}
       </div>
@@ -177,6 +186,15 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
   const pessoasNum = parseInt(pessoas, 10) || 0;
   // Base sugerida do evento = pessoas × valor por pessoa (em centavos).
   const baseCents = evento?.valorPorPessoa && pessoasNum > 0 ? Math.round(pessoasNum * evento.valorPorPessoa * 100) : 0;
+  // Mudar o nº de pessoas re-sugere o valor na hora (mesmo que já tenha sido
+  // editado) — mantém o valor na abertura da reserva já existente.
+  const prevPessoas = useRef(pessoasNum);
+  useEffect(() => {
+    if (prevPessoas.current !== pessoasNum) {
+      prevPessoas.current = pessoasNum;
+      valorTocado.current = false;
+    }
+  }, [pessoasNum]);
   // No modo "cheio" (valor manual), sugere a base até o usuário editar.
   useEffect(() => {
     if (!evId || ajusteTipo !== "cheio" || valorTocado.current) return;
@@ -385,7 +403,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
           )}
           {!editing && <ResumoReserva
             clienteNome={clienteNome} clienteTelefone={clienteTelefone} data={data} horario={horario}
-            pessoas={pessoasNum} mesas={mesasSel.map((m) => m.nome)} status={status}
+            pessoas={pessoasNum} mesas={mesasSel.map((m) => ({ nome: m.nome, alta: m.tipoMesa === "alta" }))} status={status}
             eventoNome={evId ? (evento?.nome || reserva?.ocasiao) : undefined} ocasiao={evId ? undefined : ocasiao}
             observacoes={observacoes}
             pagamento={evId ? { pago, forma: formaPg, valor: ajusteTipo === "cortesia" ? 0 : (valorFinalCents > 0 ? valorFinalCents / 100 : undefined), ajusteTipo, ajusteValor: ajusteCents / 100, comprovanteUrl: pagIni?.comprovanteUrl } : undefined}
@@ -499,7 +517,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
                                 : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400"
                           }`}
                         >
-                          {alta ? "🍸 " : ""}{m.nome} · <Users size={12} className="inline align-[-2px]" />{m.capacidade}{ocupada ? " · ocupada" : ""}
+                          {alta ? <Wine size={12} className="inline align-[-2px] mr-0.5" /> : <Armchair size={12} className="inline align-[-2px] mr-0.5" />}{m.nome} · <Users size={12} className="inline align-[-2px]" />{m.capacidade}{ocupada ? " · ocupada" : ""}
                         </button>
                       );
                     })}
