@@ -236,10 +236,11 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
   const lugaresTotais = mesasAtivas.reduce((s, m) => s + (m.capacidade || 0), 0);
   const lugaresLivres = mesasLivres.reduce((s, m) => s + (m.capacidade || 0), 0);
   const totalPessoas = ativas.reduce((s, r) => s + (r.pessoas || 0), 0);
-  let recebido = 0, pendente = 0, descontos = 0, cortesias = 0;
+  let recebido = 0, pendente = 0, descontos = 0, cortesias = 0, cortesiasValor = 0;
   for (const r of ativas) {
     const p = r.pagamento; if (!p) continue;
-    if (p.ajusteTipo === "cortesia") cortesias++;
+    // Cortesia: valor cedido = o que seria cobrado (pessoas × valor/pessoa).
+    if (p.ajusteTipo === "cortesia") { cortesias++; cortesiasValor += (r.pessoas || 0) * (ev.valorPorPessoa || 0); }
     if (p.ajusteTipo === "desconto" && p.ajusteValor) descontos += p.ajusteValor;
     const v = p.valor || 0;
     if (p.pago) recebido += v; else pendente += v;
@@ -267,7 +268,7 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
         <Stat label="Mesas livres" value={`${mesasLivres.length}/${mesasAtivas.length}`} hint={`${lugaresLivres}/${lugaresTotais} lugares`} />
         <Stat label="Potencial restante" value={fmtR(potencial)} tone="indigo" hint={ev.valorPorPessoa ? `${lugaresLivres} × ${fmtR(ev.valorPorPessoa)}` : "sem valor/pessoa"} />
         {descontos > 0 && <Stat label="Descontos" value={`− ${fmtR(descontos)}`} tone="rose" />}
-        {cortesias > 0 && <Stat label="Cortesias" value={String(cortesias)} tone="violet" />}
+        {cortesias > 0 && <Stat label="Cortesias" value={fmtR(cortesiasValor)} tone="violet" hint={`${cortesias} reserva(s)`} />}
       </div>
 
       <div className="flex items-center gap-3 text-[12px] text-gray-500 flex-wrap">
