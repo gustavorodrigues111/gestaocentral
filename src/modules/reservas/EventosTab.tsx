@@ -3,13 +3,13 @@
 // pagamento + comprovante). Pasta do Drive por evento (conta central, subpasta
 // de uma pasta-raiz indicada pelo usuário).
 import { useEffect, useMemo, useState } from "react";
-import { CalendarHeart, Plus, Settings, Trash2, X, Check, ChevronLeft, FolderOpen, CalendarDays, Link2, Armchair, Wine, RefreshCw } from "lucide-react";
+import { CalendarHeart, Plus, Settings, Trash2, X, Check, ChevronLeft, FolderOpen, CalendarDays, Link2, Armchair, Wine, RefreshCw, Ban } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { fmtBR } from "../../core/utils/date";
 import { reservaMesaIds, reservaMesasNomes } from "../../core/reservas/mesas";
 import { centralConfigured, centralEnsureFolder, parseDriveFolderId } from "../../core/google/driveCentral";
 import type { Mesa, Reserva, ReservaEvento, ReservaEventoConfig, Salao } from "../../core/types";
-import { ouvirEventos, salvarEvento, excluirEvento, ouvirEventoConfig, salvarEventoConfig } from "./eventosRepo";
+import { ouvirEventos, salvarEvento, excluirEvento, ouvirEventoConfig, salvarEventoConfig, atualizarMesasBloqueadas } from "./eventosRepo";
 
 const uid = () => { try { return crypto.randomUUID(); } catch { return "ev" + Date.now() + Math.random().toString(36).slice(2); } };
 const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -210,7 +210,16 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
   const mesasAtivas = mesas.filter((m) => m.ativa);
   const usadas = new Set<string>();
   for (const r of ativas) for (const id of reservaMesaIds(r)) usadas.add(id);
-  const mesasLivres = mesasAtivas.filter((m) => !usadas.has(m.id)).sort((a, b) => mesaNum(a.nome) - mesaNum(b.nome) || a.nome.localeCompare(b.nome));
+  // Mesas bloqueadas NESTE evento (layout/restrições).
+  const bloqueadas = useMemo(() => new Set(ev.mesasBloqueadas || []), [ev.mesasBloqueadas]);
+  const mesasBloqueadas = mesasAtivas.filter((m) => bloqueadas.has(m.id) && !usadas.has(m.id)).sort((a, b) => mesaNum(a.nome) - mesaNum(b.nome) || a.nome.localeCompare(b.nome));
+  const mesasLivres = mesasAtivas.filter((m) => !usadas.has(m.id) && !bloqueadas.has(m.id)).sort((a, b) => mesaNum(a.nome) - mesaNum(b.nome) || a.nome.localeCompare(b.nome));
+  async function toggleBloqueio(mesaId: string) {
+    if (!podeEditar) return;
+    const atual = ev.mesasBloqueadas || [];
+    const next = atual.includes(mesaId) ? atual.filter((x) => x !== mesaId) : [...atual, mesaId];
+    try { await atualizarMesasBloqueadas(ev.id, next); } catch (e) { console.error("[eventos] bloquear mesa", e); }
+  }
   // Mesas disponíveis agrupadas por salão (mesmas regras de ordem dos blocos).
   const gruposMesasLivres = useMemo(() => {
     const m = new Map<string, Mesa[]>();
@@ -334,10 +343,13 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
       {/* Mesas ainda disponíveis no evento */}
       {mesasAtivas.length > 0 && (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 p-3">
-          <div className="text-[12px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 mb-2 inline-flex items-center gap-1.5">
-            <Armchair size={13} /> Mesas disponíveis ({mesasLivres.length} · {lugaresLivres} lugares)
+          <div className="flex items-baseline justify-between gap-2 mb-2">
+            <div className="text-[12px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 inline-flex items-center gap-1.5">
+              <Armchair size={13} /> Mesas disponíveis ({mesasLivres.length} · {lugaresLivres} lugares)
+            </div>
+            {podeEditar && <span className="text-[11px] text-gray-400">toque pra bloquear/liberar</span>}
           </div>
-          {mesasLivres.length === 0 ? (
+          {mesasLivres.length === 0 && mesasBloqueadas.length === 0 ? (
             <div className="text-[13px] text-gray-500">Todas as mesas ativas já têm reserva nesse evento. 🎉</div>
           ) : (
             <div className="space-y-2.5">
@@ -353,18 +365,40 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
                       {g.mesas.map((m) => {
                         const alta = m.tipoMesa === "alta";
                         return (
-                          <span key={m.id} title={`${m.capacidade} pax · ${alta ? "alta" : "baixa"}`}
-                            className="inline-flex items-center gap-1 text-[12px] font-medium px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+                          <button key={m.id} type="button" disabled={!podeEditar} onClick={() => toggleBloqueio(m.id)}
+                            title={podeEditar ? "Clique pra bloquear neste evento" : `${m.capacidade} pax · ${alta ? "alta" : "baixa"}`}
+                            className={`inline-flex items-center gap-1 text-[12px] font-medium px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 ${podeEditar ? "hover:border-rose-300 dark:hover:border-rose-700 cursor-pointer" : "cursor-default"}`}>
                             {alta ? <Wine size={12} className="text-indigo-500" /> : <Armchair size={12} className="text-gray-400" />}
                             {m.nome}
                             <span className="text-gray-400">· {m.capacidade}</span>
-                          </span>
+                          </button>
                         );
                       })}
                     </div>
                   </div>
                 );
               })}
+              {mesasBloqueadas.length > 0 && (
+                <div>
+                  <div className="text-[11px] font-semibold text-rose-600 dark:text-rose-400 mb-1 inline-flex items-center gap-1">
+                    <Ban size={12} /> Bloqueadas neste evento ({mesasBloqueadas.length})
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {mesasBloqueadas.map((m) => {
+                      const alta = m.tipoMesa === "alta";
+                      return (
+                        <button key={m.id} type="button" disabled={!podeEditar} onClick={() => toggleBloqueio(m.id)}
+                          title={podeEditar ? "Clique pra liberar" : "Bloqueada neste evento"}
+                          className={`inline-flex items-center gap-1 text-[12px] font-medium px-2 py-1 rounded-lg border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/20 text-rose-500 line-through ${podeEditar ? "cursor-pointer hover:border-rose-400" : "cursor-default"}`}>
+                          {alta ? <Wine size={12} /> : <Armchair size={12} />}
+                          {m.nome}
+                          <span className="opacity-70">· {m.capacidade}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

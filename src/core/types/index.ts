@@ -2770,6 +2770,9 @@ export type ReservaEvento = {
   dataFim?: string;                   // YYYY-MM-DD (opcional — evento de período)
   horarioPadrao?: string;             // HH:MM sugerido pras reservas
   valorPorPessoa?: number;            // sugestão; total = pessoas × valor (editável por reserva)
+  // Mesas bloqueadas NESTE evento (layout/restrições) — não entram como
+  // disponíveis nem podem ser escolhidas nas reservas do evento.
+  mesasBloqueadas?: string[];
   pastaDriveId?: string; pastaDriveNome?: string;   // subpasta (conta central) dos comprovantes
   ativo?: boolean; criadoEm: string; criadoPor?: string; atualizadoEm?: string;
 };

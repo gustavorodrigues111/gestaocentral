@@ -204,8 +204,11 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
     return s;
   }, [horario, reservasMesmoDia, reserva?.id]);
 
+  // Mesas bloqueadas NESTE evento (layout/restrições) — não podem ser escolhidas.
+  const evBloqueadas = useMemo(() => new Set(evento?.mesasBloqueadas || []), [evento]);
+
   function toggleMesa(id: string) {
-    if (mesasOcupadas.has(id) && !mesaIds.includes(id)) return; // bloqueada
+    if (!mesaIds.includes(id) && (mesasOcupadas.has(id) || evBloqueadas.has(id))) return; // indisponível
     setMesaIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }
 
@@ -587,24 +590,28 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
                   <div className="flex flex-wrap gap-1.5">
                     {g.mesas.map(m => {
                       const sel = mesaIds.includes(m.id);
+                      const bloqueada = evBloqueadas.has(m.id) && !sel;   // bloqueada neste evento
                       const ocupada = mesasOcupadas.has(m.id) && !sel;
+                      const indisponivel = ocupada || bloqueada;
                       const alta = m.tipoMesa === "alta";   // altura POR MESA
                       return (
                         <button
                           key={m.id}
                           type="button"
                           onClick={() => toggleMesa(m.id)}
-                          disabled={ocupada}
-                          title={ocupada ? "Mesa já reservada nesse horário" : `${alta ? "Mesa alta/bar · " : ""}${g.salao?.nome || m.setor || ""}` || undefined}
+                          disabled={indisponivel}
+                          title={bloqueada ? "Mesa bloqueada neste evento" : ocupada ? "Mesa já reservada nesse horário" : `${alta ? "Mesa alta/bar · " : ""}${g.salao?.nome || m.setor || ""}` || undefined}
                           className={`px-2.5 py-1.5 text-xs rounded-lg border transition-colors ${
                             sel
                               ? "border-indigo-500 bg-indigo-600 text-white font-semibold"
-                              : ocupada
-                                ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-gray-400 line-through cursor-not-allowed"
-                                : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400"
+                              : bloqueada
+                                ? "border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/20 text-rose-500 line-through cursor-not-allowed"
+                                : ocupada
+                                  ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/50 text-gray-400 line-through cursor-not-allowed"
+                                  : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400"
                           }`}
                         >
-                          {alta ? <Wine size={12} className="inline align-[-2px] mr-0.5" /> : <Armchair size={12} className="inline align-[-2px] mr-0.5" />}{m.nome} · <Users size={12} className="inline align-[-2px]" />{m.capacidade}{ocupada ? " · ocupada" : ""}
+                          {alta ? <Wine size={12} className="inline align-[-2px] mr-0.5" /> : <Armchair size={12} className="inline align-[-2px] mr-0.5" />}{m.nome} · <Users size={12} className="inline align-[-2px]" />{m.capacidade}{bloqueada ? " · bloqueada" : ocupada ? " · ocupada" : ""}
                         </button>
                       );
                     })}
