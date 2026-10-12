@@ -89,13 +89,17 @@ function ResumoReserva({ clienteNome, clienteTelefone, data, horario, pessoas, m
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3">
           <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Pagamento</div>
           <div className="flex items-center gap-2 flex-wrap text-sm">
-            {pagamento.pago
-              ? <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">Pago</span>
-              : <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">Pendente</span>}
-            {pagamento.ajusteTipo === "cortesia"
-              ? <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300">Cortesia</span>
-              : pagamento.valor != null && <span className="font-semibold tabular-nums">{fmtR(pagamento.valor)}</span>}
-            {pagamento.forma && pagamento.ajusteTipo !== "cortesia" && <span className="text-gray-400">· {pagamento.forma}</span>}
+            {pagamento.ajusteTipo === "cortesia" ? (
+              <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300">Cortesia</span>
+            ) : (
+              <>
+                {pagamento.pago
+                  ? <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">Pago</span>
+                  : <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">Pendente</span>}
+                {pagamento.valor != null && <span className="font-semibold tabular-nums">{fmtR(pagamento.valor)}</span>}
+                {pagamento.forma && <span className="text-gray-400">· {pagamento.forma}</span>}
+              </>
+            )}
           </div>
           {(pagamento.ajusteTipo === "desconto" || pagamento.ajusteTipo === "acrescimo") && pagamento.ajusteValor ? (
             <div className="text-[11px] text-gray-500 mt-1">{pagamento.ajusteTipo === "desconto" ? "Desconto" : "Acréscimo"} de {fmtR(pagamento.ajusteValor)} sobre o sugerido</div>
@@ -329,13 +333,15 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
           const up = await centralUpload(evento.pastaDriveId, new File([compFile], nomeArq, { type: compFile.type }));
           cId = up.id; cUrl = up.webViewLink || cUrl; cNome = nomeArq;
         }
+        const ehCortesia = ajusteTipo === "cortesia";
         pagamento = {
-          pago, forma: formaPg,
-          valor: ajusteTipo === "cortesia" ? 0 : (valorFinalCents > 0 ? valorFinalCents / 100 : undefined),
+          pago: ehCortesia ? false : pago,
+          forma: ehCortesia ? undefined : formaPg,
+          valor: ehCortesia ? 0 : (valorFinalCents > 0 ? valorFinalCents / 100 : undefined),
           ajusteTipo,
           ajusteValor: (ajusteTipo === "desconto" || ajusteTipo === "acrescimo") ? ajusteCents / 100 : undefined,
           comprovanteDriveId: cId, comprovanteUrl: cUrl, comprovanteNome: cNome,
-          pagoEm: pago ? (pagIni?.pagoEm || now) : undefined, registradoPor: me.id,
+          pagoEm: (!ehCortesia && pago) ? (pagIni?.pagoEm || now) : undefined, registradoPor: me.id,
         };
       }
 
@@ -643,18 +649,23 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
           {evId && (
             <div className="border-t border-gray-200 dark:border-gray-800 pt-3">
               <div className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 mb-2 inline-flex items-center gap-1.5"><CalendarHeart size={13} className="text-indigo-500" /> Pagamento {evento?.nome ? <>· <span className="text-indigo-600 dark:text-indigo-300 normal-case">{evento.nome}</span></> : null}</div>
-              <label className="flex items-center gap-2 mb-2 text-sm font-semibold">
-                <input type="checkbox" checked={pago} onChange={(e) => setPago(e.target.checked)} className="accent-emerald-600" />
-                {pago ? "Pago ✓" : "Ainda não pago"}
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Forma de pagamento</label>
-                  <select value={formaPg} onChange={(e) => setFormaPg(e.target.value)} className="w-full mt-1 h-10 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
-                    {FORMAS_PG.map((f) => <option key={f} value={f}>{FORMA_PG_LABEL[f]}</option>)}
-                  </select>
-                </div>
-              </div>
+              {/* Cortesia não é "pago/pendente" nem tem forma de pagamento. */}
+              {ajusteTipo !== "cortesia" && (
+                <>
+                  <label className="flex items-center gap-2 mb-2 text-sm font-semibold">
+                    <input type="checkbox" checked={pago} onChange={(e) => setPago(e.target.checked)} className="accent-emerald-600" />
+                    {pago ? "Pago ✓" : "Ainda não pago"}
+                  </label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-semibold text-gray-600 dark:text-gray-400">Forma de pagamento</label>
+                      <select value={formaPg} onChange={(e) => setFormaPg(e.target.value)} className="w-full mt-1 h-10 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 text-sm">
+                        {FORMAS_PG.map((f) => <option key={f} value={f}>{FORMA_PG_LABEL[f]}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Valor do evento: cheio / desconto / acréscimo / cortesia */}
               <div className="mt-3">

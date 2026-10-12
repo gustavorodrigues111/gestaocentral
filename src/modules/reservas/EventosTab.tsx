@@ -260,13 +260,15 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
                     <button key={r.id} onClick={() => onEditarReserva(r, ev)} className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
                       <div className="flex items-center gap-2">
                         <div className="font-semibold text-gray-900 dark:text-gray-100 flex-1 min-w-0 truncate">{r.clienteNomeSnapshot || "—"}{r.status === "cancelada" && <span className="text-[11px] text-rose-500 ml-1">(cancelada)</span>}</div>
-                        {r.pagamento?.pago ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">Pago</span> : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">Pendente</span>}
+                        {r.pagamento?.ajusteTipo === "cortesia"
+                          ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-violet-50 text-violet-700 dark:bg-violet-950/30 dark:text-violet-300">Cortesia</span>
+                          : r.pagamento?.pago ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">Pago</span> : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">Pendente</span>}
                       </div>
                       <div className="text-[12px] text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
                         <span><CalendarDays size={11} className="inline align-[-1px]" /> {fmtBR(r.data)} · {r.horario}</span>
                         <span>· {r.pessoas} pax</span>
                         <span className="inline-flex items-center gap-1">· <MesaTags r={r} mesas={mesas} /></span>
-                        {r.pagamento?.ajusteTipo === "cortesia" ? <span className="text-violet-600 dark:text-violet-400 font-semibold">· Cortesia</span> : r.pagamento?.valor ? <span>· {fmtR(r.pagamento.valor)}{r.pagamento.forma ? ` (${r.pagamento.forma})` : ""}</span> : null}
+                        {r.pagamento?.ajusteTipo !== "cortesia" && r.pagamento?.valor ? <span>· {fmtR(r.pagamento.valor)}{r.pagamento.forma ? ` (${r.pagamento.forma})` : ""}</span> : null}
                       </div>
                     </button>
                   ))}
@@ -285,7 +287,7 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
                           <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{fmtBR(r.data)} · {r.horario}</td>
                           <td className="px-4 py-2.5 text-center tabular-nums">{r.pessoas}</td>
                           <td className="px-4 py-2.5 whitespace-nowrap"><MesaTags r={r} mesas={mesas} /></td>
-                          <td className="px-4 py-2.5">{r.pagamento?.pago ? <span className="text-emerald-600 font-semibold">Pago</span> : <span className="text-amber-600">Pendente</span>}{r.pagamento?.forma ? <span className="text-gray-400 text-[12px]"> · {r.pagamento.forma}</span> : null}</td>
+                          <td className="px-4 py-2.5">{r.pagamento?.ajusteTipo === "cortesia" ? <span className="text-violet-600 dark:text-violet-400 font-semibold">Cortesia</span> : <>{r.pagamento?.pago ? <span className="text-emerald-600 font-semibold">Pago</span> : <span className="text-amber-600">Pendente</span>}{r.pagamento?.forma ? <span className="text-gray-400 text-[12px]"> · {r.pagamento.forma}</span> : null}</>}</td>
                           <td className="px-4 py-2.5 text-right tabular-nums">{r.pagamento?.ajusteTipo === "cortesia" ? <span className="text-violet-600 dark:text-violet-400 font-semibold">Cortesia</span> : r.pagamento?.valor ? fmtR(r.pagamento.valor) : "—"}</td>
                         </tr>
                       ))}
