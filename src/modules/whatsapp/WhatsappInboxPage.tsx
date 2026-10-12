@@ -160,7 +160,16 @@ function assinarComRetry(q: Query<DocumentData>, onData: (s: QuerySnapshot<Docum
 const PALETA = ["#6366f1", "#ec4899", "#f59e0b", "#10b981", "#ef4444", "#0ea5e9", "#8b5cf6", "#64748b"];
 const EMOJIS = ["😀","😁","😂","🤣","😊","😍","😘","😉","😎","🤗","🤔","😅","🙃","😴","😮","😢","😭","😡","👍","👎","👏","🙏","💪","🤝","👌","✌️","🔥","✨","🎉","❤️","🧡","💛","💚","💙","💜","🖤","💯","✅","❌","⚠️","⭐","📌","📎","📄","📷","🎁","💰","💳","🛵","🍔","🍕","🍟","🥤","☕","🍺","🎂","😋","🤤","👋","🫶","😇","🥳","🤩"];
 
-export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { modo?: "conversas" | "completo"; voltarListaSignal?: number } = {}) {
+export function WhatsappInboxPage({ modo = "completo", voltarListaSignal, deepLinkInicial, aoVoltar }: {
+  modo?: "conversas" | "completo";
+  voltarListaSignal?: number;
+  // Abre direto numa conversa (ex.: modal de confirmação em Reservas), sem usar
+  // a URL. Equivale ao deep-link ?numero=&to=&nome=&texto=.
+  deepLinkInicial?: { numero?: string; to: string; nome?: string; texto?: string };
+  // Quando setado, o botão "voltar" da conversa chama isto (fecha o modal e
+  // volta pra tela de origem) em vez de ir pra lista de conversas.
+  aoVoltar?: () => void;
+} = {}) {
   const embutido = modo === "conversas";
   const { pessoa: me, fbUser } = useAuth();
   const authPronta = !!fbUser;   // token do Firebase disponível → listeners podem atacar
@@ -189,7 +198,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const [clientes, setClientes] = useState<Cliente[]>([]);
   const [tags, setTags] = useState<WhatsappTag[]>([]);
   const [respostas, setRespostas] = useState<WhatsappResposta[]>([]);
-  const [sel, setSel] = useState<string | null>(null);
+  const [sel, setSel] = useState<string | null>(deepLinkInicial?.to ?? null);
   const [editarNum, setEditarNum] = useState(false);   // modal "editar contato" (nome/número)
   const [resposta, setResposta] = useState("");
   // Rascunho por conversa: o texto digitado fica preso à conversa em que foi
@@ -420,17 +429,18 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
   const deepLinkRef = useRef(false);
   useEffect(() => {
     if (deepLinkRef.current) return;
-    const pNum = searchParams.get("numero");
-    const pTo = searchParams.get("to");
+    // Prioriza o deep-link por prop (modal); senão, lê da URL.
+    const pNum = deepLinkInicial?.numero ?? searchParams.get("numero");
+    const pTo = deepLinkInicial?.to ?? searchParams.get("to");
     if (!pNum && !pTo) return;
     if (numerosVisiveis.length === 0) return;   // aguarda os números carregarem
     deepLinkRef.current = true;
     if (pNum && numerosVisiveis.some(n => n.id === pNum)) setNumeroSel(pNum);
     if (pTo) {
       setSel(pTo);
-      const pNome = searchParams.get("nome");
+      const pNome = deepLinkInicial?.nome ?? searchParams.get("nome");
       if (pNome) { const ck = foneKey(pTo); if (!contatos[ck]?.nomeManual && !contatos[ck]?.nomePush) void salvarContato(pTo, { nomeManual: pNome }); }
-      const pTexto = searchParams.get("texto");
+      const pTexto = deepLinkInicial?.texto ?? searchParams.get("texto");
       if (pTexto) {
         // Grava no rascunho da conversa alvo pra sobreviver ao efeito de troca
         // de conversa (que carrega o rascunho da chave ao mudar `sel`).
@@ -438,7 +448,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         setResposta(pTexto);   // pré-preenche o compositor (ex.: confirmação de reserva)
       }
     }
-    setSearchParams({}, { replace: true });
+    if (!deepLinkInicial) setSearchParams({}, { replace: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, numerosVisiveis]);
 
@@ -1550,7 +1560,7 @@ export function WhatsappInboxPage({ modo = "completo", voltarListaSignal }: { mo
         <div ref={painelRef} className="fixed left-0 right-0 top-0 z-40 h-[100dvh] bg-white dark:bg-gray-950 flex flex-col">
           {/* Header compacto */}
           <div className="flex items-center gap-1 px-1.5 py-1.5 border-b border-gray-200 dark:border-gray-800 shrink-0">
-            <button type="button" onClick={() => setSel(null)} className="w-9 h-9 rounded-full text-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0" title="Voltar às conversas">←</button>
+            <button type="button" onClick={() => { if (aoVoltar) aoVoltar(); else setSel(null); }} className="w-9 h-9 rounded-full text-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 flex items-center justify-center shrink-0" title={aoVoltar ? "Fechar" : "Voltar às conversas"}>←</button>
             <div className="flex-1 min-w-0 leading-tight">
               <div className="text-sm font-semibold text-gray-900 dark:text-gray-100 truncate">{nomeSel}</div>
               <div className="text-[11px] text-gray-400 truncate">

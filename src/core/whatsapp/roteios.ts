@@ -28,6 +28,23 @@ export const PAPEL_WHATSAPP_LABEL: Record<PapelWhatsapp, string> =
 // Doc /whatsappRoteios/{restaurantId} = { [papel]: numeroId }
 export type WhatsappRoteio = Partial<Record<PapelWhatsapp, string>>;
 
+// Resolve o numeroId do papel SEM navegar — pra abrir a conversa num modal
+// inline (ex.: confirmação em Reservas). Devolve null + avisa se faltar algo.
+export async function resolverNumeroWhatsapp(rid: string, papel: PapelWhatsapp, telefone: string): Promise<{ numero: string; to: string } | null> {
+  const fone = (telefone || "").replace(/\D/g, "");
+  if (!fone) { alert("Essa pessoa não tem número de WhatsApp cadastrado."); return null; }
+  let numeroId: string | undefined;
+  try {
+    const s = await getDoc(doc(db, "whatsappRoteios", rid));
+    numeroId = s.exists() ? (s.data() as WhatsappRoteio)[papel] : undefined;
+  } catch { /* segue pro aviso */ }
+  if (!numeroId) {
+    alert(`Nenhum número de WhatsApp configurado para "${PAPEL_WHATSAPP_LABEL[papel]}" neste restaurante.\n\nConfigure em WhatsApp › Configuração › Números por papel.`);
+    return null;
+  }
+  return { numero: numeroId, to: fone };
+}
+
 // Hook: devolve `abrir(rid, papel, telefone, nome?)`. Resolve o número do papel
 // e navega pro inbox interno. Sem número configurado → avisa (não abre wa.me).
 export function useAbrirWhatsapp() {

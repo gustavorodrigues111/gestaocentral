@@ -22,7 +22,8 @@ import { TabBadge } from "../../core/ui/TabBadge";
 import { ChegouModal } from "./ChegouModal";
 import { ClienteHistoricoModal } from "./ClienteHistoricoModal";
 import { montarMensagemConfirmacao } from "./whatsappConfirmacao";
-import { useAbrirWhatsapp } from "../../core/whatsapp/roteios";
+import { resolverNumeroWhatsapp } from "../../core/whatsapp/roteios";
+import { WhatsappInboxPage } from "../whatsapp/WhatsappInboxPage";
 import { authHeader } from "../../core/firebase/idToken";
 import { PageContainer } from "../../core/ui/PageContainer";
 
@@ -67,7 +68,8 @@ export function ReservasPage() {
   const { restaurants } = useRestaurant();
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
-  const abrirWhatsapp = useAbrirWhatsapp();
+  // Conversa do WhatsApp aberta num MODAL (sem sair da tela de Reservas).
+  const [waConversa, setWaConversa] = useState<{ numero: string; to: string; nome?: string; texto?: string } | null>(null);
   const restaurant = restaurants.find(r => r.id === rid) || null;
 
   // Checks granulares baseados em Perfis de Acesso. Pra cada ação especifica,
@@ -424,8 +426,12 @@ export function ReservasPage() {
       salao,
       template: templateConfirmacao,
     });
-    // Abre o WhatsApp INTERNO no número de "Reservas" com a confirmação pronta.
-    void abrirWhatsapp(rid, "reservas", telefone, r.clienteNomeSnapshot, mensagem);
+    // Abre a conversa do WhatsApp INTERNO num MODAL (sem sair de Reservas), com
+    // a confirmação pré-preenchida no compositor.
+    void (async () => {
+      const alvo = await resolverNumeroWhatsapp(rid, "reservas", telefone);
+      if (alvo) setWaConversa({ ...alvo, nome: r.clienteNomeSnapshot, texto: mensagem });
+    })();
   }
 
   // Agrupa reservas ATIVAS do dia por horário. FICA ANTES dos early returns —
@@ -545,7 +551,7 @@ export function ReservasPage() {
                       </div>
                       <div className="flex gap-1 flex-wrap">
                         {podeWhatsapp && r.clienteTelefoneSnapshot && (
-                          <Button variant="secondary" size="sm" onClick={() => void abrirWhatsapp(rid, "reservas", r.clienteTelefoneSnapshot || "", r.clienteNomeSnapshot)}><span className="inline-flex items-center gap-1.5"><MessageSquare size={14} /> Abrir conversa</span></Button>
+                          <Button variant="secondary" size="sm" onClick={() => void (async () => { const alvo = await resolverNumeroWhatsapp(rid, "reservas", r.clienteTelefoneSnapshot || ""); if (alvo) setWaConversa({ ...alvo, nome: r.clienteNomeSnapshot }); })()}><span className="inline-flex items-center gap-1.5"><MessageSquare size={14} /> Abrir conversa</span></Button>
                         )}
                         {podeEditar && <Button variant="secondary" size="sm" onClick={() => setStatus(r, "confirmada")}>✓ Confirmar</Button>}
                         {podeCancelar && <Button variant="secondary" size="sm" onClick={() => setCancelando(r)}>✕ Cancelar</Button>}
@@ -852,6 +858,16 @@ export function ReservasPage() {
           />
         );
       })()}
+
+      {/* Conversa do WhatsApp num modal (overlay de tela cheia do inbox interno).
+          Enviou → "←" fecha e volta pra Reservas, sem recarregar a tela. */}
+      {waConversa && (
+        <WhatsappInboxPage
+          modo="conversas"
+          deepLinkInicial={waConversa}
+          aoVoltar={() => setWaConversa(null)}
+        />
+      )}
     </PageContainer>
   );
 
