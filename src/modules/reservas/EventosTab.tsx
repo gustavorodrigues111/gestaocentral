@@ -276,14 +276,17 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
 
                 {/* Desktop: tabela */}
                 <div className="hidden sm:block border border-gray-200 dark:border-gray-800 rounded-2xl overflow-x-auto shadow-sm">
-                  <table className="w-full text-sm min-w-[640px]">
+                  <table className="w-full text-sm min-w-[640px] table-fixed">
+                    <colgroup>
+                      <col style={{ width: "26%" }} /><col style={{ width: "17%" }} /><col style={{ width: "8%" }} /><col style={{ width: "21%" }} /><col style={{ width: "16%" }} /><col style={{ width: "12%" }} />
+                    </colgroup>
                     <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-400 text-[11px] uppercase tracking-wider">
                       <tr><th className="text-left px-4 py-2.5">Cliente</th><th className="text-left px-4 py-2.5">Data/hora</th><th className="text-center px-4 py-2.5">Pax</th><th className="text-left px-4 py-2.5">Mesa</th><th className="text-left px-4 py-2.5">Pagamento</th><th className="text-right px-4 py-2.5">Valor</th></tr>
                     </thead>
                     <tbody className="divide-y divide-gray-100 dark:divide-gray-800/70">
                       {g.reservas.map((r) => (
                         <tr key={r.id} onClick={() => onEditarReserva(r, ev)} className="cursor-pointer hover:bg-indigo-50/40 dark:hover:bg-gray-800/40">
-                          <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100">{r.clienteNomeSnapshot || "—"}{r.status === "cancelada" && <span className="text-[11px] text-rose-500 ml-1">(cancelada)</span>}</td>
+                          <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100 truncate">{r.clienteNomeSnapshot || "—"}{r.status === "cancelada" && <span className="text-[11px] text-rose-500 ml-1">(cancelada)</span>}</td>
                           <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{fmtBR(r.data)} · {r.horario}</td>
                           <td className="px-4 py-2.5 text-center tabular-nums">{r.pessoas}</td>
                           <td className="px-4 py-2.5 whitespace-nowrap"><MesaTags r={r} mesas={mesas} /></td>
