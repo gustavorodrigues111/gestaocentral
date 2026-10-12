@@ -8,7 +8,7 @@ import { useAuth } from "../../core/auth/AuthContext";
 import { fmtBR } from "../../core/utils/date";
 import { reservaMesaIds, reservaMesasNomes } from "../../core/reservas/mesas";
 import { centralConfigured, centralEnsureFolder, parseDriveFolderId } from "../../core/google/driveCentral";
-import type { Mesa, Reserva, ReservaEvento, ReservaEventoConfig } from "../../core/types";
+import type { Mesa, Reserva, ReservaEvento, ReservaEventoConfig, Salao } from "../../core/types";
 import { ouvirEventos, salvarEvento, excluirEvento, ouvirEventoConfig, salvarEventoConfig } from "./eventosRepo";
 
 const uid = () => { try { return crypto.randomUUID(); } catch { return "ev" + Date.now() + Math.random().toString(36).slice(2); } };
@@ -78,8 +78,8 @@ function MesaTags({ r, mesas }: { r: Reserva; mesas: Mesa[] }) {
   );
 }
 
-export function EventosTab({ rid, reservas, mesas, carregando, podeEditar, onNovaReserva, onEditarReserva, onVincular }: {
-  rid: string; reservas: Reserva[]; mesas: Mesa[]; carregando?: boolean; podeEditar: boolean;
+export function EventosTab({ rid, reservas, mesas, saloes, carregando, podeEditar, onNovaReserva, onEditarReserva, onVincular }: {
+  rid: string; reservas: Reserva[]; mesas: Mesa[]; saloes: Salao[]; carregando?: boolean; podeEditar: boolean;
   onNovaReserva: (ev: ReservaEvento) => void;
   onEditarReserva: (r: Reserva, ev: ReservaEvento) => void;
   onVincular: (r: Reserva, ev: ReservaEvento) => void;
@@ -110,7 +110,7 @@ export function EventosTab({ rid, reservas, mesas, carregando, podeEditar, onNov
   return (
     <>
       {sel ? (
-        <PainelEvento ev={sel} reservas={reservasDoEvento(sel.id)} candidatas={candidatasDoEvento(sel)} mesas={mesas} carregando={carregando} podeEditar={podeEditar} onVoltar={() => setSelId(null)} onNovaReserva={onNovaReserva} onEditarReserva={onEditarReserva} onVincular={onVincular} onEditarEvento={() => setModal({ ev: sel })} />
+        <PainelEvento ev={sel} reservas={reservasDoEvento(sel.id)} candidatas={candidatasDoEvento(sel)} mesas={mesas} saloes={saloes} carregando={carregando} podeEditar={podeEditar} onVoltar={() => setSelId(null)} onNovaReserva={onNovaReserva} onEditarReserva={onEditarReserva} onVincular={onVincular} onEditarEvento={() => setModal({ ev: sel })} />
       ) : (
     <div className="space-y-3">
       <div className="flex items-center gap-2 flex-wrap">
@@ -152,8 +152,8 @@ export function EventosTab({ rid, reservas, mesas, carregando, podeEditar, onNov
   );
 }
 
-function PainelEvento({ ev, reservas, candidatas, mesas, carregando, podeEditar, onVoltar, onNovaReserva, onEditarReserva, onVincular, onEditarEvento }: {
-  ev: ReservaEvento; reservas: Reserva[]; candidatas: Reserva[]; mesas: Mesa[]; carregando?: boolean; podeEditar: boolean; onVoltar: () => void;
+function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, podeEditar, onVoltar, onNovaReserva, onEditarReserva, onVincular, onEditarEvento }: {
+  ev: ReservaEvento; reservas: Reserva[]; candidatas: Reserva[]; mesas: Mesa[]; saloes: Salao[]; carregando?: boolean; podeEditar: boolean; onVoltar: () => void;
   onNovaReserva: (ev: ReservaEvento) => void; onEditarReserva: (r: Reserva, ev: ReservaEvento) => void; onVincular: (r: Reserva, ev: ReservaEvento) => void; onEditarEvento: () => void;
 }) {
   // ── Snapshot local (Task 3): pinta na hora com a última atualização
@@ -172,6 +172,23 @@ function PainelEvento({ ev, reservas, candidatas, mesas, carregando, podeEditar,
 
   const ordenadas = [...reservas].sort((a, b) => (a.data + a.horario).localeCompare(b.data + b.horario));
   const candOrd = [...candidatas].sort((a, b) => (a.data + a.horario).localeCompare(b.data + b.horario));
+
+  // Reservas agrupadas por salão (salão da 1ª mesa); sem mesa vai por último.
+  const salById = useMemo(() => new Map(saloes.map((s) => [s.id, s])), [saloes]);
+  const gruposReservas = useMemo(() => {
+    const m = new Map<string, Reserva[]>();
+    for (const r of ordenadas) {
+      const ids = reservaMesaIds(r);
+      const mesa = ids.length ? mesas.find((x) => x.id === ids[0]) : undefined;
+      const key = mesa?.salaoId || "__none__";
+      const arr = m.get(key); if (arr) arr.push(r); else m.set(key, [r]);
+    }
+    const keys = [...m.keys()].sort((a, b) => {
+      if (a === "__none__") return 1; if (b === "__none__") return -1;
+      return (salById.get(a)?.ordem ?? 999) - (salById.get(b)?.ordem ?? 999);
+    });
+    return keys.map((k) => ({ salao: k === "__none__" ? undefined : salById.get(k), reservas: m.get(k)! }));
+  }, [ordenadas, mesas, salById]);
 
   // ── Dashboard do evento (Task 2) ────────────────────────────────────
   const ativas = reservas.filter((r) => r.status !== "cancelada");
@@ -223,48 +240,63 @@ function PainelEvento({ ev, reservas, candidatas, mesas, carregando, podeEditar,
         {!ev.pastaDriveId && <span className="text-amber-600 inline-flex items-center gap-1"><FolderOpen size={13} /> sem pasta do Drive — edite o evento</span>}
       </div>
 
-      {/* Mobile: cards */}
-      <div className="sm:hidden space-y-2">
-        {ordenadas.length === 0 ? (
-          <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-gray-400 text-sm">Nenhuma reserva nesse evento. Toque em "Nova reserva".</div>
-        ) : ordenadas.map((r) => (
-          <button key={r.id} onClick={() => onEditarReserva(r, ev)} className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
-            <div className="flex items-center gap-2">
-              <div className="font-semibold text-gray-900 dark:text-gray-100 flex-1 min-w-0 truncate">{r.clienteNomeSnapshot || "—"}{r.status === "cancelada" && <span className="text-[11px] text-rose-500 ml-1">(cancelada)</span>}</div>
-              {r.pagamento?.pago ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">Pago</span> : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">Pendente</span>}
-            </div>
-            <div className="text-[12px] text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
-              <span><CalendarDays size={11} className="inline align-[-1px]" /> {fmtBR(r.data)} · {r.horario}</span>
-              <span>· {r.pessoas} pax</span>
-              <span className="inline-flex items-center gap-1">· <MesaTags r={r} mesas={mesas} /></span>
-              {r.pagamento?.ajusteTipo === "cortesia" ? <span className="text-violet-600 dark:text-violet-400 font-semibold">· Cortesia</span> : r.pagamento?.valor ? <span>· {fmtR(r.pagamento.valor)}{r.pagamento.forma ? ` (${r.pagamento.forma})` : ""}</span> : null}
-            </div>
-          </button>
-        ))}
-      </div>
+      {ordenadas.length === 0 ? (
+        <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-gray-400 text-sm">Nenhuma reserva nesse evento. Clique em "Nova reserva".</div>
+      ) : (
+        <div className="space-y-4">
+          {gruposReservas.map((g, gi) => {
+            const salaoNome = g.salao?.nome || "Sem mesa designada";
+            const gPessoas = g.reservas.filter((r) => r.status !== "cancelada").reduce((s, r) => s + (r.pessoas || 0), 0);
+            return (
+              <div key={g.salao?.id || `sem-${gi}`}>
+                <h4 className="text-xs uppercase tracking-wider font-semibold text-gray-500 dark:text-gray-400 mb-1.5">
+                  {salaoNome}
+                  <span className="text-gray-400 font-normal ml-2">({g.reservas.length} reserva(s) · {gPessoas} pax)</span>
+                </h4>
 
-      {/* Desktop: tabela */}
-      <div className="hidden sm:block border border-gray-200 dark:border-gray-800 rounded-2xl overflow-x-auto shadow-sm">
-        <table className="w-full text-sm min-w-[640px]">
-          <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-400 text-[11px] uppercase tracking-wider">
-            <tr><th className="text-left px-4 py-2.5">Cliente</th><th className="text-left px-4 py-2.5">Data/hora</th><th className="text-center px-4 py-2.5">Pax</th><th className="text-left px-4 py-2.5">Mesa</th><th className="text-left px-4 py-2.5">Pagamento</th><th className="text-right px-4 py-2.5">Valor</th></tr>
-          </thead>
-          <tbody className="divide-y divide-gray-100 dark:divide-gray-800/70">
-            {ordenadas.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-10 text-center text-gray-400">Nenhuma reserva nesse evento. Clique em "Nova reserva".</td></tr>
-            ) : ordenadas.map((r) => (
-              <tr key={r.id} onClick={() => onEditarReserva(r, ev)} className="cursor-pointer hover:bg-indigo-50/40 dark:hover:bg-gray-800/40">
-                <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100">{r.clienteNomeSnapshot || "—"}{r.status === "cancelada" && <span className="text-[11px] text-rose-500 ml-1">(cancelada)</span>}</td>
-                <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{fmtBR(r.data)} · {r.horario}</td>
-                <td className="px-4 py-2.5 text-center tabular-nums">{r.pessoas}</td>
-                <td className="px-4 py-2.5 whitespace-nowrap"><MesaTags r={r} mesas={mesas} /></td>
-                <td className="px-4 py-2.5">{r.pagamento?.pago ? <span className="text-emerald-600 font-semibold">Pago</span> : <span className="text-amber-600">Pendente</span>}{r.pagamento?.forma ? <span className="text-gray-400 text-[12px]"> · {r.pagamento.forma}</span> : null}</td>
-                <td className="px-4 py-2.5 text-right tabular-nums">{r.pagamento?.ajusteTipo === "cortesia" ? <span className="text-violet-600 dark:text-violet-400 font-semibold">Cortesia</span> : r.pagamento?.valor ? fmtR(r.pagamento.valor) : "—"}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                {/* Mobile: cards */}
+                <div className="sm:hidden space-y-2">
+                  {g.reservas.map((r) => (
+                    <button key={r.id} onClick={() => onEditarReserva(r, ev)} className="w-full text-left rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
+                      <div className="flex items-center gap-2">
+                        <div className="font-semibold text-gray-900 dark:text-gray-100 flex-1 min-w-0 truncate">{r.clienteNomeSnapshot || "—"}{r.status === "cancelada" && <span className="text-[11px] text-rose-500 ml-1">(cancelada)</span>}</div>
+                        {r.pagamento?.pago ? <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">Pago</span> : <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">Pendente</span>}
+                      </div>
+                      <div className="text-[12px] text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
+                        <span><CalendarDays size={11} className="inline align-[-1px]" /> {fmtBR(r.data)} · {r.horario}</span>
+                        <span>· {r.pessoas} pax</span>
+                        <span className="inline-flex items-center gap-1">· <MesaTags r={r} mesas={mesas} /></span>
+                        {r.pagamento?.ajusteTipo === "cortesia" ? <span className="text-violet-600 dark:text-violet-400 font-semibold">· Cortesia</span> : r.pagamento?.valor ? <span>· {fmtR(r.pagamento.valor)}{r.pagamento.forma ? ` (${r.pagamento.forma})` : ""}</span> : null}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+
+                {/* Desktop: tabela */}
+                <div className="hidden sm:block border border-gray-200 dark:border-gray-800 rounded-2xl overflow-x-auto shadow-sm">
+                  <table className="w-full text-sm min-w-[640px]">
+                    <thead className="bg-gray-50 dark:bg-gray-800/50 text-gray-400 text-[11px] uppercase tracking-wider">
+                      <tr><th className="text-left px-4 py-2.5">Cliente</th><th className="text-left px-4 py-2.5">Data/hora</th><th className="text-center px-4 py-2.5">Pax</th><th className="text-left px-4 py-2.5">Mesa</th><th className="text-left px-4 py-2.5">Pagamento</th><th className="text-right px-4 py-2.5">Valor</th></tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-gray-800/70">
+                      {g.reservas.map((r) => (
+                        <tr key={r.id} onClick={() => onEditarReserva(r, ev)} className="cursor-pointer hover:bg-indigo-50/40 dark:hover:bg-gray-800/40">
+                          <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100">{r.clienteNomeSnapshot || "—"}{r.status === "cancelada" && <span className="text-[11px] text-rose-500 ml-1">(cancelada)</span>}</td>
+                          <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{fmtBR(r.data)} · {r.horario}</td>
+                          <td className="px-4 py-2.5 text-center tabular-nums">{r.pessoas}</td>
+                          <td className="px-4 py-2.5 whitespace-nowrap"><MesaTags r={r} mesas={mesas} /></td>
+                          <td className="px-4 py-2.5">{r.pagamento?.pago ? <span className="text-emerald-600 font-semibold">Pago</span> : <span className="text-amber-600">Pendente</span>}{r.pagamento?.forma ? <span className="text-gray-400 text-[12px]"> · {r.pagamento.forma}</span> : null}</td>
+                          <td className="px-4 py-2.5 text-right tabular-nums">{r.pagamento?.ajusteTipo === "cortesia" ? <span className="text-violet-600 dark:text-violet-400 font-semibold">Cortesia</span> : r.pagamento?.valor ? fmtR(r.pagamento.valor) : "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
 
       {/* Mesas ainda disponíveis no evento */}
       {mesasAtivas.length > 0 && (

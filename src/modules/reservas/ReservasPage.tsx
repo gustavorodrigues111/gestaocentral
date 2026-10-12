@@ -171,14 +171,27 @@ export function ReservasPage() {
   // têm PII inline em /reservas e funcionam sem merge.
   const [reservasBase, setReservasBase] = useState<Reserva[]>([]);
   const [piiMap, setPiiMap] = useState<Map<string, ReservaPII>>(new Map());
+  const ridAnteriorRef = useRef<string | null>(null);
 
+  // Aplica o snapshot por DIFERENÇA (docChanges) em vez de substituir a lista
+  // inteira. Assim um snapshot transitório vazio/parcial (comum no Safari com
+  // long-polling / App Check) não "limpa" tudo pra depois repreencher uma a
+  // uma — só adiciona/remove o que realmente mudou no servidor.
   useEffect(() => {
     if (!rid) return;
+    // Troca de restaurante: zera a base antes de popular o novo.
+    if (ridAnteriorRef.current !== rid) { ridAnteriorRef.current = rid; setReservasBase([]); }
     setLoading(true);
     const q = query(collection(db, "reservas"), where("restaurantId", "==", rid));
     const unsub = onSnapshot(q, (snap) => {
-      const list = snap.docs.map(d => ({ id: d.id, ...d.data() }) as Reserva);
-      setReservasBase(list);
+      setReservasBase((prev) => {
+        const map = new Map(prev.map((r) => [r.id, r]));
+        for (const ch of snap.docChanges()) {
+          if (ch.type === "removed") map.delete(ch.doc.id);
+          else map.set(ch.doc.id, { id: ch.doc.id, ...ch.doc.data() } as Reserva);
+        }
+        return Array.from(map.values());
+      });
       setLoading(false);
     });
     return () => unsub();
@@ -186,11 +199,17 @@ export function ReservasPage() {
 
   useEffect(() => {
     if (!rid) return;
+    setPiiMap(new Map()); // troca de restaurante: zera PII antes de popular
     const q = query(collection(db, "reservasPII"), where("restaurantId", "==", rid));
     const unsub = onSnapshot(q, (snap) => {
-      const m = new Map<string, ReservaPII>();
-      for (const d of snap.docs) m.set(d.id, { id: d.id, ...d.data() } as ReservaPII);
-      setPiiMap(m);
+      setPiiMap((prev) => {
+        const m = new Map(prev);
+        for (const ch of snap.docChanges()) {
+          if (ch.type === "removed") m.delete(ch.doc.id);
+          else m.set(ch.doc.id, { id: ch.doc.id, ...ch.doc.data() } as ReservaPII);
+        }
+        return m;
+      });
     });
     return () => unsub();
   }, [rid]);
@@ -743,6 +762,7 @@ export function ReservasPage() {
           rid={rid}
           reservas={reservas}
           mesas={mesas}
+          saloes={saloes}
           carregando={loading}
           podeEditar={podeConfig}
           onNovaReserva={(ev) => { setViewMode(false); setEventoAtivo(ev); setEditing("new"); }}
