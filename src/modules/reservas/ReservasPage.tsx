@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { CalendarDays, CalendarRange, Users, Settings, Lock, Link as LinkIcon, TriangleAlert, AlarmClock, Ban, CircleHelp, MessageSquare, Armchair, Frown, Tag, PartyPopper, CalendarHeart, Landmark, Phone, FileText, BarChart3, Smartphone, Plus, Pencil } from "lucide-react";
 import { useParams } from "react-router-dom";
-import { collection, doc, getDocs, onSnapshot, query, updateDoc, where } from "firebase/firestore";
+import { collection, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -123,14 +123,6 @@ export function ReservasPage() {
   // Template de confirmação (vive em /configReservas/{rid})
   const [templateConfirmacao, setTemplateConfirmacao] = useState<string | undefined>(undefined);
 
-  // Carregamento por janela de data: ao vivo só dos últimos 30 dias pra frente
-  // (futuro inteiro + recente). O passado mais antigo é estático (ninguém lança
-  // reserva passada) → carrega sob demanda ao navegar pra aquele dia.
-  const floorData = useMemo(() => { const d = new Date(); d.setDate(d.getDate() - 30); return d.toLocaleDateString("en-CA"); }, []);
-  const [reservasAntigas, setReservasAntigas] = useState<Map<string, Reserva>>(new Map());
-  const diasCarregadosRef = useRef<Set<string>>(new Set());
-  const [carregandoAntigo, setCarregandoAntigo] = useState(false);
-
   useEffect(() => {
     if (!rid) return;
     const q = query(collection(db, "clientes"), where("restaurantId", "==", rid));
@@ -190,15 +182,14 @@ export function ReservasPage() {
   //     refresh na página).
   useEffect(() => {
     if (!rid) return;
-    // Troca de restaurante: zera a base + cache de dias antigos antes de popular.
-    if (ridAnteriorRef.current !== rid) { ridAnteriorRef.current = rid; setReservasBase([]); setReservasAntigas(new Map()); diasCarregadosRef.current = new Set(); }
+    // Troca de restaurante: zera a base antes de popular o novo.
+    if (ridAnteriorRef.current !== rid) { ridAnteriorRef.current = rid; setReservasBase([]); }
     setLoading(true);
     let cancelado = false;
     let unsub: (() => void) = () => {};
     let retry: ReturnType<typeof setTimeout> | undefined;
     const assinar = () => {
-      // Janela viva: só dos últimos 30 dias pra frente (futuro + recente).
-      const q = query(collection(db, "reservas"), where("restaurantId", "==", rid), where("data", ">=", floorData));
+      const q = query(collection(db, "reservas"), where("restaurantId", "==", rid));
       unsub = onSnapshot(q, (snap) => {
         const fromCache = snap.metadata.fromCache;
         setReservasBase((prev) => {
@@ -219,7 +210,7 @@ export function ReservasPage() {
     };
     assinar();
     return () => { cancelado = true; if (retry) clearTimeout(retry); try { unsub(); } catch { /* noop */ } };
-  }, [rid, floorData]);
+  }, [rid]);
 
   useEffect(() => {
     if (!rid) return;
@@ -228,7 +219,7 @@ export function ReservasPage() {
     let unsub: (() => void) = () => {};
     let retry: ReturnType<typeof setTimeout> | undefined;
     const assinar = () => {
-      const q = query(collection(db, "reservasPII"), where("restaurantId", "==", rid), where("data", ">=", floorData));
+      const q = query(collection(db, "reservasPII"), where("restaurantId", "==", rid));
       unsub = onSnapshot(q, (snap) => {
         const fromCache = snap.metadata.fromCache;
         setPiiMap((prev) => {
@@ -248,45 +239,7 @@ export function ReservasPage() {
     };
     assinar();
     return () => { cancelado = true; if (retry) clearTimeout(retry); try { unsub(); } catch { /* noop */ } };
-  }, [rid, floorData]);
-
-  // Carrega sob demanda as reservas de um dia ANTERIOR à janela viva (passado
-  // estático). Busca base + PII daquele dia 1x e mescla; cacheia o dia.
-  useEffect(() => {
-    if (!rid || !dataAtual || dataAtual >= floorData) return;
-    if (diasCarregadosRef.current.has(dataAtual)) return;
-    let cancel = false;
-    setCarregandoAntigo(true);
-    (async () => {
-      try {
-        const [bs, ps] = await Promise.all([
-          getDocs(query(collection(db, "reservas"), where("restaurantId", "==", rid), where("data", "==", dataAtual))),
-          getDocs(query(collection(db, "reservasPII"), where("restaurantId", "==", rid), where("data", "==", dataAtual))),
-        ]);
-        if (cancel) return;
-        const pmap = new Map(ps.docs.map((d) => [d.id, d.data() as ReservaPII]));
-        const merged = bs.docs.map((d) => {
-          const r = { id: d.id, ...d.data() } as Reserva;
-          const pii = pmap.get(d.id);
-          if (!pii) return r;
-          return {
-            ...r,
-            clienteNomeSnapshot: pii.clienteNomeSnapshot || r.clienteNomeSnapshot,
-            clienteTelefoneSnapshot: pii.clienteTelefoneSnapshot || r.clienteTelefoneSnapshot,
-            clienteEmailSnapshot: pii.clienteEmailSnapshot || r.clienteEmailSnapshot,
-            observacoes: pii.observacoes || r.observacoes,
-            ocasiao: pii.ocasiao || r.ocasiao,
-            pagamento: pii.pagamento || r.pagamento,
-          };
-        });
-        diasCarregadosRef.current.add(dataAtual);
-        setReservasAntigas((prev) => { const m = new Map(prev); for (const r of merged) m.set(r.id, r); return m; });
-      } catch (e) {
-        console.error("[reservas] carregar dia antigo", e);
-      } finally { if (!cancel) setCarregandoAntigo(false); }
-    })();
-    return () => { cancel = true; };
-  }, [rid, dataAtual, floorData]);
+  }, [rid]);
 
   // GetIn: status da última sincronização deste restaurante (pro badge).
   useEffect(() => {
@@ -333,19 +286,13 @@ export function ReservasPage() {
           : undefined,
       };
     });
-    // Junta as reservas antigas carregadas sob demanda (passado). A janela viva
-    // tem precedência (dados mais frescos) quando houver sobreposição de id.
-    const byId = new Map<string, Reserva>();
-    for (const r of reservasAntigas.values()) byId.set(r.id, r);
-    for (const r of merged) byId.set(r.id, r);
-    const todas = Array.from(byId.values());
-    todas.sort((a, b) => {
+    merged.sort((a, b) => {
       const ad = `${a.data} ${a.horario || "00:00"}`;
       const bd = `${b.data} ${b.horario || "00:00"}`;
       return ad.localeCompare(bd);
     });
-    setReservas(todas);
-  }, [reservasBase, piiMap, reservasAntigas]);
+    setReservas(merged);
+  }, [reservasBase, piiMap]);
 
   const temGetin = useMemo(() => reservas.some((r) => (r.origem || "").includes("getin")), [reservas]);
   const today = todayYmd();
@@ -749,8 +696,8 @@ export function ReservasPage() {
           </div>
 
           {/* Lista de reservas ativas do dia */}
-          {loading || (carregandoAntigo && reservasAtivasDoDia.length === 0) ? (
-            <div className="text-sm text-gray-500">{carregandoAntigo ? "Carregando reservas desse período..." : "Carregando..."}</div>
+          {loading ? (
+            <div className="text-sm text-gray-500">Carregando...</div>
           ) : reservasAtivasDoDia.length === 0 ? (
             <div className="bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl p-8 text-center">
               <div className="flex justify-center mb-3 text-gray-400"><CalendarDays size={40} /></div>
