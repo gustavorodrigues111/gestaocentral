@@ -258,9 +258,9 @@ export function ReservasPage() {
       const j = await r.json().catch(() => ({}));
       if (!r.ok) { alert("Falha ao sincronizar: " + ((j as { error?: string }).error || `HTTP ${r.status}`)); return; }
       // Feedback imediato (o badge também atualiza via listener de getinSyncStatus).
-      const res = (j as { resultado?: Array<{ erro?: string; total?: number; novas?: number; atualizadas?: number }> }).resultado?.[0];
+      const res = (j as { resultado?: Array<{ erro?: string; total?: number; novas?: number; atualizadas?: number; inalteradas?: number }> }).resultado?.[0];
       if (res?.erro) alert("GetIn retornou erro: " + res.erro);
-      else if (res) alert(`Sincronizado ✓ ${res.total ?? 0} reserva(s) · ${res.novas ?? 0} nova(s) · ${res.atualizadas ?? 0} atualizada(s)`);
+      else if (res) alert(`Sincronizado ✓ ${res.total ?? 0} reserva(s) · ${res.novas ?? 0} nova(s) · ${res.atualizadas ?? 0} alterada(s) · ${res.inalteradas ?? 0} sem mudança`);
       else alert((j as { aviso?: string }).aviso || "Sincronizado.");
     } catch (e) {
       alert("Falha ao sincronizar: " + (e instanceof Error ? e.message : "?"));

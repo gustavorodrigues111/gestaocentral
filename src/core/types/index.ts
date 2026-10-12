@@ -2718,6 +2718,7 @@ export type Reserva = {
   externoId?: string;                 // id da reserva no sistema de origem (ex.: GetIn)
   getinStatus?: string;               // status cru do GetIn (auditoria/debug)
   getinAtualizadoEm?: string;         // updated_at do GetIn (pra saber se mudou lá)
+  getinSig?: string;                  // assinatura do conteúdo do GetIn — o sync só reescreve quando muda (evita rajada de writes)
   // Edição manual no app: quando setado, o sync do GetIn NÃO sobrescreve os
   // campos editáveis (data/horário/pessoas/mesa/PII) — a equipe é a fonte.
   editadoLocalEm?: string | null;

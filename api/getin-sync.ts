@@ -143,7 +143,7 @@ async function sincronizarUm(a: { rid: string; nome: string; unitId?: string; cr
     if (pg.is_last_page || !data.length || page >= (pg.last_page || 1)) break;
   }
 
-  let novas = 0, atualizadas = 0;
+  let novas = 0, atualizadas = 0, inalteradas = 0;
   for (const gr of lista) {
     if (!gr.id) continue;
     const docId = `getin_${gr.id}`;
@@ -155,6 +155,16 @@ async function sincronizarUm(a: { rid: string; nome: string; unitId?: string; cr
     const editadoLocal = !!(existente && existente.editadoLocalEm);
     const tableRaw = gr.table != null && String(gr.table).trim() !== "" ? String(gr.table).trim() : null;
     const mesaNomeGetin = tableRaw ? (/^mesa/i.test(tableRaw) ? tableRaw : `Mesa ${tableRaw}`) : "";
+
+    // Assinatura do conteúdo que vem do GetIn. Se for idêntica à do último sync,
+    // NÃO reescreve nada — evita a rajada de writes (e o pisca-pisca no Safari)
+    // a cada 15min mesmo quando nada mudou lá.
+    const sig = JSON.stringify([
+      gr.date || "", gr.time || "", Number(gr.people || 0),
+      gr.name || "", (gr.mobile || "").replace(/\D/g, ""), gr.email || "",
+      gr.info || "", gr.occasion || "", gr.status || "", tableRaw || "", gr.sector?.name || "",
+    ]);
+    if (existente && existente.getinSig === sig) { inalteradas++; continue; }
 
     // Espelho NÃO-PII de como a reserva vem do GetIn (sempre atualizado).
     const getinSnapshot = {
@@ -168,7 +178,7 @@ async function sincronizarUm(a: { rid: string; nome: string; unitId?: string; cr
       id: docId, restaurantId: a.rid,
       origem: "getin", externoId: gr.id, getinStatus: gr.status || "",
       getinAtualizadoEm: gr.updated_at || agora, atualizadoEm: agora,
-      getinSnapshot,
+      getinSnapshot, getinSig: sig,
     };
     // Campos editáveis: só adota os do GetIn quando a equipe NÃO editou no app.
     if (!editadoLocal) {
@@ -209,7 +219,7 @@ async function sincronizarUm(a: { rid: string; nome: string; unitId?: string; cr
     if (!editadoLocal) Object.assign(piiUpdate, getinSnapshotPII);
     await firestoreAtualizar("reservasPII", docId, piiUpdate);
   }
-  return { rid: a.rid, nome: a.nome, total: lista.length, novas, atualizadas };
+  return { rid: a.rid, nome: a.nome, total: lista.length, novas, atualizadas, inalteradas };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse): Promise<void> {
@@ -247,6 +257,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse): 
       await firestoreAtualizar("getinSyncStatus", a.rid, {
         id: a.rid, restaurantId: a.rid, nome: a.nome, atualizadoEm: new Date().toISOString(),
         total: Number(r.total || 0), novas: Number(r.novas || 0), atualizadas: Number(r.atualizadas || 0),
+        inalteradas: Number(r.inalteradas || 0),
         ok: !r.erro, erro: r.erro ? String(r.erro) : "",
       }).catch(() => {});
       resultado.push(r);
