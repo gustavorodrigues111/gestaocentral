@@ -48,19 +48,28 @@ function Stat({ label, value, hint, tone = "default" }: { label: string; value: 
 }
 // Mesa(s) da reserva, com altura (alta/baixa) pelo cadastro atual quando
 // a mesa ainda existe; senão cai no nome do snapshot (sem altura).
-function mesasDaReserva(r: Reserva, mesas: Mesa[]): { label: string; alta: boolean }[] {
+// Nº da mesa pra ordenação (menor→maior); sem número vai pro fim.
+const mesaNum = (s: string): number => { const m = (s || "").match(/\d+/); return m ? parseInt(m[0], 10) : Number.MAX_SAFE_INTEGER; };
+function mesasDaReserva(r: Reserva, mesas: Mesa[]): { label: string; alta: boolean; num: number }[] {
   const ids = reservaMesaIds(r);
   const nomes = reservaMesasNomes(r);
   const n = Math.max(ids.length, nomes.length);
   if (!n) return [];
-  const out: { label: string; alta: boolean }[] = [];
+  const out: { label: string; alta: boolean; num: number }[] = [];
   for (let i = 0; i < n; i++) {
     const m = ids[i] ? mesas.find((x) => x.id === ids[i]) : undefined;
     const nome = m?.nome ?? nomes[i] ?? "";
-    out.push({ label: nome ? nome.replace(/^mesa\s+/i, "Nº ") : "—", alta: m?.tipoMesa === "alta" });
+    out.push({ label: nome ? nome.replace(/^mesa\s+/i, "Nº ") : "—", alta: m?.tipoMesa === "alta", num: mesaNum(nome) });
   }
+  // Mesas juntas numa reserva: sempre do menor pro maior número.
+  out.sort((a, b) => a.num - b.num || a.label.localeCompare(b.label));
   return out;
 }
+// Menor número de mesa da reserva (pra ordenar as linhas). Sem mesa vai pro fim.
+const reservaMesaMin = (r: Reserva, mesas: Mesa[]): number => {
+  const ms = mesasDaReserva(r, mesas);
+  return ms.length ? ms[0].num : Number.MAX_SAFE_INTEGER;
+};
 
 // Chips de mesa com ícone de altura (🍸 alta / 🪑 baixa).
 function MesaTags({ r, mesas }: { r: Reserva; mesas: Mesa[] }) {
@@ -187,7 +196,13 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
       if (a === "__none__") return 1; if (b === "__none__") return -1;
       return (salById.get(a)?.ordem ?? 999) - (salById.get(b)?.ordem ?? 999);
     });
-    return keys.map((k) => ({ salao: k === "__none__" ? undefined : salById.get(k), reservas: m.get(k)! }));
+    // Dentro de cada salão, ordena as reservas pelo MENOR nº de mesa (menor→maior).
+    return keys.map((k) => ({
+      salao: k === "__none__" ? undefined : salById.get(k),
+      reservas: m.get(k)!.slice().sort((a, b) =>
+        reservaMesaMin(a, mesas) - reservaMesaMin(b, mesas) ||
+        (a.data + a.horario).localeCompare(b.data + b.horario)),
+    }));
   }, [ordenadas, mesas, salById]);
 
   // ── Dashboard do evento (Task 2) ────────────────────────────────────
@@ -195,7 +210,7 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
   const mesasAtivas = mesas.filter((m) => m.ativa);
   const usadas = new Set<string>();
   for (const r of ativas) for (const id of reservaMesaIds(r)) usadas.add(id);
-  const mesasLivres = mesasAtivas.filter((m) => !usadas.has(m.id));
+  const mesasLivres = mesasAtivas.filter((m) => !usadas.has(m.id)).sort((a, b) => mesaNum(a.nome) - mesaNum(b.nome) || a.nome.localeCompare(b.nome));
   const lugaresTotais = mesasAtivas.reduce((s, m) => s + (m.capacidade || 0), 0);
   const lugaresLivres = mesasLivres.reduce((s, m) => s + (m.capacidade || 0), 0);
   const totalPessoas = ativas.reduce((s, r) => s + (r.pessoas || 0), 0);
