@@ -174,44 +174,71 @@ export function ReservasPage() {
   const ridAnteriorRef = useRef<string | null>(null);
 
   // Aplica o snapshot por DIFERENÇA (docChanges) em vez de substituir a lista
-  // inteira. Assim um snapshot transitório vazio/parcial (comum no Safari com
-  // long-polling / App Check) não "limpa" tudo pra depois repreencher uma a
-  // uma — só adiciona/remove o que realmente mudou no servidor.
+  // inteira. Dois reforços contra o "some e volta devagar" no Safari:
+  //  1) só aplica REMOÇÃO quando confirmada pelo servidor (!fromCache). Um
+  //     snapshot vazio vindo do cache (IndexedDB evictado pelo ITP) NÃO limpa
+  //     a lista — mantém o último estado conhecido até o servidor responder.
+  //  2) re-assina em caso de erro (listener que morre não "congela" até dar
+  //     refresh na página).
   useEffect(() => {
     if (!rid) return;
     // Troca de restaurante: zera a base antes de popular o novo.
     if (ridAnteriorRef.current !== rid) { ridAnteriorRef.current = rid; setReservasBase([]); }
     setLoading(true);
-    const q = query(collection(db, "reservas"), where("restaurantId", "==", rid));
-    const unsub = onSnapshot(q, (snap) => {
-      setReservasBase((prev) => {
-        const map = new Map(prev.map((r) => [r.id, r]));
-        for (const ch of snap.docChanges()) {
-          if (ch.type === "removed") map.delete(ch.doc.id);
-          else map.set(ch.doc.id, { id: ch.doc.id, ...ch.doc.data() } as Reserva);
-        }
-        return Array.from(map.values());
+    let cancelado = false;
+    let unsub: (() => void) = () => {};
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const assinar = () => {
+      const q = query(collection(db, "reservas"), where("restaurantId", "==", rid));
+      unsub = onSnapshot(q, (snap) => {
+        const fromCache = snap.metadata.fromCache;
+        setReservasBase((prev) => {
+          const map = new Map(prev.map((r) => [r.id, r]));
+          for (const ch of snap.docChanges()) {
+            if (ch.type === "removed") { if (!fromCache) map.delete(ch.doc.id); }
+            else map.set(ch.doc.id, { id: ch.doc.id, ...ch.doc.data() } as Reserva);
+          }
+          return Array.from(map.values());
+        });
+        setLoading(false);
+      }, (err) => {
+        console.error("[reservas] listener /reservas caiu, re-assinando", err);
+        if (cancelado) return;
+        try { unsub(); } catch { /* noop */ }
+        retry = setTimeout(() => { if (!cancelado) assinar(); }, 3000);
       });
-      setLoading(false);
-    });
-    return () => unsub();
+    };
+    assinar();
+    return () => { cancelado = true; if (retry) clearTimeout(retry); try { unsub(); } catch { /* noop */ } };
   }, [rid]);
 
   useEffect(() => {
     if (!rid) return;
     setPiiMap(new Map()); // troca de restaurante: zera PII antes de popular
-    const q = query(collection(db, "reservasPII"), where("restaurantId", "==", rid));
-    const unsub = onSnapshot(q, (snap) => {
-      setPiiMap((prev) => {
-        const m = new Map(prev);
-        for (const ch of snap.docChanges()) {
-          if (ch.type === "removed") m.delete(ch.doc.id);
-          else m.set(ch.doc.id, { id: ch.doc.id, ...ch.doc.data() } as ReservaPII);
-        }
-        return m;
+    let cancelado = false;
+    let unsub: (() => void) = () => {};
+    let retry: ReturnType<typeof setTimeout> | undefined;
+    const assinar = () => {
+      const q = query(collection(db, "reservasPII"), where("restaurantId", "==", rid));
+      unsub = onSnapshot(q, (snap) => {
+        const fromCache = snap.metadata.fromCache;
+        setPiiMap((prev) => {
+          const m = new Map(prev);
+          for (const ch of snap.docChanges()) {
+            if (ch.type === "removed") { if (!fromCache) m.delete(ch.doc.id); }
+            else m.set(ch.doc.id, { id: ch.doc.id, ...ch.doc.data() } as ReservaPII);
+          }
+          return m;
+        });
+      }, (err) => {
+        console.error("[reservas] listener /reservasPII caiu, re-assinando", err);
+        if (cancelado) return;
+        try { unsub(); } catch { /* noop */ }
+        retry = setTimeout(() => { if (!cancelado) assinar(); }, 3000);
       });
-    });
-    return () => unsub();
+    };
+    assinar();
+    return () => { cancelado = true; if (retry) clearTimeout(retry); try { unsub(); } catch { /* noop */ } };
   }, [rid]);
 
   // GetIn: status da última sincronização deste restaurante (pro badge).
