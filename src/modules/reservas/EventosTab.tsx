@@ -211,6 +211,19 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
   const usadas = new Set<string>();
   for (const r of ativas) for (const id of reservaMesaIds(r)) usadas.add(id);
   const mesasLivres = mesasAtivas.filter((m) => !usadas.has(m.id)).sort((a, b) => mesaNum(a.nome) - mesaNum(b.nome) || a.nome.localeCompare(b.nome));
+  // Mesas disponíveis agrupadas por salão (mesmas regras de ordem dos blocos).
+  const gruposMesasLivres = useMemo(() => {
+    const m = new Map<string, Mesa[]>();
+    for (const mesa of mesasLivres) {
+      const k = mesa.salaoId || "__none__";
+      const arr = m.get(k); if (arr) arr.push(mesa); else m.set(k, [mesa]);
+    }
+    const keys = [...m.keys()].sort((a, b) => {
+      if (a === "__none__") return 1; if (b === "__none__") return -1;
+      return (salById.get(a)?.ordem ?? 999) - (salById.get(b)?.ordem ?? 999);
+    });
+    return keys.map((k) => ({ salao: k === "__none__" ? undefined : salById.get(k), mesas: m.get(k)! }));
+  }, [mesasLivres, salById]);
   const lugaresTotais = mesasAtivas.reduce((s, m) => s + (m.capacidade || 0), 0);
   const lugaresLivres = mesasLivres.reduce((s, m) => s + (m.capacidade || 0), 0);
   const totalPessoas = ativas.reduce((s, r) => s + (r.pessoas || 0), 0);
@@ -260,7 +273,7 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
       ) : (
         <div className="space-y-4">
           {gruposReservas.map((g, gi) => {
-            const salaoNome = g.salao?.nome || "Sem mesa designada";
+            const salaoNome = g.salao?.nome || "Sem mesa atribuída";
             const gPessoas = g.reservas.filter((r) => r.status !== "cancelada").reduce((s, r) => s + (r.pessoas || 0), 0);
             return (
               <div key={g.salao?.id || `sem-${gi}`}>
@@ -327,16 +340,29 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
           {mesasLivres.length === 0 ? (
             <div className="text-[13px] text-gray-500">Todas as mesas ativas já têm reserva nesse evento. 🎉</div>
           ) : (
-            <div className="flex flex-wrap gap-1.5">
-              {mesasLivres.map((m) => {
-                const alta = m.tipoMesa === "alta";
+            <div className="space-y-2.5">
+              {gruposMesasLivres.map((g, gi) => {
+                const lugares = g.mesas.reduce((s, m) => s + (m.capacidade || 0), 0);
                 return (
-                  <span key={m.id} title={`${m.capacidade} pax · ${alta ? "alta" : "baixa"}`}
-                    className="inline-flex items-center gap-1 text-[12px] font-medium px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
-                    {alta ? <Wine size={12} className="text-indigo-500" /> : <Armchair size={12} className="text-gray-400" />}
-                    {m.nome}
-                    <span className="text-gray-400">· {m.capacidade}</span>
-                  </span>
+                  <div key={g.salao?.id || `sem-${gi}`}>
+                    <div className="text-[11px] font-semibold text-gray-500 dark:text-gray-400 mb-1">
+                      {g.salao?.nome || "Sem salão"}
+                      <span className="text-gray-400 font-normal ml-1.5">({g.mesas.length} · {lugares} lugares)</span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {g.mesas.map((m) => {
+                        const alta = m.tipoMesa === "alta";
+                        return (
+                          <span key={m.id} title={`${m.capacidade} pax · ${alta ? "alta" : "baixa"}`}
+                            className="inline-flex items-center gap-1 text-[12px] font-medium px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
+                            {alta ? <Wine size={12} className="text-indigo-500" /> : <Armchair size={12} className="text-gray-400" />}
+                            {m.nome}
+                            <span className="text-gray-400">· {m.capacidade}</span>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
                 );
               })}
             </div>
