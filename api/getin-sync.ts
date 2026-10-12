@@ -216,7 +216,7 @@ async function sincronizarUm(a: { rid: string; nome: string; unitId?: string; cr
       id: docId, restaurantId: a.rid, registradoEm: gr.created_at || agora,
       getinSnapshot: getinSnapshotPII,
     };
-    if (!editadoLocal) Object.assign(piiUpdate, getinSnapshotPII);
+    if (!editadoLocal) { Object.assign(piiUpdate, getinSnapshotPII); piiUpdate.data = gr.date || ""; }
     await firestoreAtualizar("reservasPII", docId, piiUpdate);
   }
   return { rid: a.rid, nome: a.nome, total: lista.length, novas, atualizadas, inalteradas };

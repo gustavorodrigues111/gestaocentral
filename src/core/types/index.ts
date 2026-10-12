@@ -2849,6 +2849,7 @@ export type NotaCliente = {
 export type ReservaPII = {
   id: string;                         // mesmo ID da reserva
   restaurantId: string;               // pra rules
+  data?: string;                      // espelho do data da reserva (YYYY-MM-DD) — permite carregar PII por janela de data
   clienteNomeSnapshot: string;
   clienteTelefoneSnapshot?: string;
   clienteEmailSnapshot?: string;

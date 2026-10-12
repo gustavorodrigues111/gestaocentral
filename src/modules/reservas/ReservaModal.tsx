@@ -376,6 +376,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
       // PII separada (auth-only read)
       const piiPayload = {
         restaurantId,
+        data,                               // espelho p/ carregar PII por janela de data
         clienteNomeSnapshot: clienteNome.trim(),
         clienteTelefoneSnapshot: clienteTelefone.trim() || undefined,
         observacoes: observacoes.trim() || undefined,
