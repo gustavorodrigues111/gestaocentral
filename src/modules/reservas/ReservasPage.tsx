@@ -253,6 +253,10 @@ export function ReservasPage() {
         observacoes: pii.observacoes || r.observacoes,
         ocasiao: pii.ocasiao || r.ocasiao,
         pagamento: pii.pagamento || r.pagamento,
+        // Espelho do GetIn mesclado: campos não-PII (base) + PII (reservasPII).
+        getinSnapshot: (r.getinSnapshot || pii.getinSnapshot)
+          ? { ...r.getinSnapshot, ...pii.getinSnapshot }
+          : undefined,
       };
     });
     merged.sort((a, b) => {

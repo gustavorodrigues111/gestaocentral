@@ -2718,6 +2718,20 @@ export type Reserva = {
   externoId?: string;                 // id da reserva no sistema de origem (ex.: GetIn)
   getinStatus?: string;               // status cru do GetIn (auditoria/debug)
   getinAtualizadoEm?: string;         // updated_at do GetIn (pra saber se mudou lá)
+  // Edição manual no app: quando setado, o sync do GetIn NÃO sobrescreve os
+  // campos editáveis (data/horário/pessoas/mesa/PII) — a equipe é a fonte.
+  editadoLocalEm?: string | null;
+  // Espelho de como a reserva vem do GetIn, pra mostrar divergência no modal
+  // quando foi editada localmente. No Firestore, /reservas guarda só os campos
+  // NÃO-PII; a PII vem de /reservasPII e é mesclada no client (daí os campos de
+  // cliente abaixo serem opcionais — só existem no objeto já mergeado).
+  getinSnapshot?: {
+    data?: string; horario?: string; pessoas?: number;
+    mesaNomeSnapshot?: string; salaoNomeSnapshot?: string;
+    status?: string; atualizadoEm?: string;
+    clienteNomeSnapshot?: string; clienteTelefoneSnapshot?: string;
+    clienteEmailSnapshot?: string; observacoes?: string; ocasiao?: string;
+  } | null;
   // Confirmação automática (WhatsApp): controle do disparo + leitura pela IA.
   confirmacaoEnviadaEm?: string | null;   // quando o pedido de confirmação foi enviado
   confirmacaoRespostaEm?: string | null;  // quando o cliente respondeu (IA processou)
@@ -2837,6 +2851,12 @@ export type ReservaPII = {
   observacoes?: string;
   ocasiao?: string;                   // ex: "Aniversário"
   pagamento?: ReservaPagamento;       // reserva de evento (valor/comprovante sensíveis)
+  // Espelho da PII como vem do GetIn, pra mostrar divergência no modal quando
+  // a reserva foi editada localmente.
+  getinSnapshot?: {
+    clienteNomeSnapshot?: string; clienteTelefoneSnapshot?: string;
+    clienteEmailSnapshot?: string; observacoes?: string; ocasiao?: string;
+  } | null;
   // Mantém timestamp pra auditoria
   registradoEm: string;
 };

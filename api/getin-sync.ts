@@ -149,20 +149,37 @@ async function sincronizarUm(a: { rid: string; nome: string; unitId?: string; cr
     const docId = `getin_${gr.id}`;
     const agora = new Date().toISOString();
     const existente = await firestoreLer("reservas", docId);
-    // Fatos (sem PII) → /reservas
+    // Reserva editada pela equipe no app → o app é a fonte dos campos editáveis.
+    // O sync só atualiza metadados e o "espelho" do GetIn (pra mostrar divergência),
+    // sem sobrescrever data/horário/pessoas/mesa/PII.
+    const editadoLocal = !!(existente && existente.editadoLocalEm);
+    const tableRaw = gr.table != null && String(gr.table).trim() !== "" ? String(gr.table).trim() : null;
+    const mesaNomeGetin = tableRaw ? (/^mesa/i.test(tableRaw) ? tableRaw : `Mesa ${tableRaw}`) : "";
+
+    // Espelho NÃO-PII de como a reserva vem do GetIn (sempre atualizado).
+    const getinSnapshot = {
+      data: gr.date || "", horario: gr.time || "", pessoas: Number(gr.people || 0),
+      mesaNomeSnapshot: mesaNomeGetin, salaoNomeSnapshot: gr.sector?.name || "",
+      status: gr.status || "", atualizadoEm: gr.updated_at || agora,
+    };
+
+    // Metadados que o sync sempre pode tocar (não são "editáveis" pela equipe).
     const base: Record<string, unknown> = {
       id: docId, restaurantId: a.rid,
-      data: gr.date || "", horario: gr.time || "", pessoas: Number(gr.people || 0),
-      salaoNomeSnapshot: gr.sector?.name || "",
       origem: "getin", externoId: gr.id, getinStatus: gr.status || "",
       getinAtualizadoEm: gr.updated_at || agora, atualizadoEm: agora,
+      getinSnapshot,
     };
-    // Mesa: o GetIn só preenche `table` quando o garçom SENTA a reserva (null até
-    // lá). Como o sync é PATCH (merge), só gravamos quando vier preenchido — assim
-    // cada sync "procura" a mesa e, quando o garçom atribui, aparece aqui; e nunca
-    // apagamos uma mesa já definida (no GetIn ou manual no app) quando vier null.
-    const tableRaw = gr.table != null && String(gr.table).trim() !== "" ? String(gr.table).trim() : null;
-    if (tableRaw) base.mesaNomeSnapshot = /^mesa/i.test(tableRaw) ? tableRaw : `Mesa ${tableRaw}`;
+    // Campos editáveis: só adota os do GetIn quando a equipe NÃO editou no app.
+    if (!editadoLocal) {
+      base.data = gr.date || "";
+      base.horario = gr.time || "";
+      base.pessoas = Number(gr.people || 0);
+      base.salaoNomeSnapshot = gr.sector?.name || "";
+      // Mesa: o GetIn só preenche `table` ao SENTAR (null até lá). Como é PATCH,
+      // só grava quando vier preenchido — nunca apaga uma mesa já definida.
+      if (tableRaw) base.mesaNomeSnapshot = mesaNomeGetin;
+    }
     if (!existente) {
       base.status = mapStatus(gr.status);
       base.registradoEm = gr.created_at || agora;
@@ -170,21 +187,27 @@ async function sincronizarUm(a: { rid: string; nome: string; unitId?: string; cr
       await firestoreAtualizar("reservas", docId, base);
       novas++;
     } else {
-      // Não sobrescreve o status que a equipe mexeu — só propaga cancelamento.
+      // Não sobrescreve o status que a equipe mexeu — só propaga cancelamento
+      // (vale mesmo com edição local: se o cliente cancelou no GetIn, importa).
       if (mapStatus(gr.status) === "cancelada" && String(existente.status || "") !== "cancelada") base.status = "cancelada";
       await firestoreAtualizar("reservas", docId, base);
       atualizadas++;
     }
-    // PII → /reservasPII (nome/telefone/email). Telefone E.164 (mobile já vem c/ DDI).
-    await firestoreAtualizar("reservasPII", docId, {
-      id: docId, restaurantId: a.rid,
+    // PII → /reservasPII. Telefone E.164 (mobile já vem c/ DDI). Guarda sempre o
+    // espelho do GetIn; só sobrescreve os campos vivos quando não houve edição local.
+    const getinSnapshotPII = {
       clienteNomeSnapshot: gr.name || "",
       clienteTelefoneSnapshot: (gr.mobile || "").replace(/\D/g, ""),
       clienteEmailSnapshot: gr.email || "",
       observacoes: gr.info || "",
       ocasiao: gr.occasion || "",
-      registradoEm: gr.created_at || agora,
-    });
+    };
+    const piiUpdate: Record<string, unknown> = {
+      id: docId, restaurantId: a.rid, registradoEm: gr.created_at || agora,
+      getinSnapshot: getinSnapshotPII,
+    };
+    if (!editadoLocal) Object.assign(piiUpdate, getinSnapshotPII);
+    await firestoreAtualizar("reservasPII", docId, piiUpdate);
   }
   return { rid: a.rid, nome: a.nome, total: lista.length, novas, atualizadas };
 }

@@ -35,9 +35,9 @@ type Props = {
 const STATUSES: ReservaStatus[] = ["pendente", "confirmada", "chegou", "no_show", "cancelada"];
 
 // Tela de VISUALIZAÇÃO da reserva (read-only, sem caixas de formulário).
-function ResumoReserva({ clienteNome, clienteTelefone, data, horario, pessoas, mesas, status, eventoNome, ocasiao, observacoes, pagamento }: {
+function ResumoReserva({ clienteNome, clienteTelefone, data, horario, pessoas, mesas, status, eventoNome, ocasiao, observacoes, divergencias, pagamento }: {
   clienteNome: string; clienteTelefone?: string; data: string; horario: string; pessoas: number; mesas: { nome: string; alta: boolean }[]; status: ReservaStatus;
-  eventoNome?: string; ocasiao?: string; observacoes?: string;
+  eventoNome?: string; ocasiao?: string; observacoes?: string; divergencias?: { campo: string; app: string; getin: string }[];
   pagamento?: { pago: boolean; forma?: string; valor?: number; ajusteTipo?: "cheio" | "desconto" | "acrescimo" | "cortesia"; ajusteValor?: number; comprovanteUrl?: string };
 }) {
   const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -72,6 +72,19 @@ function ResumoReserva({ clienteNome, clienteTelefone, data, horario, pessoas, m
         {ocasiao && <Campo label="Ocasião">{ocasiao}</Campo>}
       </div>
       {observacoes && <Campo label="Observações">{observacoes}</Campo>}
+      {divergencias && divergencias.length > 0 && (
+        <div className="rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-3">
+          <div className="text-[10px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 mb-1.5 inline-flex items-center gap-1.5"><TriangleAlert size={12} /> Editado aqui — difere do GetIn</div>
+          <div className="space-y-1">
+            {divergencias.map((d) => (
+              <div key={d.campo} className="grid grid-cols-[72px_1fr] gap-2 text-[12px]">
+                <div className="text-amber-700/80 dark:text-amber-400/80 font-semibold">{d.campo}</div>
+                <div className="min-w-0"><span className="text-gray-900 dark:text-gray-100 font-medium">{d.app}</span><span className="text-gray-400"> · GetIn: </span><span className="text-gray-500 line-through">{d.getin}</span></div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
       {pagamento && (
         <div className="rounded-xl border border-gray-200 dark:border-gray-800 p-3">
           <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-1.5">Pagamento</div>
@@ -130,6 +143,10 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
   const [motivoCancel, setMotivoCancel] = useState(reserva?.motivoCancelamento || "");
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  // GetIn: se a equipe editar, o app vira a fonte (sync não sobrescreve).
+  // "Adotar GetIn" limpa a flag pra voltar a seguir o GetIn.
+  const ehGetin = reserva?.origem === "getin" || !!reserva?.externoId;
+  const [reverterGetin, setReverterGetin] = useState(false);
   // Mesclar com outra reserva do mesmo dia (duplicata)
   const [mesclarOpen, setMesclarOpen] = useState(false);
   const [mesclarAlvo, setMesclarAlvo] = useState<Reserva | null>(null);
@@ -219,6 +236,38 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
   );
   const capacidadeTotal = mesasSel.reduce((s, m) => s + (m.capacidade || 0), 0);
   const capacidadeOk = mesaIds.length === 0 || capacidadeTotal >= pessoasNum;
+
+  // Divergências entre o que está no app e o que vem do GetIn (só quando a
+  // reserva foi editada localmente e o GetIn tem um valor diferente).
+  const snap = reserva?.getinSnapshot;
+  const divergencias = useMemo(() => {
+    if (!ehGetin || !reserva?.editadoLocalEm || !snap) return [];
+    const out: { campo: string; app: string; getin: string }[] = [];
+    const add = (campo: string, app: string, getin: string) => {
+      const a = (app || "").trim(), g = (getin || "").trim();
+      if (g && a !== g) out.push({ campo, app: a || "—", getin: g });
+    };
+    add("Nome", clienteNome, snap.clienteNomeSnapshot || "");
+    add("Telefone", clienteTelefone.replace(/\D/g, ""), (snap.clienteTelefoneSnapshot || "").replace(/\D/g, ""));
+    add("Data", data ? fmtBR(data) : "", snap.data ? fmtBR(snap.data) : "");
+    add("Horário", horario, snap.horario || "");
+    add("Pessoas", String(pessoasNum), snap.pessoas != null ? String(snap.pessoas) : "");
+    add("Mesa", mesasSel.map((m) => m.nome).join(", "), snap.mesaNomeSnapshot || "");
+    add("Observações", observacoes, snap.observacoes || "");
+    return out;
+  }, [ehGetin, reserva?.editadoLocalEm, snap, clienteNome, clienteTelefone, data, horario, pessoasNum, mesasSel, observacoes]);
+
+  // Preenche o form com os valores do GetIn e marca pra "voltar a seguir o GetIn".
+  function adotarGetin() {
+    if (!snap) return;
+    if (snap.clienteNomeSnapshot) setClienteNome(snap.clienteNomeSnapshot);
+    if (snap.clienteTelefoneSnapshot) setClienteTelefone(snap.clienteTelefoneSnapshot);
+    if (snap.data) setData(snap.data);
+    if (snap.horario) setHorario(snap.horario);
+    if (snap.pessoas != null) setPessoas(String(snap.pessoas));
+    if (snap.observacoes != null) setObservacoes(snap.observacoes);
+    setReverterGetin(true);
+  }
 
   // Mesas ativas, ordenadas por setor/nome
   const mesasOrdenadas = useMemo(() => {
@@ -310,6 +359,10 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
         registradoEm: reserva?.registradoEm || now,
         registradoPor: reserva?.registradoPor || me.id,
         atualizadoEm: now,
+        // Reserva vinda do GetIn e editada aqui → marca pra que o sync NÃO
+        // sobrescreva o que a equipe ajustou (o app vira a fonte). "Adotar
+        // GetIn" (reverterGetin) limpa a flag → volta a seguir o GetIn.
+        ...(ehGetin ? { editadoLocalEm: reverterGetin ? null : now } : {}),
       };
       // PII separada (auth-only read)
       const piiPayload = {
@@ -411,10 +464,33 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
             pessoas={pessoasNum} mesas={mesasSel.map((m) => ({ nome: m.nome, alta: m.tipoMesa === "alta" }))} status={status}
             eventoNome={evId ? (evento?.nome || reserva?.ocasiao) : undefined} ocasiao={evId ? undefined : ocasiao}
             observacoes={observacoes}
+            divergencias={divergencias}
             pagamento={evId ? { pago, forma: formaPg, valor: ajusteTipo === "cortesia" ? 0 : (valorFinalCents > 0 ? valorFinalCents / 100 : undefined), ajusteTipo, ajusteValor: ajusteCents / 100, comprovanteUrl: pagIni?.comprovanteUrl } : undefined}
           />}
           {editing && (
           <div className="space-y-3">
+          {/* Divergência com o GetIn (reserva editada localmente) */}
+          {divergencias.length > 0 && (
+            <div className="rounded-xl border border-amber-300 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/20 p-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="text-[12px] font-bold uppercase tracking-wider text-amber-700 dark:text-amber-300 inline-flex items-center gap-1.5"><TriangleAlert size={13} /> Editado aqui — difere do GetIn</div>
+                <button type="button" onClick={adotarGetin} className="shrink-0 text-[11px] font-semibold px-2 py-1 rounded-lg border border-amber-400 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-amber-900/30">Adotar versão do GetIn</button>
+              </div>
+              <div className="mt-2 space-y-1">
+                {divergencias.map((d) => (
+                  <div key={d.campo} className="grid grid-cols-[72px_1fr] gap-2 text-[12px]">
+                    <div className="text-amber-700/80 dark:text-amber-400/80 font-semibold">{d.campo}</div>
+                    <div className="min-w-0">
+                      <span className="text-gray-900 dark:text-gray-100 font-medium">{d.app}</span>
+                      <span className="text-gray-400"> · GetIn: </span>
+                      <span className="text-gray-500 line-through">{d.getin}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              {reverterGetin && <div className="mt-2 text-[11px] text-amber-700 dark:text-amber-300">Ao salvar, volta a seguir o GetIn (as próximas sincronizações atualizam esta reserva).</div>}
+            </div>
+          )}
           {/* Cliente */}
           <div>
             <label className="text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-gray-400 block mb-1">
