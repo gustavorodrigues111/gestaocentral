@@ -27,9 +27,13 @@ export const config = { maxDuration: 300 };
 
 // Fallback enquanto restaurants/{id}.getin não é semeado. credKey → secrets.
 // unitId opcional: se não informado, é derivado do claim `units` do JWT no login.
+// IMPORTANTE: match EXATO do nome (âncoras ^$). Antes `/sororoca/i` casava tb
+// com "Sororoca Paraty" (outro restaurante) → as reservas do GetIn do Sororoca
+// iam parar no restaurante errado. Use a config explícita (restaurants.getin)
+// pra ligar outras unidades.
 const BUILTIN: Array<{ match: RegExp; unitId?: string; credKey: string }> = [
-  { match: /sororoca/i, unitId: "VPBoya1m", credKey: "SOROROCA" },
-  { match: /lobo/i, credKey: "LOBOZO" },   // unitId derivado do token
+  { match: /^sororoca$/i, unitId: "VPBoya1m", credKey: "SOROROCA" },
+  { match: /^lobozó$/i, credKey: "LOBOZO" },   // unitId derivado do token
 ];
 
 const API_BASE = "https://agent.getinapis.com";
@@ -164,7 +168,10 @@ async function sincronizarUm(a: { rid: string; nome: string; unitId?: string; cr
       gr.name || "", (gr.mobile || "").replace(/\D/g, ""), gr.email || "",
       gr.info || "", gr.occasion || "", gr.status || "", tableRaw || "", gr.sector?.name || "",
     ]);
-    if (existente && existente.getinSig === sig) { inalteradas++; continue; }
+    // Pula só quando o conteúdo do GetIn não mudou E o doc já está no restaurante
+    // certo. Se o restaurantId estiver errado (ex.: ficou sob outra unidade por
+    // um match de nome greedy), NÃO pula — reescreve pra corrigir o vínculo.
+    if (existente && existente.getinSig === sig && String(existente.restaurantId || "") === a.rid) { inalteradas++; continue; }
 
     // Espelho NÃO-PII de como a reserva vem do GetIn (sempre atualizado).
     const getinSnapshot = {
