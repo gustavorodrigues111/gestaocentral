@@ -191,11 +191,14 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
   // Pool pra exibir nº da mesa (inclui inativas + extras).
   const mesasComExtras = useMemo(() => [...mesas, ...extras], [mesas, extras]);
 
+  // Canceladas saem dos salões e vão pra um bloco separado no fim.
+  const canceladas = useMemo(() => ordenadas.filter((r) => r.status === "cancelada"), [ordenadas]);
   // Reservas agrupadas por salão (salão da 1ª mesa); sem mesa vai por último.
   const salById = useMemo(() => new Map(saloes.map((s) => [s.id, s])), [saloes]);
   const gruposReservas = useMemo(() => {
     const m = new Map<string, Reserva[]>();
     for (const r of ordenadas) {
+      if (r.status === "cancelada") continue;   // canceladas vão pro bloco próprio
       const ids = reservaMesaIds(r);
       const mesa = ids.length ? mesasComExtras.find((x) => x.id === ids[0]) : undefined;
       const key = mesa?.salaoId || "__none__";
@@ -298,7 +301,7 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
         {!ev.pastaDriveId && <span className="text-amber-600 inline-flex items-center gap-1"><FolderOpen size={13} /> sem pasta do Drive — edite o evento</span>}
       </div>
 
-      {ordenadas.length === 0 ? (
+      {gruposReservas.length === 0 && canceladas.length === 0 ? (
         <div className="rounded-xl border border-dashed border-gray-300 dark:border-gray-700 p-6 text-center text-gray-400 text-sm">Nenhuma reserva nesse evento. Clique em "Nova reserva".</div>
       ) : (
         <div className="space-y-4">
@@ -358,6 +361,24 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
               </div>
             );
           })}
+
+          {/* Canceladas — bloco separado e discreto no fim */}
+          {canceladas.length > 0 && (
+            <div>
+              <h4 className="text-xs uppercase tracking-wider font-semibold text-rose-500/80 dark:text-rose-400/80 mb-1.5 inline-flex items-center gap-1">
+                <Ban size={12} /> Canceladas ({canceladas.length})
+              </h4>
+              <div className="rounded-xl border border-gray-200 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800/70 overflow-hidden opacity-70">
+                {canceladas.map((r) => (
+                  <button key={r.id} onClick={() => onEditarReserva(r, ev)} className="w-full text-left px-3 py-2 text-[13px] flex items-center gap-2 flex-wrap hover:bg-gray-50 dark:hover:bg-gray-800/40">
+                    <span className="font-medium text-gray-700 dark:text-gray-300 line-through">{r.clienteNomeSnapshot || "—"}</span>
+                    <span className="text-gray-400 text-[12px]">{fmtBR(r.data)} · {r.horario} · {r.pessoas} pax</span>
+                    <span className="inline-flex items-center gap-1 text-gray-400 text-[12px]"><MesaTags r={r} mesas={mesasComExtras} /></span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
