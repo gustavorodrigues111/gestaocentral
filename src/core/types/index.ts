@@ -2777,7 +2777,11 @@ export type ReservaEvento = {
   // Mesas EXTRA criadas só pra este evento (lugares fora do layout habitual).
   // Podem ter nome livre (não só número). Entram como disponíveis e podem ser
   // escolhidas nas reservas do evento, mas não viram mesa permanente.
-  mesasExtras?: Array<{ id: string; nome: string; capacidade: number; tipoMesa?: "baixa" | "alta"; salaoId?: string | null }>;
+  // coletiva=true → mesa comunitária: aceita VÁRIAS reservas (não bloqueia).
+  mesasExtras?: Array<{ id: string; nome: string; capacidade: number; tipoMesa?: "baixa" | "alta"; salaoId?: string | null; coletiva?: boolean }>;
+  // Salões criados só pra este evento (não viram salão permanente). Usados pra
+  // agrupar as mesas extra num "lugar" novo que só existe nesse evento.
+  saloesExtras?: Array<{ id: string; nome: string }>;
   pastaDriveId?: string; pastaDriveNome?: string;   // subpasta (conta central) dos comprovantes
   ativo?: boolean; criadoEm: string; criadoPor?: string; atualizadoEm?: string;
 };

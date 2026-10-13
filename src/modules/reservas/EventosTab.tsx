@@ -3,7 +3,7 @@
 // pagamento + comprovante). Pasta do Drive por evento (conta central, subpasta
 // de uma pasta-raiz indicada pelo usuário).
 import { useEffect, useMemo, useState } from "react";
-import { CalendarHeart, Plus, Settings, Trash2, X, Check, ChevronLeft, FolderOpen, CalendarDays, Link2, Armchair, Wine, RefreshCw, Ban } from "lucide-react";
+import { CalendarHeart, Plus, Settings, Trash2, X, Check, ChevronLeft, FolderOpen, CalendarDays, Link2, Armchair, Wine, RefreshCw, Ban, Users } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { fmtBR } from "../../core/utils/date";
 import { reservaMesaIds, reservaMesasNomes } from "../../core/reservas/mesas";
@@ -193,8 +193,14 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
 
   // Canceladas saem dos salões e vão pra um bloco separado no fim.
   const canceladas = useMemo(() => ordenadas.filter((r) => r.status === "cancelada"), [ordenadas]);
-  // Reservas agrupadas por salão (salão da 1ª mesa); sem mesa vai por último.
-  const salById = useMemo(() => new Map(saloes.map((s) => [s.id, s])), [saloes]);
+  // Salões do restaurante + os criados só pra este evento (ordem alta → por último).
+  const salById = useMemo(() => {
+    const m = new Map<string, { id: string; nome: string; ordem?: number }>();
+    for (const s of saloes) m.set(s.id, s);
+    for (const s of (ev.saloesExtras || [])) m.set(s.id, { id: s.id, nome: s.nome, ordem: 9000 });
+    return m;
+  }, [saloes, ev.saloesExtras]);
+  const coletivasIds = useMemo(() => new Set((ev.mesasExtras || []).filter((e) => e.coletiva).map((e) => e.id)), [ev.mesasExtras]);
   const gruposReservas = useMemo(() => {
     const m = new Map<string, Reserva[]>();
     for (const r of ordenadas) {
@@ -225,7 +231,8 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
   // Mesas bloqueadas NESTE evento (layout/restrições).
   const bloqueadas = useMemo(() => new Set(ev.mesasBloqueadas || []), [ev.mesasBloqueadas]);
   const mesasBloqueadas = mesasAtivas.filter((m) => bloqueadas.has(m.id) && !usadas.has(m.id)).sort((a, b) => mesaNum(a.nome) - mesaNum(b.nome) || a.nome.localeCompare(b.nome));
-  const mesasLivres = mesasAtivas.filter((m) => !usadas.has(m.id) && !bloqueadas.has(m.id)).sort((a, b) => mesaNum(a.nome) - mesaNum(b.nome) || a.nome.localeCompare(b.nome));
+  // Coletiva (comunitária) continua "disponível" mesmo com reserva — aceita mais.
+  const mesasLivres = mesasAtivas.filter((m) => (!usadas.has(m.id) || coletivasIds.has(m.id)) && !bloqueadas.has(m.id)).sort((a, b) => mesaNum(a.nome) - mesaNum(b.nome) || a.nome.localeCompare(b.nome));
   async function toggleBloqueio(mesaId: string) {
     if (!podeEditar) return;
     const atual = ev.mesasBloqueadas || [];
@@ -238,9 +245,18 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
     try { await atualizarMesasExtras(ev.id, (ev.mesasExtras || []).filter((e) => e.id !== id)); } catch (e) { console.error("[eventos] remover mesa extra", e); }
   }
   const [addMesaOpen, setAddMesaOpen] = useState(false);
-  async function adicionarExtra(nova: { nome: string; capacidade: number; tipoMesa: "baixa" | "alta"; salaoId?: string | null }) {
-    const id = "evx_" + (crypto.randomUUID?.() || Date.now() + Math.random().toString(36).slice(2));
-    try { await atualizarMesasExtras(ev.id, [...(ev.mesasExtras || []), { id, ...nova }]); setAddMesaOpen(false); }
+  async function adicionarExtra(nova: { nome: string; capacidade: number; tipoMesa: "baixa" | "alta"; salaoId?: string | null; coletiva?: boolean; novoSalaoNome?: string }) {
+    const id = "evx_" + uid();
+    let salaoId = nova.salaoId ?? null;
+    let saloesExtras = ev.saloesExtras || [];
+    // Salão só do evento (quando o usuário cria um novo na hora).
+    if (nova.novoSalaoNome && nova.novoSalaoNome.trim()) {
+      const sid = "evs_" + uid();
+      saloesExtras = [...saloesExtras, { id: sid, nome: nova.novoSalaoNome.trim() }];
+      salaoId = sid;
+    }
+    const mesasExtras = [...(ev.mesasExtras || []), { id, nome: nova.nome, capacidade: nova.capacidade, tipoMesa: nova.tipoMesa, salaoId, coletiva: nova.coletiva || undefined }];
+    try { await salvarEvento({ ...ev, mesasExtras, saloesExtras }); setAddMesaOpen(false); }
     catch (e) { console.error("[eventos] add mesa extra", e); }
   }
   // Mesas disponíveis agrupadas por salão (mesmas regras de ordem dos blocos).
@@ -412,12 +428,14 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
                         const ehExtra = extrasIds.has(m.id);
                         // Extra: chip com tom indigo + "×" pra remover. Normal: clique bloqueia.
                         if (ehExtra) {
+                          const ehColetiva = coletivasIds.has(m.id);
                           return (
-                            <span key={m.id} title={`Mesa extra deste evento · ${m.capacidade} pax · ${alta ? "alta" : "baixa"}`}
+                            <span key={m.id} title={`Mesa extra deste evento${ehColetiva ? " · comunitária" : ""} · ${m.capacidade} pax · ${alta ? "alta" : "baixa"}`}
                               className="inline-flex items-center gap-1 text-[12px] font-medium px-2 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-200">
                               {alta ? <Wine size={12} /> : <Armchair size={12} />}
                               {m.nome}
                               <span className="opacity-70">· {m.capacidade}</span>
+                              {ehColetiva && <Users size={11} className="opacity-80" />}
                               {podeEditar && <button type="button" onClick={() => void removerExtra(m.id)} title="Remover mesa extra" className="ml-0.5 text-indigo-400 hover:text-rose-500"><X size={12} /></button>}
                             </span>
                           );
@@ -480,30 +498,40 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
         </div>
       )}
 
-      {addMesaOpen && <AddMesaExtraModal saloes={saloes} onClose={() => setAddMesaOpen(false)} onSalvar={adicionarExtra} />}
+      {addMesaOpen && <AddMesaExtraModal saloes={saloes} saloesEvento={ev.saloesExtras || []} onClose={() => setAddMesaOpen(false)} onSalvar={adicionarExtra} />}
     </div>
   );
 }
 
-// Modal pra criar uma mesa EXTRA só do evento (nome livre, capacidade, altura, salão opcional).
-function AddMesaExtraModal({ saloes, onClose, onSalvar }: {
+// Modal pra criar uma mesa EXTRA só do evento (nome livre, capacidade, altura,
+// comunitária, e salão — do restaurante, do evento, ou um salão novo só do evento).
+function AddMesaExtraModal({ saloes, saloesEvento, onClose, onSalvar }: {
   saloes: Salao[];
+  saloesEvento: { id: string; nome: string }[];
   onClose: () => void;
-  onSalvar: (m: { nome: string; capacidade: number; tipoMesa: "baixa" | "alta"; salaoId?: string | null }) => Promise<void> | void;
+  onSalvar: (m: { nome: string; capacidade: number; tipoMesa: "baixa" | "alta"; salaoId?: string | null; coletiva?: boolean; novoSalaoNome?: string }) => Promise<void> | void;
 }) {
   const [nome, setNome] = useState("");
   const [capacidade, setCapacidade] = useState("2");
   const [tipoMesa, setTipoMesa] = useState<"baixa" | "alta">("baixa");
-  const [salaoId, setSalaoId] = useState<string>("");
+  const [salaoId, setSalaoId] = useState<string>("");   // "" = sem salão, "__novo__" = criar salão do evento
+  const [novoSalao, setNovoSalao] = useState("");
+  const [coletiva, setColetiva] = useState(false);
   const [salvando, setSalvando] = useState(false);
   const [err, setErr] = useState("");
   async function salvar() {
     const cap = parseInt(capacidade, 10);
-    if (!nome.trim()) { setErr("Dê um nome à mesa (ex.: Varanda 1, Lounge A)."); return; }
+    if (!nome.trim()) { setErr("Dê um nome à mesa (ex.: Varanda, Lounge A)."); return; }
     if (!cap || cap <= 0) { setErr("Capacidade inválida."); return; }
+    if (salaoId === "__novo__" && !novoSalao.trim()) { setErr("Dê um nome ao salão do evento."); return; }
     setErr(""); setSalvando(true);
-    try { await onSalvar({ nome: nome.trim(), capacidade: cap, tipoMesa, salaoId: salaoId || null }); }
-    catch (e) { setErr(e instanceof Error ? e.message : "Erro ao salvar"); setSalvando(false); }
+    try {
+      await onSalvar({
+        nome: nome.trim(), capacidade: cap, tipoMesa, coletiva,
+        salaoId: salaoId === "__novo__" ? null : (salaoId || null),
+        novoSalaoNome: salaoId === "__novo__" ? novoSalao.trim() : undefined,
+      });
+    } catch (e) { setErr(e instanceof Error ? e.message : "Erro ao salvar"); setSalvando(false); }
   }
   return (
     <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
@@ -531,15 +559,22 @@ function AddMesaExtraModal({ saloes, onClose, onSalvar }: {
               </div>
             </div>
           </div>
-          {saloes.length > 0 && (
-            <div>
-              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Salão (opcional)</label>
-              <select value={salaoId} onChange={(e) => setSalaoId(e.target.value)} className="w-full h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-                <option value="">— sem salão —</option>
-                {saloes.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
-              </select>
-            </div>
-          )}
+          <label className="flex items-center gap-2 text-sm cursor-pointer">
+            <input type="checkbox" checked={coletiva} onChange={(e) => setColetiva(e.target.checked)} className="accent-indigo-600" />
+            <span className="font-medium">Mesa comunitária <span className="font-normal text-gray-400">— aceita várias reservas na mesma mesa</span></span>
+          </label>
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Salão</label>
+            <select value={salaoId} onChange={(e) => setSalaoId(e.target.value)} className="w-full h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+              <option value="">— sem salão —</option>
+              {saloes.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
+              {saloesEvento.map((s) => <option key={s.id} value={s.id}>{s.nome} (deste evento)</option>)}
+              <option value="__novo__">+ Criar salão só deste evento…</option>
+            </select>
+            {salaoId === "__novo__" && (
+              <input value={novoSalao} onChange={(e) => setNovoSalao(e.target.value)} autoFocus placeholder="nome do salão (ex.: Jardim, Terraço)" className="w-full h-10 px-3 mt-2 text-sm rounded-lg border border-indigo-300 dark:border-indigo-700 bg-white dark:bg-gray-900" />
+            )}
+          </div>
           {err && <div className="text-sm text-rose-600">{err}</div>}
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
             <button onClick={onClose} className="h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 text-sm">Cancelar</button>

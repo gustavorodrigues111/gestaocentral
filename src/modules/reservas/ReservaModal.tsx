@@ -206,9 +206,11 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
 
   // Mesas bloqueadas NESTE evento (layout/restrições) — não podem ser escolhidas.
   const evBloqueadas = useMemo(() => new Set(evento?.mesasBloqueadas || []), [evento]);
+  // Mesas COMUNITÁRIAS do evento — aceitam várias reservas (nunca "ocupadas").
+  const coletivasIds = useMemo(() => new Set((evento?.mesasExtras || []).filter((e) => e.coletiva).map((e) => e.id)), [evento]);
 
   function toggleMesa(id: string) {
-    if (!mesaIds.includes(id) && (mesasOcupadas.has(id) || evBloqueadas.has(id))) return; // indisponível
+    if (!mesaIds.includes(id) && !coletivasIds.has(id) && (mesasOcupadas.has(id) || evBloqueadas.has(id))) return; // indisponível
     setMesaIds(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
   }
 
@@ -289,10 +291,12 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
       .sort((a, b) => (a.setor || "").localeCompare(b.setor || "") || a.nome.localeCompare(b.nome));
   }, [mesasPool]);
 
-  // Mesas AGRUPADAS por salão (com a altura do salão pro ícone/etiqueta).
+  // Mesas AGRUPADAS por salão (inclui os salões criados só pra este evento).
   const gruposMesas = useMemo(() => {
-    const salById = new Map((saloes || []).map(s => [s.id, s]));
-    const map = new Map<string, { salao?: Salao; mesas: Mesa[] }>();
+    const salById = new Map<string, { id: string; nome: string; ordem?: number }>();
+    for (const s of (saloes || [])) salById.set(s.id, s);
+    for (const s of (evento?.saloesExtras || [])) salById.set(s.id, { id: s.id, nome: s.nome, ordem: 9000 });
+    const map = new Map<string, { salao?: { id: string; nome: string; ordem?: number }; mesas: Mesa[] }>();
     for (const m of mesasOrdenadas) {
       const key = m.salaoId || "__sem__";
       if (!map.has(key)) map.set(key, { salao: m.salaoId ? salById.get(m.salaoId) : undefined, mesas: [] });
@@ -303,7 +307,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
       if (!b.salao) return -1;
       return (a.salao.ordem ?? 999) - (b.salao.ordem ?? 999) || a.salao.nome.localeCompare(b.salao.nome);
     });
-  }, [mesasOrdenadas, saloes]);
+  }, [mesasOrdenadas, saloes, evento]);
 
   async function salvar() {
     if (!clienteNome.trim()) { setErr("Cliente obrigatório (escolha cadastrado ou digite nome)"); return; }
@@ -597,8 +601,9 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
                   <div className="flex flex-wrap gap-1.5">
                     {g.mesas.map(m => {
                       const sel = mesaIds.includes(m.id);
-                      const bloqueada = evBloqueadas.has(m.id) && !sel;   // bloqueada neste evento
-                      const ocupada = mesasOcupadas.has(m.id) && !sel;
+                      const ehColetiva = coletivasIds.has(m.id);   // comunitária: nunca ocupada/bloqueada
+                      const bloqueada = evBloqueadas.has(m.id) && !sel && !ehColetiva;   // bloqueada neste evento
+                      const ocupada = mesasOcupadas.has(m.id) && !sel && !ehColetiva;
                       const indisponivel = ocupada || bloqueada;
                       const alta = m.tipoMesa === "alta";   // altura POR MESA
                       return (
@@ -618,7 +623,7 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
                                   : "border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 hover:border-indigo-400"
                           }`}
                         >
-                          {alta ? <Wine size={12} className="inline align-[-2px] mr-0.5" /> : <Armchair size={12} className="inline align-[-2px] mr-0.5" />}{m.nome} · <Users size={12} className="inline align-[-2px]" />{m.capacidade}{bloqueada ? " · bloqueada" : ocupada ? " · ocupada" : ""}
+                          {alta ? <Wine size={12} className="inline align-[-2px] mr-0.5" /> : <Armchair size={12} className="inline align-[-2px] mr-0.5" />}{m.nome} · <Users size={12} className="inline align-[-2px]" />{m.capacidade}{ehColetiva ? " · comunitária" : bloqueada ? " · bloqueada" : ocupada ? " · ocupada" : ""}
                         </button>
                       );
                     })}
