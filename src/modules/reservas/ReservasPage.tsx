@@ -94,7 +94,22 @@ export function ReservasPage() {
   const podeEditarCliente  = can("reservas", "editarCliente");
   const podeExcluirCliente = can("reservas", "excluirCliente");
 
-  const [tab, setTab] = useState<Tab>("reservas");
+  // Aba ativa persiste no reload (volta pra mesma aba que estava aberta).
+  const TAB_KEY = "reservasCrmTab";
+  const TABS_VALIDAS: Tab[] = ["reservas", "eventos", "agenda", "clientes", "config"];
+  const [tab, setTab] = useState<Tab>(() => {
+    try { const t = localStorage.getItem(TAB_KEY) as Tab | null; return t && TABS_VALIDAS.includes(t) ? t : "reservas"; } catch { return "reservas"; }
+  });
+  useEffect(() => { try { localStorage.setItem(TAB_KEY, tab); } catch { /* private mode */ } }, [tab]);
+  // Se a aba restaurada não é permitida pra esta pessoa, cai pra Reservas.
+  useEffect(() => {
+    const ok = tab === "reservas"
+      || (tab === "eventos" && podeCriar)
+      || (tab === "agenda" && podeConfig)
+      || (tab === "clientes" && podeVerCRM)
+      || (tab === "config" && podeConfig);
+    if (!ok) setTab("reservas");
+  }, [tab, podeCriar, podeConfig, podeVerCRM]);
   // GetIn: status da última sincronização (badge) + estado do botão "forçar".
   const [getinStatus, setGetinStatus] = useState<{ atualizadoEm?: string; total?: number; ok?: boolean; erro?: string } | null>(null);
   const [forcandoSync, setForcandoSync] = useState(false);
