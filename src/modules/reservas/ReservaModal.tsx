@@ -236,10 +236,16 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
     ajusteTipo === "desconto" ? Math.max(0, baseCents - ajusteCents) :
     ajusteTipo === "acrescimo" ? baseCents + ajusteCents :
     parseCents(valorPg);   // cheio (manual)
+  // Pool de mesas do seletor: as do restaurante + as EXTRA do evento (se houver).
+  const mesasPool = useMemo<Mesa[]>(() => {
+    const ex = evento?.mesasExtras || [];
+    if (!ex.length) return mesas;
+    return [...mesas, ...ex.map((e) => ({ id: e.id, restaurantId, nome: e.nome, capacidade: e.capacidade, tipoMesa: e.tipoMesa, salaoId: e.salaoId ?? undefined, ativa: true, ordem: 9999 } as Mesa))];
+  }, [mesas, evento, restaurantId]);
   // Mesas selecionadas, na ordem de seleção; capacidade é a SOMA delas.
   const mesasSel = useMemo(
-    () => mesaIds.map(id => mesas.find(m => m.id === id)).filter((m): m is Mesa => !!m),
-    [mesaIds, mesas],
+    () => mesaIds.map(id => mesasPool.find(m => m.id === id)).filter((m): m is Mesa => !!m),
+    [mesaIds, mesasPool],
   );
   const capacidadeTotal = mesasSel.reduce((s, m) => s + (m.capacidade || 0), 0);
   const capacidadeOk = mesaIds.length === 0 || capacidadeTotal >= pessoasNum;
@@ -278,10 +284,10 @@ export function ReservaModal({ reserva, defaultData, clientes, mesas, saloes, re
 
   // Mesas ativas, ordenadas por setor/nome
   const mesasOrdenadas = useMemo(() => {
-    return [...mesas]
+    return [...mesasPool]
       .filter(m => m.ativa)
       .sort((a, b) => (a.setor || "").localeCompare(b.setor || "") || a.nome.localeCompare(b.nome));
-  }, [mesas]);
+  }, [mesasPool]);
 
   // Mesas AGRUPADAS por salão (com a altura do salão pro ícone/etiqueta).
   const gruposMesas = useMemo(() => {

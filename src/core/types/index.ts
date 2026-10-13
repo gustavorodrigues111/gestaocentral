@@ -2774,6 +2774,10 @@ export type ReservaEvento = {
   // Mesas bloqueadas NESTE evento (layout/restrições) — não entram como
   // disponíveis nem podem ser escolhidas nas reservas do evento.
   mesasBloqueadas?: string[];
+  // Mesas EXTRA criadas só pra este evento (lugares fora do layout habitual).
+  // Podem ter nome livre (não só número). Entram como disponíveis e podem ser
+  // escolhidas nas reservas do evento, mas não viram mesa permanente.
+  mesasExtras?: Array<{ id: string; nome: string; capacidade: number; tipoMesa?: "baixa" | "alta"; salaoId?: string | null }>;
   pastaDriveId?: string; pastaDriveNome?: string;   // subpasta (conta central) dos comprovantes
   ativo?: boolean; criadoEm: string; criadoPor?: string; atualizadoEm?: string;
 };

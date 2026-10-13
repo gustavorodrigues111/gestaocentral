@@ -19,6 +19,9 @@ export async function excluirEvento(id: string): Promise<void> { await deleteDoc
 export async function atualizarMesasBloqueadas(id: string, mesasBloqueadas: string[]): Promise<void> {
   await setDoc(doc(db, "reservaEventos", id), sanitizeForFirestore({ mesasBloqueadas, atualizadoEm: new Date().toISOString() }), { merge: true });
 }
+export async function atualizarMesasExtras(id: string, mesasExtras: ReservaEvento["mesasExtras"]): Promise<void> {
+  await setDoc(doc(db, "reservaEventos", id), sanitizeForFirestore({ mesasExtras: mesasExtras || [], atualizadoEm: new Date().toISOString() }), { merge: true });
+}
 
 export function ouvirEventoConfig(rid: string, cb: (c: ReservaEventoConfig | null) => void): Unsubscribe {
   return onSnapshot(doc(db, "reservaEventosConfig", rid), (snap) => {

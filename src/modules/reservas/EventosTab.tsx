@@ -9,7 +9,7 @@ import { fmtBR } from "../../core/utils/date";
 import { reservaMesaIds, reservaMesasNomes } from "../../core/reservas/mesas";
 import { centralConfigured, centralEnsureFolder, parseDriveFolderId } from "../../core/google/driveCentral";
 import type { Mesa, Reserva, ReservaEvento, ReservaEventoConfig, Salao } from "../../core/types";
-import { ouvirEventos, salvarEvento, excluirEvento, ouvirEventoConfig, salvarEventoConfig, atualizarMesasBloqueadas } from "./eventosRepo";
+import { ouvirEventos, salvarEvento, excluirEvento, ouvirEventoConfig, salvarEventoConfig, atualizarMesasBloqueadas, atualizarMesasExtras } from "./eventosRepo";
 
 const uid = () => { try { return crypto.randomUUID(); } catch { return "ev" + Date.now() + Math.random().toString(36).slice(2); } };
 const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -182,13 +182,22 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
   const ordenadas = [...reservas].sort((a, b) => (a.data + a.horario).localeCompare(b.data + b.horario));
   const candOrd = [...candidatas].sort((a, b) => (a.data + a.horario).localeCompare(b.data + b.horario));
 
+  // Mesas EXTRA do evento viram "Mesa" (sempre ativas) pra fluir no pool.
+  const extras = useMemo<Mesa[]>(() => (ev.mesasExtras || []).map((e) => ({
+    id: e.id, restaurantId: ev.restaurantId, nome: e.nome, capacidade: e.capacidade,
+    tipoMesa: e.tipoMesa, salaoId: e.salaoId ?? undefined, ativa: true, ordem: 9999,
+  })), [ev.mesasExtras, ev.restaurantId]);
+  const extrasIds = useMemo(() => new Set(extras.map((e) => e.id)), [extras]);
+  // Pool pra exibir nº da mesa (inclui inativas + extras).
+  const mesasComExtras = useMemo(() => [...mesas, ...extras], [mesas, extras]);
+
   // Reservas agrupadas por salão (salão da 1ª mesa); sem mesa vai por último.
   const salById = useMemo(() => new Map(saloes.map((s) => [s.id, s])), [saloes]);
   const gruposReservas = useMemo(() => {
     const m = new Map<string, Reserva[]>();
     for (const r of ordenadas) {
       const ids = reservaMesaIds(r);
-      const mesa = ids.length ? mesas.find((x) => x.id === ids[0]) : undefined;
+      const mesa = ids.length ? mesasComExtras.find((x) => x.id === ids[0]) : undefined;
       const key = mesa?.salaoId || "__none__";
       const arr = m.get(key); if (arr) arr.push(r); else m.set(key, [r]);
     }
@@ -203,11 +212,11 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
         reservaMesaMin(a, mesas) - reservaMesaMin(b, mesas) ||
         (a.data + a.horario).localeCompare(b.data + b.horario)),
     }));
-  }, [ordenadas, mesas, salById]);
+  }, [ordenadas, mesasComExtras, salById]);
 
   // ── Dashboard do evento (Task 2) ────────────────────────────────────
   const ativas = reservas.filter((r) => r.status !== "cancelada");
-  const mesasAtivas = mesas.filter((m) => m.ativa);
+  const mesasAtivas = useMemo(() => [...mesas.filter((m) => m.ativa), ...extras], [mesas, extras]);
   const usadas = new Set<string>();
   for (const r of ativas) for (const id of reservaMesaIds(r)) usadas.add(id);
   // Mesas bloqueadas NESTE evento (layout/restrições).
@@ -219,6 +228,17 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
     const atual = ev.mesasBloqueadas || [];
     const next = atual.includes(mesaId) ? atual.filter((x) => x !== mesaId) : [...atual, mesaId];
     try { await atualizarMesasBloqueadas(ev.id, next); } catch (e) { console.error("[eventos] bloquear mesa", e); }
+  }
+  async function removerExtra(id: string) {
+    if (!podeEditar) return;
+    if (usadas.has(id) && !confirm("Essa mesa extra já tem reserva. Remover mesmo assim? (as reservas mantêm o nome no histórico)")) return;
+    try { await atualizarMesasExtras(ev.id, (ev.mesasExtras || []).filter((e) => e.id !== id)); } catch (e) { console.error("[eventos] remover mesa extra", e); }
+  }
+  const [addMesaOpen, setAddMesaOpen] = useState(false);
+  async function adicionarExtra(nova: { nome: string; capacidade: number; tipoMesa: "baixa" | "alta"; salaoId?: string | null }) {
+    const id = "evx_" + (crypto.randomUUID?.() || Date.now() + Math.random().toString(36).slice(2));
+    try { await atualizarMesasExtras(ev.id, [...(ev.mesasExtras || []), { id, ...nova }]); setAddMesaOpen(false); }
+    catch (e) { console.error("[eventos] add mesa extra", e); }
   }
   // Mesas disponíveis agrupadas por salão (mesmas regras de ordem dos blocos).
   const gruposMesasLivres = useMemo(() => {
@@ -305,7 +325,7 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
                       <div className="text-[12px] text-gray-500 mt-1 flex items-center gap-2 flex-wrap">
                         <span><CalendarDays size={11} className="inline align-[-1px]" /> {fmtBR(r.data)} · {r.horario}</span>
                         <span>· {r.pessoas} pax</span>
-                        <span className="inline-flex items-center gap-1">· <MesaTags r={r} mesas={mesas} /></span>
+                        <span className="inline-flex items-center gap-1">· <MesaTags r={r} mesas={mesasComExtras} /></span>
                         {r.pagamento?.ajusteTipo !== "cortesia" && r.pagamento?.valor ? <span>· {fmtR(r.pagamento.valor)}{r.pagamento.forma ? ` (${r.pagamento.forma})` : ""}</span> : null}
                       </div>
                     </button>
@@ -327,7 +347,7 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
                           <td className="px-4 py-2.5 font-medium text-gray-900 dark:text-gray-100 truncate">{r.clienteNomeSnapshot || "—"}{r.status === "cancelada" && <span className="text-[11px] text-rose-500 ml-1">(cancelada)</span>}</td>
                           <td className="px-4 py-2.5 text-gray-500 whitespace-nowrap">{fmtBR(r.data)} · {r.horario}</td>
                           <td className="px-4 py-2.5 text-center tabular-nums">{r.pessoas}</td>
-                          <td className="px-4 py-2.5 whitespace-nowrap"><MesaTags r={r} mesas={mesas} /></td>
+                          <td className="px-4 py-2.5 whitespace-nowrap"><MesaTags r={r} mesas={mesasComExtras} /></td>
                           <td className="px-4 py-2.5">{r.pagamento?.ajusteTipo === "cortesia" ? <span className="text-violet-600 dark:text-violet-400 font-semibold">Cortesia</span> : <>{r.pagamento?.pago ? <span className="text-emerald-600 font-semibold">Pago</span> : <span className="text-amber-600">Pendente</span>}{r.pagamento?.forma ? <span className="text-gray-400 text-[12px]"> · {r.pagamento.forma}</span> : null}</>}</td>
                           <td className="px-4 py-2.5 text-right tabular-nums">{r.pagamento?.ajusteTipo === "cortesia" ? <span className="text-violet-600 dark:text-violet-400 font-semibold">Cortesia</span> : r.pagamento?.valor ? fmtR(r.pagamento.valor) : "—"}</td>
                         </tr>
@@ -342,16 +362,19 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
       )}
 
       {/* Mesas ainda disponíveis no evento */}
-      {mesasAtivas.length > 0 && (
+      {(mesasAtivas.length > 0 || podeEditar) && (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 p-3">
-          <div className="flex items-baseline justify-between gap-2 mb-2">
+          <div className="flex items-center justify-between gap-2 mb-2 flex-wrap">
             <div className="text-[12px] font-bold uppercase tracking-wider text-gray-500 dark:text-gray-400 inline-flex items-center gap-1.5">
               <Armchair size={13} /> Mesas disponíveis ({mesasLivres.length} · {lugaresLivres} lugares)
             </div>
-            {podeEditar && <span className="text-[11px] text-gray-400">toque pra bloquear/liberar</span>}
+            <div className="flex items-center gap-2">
+              {podeEditar && <span className="text-[11px] text-gray-400">toque pra bloquear/liberar</span>}
+              {podeEditar && <button type="button" onClick={() => setAddMesaOpen(true)} className="h-7 px-2 rounded-lg border border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-300 text-[12px] font-semibold inline-flex items-center gap-1 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"><Plus size={13} /> Mesa</button>}
+            </div>
           </div>
           {mesasLivres.length === 0 && mesasBloqueadas.length === 0 ? (
-            <div className="text-[13px] text-gray-500">Todas as mesas ativas já têm reserva nesse evento. 🎉</div>
+            <div className="text-[13px] text-gray-500">{podeEditar ? "Nenhuma mesa disponível. Use \"+ Mesa\" pra criar uma mesa extra só deste evento." : "Todas as mesas ativas já têm reserva nesse evento. 🎉"}</div>
           ) : (
             <div className="space-y-2.5">
               {gruposMesasLivres.map((g, gi) => {
@@ -365,6 +388,19 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
                     <div className="flex flex-wrap gap-1.5">
                       {g.mesas.map((m) => {
                         const alta = m.tipoMesa === "alta";
+                        const ehExtra = extrasIds.has(m.id);
+                        // Extra: chip com tom indigo + "×" pra remover. Normal: clique bloqueia.
+                        if (ehExtra) {
+                          return (
+                            <span key={m.id} title={`Mesa extra deste evento · ${m.capacidade} pax · ${alta ? "alta" : "baixa"}`}
+                              className="inline-flex items-center gap-1 text-[12px] font-medium px-2 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-200">
+                              {alta ? <Wine size={12} /> : <Armchair size={12} />}
+                              {m.nome}
+                              <span className="opacity-70">· {m.capacidade}</span>
+                              {podeEditar && <button type="button" onClick={() => void removerExtra(m.id)} title="Remover mesa extra" className="ml-0.5 text-indigo-400 hover:text-rose-500"><X size={12} /></button>}
+                            </span>
+                          );
+                        }
                         return (
                           <button key={m.id} type="button" disabled={!podeEditar} onClick={() => toggleBloqueio(m.id)}
                             title={podeEditar ? "Clique pra bloquear neste evento" : `${m.capacidade} pax · ${alta ? "alta" : "baixa"}`}
@@ -422,6 +458,74 @@ function PainelEvento({ ev, reservas, candidatas, mesas, saloes, carregando, pod
           </div>
         </div>
       )}
+
+      {addMesaOpen && <AddMesaExtraModal saloes={saloes} onClose={() => setAddMesaOpen(false)} onSalvar={adicionarExtra} />}
+    </div>
+  );
+}
+
+// Modal pra criar uma mesa EXTRA só do evento (nome livre, capacidade, altura, salão opcional).
+function AddMesaExtraModal({ saloes, onClose, onSalvar }: {
+  saloes: Salao[];
+  onClose: () => void;
+  onSalvar: (m: { nome: string; capacidade: number; tipoMesa: "baixa" | "alta"; salaoId?: string | null }) => Promise<void> | void;
+}) {
+  const [nome, setNome] = useState("");
+  const [capacidade, setCapacidade] = useState("2");
+  const [tipoMesa, setTipoMesa] = useState<"baixa" | "alta">("baixa");
+  const [salaoId, setSalaoId] = useState<string>("");
+  const [salvando, setSalvando] = useState(false);
+  const [err, setErr] = useState("");
+  async function salvar() {
+    const cap = parseInt(capacidade, 10);
+    if (!nome.trim()) { setErr("Dê um nome à mesa (ex.: Varanda 1, Lounge A)."); return; }
+    if (!cap || cap <= 0) { setErr("Capacidade inválida."); return; }
+    setErr(""); setSalvando(true);
+    try { await onSalvar({ nome: nome.trim(), capacidade: cap, tipoMesa, salaoId: salaoId || null }); }
+    catch (e) { setErr(e instanceof Error ? e.message : "Erro ao salvar"); setSalvando(false); }
+  }
+  return (
+    <div className="fixed inset-0 z-[70] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-3">
+          <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Plus size={16} className="text-indigo-500" /> Mesa extra do evento</div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        <div className="space-y-3">
+          <div>
+            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Nome *</label>
+            <input value={nome} onChange={(e) => setNome(e.target.value)} autoFocus placeholder="ex.: Varanda 1, Lounge A, Deck" className="w-full h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Capacidade (pax) *</label>
+              <input type="number" min={1} value={capacidade} onChange={(e) => setCapacidade(e.target.value)} className="w-full h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+            </div>
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Altura</label>
+              <div className="grid grid-cols-2 gap-1.5">
+                {([["baixa", "🪑"], ["alta", "🍸"]] as const).map(([v, ic]) => (
+                  <button key={v} type="button" onClick={() => setTipoMesa(v)} className={`h-10 rounded-lg text-sm border ${tipoMesa === v ? "bg-indigo-50 border-indigo-300 dark:bg-indigo-900/20 dark:border-indigo-700 font-semibold" : "bg-white border-gray-300 dark:bg-gray-900 dark:border-gray-700"}`}>{ic} {v === "alta" ? "Alta" : "Baixa"}</button>
+                ))}
+              </div>
+            </div>
+          </div>
+          {saloes.length > 0 && (
+            <div>
+              <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Salão (opcional)</label>
+              <select value={salaoId} onChange={(e) => setSalaoId(e.target.value)} className="w-full h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+                <option value="">— sem salão —</option>
+                {saloes.map((s) => <option key={s.id} value={s.id}>{s.nome}</option>)}
+              </select>
+            </div>
+          )}
+          {err && <div className="text-sm text-rose-600">{err}</div>}
+          <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
+            <button onClick={onClose} className="h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 text-sm">Cancelar</button>
+            <button onClick={salvar} disabled={salvando} className="h-9 px-3 rounded-lg bg-indigo-600 text-white text-sm font-semibold">{salvando ? "..." : "Criar mesa"}</button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
