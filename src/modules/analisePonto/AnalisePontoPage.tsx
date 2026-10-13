@@ -17,6 +17,7 @@ import { Component, useEffect, useMemo, useRef, useState, type ReactNode } from 
 import { useParams, useSearchParams } from "react-router-dom";
 import { addDoc, collection, deleteDoc, doc, onSnapshot, query, updateDoc, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 import { AREAS, type Area, type Cargo, type Empregado, type Pessoa } from "../../core/types";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -260,8 +261,10 @@ function AnalisePontoInner() {
   // pendentes e as APROVAÇÕES pendentes migraram pra lá. O tipo mantém o valor
   // só pra retrocompat interna, mas ela não é mais navegável.
   const podeFechamentoTab = podeFechar || podeAprovar;
-  const [tab, setTab] = useState<"inconsist" | "fechamento" | "escalas">(
+  const [tab, setTab] = useTabPersistida<"inconsist" | "fechamento" | "escalas">(
+    "analisePonto",
     tabInicial === "escalas" || !podeFechamentoTab ? "escalas" : "fechamento",
+    ["inconsist", "fechamento", "escalas"],
   );
 
   // Relógio: re-render a cada minuto pra atualizar os countdowns.

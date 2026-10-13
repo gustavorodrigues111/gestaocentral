@@ -19,6 +19,7 @@ import { gorjetaMensalPorCpf } from "./gorjetaMensal";
 import { cpfDigits, type FolhaEspelho, type Finding, type FolhaWhitelistItem, type FolhaTipo, type FolhaConferencia } from "./tipos";
 import { PageContainer } from "../../core/ui/PageContainer";
 import { Lock, TriangleAlert, FileText, Check, Users, Banknote, Coins, Landmark, Save } from "lucide-react";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 const MESES = ["Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho", "Julho", "Agosto", "Setembro", "Outubro", "Novembro", "Dezembro"];
 
@@ -71,7 +72,7 @@ export function FolhasPage() {
   const [conferencias, setConferencias] = useState<FolhaConferencia[]>([]);
   const [subindo, setSubindo] = useState<FolhaTipo | null>(null);
   const [erro, setErro] = useState("");
-  const [aba, setAba] = useState<"conferencia" | "whitelist">("conferencia");
+  const [aba, setAba] = useTabPersistida<"conferencia" | "whitelist">("folhas", "conferencia");
   const [soPendencias, setSoPendencias] = useState(false);
   const folhaRef = useRef<HTMLInputElement | null>(null);
   const adiantRef = useRef<HTMLInputElement | null>(null);

@@ -31,6 +31,7 @@ import type {
 import { tipoAplicaAoCargoObj } from "./aplicabilidade";
 import { fmtBR, fmtBRDateTime } from "../../core/utils/date";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 type Tab = "porEmpregado" | "config";
 
@@ -38,7 +39,7 @@ export function ExamesPage() {
   const { pessoa } = useAuth();
   const { activeRestaurant } = useRestaurant();
   const rid = activeRestaurant?.id;
-  const [tab, setTab] = useState<Tab>("porEmpregado");
+  const [tab, setTab] = useTabPersistida<Tab>("exames", "porEmpregado");
   const [tipos, setTipos] = useState<ExameTipoConfig[]>([]);
   const [exames, setExames] = useState<ExameEmpregado[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);

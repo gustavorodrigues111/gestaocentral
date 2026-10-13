@@ -22,6 +22,7 @@ import type { CandidaturaTrabalhe, EtapaSeletivo, StatusCandidatura, Vaga, Pergu
 import { puxarRemuneracao, type RemuneracaoPuxada } from "./remuneracao";
 import { CurriculoLink } from "../_shared/CurriculoLink";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 // Empregado completo — o cálculo da gorjeta média (calcularDivisaoDia) precisa
 // de cargoId/períodos de TODOS os empregados, não só id+nome.
@@ -74,7 +75,7 @@ export function ProcessoSeletivoPage() {
   const { restaurants } = useRestaurant();
   const activeRest = restaurants.find((r) => r.id === rid) || null;
 
-  const [aba, setAba] = useState<"kanban" | "vagas">("kanban");
+  const [aba, setAba] = useTabPersistida<"kanban" | "vagas">("processoSeletivo", "kanban");
   const [cands, setCands] = useState<CandidaturaTrabalhe[]>([]);
   const [vagas, setVagas] = useState<Vaga[]>([]);
   const [pessoas, setPessoas] = useState<Pessoa[]>([]);

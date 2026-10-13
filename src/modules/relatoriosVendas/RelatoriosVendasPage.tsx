@@ -15,6 +15,7 @@ import { authHeader } from "../../core/firebase/idToken";
 import { Button } from "../../core/ui/Button";
 import { ymd, todayYmd } from "../../core/utils/date";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 const money = (v: number) => (isFinite(v) ? v : 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const qtdFmt = (v: number) => (Number.isInteger(v) ? String(v) : v.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 3 }));
@@ -41,7 +42,7 @@ type DiaHora = { data: string; fat: number; porHora: number[] };
 
 export function RelatoriosVendasPage() {
   const { activeId, activeRestaurant } = useRestaurant();
-  const [aba, setAba] = useState<"produtos" | "turno">("produtos");
+  const [aba, setAba] = useTabPersistida<"produtos" | "turno">("relatoriosVendas", "produtos");
 
   // ── Produtos: lista de meses extraídos + mês selecionado ──────────────────
   const [meses, setMeses] = useState<MesExtraido[]>([]);

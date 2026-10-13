@@ -9,7 +9,6 @@
 //  quebrar quem já tem permissão / status de semana persistido.
 // ════════════════════════════════════════════════════════════════════════════
 
-import { useState } from "react";
 import { useParams } from "react-router-dom";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -21,6 +20,7 @@ import { ResumoMesTab } from "./ResumoMesTab";
 import { PageContainer } from "../../core/ui/PageContainer";
 import type { LucideIcon } from "lucide-react";
 import { TriangleAlert, Wrench, IdCard, BarChart3, Lock } from "lucide-react";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 type TabId = "inconformidades" | "ajustes" | "compatibilidade" | "resumo";
 
@@ -39,7 +39,7 @@ export function RegistrosPontoPage() {
   const activeRestaurant = restaurants.find((r) => r.id === rid) || null;
   const podeVer = canVer(me, rid, "excecoes");
 
-  const [tab, setTab] = useState<TabId>("inconformidades");
+  const [tab, setTab] = useTabPersistida<TabId>("excecoes", "inconformidades");
 
   if (!activeRestaurant) {
     return <div className="text-gray-500">Selecione um restaurante.</div>;

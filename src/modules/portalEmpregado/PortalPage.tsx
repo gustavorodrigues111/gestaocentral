@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useParams } from "react-router-dom";
 import { collection, onSnapshot, query, where } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
@@ -81,7 +82,7 @@ export function PortalPage() {
   // Informações no menu apontam pra cá). Sem :tab, cai na 1ª disponível.
   const TABS_VALIDAS: Tab[] = ["escala", "horarios", "gorjetas", "comunicados", "faleDp"];
   const tabInicial = (TABS_VALIDAS.includes(tabParam as Tab) ? (tabParam as Tab) : tabsDisponiveis[0]?.id) || "escala";
-  const [tab, setTab] = useState<Tab>(tabInicial);
+  const [tab, setTab] = useTabPersistida<Tab>("portalEmpregado", tabInicial, TABS_VALIDAS);
   // Segue o param da URL quando muda (clicar em outro módulo do menu).
   useEffect(() => {
     if (tabParam && TABS_VALIDAS.includes(tabParam as Tab)) setTab(tabParam as Tab);

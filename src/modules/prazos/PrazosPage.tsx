@@ -25,6 +25,7 @@ import { DatePickerBR } from "./campos";
 import { PrazoModal } from "./PrazoModal";
 import { PageContainer } from "../../core/ui/PageContainer";
 import { Banknote, Wrench, Scale, Flag, House, CalendarDays, TriangleAlert, FileText, Clock, Repeat, Paperclip, Pencil, Trash2, List, type LucideIcon } from "lucide-react";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 const brl = (n?: number | null) => (n ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const ymdToBr = (ymd?: string) => { if (!ymd) return ""; const [a, m, d] = ymd.split("-"); return `${d}/${m}/${a}`; };
@@ -72,7 +73,7 @@ export function PrazosPage() {
   const pessoas = useTodasPessoas();
   const [enderecos, setEnderecos] = useState<Endereco[]>([]);
   const [tipoFiltro, setTipoFiltro] = useState<PrazoTipo | "todos" | "agendados">("todos");
-  const [aba, setAba] = useState<"agenda" | "resolvidos">("agenda");
+  const [aba, setAba] = useTabPersistida<"agenda" | "resolvidos">("prazos", "agenda");
   const [visao, setVisao] = useState<"calendario" | "lista">("calendario");
   const [diaSel, setDiaSel] = useState<string>(hojeYmd()); // ymd ou "__atrasados__"
   const [todosRest, setTodosRest] = useState(false);

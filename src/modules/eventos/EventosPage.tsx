@@ -12,6 +12,7 @@ import { KanbanTab } from "./KanbanTab";
 import { ComercialConfigTab } from "./ComercialConfigTab";
 import { TabBadge } from "../../core/ui/TabBadge";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 type Tab = "kanban" | "pacotes" | "comercial" | "config";
 
@@ -28,7 +29,7 @@ export function EventosPage() {
   const podeUsar = canUse(me, rid, "eventos");
   const podeConfigurar = canConfig(me, rid, "eventos");
 
-  const [tab, setTab] = useState<Tab>("kanban");
+  const [tab, setTab] = useTabPersistida<Tab>("eventos", "kanban");
 
   // Badge "novos leads" no Kanban — leads com status "novo" precisam triagem
   const [novosLeads, setNovosLeads] = useState(0);

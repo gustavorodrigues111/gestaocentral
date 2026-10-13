@@ -29,6 +29,7 @@ import { CentralConfig } from "./CentralConfig";
 import type { FaleDpMensagem, Pessoa } from "../../core/types";
 import { FALE_DP_CATEGORIA_LABEL, FALE_DP_CATEGORIA_ICONE } from "../../core/types";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 type AbaCentral = "semana" | "avisos" | "whatsapp" | "historico" | "config";
 
@@ -65,7 +66,7 @@ export function ChatPage() {
   const podeConfig = isMaster || can("whatsapp", "configurar");
 
   const multiRest = restaurants.length > 1;
-  const [aba, setAba] = useState<AbaCentral>("semana");
+  const [aba, setAba] = useTabPersistida<AbaCentral>("chat", "semana");
   const lidosIds = useMemo(() => new Set(historico.map(a => a.id)), [historico]);
   const [filtroRestAvisos, setFiltroRestAvisos] = useState<string>("all");
   const [msgAberta, setMsgAberta] = useState<{ msg: FaleDpMensagem; nome: string } | null>(null);

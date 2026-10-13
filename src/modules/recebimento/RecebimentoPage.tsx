@@ -42,6 +42,7 @@ import { exportarRecebimentosPDF, exportarRecebimentosXLSX } from "./exportReceb
 import { PadronizarFornecedoresModal } from "./PadronizarFornecedoresModal";
 import { criarPendentesEntrada } from "../estoqueValidade/entradasPendentes";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 // Chama o leitor de nota (OCR) com TIMEOUT de cliente — sem isto, se o servidor
 // ou a rede pendurar, o spinner "lendo…" gira PRA SEMPRE (usuário fica travado).
@@ -221,7 +222,7 @@ export function RecebimentoPage() {
   const podeConfig = can("recebimento", "configurar");
   const temAcesso = canModulo("recebimento");
 
-  const [tab, setTab] = useState<"receber" | "notas" | "config">("receber");
+  const [tab, setTab] = useTabPersistida<"receber" | "notas" | "config">("recebimento", "receber");
   const [padronizando, setPadronizando] = useState(false);
   const [buscaNota, setBuscaNota] = useState("");
   const [filtroConf, setFiltroConf] = useState<"todas" | "conforme" | "divergente">("todas");

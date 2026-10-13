@@ -26,6 +26,7 @@ import { PlanejamentoView } from "./FichaPlanejamento";
 import type { CardapioEstruturado, FtPlanoProducao } from "../../core/types";
 import { Eye, FolderOpen, CalendarRange, ChefHat, DollarSign, UtensilsCrossed, Puzzle } from "lucide-react";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 // ─── utils ──────────────────────────────────────────────────────────────
 function maskMoeda(raw: string): string {
@@ -121,7 +122,7 @@ export function FichasPage() {
   const { activeRestaurant } = useRestaurant();
   const rid = activeRestaurant?.id;
   const { can } = useCanAcao(rid || "");
-  const [tab, setTab] = useState<Tab>("pratos");
+  const [tab, setTab] = useTabPersistida<Tab>("fichas", "pratos");
   const [modo, setModo] = useState<"ver" | "cadastro" | "plano">("ver");
   const [verModo, setVerModo] = useState<"producao" | "custo">("producao");
   const [cardapio, setCardapio] = useState<CardItem[]>([]);

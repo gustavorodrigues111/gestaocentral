@@ -27,6 +27,7 @@ import { exportarCajuPag, exportarPixPag, baixarCsv } from "./exportar";
 import { gerarPagamentoPDF } from "./gerarPDF";
 import type { Cargo, Empregado, EscalaMes, BeneficioPagLote, BeneficioPagLinha, BeneficioAjusteLote } from "../../core/types";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 const fmt = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtSigned = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL", signDisplay: "exceptZero" });
@@ -50,7 +51,7 @@ export function Beneficios2Page() {
   const now = new Date();
   const [ano, setAno] = useState(now.getFullYear());
   const [mes, setMes] = useState(now.getMonth() + 1);
-  const [aba, setAba] = useState<"pagamento" | "ajustes" | "historico">("pagamento");
+  const [aba, setAba] = useTabPersistida<"pagamento" | "ajustes" | "historico">("beneficios2", "pagamento");
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [cargos, setCargos] = useState<Cargo[]>([]);
   const [escala, setEscala] = useState<EscalaMes | null>(null);

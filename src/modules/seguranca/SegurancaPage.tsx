@@ -17,6 +17,7 @@ import { PlanoAcaoTab } from "./PlanoAcaoTab";
 import { ModeloEditor } from "./ModeloEditor";
 import { ConfigChecklists } from "./ConfigChecklists";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 const dmy = (ymd: string) => (ymd || "").split("-").reverse().join("/");
 
@@ -34,7 +35,7 @@ export function SegurancaPage() {
 
   const [modelos, setModelos] = useState<SegurancaModelo[]>([]);
   const [avaliacoes, setAvaliacoes] = useState<SegurancaAvaliacao[]>([]);
-  const [aba, setAba] = useState<"avaliacoes" | "planoacao" | "config">("avaliacoes");
+  const [aba, setAba] = useTabPersistida<"avaliacoes" | "planoacao" | "config">("seguranca", "avaliacoes");
   const [verTodas, setVerTodas] = useState(false);
 
   // Navegação por sub-view (tudo inline, shell intacto).

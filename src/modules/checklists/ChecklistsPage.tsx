@@ -18,6 +18,7 @@ import { ChecklistRunModal } from "./ChecklistRunModal";
 import { ChecklistHistoricoDash } from "./ChecklistHistoricoDash";
 import { itemDoDia, temFreqPorItem } from "./recorrencia";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 type Tab = "hoje" | "templates" | "historico";
 
@@ -74,7 +75,7 @@ export function ChecklistsPage() {
   // do dia. Operador só vê os atribuídos a ele (pessoa ou função) — ou sem atribuição.
   const souGestor = isMaster || podeConfig || can("checklists", "verTime");
 
-  const [tab, setTab] = useState<Tab>("hoje");
+  const [tab, setTab] = useTabPersistida<Tab>("checklists", "hoje");
   const [templates, setTemplates] = useState<ChecklistTemplate[]>([]);
   const [runs, setRuns] = useState<ChecklistRun[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);

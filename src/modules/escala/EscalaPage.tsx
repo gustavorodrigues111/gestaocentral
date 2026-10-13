@@ -8,6 +8,7 @@ import { canConfig, canReabrirEscala, canUse, unidadesAcessiveis } from "../../c
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { SelfServiceRedirect } from "../../core/auth/SemPermissaoCard";
 import { Button } from "../../core/ui/Button";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 import { MesContextoBanner, tintaVersao } from "../../core/ui/MesContextoBanner";
 import { Modal } from "../../core/ui/Modal";
 import { Input } from "../../core/ui/Input";
@@ -102,9 +103,13 @@ export function EscalaPage({ modo }: { modo?: "praticada" } = {}) {
   // Aba do módulo: grade da escala ou ajustes solicitados pelos empregados.
   // Deep-link via ?aba=ajustes (usado pela Central de Avisos do Chat).
   const [searchParams] = useSearchParams();
-  const [aba, setAba] = useState<"grade" | "ajustes">(
+  const [aba, setAba] = useTabPersistida<"grade" | "ajustes">(
+    "escala",
     searchParams.get("aba") === "ajustes" ? "ajustes" : "grade",
+    ["grade", "ajustes"],
   );
+  // Deep-link ?aba=ajustes (Central de Avisos) sempre vence a aba salva.
+  useEffect(() => { if (searchParams.get("aba") === "ajustes") setAba("ajustes"); }, [searchParams, setAba]);
   const [numPendentes, setNumPendentes] = useState(0);
   useEffect(() => {
     if (!rid || !acaoAprovarSolic) { setNumPendentes(0); return; }

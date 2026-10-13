@@ -27,6 +27,7 @@ import { DEMISSAO_INICIATIVA_LABEL, DEMISSAO_STATUS_LABEL } from "../../core/typ
 import { getContatoClinica, getContatoContabilidade } from "../../core/admissao/admissaoHelpers";
 import { montarGmailComposeUrl } from "../../core/admissao/exportFicha";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 type Tab = "kanban" | "lista" | "concluidos";
 
@@ -34,7 +35,7 @@ export function DemissaoPage() {
   const { pessoa } = useAuth();
   const { activeRestaurant } = useRestaurant();
   const rid = activeRestaurant?.id;
-  const [tab, setTab] = useState<Tab>("kanban");
+  const [tab, setTab] = useTabPersistida<Tab>("demissao", "kanban");
   const [processos, setProcessos] = useState<ProcessoDemissao[]>([]);
   const [empregados, setEmpregados] = useState<Empregado[]>([]);
   const [iniciando, setIniciando] = useState(false);

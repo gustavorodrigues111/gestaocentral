@@ -17,6 +17,7 @@ import { Button } from "../../core/ui/Button";
 import { PtrpCctTab } from "./PtrpCctTab";
 import { PtrpApuracaoTab } from "./PtrpApuracaoTab";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 type SyncState = {
   id: string;
@@ -59,7 +60,7 @@ export function PtrpSyncPage() {
   const [loading, setLoading] = useState(true);
   const [rodando, setRodando] = useState<string | null>(null);   // "*" = geral; ou empresaKey
   const [msg, setMsg] = useState("");
-  const [aba, setAba] = useState<"conferencia" | "fechar" | "validar" | "banco" | "config">("conferencia");
+  const [aba, setAba] = useTabPersistida<"conferencia" | "fechar" | "validar" | "banco" | "config">("ptrp", "conferencia");
   const [subAba, setSubAba] = useState<"regras" | "sync" | "validadores">("regras");
   const [desdeInput, setDesdeInput] = useState("");
   // Top-abas (Conferência · Banco · Configurações); a efetiva é a 1ª válida.

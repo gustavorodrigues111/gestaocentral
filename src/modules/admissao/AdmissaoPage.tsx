@@ -26,6 +26,7 @@ import type { Restaurant } from "../../core/types";
 import { canConfigurar } from "../../core/auth/permissions";
 import { TabBadge } from "../../core/ui/TabBadge";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 type TabId = "kanban" | "candidaturas" | "finalizadas" | "config";
 
@@ -55,7 +56,7 @@ export function AdmissaoPage() {
   const podeVer = canVer(me, rid, "admissao");
   const podeConfig = canConfigurar(me, rid, "admissao");
 
-  const [tab, setTab] = useState<TabId>("kanban");
+  const [tab, setTab] = useTabPersistida<TabId>("admissao", "kanban");
 
   // Contagens pra badges nas tabs:
   // - Lista/Kanban: admissões ainda em curso (não concluídas/canceladas)

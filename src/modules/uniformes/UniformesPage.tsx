@@ -28,6 +28,7 @@ import { PorEmpregadoTab } from "./PorEmpregadoTab";
 import { EntregasTab } from "./EntregasTab";
 import { PageContainer } from "../../core/ui/PageContainer";
 import { Lock } from "lucide-react";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 type TabId = "porEmpregado" | "entregas" | "estoque" | "config";
 
@@ -50,7 +51,7 @@ export function UniformesPage() {
   const podeVer = canVer(me, rid, "uniformes" as never);
   const podeConfig = canConfigurar(me, rid, "uniformes" as never);
 
-  const [tab, setTab] = useState<TabId>("porEmpregado");
+  const [tab, setTab] = useTabPersistida<TabId>("uniformes", "porEmpregado");
 
   // ─── Carrega dados reativos ───
   const [itens, setItens] = useState<ItemUniforme[]>([]);

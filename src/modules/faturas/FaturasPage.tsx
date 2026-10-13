@@ -19,6 +19,7 @@ import { exportarFaturasXLSX, exportarFaturasPDF, exportarReembolsoEmpresaPDF, t
 import type { CartaoCategoria, CartaoFatura, CartaoLancamento, CartaoRateioParte } from "../../core/types";
 import { PageContainer } from "../../core/ui/PageContainer";
 import { Lock, Folder, FileText, CreditCard, KeyRound, Hourglass, Sparkles, TriangleAlert, PartyPopper, RotateCw, Trash2, Save, Download, CheckSquare, Square } from "lucide-react";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 type RateioSimples = { empresaId: string; percentual: number };
 const round2 = (v: number) => Math.round(v * 100) / 100;
@@ -69,7 +70,7 @@ export function FaturasPage() {
   const podeClassificar = isMaster || can("faturas", "classificar");
   const podeCategorias = isMaster || can("faturas", "categorias");
 
-  const [aba, setAba] = useState<"visualizacao" | "classificacao" | "categorias">("visualizacao");
+  const [aba, setAba] = useTabPersistida<"visualizacao" | "classificacao" | "categorias">("faturas", "visualizacao");
   const [categorias, setCategorias] = useState<CartaoCategoria[]>([]);
   const [minhas, setMinhas] = useState<CartaoLancamento[]>([]);
   const [outras, setOutras] = useState<CartaoLancamento[]>([]);

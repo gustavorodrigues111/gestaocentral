@@ -31,6 +31,7 @@ import {
 } from "./helpers";
 import { PageContainer } from "../../core/ui/PageContainer";
 import { Send, Search, Repeat, Banknote, Hourglass, MessageSquare, Pencil, Trash2, Paperclip, Package, Building2, User, CreditCard } from "lucide-react";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 const MAX_COMPROV_MB = 20;
 type Tab = "vendas" | "produtos" | "clientes" | "formas";
@@ -46,7 +47,7 @@ export function VendasPage() {
   const rid = activeRestaurant?.id;
   const { can } = useCanAcao(rid || "");
   const abrirWhatsapp = useAbrirWhatsapp();
-  const [tab, setTab] = useState<Tab>("vendas");
+  const [tab, setTab] = useTabPersistida<Tab>("vendas", "vendas");
 
   const [vendas, setVendas] = useState<Venda[]>([]);
   const [vendasRecebidas, setVendasRecebidas] = useState<Venda[]>([]); // de terceiros PRA mim (permuta)

@@ -18,6 +18,7 @@ import {
 import type { Cargo, Empregado, Ocorrencia, OcorrenciaGravidade, OcorrenciaStatus, AcaoLog } from "../../core/types";
 import { OcorrenciaModal } from "./OcorrenciaModal";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 const GRAVIDADE_CLS: Record<OcorrenciaGravidade, string> = {
   elogio: "border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 dark:border-emerald-800",
@@ -69,9 +70,8 @@ export function OcorrenciasPage() {
   const [filtroStatus, setFiltroStatus] = useState<"abertas" | "todas" | OcorrenciaStatus>("abertas");
   const [editing, setEditing] = useState<Ocorrencia | "new" | null>(null);
   const [virarDe, setVirarDe] = useState<Ocorrencia | null>(null);
-  // Sempre abre em "Registrar" (não persiste a última aba).
-  const [aba, setAba] = useState<"registrar" | "kanban">("registrar");
-  useEffect(() => { try { localStorage.setItem("ocorrencias_aba", aba); } catch {} }, [aba]);
+  // Aba persiste no reload (via useTabPersistida).
+  const [aba, setAba] = useTabPersistida<"registrar" | "kanban">("ocorrencias", "registrar");
   const [view, setView] = useState<"lista" | "kanban">(() => {
     try { return (localStorage.getItem("ocorrencias_view") as "lista" | "kanban") || "kanban"; }
     catch { return "kanban"; }

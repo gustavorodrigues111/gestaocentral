@@ -16,6 +16,7 @@ import type { AgenteIA, AgenteLog } from "../../core/types";
 import { CATALOGO, DOMINIO_META, DOMINIO_ICON, type AgenteDominio } from "./catalogo";
 import { Bot, MessageSquare, Settings, UtensilsCrossed, Trash2, Smartphone, Search, Link as LinkIcon, FileText, Image as ImageIcon, Paperclip, Mic, Square, Upload, Pencil, Building2 } from "lucide-react";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 // Ícone lucide do domínio do agente — substitui o emoji legado nos cards/cabeçalhos.
 function DomIcon({ tipo, size = 20, className }: { tipo: AgenteDominio; size?: number; className?: string }) {
@@ -30,7 +31,7 @@ const toolsPadrao = (tipo: AgenteDominio): Record<string, boolean> =>
 export function AgentesPage() {
   const { pessoa } = useAuth();
   const { restaurants } = useRestaurant();
-  const [aba, setAba] = useState<"agentes" | "config" | "historico">("agentes");
+  const [aba, setAba] = useTabPersistida<"agentes" | "config" | "historico">("agentes", "agentes");
   const [configSel, setConfigSel] = useState<string | null>(null);
   const [agentes, setAgentes] = useState<AgenteIA[]>([]);
   const [logs, setLogs] = useState<AgenteLog[]>([]);

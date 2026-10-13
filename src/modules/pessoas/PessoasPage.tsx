@@ -11,6 +11,7 @@ import { CargosTab } from "./CargosTab";
 import { AlteracoesTab } from "./AlteracoesTab";
 import { EscalasTab } from "./EscalasTab";
 import { ImportLoteHorariosModal } from "./ImportLoteHorariosModal";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 // Tab "🎯 Templates" foi removida — templates de permissão eram do sistema
 // antigo (presets de ver/configurar pra clonar). Substituído pela Pagina
@@ -23,7 +24,7 @@ export function PessoasPage() {
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
   const activeRestaurant = restaurants.find(r => r.id === rid) || null;
-  const [tab, setTab] = useState<Tab>("pessoas");
+  const [tab, setTab] = useTabPersistida<Tab>("pessoas", "pessoas");
   const [showImportHorarios, setShowImportHorarios] = useState(false);
   const podeVer = canVer(me, rid, "pessoas");
   const podeEscalas = canAcao(me, rid, "escala", "configurarEscalas");

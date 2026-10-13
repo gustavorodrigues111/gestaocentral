@@ -11,6 +11,7 @@ import type { Salao } from "../../core/types";
 import { HorariosTab } from "../sites/HorariosTab";
 import { JanelasTab } from "../reservas/JanelasTab";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 type Tab = "funcionamento" | "janelas";
 
@@ -31,7 +32,7 @@ export function HorariosPage() {
   const podeVer = canVer(me, rid, "horarios");
   const podeConfig = canConfigurar(me, rid, "horarios");
 
-  const [tab, setTab] = useState<Tab>("funcionamento");
+  const [tab, setTab] = useTabPersistida<Tab>("horarios", "funcionamento");
 
   // Salões — usados pelo JanelasTab e pelas exceções no HorariosTab
   const [saloes, setSaloes] = useState<Salao[]>([]);

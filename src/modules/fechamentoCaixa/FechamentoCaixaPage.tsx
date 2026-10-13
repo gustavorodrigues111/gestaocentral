@@ -32,6 +32,7 @@ import { paraOcrBlock, carimbarImagem } from "../../core/imagem/processarImagem"
 import { exportarFechamentosPDF, exportarFechamentosXLSX, exportarComandasPDF, exportarComandasXLSX } from "./exportFechamentos";
 import { montarPainel, painelEmailHtml, fmtBRLp, fmtDiaCurto } from "./painelFechamento";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 // Timeout p/ awaits que podem pendurar (Drive/rede): em vez de travar o botão
 // em "Fechando…" pra sempre sem erro, rejeita com uma mensagem que diz o passo.
@@ -208,7 +209,7 @@ export function FechamentoCaixaPage() {
   const podeConfig = can("fechamentoCaixa", "configurar");
   const temAcesso = canModulo("fechamentoCaixa");
 
-  const [tab, setTab] = useState<"novo" | "lista" | "painel" | "comandas" | "conciliacao" | "config">("novo");
+  const [tab, setTab] = useTabPersistida<"novo" | "lista" | "painel" | "comandas" | "conciliacao" | "config">("fechamentoCaixa", "novo");
   const [fechamentos, setFechamentos] = useState<FechamentoCaixa[]>([]);
   const [novo, setNovo] = useState(false);
   const [erro, setErro] = useState("");

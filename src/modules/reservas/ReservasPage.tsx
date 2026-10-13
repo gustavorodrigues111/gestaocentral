@@ -23,6 +23,7 @@ import { ChegouModal } from "./ChegouModal";
 import { ClienteHistoricoModal } from "./ClienteHistoricoModal";
 import { montarMensagemConfirmacao } from "./whatsappConfirmacao";
 import { resolverNumeroWhatsapp } from "../../core/whatsapp/roteios";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 import { WhatsappInboxPage } from "../whatsapp/WhatsappInboxPage";
 import { authHeader } from "../../core/firebase/idToken";
 import { PageContainer } from "../../core/ui/PageContainer";
@@ -95,12 +96,7 @@ export function ReservasPage() {
   const podeExcluirCliente = can("reservas", "excluirCliente");
 
   // Aba ativa persiste no reload (volta pra mesma aba que estava aberta).
-  const TAB_KEY = "reservasCrmTab";
-  const TABS_VALIDAS: Tab[] = ["reservas", "eventos", "agenda", "clientes", "config"];
-  const [tab, setTab] = useState<Tab>(() => {
-    try { const t = localStorage.getItem(TAB_KEY) as Tab | null; return t && TABS_VALIDAS.includes(t) ? t : "reservas"; } catch { return "reservas"; }
-  });
-  useEffect(() => { try { localStorage.setItem(TAB_KEY, tab); } catch { /* private mode */ } }, [tab]);
+  const [tab, setTab] = useTabPersistida<Tab>("reservas", "reservas", ["reservas", "eventos", "agenda", "clientes", "config"]);
   // Se a aba restaurada não é permitida pra esta pessoa, cai pra Reservas.
   useEffect(() => {
     const ok = tab === "reservas"

@@ -17,6 +17,7 @@ import { useDitado } from "../../core/hooks/useDitado";
 import { Button } from "../../core/ui/Button";
 import { fmtBR } from "../../core/utils/date";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 type DiretrizBloco = { id: string; texto: string; criadoEm: string; criadoPor: string };
 type IaInteracao = {
@@ -38,7 +39,7 @@ export function IaGovernancaPage() {
   const { rid } = useParams<{ rid: string }>();
   const { restaurants } = useRestaurant();
 
-  const [aba, setAba] = useState<"diretrizes" | "registros">("diretrizes");
+  const [aba, setAba] = useTabPersistida<"diretrizes" | "registros">("iaGovernanca", "diretrizes");
   const [blocos, setBlocos] = useState<DiretrizBloco[]>([]);
   const [carregou, setCarregou] = useState(false);
   const [replicar, setReplicar] = useState(false);

@@ -7,6 +7,7 @@ import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 import { Button } from "../../core/ui/Button";
 import type {
   Empregado,
@@ -65,7 +66,7 @@ export function FreelasPage() {
     return out;
   }, [podeOperar, podeRetro, podeDp]);
 
-  const [tab, setTab] = useState<TabId>(() => tabsVisiveis[0] || "lancamentos");
+  const [tab, setTab] = useTabPersistida<TabId>("freelas", tabsVisiveis[0] || "lancamentos", tabsVisiveis);
   const [showCadastro, setShowCadastro] = useState(false);
   const [showNovoTurno, setShowNovoTurno] = useState(false);   // planejar
   const [showAvulsoTurno, setShowAvulsoTurno] = useState(false); // abrir agora

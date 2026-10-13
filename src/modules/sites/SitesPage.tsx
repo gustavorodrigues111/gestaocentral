@@ -11,6 +11,7 @@ import { ConexaoTab } from "./ConexaoTab";
 import { EditarVisualTab } from "./EditarVisualTab";
 import { SiteIAAssistant } from "./SiteIAAssistant";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 type Tab = "geral" | "editar" | "cardapio" | "preview";
 
@@ -49,7 +50,7 @@ export function SitesPage() {
   // Conectar domínio é ação sensível — publicar/master.
   const podeConectar = !!me?.isMaster || can("sites", "publicar") || !!special?.sitesGeral;
 
-  const [tab, setTab] = useState<Tab>("geral");
+  const [tab, setTab] = useTabPersistida<Tab>("sites", "geral");
   const [iaOpen, setIaOpen] = useState(false);
 
   if (!activeRestaurant) {

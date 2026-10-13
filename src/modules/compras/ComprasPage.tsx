@@ -12,6 +12,7 @@ import { PedidosTab } from "./PedidosTab";
 import { NovoPedidoModal } from "./NovoPedidoModal";
 import { InsumosManager } from "../contagens/InsumosManager";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 type Tab = "pedidos" | "produtos" | "fornecedores";
 
@@ -24,7 +25,7 @@ export function ComprasPage() {
   const podeVer = canVer(me, rid, "compras");
   const podeConfig = canConfigurar(me, rid, "compras");
 
-  const [tab, setTab] = useState<Tab>("pedidos");
+  const [tab, setTab] = useTabPersistida<Tab>("compras", "pedidos");
   const [novoPedido, setNovoPedido] = useState(false);
   const [insumos, setInsumos] = useState<Insumo[]>([]);
   const [contagens, setContagens] = useState<Contagem[]>([]);

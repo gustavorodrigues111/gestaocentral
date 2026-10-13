@@ -22,6 +22,7 @@ import { Modal } from "../../core/ui/Modal";
 import { type LocalEstoque, type LocalEstoqueTipo, LOCAL_ESTOQUE_TIPO_LABEL } from "../../core/types";
 import { type EntradaPendente } from "./entradasPendentes";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 // ── Tipos locais do módulo (promover pra types/index.ts quando estabilizar) ──
 // Conservação = validade APÓS ABERTO por método (dias). NÃO é a validade do
@@ -88,7 +89,7 @@ export function EstoqueValidadePage() {
   const podeOperar = can("estoqueValidade", "operar") || can("estoqueValidade", "editar");
   const podeEditar = can("estoqueValidade", "editar");
 
-  const [aba, setAba] = useState<"painel" | "baixa" | "entrada" | "cadastro">("painel");
+  const [aba, setAba] = useTabPersistida<"painel" | "baixa" | "entrada" | "cadastro">("estoqueValidade", "painel");
   const [subCad, setSubCad] = useState<"locais" | "produtos" | "bases">("locais");
   const [locais, setLocais] = useState<LocalEstoque[]>([]);
   const [produtos, setProdutos] = useState<ProdutoEtiqueta[]>([]);

@@ -25,6 +25,7 @@ import { Link as LinkIcon, MessageSquare, Calculator } from "lucide-react";
 import { Modal } from "../../core/ui/Modal";
 import type { Pessoa, ModuleId } from "../../core/types";
 import { PageContainer } from "../../core/ui/PageContainer";
+import { useTabPersistida } from "../../core/hooks/useTabPersistida";
 
 // ───────────────────────── Tipos locais do módulo ──────────────────────────
 type LinkTipo = "nenhum" | "externo" | "modulo";
@@ -125,7 +126,7 @@ export function FechamentoFinPage() {
   const [mes, setMes] = useState<FechamentoMes | null>(null);
   const pessoas = useTodasPessoas();
   const [comp, setComp] = useState(compAtual());
-  const [aba, setAba] = useState<"matriz" | "config">("matriz");
+  const [aba, setAba] = useTabPersistida<"matriz" | "config">("fechamentoFin", "matriz");
   const [editando, setEditando] = useState<FechamentoItem | "novo" | null>(null);
 
   // ── Assinaturas Firestore ──
