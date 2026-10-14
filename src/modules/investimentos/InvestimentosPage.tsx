@@ -331,7 +331,7 @@ export function InvestimentosPage() {
               <div className="mt-2.5 pt-2.5 border-t border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-2">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mr-1">Quem pagou</span>
                 {porQuemPagou.map((p) => (
-                  <span key={p.label} className="text-[11.5px] px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300">{p.label} <b className="text-indigo-900 dark:text-indigo-100 tabular-nums">{fmtR(p.value)}</b></span>
+                  <span key={p.label} className="text-[11.5px] px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300">{p.label} <b className="text-indigo-900 dark:text-indigo-100 tabular-nums">{fmtR(p.value)}</b>{total > 0 && <span className="text-indigo-400 tabular-nums"> · {Math.round((p.value / total) * 100)}%</span>}</span>
                 ))}
               </div>
             )}
