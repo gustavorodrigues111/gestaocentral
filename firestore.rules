@@ -800,6 +800,13 @@ service cloud.firestore {
       allow write: if isMaster();
     }
 
+    // ── /comandas, /comandaProdutos, /comandaPrintJobs ── PDV de balcão ──
+    // Operacional, acesso só autenticado (como a maioria das coleções).
+    // comandas guardam CPF/telefone do cliente (PII leve) — leitura authed().
+    match /comandaProdutos/{id}  { allow read, write: if authed(); }
+    match /comandas/{id}         { allow read, write: if authed(); }
+    match /comandaPrintJobs/{id} { allow read, write: if authed(); }
+
     // ── Catch-all: nega coleções não listadas (whitelist) ────────────────
     match /{coll}/{doc} {
       allow read, write: if false;
