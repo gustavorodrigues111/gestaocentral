@@ -30,6 +30,7 @@ export const MODULES: ModuleDef[] = [
   { id: "reservas",    area: "ops", subarea: "Atendimento ao Cliente", label: "Reservas + CRM",  icon: "calendar-check", status: "ativo", etapa: "beta", desc: "Reservas de mesa e base de clientes", dependsOn: ["pessoas"] },
   { id: "eventos",     area: "ops", subarea: "Atendimento ao Cliente", label: "Eventos",         icon: "party-popper", status: "ativo", etapa: "beta", desc: "Captação, propostas e BEO de eventos privados", dependsOn: ["pessoas"] },
   { id: "whatsapp",    area: "ops", subarea: "Atendimento ao Cliente", label: "WhatsApp",        icon: "messages-square", status: "ativo", etapa: "beta", desc: "Atendimento pelos números de WhatsApp conectados (device-link): inbox compartilhado por número + configuração dos números (criar, conectar, atribuir usuários)." },
+  { id: "comandas",    area: "ops", subarea: "Atendimento ao Cliente", label: "Comandas",        icon: "receipt", status: "ativo", etapa: "em_desenvolvimento", desc: "PDV de balcão (sem fiscal): comanda eletrônica no celular/PC, produto por peso, ticket de produção impresso na Epson TM-T20 (estação de impressão) e conta pra fechar. Começou pela peixaria do Sororoca." },
 
   // ── Rotinas da Operação ──────────────────────────────────────────
   { id: "checklists",  area: "ops", subarea: "Rotinas da Operação",    label: "Checklists",      icon: "list-checks", status: "ativo", etapa: "beta", desc: "Checklists operacionais", dependsOn: ["pessoas"] },

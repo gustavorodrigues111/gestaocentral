@@ -103,6 +103,8 @@ export type ModuleId =
   | "folhas"
   // Vendas — registro de vendas fora do sistema fiscal (entre empresas, permutas)
   | "vendas"
+  // Comandas — PDV de balcão (comanda eletrônica + impressão Epson, sem fiscal)
+  | "comandas"
   // Relatórios de Vendas (PDV Altec/Riser): produtos vendidos + faturamento por turno
   | "relatoriosVendas"
   // Faturas — faturas de cartão: subir, IA extrai/classifica, reembolso entre entidades
