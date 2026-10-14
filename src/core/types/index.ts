@@ -6581,15 +6581,26 @@ export type VendaCobranca = {
 //  SEM fiscal: só comanda e conta de cobrança. Produto pode ser por PESO
 //  (preço/kg, lança-se o peso) — balança Prix 4 na rede vem depois.
 // ═══════════════════════════════════════════════════════════════════════════
+// Categoria de produtos da comanda (Cozinha, Bar, Peixe fresco, Bebidas...).
+export type ComandaCategoria = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  ordem?: number;
+  cor?: string | null;                 // cor da aba (opcional)
+};
+
 export type ComandaProduto = {
   id: string;
   restaurantId: string;
   nome: string;
+  codigo?: string | null;              // código curto (ex.: "101")
   preco: number;                       // preço por unidade OU por kg (se porPeso)
   porPeso?: boolean;                    // true → lança-se o PESO (kg); `preco` é por kg
   unidade?: string | null;             // "un", "kg", "porção"...
-  categoria?: string | null;
-  producao?: boolean;                  // true → vai pra cozinha (imprime ticket de produção)
+  categoriaId?: string | null;         // vínculo com ComandaCategoria
+  categoria?: string | null;           // snapshot do nome da categoria (display)
+  producao?: boolean;                  // true → PRODUÇÃO (vai pra cozinha); false → revenda
   ativo: boolean;
   ordem?: number;
 };
