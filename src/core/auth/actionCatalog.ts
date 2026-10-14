@@ -748,9 +748,12 @@ export const CATALOGO: CatalogoModulo[] = [
     desc: "Comanda eletrônica de balcão (abre comanda, lança produtos, imprime produção e fecha)",
     area: "operacao",
     acoes: [
-      { id: "ver",    label: "Ver comandas" },
-      { id: "operar", label: "Abrir comanda, lançar produtos e fechar" },
-      { id: "config", label: "Cadastrar produtos" },
+      { id: "ver",        label: "Acessar o módulo (ver comandas abertas)" },
+      { id: "operar",     label: "Vender: abrir comanda, lançar produtos e fechar" },
+      { id: "produtos",   label: "Cadastrar e editar produtos e categorias" },
+      { id: "fechadas",   label: "Ver contas fechadas (histórico)", sensivel: true },
+      { id: "relatorios", label: "Ver dashboard e relatórios de vendas", sensivel: true },
+      { id: "estacoes",   label: "Configurar estações de impressão / impressoras" },
     ],
   },
   {

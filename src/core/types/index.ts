@@ -6638,6 +6638,7 @@ export type Comanda = {
   telefone?: string | null;
   status: ComandaStatus;
   modo?: "conta" | "togo";             // conta aberta (fica consumindo) × leva e vai embora
+  pessoas?: number;                    // nº de pessoas na comanda (controle do dia + divisão sugerida)
   itens: ComandaItem[];
   total: number;
   pagamentos: ComandaPagamento[];
