@@ -6613,7 +6613,8 @@ export type ComandaItem = {
   porPeso?: boolean;
   precoUnit: number;                   // por unidade ou por kg
   total: number;
-  producao?: boolean;                  // vai pra cozinha
+  producao?: boolean;                  // vai pra cozinha/impressora
+  categoriaId?: string | null;         // categoria do produto (snapshot) — roteia pra impressora certa
   obs?: string | null;
   impressoEm?: string | null;          // quando o ticket de produção desse item foi impresso
   criadoEm: string;
@@ -6650,6 +6651,16 @@ export type Comanda = {
   fechadoPorNome?: string | null;
 };
 
+// Estação de impressão (PC + impressora). categorias = quais categorias de
+// produção essa estação imprime (vazio = TODAS). Permite cozinha × bar separados.
+export type ComandaEstacao = {
+  id: string;
+  restaurantId: string;
+  nome: string;                        // ex.: "Cozinha", "Bar"
+  categorias?: string[];               // categoriaIds que imprime; vazio = todas
+  ativo: boolean;
+};
+
 // Job de impressão (desacopla o app da impressora). A ESTAÇÃO DE IMPRESSÃO
 // (PC logado no sistema, Chrome com impressão silenciosa) consome os pendentes.
 export type ComandaPrintJob = {
@@ -6659,6 +6670,8 @@ export type ComandaPrintJob = {
   comandaId: string;
   comandaNumero: string;
   clienteNome: string;
+  estacaoId?: string | null;           // destino (multi-impressora); null = qualquer estação
+  logoUrl?: string | null;             // logo do restaurante (módulo Sites) no topo do ticket
   titulo: string;
   linhas: Array<{ nome: string; qtd?: string | null; valor?: string | null }>;
   total?: string | null;

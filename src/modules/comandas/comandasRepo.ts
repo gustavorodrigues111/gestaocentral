@@ -2,10 +2,10 @@
 //  - comandaProdutos : catálogo de produtos (por empresa)
 //  - comandas        : comandas abertas/fechadas
 //  - comandaPrintJobs: fila de impressão (consumida pela estação de impressão)
-import { collection, deleteDoc, doc, onSnapshot, query, setDoc, updateDoc, where, type Unsubscribe } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where, type Unsubscribe } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
-import type { Comanda, ComandaProduto, ComandaPrintJob, ComandaCategoria } from "../../core/types";
+import type { Comanda, ComandaProduto, ComandaPrintJob, ComandaCategoria, ComandaEstacao } from "../../core/types";
 
 export const uid = () => { try { return crypto.randomUUID(); } catch { return "c" + Date.now() + Math.random().toString(36).slice(2); } };
 
@@ -22,6 +22,26 @@ export async function salvarCategoria(c: ComandaCategoria): Promise<void> {
   await setDoc(doc(db, "comandaCategorias", c.id), sanitizeForFirestore(c), { merge: true });
 }
 export async function excluirCategoria(id: string): Promise<void> { await deleteDoc(doc(db, "comandaCategorias", id)); }
+
+// ── Estações de impressão ──────────────────────────────────────────────
+export function ouvirEstacoes(rid: string, cb: (l: ComandaEstacao[]) => void): Unsubscribe {
+  const q = query(collection(db, "comandaEstacoes"), where("restaurantId", "==", rid));
+  return onSnapshot(q, (snap) => {
+    const l = snap.docs.map((d) => ({ id: d.id, ...d.data() }) as ComandaEstacao);
+    l.sort((a, b) => a.nome.localeCompare(b.nome));
+    cb(l);
+  }, (e) => console.error("[comandas] estacoes", e));
+}
+export async function salvarEstacao(e: ComandaEstacao): Promise<void> {
+  await setDoc(doc(db, "comandaEstacoes", e.id), sanitizeForFirestore(e), { merge: true });
+}
+export async function excluirEstacao(id: string): Promise<void> { await deleteDoc(doc(db, "comandaEstacoes", id)); }
+
+// Logo do restaurante (reaproveita a do módulo Sites: sitesConfig/{rid}.logoUrl).
+export async function lerLogoSite(rid: string): Promise<string | null> {
+  try { const s = await getDoc(doc(db, "sitesConfig", rid)); return s.exists() ? ((s.data() as { logoUrl?: string }).logoUrl || null) : null; }
+  catch { return null; }
+}
 
 // ── Produtos ───────────────────────────────────────────────────────────
 export function ouvirProdutos(rid: string, cb: (l: ComandaProduto[]) => void): Unsubscribe {

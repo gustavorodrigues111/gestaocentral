@@ -12,11 +12,12 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { PageContainer } from "../../core/ui/PageContainer";
 import { useTabPersistida } from "../../core/hooks/useTabPersistida";
-import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria } from "../../core/types";
+import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao } from "../../core/types";
 import {
   uid, ouvirProdutos, salvarProduto, excluirProduto,
   ouvirComandas, salvarComanda, criarPrintJob,
   ouvirCategorias, salvarCategoria, excluirCategoria,
+  ouvirEstacoes, salvarEstacao, excluirEstacao, lerLogoSite,
 } from "./comandasRepo";
 import { EstacaoImpressao } from "./EstacaoImpressao";
 
@@ -34,16 +35,21 @@ export function ComandasPage() {
 
   const [produtos, setProdutos] = useState<ComandaProduto[]>([]);
   const [categorias, setCategorias] = useState<ComandaCategoria[]>([]);
+  const [estacoes, setEstacoes] = useState<ComandaEstacao[]>([]);
   const [comandas, setComandas] = useState<Comanda[]>([]);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [abrindo, setAbrindo] = useState<null | "conta" | "togo">(null);
   const [detalhe, setDetalhe] = useState<string | null>(null);   // comandaId aberta no detalhe
   const [verFechadas, setVerFechadas] = useState(false);
-  // Estação de impressão: abre por ?estacao=1 na URL (num PC com a Epson).
-  const estacao = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("estacao") === "1";
+  // Estação de impressão: abre por ?estacao=1 (ou ?estacao=<id>) na URL.
+  const estacaoParam = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("estacao") : null;
+  const estacao = !!estacaoParam;
 
   useEffect(() => { if (!rid) return; return ouvirProdutos(rid, setProdutos); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirCategorias(rid, setCategorias); }, [rid]);
+  useEffect(() => { if (!rid) return; return ouvirEstacoes(rid, setEstacoes); }, [rid]);
   useEffect(() => { if (!rid) return; return ouvirComandas(rid, setComandas); }, [rid]);
+  useEffect(() => { if (!rid) return; void lerLogoSite(rid).then(setLogoUrl); }, [rid]);
 
   const meNome = me?.nome || "—";
   const podeVer = can("comandas", "ver");
@@ -68,7 +74,7 @@ export function ComandasPage() {
   const fechadasHoje = useMemo(() => comandas.filter((c) => c.status === "fechada" && (c.fechadoEm || c.criadoEm || "").slice(0, 10) === hojeYmd), [comandas, hojeYmd]);
   const comandaDet = useMemo(() => comandas.find((c) => c.id === detalhe) || null, [comandas, detalhe]);
 
-  if (estacao) return <EstacaoImpressao rid={rid} nomeRest={activeRestaurant?.nome || ""} />;
+  if (estacao) return <EstacaoImpressao rid={rid} nomeRest={activeRestaurant?.nome || ""} estacaoId={estacaoParam === "1" ? null : estacaoParam} estacoes={estacoes} logoUrl={logoUrl} />;
   if (!podeVer) return <div className="text-center py-12 text-gray-500">Você não tem acesso a Comandas.</div>;
 
   async function abrirComanda(dados: { numero: string; clienteNome: string; cpf?: string; telefone?: string; pessoas: number; modo: "conta" | "togo" }) {
@@ -152,13 +158,13 @@ export function ComandasPage() {
       )}
 
       {tabEfetiva === "config" && podeConfigTab && (
-        <ConfigComandas rid={rid} produtos={produtos} categorias={categorias} podeProdutos={podeProdutos} podeEstacoes={podeEstacoes} />
+        <ConfigComandas rid={rid} produtos={produtos} categorias={categorias} estacoes={estacoes} podeProdutos={podeProdutos} podeEstacoes={podeEstacoes} />
       )}
 
       {abrindo && <AbrirComandaModal modo={abrindo} onClose={() => setAbrindo(null)} onAbrir={abrirComanda} />}
       {comandaDet && (
         <ComandaDetalhe
-          comanda={comandaDet} produtos={produtos.filter((p) => p.ativo)} categorias={categorias}
+          comanda={comandaDet} produtos={produtos.filter((p) => p.ativo)} categorias={categorias} estacoes={estacoes} logoUrl={logoUrl}
           podeOperar={podeOperar}
           meNome={meNome} nomeRest={activeRestaurant?.nome || ""} rid={rid}
           onClose={() => setDetalhe(null)}
@@ -169,12 +175,12 @@ export function ComandasPage() {
 }
 
 // ── Config do módulo (abas internas: Produtos · Estação) ───────────────────
-function ConfigComandas({ rid, produtos, categorias, podeProdutos, podeEstacoes }: {
-  rid: string; produtos: ComandaProduto[]; categorias: ComandaCategoria[]; podeProdutos: boolean; podeEstacoes: boolean;
+function ConfigComandas({ rid, produtos, categorias, estacoes, podeProdutos, podeEstacoes }: {
+  rid: string; produtos: ComandaProduto[]; categorias: ComandaCategoria[]; estacoes: ComandaEstacao[]; podeProdutos: boolean; podeEstacoes: boolean;
 }) {
   const subs = [
     ...(podeProdutos ? [{ id: "produtos", label: "Produtos" }] : []),
-    ...(podeEstacoes ? [{ id: "estacao", label: "Estação de impressão" }] : []),
+    ...(podeEstacoes ? [{ id: "estacao", label: "Impressoras" }] : []),
   ];
   const [sub, setSub] = useState(subs[0]?.id || "produtos");
   return (
@@ -185,18 +191,66 @@ function ConfigComandas({ rid, produtos, categorias, podeProdutos, podeEstacoes 
         </div>
       )}
       {sub === "produtos" && podeProdutos && <ProdutosPanel rid={rid} produtos={produtos} categorias={categorias} />}
-      {sub === "estacao" && podeEstacoes && (
-        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 p-4 max-w-lg text-sm text-gray-600 dark:text-gray-300 space-y-2">
-          <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Printer size={16} className="text-indigo-500" /> Estação de impressão</div>
-          <p>Num PC com a Epson instalada como impressora <b>padrão</b>, abra o Chrome em impressão silenciosa e deixe a estação aberta:</p>
-          <ol className="list-decimal ml-5 space-y-0.5 text-[13px]">
-            <li>Mac: <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">open -a "Google Chrome" --args --kiosk-printing</code></li>
-            <li>Windows: atalho do Chrome com <code className="bg-gray-100 dark:bg-gray-800 px-1 rounded">--kiosk-printing</code> no final.</li>
-            <li>Abra o módulo Comandas nessa janela e clique em <b>Estação</b> (botão no topo).</li>
-          </ol>
-          <a href={`?estacao=1`} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 h-9 px-3 rounded-lg bg-indigo-600 text-white text-sm font-semibold mt-1"><Printer size={15} /> Abrir estação agora</a>
-        </div>
-      )}
+      {sub === "estacao" && podeEstacoes && <EstacoesPanel rid={rid} estacoes={estacoes} categorias={categorias} />}
+    </div>
+  );
+}
+
+// ── Impressoras / estações (multi-impressora por categoria) ────────────────
+function EstacoesPanel({ rid, estacoes, categorias }: { rid: string; estacoes: ComandaEstacao[]; categorias: ComandaCategoria[] }) {
+  const [nome, setNome] = useState("");
+  const [cats, setCats] = useState<string[]>([]);
+  function toggleCat(id: string) { setCats((c) => c.includes(id) ? c.filter((x) => x !== id) : [...c, id]); }
+  async function add() {
+    if (!nome.trim()) return;
+    await salvarEstacao({ id: uid(), restaurantId: rid, nome: nome.trim(), categorias: cats, ativo: true });
+    setNome(""); setCats([]);
+  }
+  async function toggleCatDaEstacao(e: ComandaEstacao, catId: string) {
+    const atual = e.categorias || [];
+    await salvarEstacao({ ...e, categorias: atual.includes(catId) ? atual.filter((x) => x !== catId) : [...atual, catId] });
+  }
+  return (
+    <div className="max-w-lg space-y-4">
+      <div className="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/20 p-3 text-[12px] text-amber-800 dark:text-amber-200">
+        <div className="font-bold mb-1">Como ligar uma impressora</div>
+        <p>Num PC com a impressora instalada como <b>padrão</b>, abra o Chrome em impressão silenciosa (<code className="bg-white/60 dark:bg-black/30 px-1 rounded">--kiosk-printing</code>) e abra o link <b>Abrir</b> da estação. Deixe a aba aberta. Cada estação só imprime as categorias marcadas (vazio = todas de produção + contas).</p>
+      </div>
+
+      <div className="rounded-2xl border border-gray-200 dark:border-gray-800 p-3">
+        <div className="text-[12px] font-bold uppercase tracking-wider text-gray-500 mb-2">Nova impressora / estação</div>
+        <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome (ex.: Cozinha, Bar, Caixa)" className="w-full h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+        {categorias.length > 0 && (
+          <div className="mt-2">
+            <div className="text-[11px] text-gray-400 mb-1">Imprime quais categorias? (nenhuma = todas)</div>
+            <div className="flex flex-wrap gap-1.5">
+              {categorias.map((c) => <button key={c.id} type="button" onClick={() => toggleCat(c.id)} className={`text-[12px] px-2 py-1 rounded-lg border ${cats.includes(c.id) ? "bg-indigo-600 border-indigo-600 text-white" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{c.nome}</button>)}
+            </div>
+          </div>
+        )}
+        <button onClick={() => void add()} disabled={!nome.trim()} className="h-9 px-3 mt-2 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40">+ Criar estação</button>
+      </div>
+
+      <div className="space-y-2">
+        {estacoes.length === 0 ? (
+          <div className="text-sm text-gray-400 text-center py-4">Nenhuma estação criada. Com 1 impressora só, não precisa — use o botão “Estação” no topo. Crie estações só se tiver cozinha e bar separados.</div>
+        ) : estacoes.map((e) => (
+          <div key={e.id} className="rounded-2xl border border-gray-200 dark:border-gray-800 p-3">
+            <div className="flex items-center gap-2">
+              <Printer size={15} className="text-indigo-500" />
+              <span className="font-bold text-gray-900 dark:text-gray-100 flex-1">{e.nome}</span>
+              <a href={`?estacao=${e.id}`} target="_blank" rel="noreferrer" className="text-[12px] px-2 py-1 rounded-lg bg-indigo-600 text-white font-semibold inline-flex items-center gap-1"><Printer size={12} /> Abrir</a>
+              <button onClick={() => { if (confirm(`Excluir estação "${e.nome}"?`)) void excluirEstacao(e.id); }} className="text-gray-300 hover:text-rose-500"><Trash2 size={15} /></button>
+            </div>
+            {categorias.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {categorias.map((c) => <button key={c.id} onClick={() => void toggleCatDaEstacao(e, c.id)} className={`text-[11px] px-2 py-0.5 rounded-lg border ${(e.categorias || []).includes(c.id) ? "bg-indigo-50 dark:bg-indigo-900/30 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-200" : "border-gray-200 dark:border-gray-700 text-gray-400"}`}>{c.nome}</button>)}
+                {(e.categorias || []).length === 0 && <span className="text-[11px] text-gray-400">imprime tudo</span>}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
@@ -265,8 +319,8 @@ function AbrirComandaModal({ modo, onClose, onAbrir }: {
 }
 
 // ── Detalhe da comanda (lançar itens, imprimir, fechar) ───────────────────
-function ComandaDetalhe({ comanda, produtos, categorias, podeOperar, meNome, nomeRest, rid, onClose }: {
-  comanda: Comanda; produtos: ComandaProduto[]; categorias: ComandaCategoria[]; podeOperar: boolean; meNome: string; nomeRest: string; rid: string;
+function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, podeOperar, meNome, nomeRest, rid, onClose }: {
+  comanda: Comanda; produtos: ComandaProduto[]; categorias: ComandaCategoria[]; estacoes: ComandaEstacao[]; logoUrl: string | null; podeOperar: boolean; meNome: string; nomeRest: string; rid: string;
   onClose: () => void;
 }) {
   const fechada = comanda.status === "fechada";
@@ -309,7 +363,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, podeOperar, meNome, nom
     const item: ComandaItem = {
       id: uid(), produtoId: p.id, nome: p.nome, qtd, porPeso: !!p.porPeso,
       precoUnit: p.preco || 0, total: +(qtd * (p.preco || 0)).toFixed(2),
-      producao: !!p.producao, impressoEm: null, criadoEm: nowIso(), criadoPorNome: meNome,
+      producao: !!p.producao, categoriaId: p.categoriaId || null, impressoEm: null, criadoEm: nowIso(), criadoPorNome: meNome,
     };
     const itens = [...comanda.itens, item];
     await patch(recompor(itens));
@@ -333,22 +387,42 @@ function ComandaDetalhe({ comanda, produtos, categorias, podeOperar, meNome, nom
 
   // Ticket de PRODUÇÃO: só os itens de produção ainda NÃO impressos.
   const pendentesProducao = comanda.itens.filter((i) => i.producao && !i.impressoEm);
+  // Qual estação imprime uma categoria (1ª estação ativa que cobre a categoria;
+  // estação sem categorias = cobre todas). Sem estações → null (qualquer uma).
+  function estacaoDaCategoria(catId: string | null | undefined): string | null {
+    const ativas = estacoes.filter((e) => e.ativo);
+    if (!ativas.length) return null;
+    const esp = ativas.find((e) => (e.categorias || []).length && (e.categorias || []).includes(catId || ""));
+    if (esp) return esp.id;
+    const geral = ativas.find((e) => !(e.categorias || []).length);
+    return geral ? geral.id : null;
+  }
   async function imprimirProducao() {
     if (!pendentesProducao.length) return;
     setSalvandoImpr(true);
     try {
-      const job: ComandaPrintJob = {
-        id: uid(), restaurantId: rid, tipo: "producao", comandaId: comanda.id,
-        comandaNumero: comanda.numero, clienteNome: comanda.clienteNome,
-        titulo: `PRODUÇÃO · #${comanda.numero}`,
-        linhas: pendentesProducao.map((i) => ({ nome: i.nome, qtd: i.porPeso ? `${fmtNum(i.qtd, 3)} kg` : `${i.qtd}x`, valor: null })),
-        total: null, rodape: `${comanda.clienteNome} · ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ${meNome}`,
-        status: "pendente", criadoEm: nowIso(), criadoPorNome: meNome, impressoEm: null,
-      };
-      await criarPrintJob(job);
+      // Agrupa os itens pendentes por estação de destino → 1 ticket por impressora.
+      const porEstacao = new Map<string, ComandaItem[]>();
+      for (const i of pendentesProducao) {
+        const eid = estacaoDaCategoria(i.categoriaId) || "_null_";
+        (porEstacao.get(eid) || porEstacao.set(eid, []).get(eid)!).push(i);
+      }
+      for (const [eid, itens] of porEstacao) {
+        const estacaoId = eid === "_null_" ? null : eid;
+        const nomeEst = estacoes.find((e) => e.id === estacaoId)?.nome;
+        const job: ComandaPrintJob = {
+          id: uid(), restaurantId: rid, tipo: "producao", comandaId: comanda.id,
+          comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId, logoUrl,
+          titulo: `PRODUÇÃO${nomeEst ? ` · ${nomeEst}` : ""} · #${comanda.numero}`,
+          linhas: itens.map((i) => ({ nome: i.nome, qtd: i.porPeso ? `${fmtNum(i.qtd, 3)} kg` : `${i.qtd}x`, valor: null })),
+          total: null, rodape: `${comanda.clienteNome} · ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ${meNome}`,
+          status: "pendente", criadoEm: nowIso(), criadoPorNome: meNome, impressoEm: null,
+        };
+        await criarPrintJob(job);
+      }
       const marcadoEm = nowIso();
-      const itens = comanda.itens.map((i) => (i.producao && !i.impressoEm ? { ...i, impressoEm: marcadoEm } : i));
-      await patch(recompor(itens));
+      const itensAtu = comanda.itens.map((i) => (i.producao && !i.impressoEm ? { ...i, impressoEm: marcadoEm } : i));
+      await patch(recompor(itensAtu));
     } finally { setSalvandoImpr(false); }
   }
 
@@ -363,7 +437,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, podeOperar, meNome, nom
   async function reimprimirConta() {
     const job: ComandaPrintJob = {
       id: uid(), restaurantId: rid, tipo: "conta", comandaId: comanda.id,
-      comandaNumero: comanda.numero, clienteNome: comanda.clienteNome,
+      comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId: null, logoUrl,
       titulo: `${nomeRest || "CONTA"} · #${comanda.numero}`,
       linhas: comanda.itens.map((i) => ({ nome: `${i.porPeso ? `${fmtNum(i.qtd, 3)}kg ` : `${i.qtd}x `}${i.nome}`, qtd: null, valor: fmtR(i.total) })),
       total: fmtR(comanda.total),
@@ -391,7 +465,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, podeOperar, meNome, nom
       <div className="flex-1 min-h-0 flex flex-col sm:flex-row">
         {/* Itens lançados */}
         <div ref={scrollRef} className={`${fechada ? "w-full" : "sm:w-[44%] sm:border-r"} border-gray-100 dark:border-gray-800 overflow-y-auto ${fechada ? "" : "p-3 space-y-1.5"} order-2 sm:order-1 ${fechada ? "" : "max-h-[38vh] sm:max-h-none"}`}>
-          {fechada ? <ContaCupom comanda={comanda} nomeRest={nomeRest} /> : comanda.itens.length === 0 ? (
+          {fechada ? <ContaCupom comanda={comanda} nomeRest={nomeRest} logoUrl={logoUrl} /> : comanda.itens.length === 0 ? (
             <div className="text-sm text-gray-400 text-center py-6">{fechada ? "Sem itens." : "Toque num produto pra lançar."}</div>
           ) : comanda.itens.map((i) => (
             <div key={i.id} className="flex items-center gap-2 rounded-lg border border-gray-100 dark:border-gray-800 bg-white dark:bg-gray-900 px-2 py-1.5">
@@ -476,14 +550,14 @@ function ComandaDetalhe({ comanda, produtos, categorias, podeOperar, meNome, nom
       </div>
 
       {pesoDe && <PesoModal produto={pesoDe} onClose={() => setPesoDe(null)} onConfirmar={(kg) => { void addItem(pesoDe, kg); setPesoDe(null); }} />}
-      {fechar && <FecharModal comanda={comanda} meNome={meNome} nomeRest={nomeRest} rid={rid} onClose={() => setFechar(false)} onFechado={() => { setFechar(false); onClose(); }} />}
-      {verConta && <ContaClienteView comanda={comanda} nomeRest={nomeRest} onClose={() => setVerConta(false)} />}
+      {fechar && <FecharModal comanda={comanda} meNome={meNome} nomeRest={nomeRest} rid={rid} logoUrl={logoUrl} onClose={() => setFechar(false)} onFechado={() => { setFechar(false); onClose(); }} />}
+      {verConta && <ContaClienteView comanda={comanda} nomeRest={nomeRest} logoUrl={logoUrl} onClose={() => setVerConta(false)} />}
     </div>
   );
 }
 
 // ── Conta pra mostrar ao cliente (vira o celular) — cupom ──────────────────
-function ContaClienteView({ comanda, nomeRest, onClose }: { comanda: Comanda; nomeRest: string; onClose: () => void }) {
+function ContaClienteView({ comanda, nomeRest, logoUrl, onClose }: { comanda: Comanda; nomeRest: string; logoUrl: string | null; onClose: () => void }) {
   return (
     <div className="fixed inset-0 z-[82] bg-gray-100 dark:bg-gray-950 flex flex-col">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
@@ -491,20 +565,21 @@ function ContaClienteView({ comanda, nomeRest, onClose }: { comanda: Comanda; no
         <div className="font-bold text-gray-900 dark:text-gray-100">Conta · #{comanda.numero}</div>
       </div>
       <div className="flex-1 overflow-y-auto p-4">
-        <ContaCupom comanda={comanda} nomeRest={nomeRest} />
+        <ContaCupom comanda={comanda} nomeRest={nomeRest} logoUrl={logoUrl} />
       </div>
     </div>
   );
 }
 
 // Cupom (comanda/recibo) — visual inspirado em cupom fiscal. Reusado na tela do
-// cliente e na comanda fechada. Logo da empresa (do módulo Sites) vem na Onda 2.
-function ContaCupom({ comanda, nomeRest }: { comanda: Comanda; nomeRest: string }) {
+// cliente e na comanda fechada. Logo da empresa vem do módulo Sites.
+function ContaCupom({ comanda, nomeRest, logoUrl }: { comanda: Comanda; nomeRest: string; logoUrl: string | null }) {
   const saldo = +(comanda.total - (comanda.valorPago || 0)).toFixed(2);
   const porPessoa = comanda.pessoas && comanda.pessoas > 1 ? +(comanda.total / comanda.pessoas).toFixed(2) : null;
   return (
     <div className="mx-auto w-full max-w-[380px] bg-white dark:bg-gray-900 rounded-xl shadow-sm border border-gray-200 dark:border-gray-800 p-4 font-mono text-[13px] text-gray-900 dark:text-gray-100">
       <div className="text-center">
+        {logoUrl && <img src={logoUrl} alt="" className="h-12 mx-auto mb-1 object-contain" />}
         <div className="text-base font-extrabold tracking-wide uppercase">{nomeRest || "Comanda"}</div>
         <div className="text-[11px] text-gray-500">Comanda #{comanda.numero} · {comanda.clienteNome}</div>
         {comanda.cpf && <div className="text-[11px] text-gray-500">CPF {comanda.cpf}</div>}
@@ -562,44 +637,53 @@ function PesoModal({ produto, onClose, onConfirmar }: { produto: ComandaProduto;
   );
 }
 
-// ── Fechar / pagar ─────────────────────────────────────────────────────────
-function FecharModal({ comanda, meNome, nomeRest, rid, onClose, onFechado }: {
-  comanda: Comanda; meNome: string; nomeRest: string; rid: string; onClose: () => void; onFechado: () => void;
+// ── Fechar / pagar (com split: vários pagamentos nomeados) ──────────────────
+function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFechado }: {
+  comanda: Comanda; meNome: string; nomeRest: string; rid: string; logoUrl: string | null; onClose: () => void; onFechado: () => void;
 }) {
   const saldo = +(comanda.total - comanda.valorPago).toFixed(2);
   const [pessoas, setPessoas] = useState(String(comanda.pessoas || 1));
+  const [linhas, setLinhas] = useState<ComandaPagamento[]>([]);   // pagamentos sendo lançados agora
   const [forma, setForma] = useState(FORMAS[0]);
-  const [valorTxt, setValorTxt] = useState(saldo > 0 ? saldo.toFixed(2).replace(".", ",") : "");
+  const [valorTxt, setValorTxt] = useState("");
+  const [nomeIn, setNomeIn] = useState("");
   const [imprimirConta, setImprimirConta] = useState(true);
   const [saving, setSaving] = useState(false);
-  const valor = parseFloat((valorTxt || "").replace(/\./g, "").replace(",", ".")) || 0;
   const nPessoas = Math.max(1, parseInt(pessoas, 10) || 1);
   const porPessoa = +(comanda.total / nPessoas).toFixed(2);
-  const vaiFechar = valor >= saldo - 0.001;
+  const valorIn = parseFloat((valorTxt || "").replace(/\./g, "").replace(",", ".")) || 0;
+  const somaLinhas = +linhas.reduce((s, l) => s + l.valor, 0).toFixed(2);
+  const restante = +(saldo - somaLinhas).toFixed(2);
+  const vaiFechar = somaLinhas >= saldo - 0.001;
 
+  function addLinha(v?: number) {
+    const valor = v ?? valorIn;
+    if (valor <= 0) return;
+    setLinhas((l) => [...l, { forma, valor: +valor.toFixed(2), em: new Date().toISOString(), porNome: nomeIn.trim() || meNome }]);
+    setValorTxt(""); setNomeIn("");
+  }
   async function confirmar() {
     setSaving(true);
     try {
-      const pags: ComandaPagamento[] = valor > 0
-        ? [...comanda.pagamentos, { forma, valor, em: new Date().toISOString(), porNome: meNome }]
-        : comanda.pagamentos;
+      // Inclui o valor digitado que ainda não foi adicionado à lista.
+      const linhasFinais = valorIn > 0 ? [...linhas, { forma, valor: +valorIn.toFixed(2), em: new Date().toISOString(), porNome: nomeIn.trim() || meNome }] : linhas;
+      const pags: ComandaPagamento[] = [...comanda.pagamentos, ...linhasFinais];
       const valorPago = +pags.reduce((s, p) => s + p.valor, 0).toFixed(2);
       const quitou = valorPago >= comanda.total - 0.001;
-      const atualizada: Comanda = {
+      await salvarComanda({
         ...comanda, pessoas: nPessoas, pagamentos: pags, valorPago,
         status: quitou ? "fechada" : "aberta",
         fechadoEm: quitou ? new Date().toISOString() : null,
         fechadoPorNome: quitou ? meNome : null,
-      };
-      await salvarComanda(atualizada);
+      });
       if (imprimirConta) {
         const job: ComandaPrintJob = {
           id: uid(), restaurantId: rid, tipo: "conta", comandaId: comanda.id,
-          comandaNumero: comanda.numero, clienteNome: comanda.clienteNome,
+          comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId: null, logoUrl,
           titulo: `${nomeRest || "CONTA"} · #${comanda.numero}`,
           linhas: comanda.itens.map((i) => ({ nome: `${i.porPeso ? `${fmtNum(i.qtd, 3)}kg ` : `${i.qtd}x `}${i.nome}`, qtd: null, valor: fmtR(i.total) })),
           total: fmtR(comanda.total),
-          rodape: `${comanda.clienteNome}${comanda.cpf ? ` · CPF ${comanda.cpf}` : ""}\n${forma}: ${fmtR(valor)}${quitou ? "" : ` · saldo ${fmtR(comanda.total - valorPago)}`}\n${new Date().toLocaleString("pt-BR")} · ${meNome}`,
+          rodape: `${comanda.clienteNome}${comanda.cpf ? ` · CPF ${comanda.cpf}` : ""}\n${pags.map((p) => `${p.porNome ? p.porNome + " " : ""}${p.forma}: ${fmtR(p.valor)}`).join("\n")}${quitou ? "" : `\nSALDO: ${fmtR(comanda.total - valorPago)}`}\n${new Date().toLocaleString("pt-BR")} · ${meNome}`,
           status: "pendente", criadoEm: new Date().toISOString(), criadoPorNome: meNome, impressoEm: null,
         };
         await criarPrintJob(job);
@@ -610,7 +694,7 @@ function FecharModal({ comanda, meNome, nomeRest, rid, onClose, onFechado }: {
 
   return (
     <div className="fixed inset-0 z-[80] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-4 shadow-xl max-h-[92vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
         <div className="flex items-center justify-between mb-3">
           <div className="font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5"><Check size={16} className="text-indigo-500" /> Fechar comanda</div>
           <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
@@ -620,39 +704,56 @@ function FecharModal({ comanda, meNome, nomeRest, rid, onClose, onFechado }: {
             <span className="text-sm text-gray-600 dark:text-gray-300">Total</span>
             <span className="text-xl font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums">{fmtR(comanda.total)}</span>
           </div>
-          {comanda.valorPago > 0 && <div className="flex items-center justify-between text-[12px] text-gray-500 mt-0.5"><span>Já pago</span><span className="tabular-nums">{fmtR(comanda.valorPago)} · falta {fmtR(saldo)}</span></div>}
-          {/* Dividir por pessoas */}
+          {comanda.valorPago > 0 && <div className="flex items-center justify-between text-[12px] text-gray-500 mt-0.5"><span>Já pago antes</span><span className="tabular-nums">{fmtR(comanda.valorPago)} · falta {fmtR(saldo)}</span></div>}
           <div className="flex items-center justify-between mt-2 pt-2 border-t border-gray-200 dark:border-gray-700">
             <div className="inline-flex items-center gap-1.5 text-sm">
               <User size={14} className="text-gray-400" /> <span className="text-gray-600 dark:text-gray-300">Dividir por</span>
               <input value={pessoas} onChange={(e) => setPessoas(e.target.value)} type="number" min={1} className="w-14 h-8 px-2 text-center text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
             </div>
-            {nPessoas > 1 && <button onClick={() => setValorTxt(porPessoa.toFixed(2).replace(".", ","))} className="text-[12px] px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-200 font-semibold tabular-nums">{fmtR(porPessoa)}/pessoa</button>}
+            {nPessoas > 1 && <button onClick={() => addLinha(Math.min(porPessoa, restante > 0 ? restante : porPessoa))} className="text-[12px] px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-200 font-semibold tabular-nums">+ {fmtR(porPessoa)}/pessoa</button>}
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Forma</label>
-            <select value={forma} onChange={(e) => setForma(e.target.value)} className="w-full h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-              {FORMAS.map((f) => <option key={f} value={f}>{f}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">Valor pago</label>
-            <div className="relative">
-              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
-              <input value={valorTxt} onChange={(e) => setValorTxt(e.target.value)} inputMode="decimal" className="w-full h-10 pl-8 pr-2 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+
+        {/* Pagamentos lançados agora (split) */}
+        {linhas.length > 0 && (
+          <div className="mb-2 rounded-xl border border-gray-100 dark:border-gray-800 divide-y divide-gray-100 dark:divide-gray-800">
+            {linhas.map((l, idx) => (
+              <div key={idx} className="flex items-center gap-2 px-2 py-1.5 text-[13px]">
+                <span className="flex-1 truncate">{l.porNome && l.porNome !== meNome ? <b>{l.porNome} · </b> : ""}{l.forma}</span>
+                <span className="tabular-nums font-semibold">{fmtR(l.valor)}</span>
+                <button onClick={() => setLinhas((ls) => ls.filter((_, i) => i !== idx))} className="text-gray-300 hover:text-rose-500"><X size={14} /></button>
+              </div>
+            ))}
+            <div className="flex items-center justify-between px-2 py-1.5 text-[12px] bg-gray-50 dark:bg-gray-800/40">
+              <span className="text-gray-500">Lançado: <b className="tabular-nums text-gray-700 dark:text-gray-200">{fmtR(somaLinhas)}</b></span>
+              <span className={restante > 0.001 ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-emerald-600 dark:text-emerald-400 font-semibold"}>{restante > 0.001 ? `falta ${fmtR(restante)}` : "cobre o total ✓"}</span>
             </div>
           </div>
+        )}
+
+        {/* Linha de pagamento */}
+        <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
+          <div className="grid grid-cols-2 gap-2">
+            <select value={forma} onChange={(e) => setForma(e.target.value)} className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+              {FORMAS.map((f) => <option key={f} value={f}>{f}</option>)}
+            </select>
+            <div className="relative">
+              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
+              <input value={valorTxt} onChange={(e) => setValorTxt(e.target.value)} inputMode="decimal" placeholder={restante > 0 ? restante.toFixed(2).replace(".", ",") : ""} className="w-full h-10 pl-8 pr-2 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+            </div>
+          </div>
+          <button onClick={() => addLinha()} disabled={valorIn <= 0} className="h-10 px-3 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 text-sm font-semibold disabled:opacity-40">+ Add</button>
         </div>
+        <input value={nomeIn} onChange={(e) => setNomeIn(e.target.value)} placeholder="nome de quem pagou (opcional)" className="w-full h-9 px-3 mt-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
+
         <label className="flex items-center gap-2 mt-3 text-sm cursor-pointer">
           <input type="checkbox" checked={imprimirConta} onChange={(e) => setImprimirConta(e.target.checked)} className="accent-indigo-600" />
           Imprimir a conta
         </label>
-        {!vaiFechar && valor > 0 && <div className="text-[12px] text-amber-600 dark:text-amber-400 mt-2">Pagamento parcial — a comanda continua <b>aberta</b> pra seguir consumindo.</div>}
+        {linhas.length > 0 && !vaiFechar && <div className="text-[12px] text-amber-600 dark:text-amber-400 mt-2">Parcial — a comanda continua <b>aberta</b> pra seguir consumindo.</div>}
         <div className="flex justify-end gap-2 pt-3 mt-2 border-t border-gray-200 dark:border-gray-800">
           <button onClick={onClose} className="h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 text-sm">Cancelar</button>
-          <button onClick={() => void confirmar()} disabled={saving} className="h-9 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold">{saving ? "..." : (vaiFechar ? "Pagar e fechar" : "Registrar pagamento")}</button>
+          <button onClick={() => void confirmar()} disabled={saving || (linhas.length === 0 && valorIn <= 0)} className="h-9 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold">{saving ? "..." : ((somaLinhas + valorIn) >= saldo - 0.001 ? "Pagar e fechar" : "Registrar")}</button>
         </div>
       </div>
     </div>
@@ -662,7 +763,9 @@ function FecharModal({ comanda, meNome, nomeRest, rid, onClose, onFechado }: {
 // ── Dashboard de vendas (tempo real) ──────────────────────────────────────
 function RelatorioComandas({ comandas }: { comandas: Comanda[] }) {
   const hoje = new Date().toLocaleDateString("en-CA");
-  const doDia = comandas.filter((c) => (c.criadoEm || "").slice(0, 10) === hoje || ((c.fechadoEm || "").slice(0, 10) === hoje));
+  const [dataSel, setDataSel] = useState(hoje);
+  const diaDe = (c: Comanda) => (c.fechadoEm || c.criadoEm || "").slice(0, 10);
+  const doDia = comandas.filter((c) => diaDe(c) === dataSel);
   const abertas = doDia.filter((c) => c.status === "aberta");
   const fechadas = doDia.filter((c) => c.status === "fechada");
   const emAberto = abertas.reduce((s, c) => s + (c.total - (c.valorPago || 0)), 0);   // consumo sem pagamento
@@ -674,7 +777,19 @@ function RelatorioComandas({ comandas }: { comandas: Comanda[] }) {
     const m = new Map<string, number>();
     for (const c of doDia) for (const p of c.pagamentos || []) m.set(p.forma, (m.get(p.forma) || 0) + p.valor);
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
-  }, [comandas]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [comandas, dataSel]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Resumo gerencial POR DATA (todas as datas, mais recente primeiro).
+  const porData = useMemo(() => {
+    const m = new Map<string, { fat: number; rec: number; n: number; pes: number }>();
+    for (const c of comandas) {
+      const d = diaDe(c); if (!d) continue;
+      const o = m.get(d) || { fat: 0, rec: 0, n: 0, pes: 0 };
+      o.fat += c.total || 0; o.rec += c.valorPago || 0; o.n += 1; o.pes += c.pessoas || 1;
+      m.set(d, o);
+    }
+    return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]));
+  }, [comandas]);
+  const totalGeral = porData.reduce((s, [, o]) => s + o.fat, 0);
 
   const Card = ({ label, valor, tone, hint }: { label: string; valor: string; tone?: string; hint?: string }) => (
     <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
@@ -685,7 +800,14 @@ function RelatorioComandas({ comandas }: { comandas: Comanda[] }) {
   );
   return (
     <div className="space-y-3">
-      <div className="text-[12px] text-gray-500">Hoje · {new Date().toLocaleDateString("pt-BR")} · atualiza em tempo real</div>
+      <div className="flex items-center justify-between gap-2 flex-wrap">
+        <div className="inline-flex items-center gap-2 text-sm">
+          <span className="text-gray-500">Dia</span>
+          <input type="date" value={dataSel} onChange={(e) => setDataSel(e.target.value)} className="h-9 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+          {dataSel !== hoje && <button onClick={() => setDataSel(hoje)} className="text-[12px] text-indigo-600 dark:text-indigo-400 font-semibold">hoje</button>}
+        </div>
+        {dataSel === hoje && <span className="text-[11px] text-emerald-600 dark:text-emerald-400">● tempo real</span>}
+      </div>
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
         <Card label="Faturamento" valor={fmtR(faturamento)} tone="text-indigo-700 dark:text-indigo-300" hint={`${doDia.length} comanda(s)`} />
         <Card label="Recebido" valor={fmtR(recebido)} tone="text-emerald-600 dark:text-emerald-300" hint={`${fechadas.length} paga(s)`} />
@@ -697,6 +819,25 @@ function RelatorioComandas({ comandas }: { comandas: Comanda[] }) {
           <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mb-2">Recebido por forma</div>
           <div className="flex flex-wrap gap-2">
             {porForma.map(([f, v]) => <span key={f} className="text-[12px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800">{f} <b className="tabular-nums">{fmtR(v)}</b></span>)}
+          </div>
+        </div>
+      )}
+      {/* Relatório gerencial por data */}
+      {porData.length > 1 && (
+        <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
+          <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-800">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Vendas por data</span>
+            <span className="text-[12px] text-gray-500">Total geral <b className="text-gray-800 dark:text-gray-100 tabular-nums">{fmtR(totalGeral)}</b></span>
+          </div>
+          <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-[40vh] overflow-y-auto">
+            {porData.map(([d, o]) => (
+              <button key={d} onClick={() => setDataSel(d)} className={`w-full flex items-center gap-2 px-3 py-2 text-[13px] text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 ${d === dataSel ? "bg-indigo-50/40 dark:bg-indigo-950/20" : ""}`}>
+                <span className="w-24 tabular-nums text-gray-600 dark:text-gray-300">{d.split("-").reverse().join("/")}</span>
+                <span className="flex-1 text-gray-400 text-[12px]">{o.n} comanda(s) · {o.pes}p</span>
+                <span className="tabular-nums text-gray-500 text-[12px]">rec {fmtR(o.rec)}</span>
+                <span className="w-24 text-right tabular-nums font-semibold text-indigo-700 dark:text-indigo-300">{fmtR(o.fat)}</span>
+              </button>
+            ))}
           </div>
         </div>
       )}

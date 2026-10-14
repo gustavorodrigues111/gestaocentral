@@ -804,6 +804,7 @@ service cloud.firestore {
     // Operacional, acesso só autenticado (como a maioria das coleções).
     // comandas guardam CPF/telefone do cliente (PII leve) — leitura authed().
     match /comandaCategorias/{id} { allow read, write: if authed(); }
+    match /comandaEstacoes/{id}  { allow read, write: if authed(); }
     match /comandaProdutos/{id}  { allow read, write: if authed(); }
     match /comandas/{id}         { allow read, write: if authed(); }
     match /comandaPrintJobs/{id} { allow read, write: if authed(); }
