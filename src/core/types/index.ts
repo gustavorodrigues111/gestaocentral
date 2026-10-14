@@ -6574,6 +6574,88 @@ export type VendaCobranca = {
 };
 
 // ═══════════════════════════════════════════════════════════════════════════
+//  COMANDAS (PDV simplificado — peixaria Sororoca). Comanda eletrônica + ticket
+//  de produção impresso numa Epson TM-T20 (via estação de impressão no PC).
+//  SEM fiscal: só comanda e conta de cobrança. Produto pode ser por PESO
+//  (preço/kg, lança-se o peso) — balança Prix 4 na rede vem depois.
+// ═══════════════════════════════════════════════════════════════════════════
+export type ComandaProduto = {
+  id: string;
+  restaurantId: string;
+  nome: string;
+  preco: number;                       // preço por unidade OU por kg (se porPeso)
+  porPeso?: boolean;                    // true → lança-se o PESO (kg); `preco` é por kg
+  unidade?: string | null;             // "un", "kg", "porção"...
+  categoria?: string | null;
+  producao?: boolean;                  // true → vai pra cozinha (imprime ticket de produção)
+  ativo: boolean;
+  ordem?: number;
+};
+
+export type ComandaItem = {
+  id: string;
+  produtoId?: string | null;
+  nome: string;
+  qtd: number;                         // nº de unidades OU kg (se porPeso)
+  porPeso?: boolean;
+  precoUnit: number;                   // por unidade ou por kg
+  total: number;
+  producao?: boolean;                  // vai pra cozinha
+  obs?: string | null;
+  impressoEm?: string | null;          // quando o ticket de produção desse item foi impresso
+  criadoEm: string;
+  criadoPorNome?: string | null;
+};
+
+export type ComandaPagamento = {
+  forma: string;                       // pix | dinheiro | debito | credito | outro
+  valor: number;
+  em: string;                          // ISO
+  porNome?: string | null;
+};
+
+export type ComandaStatus = "aberta" | "fechada";
+
+export type Comanda = {
+  id: string;
+  restaurantId: string;
+  numero: string;                      // nº da pulseira (ou identificador livre)
+  clienteNome: string;
+  cpf?: string | null;
+  telefone?: string | null;
+  status: ComandaStatus;
+  modo?: "conta" | "togo";             // conta aberta (fica consumindo) × leva e vai embora
+  itens: ComandaItem[];
+  total: number;
+  pagamentos: ComandaPagamento[];
+  valorPago: number;
+  criadoEm: string;
+  criadoPor?: string;
+  criadoPorNome?: string;
+  fechadoEm?: string | null;
+  fechadoPorNome?: string | null;
+};
+
+// Job de impressão (desacopla o app da impressora). A ESTAÇÃO DE IMPRESSÃO
+// (PC logado no sistema, Chrome com impressão silenciosa) consome os pendentes.
+export type ComandaPrintJob = {
+  id: string;
+  restaurantId: string;
+  tipo: "producao" | "conta";
+  comandaId: string;
+  comandaNumero: string;
+  clienteNome: string;
+  titulo: string;
+  linhas: Array<{ nome: string; qtd?: string | null; valor?: string | null }>;
+  total?: string | null;
+  rodape?: string | null;
+  status: "pendente" | "impresso" | "erro";
+  criadoEm: string;
+  criadoPorNome?: string | null;
+  impressoEm?: string | null;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
 //  FICHAS TÉCNICAS — produção (escalar por rendimento, custo em tempo real).
 //  Base portada do AppMise, melhorada: unidade com DIMENSÃO (massa/volume/
 //  unidade), dedup de insumo, subproduto (ficha que vira ingrediente de outra).

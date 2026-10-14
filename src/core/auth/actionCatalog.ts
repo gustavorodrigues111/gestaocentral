@@ -742,6 +742,18 @@ export const CATALOGO: CatalogoModulo[] = [
     ],
   },
   {
+    id: "comandas",
+    icon: "receipt",
+    label: "Comandas",
+    desc: "Comanda eletrônica de balcão (abre comanda, lança produtos, imprime produção e fecha)",
+    area: "operacao",
+    acoes: [
+      { id: "ver",    label: "Ver comandas" },
+      { id: "operar", label: "Abrir comanda, lançar produtos e fechar" },
+      { id: "config", label: "Cadastrar produtos" },
+    ],
+  },
+  {
     id: "faturas",
     icon: "credit-card",
     label: "Faturas de Cartão",
