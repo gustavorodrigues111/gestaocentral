@@ -213,6 +213,11 @@ export function InvestimentosPage() {
     for (const l of lancamentos) { const k = investFormaLabel(l.formaPagamento) || "—"; m.set(k, (m.get(k) || 0) + (l.valor || 0)); }
     return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
   }, [lancamentos]);
+  const porQuemPagou = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const l of lancamentos) { const k = (l.pagoPor || "").trim() || "Não informado"; m.set(k, (m.get(k) || 0) + (l.valor || 0)); }
+    return [...m.entries()].map(([label, value]) => ({ label, value })).sort((a, b) => b.value - a.value);
+  }, [lancamentos]);
   // Cor por categoria (bate com o donut) + lista agrupada por categoria.
   const catColor = useMemo(() => { const m: Record<string, string> = {}; porCategoria.forEach((d) => { m[d.label] = d.color; }); return m; }, [porCategoria]);
   const lancPorCategoria = useMemo(() => {
@@ -319,6 +324,14 @@ export function InvestimentosPage() {
                 <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mr-1">Formas</span>
                 {porForma.map((f) => (
                   <span key={f.label} className="text-[11.5px] px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-300">{f.label} <b className="text-gray-800 dark:text-gray-100 tabular-nums">{fmtR(f.value)}</b></span>
+                ))}
+              </div>
+            )}
+            {porQuemPagou.length > 0 && (
+              <div className="mt-2.5 pt-2.5 border-t border-gray-100 dark:border-gray-800 flex flex-wrap items-center gap-2">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400 mr-1">Quem pagou</span>
+                {porQuemPagou.map((p) => (
+                  <span key={p.label} className="text-[11.5px] px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-900/20 text-indigo-700 dark:text-indigo-300">{p.label} <b className="text-indigo-900 dark:text-indigo-100 tabular-nums">{fmtR(p.value)}</b></span>
                 ))}
               </div>
             )}
