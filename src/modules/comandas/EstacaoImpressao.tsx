@@ -8,7 +8,19 @@ import { Printer, CheckCircle2, AlertTriangle } from "lucide-react";
 import { ouvirPrintJobsPendentes, marcarPrintJob } from "./comandasRepo";
 import type { ComandaPrintJob, ComandaEstacao } from "../../core/types";
 
-export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl }: { rid: string; nomeRest: string; estacaoId: string | null; estacoes: ComandaEstacao[]; logoUrl: string | null }) {
+// CSS de impressão: só o #comanda-print sai no papel (80mm).
+const PRINT_CSS = `
+  #comanda-print { display: none; }
+  @media print {
+    body { background: #fff !important; }
+    body * { visibility: hidden !important; }
+    #comanda-print, #comanda-print * { visibility: visible !important; }
+    #comanda-print { display: block !important; position: absolute; left: 0; top: 0; width: 72mm; color: #000; font-family: ui-monospace, "Courier New", monospace; }
+    @page { size: 80mm auto; margin: 3mm; }
+  }
+`;
+
+export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, embedded }: { rid: string; nomeRest: string; estacaoId: string | null; estacoes: ComandaEstacao[]; logoUrl: string | null; embedded?: boolean }) {
   const [todosJobs, setTodosJobs] = useState<ComandaPrintJob[]>([]);
   const [atual, setAtual] = useState<ComandaPrintJob | null>(null);
   const [log, setLog] = useState<{ id: string; titulo: string; em: string; ok: boolean }[]>([]);
@@ -51,19 +63,21 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl }
 
   const alvo = atual || teste;
 
+  // Modo EMBUTIDO: roda dentro do próprio PDV (mesmo PC da Epson). Sem painel —
+  // só o listener (acima) + a área de impressão oculta. Imprime automático.
+  if (embedded) {
+    return (
+      <>
+        <style>{PRINT_CSS}</style>
+        <div id="comanda-print">{alvo && <TicketConteudo job={alvo} nomeRest={nomeRest} />}</div>
+      </>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Área de impressão (só ela aparece no papel) */}
-      <style>{`
-        #comanda-print { display: none; }
-        @media print {
-          body { background: #fff !important; }
-          body * { visibility: hidden !important; }
-          #comanda-print, #comanda-print * { visibility: visible !important; }
-          #comanda-print { display: block !important; position: absolute; left: 0; top: 0; width: 72mm; color: #000; font-family: ui-monospace, "Courier New", monospace; }
-          @page { size: 80mm auto; margin: 3mm; }
-        }
-      `}</style>
+      <style>{PRINT_CSS}</style>
       <div id="comanda-print">
         {alvo && <TicketConteudo job={alvo} nomeRest={nomeRest} />}
       </div>

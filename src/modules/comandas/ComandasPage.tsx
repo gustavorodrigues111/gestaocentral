@@ -4,9 +4,9 @@
 //
 // Dois fluxos: CONTA ABERTA (fica consumindo) × TO-GO (lança e fecha na hora).
 // Produto pode ser por PESO (preço/kg, lança-se o peso) — balança Prix 4 depois.
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Settings } from "lucide-react";
+import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3 } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -52,6 +52,10 @@ export function ComandasPage({ onLogout }: { onLogout?: () => void } = {}) {
   const [detalhe, setDetalhe] = useState<string | null>(null);   // comandaId aberta no detalhe
   const [verFechadas, setVerFechadas] = useState(false);
   const [menuAberto, setMenuAberto] = useState(false);   // menu hambúrguer (Relatórios/Config/Estação/Sair)
+  // Estação EMBUTIDA: este dispositivo também imprime (pro PC único do balcão
+  // com a Epson — dispensa a aba separada). Lembrado por dispositivo.
+  const [imprimirAqui, setImprimirAqui] = useState<boolean>(() => { try { return localStorage.getItem("comandas_estacao_embutida") === "1"; } catch { return false; } });
+  const toggleImprimirAqui = () => setImprimirAqui((v) => { const n = !v; try { localStorage.setItem("comandas_estacao_embutida", n ? "1" : "0"); } catch { /* ignore */ } return n; });
   // Estação de impressão: abre por ?estacao=1 (ou ?estacao=<id>) na URL.
   const estacaoParam = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("estacao") : null;
   const estacao = !!estacaoParam;
@@ -69,15 +73,16 @@ export function ComandasPage({ onLogout }: { onLogout?: () => void } = {}) {
   const podeFechadas = can("comandas", "fechadas");
   const podeRelatorios = can("comandas", "relatorios");
   const podeEstacoes = can("comandas", "estacoes");
-  const podeConfigTab = podeProdutos || podeEstacoes;
 
-  // Abas (persistem no reload). Só mostra as permitidas.
+  // Telas do módulo (vivem no menu hambúrguer). Só as permitidas. Config foi
+  // achatado: Produtos / Categorias / Impressoras entram direto como telas.
   const abasDisp = useMemo(() => {
     const a: { id: string; label: string }[] = [{ id: "comandas", label: "Comandas" }];
     if (podeRelatorios) a.push({ id: "relatorios", label: "Relatórios" });
-    if (podeConfigTab) a.push({ id: "config", label: "Config" });
+    if (podeProdutos) a.push({ id: "produtos", label: "Produtos" }, { id: "categorias", label: "Categorias" });
+    if (podeEstacoes) a.push({ id: "impressoras", label: "Impressoras" });
     return a;
-  }, [podeRelatorios, podeConfigTab]);
+  }, [podeRelatorios, podeProdutos, podeEstacoes]);
   const [tab, setTab] = useTabPersistida<string>("comandas", "comandas", abasDisp.map((a) => a.id));
 
   const abertas = useMemo(() => comandas.filter((c) => c.status === "aberta"), [comandas]);
@@ -118,18 +123,26 @@ export function ComandasPage({ onLogout }: { onLogout?: () => void } = {}) {
             <>
               <div className="fixed inset-0 z-40" onClick={() => setMenuAberto(false)} />
               <div className="absolute right-0 mt-1.5 w-56 z-50 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1.5">
-                {/* Navegação entre as telas do módulo */}
+                {/* Navegação entre as telas do módulo (Config achatado em Produtos/Categorias/Impressoras) */}
                 {abasDisp.map((a) => {
-                  const ic = a.id === "comandas" ? <Receipt size={16} /> : a.id === "relatorios" ? <BarChart3 size={16} /> : <Settings size={16} />;
-                  const label = a.id === "config" ? "Configurações" : a.label;
+                  const ic = a.id === "comandas" ? <Receipt size={16} /> : a.id === "relatorios" ? <BarChart3 size={16} /> : a.id === "produtos" ? <Package size={16} /> : a.id === "categorias" ? <Tag size={16} /> : <Printer size={16} />;
+                  const divisor = a.id === "produtos";   // separa "operação" (Comandas/Relatórios) da "config"
                   return (
-                    <button key={a.id} onClick={() => { setTab(a.id); setMenuAberto(false); }} className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left ${tabEfetiva === a.id ? "text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50/60 dark:bg-indigo-950/20" : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
-                      {ic} {label}
-                    </button>
+                    <Fragment key={a.id}>
+                      {divisor && <div className="my-1 border-t border-gray-100 dark:border-gray-800" />}
+                      <button onClick={() => { setTab(a.id); setMenuAberto(false); }} className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left ${tabEfetiva === a.id ? "text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50/60 dark:bg-indigo-950/20" : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                        {ic} {a.label}
+                      </button>
+                    </Fragment>
                   );
                 })}
                 <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
-                <a href={`?estacao=1`} target="_blank" rel="noreferrer" onClick={() => setMenuAberto(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Printer size={16} /> Estação de impressão</a>
+                <button onClick={toggleImprimirAqui} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  <Printer size={16} /> <span className="flex-1">Imprimir nesta tela</span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${imprimirAqui ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-gray-100 text-gray-400 dark:bg-gray-800"}`}>{imprimirAqui ? "ON" : "OFF"}</span>
+                </button>
+                <a href={`?estacao=1`} target="_blank" rel="noreferrer" onClick={() => setMenuAberto(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Printer size={16} /> Estação (outra tela/PC)</a>
+                {imprimirAqui && <div className="px-3 py-1 text-[10px] text-gray-400">Este PC imprime direto (Chrome em --kiosk-printing). Não abra a Estação em outra aba junto, pra não duplicar.</div>}
                 {onLogout && <button onClick={() => { setMenuAberto(false); onLogout(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-rose-600 dark:text-rose-400 hover:bg-rose-50/60 dark:hover:bg-rose-950/20"><LogOut size={16} /> Sair do PDV</button>}
               </div>
             </>
@@ -147,9 +160,11 @@ export function ComandasPage({ onLogout }: { onLogout?: () => void } = {}) {
           )}
 
           {podeFechadas && (
-            <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-800 p-0.5 mb-3 text-sm">
-              <button onClick={() => setVerFechadas(false)} className={`px-3 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1.5 ${!verFechadas ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><Receipt size={14} /> Abertas ({abertas.length})</button>
-              <button onClick={() => setVerFechadas(true)} className={`px-3 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1.5 ${verFechadas ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><Clock size={14} /> Fechadas hoje ({fechadasHoje.length})</button>
+            <div className="flex justify-center mb-3">
+              <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-800 p-0.5 text-sm">
+                <button onClick={() => setVerFechadas(false)} className={`px-3 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1.5 ${!verFechadas ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><Receipt size={14} /> Abertas ({abertas.length})</button>
+                <button onClick={() => setVerFechadas(true)} className={`px-3 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1.5 ${verFechadas ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><Clock size={14} /> Fechadas hoje ({fechadasHoje.length})</button>
+              </div>
             </div>
           )}
 
@@ -197,9 +212,18 @@ export function ComandasPage({ onLogout }: { onLogout?: () => void } = {}) {
         <RelatorioComandas comandas={comandas} />
       )}
 
-      {tabEfetiva === "config" && podeConfigTab && (
-        <ConfigComandas rid={rid} produtos={produtos} categorias={categorias} estacoes={estacoes} podeProdutos={podeProdutos} podeEstacoes={podeEstacoes} />
+      {tabEfetiva === "produtos" && podeProdutos && (
+        <div className="max-w-lg mx-auto"><ProdutosPanel rid={rid} produtos={produtos} categorias={categorias} /></div>
       )}
+      {tabEfetiva === "categorias" && podeProdutos && (
+        <div className="max-w-lg mx-auto"><CategoriasPanel rid={rid} produtos={produtos} categorias={categorias} /></div>
+      )}
+      {tabEfetiva === "impressoras" && podeEstacoes && (
+        <div className="max-w-lg mx-auto"><EstacoesPanel rid={rid} estacoes={estacoes} categorias={categorias} /></div>
+      )}
+
+      {/* Estação embutida: imprime os jobs neste próprio dispositivo (opt-in) */}
+      {imprimirAqui && rid && <EstacaoImpressao embedded rid={rid} nomeRest={activeRestaurant?.nome || ""} estacaoId={null} estacoes={estacoes} logoUrl={logoUrl} />}
 
       {abrindo && <AbrirComandaModal modo={abrindo} onClose={() => setAbrindo(null)} onAbrir={abrirComanda} />}
       {comandaDet && (
@@ -211,30 +235,6 @@ export function ComandasPage({ onLogout }: { onLogout?: () => void } = {}) {
         />
       )}
     </PageContainer>
-  );
-}
-
-// ── Config do módulo (abas internas: Produtos · Estação) ───────────────────
-function ConfigComandas({ rid, produtos, categorias, estacoes, podeProdutos, podeEstacoes }: {
-  rid: string; produtos: ComandaProduto[]; categorias: ComandaCategoria[]; estacoes: ComandaEstacao[]; podeProdutos: boolean; podeEstacoes: boolean;
-}) {
-  // Abas achatadas (sem aninhar "Produtos" dentro de "Produtos").
-  const subs = [
-    ...(podeProdutos ? [{ id: "produtos", label: "Produtos" }, { id: "categorias", label: "Categorias" }] : []),
-    ...(podeEstacoes ? [{ id: "estacao", label: "Impressoras" }] : []),
-  ];
-  const [sub, setSub] = useState(subs[0]?.id || "produtos");
-  return (
-    <div className="max-w-lg mx-auto">
-      {subs.length > 1 && (
-        <div className="flex w-full rounded-xl border border-gray-200 dark:border-gray-800 p-0.5 mb-3 text-sm">
-          {subs.map((s) => <button key={s.id} onClick={() => setSub(s.id)} className={`flex-1 px-3 py-1.5 rounded-lg font-semibold ${sub === s.id ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}>{s.label}</button>)}
-        </div>
-      )}
-      {sub === "produtos" && podeProdutos && <ProdutosPanel rid={rid} produtos={produtos} categorias={categorias} />}
-      {sub === "categorias" && podeProdutos && <CategoriasPanel rid={rid} produtos={produtos} categorias={categorias} />}
-      {sub === "estacao" && podeEstacoes && <EstacoesPanel rid={rid} estacoes={estacoes} categorias={categorias} />}
-    </div>
   );
 }
 
@@ -821,36 +821,54 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
   );
 }
 
-// ── Dashboard de vendas (tempo real) ──────────────────────────────────────
+// ── Dashboard de vendas (dia único OU período) ─────────────────────────────
+const ymd = (d: Date) => d.toLocaleDateString("en-CA");
+const addDias = (base: string, n: number) => { const d = new Date(base + "T12:00:00"); d.setDate(d.getDate() + n); return ymd(d); };
+const brData = (d: string) => d.split("-").reverse().join("/");
 function RelatorioComandas({ comandas }: { comandas: Comanda[] }) {
-  const hoje = new Date().toLocaleDateString("en-CA");
-  const [dataSel, setDataSel] = useState(hoje);
+  const hoje = ymd(new Date());
+  const [preset, setPreset] = useState("hoje");
+  const [de, setDe] = useState(hoje);
+  const [ate, setAte] = useState(hoje);
+  const PRESETS = [{ id: "hoje", label: "Hoje" }, { id: "ontem", label: "Ontem" }, { id: "7d", label: "7 dias" }, { id: "mes", label: "Este mês" }, { id: "custom", label: "Período" }];
+  function aplicar(id: string) {
+    setPreset(id);
+    if (id === "hoje") { setDe(hoje); setAte(hoje); }
+    else if (id === "ontem") { const o = addDias(hoje, -1); setDe(o); setAte(o); }
+    else if (id === "7d") { setDe(addDias(hoje, -6)); setAte(hoje); }
+    else if (id === "mes") { setDe(hoje.slice(0, 7) + "-01"); setAte(hoje); }
+    // custom: mantém o intervalo atual e libera os inputs
+  }
+  // Normaliza (de ≤ ate) pra comparação por string YYYY-MM-DD.
+  const [d0, d1] = de <= ate ? [de, ate] : [ate, de];
   const diaDe = (c: Comanda) => (c.fechadoEm || c.criadoEm || "").slice(0, 10);
-  const doDia = comandas.filter((c) => diaDe(c) === dataSel);
-  const abertas = doDia.filter((c) => c.status === "aberta");
-  const fechadas = doDia.filter((c) => c.status === "fechada");
-  const emAberto = abertas.reduce((s, c) => s + (c.total - (c.valorPago || 0)), 0);   // consumo sem pagamento
-  const recebido = doDia.reduce((s, c) => s + (c.valorPago || 0), 0);
-  const faturamento = doDia.reduce((s, c) => s + (c.total || 0), 0);
-  const pessoas = doDia.reduce((s, c) => s + (c.pessoas || 1), 0);
-  const itensConsumidos = doDia.reduce((s, c) => s + c.itens.reduce((a, i) => a + (i.porPeso ? 1 : i.qtd), 0), 0);
+  const noPeriodo = comandas.filter((c) => { const d = diaDe(c); return d >= d0 && d <= d1; });
+  const umDia = d0 === d1;
+  const incluiHoje = d1 === hoje;
+
+  const abertas = noPeriodo.filter((c) => c.status === "aberta");
+  const fechadas = noPeriodo.filter((c) => c.status === "fechada");
+  const emAberto = abertas.reduce((s, c) => s + (c.total - (c.valorPago || 0)), 0);
+  const recebido = noPeriodo.reduce((s, c) => s + (c.valorPago || 0), 0);
+  const faturamento = noPeriodo.reduce((s, c) => s + (c.total || 0), 0);
+  const pessoas = noPeriodo.reduce((s, c) => s + (c.pessoas || 1), 0);
+  const itensConsumidos = noPeriodo.reduce((s, c) => s + c.itens.reduce((a, i) => a + (i.porPeso ? 1 : i.qtd), 0), 0);
   const porForma = useMemo(() => {
     const m = new Map<string, number>();
-    for (const c of doDia) for (const p of c.pagamentos || []) m.set(p.forma, (m.get(p.forma) || 0) + p.valor);
+    for (const c of noPeriodo) for (const p of c.pagamentos || []) m.set(p.forma, (m.get(p.forma) || 0) + p.valor);
     return [...m.entries()].sort((a, b) => b[1] - a[1]);
-  }, [comandas, dataSel]); // eslint-disable-line react-hooks/exhaustive-deps
-  // Resumo gerencial POR DATA (todas as datas, mais recente primeiro).
+  }, [comandas, d0, d1]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Quebra por data DENTRO do período (mais recente primeiro).
   const porData = useMemo(() => {
     const m = new Map<string, { fat: number; rec: number; n: number; pes: number }>();
-    for (const c of comandas) {
+    for (const c of noPeriodo) {
       const d = diaDe(c); if (!d) continue;
       const o = m.get(d) || { fat: 0, rec: 0, n: 0, pes: 0 };
       o.fat += c.total || 0; o.rec += c.valorPago || 0; o.n += 1; o.pes += c.pessoas || 1;
       m.set(d, o);
     }
     return [...m.entries()].sort((a, b) => b[0].localeCompare(a[0]));
-  }, [comandas]);
-  const totalGeral = porData.reduce((s, [, o]) => s + o.fat, 0);
+  }, [comandas, d0, d1]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const Card = ({ label, valor, tone, hint }: { label: string; valor: string; tone?: string; hint?: string }) => (
     <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-3">
@@ -861,16 +879,26 @@ function RelatorioComandas({ comandas }: { comandas: Comanda[] }) {
   );
   return (
     <div className="space-y-3">
-      <div className="flex items-center justify-between gap-2 flex-wrap">
-        <div className="inline-flex items-center gap-2 text-sm">
-          <span className="text-gray-500">Dia</span>
-          <input type="date" value={dataSel} onChange={(e) => setDataSel(e.target.value)} className="h-9 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
-          {dataSel !== hoje && <button onClick={() => setDataSel(hoje)} className="text-[12px] text-indigo-600 dark:text-indigo-400 font-semibold">hoje</button>}
-        </div>
-        {dataSel === hoje && <span className="text-[11px] text-emerald-600 dark:text-emerald-400">● tempo real</span>}
+      {/* Seletor de período: presets + intervalo */}
+      <div className="flex flex-wrap items-center justify-center gap-1.5">
+        {PRESETS.map((p) => (
+          <button key={p.id} onClick={() => aplicar(p.id)} className={`px-3 py-1.5 rounded-full text-[13px] font-semibold border ${preset === p.id ? "bg-indigo-600 border-indigo-600 text-white" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{p.label}</button>
+        ))}
       </div>
+      {preset === "custom" && (
+        <div className="flex items-center justify-center gap-2 text-sm">
+          <input type="date" value={de} max={ate} onChange={(e) => setDe(e.target.value)} className="h-9 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+          <span className="text-gray-400">até</span>
+          <input type="date" value={ate} min={de} onChange={(e) => setAte(e.target.value)} className="h-9 px-2 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+        </div>
+      )}
+      <div className="flex items-center justify-center gap-2 text-[12px] text-gray-500">
+        <span>{umDia ? brData(d0) : `${brData(d0)} — ${brData(d1)}`}</span>
+        {incluiHoje && <span className="text-emerald-600 dark:text-emerald-400">● tempo real</span>}
+      </div>
+
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-2">
-        <Card label="Faturamento" valor={fmtR(faturamento)} tone="text-indigo-700 dark:text-indigo-300" hint={`${doDia.length} comanda(s)`} />
+        <Card label="Faturamento" valor={fmtR(faturamento)} tone="text-indigo-700 dark:text-indigo-300" hint={`${noPeriodo.length} comanda(s)`} />
         <Card label="Recebido" valor={fmtR(recebido)} tone="text-emerald-600 dark:text-emerald-300" hint={`${fechadas.length} paga(s)`} />
         <Card label="Em aberto" valor={fmtR(emAberto)} tone={emAberto > 0 ? "text-amber-600 dark:text-amber-300" : undefined} hint={`${abertas.length} aberta(s)`} />
         <Card label="Pessoas" valor={String(pessoas)} hint={`${itensConsumidos} itens`} />
@@ -883,17 +911,17 @@ function RelatorioComandas({ comandas }: { comandas: Comanda[] }) {
           </div>
         </div>
       )}
-      {/* Relatório gerencial por data */}
+      {/* Quebra por data (só quando o período tem mais de um dia com venda) */}
       {porData.length > 1 && (
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden">
           <div className="flex items-center justify-between px-3 py-2 border-b border-gray-100 dark:border-gray-800">
             <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Vendas por data</span>
-            <span className="text-[12px] text-gray-500">Total geral <b className="text-gray-800 dark:text-gray-100 tabular-nums">{fmtR(totalGeral)}</b></span>
+            <span className="text-[12px] text-gray-500">{porData.length} dia(s) · <b className="text-gray-800 dark:text-gray-100 tabular-nums">{fmtR(faturamento)}</b></span>
           </div>
           <div className="divide-y divide-gray-100 dark:divide-gray-800 max-h-[40vh] overflow-y-auto">
             {porData.map(([d, o]) => (
-              <button key={d} onClick={() => setDataSel(d)} className={`w-full flex items-center gap-2 px-3 py-2 text-[13px] text-left hover:bg-gray-50 dark:hover:bg-gray-800/40 ${d === dataSel ? "bg-indigo-50/40 dark:bg-indigo-950/20" : ""}`}>
-                <span className="w-24 tabular-nums text-gray-600 dark:text-gray-300">{d.split("-").reverse().join("/")}</span>
+              <button key={d} onClick={() => { setPreset("custom"); setDe(d); setAte(d); }} className="w-full flex items-center gap-2 px-3 py-2 text-[13px] text-left hover:bg-gray-50 dark:hover:bg-gray-800/40">
+                <span className="w-24 tabular-nums text-gray-600 dark:text-gray-300">{brData(d)}</span>
                 <span className="flex-1 text-gray-400 text-[12px]">{o.n} comanda(s) · {o.pes}p</span>
                 <span className="tabular-nums text-gray-500 text-[12px]">rec {fmtR(o.rec)}</span>
                 <span className="w-24 text-right tabular-nums font-semibold text-indigo-700 dark:text-indigo-300">{fmtR(o.fat)}</span>
