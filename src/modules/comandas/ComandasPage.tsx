@@ -6,7 +6,7 @@
 // Produto pode ser por PESO (preço/kg, lança-se o peso) — balança Prix 4 depois.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut } from "lucide-react";
+import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Settings } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -51,6 +51,7 @@ export function ComandasPage({ onLogout }: { onLogout?: () => void } = {}) {
   const [abrindo, setAbrindo] = useState<null | "conta" | "togo">(null);
   const [detalhe, setDetalhe] = useState<string | null>(null);   // comandaId aberta no detalhe
   const [verFechadas, setVerFechadas] = useState(false);
+  const [menuAberto, setMenuAberto] = useState(false);   // menu hambúrguer (Relatórios/Config/Estação/Sair)
   // Estação de impressão: abre por ?estacao=1 (ou ?estacao=<id>) na URL.
   const estacaoParam = typeof window !== "undefined" ? new URLSearchParams(window.location.search).get("estacao") : null;
   const estacao = !!estacaoParam;
@@ -109,20 +110,32 @@ export function ComandasPage({ onLogout }: { onLogout?: () => void } = {}) {
           <h1 className="text-lg font-extrabold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Receipt size={20} className="text-indigo-500" /> Comandas</h1>
           <p className="text-[12px] text-gray-500">{activeRestaurant?.nome || ""}</p>
         </div>
-        <div className="flex items-center gap-1.5">
-          <a href={`?estacao=1`} target="_blank" rel="noreferrer" className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm inline-flex items-center gap-1.5" title="Abrir a estação de impressão (num PC com a Epson)"><Printer size={15} /> Estação</a>
-          {onLogout && <button onClick={onLogout} className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300 inline-flex items-center gap-1.5" title="Sair do PDV"><LogOut size={15} /> Sair</button>}
+        <div className="relative">
+          <button onClick={() => setMenuAberto((v) => !v)} className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm inline-flex items-center gap-1.5 hover:bg-gray-50 dark:hover:bg-gray-800/50" title="Menu">
+            <Menu size={17} /> Menu
+          </button>
+          {menuAberto && (
+            <>
+              <div className="fixed inset-0 z-40" onClick={() => setMenuAberto(false)} />
+              <div className="absolute right-0 mt-1.5 w-56 z-50 rounded-xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 shadow-lg py-1.5">
+                {/* Navegação entre as telas do módulo */}
+                {abasDisp.map((a) => {
+                  const ic = a.id === "comandas" ? <Receipt size={16} /> : a.id === "relatorios" ? <BarChart3 size={16} /> : <Settings size={16} />;
+                  const label = a.id === "config" ? "Configurações" : a.label;
+                  return (
+                    <button key={a.id} onClick={() => { setTab(a.id); setMenuAberto(false); }} className={`w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left ${tabEfetiva === a.id ? "text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-50/60 dark:bg-indigo-950/20" : "text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"}`}>
+                      {ic} {label}
+                    </button>
+                  );
+                })}
+                <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
+                <a href={`?estacao=1`} target="_blank" rel="noreferrer" onClick={() => setMenuAberto(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Printer size={16} /> Estação de impressão</a>
+                {onLogout && <button onClick={() => { setMenuAberto(false); onLogout(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-rose-600 dark:text-rose-400 hover:bg-rose-50/60 dark:hover:bg-rose-950/20"><LogOut size={16} /> Sair do PDV</button>}
+              </div>
+            </>
+          )}
         </div>
       </div>
-
-      {/* Abas do módulo (só as permitidas) */}
-      {abasDisp.length > 1 && (
-        <div className="flex gap-1 border-b border-gray-200 dark:border-gray-800 mb-3 -mt-1 overflow-x-auto no-scrollbar">
-          {abasDisp.map((a) => (
-            <button key={a.id} onClick={() => setTab(a.id)} className={`shrink-0 px-4 py-2 text-sm font-semibold border-b-2 -mb-px ${tabEfetiva === a.id ? "border-indigo-600 text-indigo-600 dark:text-indigo-400" : "border-transparent text-gray-500 hover:text-gray-800 dark:hover:text-gray-200"}`}>{a.label}</button>
-          ))}
-        </div>
-      )}
 
       {tabEfetiva === "comandas" && (
         <>

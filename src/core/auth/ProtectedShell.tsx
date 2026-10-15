@@ -260,10 +260,13 @@ function ComandasKioskShell() {
   }
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
-      <Routes>
-        <Route path="/r/:rid/comandas" element={<ComandasPage onLogout={() => void signOut()} />} />
-        <Route path="*" element={<Navigate to={`/r/${rid}/comandas${typeof window !== "undefined" ? window.location.search : ""}`} replace />} />
-      </Routes>
+      {/* Moldura central (o kiosk não tem o <main> do AppShell que dá margem) */}
+      <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
+        <Routes>
+          <Route path="/r/:rid/comandas" element={<ComandasPage onLogout={() => void signOut()} />} />
+          <Route path="*" element={<Navigate to={`/r/${rid}/comandas${typeof window !== "undefined" ? window.location.search : ""}`} replace />} />
+        </Routes>
+      </div>
     </div>
   );
 }
