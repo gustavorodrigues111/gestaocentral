@@ -529,7 +529,10 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   const [arquivoPath, setArquivoPath] = useState<string | null>(null);  // path do PDF no Storage (pra reler)
   const [relendo, setRelendo] = useState(false);
   const [salvando, setSalvando] = useState(false);
-  const [rateioRow, setRateioRow] = useState<number | null>(null);  // linha com o editor de rateio aberto
+  // Editor de destino/rateio inline: por linha ({bulk:false,i}) ou em lote ({bulk:true}).
+  const [picker, setPicker] = useState<{ bulk: boolean; i: number } | null>(null);
+  const [aplicarIguais, setAplicarIguais] = useState(false);        // ao aplicar numa linha, replica aos lançamentos do mesmo estabelecimento
+  const [sel, setSel] = useState<Set<number>>(() => new Set());     // índices de linhas selecionadas (ação em lote)
   const [trocandoCartao, setTrocandoCartao] = useState(false);      // revela o select de cartão numa fatura já salva
   const [agrupar, setAgrupar] = useState(false);                    // agrupa a tabela por empresa/destino
   const [dirty, setDirty] = useState(false);                        // edições não salvas na classificação
@@ -582,9 +585,9 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
       rateio: rateioDeLanc(l), categoriaId: l.categoriaId || null, ignorar: l.ignorado || undefined,
       pendente: l.destinoTipo === "pendente" || undefined,
     })));
-    setDirty(false);
+    setDirty(false); setSel(new Set());
   }
-  function limpar() { setLinhas([]); setVenc(null); setTotalFatura(null); setCartao(""); setFaturaId(null); setArquivoPath(null); setErro(""); setTrocandoCartao(false); setDirty(false); }
+  function limpar() { setLinhas([]); setVenc(null); setTotalFatura(null); setCartao(""); setFaturaId(null); setArquivoPath(null); setErro(""); setTrocandoCartao(false); setDirty(false); setSel(new Set()); }
   // Troca a fatura sendo editada (navegação por chips). Avisa se há fatura nova não salva.
   function trocarPara(f: CartaoFatura) {
     if (f.id === faturaId) return;
@@ -711,11 +714,42 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         idxs.forEach(i => { if (parcInfo(novas[i])!.n !== minN) { novas[i].ignorar = true; novas[i].pendente = undefined; novas[i].duvida = true; novas[i].duvidaMotivo = "parcela futura (cronograma) — não é desta fatura"; } });
       });
       setLinhas(novas);
-      setDirty(false);
+      setDirty(false); setSel(new Set());
   }
 
   function setLinha(i: number, patch: Partial<Extraido>) { setDirty(true); setLinhas(prev => prev.map((l, j) => j === i ? { ...l, ...patch } : l)); }
   function setRateio(i: number, rateio: RateioSimples[]) { setLinha(i, { rateio, pendente: false }); }
+  // Aplica um rateio a várias linhas de uma vez (lote ou "mesmo estabelecimento").
+  function setRateioMany(idxs: number[], rateio: RateioSimples[]) {
+    const s = new Set(idxs); setDirty(true);
+    setLinhas(prev => prev.map((l, j) => s.has(j) && !l.ignorar ? { ...l, rateio, pendente: false } : l));
+  }
+  function setCategoriaMany(idxs: number[], categoriaId: string | null) {
+    const s = new Set(idxs); setDirty(true);
+    setLinhas(prev => prev.map((l, j) => {
+      if (!s.has(j) || l.ignorar) return l;
+      const padrao = catRateioPadrao(categoriaId);
+      return { ...l, categoriaId, rateio: l.rateio.length ? l.rateio : padrao };
+    }));
+  }
+  function ignorarMany(idxs: number[]) { const s = new Set(idxs); setDirty(true); setLinhas(prev => prev.map((l, j) => s.has(j) ? { ...l, ignorar: true } : l)); setSel(new Set()); }
+  // Índices (não-ignorados) com o mesmo nome normalizado da linha i — p/ "aplicar aos iguais".
+  const idxsIguais = (i: number): number[] => { const k = normNome(linhas[i]?.descricao || ""); return linhas.map((_, j) => j).filter(j => !linhas[j].ignorar && normNome(linhas[j].descricao) === k); };
+  // Seleção em lote.
+  const toggleSel = (i: number) => setSel(p => { const n = new Set(p); if (n.has(i)) n.delete(i); else n.add(i); return n; });
+  const selecionaveis = () => linhas.map((_, i) => i).filter(i => !linhas[i].ignorar);
+  const toggleSelTodos = () => setSel(p => { const todos = selecionaveis(); return p.size >= todos.length && todos.length > 0 ? new Set() : new Set(todos); });
+  const [ultimoRateio, setUltimoRateio] = useState<RateioSimples[]>([]);  // último rateio aplicado pelo picker (p/ reaplicar aos iguais)
+  // Aplica o rateio escolhido no picker (linha única, "iguais" ou lote). Chamado AO VIVO a cada toque.
+  const aplicarPicker = (rateio: RateioSimples[]) => {
+    if (!picker) return;
+    setUltimoRateio(rateio);
+    if (picker.bulk) setRateioMany([...sel], rateio);
+    else if (aplicarIguais) setRateioMany(idxsIguais(picker.i), rateio);
+    else setRateio(picker.i, rateio);
+  };
+  // Liga/desliga "aplicar aos iguais" — ao ligar, replica o rateio atual nos demais lançamentos iguais.
+  const onToggleIguais = (v: boolean) => { setAplicarIguais(v); if (v && picker && !picker.bulk) setRateioMany(idxsIguais(picker.i), ultimoRateio); };
   // Ao escolher categoria: se ela tem rateio padrão e a linha ainda não tem
   // rateio próprio, aplica o padrão da categoria.
   function setCategoria(i: number, categoriaId: string | null) {
@@ -730,8 +764,8 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
 
   const toggleIgnorar = (i: number) => { setDirty(true); setLinhas(prev => prev.map((l, j) => j === i ? { ...l, ignorar: !l.ignorar } : l)); };
   // Adiciona um lançamento manual (pra fechar a diferença quando a IA perdeu uma linha).
-  const adicionarLinha = () => { setDirty(true); setLinhas(prev => [...prev, { data: "", descricao: "", valor: 0, parcela: null, rateio: [], categoriaId: null, pendente: true, manual: true }]); };
-  const removerLinha = (i: number) => { setDirty(true); setLinhas(prev => prev.filter((_, j) => j !== i)); };
+  const adicionarLinha = () => { setDirty(true); setSel(new Set()); setLinhas(prev => [...prev, { data: "", descricao: "", valor: 0, parcela: null, rateio: [], categoriaId: null, pendente: true, manual: true }]); };
+  const removerLinha = (i: number) => { setDirty(true); setSel(new Set()); setLinhas(prev => prev.filter((_, j) => j !== i)); };
   const linhasValidas = linhas.filter(l => !l.ignorar);
   const somaClass = linhasValidas.reduce((s, l) => s + (l.valor || 0), 0);
   const diff = totalFatura != null ? Math.round((somaClass - totalFatura) * 100) / 100 : null;
@@ -854,9 +888,16 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
   }
 
   const inp = "px-2 py-1.5 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900";
+  const selecionavel = !bloqueado;                 // só dá pra selecionar/editar fatura em rascunho
+  const nCols = selecionavel ? 6 : 5;              // +1 coluna de checkbox quando editável
 
   const renderLinha = (l: Extraido, i: number) => (
-    <tr key={i} className={`border-t border-gray-100 dark:border-gray-800 ${l.ignorar ? "opacity-45" : l.duvida ? "bg-rose-50 dark:bg-rose-900/20 border-l-2 border-l-rose-400" : ""}`}>
+    <tr key={i} className={`border-t border-gray-100 dark:border-gray-800 ${sel.has(i) ? "bg-indigo-50/60 dark:bg-indigo-900/15" : ""} ${l.ignorar ? "opacity-45" : !sel.has(i) && l.duvida ? "bg-rose-50 dark:bg-rose-900/20 border-l-2 border-l-rose-400" : ""}`}>
+      {selecionavel && (
+        <td className="px-2 py-1.5 align-middle">
+          {!l.ignorar && <input type="checkbox" checked={sel.has(i)} onChange={() => toggleSel(i)} className="w-4 h-4 accent-indigo-600 align-middle" />}
+        </td>
+      )}
       <td className="px-2 py-1.5 whitespace-nowrap text-gray-500">
         {l.manual && !bloqueado
           ? <input value={l.data} onChange={e => setLinha(i, { data: e.target.value })} placeholder="DD/MM" className="w-16 bg-transparent border border-rose-300 dark:border-rose-700 rounded px-1.5 py-0.5 text-sm" />
@@ -882,7 +923,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         <>
           <td className="px-2 py-1.5">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <button type="button" disabled={bloqueado} onClick={() => setRateioRow(i)} className={(l.rateio.length === 1 ? empChip(l.rateio[0].empresaId) : chipSelect(l.rateio.length ? "empresa" : l.pendente ? "vazio" : "neutro")) + " pr-2.5 inline-flex items-center gap-1" + (bloqueado ? " opacity-70 cursor-default" : "")}>{l.pendente && !l.rateio.length ? <><Hourglass size={12} /> Pendente</> : resumoRateio(l.rateio)}{bloqueado ? "" : " ▾"}</button>
+              <button type="button" disabled={bloqueado} onClick={() => { setAplicarIguais(false); setPicker({ bulk: false, i }); }} className={(l.rateio.length === 1 ? empChip(l.rateio[0].empresaId) : chipSelect(l.rateio.length ? "empresa" : l.pendente ? "vazio" : "neutro")) + " pr-2.5 inline-flex items-center gap-1" + (bloqueado ? " opacity-70 cursor-default" : "")}>{l.pendente && !l.rateio.length ? <><Hourglass size={12} /> Pendente</> : resumoRateio(l.rateio)}{bloqueado ? "" : " ▾"}</button>
             </div>
           </td>
           <td className="px-2 py-1.5">
@@ -1032,6 +1073,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
           <div className="overflow-x-auto rounded-xl border border-gray-200 dark:border-gray-800">
             <table className="w-full min-w-[640px] text-sm">
               <thead><tr className="text-[11px] uppercase text-gray-400 bg-gray-50 dark:bg-gray-900/40">
+                {selecionavel && <th className="px-2 py-2 w-8"><input type="checkbox" checked={sel.size > 0 && sel.size >= selecionaveis().length} onChange={toggleSelTodos} className="w-4 h-4 accent-indigo-600 align-middle" title="Selecionar todos" /></th>}
                 <th className="text-left px-2 py-2">Data</th><th className="text-left px-2 py-2">Descrição</th><th className="text-right px-2 py-2">Valor</th><th className="text-left px-2 py-2">Reembolso</th><th className="text-left px-2 py-2">Categoria</th>
               </tr></thead>
               <tbody>
@@ -1039,7 +1081,7 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
                   ? gruposLinhas.map(g => (
                       <Fragment key={g.label}>
                         <tr className="bg-gray-50 dark:bg-gray-800/40">
-                          <td colSpan={5} className="px-2 py-1.5">
+                          <td colSpan={nCols} className="px-2 py-1.5">
                             <span className="text-[11px] font-semibold text-gray-600 dark:text-gray-300 flex items-center gap-1.5">
                               {g.empId && <span className={"w-2.5 h-2.5 rounded-full " + empCor(g.empId).dot} />}
                               {g.label}
@@ -1057,17 +1099,114 @@ function Classificacao({ rid, meId, pixPadrao, cartoes, empresaPropriaNome, outr
         </>
       )}
 
-      {rateioRow != null && linhas[rateioRow] && (
-        <RateioModal
-          titulo={`Reembolso · ${linhas[rateioRow].descricao}`}
+      {/* Barra flutuante de ação em lote */}
+      {editando && selecionavel && sel.size > 0 && (
+        <div className="fixed z-40 bottom-3 left-1/2 -translate-x-1/2 w-[calc(100%-1.5rem)] max-w-xl">
+          <div className="rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-white/95 dark:bg-gray-900/95 backdrop-blur shadow-lg px-3 py-2.5 flex items-center gap-2 flex-wrap">
+            <span className="text-xs font-bold text-indigo-700 dark:text-indigo-300 whitespace-nowrap">{sel.size} selecionado(s)</span>
+            <button type="button" onClick={() => setPicker({ bulk: true, i: -1 })} className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-violet-300 bg-violet-50 text-violet-700 dark:bg-violet-900/25 dark:text-violet-300 dark:border-violet-700 inline-flex items-center gap-1">Destino / rateio ▾</button>
+            <select value="" onChange={e => { if (e.target.value) { setCategoriaMany([...sel], e.target.value); e.target.value = ""; } }} className="text-xs px-2 py-1.5 rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+              <option value="">Categoria…</option>
+              {catsDe(rid).map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            </select>
+            <button type="button" onClick={() => ignorarMany([...sel])} className="text-xs font-medium px-2.5 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-800/50">Ignorar</button>
+            <button type="button" onClick={() => setSel(new Set())} className="ml-auto text-xs text-gray-400 hover:text-gray-700 dark:hover:text-gray-200">limpar</button>
+          </div>
+        </div>
+      )}
+
+      {picker && (
+        <DestinoPicker
           empresas={outrasEmpresas}
-          propria={{ id: rid, nome: empresaPropriaNome || "Minha empresa" }}
-          valorBase={linhas[rateioRow].valor}
-          value={linhas[rateioRow].rateio}
-          onChange={r => setRateio(rateioRow, r)}
-          onClose={() => setRateioRow(null)}
+          value={picker.bulk ? [] : (linhas[picker.i]?.rateio || [])}
+          valorBase={picker.bulk ? undefined : linhas[picker.i]?.valor}
+          header={picker.bulk ? `${sel.size} lançamento(s) selecionado(s)` : linhas[picker.i]?.descricao}
+          extra={!picker.bulk && idxsIguais(picker.i).length > 1 ? (
+            <label className="flex items-center gap-2 text-[12px] text-amber-800 dark:text-amber-200 px-2 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-900/15 cursor-pointer">
+              <input type="checkbox" checked={aplicarIguais} onChange={e => onToggleIguais(e.target.checked)} className="w-4 h-4 accent-indigo-600" />
+              Aplicar aos {idxsIguais(picker.i).length} lançamentos do mesmo estabelecimento
+            </label>
+          ) : null}
+          onApply={aplicarPicker}
+          onClose={() => { setPicker(null); setAplicarIguais(false); }}
         />
       )}
+    </div>
+  );
+}
+
+// ─── Picker de destino inline (rápido) ───────────────────────────────────────
+// Caso simples (1 empresa = 100%) num toque; marcar 2+ ele RATEIA igual
+// automático (% editável). O que sobra de 100% fica como "meu" (sem reembolso).
+// Aplica AO VIVO (onApply a cada toque) — sem botão "Aplicar". Serve p/ linha
+// única e p/ lote.
+function DestinoPicker({ empresas, value, valorBase, header, extra, onApply, onClose }: {
+  empresas: { id: string; nome: string }[]; value: RateioSimples[]; valorBase?: number;
+  header?: React.ReactNode; extra?: React.ReactNode; onApply: (r: RateioSimples[]) => void; onClose: () => void;
+}) {
+  const [pcts, setPcts] = useState<Record<string, number>>(() => Object.fromEntries(value.filter(p => p.percentual > 0).map(p => [p.empresaId, p.percentual])));
+  const [busca, setBusca] = useState("");
+  const commit = (next: Record<string, number>) => {
+    const clean: Record<string, number> = {}; for (const [k, v] of Object.entries(next)) if (v > 0) clean[k] = v;
+    setPcts(clean);
+    onApply(Object.entries(clean).map(([empresaId, percentual]) => ({ empresaId, percentual: round2(percentual) })));
+  };
+  // Divide 100% igualmente entre os ids (o último fica com a sobra do arredondamento).
+  const distribuir = (ids: string[]): Record<string, number> => {
+    const n = ids.length; if (!n) return {};
+    const base = Math.floor(10000 / n) / 100; const out: Record<string, number> = {};
+    ids.forEach((id, i) => { out[id] = i === n - 1 ? round2(100 - base * (n - 1)) : base; });
+    return out;
+  };
+  const ativos = Object.keys(pcts);
+  const toggle = (id: string) => { const s = new Set(ativos); if (s.has(id)) s.delete(id); else s.add(id); commit(distribuir([...s])); };
+  const setPct = (id: string, v: number) => commit({ ...pcts, [id]: v });
+  const total = ativos.reduce((s, k) => s + pcts[k], 0); const sobra = round2(100 - total);
+  const lista = empresas.filter(e => !busca.trim() || e.nome.toLowerCase().includes(busca.toLowerCase()));
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/40 sm:p-4" onClick={onClose}>
+      <div className="w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 p-3 space-y-2 max-h-[82vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between gap-2">
+          <div className="text-sm font-semibold text-gray-900 dark:text-gray-100">Destino do gasto</div>
+          {header && <div className="text-[11px] text-gray-400 truncate max-w-[55%]">{header}</div>}
+        </div>
+        {extra}
+        {empresas.length > 8 && <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar empresa…" className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />}
+        {/* Meu = sem reembolso (limpa tudo) */}
+        <button type="button" onClick={() => commit({})} className={"w-full text-left flex items-center gap-2.5 py-2.5 px-2 rounded-lg " + (ativos.length === 0 ? "bg-gray-100 dark:bg-gray-800/60" : "hover:bg-gray-50 dark:hover:bg-gray-800/50")}>
+          <span className="w-4 h-4 rounded-full border border-gray-400 flex items-center justify-center text-[10px] text-indigo-600">{ativos.length === 0 ? "●" : ""}</span>
+          <span className="text-sm">Meu <span className="text-[11px] text-gray-400">· sem reembolso</span></span>
+        </button>
+        <div className="divide-y divide-gray-100 dark:divide-gray-800">
+          {lista.map(em => {
+            const on = (pcts[em.id] || 0) > 0;
+            return (
+              <div key={em.id} onClick={() => toggle(em.id)} className={"flex items-center gap-2.5 py-2.5 px-2 rounded-lg cursor-pointer " + (on ? "bg-indigo-50 dark:bg-indigo-900/20" : "hover:bg-gray-50 dark:hover:bg-gray-800/50")}>
+                <span className={"w-2.5 h-2.5 rounded-full shrink-0 " + empCor(em.id).dot} />
+                <input type="checkbox" checked={on} readOnly className="pointer-events-none w-4 h-4 accent-indigo-600" />
+                <span className="flex-1 text-sm truncate">{em.nome}</span>
+                {on && (
+                  <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                    <input type="number" min={0} max={100} value={pcts[em.id] || 0} onChange={e => setPct(em.id, Number(e.target.value))}
+                      className="w-14 px-2 py-1 text-sm text-right rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                    <span className="text-xs text-gray-400">%</span>
+                    {valorBase != null && <span className="w-20 text-right text-[11px] text-gray-500 tabular-nums">{fmtBRL(round2((valorBase || 0) * (pcts[em.id] || 0) / 100))}</span>}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div className="flex items-center justify-between gap-2 pt-1 sticky bottom-0 bg-white dark:bg-gray-900">
+          <span className={"text-[11px] " + (total > 100 ? "text-rose-600 font-medium" : "text-gray-500")}>
+            {ativos.length === 0 ? "Gasto seu (sem reembolso)"
+              : total > 100 ? `${round2(total)}% — passou de 100%`
+              : ativos.length === 1 ? "100% reembolso"
+              : `${ativos.length} empresas · ${round2(total)}%${sobra > 0 ? ` · sobra ${sobra}% (meu)` : ""}`}
+          </span>
+          <Button size="sm" onClick={onClose}>Pronto</Button>
+        </div>
+      </div>
     </div>
   );
 }
