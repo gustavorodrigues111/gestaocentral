@@ -202,19 +202,21 @@ export function ComandasPage() {
 function ConfigComandas({ rid, produtos, categorias, estacoes, podeProdutos, podeEstacoes }: {
   rid: string; produtos: ComandaProduto[]; categorias: ComandaCategoria[]; estacoes: ComandaEstacao[]; podeProdutos: boolean; podeEstacoes: boolean;
 }) {
+  // Abas achatadas (sem aninhar "Produtos" dentro de "Produtos").
   const subs = [
-    ...(podeProdutos ? [{ id: "produtos", label: "Produtos" }] : []),
+    ...(podeProdutos ? [{ id: "produtos", label: "Produtos" }, { id: "categorias", label: "Categorias" }] : []),
     ...(podeEstacoes ? [{ id: "estacao", label: "Impressoras" }] : []),
   ];
   const [sub, setSub] = useState(subs[0]?.id || "produtos");
   return (
-    <div>
+    <div className="max-w-lg mx-auto">
       {subs.length > 1 && (
-        <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-800 p-0.5 mb-3 text-sm">
-          {subs.map((s) => <button key={s.id} onClick={() => setSub(s.id)} className={`px-3 py-1.5 rounded-lg font-semibold ${sub === s.id ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}>{s.label}</button>)}
+        <div className="flex w-full rounded-xl border border-gray-200 dark:border-gray-800 p-0.5 mb-3 text-sm">
+          {subs.map((s) => <button key={s.id} onClick={() => setSub(s.id)} className={`flex-1 px-3 py-1.5 rounded-lg font-semibold ${sub === s.id ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}>{s.label}</button>)}
         </div>
       )}
       {sub === "produtos" && podeProdutos && <ProdutosPanel rid={rid} produtos={produtos} categorias={categorias} />}
+      {sub === "categorias" && podeProdutos && <CategoriasPanel rid={rid} produtos={produtos} categorias={categorias} />}
       {sub === "estacao" && podeEstacoes && <EstacoesPanel rid={rid} estacoes={estacoes} categorias={categorias} />}
     </div>
   );
@@ -888,9 +890,8 @@ function RelatorioComandas({ comandas }: { comandas: Comanda[] }) {
   );
 }
 
-// ── Cadastro de produtos + categorias (painel embutido na aba Config) ──────
+// ── Cadastro de produtos (aba Config › Produtos) ───────────────────────────
 function ProdutosPanel({ rid, produtos, categorias }: { rid: string; produtos: ComandaProduto[]; categorias: ComandaCategoria[] }) {
-  const [aba, setAba] = useState<"produtos" | "categorias">("produtos");
   const [editId, setEditId] = useState<string | null>(null);
   const [nome, setNome] = useState("");
   const [codigo, setCodigo] = useState("");
@@ -898,14 +899,20 @@ function ProdutosPanel({ rid, produtos, categorias }: { rid: string; produtos: C
   const [porPeso, setPorPeso] = useState(false);
   const [imprime, setImprime] = useState(false);     // vai pra impressora (cozinha/bar)
   const [categoriaId, setCategoriaId] = useState<string>("");
-  const [novaCat, setNovaCat] = useState("");
+  const [busca, setBusca] = useState("");
   const precoNum = parseFloat((preco || "").replace(/\./g, "").replace(",", ".")) || 0;
   const catById = useMemo(() => new Map(categorias.map((c) => [c.id, c])), [categorias]);
+  const listaFiltrada = useMemo(() => {
+    const q = busca.trim().toLowerCase();
+    if (!q) return produtos;
+    return produtos.filter((p) => p.nome.toLowerCase().includes(q) || (p.codigo || "").toLowerCase().includes(q) || (p.categoria || "").toLowerCase().includes(q));
+  }, [produtos, busca]);
 
   function limpar() { setEditId(null); setNome(""); setCodigo(""); setPreco(""); setPorPeso(false); setImprime(false); setCategoriaId(""); }
   function editar(p: ComandaProduto) {
     setEditId(p.id); setNome(p.nome); setCodigo(p.codigo || ""); setPreco(String(p.preco).replace(".", ","));
     setPorPeso(!!p.porPeso); setImprime(!!p.producao); setCategoriaId(p.categoriaId || "");
+    try { window.scrollTo({ top: 0, behavior: "smooth" }); } catch { /* ignore */ }
   }
   async function salvar() {
     if (!nome.trim() || precoNum <= 0) return;
@@ -919,76 +926,83 @@ function ProdutosPanel({ rid, produtos, categorias }: { rid: string; produtos: C
     });
     limpar();
   }
-  async function addCat() {
-    if (!novaCat.trim()) return;
-    await salvarCategoria({ id: uid(), restaurantId: rid, nome: novaCat.trim(), ordem: categorias.length });
-    setNovaCat("");
-  }
 
   return (
     <div>
-      <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-800 p-0.5 text-sm mb-3">
-        <button onClick={() => setAba("produtos")} className={`px-3 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1 ${aba === "produtos" ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><Package size={14} /> Produtos</button>
-        <button onClick={() => setAba("categorias")} className={`px-3 py-1.5 rounded-lg font-semibold inline-flex items-center gap-1 ${aba === "categorias" ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}><Tag size={14} /> Categorias</button>
+      {/* Form de cadastro/edição */}
+      <div className={`space-y-2 pb-3 ${editId ? "rounded-xl border border-indigo-200 dark:border-indigo-800 p-3 bg-indigo-50/30 dark:bg-indigo-950/10" : "border-b border-gray-200 dark:border-gray-800"}`}>
+        <div className="text-[12px] font-semibold text-gray-500 dark:text-gray-400">{editId ? "Editando produto" : "Novo produto"}</div>
+        <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do produto" className="w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+        <div className="grid grid-cols-2 gap-2">
+          <input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="código (opcional)" className="h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+          <div className="relative">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
+            <input value={preco} onChange={(e) => setPreco(e.target.value)} inputMode="decimal" placeholder={porPeso ? "preço/kg" : "preço"} className="w-full h-11 pl-8 pr-2 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+          </div>
+        </div>
+        <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} className="w-full h-11 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+          <option value="">— sem categoria —</option>
+          {categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+        </select>
+        <div className="grid grid-cols-2 gap-2 text-sm">
+          <label className="flex items-center justify-center gap-1.5 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"><input type="checkbox" checked={porPeso} onChange={(e) => setPorPeso(e.target.checked)} className="accent-indigo-600" /> <Scale size={13} /> por peso (kg)</label>
+          <label className="flex items-center justify-center gap-1.5 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"><input type="checkbox" checked={imprime} onChange={(e) => setImprime(e.target.checked)} className="accent-amber-600" /> <Printer size={13} /> imprime</label>
+        </div>
+        <div className="flex gap-2 pt-0.5">
+          {editId && <button onClick={limpar} className="h-11 px-4 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Cancelar</button>}
+          <button onClick={() => void salvar()} disabled={!nome.trim() || precoNum <= 0} className="flex-1 h-11 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{editId ? "Salvar alterações" : "+ Adicionar produto"}</button>
+        </div>
       </div>
 
-      {aba === "categorias" ? (
-        <div className="max-w-lg">
-          <div className="flex gap-2 pb-3 border-b border-gray-200 dark:border-gray-800">
-            <input value={novaCat} onChange={(e) => setNovaCat(e.target.value)} placeholder="Nova categoria (ex.: Cozinha, Bar, Peixe fresco)" className="flex-1 h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
-            <button onClick={() => void addCat()} disabled={!novaCat.trim()} className="h-10 px-3 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40">+ Add</button>
-          </div>
-          <div className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
-            {categorias.length === 0 ? <div className="text-sm text-gray-400 text-center py-6">Nenhuma categoria. Crie uma pra organizar os produtos.</div> : categorias.map((c) => (
-              <div key={c.id} className="flex items-center gap-2 py-2">
-                <Tag size={14} className="text-gray-400" />
-                <span className="flex-1 text-[14px] text-gray-900 dark:text-gray-100">{c.nome}</span>
-                <span className="text-[11px] text-gray-400">{produtos.filter((p) => p.categoriaId === c.id).length} prod.</span>
-                <button onClick={() => { if (confirm(`Excluir categoria "${c.nome}"? Os produtos ficam sem categoria.`)) void excluirCategoria(c.id); }} className="text-gray-300 hover:text-rose-500"><Trash2 size={15} /></button>
-              </div>
-            ))}
-          </div>
-        </div>
-      ) : (
-        <div className="max-w-lg">
-          <div className={`space-y-2 pb-3 border-b border-gray-200 dark:border-gray-800 ${editId ? "rounded-xl border border-indigo-200 dark:border-indigo-800 p-3 bg-indigo-50/30 dark:bg-indigo-950/10" : ""}`}>
-            {editId && <div className="text-[12px] font-semibold text-indigo-600 dark:text-indigo-300">Editando produto</div>}
-            <div className="grid grid-cols-[70px_1fr_110px] gap-2">
-              <input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="código" className="h-10 px-2 text-sm text-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
-              <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do produto" className="h-10 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
-              <div className="relative">
-                <span className="absolute left-2 top-1/2 -translate-y-1/2 text-xs text-gray-400">R$</span>
-                <input value={preco} onChange={(e) => setPreco(e.target.value)} inputMode="decimal" placeholder={porPeso ? "/kg" : "preço"} className="w-full h-10 pl-7 pr-1 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
-              </div>
-            </div>
-            <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} className="w-full h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-              <option value="">— categoria —</option>
-              {categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
-            </select>
-            <div className="flex items-center gap-4 text-sm flex-wrap">
-              <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={porPeso} onChange={(e) => setPorPeso(e.target.checked)} className="accent-indigo-600" /> <Scale size={13} /> por peso (kg)</label>
-              <label className="flex items-center gap-1.5 cursor-pointer"><input type="checkbox" checked={imprime} onChange={(e) => setImprime(e.target.checked)} className="accent-amber-600" /> <Printer size={13} /> imprime (cozinha/bar)</label>
-              <div className="ml-auto flex gap-2">
-                {editId && <button onClick={limpar} className="h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 text-sm">Cancelar</button>}
-                <button onClick={() => void salvar()} disabled={!nome.trim() || precoNum <= 0} className="h-9 px-3 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40">{editId ? "Salvar" : "+ Add produto"}</button>
-              </div>
-            </div>
-          </div>
-          <div className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
-            {produtos.length === 0 ? <div className="text-sm text-gray-400 text-center py-6">Nenhum produto ainda.</div> : produtos.map((p) => (
-              <div key={p.id} className="flex items-center gap-2 py-2">
-                <button onClick={() => editar(p)} className="min-w-0 flex-1 text-left">
-                  <div className="text-[13px] font-medium text-gray-900 dark:text-gray-100 truncate">{p.codigo ? <span className="font-mono text-gray-400">#{p.codigo} </span> : ""}{p.nome} {!p.ativo && <span className="text-[10px] text-gray-400">(inativo)</span>}</div>
-                  <div className="text-[11px] text-gray-500">{fmtR(p.preco)}{p.porPeso ? "/kg · peso" : ""}{p.producao ? " · imprime" : ""}{p.categoria ? ` · ${p.categoria}` : ""}</div>
-                </button>
-                <button onClick={() => editar(p)} className="text-[11px] px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700">Editar</button>
-                <button onClick={() => void salvarProduto({ ...p, ativo: !p.ativo })} className="text-[11px] px-2 py-1 rounded-lg border border-gray-200 dark:border-gray-700">{p.ativo ? "Inativar" : "Ativar"}</button>
-                <button onClick={() => { if (confirm(`Excluir "${p.nome}"?`)) void excluirProduto(p.id); }} className="text-gray-300 hover:text-rose-500"><Trash2 size={15} /></button>
-              </div>
-            ))}
-          </div>
+      {/* Busca + lista */}
+      {produtos.length > 6 && (
+        <div className="relative mt-3">
+          <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto…" className="w-full h-10 pl-8 pr-8 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+          {busca && <button onClick={() => setBusca("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>}
         </div>
       )}
+      <div className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
+        {listaFiltrada.length === 0 ? <div className="text-sm text-gray-400 text-center py-6">{produtos.length === 0 ? "Nenhum produto ainda." : "Nada encontrado."}</div> : listaFiltrada.map((p) => (
+          <div key={p.id} className="flex items-center gap-2 py-2.5">
+            <button onClick={() => editar(p)} className="min-w-0 flex-1 text-left">
+              <div className="text-[13px] font-medium text-gray-900 dark:text-gray-100 truncate">{p.codigo ? <span className="font-mono text-gray-400">#{p.codigo} </span> : ""}{p.nome} {!p.ativo && <span className="text-[10px] text-gray-400">(inativo)</span>}</div>
+              <div className="text-[11px] text-gray-500">{fmtR(p.preco)}{p.porPeso ? "/kg · peso" : ""}{p.producao ? " · imprime" : ""}{p.categoria ? ` · ${p.categoria}` : ""}</div>
+            </button>
+            <button onClick={() => void salvarProduto({ ...p, ativo: !p.ativo })} className="text-[11px] px-2 py-1.5 rounded-lg border border-gray-200 dark:border-gray-700 shrink-0">{p.ativo ? "Inativar" : "Ativar"}</button>
+            <button onClick={() => { if (confirm(`Excluir "${p.nome}"?`)) void excluirProduto(p.id); }} className="text-gray-300 hover:text-rose-500 shrink-0"><Trash2 size={16} /></button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ── Categorias (aba Config › Categorias) ───────────────────────────────────
+function CategoriasPanel({ rid, produtos, categorias }: { rid: string; produtos: ComandaProduto[]; categorias: ComandaCategoria[] }) {
+  const [novaCat, setNovaCat] = useState("");
+  async function addCat() {
+    if (!novaCat.trim()) return;
+    if (categorias.some((c) => c.nome.trim().toLowerCase() === novaCat.trim().toLowerCase())) { setNovaCat(""); return; }
+    await salvarCategoria({ id: uid(), restaurantId: rid, nome: novaCat.trim(), ordem: categorias.length });
+    setNovaCat("");
+  }
+  return (
+    <div>
+      <div className="flex gap-2 pb-3 border-b border-gray-200 dark:border-gray-800">
+        <input value={novaCat} onChange={(e) => setNovaCat(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") void addCat(); }} placeholder="Nova categoria (ex.: Peixe fresco, Bar)" className="flex-1 h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+        <button onClick={() => void addCat()} disabled={!novaCat.trim()} className="h-11 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold disabled:opacity-40">+ Add</button>
+      </div>
+      <div className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
+        {categorias.length === 0 ? <div className="text-sm text-gray-400 text-center py-8">Nenhuma categoria.<br />Crie uma pra organizar os produtos.</div> : categorias.map((c) => (
+          <div key={c.id} className="flex items-center gap-2 py-2.5">
+            <Tag size={15} className="text-gray-400 shrink-0" />
+            <span className="flex-1 text-[14px] text-gray-900 dark:text-gray-100 truncate">{c.nome}</span>
+            <span className="text-[11px] text-gray-400 shrink-0">{produtos.filter((p) => p.categoriaId === c.id).length} prod.</span>
+            <button onClick={() => { if (confirm(`Excluir categoria "${c.nome}"? Os produtos ficam sem categoria.`)) void excluirCategoria(c.id); }} className="text-gray-300 hover:text-rose-500 shrink-0"><Trash2 size={16} /></button>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
