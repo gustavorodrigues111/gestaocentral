@@ -28,6 +28,7 @@ const ADMIN_HOSTS = new Set([
   "admin.planejamento.app",
   "planejamento.app",
   "www.planejamento.app",
+  "comandas.planejamento.app",   // kiosk do PDV → vai pro app (modo Comandas), não site
   "localhost",
   "127.0.0.1",
 ]);

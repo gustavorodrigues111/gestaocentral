@@ -14,6 +14,7 @@ import { Routes, Route, Navigate, useParams } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { useTelemetria } from "../telemetry/useTelemetria";
 import { RestaurantProvider, useRestaurant } from "../restaurant/RestaurantContext";
+import { isComandasKioskHost } from "../restaurant/subdomain";
 import { PessoasProvider } from "../pessoas/PessoasContext";
 import { LoginScreen } from "./LoginScreen";
 import { AppShell } from "../layout/AppShell";
@@ -199,6 +200,17 @@ export function ProtectedShell() {
     return <PrimeiroAcesso pessoa={pessoaReal} />;
   }
 
+  // KIOSK do PDV (comandas.planejamento.app): abre SÓ o módulo Comandas, sem
+  // menu nem rotas dos demais módulos. A segurança real continua nas permissões
+  // da pessoa — use uma conta de PDV com só a permissão de Comandas.
+  if (isComandasKioskHost()) {
+    return (
+      <RestaurantProvider>
+        <ComandasKioskShell />
+      </RestaurantProvider>
+    );
+  }
+
   return (
     <RestaurantProvider>
       <SubdomainGuard>
@@ -221,6 +233,38 @@ export function ProtectedShell() {
         </PessoasProvider>
       </SubdomainGuard>
     </RestaurantProvider>
+  );
+}
+
+// Shell do KIOSK de PDV: trava o app no módulo Comandas do restaurante ativo
+// (ou o 1º que a pessoa acessa). Sem menu, sem outras rotas. Monta a rota
+// /r/<rid>/comandas que o ComandasPage espera (ele lê o rid do param).
+function ComandasKioskShell() {
+  const { activeRestaurant, restaurants, loading } = useRestaurant();
+  const { signOut } = useAuth();
+  const rid = activeRestaurant?.id || restaurants[0]?.id || "";
+  if (loading) {
+    return <div className="min-h-screen flex items-center justify-center text-sm text-gray-500">Carregando PDV…</div>;
+  }
+  if (!rid) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 text-center bg-gray-50 dark:bg-gray-950">
+        <div className="max-w-sm">
+          <div className="flex justify-center mb-3 text-gray-400"><Lock size={40} /></div>
+          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Sem restaurante pra operar</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Esta conta não tem acesso a nenhum restaurante com o PDV. Peça pro administrador liberar, ou entre com a conta certa.</p>
+          <button onClick={() => void signOut()} className="mt-4 px-4 py-2 text-sm font-medium rounded-lg border border-gray-300 dark:border-gray-700">Sair</button>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
+      <Routes>
+        <Route path="/r/:rid/comandas" element={<ComandasPage onLogout={() => void signOut()} />} />
+        <Route path="*" element={<Navigate to={`/r/${rid}/comandas${typeof window !== "undefined" ? window.location.search : ""}`} replace />} />
+      </Routes>
+    </div>
   );
 }
 

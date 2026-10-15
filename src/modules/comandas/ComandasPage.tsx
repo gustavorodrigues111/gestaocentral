@@ -6,7 +6,7 @@
 // Produto pode ser por PESO (preço/kg, lança-se o peso) — balança Prix 4 depois.
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft } from "lucide-react";
+import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -36,7 +36,7 @@ const tempoDecorrido = (iso?: string | null): string => {
 };
 const minutosDecorridos = (iso?: string | null): number => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 60000) : 0;
 
-export function ComandasPage() {
+export function ComandasPage({ onLogout }: { onLogout?: () => void } = {}) {
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
   const { pessoa: me } = useAuth();
@@ -109,7 +109,10 @@ export function ComandasPage() {
           <h1 className="text-lg font-extrabold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Receipt size={20} className="text-indigo-500" /> Comandas</h1>
           <p className="text-[12px] text-gray-500">{activeRestaurant?.nome || ""}</p>
         </div>
-        <a href={`?estacao=1`} target="_blank" rel="noreferrer" className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm inline-flex items-center gap-1.5" title="Abrir a estação de impressão (num PC com a Epson)"><Printer size={15} /> Estação</a>
+        <div className="flex items-center gap-1.5">
+          <a href={`?estacao=1`} target="_blank" rel="noreferrer" className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm inline-flex items-center gap-1.5" title="Abrir a estação de impressão (num PC com a Epson)"><Printer size={15} /> Estação</a>
+          {onLogout && <button onClick={onLogout} className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm text-gray-600 dark:text-gray-300 inline-flex items-center gap-1.5" title="Sair do PDV"><LogOut size={15} /> Sair</button>}
+        </div>
       </div>
 
       {/* Abas do módulo (só as permitidas) */}

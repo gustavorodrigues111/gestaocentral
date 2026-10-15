@@ -26,7 +26,19 @@ const RESERVED_SUBDOMAINS = new Set([
   "staging",
   "preview",
   "test",
+  "comandas",   // kiosk do PDV (não é subdomínio de restaurante) — ver isComandasKioskHost
 ]);
+
+/**
+ * True quando o host atual é o KIOSK do PDV de Comandas
+ * (comandas.planejamento.app). Nesse host o app abre SÓ o módulo Comandas,
+ * sem menu nem acesso aos demais módulos — serve como ponto de venda dedicado.
+ * `comandas.localhost.direct` cobre o teste local.
+ */
+export function isComandasKioskHost(hostname?: string): boolean {
+  const host = (hostname ?? (typeof window !== "undefined" ? window.location.hostname : "")).toLowerCase();
+  return host === "comandas.planejamento.app" || host === "comandas.localhost.direct";
+}
 
 /**
  * Lê o subdomain da URL atual. Retorna null se não houver subdomain ativo
