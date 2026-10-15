@@ -25,6 +25,16 @@ const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency"
 const fmtNum = (n: number, dec = 0) => (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: 3 });
 const nowIso = () => new Date().toISOString();
 const FORMAS = ["Pix", "Dinheiro", "Débito", "Crédito", "Outro"];
+// Tempo decorrido desde a abertura (ex.: "agora", "23min", "1h05") — p/ os cards.
+const tempoDecorrido = (iso?: string | null): string => {
+  if (!iso) return "";
+  const min = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
+  if (min < 1) return "agora";
+  if (min < 60) return `${min}min`;
+  const h = Math.floor(min / 60), m = min % 60;
+  return `${h}h${m ? String(m).padStart(2, "0") : ""}`;
+};
+const minutosDecorridos = (iso?: string | null): number => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 60000) : 0;
 
 export function ComandasPage() {
   const { rid: ridParam } = useParams<{ rid: string }>();
@@ -70,6 +80,8 @@ export function ComandasPage() {
   const [tab, setTab] = useTabPersistida<string>("comandas", "comandas", abasDisp.map((a) => a.id));
 
   const abertas = useMemo(() => comandas.filter((c) => c.status === "aberta"), [comandas]);
+  const [, setTick] = useState(0);   // re-render a cada 1min p/ atualizar o "tempo aberta" dos cards
+  useEffect(() => { const id = setInterval(() => setTick((t) => t + 1), 60000); return () => clearInterval(id); }, []);
   const hojeYmd = new Date().toLocaleDateString("en-CA");
   const fechadasHoje = useMemo(() => comandas.filter((c) => c.status === "fechada" && (c.fechadoEm || c.criadoEm || "").slice(0, 10) === hojeYmd), [comandas, hojeYmd]);
   const comandaDet = useMemo(() => comandas.find((c) => c.id === detalhe) || null, [comandas, detalhe]);
@@ -136,17 +148,29 @@ export function ComandasPage() {
             );
             return (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2.5">
-                {lista.map((c) => (
+                {lista.map((c) => {
+                  const aberta = c.status !== "fechada";
+                  const parcial = aberta && (c.valorPago || 0) > 0.001;
+                  const mins = minutosDecorridos(c.criadoEm);
+                  const velha = aberta && mins >= 60;                   // muito tempo aberta → sinaliza
+                  const dot = !aberta ? "bg-gray-300 dark:bg-gray-600" : (parcial || velha) ? "bg-amber-500" : "bg-emerald-500";
+                  return (
                   <button key={c.id} onClick={() => setDetalhe(c.id)} className={`text-left rounded-2xl border p-3 shadow-sm ${c.status === "fechada" ? "border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-900/60" : "border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 hover:border-indigo-300 dark:hover:border-indigo-700"}`}>
                     <div className="flex items-center justify-between gap-1">
-                      <span className="text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200">#{c.numero}</span>
-                      {c.status === "fechada" ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">paga</span> : c.modo === "togo" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">to-go</span>}
+                      <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-gray-700 dark:text-gray-200"><span className={`w-2 h-2 rounded-full ${dot}`} />#{c.numero}</span>
+                      {c.status === "fechada" ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">paga</span>
+                        : parcial ? <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">parcial</span>
+                        : c.modo === "togo" && <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300">to-go</span>}
                     </div>
                     <div className="font-bold text-gray-900 dark:text-gray-100 truncate mt-1.5">{c.clienteNome || "—"}</div>
-                    <div className="text-[12px] text-gray-500">{c.itens.length} item(ns){c.pessoas && c.pessoas > 1 ? ` · ${c.pessoas}p` : ""}</div>
-                    <div className="text-base font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums mt-0.5">{fmtR(c.total)}</div>
+                    <div className="text-[12px] text-gray-500 flex items-center gap-1.5 flex-wrap">
+                      <span>{c.itens.length} item(ns){c.pessoas && c.pessoas > 1 ? ` · ${c.pessoas}p` : ""}</span>
+                      {aberta && c.criadoEm && <span className={`inline-flex items-center gap-0.5 ${velha ? "text-amber-600 dark:text-amber-400 font-semibold" : "text-gray-400"}`}><Clock size={10} /> {tempoDecorrido(c.criadoEm)}</span>}
+                    </div>
+                    <div className="text-base font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums mt-0.5">{fmtR(c.total)}{parcial && <span className="text-[11px] font-semibold text-amber-600 dark:text-amber-400 ml-1">falta {fmtR(c.total - (c.valorPago || 0))}</span>}</div>
                   </button>
-                ))}
+                  );
+                })}
               </div>
             );
           })()}
@@ -344,9 +368,11 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
   const filtrados = useMemo(() => {
     const q = busca.trim().toLowerCase();
     return produtos.filter((p) => {
+      // Com texto, a busca é GLOBAL (ignora a aba de categoria) — acha o produto
+      // em qualquer categoria pelo nome ou pelo código. Sem texto, respeita a aba.
+      if (q) return p.nome.toLowerCase().includes(q) || (p.codigo || "").toLowerCase().includes(q);
       if (catSel !== "todas") { const k = p.categoriaId || "sem"; if (k !== catSel) return false; }
-      if (!q) return true;
-      return p.nome.toLowerCase().includes(q) || (p.codigo || "").toLowerCase().includes(q);
+      return true;
     });
   }, [produtos, busca, catSel]);
 
@@ -499,7 +525,8 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
             <div className="p-2 border-b border-gray-100 dark:border-gray-800">
               <div className="relative">
                 <Search size={15} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
-                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto ou código…" className="w-full h-9 pl-8 pr-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                <input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar em todas as categorias (nome ou código)…" className="w-full h-9 pl-8 pr-8 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+                {busca && <button onClick={() => setBusca("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600"><X size={14} /></button>}
               </div>
             </div>
             <div className="flex-1 overflow-y-auto p-2">
@@ -655,6 +682,10 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
   const somaLinhas = +linhas.reduce((s, l) => s + l.valor, 0).toFixed(2);
   const restante = +(saldo - somaLinhas).toFixed(2);
   const vaiFechar = somaLinhas >= saldo - 0.001;
+  // Visão viva do pagamento — inclui o valor DIGITADO (ainda não "Add"), estilo Goomer.
+  const pagoAgora = +(somaLinhas + (valorIn > 0 ? valorIn : 0)).toFixed(2);
+  const faltaLive = Math.max(0, +(saldo - pagoAgora).toFixed(2));
+  const troco = Math.max(0, +(pagoAgora - saldo).toFixed(2));
 
   function addLinha(v?: number) {
     const valor = v ?? valorIn;
@@ -711,6 +742,18 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
               <input value={pessoas} onChange={(e) => setPessoas(e.target.value)} type="number" min={1} className="w-14 h-8 px-2 text-center text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
             </div>
             {nPessoas > 1 && <button onClick={() => addLinha(Math.min(porPessoa, restante > 0 ? restante : porPessoa))} className="text-[12px] px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-200 font-semibold tabular-nums">+ {fmtR(porPessoa)}/pessoa</button>}
+          </div>
+        </div>
+
+        {/* Falta pagar — grande e vivo (conta o valor digitado) */}
+        <div className={`rounded-xl p-3 mb-3 flex items-center justify-between ${faltaLive > 0.001 ? "bg-amber-50 dark:bg-amber-950/20" : "bg-emerald-50 dark:bg-emerald-950/20"}`}>
+          <div>
+            <div className="text-[10px] font-bold uppercase tracking-wider text-gray-400">{faltaLive > 0.001 ? "Falta pagar" : troco > 0.001 ? "Troco" : "Pagamento"}</div>
+            <div className={`text-2xl font-extrabold tabular-nums leading-none ${faltaLive > 0.001 ? "text-amber-600 dark:text-amber-400" : "text-emerald-600 dark:text-emerald-400"}`}>{fmtR(faltaLive > 0.001 ? faltaLive : troco)}</div>
+          </div>
+          <div className="text-right text-[12px] text-gray-500">
+            <div>Pago agora <b className="tabular-nums text-gray-700 dark:text-gray-200">{fmtR(pagoAgora)}</b></div>
+            {faltaLive <= 0.001 ? <div className="text-emerald-600 dark:text-emerald-400 font-semibold">quita e fecha ✓</div> : <div>de {fmtR(saldo)}</div>}
           </div>
         </div>
 
