@@ -6,7 +6,7 @@
 // Produto pode ser por PESO (preço/kg, lança-se o peso) — balança Prix 4 depois.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store } from "lucide-react";
+import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -21,6 +21,7 @@ import {
   ouvirEstacoes, salvarEstacao, excluirEstacao, lerLogoSite,
 } from "./comandasRepo";
 import { EstacaoImpressao } from "./EstacaoImpressao";
+import { TefCobranca } from "./TefCobranca";
 
 const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtNum = (n: number, dec = 0) => (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: 3 });
@@ -734,6 +735,7 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
   const [nomeIn, setNomeIn] = useState("");
   const [imprimirConta, setImprimirConta] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [tefAberto, setTefAberto] = useState(false);   // cobrança no cartão via Smart TEF
   const nPessoas = Math.max(1, parseInt(pessoas, 10) || 1);
   const porPessoa = +(comanda.total / nPessoas).toFixed(2);
   const [preImpresso, setPreImpresso] = useState(false);
@@ -818,7 +820,10 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
           </div>
         </div>
 
-        <button onClick={() => void imprimirPreConta()} className="w-full h-10 mb-3 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold inline-flex items-center justify-center gap-1.5"><Printer size={15} /> {preImpresso ? "Pré-conta enviada ✓" : "Imprimir pré-conta"}</button>
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          <button onClick={() => void imprimirPreConta()} className="h-10 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold inline-flex items-center justify-center gap-1.5"><Printer size={15} /> {preImpresso ? "Enviada ✓" : "Pré-conta"}</button>
+          {restante > 0.001 && <button onClick={() => setTefAberto(true)} className="h-10 rounded-lg border-2 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 text-sm font-bold inline-flex items-center justify-center gap-1.5"><CreditCard size={15} /> Cartão (TEF)</button>}
+        </div>
 
         {/* Falta pagar — grande e vivo (conta o valor digitado) */}
         <div className={`rounded-xl p-3 mb-3 flex items-center justify-between ${faltaLive > 0.001 ? "bg-amber-50 dark:bg-amber-950/20" : "bg-emerald-50 dark:bg-emerald-950/20"}`}>
@@ -874,6 +879,16 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
           <button onClick={() => void confirmar()} disabled={saving || (linhas.length === 0 && valorIn <= 0)} className="h-9 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold">{saving ? "..." : ((somaLinhas + valorIn) >= saldo - 0.001 ? "Pagar e fechar" : "Registrar")}</button>
         </div>
       </div>
+
+      {tefAberto && (
+        <TefCobranca
+          valor={Math.max(0, restante)}
+          cpf={comanda.cpf || undefined}
+          nome={comanda.clienteNome}
+          onAprovado={(info) => setLinhas((l) => [...l, { forma: info.forma + (info.nsu ? ` · NSU ${info.nsu}` : ""), valor: +info.valor.toFixed(2), em: new Date().toISOString(), porNome: meNome }])}
+          onFechar={() => setTefAberto(false)}
+        />
+      )}
     </div>
   );
 }
