@@ -6,7 +6,7 @@
 // Produto pode ser por PESO (preço/kg, lança-se o peso) — balança Prix 4 depois.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard } from "lucide-react";
+import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store, CreditCard, Banknote } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -26,7 +26,6 @@ import { TefCobranca } from "./TefCobranca";
 const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtNum = (n: number, dec = 0) => (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: 3 });
 const nowIso = () => new Date().toISOString();
-const FORMAS = ["Pix", "Dinheiro", "Débito", "Crédito", "Outro"];
 // Tempo decorrido desde a abertura (ex.: "agora", "23min", "1h05") — p/ os cards.
 const tempoDecorrido = (iso?: string | null): string => {
   if (!iso) return "";
@@ -730,12 +729,12 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
   const saldo = +(comanda.total - comanda.valorPago).toFixed(2);
   const [pessoas, setPessoas] = useState(String(comanda.pessoas || 1));
   const [linhas, setLinhas] = useState<ComandaPagamento[]>([]);   // pagamentos sendo lançados agora
-  const [forma, setForma] = useState(FORMAS[0]);
   const [valorTxt, setValorTxt] = useState("");
-  const [nomeIn, setNomeIn] = useState("");
   const [imprimirConta, setImprimirConta] = useState(true);
   const [saving, setSaving] = useState(false);
   const [tefAberto, setTefAberto] = useState(false);   // cobrança no cartão via Smart TEF
+  const [modoDinheiro, setModoDinheiro] = useState(false);
+  const [autoFechar, setAutoFechar] = useState(false);  // ao TEF aprovar e quitar, fecha sozinho
   const nPessoas = Math.max(1, parseInt(pessoas, 10) || 1);
   const porPessoa = +(comanda.total / nPessoas).toFixed(2);
   const [preImpresso, setPreImpresso] = useState(false);
@@ -761,17 +760,21 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
   const faltaLive = Math.max(0, +(saldo - pagoAgora).toFixed(2));
   const troco = Math.max(0, +(pagoAgora - saldo).toFixed(2));
 
-  function addLinha(v?: number) {
-    const valor = v ?? valorIn;
-    if (valor <= 0) return;
-    setLinhas((l) => [...l, { forma, valor: +valor.toFixed(2), em: new Date().toISOString(), porNome: nomeIn.trim() || meNome }]);
-    setValorTxt(""); setNomeIn("");
+  function lancarDinheiro(v: number) {
+    if (v <= 0) return;
+    setLinhas((l) => [...l, { forma: "Dinheiro", valor: +v.toFixed(2), em: new Date().toISOString(), porNome: meNome }]);
+    setValorTxt(""); setModoDinheiro(false);
   }
+  // Ao TEF aprovar e quitar o total → fecha a venda sozinho.
+  useEffect(() => {
+    if (autoFechar && somaLinhas >= saldo - 0.001 && !saving) { setAutoFechar(false); void confirmar(); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoFechar, somaLinhas]);
   async function confirmar() {
     setSaving(true);
     try {
       // Inclui o valor digitado que ainda não foi adicionado à lista.
-      const linhasFinais = valorIn > 0 ? [...linhas, { forma, valor: +valorIn.toFixed(2), em: new Date().toISOString(), porNome: nomeIn.trim() || meNome }] : linhas;
+      const linhasFinais = valorIn > 0 ? [...linhas, { forma: "Dinheiro", valor: +valorIn.toFixed(2), em: new Date().toISOString(), porNome: meNome }] : linhas;
       const pags: ComandaPagamento[] = [...comanda.pagamentos, ...linhasFinais];
       const valorPago = +pags.reduce((s, p) => s + p.valor, 0).toFixed(2);
       const quitou = valorPago >= comanda.total - 0.001;
@@ -816,14 +819,11 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
               <User size={14} className="text-gray-400" /> <span className="text-gray-600 dark:text-gray-300">Dividir por</span>
               <input value={pessoas} onChange={(e) => setPessoas(e.target.value)} type="number" min={1} className="w-14 h-8 px-2 text-center text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
             </div>
-            {nPessoas > 1 && <button onClick={() => addLinha(Math.min(porPessoa, restante > 0 ? restante : porPessoa))} className="text-[12px] px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-200 font-semibold tabular-nums">+ {fmtR(porPessoa)}/pessoa</button>}
+            {nPessoas > 1 && <span className="text-[12px] text-gray-400 tabular-nums">{fmtR(porPessoa)}/pessoa</span>}
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-2 mb-3">
-          <button onClick={() => void imprimirPreConta()} className="h-10 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold inline-flex items-center justify-center gap-1.5"><Printer size={15} /> {preImpresso ? "Enviada ✓" : "Pré-conta"}</button>
-          {restante > 0.001 && <button onClick={() => setTefAberto(true)} className="h-10 rounded-lg border-2 border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 text-sm font-bold inline-flex items-center justify-center gap-1.5"><CreditCard size={15} /> Cartão (TEF)</button>}
-        </div>
+        <button onClick={() => void imprimirPreConta()} className="w-full h-10 mb-3 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold inline-flex items-center justify-center gap-1.5"><Printer size={15} /> {preImpresso ? "Pré-conta enviada ✓" : "Imprimir pré-conta"}</button>
 
         {/* Falta pagar — grande e vivo (conta o valor digitado) */}
         <div className={`rounded-xl p-3 mb-3 flex items-center justify-between ${faltaLive > 0.001 ? "bg-amber-50 dark:bg-amber-950/20" : "bg-emerald-50 dark:bg-emerald-950/20"}`}>
@@ -854,20 +854,24 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
           </div>
         )}
 
-        {/* Linha de pagamento */}
-        <div className="grid grid-cols-[1fr_auto] gap-2 items-end">
+        {/* Forma de pagamento: só Cartão (maquininha/TEF) ou Dinheiro */}
+        {restante > 0.001 && !modoDinheiro && (
           <div className="grid grid-cols-2 gap-2">
-            <select value={forma} onChange={(e) => setForma(e.target.value)} className="h-10 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
-              {FORMAS.map((f) => <option key={f} value={f}>{f}</option>)}
-            </select>
+            <button onClick={() => setTefAberto(true)} className="h-16 rounded-xl border-2 border-indigo-300 dark:border-indigo-700 bg-indigo-50/50 dark:bg-indigo-950/20 text-indigo-700 dark:text-indigo-300 font-bold flex flex-col items-center justify-center gap-0.5"><CreditCard size={20} /><span className="text-sm">Cartão / Pix</span><span className="text-[10px] font-normal opacity-70">maquininha (TEF)</span></button>
+            <button onClick={() => { setModoDinheiro(true); setValorTxt(restante.toFixed(2).replace(".", ",")); }} className="h-16 rounded-xl border-2 border-emerald-300 dark:border-emerald-800 bg-emerald-50/50 dark:bg-emerald-950/20 text-emerald-700 dark:text-emerald-300 font-bold flex flex-col items-center justify-center gap-0.5"><Banknote size={20} /><span className="text-sm">Dinheiro</span></button>
+          </div>
+        )}
+        {restante > 0.001 && modoDinheiro && (
+          <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 p-3 space-y-2">
+            <div className="flex items-center justify-between"><span className="text-[12px] font-bold text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><Banknote size={14} /> Dinheiro recebido</span><button onClick={() => { setModoDinheiro(false); setValorTxt(""); }} className="text-[11px] text-gray-400">voltar</button></div>
             <div className="relative">
               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
-              <input value={valorTxt} onChange={(e) => setValorTxt(e.target.value)} inputMode="decimal" placeholder={restante > 0 ? restante.toFixed(2).replace(".", ",") : ""} className="w-full h-10 pl-8 pr-2 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+              <input value={valorTxt} onChange={(e) => setValorTxt(e.target.value)} inputMode="decimal" placeholder="valor recebido" autoFocus className="w-full h-12 pl-8 pr-2 text-right text-xl rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
             </div>
+            {valorIn > restante + 0.001 && <div className="text-[13px] font-semibold text-emerald-700 dark:text-emerald-300 text-right">Troco: {fmtR(valorIn - restante)}</div>}
+            <button onClick={() => lancarDinheiro(Math.min(valorIn, restante))} disabled={valorIn <= 0} className="w-full h-11 rounded-lg bg-emerald-600 text-white font-bold disabled:opacity-40">Lançar dinheiro</button>
           </div>
-          <button onClick={() => addLinha()} disabled={valorIn <= 0} className="h-10 px-3 rounded-lg border border-indigo-300 dark:border-indigo-700 text-indigo-600 dark:text-indigo-300 text-sm font-semibold disabled:opacity-40">+ Add</button>
-        </div>
-        <input value={nomeIn} onChange={(e) => setNomeIn(e.target.value)} placeholder="nome de quem pagou (opcional)" className="w-full h-9 px-3 mt-2 text-sm rounded-lg border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900" />
+        )}
 
         <label className="flex items-center gap-2 mt-3 text-sm cursor-pointer">
           <input type="checkbox" checked={imprimirConta} onChange={(e) => setImprimirConta(e.target.checked)} className="accent-indigo-600" />
@@ -876,7 +880,7 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
         {linhas.length > 0 && !vaiFechar && <div className="text-[12px] text-amber-600 dark:text-amber-400 mt-2">Parcial — a comanda continua <b>aberta</b> pra seguir consumindo.</div>}
         <div className="flex justify-end gap-2 pt-3 mt-2 border-t border-gray-200 dark:border-gray-800">
           <button onClick={onClose} className="h-9 px-3 rounded-lg border border-gray-300 dark:border-gray-700 text-sm">Cancelar</button>
-          <button onClick={() => void confirmar()} disabled={saving || (linhas.length === 0 && valorIn <= 0)} className="h-9 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold">{saving ? "..." : ((somaLinhas + valorIn) >= saldo - 0.001 ? "Pagar e fechar" : "Registrar")}</button>
+          <button onClick={() => void confirmar()} disabled={saving || (linhas.length === 0 && valorIn <= 0)} className="h-9 px-4 rounded-lg bg-indigo-600 text-white text-sm font-semibold">{saving ? "..." : ((somaLinhas + valorIn) >= saldo - 0.001 ? "Fechar venda ✓" : "Registrar parcial")}</button>
         </div>
       </div>
 
@@ -885,7 +889,7 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
           valor={Math.max(0, restante)}
           cpf={comanda.cpf || undefined}
           nome={comanda.clienteNome}
-          onAprovado={(info) => setLinhas((l) => [...l, { forma: info.forma + (info.nsu ? ` · NSU ${info.nsu}` : ""), valor: +info.valor.toFixed(2), em: new Date().toISOString(), porNome: meNome }])}
+          onAprovado={(info) => { setLinhas((l) => [...l, { forma: info.forma + (info.nsu ? ` · NSU ${info.nsu}` : ""), valor: +info.valor.toFixed(2), em: new Date().toISOString(), porNome: meNome }]); setAutoFechar(true); }}
           onFechar={() => setTefAberto(false)}
         />
       )}
