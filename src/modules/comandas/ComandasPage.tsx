@@ -12,6 +12,7 @@ import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
 import { PageContainer } from "../../core/ui/PageContainer";
 import { useTabPersistida } from "../../core/hooks/useTabPersistida";
+import { APP_VERSION_LABEL } from "../../core/version";
 import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao } from "../../core/types";
 import {
   uid, ouvirProdutos, salvarProduto, excluirProduto,
@@ -114,6 +115,7 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
         <div>
           <h1 className="text-lg font-extrabold text-gray-900 dark:text-gray-100 inline-flex items-center gap-2"><Receipt size={20} className="text-indigo-500" /> Comandas</h1>
           <p className="text-[12px] text-gray-500">{activeRestaurant?.nome || ""}</p>
+          <p className="text-[10px] text-gray-400">planejamento.app · {APP_VERSION_LABEL}</p>
         </div>
         <div className="relative">
           <button onClick={() => setMenuAberto((v) => !v)} className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm inline-flex items-center gap-1.5 hover:bg-gray-50 dark:hover:bg-gray-800/50" title="Menu">
