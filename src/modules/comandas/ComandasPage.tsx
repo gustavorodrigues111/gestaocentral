@@ -863,13 +863,16 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
         )}
         {restante > 0.001 && modoDinheiro && (
           <div className="rounded-xl border border-emerald-200 dark:border-emerald-900/50 p-3 space-y-2">
-            <div className="flex items-center justify-between"><span className="text-[12px] font-bold text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><Banknote size={14} /> Dinheiro recebido</span><button onClick={() => { setModoDinheiro(false); setValorTxt(""); }} className="text-[11px] text-gray-400">voltar</button></div>
+            <span className="text-[12px] font-bold text-emerald-700 dark:text-emerald-300 inline-flex items-center gap-1"><Banknote size={14} /> Dinheiro recebido</span>
             <div className="relative">
               <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
               <input value={valorTxt} onChange={(e) => setValorTxt(e.target.value)} inputMode="decimal" placeholder="valor recebido" autoFocus className="w-full h-12 pl-8 pr-2 text-right text-xl rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
             </div>
             {valorIn > restante + 0.001 && <div className="text-[13px] font-semibold text-emerald-700 dark:text-emerald-300 text-right">Troco: {fmtR(valorIn - restante)}</div>}
-            <button onClick={() => lancarDinheiro(Math.min(valorIn, restante))} disabled={valorIn <= 0} className="w-full h-11 rounded-lg bg-emerald-600 text-white font-bold disabled:opacity-40">Lançar dinheiro</button>
+            <div className="flex gap-2">
+              <button onClick={() => { setModoDinheiro(false); setValorTxt(""); }} className="h-11 px-4 rounded-lg border border-gray-300 dark:border-gray-700 font-semibold text-sm">← Voltar</button>
+              <button onClick={() => lancarDinheiro(Math.min(valorIn, restante))} disabled={valorIn <= 0} className="flex-1 h-11 rounded-lg bg-emerald-600 text-white font-bold disabled:opacity-40">Lançar dinheiro</button>
+            </div>
           </div>
         )}
 
