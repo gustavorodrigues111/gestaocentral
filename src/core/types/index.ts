@@ -6588,6 +6588,7 @@ export type ComandaCategoria = {
   nome: string;
   ordem?: number;
   cor?: string | null;                 // cor da aba (opcional)
+  codigo?: number;                     // nº da categoria (2 díg: 01, 02…) — prefixo do código do produto
 };
 
 export type ComandaProduto = {

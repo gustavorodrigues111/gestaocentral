@@ -117,7 +117,12 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
           <p className="text-[12px] text-gray-500">{activeRestaurant?.nome || ""}</p>
           <p className="text-[10px] text-gray-400">planejamento.app · {APP_VERSION_LABEL}</p>
         </div>
-        <div className="relative">
+        <div className="flex items-center gap-2">
+          <button onClick={toggleImprimirAqui} title="Este dispositivo imprime direto, sem o diálogo do Chrome"
+            className={`h-9 px-2.5 rounded-lg border text-sm font-semibold inline-flex items-center gap-1.5 ${imprimirAqui ? "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/30 dark:text-emerald-300" : "border-gray-200 dark:border-gray-700 text-gray-500"}`}>
+            <Printer size={15} /> Imprimir aqui <span className={`text-[10px] font-bold px-1 py-0.5 rounded ${imprimirAqui ? "bg-emerald-600 text-white" : "bg-gray-200 text-gray-500 dark:bg-gray-700"}`}>{imprimirAqui ? "ON" : "OFF"}</span>
+          </button>
+          <div className="relative">
           <button onClick={() => setMenuAberto((v) => !v)} className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm inline-flex items-center gap-1.5 hover:bg-gray-50 dark:hover:bg-gray-800/50" title="Menu">
             <Menu size={17} /> Menu
           </button>
@@ -139,18 +144,15 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
                   );
                 })}
                 <div className="my-1 border-t border-gray-100 dark:border-gray-800" />
-                <button onClick={toggleImprimirAqui} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                  <Printer size={16} /> <span className="flex-1">Imprimir nesta tela</span>
-                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${imprimirAqui ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-gray-100 text-gray-400 dark:bg-gray-800"}`}>{imprimirAqui ? "ON" : "OFF"}</span>
-                </button>
                 <a href={`?estacao=1`} target="_blank" rel="noreferrer" onClick={() => setMenuAberto(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Printer size={16} /> Estação (outra tela/PC)</a>
-                {imprimirAqui && <div className="px-3 py-1 text-[10px] text-gray-400">Este PC imprime direto (Chrome em --kiosk-printing). Não abra a Estação em outra aba junto, pra não duplicar.</div>}
+                {imprimirAqui && <div className="px-3 py-1 text-[10px] text-gray-400">"Imprimir aqui" está ON — este PC imprime direto. Não abra a Estação em outra aba junto, pra não duplicar.</div>}
                 {(onSwitchRestaurant || onLogout) && <div className="my-1 border-t border-gray-100 dark:border-gray-800" />}
                 {onSwitchRestaurant && <button onClick={() => { setMenuAberto(false); onSwitchRestaurant(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Store size={16} /> Trocar restaurante</button>}
                 {onLogout && <button onClick={() => { setMenuAberto(false); onLogout(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-rose-600 dark:text-rose-400 hover:bg-rose-50/60 dark:hover:bg-rose-950/20"><LogOut size={16} /> Sair do PDV</button>}
               </div>
             </>
           )}
+          </div>
         </div>
       </div>
 
@@ -163,6 +165,15 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
             </div>
           )}
 
+          {comandaDet ? (
+            <ComandaDetalhe
+              comanda={comandaDet} produtos={produtos.filter((p) => p.ativo)} categorias={categorias} estacoes={estacoes} logoUrl={logoUrl}
+              podeOperar={podeOperar}
+              meNome={meNome} nomeRest={activeRestaurant?.nome || ""} rid={rid}
+              onClose={() => setDetalhe(null)}
+            />
+          ) : (
+          <>
           {podeFechadas && (
             <div className="flex justify-center mb-3">
               <div className="inline-flex rounded-xl border border-gray-200 dark:border-gray-800 p-0.5 text-sm">
@@ -209,6 +220,8 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
               </div>
             );
           })()}
+          </>
+          )}
         </>
       )}
 
@@ -230,14 +243,6 @@ export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () =
       {imprimirAqui && rid && <EstacaoImpressao embedded rid={rid} nomeRest={activeRestaurant?.nome || ""} estacaoId={null} estacoes={estacoes} logoUrl={logoUrl} />}
 
       {abrindo && <AbrirComandaModal modo={abrindo} onClose={() => setAbrindo(null)} onAbrir={abrirComanda} />}
-      {comandaDet && (
-        <ComandaDetalhe
-          comanda={comandaDet} produtos={produtos.filter((p) => p.ativo)} categorias={categorias} estacoes={estacoes} logoUrl={logoUrl}
-          podeOperar={podeOperar}
-          meNome={meNome} nomeRest={activeRestaurant?.nome || ""} rid={rid}
-          onClose={() => setDetalhe(null)}
-        />
-      )}
     </PageContainer>
   );
 }
@@ -504,10 +509,10 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
   }
 
   return (
-    <div className="fixed inset-0 z-[65] bg-white dark:bg-gray-950 flex flex-col">
-      {/* Cabeçalho */}
+    <div className="flex flex-col rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 overflow-hidden h-[74vh]">
+      {/* Cabeçalho do detalhe (abre abaixo do header do PDV) */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-800 shrink-0">
-        <button onClick={sair} className="w-9 h-9 rounded-full text-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 grid place-items-center">←</button>
+        <button onClick={sair} className="w-9 h-9 rounded-full text-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 grid place-items-center" title="Voltar à lista">←</button>
         <div className="min-w-0 flex-1">
           <div className="font-bold text-gray-900 dark:text-gray-100 truncate leading-tight">#{comanda.numero} · {comanda.clienteNome}{comanda.modo === "togo" && <span className="text-[11px] text-emerald-600 ml-1">to-go</span>}</div>
           <div className="text-[11px] text-gray-500">{comanda.itens.length} item(ns)</div>
@@ -584,7 +589,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
       </div>
 
       {/* Ações */}
-      <div className="shrink-0 border-t border-gray-200 dark:border-gray-800 p-2.5 flex items-center gap-2">
+      <div className="shrink-0 border-t border-gray-200 dark:border-gray-800 p-2.5 flex flex-wrap items-center gap-2">
         {fechada ? (
           <>
             <button onClick={() => void reimprimirConta()} className="flex-1 h-11 rounded-xl border border-gray-200 dark:border-gray-700 font-semibold inline-flex items-center justify-center gap-1.5"><Printer size={17} /> Reimprimir</button>
@@ -592,12 +597,12 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
           </>
         ) : editavel ? (
           <>
+            <button onClick={() => setVerConta(true)} className="flex-1 sm:flex-none h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-700 font-semibold inline-flex items-center justify-center gap-1.5"><Eye size={17} /> Pré-conta</button>
             <button onClick={() => void imprimirProducao()} disabled={!pendentesProducao.length || salvandoImpr}
-              className="h-11 px-3 rounded-xl border border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-semibold inline-flex items-center justify-center gap-1.5 disabled:opacity-40">
-              <Printer size={17} /> Cozinha{pendentesProducao.length ? ` (${pendentesProducao.length})` : ""}
+              className="flex-1 sm:flex-none h-11 px-3 rounded-xl border-2 border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-bold inline-flex items-center justify-center gap-1.5 disabled:opacity-40">
+              <Printer size={17} /> Imprimir cozinha{pendentesProducao.length ? ` (${pendentesProducao.length})` : ""}
             </button>
-            <button onClick={() => setVerConta(true)} className="h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-700 font-semibold inline-flex items-center justify-center gap-1.5"><Eye size={17} /> Conta</button>
-            <button onClick={pedirFechar} className="flex-1 h-11 rounded-xl bg-indigo-600 text-white font-bold inline-flex items-center justify-center gap-1.5">
+            <button onClick={pedirFechar} className="basis-full sm:basis-0 sm:flex-1 h-11 rounded-xl bg-indigo-600 text-white font-bold inline-flex items-center justify-center gap-1.5">
               <Check size={18} /> Fechar · {fmtR(comanda.total)}
             </button>
           </>
@@ -616,11 +621,13 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
 // ── Conta pra mostrar ao cliente (vira o celular) — cupom ──────────────────
 function ContaClienteView({ comanda, nomeRest, logoUrl, onClose, onImprimir }: { comanda: Comanda; nomeRest: string; logoUrl: string | null; onClose: () => void; onImprimir?: () => void }) {
   const [enviado, setEnviado] = useState(false);
+  const pre = comanda.status !== "fechada";   // comanda aberta → pré-conta
+  const rotulo = pre ? "pré-conta" : "conta";
   return (
     <div className="fixed inset-0 z-[82] bg-gray-100 dark:bg-gray-950 flex flex-col">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
         <button onClick={onClose} className="w-9 h-9 rounded-full text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 grid place-items-center"><ChevronLeft size={20} /></button>
-        <div className="font-bold text-gray-900 dark:text-gray-100 flex-1">Conta · #{comanda.numero}</div>
+        <div className="font-bold text-gray-900 dark:text-gray-100 flex-1">{pre ? "Pré-conta" : "Conta"} · #{comanda.numero}</div>
         {onImprimir && <button onClick={() => { onImprimir(); setEnviado(true); setTimeout(() => setEnviado(false), 2500); }} className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm inline-flex items-center gap-1.5"><Printer size={16} /> Imprimir</button>}
       </div>
       <div className="flex-1 overflow-y-auto p-4">
@@ -629,7 +636,7 @@ function ContaClienteView({ comanda, nomeRest, logoUrl, onClose, onImprimir }: {
       {onImprimir && (
         <div className="shrink-0 border-t border-gray-200 dark:border-gray-800 p-2.5 bg-white dark:bg-gray-900">
           <button onClick={() => { onImprimir(); setEnviado(true); setTimeout(() => setEnviado(false), 2500); }} className="w-full h-12 rounded-xl bg-indigo-600 text-white font-bold inline-flex items-center justify-center gap-2">
-            <Printer size={18} /> {enviado ? "Enviado pra impressora ✓" : "Imprimir conta"}
+            <Printer size={18} /> {enviado ? "Enviado pra impressora ✓" : `Imprimir ${rotulo}`}
           </button>
         </div>
       )}
@@ -717,6 +724,20 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
   const [saving, setSaving] = useState(false);
   const nPessoas = Math.max(1, parseInt(pessoas, 10) || 1);
   const porPessoa = +(comanda.total / nPessoas).toFixed(2);
+  const [preImpresso, setPreImpresso] = useState(false);
+  async function imprimirPreConta() {
+    await superseedContaJobs(rid, comanda.id);
+    await criarPrintJob({
+      id: uid(), restaurantId: rid, tipo: "conta", comandaId: comanda.id,
+      comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId: null, logoUrl,
+      titulo: `${nomeRest || "CONTA"} · #${comanda.numero}`,
+      linhas: comanda.itens.map((i) => ({ nome: `${i.porPeso ? `${fmtNum(i.qtd, 3)}kg ` : `${i.qtd}x `}${i.nome}`, qtd: null, valor: fmtR(i.total) })),
+      total: fmtR(comanda.total),
+      rodape: `${comanda.clienteNome}${comanda.cpf ? ` · CPF ${comanda.cpf}` : ""}\nPRÉ-CONTA · Documento sem valor fiscal\n${new Date().toLocaleString("pt-BR")} · ${meNome}`,
+      status: "pendente", criadoEm: new Date().toISOString(), criadoPorNome: meNome, impressoEm: null,
+    });
+    setPreImpresso(true); setTimeout(() => setPreImpresso(false), 2500);
+  }
   const valorIn = parseFloat((valorTxt || "").replace(/\./g, "").replace(",", ".")) || 0;
   const somaLinhas = +linhas.reduce((s, l) => s + l.valor, 0).toFixed(2);
   const restante = +(saldo - somaLinhas).toFixed(2);
@@ -784,6 +805,8 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
             {nPessoas > 1 && <button onClick={() => addLinha(Math.min(porPessoa, restante > 0 ? restante : porPessoa))} className="text-[12px] px-2 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-200 font-semibold tabular-nums">+ {fmtR(porPessoa)}/pessoa</button>}
           </div>
         </div>
+
+        <button onClick={() => void imprimirPreConta()} className="w-full h-10 mb-3 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold inline-flex items-center justify-center gap-1.5"><Printer size={15} /> {preImpresso ? "Pré-conta enviada ✓" : "Imprimir pré-conta"}</button>
 
         {/* Falta pagar — grande e vivo (conta o valor digitado) */}
         <div className={`rounded-xl p-3 mb-3 flex items-center justify-between ${faltaLive > 0.001 ? "bg-amber-50 dark:bg-amber-950/20" : "bg-emerald-50 dark:bg-emerald-950/20"}`}>
@@ -968,6 +991,19 @@ function ProdutosPanel({ rid, produtos, categorias }: { rid: string; produtos: C
   const [busca, setBusca] = useState("");
   const precoNum = parseFloat((preco || "").replace(/\./g, "").replace(",", ".")) || 0;
   const catById = useMemo(() => new Map(categorias.map((c) => [c.id, c])), [categorias]);
+  // Código automático: 2 díg da categoria (01, 02…) + 3 díg sequenciais do produto (001…).
+  const gerarCodigo = (catId: string): string => {
+    const cat = categorias.find((c) => c.id === catId);
+    const catNum = cat?.codigo ?? (categorias.findIndex((c) => c.id === catId) + 1);
+    if (!catNum || catNum < 1) return "";
+    const naCat = produtos.filter((p) => (p.categoriaId || "") === catId);
+    const maxSeq = naCat.reduce((m, p) => { const n = parseInt((p.codigo || "").slice(-3), 10); return Number.isFinite(n) && n > m ? n : m; }, 0);
+    return String(catNum).padStart(2, "0") + String(maxSeq + 1).padStart(3, "0");
+  };
+  const escolherCategoria = (catId: string) => {
+    setCategoriaId(catId);
+    if (!editId && !codigo.trim() && catId) setCodigo(gerarCodigo(catId));   // preenche o código só p/ produto novo sem código
+  };
   const listaFiltrada = useMemo(() => {
     const q = busca.trim().toLowerCase();
     if (!q) return produtos;
@@ -984,8 +1020,9 @@ function ProdutosPanel({ rid, produtos, categorias }: { rid: string; produtos: C
     if (!nome.trim() || precoNum <= 0) return;
     const cat = categoriaId ? catById.get(categoriaId) : undefined;
     const base = produtos.find((p) => p.id === editId);
+    const codigoFinal = codigo.trim() || (!editId && categoriaId ? gerarCodigo(categoriaId) : "");
     await salvarProduto({
-      id: editId || uid(), restaurantId: rid, nome: nome.trim(), codigo: codigo.trim() || null,
+      id: editId || uid(), restaurantId: rid, nome: nome.trim(), codigo: codigoFinal || null,
       preco: precoNum, porPeso, producao: imprime,
       categoriaId: categoriaId || null, categoria: cat?.nome || null,
       unidade: porPeso ? "kg" : "un", ativo: base?.ativo ?? true, ordem: base?.ordem ?? produtos.length,
@@ -1000,16 +1037,17 @@ function ProdutosPanel({ rid, produtos, categorias }: { rid: string; produtos: C
         <div className="text-[12px] font-semibold text-gray-500 dark:text-gray-400">{editId ? "Editando produto" : "Novo produto"}</div>
         <input value={nome} onChange={(e) => setNome(e.target.value)} placeholder="Nome do produto" className="w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
         <div className="grid grid-cols-2 gap-2">
-          <input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="código (opcional)" className="h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900" />
+          <input value={codigo} onChange={(e) => setCodigo(e.target.value)} placeholder="código (automático)" className="h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
           <div className="relative">
             <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-sm text-gray-400">R$</span>
             <input value={preco} onChange={(e) => setPreco(e.target.value)} inputMode="decimal" placeholder={porPeso ? "preço/kg" : "preço"} className="w-full h-11 pl-8 pr-2 text-right text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
           </div>
         </div>
-        <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)} className="w-full h-11 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
+        <select value={categoriaId} onChange={(e) => escolherCategoria(e.target.value)} className="w-full h-11 px-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900">
           <option value="">— sem categoria —</option>
-          {categorias.map((c) => <option key={c.id} value={c.id}>{c.nome}</option>)}
+          {categorias.map((c) => <option key={c.id} value={c.id}>{(c.codigo ? String(c.codigo).padStart(2, "0") + " · " : "") + c.nome}</option>)}
         </select>
+        {!editId && <p className="text-[11px] text-gray-400">O código é gerado sozinho ao escolher a categoria (ex.: <b>01001</b>). Dá pra editar se quiser.</p>}
         <div className="grid grid-cols-2 gap-2 text-sm">
           <label className="flex items-center justify-center gap-1.5 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"><input type="checkbox" checked={porPeso} onChange={(e) => setPorPeso(e.target.checked)} className="accent-indigo-600" /> <Scale size={13} /> por peso (kg)</label>
           <label className="flex items-center justify-center gap-1.5 h-10 rounded-lg border border-gray-200 dark:border-gray-700 cursor-pointer"><input type="checkbox" checked={imprime} onChange={(e) => setImprime(e.target.checked)} className="accent-amber-600" /> <Printer size={13} /> imprime</label>
@@ -1050,7 +1088,8 @@ function CategoriasPanel({ rid, produtos, categorias }: { rid: string; produtos:
   async function addCat() {
     if (!novaCat.trim()) return;
     if (categorias.some((c) => c.nome.trim().toLowerCase() === novaCat.trim().toLowerCase())) { setNovaCat(""); return; }
-    await salvarCategoria({ id: uid(), restaurantId: rid, nome: novaCat.trim(), ordem: categorias.length });
+    const proxCodigo = Math.max(0, ...categorias.map((c) => c.codigo || 0), categorias.length) + 1;  // 01, 02…
+    await salvarCategoria({ id: uid(), restaurantId: rid, nome: novaCat.trim(), ordem: categorias.length, codigo: proxCodigo });
     setNovaCat("");
   }
   return (
@@ -1062,7 +1101,7 @@ function CategoriasPanel({ rid, produtos, categorias }: { rid: string; produtos:
       <div className="mt-2 divide-y divide-gray-100 dark:divide-gray-800">
         {categorias.length === 0 ? <div className="text-sm text-gray-400 text-center py-8">Nenhuma categoria.<br />Crie uma pra organizar os produtos.</div> : categorias.map((c) => (
           <div key={c.id} className="flex items-center gap-2 py-2.5">
-            <Tag size={15} className="text-gray-400 shrink-0" />
+            {c.codigo ? <span className="shrink-0 text-[11px] font-mono font-bold text-gray-400 w-6 text-center">{String(c.codigo).padStart(2, "0")}</span> : <Tag size={15} className="text-gray-400 shrink-0" />}
             <span className="flex-1 text-[14px] text-gray-900 dark:text-gray-100 truncate">{c.nome}</span>
             <span className="text-[11px] text-gray-400 shrink-0">{produtos.filter((p) => p.categoriaId === c.id).length} prod.</span>
             <button onClick={() => { if (confirm(`Excluir categoria "${c.nome}"? Os produtos ficam sem categoria.`)) void excluirCategoria(c.id); }} className="text-gray-300 hover:text-rose-500 shrink-0"><Trash2 size={16} /></button>
