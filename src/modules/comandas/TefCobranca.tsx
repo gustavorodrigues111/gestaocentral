@@ -16,7 +16,7 @@ export function TefCobranca({ valor, serialPos, cpf, nome, onAprovado, onFechar 
   onFechar: () => void;
 }) {
   const [fase, setFase] = useState<Fase>("escolher");
-  const [tipo, setTipo] = useState("credito");
+  const [tipo, setTipo] = useState("CREDIT");   // enum do Smart TEF: CREDIT | DEBIT | PIX | VOUCHER | OTHERS
   const [parcelas, setParcelas] = useState(1);
   const [erro, setErro] = useState("");
   const [leitura, setLeitura] = useState<TefLeitura | null>(null);
@@ -61,7 +61,7 @@ export function TefCobranca({ valor, serialPos, cpf, nome, onAprovado, onFechar 
     onFechar();
   }
 
-  const rotuloForma = (t: string) => t === "debito" ? "Cartão (Débito)" : t === "pix" ? "Pix (TEF)" : "Cartão (Crédito)";
+  const rotuloForma = (t: string) => t === "DEBIT" ? "Cartão (Débito)" : t === "PIX" ? "Pix (TEF)" : t === "VOUCHER" ? "Voucher" : "Cartão (Crédito)";
 
   return (
     <div className="fixed inset-0 z-[90] bg-black/50 flex items-center justify-center p-4" onClick={fase === "processando" ? undefined : onFechar}>
@@ -79,11 +79,11 @@ export function TefCobranca({ valor, serialPos, cpf, nome, onAprovado, onFechar 
         {fase === "escolher" && (
           <>
             <div className="grid grid-cols-3 gap-2 mb-2">
-              {[{ v: "credito", l: "Crédito" }, { v: "debito", l: "Débito" }, { v: "pix", l: "Pix" }].map((o) => (
+              {[{ v: "CREDIT", l: "Crédito" }, { v: "DEBIT", l: "Débito" }, { v: "PIX", l: "Pix" }].map((o) => (
                 <button key={o.v} onClick={() => setTipo(o.v)} className={`h-11 rounded-xl border-2 font-bold text-sm ${tipo === o.v ? "border-indigo-500 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/30 dark:text-indigo-300" : "border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-300"}`}>{o.l}</button>
               ))}
             </div>
-            {tipo === "credito" && (
+            {tipo === "CREDIT" && (
               <div className="flex items-center justify-center gap-2 text-sm mb-3">
                 <span className="text-gray-500">Parcelas</span>
                 <input type="number" min={1} max={12} value={parcelas} onChange={(e) => setParcelas(Math.max(1, Math.min(12, parseInt(e.target.value, 10) || 1)))} className="w-16 h-9 px-2 text-center rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
