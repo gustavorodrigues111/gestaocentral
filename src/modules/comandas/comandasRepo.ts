@@ -2,7 +2,7 @@
 //  - comandaProdutos : catálogo de produtos (por empresa)
 //  - comandas        : comandas abertas/fechadas
 //  - comandaPrintJobs: fila de impressão (consumida pela estação de impressão)
-import { collection, deleteDoc, doc, getDoc, onSnapshot, query, setDoc, updateDoc, where, type Unsubscribe } from "firebase/firestore";
+import { collection, deleteDoc, doc, getDoc, getDocs, onSnapshot, query, setDoc, updateDoc, where, type Unsubscribe } from "firebase/firestore";
 import { db } from "../../core/firebase/config";
 import { sanitizeForFirestore } from "../../core/firebase/sanitize";
 import type { Comanda, ComandaProduto, ComandaPrintJob, ComandaCategoria, ComandaEstacao } from "../../core/types";
@@ -89,4 +89,13 @@ export function ouvirPrintJobsPendentes(rid: string, cb: (l: ComandaPrintJob[]) 
 }
 export async function marcarPrintJob(id: string, status: "impresso" | "erro"): Promise<void> {
   await updateDoc(doc(db, "comandaPrintJobs", id), { status, impressoEm: new Date().toISOString() });
+}
+// Antes de imprimir uma CONTA de novo, apaga os jobs de conta pendentes da mesma
+// comanda — evita que um ticket antigo (com itens já excluídos) saia depois.
+export async function superseedContaJobs(rid: string, comandaId: string): Promise<void> {
+  try {
+    const snap = await getDocs(query(collection(db, "comandaPrintJobs"), where("restaurantId", "==", rid)));
+    const velhos = snap.docs.filter((d) => { const j = d.data() as ComandaPrintJob; return j.comandaId === comandaId && j.tipo === "conta" && j.status === "pendente"; });
+    await Promise.all(velhos.map((d) => deleteDoc(doc(db, "comandaPrintJobs", d.id))));
+  } catch (e) { console.error("[comandas] superseedContaJobs", e); }
 }

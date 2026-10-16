@@ -49,6 +49,14 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
     const prox = jobs[0];
     if (!prox) return;
     ocupadoRef.current = true;
+    // Fila presa: NÃO imprime ticket velho (a comanda já pode ter mudado). Jobs
+    // com mais de 10min são descartados — evita sair conta/produção desatualizada.
+    const idadeMin = (Date.now() - new Date(prox.criadoEm || 0).getTime()) / 60000;
+    if (idadeMin > 10) {
+      marcarPrintJob(prox.id, "erro").catch(() => {}).finally(() => { ocupadoRef.current = false; });
+      setLog((l) => [{ id: prox.id, titulo: prox.titulo + " (expirado — fila presa)", em: new Date().toLocaleTimeString("pt-BR"), ok: false }, ...l].slice(0, 30));
+      return;
+    }
     setAtual(prox);
     const t = setTimeout(async () => {
       let ok = true;

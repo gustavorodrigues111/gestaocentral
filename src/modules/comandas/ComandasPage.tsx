@@ -16,7 +16,7 @@ import { APP_VERSION_LABEL } from "../../core/version";
 import type { Comanda, ComandaItem, ComandaProduto, ComandaPagamento, ComandaPrintJob, ComandaCategoria, ComandaEstacao } from "../../core/types";
 import {
   uid, ouvirProdutos, salvarProduto, excluirProduto,
-  ouvirComandas, salvarComanda, criarPrintJob,
+  ouvirComandas, salvarComanda, criarPrintJob, superseedContaJobs,
   ouvirCategorias, salvarCategoria, excluirCategoria,
   ouvirEstacoes, salvarEstacao, excluirEstacao, lerLogoSite,
 } from "./comandasRepo";
@@ -483,13 +483,14 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
     await salvarComanda({ ...comanda, status: "aberta", fechadoEm: null, fechadoPorNome: null });
   }
   async function reimprimirConta() {
+    await superseedContaJobs(rid, comanda.id);   // descarta contas pendentes antigas desta comanda
     const job: ComandaPrintJob = {
       id: uid(), restaurantId: rid, tipo: "conta", comandaId: comanda.id,
       comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId: null, logoUrl,
       titulo: `${nomeRest || "CONTA"} · #${comanda.numero}`,
       linhas: comanda.itens.map((i) => ({ nome: `${i.porPeso ? `${fmtNum(i.qtd, 3)}kg ` : `${i.qtd}x `}${i.nome}`, qtd: null, valor: fmtR(i.total) })),
       total: fmtR(comanda.total),
-      rodape: `${comanda.clienteNome}${comanda.cpf ? ` · CPF ${comanda.cpf}` : ""}\n${(comanda.pagamentos || []).map((p) => `${p.forma}: ${fmtR(p.valor)}`).join("  ")}\n2ª via · ${new Date().toLocaleString("pt-BR")}`,
+      rodape: `${comanda.clienteNome}${comanda.cpf ? ` · CPF ${comanda.cpf}` : ""}\n${(comanda.pagamentos || []).map((p) => `${p.forma}: ${fmtR(p.valor)}`).join("  ")}\nDocumento sem valor fiscal · ${new Date().toLocaleString("pt-BR")}`,
       status: "pendente", criadoEm: nowIso(), criadoPorNome: meNome, impressoEm: null,
     };
     await criarPrintJob(job);
@@ -739,6 +740,7 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
         fechadoPorNome: quitou ? meNome : null,
       });
       if (imprimirConta) {
+        await superseedContaJobs(rid, comanda.id);
         const job: ComandaPrintJob = {
           id: uid(), restaurantId: rid, tipo: "conta", comandaId: comanda.id,
           comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId: null, logoUrl,
