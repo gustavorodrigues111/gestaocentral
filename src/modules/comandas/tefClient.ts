@@ -26,35 +26,30 @@ export type TefLeitura = { status: string; aprovado: boolean; recusado: boolean;
 function obj(x: unknown): Record<string, unknown> { return x && typeof x === "object" ? x as Record<string, unknown> : {}; }
 
 export function lerTef(resp: TefResp): TefLeitura {
-  const env = obj(resp.data);
+  const raw = resp.data;
+  // O STATUS (/pooling/order/get) vem como ARRAY [ {...} ]; o CREATE vem objeto.
+  let el: unknown = raw;
+  if (Array.isArray(raw)) el = raw[raw.length - 1] ?? raw[0];   // estado mais recente
+  const env = obj(el);
   let inner = env.RespostaJson;
   if (typeof inner === "string") { try { inner = JSON.parse(inner); } catch { inner = {}; } }
   const inObj = obj(inner);
-  const dados = obj(env.DadosTEF ?? inObj.DadosTEF ?? env.form ?? inObj.form);
-  // Status do Smart TEF fica em payment_status (ex.: "PDT" pendente, "CNC" aprovado).
-  const cand = [env.payment_status, inObj.payment_status, env.status, env.Status, inObj.status, dados.status, env.situacao]
-    .find((v) => typeof v === "string" && v) as string | undefined;
-  const status = (cand || "").toUpperCase();
+  const g = (k: string) => env[k] ?? inObj[k];
   const str = (v: unknown) => (typeof v === "string" || typeof v === "number") ? String(v) : undefined;
-  const nsu = str(dados.nsu ?? dados.NSU ?? dados.nsuTef);
-  const autorizacao = str(dados.autorizacao ?? dados.Autorizacao ?? dados.codigoAutorizacao);
+
+  const status = String(g("payment_status") ?? g("status") ?? g("situacao") ?? "").toUpperCase();
+  const nsu = str(g("nsu_host") || g("nsu_sitef") || g("nsu") || g("NSU"));
+  const autorizacao = str(g("autorization_code") ?? g("authorization_code") ?? g("autorizacao"));
+  const bandeira = str(g("card_brand") ?? g("bandeira") ?? g("Bandeira"));
   // Aprovado: código "CNC" OU já veio NSU + autorização (transação concluída).
-  const aprovado = status === "CNC" || (!!nsu && !!autorizacao);
-  const pendente = ["PDT", "PROC_PAG", "PROC", "AGU", "PENDENTE"].includes(status);
-  const recusado = !aprovado && !pendente && (["REC", "CAN", "ERR", "NEG", "DEN", "EST"].includes(status) || env.Sucesso === false);
+  const aprovado = status === "CNC" || (!!nsu && !!autorizacao && status !== "EST");
+  // Recusa só em códigos CONHECIDOS; qualquer outro = segue consultando (evita falso-negativo).
+  const recusado = !aprovado && ["REC", "CAN", "CAE", "NEG", "DEN", "ERR", "EST", "EXP"].includes(status);
   return {
-    status,
-    aprovado,
-    recusado,
-    mensagem: str(env.MensagemErro ?? inObj.MensagemErro ?? env.message ?? inObj.message) || "",
-    nsu,
-    autorizacao,
-    bandeira: str(dados.bandeira ?? dados.Bandeira),
-    identifier: str(
-      env.payment_identifier ?? inObj.payment_identifier ??
-      env.id ?? env.order_id ?? env.orderId ?? env.payment_id ?? env.charge_id ??
-      inObj.id ?? inObj.order_id ?? inObj.charge_id ?? dados.pagId ?? inObj.pagId,
-    ),
-    raw: resp.data,
+    status, aprovado, recusado,
+    mensagem: str(g("MensagemErro") ?? g("message") ?? g("reason")) || "",
+    nsu, autorizacao, bandeira,
+    identifier: str(g("payment_identifier") ?? g("charge_id") ?? g("id")),
+    raw,
   };
 }
