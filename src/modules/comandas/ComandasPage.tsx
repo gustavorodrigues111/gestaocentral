@@ -36,6 +36,17 @@ const tempoDecorrido = (iso?: string | null): string => {
   return `${h}h${m ? String(m).padStart(2, "0") : ""}`;
 };
 const minutosDecorridos = (iso?: string | null): number => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 60000) : 0;
+// Agrupa itens iguais (mesmo produto/preço) pra impressão: 2x Produto em vez de 2 linhas.
+function agruparItens(itens: ComandaItem[]): { nome: string; porPeso: boolean; qtd: number; total: number }[] {
+  const m = new Map<string, { nome: string; porPeso: boolean; qtd: number; total: number }>();
+  for (const i of itens) {
+    const key = (i.produtoId || i.nome) + "|" + (i.porPeso ? "p" : "u") + "|" + i.precoUnit;
+    const g = m.get(key) || { nome: i.nome, porPeso: !!i.porPeso, qtd: 0, total: 0 };
+    g.qtd += i.qtd; g.total += i.total || 0;
+    m.set(key, g);
+  }
+  return [...m.values()];
+}
 
 export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () => void; onSwitchRestaurant?: () => void } = {}) {
   const { rid: ridParam } = useParams<{ rid: string }>();
@@ -427,11 +438,12 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
     void addItem(p, 1);
   }
   async function mudarQtd(itemId: string, delta: number) {
+    // Mínimo 1 — diminuir NÃO exclui (pra remover, use a lixeira, que confirma).
     const itens = comanda.itens.map((i) => {
-      if (i.id !== itemId || i.porPeso) return i;   // peso não usa +/- (editar removendo)
-      const q = Math.max(0, i.qtd + delta);
+      if (i.id !== itemId || i.porPeso) return i;
+      const q = Math.max(1, i.qtd + delta);
       return { ...i, qtd: q, total: +(q * i.precoUnit).toFixed(2) };
-    }).filter((i) => i.qtd > 0);
+    });
     await patch(recompor(itens));
   }
   async function removerItem(itemId: string) {
@@ -469,7 +481,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
           id: uid(), restaurantId: rid, tipo: "producao", comandaId: comanda.id,
           comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId, logoUrl,
           titulo: `PRODUÇÃO${nomeEst ? ` · ${nomeEst}` : ""} · #${comanda.numero}`,
-          linhas: itens.map((i) => ({ nome: i.nome, qtd: i.porPeso ? `${fmtNum(i.qtd, 3)} kg` : `${i.qtd}x`, valor: null })),
+          linhas: agruparItens(itens).map((g) => ({ nome: g.nome, qtd: g.porPeso ? `${fmtNum(g.qtd, 3)} kg` : `${g.qtd}x`, valor: null })),
           total: null, rodape: `${comanda.clienteNome} · ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })} · ${meNome}`,
           status: "pendente", criadoEm: nowIso(), criadoPorNome: meNome, impressoEm: null,
         };
@@ -500,7 +512,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
       id: uid(), restaurantId: rid, tipo: "conta", comandaId: comanda.id,
       comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId: null, logoUrl,
       titulo: `${nomeRest || "CONTA"} · #${comanda.numero}`,
-      linhas: comanda.itens.map((i) => ({ nome: `${i.porPeso ? `${fmtNum(i.qtd, 3)}kg ` : `${i.qtd}x `}${i.nome}`, qtd: null, valor: fmtR(i.total) })),
+      linhas: agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
       total: fmtR(comanda.total),
       rodape: `${comanda.clienteNome}${comanda.cpf ? ` · CPF ${comanda.cpf}` : ""}\n${(comanda.pagamentos || []).map((p) => `${p.forma}: ${fmtR(p.valor)}`).join("  ")}\nDocumento sem valor fiscal · ${new Date().toLocaleString("pt-BR")}`,
       status: "pendente", criadoEm: nowIso(), criadoPorNome: meNome, impressoEm: null,
@@ -661,11 +673,11 @@ function ContaCupom({ comanda, nomeRest, logoUrl }: { comanda: Comanda; nomeRest
       <div className="border-t border-dashed border-gray-300 dark:border-gray-700 my-2" />
       <div className="flex text-[10px] text-gray-400 uppercase"><span className="flex-1">Item</span><span className="w-20 text-right">Qtd</span><span className="w-20 text-right">Valor</span></div>
       <div className="mt-1 space-y-1">
-        {comanda.itens.map((i) => (
-          <div key={i.id} className="flex items-baseline">
-            <span className="flex-1 pr-1">{i.nome}</span>
-            <span className="w-20 text-right text-gray-500 tabular-nums">{i.porPeso ? `${fmtNum(i.qtd, 3)}kg` : `${i.qtd}`}</span>
-            <span className="w-20 text-right tabular-nums">{fmtR(i.total)}</span>
+        {agruparItens(comanda.itens).map((g, idx) => (
+          <div key={idx} className="flex items-baseline">
+            <span className="flex-1 pr-1">{g.nome}</span>
+            <span className="w-20 text-right text-gray-500 tabular-nums">{g.porPeso ? `${fmtNum(g.qtd, 3)}kg` : `${g.qtd}`}</span>
+            <span className="w-20 text-right tabular-nums">{fmtR(g.total)}</span>
           </div>
         ))}
         {comanda.itens.length === 0 && <div className="text-gray-400 text-center py-2">Sem itens.</div>}
@@ -731,7 +743,7 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
       id: uid(), restaurantId: rid, tipo: "conta", comandaId: comanda.id,
       comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId: null, logoUrl,
       titulo: `${nomeRest || "CONTA"} · #${comanda.numero}`,
-      linhas: comanda.itens.map((i) => ({ nome: `${i.porPeso ? `${fmtNum(i.qtd, 3)}kg ` : `${i.qtd}x `}${i.nome}`, qtd: null, valor: fmtR(i.total) })),
+      linhas: agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
       total: fmtR(comanda.total),
       rodape: `${comanda.clienteNome}${comanda.cpf ? ` · CPF ${comanda.cpf}` : ""}\nPRÉ-CONTA · Documento sem valor fiscal\n${new Date().toLocaleString("pt-BR")} · ${meNome}`,
       status: "pendente", criadoEm: new Date().toISOString(), criadoPorNome: meNome, impressoEm: null,
@@ -773,7 +785,7 @@ function FecharModal({ comanda, meNome, nomeRest, rid, logoUrl, onClose, onFecha
           id: uid(), restaurantId: rid, tipo: "conta", comandaId: comanda.id,
           comandaNumero: comanda.numero, clienteNome: comanda.clienteNome, estacaoId: null, logoUrl,
           titulo: `${nomeRest || "CONTA"} · #${comanda.numero}`,
-          linhas: comanda.itens.map((i) => ({ nome: `${i.porPeso ? `${fmtNum(i.qtd, 3)}kg ` : `${i.qtd}x `}${i.nome}`, qtd: null, valor: fmtR(i.total) })),
+          linhas: agruparItens(comanda.itens).map((g) => ({ nome: `${g.porPeso ? `${fmtNum(g.qtd, 3)}kg ` : `${g.qtd}x `}${g.nome}`, qtd: null, valor: fmtR(g.total) })),
           total: fmtR(comanda.total),
           rodape: `${comanda.clienteNome}${comanda.cpf ? ` · CPF ${comanda.cpf}` : ""}\n${pags.map((p) => `${p.porNome ? p.porNome + " " : ""}${p.forma}: ${fmtR(p.valor)}`).join("\n")}${quitou ? "" : `\nSALDO: ${fmtR(comanda.total - valorPago)}`}\n${new Date().toLocaleString("pt-BR")} · ${meNome}`,
           status: "pendente", criadoEm: new Date().toISOString(), criadoPorNome: meNome, impressoEm: null,
