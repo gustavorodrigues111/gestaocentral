@@ -20,7 +20,7 @@ import { requireUser, AuthError } from "./_auth.js";
 
 export const config = { maxDuration: 30 };
 
-const BASE = (process.env.SMARTTEF_BASE_URL || "https://api.smarttef.com.br").replace(/\/+$/, "");
+const BASE = (process.env.SMARTTEF_BASE_URL || "https://api.smarttef.mobi").replace(/\/+$/, "");
 const SUB_KEY = process.env.SMARTTEF_SUBSCRIPTION_KEY || "";
 const TOKEN = process.env.SMARTTEF_TOKEN || "";
 const SERIAL_POS_PADRAO = process.env.SMARTTEF_SERIAL_POS || "008b4a5e2a1ef8ff";  // Laranjinha Peixaria (Sororoca)
@@ -103,7 +103,9 @@ export default async function handler(req: VercelReq, res: VercelRes) {
     }
     res.status(400).json({ error: `Ação desconhecida: ${acao}` });
   } catch (e) {
-    res.status(502).json({ error: e instanceof Error ? e.message : "Falha ao falar com o Smart TEF." });
+    const msg = e instanceof Error ? e.message : "Falha ao falar com o Smart TEF.";
+    const causa = (e as { cause?: { code?: string; message?: string } })?.cause;
+    res.status(502).json({ error: msg, causa: causa?.code || causa?.message || undefined });
   }
 }
 
