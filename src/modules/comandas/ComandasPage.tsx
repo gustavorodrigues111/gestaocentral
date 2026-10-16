@@ -430,6 +430,8 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
     await patch(recompor(itens));
   }
   async function removerItem(itemId: string) {
+    const it = comanda.itens.find((i) => i.id === itemId);
+    if (it && !confirm(`Remover "${it.nome}" da comanda?`)) return;
     await patch(recompor(comanda.itens.filter((i) => i.id !== itemId)));
   }
 
@@ -478,6 +480,11 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
     if (pendentesProducao.length && !confirm(`Há ${pendentesProducao.length} item(ns) de cozinha ainda NÃO enviados pra produção. Fechar mesmo assim?`)) return;
     setFechar(true);
   }
+  // Sair do detalhe: se há itens de cozinha não enviados, confirma antes.
+  function sair() {
+    if (editavel && pendentesProducao.length && !confirm(`Há ${pendentesProducao.length} item(ns) de cozinha ainda NÃO enviados pra produção. Sair sem imprimir? (Cancele pra imprimir a cozinha)`)) return;
+    onClose();
+  }
   async function reabrir() {
     if (!confirm("Reabrir esta comanda? Ela volta pra lista de abertas.")) return;
     await salvarComanda({ ...comanda, status: "aberta", fechadoEm: null, fechadoPorNome: null });
@@ -500,7 +507,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
     <div className="fixed inset-0 z-[65] bg-white dark:bg-gray-950 flex flex-col">
       {/* Cabeçalho */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-800 shrink-0">
-        <button onClick={onClose} className="w-9 h-9 rounded-full text-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 grid place-items-center">←</button>
+        <button onClick={sair} className="w-9 h-9 rounded-full text-xl text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 grid place-items-center">←</button>
         <div className="min-w-0 flex-1">
           <div className="font-bold text-gray-900 dark:text-gray-100 truncate leading-tight">#{comanda.numero} · {comanda.clienteNome}{comanda.modo === "togo" && <span className="text-[11px] text-emerald-600 ml-1">to-go</span>}</div>
           <div className="text-[11px] text-gray-500">{comanda.itens.length} item(ns)</div>
