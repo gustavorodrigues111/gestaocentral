@@ -27,6 +27,9 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
   const [auto, setAuto] = useState(true);
   const [teste, setTeste] = useState<ComandaPrintJob | null>(null);
   const ocupadoRef = useRef(false);
+  // Tamanho da fonte da comanda de PRODUÇÃO (px do item), por dispositivo.
+  const [fonteProd, setFonteProd] = useState<number>(() => { try { return parseInt(localStorage.getItem("comandas_fonte_producao") || "", 10) || 22; } catch { return 22; } });
+  const mudarFonte = (px: number) => { setFonteProd(px); try { localStorage.setItem("comandas_fonte_producao", String(px)); } catch { /* */ } };
 
   useEffect(() => { if (!rid) return; return ouvirPrintJobsPendentes(rid, setTodosJobs); }, [rid]);
 
@@ -78,7 +81,7 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
     return (
       <>
         <style>{PRINT_CSS}</style>
-        <div id="comanda-print">{alvo && <TicketConteudo job={alvo} nomeRest={nomeRest} />}</div>
+        <div id="comanda-print">{alvo && <TicketConteudo job={alvo} nomeRest={nomeRest} fonteProd={fonteProd} />}</div>
       </>
     );
   }
@@ -88,7 +91,7 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
       {/* Área de impressão (só ela aparece no papel) */}
       <style>{PRINT_CSS}</style>
       <div id="comanda-print">
-        {alvo && <TicketConteudo job={alvo} nomeRest={nomeRest} />}
+        {alvo && <TicketConteudo job={alvo} nomeRest={nomeRest} fonteProd={fonteProd} />}
       </div>
 
       {/* Painel (tela) */}
@@ -101,8 +104,20 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
         <div className="rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 p-4 text-center mb-3">
           <div className="text-3xl font-extrabold text-indigo-700 dark:text-indigo-300 tabular-nums">{jobs.length}</div>
           <div className="text-sm text-gray-500">na fila{atual ? " · imprimindo…" : ""}</div>
-          <button onClick={() => { setTeste({ id: "teste", restaurantId: rid, tipo: "conta", comandaId: "", comandaNumero: "TESTE", clienteNome: "Teste", logoUrl, titulo: `${nomeRest || "COMANDA"} · TESTE`, linhas: [{ nome: "1x Item de teste", qtd: null, valor: "R$ 0,00" }], total: "R$ 0,00", rodape: "impressão de teste", status: "pendente", criadoEm: new Date().toISOString(), impressoEm: null }); setTimeout(() => { window.print(); setTeste(null); }, 300); }}
-            className="mt-3 h-9 px-4 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold inline-flex items-center gap-1.5"><Printer size={15} /> Imprimir teste</button>
+          <div className="mt-3 flex items-center justify-center gap-2 flex-wrap">
+            <button onClick={() => { setTeste({ id: "teste", restaurantId: rid, tipo: "conta", comandaId: "", comandaNumero: "TESTE", clienteNome: "Teste", logoUrl, titulo: `${nomeRest || "COMANDA"} · TESTE`, linhas: [{ nome: "1x Item de teste", qtd: null, valor: "R$ 0,00" }], total: "R$ 0,00", rodape: "impressão de teste", status: "pendente", criadoEm: new Date().toISOString(), impressoEm: null }); setTimeout(() => { window.print(); setTeste(null); }, 300); }}
+              className="h-9 px-4 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold inline-flex items-center gap-1.5"><Printer size={15} /> Imprimir teste (conta)</button>
+            <button onClick={() => { setTeste({ id: "teste", restaurantId: rid, tipo: "producao", comandaId: "", comandaNumero: "99", clienteNome: "Teste", logoUrl: null, titulo: "PRODUÇÃO · #99", linhas: [{ nome: "Item de teste", qtd: "2x", valor: null }], total: null, rodape: "teste", status: "pendente", criadoEm: new Date().toISOString(), impressoEm: null }); setTimeout(() => { window.print(); setTeste(null); }, 300); }}
+              className="h-9 px-4 rounded-lg border border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-sm font-semibold inline-flex items-center gap-1.5"><Printer size={15} /> Teste (produção)</button>
+          </div>
+          <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+            <div className="text-[11px] font-semibold text-gray-500 mb-1.5">Tamanho da fonte da produção</div>
+            <div className="inline-flex rounded-lg border border-gray-200 dark:border-gray-700 p-0.5 text-sm">
+              {[{ px: 18, l: "P" }, { px: 22, l: "M" }, { px: 26, l: "G" }, { px: 30, l: "GG" }].map((o) => (
+                <button key={o.px} onClick={() => mudarFonte(o.px)} className={`px-3 py-1 rounded-md font-semibold ${fonteProd === o.px ? "bg-indigo-600 text-white" : "text-gray-600 dark:text-gray-300"}`}>{o.l}</button>
+              ))}
+            </div>
+          </div>
         </div>
 
         <div className="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/20 p-3.5 text-[12px] text-amber-900 dark:text-amber-100 mb-3 space-y-3">
@@ -160,18 +175,19 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
   );
 }
 
-function TicketConteudo({ job, nomeRest }: { job: ComandaPrintJob; nomeRest: string }) {
-  // Comanda de PRODUÇÃO (cozinha): fontes GRANDES e GROSSAS + altura mínima de
-  // ~10cm pra ficar fácil de ler e destacar/pendurar, mesmo com 1 item só.
+function TicketConteudo({ job, nomeRest, fonteProd = 22 }: { job: ComandaPrintJob; nomeRest: string; fonteProd?: number }) {
+  // Comanda de PRODUÇÃO (cozinha): fonte GRANDE e GROSSA (tamanho configurável)
+  // + altura mínima de ~10cm pra destacar/pendurar, mesmo com 1 item só.
   if (job.tipo === "producao") {
+    const f = Math.max(12, Math.min(40, fonteProd));
     return (
       <div style={{ minHeight: "100mm", color: "#000" }}>
-        <div style={{ textAlign: "center", fontWeight: 800, fontSize: "22px", letterSpacing: "3px" }}>PRODUÇÃO</div>
-        <div style={{ textAlign: "center", fontWeight: 800, fontSize: "34px", lineHeight: 1.05 }}>#{job.comandaNumero}</div>
-        {job.clienteNome && <div style={{ textAlign: "center", fontWeight: 700, fontSize: "17px", marginTop: "2px" }}>{job.clienteNome}</div>}
+        <div style={{ textAlign: "center", fontWeight: 800, fontSize: `${Math.round(f * 0.85)}px`, letterSpacing: "3px" }}>PRODUÇÃO</div>
+        <div style={{ textAlign: "center", fontWeight: 800, fontSize: `${Math.round(f * 1.35)}px`, lineHeight: 1.05 }}>#{job.comandaNumero}</div>
+        {job.clienteNome && <div style={{ textAlign: "center", fontWeight: 700, fontSize: `${Math.round(f * 0.72)}px`, marginTop: "2px" }}>{job.clienteNome}</div>}
         <div style={{ borderTop: "3px solid #000", margin: "10px 0" }} />
         {job.linhas.map((ln, i) => (
-          <div key={i} style={{ fontSize: "26px", fontWeight: 800, lineHeight: 1.4, margin: "3px 0" }}>
+          <div key={i} style={{ fontSize: `${f}px`, fontWeight: 800, lineHeight: 1.4, margin: "3px 0" }}>
             {ln.qtd ? `${ln.qtd}  ` : ""}{ln.nome}
           </div>
         ))}
@@ -181,14 +197,14 @@ function TicketConteudo({ job, nomeRest }: { job: ComandaPrintJob; nomeRest: str
       </div>
     );
   }
-  // Conta / cupom (layout normal)
+  // Conta / cupom (layout normal) — fonte um pouco mais grossa pra ler melhor no térmico.
   return (
-    <div style={{ fontSize: "12px", lineHeight: 1.35 }}>
+    <div style={{ fontSize: "13px", lineHeight: 1.4, fontWeight: 600, color: "#000" }}>
       {job.logoUrl && job.tipo === "conta" && <div style={{ textAlign: "center", marginBottom: "4px" }}><img src={job.logoUrl} alt="" style={{ maxHeight: "48px", maxWidth: "60mm", margin: "0 auto", display: "block" }} /></div>}
-      <div style={{ textAlign: "center", fontWeight: 700, fontSize: "14px" }}>{job.titulo}</div>
+      <div style={{ textAlign: "center", fontWeight: 800, fontSize: "15px" }}>{job.titulo}</div>
       <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
       {job.linhas.map((ln, i) => (
-        <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: "6px" }}>
+        <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: "6px", fontWeight: 700 }}>
           <span>{ln.qtd ? `${ln.qtd} ` : ""}{ln.nome}</span>
           {ln.valor && <span style={{ whiteSpace: "nowrap" }}>{ln.valor}</span>}
         </div>
@@ -196,7 +212,7 @@ function TicketConteudo({ job, nomeRest }: { job: ComandaPrintJob; nomeRest: str
       {job.total && (
         <>
           <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
-          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 700, fontSize: "14px" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", fontWeight: 800, fontSize: "16px" }}>
             <span>TOTAL</span><span>{job.total}</span>
           </div>
         </>
@@ -204,10 +220,10 @@ function TicketConteudo({ job, nomeRest }: { job: ComandaPrintJob; nomeRest: str
       {job.rodape && (
         <>
           <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
-          <div style={{ whiteSpace: "pre-line", fontSize: "11px" }}>{job.rodape}</div>
+          <div style={{ whiteSpace: "pre-line", fontSize: "12px", fontWeight: 600 }}>{job.rodape}</div>
         </>
       )}
-      <div style={{ textAlign: "center", fontSize: "10px", marginTop: "6px" }}>{nomeRest}</div>
+      <div style={{ textAlign: "center", fontSize: "11px", marginTop: "6px" }}>{nomeRest}</div>
       <div style={{ height: "16px" }} />
     </div>
   );
