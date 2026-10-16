@@ -6,7 +6,7 @@
 // Produto pode ser por PESO (preço/kg, lança-se o peso) — balança Prix 4 depois.
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "react-router-dom";
-import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3 } from "lucide-react";
+import { Plus, Printer, Trash2, X, Scale, Package, Search, Check, Receipt, Minus, User, Tag, Eye, Clock, ChevronLeft, LogOut, Menu, BarChart3, Store } from "lucide-react";
 import { useAuth } from "../../core/auth/AuthContext";
 import { useCanAcao } from "../../core/auth/useCanAcao";
 import { useRestaurant } from "../../core/restaurant/RestaurantContext";
@@ -36,7 +36,7 @@ const tempoDecorrido = (iso?: string | null): string => {
 };
 const minutosDecorridos = (iso?: string | null): number => iso ? Math.floor((Date.now() - new Date(iso).getTime()) / 60000) : 0;
 
-export function ComandasPage({ onLogout }: { onLogout?: () => void } = {}) {
+export function ComandasPage({ onLogout, onSwitchRestaurant }: { onLogout?: () => void; onSwitchRestaurant?: () => void } = {}) {
   const { rid: ridParam } = useParams<{ rid: string }>();
   const rid = ridParam || "";
   const { pessoa: me } = useAuth();
@@ -143,6 +143,8 @@ export function ComandasPage({ onLogout }: { onLogout?: () => void } = {}) {
                 </button>
                 <a href={`?estacao=1`} target="_blank" rel="noreferrer" onClick={() => setMenuAberto(false)} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Printer size={16} /> Estação (outra tela/PC)</a>
                 {imprimirAqui && <div className="px-3 py-1 text-[10px] text-gray-400">Este PC imprime direto (Chrome em --kiosk-printing). Não abra a Estação em outra aba junto, pra não duplicar.</div>}
+                {(onSwitchRestaurant || onLogout) && <div className="my-1 border-t border-gray-100 dark:border-gray-800" />}
+                {onSwitchRestaurant && <button onClick={() => { setMenuAberto(false); onSwitchRestaurant(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-800/50"><Store size={16} /> Trocar restaurante</button>}
                 {onLogout && <button onClick={() => { setMenuAberto(false); onLogout(); }} className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-left text-rose-600 dark:text-rose-400 hover:bg-rose-50/60 dark:hover:bg-rose-950/20"><LogOut size={16} /> Sair do PDV</button>}
               </div>
             </>
@@ -596,22 +598,31 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, pode
 
       {pesoDe && <PesoModal produto={pesoDe} onClose={() => setPesoDe(null)} onConfirmar={(kg) => { void addItem(pesoDe, kg); setPesoDe(null); }} />}
       {fechar && <FecharModal comanda={comanda} meNome={meNome} nomeRest={nomeRest} rid={rid} logoUrl={logoUrl} onClose={() => setFechar(false)} onFechado={() => { setFechar(false); onClose(); }} />}
-      {verConta && <ContaClienteView comanda={comanda} nomeRest={nomeRest} logoUrl={logoUrl} onClose={() => setVerConta(false)} />}
+      {verConta && <ContaClienteView comanda={comanda} nomeRest={nomeRest} logoUrl={logoUrl} onClose={() => setVerConta(false)} onImprimir={() => void reimprimirConta()} />}
     </div>
   );
 }
 
 // ── Conta pra mostrar ao cliente (vira o celular) — cupom ──────────────────
-function ContaClienteView({ comanda, nomeRest, logoUrl, onClose }: { comanda: Comanda; nomeRest: string; logoUrl: string | null; onClose: () => void }) {
+function ContaClienteView({ comanda, nomeRest, logoUrl, onClose, onImprimir }: { comanda: Comanda; nomeRest: string; logoUrl: string | null; onClose: () => void; onImprimir?: () => void }) {
+  const [enviado, setEnviado] = useState(false);
   return (
     <div className="fixed inset-0 z-[82] bg-gray-100 dark:bg-gray-950 flex flex-col">
       <div className="flex items-center gap-2 px-3 py-2 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
         <button onClick={onClose} className="w-9 h-9 rounded-full text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 grid place-items-center"><ChevronLeft size={20} /></button>
-        <div className="font-bold text-gray-900 dark:text-gray-100">Conta · #{comanda.numero}</div>
+        <div className="font-bold text-gray-900 dark:text-gray-100 flex-1">Conta · #{comanda.numero}</div>
+        {onImprimir && <button onClick={() => { onImprimir(); setEnviado(true); setTimeout(() => setEnviado(false), 2500); }} className="h-9 px-3 rounded-lg border border-gray-200 dark:border-gray-700 text-sm inline-flex items-center gap-1.5"><Printer size={16} /> Imprimir</button>}
       </div>
       <div className="flex-1 overflow-y-auto p-4">
         <ContaCupom comanda={comanda} nomeRest={nomeRest} logoUrl={logoUrl} />
       </div>
+      {onImprimir && (
+        <div className="shrink-0 border-t border-gray-200 dark:border-gray-800 p-2.5 bg-white dark:bg-gray-900">
+          <button onClick={() => { onImprimir(); setEnviado(true); setTimeout(() => setEnviado(false), 2500); }} className="w-full h-12 rounded-xl bg-indigo-600 text-white font-bold inline-flex items-center justify-center gap-2">
+            <Printer size={18} /> {enviado ? "Enviado pra impressora ✓" : "Imprimir conta"}
+          </button>
+        </div>
+      )}
     </div>
   );
 }

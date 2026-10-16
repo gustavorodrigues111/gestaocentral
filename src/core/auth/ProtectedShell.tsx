@@ -8,9 +8,9 @@
 // Quando admin acessa admin.planejamento.app, esse chunk é puxado via
 // Suspense e o usuário vê o splash bege por ~200-400ms até carregar.
 
-import { useEffect } from "react";
-import { Lock, CircleHelp } from "lucide-react";
-import { Routes, Route, Navigate, useParams } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Lock, CircleHelp, Store } from "lucide-react";
+import { Routes, Route, Navigate, useParams, useNavigate } from "react-router-dom";
 import { useAuth } from "./AuthContext";
 import { useTelemetria } from "../telemetry/useTelemetria";
 import { RestaurantProvider, useRestaurant } from "../restaurant/RestaurantContext";
@@ -240,13 +240,23 @@ export function ProtectedShell() {
 // (ou o 1º que a pessoa acessa). Sem menu, sem outras rotas. Monta a rota
 // /r/<rid>/comandas que o ComandasPage espera (ele lê o rid do param).
 function ComandasKioskShell() {
-  const { activeRestaurant, restaurants, loading } = useRestaurant();
+  const { restaurants, activeId, setActiveId, loading } = useRestaurant();
   const { signOut } = useAuth();
-  const rid = activeRestaurant?.id || restaurants[0]?.id || "";
-  if (loading) {
-    return <div className="min-h-screen flex items-center justify-center text-sm text-gray-500">Carregando PDV…</div>;
-  }
-  if (!rid) {
+  const nav = useNavigate();
+  // Restaurante escolhido pro PDV (lembrado por dispositivo). Com 1 só, usa direto.
+  const [escolhido, setEscolhido] = useState<string | null>(() => { try { return localStorage.getItem("comandas_kiosk_rid"); } catch { return null; } });
+  const escolhidoValido = escolhido && restaurants.some((r) => r.id === escolhido) ? escolhido : null;
+  const rid = restaurants.length === 1 ? restaurants[0].id : (escolhidoValido || "");
+
+  // Mantém o contexto (nome/logo) alinhado com o restaurante do kiosk.
+  useEffect(() => { if (rid && activeId !== rid) setActiveId(rid); }, [rid, activeId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const escolher = (id: string) => { try { localStorage.setItem("comandas_kiosk_rid", id); } catch { /* */ } setEscolhido(id); setActiveId(id); nav(`/r/${id}/comandas`, { replace: true }); };
+  const trocar = () => { try { localStorage.removeItem("comandas_kiosk_rid"); } catch { /* */ } setEscolhido(null); nav("/", { replace: true }); };
+
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-sm text-gray-500">Carregando PDV…</div>;
+
+  if (restaurants.length === 0) {
     return (
       <div className="min-h-screen flex items-center justify-center px-4 text-center bg-gray-50 dark:bg-gray-950">
         <div className="max-w-sm">
@@ -258,12 +268,36 @@ function ComandasKioskShell() {
       </div>
     );
   }
+
+  // Multi-restaurante sem escolha → seletor.
+  if (!rid) {
+    return (
+      <div className="min-h-screen flex items-center justify-center px-4 bg-gray-50 dark:bg-gray-950">
+        <div className="w-full max-w-sm">
+          <div className="text-center mb-4">
+            <div className="flex justify-center mb-2 text-indigo-500"><Store size={36} /></div>
+            <h2 className="text-lg font-bold text-gray-900 dark:text-gray-100">Qual restaurante?</h2>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">Escolha onde você vai operar o PDV.</p>
+          </div>
+          <div className="space-y-2">
+            {restaurants.map((r) => (
+              <button key={r.id} onClick={() => escolher(r.id)} className="w-full flex items-center gap-2.5 px-4 h-14 rounded-2xl border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 font-bold text-gray-900 dark:text-gray-100 hover:border-indigo-300 dark:hover:border-indigo-700 text-left">
+                <Store size={18} className="text-indigo-500 shrink-0" /> <span className="truncate">{r.nome}</span>
+              </button>
+            ))}
+          </div>
+          <button onClick={() => void signOut()} className="mt-4 w-full text-sm text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">Sair</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Moldura central (o kiosk não tem o <main> do AppShell que dá margem) */}
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-4">
         <Routes>
-          <Route path="/r/:rid/comandas" element={<ComandasPage onLogout={() => void signOut()} />} />
+          <Route path="/r/:rid/comandas" element={<ComandasPage onLogout={() => void signOut()} onSwitchRestaurant={restaurants.length > 1 ? trocar : undefined} />} />
           <Route path="*" element={<Navigate to={`/r/${rid}/comandas${typeof window !== "undefined" ? window.location.search : ""}`} replace />} />
         </Routes>
       </div>

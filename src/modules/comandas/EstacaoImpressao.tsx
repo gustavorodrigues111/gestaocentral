@@ -100,6 +100,15 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
         <div className="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/20 p-3.5 text-[12px] text-amber-900 dark:text-amber-100 mb-3 space-y-3">
           <div className="font-bold text-[13px]">Configurar a impressão (uma vez por PC)</div>
 
+          <div className="rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 p-2.5">
+            <div className="font-semibold text-emerald-800 dark:text-emerald-200">⚡ Jeito automático (Windows)</div>
+            <p className="text-emerald-800/90 dark:text-emerald-200/90 mt-0.5">Baixe e dê 2 cliques — ele configura impressora + Chrome sozinho (pede admin).</p>
+            <a href="/configurar-pdv-windows.bat" download className="inline-block mt-1.5 px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold">⬇ Baixar configurador (Windows)</a>
+            <p className="text-[11px] text-emerald-700/80 dark:text-emerald-300/70 mt-1">Já precisa ter o driver da Epson e o Chrome instalados (passos abaixo). O Chrome pode avisar "arquivo perigoso" — é só manter.</p>
+          </div>
+
+          <div className="font-semibold text-[12px] opacity-70">Ou manualmente, passo a passo:</div>
+
           <div>
             <div className="font-semibold">1 · Instalar a impressora pela rede</div>
             <p className="opacity-90 mt-0.5">Baixe o driver da Epson (APD) no site oficial e instale:</p>
