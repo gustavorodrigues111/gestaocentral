@@ -62,6 +62,7 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
   }, [jobs, auto]);
 
   const alvo = atual || teste;
+  const origin = typeof window !== "undefined" ? window.location.origin : "https://comandas.planejamento.app";
 
   // Modo EMBUTIDO: roda dentro do próprio PDV (mesmo PC da Epson). Sem painel —
   // só o listener (acima) + a área de impressão oculta. Imprime automático.
@@ -96,14 +97,34 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
             className="mt-3 h-9 px-4 rounded-lg border border-gray-200 dark:border-gray-700 text-sm font-semibold inline-flex items-center gap-1.5"><Printer size={15} /> Imprimir teste</button>
         </div>
 
-        <div className="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/20 p-3 text-[12px] text-amber-800 dark:text-amber-200 mb-3">
-          <div className="font-bold mb-1">Pra imprimir sem diálogo:</div>
-          <ol className="list-decimal ml-4 space-y-0.5">
-            <li>Instale a Epson TM-T20 como impressora <b>padrão</b> do PC.</li>
-            <li>Abra o Chrome assim: <code className="bg-white/60 dark:bg-black/30 px-1 rounded">chrome --kiosk-printing</code> (Windows) ou <code className="bg-white/60 dark:bg-black/30 px-1 rounded">open -a "Google Chrome" --args --kiosk-printing</code> (Mac).</li>
-            <li>Abra esta página nessa janela e deixe aberta.</li>
-          </ol>
-          <div className="mt-1 opacity-80">Sem o kiosk, cada impressão abre o diálogo do Chrome (é só confirmar).</div>
+        <div className="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/20 p-3.5 text-[12px] text-amber-900 dark:text-amber-100 mb-3 space-y-3">
+          <div className="font-bold text-[13px]">Configurar a impressão (uma vez por PC)</div>
+
+          <div>
+            <div className="font-semibold">1 · Instalar a impressora pela rede</div>
+            <p className="opacity-90 mt-0.5">Baixe o driver da Epson (APD) no site oficial e instale:</p>
+            <a href="https://download.epson-biz.com/modules/pos/" target="_blank" rel="noreferrer" className="inline-block mt-1 font-semibold text-indigo-700 dark:text-indigo-300 underline">↗ Baixar driver Epson POS (APD)</a>
+            <p className="opacity-90 mt-1">No Windows: <b>Adicionar impressora → porta Standard TCP/IP</b> → digite o <b>IP da impressora</b> (veja no config dela) → porta <b>9100</b> → escolha o driver <b>EPSON TM-T20X</b>.</p>
+          </div>
+
+          <div>
+            <div className="font-semibold">2 · Deixar a Epson como padrão</div>
+            <p className="opacity-90 mt-0.5">Windows → <b>Impressoras e scanners</b> → desligue “Permitir que o Windows gerencie a padrão” → na TM-T20X, <b>Definir como padrão</b>. (Sem isso, imprime no lugar errado.)</p>
+          </div>
+
+          <div>
+            <div className="font-semibold">3 · Abrir o Chrome em modo silencioso</div>
+            <p className="opacity-90 mt-0.5">Crie um atalho na área de trabalho com este destino (abre sem o diálogo de impressão):</p>
+            <code className="block bg-white/70 dark:bg-black/30 px-2 py-1.5 rounded mt-1 break-all leading-relaxed">{`"C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe" --kiosk-printing --user-data-dir="C:\\pdv" `}{origin}</code>
+            <p className="opacity-80 mt-1">Mac: <code className="bg-white/60 dark:bg-black/30 px-1 rounded">open -a "Google Chrome" --args --kiosk-printing</code>. Chrome: <a href="https://www.google.com/chrome/" target="_blank" rel="noreferrer" className="text-indigo-700 dark:text-indigo-300 underline">baixar</a>.</p>
+          </div>
+
+          <div>
+            <div className="font-semibold">4 · Manter imprimindo</div>
+            <p className="opacity-90 mt-0.5">Deixe <b>esta aba da Estação aberta</b> — ou, no PDV, ligue o toggle <b>“Imprimir nesta tela”</b> (menu ☰) nesse mesmo PC, dispensando esta aba.</p>
+          </div>
+
+          <p className="opacity-70 pt-1 border-t border-amber-200/60 dark:border-amber-900/40">Dica: fixe o IP da impressora (reserva de DHCP) e deixe o papel em 80mm no driver. Sem o <code className="bg-white/60 dark:bg-black/30 px-1 rounded">--kiosk-printing</code>, cada impressão abre o diálogo do Chrome (é só confirmar).</p>
         </div>
 
         {log.length > 0 && (
@@ -123,11 +144,31 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
 }
 
 function TicketConteudo({ job, nomeRest }: { job: ComandaPrintJob; nomeRest: string }) {
+  // Comanda de PRODUÇÃO (cozinha): fontes GRANDES e GROSSAS + altura mínima de
+  // ~10cm pra ficar fácil de ler e destacar/pendurar, mesmo com 1 item só.
+  if (job.tipo === "producao") {
+    return (
+      <div style={{ minHeight: "100mm", color: "#000" }}>
+        <div style={{ textAlign: "center", fontWeight: 800, fontSize: "22px", letterSpacing: "3px" }}>PRODUÇÃO</div>
+        <div style={{ textAlign: "center", fontWeight: 800, fontSize: "34px", lineHeight: 1.05 }}>#{job.comandaNumero}</div>
+        {job.clienteNome && <div style={{ textAlign: "center", fontWeight: 700, fontSize: "17px", marginTop: "2px" }}>{job.clienteNome}</div>}
+        <div style={{ borderTop: "3px solid #000", margin: "10px 0" }} />
+        {job.linhas.map((ln, i) => (
+          <div key={i} style={{ fontSize: "26px", fontWeight: 800, lineHeight: 1.4, margin: "3px 0" }}>
+            {ln.qtd ? `${ln.qtd}  ` : ""}{ln.nome}
+          </div>
+        ))}
+        <div style={{ borderTop: "3px solid #000", margin: "10px 0" }} />
+        {job.rodape && <div style={{ whiteSpace: "pre-line", fontSize: "14px", fontWeight: 600 }}>{job.rodape}</div>}
+        <div style={{ height: "32px" }} />
+      </div>
+    );
+  }
+  // Conta / cupom (layout normal)
   return (
     <div style={{ fontSize: "12px", lineHeight: 1.35 }}>
       {job.logoUrl && job.tipo === "conta" && <div style={{ textAlign: "center", marginBottom: "4px" }}><img src={job.logoUrl} alt="" style={{ maxHeight: "48px", maxWidth: "60mm", margin: "0 auto", display: "block" }} /></div>}
       <div style={{ textAlign: "center", fontWeight: 700, fontSize: "14px" }}>{job.titulo}</div>
-      {job.tipo === "producao" && <div style={{ textAlign: "center", fontWeight: 700 }}>*** PRODUÇÃO ***</div>}
       <div style={{ borderTop: "1px dashed #000", margin: "4px 0" }} />
       {job.linhas.map((ln, i) => (
         <div key={i} style={{ display: "flex", justifyContent: "space-between", gap: "6px" }}>
