@@ -20,6 +20,7 @@ export function TefCobranca({ valor, serialPos, cpf, nome, onAprovado, onFechar 
   const [parcelas, setParcelas] = useState(1);
   const [erro, setErro] = useState("");
   const [leitura, setLeitura] = useState<TefLeitura | null>(null);
+  const [criarRaw, setCriarRaw] = useState<unknown>(null);   // resposta do create (pra calibrar o identificador)
   const [mostrarRaw, setMostrarRaw] = useState(false);
   const idRef = useRef<string>("");
   const pararRef = useRef(false);
@@ -32,6 +33,7 @@ export function TefCobranca({ valor, serialPos, cpf, nome, onAprovado, onFechar 
     idRef.current = chargeId;
     try {
       const resp = await tefCriar({ value: valor, payment_type: tipo, charge_id: chargeId, serial_pos: serialPos, installments: parcelas, cpf, nome });
+      setCriarRaw(resp.data);
       const l0 = lerTef(resp); setLeitura(l0);
       if (l0.identifier) idRef.current = l0.identifier;
       if (!resp.ok && !l0.identifier) { setErro(l0.mensagem || `Falha ao criar a cobrança (HTTP ${resp.httpStatus}).`); setFase("erro"); return; }
@@ -123,11 +125,16 @@ export function TefCobranca({ valor, serialPos, cpf, nome, onAprovado, onFechar 
           </div>
         )}
 
-        {/* Debug (calibração do 1º teste) */}
-        {leitura && (
+        {/* Debug (calibração) — mostra a resposta do CREATE e a do STATUS */}
+        {(criarRaw || leitura) && (
           <div className="mt-3 pt-2 border-t border-gray-100 dark:border-gray-800">
             <button onClick={() => setMostrarRaw((v) => !v)} className="text-[11px] text-gray-400">{mostrarRaw ? "ocultar" : "ver"} resposta da API</button>
-            {mostrarRaw && <pre className="mt-1 text-[10px] bg-gray-50 dark:bg-gray-800/50 rounded-lg p-2 overflow-auto max-h-40 text-gray-600 dark:text-gray-300">{JSON.stringify(leitura.raw, null, 2)}</pre>}
+            {mostrarRaw && (
+              <div className="space-y-1.5 mt-1">
+                {criarRaw != null && <div><div className="text-[10px] font-bold text-gray-400">CREATE (id do pagamento):</div><pre className="text-[10px] bg-gray-50 dark:bg-gray-800/50 rounded-lg p-2 overflow-auto max-h-36 text-gray-600 dark:text-gray-300">{JSON.stringify(criarRaw, null, 2)}</pre></div>}
+                {leitura && <div><div className="text-[10px] font-bold text-gray-400">STATUS (última consulta):</div><pre className="text-[10px] bg-gray-50 dark:bg-gray-800/50 rounded-lg p-2 overflow-auto max-h-36 text-gray-600 dark:text-gray-300">{JSON.stringify(leitura.raw, null, 2)}</pre></div>}
+              </div>
+            )}
           </div>
         )}
       </div>

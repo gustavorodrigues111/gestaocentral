@@ -45,7 +45,11 @@ export function lerTef(resp: TefResp): TefLeitura {
     nsu: str(dados.nsu ?? dados.NSU),
     autorizacao: str(dados.autorizacao ?? dados.Autorizacao),
     bandeira: str(dados.bandeira ?? dados.Bandeira),
-    identifier: str(env.charge_id ?? inObj.charge_id ?? dados.pagId ?? inObj.pagId),
+    identifier: str(
+      env.id ?? env.order_id ?? env.orderId ?? env.payment_id ?? env.paymentId ?? env.order_identifier ?? env.identificador ?? env.charge_id ??
+      inObj.id ?? inObj.order_id ?? inObj.orderId ?? inObj.payment_id ?? inObj.paymentId ?? inObj.order_identifier ?? inObj.charge_id ??
+      dados.pagId ?? dados.id ?? inObj.pagId,
+    ),
     raw: resp.data,
   };
 }
