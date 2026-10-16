@@ -111,8 +111,8 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
 
           <div>
             <div className="font-semibold">1 · Instalar a impressora pela rede</div>
-            <p className="opacity-90 mt-0.5">Baixe o driver da Epson (APD) no site oficial e instale:</p>
-            <a href="https://download.epson-biz.com/modules/pos/" target="_blank" rel="noreferrer" className="inline-block mt-1 font-semibold text-indigo-700 dark:text-indigo-300 underline">↗ Baixar driver Epson POS (APD)</a>
+            <p className="opacity-90 mt-0.5">Baixe o driver da Epson (APD 6) no site oficial e instale:</p>
+            <a href="https://download-center.epson.com/softwares/?device_id=TM-T20X-II&os=WIN1164&language=pt" target="_blank" rel="noreferrer" className="inline-block mt-1 font-semibold text-indigo-700 dark:text-indigo-300 underline">↗ Baixar driver EPSON TM-T20X-II (APD 6)</a>
             <p className="opacity-90 mt-1">No Windows: <b>Adicionar impressora → porta Standard TCP/IP</b> → digite o <b>IP da impressora</b> (veja no config dela) → porta <b>9100</b> → escolha o driver <b>EPSON TM-T20X</b>.</p>
           </div>
 
