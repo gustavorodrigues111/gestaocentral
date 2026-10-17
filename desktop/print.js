@@ -28,14 +28,17 @@ async function imprimir(job, cfg) {
     p.setTextSize(0, 0); p.bold(false); p.drawLine();
     if (job.rodape) p.println(job.rodape);
   } else if (job.tipo === "cancelamento") {
-    p.alignCenter(); p.bold(true); p.setTextSize(1, 1); p.println("*** CANCELAMENTO ***"); p.setTextSize(0, 0);
-    if (job.rotulo) p.println(job.rotulo);
-    p.setTextSize(1, 1); p.println("#" + (job.comandaNumero || "")); p.setTextSize(0, 0);
-    if (job.clienteNome) p.println(job.clienteNome);
+    const cozinha = job.rotulo === "COZINHA";
+    p.alignCenter(); p.bold(true);
+    p.setTextSize(2, 2); p.println("CANCELADO"); p.setTextSize(0, 0);
+    p.println("!!! CANCELAMENTO !!!");
+    if (cozinha) p.println("NAO PREPARAR / RETIRAR");
+    p.setTextSize(1, 1); p.println("#" + (job.comandaNumero || "") + (job.clienteNome ? " - " + job.clienteNome : "")); p.setTextSize(0, 0);
     p.bold(false); p.drawLine(); p.alignLeft(); p.setTextSize(1, 1); p.bold(true);
-    (job.linhas || []).forEach((l) => p.println((l.qtd ? l.qtd + "  " : "") + l.nome + (l.valor ? "  " + l.valor : "")));
-    p.setTextSize(0, 0); p.bold(false); p.drawLine();
+    (job.linhas || []).forEach((l) => p.println("X " + (l.qtd ? l.qtd + "  " : "") + l.nome + (l.valor ? "  " + l.valor : "")));
+    p.setTextSize(0, 0); p.bold(false); p.drawLine(); p.alignCenter();
     if (job.rodape) p.println(job.rodape);
+    p.alignLeft();
   } else {
     // conta / pré-conta / danfce
     const n = job.nfce;

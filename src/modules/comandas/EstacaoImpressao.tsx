@@ -13,8 +13,8 @@ import type { ComandaPrintJob, ComandaEstacao } from "../../core/types";
 // Mesmos arquivos do feed de auto-update (pdv-updates/, token compartilhado) —
 // 1 upload serve download + update.
 const APP_CAIXA_DOWNLOAD = {
-  mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV-1.0.1-arm64.dmg?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
-  win: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV%20Setup%201.0.1.exe?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
+  mac: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV-1.0.2-arm64.dmg?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
+  win: "https://firebasestorage.googleapis.com/v0/b/gestaocentral-85b13.firebasestorage.app/o/pdv-updates%2FPlanejamento%20PDV%20Setup%201.0.2.exe?alt=media&token=87522B2C-9534-4645-B0E0-F5348BB246C6",
 };
 
 // CSS de impressão: só o #comanda-print sai no papel (80mm).
@@ -241,24 +241,28 @@ function TicketConteudo({ job, nomeRest, fonteProd = 22 }: { job: ComandaPrintJo
       </div>
     );
   }
-  // CANCELAMENTO (cozinha ou nota): "CANCELAMENTO" bem grande, pra não passar batido.
+  // CANCELAMENTO (cozinha ou nota): GIGANTE, impossível passar batido.
   if (job.tipo === "cancelamento") {
     const f = Math.max(12, Math.min(40, fonteProd));
+    const cozinha = job.rotulo === "COZINHA";
     return (
-      <div style={{ minHeight: "80mm", color: "#000" }}>
-        <div style={{ textAlign: "center", border: "4px solid #000", padding: "6px 0", fontWeight: 900, fontSize: `${Math.round(f * 1.15)}px`, letterSpacing: "2px" }}>*** CANCELAMENTO ***</div>
-        {job.rotulo && <div style={{ textAlign: "center", fontWeight: 800, fontSize: `${Math.round(f * 0.8)}px`, marginTop: "6px" }}>{job.rotulo}</div>}
-        <div style={{ textAlign: "center", fontWeight: 800, fontSize: `${Math.round(f * 1.1)}px`, lineHeight: 1.05, marginTop: "2px" }}>#{job.comandaNumero}</div>
-        {job.clienteNome && <div style={{ textAlign: "center", fontWeight: 700, fontSize: `${Math.round(f * 0.65)}px` }}>{job.clienteNome}</div>}
-        <div style={{ borderTop: "3px solid #000", margin: "10px 0" }} />
+      <div style={{ minHeight: "90mm", color: "#000" }}>
+        <div style={{ height: "10px" }} />
+        <div style={{ textAlign: "center", border: "6px solid #000", padding: "10px 4px", lineHeight: 1 }}>
+          <div style={{ fontWeight: 900, fontSize: `${Math.round(f * 1.9)}px`, letterSpacing: "2px" }}>CANCELADO</div>
+        </div>
+        <div style={{ textAlign: "center", fontWeight: 900, fontSize: `${Math.round(f * 0.9)}px`, letterSpacing: "4px", margin: "8px 0" }}>!!! CANCELAMENTO !!!</div>
+        {cozinha && <div style={{ textAlign: "center", fontWeight: 900, fontSize: `${Math.round(f * 0.8)}px`, textDecoration: "underline" }}>NAO PREPARAR / RETIRAR</div>}
+        <div style={{ textAlign: "center", fontWeight: 800, fontSize: `${Math.round(f * 1.15)}px`, lineHeight: 1.05, marginTop: "6px" }}>#{job.comandaNumero}{job.clienteNome ? ` · ${job.clienteNome}` : ""}</div>
+        <div style={{ borderTop: "4px solid #000", margin: "10px 0" }} />
         {job.linhas.map((ln, i) => (
-          <div key={i} style={{ fontSize: `${f}px`, fontWeight: 800, lineHeight: 1.4, margin: "3px 0" }}>
-            {ln.qtd ? `${ln.qtd}  ` : ""}{ln.nome}{ln.valor ? `  ${ln.valor}` : ""}
+          <div key={i} style={{ fontSize: `${Math.round(f * 1.1)}px`, fontWeight: 900, lineHeight: 1.35, margin: "4px 0" }}>
+            ✗ {ln.qtd ? `${ln.qtd}  ` : ""}{ln.nome}{ln.valor ? `  ${ln.valor}` : ""}
           </div>
         ))}
-        <div style={{ borderTop: "3px solid #000", margin: "10px 0" }} />
-        {job.rodape && <div style={{ whiteSpace: "pre-line", fontSize: "13px", fontWeight: 600 }}>{job.rodape}</div>}
-        <div style={{ height: "32px" }} />
+        <div style={{ borderTop: "4px solid #000", margin: "10px 0" }} />
+        {job.rodape && <div style={{ whiteSpace: "pre-line", fontSize: "13px", fontWeight: 700, textAlign: "center" }}>{job.rodape}</div>}
+        <div style={{ height: "40px" }} />
       </div>
     );
   }
