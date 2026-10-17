@@ -1,7 +1,15 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { registerSW } from 'virtual:pwa-register'
 import './index.css'
 import App from './App.tsx'
+import { isComandasKioskHost } from './core/restaurant/subdomain'
+
+// PWA offline — registra o service worker SÓ no host do PDV (comandas.*), pra
+// não cachear/afetar o app admin. autoUpdate: baixa a versão nova sozinho.
+if (isComandasKioskHost()) {
+  try { registerSW({ immediate: true }) } catch { /* ambiente sem SW */ }
+}
 
 // ── Fix definitivo do "Failed to fetch dynamically imported module" ───────────
 // Depois de um novo deploy, os chunks com hash mudam de nome. Uma aba aberta há
