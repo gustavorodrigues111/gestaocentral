@@ -8,6 +8,13 @@ import { Printer, CheckCircle2, AlertTriangle } from "lucide-react";
 import { ouvirPrintJobsPendentes, marcarPrintJob } from "./comandasRepo";
 import type { ComandaPrintJob, ComandaEstacao } from "../../core/types";
 
+// URLs dos instaladores do App de Caixa (hospedar no Firebase Storage e colar
+// aqui). Vazio → mostra "em breve". Quando preenchido, viram botões de download.
+const APP_CAIXA_DOWNLOAD = {
+  mac: "",   // ex.: https://.../AppTip-PDV.dmg
+  win: "",   // ex.: https://.../AppTip-PDV-Setup.exe
+};
+
 // CSS de impressão: só o #comanda-print sai no papel (80mm).
 const PRINT_CSS = `
   #comanda-print { display: none; }
@@ -127,8 +134,22 @@ export function EstacaoImpressao({ rid, nomeRest, estacaoId, estacoes, logoUrl, 
           </div>
         </div>
 
+        {/* App de caixa (recomendado) — imprime direto na Epson, sem Chrome */}
+        <div className="rounded-2xl border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/60 dark:bg-indigo-950/20 p-3.5 text-[12px] text-indigo-900 dark:text-indigo-100 mb-3">
+          <div className="font-bold text-[13px] inline-flex items-center gap-1.5"><Printer size={14} /> App de caixa (recomendado)</div>
+          <p className="opacity-90 mt-0.5">Instale o <b>AppTip PDV</b> no computador do caixa: abre direto o sistema e imprime na Epson <b>por IP</b> (sem Chrome, sem diálogo, com corte e QR). Também funciona offline.</p>
+          {(APP_CAIXA_DOWNLOAD.mac || APP_CAIXA_DOWNLOAD.win) ? (
+            <div className="flex flex-wrap gap-2 mt-2">
+              {APP_CAIXA_DOWNLOAD.mac && <a href={APP_CAIXA_DOWNLOAD.mac} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">⬇ Baixar para Mac (.dmg)</a>}
+              {APP_CAIXA_DOWNLOAD.win && <a href={APP_CAIXA_DOWNLOAD.win} className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold">⬇ Baixar para Windows (.exe)</a>}
+            </div>
+          ) : (
+            <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/70 mt-1.5">Instaladores em breve. Enquanto isso, use a configuração do Chrome abaixo.</p>
+          )}
+        </div>
+
         <div className="rounded-2xl border border-amber-200 dark:border-amber-900/60 bg-amber-50/60 dark:bg-amber-950/20 p-3.5 text-[12px] text-amber-900 dark:text-amber-100 mb-3 space-y-3">
-          <div className="font-bold text-[13px]">Configurar a impressão (uma vez por PC)</div>
+          <div className="font-bold text-[13px]">Configurar a impressão pelo Chrome (sem o app)</div>
 
           <div className="rounded-xl border border-emerald-300 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/30 p-2.5">
             <div className="font-semibold text-emerald-800 dark:text-emerald-200">⚡ Jeito automático (Windows)</div>
