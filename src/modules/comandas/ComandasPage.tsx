@@ -391,6 +391,8 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
   const [verConta, setVerConta] = useState(false);          // tela pra mostrar ao cliente
   const [salvandoImpr, setSalvandoImpr] = useState(false);
   const [nfceLoading, setNfceLoading] = useState(false);
+  const [cpfModal, setCpfModal] = useState(false);      // pedir CPF antes de emitir
+  const [cancelModal, setCancelModal] = useState(false); // pedir motivo do cancelamento
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   // Só categorias que têm produtos ativos.
@@ -504,18 +506,17 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
     if (!confirm("Reabrir esta comanda? Ela volta pra lista de abertas.")) return;
     await salvarComanda({ ...comanda, status: "aberta", fechadoEm: null, fechadoPorNome: null });
   }
-  async function emitirNfce() {
-    if (comanda.nfce?.chave && !confirm("Esta comanda já tem NFC-e autorizada. Emitir outra?")) return;
+  // Abre o fluxo de emissão: valida e, se faltar CPF, abre o modal; senão emite.
+  function emitirNfce() {
+    if (comanda.nfce?.chave && !comanda.nfce?.canceladoEm && !confirm("Esta comanda já tem NFC-e autorizada. Emitir outra?")) return;
     if (!fiscalCfg?.cfop || !fiscalCfg?.cstIcms) { alert("Configure o Fiscal padrão (NFC-e) primeiro: Config → Produtos → Fiscal padrão (CFOP, CST, alíquotas)."); return; }
-    const { items, formas, faltando } = montarNfce(comanda, produtos, fiscalCfg);
+    const { faltando } = montarNfce(comanda, produtos, fiscalCfg);
     if (faltando.length) { alert("Faltam dados fiscais (NCM/CFOP/CST) nestes produtos: " + [...new Set(faltando)].join(", ") + ".\nPreencha o NCM em Produtos → Fiscal (NFC-e)."); return; }
-    // CPF na nota: usa o da comanda; se não tiver, pergunta (pode deixar vazio = consumidor não identificado).
-    let cpfNota = (comanda.cpf || "").replace(/\D/g, "");
-    if (!cpfNota) {
-      const r = prompt("CPF na nota? (só números — deixe vazio p/ consumidor não identificado)", "");
-      if (r === null) return;   // cancelou
-      cpfNota = r.replace(/\D/g, "");
-    }
+    const cpfNota = (comanda.cpf || "").replace(/\D/g, "");
+    if (cpfNota) { void doEmitir(cpfNota); } else { setCpfModal(true); }
+  }
+  async function doEmitir(cpfNota: string) {
+    const { items, formas } = montarNfce(comanda, produtos, fiscalCfg);
     setNfceLoading(true);
     try {
       const ref = `c${comanda.id}_${Date.now().toString(36)}`;
@@ -531,16 +532,16 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
     } catch (e) { alert("Erro ao emitir NFC-e: " + (e instanceof Error ? e.message : "?")); }
     finally { setNfceLoading(false); }
   }
-  async function cancelarNfce() {
-    const ref = comanda.nfce?.ref;
-    if (!ref || !comanda.nfce?.chave) { alert("Esta venda não tem NFC-e autorizada pra cancelar."); return; }
+  function cancelarNfce() {
+    if (!comanda.nfce?.ref || !comanda.nfce?.chave) { alert("Esta venda não tem NFC-e autorizada pra cancelar."); return; }
     if (comanda.nfce?.canceladoEm) { alert("Esta NFC-e já foi cancelada."); return; }
-    const just = prompt("Motivo do cancelamento (mínimo 15 caracteres):", "Cancelamento solicitado pelo cliente no balcão");
-    if (just === null) return;
-    if (just.trim().length < 15) { alert("O motivo precisa ter pelo menos 15 caracteres (exigência da SEFAZ)."); return; }
+    setCancelModal(true);
+  }
+  async function doCancelar(motivo: string) {
+    const ref = comanda.nfce?.ref; if (!ref) return;
     setNfceLoading(true);
     try {
-      const l = lerNfce(await nfceCancelar(ref, just.trim()));
+      const l = lerNfce(await nfceCancelar(ref, motivo.trim()));
       if (l.cancelado || l.status === "cancelado") {
         await salvarComanda({ ...comanda, nfce: { ...comanda.nfce!, status: "cancelado", canceladoEm: new Date().toISOString() } });
         alert("✅ NFC-e cancelada com sucesso.");
@@ -666,20 +667,22 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       <div className="shrink-0 border-t border-gray-200 dark:border-gray-800 p-2.5 flex flex-wrap items-center gap-2">
         {fechada ? (
           <>
-            <button onClick={() => void reimprimirConta()} className="flex-1 sm:flex-none h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-700 font-semibold inline-flex items-center justify-center gap-1.5"><Printer size={17} /> Reimprimir</button>
-            {podeOperar && !comanda.nfce?.chave && <button onClick={() => void reabrir()} className="flex-1 sm:flex-none h-11 px-3 rounded-xl border border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-semibold">Reabrir</button>}
-            {/* NFC-e: emitir OU (já emitida) imprimir cupom + cancelar */}
-            {podeOperar && !comanda.nfce?.chave && (
-              <button onClick={() => void emitirNfce()} disabled={nfceLoading} className="basis-full sm:basis-0 sm:flex-1 h-11 rounded-xl font-bold inline-flex items-center justify-center gap-1.5 disabled:opacity-50 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900">{nfceLoading ? "Emitindo…" : "Emitir NFC-e"}</button>
-            )}
-            {comanda.nfce?.chave && !comanda.nfce?.canceladoEm && (
+            {/* Com NFC-e autorizada: o cupom fiscal já aparece na tela acima.
+                Aqui só Imprimir (DANFCe) + Cancelar. Sem nota: Emitir + conta + reabrir. */}
+            {comanda.nfce?.chave && !comanda.nfce?.canceladoEm ? (
               <>
-                <button onClick={() => void imprimirDanfce(comanda)} className="flex-1 sm:flex-none h-11 px-3 rounded-xl border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 font-semibold inline-flex items-center justify-center gap-1.5"><Printer size={17} /> Cupom fiscal</button>
-                {podeOperar && <button onClick={() => void cancelarNfce()} disabled={nfceLoading} className="flex-1 sm:flex-none h-11 px-3 rounded-xl border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-semibold disabled:opacity-50">{nfceLoading ? "…" : "Cancelar NFC-e"}</button>}
-                <span className="basis-full text-[11px] text-emerald-700 dark:text-emerald-300 text-center">NFC-e Nº {comanda.nfce.numero} · série {comanda.nfce.serie} autorizada ✓</span>
+                <button onClick={() => void imprimirDanfce(comanda)} className="flex-1 h-11 px-3 rounded-xl bg-indigo-600 text-white font-bold inline-flex items-center justify-center gap-1.5"><Printer size={17} /> Imprimir cupom</button>
+                {podeOperar && <button onClick={() => void cancelarNfce()} disabled={nfceLoading} className="flex-1 h-11 px-3 rounded-xl border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-semibold disabled:opacity-50 inline-flex items-center justify-center">{nfceLoading ? "…" : "Cancelar NFC-e"}</button>}
+              </>
+            ) : comanda.nfce?.canceladoEm ? (
+              <button onClick={() => void reimprimirConta()} className="flex-1 h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-700 font-semibold inline-flex items-center justify-center gap-1.5"><Printer size={17} /> Imprimir conta</button>
+            ) : (
+              <>
+                {podeOperar && <button onClick={() => void emitirNfce()} disabled={nfceLoading} className="basis-full h-11 rounded-xl font-bold inline-flex items-center justify-center gap-1.5 disabled:opacity-50 bg-gray-900 dark:bg-gray-100 text-white dark:text-gray-900"><Receipt size={17} /> {nfceLoading ? "Emitindo…" : "Emitir NFC-e"}</button>}
+                <button onClick={() => void reimprimirConta()} className="flex-1 h-11 px-3 rounded-xl border border-gray-200 dark:border-gray-700 font-semibold inline-flex items-center justify-center gap-1.5"><Printer size={17} /> Imprimir conta</button>
+                {podeOperar && <button onClick={() => void reabrir()} className="flex-1 h-11 px-3 rounded-xl border border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-semibold">Reabrir</button>}
               </>
             )}
-            {comanda.nfce?.canceladoEm && <span className="basis-full text-[11px] text-rose-600 dark:text-rose-400 text-center font-semibold">NFC-e Nº {comanda.nfce.numero} CANCELADA</span>}
           </>
         ) : editavel ? (
           <>
@@ -700,6 +703,64 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
       {pesoDe && <PesoModal produto={pesoDe} onClose={() => setPesoDe(null)} onConfirmar={(kg) => { void addItem(pesoDe, kg); setPesoDe(null); }} />}
       {fechar && <FecharModal comanda={comanda} meNome={meNome} nomeRest={nomeRest} rid={rid} logoUrl={logoUrl} onClose={() => setFechar(false)} onFechado={() => { setFechar(false); onClose(); }} />}
       {verConta && <ContaClienteView comanda={comanda} nomeRest={nomeRest} logoUrl={logoUrl} onClose={() => setVerConta(false)} onImprimir={() => void reimprimirConta()} />}
+      {cpfModal && (
+        <NfceInputModal
+          icone="cpf" titulo="Emitir NFC-e" label="CPF na nota (opcional)"
+          descricao="Informe o CPF do cliente pra sair na nota, ou deixe em branco pra consumidor não identificado."
+          placeholder="000.000.000-00" inputMode="numeric" mascara="cpf" podeVazio
+          confirmarLabel="Emitir NFC-e"
+          onConfirmar={(v) => { setCpfModal(false); void doEmitir(v.replace(/\D/g, "")); }}
+          onClose={() => setCpfModal(false)}
+        />
+      )}
+      {cancelModal && (
+        <NfceInputModal
+          icone="cancel" titulo="Cancelar NFC-e" label="Motivo do cancelamento"
+          descricao="A SEFAZ exige um motivo com no mínimo 15 caracteres. A janela de cancelamento é de ~30 minutos após a emissão."
+          placeholder="Ex.: venda cancelada a pedido do cliente" inicial="Cancelamento solicitado pelo cliente no balcão"
+          minLen={15} multiline confirmarLabel="Cancelar NFC-e" perigo
+          onConfirmar={(v) => { setCancelModal(false); void doCancelar(v); }}
+          onClose={() => setCancelModal(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Modal de input no estilo do sistema (substitui os prompt() nativos) — usado
+// p/ CPF na nota e motivo do cancelamento da NFC-e.
+function NfceInputModal({ icone, titulo, label, descricao, placeholder, inicial = "", minLen = 0, podeVazio = false, multiline = false, mascara, inputMode, confirmarLabel, perigo = false, onConfirmar, onClose }: {
+  icone: "cpf" | "cancel"; titulo: string; label: string; descricao?: string; placeholder?: string; inicial?: string;
+  minLen?: number; podeVazio?: boolean; multiline?: boolean; mascara?: "cpf"; inputMode?: "numeric" | "text";
+  confirmarLabel: string; perigo?: boolean; onConfirmar: (v: string) => void; onClose: () => void;
+}) {
+  const [v, setV] = useState(inicial);
+  const fmtCpf = (s: string) => { const d = s.replace(/\D/g, "").slice(0, 11); return d.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2"); };
+  const onChange = (raw: string) => setV(mascara === "cpf" ? fmtCpf(raw) : raw);
+  const limpo = v.trim();
+  const valido = podeVazio ? (limpo.length === 0 || limpo.replace(/\D/g, "").length === 11) : limpo.length >= minLen;
+  const faltam = minLen > 0 ? Math.max(0, minLen - limpo.length) : 0;
+  const Icone = icone === "cancel" ? X : Receipt;
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/40 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white dark:bg-gray-900 rounded-2xl w-full max-w-sm p-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+        <div className="flex items-center justify-between mb-2">
+          <div className={`font-bold text-gray-900 dark:text-gray-100 inline-flex items-center gap-1.5`}><Icone size={16} className={perigo ? "text-rose-500" : "text-indigo-500"} /> {titulo}</div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600"><X size={18} /></button>
+        </div>
+        {descricao && <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-3 leading-snug">{descricao}</p>}
+        <label className="text-xs font-semibold text-gray-600 dark:text-gray-400 block mb-1">{label}</label>
+        {multiline ? (
+          <textarea value={v} onChange={(e) => onChange(e.target.value)} autoFocus rows={3} placeholder={placeholder} className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 resize-none" />
+        ) : (
+          <input value={v} onChange={(e) => onChange(e.target.value)} autoFocus inputMode={inputMode} placeholder={placeholder} className="w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900 tabular-nums" />
+        )}
+        {minLen > 0 && faltam > 0 && <div className="text-[11px] text-amber-600 mt-1">Faltam {faltam} caractere(s).</div>}
+        <div className="flex justify-end gap-2 pt-3 mt-3 border-t border-gray-200 dark:border-gray-800">
+          <button onClick={onClose} className="h-10 px-4 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Voltar</button>
+          <button onClick={() => valido && onConfirmar(v)} disabled={!valido} className={`h-10 px-4 rounded-lg text-white text-sm font-bold disabled:opacity-40 ${perigo ? "bg-rose-600" : "bg-indigo-600"}`}>{confirmarLabel}</button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -766,9 +827,28 @@ function ContaCupom({ comanda, nomeRest, logoUrl }: { comanda: Comanda; nomeRest
         </div>
       )}
       <div className="border-t border-dashed border-gray-300 dark:border-gray-700 my-2" />
-      <div className="text-center text-[10px] text-gray-400">Documento sem valor fiscal</div>
+      {comanda.nfce?.chave && !comanda.nfce?.canceladoEm ? (
+        <div className="text-center space-y-1">
+          <div className="text-[11px] font-bold text-emerald-700 dark:text-emerald-300">NFC-e nº {comanda.nfce.numero} · série {comanda.nfce.serie}</div>
+          <div className="text-[9px] text-gray-500 leading-tight">Consulte pela chave de acesso em:<br />{comanda.nfce.urlConsulta || "www.nfce.fazenda.sp.gov.br"}</div>
+          <div className="text-[9px] text-gray-500 font-mono break-all leading-tight">{(comanda.nfce.chave || "").replace(/(\d{4})(?=\d)/g, "$1 ")}</div>
+          {comanda.nfce.protocolo && <div className="text-[9px] text-gray-400">Protocolo: {comanda.nfce.protocolo}</div>}
+          {comanda.nfce.qrcodeUrl && <QrImg texto={comanda.nfce.qrcodeUrl} />}
+        </div>
+      ) : comanda.nfce?.canceladoEm ? (
+        <div className="text-center text-[11px] font-bold text-rose-600 dark:text-rose-400">NFC-e nº {comanda.nfce.numero} CANCELADA</div>
+      ) : (
+        <div className="text-center text-[10px] text-gray-400">Documento sem valor fiscal</div>
+      )}
     </div>
   );
+}
+
+// QR Code na tela (gera o data URL assíncrono — ok fora da impressão).
+function QrImg({ texto }: { texto: string }) {
+  const [src, setSrc] = useState("");
+  useEffect(() => { QRCode.toDataURL(texto, { margin: 1, width: 240 }).then(setSrc).catch(() => setSrc("")); }, [texto]);
+  return src ? <img src={src} alt="QR NFC-e" className="w-36 h-36 mx-auto mt-1" /> : null;
 }
 
 // ── Peso (produto por kg) ─────────────────────────────────────────────────
