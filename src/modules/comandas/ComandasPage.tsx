@@ -645,9 +645,9 @@ function AbrirComandaModal({ modo, onClose, onAbrir }: {
             <input value={tel} onChange={(e) => setTel(e.target.value)} inputMode="tel" placeholder="(11) 90000-0000" className={campo} />
           </div>
           {err && <div className="text-sm text-rose-600">{err}</div>}
-          <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
-            <button onClick={onClose} className="h-10 px-4 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Cancelar</button>
-            <button onClick={salvar} disabled={saving} className="h-10 px-4 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{saving ? "..." : "Abrir e lançar"}</button>
+          <div className="flex gap-2 pt-3 border-t border-gray-200 dark:border-gray-800">
+            <button onClick={onClose} className="flex-1 h-11 rounded-lg border border-gray-300 dark:border-gray-700 text-sm font-semibold">Cancelar</button>
+            <button onClick={salvar} disabled={saving} className="flex-1 h-11 rounded-lg bg-indigo-600 text-white text-sm font-bold disabled:opacity-40">{saving ? "..." : "Abrir e lançar"}</button>
           </div>
         </div>
       </div>
