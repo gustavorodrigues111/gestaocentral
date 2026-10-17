@@ -29,6 +29,16 @@ import QRCode from "qrcode";
 
 const fmtR = (n: number) => (n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const fmtNum = (n: number, dec = 0) => (n || 0).toLocaleString("pt-BR", { minimumFractionDigits: dec, maximumFractionDigits: 3 });
+// Sombreamento do botão de produto por categoria (por palavra-chave no nome):
+// pescados = azul claro, comidas/cozinha = vermelho claro, bebidas = amarelo claro.
+function corCategoria(nome?: string | null): string {
+  const n = (nome || "").toLowerCase();
+  if (/pescado|peixe|fruto do mar|camar|lula|polvo|ostra|marisco|moqueca/.test(n)) return "bg-sky-50 border-sky-200 dark:bg-sky-950/25 dark:border-sky-900/50";
+  if (/bebida|bar|drink|suco|cerveja|vinho|refri|dose|caipir|chopp|água|agua/.test(n)) return "bg-amber-50 border-amber-200 dark:bg-amber-950/25 dark:border-amber-900/50";
+  if (/comida|cozinha|prato|por[çc][aã]o|petisco|entrada|sobremesa|brasa|quente/.test(n)) return "bg-rose-50 border-rose-200 dark:bg-rose-950/25 dark:border-rose-900/50";
+  return "bg-white border-gray-200 dark:bg-gray-900 dark:border-gray-700";
+}
+
 // Normaliza a forma de pagamento p/ agrupar (tira o "· NSU ..." do cartão).
 const baseForma = (f: string): string => (f || "").split(" · ")[0].trim();
 // Formas padrão sempre exibidas na conferência do caixa (p/ conciliar).
@@ -712,21 +722,21 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
     const ids = new Set(produtos.map((p) => p.categoriaId || "sem"));
     const out = categorias.filter((c) => ids.has(c.id)).map((c) => ({ id: c.id, nome: c.nome }));
     if (ids.has("sem")) out.push({ id: "sem", nome: "Outros" });
-    // "Cozinha aberta" sempre primeiro.
+    // "Cozinha" (aberta) sempre primeiro.
     out.sort((a, b) => {
-      const ca = a.nome.trim().toLowerCase().includes("cozinha aberta") ? 0 : 1;
-      const cb = b.nome.trim().toLowerCase().includes("cozinha aberta") ? 0 : 1;
+      const ca = a.nome.trim().toLowerCase().includes("cozinha") ? 0 : 1;
+      const cb = b.nome.trim().toLowerCase().includes("cozinha") ? 0 : 1;
       return ca - cb;
     });
     return out;
   }, [produtos, categorias]);
-  // Seleciona "Cozinha aberta" por padrão na 1ª carga (se existir).
+  // Seleciona "Cozinha" por padrão ao abrir a comanda (se existir).
   const catInitRef = useRef(false);
   useEffect(() => {
     if (catInitRef.current || catsComProd.length === 0) return;
     catInitRef.current = true;
-    const ca = catsComProd.find((c) => c.nome.trim().toLowerCase().includes("cozinha aberta"));
-    if (ca) setCatSel(ca.id);
+    const ca = catsComProd.find((c) => c.nome.trim().toLowerCase().includes("cozinha"));
+    setCatSel(ca ? ca.id : "todas");
   }, [catsComProd]);
 
   const filtrados = useMemo(() => {
@@ -983,7 +993,7 @@ function ComandaDetalhe({ comanda, produtos, categorias, estacoes, logoUrl, fisc
                 <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                   {filtrados.map((p) => (
                     <button key={p.id} onClick={() => tapProduto(p)}
-                      className="text-left rounded-xl border border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900 p-2.5 hover:border-indigo-300 dark:hover:border-indigo-700 active:scale-[0.98] transition-transform">
+                      className={`text-left rounded-xl border p-2.5 hover:brightness-95 active:scale-[0.98] transition ${corCategoria(p.categoria)}`}>
                       {p.codigo && <div className="text-[10px] font-mono text-gray-400">#{p.codigo}</div>}
                       <div className="text-[13px] font-semibold text-gray-900 dark:text-gray-100 leading-tight line-clamp-2">{p.nome}</div>
                       <div className="text-[12px] text-indigo-700 dark:text-indigo-300 font-bold tabular-nums mt-1">{fmtR(p.preco)}{p.porPeso ? "/kg" : ""}</div>
