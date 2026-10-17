@@ -599,13 +599,11 @@ function AbrirComandaModal({ modo, onClose, onAbrir }: {
 }) {
   const [numero, setNumero] = useState("");
   const [nome, setNome] = useState("");
-  const [cpf, setCpf] = useState("");
   const [tel, setTel] = useState("");
   const [pessoas, setPessoas] = useState(1);
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const togo = modo === "togo";
-  const fmtCpf = (s: string) => s.replace(/\D/g, "").slice(0, 11).replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2");
   async function salvar() {
     if (!togo) {
       if (!numero.trim()) { setErr("Informe o nº da comanda."); return; }
@@ -613,7 +611,7 @@ function AbrirComandaModal({ modo, onClose, onAbrir }: {
     }
     const clienteNome = nome.trim() || (togo ? "Venda rápida" : "");
     setErr(""); setSaving(true);
-    try { await onAbrir({ numero: numero.trim() || "—", clienteNome, cpf, telefone: tel, pessoas: Math.max(1, pessoas), modo }); }
+    try { await onAbrir({ numero: numero.trim() || "—", clienteNome, telefone: tel, pessoas: Math.max(1, pessoas), modo }); }
     catch (e) { setErr(e instanceof Error ? e.message : "Erro"); setSaving(false); }
   }
   const campo = "w-full h-11 px-3 text-sm rounded-lg border border-gray-300 dark:border-gray-700 bg-white dark:bg-gray-900";
@@ -645,11 +643,6 @@ function AbrirComandaModal({ modo, onClose, onAbrir }: {
           <div>
             <label className={rotulo}>Telefone (opcional)</label>
             <input value={tel} onChange={(e) => setTel(e.target.value)} inputMode="tel" placeholder="(11) 90000-0000" className={campo} />
-          </div>
-          <div className="pt-1 border-t border-gray-100 dark:border-gray-800">
-            <label className={`${rotulo} mt-3`}>CPF na nota (opcional)</label>
-            <input value={cpf} onChange={(e) => setCpf(fmtCpf(e.target.value))} inputMode="numeric" placeholder="000.000.000-00" className={`${campo} tabular-nums`} />
-            <p className="text-[11px] text-gray-400 mt-1">Só se o cliente pedir CPF na nota fiscal.</p>
           </div>
           {err && <div className="text-sm text-rose-600">{err}</div>}
           <div className="flex justify-end gap-2 pt-2 border-t border-gray-200 dark:border-gray-800">
